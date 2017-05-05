@@ -1,0 +1,32 @@
+#!/bin/bash
+set -e
+
+cd $(dirname $0)/..
+
+mount --bind /host/dev /dev
+
+source ./scripts/common.sh
+
+# Removing any existing testing containers, e.g. from scripts/server
+cleanup_mgr_test
+
+trap cleanup_mgr_test EXIT
+
+start_etcd
+etcd_ip=$(get_container_ip $ETCD_SERVER)
+wait_for_etcd $etcd_ip
+
+export LONGHORN_MANAGER_TEST_COMP="true"
+export LONGHORN_MANAGER_TEST_ETCD_SERVER="$etcd_ip"
+export LONGHORN_ENGINE_IMAGE="${LONGHORN_ENGINE_IMAGE}"
+
+docker inspect ${LONGHORN_ENGINE_IMAGE} >/dev/null || docker pull ${LONGHORN_ENGINE_IMAGE}
+
+echo Running tests
+
+PACKAGES="$(find . -name '*.go' | xargs -I{} dirname {} | sort -u | grep -Ev '(.git|.trash-cache|vendor|bin)')"
+
+echo Packages: ${PACKAGES}
+
+[ "${ARCH}" == "amd64" ] && RACE=-race
+go test ${RACE} -cover -tags=test ${PACKAGES}

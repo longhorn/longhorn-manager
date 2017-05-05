@@ -1,0 +1,13 @@
+#!/bin/bash
+set -e
+
+cd $(dirname $0)
+
+#./build
+./validate
+./test
+#./package
+#./integration-test
+
+#image=`cat ../bin/latest_image`
+#echo Longhorn Manager image: ${image}
