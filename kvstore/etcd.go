@@ -61,10 +61,6 @@ func (s *ETCDBackend) Get(key string, obj interface{}) error {
 			node.Key)
 	}
 
-	if err := s.setIndex(node, obj); err != nil {
-		return err
-	}
-
 	if err := json.Unmarshal([]byte(node.Value), obj); err != nil {
 		return errors.Wrap(err, "fail to unmarshal json")
 	}

@@ -3,7 +3,6 @@ package kvstore
 import (
 	"os"
 	"testing"
-	"time"
 
 	"github.com/yasker/lm-rewrite/types"
 	"github.com/yasker/lm-rewrite/util"
@@ -108,10 +107,18 @@ func (s *TestSuite) testHost(c *C, st *KVStore) {
 		Address: "127.0.1.3",
 	}
 
-	err := st.SetHost(host1)
+	host, err := st.GetHost("random")
+	c.Assert(err, IsNil)
+	c.Assert(host, IsNil)
+
+	hosts, err := st.ListHosts()
+	c.Assert(err, IsNil)
+	c.Assert(len(hosts), Equals, 0)
+
+	err = st.SetHost(host1)
 	c.Assert(err, IsNil)
 
-	host, err := st.GetHost(host1.UUID)
+	host, err = st.GetHost(host1.UUID)
 	c.Assert(err, IsNil)
 	c.Assert(host, DeepEquals, host1)
 
@@ -141,16 +148,12 @@ func (s *TestSuite) testHost(c *C, st *KVStore) {
 	c.Assert(err, IsNil)
 	c.Assert(host, DeepEquals, host3)
 
-	hosts, err := st.ListHosts()
+	hosts, err = st.ListHosts()
 	c.Assert(err, IsNil)
 
 	c.Assert(hosts[host1.UUID], DeepEquals, host1)
 	c.Assert(hosts[host2.UUID], DeepEquals, host2)
 	c.Assert(hosts[host3.UUID], DeepEquals, host3)
-
-	host, err = st.GetHost("random")
-	c.Assert(err, IsNil)
-	c.Assert(host, IsNil)
 }
 
 func (s *TestSuite) TestSettings(c *C) {
@@ -185,7 +188,7 @@ func generateTestVolume(name string) *types.VolumeInfo {
 		Name:                name,
 		Size:                1024 * 1024,
 		NumberOfReplicas:    2,
-		StaleReplicaTimeout: 1 * time.Minute,
+		StaleReplicaTimeout: 1,
 	}
 }
 
@@ -214,24 +217,94 @@ func generateTestReplica(volName, replicaName string) *types.ReplicaInfo {
 	}
 }
 
-func (s *TestSuite) verifyVolume(c *C, st *KVStore, volume *types.VolumeInfo) {
-	var (
-		volumeBase1, volumeBase2 types.VolumeInfo
-	)
-	comp, err := st.GetVolume(volume.Name)
-	volumeBase1 = *comp
-	volumeBase1.Controller = nil
-	volumeBase1.Replicas = nil
-	volumeBase2 = *volume
-	volumeBase2.Controller = nil
-	volumeBase2.Replicas = nil
-
+func (s *TestSuite) setAndVerifyVolume(c *C, st *KVStore, volume *types.VolumeInfo) {
+	vol, err := st.GetVolume(volume.Name)
 	c.Assert(err, IsNil)
-	c.Assert(volumeBase1, DeepEquals, volumeBase2)
-	c.Assert(comp.Controller, DeepEquals, volume.Controller)
-	c.Assert(len(comp.Replicas), Equals, len(volume.Replicas))
-	for key := range comp.Replicas {
-		c.Assert(comp.Replicas[key], DeepEquals, volume.Replicas[key])
+	c.Assert(vol, IsNil)
+
+	err = st.SetVolume(volume)
+	c.Assert(err, IsNil)
+
+	vol, err = st.GetVolume(volume.Name)
+	c.Assert(err, IsNil)
+	c.Assert(vol, DeepEquals, volume)
+}
+
+func (s *TestSuite) deleteAndVerifyVolume(c *C, st *KVStore, volume *types.VolumeInfo) {
+	err := st.DeleteVolume(volume.Name)
+	c.Assert(err, IsNil)
+	vol, err := st.GetVolume(volume.Name)
+	c.Assert(err, IsNil)
+	c.Assert(vol, IsNil)
+}
+
+func (s *TestSuite) verifyVolumes(c *C, st *KVStore, volumes ...*types.VolumeInfo) {
+	vols, err := st.ListVolumes()
+	c.Assert(err, IsNil)
+	c.Assert(len(vols), Equals, len(volumes))
+
+	for _, volume := range volumes {
+		c.Assert(vols[volume.Name], DeepEquals, volume)
+	}
+}
+
+func (s *TestSuite) setAndVerifyController(c *C, st *KVStore, controller *types.ControllerInfo) {
+	ctl, err := st.GetVolumeController(controller.VolumeName)
+	c.Assert(err, IsNil)
+	c.Assert(ctl, IsNil)
+
+	err = st.SetVolumeController(controller)
+	c.Assert(err, IsNil)
+
+	ctl, err = st.GetVolumeController(controller.VolumeName)
+	c.Assert(err, IsNil)
+	c.Assert(ctl, DeepEquals, controller)
+}
+
+func (s *TestSuite) deleteAndVerifyController(c *C, st *KVStore, controller *types.ControllerInfo) {
+	err := st.DeleteVolumeController(controller.VolumeName)
+	c.Assert(err, IsNil)
+	ctl, err := st.GetVolumeController(controller.VolumeName)
+	c.Assert(err, IsNil)
+	c.Assert(ctl, IsNil)
+}
+
+func (s *TestSuite) setAndVerifyReplica(c *C, st *KVStore, replica *types.ReplicaInfo) {
+	rep, err := st.GetVolumeReplica(replica.VolumeName, replica.Name)
+	c.Assert(err, IsNil)
+	c.Assert(rep, IsNil)
+
+	err = st.SetVolumeReplica(replica)
+	c.Assert(err, IsNil)
+	rep, err = st.GetVolumeReplica(replica.VolumeName, replica.Name)
+	c.Assert(err, IsNil)
+	c.Assert(rep, DeepEquals, replica)
+
+	reps, err := st.ListVolumeReplicas(replica.VolumeName)
+	c.Assert(err, IsNil)
+	c.Assert(reps[replica.Name], DeepEquals, replica)
+}
+
+func (s *TestSuite) deleteAndVerifyReplica(c *C, st *KVStore, replica *types.ReplicaInfo) {
+	err := st.DeleteVolumeReplica(replica.VolumeName, replica.Name)
+	c.Assert(err, IsNil)
+
+	rep, err := st.GetVolumeReplica(replica.VolumeName, replica.Name)
+	c.Assert(err, IsNil)
+	c.Assert(rep, IsNil)
+
+	reps, err := st.ListVolumeReplicas(replica.VolumeName)
+	c.Assert(err, IsNil)
+	c.Assert(reps[replica.Name], IsNil)
+}
+
+func (s *TestSuite) verifyReplicas(c *C, st *KVStore, volumeName string, replicas ...*types.ReplicaInfo) {
+	reps, err := st.ListVolumeReplicas(volumeName)
+	c.Assert(err, IsNil)
+	c.Assert(len(replicas), Equals, len(replicas))
+
+	for _, replica := range replicas {
+		c.Assert(reps[replica.Name], DeepEquals, replica)
 	}
 }
 
@@ -251,116 +324,39 @@ func (s *TestSuite) testVolume(c *C, st *KVStore) {
 	c.Assert(volume, IsNil)
 
 	volume1 := generateTestVolume("volume1")
-	controller1 := generateTestController(volume1.Name)
-	replica11 := generateTestReplica(volume1.Name, "replica1")
-	replica12 := generateTestReplica(volume1.Name, "replica2")
-	volume1.Controller = controller1
-	volume1.Replicas = map[string]*types.ReplicaInfo{
-		replica11.Name: replica11,
-		replica12.Name: replica12,
-	}
+	volume1Controller1 := generateTestController(volume1.Name)
+	volume1Replica1 := generateTestReplica(volume1.Name, "replica1")
+	volume1Replica2 := generateTestReplica(volume1.Name, "replica2")
 
-	err = st.SetVolume(volume1)
-	c.Assert(err, IsNil)
-	s.verifyVolume(c, st, volume1)
+	s.setAndVerifyVolume(c, st, volume1)
+	s.setAndVerifyController(c, st, volume1Controller1)
+	s.deleteAndVerifyController(c, st, volume1Controller1)
+	s.setAndVerifyController(c, st, volume1Controller1)
+
+	s.verifyReplicas(c, st, volume1.Name)
+	s.setAndVerifyReplica(c, st, volume1Replica1)
+	s.verifyReplicas(c, st, volume1.Name, volume1Replica1)
+	s.setAndVerifyReplica(c, st, volume1Replica2)
+	s.verifyReplicas(c, st, volume1.Name, volume1Replica1, volume1Replica2)
+	s.deleteAndVerifyReplica(c, st, volume1Replica1)
+	s.verifyReplicas(c, st, volume1.Name, volume1Replica2)
+	s.deleteAndVerifyReplica(c, st, volume1Replica2)
+	s.verifyReplicas(c, st, volume1.Name)
 
 	volume2 := generateTestVolume("volume2")
-	controller2 := generateTestController(volume2.Name)
-	replica21 := generateTestReplica(volume2.Name, "replica1")
-	replica22 := generateTestReplica(volume2.Name, "replica2")
-	volume2.Controller = controller2
-	volume2.Replicas = map[string]*types.ReplicaInfo{
-		replica21.Name: replica21,
-		replica22.Name: replica22,
-	}
+	volume2Controller := generateTestController(volume2.Name)
+	volume2Replica1 := generateTestReplica(volume2.Name, "replica1")
+	volume2Replica2 := generateTestReplica(volume2.Name, "replica2")
 
-	err = st.SetVolume(volume2)
-	c.Assert(err, IsNil)
-	s.verifyVolume(c, st, volume2)
+	s.setAndVerifyVolume(c, st, volume2)
+	s.setAndVerifyController(c, st, volume2Controller)
+	s.setAndVerifyReplica(c, st, volume2Replica1)
+	s.setAndVerifyReplica(c, st, volume2Replica2)
+	s.verifyReplicas(c, st, volume2.Name, volume2Replica1, volume2Replica2)
 
-	volumes, err := st.ListVolumes()
-	c.Assert(err, IsNil)
-	c.Assert(len(volumes), Equals, 2)
-
-	volume2.Controller = nil
-	err = st.SetVolume(volume2)
-	c.Assert(err, IsNil)
-	s.verifyVolume(c, st, volume2)
-
-	volume2.Replicas = nil
-	err = st.SetVolume(volume2)
-	c.Assert(err, IsNil)
-	s.verifyVolume(c, st, volume2)
-
-	volume2.Replicas = map[string]*types.ReplicaInfo{
-		replica21.Name: replica21,
-	}
-	err = st.SetVolume(volume2)
-	c.Assert(err, IsNil)
-	s.verifyVolume(c, st, volume2)
-
-	volume2.Replicas[replica22.Name] = replica22
-	err = st.SetVolume(volume2)
-	c.Assert(err, IsNil)
-	s.verifyVolume(c, st, volume2)
-
-	volume2.Controller = controller2
-	err = st.SetVolume(volume2)
-	c.Assert(err, IsNil)
-	s.verifyVolume(c, st, volume2)
-
-	err = st.DeleteVolumeReplicas(volume2.Name)
-	c.Assert(err, IsNil)
-	volume2.Replicas = nil
-	s.verifyVolume(c, st, volume2)
-
-	err = st.SetVolumeReplica(replica21)
-	c.Assert(err, IsNil)
-	volume2.Replicas = map[string]*types.ReplicaInfo{
-		replica21.Name: replica21,
-	}
-	s.verifyVolume(c, st, volume2)
-
-	err = st.SetVolumeReplica(replica22)
-	c.Assert(err, IsNil)
-	volume2.Replicas[replica22.Name] = replica22
-	s.verifyVolume(c, st, volume2)
-
-	err = st.DeleteVolumeReplicas(volume2.Name)
-	c.Assert(err, IsNil)
-	volume2.Replicas = nil
-	s.verifyVolume(c, st, volume2)
-
-	volume2.Replicas = map[string]*types.ReplicaInfo{
-		replica21.Name: replica21,
-		replica22.Name: replica22,
-	}
-	err = st.SetVolumeReplicas(volume2.Replicas)
-	c.Assert(err, IsNil)
-	s.verifyVolume(c, st, volume2)
-
-	err = st.DeleteVolumeController(volume2.Name)
-	c.Assert(err, IsNil)
-	volume2.Controller = nil
-	s.verifyVolume(c, st, volume2)
-
-	err = st.SetVolumeController(controller2)
-	c.Assert(err, IsNil)
-	volume2.Controller = controller2
-	s.verifyVolume(c, st, volume2)
-
-	err = st.DeleteVolume(volume1.Name)
-	c.Assert(err, IsNil)
-
-	volumes, err = st.ListVolumes()
-	c.Assert(err, IsNil)
-	c.Assert(len(volumes), Equals, 1)
-	c.Assert(volumes[0], DeepEquals, volume2)
-
-	err = st.DeleteVolume(volume2.Name)
-	c.Assert(err, IsNil)
-
-	volumes, err = st.ListVolumes()
-	c.Assert(err, IsNil)
-	c.Assert(len(volumes), Equals, 0)
+	s.verifyVolumes(c, st, volume1, volume2)
+	s.deleteAndVerifyVolume(c, st, volume1)
+	s.verifyVolumes(c, st, volume2)
+	s.deleteAndVerifyVolume(c, st, volume2)
+	s.verifyVolumes(c, st)
 }

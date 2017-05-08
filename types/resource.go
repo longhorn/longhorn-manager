@@ -11,14 +11,16 @@ const (
 )
 
 type VolumeInfo struct {
+	// Attributes
 	Name                string
 	Size                int64 `json:",string"`
 	BaseImage           string
 	FromBackup          string
 	NumberOfReplicas    int
 	StaleReplicaTimeout int
-	Created             string
 
+	// Running state
+	Created      string
 	TargetHostID string
 	HostID       string
 	State        VolumeState
@@ -26,10 +28,6 @@ type VolumeInfo struct {
 	Endpoint     string
 
 	KVIndex int64 `json:"-"`
-	//EngineImage string
-	//Controller          *ControllerInfo
-	//Replicas            map[string]*ReplicaInfo //key is replicaName
-	//RecurringJobs       []*RecurringJob
 }
 
 type InstanceInfo struct {
@@ -52,7 +50,7 @@ type ReplicaInfo struct {
 	InstanceInfo
 
 	Mode         ReplicaMode
-	BadTimestamp time.Time
+	BadTimestamp string
 }
 
 type HostInfo struct {

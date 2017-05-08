@@ -14,8 +14,6 @@ import (
 	"github.com/docker/go-units"
 	"github.com/pkg/errors"
 	"github.com/satori/go.uuid"
-
-	"github.com/yasker/lm-rewrite/types"
 )
 
 const (
@@ -33,15 +31,6 @@ type MetadataConfig struct {
 	Image               string
 	OrcImage            string
 	DriverContainerName string
-}
-
-func CopyVolumeProperties(volume0 *types.VolumeInfo) *types.VolumeInfo {
-	volume := new(types.VolumeInfo)
-	*volume = *volume0
-	volume.Controller = nil
-	volume.Replicas = nil
-	volume.State = types.VolumeStateNone
-	return volume
 }
 
 func VolumeStackName(volumeName string) string {
