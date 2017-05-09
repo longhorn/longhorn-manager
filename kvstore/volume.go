@@ -67,7 +67,7 @@ func (s *KVStore) CreateVolume(volume *types.VolumeInfo) error {
 }
 
 func (s *KVStore) UpdateVolume(volume *types.VolumeInfo) error {
-	return s.b.Update(s.NewVolumeKeyFromName(volume.Name).Base(), volume)
+	return s.b.Update(s.NewVolumeKeyFromName(volume.Name).Base(), volume, volume.KVIndex)
 }
 
 func (s *KVStore) CreateVolumeController(controller *types.ControllerInfo) error {
@@ -81,7 +81,7 @@ func (s *KVStore) UpdateVolumeController(controller *types.ControllerInfo) error
 	if controller.VolumeName == "" {
 		return errors.Errorf("controller doesn't have valid volume name: %+v", controller)
 	}
-	return s.b.Update(s.NewVolumeKeyFromName(controller.VolumeName).Controller(), controller)
+	return s.b.Update(s.NewVolumeKeyFromName(controller.VolumeName).Controller(), controller, controller.KVIndex)
 }
 
 func (s *KVStore) CreateVolumeReplica(replica *types.ReplicaInfo) error {
@@ -95,7 +95,7 @@ func (s *KVStore) UpdateVolumeReplica(replica *types.ReplicaInfo) error {
 	if replica.VolumeName == "" {
 		return errors.Errorf("replica doesn't have valid volume name: %+v", replica)
 	}
-	return s.b.Update(s.NewVolumeKeyFromName(replica.VolumeName).Replica(replica.Name), replica)
+	return s.b.Update(s.NewVolumeKeyFromName(replica.VolumeName).Replica(replica.Name), replica, replica.KVIndex)
 }
 
 func (s *KVStore) GetVolume(id string) (*types.VolumeInfo, error) {
@@ -108,12 +108,14 @@ func (s *KVStore) GetVolume(id string) (*types.VolumeInfo, error) {
 
 func (s *KVStore) getVolumeBaseByKey(key string) (*types.VolumeInfo, error) {
 	volume := types.VolumeInfo{}
-	if err := s.b.Get(key, &volume); err != nil {
+	index, err := s.b.Get(key, &volume)
+	if err != nil {
 		if s.b.IsNotFoundError(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	volume.KVIndex = index
 	return &volume, nil
 }
 
@@ -127,12 +129,14 @@ func (s *KVStore) GetVolumeController(volumeName string) (*types.ControllerInfo,
 
 func (s *KVStore) getVolumeControllerByKey(key string) (*types.ControllerInfo, error) {
 	controller := types.ControllerInfo{}
-	if err := s.b.Get(key, &controller); err != nil {
+	index, err := s.b.Get(key, &controller)
+	if err != nil {
 		if s.b.IsNotFoundError(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	controller.KVIndex = index
 	return &controller, nil
 }
 
@@ -146,12 +150,14 @@ func (s *KVStore) GetVolumeReplica(volumeName, replicaName string) (*types.Repli
 
 func (s *KVStore) getVolumeReplicaByKey(key string) (*types.ReplicaInfo, error) {
 	replica := types.ReplicaInfo{}
-	if err := s.b.Get(key, &replica); err != nil {
+	index, err := s.b.Get(key, &replica)
+	if err != nil {
 		if s.b.IsNotFoundError(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	replica.KVIndex = index
 	return &replica, nil
 }
 

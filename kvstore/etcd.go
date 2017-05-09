@@ -2,6 +2,7 @@ package kvstore
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/pkg/errors"
@@ -46,13 +47,16 @@ func (s *ETCDBackend) Create(key string, obj interface{}) error {
 	return nil
 }
 
-func (s *ETCDBackend) Update(key string, obj interface{}) error {
+func (s *ETCDBackend) Update(key string, obj interface{}, index uint64) error {
+	if index == 0 {
+		return fmt.Errorf("kvstore index cannot be 0")
+	}
 	value, err := json.Marshal(obj)
 	if err != nil {
 		return err
 	}
 	if _, err := s.kapi.Set(context.Background(), key, string(value), &eCli.SetOptions{
-		PrevExist: eCli.PrevExist,
+		PrevIndex: index,
 	}); err != nil {
 		return err
 	}
@@ -63,21 +67,21 @@ func (s *ETCDBackend) IsNotFoundError(err error) bool {
 	return eCli.IsKeyNotFound(err)
 }
 
-func (s *ETCDBackend) Get(key string, obj interface{}) error {
+func (s *ETCDBackend) Get(key string, obj interface{}) (uint64, error) {
 	resp, err := s.kapi.Get(context.Background(), key, nil)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	node := resp.Node
 	if node.Dir {
-		return errors.Errorf("invalid node %v is a directory",
+		return 0, errors.Errorf("invalid node %v is a directory",
 			node.Key)
 	}
 
 	if err := json.Unmarshal([]byte(node.Value), obj); err != nil {
-		return errors.Wrap(err, "fail to unmarshal json")
+		return 0, errors.Wrap(err, "fail to unmarshal json")
 	}
-	return nil
+	return node.ModifiedIndex, nil
 }
 
 func (s *ETCDBackend) Keys(prefix string) ([]string, error) {

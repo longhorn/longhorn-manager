@@ -10,6 +10,10 @@ const (
 	VolumeStateDegraded = VolumeState("degraded")
 )
 
+type KVMetadata struct {
+	KVIndex uint64 `json:"-"`
+}
+
 type VolumeInfo struct {
 	// Attributes
 	Name                string
@@ -27,7 +31,7 @@ type VolumeInfo struct {
 	DesireState  VolumeState
 	Endpoint     string
 
-	KVIndex int64 `json:"-"`
+	KVMetadata
 }
 
 type InstanceInfo struct {
@@ -39,7 +43,7 @@ type InstanceInfo struct {
 	Running    bool
 	VolumeName string
 
-	KVIndex int64 `json:"-"`
+	KVMetadata
 }
 
 type ControllerInfo struct {
@@ -58,12 +62,12 @@ type HostInfo struct {
 	Name    string `json:"name"`
 	Address string `json:"address"`
 
-	KVIndex int64 `json:"-"`
+	KVMetadata
 }
 
 type SettingsInfo struct {
 	BackupTarget string `json:"backupTarget"`
 	EngineImage  string `json:"engineImage"`
 
-	KVIndex int64 `json:"-"`
+	KVMetadata
 }
