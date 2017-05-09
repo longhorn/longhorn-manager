@@ -31,7 +31,6 @@ func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
 	etcd        *KVStore
-	memory      *KVStore
 	engineImage string
 }
 
@@ -41,13 +40,6 @@ func (s *TestSuite) SetUpTest(c *C) {
 	var err error
 
 	compTest := os.Getenv(EnvCompTest)
-
-	memoryBackend, err := NewMemoryBackend()
-	c.Assert(err, IsNil)
-
-	memory, err := NewKVStore("/longhorn", memoryBackend)
-	c.Assert(err, IsNil)
-	s.memory = memory
 
 	// Skip other backends if quick is set
 	if compTest != "true" {
@@ -73,9 +65,6 @@ func (s *TestSuite) SetUpTest(c *C) {
 }
 
 func (s *TestSuite) TeardownTest(c *C) {
-	err := s.memory.kvNuclear("nuke key value store")
-	c.Assert(err, IsNil)
-
 	if s.etcd != nil {
 		err := s.etcd.kvNuclear("nuke key value store")
 		c.Assert(err, IsNil)
@@ -83,8 +72,6 @@ func (s *TestSuite) TeardownTest(c *C) {
 }
 
 func (s *TestSuite) TestHost(c *C) {
-	s.testHost(c, s.memory)
-
 	if s.etcd != nil {
 		s.testHost(c, s.etcd)
 	}
@@ -157,8 +144,6 @@ func (s *TestSuite) testHost(c *C, st *KVStore) {
 }
 
 func (s *TestSuite) TestSettings(c *C) {
-	s.testSettings(c, s.memory)
-
 	if s.etcd != nil {
 		s.testSettings(c, s.etcd)
 	}
@@ -343,8 +328,6 @@ func (s *TestSuite) verifyReplicas(c *C, st *KVStore, volumeName string, replica
 }
 
 func (s *TestSuite) TestVolume(c *C) {
-	s.testVolume(c, s.memory)
-
 	if s.etcd != nil {
 		s.testVolume(c, s.etcd)
 	}
