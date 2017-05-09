@@ -102,25 +102,28 @@ func (s *TestSuite) testHost(c *C, st *KVStore) {
 	c.Assert(err, IsNil)
 	c.Assert(len(hosts), Equals, 0)
 
-	err = st.SetHost(host1)
+	err = st.CreateHost(host1)
 	c.Assert(err, IsNil)
+
+	err = st.CreateHost(host1)
+	c.Assert(err, NotNil)
 
 	host, err = st.GetHost(host1.UUID)
 	c.Assert(err, IsNil)
 	c.Assert(host, DeepEquals, host1)
 
 	host1.Address = "127.0.2.2"
-	err = st.SetHost(host1)
+	err = st.UpdateHost(host1)
 	c.Assert(err, IsNil)
 
 	host, err = st.GetHost(host1.UUID)
 	c.Assert(err, IsNil)
 	c.Assert(host, DeepEquals, host1)
 
-	err = st.SetHost(host2)
+	err = st.CreateHost(host2)
 	c.Assert(err, IsNil)
 
-	err = st.SetHost(host3)
+	err = st.CreateHost(host3)
 	c.Assert(err, IsNil)
 
 	host, err = st.GetHost(host1.UUID)
@@ -159,10 +162,22 @@ func (s *TestSuite) testSettings(c *C, st *KVStore) {
 		EngineImage:  "rancher/longhorn",
 	}
 
-	err = st.SetSettings(settings)
+	err = st.CreateSettings(settings)
 	c.Assert(err, IsNil)
 
+	err = st.CreateSettings(settings)
+	c.Assert(err, NotNil)
+
 	newSettings, err := st.GetSettings()
+	c.Assert(err, IsNil)
+	c.Assert(newSettings.BackupTarget, Equals, settings.BackupTarget)
+	c.Assert(newSettings.EngineImage, Equals, settings.EngineImage)
+
+	settings.EngineImage = "rancher/longhorn:latest"
+	err = st.UpdateSettings(settings)
+	c.Assert(err, IsNil)
+
+	newSettings, err = st.GetSettings()
 	c.Assert(err, IsNil)
 	c.Assert(newSettings.BackupTarget, Equals, settings.BackupTarget)
 	c.Assert(newSettings.EngineImage, Equals, settings.EngineImage)

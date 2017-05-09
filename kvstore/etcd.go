@@ -46,12 +46,14 @@ func (s *ETCDBackend) Create(key string, obj interface{}) error {
 	return nil
 }
 
-func (s *ETCDBackend) Set(key string, obj interface{}) error {
+func (s *ETCDBackend) Update(key string, obj interface{}) error {
 	value, err := json.Marshal(obj)
 	if err != nil {
 		return err
 	}
-	if _, err := s.kapi.Set(context.Background(), key, string(value), nil); err != nil {
+	if _, err := s.kapi.Set(context.Background(), key, string(value), &eCli.SetOptions{
+		PrevExist: eCli.PrevExist,
+	}); err != nil {
 		return err
 	}
 	return nil

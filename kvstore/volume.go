@@ -67,7 +67,7 @@ func (s *KVStore) CreateVolume(volume *types.VolumeInfo) error {
 }
 
 func (s *KVStore) UpdateVolume(volume *types.VolumeInfo) error {
-	return s.b.Set(s.NewVolumeKeyFromName(volume.Name).Base(), volume)
+	return s.b.Update(s.NewVolumeKeyFromName(volume.Name).Base(), volume)
 }
 
 func (s *KVStore) CreateVolumeController(controller *types.ControllerInfo) error {
@@ -81,7 +81,7 @@ func (s *KVStore) UpdateVolumeController(controller *types.ControllerInfo) error
 	if controller.VolumeName == "" {
 		return errors.Errorf("controller doesn't have valid volume name: %+v", controller)
 	}
-	return s.b.Set(s.NewVolumeKeyFromName(controller.VolumeName).Controller(), controller)
+	return s.b.Update(s.NewVolumeKeyFromName(controller.VolumeName).Controller(), controller)
 }
 
 func (s *KVStore) CreateVolumeReplica(replica *types.ReplicaInfo) error {
@@ -95,7 +95,7 @@ func (s *KVStore) UpdateVolumeReplica(replica *types.ReplicaInfo) error {
 	if replica.VolumeName == "" {
 		return errors.Errorf("replica doesn't have valid volume name: %+v", replica)
 	}
-	return s.b.Set(s.NewVolumeKeyFromName(replica.VolumeName).Replica(replica.Name), replica)
+	return s.b.Update(s.NewVolumeKeyFromName(replica.VolumeName).Replica(replica.Name), replica)
 }
 
 func (s *KVStore) GetVolume(id string) (*types.VolumeInfo, error) {

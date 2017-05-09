@@ -11,7 +11,7 @@ import (
 
 type Backend interface {
 	Create(key string, obj interface{}) error
-	Set(key string, obj interface{}) error
+	Update(key string, obj interface{}) error
 	Get(key string, obj interface{}) error
 	Delete(key string) error
 	Keys(prefix string) ([]string, error)
@@ -48,8 +48,16 @@ func (s *KVStore) hostKey(id string) string {
 	return filepath.Join(s.key(keyHosts), id)
 }
 
-func (s *KVStore) SetHost(host *types.HostInfo) error {
-	if err := s.b.Set(s.hostKey(host.UUID), host); err != nil {
+func (s *KVStore) CreateHost(host *types.HostInfo) error {
+	if err := s.b.Create(s.hostKey(host.UUID), host); err != nil {
+		return err
+	}
+	logrus.Infof("Add host %v name %v longhorn-manager address %v", host.UUID, host.Name, host.Address)
+	return nil
+}
+
+func (s *KVStore) UpdateHost(host *types.HostInfo) error {
+	if err := s.b.Update(s.hostKey(host.UUID), host); err != nil {
 		return err
 	}
 	logrus.Infof("Add host %v name %v longhorn-manager address %v", host.UUID, host.Name, host.Address)
@@ -98,8 +106,15 @@ func (s *KVStore) settingsKey() string {
 	return s.key(keySettings)
 }
 
-func (s *KVStore) SetSettings(settings *types.SettingsInfo) error {
-	if err := s.b.Set(s.settingsKey(), settings); err != nil {
+func (s *KVStore) CreateSettings(settings *types.SettingsInfo) error {
+	if err := s.b.Create(s.settingsKey(), settings); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *KVStore) UpdateSettings(settings *types.SettingsInfo) error {
+	if err := s.b.Update(s.settingsKey(), settings); err != nil {
 		return err
 	}
 	return nil
