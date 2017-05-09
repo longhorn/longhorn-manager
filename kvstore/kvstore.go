@@ -10,6 +10,7 @@ import (
 )
 
 type Backend interface {
+	Create(key string, obj interface{}) error
 	Set(key string, obj interface{}) error
 	Get(key string, obj interface{}) error
 	Delete(key string) error

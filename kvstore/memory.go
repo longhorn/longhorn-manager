@@ -27,6 +27,14 @@ func NewMemoryBackend() (*MemoryBackend, error) {
 	}, nil
 }
 
+func (m *MemoryBackend) Create(key string, obj interface{}) error {
+	value, err := json.Marshal(obj)
+	if err != nil {
+		return err
+	}
+	return m.c.Add(key, string(value), cache.DefaultExpiration)
+}
+
 func (m *MemoryBackend) Set(key string, obj interface{}) error {
 	value, err := json.Marshal(obj)
 	if err != nil {

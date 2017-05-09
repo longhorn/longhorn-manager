@@ -35,6 +35,17 @@ func NewETCDBackend(servers []string) (*ETCDBackend, error) {
 	return backend, nil
 }
 
+func (s *ETCDBackend) Create(key string, obj interface{}) error {
+	value, err := json.Marshal(obj)
+	if err != nil {
+		return err
+	}
+	if _, err := s.kapi.Create(context.Background(), key, string(value)); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *ETCDBackend) Set(key string, obj interface{}) error {
 	value, err := json.Marshal(obj)
 	if err != nil {

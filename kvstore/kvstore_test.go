@@ -217,12 +217,23 @@ func generateTestReplica(volName, replicaName string) *types.ReplicaInfo {
 	}
 }
 
-func (s *TestSuite) setAndVerifyVolume(c *C, st *KVStore, volume *types.VolumeInfo) {
+func (s *TestSuite) createUpdateVerifyVolume(c *C, st *KVStore, volume *types.VolumeInfo) {
 	vol, err := st.GetVolume(volume.Name)
 	c.Assert(err, IsNil)
 	c.Assert(vol, IsNil)
 
-	err = st.SetVolume(volume)
+	err = st.CreateVolume(volume)
+	c.Assert(err, IsNil)
+
+	err = st.CreateVolume(volume)
+	c.Assert(err, NotNil)
+
+	vol, err = st.GetVolume(volume.Name)
+	c.Assert(err, IsNil)
+	c.Assert(vol, DeepEquals, volume)
+
+	volume.StaleReplicaTimeout = 2
+	err = st.UpdateVolume(volume)
 	c.Assert(err, IsNil)
 
 	vol, err = st.GetVolume(volume.Name)
@@ -248,12 +259,23 @@ func (s *TestSuite) verifyVolumes(c *C, st *KVStore, volumes ...*types.VolumeInf
 	}
 }
 
-func (s *TestSuite) setAndVerifyController(c *C, st *KVStore, controller *types.ControllerInfo) {
+func (s *TestSuite) createUpdateVerifyController(c *C, st *KVStore, controller *types.ControllerInfo) {
 	ctl, err := st.GetVolumeController(controller.VolumeName)
 	c.Assert(err, IsNil)
 	c.Assert(ctl, IsNil)
 
-	err = st.SetVolumeController(controller)
+	err = st.CreateVolumeController(controller)
+	c.Assert(err, IsNil)
+
+	err = st.CreateVolumeController(controller)
+	c.Assert(err, NotNil)
+
+	ctl, err = st.GetVolumeController(controller.VolumeName)
+	c.Assert(err, IsNil)
+	c.Assert(ctl, DeepEquals, controller)
+
+	controller.Running = false
+	err = st.UpdateVolumeController(controller)
 	c.Assert(err, IsNil)
 
 	ctl, err = st.GetVolumeController(controller.VolumeName)
@@ -269,13 +291,17 @@ func (s *TestSuite) deleteAndVerifyController(c *C, st *KVStore, controller *typ
 	c.Assert(ctl, IsNil)
 }
 
-func (s *TestSuite) setAndVerifyReplica(c *C, st *KVStore, replica *types.ReplicaInfo) {
+func (s *TestSuite) createUpdateVerifyReplica(c *C, st *KVStore, replica *types.ReplicaInfo) {
 	rep, err := st.GetVolumeReplica(replica.VolumeName, replica.Name)
 	c.Assert(err, IsNil)
 	c.Assert(rep, IsNil)
 
-	err = st.SetVolumeReplica(replica)
+	err = st.CreateVolumeReplica(replica)
 	c.Assert(err, IsNil)
+
+	err = st.CreateVolumeReplica(replica)
+	c.Assert(err, NotNil)
+
 	rep, err = st.GetVolumeReplica(replica.VolumeName, replica.Name)
 	c.Assert(err, IsNil)
 	c.Assert(rep, DeepEquals, replica)
@@ -283,6 +309,14 @@ func (s *TestSuite) setAndVerifyReplica(c *C, st *KVStore, replica *types.Replic
 	reps, err := st.ListVolumeReplicas(replica.VolumeName)
 	c.Assert(err, IsNil)
 	c.Assert(reps[replica.Name], DeepEquals, replica)
+
+	replica.Running = false
+	err = st.UpdateVolumeReplica(replica)
+	c.Assert(err, IsNil)
+
+	rep, err = st.GetVolumeReplica(replica.VolumeName, replica.Name)
+	c.Assert(err, IsNil)
+	c.Assert(rep, DeepEquals, replica)
 }
 
 func (s *TestSuite) deleteAndVerifyReplica(c *C, st *KVStore, replica *types.ReplicaInfo) {
@@ -324,19 +358,19 @@ func (s *TestSuite) testVolume(c *C, st *KVStore) {
 	c.Assert(volume, IsNil)
 
 	volume1 := generateTestVolume("volume1")
-	volume1Controller1 := generateTestController(volume1.Name)
+	volume1Controller := generateTestController(volume1.Name)
 	volume1Replica1 := generateTestReplica(volume1.Name, "replica1")
 	volume1Replica2 := generateTestReplica(volume1.Name, "replica2")
 
-	s.setAndVerifyVolume(c, st, volume1)
-	s.setAndVerifyController(c, st, volume1Controller1)
-	s.deleteAndVerifyController(c, st, volume1Controller1)
-	s.setAndVerifyController(c, st, volume1Controller1)
+	s.createUpdateVerifyVolume(c, st, volume1)
+	s.createUpdateVerifyController(c, st, volume1Controller)
+	s.deleteAndVerifyController(c, st, volume1Controller)
+	s.createUpdateVerifyController(c, st, volume1Controller)
 
 	s.verifyReplicas(c, st, volume1.Name)
-	s.setAndVerifyReplica(c, st, volume1Replica1)
+	s.createUpdateVerifyReplica(c, st, volume1Replica1)
 	s.verifyReplicas(c, st, volume1.Name, volume1Replica1)
-	s.setAndVerifyReplica(c, st, volume1Replica2)
+	s.createUpdateVerifyReplica(c, st, volume1Replica2)
 	s.verifyReplicas(c, st, volume1.Name, volume1Replica1, volume1Replica2)
 	s.deleteAndVerifyReplica(c, st, volume1Replica1)
 	s.verifyReplicas(c, st, volume1.Name, volume1Replica2)
@@ -348,10 +382,10 @@ func (s *TestSuite) testVolume(c *C, st *KVStore) {
 	volume2Replica1 := generateTestReplica(volume2.Name, "replica1")
 	volume2Replica2 := generateTestReplica(volume2.Name, "replica2")
 
-	s.setAndVerifyVolume(c, st, volume2)
-	s.setAndVerifyController(c, st, volume2Controller)
-	s.setAndVerifyReplica(c, st, volume2Replica1)
-	s.setAndVerifyReplica(c, st, volume2Replica2)
+	s.createUpdateVerifyVolume(c, st, volume2)
+	s.createUpdateVerifyController(c, st, volume2Controller)
+	s.createUpdateVerifyReplica(c, st, volume2Replica1)
+	s.createUpdateVerifyReplica(c, st, volume2Replica2)
 	s.verifyReplicas(c, st, volume2.Name, volume2Replica1, volume2Replica2)
 
 	s.verifyVolumes(c, st, volume1, volume2)
