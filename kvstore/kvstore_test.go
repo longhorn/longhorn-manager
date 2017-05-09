@@ -2,6 +2,8 @@ package kvstore
 
 import (
 	"os"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/yasker/lm-rewrite/types"
@@ -16,6 +18,8 @@ const (
 	EnvCompTest    = "LONGHORN_MANAGER_TEST_COMP"
 	EnvEtcdServer  = "LONGHORN_MANAGER_TEST_ETCD_SERVER"
 	EnvEngineImage = "LONGHORN_ENGINE_IMAGE"
+
+	ConcurrentThread = 10
 )
 
 var (
@@ -102,11 +106,7 @@ func (s *TestSuite) testHost(c *C, st *KVStore) {
 	c.Assert(err, IsNil)
 	c.Assert(len(hosts), Equals, 0)
 
-	err = st.CreateHost(host1)
-	c.Assert(err, IsNil)
-
-	err = st.CreateHost(host1)
-	c.Assert(err, NotNil)
+	s.verifyConcurrentExecution(c, st.CreateHost, host1)
 
 	host, err = st.GetHost(host1.UUID)
 	c.Assert(err, IsNil)
@@ -114,19 +114,15 @@ func (s *TestSuite) testHost(c *C, st *KVStore) {
 	c.Assert(host, DeepEquals, host1)
 
 	host1.Address = "127.0.2.2"
-	err = st.UpdateHost(host1)
-	c.Assert(err, IsNil)
+	s.verifyConcurrentExecution(c, st.UpdateHost, host1)
 
 	host, err = st.GetHost(host1.UUID)
 	c.Assert(err, IsNil)
 	UpdateKVIndex(host1, host)
 	c.Assert(host, DeepEquals, host1)
 
-	err = st.CreateHost(host2)
-	c.Assert(err, IsNil)
-
-	err = st.CreateHost(host3)
-	c.Assert(err, IsNil)
+	s.verifyConcurrentExecution(c, st.CreateHost, host2)
+	s.verifyConcurrentExecution(c, st.CreateHost, host3)
 
 	host, err = st.GetHost(host1.UUID)
 	c.Assert(err, IsNil)
@@ -167,11 +163,7 @@ func (s *TestSuite) testSettings(c *C, st *KVStore) {
 		EngineImage:  "rancher/longhorn",
 	}
 
-	err = st.CreateSettings(settings)
-	c.Assert(err, IsNil)
-
-	err = st.CreateSettings(settings)
-	c.Assert(err, NotNil)
+	s.verifyConcurrentExecution(c, st.CreateSettings, settings)
 
 	newSettings, err := st.GetSettings()
 	c.Assert(err, IsNil)
@@ -179,8 +171,7 @@ func (s *TestSuite) testSettings(c *C, st *KVStore) {
 	c.Assert(newSettings, DeepEquals, settings)
 
 	settings.EngineImage = "rancher/longhorn:latest"
-	err = st.UpdateSettings(settings)
-	c.Assert(err, IsNil)
+	s.verifyConcurrentExecution(c, st.UpdateSettings, settings)
 
 	newSettings, err = st.GetSettings()
 	c.Assert(err, IsNil)
@@ -227,11 +218,7 @@ func (s *TestSuite) createUpdateVerifyVolume(c *C, st *KVStore, volume *types.Vo
 	c.Assert(err, IsNil)
 	c.Assert(vol, IsNil)
 
-	err = st.CreateVolume(volume)
-	c.Assert(err, IsNil)
-
-	err = st.CreateVolume(volume)
-	c.Assert(err, NotNil)
+	s.verifyConcurrentExecution(c, st.CreateVolume, volume)
 
 	vol, err = st.GetVolume(volume.Name)
 	c.Assert(err, IsNil)
@@ -239,7 +226,7 @@ func (s *TestSuite) createUpdateVerifyVolume(c *C, st *KVStore, volume *types.Vo
 	c.Assert(vol, DeepEquals, volume)
 
 	volume.StaleReplicaTimeout = 2
-	err = st.UpdateVolume(volume)
+	s.verifyConcurrentExecution(c, st.UpdateVolume, volume)
 	c.Assert(err, IsNil)
 
 	vol, err = st.GetVolume(volume.Name)
@@ -271,11 +258,7 @@ func (s *TestSuite) createUpdateVerifyController(c *C, st *KVStore, controller *
 	c.Assert(err, IsNil)
 	c.Assert(ctl, IsNil)
 
-	err = st.CreateVolumeController(controller)
-	c.Assert(err, IsNil)
-
-	err = st.CreateVolumeController(controller)
-	c.Assert(err, NotNil)
+	s.verifyConcurrentExecution(c, st.CreateVolumeController, controller)
 
 	ctl, err = st.GetVolumeController(controller.VolumeName)
 	c.Assert(err, IsNil)
@@ -283,7 +266,7 @@ func (s *TestSuite) createUpdateVerifyController(c *C, st *KVStore, controller *
 	c.Assert(ctl, DeepEquals, controller)
 
 	controller.Running = false
-	err = st.UpdateVolumeController(controller)
+	s.verifyConcurrentExecution(c, st.UpdateVolumeController, controller)
 	c.Assert(err, IsNil)
 
 	ctl, err = st.GetVolumeController(controller.VolumeName)
@@ -305,11 +288,7 @@ func (s *TestSuite) createUpdateVerifyReplica(c *C, st *KVStore, replica *types.
 	c.Assert(err, IsNil)
 	c.Assert(rep, IsNil)
 
-	err = st.CreateVolumeReplica(replica)
-	c.Assert(err, IsNil)
-
-	err = st.CreateVolumeReplica(replica)
-	c.Assert(err, NotNil)
+	s.verifyConcurrentExecution(c, st.CreateVolumeReplica, replica)
 
 	rep, err = st.GetVolumeReplica(replica.VolumeName, replica.Name)
 	c.Assert(err, IsNil)
@@ -321,7 +300,7 @@ func (s *TestSuite) createUpdateVerifyReplica(c *C, st *KVStore, replica *types.
 	c.Assert(reps[replica.Name], DeepEquals, replica)
 
 	replica.Running = false
-	err = st.UpdateVolumeReplica(replica)
+	s.verifyConcurrentExecution(c, st.UpdateVolumeReplica, replica)
 	c.Assert(err, IsNil)
 
 	rep, err = st.GetVolumeReplica(replica.VolumeName, replica.Name)
@@ -402,4 +381,38 @@ func (s *TestSuite) testVolume(c *C, st *KVStore) {
 	s.verifyVolumes(c, st, volume2)
 	s.deleteAndVerifyVolume(c, st, volume2)
 	s.verifyVolumes(c, st)
+}
+
+func (s *TestSuite) verifyConcurrentExecution(c *C, f interface{}, obj interface{}) {
+	var (
+		failureCount int32
+		wg           sync.WaitGroup
+	)
+
+	for i := 0; i < ConcurrentThread; i++ {
+		wg.Add(1)
+		go func() {
+			var err error
+			defer wg.Done()
+
+			switch obj.(type) {
+			case *types.VolumeInfo:
+				err = f.(func(*types.VolumeInfo) error)(obj.(*types.VolumeInfo))
+			case *types.ControllerInfo:
+				err = f.(func(*types.ControllerInfo) error)(obj.(*types.ControllerInfo))
+			case *types.ReplicaInfo:
+				err = f.(func(*types.ReplicaInfo) error)(obj.(*types.ReplicaInfo))
+			case *types.HostInfo:
+				err = f.(func(*types.HostInfo) error)(obj.(*types.HostInfo))
+			case *types.SettingsInfo:
+				err = f.(func(*types.SettingsInfo) error)(obj.(*types.SettingsInfo))
+			}
+			if err != nil {
+				atomic.AddInt32(&failureCount, 1)
+			}
+		}()
+	}
+
+	wg.Wait()
+	c.Assert(failureCount, Equals, int32(ConcurrentThread)-1)
 }
