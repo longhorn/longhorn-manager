@@ -3,6 +3,13 @@ set -e
 
 cd $(dirname $0)/..
 
+package=$1
+
+if [ "${package}" == "" ]; then
+        echo Require package name for test coverage output
+        exit 1
+fi
+
 mount --bind /host/dev /dev
 
 source ./scripts/common.sh
@@ -22,11 +29,9 @@ export LONGHORN_ENGINE_IMAGE="${LONGHORN_ENGINE_IMAGE}"
 
 docker inspect ${LONGHORN_ENGINE_IMAGE} >/dev/null || docker pull ${LONGHORN_ENGINE_IMAGE}
 
-echo Running tests
+echo Running test coverage
 
-PACKAGES="$(find . -name '*.go' | xargs -I{} dirname {} | sort -u | grep -Ev '(.git|.trash-cache|vendor|bin)')"
-
-echo Packages: ${PACKAGES}
+echo Package: ${package}
 
 [ "${ARCH}" == "amd64" ] && RACE=-race
-go test ${RACE} -cover ${PACKAGES}
+go test ${RACE} -coverprofile=bin/coverage.out ./${package}
