@@ -3,6 +3,7 @@ package orchsim
 import (
 	"testing"
 
+	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/orchestrator"
 	"github.com/yasker/lm-rewrite/types"
 	"github.com/yasker/lm-rewrite/util"
@@ -35,7 +36,8 @@ func (s *TestSuite) TestBasic(c *C) {
 		instance *types.InstanceInfo
 	)
 
-	orch, err := NewOrchestratorSimulator(CurrentHostID)
+	engines := engineapi.NewEngineSimulatorCollection()
+	orch, err := NewOrchestratorSimulator(CurrentHostID, engines)
 	c.Assert(err, IsNil)
 	c.Assert(orch.GetCurrentHostID(), Equals, CurrentHostID)
 
@@ -94,6 +96,16 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(ctrlInstance.Running, Equals, true)
 	c.Assert(ctrlInstance.Address, Not(Equals), "")
 
+	engine, err := engines.GetEngineSimulator(VolumeName)
+	c.Assert(err, IsNil)
+	c.Assert(engine.Name(), Equals, VolumeName)
+
+	replicas, err := engine.GetReplicaStates()
+	c.Assert(err, IsNil)
+	c.Assert(replicas, HasLen, 2)
+	c.Assert(replicas[replica1Instance.Address].Mode, Equals, engineapi.ReplicaModeRW)
+	c.Assert(replicas[replica2Instance.Address].Mode, Equals, engineapi.ReplicaModeRW)
+
 	instance, err = orch.InspectInstance(&orchestrator.Request{
 		HostID:       CurrentHostID,
 		InstanceName: ctrlInstance.Name,
@@ -101,20 +113,45 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(instance, DeepEquals, &ctrlInstance.InstanceInfo)
 
+	rep1IP := replica1Instance.Address
 	instance, err = orch.StopInstance(&orchestrator.Request{
 		HostID:       CurrentHostID,
 		InstanceName: replica1Instance.Name,
+		VolumeName:   VolumeName,
 	})
 	c.Assert(err, IsNil)
 	replica1Instance.Running = false
 	replica1Instance.Address = ""
 	c.Assert(instance, DeepEquals, &replica1Instance.InstanceInfo)
 
+	replicas, err = engine.GetReplicaStates()
+	c.Assert(err, IsNil)
+	c.Assert(replicas, HasLen, 2)
+	c.Assert(replicas[rep1IP].Mode, Equals, engineapi.ReplicaModeERR)
+	c.Assert(replicas[replica2Instance.Address].Mode, Equals, engineapi.ReplicaModeRW)
+
+	err = orch.RemoveInstance(&orchestrator.Request{
+		HostID:       CurrentHostID,
+		InstanceName: replica1Instance.Name,
+		VolumeName:   VolumeName,
+	})
+	c.Assert(err, IsNil)
+
+	replicas, err = engine.GetReplicaStates()
+	c.Assert(err, IsNil)
+	c.Assert(replicas, HasLen, 2)
+	c.Assert(replicas[rep1IP].Mode, Equals, engineapi.ReplicaModeERR)
+	c.Assert(replicas[replica2Instance.Address].Mode, Equals, engineapi.ReplicaModeRW)
+
 	err = orch.RemoveInstance(&orchestrator.Request{
 		HostID:       CurrentHostID,
 		InstanceName: ctrlInstance.Name,
+		VolumeName:   VolumeName,
 	})
 	c.Assert(err, IsNil)
+
+	engine, err = engines.GetEngineSimulator(VolumeName)
+	c.Assert(err, NotNil)
 
 	instance, err = orch.InspectInstance(&orchestrator.Request{
 		HostID:       CurrentHostID,

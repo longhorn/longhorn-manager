@@ -2,8 +2,12 @@ package orchsim
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
+	"github.com/Sirupsen/logrus"
+
+	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/orchestrator"
 	"github.com/yasker/lm-rewrite/types"
 	"github.com/yasker/lm-rewrite/util"
@@ -13,6 +17,7 @@ type OrchSim struct {
 	hostID  string
 	records map[string]*InstanceRecord
 	mutex   *sync.RWMutex
+	engines *engineapi.EngineSimulatorCollection
 }
 
 type StateType string
@@ -29,11 +34,12 @@ type InstanceRecord struct {
 	IP    string
 }
 
-func NewOrchestratorSimulator(hostID string) (orchestrator.Orchestrator, error) {
+func NewOrchestratorSimulator(hostID string, engines *engineapi.EngineSimulatorCollection) (orchestrator.Orchestrator, error) {
 	return &OrchSim{
 		hostID:  hostID,
 		records: map[string]*InstanceRecord{},
 		mutex:   &sync.RWMutex{},
+		engines: engines,
 	}, nil
 }
 
@@ -46,11 +52,26 @@ func (s *OrchSim) CreateController(request *orchestrator.Request) (*types.Contro
 		return nil, fmt.Errorf("missing required field %+v", request)
 	}
 
+	if request.VolumeName == "" ||
+		request.VolumeSize == "" ||
+		request.ReplicaURLs == nil {
+		return nil, fmt.Errorf("missing required field %+v", request)
+	}
+
 	instance := &InstanceRecord{
 		ID:    util.UUID(),
 		Name:  request.InstanceName,
 		State: StateRunning,
 		IP:    "ip-" + request.InstanceName + "-" + util.UUID()[:8],
+	}
+
+	if err := s.engines.CreateEngineSimulator(&engineapi.EngineSimulatorRequest{
+		VolumeName:     request.VolumeName,
+		VolumeSize:     request.VolumeSize,
+		ControllerAddr: instance.IP,
+		ReplicaAddrs:   request.ReplicaURLs,
+	}); err != nil {
+		return nil, err
 	}
 
 	s.mutex.Lock()
@@ -143,7 +164,7 @@ func (s *OrchSim) StopInstance(request *orchestrator.Request) (*types.InstanceIn
 		return nil, fmt.Errorf("incorrect host, requested %v, current %v", request.HostID,
 			s.GetCurrentHostID())
 	}
-	if request.InstanceName == "" {
+	if request.InstanceName == "" || request.VolumeName == "" {
 		return nil, fmt.Errorf("missing required field %+v", request)
 	}
 
@@ -154,6 +175,11 @@ func (s *OrchSim) StopInstance(request *orchestrator.Request) (*types.InstanceIn
 	if err != nil {
 		return nil, err
 	}
+
+	if engine, err := s.engines.GetEngineSimulator(request.VolumeName); err == nil {
+		engine.SimulateStopReplica(instance.IP)
+	}
+
 	if instance.State != StateStopped {
 		instance.State = StateStopped
 		instance.IP = ""
@@ -175,8 +201,26 @@ func (s *OrchSim) RemoveInstance(request *orchestrator.Request) error {
 		return fmt.Errorf("incorrect host, requested %v, current %v", request.HostID,
 			s.GetCurrentHostID())
 	}
+	if request.InstanceName == "" || request.VolumeName == "" {
+		return fmt.Errorf("missing required field %+v", request)
+	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+
+	instance, err := s.getRecord(request.InstanceName)
+	if err != nil {
+		return err
+	}
+
+	if strings.Contains(instance.Name, "controller") {
+		if err := s.engines.DeleteEngineSimulator(request.VolumeName); err != nil {
+			logrus.Warnf("Fail to delete engine simulator for %v", request.VolumeName)
+		}
+	} else {
+		if engine, err := s.engines.GetEngineSimulator(request.VolumeName); err == nil {
+			engine.SimulateStopReplica(instance.IP)
+		}
+	}
 
 	return s.removeRecord(request.InstanceName)
 }

@@ -65,6 +65,8 @@ func (c *EngineSimulatorCollection) DeleteEngineSimulator(volumeName string) err
 	if c.simulators[volumeName] == nil {
 		return fmt.Errorf("unable to find simulator with volume name %v", volumeName)
 	}
+	// stop the references
+	c.simulators[volumeName].running = false
 	delete(c.simulators, volumeName)
 	return nil
 }
@@ -127,4 +129,14 @@ func (e *EngineSimulator) RemoveReplica(addr string) error {
 	}
 	delete(e.replicas, addr)
 	return nil
+}
+
+func (e *EngineSimulator) SimulateStopReplica(addr string) {
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
+
+	if e.replicas[addr] == nil {
+		return
+	}
+	e.replicas[addr].Mode = ReplicaModeERR
 }
