@@ -25,8 +25,8 @@ type VolumeInfo struct {
 
 	// Running state
 	Created      string
-	TargetHostID string
-	HostID       string
+	TargetNodeID string
+	NodeID       string
 	State        VolumeState
 	DesireState  VolumeState
 	Endpoint     string
@@ -38,7 +38,7 @@ type InstanceInfo struct {
 	ID         string
 	Type       InstanceType
 	Name       string
-	HostID     string
+	NodeID     string
 	Address    string
 	Running    bool
 	VolumeName string
@@ -57,7 +57,7 @@ type ReplicaInfo struct {
 	BadTimestamp string
 }
 
-type HostInfo struct {
+type NodeInfo struct {
 	UUID    string `json:"uuid"`
 	Name    string `json:"name"`
 	Address string `json:"address"`

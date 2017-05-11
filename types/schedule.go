@@ -20,9 +20,9 @@ type Scheduler interface {
 }
 
 type ScheduleOps interface {
-	ListHosts() (map[string]*HostInfo, error)
-	GetHost(id string) (*HostInfo, error)
-	GetCurrentHostID() string
+	ListNodes() (map[string]*NodeInfo, error)
+	GetNode(id string) (*NodeInfo, error)
+	GetCurrentNodeID() string
 	ProcessSchedule(item *ScheduleItem) (*InstanceInfo, error)
 }
 
@@ -35,13 +35,13 @@ type ScheduleItem struct {
 type ScheduleInstance struct {
 	ID         string
 	Type       InstanceType
-	HostID     string
+	NodeID     string
 	VolumeName string
 	Name       string
 }
 
 type ScheduleSpec struct {
-	HostID string
+	NodeID string
 }
 
 type ScheduleData struct {
@@ -51,5 +51,5 @@ type ScheduleData struct {
 
 type SchedulePolicy struct {
 	Binding   SchedulePolicyBinding
-	HostIDMap map[string]struct{}
+	NodeIDMap map[string]struct{}
 }

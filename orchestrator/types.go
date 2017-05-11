@@ -5,7 +5,7 @@ import (
 )
 
 type Request struct {
-	HostID       string
+	NodeID       string
 	InstanceID   string
 	InstanceName string
 
@@ -25,5 +25,5 @@ type Orchestrator interface {
 	RemoveInstance(request *Request) error
 	InspectInstance(request *Request) (*types.InstanceInfo, error)
 
-	GetCurrentHostID() string
+	GetCurrentNodeID() string
 }

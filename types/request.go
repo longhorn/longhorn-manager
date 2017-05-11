@@ -11,7 +11,7 @@ type VolumeCreateRequest struct {
 
 type VolumeAttachRequest struct {
 	Name   string `json:"name"`
-	HostID string `json:"hostId"`
+	NodeID string `json:"nodeId"`
 }
 
 type VolumeDetachRequest struct {

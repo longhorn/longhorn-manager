@@ -75,76 +75,76 @@ func (s *TestSuite) TeardownTest(c *C) {
 	}
 }
 
-func (s *TestSuite) TestHost(c *C) {
+func (s *TestSuite) TestNode(c *C) {
 	if s.etcd != nil {
-		s.testHost(c, s.etcd)
+		s.testNode(c, s.etcd)
 	}
 }
 
-func (s *TestSuite) testHost(c *C, st *KVStore) {
-	host1 := &types.HostInfo{
+func (s *TestSuite) testNode(c *C, st *KVStore) {
+	node1 := &types.NodeInfo{
 		UUID:    util.UUID(),
-		Name:    "host-1",
+		Name:    "node-1",
 		Address: "127.0.1.1",
 	}
-	host2 := &types.HostInfo{
+	node2 := &types.NodeInfo{
 		UUID:    util.UUID(),
-		Name:    "host-2",
+		Name:    "node-2",
 		Address: "127.0.1.2",
 	}
-	host3 := &types.HostInfo{
+	node3 := &types.NodeInfo{
 		UUID:    util.UUID(),
-		Name:    "host-3",
+		Name:    "node-3",
 		Address: "127.0.1.3",
 	}
 
-	host, err := st.GetHost("random")
+	node, err := st.GetNode("random")
 	c.Assert(err, IsNil)
-	c.Assert(host, IsNil)
+	c.Assert(node, IsNil)
 
-	hosts, err := st.ListHosts()
+	nodes, err := st.ListNodes()
 	c.Assert(err, IsNil)
-	c.Assert(len(hosts), Equals, 0)
+	c.Assert(len(nodes), Equals, 0)
 
-	s.verifyConcurrentExecution(c, st.CreateHost, host1)
+	s.verifyConcurrentExecution(c, st.CreateNode, node1)
 
-	host, err = st.GetHost(host1.UUID)
+	node, err = st.GetNode(node1.UUID)
 	c.Assert(err, IsNil)
-	UpdateKVIndex(host1, host)
-	c.Assert(host, DeepEquals, host1)
+	UpdateKVIndex(node1, node)
+	c.Assert(node, DeepEquals, node1)
 
-	host1.Address = "127.0.2.2"
-	s.verifyConcurrentExecution(c, st.UpdateHost, host1)
+	node1.Address = "127.0.2.2"
+	s.verifyConcurrentExecution(c, st.UpdateNode, node1)
 
-	host, err = st.GetHost(host1.UUID)
+	node, err = st.GetNode(node1.UUID)
 	c.Assert(err, IsNil)
-	UpdateKVIndex(host1, host)
-	c.Assert(host, DeepEquals, host1)
+	UpdateKVIndex(node1, node)
+	c.Assert(node, DeepEquals, node1)
 
-	s.verifyConcurrentExecution(c, st.CreateHost, host2)
-	s.verifyConcurrentExecution(c, st.CreateHost, host3)
+	s.verifyConcurrentExecution(c, st.CreateNode, node2)
+	s.verifyConcurrentExecution(c, st.CreateNode, node3)
 
-	host, err = st.GetHost(host1.UUID)
+	node, err = st.GetNode(node1.UUID)
 	c.Assert(err, IsNil)
-	UpdateKVIndex(host1, host)
-	c.Assert(host, DeepEquals, host1)
+	UpdateKVIndex(node1, node)
+	c.Assert(node, DeepEquals, node1)
 
-	host, err = st.GetHost(host2.UUID)
+	node, err = st.GetNode(node2.UUID)
 	c.Assert(err, IsNil)
-	UpdateKVIndex(host2, host)
-	c.Assert(host, DeepEquals, host2)
+	UpdateKVIndex(node2, node)
+	c.Assert(node, DeepEquals, node2)
 
-	host, err = st.GetHost(host3.UUID)
+	node, err = st.GetNode(node3.UUID)
 	c.Assert(err, IsNil)
-	UpdateKVIndex(host3, host)
-	c.Assert(host, DeepEquals, host3)
+	UpdateKVIndex(node3, node)
+	c.Assert(node, DeepEquals, node3)
 
-	hosts, err = st.ListHosts()
+	nodes, err = st.ListNodes()
 	c.Assert(err, IsNil)
 
-	c.Assert(hosts[host1.UUID], DeepEquals, host1)
-	c.Assert(hosts[host2.UUID], DeepEquals, host2)
-	c.Assert(hosts[host3.UUID], DeepEquals, host3)
+	c.Assert(nodes[node1.UUID], DeepEquals, node1)
+	c.Assert(nodes[node2.UUID], DeepEquals, node2)
+	c.Assert(nodes[node3.UUID], DeepEquals, node3)
 }
 
 func (s *TestSuite) TestSettings(c *C) {
@@ -402,8 +402,8 @@ func (s *TestSuite) verifyConcurrentExecution(c *C, f interface{}, obj interface
 				err = f.(func(*types.ControllerInfo) error)(obj.(*types.ControllerInfo))
 			case *types.ReplicaInfo:
 				err = f.(func(*types.ReplicaInfo) error)(obj.(*types.ReplicaInfo))
-			case *types.HostInfo:
-				err = f.(func(*types.HostInfo) error)(obj.(*types.HostInfo))
+			case *types.NodeInfo:
+				err = f.(func(*types.NodeInfo) error)(obj.(*types.NodeInfo))
 			case *types.SettingsInfo:
 				err = f.(func(*types.SettingsInfo) error)(obj.(*types.SettingsInfo))
 			}

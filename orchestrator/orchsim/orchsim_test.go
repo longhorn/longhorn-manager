@@ -20,7 +20,7 @@ var (
 	Replica3Name   = VolumeName + "-replica3"
 	Replica4Name   = VolumeName + "-replica4"
 
-	CurrentHostID = util.UUID()
+	CurrentNodeID = util.UUID()
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -37,29 +37,29 @@ func (s *TestSuite) TestBasic(c *C) {
 	)
 
 	engines := engineapi.NewEngineSimulatorCollection()
-	orch, err := NewOrchestratorSimulator(CurrentHostID, engines)
+	orch, err := NewOrchestratorSimulator(CurrentNodeID, engines)
 	c.Assert(err, IsNil)
-	c.Assert(orch.GetCurrentHostID(), Equals, CurrentHostID)
+	c.Assert(orch.GetCurrentNodeID(), Equals, CurrentNodeID)
 
 	replica1Instance, err := orch.CreateReplica(&orchestrator.Request{
-		HostID:       CurrentHostID,
+		NodeID:       CurrentNodeID,
 		InstanceName: Replica1Name,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(replica1Instance.HostID, Equals, CurrentHostID)
+	c.Assert(replica1Instance.NodeID, Equals, CurrentNodeID)
 	c.Assert(replica1Instance.Name, Equals, Replica1Name)
 	c.Assert(replica1Instance.ID, Not(Equals), "")
 	c.Assert(replica1Instance.Address, Equals, "")
 	c.Assert(replica1Instance.Running, Equals, false)
 
 	replica2Instance, err := orch.CreateReplica(&orchestrator.Request{
-		HostID:       CurrentHostID,
+		NodeID:       CurrentNodeID,
 		InstanceName: Replica2Name,
 	})
 	c.Assert(err, IsNil)
 
 	instance, err = orch.StartInstance(&orchestrator.Request{
-		HostID:       CurrentHostID,
+		NodeID:       CurrentNodeID,
 		InstanceName: replica1Instance.Name,
 	})
 	c.Assert(err, IsNil)
@@ -69,7 +69,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(instance, DeepEquals, &replica1Instance.InstanceInfo)
 
 	instance, err = orch.StartInstance(&orchestrator.Request{
-		HostID:       CurrentHostID,
+		NodeID:       CurrentNodeID,
 		InstanceName: replica2Instance.Name,
 	})
 	c.Assert(err, IsNil)
@@ -80,7 +80,7 @@ func (s *TestSuite) TestBasic(c *C) {
 
 	ctrlName := "controller-id-" + VolumeName
 	ctrlInstance, err := orch.CreateController(&orchestrator.Request{
-		HostID:       CurrentHostID,
+		NodeID:       CurrentNodeID,
 		InstanceName: ctrlName,
 		VolumeName:   VolumeName,
 		VolumeSize:   VolumeSize,
@@ -90,7 +90,7 @@ func (s *TestSuite) TestBasic(c *C) {
 		},
 	})
 	c.Assert(err, IsNil)
-	c.Assert(ctrlInstance.HostID, Equals, CurrentHostID)
+	c.Assert(ctrlInstance.NodeID, Equals, CurrentNodeID)
 	c.Assert(ctrlInstance.Name, Equals, ctrlName)
 	c.Assert(ctrlInstance.ID, Not(Equals), "")
 	c.Assert(ctrlInstance.Running, Equals, true)
@@ -107,7 +107,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(replicas[replica2Instance.Address].Mode, Equals, engineapi.ReplicaModeRW)
 
 	instance, err = orch.InspectInstance(&orchestrator.Request{
-		HostID:       CurrentHostID,
+		NodeID:       CurrentNodeID,
 		InstanceName: ctrlInstance.Name,
 	})
 	c.Assert(err, IsNil)
@@ -115,7 +115,7 @@ func (s *TestSuite) TestBasic(c *C) {
 
 	rep1IP := replica1Instance.Address
 	instance, err = orch.StopInstance(&orchestrator.Request{
-		HostID:       CurrentHostID,
+		NodeID:       CurrentNodeID,
 		InstanceName: replica1Instance.Name,
 		VolumeName:   VolumeName,
 	})
@@ -131,7 +131,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(replicas[replica2Instance.Address].Mode, Equals, engineapi.ReplicaModeRW)
 
 	err = orch.RemoveInstance(&orchestrator.Request{
-		HostID:       CurrentHostID,
+		NodeID:       CurrentNodeID,
 		InstanceName: replica1Instance.Name,
 		VolumeName:   VolumeName,
 	})
@@ -144,7 +144,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(replicas[replica2Instance.Address].Mode, Equals, engineapi.ReplicaModeRW)
 
 	err = orch.RemoveInstance(&orchestrator.Request{
-		HostID:       CurrentHostID,
+		NodeID:       CurrentNodeID,
 		InstanceName: ctrlInstance.Name,
 		VolumeName:   VolumeName,
 	})
@@ -154,7 +154,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(err, NotNil)
 
 	instance, err = orch.InspectInstance(&orchestrator.Request{
-		HostID:       CurrentHostID,
+		NodeID:       CurrentNodeID,
 		InstanceName: ctrlInstance.Name,
 	})
 	c.Assert(err, ErrorMatches, "unable to find instance.*")

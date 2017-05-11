@@ -31,8 +31,8 @@ type VolumeManager interface {
 	UpdateRecurring(name string, jobs []*RecurringJob) error
 	ReplicaRemove(volumeName, replicaName string) error
 
-	ListHosts() (map[string]*HostInfo, error)
-	GetHost(id string) (*HostInfo, error)
+	ListNodes() (map[string]*NodeInfo, error)
+	GetNode(id string) (*NodeInfo, error)
 
 	CheckController(ctrl Controller, volume *VolumeInfo) error
 	Cleanup(volume *VolumeInfo) error
@@ -117,8 +117,8 @@ type Controller interface {
 //	StopInstance(instance *InstanceInfo) (*InstanceInfo, error)
 //	RemoveInstance(instance *InstanceInfo) (*InstanceInfo, error)
 //
-//	ListHosts() (map[string]*HostInfo, error)
-//	GetHost(id string) (*HostInfo, error)
+//	ListNodes() (map[string]*NodeInfo, error)
+//	GetNode(id string) (*NodeInfo, error)
 //
 //	Scheduler() Scheduler // return nil if not supported
 //
@@ -127,8 +127,8 @@ type Controller interface {
 //}
 
 type ServiceLocator interface {
-	GetCurrentHostID() string
-	GetAddress(hostID string) (string, error) // Return <host>:<port>
+	GetCurrentNodeID() string
+	GetAddress(nodeID string) (string, error) // Return <node>:<port>
 }
 
 type SnapshotInfo struct {

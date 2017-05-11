@@ -15,7 +15,7 @@ type Replica struct {
 
 type Controller struct {
 	Address string
-	HostID  string
+	NodeID  string
 }
 
 type EngineClient interface {

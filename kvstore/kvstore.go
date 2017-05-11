@@ -27,7 +27,7 @@ type KVStore struct {
 }
 
 const (
-	keyHosts    = "hosts"
+	keyNodes    = "nodes"
 	keySettings = "settings"
 )
 
@@ -46,64 +46,64 @@ func (s *KVStore) key(key string) string {
 	return filepath.Join(s.Prefix, key)
 }
 
-func (s *KVStore) hostKey(id string) string {
-	return filepath.Join(s.key(keyHosts), id)
+func (s *KVStore) nodeKey(id string) string {
+	return filepath.Join(s.key(keyNodes), id)
 }
 
-func (s *KVStore) CreateHost(host *types.HostInfo) error {
-	if err := s.b.Create(s.hostKey(host.UUID), host); err != nil {
+func (s *KVStore) CreateNode(node *types.NodeInfo) error {
+	if err := s.b.Create(s.nodeKey(node.UUID), node); err != nil {
 		return err
 	}
-	logrus.Infof("Add host %v name %v longhorn-manager address %v", host.UUID, host.Name, host.Address)
+	logrus.Infof("Add node %v name %v longhorn-manager address %v", node.UUID, node.Name, node.Address)
 	return nil
 }
 
-func (s *KVStore) UpdateHost(host *types.HostInfo) error {
-	if err := s.b.Update(s.hostKey(host.UUID), host, host.KVIndex); err != nil {
+func (s *KVStore) UpdateNode(node *types.NodeInfo) error {
+	if err := s.b.Update(s.nodeKey(node.UUID), node, node.KVIndex); err != nil {
 		return err
 	}
-	logrus.Infof("Add host %v name %v longhorn-manager address %v", host.UUID, host.Name, host.Address)
+	logrus.Infof("Add node %v name %v longhorn-manager address %v", node.UUID, node.Name, node.Address)
 	return nil
 }
 
-func (s *KVStore) GetHost(id string) (*types.HostInfo, error) {
-	host, err := s.getHostByKey(s.hostKey(id))
+func (s *KVStore) GetNode(id string) (*types.NodeInfo, error) {
+	node, err := s.getNodeByKey(s.nodeKey(id))
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to get host")
+		return nil, errors.Wrap(err, "unable to get node")
 	}
-	return host, nil
+	return node, nil
 }
 
-func (s *KVStore) getHostByKey(key string) (*types.HostInfo, error) {
-	host := types.HostInfo{}
-	index, err := s.b.Get(key, &host)
+func (s *KVStore) getNodeByKey(key string) (*types.NodeInfo, error) {
+	node := types.NodeInfo{}
+	index, err := s.b.Get(key, &node)
 	if err != nil {
 		if s.b.IsNotFoundError(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	host.KVIndex = index
-	return &host, nil
+	node.KVIndex = index
+	return &node, nil
 }
 
-func (s *KVStore) ListHosts() (map[string]*types.HostInfo, error) {
-	hostKeys, err := s.b.Keys(s.key(keyHosts))
+func (s *KVStore) ListNodes() (map[string]*types.NodeInfo, error) {
+	nodeKeys, err := s.b.Keys(s.key(keyNodes))
 	if err != nil {
 		return nil, err
 	}
 
-	hosts := make(map[string]*types.HostInfo)
-	for _, key := range hostKeys {
-		host, err := s.getHostByKey(key)
+	nodes := make(map[string]*types.NodeInfo)
+	for _, key := range nodeKeys {
+		node, err := s.getNodeByKey(key)
 		if err != nil {
 			return nil, errors.Wrapf(err, "invalid key %v", key)
 		}
-		if host != nil {
-			hosts[host.UUID] = host
+		if node != nil {
+			nodes[node.UUID] = node
 		}
 	}
-	return hosts, nil
+	return nodes, nil
 }
 
 func (s *KVStore) settingsKey() string {
