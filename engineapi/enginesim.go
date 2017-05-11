@@ -10,13 +10,6 @@ type EngineSimulatorCollection struct {
 	mutex      *sync.Mutex
 }
 
-type EngineSimulatorRequest struct {
-	VolumeName     string
-	VolumeSize     string
-	ControllerAddr string
-	ReplicaAddrs   []string
-}
-
 func NewEngineSimulatorCollection() *EngineSimulatorCollection {
 	return &EngineSimulatorCollection{
 		simulators: map[string]*EngineSimulator{},
@@ -24,7 +17,7 @@ func NewEngineSimulatorCollection() *EngineSimulatorCollection {
 	}
 }
 
-func (c *EngineSimulatorCollection) CreateEngineSimulator(request *EngineSimulatorRequest) error {
+func (c *EngineSimulatorCollection) CreateEngineSimulator(request *EngineClientRequest) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -69,6 +62,20 @@ func (c *EngineSimulatorCollection) DeleteEngineSimulator(volumeName string) err
 	c.simulators[volumeName].running = false
 	delete(c.simulators, volumeName)
 	return nil
+}
+
+func (c *EngineSimulatorCollection) NewEngineClient(request *EngineClientRequest) (EngineClient, error) {
+	engine, err := c.GetEngineSimulator(request.VolumeName)
+	if err != nil {
+		if err := c.CreateEngineSimulator(request); err != nil {
+			return nil, err
+		}
+		engine, err = c.GetEngineSimulator(request.VolumeName)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return engine, nil
 }
 
 type EngineSimulator struct {

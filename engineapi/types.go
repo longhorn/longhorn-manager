@@ -21,7 +21,18 @@ type Controller struct {
 type EngineClient interface {
 	Name() string
 	Endpoint() string
-	GetReplicaStates() ([]*Replica, error)
+	GetReplicaStates() (map[string]*Replica, error)
 	AddReplica(addr string) error
 	RemoveReplica(addr string) error
+}
+
+type EngineClientRequest struct {
+	VolumeName     string
+	VolumeSize     string
+	ControllerAddr string
+	ReplicaAddrs   []string
+}
+
+type EngineClientCollection interface {
+	NewEngineClient(request *EngineClientRequest) (EngineClient, error)
 }
