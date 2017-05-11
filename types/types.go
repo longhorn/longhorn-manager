@@ -126,15 +126,6 @@ type Controller interface {
 //	Settings
 //}
 
-type Orchestrator interface {
-	CreateController(volumeName, controllerName string, replicas map[string]*ReplicaInfo) (*ControllerInfo, error)
-	CreateReplica(volumeName, replicaName string) (*ReplicaInfo, error)
-
-	StartInstance(instance *InstanceInfo) (*InstanceInfo, error)
-	StopInstance(instance *InstanceInfo) (*InstanceInfo, error)
-	RemoveInstance(instance *InstanceInfo) (*InstanceInfo, error)
-}
-
 type ServiceLocator interface {
 	GetCurrentHostID() string
 	GetAddress(hostID string) (string, error) // Return <host>:<port>
