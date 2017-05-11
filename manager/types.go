@@ -1,4 +1,8 @@
-package types
+package manager
+
+import (
+	"github.com/yasker/lm-rewrite/types"
+)
 
 type VolumeCreateRequest struct {
 	Name                string `json:"name"`
@@ -25,4 +29,16 @@ type VolumeDeleteRequest struct {
 type VolumeSalvageRequest struct {
 	Name                string   `json:"name"`
 	SalvageReplicaNames []string `json:"salvageReplicaNames"`
+}
+
+type Volume struct {
+	types.VolumeInfo
+
+	m *VolumeManager
+}
+
+type Node struct {
+	types.NodeInfo
+
+	m *VolumeManager
 }

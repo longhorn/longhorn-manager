@@ -3,10 +3,12 @@ package types
 type VolumeState string
 
 const (
-	VolumeStateCreated  = VolumeState("created")
 	VolumeStateDetached = VolumeState("detached")
-	VolumeStateFault    = VolumeState("fault")
 	VolumeStateHealthy  = VolumeState("healthy")
+	VolumeStateDeleted  = VolumeState("deleted")
+
+	VolumeStateCreated  = VolumeState("created")
+	VolumeStateFault    = VolumeState("fault")
 	VolumeStateDegraded = VolumeState("degraded")
 )
 

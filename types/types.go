@@ -20,31 +20,31 @@ const (
 	InstanceTypeReplica    = InstanceType("replica")
 )
 
-type VolumeManager interface {
-	Start() error
-	Create(volume *VolumeInfo) (*VolumeInfo, error)
-	Delete(name string) error
-	Get(name string) (*VolumeInfo, error)
-	List() ([]*VolumeInfo, error)
-	Attach(name string) error
-	Detach(name string) error
-	UpdateRecurring(name string, jobs []*RecurringJob) error
-	ReplicaRemove(volumeName, replicaName string) error
-
-	ListNodes() (map[string]*NodeInfo, error)
-	GetNode(id string) (*NodeInfo, error)
-
-	CheckController(ctrl Controller, volume *VolumeInfo) error
-	Cleanup(volume *VolumeInfo) error
-
-	Controller(name string) (Controller, error)
-	SnapshotOps(name string) (SnapshotOps, error)
-	VolumeBackupOps(name string) (VolumeBackupOps, error)
-	Settings() Settings
-	ManagerBackupOps(backupTarget string) ManagerBackupOps
-
-	ProcessSchedule(spec *ScheduleSpec, item *ScheduleItem) (*InstanceInfo, error)
-}
+//type VolumeManager interface {
+//	Start() error
+//	Create(volume *VolumeInfo) (*VolumeInfo, error)
+//	Delete(name string) error
+//	Get(name string) (*VolumeInfo, error)
+//	List() ([]*VolumeInfo, error)
+//	Attach(name string) error
+//	Detach(name string) error
+//	UpdateRecurring(name string, jobs []*RecurringJob) error
+//	ReplicaRemove(volumeName, replicaName string) error
+//
+//	ListNodes() (map[string]*NodeInfo, error)
+//	GetNode(id string) (*NodeInfo, error)
+//
+//	CheckController(ctrl Controller, volume *VolumeInfo) error
+//	Cleanup(volume *VolumeInfo) error
+//
+//	Controller(name string) (Controller, error)
+//	SnapshotOps(name string) (SnapshotOps, error)
+//	VolumeBackupOps(name string) (VolumeBackupOps, error)
+//	Settings() Settings
+//	ManagerBackupOps(backupTarget string) ManagerBackupOps
+//
+//	ProcessSchedule(spec *ScheduleSpec, item *ScheduleItem) (*InstanceInfo, error)
+//}
 
 type Settings interface {
 	GetSettings() (*SettingsInfo, error)
@@ -84,7 +84,7 @@ type Monitor interface {
 	CronCh() chan<- Event
 }
 
-type BeginMonitoring func(volume *VolumeInfo, man VolumeManager) Monitor
+//type BeginMonitoring func(volume *VolumeInfo, man VolumeManager) Monitor
 
 type GetController func(volume *VolumeInfo) Controller
 
