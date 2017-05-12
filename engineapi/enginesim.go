@@ -17,7 +17,7 @@ func NewEngineSimulatorCollection() *EngineSimulatorCollection {
 	}
 }
 
-func (c *EngineSimulatorCollection) CreateEngineSimulator(request *EngineClientRequest) error {
+func (c *EngineSimulatorCollection) CreateEngineSimulator(request *EngineSimulatorRequest) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -67,13 +67,7 @@ func (c *EngineSimulatorCollection) DeleteEngineSimulator(volumeName string) err
 func (c *EngineSimulatorCollection) NewEngineClient(request *EngineClientRequest) (EngineClient, error) {
 	engine, err := c.GetEngineSimulator(request.VolumeName)
 	if err != nil {
-		if err := c.CreateEngineSimulator(request); err != nil {
-			return nil, err
-		}
-		engine, err = c.GetEngineSimulator(request.VolumeName)
-		if err != nil {
-			return nil, err
-		}
+		return nil, fmt.Errorf("cannot find existing engine simulator for client")
 	}
 	return engine, nil
 }

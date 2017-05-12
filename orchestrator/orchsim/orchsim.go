@@ -70,7 +70,7 @@ func (s *OrchSim) CreateController(request *orchestrator.Request) (*types.Contro
 		IP:    "ip-" + request.InstanceName + "-" + util.UUID()[:8],
 	}
 
-	if err := s.engines.CreateEngineSimulator(&engineapi.EngineClientRequest{
+	if err := s.engines.CreateEngineSimulator(&engineapi.EngineSimulatorRequest{
 		VolumeName:     request.VolumeName,
 		VolumeSize:     request.VolumeSize,
 		ControllerAddr: instance.IP,

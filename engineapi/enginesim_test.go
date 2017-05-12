@@ -29,7 +29,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	sim, err := coll.GetEngineSimulator(VolumeName)
 	c.Assert(err, NotNil)
 
-	req := &EngineClientRequest{
+	req := &EngineSimulatorRequest{
 		VolumeName:     VolumeName,
 		VolumeSize:     VolumeSize,
 		ControllerAddr: ControllerAddr,

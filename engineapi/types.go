@@ -28,6 +28,11 @@ type EngineClient interface {
 
 type EngineClientRequest struct {
 	VolumeName     string
+	ControllerAddr string
+}
+
+type EngineSimulatorRequest struct {
+	VolumeName     string
 	VolumeSize     string
 	ControllerAddr string
 	ReplicaAddrs   []string
