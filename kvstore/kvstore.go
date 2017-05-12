@@ -51,18 +51,18 @@ func (s *KVStore) nodeKey(id string) string {
 }
 
 func (s *KVStore) CreateNode(node *types.NodeInfo) error {
-	if err := s.b.Create(s.nodeKey(node.UUID), node); err != nil {
+	if err := s.b.Create(s.nodeKey(node.ID), node); err != nil {
 		return err
 	}
-	logrus.Infof("Add node %v name %v longhorn-manager address %v", node.UUID, node.Name, node.Address)
+	logrus.Infof("Add node %v name %v longhorn-manager address %v", node.ID, node.Name, node.Address)
 	return nil
 }
 
 func (s *KVStore) UpdateNode(node *types.NodeInfo) error {
-	if err := s.b.Update(s.nodeKey(node.UUID), node, node.KVIndex); err != nil {
+	if err := s.b.Update(s.nodeKey(node.ID), node, node.KVIndex); err != nil {
 		return err
 	}
-	logrus.Infof("Add node %v name %v longhorn-manager address %v", node.UUID, node.Name, node.Address)
+	logrus.Infof("Add node %v name %v longhorn-manager address %v", node.ID, node.Name, node.Address)
 	return nil
 }
 
@@ -100,7 +100,7 @@ func (s *KVStore) ListNodes() (map[string]*types.NodeInfo, error) {
 			return nil, errors.Wrapf(err, "invalid key %v", key)
 		}
 		if node != nil {
-			nodes[node.UUID] = node
+			nodes[node.ID] = node
 		}
 	}
 	return nodes, nil

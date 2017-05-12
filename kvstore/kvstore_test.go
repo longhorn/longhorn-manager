@@ -83,17 +83,17 @@ func (s *TestSuite) TestNode(c *C) {
 
 func (s *TestSuite) testNode(c *C, st *KVStore) {
 	node1 := &types.NodeInfo{
-		UUID:    util.UUID(),
+		ID:      util.UUID(),
 		Name:    "node-1",
 		Address: "127.0.1.1",
 	}
 	node2 := &types.NodeInfo{
-		UUID:    util.UUID(),
+		ID:      util.UUID(),
 		Name:    "node-2",
 		Address: "127.0.1.2",
 	}
 	node3 := &types.NodeInfo{
-		UUID:    util.UUID(),
+		ID:      util.UUID(),
 		Name:    "node-3",
 		Address: "127.0.1.3",
 	}
@@ -108,7 +108,7 @@ func (s *TestSuite) testNode(c *C, st *KVStore) {
 
 	s.verifyConcurrentExecution(c, st.CreateNode, node1)
 
-	node, err = st.GetNode(node1.UUID)
+	node, err = st.GetNode(node1.ID)
 	c.Assert(err, IsNil)
 	UpdateKVIndex(node1, node)
 	c.Assert(node, DeepEquals, node1)
@@ -116,7 +116,7 @@ func (s *TestSuite) testNode(c *C, st *KVStore) {
 	node1.Address = "127.0.2.2"
 	s.verifyConcurrentExecution(c, st.UpdateNode, node1)
 
-	node, err = st.GetNode(node1.UUID)
+	node, err = st.GetNode(node1.ID)
 	c.Assert(err, IsNil)
 	UpdateKVIndex(node1, node)
 	c.Assert(node, DeepEquals, node1)
@@ -124,17 +124,17 @@ func (s *TestSuite) testNode(c *C, st *KVStore) {
 	s.verifyConcurrentExecution(c, st.CreateNode, node2)
 	s.verifyConcurrentExecution(c, st.CreateNode, node3)
 
-	node, err = st.GetNode(node1.UUID)
+	node, err = st.GetNode(node1.ID)
 	c.Assert(err, IsNil)
 	UpdateKVIndex(node1, node)
 	c.Assert(node, DeepEquals, node1)
 
-	node, err = st.GetNode(node2.UUID)
+	node, err = st.GetNode(node2.ID)
 	c.Assert(err, IsNil)
 	UpdateKVIndex(node2, node)
 	c.Assert(node, DeepEquals, node2)
 
-	node, err = st.GetNode(node3.UUID)
+	node, err = st.GetNode(node3.ID)
 	c.Assert(err, IsNil)
 	UpdateKVIndex(node3, node)
 	c.Assert(node, DeepEquals, node3)
@@ -142,9 +142,9 @@ func (s *TestSuite) testNode(c *C, st *KVStore) {
 	nodes, err = st.ListNodes()
 	c.Assert(err, IsNil)
 
-	c.Assert(nodes[node1.UUID], DeepEquals, node1)
-	c.Assert(nodes[node2.UUID], DeepEquals, node2)
-	c.Assert(nodes[node3.UUID], DeepEquals, node3)
+	c.Assert(nodes[node1.ID], DeepEquals, node1)
+	c.Assert(nodes[node2.ID], DeepEquals, node2)
+	c.Assert(nodes[node3.ID], DeepEquals, node3)
 }
 
 func (s *TestSuite) TestSettings(c *C) {

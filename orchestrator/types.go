@@ -25,5 +25,5 @@ type Orchestrator interface {
 	RemoveInstance(request *Request) error
 	InspectInstance(request *Request) (*types.InstanceInfo, error)
 
-	GetCurrentNodeID() string
+	GetCurrentNode() *types.NodeInfo
 }

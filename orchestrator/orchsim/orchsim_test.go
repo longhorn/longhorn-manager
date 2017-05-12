@@ -6,7 +6,6 @@ import (
 	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/orchestrator"
 	"github.com/yasker/lm-rewrite/types"
-	"github.com/yasker/lm-rewrite/util"
 
 	. "gopkg.in/check.v1"
 )
@@ -19,8 +18,6 @@ var (
 	Replica2Name   = VolumeName + "-replica2"
 	Replica3Name   = VolumeName + "-replica3"
 	Replica4Name   = VolumeName + "-replica4"
-
-	CurrentNodeID = util.UUID()
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -37,9 +34,11 @@ func (s *TestSuite) TestBasic(c *C) {
 	)
 
 	engines := engineapi.NewEngineSimulatorCollection()
-	orch, err := NewOrchestratorSimulator(CurrentNodeID, engines)
+	orch, err := NewOrchestratorSimulator(engines)
 	c.Assert(err, IsNil)
-	c.Assert(orch.GetCurrentNodeID(), Equals, CurrentNodeID)
+	c.Assert(orch.GetCurrentNode(), NotNil)
+
+	CurrentNodeID := orch.GetCurrentNode().ID
 
 	replica1Instance, err := orch.CreateReplica(&orchestrator.Request{
 		NodeID:       CurrentNodeID,
