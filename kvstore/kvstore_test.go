@@ -15,7 +15,6 @@ import (
 const (
 	TestPrefix = "longhorn-manager-test"
 
-	EnvCompTest    = "LONGHORN_MANAGER_TEST_COMP"
 	EnvEtcdServer  = "LONGHORN_MANAGER_TEST_ETCD_SERVER"
 	EnvEngineImage = "LONGHORN_ENGINE_IMAGE"
 
@@ -42,13 +41,6 @@ var _ = Suite(&TestSuite{})
 
 func (s *TestSuite) SetUpTest(c *C) {
 	var err error
-
-	compTest := os.Getenv(EnvCompTest)
-
-	// Skip other backends if quick is set
-	if compTest != "true" {
-		return
-	}
 
 	// Setup ETCD kv store
 	etcdIP := os.Getenv(EnvEtcdServer)
