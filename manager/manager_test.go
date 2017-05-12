@@ -12,8 +12,7 @@ import (
 )
 
 const (
-	TestPrefix = "longhorn-manager-test"
-
+	TestPrefix     = "longhorn-manager-test"
 	EnvEtcdServer  = "LONGHORN_MANAGER_TEST_ETCD_SERVER"
 	EnvEngineImage = "LONGHORN_ENGINE_IMAGE"
 
@@ -78,8 +77,60 @@ func (s *TestSuite) TestBasic(c *C) {
 	})
 	c.Assert(err, IsNil)
 
-	err = manager.VolumeDelete(&VolumeDeleteRequest{
-		Name: VolumeName,
-	})
+	volume, err := manager.GetVolume(VolumeName)
 	c.Assert(err, IsNil)
+	c.Assert(volume.Name, Equals, VolumeName)
+	c.Assert(volume.Controller, IsNil)
+	c.Assert(volume.Replicas, NotNil)
+	c.Assert(len(volume.Replicas), Equals, 0)
+
+	err = volume.create()
+	c.Assert(err, IsNil)
+	c.Assert(volume.Controller, IsNil)
+	c.Assert(len(volume.Replicas), Equals, VolumeNumberOfReplicas)
+	s.checkVolumeConsistency(c, manager, volume)
+
+	err = volume.start()
+	c.Assert(err, IsNil)
+	c.Assert(volume.Controller, NotNil)
+	c.Assert(volume.Controller.Running, Equals, true)
+	c.Assert(len(volume.Replicas), Equals, VolumeNumberOfReplicas)
+	s.checkVolumeConsistency(c, manager, volume)
+
+	err = volume.stop()
+	c.Assert(err, IsNil)
+	c.Assert(volume.Controller, IsNil)
+	c.Assert(len(volume.Replicas), Equals, VolumeNumberOfReplicas)
+	s.checkVolumeConsistency(c, manager, volume)
+
+	err = volume.stop()
+	c.Assert(err, IsNil)
+	c.Assert(volume.Controller, IsNil)
+	c.Assert(len(volume.Replicas), Equals, VolumeNumberOfReplicas)
+	s.checkVolumeConsistency(c, manager, volume)
+
+	err = volume.destroy()
+	c.Assert(err, IsNil)
+	c.Assert(volume.Controller, IsNil)
+	c.Assert(len(volume.Replicas), Equals, 0)
+	s.checkVolumeConsistency(c, manager, volume)
+}
+
+func (s *TestSuite) checkVolumeConsistency(c *C, manager *VolumeManager, volume *Volume) {
+	newVol, err := manager.GetVolume(volume.Name)
+	c.Assert(err, IsNil)
+	kvstore.UpdateKVIndex(newVol.VolumeInfo, volume.VolumeInfo)
+	c.Assert(newVol.VolumeInfo, DeepEquals, volume.VolumeInfo)
+
+	if volume.Controller != nil {
+		kvstore.UpdateKVIndex(newVol.Controller, volume.Controller)
+		c.Assert(newVol.VolumeInfo, DeepEquals, volume.VolumeInfo)
+	}
+	if len(volume.Replicas) != 0 {
+		for name := range volume.Replicas {
+			c.Assert(newVol.Replicas[name], NotNil)
+			kvstore.UpdateKVIndex(newVol.Replicas[name], volume.Replicas[name])
+			c.Assert(newVol.Replicas[name], DeepEquals, volume.Replicas[name])
+		}
+	}
 }

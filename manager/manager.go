@@ -1,6 +1,9 @@
 package manager
 
 import (
+	"fmt"
+	"sync"
+
 	"github.com/pkg/errors"
 
 	"github.com/yasker/lm-rewrite/engineapi"
@@ -13,22 +16,31 @@ import (
 type VolumeManager struct {
 	currentNode *Node
 
-	kv      *kvstore.KVStore
-	orch    orchestrator.Orchestrator
-	engines engineapi.EngineClientCollection
+	KVStore      *kvstore.KVStore
+	Orchestrator orchestrator.Orchestrator
+	EngineAPI    engineapi.EngineClientCollection
+
+	EventChan           chan Event
+	managedVolumes      map[string]VolumeChan
+	managedVolumesMutex *sync.Mutex
 }
 
 func NewVolumeManager(kv *kvstore.KVStore,
 	orch orchestrator.Orchestrator,
 	engines engineapi.EngineClientCollection) (*VolumeManager, error) {
 	manager := &VolumeManager{
-		kv:      kv,
-		orch:    orch,
-		engines: engines,
+		KVStore:      kv,
+		Orchestrator: orch,
+		EngineAPI:    engines,
+
+		EventChan:           make(chan Event),
+		managedVolumes:      map[string]VolumeChan{},
+		managedVolumesMutex: &sync.Mutex{},
 	}
 	if err := manager.RegisterNode(); err != nil {
 		return nil, err
 	}
+	go manager.startProcessing()
 	return manager, nil
 }
 
@@ -81,9 +93,12 @@ func (m *VolumeManager) VolumeAttach(request *VolumeAttachRequest) (err error) {
 		}
 	}()
 
-	volume, err := m.GetVolume(request.Name)
+	volume, err := m.KVStore.GetVolume(request.Name)
 	if err != nil {
 		return err
+	}
+	if volume == nil {
+		return fmt.Errorf("cannot find volume %v", request.Name)
 	}
 
 	node, err := m.GetNode(request.NodeID)
@@ -91,7 +106,13 @@ func (m *VolumeManager) VolumeAttach(request *VolumeAttachRequest) (err error) {
 		return err
 	}
 
-	if err := volume.Attach(request.NodeID); err != nil {
+	if volume.State != types.VolumeStateDetached {
+		return fmt.Errorf("invalid state to attach: %v", volume.State)
+	}
+
+	volume.TargetNodeID = request.NodeID
+	volume.DesireState = types.VolumeStateHealthy
+	if err := m.KVStore.UpdateVolume(volume); err != nil {
 		return err
 	}
 
@@ -108,9 +129,12 @@ func (m *VolumeManager) VolumeDetach(request *VolumeDetachRequest) (err error) {
 		}
 	}()
 
-	volume, err := m.GetVolume(request.Name)
+	volume, err := m.KVStore.GetVolume(request.Name)
 	if err != nil {
 		return err
+	}
+	if volume == nil {
+		return fmt.Errorf("cannot find volume %v", request.Name)
 	}
 
 	node, err := m.GetNode(volume.TargetNodeID)
@@ -118,7 +142,12 @@ func (m *VolumeManager) VolumeDetach(request *VolumeDetachRequest) (err error) {
 		return err
 	}
 
-	if err := volume.Detach(); err != nil {
+	if volume.State != types.VolumeStateHealthy || volume.State != types.VolumeStateDegraded {
+		return fmt.Errorf("invalid state to detach: %v", volume.State)
+	}
+
+	volume.DesireState = types.VolumeStateDetached
+	if err := m.KVStore.UpdateVolume(volume); err != nil {
 		return err
 	}
 
@@ -135,9 +164,12 @@ func (m *VolumeManager) VolumeDelete(request *VolumeDeleteRequest) (err error) {
 		}
 	}()
 
-	volume, err := m.GetVolume(request.Name)
+	volume, err := m.KVStore.GetVolume(request.Name)
 	if err != nil {
 		return err
+	}
+	if volume == nil {
+		return fmt.Errorf("cannot find volume %v", request.Name)
 	}
 
 	node, err := m.GetNode(volume.TargetNodeID)
@@ -145,7 +177,8 @@ func (m *VolumeManager) VolumeDelete(request *VolumeDeleteRequest) (err error) {
 		return err
 	}
 
-	if err := volume.Delete(); err != nil {
+	volume.DesireState = types.VolumeStateDeleted
+	if err := m.KVStore.UpdateVolume(volume); err != nil {
 		return err
 	}
 
@@ -155,16 +188,19 @@ func (m *VolumeManager) VolumeDelete(request *VolumeDeleteRequest) (err error) {
 	return nil
 }
 
-func (m *VolumeManager) SalvageVolume(request *VolumeSalvageRequest) (err error) {
+func (m *VolumeManager) VolumeSalvage(request *VolumeSalvageRequest) (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrap(err, "unable to salvage volume")
 		}
 	}()
 
-	volume, err := m.GetVolume(request.Name)
+	volume, err := m.KVStore.GetVolume(request.Name)
 	if err != nil {
 		return err
+	}
+	if volume == nil {
+		return fmt.Errorf("cannot find volume %v", request.Name)
 	}
 
 	node, err := m.GetNode(volume.TargetNodeID)
@@ -172,7 +208,26 @@ func (m *VolumeManager) SalvageVolume(request *VolumeSalvageRequest) (err error)
 		return err
 	}
 
-	if err := volume.Salvage(request.SalvageReplicaNames); err != nil {
+	if volume.State != types.VolumeStateFault {
+		return fmt.Errorf("invalid state to salvage: %v", volume.State)
+	}
+
+	for _, repName := range request.SalvageReplicaNames {
+		replica, err := m.KVStore.GetVolumeReplica(volume.Name, repName)
+		if err != nil {
+			return err
+		}
+		if replica.BadTimestamp == "" {
+			return fmt.Errorf("replica %v is not bad", repName)
+		}
+		replica.BadTimestamp = ""
+		if err := m.KVStore.UpdateVolumeReplica(replica); err != nil {
+			return err
+		}
+	}
+
+	volume.DesireState = types.VolumeStateDetached
+	if err := m.KVStore.UpdateVolume(volume); err != nil {
 		return err
 	}
 
@@ -180,4 +235,12 @@ func (m *VolumeManager) SalvageVolume(request *VolumeSalvageRequest) (err error)
 		return err
 	}
 	return nil
+}
+
+func (m *VolumeManager) ScheduleReplica(volume *types.VolumeInfo, replicas map[string]*types.ReplicaInfo) (string, error) {
+	node, err := m.GetRandomNode()
+	if err != nil {
+		return "", err
+	}
+	return node.ID, nil
 }

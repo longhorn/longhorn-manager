@@ -4,6 +4,21 @@ import (
 	"github.com/yasker/lm-rewrite/types"
 )
 
+type EventType string
+
+const (
+	EventTypeNotify = EventType("notify")
+)
+
+type Event struct {
+	Type       EventType
+	VolumeName string
+}
+
+type VolumeChan struct {
+	Notify chan struct{}
+}
+
 type VolumeCreateRequest struct {
 	Name                string `json:"name"`
 	Size                string `json:"size"`
@@ -34,7 +49,14 @@ type VolumeSalvageRequest struct {
 type Volume struct {
 	types.VolumeInfo
 
+	Controller  *types.ControllerInfo
+	Replicas    map[string]*types.ReplicaInfo
+	BadReplicas map[string]*types.ReplicaInfo
+
+	RebuildingReplica *types.ReplicaInfo
+
 	m *VolumeManager
+	//done chan struct{}
 }
 
 type Node struct {

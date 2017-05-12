@@ -36,6 +36,14 @@ type VolumeInfo struct {
 	KVMetadata
 }
 
+type InstanceType string
+
+const (
+	InstanceTypeNone       = InstanceType("")
+	InstanceTypeController = InstanceType("controller")
+	InstanceTypeReplica    = InstanceType("replica")
+)
+
 type InstanceInfo struct {
 	ID         string
 	Type       InstanceType

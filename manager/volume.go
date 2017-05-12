@@ -3,14 +3,17 @@ package manager
 import (
 	"fmt"
 
+	"github.com/pkg/errors"
+
 	"github.com/yasker/lm-rewrite/types"
+	"github.com/yasker/lm-rewrite/util"
 )
 
 func (m *VolumeManager) NewVolume(info *types.VolumeInfo) error {
 	if info.Name == "" || info.Size == 0 || info.NumberOfReplicas == 0 {
 		return fmt.Errorf("missing required parameter %+v", info)
 	}
-	vol, err := m.kv.GetVolume(info.Name)
+	vol, err := m.KVStore.GetVolume(info.Name)
 	if err != nil {
 		return err
 	}
@@ -18,7 +21,7 @@ func (m *VolumeManager) NewVolume(info *types.VolumeInfo) error {
 		return fmt.Errorf("volume %v already exists", info.Name)
 	}
 
-	if err := m.kv.CreateVolume(info); err != nil {
+	if err := m.KVStore.CreateVolume(info); err != nil {
 		return err
 	}
 
@@ -30,74 +33,166 @@ func (m *VolumeManager) GetVolume(volumeName string) (*Volume, error) {
 		return nil, fmt.Errorf("invalid empty volume name")
 	}
 
-	info, err := m.kv.GetVolume(volumeName)
+	info, err := m.KVStore.GetVolume(volumeName)
 	if err != nil {
 		return nil, err
 	}
 	if info == nil {
 		return nil, fmt.Errorf("cannot find volume %v", volumeName)
 	}
+	controller, err := m.KVStore.GetVolumeController(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	replicas, err := m.KVStore.ListVolumeReplicas(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	if replicas == nil {
+		replicas = make(map[string]*types.ReplicaInfo)
+	}
+
 	return &Volume{
 		VolumeInfo: *info,
+		Controller: controller,
+		Replicas:   replicas,
 		m:          m,
 	}, nil
 }
 
-func (v *Volume) Attach(nodeID string) error {
-	if v.State != types.VolumeStateDetached {
-		return fmt.Errorf("invalid state to attach: %v", v.State)
-	}
-
-	v.TargetNodeID = nodeID
-	v.DesireState = types.VolumeStateHealthy
-	if err := v.m.kv.UpdateVolume(&v.VolumeInfo); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (v *Volume) Detach() error {
-	if v.State != types.VolumeStateHealthy || v.State != types.VolumeStateDegraded {
-		return fmt.Errorf("invalid state to detach: %v", v.State)
-	}
-
-	v.DesireState = types.VolumeStateDetached
-	if err := v.m.kv.UpdateVolume(&v.VolumeInfo); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (v *Volume) Delete() error {
-	v.DesireState = types.VolumeStateDeleted
-	if err := v.m.kv.UpdateVolume(&v.VolumeInfo); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (v *Volume) Salvage(replicaNames []string) error {
-	if v.State != types.VolumeStateFault {
-		return fmt.Errorf("invalid state to salvage: %v", v.State)
-	}
-
-	for _, repName := range replicaNames {
-		replica, err := v.m.kv.GetVolumeReplica(v.Name, repName)
+func (v *Volume) Cleanup() (err error) {
+	defer func() {
 		if err != nil {
-			return err
+			err = errors.Wrap(err, "cannot cleanup stale replicas")
 		}
-		if replica.BadTimestamp == "" {
-			return fmt.Errorf("replica %v is not bad", repName)
-		}
-		replica.BadTimestamp = ""
-		if err := v.m.kv.UpdateVolumeReplica(replica); err != nil {
-			return err
+	}()
+
+	staleReplicas := map[string]*types.ReplicaInfo{}
+
+	for _, replica := range v.Replicas {
+		if replica.BadTimestamp != "" {
+			if util.TimestampAfterTimeout(replica.BadTimestamp, v.StaleReplicaTimeout) {
+				staleReplicas[replica.Name] = replica
+			}
 		}
 	}
 
-	v.DesireState = types.VolumeStateDetached
-	if err := v.m.kv.UpdateVolume(&v.VolumeInfo); err != nil {
+	for _, replica := range staleReplicas {
+		if err := v.deleteReplica(replica.Name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (v *Volume) create() (err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrap(err, "cannot create volume")
+		}
+	}()
+
+	created := 0
+	if len(v.Replicas) != 0 {
+		created = len(v.Replicas)
+	}
+	for i := 0; i < v.NumberOfReplicas-created; i++ {
+		if _, err := v.createReplica(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (v *Volume) start() (err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrap(err, "cannot start volume")
+		}
+	}()
+
+	startReplicas := map[string]*types.ReplicaInfo{}
+	for _, replica := range v.Replicas {
+		if replica.BadTimestamp != "" {
+			continue
+		}
+		if err := v.startReplica(replica.Name); err != nil {
+			return err
+		}
+		startReplicas[replica.Name] = replica
+	}
+	if len(startReplicas) == 0 {
+		return fmt.Errorf("cannot start with no replicas")
+	}
+	if v.Controller == nil {
+		if err := v.createController(startReplicas); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (v *Volume) stop() (err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrap(err, "cannot stop volume")
+		}
+	}()
+
+	if v.RebuildingReplica != nil {
+		if err := v.stopRebuild(); err != nil {
+			return err
+		}
+	}
+	if v.Controller != nil {
+		if err := v.deleteController(); err != nil {
+			return err
+		}
+	}
+	if v.Replicas != nil {
+		for name := range v.Replicas {
+			if err := v.stopReplica(name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (v *Volume) heal() (err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrap(err, "cannot heal volume")
+		}
+	}()
+
+	if v.Controller == nil {
+		return fmt.Errorf("cannot heal without controller")
+	}
+	if v.RebuildingReplica != nil {
+		return nil
+	}
+	if err := v.startRebuild(); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (v *Volume) destroy() (err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrap(err, "cannot destroy volume")
+		}
+	}()
+	if err := v.stop(); err != nil {
+		return err
+	}
+	if v.Replicas != nil {
+		for name := range v.Replicas {
+			if err := v.deleteReplica(name); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

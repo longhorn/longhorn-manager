@@ -206,3 +206,7 @@ func ExecuteWithTimeout(timeout time.Duration, binary string, args ...string) (s
 	}
 	return string(output), nil
 }
+
+func TimestampAfterTimeout(ts string, timeoutInMinutes int) bool {
+	return false
+}

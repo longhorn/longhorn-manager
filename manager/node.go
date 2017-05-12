@@ -7,21 +7,21 @@ import (
 )
 
 func (m *VolumeManager) RegisterNode() error {
-	currentInfo := m.orch.GetCurrentNode()
+	currentInfo := m.Orchestrator.GetCurrentNode()
 
-	existInfo, err := m.kv.GetNode(currentInfo.ID)
+	existInfo, err := m.KVStore.GetNode(currentInfo.ID)
 	if err != nil {
 		return err
 	}
 	if existInfo == nil {
-		if err := m.kv.CreateNode(currentInfo); err != nil {
+		if err := m.KVStore.CreateNode(currentInfo); err != nil {
 			return err
 		}
 	} else {
 		if err := kvstore.UpdateKVIndex(currentInfo, existInfo); err != nil {
 			return err
 		}
-		if err := m.kv.UpdateNode(currentInfo); err != nil {
+		if err := m.KVStore.UpdateNode(currentInfo); err != nil {
 			return err
 		}
 	}
@@ -37,12 +37,13 @@ func (m *VolumeManager) GetCurrentNode() *Node {
 }
 
 func (m *VolumeManager) GetNode(nodeID string) (*Node, error) {
-	info, err := m.kv.GetNode(nodeID)
+	info, err := m.KVStore.GetNode(nodeID)
 	if err != nil {
 		return nil, err
 	}
 	node := &Node{
 		NodeInfo: *info,
+		m:        m,
 	}
 	if err := node.Connect(); err != nil {
 		return nil, fmt.Errorf("fail to connect to node %v", info.ID)
@@ -59,5 +60,10 @@ func (n *Node) Connect() error {
 }
 
 func (n *Node) Notify(volumeName string) error {
+	event := Event{
+		Type:       EventTypeNotify,
+		VolumeName: volumeName,
+	}
+	n.m.EventChan <- event
 	return nil
 }

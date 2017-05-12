@@ -12,14 +12,6 @@ const (
 	ReplicaModeERR = ReplicaMode("ERR")
 )
 
-type InstanceType string
-
-const (
-	InstanceTypeNone       = InstanceType("")
-	InstanceTypeController = InstanceType("controller")
-	InstanceTypeReplica    = InstanceType("replica")
-)
-
 //type VolumeManager interface {
 //	Start() error
 //	Create(volume *VolumeInfo) (*VolumeInfo, error)
