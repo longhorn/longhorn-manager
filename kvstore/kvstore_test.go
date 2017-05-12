@@ -52,17 +52,17 @@ func (s *TestSuite) SetUpTest(c *C) {
 	etcdBackend, err := NewETCDBackend([]string{"http://" + etcdIP + ":2379"})
 	c.Assert(err, IsNil)
 
-	etcd, err := NewKVStore("/longhorn", etcdBackend)
+	etcd, err := NewKVStore("/longhorn_kvstore_test", etcdBackend)
 	c.Assert(err, IsNil)
 	s.etcd = etcd
 
-	err = s.etcd.kvNuclear("nuke key value store")
+	err = s.etcd.Nuclear("nuke key value store")
 	c.Assert(err, IsNil)
 }
 
 func (s *TestSuite) TeardownTest(c *C) {
 	if s.etcd != nil {
-		err := s.etcd.kvNuclear("nuke key value store")
+		err := s.etcd.Nuclear("nuke key value store")
 		c.Assert(err, IsNil)
 	}
 }

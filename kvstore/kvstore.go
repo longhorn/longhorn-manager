@@ -138,8 +138,8 @@ func (s *KVStore) GetSettings() (*types.SettingsInfo, error) {
 	return settings, nil
 }
 
-// kuNuclear is test only function, which will wipe all longhorn entries
-func (s *KVStore) kvNuclear(nuclearCode string) error {
+// Nuclear is test only function, which will wipe all longhorn entries
+func (s *KVStore) Nuclear(nuclearCode string) error {
 	if nuclearCode != "nuke key value store" {
 		return errors.Errorf("invalid nuclear code!")
 	}
