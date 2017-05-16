@@ -3,6 +3,8 @@ set -e
 
 cd $(dirname $0)/..
 
+args=$1
+
 mount --bind /host/dev /dev
 
 source ./scripts/common.sh
@@ -29,4 +31,4 @@ PACKAGES="$(find . -name '*.go' | xargs -I{} dirname {} | sort -u | grep -Ev '(.
 echo Packages: ${PACKAGES}
 
 [ "${ARCH}" == "amd64" ] && RACE=-race
-go test ${RACE} -cover ${PACKAGES}
+go test ${RACE} ${args} ${PACKAGES}

@@ -5,7 +5,7 @@ cd $(dirname $0)
 
 #./build
 ./validate
-./test
+./test -cover
 #./package
 #./integration-test
 
