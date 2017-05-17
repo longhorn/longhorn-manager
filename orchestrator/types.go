@@ -16,13 +16,20 @@ type Request struct {
 }
 
 type Orchestrator interface {
-	CreateController(request *Request) (*types.ControllerInfo, error)
-	CreateReplica(request *Request) (*types.ReplicaInfo, error)
+	CreateController(request *Request) (*Instance, error)
+	CreateReplica(request *Request) (*Instance, error)
 
-	StartInstance(request *Request) (*types.InstanceInfo, error)
-	StopInstance(request *Request) (*types.InstanceInfo, error)
+	StartInstance(request *Request) (*Instance, error)
+	StopInstance(request *Request) (*Instance, error)
 	DeleteInstance(request *Request) error
-	InspectInstance(request *Request) (*types.InstanceInfo, error)
+	InspectInstance(request *Request) (*Instance, error)
 
 	GetCurrentNode() *types.NodeInfo
+}
+
+type Instance struct {
+	ID      string
+	Name    string
+	Running bool
+	Address string
 }

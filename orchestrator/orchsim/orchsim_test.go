@@ -5,7 +5,6 @@ import (
 
 	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/orchestrator"
-	"github.com/yasker/lm-rewrite/types"
 
 	. "gopkg.in/check.v1"
 )
@@ -28,11 +27,6 @@ type TestSuite struct {
 var _ = Suite(&TestSuite{})
 
 func (s *TestSuite) TestBasic(c *C) {
-	var (
-		err      error
-		instance *types.InstanceInfo
-	)
-
 	engines := engineapi.NewEngineSimulatorCollection()
 	orch, err := NewOrchestratorSimulator(engines)
 	c.Assert(err, IsNil)
@@ -47,9 +41,7 @@ func (s *TestSuite) TestBasic(c *C) {
 		VolumeSize:   VolumeSize,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(replica1Instance.NodeID, Equals, CurrentNodeID)
 	c.Assert(replica1Instance.Name, Equals, Replica1Name)
-	c.Assert(replica1Instance.VolumeName, Equals, VolumeName)
 	c.Assert(replica1Instance.ID, Not(Equals), "")
 	c.Assert(replica1Instance.Address, Equals, "")
 	c.Assert(replica1Instance.Running, Equals, false)
@@ -62,7 +54,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	})
 	c.Assert(err, IsNil)
 
-	instance, err = orch.StartInstance(&orchestrator.Request{
+	instance, err := orch.StartInstance(&orchestrator.Request{
 		NodeID:       CurrentNodeID,
 		InstanceName: replica1Instance.Name,
 		VolumeName:   VolumeName,
@@ -71,7 +63,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	replica1Instance.Running = true
 	replica1Instance.Address = instance.Address
 	c.Assert(instance.Address, Not(Equals), "")
-	c.Assert(instance, DeepEquals, &replica1Instance.InstanceInfo)
+	c.Assert(instance, DeepEquals, replica1Instance)
 
 	instance, err = orch.StartInstance(&orchestrator.Request{
 		NodeID:       CurrentNodeID,
@@ -82,7 +74,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	replica2Instance.Running = true
 	replica2Instance.Address = instance.Address
 	c.Assert(instance.Address, Not(Equals), "")
-	c.Assert(instance, DeepEquals, &replica2Instance.InstanceInfo)
+	c.Assert(instance, DeepEquals, replica2Instance)
 
 	ctrlName := "controller-id-" + VolumeName
 	ctrlInstance, err := orch.CreateController(&orchestrator.Request{
@@ -96,10 +88,8 @@ func (s *TestSuite) TestBasic(c *C) {
 		},
 	})
 	c.Assert(err, IsNil)
-	c.Assert(ctrlInstance.NodeID, Equals, CurrentNodeID)
 	c.Assert(ctrlInstance.Name, Equals, ctrlName)
 	c.Assert(ctrlInstance.ID, Not(Equals), "")
-	c.Assert(ctrlInstance.VolumeName, Equals, VolumeName)
 	c.Assert(ctrlInstance.Running, Equals, true)
 	c.Assert(ctrlInstance.Address, Not(Equals), "")
 
@@ -119,7 +109,7 @@ func (s *TestSuite) TestBasic(c *C) {
 		VolumeName:   VolumeName,
 	})
 	c.Assert(err, IsNil)
-	c.Assert(instance, DeepEquals, &ctrlInstance.InstanceInfo)
+	c.Assert(instance, DeepEquals, ctrlInstance)
 
 	rep1IP := replica1Instance.Address
 	instance, err = orch.StopInstance(&orchestrator.Request{
@@ -130,7 +120,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(err, IsNil)
 	replica1Instance.Running = false
 	replica1Instance.Address = ""
-	c.Assert(instance, DeepEquals, &replica1Instance.InstanceInfo)
+	c.Assert(instance, DeepEquals, replica1Instance)
 
 	replicas, err = engine.GetReplicaStates()
 	c.Assert(err, IsNil)
