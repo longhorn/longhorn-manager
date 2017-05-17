@@ -7,12 +7,12 @@ import (
 )
 
 var (
-	VolumeName     = "vol"
-	VolumeSize     = "10G"
-	ControllerAddr = "ip-controller-" + VolumeName
-	Replica1Addr   = "ip-replica1-" + VolumeName
-	Replica2Addr   = "ip-replica2-" + VolumeName
-	Replica3Addr   = "ip-replica3-" + VolumeName
+	VolumeName           = "vol"
+	VolumeSize     int64 = 10 * 1024 * 1024 * 1024
+	ControllerAddr       = "ip-controller-" + VolumeName
+	Replica1Addr         = "ip-replica1-" + VolumeName
+	Replica2Addr         = "ip-replica2-" + VolumeName
+	Replica3Addr         = "ip-replica3-" + VolumeName
 )
 
 func Test(t *testing.T) { TestingT(t) }

@@ -58,7 +58,7 @@ func (s *OrchSim) CreateController(request *orchestrator.Request) (*types.Contro
 	}
 
 	if request.VolumeName == "" ||
-		request.VolumeSize == "" ||
+		request.VolumeSize == 0 ||
 		request.ReplicaURLs == nil {
 		return nil, fmt.Errorf("missing required field %+v", request)
 	}
@@ -102,7 +102,7 @@ func (s *OrchSim) CreateReplica(request *orchestrator.Request) (*types.ReplicaIn
 		return nil, fmt.Errorf("incorrect node, requested %v, current %v", request.NodeID,
 			s.currentNode.ID)
 	}
-	if request.InstanceName == "" || request.VolumeName == "" {
+	if request.InstanceName == "" || request.VolumeName == "" || request.VolumeSize == 0 {
 		return nil, fmt.Errorf("missing required field %+v", request)
 	}
 

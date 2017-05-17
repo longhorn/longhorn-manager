@@ -74,7 +74,7 @@ func (c *EngineSimulatorCollection) NewEngineClient(request *EngineClientRequest
 
 type EngineSimulator struct {
 	volumeName     string
-	volumeSize     string
+	volumeSize     int64
 	controllerAddr string
 	running        bool
 	replicas       map[string]*Replica

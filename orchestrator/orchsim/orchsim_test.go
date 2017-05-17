@@ -11,13 +11,13 @@ import (
 )
 
 var (
-	VolumeName     = "vol"
-	VolumeSize     = "10G"
-	ControllerName = VolumeName + "-controller"
-	Replica1Name   = VolumeName + "-replica1"
-	Replica2Name   = VolumeName + "-replica2"
-	Replica3Name   = VolumeName + "-replica3"
-	Replica4Name   = VolumeName + "-replica4"
+	VolumeName           = "vol"
+	VolumeSize     int64 = 10 * 1024 * 1024 * 1024
+	ControllerName       = VolumeName + "-controller"
+	Replica1Name         = VolumeName + "-replica1"
+	Replica2Name         = VolumeName + "-replica2"
+	Replica3Name         = VolumeName + "-replica3"
+	Replica4Name         = VolumeName + "-replica4"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -44,6 +44,7 @@ func (s *TestSuite) TestBasic(c *C) {
 		NodeID:       CurrentNodeID,
 		InstanceName: Replica1Name,
 		VolumeName:   VolumeName,
+		VolumeSize:   VolumeSize,
 	})
 	c.Assert(err, IsNil)
 	c.Assert(replica1Instance.NodeID, Equals, CurrentNodeID)
@@ -57,6 +58,7 @@ func (s *TestSuite) TestBasic(c *C) {
 		NodeID:       CurrentNodeID,
 		InstanceName: Replica2Name,
 		VolumeName:   VolumeName,
+		VolumeSize:   VolumeSize,
 	})
 	c.Assert(err, IsNil)
 

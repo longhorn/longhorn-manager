@@ -33,7 +33,7 @@ type EngineClientRequest struct {
 
 type EngineSimulatorRequest struct {
 	VolumeName     string
-	VolumeSize     string
+	VolumeSize     int64
 	ControllerAddr string
 	ReplicaAddrs   []string
 }
