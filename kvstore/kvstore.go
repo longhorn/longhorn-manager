@@ -50,7 +50,17 @@ func (s *KVStore) nodeKey(id string) string {
 	return filepath.Join(s.key(keyNodes), id)
 }
 
+func (s *KVStore) checkNode(node *types.NodeInfo) error {
+	if node.ID == "" || node.Name == "" || node.Address == "" {
+		return fmt.Errorf("BUG: missing required field %+v", node)
+	}
+	return nil
+}
+
 func (s *KVStore) CreateNode(node *types.NodeInfo) error {
+	if err := s.checkNode(node); err != nil {
+		return err
+	}
 	if err := s.b.Create(s.nodeKey(node.ID), node); err != nil {
 		return err
 	}
@@ -59,10 +69,20 @@ func (s *KVStore) CreateNode(node *types.NodeInfo) error {
 }
 
 func (s *KVStore) UpdateNode(node *types.NodeInfo) error {
+	if err := s.checkNode(node); err != nil {
+		return err
+	}
 	if err := s.b.Update(s.nodeKey(node.ID), node, node.KVIndex); err != nil {
 		return err
 	}
 	logrus.Infof("Add node %v name %v longhorn-manager address %v", node.ID, node.Name, node.Address)
+	return nil
+}
+
+func (s *KVStore) DeleteNode(nodeID string) error {
+	if err := s.b.Delete(s.nodeKey(nodeID)); err != nil {
+		return errors.Wrapf(err, "unable to delete node %v", nodeID)
+	}
 	return nil
 }
 

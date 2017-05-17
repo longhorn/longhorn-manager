@@ -98,6 +98,11 @@ func (s *TestSuite) testNode(c *C, st *KVStore) {
 	c.Assert(err, IsNil)
 	c.Assert(len(nodes), Equals, 0)
 
+	err = st.CreateNode(node1)
+	c.Assert(err, IsNil)
+	err = st.DeleteNode(node1.ID)
+	c.Assert(err, IsNil)
+
 	s.verifyConcurrentExecution(c, st.CreateNode, node1)
 
 	node, err = st.GetNode(node1.ID)
@@ -137,6 +142,16 @@ func (s *TestSuite) testNode(c *C, st *KVStore) {
 	c.Assert(nodes[node1.ID], DeepEquals, node1)
 	c.Assert(nodes[node2.ID], DeepEquals, node2)
 	c.Assert(nodes[node3.ID], DeepEquals, node3)
+
+	err = st.DeleteNode(node1.ID)
+	c.Assert(err, IsNil)
+
+	nodes, err = st.ListNodes()
+	c.Assert(err, IsNil)
+
+	c.Assert(nodes[node2.ID], DeepEquals, node2)
+	c.Assert(nodes[node3.ID], DeepEquals, node3)
+
 }
 
 func (s *TestSuite) TestSettings(c *C) {
@@ -187,6 +202,7 @@ func generateTestController(volName string) *types.ControllerInfo {
 			Type:       types.InstanceTypeController,
 			Name:       "controller-name-" + volName,
 			Running:    true,
+			Address:    "1.2.3.4",
 			VolumeName: volName,
 		},
 	}
@@ -199,6 +215,7 @@ func generateTestReplica(volName, replicaName string) *types.ReplicaInfo {
 			Type:       types.InstanceTypeReplica,
 			Name:       "replica-name-" + replicaName + "-" + volName,
 			Running:    true,
+			Address:    "5.6.7.8",
 			VolumeName: volName,
 		},
 		Mode: types.ReplicaModeRW,
@@ -209,6 +226,11 @@ func (s *TestSuite) createUpdateVerifyVolume(c *C, st *KVStore, volume *types.Vo
 	vol, err := st.GetVolume(volume.Name)
 	c.Assert(err, IsNil)
 	c.Assert(vol, IsNil)
+
+	err = st.CreateVolume(volume)
+	c.Assert(err, IsNil)
+	err = st.DeleteVolume(volume.Name)
+	c.Assert(err, IsNil)
 
 	s.verifyConcurrentExecution(c, st.CreateVolume, volume)
 
@@ -250,6 +272,11 @@ func (s *TestSuite) createUpdateVerifyController(c *C, st *KVStore, controller *
 	c.Assert(err, IsNil)
 	c.Assert(ctl, IsNil)
 
+	err = st.CreateVolumeController(controller)
+	c.Assert(err, IsNil)
+	err = st.DeleteVolumeController(controller.VolumeName)
+	c.Assert(err, IsNil)
+
 	s.verifyConcurrentExecution(c, st.CreateVolumeController, controller)
 
 	ctl, err = st.GetVolumeController(controller.VolumeName)
@@ -279,6 +306,11 @@ func (s *TestSuite) createUpdateVerifyReplica(c *C, st *KVStore, replica *types.
 	rep, err := st.GetVolumeReplica(replica.VolumeName, replica.Name)
 	c.Assert(err, IsNil)
 	c.Assert(rep, IsNil)
+
+	err = st.CreateVolumeReplica(replica)
+	c.Assert(err, IsNil)
+	err = st.DeleteVolumeReplica(replica.VolumeName, replica.Name)
+	c.Assert(err, IsNil)
 
 	s.verifyConcurrentExecution(c, st.CreateVolumeReplica, replica)
 
