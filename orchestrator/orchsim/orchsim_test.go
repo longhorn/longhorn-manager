@@ -43,10 +43,12 @@ func (s *TestSuite) TestBasic(c *C) {
 	replica1Instance, err := orch.CreateReplica(&orchestrator.Request{
 		NodeID:       CurrentNodeID,
 		InstanceName: Replica1Name,
+		VolumeName:   VolumeName,
 	})
 	c.Assert(err, IsNil)
 	c.Assert(replica1Instance.NodeID, Equals, CurrentNodeID)
 	c.Assert(replica1Instance.Name, Equals, Replica1Name)
+	c.Assert(replica1Instance.VolumeName, Equals, VolumeName)
 	c.Assert(replica1Instance.ID, Not(Equals), "")
 	c.Assert(replica1Instance.Address, Equals, "")
 	c.Assert(replica1Instance.Running, Equals, false)
@@ -54,12 +56,14 @@ func (s *TestSuite) TestBasic(c *C) {
 	replica2Instance, err := orch.CreateReplica(&orchestrator.Request{
 		NodeID:       CurrentNodeID,
 		InstanceName: Replica2Name,
+		VolumeName:   VolumeName,
 	})
 	c.Assert(err, IsNil)
 
 	instance, err = orch.StartInstance(&orchestrator.Request{
 		NodeID:       CurrentNodeID,
 		InstanceName: replica1Instance.Name,
+		VolumeName:   VolumeName,
 	})
 	c.Assert(err, IsNil)
 	replica1Instance.Running = true
@@ -70,6 +74,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	instance, err = orch.StartInstance(&orchestrator.Request{
 		NodeID:       CurrentNodeID,
 		InstanceName: replica2Instance.Name,
+		VolumeName:   VolumeName,
 	})
 	c.Assert(err, IsNil)
 	replica2Instance.Running = true
@@ -92,6 +97,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(ctrlInstance.NodeID, Equals, CurrentNodeID)
 	c.Assert(ctrlInstance.Name, Equals, ctrlName)
 	c.Assert(ctrlInstance.ID, Not(Equals), "")
+	c.Assert(ctrlInstance.VolumeName, Equals, VolumeName)
 	c.Assert(ctrlInstance.Running, Equals, true)
 	c.Assert(ctrlInstance.Address, Not(Equals), "")
 
@@ -108,6 +114,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	instance, err = orch.InspectInstance(&orchestrator.Request{
 		NodeID:       CurrentNodeID,
 		InstanceName: ctrlInstance.Name,
+		VolumeName:   VolumeName,
 	})
 	c.Assert(err, IsNil)
 	c.Assert(instance, DeepEquals, &ctrlInstance.InstanceInfo)
@@ -155,6 +162,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	instance, err = orch.InspectInstance(&orchestrator.Request{
 		NodeID:       CurrentNodeID,
 		InstanceName: ctrlInstance.Name,
+		VolumeName:   VolumeName,
 	})
 	c.Assert(err, ErrorMatches, "unable to find instance.*")
 }

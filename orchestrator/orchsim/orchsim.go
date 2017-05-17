@@ -87,11 +87,12 @@ func (s *OrchSim) CreateController(request *orchestrator.Request) (*types.Contro
 	}
 	return &types.ControllerInfo{
 		InstanceInfo: types.InstanceInfo{
-			ID:      instance.ID,
-			Name:    instance.Name,
-			NodeID:  s.currentNode.ID,
-			Address: instance.IP,
-			Running: instance.State == StateRunning,
+			ID:         instance.ID,
+			Name:       instance.Name,
+			VolumeName: request.VolumeName,
+			NodeID:     s.currentNode.ID,
+			Address:    instance.IP,
+			Running:    instance.State == StateRunning,
 		},
 	}, nil
 }
@@ -101,7 +102,7 @@ func (s *OrchSim) CreateReplica(request *orchestrator.Request) (*types.ReplicaIn
 		return nil, fmt.Errorf("incorrect node, requested %v, current %v", request.NodeID,
 			s.currentNode.ID)
 	}
-	if request.InstanceName == "" {
+	if request.InstanceName == "" || request.VolumeName == "" {
 		return nil, fmt.Errorf("missing required field %+v", request)
 	}
 
@@ -119,11 +120,12 @@ func (s *OrchSim) CreateReplica(request *orchestrator.Request) (*types.ReplicaIn
 	}
 	return &types.ReplicaInfo{
 		InstanceInfo: types.InstanceInfo{
-			ID:      instance.ID,
-			Name:    instance.Name,
-			NodeID:  s.currentNode.ID,
-			Address: instance.IP,
-			Running: instance.State == StateRunning,
+			ID:         instance.ID,
+			Name:       instance.Name,
+			VolumeName: request.VolumeName,
+			NodeID:     s.currentNode.ID,
+			Address:    instance.IP,
+			Running:    instance.State == StateRunning,
 		},
 
 		Mode:         "",
@@ -137,7 +139,7 @@ func (s *OrchSim) StartInstance(request *orchestrator.Request) (*types.InstanceI
 			s.currentNode.ID)
 	}
 
-	if request.InstanceName == "" {
+	if request.InstanceName == "" || request.VolumeName == "" {
 		return nil, fmt.Errorf("missing required field %+v", request)
 	}
 
@@ -156,11 +158,12 @@ func (s *OrchSim) StartInstance(request *orchestrator.Request) (*types.InstanceI
 		}
 	}
 	return &types.InstanceInfo{
-		ID:      instance.ID,
-		Name:    instance.Name,
-		NodeID:  s.currentNode.ID,
-		Address: instance.IP,
-		Running: instance.State == StateRunning,
+		ID:         instance.ID,
+		Name:       instance.Name,
+		VolumeName: request.VolumeName,
+		NodeID:     s.currentNode.ID,
+		Address:    instance.IP,
+		Running:    instance.State == StateRunning,
 	}, nil
 }
 
@@ -193,11 +196,12 @@ func (s *OrchSim) StopInstance(request *orchestrator.Request) (*types.InstanceIn
 		}
 	}
 	return &types.InstanceInfo{
-		ID:      instance.ID,
-		Name:    instance.Name,
-		NodeID:  s.currentNode.ID,
-		Address: instance.IP,
-		Running: instance.State == StateRunning,
+		ID:         instance.ID,
+		Name:       instance.Name,
+		VolumeName: request.VolumeName,
+		NodeID:     s.currentNode.ID,
+		Address:    instance.IP,
+		Running:    instance.State == StateRunning,
 	}, nil
 }
 
@@ -235,7 +239,7 @@ func (s *OrchSim) InspectInstance(request *orchestrator.Request) (*types.Instanc
 		return nil, fmt.Errorf("incorrect node, requested %v, current %v", request.NodeID,
 			s.currentNode.ID)
 	}
-	if request.InstanceName == "" {
+	if request.InstanceName == "" || request.VolumeName == "" {
 		return nil, fmt.Errorf("missing required field %+v", request)
 	}
 
@@ -247,11 +251,12 @@ func (s *OrchSim) InspectInstance(request *orchestrator.Request) (*types.Instanc
 		return nil, err
 	}
 	return &types.InstanceInfo{
-		ID:      instance.ID,
-		Name:    instance.Name,
-		NodeID:  s.currentNode.ID,
-		Address: instance.IP,
-		Running: instance.State == StateRunning,
+		ID:         instance.ID,
+		Name:       instance.Name,
+		VolumeName: request.VolumeName,
+		NodeID:     s.currentNode.ID,
+		Address:    instance.IP,
+		Running:    instance.State == StateRunning,
 	}, nil
 }
 
