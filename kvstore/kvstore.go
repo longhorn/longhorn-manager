@@ -12,8 +12,8 @@ import (
 )
 
 type Backend interface {
-	Create(key string, obj interface{}) error
-	Update(key string, obj interface{}, index uint64) error
+	Create(key string, obj interface{}) (uint64, error)
+	Update(key string, obj interface{}, index uint64) (uint64, error)
 	Get(key string, obj interface{}) (uint64, error)
 	Delete(key string) error
 	Keys(prefix string) ([]string, error)
@@ -61,9 +61,11 @@ func (s *KVStore) CreateNode(node *types.NodeInfo) error {
 	if err := s.checkNode(node); err != nil {
 		return err
 	}
-	if err := s.b.Create(s.nodeKey(node.ID), node); err != nil {
+	index, err := s.b.Create(s.nodeKey(node.ID), node)
+	if err != nil {
 		return err
 	}
+	node.KVIndex = index
 	logrus.Infof("Add node %v name %v longhorn-manager address %v", node.ID, node.Name, node.Address)
 	return nil
 }
@@ -72,9 +74,11 @@ func (s *KVStore) UpdateNode(node *types.NodeInfo) error {
 	if err := s.checkNode(node); err != nil {
 		return err
 	}
-	if err := s.b.Update(s.nodeKey(node.ID), node, node.KVIndex); err != nil {
+	index, err := s.b.Update(s.nodeKey(node.ID), node, node.KVIndex)
+	if err != nil {
 		return err
 	}
+	node.KVIndex = index
 	logrus.Infof("Add node %v name %v longhorn-manager address %v", node.ID, node.Name, node.Address)
 	return nil
 }
@@ -131,16 +135,20 @@ func (s *KVStore) settingsKey() string {
 }
 
 func (s *KVStore) CreateSettings(settings *types.SettingsInfo) error {
-	if err := s.b.Create(s.settingsKey(), settings); err != nil {
+	index, err := s.b.Create(s.settingsKey(), settings)
+	if err != nil {
 		return err
 	}
+	settings.KVIndex = index
 	return nil
 }
 
 func (s *KVStore) UpdateSettings(settings *types.SettingsInfo) error {
-	if err := s.b.Update(s.settingsKey(), settings, settings.KVIndex); err != nil {
+	index, err := s.b.Update(s.settingsKey(), settings, settings.KVIndex)
+	if err != nil {
 		return err
 	}
+	settings.KVIndex = index
 	return nil
 }
 

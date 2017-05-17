@@ -36,31 +36,33 @@ func NewETCDBackend(servers []string) (*ETCDBackend, error) {
 	return backend, nil
 }
 
-func (s *ETCDBackend) Create(key string, obj interface{}) error {
+func (s *ETCDBackend) Create(key string, obj interface{}) (uint64, error) {
 	value, err := json.Marshal(obj)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	if _, err := s.kapi.Create(context.Background(), key, string(value)); err != nil {
-		return err
+	resp, err := s.kapi.Create(context.Background(), key, string(value))
+	if err != nil {
+		return 0, err
 	}
-	return nil
+	return resp.Node.ModifiedIndex, nil
 }
 
-func (s *ETCDBackend) Update(key string, obj interface{}, index uint64) error {
+func (s *ETCDBackend) Update(key string, obj interface{}, index uint64) (uint64, error) {
 	if index == 0 {
-		return fmt.Errorf("kvstore index cannot be 0")
+		return 0, fmt.Errorf("kvstore index cannot be 0")
 	}
 	value, err := json.Marshal(obj)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	if _, err := s.kapi.Set(context.Background(), key, string(value), &eCli.SetOptions{
+	resp, err := s.kapi.Set(context.Background(), key, string(value), &eCli.SetOptions{
 		PrevIndex: index,
-	}); err != nil {
-		return err
+	})
+	if err != nil {
+		return 0, err
 	}
-	return nil
+	return resp.Node.ModifiedIndex, nil
 }
 
 func (s *ETCDBackend) IsNotFoundError(err error) bool {

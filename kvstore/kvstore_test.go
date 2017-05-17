@@ -100,6 +100,9 @@ func (s *TestSuite) testNode(c *C, st *KVStore) {
 
 	err = st.CreateNode(node1)
 	c.Assert(err, IsNil)
+	node1.Address = "127.0.0.1"
+	err = st.UpdateNode(node1)
+	c.Assert(err, IsNil)
 	err = st.DeleteNode(node1.ID)
 	c.Assert(err, IsNil)
 
@@ -229,6 +232,9 @@ func (s *TestSuite) createUpdateVerifyVolume(c *C, st *KVStore, volume *types.Vo
 
 	err = st.CreateVolume(volume)
 	c.Assert(err, IsNil)
+	volume.StaleReplicaTimeout = 3
+	err = st.UpdateVolume(volume)
+	c.Assert(err, IsNil)
 	err = st.DeleteVolume(volume.Name)
 	c.Assert(err, IsNil)
 
@@ -274,6 +280,9 @@ func (s *TestSuite) createUpdateVerifyController(c *C, st *KVStore, controller *
 
 	err = st.CreateVolumeController(controller)
 	c.Assert(err, IsNil)
+	controller.NodeID = "123"
+	err = st.UpdateVolumeController(controller)
+	c.Assert(err, IsNil)
 	err = st.DeleteVolumeController(controller.VolumeName)
 	c.Assert(err, IsNil)
 
@@ -308,6 +317,9 @@ func (s *TestSuite) createUpdateVerifyReplica(c *C, st *KVStore, replica *types.
 	c.Assert(rep, IsNil)
 
 	err = st.CreateVolumeReplica(replica)
+	c.Assert(err, IsNil)
+	replica.NodeID = "123"
+	err = st.UpdateVolumeReplica(replica)
 	c.Assert(err, IsNil)
 	err = st.DeleteVolumeReplica(replica.VolumeName, replica.Name)
 	c.Assert(err, IsNil)
@@ -415,26 +427,31 @@ func (s *TestSuite) verifyConcurrentExecution(c *C, f interface{}, obj interface
 
 	for i := 0; i < ConcurrentThread; i++ {
 		wg.Add(1)
-		go func() {
+		go func(obj interface{}) {
 			var err error
 			defer wg.Done()
 
 			switch obj.(type) {
 			case *types.VolumeInfo:
-				err = f.(func(*types.VolumeInfo) error)(obj.(*types.VolumeInfo))
+				info := *(obj.(*types.VolumeInfo))
+				err = f.(func(*types.VolumeInfo) error)(&info)
 			case *types.ControllerInfo:
-				err = f.(func(*types.ControllerInfo) error)(obj.(*types.ControllerInfo))
+				info := *(obj.(*types.ControllerInfo))
+				err = f.(func(*types.ControllerInfo) error)(&info)
 			case *types.ReplicaInfo:
-				err = f.(func(*types.ReplicaInfo) error)(obj.(*types.ReplicaInfo))
+				info := *(obj.(*types.ReplicaInfo))
+				err = f.(func(*types.ReplicaInfo) error)(&info)
 			case *types.NodeInfo:
-				err = f.(func(*types.NodeInfo) error)(obj.(*types.NodeInfo))
+				info := *(obj.(*types.NodeInfo))
+				err = f.(func(*types.NodeInfo) error)(&info)
 			case *types.SettingsInfo:
-				err = f.(func(*types.SettingsInfo) error)(obj.(*types.SettingsInfo))
+				info := *(obj.(*types.SettingsInfo))
+				err = f.(func(*types.SettingsInfo) error)(&info)
 			}
 			if err != nil {
 				atomic.AddInt32(&failureCount, 1)
 			}
-		}()
+		}(obj)
 	}
 
 	wg.Wait()

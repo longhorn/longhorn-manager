@@ -74,14 +74,24 @@ func (s *KVStore) CreateVolume(volume *types.VolumeInfo) error {
 	if err := s.checkVolume(volume); err != nil {
 		return err
 	}
-	return s.b.Create(s.NewVolumeKeyFromName(volume.Name).Base(), volume)
+	index, err := s.b.Create(s.NewVolumeKeyFromName(volume.Name).Base(), volume)
+	if err != nil {
+		return err
+	}
+	volume.KVIndex = index
+	return nil
 }
 
 func (s *KVStore) UpdateVolume(volume *types.VolumeInfo) error {
 	if err := s.checkVolume(volume); err != nil {
 		return err
 	}
-	return s.b.Update(s.NewVolumeKeyFromName(volume.Name).Base(), volume, volume.KVIndex)
+	index, err := s.b.Update(s.NewVolumeKeyFromName(volume.Name).Base(), volume, volume.KVIndex)
+	if err != nil {
+		return err
+	}
+	volume.KVIndex = index
+	return nil
 }
 
 func (s *KVStore) checkVolumeInstance(instance *types.InstanceInfo) error {
@@ -98,28 +108,48 @@ func (s *KVStore) CreateVolumeController(controller *types.ControllerInfo) error
 	if err := s.checkVolumeInstance(&controller.InstanceInfo); err != nil {
 		return err
 	}
-	return s.b.Create(s.NewVolumeKeyFromName(controller.VolumeName).Controller(), controller)
+	index, err := s.b.Create(s.NewVolumeKeyFromName(controller.VolumeName).Controller(), controller)
+	if err != nil {
+		return err
+	}
+	controller.KVIndex = index
+	return nil
 }
 
 func (s *KVStore) UpdateVolumeController(controller *types.ControllerInfo) error {
 	if err := s.checkVolumeInstance(&controller.InstanceInfo); err != nil {
 		return err
 	}
-	return s.b.Update(s.NewVolumeKeyFromName(controller.VolumeName).Controller(), controller, controller.KVIndex)
+	index, err := s.b.Update(s.NewVolumeKeyFromName(controller.VolumeName).Controller(), controller, controller.KVIndex)
+	if err != nil {
+		return err
+	}
+	controller.KVIndex = index
+	return nil
 }
 
 func (s *KVStore) CreateVolumeReplica(replica *types.ReplicaInfo) error {
 	if err := s.checkVolumeInstance(&replica.InstanceInfo); err != nil {
 		return err
 	}
-	return s.b.Create(s.NewVolumeKeyFromName(replica.VolumeName).Replica(replica.Name), replica)
+	index, err := s.b.Create(s.NewVolumeKeyFromName(replica.VolumeName).Replica(replica.Name), replica)
+	if err != nil {
+		return err
+	}
+	replica.KVIndex = index
+	return nil
 }
 
 func (s *KVStore) UpdateVolumeReplica(replica *types.ReplicaInfo) error {
 	if err := s.checkVolumeInstance(&replica.InstanceInfo); err != nil {
 		return err
 	}
-	return s.b.Update(s.NewVolumeKeyFromName(replica.VolumeName).Replica(replica.Name), replica, replica.KVIndex)
+	index, err := s.b.Update(s.NewVolumeKeyFromName(replica.VolumeName).Replica(replica.Name), replica, replica.KVIndex)
+	if err != nil {
+		return err
+	}
+	replica.KVIndex = index
+	return nil
 }
 
 func (s *KVStore) GetVolume(id string) (*types.VolumeInfo, error) {
