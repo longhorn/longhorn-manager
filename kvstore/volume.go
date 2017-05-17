@@ -190,21 +190,21 @@ func (s *KVStore) getVolumeReplicasByKey(key string) (map[string]*types.ReplicaI
 
 func (s *KVStore) DeleteVolumeController(volumeName string) error {
 	if err := s.b.Delete(s.NewVolumeKeyFromName(volumeName).Controller()); err != nil {
-		return errors.Wrapf(err, "unable to remove controller of volume %v", volumeName)
+		return errors.Wrapf(err, "unable to delete controller of volume %v", volumeName)
 	}
 	return nil
 }
 
 func (s *KVStore) DeleteVolumeReplica(volumeName, replicaName string) error {
 	if err := s.b.Delete(s.NewVolumeKeyFromName(volumeName).Replica(replicaName)); err != nil {
-		return errors.Wrapf(err, "unable to remove replica %v of volume %v", replicaName, volumeName)
+		return errors.Wrapf(err, "unable to delete replica %v of volume %v", replicaName, volumeName)
 	}
 	return nil
 }
 
 func (s *KVStore) DeleteVolume(id string) error {
 	if err := s.b.Delete(s.volumeRootKey(id)); err != nil {
-		return errors.Wrap(err, "unable to remove volume")
+		return errors.Wrap(err, "unable to delete volume")
 	}
 	return nil
 }

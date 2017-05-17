@@ -12,7 +12,6 @@ type Request struct {
 	VolumeName string
 	VolumeSize string
 
-	EngineImage string
 	ReplicaURLs []string
 }
 
@@ -22,7 +21,7 @@ type Orchestrator interface {
 
 	StartInstance(request *Request) (*types.InstanceInfo, error)
 	StopInstance(request *Request) (*types.InstanceInfo, error)
-	RemoveInstance(request *Request) error
+	DeleteInstance(request *Request) error
 	InspectInstance(request *Request) (*types.InstanceInfo, error)
 
 	GetCurrentNode() *types.NodeInfo

@@ -201,7 +201,7 @@ func (s *OrchSim) StopInstance(request *orchestrator.Request) (*types.InstanceIn
 	}, nil
 }
 
-func (s *OrchSim) RemoveInstance(request *orchestrator.Request) error {
+func (s *OrchSim) DeleteInstance(request *orchestrator.Request) error {
 	if request.NodeID != s.currentNode.ID {
 		return fmt.Errorf("incorrect node, requested %v, current %v", request.NodeID,
 			s.currentNode.ID)
@@ -227,7 +227,7 @@ func (s *OrchSim) RemoveInstance(request *orchestrator.Request) error {
 		}
 	}
 
-	return s.removeRecord(request.InstanceName)
+	return s.deleteRecord(request.InstanceName)
 }
 
 func (s *OrchSim) InspectInstance(request *orchestrator.Request) (*types.InstanceInfo, error) {
@@ -286,7 +286,7 @@ func (s *OrchSim) getRecord(instanceName string) (*InstanceRecord, error) {
 }
 
 // Must be locked
-func (s *OrchSim) removeRecord(instanceName string) error {
+func (s *OrchSim) deleteRecord(instanceName string) error {
 	if s.records[instanceName] == nil {
 		return fmt.Errorf("unable to find instance %v", instanceName)
 	}

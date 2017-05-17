@@ -129,7 +129,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(replicas[rep1IP].Mode, Equals, engineapi.ReplicaModeERR)
 	c.Assert(replicas[replica2Instance.Address].Mode, Equals, engineapi.ReplicaModeRW)
 
-	err = orch.RemoveInstance(&orchestrator.Request{
+	err = orch.DeleteInstance(&orchestrator.Request{
 		NodeID:       CurrentNodeID,
 		InstanceName: replica1Instance.Name,
 		VolumeName:   VolumeName,
@@ -142,7 +142,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(replicas[rep1IP].Mode, Equals, engineapi.ReplicaModeERR)
 	c.Assert(replicas[replica2Instance.Address].Mode, Equals, engineapi.ReplicaModeRW)
 
-	err = orch.RemoveInstance(&orchestrator.Request{
+	err = orch.DeleteInstance(&orchestrator.Request{
 		NodeID:       CurrentNodeID,
 		InstanceName: ctrlInstance.Name,
 		VolumeName:   VolumeName,
