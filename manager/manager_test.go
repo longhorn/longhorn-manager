@@ -62,11 +62,12 @@ func (s *TestSuite) TestBasic(c *C) {
 	engines := engineapi.NewEngineSimulatorCollection()
 	orch, err := orchsim.NewOrchestratorSimulator(engines)
 	c.Assert(err, IsNil)
+	rpc := NewMockRPCManager()
 
 	currentNode := orch.GetCurrentNode()
 	c.Assert(currentNode, NotNil)
 
-	manager, err := NewVolumeManager(s.etcd, orch, engines)
+	manager, err := NewVolumeManager(s.etcd, orch, engines, rpc)
 	c.Assert(err, IsNil)
 
 	err = manager.VolumeCreate(&VolumeCreateRequest{

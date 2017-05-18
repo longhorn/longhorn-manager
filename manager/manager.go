@@ -19,6 +19,7 @@ type VolumeManager struct {
 	kv      *kvstore.KVStore
 	orch    orchestrator.Orchestrator
 	engines engineapi.EngineClientCollection
+	rpc     RPCManager
 
 	EventChan           chan Event
 	managedVolumes      map[string]VolumeChan
@@ -27,16 +28,19 @@ type VolumeManager struct {
 
 func NewVolumeManager(kv *kvstore.KVStore,
 	orch orchestrator.Orchestrator,
-	engines engineapi.EngineClientCollection) (*VolumeManager, error) {
+	engines engineapi.EngineClientCollection,
+	rpc RPCManager) (*VolumeManager, error) {
 	manager := &VolumeManager{
 		kv:      kv,
 		orch:    orch,
 		engines: engines,
+		rpc:     rpc,
 
 		EventChan:           make(chan Event),
 		managedVolumes:      map[string]VolumeChan{},
 		managedVolumesMutex: &sync.Mutex{},
 	}
+	rpc.SetCallbackChan(manager.EventChan)
 	if err := manager.RegisterNode(); err != nil {
 		return nil, err
 	}

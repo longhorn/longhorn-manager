@@ -2,10 +2,13 @@ package manager
 
 import (
 	"fmt"
-	"math/rand"
 	"time"
 
+	"github.com/Sirupsen/logrus"
+
 	"github.com/yasker/lm-rewrite/kvstore"
+	"github.com/yasker/lm-rewrite/types"
+	"github.com/yasker/lm-rewrite/util"
 )
 
 var (
@@ -36,19 +39,22 @@ func (m *VolumeManager) RegisterNode() error {
 		NodeInfo: *currentInfo,
 		m:        m,
 	}
+	if err := m.rpc.StartServer(currentInfo.Address); err != nil {
+		return err
+	}
 	go m.nodeHealthCheckin()
-	go m.rpc.startServer(currentInfo.Address)
 	return nil
 }
 
 func (m *VolumeManager) nodeHealthCheckin() {
-	info := m.currentNode.NodeInfo
+	info := &m.currentNode.NodeInfo
 	for {
+		//TODO If KVIndex of the node changed outside of this node, it will fail to update
 		info.LastCheckin = util.Now()
 		if err := m.kv.UpdateNode(info); err != nil {
 			logrus.Errorf("cannot update node checkin in kvstore: %v", err)
 		}
-		time.Sleep(NodeCheckinIntervalInSeconds * time.Second)
+		time.Sleep(time.Duration(NodeCheckinIntervalInSeconds) * time.Second)
 	}
 }
 
@@ -74,29 +80,31 @@ func (m *VolumeManager) GetRandomNode() (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	for i := 0; i < len(perm); i++ {
-		node = nodes[perm[i]]
-		if !util.TimestampAfterTimeout(node.LastCheckin, NodeCheckinMaximumGap) {
+	// map is random in Go
+	for _, n := range nodes {
+		if !util.TimestampAfterTimeout(n.LastCheckin, NodeCheckinMaximumGap) {
+			node = n
 			break
 		}
 		logrus.Warnf("node %v(%v) is not healthy, last checkin at %v, trying next",
-			node.Name, node.Address, node.LastCheckin)
+			n.Name, n.Address, n.LastCheckin)
 	}
 
-	return node, nil
+	if node == nil {
+		return nil, fmt.Errorf("cannot find healthy node")
+	}
+	return &Node{
+		NodeInfo: *node,
+		m:        m,
+	}, nil
 }
 
 func (n *Node) Notify(volumeName string) error {
-	conn, err := m.rpc.Connect(node.Address)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	if _, err := conn.NodeNotify(&Event{
-		Type:       EventTypeNotify,
-		VolumeName: volumeName,
-	}); err != nil {
+	if err := n.m.rpc.NodeNotify(n.Address,
+		&Event{
+			Type:       EventTypeNotify,
+			VolumeName: volumeName,
+		}); err != nil {
 		return err
 	}
 	return nil

@@ -64,3 +64,10 @@ type Node struct {
 
 	m *VolumeManager
 }
+
+type RPCManager interface {
+	StartServer(address string) error
+
+	SetCallbackChan(ch chan Event)
+	NodeNotify(address string, event *Event) error
+}
