@@ -79,7 +79,6 @@ func (s *KVStore) UpdateNode(node *types.NodeInfo) error {
 		return err
 	}
 	node.KVIndex = index
-	logrus.Infof("Add node %v name %v longhorn-manager address %v", node.ID, node.Name, node.Address)
 	return nil
 }
 

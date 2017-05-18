@@ -2,8 +2,15 @@ package manager
 
 import (
 	"fmt"
+	"math/rand"
+	"time"
 
 	"github.com/yasker/lm-rewrite/kvstore"
+)
+
+var (
+	NodeCheckinIntervalInSeconds = 60
+	NodeCheckinMaximumGap        = 2 * NodeCheckinIntervalInSeconds
 )
 
 func (m *VolumeManager) RegisterNode() error {
@@ -29,7 +36,20 @@ func (m *VolumeManager) RegisterNode() error {
 		NodeInfo: *currentInfo,
 		m:        m,
 	}
+	go m.nodeHealthCheckin()
+	go m.rpc.startServer(currentInfo.Address)
 	return nil
+}
+
+func (m *VolumeManager) nodeHealthCheckin() {
+	info := m.currentNode.NodeInfo
+	for {
+		info.LastCheckin = util.Now()
+		if err := m.kv.UpdateNode(info); err != nil {
+			logrus.Errorf("cannot update node checkin in kvstore: %v", err)
+		}
+		time.Sleep(NodeCheckinIntervalInSeconds * time.Second)
+	}
 }
 
 func (m *VolumeManager) GetCurrentNode() *Node {
@@ -45,25 +65,39 @@ func (m *VolumeManager) GetNode(nodeID string) (*Node, error) {
 		NodeInfo: *info,
 		m:        m,
 	}
-	if err := node.Connect(); err != nil {
-		return nil, fmt.Errorf("fail to connect to node %v", info.ID)
-	}
 	return node, nil
 }
 
 func (m *VolumeManager) GetRandomNode() (*Node, error) {
-	return m.GetCurrentNode(), nil
-}
+	var node *types.NodeInfo
+	nodes, err := m.kv.ListNodes()
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < len(perm); i++ {
+		node = nodes[perm[i]]
+		if !util.TimestampAfterTimeout(node.LastCheckin, NodeCheckinMaximumGap) {
+			break
+		}
+		logrus.Warnf("node %v(%v) is not healthy, last checkin at %v, trying next",
+			node.Name, node.Address, node.LastCheckin)
+	}
 
-func (n *Node) Connect() error {
-	return nil
+	return node, nil
 }
 
 func (n *Node) Notify(volumeName string) error {
-	event := Event{
+	conn, err := m.rpc.Connect(node.Address)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	if _, err := conn.NodeNotify(&Event{
 		Type:       EventTypeNotify,
 		VolumeName: volumeName,
+	}); err != nil {
+		return err
 	}
-	n.m.EventChan <- event
 	return nil
 }

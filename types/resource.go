@@ -67,10 +67,19 @@ type ReplicaInfo struct {
 	BadTimestamp string
 }
 
+type NodeState string
+
+const (
+	NodeStateUp   = NodeState("up")
+	NodeStateDown = NodeState("down")
+)
+
 type NodeInfo struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Address string `json:"address"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Address     string    `json:"address"`
+	State       NodeState `json:"state"`
+	LastCheckin string    `json:"lastCheckin"`
 
 	KVMetadata
 }

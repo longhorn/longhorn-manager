@@ -71,7 +71,7 @@ func (v *Volume) Cleanup() (err error) {
 
 	for _, replica := range v.Replicas {
 		if replica.BadTimestamp != "" {
-			if util.TimestampAfterTimeout(replica.BadTimestamp, v.StaleReplicaTimeout) {
+			if util.TimestampAfterTimeout(replica.BadTimestamp, v.StaleReplicaTimeout*60) {
 				staleReplicas[replica.Name] = replica
 			}
 		}
