@@ -16,9 +16,9 @@ import (
 type VolumeManager struct {
 	currentNode *Node
 
-	KVStore      *kvstore.KVStore
-	Orchestrator orchestrator.Orchestrator
-	EngineAPI    engineapi.EngineClientCollection
+	kv      *kvstore.KVStore
+	orch    orchestrator.Orchestrator
+	engines engineapi.EngineClientCollection
 
 	EventChan           chan Event
 	managedVolumes      map[string]VolumeChan
@@ -29,9 +29,9 @@ func NewVolumeManager(kv *kvstore.KVStore,
 	orch orchestrator.Orchestrator,
 	engines engineapi.EngineClientCollection) (*VolumeManager, error) {
 	manager := &VolumeManager{
-		KVStore:      kv,
-		Orchestrator: orch,
-		EngineAPI:    engines,
+		kv:      kv,
+		orch:    orch,
+		engines: engines,
 
 		EventChan:           make(chan Event),
 		managedVolumes:      map[string]VolumeChan{},
@@ -93,7 +93,7 @@ func (m *VolumeManager) VolumeAttach(request *VolumeAttachRequest) (err error) {
 		}
 	}()
 
-	volume, err := m.KVStore.GetVolume(request.Name)
+	volume, err := m.kv.GetVolume(request.Name)
 	if err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func (m *VolumeManager) VolumeAttach(request *VolumeAttachRequest) (err error) {
 
 	volume.TargetNodeID = request.NodeID
 	volume.DesireState = types.VolumeStateHealthy
-	if err := m.KVStore.UpdateVolume(volume); err != nil {
+	if err := m.kv.UpdateVolume(volume); err != nil {
 		return err
 	}
 
@@ -129,7 +129,7 @@ func (m *VolumeManager) VolumeDetach(request *VolumeDetachRequest) (err error) {
 		}
 	}()
 
-	volume, err := m.KVStore.GetVolume(request.Name)
+	volume, err := m.kv.GetVolume(request.Name)
 	if err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func (m *VolumeManager) VolumeDetach(request *VolumeDetachRequest) (err error) {
 	}
 
 	volume.DesireState = types.VolumeStateDetached
-	if err := m.KVStore.UpdateVolume(volume); err != nil {
+	if err := m.kv.UpdateVolume(volume); err != nil {
 		return err
 	}
 
@@ -164,7 +164,7 @@ func (m *VolumeManager) VolumeDelete(request *VolumeDeleteRequest) (err error) {
 		}
 	}()
 
-	volume, err := m.KVStore.GetVolume(request.Name)
+	volume, err := m.kv.GetVolume(request.Name)
 	if err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func (m *VolumeManager) VolumeDelete(request *VolumeDeleteRequest) (err error) {
 	}
 
 	volume.DesireState = types.VolumeStateDeleted
-	if err := m.KVStore.UpdateVolume(volume); err != nil {
+	if err := m.kv.UpdateVolume(volume); err != nil {
 		return err
 	}
 
@@ -195,7 +195,7 @@ func (m *VolumeManager) VolumeSalvage(request *VolumeSalvageRequest) (err error)
 		}
 	}()
 
-	volume, err := m.KVStore.GetVolume(request.Name)
+	volume, err := m.kv.GetVolume(request.Name)
 	if err != nil {
 		return err
 	}
@@ -213,7 +213,7 @@ func (m *VolumeManager) VolumeSalvage(request *VolumeSalvageRequest) (err error)
 	}
 
 	for _, repName := range request.SalvageReplicaNames {
-		replica, err := m.KVStore.GetVolumeReplica(volume.Name, repName)
+		replica, err := m.kv.GetVolumeReplica(volume.Name, repName)
 		if err != nil {
 			return err
 		}
@@ -221,13 +221,13 @@ func (m *VolumeManager) VolumeSalvage(request *VolumeSalvageRequest) (err error)
 			return fmt.Errorf("replica %v is not bad", repName)
 		}
 		replica.BadTimestamp = ""
-		if err := m.KVStore.UpdateVolumeReplica(replica); err != nil {
+		if err := m.kv.UpdateVolumeReplica(replica); err != nil {
 			return err
 		}
 	}
 
 	volume.DesireState = types.VolumeStateDetached
-	if err := m.KVStore.UpdateVolume(volume); err != nil {
+	if err := m.kv.UpdateVolume(volume); err != nil {
 		return err
 	}
 

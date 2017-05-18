@@ -7,21 +7,21 @@ import (
 )
 
 func (m *VolumeManager) RegisterNode() error {
-	currentInfo := m.Orchestrator.GetCurrentNode()
+	currentInfo := m.orch.GetCurrentNode()
 
-	existInfo, err := m.KVStore.GetNode(currentInfo.ID)
+	existInfo, err := m.kv.GetNode(currentInfo.ID)
 	if err != nil {
 		return err
 	}
 	if existInfo == nil {
-		if err := m.KVStore.CreateNode(currentInfo); err != nil {
+		if err := m.kv.CreateNode(currentInfo); err != nil {
 			return err
 		}
 	} else {
 		if err := kvstore.UpdateKVIndex(currentInfo, existInfo); err != nil {
 			return err
 		}
-		if err := m.KVStore.UpdateNode(currentInfo); err != nil {
+		if err := m.kv.UpdateNode(currentInfo); err != nil {
 			return err
 		}
 	}
@@ -37,7 +37,7 @@ func (m *VolumeManager) GetCurrentNode() *Node {
 }
 
 func (m *VolumeManager) GetNode(nodeID string) (*Node, error) {
-	info, err := m.KVStore.GetNode(nodeID)
+	info, err := m.kv.GetNode(nodeID)
 	if err != nil {
 		return nil, err
 	}

@@ -111,7 +111,7 @@ func (v *Volume) RefreshState() (err error) {
 
 	engineReps := map[string]*engineapi.Replica{}
 	if v.Controller != nil {
-		engine, err := v.m.EngineAPI.NewEngineClient(&engineapi.EngineClientRequest{
+		engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
 			VolumeName:     v.Name,
 			ControllerAddr: v.Controller.Address + ControllerPort,
 		})

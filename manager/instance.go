@@ -30,7 +30,7 @@ func (v *Volume) createReplica() (replicaName string, err error) {
 	if err != nil {
 		return "", err
 	}
-	instance, err := v.m.Orchestrator.CreateReplica(&orchestrator.Request{
+	instance, err := v.m.orch.CreateReplica(&orchestrator.Request{
 		NodeID:       nodeID,
 		InstanceName: v.generateReplicaName(),
 		VolumeName:   v.Name,
@@ -50,7 +50,7 @@ func (v *Volume) createReplica() (replicaName string, err error) {
 			VolumeName: v.Name,
 		},
 	}
-	if err := v.m.KVStore.CreateVolumeReplica(replica); err != nil {
+	if err := v.m.kv.CreateVolumeReplica(replica); err != nil {
 		return "", err
 	}
 	v.Replicas[replica.Name] = replica
@@ -72,7 +72,7 @@ func (v *Volume) startReplica(replicaName string) (err error) {
 		return nil
 	}
 
-	instance, err := v.m.Orchestrator.StartInstance(&orchestrator.Request{
+	instance, err := v.m.orch.StartInstance(&orchestrator.Request{
 		NodeID:       replica.NodeID,
 		InstanceID:   replica.ID,
 		InstanceName: replica.Name,
@@ -84,7 +84,7 @@ func (v *Volume) startReplica(replicaName string) (err error) {
 	}
 	replica.Running = instance.Running
 	replica.Address = instance.Address
-	if err := v.m.KVStore.UpdateVolumeReplica(replica); err != nil {
+	if err := v.m.kv.UpdateVolumeReplica(replica); err != nil {
 		return err
 	}
 	v.Replicas[replica.Name] = replica
@@ -106,7 +106,7 @@ func (v *Volume) stopReplica(replicaName string) (err error) {
 		return nil
 	}
 
-	instance, err := v.m.Orchestrator.StopInstance(&orchestrator.Request{
+	instance, err := v.m.orch.StopInstance(&orchestrator.Request{
 		NodeID:       replica.NodeID,
 		InstanceID:   replica.ID,
 		InstanceName: replica.Name,
@@ -117,7 +117,7 @@ func (v *Volume) stopReplica(replicaName string) (err error) {
 	}
 	replica.Running = instance.Running
 	replica.Address = instance.Address
-	if err := v.m.KVStore.UpdateVolumeReplica(replica); err != nil {
+	if err := v.m.kv.UpdateVolumeReplica(replica); err != nil {
 		return err
 	}
 	v.Replicas[replica.Name] = replica
@@ -136,7 +136,7 @@ func (v *Volume) markBadReplica(replicaName string) (err error) {
 	}
 
 	replica.BadTimestamp = util.Now()
-	if err := v.m.KVStore.UpdateVolumeReplica(replica); err != nil {
+	if err := v.m.kv.UpdateVolumeReplica(replica); err != nil {
 		return err
 	}
 	v.Replicas[replicaName] = replica
@@ -160,7 +160,7 @@ func (v *Volume) deleteReplica(replicaName string) (err error) {
 	if replica == nil {
 		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
-	if err := v.m.Orchestrator.DeleteInstance(&orchestrator.Request{
+	if err := v.m.orch.DeleteInstance(&orchestrator.Request{
 		NodeID:       replica.NodeID,
 		InstanceID:   replica.ID,
 		InstanceName: replica.Name,
@@ -168,7 +168,7 @@ func (v *Volume) deleteReplica(replicaName string) (err error) {
 	}); err != nil {
 		return err
 	}
-	if err := v.m.KVStore.DeleteVolumeReplica(replica.VolumeName, replica.Name); err != nil {
+	if err := v.m.kv.DeleteVolumeReplica(replica.VolumeName, replica.Name); err != nil {
 		return err
 	}
 	delete(v.Replicas, replicaName)
@@ -189,8 +189,8 @@ func (v *Volume) createController(startReplicas map[string]*types.ReplicaInfo) (
 	for _, replica := range startReplicas {
 		urls = append(urls, replica.Address+ReplicaPort)
 	}
-	nodeID := v.m.Orchestrator.GetCurrentNode().ID
-	instance, err := v.m.Orchestrator.CreateController(&orchestrator.Request{
+	nodeID := v.m.orch.GetCurrentNode().ID
+	instance, err := v.m.orch.CreateController(&orchestrator.Request{
 		NodeID:       nodeID,
 		InstanceName: v.getControllerName(),
 		VolumeName:   v.Name,
@@ -211,7 +211,7 @@ func (v *Volume) createController(startReplicas map[string]*types.ReplicaInfo) (
 			VolumeName: v.Name,
 		},
 	}
-	if err := v.m.KVStore.CreateVolumeController(controller); err != nil {
+	if err := v.m.kv.CreateVolumeController(controller); err != nil {
 		return err
 	}
 	v.Controller = controller
@@ -228,14 +228,14 @@ func (v *Volume) deleteController() (err error) {
 		return nil
 	}
 
-	if err := v.m.Orchestrator.DeleteInstance(&orchestrator.Request{
-		NodeID:       v.m.Orchestrator.GetCurrentNode().ID,
+	if err := v.m.orch.DeleteInstance(&orchestrator.Request{
+		NodeID:       v.m.orch.GetCurrentNode().ID,
 		InstanceName: v.getControllerName(),
 		VolumeName:   v.Name,
 	}); err != nil {
 		return err
 	}
-	if err := v.m.KVStore.DeleteVolumeController(v.Name); err != nil {
+	if err := v.m.kv.DeleteVolumeController(v.Name); err != nil {
 		return err
 	}
 	v.Controller = nil
@@ -268,7 +268,7 @@ func (v *Volume) startRebuild() (err error) {
 		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
 
-	engine, err := v.m.EngineAPI.NewEngineClient(&engineapi.EngineClientRequest{
+	engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
 		VolumeName:     v.Name,
 		ControllerAddr: v.Controller.Address + ControllerPort,
 	})
@@ -296,7 +296,7 @@ func (v *Volume) stopRebuild() (err error) {
 	if replica == nil {
 		return fmt.Errorf("cannot find rebuilding replica")
 	}
-	engine, err := v.m.EngineAPI.NewEngineClient(&engineapi.EngineClientRequest{
+	engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
 		VolumeName:     v.Name,
 		ControllerAddr: v.Controller.Address + ControllerPort,
 	})

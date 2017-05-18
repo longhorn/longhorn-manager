@@ -13,7 +13,7 @@ func (m *VolumeManager) NewVolume(info *types.VolumeInfo) error {
 	if info.Name == "" || info.Size == 0 || info.NumberOfReplicas == 0 {
 		return fmt.Errorf("missing required parameter %+v", info)
 	}
-	vol, err := m.KVStore.GetVolume(info.Name)
+	vol, err := m.kv.GetVolume(info.Name)
 	if err != nil {
 		return err
 	}
@@ -21,7 +21,7 @@ func (m *VolumeManager) NewVolume(info *types.VolumeInfo) error {
 		return fmt.Errorf("volume %v already exists", info.Name)
 	}
 
-	if err := m.KVStore.CreateVolume(info); err != nil {
+	if err := m.kv.CreateVolume(info); err != nil {
 		return err
 	}
 
@@ -33,18 +33,18 @@ func (m *VolumeManager) GetVolume(volumeName string) (*Volume, error) {
 		return nil, fmt.Errorf("invalid empty volume name")
 	}
 
-	info, err := m.KVStore.GetVolume(volumeName)
+	info, err := m.kv.GetVolume(volumeName)
 	if err != nil {
 		return nil, err
 	}
 	if info == nil {
 		return nil, fmt.Errorf("cannot find volume %v", volumeName)
 	}
-	controller, err := m.KVStore.GetVolumeController(volumeName)
+	controller, err := m.kv.GetVolumeController(volumeName)
 	if err != nil {
 		return nil, err
 	}
-	replicas, err := m.KVStore.ListVolumeReplicas(volumeName)
+	replicas, err := m.kv.ListVolumeReplicas(volumeName)
 	if err != nil {
 		return nil, err
 	}
