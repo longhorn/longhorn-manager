@@ -3,6 +3,7 @@ package manager
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/kvstore"
@@ -20,6 +21,9 @@ const (
 	VolumeSize                = "10g"
 	VolumeNumberOfReplicas    = 3
 	VolumeStaleReplicaTimeout = 3600
+
+	RetryCounts   = 20
+	RetryInterval = 100 * time.Millisecond
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -83,37 +87,57 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(volume.Name, Equals, VolumeName)
 	c.Assert(volume.Controller, IsNil)
 	c.Assert(volume.Replicas, NotNil)
-	c.Assert(len(volume.Replicas), Equals, 0)
+	c.Assert(volume.countReplicas(), Equals, 0)
 
 	err = volume.create()
 	c.Assert(err, IsNil)
 	c.Assert(volume.Controller, IsNil)
-	c.Assert(len(volume.Replicas), Equals, VolumeNumberOfReplicas)
+	for i := 0; i < RetryCounts; i++ {
+		if volume.countReplicas() != VolumeNumberOfReplicas {
+			time.Sleep(RetryInterval)
+		}
+	}
+	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
 	s.checkVolumeConsistency(c, manager, volume)
 
 	err = volume.start()
 	c.Assert(err, IsNil)
 	c.Assert(volume.Controller, NotNil)
 	c.Assert(volume.Controller.Running, Equals, true)
-	c.Assert(len(volume.Replicas), Equals, VolumeNumberOfReplicas)
+	for i := 0; i < RetryCounts; i++ {
+		if volume.countReplicas() != VolumeNumberOfReplicas {
+			time.Sleep(RetryInterval)
+		}
+	}
+	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
 	s.checkVolumeConsistency(c, manager, volume)
 
 	err = volume.stop()
 	c.Assert(err, IsNil)
 	c.Assert(volume.Controller, IsNil)
-	c.Assert(len(volume.Replicas), Equals, VolumeNumberOfReplicas)
+	for i := 0; i < RetryCounts; i++ {
+		if volume.countReplicas() != VolumeNumberOfReplicas {
+			time.Sleep(RetryInterval)
+		}
+	}
+	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
 	s.checkVolumeConsistency(c, manager, volume)
 
 	err = volume.stop()
 	c.Assert(err, IsNil)
 	c.Assert(volume.Controller, IsNil)
-	c.Assert(len(volume.Replicas), Equals, VolumeNumberOfReplicas)
+	for i := 0; i < RetryCounts; i++ {
+		if volume.countReplicas() != VolumeNumberOfReplicas {
+			time.Sleep(RetryInterval)
+		}
+	}
+	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
 	s.checkVolumeConsistency(c, manager, volume)
 
 	err = volume.destroy()
 	c.Assert(err, IsNil)
 	c.Assert(volume.Controller, IsNil)
-	c.Assert(len(volume.Replicas), Equals, 0)
+	c.Assert(volume.countReplicas(), Equals, 0)
 	s.checkVolumeConsistency(c, manager, volume)
 }
 
@@ -127,11 +151,12 @@ func (s *TestSuite) checkVolumeConsistency(c *C, manager *VolumeManager, volume 
 		kvstore.UpdateKVIndex(newVol.Controller, volume.Controller)
 		c.Assert(newVol.VolumeInfo, DeepEquals, volume.VolumeInfo)
 	}
-	if len(volume.Replicas) != 0 {
+	if volume.countReplicas() != 0 {
 		for name := range volume.Replicas {
+			replica := volume.getReplica(name)
 			c.Assert(newVol.Replicas[name], NotNil)
-			kvstore.UpdateKVIndex(newVol.Replicas[name], volume.Replicas[name])
-			c.Assert(newVol.Replicas[name], DeepEquals, volume.Replicas[name])
+			kvstore.UpdateKVIndex(newVol.Replicas[name], replica)
+			c.Assert(newVol.Replicas[name], DeepEquals, replica)
 		}
 	}
 }

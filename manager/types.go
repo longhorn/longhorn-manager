@@ -2,6 +2,7 @@ package manager
 
 import (
 	"github.com/yasker/lm-rewrite/types"
+	"sync"
 )
 
 type EventType string
@@ -48,12 +49,13 @@ type VolumeSalvageRequest struct {
 
 type Volume struct {
 	types.VolumeInfo
+	mutex *sync.RWMutex
 
 	Controller  *types.ControllerInfo
 	Replicas    map[string]*types.ReplicaInfo
 	BadReplicas map[string]*types.ReplicaInfo
 
-	RebuildingReplica *types.ReplicaInfo
+	Jobs map[string]*Job
 
 	m *VolumeManager
 	//done chan struct{}
@@ -70,4 +72,36 @@ type RPCManager interface {
 
 	SetCallbackChan(ch chan Event)
 	NodeNotify(address string, event *Event) error
+}
+
+type JobState string
+
+const (
+	JobStateOngoing = JobState("ongoing")
+	JobStateSucceed = JobState("succeed")
+	JobStateFailed  = JobState("failed")
+)
+
+type JobType string
+
+const (
+	// associateID = replicaName
+	JobTypeReplicaCreate  = JobType("replica-create")
+	JobTypeReplicaRebuild = JobType("replica-rebuild")
+
+	// associatedID = snapshotName
+	JobTypeSnapshotBackup = JobType("snapshot-backup")
+
+	// associatedID (one per volume)
+	JobTypeSnapshotPurge = JobType("snapshot-purge")
+)
+
+type Job struct {
+	ID          string
+	Type        JobType
+	AssoicateID string
+	CreatedAt   string
+	CompletedAt string
+	State       JobState
+	Error       error
 }

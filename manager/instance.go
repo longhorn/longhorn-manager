@@ -19,42 +19,32 @@ func (v *Volume) generateReplicaName() string {
 	return v.Name + "-replica-" + util.RandomID()
 }
 
-func (v *Volume) createReplica() (replicaName string, err error) {
+func (v *Volume) createReplica() (err error) {
 	defer func() {
-		if err != nil {
-			err = errors.Wrapf(err, "fail to create replica for volume %v", v.Name)
-		}
+		err = errors.Wrapf(err, "fail to create replica for volume %v", v.Name)
 	}()
+
+	replicaName := v.generateReplicaName()
 
 	nodeID, err := v.m.ScheduleReplica(&v.VolumeInfo, v.Replicas)
 	if err != nil {
-		return "", err
+		return err
 	}
-	instance, err := v.m.orch.CreateReplica(&orchestrator.Request{
-		NodeID:       nodeID,
-		InstanceName: v.generateReplicaName(),
-		VolumeName:   v.Name,
-		VolumeSize:   v.Size,
-	})
-	if err != nil {
-		return "", err
+
+	errCh := make(chan error)
+	go func() {
+		errCh <- v.jobReplicaCreate(&orchestrator.Request{
+			NodeID:       nodeID,
+			InstanceName: replicaName,
+			VolumeName:   v.Name,
+			VolumeSize:   v.Size,
+		})
+	}()
+
+	if _, err := v.registerJob(JobTypeReplicaCreate, replicaName, errCh); err != nil {
+		return err
 	}
-	replica := &types.ReplicaInfo{
-		InstanceInfo: types.InstanceInfo{
-			ID:         instance.ID,
-			Type:       types.InstanceTypeReplica,
-			Name:       instance.Name,
-			NodeID:     nodeID,
-			Address:    instance.Address,
-			Running:    instance.Running,
-			VolumeName: v.Name,
-		},
-	}
-	if err := v.m.kv.CreateVolumeReplica(replica); err != nil {
-		return "", err
-	}
-	v.Replicas[replica.Name] = replica
-	return replica.Name, nil
+	return nil
 }
 
 func (v *Volume) startReplica(replicaName string) (err error) {
@@ -64,7 +54,7 @@ func (v *Volume) startReplica(replicaName string) (err error) {
 		}
 	}()
 
-	replica := v.Replicas[replicaName]
+	replica := v.getReplica(replicaName)
 	if replica == nil {
 		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
@@ -84,10 +74,9 @@ func (v *Volume) startReplica(replicaName string) (err error) {
 	}
 	replica.Running = instance.Running
 	replica.Address = instance.Address
-	if err := v.m.kv.UpdateVolumeReplica(replica); err != nil {
+	if err := v.setReplica(replica); err != nil {
 		return err
 	}
-	v.Replicas[replica.Name] = replica
 	return nil
 }
 
@@ -98,7 +87,7 @@ func (v *Volume) stopReplica(replicaName string) (err error) {
 		}
 	}()
 
-	replica := v.Replicas[replicaName]
+	replica := v.getReplica(replicaName)
 	if replica == nil {
 		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
@@ -117,10 +106,9 @@ func (v *Volume) stopReplica(replicaName string) (err error) {
 	}
 	replica.Running = instance.Running
 	replica.Address = instance.Address
-	if err := v.m.kv.UpdateVolumeReplica(replica); err != nil {
+	if err := v.setReplica(replica); err != nil {
 		return err
 	}
-	v.Replicas[replica.Name] = replica
 	return nil
 }
 
@@ -130,16 +118,15 @@ func (v *Volume) markBadReplica(replicaName string) (err error) {
 			err = errors.Wrapf(err, "fail to mark bad replica %v for volume %v", replicaName, v.Name)
 		}
 	}()
-	replica := v.Replicas[replicaName]
+	replica := v.getReplica(replicaName)
 	if replica == nil {
 		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
 
 	replica.BadTimestamp = util.Now()
-	if err := v.m.kv.UpdateVolumeReplica(replica); err != nil {
+	if err := v.setReplica(replica); err != nil {
 		return err
 	}
-	v.Replicas[replicaName] = replica
 
 	if replica.Running {
 		if err := v.stopReplica(replica.Name); err != nil {
@@ -156,7 +143,7 @@ func (v *Volume) deleteReplica(replicaName string) (err error) {
 		}
 	}()
 
-	replica := v.Replicas[replicaName]
+	replica := v.getReplica(replicaName)
 	if replica == nil {
 		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
@@ -168,10 +155,9 @@ func (v *Volume) deleteReplica(replicaName string) (err error) {
 	}); err != nil {
 		return err
 	}
-	if err := v.m.kv.DeleteVolumeReplica(replica.VolumeName, replica.Name); err != nil {
+	if err := v.rmReplica(replica.Name); err != nil {
 		return err
 	}
-	delete(v.Replicas, replicaName)
 	return nil
 }
 
@@ -249,40 +235,35 @@ func (v *Volume) startRebuild() (err error) {
 		}
 	}()
 
-	if v.RebuildingReplica != nil {
-		return fmt.Errorf("rebuild already started by replica %v", v.RebuildingReplica.Name)
-	}
-
 	if len(v.Replicas)-len(v.BadReplicas) >= v.NumberOfReplicas {
 		return fmt.Errorf("there are enough healthy replicas for the volume")
 	}
 
-	//TODO add as a job
-	replicaName, err := v.createReplica()
+	rebuildingJobs := v.listOngoingJobsByType(JobTypeReplicaRebuild)
+	if len(rebuildingJobs) != 0 {
+		return nil
+	}
+
+	replicaName := v.generateReplicaName()
+
+	nodeID, err := v.m.ScheduleReplica(&v.VolumeInfo, v.Replicas)
 	if err != nil {
 		return err
 	}
 
-	replica := v.Replicas[replicaName]
-	if replica == nil {
-		return fmt.Errorf("cannot find replica %v", replicaName)
-	}
+	errCh := make(chan error)
+	go func() {
+		errCh <- v.jobReplicaRebuild(&orchestrator.Request{
+			NodeID:       nodeID,
+			InstanceName: replicaName,
+			VolumeName:   v.Name,
+			VolumeSize:   v.Size,
+		})
+	}()
 
-	engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:     v.Name,
-		ControllerAddr: v.Controller.Address + ControllerPort,
-	})
-	if err != nil {
+	if _, err := v.registerJob(JobTypeReplicaRebuild, replicaName, errCh); err != nil {
 		return err
 	}
-	v.RebuildingReplica = replica
-
-	url := replica.Address + ReplicaPort
-	//TODO add as a job
-	if err := engine.AddReplica(url); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -292,10 +273,12 @@ func (v *Volume) stopRebuild() (err error) {
 			err = errors.Wrapf(err, "fail to stop rebuild for volume %v", v.Name)
 		}
 	}()
-	replica := v.RebuildingReplica
-	if replica == nil {
-		return fmt.Errorf("cannot find rebuilding replica")
+
+	rebuildingJobs := v.listOngoingJobsByType(JobTypeReplicaRebuild)
+	if len(rebuildingJobs) == 0 {
+		return nil
 	}
+
 	engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
 		VolumeName:     v.Name,
 		ControllerAddr: v.Controller.Address + ControllerPort,
@@ -303,15 +286,54 @@ func (v *Volume) stopRebuild() (err error) {
 	if err != nil {
 		return err
 	}
-	url := replica.Address + ReplicaPort
-	if err := engine.RemoveReplica(url); err != nil {
-		return err
+	for _, job := range rebuildingJobs {
+		replicaName := job.AssoicateID
+		replica := v.getReplica(replicaName)
+		url := replica.Address + ReplicaPort
+		if err := engine.RemoveReplica(url); err != nil {
+			return err
+		}
+		if err := v.deleteReplica(replicaName); err != nil {
+			return err
+		}
 	}
 
-	if err := v.deleteReplica(v.RebuildingReplica.Name); err != nil {
-		return err
-	}
-
-	v.RebuildingReplica = nil
 	return nil
+}
+
+func (v *Volume) setReplica(replica *types.ReplicaInfo) error {
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+
+	if err := v.m.kv.UpdateVolumeReplica(replica); err != nil {
+		return err
+	}
+	v.Replicas[replica.Name] = replica
+	return nil
+}
+
+//NOTE: this only protect the map, not the content
+func (v *Volume) getReplica(name string) *types.ReplicaInfo {
+	v.mutex.RLock()
+	defer v.mutex.RUnlock()
+
+	return v.Replicas[name]
+}
+
+func (v *Volume) rmReplica(name string) error {
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+
+	if err := v.m.kv.DeleteVolumeReplica(v.Name, name); err != nil {
+		return err
+	}
+	delete(v.Replicas, name)
+	return nil
+}
+
+func (v *Volume) countReplicas() int {
+	v.mutex.RLock()
+	defer v.mutex.RUnlock()
+
+	return len(v.Replicas)
 }

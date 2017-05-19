@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/pkg/errors"
 
@@ -54,8 +55,10 @@ func (m *VolumeManager) GetVolume(volumeName string) (*Volume, error) {
 
 	return &Volume{
 		VolumeInfo: *info,
+		mutex:      &sync.RWMutex{},
 		Controller: controller,
 		Replicas:   replicas,
+		Jobs:       map[string]*Job{},
 		m:          m,
 	}, nil
 }
@@ -92,12 +95,18 @@ func (v *Volume) create() (err error) {
 		}
 	}()
 
-	created := 0
-	if len(v.Replicas) != 0 {
-		created = len(v.Replicas)
+	ready := 0
+	for _, replica := range v.Replicas {
+		if replica.BadTimestamp != "" {
+			ready++
+		}
 	}
-	for i := 0; i < v.NumberOfReplicas-created; i++ {
-		if _, err := v.createReplica(); err != nil {
+
+	creatingJobs := v.listOngoingJobsByType(JobTypeReplicaCreate)
+	creating := len(creatingJobs)
+
+	for i := 0; i < v.NumberOfReplicas-creating-ready; i++ {
+		if err := v.createReplica(); err != nil {
 			return err
 		}
 	}
@@ -139,10 +148,8 @@ func (v *Volume) stop() (err error) {
 		}
 	}()
 
-	if v.RebuildingReplica != nil {
-		if err := v.stopRebuild(); err != nil {
-			return err
-		}
+	if err := v.stopRebuild(); err != nil {
+		return err
 	}
 	if v.Controller != nil {
 		if err := v.deleteController(); err != nil {
@@ -168,9 +175,6 @@ func (v *Volume) heal() (err error) {
 
 	if v.Controller == nil {
 		return fmt.Errorf("cannot heal without controller")
-	}
-	if v.RebuildingReplica != nil {
-		return nil
 	}
 	if err := v.startRebuild(); err != nil {
 		return err
