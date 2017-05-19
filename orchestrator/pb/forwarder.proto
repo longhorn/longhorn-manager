@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package pb;
+
+service Forwarder{
+	rpc InstanceOperationRPC (InstanceOperationRequest) returns (InstanceOperationResponse) {}
+}
+
+message InstanceOperationRequest {
+	string type = 1;
+	string nodeID = 2;
+	string instanceID = 3;
+	string instanceName = 4;
+	string volumeName = 5;
+	int64 volumeSize = 6;
+	repeated string replicaURLs = 7;
+}
+
+message InstanceOperationResponse {
+	string instanceID = 1;
+	string instanceName = 2;
+	bool running = 3;
+	string address = 4;
+}
