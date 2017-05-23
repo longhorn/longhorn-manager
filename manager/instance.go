@@ -19,17 +19,12 @@ func (v *Volume) generateReplicaName() string {
 	return v.Name + "-replica-" + util.RandomID()
 }
 
-func (v *Volume) createReplica() (err error) {
+func (v *Volume) createReplica(nodeID string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to create replica for volume %v", v.Name)
 	}()
 
 	replicaName := v.generateReplicaName()
-
-	nodeID, err := v.m.ScheduleReplica(&v.VolumeInfo, v.Replicas)
-	if err != nil {
-		return err
-	}
 
 	errCh := make(chan error)
 	go func() {
@@ -41,7 +36,11 @@ func (v *Volume) createReplica() (err error) {
 		})
 	}()
 
-	if _, err := v.registerJob(JobTypeReplicaCreate, replicaName, errCh); err != nil {
+	data := map[string]string{
+		"NodeID": nodeID,
+	}
+
+	if _, err := v.registerJob(JobTypeReplicaCreate, replicaName, data, errCh); err != nil {
 		return err
 	}
 	return nil
@@ -246,7 +245,9 @@ func (v *Volume) startRebuild() (err error) {
 
 	replicaName := v.generateReplicaName()
 
-	nodeID, err := v.m.ScheduleReplica(&v.VolumeInfo, v.Replicas)
+	nodesWithReplica := v.getNodesWithReplica()
+
+	nodeID, err := v.m.ScheduleReplica(&v.VolumeInfo, nodesWithReplica)
 	if err != nil {
 		return err
 	}
@@ -261,7 +262,7 @@ func (v *Volume) startRebuild() (err error) {
 		})
 	}()
 
-	if _, err := v.registerJob(JobTypeReplicaRebuild, replicaName, errCh); err != nil {
+	if _, err := v.registerJob(JobTypeReplicaRebuild, replicaName, nil, errCh); err != nil {
 		return err
 	}
 	return nil

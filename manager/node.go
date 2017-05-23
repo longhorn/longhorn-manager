@@ -7,6 +7,7 @@ import (
 	"github.com/Sirupsen/logrus"
 
 	"github.com/yasker/lm-rewrite/kvstore"
+	"github.com/yasker/lm-rewrite/scheduler"
 	"github.com/yasker/lm-rewrite/types"
 	"github.com/yasker/lm-rewrite/util"
 )
@@ -97,6 +98,20 @@ func (m *VolumeManager) GetRandomNode() (*Node, error) {
 		NodeInfo: *node,
 		m:        m,
 	}, nil
+}
+
+func (m *VolumeManager) ListSchedulingNodes() (map[string]*scheduler.Node, error) {
+	nodes, err := m.kv.ListNodes()
+	if err != nil {
+		return nil, err
+	}
+	ret := map[string]*scheduler.Node{}
+	for id := range nodes {
+		ret[id] = &scheduler.Node{
+			ID: id,
+		}
+	}
+	return ret, nil
 }
 
 func (n *Node) Notify(volumeName string) error {

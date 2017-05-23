@@ -9,6 +9,7 @@ import (
 	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/kvstore"
 	"github.com/yasker/lm-rewrite/orchestrator"
+	"github.com/yasker/lm-rewrite/scheduler"
 	"github.com/yasker/lm-rewrite/types"
 	"github.com/yasker/lm-rewrite/util"
 )
@@ -16,10 +17,11 @@ import (
 type VolumeManager struct {
 	currentNode *Node
 
-	kv      *kvstore.KVStore
-	orch    orchestrator.Orchestrator
-	engines engineapi.EngineClientCollection
-	rpc     RPCManager
+	kv        *kvstore.KVStore
+	orch      orchestrator.Orchestrator
+	engines   engineapi.EngineClientCollection
+	rpc       RPCManager
+	scheduler *scheduler.Scheduler
 
 	EventChan           chan Event
 	managedVolumes      map[string]VolumeChan
@@ -40,7 +42,9 @@ func NewVolumeManager(kv *kvstore.KVStore,
 		managedVolumes:      map[string]VolumeChan{},
 		managedVolumesMutex: &sync.Mutex{},
 	}
+	manager.scheduler = scheduler.NewScheduler(manager)
 	rpc.SetCallbackChan(manager.EventChan)
+
 	if err := manager.RegisterNode(); err != nil {
 		return nil, err
 	}
@@ -241,10 +245,18 @@ func (m *VolumeManager) VolumeSalvage(request *VolumeSalvageRequest) (err error)
 	return nil
 }
 
-func (m *VolumeManager) ScheduleReplica(volume *types.VolumeInfo, replicas map[string]*types.ReplicaInfo) (string, error) {
-	node, err := m.GetRandomNode()
+func (m *VolumeManager) ScheduleReplica(volume *types.VolumeInfo, nodeIDs map[string]struct{}) (string, error) {
+	spec := &scheduler.Spec{
+		Size: volume.Size,
+	}
+	policy := &scheduler.Policy{
+		Binding: scheduler.PolicyBindingTypeSoftAntiAffinity,
+		NodeIDs: nodeIDs,
+	}
+
+	schedNode, err := m.scheduler.Schedule(spec, policy)
 	if err != nil {
 		return "", err
 	}
-	return node.ID, nil
+	return schedNode.ID, nil
 }

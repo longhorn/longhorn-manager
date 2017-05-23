@@ -11,13 +11,14 @@ import (
 	"github.com/yasker/lm-rewrite/util"
 )
 
-func (v *Volume) registerJob(jobType JobType, assoicateID string, errCh chan error) (string, error) {
+func (v *Volume) registerJob(jobType JobType, assoicateID string, data map[string]string, errCh chan error) (string, error) {
 	job := &Job{
 		ID:          util.UUID(),
 		AssoicateID: assoicateID,
 		Type:        jobType,
 		State:       JobStateOngoing,
 		CreatedAt:   util.Now(),
+		Data:        data,
 	}
 
 	v.setJob(job)

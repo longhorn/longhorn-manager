@@ -101,14 +101,27 @@ func (v *Volume) create() (err error) {
 			ready++
 		}
 	}
+	nodesWithReplica := v.getNodesWithReplica()
 
 	creatingJobs := v.listOngoingJobsByType(JobTypeReplicaCreate)
 	creating := len(creatingJobs)
+	for _, job := range creatingJobs {
+		data := job.Data
+		if data["NodeID"] != "" {
+			nodesWithReplica[data["NodeID"]] = struct{}{}
+		}
+	}
 
 	for i := 0; i < v.NumberOfReplicas-creating-ready; i++ {
-		if err := v.createReplica(); err != nil {
+		nodeID, err := v.m.ScheduleReplica(&v.VolumeInfo, nodesWithReplica)
+		if err != nil {
 			return err
 		}
+
+		if err := v.createReplica(nodeID); err != nil {
+			return err
+		}
+		nodesWithReplica[nodeID] = struct{}{}
 	}
 	return nil
 }
@@ -199,4 +212,17 @@ func (v *Volume) destroy() (err error) {
 		}
 	}
 	return nil
+}
+
+func (v *Volume) getNodesWithReplica() map[string]struct{} {
+	ret := map[string]struct{}{}
+
+	v.mutex.RLock()
+	defer v.mutex.RUnlock()
+	for _, replica := range v.Replicas {
+		if replica.BadTimestamp != "" {
+			ret[replica.NodeID] = struct{}{}
+		}
+	}
+	return ret
 }

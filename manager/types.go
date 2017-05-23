@@ -104,4 +104,5 @@ type Job struct {
 	CompletedAt string
 	State       JobState
 	Error       error
+	Data        map[string]string
 }
