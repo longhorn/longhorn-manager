@@ -121,6 +121,10 @@ func (v *Volume) jobReplicaRebuild(req *orchestrator.Request) (err error) {
 
 	replicaName := req.InstanceName
 
+	if err := v.startReplica(replicaName); err != nil {
+		return err
+	}
+
 	replica := v.Replicas[replicaName]
 	if replica == nil {
 		return fmt.Errorf("cannot find replica %v", replicaName)
@@ -134,6 +138,9 @@ func (v *Volume) jobReplicaRebuild(req *orchestrator.Request) (err error) {
 		return err
 	}
 
+	if replica.IP == "" {
+		return fmt.Errorf("cannot add replica %v without IP", replicaName)
+	}
 	url := replica.IP + types.ReplicaPort
 	if err := engine.AddReplica(url); err != nil {
 		return err

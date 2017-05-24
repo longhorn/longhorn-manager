@@ -7,6 +7,7 @@ import (
 
 	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/kvstore"
+	"github.com/yasker/lm-rewrite/orchestrator"
 	"github.com/yasker/lm-rewrite/orchestrator/orchsim"
 	"github.com/yasker/lm-rewrite/types"
 	"github.com/yasker/lm-rewrite/util"
@@ -178,7 +179,11 @@ func (s *TestSuite) checkVolumeConsistency(c *C, volume *Volume) {
 }
 
 func (s *TestSuite) TestVolumeReconcile(c *C) {
-	err := s.manager.VolumeCreate(&VolumeCreateRequest{
+	infos, err := s.manager.VolumeList()
+	c.Assert(err, IsNil)
+	c.Assert(len(infos), Equals, 0)
+
+	err = s.manager.VolumeCreate(&VolumeCreateRequest{
 		Name:                VolumeName,
 		Size:                VolumeSizeString,
 		NumberOfReplicas:    VolumeNumberOfReplicas,
@@ -238,7 +243,7 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 	c.Assert(volume.TargetNodeID, Equals, node.ID)
 	c.Assert(volume.DesireState, Equals, types.VolumeStateDeleted)
 
-	infos := map[string]*types.VolumeInfo{}
+	infos = map[string]*types.VolumeInfo{}
 	for i := 0; i < RetryCounts; i++ {
 		infos, err = s.manager.VolumeList()
 		c.Assert(err, IsNil)
@@ -265,4 +270,83 @@ func (s *TestSuite) waitForVolumeState(c *C, volumeName string, state types.Volu
 	}
 	c.Assert(volume.State, Equals, state)
 	return volume
+}
+
+func (s *TestSuite) TestVolumeHeal(c *C) {
+	err := s.manager.VolumeCreate(&VolumeCreateRequest{
+		Name:                VolumeName,
+		Size:                VolumeSizeString,
+		NumberOfReplicas:    VolumeNumberOfReplicas,
+		StaleReplicaTimeout: VolumeStaleReplicaTimeout,
+	})
+	c.Assert(err, IsNil)
+
+	node := s.manager.GetCurrentNode()
+
+	ReconcileInterval = 1 * time.Second
+
+	volume, err := s.manager.GetVolume(VolumeName)
+	c.Assert(err, IsNil)
+	c.Assert(volume.Name, Equals, VolumeName)
+	c.Assert(volume.Controller, IsNil)
+	c.Assert(volume.TargetNodeID, Equals, node.ID)
+	c.Assert(volume.DesireState, Equals, types.VolumeStateDetached)
+
+	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateDetached)
+	c.Assert(volume.NodeID, Equals, node.ID)
+	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
+
+	err = s.manager.VolumeAttach(&VolumeAttachRequest{
+		Name:   VolumeName,
+		NodeID: node.ID,
+	})
+	c.Assert(err, IsNil)
+	volume, err = s.manager.GetVolume(VolumeName)
+	c.Assert(volume.TargetNodeID, Equals, node.ID)
+	c.Assert(volume.DesireState, Equals, types.VolumeStateHealthy)
+	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateHealthy)
+	c.Assert(volume.Controller, NotNil)
+
+	//stop one random replica
+	for _, replica := range volume.Replicas {
+		_, err := s.orch.StopInstance(&orchestrator.Request{
+			NodeID:       node.ID,
+			InstanceID:   replica.ID,
+			InstanceName: replica.Name,
+			VolumeName:   VolumeName,
+		})
+		c.Assert(err, IsNil)
+		break
+	}
+	for i := 0; i < RetryCounts; i++ {
+		volume, err = s.manager.GetVolume(VolumeName)
+		c.Assert(err, IsNil)
+		if len(volume.Replicas) == VolumeNumberOfReplicas+1 {
+			break
+		}
+		time.Sleep(RetryInterval)
+	}
+	c.Assert(volume.Replicas, HasLen, VolumeNumberOfReplicas+1)
+	//c.Assert(volume.BadReplicas, HasLen, 1)
+	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateHealthy)
+	c.Assert(volume.Controller, NotNil)
+
+	err = s.manager.VolumeDelete(&VolumeDeleteRequest{
+		Name: VolumeName,
+	})
+	c.Assert(err, IsNil)
+	volume, err = s.manager.GetVolume(VolumeName)
+	c.Assert(volume.TargetNodeID, Equals, node.ID)
+	c.Assert(volume.DesireState, Equals, types.VolumeStateDeleted)
+
+	infos := map[string]*types.VolumeInfo{}
+	for i := 0; i < RetryCounts; i++ {
+		infos, err = s.manager.VolumeList()
+		c.Assert(err, IsNil)
+		if infos[VolumeName] == nil {
+			break
+		}
+		time.Sleep(RetryInterval)
+	}
+	c.Assert(infos[VolumeName], IsNil)
 }
