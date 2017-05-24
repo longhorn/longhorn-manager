@@ -14,19 +14,19 @@ import (
 	"github.com/yasker/lm-rewrite/types"
 )
 
-type OrchestratorForwarder struct {
+type Forwarder struct {
 	orch    Orchestrator
 	locator NodeLocator
 }
 
-func NewOrchestratorForwarder(orch Orchestrator, locator NodeLocator) (Orchestrator, error) {
-	return &OrchestratorForwarder{
+func NewForwarder(orch Orchestrator, locator NodeLocator) (Orchestrator, error) {
+	return &Forwarder{
 		orch:    orch,
 		locator: locator,
 	}, nil
 }
 
-func (f *OrchestratorForwarder) StartServer(address string) error {
+func (f *Forwarder) StartServer(address string) error {
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		return errors.Wrap(err, "fail to start orchestrator forwarder GRPC server")
@@ -42,7 +42,7 @@ func (f *OrchestratorForwarder) StartServer(address string) error {
 	return nil
 }
 
-func (f *OrchestratorForwarder) InstanceOperationRPC(ctx context.Context, req *pb.InstanceOperationRequest) (*pb.InstanceOperationResponse, error) {
+func (f *Forwarder) InstanceOperationRPC(ctx context.Context, req *pb.InstanceOperationRequest) (*pb.InstanceOperationResponse, error) {
 	var (
 		instance *Instance
 		err      error
@@ -71,7 +71,7 @@ func (f *OrchestratorForwarder) InstanceOperationRPC(ctx context.Context, req *p
 	case InstanceOperationTypeInspectInstance:
 		instance, err = f.orch.InspectInstance(request)
 	default:
-		err = fmt.Errorf("invalid instance operation type", req.Type)
+		err = fmt.Errorf("invalid instance operation type: %v", req.Type)
 	}
 	if err != nil {
 		return nil, err
@@ -87,7 +87,7 @@ func (f *OrchestratorForwarder) InstanceOperationRPC(ctx context.Context, req *p
 	return resp, nil
 }
 
-func (f *OrchestratorForwarder) CreateController(request *Request) (*Instance, error) {
+func (f *Forwarder) CreateController(request *Request) (*Instance, error) {
 	if request.NodeID == f.orch.GetCurrentNode().ID {
 		return f.orch.CreateController(request)
 	}
@@ -98,7 +98,7 @@ func (f *OrchestratorForwarder) CreateController(request *Request) (*Instance, e
 	return f.InstanceOperation(address, InstanceOperationTypeCreateController, request)
 }
 
-func (f *OrchestratorForwarder) CreateReplica(request *Request) (*Instance, error) {
+func (f *Forwarder) CreateReplica(request *Request) (*Instance, error) {
 	if request.NodeID == f.orch.GetCurrentNode().ID {
 		return f.orch.CreateReplica(request)
 	}
@@ -109,7 +109,7 @@ func (f *OrchestratorForwarder) CreateReplica(request *Request) (*Instance, erro
 	return f.InstanceOperation(address, InstanceOperationTypeCreateReplica, request)
 }
 
-func (f *OrchestratorForwarder) StartInstance(request *Request) (*Instance, error) {
+func (f *Forwarder) StartInstance(request *Request) (*Instance, error) {
 	if request.NodeID == f.orch.GetCurrentNode().ID {
 		return f.orch.StartInstance(request)
 	}
@@ -120,7 +120,7 @@ func (f *OrchestratorForwarder) StartInstance(request *Request) (*Instance, erro
 	return f.InstanceOperation(address, InstanceOperationTypeStartInstance, request)
 }
 
-func (f *OrchestratorForwarder) StopInstance(request *Request) (*Instance, error) {
+func (f *Forwarder) StopInstance(request *Request) (*Instance, error) {
 	if request.NodeID == f.orch.GetCurrentNode().ID {
 		return f.orch.StopInstance(request)
 	}
@@ -131,7 +131,7 @@ func (f *OrchestratorForwarder) StopInstance(request *Request) (*Instance, error
 	return f.InstanceOperation(address, InstanceOperationTypeStopInstance, request)
 }
 
-func (f *OrchestratorForwarder) DeleteInstance(request *Request) error {
+func (f *Forwarder) DeleteInstance(request *Request) error {
 	if request.NodeID == f.orch.GetCurrentNode().ID {
 		return f.orch.DeleteInstance(request)
 	}
@@ -145,7 +145,7 @@ func (f *OrchestratorForwarder) DeleteInstance(request *Request) error {
 	return nil
 }
 
-func (f *OrchestratorForwarder) InspectInstance(request *Request) (*Instance, error) {
+func (f *Forwarder) InspectInstance(request *Request) (*Instance, error) {
 	if request.NodeID == f.orch.GetCurrentNode().ID {
 		return f.orch.InspectInstance(request)
 	}
@@ -156,11 +156,11 @@ func (f *OrchestratorForwarder) InspectInstance(request *Request) (*Instance, er
 	return f.InstanceOperation(address, InstanceOperationTypeInspectInstance, request)
 }
 
-func (f *OrchestratorForwarder) GetCurrentNode() *types.NodeInfo {
+func (f *Forwarder) GetCurrentNode() *types.NodeInfo {
 	return f.orch.GetCurrentNode()
 }
 
-func (f *OrchestratorForwarder) InstanceOperation(address string, opType InstanceOperationType, request *Request) (*Instance, error) {
+func (f *Forwarder) InstanceOperation(address string, opType InstanceOperationType, request *Request) (*Instance, error) {
 	var instance *Instance
 
 	//FIXME insecure

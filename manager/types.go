@@ -85,14 +85,16 @@ const (
 type JobType string
 
 const (
-	// associateID = replicaName
-	JobTypeReplicaCreate  = JobType("replica-create")
+	// JobTypeReplicaCreate associateID = replicaName
+	JobTypeReplicaCreate = JobType("replica-create")
+
+	// JobTypeReplicaRebuild associateID = replicaName
 	JobTypeReplicaRebuild = JobType("replica-rebuild")
 
-	// associatedID = snapshotName
+	// JobTypeSnapshotBackup associatedID = snapshotName
 	JobTypeSnapshotBackup = JobType("snapshot-backup")
 
-	// associatedID (one per volume)
+	// JobTypeSnapshotPurge associatedID (one per volume)
 	JobTypeSnapshotPurge = JobType("snapshot-purge")
 )
 
