@@ -9,6 +9,7 @@ import (
 
 	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/types"
+	"github.com/yasker/lm-rewrite/util"
 )
 
 var (
@@ -17,6 +18,8 @@ var (
 
 	ControllerPort = ":9501"
 	ReplicaPort    = ":9503"
+
+	ReconcileInterval = 5 * time.Second
 )
 
 func (m *VolumeManager) startProcessing() {
@@ -47,6 +50,10 @@ func (m *VolumeManager) notifyVolume(volumeName string) (err error) {
 				return nil
 			}
 			if volume.TargetNodeID == currentNode.ID {
+				volume.NodeID = currentNode.ID
+				if err := m.kv.UpdateVolume(&volume.VolumeInfo); err != nil {
+					return err
+				}
 				break
 			} else {
 				err = fmt.Errorf("target node ID %v doesn't match with the current one %v",
@@ -81,12 +88,24 @@ func (m *VolumeManager) getManagedVolumeChan(volumeName string) VolumeChan {
 }
 
 func (m *VolumeManager) processVolume(volumeName string, volumeChan VolumeChan) {
+	defer m.releaseVolume(volumeName)
+
+	tick := time.NewTicker(ReconcileInterval)
 	for {
-		time.Sleep(5 * time.Second)
+		select {
+		case <-tick.C:
+			break
+		case <-volumeChan.Notify:
+			break
+		}
 		volume, err := m.GetVolume(volumeName)
 		if err != nil {
 			logrus.Errorf("Fail get volume: %v", err)
 			continue
+		}
+		if volume.TargetNodeID != m.currentNode.ID {
+			logrus.Infof("Volume %v no longer belong to current node, release it", volumeName)
+			break
 		}
 
 		if err := volume.RefreshState(); err != nil {
@@ -99,7 +118,34 @@ func (m *VolumeManager) processVolume(volumeName string, volumeChan VolumeChan) 
 		if err := volume.Reconcile(); err != nil {
 			logrus.Errorf("Fail to reconcile volume state: %v", err)
 		}
+		if volume.State == types.VolumeStateDeleted {
+			break
+		}
 	}
+}
+
+func (m *VolumeManager) releaseVolume(volumeName string) {
+	m.managedVolumesMutex.Lock()
+	defer m.managedVolumesMutex.Unlock()
+
+	delete(m.managedVolumes, volumeName)
+
+	volume, err := m.GetVolume(volumeName)
+	if err != nil {
+		logrus.Errorf("Fail to release volume: %v", err)
+		return
+	}
+
+	if volume.TargetNodeID != m.currentNode.ID {
+		return
+	}
+	if volume.State == types.VolumeStateDeleted {
+		if err := m.kv.DeleteVolume(volumeName); err != nil {
+			logrus.Errorf("Fail to remove volume entry from kvstore: %v", err)
+		}
+		return
+	}
+	logrus.Errorf("BUG: release volume processed but don't know the reason")
 }
 
 func (v *Volume) RefreshState() (err error) {
@@ -144,6 +190,10 @@ func (v *Volume) RefreshState() (err error) {
 			}
 		}
 	}
+
+	if err := v.m.kv.UpdateVolume(&v.VolumeInfo); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -178,7 +228,11 @@ func (v *Volume) syncWithEngineState(engineReps map[string]*engineapi.Replica) {
 			} else if engineRep.Mode == engineapi.ReplicaModeWO {
 				rebuildingReplicaCount++
 			}
-			delete(addr2Replica, addr)
+			ip := util.GetIP(addr)
+			if addr2Replica[ip] == nil {
+				logrus.Errorf("BUG: cannot find replica address %v in replicas", ip)
+			}
+			delete(addr2Replica, ip)
 		}
 		// those replicas doesn't show up in controller as WO or RW
 		for _, replica := range addr2Replica {
@@ -188,9 +242,19 @@ func (v *Volume) syncWithEngineState(engineReps map[string]*engineapi.Replica) {
 
 	state := v.State
 	if v.State == types.VolumeStateCreated {
-		state = types.VolumeStateCreated
+		if healthyReplicaCount == v.NumberOfReplicas {
+			if v.Controller != nil {
+				state = types.VolumeStateFault
+			} else {
+				state = types.VolumeStateDetached
+			}
+		}
 	} else if healthyReplicaCount == 0 {
-		state = types.VolumeStateFault
+		if len(badReplicas) == 0 && v.DesireState == types.VolumeStateDeleted {
+			state = types.VolumeStateDeleted
+		} else {
+			state = types.VolumeStateFault
+		}
 	} else if healthyReplicaCount < v.NumberOfReplicas {
 		if v.Controller == nil {
 			state = types.VolumeStateDetached
@@ -232,6 +296,11 @@ func (v *Volume) Reconcile() (err error) {
 		return nil
 	}
 
+	defer func() {
+		if err == nil {
+			err = v.RefreshState()
+		}
+	}()
 	switch v.DesireState {
 	case types.VolumeStateDetached:
 		switch v.State {
@@ -267,11 +336,6 @@ func (v *Volume) Reconcile() (err error) {
 		if err := v.destroy(); err != nil {
 			return err
 		}
-		// TODO fix the shutdown and delete process
-		// v.done <- struct{}{}
-		//if err := v.kv.DeleteVolume(&v.VolumeInfo); err != nil {
-		//	return err
-		//}
 	default:
 		return fmt.Errorf("BUG: invalid desire state %v", v.DesireState)
 	}

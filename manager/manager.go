@@ -150,7 +150,7 @@ func (m *VolumeManager) VolumeDetach(request *VolumeDetachRequest) (err error) {
 		return err
 	}
 
-	if volume.State != types.VolumeStateHealthy || volume.State != types.VolumeStateDegraded {
+	if volume.State != types.VolumeStateHealthy && volume.State != types.VolumeStateDegraded {
 		return fmt.Errorf("invalid state to detach: %v", volume.State)
 	}
 
@@ -243,6 +243,14 @@ func (m *VolumeManager) VolumeSalvage(request *VolumeSalvageRequest) (err error)
 		return err
 	}
 	return nil
+}
+
+func (m *VolumeManager) VolumeList() (map[string]*types.VolumeInfo, error) {
+	return m.kv.ListVolumes()
+}
+
+func (m *VolumeManager) VolumeInfo(volumeName string) (*types.VolumeInfo, error) {
+	return m.kv.GetVolume(volumeName)
 }
 
 func (m *VolumeManager) ScheduleReplica(volume *types.VolumeInfo, nodeIDs map[string]struct{}) (string, error) {

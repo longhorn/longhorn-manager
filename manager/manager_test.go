@@ -21,6 +21,7 @@ const (
 
 	VolumeName                = "vol"
 	VolumeSize                = 10 * 1024 * 1024 * 1024
+	VolumeSizeString          = "10g"
 	VolumeNumberOfReplicas    = 3
 	VolumeStaleReplicaTimeout = 3600
 
@@ -174,4 +175,94 @@ func (s *TestSuite) checkVolumeConsistency(c *C, volume *Volume) {
 			c.Assert(newVol.Replicas[name], DeepEquals, replica)
 		}
 	}
+}
+
+func (s *TestSuite) TestVolumeReconcile(c *C) {
+	err := s.manager.VolumeCreate(&VolumeCreateRequest{
+		Name:                VolumeName,
+		Size:                VolumeSizeString,
+		NumberOfReplicas:    VolumeNumberOfReplicas,
+		StaleReplicaTimeout: VolumeStaleReplicaTimeout,
+	})
+	c.Assert(err, IsNil)
+
+	node := s.manager.GetCurrentNode()
+
+	ReconcileInterval = 1 * time.Second
+
+	volume, err := s.manager.GetVolume(VolumeName)
+	c.Assert(err, IsNil)
+	c.Assert(volume.Name, Equals, VolumeName)
+	c.Assert(volume.Controller, IsNil)
+	c.Assert(volume.TargetNodeID, Equals, node.ID)
+	c.Assert(volume.DesireState, Equals, types.VolumeStateDetached)
+
+	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateDetached)
+	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
+	for _, replica := range volume.Replicas {
+		c.Assert(replica.Name, Not(Equals), "")
+		c.Assert(replica.Address, Equals, "")
+		c.Assert(replica.Running, Equals, false)
+		c.Assert(replica.VolumeName, Equals, VolumeName)
+	}
+	c.Assert(volume.NodeID, Equals, node.ID)
+
+	err = s.manager.VolumeAttach(&VolumeAttachRequest{
+		Name:   VolumeName,
+		NodeID: node.ID,
+	})
+	c.Assert(err, IsNil)
+	volume, err = s.manager.GetVolume(VolumeName)
+	c.Assert(volume.TargetNodeID, Equals, node.ID)
+	c.Assert(volume.DesireState, Equals, types.VolumeStateHealthy)
+
+	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateHealthy)
+	c.Assert(volume.Controller, NotNil)
+
+	err = s.manager.VolumeDetach(&VolumeDetachRequest{
+		Name: VolumeName,
+	})
+	c.Assert(err, IsNil)
+	volume, err = s.manager.GetVolume(VolumeName)
+	c.Assert(volume.TargetNodeID, Equals, node.ID)
+	c.Assert(volume.DesireState, Equals, types.VolumeStateDetached)
+
+	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateDetached)
+	c.Assert(volume.Controller, IsNil)
+
+	err = s.manager.VolumeDelete(&VolumeDeleteRequest{
+		Name: VolumeName,
+	})
+	c.Assert(err, IsNil)
+	volume, err = s.manager.GetVolume(VolumeName)
+	c.Assert(volume.TargetNodeID, Equals, node.ID)
+	c.Assert(volume.DesireState, Equals, types.VolumeStateDeleted)
+
+	infos := map[string]*types.VolumeInfo{}
+	for i := 0; i < RetryCounts; i++ {
+		infos, err = s.manager.VolumeList()
+		c.Assert(err, IsNil)
+		if infos[VolumeName] == nil {
+			break
+		}
+		time.Sleep(RetryInterval)
+	}
+	c.Assert(infos[VolumeName], IsNil)
+}
+
+func (s *TestSuite) waitForVolumeState(c *C, volumeName string, state types.VolumeState) *Volume {
+	var (
+		volume *Volume
+		err    error
+	)
+	for i := 0; i < RetryCounts; i++ {
+		volume, err = s.manager.GetVolume(VolumeName)
+		c.Assert(err, IsNil)
+		if volume.State == state {
+			break
+		}
+		time.Sleep(RetryInterval)
+	}
+	c.Assert(volume.State, Equals, state)
+	return volume
 }

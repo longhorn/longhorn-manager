@@ -210,3 +210,7 @@ func ExecuteWithTimeout(timeout time.Duration, binary string, args ...string) (s
 func TimestampAfterTimeout(ts string, timeoutInSeconds int) bool {
 	return false
 }
+
+func GetIP(addr string) string {
+	return strings.Split(addr, ":")[0]
+}
