@@ -8,6 +8,8 @@ import (
 	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/kvstore"
 	"github.com/yasker/lm-rewrite/orchestrator/orchsim"
+	"github.com/yasker/lm-rewrite/types"
+	"github.com/yasker/lm-rewrite/util"
 
 	. "gopkg.in/check.v1"
 )
@@ -18,7 +20,7 @@ const (
 	EnvEngineImage = "LONGHORN_ENGINE_IMAGE"
 
 	VolumeName                = "vol"
-	VolumeSize                = "10g"
+	VolumeSize                = 10 * 1024 * 1024 * 1024
 	VolumeNumberOfReplicas    = 3
 	VolumeStaleReplicaTimeout = 3600
 
@@ -29,7 +31,12 @@ const (
 func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
-	etcd        *kvstore.KVStore
+	etcd    *kvstore.KVStore
+	engines *engineapi.EngineSimulatorCollection
+	orch    *orchsim.OrchSim
+	rpc     *MockRPCManager
+	manager *VolumeManager
+
 	engineImage string
 }
 
@@ -53,6 +60,18 @@ func (s *TestSuite) SetUpTest(c *C) {
 
 	err = s.etcd.Nuclear("nuke key value store")
 	c.Assert(err, IsNil)
+
+	s.engines = engineapi.NewEngineSimulatorCollection()
+	orch, err := orchsim.NewOrchestratorSimulator(s.engines)
+	s.orch = orch.(*orchsim.OrchSim)
+	c.Assert(err, IsNil)
+	s.rpc = NewMockRPCManager().(*MockRPCManager)
+
+	currentNode := s.orch.GetCurrentNode()
+	c.Assert(currentNode, NotNil)
+
+	s.manager, err = NewVolumeManager(s.etcd, s.orch, s.engines, s.rpc)
+	c.Assert(err, IsNil)
 }
 
 func (s *TestSuite) TeardownTest(c *C) {
@@ -62,27 +81,23 @@ func (s *TestSuite) TeardownTest(c *C) {
 	}
 }
 
-func (s *TestSuite) TestBasic(c *C) {
-	engines := engineapi.NewEngineSimulatorCollection()
-	orch, err := orchsim.NewOrchestratorSimulator(engines)
+func (s *TestSuite) TestVolume(c *C) {
+	node, err := s.manager.GetRandomNode()
 	c.Assert(err, IsNil)
-	rpc := NewMockRPCManager()
-
-	currentNode := orch.GetCurrentNode()
-	c.Assert(currentNode, NotNil)
-
-	manager, err := NewVolumeManager(s.etcd, orch, engines, rpc)
-	c.Assert(err, IsNil)
-
-	err = manager.VolumeCreate(&VolumeCreateRequest{
+	err = s.manager.NewVolume(&types.VolumeInfo{
 		Name:                VolumeName,
 		Size:                VolumeSize,
 		NumberOfReplicas:    VolumeNumberOfReplicas,
 		StaleReplicaTimeout: VolumeStaleReplicaTimeout,
+
+		Created:      util.Now(),
+		TargetNodeID: node.ID,
+		State:        types.VolumeStateCreated,
+		DesireState:  types.VolumeStateDetached,
 	})
 	c.Assert(err, IsNil)
 
-	volume, err := manager.GetVolume(VolumeName)
+	volume, err := s.manager.GetVolume(VolumeName)
 	c.Assert(err, IsNil)
 	c.Assert(volume.Name, Equals, VolumeName)
 	c.Assert(volume.Controller, IsNil)
@@ -98,7 +113,7 @@ func (s *TestSuite) TestBasic(c *C) {
 		}
 	}
 	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
-	s.checkVolumeConsistency(c, manager, volume)
+	s.checkVolumeConsistency(c, volume)
 
 	err = volume.start()
 	c.Assert(err, IsNil)
@@ -110,7 +125,7 @@ func (s *TestSuite) TestBasic(c *C) {
 		}
 	}
 	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
-	s.checkVolumeConsistency(c, manager, volume)
+	s.checkVolumeConsistency(c, volume)
 
 	err = volume.stop()
 	c.Assert(err, IsNil)
@@ -121,7 +136,7 @@ func (s *TestSuite) TestBasic(c *C) {
 		}
 	}
 	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
-	s.checkVolumeConsistency(c, manager, volume)
+	s.checkVolumeConsistency(c, volume)
 
 	err = volume.stop()
 	c.Assert(err, IsNil)
@@ -132,17 +147,17 @@ func (s *TestSuite) TestBasic(c *C) {
 		}
 	}
 	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
-	s.checkVolumeConsistency(c, manager, volume)
+	s.checkVolumeConsistency(c, volume)
 
 	err = volume.destroy()
 	c.Assert(err, IsNil)
 	c.Assert(volume.Controller, IsNil)
 	c.Assert(volume.countReplicas(), Equals, 0)
-	s.checkVolumeConsistency(c, manager, volume)
+	s.checkVolumeConsistency(c, volume)
 }
 
-func (s *TestSuite) checkVolumeConsistency(c *C, manager *VolumeManager, volume *Volume) {
-	newVol, err := manager.GetVolume(volume.Name)
+func (s *TestSuite) checkVolumeConsistency(c *C, volume *Volume) {
+	newVol, err := s.manager.GetVolume(volume.Name)
 	c.Assert(err, IsNil)
 	kvstore.UpdateKVIndex(newVol.VolumeInfo, volume.VolumeInfo)
 	c.Assert(newVol.VolumeInfo, DeepEquals, volume.VolumeInfo)
