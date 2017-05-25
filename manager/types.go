@@ -69,9 +69,8 @@ type Node struct {
 }
 
 type RPCManager interface {
-	StartServer(address string) error
+	StartServer(address string, ch chan Event) error
 
-	SetCallbackChan(ch chan Event)
 	NodeNotify(address string, event *Event) error
 }
 

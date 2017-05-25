@@ -40,7 +40,7 @@ func (m *VolumeManager) RegisterNode() error {
 		NodeInfo: *currentInfo,
 		m:        m,
 	}
-	if err := m.rpc.StartServer(currentInfo.IP); err != nil {
+	if err := m.rpc.StartServer(currentInfo.IP, m.EventChan); err != nil {
 		return err
 	}
 	go m.nodeHealthCheckin()

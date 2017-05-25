@@ -43,7 +43,6 @@ func NewVolumeManager(kv *kvstore.KVStore,
 		managedVolumesMutex: &sync.Mutex{},
 	}
 	manager.scheduler = scheduler.NewScheduler(manager)
-	rpc.SetCallbackChan(manager.EventChan)
 
 	if err := manager.RegisterNode(); err != nil {
 		return nil, err

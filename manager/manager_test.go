@@ -38,6 +38,7 @@ type TestSuite struct {
 	orch    *orchsim.OrchSim
 	rpc     *MockRPCManager
 	manager *VolumeManager
+	rpcdb   *MockRPCDB
 
 	engineImage string
 }
@@ -67,7 +68,9 @@ func (s *TestSuite) SetUpTest(c *C) {
 	orch, err := orchsim.NewOrchestratorSimulator(s.engines)
 	s.orch = orch.(*orchsim.OrchSim)
 	c.Assert(err, IsNil)
-	s.rpc = NewMockRPCManager().(*MockRPCManager)
+
+	s.rpcdb = NewMockRPCDB()
+	s.rpc = NewMockRPCManager(s.rpcdb).(*MockRPCManager)
 
 	currentNode := s.orch.GetCurrentNode()
 	c.Assert(currentNode, NotNil)

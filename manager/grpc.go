@@ -21,10 +21,6 @@ func NewGRPCManager() RPCManager {
 	return &GRPCManager{}
 }
 
-func (r *GRPCManager) SetCallbackChan(callbackChan chan Event) {
-	r.callbackChan = callbackChan
-}
-
 func (r *GRPCManager) NodeNotifyRPC(ctx context.Context, req *pb.NodeNotifyRequest) (*pb.NodeNotifyResponse, error) {
 	r.callbackChan <- Event{
 		Type:       EventType(req.Event),
@@ -35,11 +31,13 @@ func (r *GRPCManager) NodeNotifyRPC(ctx context.Context, req *pb.NodeNotifyReque
 	}, nil
 }
 
-func (r *GRPCManager) StartServer(address string) (err error) {
+func (r *GRPCManager) StartServer(address string, callbackChan chan Event) (err error) {
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		return errors.Wrap(err, "fail to start GRPC server")
 	}
+	r.callbackChan = callbackChan
+
 	s := grpc.NewServer()
 	pb.RegisterManagerServer(s, r)
 	reflection.Register(s)
