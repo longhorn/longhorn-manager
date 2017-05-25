@@ -37,7 +37,7 @@ func (db *MockRPCDB) GetAddress2Channel(address string) chan Event {
 	return db.addressChanMap[address]
 }
 
-func NewMockRPCManager(db *MockRPCDB) RPCManager {
+func NewMockRPCManager(db *MockRPCDB) *MockRPCManager {
 	return &MockRPCManager{
 		db: db,
 	}

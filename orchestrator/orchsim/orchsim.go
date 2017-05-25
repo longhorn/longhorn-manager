@@ -34,19 +34,19 @@ type InstanceRecord struct {
 	IP    string
 }
 
-func NewOrchestratorSimulator(port int, engines *engineapi.EngineSimulatorCollection) (orchestrator.Orchestrator, error) {
+func NewOrchestratorSimulator(port int, engines *engineapi.EngineSimulatorCollection) *OrchSim {
 	nodeID := util.UUID()
 	return &OrchSim{
 		currentNode: &types.NodeInfo{
 			ID:               nodeID,
 			Name:             "sim-" + nodeID,
-			IP:               "sim-ip-" + nodeID,
+			IP:               "127.0.0.1",
 			OrchestratorPort: port,
 		},
 		records: map[string]*InstanceRecord{},
 		mutex:   &sync.RWMutex{},
 		engines: engines,
-	}, nil
+	}
 }
 
 func (s *OrchSim) CreateController(request *orchestrator.Request) (*orchestrator.Instance, error) {

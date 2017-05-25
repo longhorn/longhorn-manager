@@ -19,14 +19,21 @@ type Forwarder struct {
 	locator NodeLocator
 }
 
-func NewForwarder(orch Orchestrator, locator NodeLocator) (Orchestrator, error) {
+func NewForwarder(orch Orchestrator) *Forwarder {
 	return &Forwarder{
-		orch:    orch,
-		locator: locator,
-	}, nil
+		orch: orch,
+	}
+}
+
+func (f *Forwarder) SetLocator(locator NodeLocator) {
+	f.locator = locator
 }
 
 func (f *Forwarder) StartServer(address string) error {
+	if f.locator == nil {
+		return fmt.Errorf("BUG: locator wasn't set for forwarder")
+	}
+
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		return errors.Wrap(err, "fail to start orchestrator forwarder GRPC server")
@@ -76,6 +83,10 @@ func (f *Forwarder) InstanceOperationRPC(ctx context.Context, req *pb.InstanceOp
 	if err != nil {
 		return nil, err
 	}
+	// avoid nil response
+	resp = &pb.InstanceOperationResponse{
+		InstanceID: req.InstanceID,
+	}
 	if instance != nil {
 		resp = &pb.InstanceOperationResponse{
 			InstanceID:   instance.ID,
@@ -91,6 +102,9 @@ func (f *Forwarder) CreateController(request *Request) (*Instance, error) {
 	if request.NodeID == f.orch.GetCurrentNode().ID {
 		return f.orch.CreateController(request)
 	}
+	if f.locator == nil {
+		return nil, fmt.Errorf("BUG: locator wasn't set for forwarder")
+	}
 	address, err := f.locator.Node2Address(request.NodeID)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to create controller")
@@ -101,6 +115,9 @@ func (f *Forwarder) CreateController(request *Request) (*Instance, error) {
 func (f *Forwarder) CreateReplica(request *Request) (*Instance, error) {
 	if request.NodeID == f.orch.GetCurrentNode().ID {
 		return f.orch.CreateReplica(request)
+	}
+	if f.locator == nil {
+		return nil, fmt.Errorf("BUG: locator wasn't set for forwarder")
 	}
 	address, err := f.locator.Node2Address(request.NodeID)
 	if err != nil {
@@ -113,6 +130,9 @@ func (f *Forwarder) StartInstance(request *Request) (*Instance, error) {
 	if request.NodeID == f.orch.GetCurrentNode().ID {
 		return f.orch.StartInstance(request)
 	}
+	if f.locator == nil {
+		return nil, fmt.Errorf("BUG: locator wasn't set for forwarder")
+	}
 	address, err := f.locator.Node2Address(request.NodeID)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to start instance")
@@ -124,6 +144,9 @@ func (f *Forwarder) StopInstance(request *Request) (*Instance, error) {
 	if request.NodeID == f.orch.GetCurrentNode().ID {
 		return f.orch.StopInstance(request)
 	}
+	if f.locator == nil {
+		return nil, fmt.Errorf("BUG: locator wasn't set for forwarder")
+	}
 	address, err := f.locator.Node2Address(request.NodeID)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to stop instance")
@@ -134,6 +157,9 @@ func (f *Forwarder) StopInstance(request *Request) (*Instance, error) {
 func (f *Forwarder) DeleteInstance(request *Request) error {
 	if request.NodeID == f.orch.GetCurrentNode().ID {
 		return f.orch.DeleteInstance(request)
+	}
+	if f.locator == nil {
+		return fmt.Errorf("BUG: locator wasn't set for forwarder")
 	}
 	address, err := f.locator.Node2Address(request.NodeID)
 	if err != nil {
@@ -148,6 +174,9 @@ func (f *Forwarder) DeleteInstance(request *Request) error {
 func (f *Forwarder) InspectInstance(request *Request) (*Instance, error) {
 	if request.NodeID == f.orch.GetCurrentNode().ID {
 		return f.orch.InspectInstance(request)
+	}
+	if f.locator == nil {
+		return nil, fmt.Errorf("BUG: locator wasn't set for forwarder")
 	}
 	address, err := f.locator.Node2Address(request.NodeID)
 	if err != nil {

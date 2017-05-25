@@ -65,12 +65,10 @@ func (s *TestSuite) SetUpTest(c *C) {
 	c.Assert(err, IsNil)
 
 	s.engines = engineapi.NewEngineSimulatorCollection()
-	orch, err := orchsim.NewOrchestratorSimulator(types.DefaultOrchestratorPort, s.engines)
-	s.orch = orch.(*orchsim.OrchSim)
-	c.Assert(err, IsNil)
+	s.orch = orchsim.NewOrchestratorSimulator(types.DefaultOrchestratorPort, s.engines)
 
 	s.rpcdb = NewMockRPCDB()
-	s.rpc = NewMockRPCManager(s.rpcdb).(*MockRPCManager)
+	s.rpc = NewMockRPCManager(s.rpcdb)
 
 	currentNode := s.orch.GetCurrentNode()
 	c.Assert(currentNode, NotNil)

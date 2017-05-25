@@ -1,7 +1,11 @@
 package orchsim
 
 import (
+	"fmt"
+	"math/rand"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/orchestrator"
@@ -18,25 +22,40 @@ var (
 	Replica2Name         = VolumeName + "-replica2"
 	Replica3Name         = VolumeName + "-replica3"
 	Replica4Name         = VolumeName + "-replica4"
+
+	NodeCount     = 3
+	OrchPortStart = 50000
 )
 
 func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
+	engines *engineapi.EngineSimulatorCollection
 }
 
 var _ = Suite(&TestSuite{})
 
+func (s *TestSuite) SetUpTest(c *C) {
+	rand.Seed(time.Now().UTC().UnixNano())
+	s.engines = engineapi.NewEngineSimulatorCollection()
+}
+
 func (s *TestSuite) TestBasic(c *C) {
-	engines := engineapi.NewEngineSimulatorCollection()
-	orch, err := NewOrchestratorSimulator(types.DefaultOrchestratorPort, engines)
-	c.Assert(err, IsNil)
+	orch := NewOrchestratorSimulator(types.DefaultOrchestratorPort, s.engines)
 	c.Assert(orch.GetCurrentNode(), NotNil)
 
-	CurrentNodeID := orch.GetCurrentNode().ID
+	s.basicFlowTest(c, []orchestrator.Orchestrator{orch})
+}
 
+func getRandomOrch(orchs []orchestrator.Orchestrator) orchestrator.Orchestrator {
+	return orchs[rand.Intn(len(orchs))]
+}
+
+func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
+	orch := getRandomOrch(orchs)
+	replica1NodeID := orch.GetCurrentNode().ID
 	replica1Instance, err := orch.CreateReplica(&orchestrator.Request{
-		NodeID:       CurrentNodeID,
+		NodeID:       replica1NodeID,
 		InstanceName: Replica1Name,
 		VolumeName:   VolumeName,
 		VolumeSize:   VolumeSize,
@@ -47,16 +66,19 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(replica1Instance.IP, Equals, "")
 	c.Assert(replica1Instance.Running, Equals, false)
 
+	orch = getRandomOrch(orchs)
+	replica2NodeID := orch.GetCurrentNode().ID
 	replica2Instance, err := orch.CreateReplica(&orchestrator.Request{
-		NodeID:       CurrentNodeID,
+		NodeID:       replica2NodeID,
 		InstanceName: Replica2Name,
 		VolumeName:   VolumeName,
 		VolumeSize:   VolumeSize,
 	})
 	c.Assert(err, IsNil)
 
+	orch = getRandomOrch(orchs)
 	instance, err := orch.StartInstance(&orchestrator.Request{
-		NodeID:       CurrentNodeID,
+		NodeID:       replica1NodeID,
 		InstanceName: replica1Instance.Name,
 		VolumeName:   VolumeName,
 	})
@@ -66,8 +88,9 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(instance.IP, Not(Equals), "")
 	c.Assert(instance, DeepEquals, replica1Instance)
 
+	orch = getRandomOrch(orchs)
 	instance, err = orch.StartInstance(&orchestrator.Request{
-		NodeID:       CurrentNodeID,
+		NodeID:       replica2NodeID,
 		InstanceName: replica2Instance.Name,
 		VolumeName:   VolumeName,
 	})
@@ -77,9 +100,11 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(instance.IP, Not(Equals), "")
 	c.Assert(instance, DeepEquals, replica2Instance)
 
+	orch = getRandomOrch(orchs)
 	ctrlName := "controller-id-" + VolumeName
+	ctrlNodeID := orch.GetCurrentNode().ID
 	ctrlInstance, err := orch.CreateController(&orchestrator.Request{
-		NodeID:       CurrentNodeID,
+		NodeID:       ctrlNodeID,
 		InstanceName: ctrlName,
 		VolumeName:   VolumeName,
 		VolumeSize:   VolumeSize,
@@ -94,7 +119,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(ctrlInstance.Running, Equals, true)
 	c.Assert(ctrlInstance.IP, Not(Equals), "")
 
-	engine, err := engines.GetEngineSimulator(VolumeName)
+	engine, err := s.engines.GetEngineSimulator(VolumeName)
 	c.Assert(err, IsNil)
 	c.Assert(engine.Name(), Equals, VolumeName)
 
@@ -104,17 +129,19 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(replicas[replica1Instance.IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeRW)
 	c.Assert(replicas[replica2Instance.IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeRW)
 
+	orch = getRandomOrch(orchs)
 	instance, err = orch.InspectInstance(&orchestrator.Request{
-		NodeID:       CurrentNodeID,
+		NodeID:       ctrlNodeID,
 		InstanceName: ctrlInstance.Name,
 		VolumeName:   VolumeName,
 	})
 	c.Assert(err, IsNil)
 	c.Assert(instance, DeepEquals, ctrlInstance)
 
+	orch = getRandomOrch(orchs)
 	rep1IP := replica1Instance.IP
 	instance, err = orch.StopInstance(&orchestrator.Request{
-		NodeID:       CurrentNodeID,
+		NodeID:       replica1NodeID,
 		InstanceName: replica1Instance.Name,
 		VolumeName:   VolumeName,
 	})
@@ -129,8 +156,9 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(replicas[rep1IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeERR)
 	c.Assert(replicas[replica2Instance.IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeRW)
 
+	orch = getRandomOrch(orchs)
 	err = orch.DeleteInstance(&orchestrator.Request{
-		NodeID:       CurrentNodeID,
+		NodeID:       replica1NodeID,
 		InstanceName: replica1Instance.Name,
 		VolumeName:   VolumeName,
 	})
@@ -142,20 +170,60 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(replicas[rep1IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeERR)
 	c.Assert(replicas[replica2Instance.IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeRW)
 
+	orch = getRandomOrch(orchs)
 	err = orch.DeleteInstance(&orchestrator.Request{
-		NodeID:       CurrentNodeID,
+		NodeID:       ctrlNodeID,
 		InstanceName: ctrlInstance.Name,
 		VolumeName:   VolumeName,
 	})
 	c.Assert(err, IsNil)
 
-	engine, err = engines.GetEngineSimulator(VolumeName)
+	engine, err = s.engines.GetEngineSimulator(VolumeName)
 	c.Assert(err, NotNil)
 
+	orch = getRandomOrch(orchs)
 	instance, err = orch.InspectInstance(&orchestrator.Request{
-		NodeID:       CurrentNodeID,
+		NodeID:       ctrlNodeID,
 		InstanceName: ctrlInstance.Name,
 		VolumeName:   VolumeName,
 	})
-	c.Assert(err, ErrorMatches, "unable to find instance.*")
+	c.Assert(err, NotNil)
+}
+
+type NodeMap struct {
+	nodes map[string]string
+}
+
+func (m *NodeMap) Node2Address(nodeID string) (string, error) {
+	addr := m.nodes[nodeID]
+	if addr == "" {
+		return addr, fmt.Errorf("cannot find node %v", nodeID)
+	}
+	return addr, nil
+}
+
+func (s *TestSuite) TestForwarder(c *C) {
+	var err error
+
+	orchs := make([]orchestrator.Orchestrator, NodeCount)
+	nodeMap := &NodeMap{
+		nodes: map[string]string{},
+	}
+
+	for i := 0; i < NodeCount; i++ {
+		orch := NewOrchestratorSimulator(OrchPortStart+i, s.engines)
+
+		node := orch.GetCurrentNode()
+		nodeAddress := node.IP + ":" + strconv.Itoa(node.OrchestratorPort)
+		nodeMap.nodes[node.ID] = nodeAddress
+
+		forwarder := orchestrator.NewForwarder(orch)
+		forwarder.SetLocator(nodeMap)
+
+		err = forwarder.StartServer(nodeAddress)
+		c.Assert(err, IsNil)
+		orchs[i] = forwarder
+	}
+
+	s.basicFlowTest(c, orchs)
 }
