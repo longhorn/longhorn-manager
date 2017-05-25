@@ -65,7 +65,7 @@ func (s *TestSuite) SetUpTest(c *C) {
 	c.Assert(err, IsNil)
 
 	s.engines = engineapi.NewEngineSimulatorCollection()
-	orch, err := orchsim.NewOrchestratorSimulator(s.engines)
+	orch, err := orchsim.NewOrchestratorSimulator(types.DefaultOrchestratorPort, s.engines)
 	s.orch = orch.(*orchsim.OrchSim)
 	c.Assert(err, IsNil)
 
@@ -75,7 +75,7 @@ func (s *TestSuite) SetUpTest(c *C) {
 	currentNode := s.orch.GetCurrentNode()
 	c.Assert(currentNode, NotNil)
 
-	s.manager, err = NewVolumeManager(s.etcd, s.orch, s.engines, s.rpc)
+	s.manager, err = NewVolumeManager(s.etcd, s.orch, s.engines, s.rpc, types.DefaultManagerPort)
 	c.Assert(err, IsNil)
 }
 

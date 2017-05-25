@@ -74,11 +74,13 @@ const (
 )
 
 type NodeInfo struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	IP          string    `json:"ip"`
-	State       NodeState `json:"state"`
-	LastCheckin string    `json:"lastCheckin"`
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	IP               string    `json:"ip"`
+	ManagerPort      int       `json:"managerPort"`
+	OrchestratorPort int       `json:"orchestratorPort"`
+	State            NodeState `json:"state"`
+	LastCheckin      string    `json:"lastCheckin"`
 
 	KVMetadata
 }

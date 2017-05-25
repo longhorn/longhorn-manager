@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -17,8 +18,9 @@ var (
 	NodeCheckinMaximumGap        = 2 * NodeCheckinIntervalInSeconds
 )
 
-func (m *VolumeManager) RegisterNode() error {
+func (m *VolumeManager) RegisterNode(port int) error {
 	currentInfo := m.orch.GetCurrentNode()
+	currentInfo.ManagerPort = port
 
 	existInfo, err := m.kv.GetNode(currentInfo.ID)
 	if err != nil {
@@ -40,7 +42,7 @@ func (m *VolumeManager) RegisterNode() error {
 		NodeInfo: *currentInfo,
 		m:        m,
 	}
-	if err := m.rpc.StartServer(currentInfo.IP, m.EventChan); err != nil {
+	if err := m.rpc.StartServer(m.currentNode.getManagerAddress(), m.EventChan); err != nil {
 		return err
 	}
 	go m.nodeHealthCheckin()
@@ -114,8 +116,12 @@ func (m *VolumeManager) ListSchedulingNodes() (map[string]*scheduler.Node, error
 	return ret, nil
 }
 
+func (n *Node) getManagerAddress() string {
+	return n.IP + ":" + strconv.Itoa(n.ManagerPort)
+}
+
 func (n *Node) Notify(volumeName string) error {
-	if err := n.m.rpc.NodeNotify(n.IP,
+	if err := n.m.rpc.NodeNotify(n.getManagerAddress(),
 		&Event{
 			Type:       EventTypeNotify,
 			VolumeName: volumeName,

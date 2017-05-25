@@ -7,6 +7,9 @@ import (
 const (
 	ControllerPort = ":9501"
 	ReplicaPort    = ":9503"
+
+	DefaultManagerPort      = 9507
+	DefaultOrchestratorPort = 9508
 )
 
 type ReplicaMode string

@@ -29,7 +29,7 @@ var _ = Suite(&TestSuite{})
 
 func (s *TestSuite) TestBasic(c *C) {
 	engines := engineapi.NewEngineSimulatorCollection()
-	orch, err := NewOrchestratorSimulator(engines)
+	orch, err := NewOrchestratorSimulator(types.DefaultOrchestratorPort, engines)
 	c.Assert(err, IsNil)
 	c.Assert(orch.GetCurrentNode(), NotNil)
 

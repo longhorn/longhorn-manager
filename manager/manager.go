@@ -31,7 +31,10 @@ type VolumeManager struct {
 func NewVolumeManager(kv *kvstore.KVStore,
 	orch orchestrator.Orchestrator,
 	engines engineapi.EngineClientCollection,
-	rpc RPCManager) (*VolumeManager, error) {
+	rpc RPCManager, port int) (*VolumeManager, error) {
+	if port == 0 {
+		return nil, fmt.Errorf("invalid manager port")
+	}
 	manager := &VolumeManager{
 		kv:      kv,
 		orch:    orch,
@@ -44,7 +47,7 @@ func NewVolumeManager(kv *kvstore.KVStore,
 	}
 	manager.scheduler = scheduler.NewScheduler(manager)
 
-	if err := manager.RegisterNode(); err != nil {
+	if err := manager.RegisterNode(port); err != nil {
 		return nil, err
 	}
 	go manager.startProcessing()
