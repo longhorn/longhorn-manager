@@ -234,7 +234,7 @@ func (v *Volume) startRebuild() (err error) {
 		}
 	}()
 
-	if len(v.Replicas)-len(v.BadReplicas) >= v.NumberOfReplicas {
+	if len(v.Replicas)-len(v.badReplicas) >= v.NumberOfReplicas {
 		return fmt.Errorf("there are enough healthy replicas for the volume")
 	}
 

@@ -51,9 +51,10 @@ type Volume struct {
 	types.VolumeInfo
 	mutex *sync.RWMutex
 
-	Controller  *types.ControllerInfo
-	Replicas    map[string]*types.ReplicaInfo
-	BadReplicas map[string]*types.ReplicaInfo
+	Controller *types.ControllerInfo
+	Replicas   map[string]*types.ReplicaInfo
+
+	badReplicas map[string]struct{}
 
 	Jobs map[string]*Job
 

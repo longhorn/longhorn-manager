@@ -52,14 +52,21 @@ func (m *VolumeManager) GetVolume(volumeName string) (*Volume, error) {
 	if replicas == nil {
 		replicas = make(map[string]*types.ReplicaInfo)
 	}
+	badReplicas := map[string]struct{}{}
+	for name, replica := range replicas {
+		if replica.BadTimestamp != "" {
+			badReplicas[name] = struct{}{}
+		}
+	}
 
 	return &Volume{
-		VolumeInfo: *info,
-		mutex:      &sync.RWMutex{},
-		Controller: controller,
-		Replicas:   replicas,
-		Jobs:       map[string]*Job{},
-		m:          m,
+		VolumeInfo:  *info,
+		mutex:       &sync.RWMutex{},
+		Controller:  controller,
+		Replicas:    replicas,
+		badReplicas: badReplicas,
+		Jobs:        map[string]*Job{},
+		m:           m,
 	}, nil
 }
 
