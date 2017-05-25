@@ -54,7 +54,7 @@ func (m *VolumeManager) GetVolume(volumeName string) (*Volume, error) {
 	}
 	badReplicas := map[string]struct{}{}
 	for name, replica := range replicas {
-		if replica.BadTimestamp != "" {
+		if replica.FailedAt != "" {
 			badReplicas[name] = struct{}{}
 		}
 	}
@@ -80,8 +80,8 @@ func (v *Volume) Cleanup() (err error) {
 	staleReplicas := map[string]*types.ReplicaInfo{}
 
 	for _, replica := range v.Replicas {
-		if replica.BadTimestamp != "" {
-			if util.TimestampAfterTimeout(replica.BadTimestamp, v.StaleReplicaTimeout*60) {
+		if replica.FailedAt != "" {
+			if util.TimestampAfterTimeout(replica.FailedAt, v.StaleReplicaTimeout*60) {
 				staleReplicas[replica.Name] = replica
 			}
 		}
@@ -104,7 +104,7 @@ func (v *Volume) create() (err error) {
 
 	ready := 0
 	for _, replica := range v.Replicas {
-		if replica.BadTimestamp != "" {
+		if replica.FailedAt != "" {
 			ready++
 		}
 	}
@@ -142,7 +142,7 @@ func (v *Volume) start() (err error) {
 
 	startReplicas := map[string]*types.ReplicaInfo{}
 	for _, replica := range v.Replicas {
-		if replica.BadTimestamp != "" {
+		if replica.FailedAt != "" {
 			continue
 		}
 		if err := v.startReplica(replica.Name); err != nil {
@@ -227,7 +227,7 @@ func (v *Volume) getNodesWithReplica() map[string]struct{} {
 	v.mutex.RLock()
 	defer v.mutex.RUnlock()
 	for _, replica := range v.Replicas {
-		if replica.BadTimestamp != "" {
+		if replica.FailedAt != "" {
 			ret[replica.NodeID] = struct{}{}
 		}
 	}

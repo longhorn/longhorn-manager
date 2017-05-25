@@ -63,8 +63,7 @@ type ControllerInfo struct {
 type ReplicaInfo struct {
 	InstanceInfo
 
-	Mode         ReplicaMode
-	BadTimestamp string
+	FailedAt string
 }
 
 type NodeState string

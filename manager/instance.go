@@ -122,7 +122,7 @@ func (v *Volume) markBadReplica(replicaName string) (err error) {
 		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
 
-	replica.BadTimestamp = util.Now()
+	replica.FailedAt = util.Now()
 	if err := v.setReplica(replica); err != nil {
 		return err
 	}

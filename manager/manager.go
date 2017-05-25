@@ -225,10 +225,10 @@ func (m *VolumeManager) VolumeSalvage(request *VolumeSalvageRequest) (err error)
 		if err != nil {
 			return err
 		}
-		if replica.BadTimestamp == "" {
+		if replica.FailedAt == "" {
 			return fmt.Errorf("replica %v is not bad", repName)
 		}
-		replica.BadTimestamp = ""
+		replica.FailedAt = ""
 		if err := m.kv.UpdateVolumeReplica(replica); err != nil {
 			return err
 		}

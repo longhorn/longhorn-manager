@@ -221,7 +221,6 @@ func generateTestReplica(volName, replicaName string) *types.ReplicaInfo {
 			IP:         "5.6.7.8",
 			VolumeName: volName,
 		},
-		Mode: types.ReplicaModeRW,
 	}
 }
 

@@ -198,14 +198,14 @@ func (v *Volume) syncWithEngineState(engineReps map[string]*engineapi.Replica) {
 	rebuildingReplicaCount := 0
 
 	for _, replica := range v.Replicas {
-		if replica.BadTimestamp != "" {
+		if replica.FailedAt != "" {
 			v.badReplicas[replica.Name] = struct{}{}
 		}
 	}
 
 	if v.Controller == nil {
 		for _, rep := range v.Replicas {
-			if rep.BadTimestamp == "" {
+			if rep.FailedAt == "" {
 				healthyReplicaCount++
 			}
 		}
