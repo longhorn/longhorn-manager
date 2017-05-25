@@ -51,7 +51,7 @@ func (s *KVStore) nodeKey(id string) string {
 }
 
 func (s *KVStore) checkNode(node *types.NodeInfo) error {
-	if node.ID == "" || node.Name == "" || node.Address == "" {
+	if node.ID == "" || node.Name == "" || node.IP == "" {
 		return fmt.Errorf("BUG: missing required field %+v", node)
 	}
 	return nil
@@ -66,7 +66,7 @@ func (s *KVStore) CreateNode(node *types.NodeInfo) error {
 		return err
 	}
 	node.KVIndex = index
-	logrus.Infof("Add node %v name %v longhorn-manager address %v", node.ID, node.Name, node.Address)
+	logrus.Infof("Add node %v name %v longhorn-manager IP %v", node.ID, node.Name, node.IP)
 	return nil
 }
 

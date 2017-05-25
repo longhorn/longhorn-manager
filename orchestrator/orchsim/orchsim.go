@@ -38,9 +38,9 @@ func NewOrchestratorSimulator(engines *engineapi.EngineSimulatorCollection) (orc
 	nodeID := util.UUID()
 	return &OrchSim{
 		currentNode: &types.NodeInfo{
-			ID:      nodeID,
-			Name:    "sim-" + nodeID,
-			Address: "sim-address-" + nodeID,
+			ID:   nodeID,
+			Name: "sim-" + nodeID,
+			IP:   "sim-ip-" + nodeID,
 		},
 		records: map[string]*InstanceRecord{},
 		mutex:   &sync.RWMutex{},
@@ -74,7 +74,8 @@ func (s *OrchSim) CreateController(request *orchestrator.Request) (*orchestrator
 		VolumeName:     request.VolumeName,
 		VolumeSize:     request.VolumeSize,
 		ControllerAddr: instance.IP,
-		ReplicaAddrs:   request.ReplicaURLs,
+		// ReplicaURLs should contains port
+		ReplicaAddrs: request.ReplicaURLs,
 	}); err != nil {
 		return nil, err
 	}
@@ -89,7 +90,7 @@ func (s *OrchSim) CreateController(request *orchestrator.Request) (*orchestrator
 		ID:      instance.ID,
 		Name:    instance.Name,
 		Running: instance.State == StateRunning,
-		Address: instance.IP,
+		IP:      instance.IP,
 	}, nil
 }
 
@@ -118,7 +119,7 @@ func (s *OrchSim) CreateReplica(request *orchestrator.Request) (*orchestrator.In
 		ID:      instance.ID,
 		Name:    instance.Name,
 		Running: instance.State == StateRunning,
-		Address: instance.IP,
+		IP:      instance.IP,
 	}, nil
 }
 
@@ -150,7 +151,7 @@ func (s *OrchSim) StartInstance(request *orchestrator.Request) (*orchestrator.In
 		ID:      instance.ID,
 		Name:    instance.Name,
 		Running: instance.State == StateRunning,
-		Address: instance.IP,
+		IP:      instance.IP,
 	}, nil
 }
 
@@ -171,11 +172,12 @@ func (s *OrchSim) StopInstance(request *orchestrator.Request) (*orchestrator.Ins
 		return nil, err
 	}
 
-	if engine, err := s.engines.GetEngineSimulator(request.VolumeName); err == nil {
-		engine.SimulateStopReplica(instance.IP)
-	}
-
 	if instance.State != StateStopped {
+		if engine, err := s.engines.GetEngineSimulator(request.VolumeName); err == nil {
+			if err := engine.SimulateStopReplica(instance.IP + types.ReplicaPort); err != nil {
+				return nil, err
+			}
+		}
 		instance.State = StateStopped
 		instance.IP = ""
 		if err := s.updateRecord(instance); err != nil {
@@ -186,7 +188,7 @@ func (s *OrchSim) StopInstance(request *orchestrator.Request) (*orchestrator.Ins
 		ID:      instance.ID,
 		Name:    instance.Name,
 		Running: instance.State == StateRunning,
-		Address: instance.IP,
+		IP:      instance.IP,
 	}, nil
 }
 
@@ -212,7 +214,9 @@ func (s *OrchSim) DeleteInstance(request *orchestrator.Request) error {
 		}
 	} else {
 		if engine, err := s.engines.GetEngineSimulator(request.VolumeName); err == nil {
-			engine.SimulateStopReplica(instance.IP)
+			if err := engine.SimulateStopReplica(instance.IP + types.ReplicaPort); err != nil {
+				return nil
+			}
 		}
 	}
 
@@ -239,7 +243,7 @@ func (s *OrchSim) InspectInstance(request *orchestrator.Request) (*orchestrator.
 		ID:      instance.ID,
 		Name:    instance.Name,
 		Running: instance.State == StateRunning,
-		Address: instance.IP,
+		IP:      instance.IP,
 	}, nil
 }
 

@@ -4,6 +4,11 @@ import (
 	"io"
 )
 
+const (
+	ControllerPort = ":9501"
+	ReplicaPort    = ":9503"
+)
+
 type ReplicaMode string
 
 const (

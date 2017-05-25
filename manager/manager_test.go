@@ -201,7 +201,7 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
 	for _, replica := range volume.Replicas {
 		c.Assert(replica.Name, Not(Equals), "")
-		c.Assert(replica.Address, Equals, "")
+		c.Assert(replica.IP, Equals, "")
 		c.Assert(replica.Running, Equals, false)
 		c.Assert(replica.VolumeName, Equals, VolumeName)
 	}

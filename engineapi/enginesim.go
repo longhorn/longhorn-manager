@@ -132,12 +132,13 @@ func (e *EngineSimulator) RemoveReplica(addr string) error {
 	return nil
 }
 
-func (e *EngineSimulator) SimulateStopReplica(addr string) {
+func (e *EngineSimulator) SimulateStopReplica(addr string) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
 	if e.replicas[addr] == nil {
-		return
+		return fmt.Errorf("unable to find replica %v", addr)
 	}
 	e.replicas[addr].Mode = ReplicaModeERR
+	return nil
 }

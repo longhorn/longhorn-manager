@@ -75,19 +75,19 @@ func (s *TestSuite) TestNode(c *C) {
 
 func (s *TestSuite) testNode(c *C, st *KVStore) {
 	node1 := &types.NodeInfo{
-		ID:      util.UUID(),
-		Name:    "node-1",
-		Address: "127.0.1.1",
+		ID:   util.UUID(),
+		Name: "node-1",
+		IP:   "127.0.1.1",
 	}
 	node2 := &types.NodeInfo{
-		ID:      util.UUID(),
-		Name:    "node-2",
-		Address: "127.0.1.2",
+		ID:   util.UUID(),
+		Name: "node-2",
+		IP:   "127.0.1.2",
 	}
 	node3 := &types.NodeInfo{
-		ID:      util.UUID(),
-		Name:    "node-3",
-		Address: "127.0.1.3",
+		ID:   util.UUID(),
+		Name: "node-3",
+		IP:   "127.0.1.3",
 	}
 
 	node, err := st.GetNode("random")
@@ -100,7 +100,7 @@ func (s *TestSuite) testNode(c *C, st *KVStore) {
 
 	err = st.CreateNode(node1)
 	c.Assert(err, IsNil)
-	node1.Address = "127.0.0.1"
+	node1.IP = "127.0.0.1"
 	err = st.UpdateNode(node1)
 	c.Assert(err, IsNil)
 	err = st.DeleteNode(node1.ID)
@@ -113,7 +113,7 @@ func (s *TestSuite) testNode(c *C, st *KVStore) {
 	UpdateKVIndex(node1, node)
 	c.Assert(node, DeepEquals, node1)
 
-	node1.Address = "127.0.2.2"
+	node1.IP = "127.0.2.2"
 	s.verifyConcurrentExecution(c, st.UpdateNode, node1)
 
 	node, err = st.GetNode(node1.ID)
@@ -205,7 +205,7 @@ func generateTestController(volName string) *types.ControllerInfo {
 			Type:       types.InstanceTypeController,
 			Name:       "controller-name-" + volName,
 			Running:    true,
-			Address:    "1.2.3.4",
+			IP:         "1.2.3.4",
 			VolumeName: volName,
 		},
 	}
@@ -218,7 +218,7 @@ func generateTestReplica(volName, replicaName string) *types.ReplicaInfo {
 			Type:       types.InstanceTypeReplica,
 			Name:       "replica-name-" + replicaName + "-" + volName,
 			Running:    true,
-			Address:    "5.6.7.8",
+			IP:         "5.6.7.8",
 			VolumeName: volName,
 		},
 		Mode: types.ReplicaModeRW,

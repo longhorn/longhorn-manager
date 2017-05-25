@@ -40,7 +40,7 @@ func (m *VolumeManager) RegisterNode() error {
 		NodeInfo: *currentInfo,
 		m:        m,
 	}
-	if err := m.rpc.StartServer(currentInfo.Address); err != nil {
+	if err := m.rpc.StartServer(currentInfo.IP); err != nil {
 		return err
 	}
 	go m.nodeHealthCheckin()
@@ -88,7 +88,7 @@ func (m *VolumeManager) GetRandomNode() (*Node, error) {
 			break
 		}
 		logrus.Warnf("node %v(%v) is not healthy, last checkin at %v, trying next",
-			n.Name, n.Address, n.LastCheckin)
+			n.Name, n.IP, n.LastCheckin)
 	}
 
 	if node == nil {
@@ -115,7 +115,7 @@ func (m *VolumeManager) ListSchedulingNodes() (map[string]*scheduler.Node, error
 }
 
 func (n *Node) Notify(volumeName string) error {
-	if err := n.m.rpc.NodeNotify(n.Address,
+	if err := n.m.rpc.NodeNotify(n.IP,
 		&Event{
 			Type:       EventTypeNotify,
 			VolumeName: volumeName,

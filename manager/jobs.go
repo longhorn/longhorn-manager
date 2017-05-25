@@ -96,7 +96,7 @@ func (v *Volume) jobReplicaCreate(req *orchestrator.Request) (err error) {
 			Type:       types.InstanceTypeReplica,
 			Name:       instance.Name,
 			NodeID:     req.NodeID,
-			Address:    instance.Address,
+			IP:         instance.IP,
 			Running:    instance.Running,
 			VolumeName: v.Name,
 		},
@@ -128,13 +128,13 @@ func (v *Volume) jobReplicaRebuild(req *orchestrator.Request) (err error) {
 
 	engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
 		VolumeName:     v.Name,
-		ControllerAddr: v.Controller.Address + ControllerPort,
+		ControllerAddr: v.Controller.IP + types.ControllerPort,
 	})
 	if err != nil {
 		return err
 	}
 
-	url := replica.Address + ReplicaPort
+	url := replica.IP + types.ReplicaPort
 	if err := engine.AddReplica(url); err != nil {
 		return err
 	}

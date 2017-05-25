@@ -49,7 +49,7 @@ type InstanceInfo struct {
 	Type       InstanceType
 	Name       string
 	NodeID     string
-	Address    string
+	IP         string
 	Running    bool
 	VolumeName string
 
@@ -77,7 +77,7 @@ const (
 type NodeInfo struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
-	Address     string    `json:"address"`
+	IP          string    `json:"ip"`
 	State       NodeState `json:"state"`
 	LastCheckin string    `json:"lastCheckin"`
 

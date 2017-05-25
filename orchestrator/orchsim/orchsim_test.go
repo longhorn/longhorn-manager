@@ -5,6 +5,7 @@ import (
 
 	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/orchestrator"
+	"github.com/yasker/lm-rewrite/types"
 
 	. "gopkg.in/check.v1"
 )
@@ -43,7 +44,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(replica1Instance.Name, Equals, Replica1Name)
 	c.Assert(replica1Instance.ID, Not(Equals), "")
-	c.Assert(replica1Instance.Address, Equals, "")
+	c.Assert(replica1Instance.IP, Equals, "")
 	c.Assert(replica1Instance.Running, Equals, false)
 
 	replica2Instance, err := orch.CreateReplica(&orchestrator.Request{
@@ -61,8 +62,8 @@ func (s *TestSuite) TestBasic(c *C) {
 	})
 	c.Assert(err, IsNil)
 	replica1Instance.Running = true
-	replica1Instance.Address = instance.Address
-	c.Assert(instance.Address, Not(Equals), "")
+	replica1Instance.IP = instance.IP
+	c.Assert(instance.IP, Not(Equals), "")
 	c.Assert(instance, DeepEquals, replica1Instance)
 
 	instance, err = orch.StartInstance(&orchestrator.Request{
@@ -72,8 +73,8 @@ func (s *TestSuite) TestBasic(c *C) {
 	})
 	c.Assert(err, IsNil)
 	replica2Instance.Running = true
-	replica2Instance.Address = instance.Address
-	c.Assert(instance.Address, Not(Equals), "")
+	replica2Instance.IP = instance.IP
+	c.Assert(instance.IP, Not(Equals), "")
 	c.Assert(instance, DeepEquals, replica2Instance)
 
 	ctrlName := "controller-id-" + VolumeName
@@ -83,15 +84,15 @@ func (s *TestSuite) TestBasic(c *C) {
 		VolumeName:   VolumeName,
 		VolumeSize:   VolumeSize,
 		ReplicaURLs: []string{
-			replica1Instance.Address,
-			replica2Instance.Address,
+			replica1Instance.IP + types.ReplicaPort,
+			replica2Instance.IP + types.ReplicaPort,
 		},
 	})
 	c.Assert(err, IsNil)
 	c.Assert(ctrlInstance.Name, Equals, ctrlName)
 	c.Assert(ctrlInstance.ID, Not(Equals), "")
 	c.Assert(ctrlInstance.Running, Equals, true)
-	c.Assert(ctrlInstance.Address, Not(Equals), "")
+	c.Assert(ctrlInstance.IP, Not(Equals), "")
 
 	engine, err := engines.GetEngineSimulator(VolumeName)
 	c.Assert(err, IsNil)
@@ -100,8 +101,8 @@ func (s *TestSuite) TestBasic(c *C) {
 	replicas, err := engine.GetReplicaStates()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
-	c.Assert(replicas[replica1Instance.Address].Mode, Equals, engineapi.ReplicaModeRW)
-	c.Assert(replicas[replica2Instance.Address].Mode, Equals, engineapi.ReplicaModeRW)
+	c.Assert(replicas[replica1Instance.IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeRW)
+	c.Assert(replicas[replica2Instance.IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeRW)
 
 	instance, err = orch.InspectInstance(&orchestrator.Request{
 		NodeID:       CurrentNodeID,
@@ -111,7 +112,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(instance, DeepEquals, ctrlInstance)
 
-	rep1IP := replica1Instance.Address
+	rep1IP := replica1Instance.IP
 	instance, err = orch.StopInstance(&orchestrator.Request{
 		NodeID:       CurrentNodeID,
 		InstanceName: replica1Instance.Name,
@@ -119,14 +120,14 @@ func (s *TestSuite) TestBasic(c *C) {
 	})
 	c.Assert(err, IsNil)
 	replica1Instance.Running = false
-	replica1Instance.Address = ""
+	replica1Instance.IP = ""
 	c.Assert(instance, DeepEquals, replica1Instance)
 
 	replicas, err = engine.GetReplicaStates()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
-	c.Assert(replicas[rep1IP].Mode, Equals, engineapi.ReplicaModeERR)
-	c.Assert(replicas[replica2Instance.Address].Mode, Equals, engineapi.ReplicaModeRW)
+	c.Assert(replicas[rep1IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeERR)
+	c.Assert(replicas[replica2Instance.IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeRW)
 
 	err = orch.DeleteInstance(&orchestrator.Request{
 		NodeID:       CurrentNodeID,
@@ -138,8 +139,8 @@ func (s *TestSuite) TestBasic(c *C) {
 	replicas, err = engine.GetReplicaStates()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
-	c.Assert(replicas[rep1IP].Mode, Equals, engineapi.ReplicaModeERR)
-	c.Assert(replicas[replica2Instance.Address].Mode, Equals, engineapi.ReplicaModeRW)
+	c.Assert(replicas[rep1IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeERR)
+	c.Assert(replicas[replica2Instance.IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeRW)
 
 	err = orch.DeleteInstance(&orchestrator.Request{
 		NodeID:       CurrentNodeID,

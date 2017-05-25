@@ -9,15 +9,11 @@ import (
 
 	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/types"
-	"github.com/yasker/lm-rewrite/util"
 )
 
 var (
 	ConfirmationInterval = 5 * time.Second
 	ConfirmationCounts   = 6
-
-	ControllerPort = ":9501"
-	ReplicaPort    = ":9503"
 
 	ReconcileInterval = 5 * time.Second
 )
@@ -159,7 +155,7 @@ func (v *Volume) RefreshState() (err error) {
 	if v.Controller != nil {
 		engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
 			VolumeName:     v.Name,
-			ControllerAddr: v.Controller.Address + ControllerPort,
+			ControllerAddr: v.Controller.IP + types.ControllerPort,
 		})
 		if err != nil {
 			return err
@@ -218,7 +214,7 @@ func (v *Volume) syncWithEngineState(engineReps map[string]*engineapi.Replica) {
 		addr2Replica := make(map[string]*types.ReplicaInfo)
 		for _, replica := range v.Replicas {
 			if replica.Running {
-				addr2Replica[replica.Address] = replica
+				addr2Replica[replica.IP+types.ReplicaPort] = replica
 			}
 		}
 
@@ -227,12 +223,14 @@ func (v *Volume) syncWithEngineState(engineReps map[string]*engineapi.Replica) {
 				healthyReplicaCount++
 			} else if engineRep.Mode == engineapi.ReplicaModeWO {
 				rebuildingReplicaCount++
+			} else {
+				// means engineRep.Mode == engineapi.ReplicaModeERR
+				continue
 			}
-			ip := util.GetIP(addr)
-			if addr2Replica[ip] == nil {
-				logrus.Errorf("BUG: cannot find replica address %v in replicas", ip)
+			if addr2Replica[addr] == nil {
+				logrus.Errorf("BUG: cannot find replica address %v in replicas", addr)
 			}
-			delete(addr2Replica, ip)
+			delete(addr2Replica, addr)
 		}
 		// those replicas doesn't show up in controller as WO or RW
 		for _, replica := range addr2Replica {

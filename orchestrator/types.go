@@ -31,7 +31,7 @@ type Instance struct {
 	ID      string
 	Name    string
 	Running bool
-	Address string
+	IP      string
 }
 
 type InstanceOperationType string
