@@ -79,6 +79,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	orch = getRandomOrch(orchs)
 	instance, err := orch.StartInstance(&orchestrator.Request{
 		NodeID:       replica1NodeID,
+		InstanceID:   replica1Instance.ID,
 		InstanceName: replica1Instance.Name,
 		VolumeName:   VolumeName,
 	})
@@ -91,6 +92,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	orch = getRandomOrch(orchs)
 	instance, err = orch.StartInstance(&orchestrator.Request{
 		NodeID:       replica2NodeID,
+		InstanceID:   replica2Instance.ID,
 		InstanceName: replica2Instance.Name,
 		VolumeName:   VolumeName,
 	})
@@ -132,6 +134,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	orch = getRandomOrch(orchs)
 	instance, err = orch.InspectInstance(&orchestrator.Request{
 		NodeID:       ctrlNodeID,
+		InstanceID:   ctrlInstance.ID,
 		InstanceName: ctrlInstance.Name,
 		VolumeName:   VolumeName,
 	})
@@ -142,6 +145,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	rep1IP := replica1Instance.IP
 	instance, err = orch.StopInstance(&orchestrator.Request{
 		NodeID:       replica1NodeID,
+		InstanceID:   replica1Instance.ID,
 		InstanceName: replica1Instance.Name,
 		VolumeName:   VolumeName,
 	})
@@ -159,6 +163,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	orch = getRandomOrch(orchs)
 	err = orch.DeleteInstance(&orchestrator.Request{
 		NodeID:       replica1NodeID,
+		InstanceID:   replica1Instance.ID,
 		InstanceName: replica1Instance.Name,
 		VolumeName:   VolumeName,
 	})
@@ -173,6 +178,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	orch = getRandomOrch(orchs)
 	err = orch.DeleteInstance(&orchestrator.Request{
 		NodeID:       ctrlNodeID,
+		InstanceID:   ctrlInstance.ID,
 		InstanceName: ctrlInstance.Name,
 		VolumeName:   VolumeName,
 	})
@@ -184,6 +190,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	orch = getRandomOrch(orchs)
 	instance, err = orch.InspectInstance(&orchestrator.Request{
 		NodeID:       ctrlNodeID,
+		InstanceID:   ctrlInstance.ID,
 		InstanceName: ctrlInstance.Name,
 		VolumeName:   VolumeName,
 	})

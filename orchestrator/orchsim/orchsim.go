@@ -50,18 +50,12 @@ func NewOrchestratorSimulator(port int, engines *engineapi.EngineSimulatorCollec
 }
 
 func (s *OrchSim) CreateController(request *orchestrator.Request) (*orchestrator.Instance, error) {
+	if err := orchestrator.ValidateRequestCreateController(request); err != nil {
+		return nil, err
+	}
 	if request.NodeID != s.currentNode.ID {
 		return nil, fmt.Errorf("incorrect node, requested %v, current %v", request.NodeID,
 			s.currentNode.ID)
-	}
-	if request.InstanceName == "" {
-		return nil, fmt.Errorf("missing required field %+v", request)
-	}
-
-	if request.VolumeName == "" ||
-		request.VolumeSize == 0 ||
-		request.ReplicaURLs == nil {
-		return nil, fmt.Errorf("missing required field %+v", request)
 	}
 
 	instance := &InstanceRecord{
@@ -96,12 +90,12 @@ func (s *OrchSim) CreateController(request *orchestrator.Request) (*orchestrator
 }
 
 func (s *OrchSim) CreateReplica(request *orchestrator.Request) (*orchestrator.Instance, error) {
+	if err := orchestrator.ValidateRequestCreateReplica(request); err != nil {
+		return nil, err
+	}
 	if request.NodeID != s.currentNode.ID {
 		return nil, fmt.Errorf("incorrect node, requested %v, current %v", request.NodeID,
 			s.currentNode.ID)
-	}
-	if request.InstanceName == "" || request.VolumeSize == 0 {
-		return nil, fmt.Errorf("missing required field %+v", request)
 	}
 
 	instance := &InstanceRecord{
@@ -125,13 +119,12 @@ func (s *OrchSim) CreateReplica(request *orchestrator.Request) (*orchestrator.In
 }
 
 func (s *OrchSim) StartInstance(request *orchestrator.Request) (*orchestrator.Instance, error) {
+	if err := orchestrator.ValidateRequestInstanceOps(request); err != nil {
+		return nil, err
+	}
 	if request.NodeID != s.currentNode.ID {
 		return nil, fmt.Errorf("incorrect node, requested %v, current %v", request.NodeID,
 			s.currentNode.ID)
-	}
-
-	if request.InstanceName == "" || request.VolumeName == "" {
-		return nil, fmt.Errorf("missing required field %+v", request)
 	}
 
 	s.mutex.Lock()
@@ -157,12 +150,12 @@ func (s *OrchSim) StartInstance(request *orchestrator.Request) (*orchestrator.In
 }
 
 func (s *OrchSim) StopInstance(request *orchestrator.Request) (*orchestrator.Instance, error) {
+	if err := orchestrator.ValidateRequestInstanceOps(request); err != nil {
+		return nil, err
+	}
 	if request.NodeID != s.currentNode.ID {
 		return nil, fmt.Errorf("incorrect node, requested %v, current %v", request.NodeID,
 			s.currentNode.ID)
-	}
-	if request.InstanceName == "" || request.VolumeName == "" {
-		return nil, fmt.Errorf("missing required field %+v", request)
 	}
 
 	s.mutex.Lock()
@@ -194,13 +187,14 @@ func (s *OrchSim) StopInstance(request *orchestrator.Request) (*orchestrator.Ins
 }
 
 func (s *OrchSim) DeleteInstance(request *orchestrator.Request) error {
+	if err := orchestrator.ValidateRequestInstanceOps(request); err != nil {
+		return err
+	}
 	if request.NodeID != s.currentNode.ID {
 		return fmt.Errorf("incorrect node, requested %v, current %v", request.NodeID,
 			s.currentNode.ID)
 	}
-	if request.InstanceName == "" || request.VolumeName == "" {
-		return fmt.Errorf("missing required field %+v", request)
-	}
+
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -225,12 +219,12 @@ func (s *OrchSim) DeleteInstance(request *orchestrator.Request) error {
 }
 
 func (s *OrchSim) InspectInstance(request *orchestrator.Request) (*orchestrator.Instance, error) {
+	if err := orchestrator.ValidateRequestInstanceOps(request); err != nil {
+		return nil, err
+	}
 	if request.NodeID != s.currentNode.ID {
 		return nil, fmt.Errorf("incorrect node, requested %v, current %v", request.NodeID,
 			s.currentNode.ID)
-	}
-	if request.InstanceName == "" || request.VolumeName == "" {
-		return nil, fmt.Errorf("missing required field %+v", request)
 	}
 
 	s.mutex.RLock()

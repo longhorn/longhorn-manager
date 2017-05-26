@@ -214,9 +214,10 @@ func (v *Volume) deleteController() (err error) {
 	}
 
 	if err := v.m.orch.DeleteInstance(&orchestrator.Request{
-		NodeID:       v.m.orch.GetCurrentNode().ID,
-		InstanceName: v.getControllerName(),
-		VolumeName:   v.Name,
+		NodeID:       v.Controller.NodeID,
+		InstanceID:   v.Controller.ID,
+		InstanceName: v.Controller.Name,
+		VolumeName:   v.Controller.VolumeName,
 	}); err != nil {
 		return err
 	}
