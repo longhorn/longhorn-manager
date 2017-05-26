@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Sirupsen/logrus"
+
 	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/kvstore"
 	"github.com/yasker/lm-rewrite/orchestrator"
@@ -28,17 +30,24 @@ const (
 
 	RetryCounts   = 20
 	RetryInterval = 100 * time.Millisecond
+
+	NodeCounts       = 3
+	OrchestratorPort = 5000
+	ManagerPort      = 4000
 )
 
 func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
-	etcd    *kvstore.KVStore
-	engines *engineapi.EngineSimulatorCollection
-	orch    *orchsim.OrchSim
-	rpc     *MockRPCManager
-	manager *VolumeManager
-	rpcdb   *MockRPCDB
+	etcd       *kvstore.KVStore
+	engines    *engineapi.EngineSimulatorCollection
+	orchsims   []*orchsim.OrchSim
+	forwarder  *orchestrator.Forwarder
+	forwarders []*orchestrator.Forwarder
+	rpc        *MockRPCManager
+	rpcdb      *MockRPCDB
+	manager    *VolumeManager
+	managers   []*VolumeManager
 
 	engineImage string
 }
@@ -47,6 +56,8 @@ var _ = Suite(&TestSuite{})
 
 func (s *TestSuite) SetUpTest(c *C) {
 	var err error
+
+	logrus.SetLevel(logrus.DebugLevel)
 
 	etcdIP := os.Getenv(EnvEtcdServer)
 	c.Assert(etcdIP, Not(Equals), "")
@@ -65,19 +76,33 @@ func (s *TestSuite) SetUpTest(c *C) {
 	c.Assert(err, IsNil)
 
 	s.engines = engineapi.NewEngineSimulatorCollection()
-	s.orch = orchsim.NewOrchestratorSimulator(types.DefaultOrchestratorPort, s.engines)
+	s.orchsims = make([]*orchsim.OrchSim, NodeCounts)
+	for i := 0; i < NodeCounts; i++ {
+		s.orchsims[i] = orchsim.NewOrchestratorSimulator(OrchestratorPort+i, s.engines)
+	}
 
 	s.rpcdb = NewMockRPCDB()
 	s.rpc = NewMockRPCManager(s.rpcdb)
 
-	currentNode := s.orch.GetCurrentNode()
-	c.Assert(currentNode, NotNil)
-
-	s.manager, err = NewVolumeManager(s.etcd, s.orch, s.engines, s.rpc, types.DefaultManagerPort)
-	c.Assert(err, IsNil)
+	s.managers = make([]*VolumeManager, NodeCounts)
+	s.forwarders = make([]*orchestrator.Forwarder, NodeCounts)
+	for i := 0; i < NodeCounts; i++ {
+		s.forwarders[i] = orchestrator.NewForwarder(s.orchsims[i])
+		s.managers[i], err = NewVolumeManager(s.etcd, s.forwarders[i], s.engines, s.rpc, ManagerPort+i)
+		c.Assert(err, IsNil)
+		s.forwarders[i].SetLocator(s.managers[i])
+		s.forwarders[i].StartServer(s.managers[i].GetCurrentNode().GetOrchestratorAddress())
+		c.Assert(s.forwarders[i].GetCurrentNode().ID, Equals, s.managers[i].GetCurrentNode().ID)
+	}
+	s.forwarder = s.forwarders[0]
+	s.manager = s.managers[0]
 }
 
-func (s *TestSuite) TeardownTest(c *C) {
+func (s *TestSuite) TearDownTest(c *C) {
+	for i := 0; i < NodeCounts; i++ {
+		s.forwarders[i].StopServer()
+		s.managers[i].Shutdown()
+	}
 	if s.etcd != nil {
 		err := s.etcd.Nuclear("nuke key value store")
 		c.Assert(err, IsNil)
@@ -85,6 +110,10 @@ func (s *TestSuite) TeardownTest(c *C) {
 }
 
 func (s *TestSuite) TestVolume(c *C) {
+	nodes, err := s.manager.ListNodes()
+	c.Assert(err, IsNil)
+	c.Assert(len(nodes), Equals, NodeCounts)
+
 	node, err := s.manager.GetRandomNode()
 	c.Assert(err, IsNil)
 	err = s.manager.NewVolume(&types.VolumeInfo{
@@ -200,7 +229,6 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(volume.Name, Equals, VolumeName)
 	c.Assert(volume.Controller, IsNil)
-	c.Assert(volume.TargetNodeID, Equals, node.ID)
 	c.Assert(volume.DesireState, Equals, types.VolumeStateDetached)
 
 	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateDetached)
@@ -211,7 +239,6 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 		c.Assert(replica.Running, Equals, false)
 		c.Assert(replica.VolumeName, Equals, VolumeName)
 	}
-	c.Assert(volume.NodeID, Equals, node.ID)
 
 	err = s.manager.VolumeAttach(&VolumeAttachRequest{
 		Name:   VolumeName,
@@ -224,6 +251,7 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 
 	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateHealthy)
 	c.Assert(volume.Controller, NotNil)
+	c.Assert(volume.NodeID, Equals, node.ID)
 
 	err = s.manager.VolumeDetach(&VolumeDetachRequest{
 		Name: VolumeName,
@@ -290,12 +318,19 @@ func (s *TestSuite) TestVolumeHeal(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(volume.Name, Equals, VolumeName)
 	c.Assert(volume.Controller, IsNil)
-	c.Assert(volume.TargetNodeID, Equals, node.ID)
 	c.Assert(volume.DesireState, Equals, types.VolumeStateDetached)
 
 	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateDetached)
-	c.Assert(volume.NodeID, Equals, node.ID)
 	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
+
+	//stop one random replica
+	allocateNodes := map[string]struct{}{}
+	for _, replica := range volume.Replicas {
+		c.Assert(replica.Running, Equals, false)
+		allocateNodes[replica.NodeID] = struct{}{}
+	}
+	// because NodeCounts >= VolumeNumberOfReplicas
+	c.Assert(allocateNodes, HasLen, VolumeNumberOfReplicas)
 
 	err = s.manager.VolumeAttach(&VolumeAttachRequest{
 		Name:   VolumeName,
@@ -307,11 +342,12 @@ func (s *TestSuite) TestVolumeHeal(c *C) {
 	c.Assert(volume.DesireState, Equals, types.VolumeStateHealthy)
 	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateHealthy)
 	c.Assert(volume.Controller, NotNil)
+	c.Assert(volume.NodeID, Equals, node.ID)
 
 	//stop one random replica
 	for _, replica := range volume.Replicas {
-		_, err := s.orch.StopInstance(&orchestrator.Request{
-			NodeID:       node.ID,
+		_, err := s.forwarder.StopInstance(&orchestrator.Request{
+			NodeID:       replica.NodeID,
 			InstanceID:   replica.ID,
 			InstanceName: replica.Name,
 			VolumeName:   VolumeName,

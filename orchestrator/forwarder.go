@@ -17,11 +17,13 @@ import (
 type Forwarder struct {
 	orch    Orchestrator
 	locator NodeLocator
+	done    chan struct{}
 }
 
 func NewForwarder(orch Orchestrator) *Forwarder {
 	return &Forwarder{
 		orch: orch,
+		done: make(chan struct{}),
 	}
 }
 
@@ -46,7 +48,15 @@ func (f *Forwarder) StartServer(address string) error {
 			logrus.Errorf("fail to serve orchestrator forwarder GRPC server: %v", err)
 		}
 	}()
+	go func() {
+		<-f.done
+		s.GracefulStop()
+	}()
 	return nil
+}
+
+func (f *Forwarder) StopServer() {
+	close(f.done)
 }
 
 func (f *Forwarder) InstanceOperationRPC(ctx context.Context, req *pb.InstanceOperationRequest) (*pb.InstanceOperationResponse, error) {

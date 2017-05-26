@@ -3,6 +3,7 @@ package manager
 import (
 	"fmt"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
 	"github.com/yasker/lm-rewrite/engineapi"
@@ -35,6 +36,7 @@ func (v *Volume) waitForJob(jobID string, errCh chan error) {
 	if err != nil {
 		updateJob.State = JobStateFailed
 		updateJob.Error = err
+		logrus.Errorf("job %v failed: %v", jobID, err)
 	} else {
 		updateJob.State = JobStateSucceed
 	}

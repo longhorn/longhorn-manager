@@ -60,7 +60,7 @@ func (s *TestSuite) SetUpTest(c *C) {
 	c.Assert(err, IsNil)
 }
 
-func (s *TestSuite) TeardownTest(c *C) {
+func (s *TestSuite) TearDownTest(c *C) {
 	if s.etcd != nil {
 		err := s.etcd.Nuclear("nuke key value store")
 		c.Assert(err, IsNil)

@@ -15,10 +15,13 @@ import (
 
 type GRPCManager struct {
 	callbackChan chan Event
+	done         chan struct{}
 }
 
 func NewGRPCManager() RPCManager {
-	return &GRPCManager{}
+	return &GRPCManager{
+		done: make(chan struct{}),
+	}
 }
 
 func (r *GRPCManager) NodeNotifyRPC(ctx context.Context, req *pb.NodeNotifyRequest) (*pb.NodeNotifyResponse, error) {
@@ -46,7 +49,15 @@ func (r *GRPCManager) StartServer(address string, callbackChan chan Event) (err 
 			logrus.Errorf("fail to serve GRPC server: %v", err)
 		}
 	}()
+	go func() {
+		<-r.done
+		s.GracefulStop()
+	}()
 	return nil
+}
+
+func (r *GRPCManager) StopServer() {
+	close(r.done)
 }
 
 func (r *GRPCManager) NodeNotify(address string, event *Event) error {

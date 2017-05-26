@@ -70,6 +70,7 @@ type Node struct {
 
 type RPCManager interface {
 	StartServer(address string, ch chan Event) error
+	StopServer()
 
 	NodeNotify(address string, event *Event) error
 }

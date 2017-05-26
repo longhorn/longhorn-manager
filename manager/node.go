@@ -42,7 +42,7 @@ func (m *VolumeManager) RegisterNode(port int) error {
 		NodeInfo: *currentInfo,
 		m:        m,
 	}
-	if err := m.rpc.StartServer(m.currentNode.getManagerAddress(), m.EventChan); err != nil {
+	if err := m.rpc.StartServer(m.currentNode.GetManagerAddress(), m.EventChan); err != nil {
 		return err
 	}
 	go m.nodeHealthCheckin()
@@ -69,6 +69,9 @@ func (m *VolumeManager) GetNode(nodeID string) (*Node, error) {
 	info, err := m.kv.GetNode(nodeID)
 	if err != nil {
 		return nil, err
+	}
+	if info == nil {
+		return nil, fmt.Errorf("cannot find node %v", nodeID)
 	}
 	node := &Node{
 		NodeInfo: *info,
@@ -102,6 +105,10 @@ func (m *VolumeManager) GetRandomNode() (*Node, error) {
 	}, nil
 }
 
+func (m *VolumeManager) ListNodes() (map[string]*types.NodeInfo, error) {
+	return m.kv.ListNodes()
+}
+
 func (m *VolumeManager) ListSchedulingNodes() (map[string]*scheduler.Node, error) {
 	nodes, err := m.kv.ListNodes()
 	if err != nil {
@@ -116,12 +123,25 @@ func (m *VolumeManager) ListSchedulingNodes() (map[string]*scheduler.Node, error
 	return ret, nil
 }
 
-func (n *Node) getManagerAddress() string {
+// Node2Address implements orchestrator.Locator
+func (m *VolumeManager) Node2Address(nodeID string) (string, error) {
+	node, err := m.GetNode(nodeID)
+	if err != nil {
+		return "", err
+	}
+	return node.GetOrchestratorAddress(), nil
+}
+
+func (n *Node) GetOrchestratorAddress() string {
+	return n.IP + ":" + strconv.Itoa(n.OrchestratorPort)
+}
+
+func (n *Node) GetManagerAddress() string {
 	return n.IP + ":" + strconv.Itoa(n.ManagerPort)
 }
 
 func (n *Node) Notify(volumeName string) error {
-	if err := n.m.rpc.NodeNotify(n.getManagerAddress(),
+	if err := n.m.rpc.NodeNotify(n.GetManagerAddress(),
 		&Event{
 			Type:       EventTypeNotify,
 			VolumeName: volumeName,

@@ -247,6 +247,10 @@ func (m *VolumeManager) VolumeSalvage(request *VolumeSalvageRequest) (err error)
 	return nil
 }
 
+func (m *VolumeManager) Shutdown() {
+	m.rpc.StopServer()
+}
+
 func (m *VolumeManager) VolumeList() (map[string]*types.VolumeInfo, error) {
 	return m.kv.ListVolumes()
 }

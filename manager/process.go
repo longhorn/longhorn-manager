@@ -108,12 +108,17 @@ func (m *VolumeManager) processVolume(volumeName string, volumeChan VolumeChan) 
 			logrus.Errorf("Fail to refresh volume state: %v", err)
 			continue
 		}
+		logrus.Debugf("volume %v state is %v", volumeName, volume.State)
+
 		if err := volume.Cleanup(); err != nil {
 			logrus.Errorf("Fail to cleanup stale replicas: %v", err)
 		}
+
+		logrus.Debugf("volume %v desire state is %v", volumeName, volume.DesireState)
 		if err := volume.Reconcile(); err != nil {
 			logrus.Errorf("Fail to reconcile volume state: %v", err)
 		}
+		logrus.Debugf("volume %v refreshed state is %v", volumeName, volume.State)
 		if volume.State == types.VolumeStateDeleted {
 			break
 		}

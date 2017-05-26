@@ -50,6 +50,9 @@ func (r *MockRPCManager) StartServer(address string, ch chan Event) error {
 	return nil
 }
 
+func (r *MockRPCManager) StopServer() {
+}
+
 func (r *MockRPCManager) NodeNotify(address string, event *Event) error {
 	var ch chan Event
 	if address == r.address {
