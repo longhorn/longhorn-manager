@@ -84,6 +84,7 @@ func (s *OrchSim) CreateController(request *orchestrator.Request) (*orchestrator
 	return &orchestrator.Instance{
 		ID:      instance.ID,
 		Name:    instance.Name,
+		NodeID:  s.currentNode.ID,
 		Running: instance.State == StateRunning,
 		IP:      instance.IP,
 	}, nil
@@ -113,6 +114,7 @@ func (s *OrchSim) CreateReplica(request *orchestrator.Request) (*orchestrator.In
 	return &orchestrator.Instance{
 		ID:      instance.ID,
 		Name:    instance.Name,
+		NodeID:  s.currentNode.ID,
 		Running: instance.State == StateRunning,
 		IP:      instance.IP,
 	}, nil
@@ -144,6 +146,7 @@ func (s *OrchSim) StartInstance(request *orchestrator.Request) (*orchestrator.In
 	return &orchestrator.Instance{
 		ID:      instance.ID,
 		Name:    instance.Name,
+		NodeID:  s.currentNode.ID,
 		Running: instance.State == StateRunning,
 		IP:      instance.IP,
 	}, nil
@@ -181,6 +184,7 @@ func (s *OrchSim) StopInstance(request *orchestrator.Request) (*orchestrator.Ins
 	return &orchestrator.Instance{
 		ID:      instance.ID,
 		Name:    instance.Name,
+		NodeID:  s.currentNode.ID,
 		Running: instance.State == StateRunning,
 		IP:      instance.IP,
 	}, nil
@@ -237,6 +241,7 @@ func (s *OrchSim) InspectInstance(request *orchestrator.Request) (*orchestrator.
 	return &orchestrator.Instance{
 		ID:      instance.ID,
 		Name:    instance.Name,
+		NodeID:  s.currentNode.ID,
 		Running: instance.State == StateRunning,
 		IP:      instance.IP,
 	}, nil

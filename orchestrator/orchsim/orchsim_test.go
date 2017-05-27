@@ -63,6 +63,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	c.Assert(err, IsNil)
 	c.Assert(replica1Instance.Name, Equals, Replica1Name)
 	c.Assert(replica1Instance.ID, Not(Equals), "")
+	c.Assert(replica1Instance.NodeID, Equals, replica1NodeID)
 	c.Assert(replica1Instance.IP, Equals, "")
 	c.Assert(replica1Instance.Running, Equals, false)
 
@@ -78,7 +79,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 
 	orch = getRandomOrch(orchs)
 	instance, err := orch.StartInstance(&orchestrator.Request{
-		NodeID:       replica1NodeID,
+		NodeID:       replica1Instance.NodeID,
 		InstanceID:   replica1Instance.ID,
 		InstanceName: replica1Instance.Name,
 		VolumeName:   VolumeName,
@@ -91,7 +92,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 
 	orch = getRandomOrch(orchs)
 	instance, err = orch.StartInstance(&orchestrator.Request{
-		NodeID:       replica2NodeID,
+		NodeID:       replica2Instance.NodeID,
 		InstanceID:   replica2Instance.ID,
 		InstanceName: replica2Instance.Name,
 		VolumeName:   VolumeName,
@@ -118,6 +119,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	c.Assert(err, IsNil)
 	c.Assert(ctrlInstance.Name, Equals, ctrlName)
 	c.Assert(ctrlInstance.ID, Not(Equals), "")
+	c.Assert(ctrlInstance.NodeID, Equals, ctrlNodeID)
 	c.Assert(ctrlInstance.Running, Equals, true)
 	c.Assert(ctrlInstance.IP, Not(Equals), "")
 
@@ -133,7 +135,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 
 	orch = getRandomOrch(orchs)
 	instance, err = orch.InspectInstance(&orchestrator.Request{
-		NodeID:       ctrlNodeID,
+		NodeID:       ctrlInstance.NodeID,
 		InstanceID:   ctrlInstance.ID,
 		InstanceName: ctrlInstance.Name,
 		VolumeName:   VolumeName,
@@ -144,7 +146,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	orch = getRandomOrch(orchs)
 	rep1IP := replica1Instance.IP
 	instance, err = orch.StopInstance(&orchestrator.Request{
-		NodeID:       replica1NodeID,
+		NodeID:       replica1Instance.NodeID,
 		InstanceID:   replica1Instance.ID,
 		InstanceName: replica1Instance.Name,
 		VolumeName:   VolumeName,
@@ -162,7 +164,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 
 	orch = getRandomOrch(orchs)
 	err = orch.DeleteInstance(&orchestrator.Request{
-		NodeID:       replica1NodeID,
+		NodeID:       replica1Instance.NodeID,
 		InstanceID:   replica1Instance.ID,
 		InstanceName: replica1Instance.Name,
 		VolumeName:   VolumeName,
@@ -177,7 +179,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 
 	orch = getRandomOrch(orchs)
 	err = orch.DeleteInstance(&orchestrator.Request{
-		NodeID:       ctrlNodeID,
+		NodeID:       ctrlInstance.NodeID,
 		InstanceID:   ctrlInstance.ID,
 		InstanceName: ctrlInstance.Name,
 		VolumeName:   VolumeName,
@@ -189,7 +191,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 
 	orch = getRandomOrch(orchs)
 	instance, err = orch.InspectInstance(&orchestrator.Request{
-		NodeID:       ctrlNodeID,
+		NodeID:       ctrlInstance.NodeID,
 		InstanceID:   ctrlInstance.ID,
 		InstanceName: ctrlInstance.Name,
 		VolumeName:   VolumeName,

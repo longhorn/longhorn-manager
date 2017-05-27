@@ -103,6 +103,7 @@ func (f *Forwarder) InstanceOperationRPC(ctx context.Context, req *pb.InstanceOp
 			InstanceName: instance.Name,
 			Running:      instance.Running,
 			Ip:           instance.IP,
+			NodeID:       instance.NodeID,
 		}
 	}
 	return resp, nil
@@ -226,6 +227,7 @@ func (f *Forwarder) InstanceOperation(address string, opType InstanceOperationTy
 		instance = &Instance{
 			ID:      resp.InstanceID,
 			Name:    resp.InstanceName,
+			NodeID:  resp.NodeID,
 			Running: resp.Running,
 			IP:      resp.Ip,
 		}

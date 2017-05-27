@@ -21,4 +21,5 @@ message InstanceOperationResponse {
 	string instanceName = 2;
 	bool running = 3;
 	string ip = 4;
+	string nodeID = 5;
 }

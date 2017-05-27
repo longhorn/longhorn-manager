@@ -30,6 +30,7 @@ type Orchestrator interface {
 type Instance struct {
 	ID      string
 	Name    string
+	NodeID  string
 	Running bool
 	IP      string
 }
