@@ -5,6 +5,13 @@ import (
 	"sync"
 )
 
+type EngineSimulatorRequest struct {
+	VolumeName     string
+	VolumeSize     int64
+	ControllerAddr string
+	ReplicaAddrs   []string
+}
+
 type EngineSimulatorCollection struct {
 	simulators map[string]*EngineSimulator
 	mutex      *sync.Mutex
