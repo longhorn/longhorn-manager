@@ -292,7 +292,7 @@ func (v *Volume) stopRebuild() (err error) {
 		replicaName := job.AssoicateID
 		replica := v.getReplica(replicaName)
 		url := replica.IP + types.ReplicaPort
-		if err := engine.RemoveReplica(url); err != nil {
+		if err := engine.ReplicaRemove(url); err != nil {
 			return err
 		}
 		if err := v.deleteReplica(replicaName); err != nil {

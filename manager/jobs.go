@@ -144,7 +144,7 @@ func (v *Volume) jobReplicaRebuild(req *orchestrator.Request) (err error) {
 		return fmt.Errorf("cannot add replica %v without IP", replicaName)
 	}
 	url := replica.IP + types.ReplicaPort
-	if err := engine.AddReplica(url); err != nil {
+	if err := engine.ReplicaAdd(url); err != nil {
 		return err
 	}
 

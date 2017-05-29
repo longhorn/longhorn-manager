@@ -25,9 +25,10 @@ type Controller struct {
 type EngineClient interface {
 	Name() string
 	Endpoint() string
-	GetReplicaStates() (map[string]*Replica, error)
-	AddReplica(addr string) error
-	RemoveReplica(addr string) error
+
+	ReplicaList() (map[string]*Replica, error)
+	ReplicaAdd(addr string) error
+	ReplicaRemove(addr string) error
 }
 
 type EngineClientRequest struct {

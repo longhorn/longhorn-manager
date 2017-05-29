@@ -48,7 +48,7 @@ func parseReplica(s string) (*Replica, error) {
 	}, nil
 }
 
-func (e *Engine) GetReplicaStates() (map[string]*Replica, error) {
+func (e *Engine) ReplicaList() (map[string]*Replica, error) {
 	output, err := util.Execute("longhorn", "--url", e.cURL, "ls")
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to list replicas from controller '%s'", e.name)
@@ -68,7 +68,7 @@ func (e *Engine) GetReplicaStates() (map[string]*Replica, error) {
 	return replicas, nil
 }
 
-func (e *Engine) AddReplica(replicaIP string) error {
+func (e *Engine) ReplicaAdd(replicaIP string) error {
 	rURL := GetReplicaURL(replicaIP)
 	if _, err := util.Execute("longhorn", "--url", e.cURL, "add", rURL); err != nil {
 		return errors.Wrapf(err, "failed to add replica address='%s' to controller '%s'", rURL, e.name)
@@ -76,7 +76,7 @@ func (e *Engine) AddReplica(replicaIP string) error {
 	return nil
 }
 
-func (e *Engine) RemoveReplica(replicaIP string) error {
+func (e *Engine) ReplicaRemove(replicaIP string) error {
 	rURL := GetReplicaURL(replicaIP)
 	if _, err := util.Execute("longhorn", "--url", e.cURL, "rm", rURL); err != nil {
 		return errors.Wrapf(err, "failed to rm replica address='%s' from controller '%s'", rURL, e.name)

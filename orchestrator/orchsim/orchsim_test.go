@@ -127,7 +127,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	c.Assert(err, IsNil)
 	c.Assert(engine.Name(), Equals, VolumeName)
 
-	replicas, err := engine.GetReplicaStates()
+	replicas, err := engine.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
 	c.Assert(replicas[replica1Instance.IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeRW)
@@ -156,7 +156,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	replica1Instance.IP = ""
 	c.Assert(instance, DeepEquals, replica1Instance)
 
-	replicas, err = engine.GetReplicaStates()
+	replicas, err = engine.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
 	c.Assert(replicas[rep1IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeERR)
@@ -171,7 +171,7 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	})
 	c.Assert(err, IsNil)
 
-	replicas, err = engine.GetReplicaStates()
+	replicas, err = engine.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
 	c.Assert(replicas[rep1IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeERR)

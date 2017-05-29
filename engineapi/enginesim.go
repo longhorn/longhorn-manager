@@ -40,7 +40,7 @@ func (c *EngineSimulatorCollection) CreateEngineSimulator(request *EngineSimulat
 		mutex:          &sync.RWMutex{},
 	}
 	for _, addr := range request.ReplicaAddrs {
-		if err := s.AddReplica(addr); err != nil {
+		if err := s.ReplicaAdd(addr); err != nil {
 			return err
 		}
 	}
@@ -102,7 +102,7 @@ func (e *EngineSimulator) Endpoint() string {
 	return ""
 }
 
-func (e *EngineSimulator) GetReplicaStates() (map[string]*Replica, error) {
+func (e *EngineSimulator) ReplicaList() (map[string]*Replica, error) {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
 
@@ -114,7 +114,7 @@ func (e *EngineSimulator) GetReplicaStates() (map[string]*Replica, error) {
 	return ret, nil
 }
 
-func (e *EngineSimulator) AddReplica(addr string) error {
+func (e *EngineSimulator) ReplicaAdd(addr string) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
@@ -128,7 +128,7 @@ func (e *EngineSimulator) AddReplica(addr string) error {
 	return nil
 }
 
-func (e *EngineSimulator) RemoveReplica(addr string) error {
+func (e *EngineSimulator) ReplicaRemove(addr string) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 

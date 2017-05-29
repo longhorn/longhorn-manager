@@ -50,22 +50,22 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(sim.Name(), Equals, VolumeName)
 	c.Assert(sim.Endpoint(), Equals, "/dev/longhorn/"+VolumeName)
 
-	replicas, err := sim.GetReplicaStates()
+	replicas, err := sim.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
 	c.Assert(replicas[Replica1Addr].Mode, Equals, ReplicaModeRW)
 	c.Assert(replicas[Replica2Addr].Mode, Equals, ReplicaModeRW)
 
-	err = sim.RemoveReplica(Replica2Addr)
+	err = sim.ReplicaRemove(Replica2Addr)
 	c.Assert(err, IsNil)
 
-	replicas, err = sim.GetReplicaStates()
+	replicas, err = sim.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 1)
 	c.Assert(replicas[Replica1Addr].Mode, Equals, ReplicaModeRW)
 
-	err = sim.AddReplica(Replica3Addr)
-	replicas, err = sim.GetReplicaStates()
+	err = sim.ReplicaAdd(Replica3Addr)
+	replicas, err = sim.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
 	c.Assert(replicas[Replica1Addr].Mode, Equals, ReplicaModeRW)

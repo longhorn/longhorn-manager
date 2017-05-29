@@ -165,7 +165,7 @@ func (v *Volume) RefreshState() (err error) {
 		if err != nil {
 			return err
 		}
-		engineReps, err = engine.GetReplicaStates()
+		engineReps, err = engine.ReplicaList()
 		if err != nil {
 			return err
 		}
