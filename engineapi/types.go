@@ -33,6 +33,13 @@ type EngineClient interface {
 	ReplicaList() (map[string]*Replica, error)
 	ReplicaAdd(url string) error
 	ReplicaRemove(url string) error
+
+	SnapshotCreate(name string, labels map[string]string) (string, error)
+	SnapshotList() (map[string]*Snapshot, error)
+	SnapshotGet(name string) (*Snapshot, error)
+	SnapshotDelete(name string) error
+	SnapshotRevert(name string) error
+	SnapshotPurge() error
 }
 
 type EngineClientRequest struct {
@@ -48,6 +55,17 @@ type Volume struct {
 	Name         string `json:"name"`
 	ReplicaCount int    `json:"replicaCount"`
 	Endpoint     string `json:"endpoint"`
+}
+
+type Snapshot struct {
+	Name        string            `json:"name"`
+	Parent      string            `json:"parent"`
+	Children    []string          `json:"children"`
+	Removed     bool              `json:"removed"`
+	UserCreated bool              `json:"usercreated"`
+	Created     string            `json:"created"`
+	Size        string            `json:"size"`
+	Labels      map[string]string `json:"labels"`
 }
 
 func GetControllerDefaultURL(ip string) string {

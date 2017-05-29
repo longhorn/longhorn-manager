@@ -15,6 +15,8 @@ type EngineCollection struct{}
 type Engine struct {
 	name string
 	cURL string
+
+	purgeQueue chan struct{}
 }
 
 func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (EngineClient, error) {

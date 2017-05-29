@@ -149,3 +149,27 @@ func (e *EngineSimulator) SimulateStopReplica(addr string) error {
 	e.replicas[addr].Mode = ReplicaModeERR
 	return nil
 }
+
+func (e *EngineSimulator) SnapshotCreate(name string, labels map[string]string) (string, error) {
+	return "", fmt.Errorf("Not implemented")
+}
+
+func (e *EngineSimulator) SnapshotList() (map[string]*Snapshot, error) {
+	return nil, fmt.Errorf("Not implemented")
+}
+
+func (e *EngineSimulator) SnapshotGet(name string) (*Snapshot, error) {
+	return nil, fmt.Errorf("Not implemented")
+}
+
+func (e *EngineSimulator) SnapshotDelete(name string) error {
+	return fmt.Errorf("Not implemented")
+}
+
+func (e *EngineSimulator) SnapshotRevert(name string) error {
+	return fmt.Errorf("Not implemented")
+}
+
+func (e *EngineSimulator) SnapshotPurge() error {
+	return fmt.Errorf("Not implemented")
+}

@@ -48,14 +48,14 @@ type Settings interface {
 	SetSettings(*SettingsInfo) error
 }
 
-type SnapshotOps interface {
-	Create(name string, labels map[string]string) (string, error)
-	List() ([]*SnapshotInfo, error)
-	Get(name string) (*SnapshotInfo, error)
-	Delete(name string) error
-	Revert(name string) error
-	Purge() error
-}
+//type SnapshotOps interface {
+//	Create(name string, labels map[string]string) (string, error)
+//	List() ([]*SnapshotInfo, error)
+//	Get(name string) (*SnapshotInfo, error)
+//	Delete(name string) error
+//	Revert(name string) error
+//	Purge() error
+//}
 
 type VolumeBackupOps interface {
 	StartBackup(snapName, backupTarget string) error
@@ -83,21 +83,21 @@ type Monitor interface {
 
 //type BeginMonitoring func(volume *VolumeInfo, man VolumeManager) Monitor
 
-type GetController func(volume *VolumeInfo) Controller
-
-type Controller interface {
-	Name() string
-	Endpoint() string
-	GetReplicaStates() ([]*ReplicaInfo, error)
-	AddReplica(replica *ReplicaInfo) error
-	RemoveReplica(replica *ReplicaInfo) error
-
-	BgTaskQueue() TaskQueue
-	LatestBgTasks() []*BgTask
-
-	SnapshotOps() SnapshotOps
-	BackupOps() VolumeBackupOps
-}
+//type GetController func(volume *VolumeInfo) Controller
+//
+//type Controller interface {
+//	Name() string
+//	Endpoint() string
+//	GetReplicaStates() ([]*ReplicaInfo, error)
+//	AddReplica(replica *ReplicaInfo) error
+//	RemoveReplica(replica *ReplicaInfo) error
+//
+//	BgTaskQueue() TaskQueue
+//	LatestBgTasks() []*BgTask
+//
+//	SnapshotOps() SnapshotOps
+//	BackupOps() VolumeBackupOps
+//}
 
 //type Orchestrator interface {
 //	CreateVolume(volume *VolumeInfo) (*VolumeInfo, error) // creates volume metadata and prepare for volume
@@ -123,21 +123,21 @@ type Controller interface {
 //	Settings
 //}
 
-type ServiceLocator interface {
-	GetCurrentNodeID() string
-	GetAddress(nodeID string) (string, error) // Return <node>:<port>
-}
+//type ServiceLocator interface {
+//	GetCurrentNodeID() string
+//	GetAddress(nodeID string) (string, error) // Return <node>:<port>
+//}
 
-type SnapshotInfo struct {
-	Name        string            `json:"name"`
-	Parent      string            `json:"parent"`
-	Children    []string          `json:"children"`
-	Removed     bool              `json:"removed"`
-	UserCreated bool              `json:"usercreated"`
-	Created     string            `json:"created"`
-	Size        string            `json:"size"`
-	Labels      map[string]string `json:"labels"`
-}
+//type SnapshotInfo struct {
+//	Name        string            `json:"name"`
+//	Parent      string            `json:"parent"`
+//	Children    []string          `json:"children"`
+//	Removed     bool              `json:"removed"`
+//	UserCreated bool              `json:"usercreated"`
+//	Created     string            `json:"created"`
+//	Size        string            `json:"size"`
+//	Labels      map[string]string `json:"labels"`
+//}
 
 type BackupInfo struct {
 	Name            string `json:"name,omitempty"`
