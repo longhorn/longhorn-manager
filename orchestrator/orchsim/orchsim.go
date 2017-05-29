@@ -171,7 +171,7 @@ func (s *OrchSim) StopInstance(request *orchestrator.Request) (*orchestrator.Ins
 
 	if instance.State != StateStopped {
 		if engine, err := s.engines.GetEngineSimulator(request.VolumeName); err == nil {
-			if err := engine.SimulateStopReplica(instance.IP + types.ReplicaPort); err != nil {
+			if err := engine.SimulateStopReplica(engineapi.GetReplicaDefaultURL(instance.IP)); err != nil {
 				return nil, err
 			}
 		}
@@ -213,7 +213,7 @@ func (s *OrchSim) DeleteInstance(request *orchestrator.Request) error {
 		}
 	} else {
 		if engine, err := s.engines.GetEngineSimulator(request.VolumeName); err == nil {
-			if err := engine.SimulateStopReplica(instance.IP + types.ReplicaPort); err != nil {
+			if err := engine.SimulateStopReplica(engineapi.GetReplicaDefaultURL(instance.IP)); err != nil {
 				return nil
 			}
 		}

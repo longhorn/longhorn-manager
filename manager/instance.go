@@ -172,7 +172,7 @@ func (v *Volume) createController(startReplicas map[string]*types.ReplicaInfo) (
 
 	urls := []string{}
 	for _, replica := range startReplicas {
-		urls = append(urls, replica.IP+types.ReplicaPort)
+		urls = append(urls, engineapi.GetReplicaDefaultURL(replica.IP))
 	}
 	nodeID := v.m.orch.GetCurrentNode().ID
 	instance, err := v.m.orch.CreateController(&orchestrator.Request{
@@ -282,8 +282,8 @@ func (v *Volume) stopRebuild() (err error) {
 	}
 
 	engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:     v.Name,
-		ControllerAddr: v.Controller.IP + types.ControllerPort,
+		VolumeName:    v.Name,
+		ControllerURL: engineapi.GetControllerDefaultURL(v.Controller.IP),
 	})
 	if err != nil {
 		return err
@@ -291,8 +291,7 @@ func (v *Volume) stopRebuild() (err error) {
 	for _, job := range rebuildingJobs {
 		replicaName := job.AssoicateID
 		replica := v.getReplica(replicaName)
-		url := replica.IP + types.ReplicaPort
-		if err := engine.ReplicaRemove(url); err != nil {
+		if err := engine.ReplicaRemove(engineapi.GetReplicaDefaultURL(replica.IP)); err != nil {
 			return err
 		}
 		if err := v.deleteReplica(replicaName); err != nil {

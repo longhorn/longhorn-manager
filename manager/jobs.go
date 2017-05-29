@@ -133,8 +133,8 @@ func (v *Volume) jobReplicaRebuild(req *orchestrator.Request) (err error) {
 	}
 
 	engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:     v.Name,
-		ControllerAddr: v.Controller.IP + types.ControllerPort,
+		VolumeName:    v.Name,
+		ControllerURL: engineapi.GetControllerDefaultURL(v.Controller.IP),
 	})
 	if err != nil {
 		return err
@@ -143,8 +143,7 @@ func (v *Volume) jobReplicaRebuild(req *orchestrator.Request) (err error) {
 	if replica.IP == "" {
 		return fmt.Errorf("cannot add replica %v without IP", replicaName)
 	}
-	url := replica.IP + types.ReplicaPort
-	if err := engine.ReplicaAdd(url); err != nil {
+	if err := engine.ReplicaAdd(engineapi.GetReplicaDefaultURL(replica.IP)); err != nil {
 		return err
 	}
 

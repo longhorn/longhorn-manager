@@ -2,7 +2,6 @@ package engineapi
 
 import (
 	"encoding/json"
-	"net"
 	"strings"
 
 	"github.com/Sirupsen/logrus"
@@ -21,7 +20,7 @@ type Engine struct {
 func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (EngineClient, error) {
 	return &Engine{
 		name: request.VolumeName,
-		cURL: request.ControllerAddr,
+		cURL: request.ControllerURL,
 	}, nil
 }
 
@@ -34,17 +33,14 @@ func parseReplica(s string) (*Replica, error) {
 	if len(fields) < 2 {
 		return nil, errors.Errorf("cannot parse line `%s`", s)
 	}
-	ip := GetIPFromURL(fields[0])
-	if validIP := net.ParseIP(ip); validIP == nil {
-		return nil, errors.Errorf("invalid ip parsed %v", ip)
-	}
+	url := fields[0]
 	mode := ReplicaMode(fields[1])
 	if mode != ReplicaModeRW && mode != ReplicaModeWO {
 		mode = ReplicaModeERR
 	}
 	return &Replica{
-		Address: ip,
-		Mode:    mode,
+		URL:  url,
+		Mode: mode,
 	}, nil
 }
 
@@ -63,23 +59,27 @@ func (e *Engine) ReplicaList() (map[string]*Replica, error) {
 		if err != nil {
 			return nil, errors.Wrapf(err, "error parsing replica status from `%s`", l)
 		}
-		replicas[replica.Address] = replica
+		replicas[replica.URL] = replica
 	}
 	return replicas, nil
 }
 
-func (e *Engine) ReplicaAdd(replicaIP string) error {
-	rURL := GetReplicaURL(replicaIP)
-	if _, err := util.Execute("longhorn", "--url", e.cURL, "add", rURL); err != nil {
-		return errors.Wrapf(err, "failed to add replica address='%s' to controller '%s'", rURL, e.name)
+func (e *Engine) ReplicaAdd(url string) error {
+	if err := ValidateReplicaURL(url); err != nil {
+		return err
+	}
+	if _, err := util.Execute("longhorn", "--url", e.cURL, "add", url); err != nil {
+		return errors.Wrapf(err, "failed to add replica address='%s' to controller '%s'", url, e.name)
 	}
 	return nil
 }
 
-func (e *Engine) ReplicaRemove(replicaIP string) error {
-	rURL := GetReplicaURL(replicaIP)
-	if _, err := util.Execute("longhorn", "--url", e.cURL, "rm", rURL); err != nil {
-		return errors.Wrapf(err, "failed to rm replica address='%s' from controller '%s'", rURL, e.name)
+func (e *Engine) ReplicaRemove(url string) error {
+	if err := ValidateReplicaURL(url); err != nil {
+		return err
+	}
+	if _, err := util.Execute("longhorn", "--url", e.cURL, "rm", url); err != nil {
+		return errors.Wrapf(err, "failed to rm replica address='%s' from controller '%s'", url, e.name)
 	}
 	return nil
 }

@@ -1,25 +1,29 @@
 package engineapi
 
 import (
+	"fmt"
 	"strings"
 )
 
 type ReplicaMode string
 
 const (
+	ControllerDefaultPort = "9501"
+	ReplicaDefaultPort    = "9503"
+
 	ReplicaModeRW  = ReplicaMode("RW")
 	ReplicaModeWO  = ReplicaMode("WO")
 	ReplicaModeERR = ReplicaMode("ERR")
 )
 
 type Replica struct {
-	Address string
-	Mode    ReplicaMode
+	URL  string
+	Mode ReplicaMode
 }
 
 type Controller struct {
-	Address string
-	NodeID  string
+	URL    string
+	NodeID string
 }
 
 type EngineClient interface {
@@ -27,13 +31,13 @@ type EngineClient interface {
 	Endpoint() string
 
 	ReplicaList() (map[string]*Replica, error)
-	ReplicaAdd(addr string) error
-	ReplicaRemove(addr string) error
+	ReplicaAdd(url string) error
+	ReplicaRemove(url string) error
 }
 
 type EngineClientRequest struct {
-	VolumeName     string
-	ControllerAddr string
+	VolumeName    string
+	ControllerURL string
 }
 
 type EngineClientCollection interface {
@@ -46,15 +50,22 @@ type Volume struct {
 	Endpoint     string `json:"endpoint"`
 }
 
-func GetControllerURL(ip string) string {
-	return "http://" + ip + ":9501"
+func GetControllerDefaultURL(ip string) string {
+	return "http://" + ip + ":" + ControllerDefaultPort
 }
 
-func GetReplicaURL(ip string) string {
-	return "tcp://" + ip + ":9502"
+func GetReplicaDefaultURL(ip string) string {
+	return "tcp://" + ip + ":" + ReplicaDefaultPort
 }
 
 func GetIPFromURL(url string) string {
 	// tcp, \/\/<address>, 9502
 	return strings.TrimPrefix(strings.Split(url, ":")[1], "//")
+}
+
+func ValidateReplicaURL(url string) error {
+	if !strings.HasPrefix(url, "tcp://") {
+		return fmt.Errorf("invalid replica url %v", url)
+	}
+	return nil
 }

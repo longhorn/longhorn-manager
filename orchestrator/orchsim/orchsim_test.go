@@ -112,8 +112,8 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 		VolumeName:   VolumeName,
 		VolumeSize:   VolumeSize,
 		ReplicaURLs: []string{
-			replica1Instance.IP + types.ReplicaPort,
-			replica2Instance.IP + types.ReplicaPort,
+			engineapi.GetReplicaDefaultURL(replica1Instance.IP),
+			engineapi.GetReplicaDefaultURL(replica2Instance.IP),
 		},
 	})
 	c.Assert(err, IsNil)
@@ -130,8 +130,8 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	replicas, err := engine.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
-	c.Assert(replicas[replica1Instance.IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeRW)
-	c.Assert(replicas[replica2Instance.IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeRW)
+	c.Assert(replicas[engineapi.GetReplicaDefaultURL(replica1Instance.IP)].Mode, Equals, engineapi.ReplicaModeRW)
+	c.Assert(replicas[engineapi.GetReplicaDefaultURL(replica2Instance.IP)].Mode, Equals, engineapi.ReplicaModeRW)
 
 	orch = getRandomOrch(orchs)
 	instance, err = orch.InspectInstance(&orchestrator.Request{
@@ -159,8 +159,8 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	replicas, err = engine.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
-	c.Assert(replicas[rep1IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeERR)
-	c.Assert(replicas[replica2Instance.IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeRW)
+	c.Assert(replicas[engineapi.GetReplicaDefaultURL(rep1IP)].Mode, Equals, engineapi.ReplicaModeERR)
+	c.Assert(replicas[engineapi.GetReplicaDefaultURL(replica2Instance.IP)].Mode, Equals, engineapi.ReplicaModeRW)
 
 	orch = getRandomOrch(orchs)
 	err = orch.DeleteInstance(&orchestrator.Request{
@@ -174,8 +174,8 @@ func (s *TestSuite) basicFlowTest(c *C, orchs []orchestrator.Orchestrator) {
 	replicas, err = engine.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
-	c.Assert(replicas[rep1IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeERR)
-	c.Assert(replicas[replica2Instance.IP+types.ReplicaPort].Mode, Equals, engineapi.ReplicaModeRW)
+	c.Assert(replicas[engineapi.GetReplicaDefaultURL(rep1IP)].Mode, Equals, engineapi.ReplicaModeERR)
+	c.Assert(replicas[engineapi.GetReplicaDefaultURL(replica2Instance.IP)].Mode, Equals, engineapi.ReplicaModeRW)
 
 	orch = getRandomOrch(orchs)
 	err = orch.DeleteInstance(&orchestrator.Request{

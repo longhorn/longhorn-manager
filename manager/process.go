@@ -159,8 +159,8 @@ func (v *Volume) RefreshState() (err error) {
 	engineReps := map[string]*engineapi.Replica{}
 	if v.Controller != nil {
 		engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
-			VolumeName:     v.Name,
-			ControllerAddr: v.Controller.IP + types.ControllerPort,
+			VolumeName:    v.Name,
+			ControllerURL: engineapi.GetControllerDefaultURL(v.Controller.IP),
 		})
 		if err != nil {
 			return err
@@ -218,7 +218,7 @@ func (v *Volume) syncWithEngineState(engineReps map[string]*engineapi.Replica) {
 		addr2Replica := make(map[string]*types.ReplicaInfo)
 		for _, replica := range v.Replicas {
 			if replica.Running {
-				addr2Replica[replica.IP+types.ReplicaPort] = replica
+				addr2Replica[engineapi.GetReplicaDefaultURL(replica.IP)] = replica
 			}
 		}
 

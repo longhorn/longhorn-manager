@@ -109,21 +109,21 @@ func (e *EngineSimulator) ReplicaList() (map[string]*Replica, error) {
 	ret := map[string]*Replica{}
 	for _, replica := range e.replicas {
 		rep := *replica
-		ret[replica.Address] = &rep
+		ret[replica.URL] = &rep
 	}
 	return ret, nil
 }
 
-func (e *EngineSimulator) ReplicaAdd(addr string) error {
+func (e *EngineSimulator) ReplicaAdd(url string) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
-	if e.replicas[addr] != nil {
-		return fmt.Errorf("duplicate replica %v already exists", addr)
+	if e.replicas[url] != nil {
+		return fmt.Errorf("duplicate replica %v already exists", url)
 	}
-	e.replicas[addr] = &Replica{
-		Address: addr,
-		Mode:    ReplicaModeRW,
+	e.replicas[url] = &Replica{
+		URL:  url,
+		Mode: ReplicaModeRW,
 	}
 	return nil
 }
