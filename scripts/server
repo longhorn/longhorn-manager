@@ -3,9 +3,8 @@ set -e
 
 cd $(dirname $0)/..
 
-if [ ! -x ./bin/latest_image ]; then
-    ./scripts/package
-fi
+./scripts/build
+./scripts/package
 
 source ./scripts/common.sh
 

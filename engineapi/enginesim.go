@@ -118,6 +118,11 @@ func (e *EngineSimulator) ReplicaAdd(url string) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
+	for name, replica := range e.replicas {
+		if replica.Mode == ReplicaModeERR {
+			return fmt.Errorf("replica %v is in ERR mode, cannot add new replica", name)
+		}
+	}
 	if e.replicas[url] != nil {
 		return fmt.Errorf("duplicate replica %v already exists", url)
 	}

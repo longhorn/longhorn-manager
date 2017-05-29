@@ -115,6 +115,7 @@ func (m *VolumeManager) processVolume(volumeName string, volumeChan VolumeChan) 
 		}
 
 		logrus.Debugf("volume %v desire state is %v", volumeName, volume.DesireState)
+
 		if err := volume.Reconcile(); err != nil {
 			logrus.Errorf("Fail to reconcile volume state: %v", err)
 		}
@@ -168,6 +169,13 @@ func (v *Volume) RefreshState() (err error) {
 		engineReps, err = engine.ReplicaList()
 		if err != nil {
 			return err
+		}
+		for url, rep := range engineReps {
+			if rep.Mode == engineapi.ReplicaModeERR {
+				if err := engine.ReplicaRemove(url); err != nil {
+					logrus.Errorf("fail to clean up ERR replica %v for volume %v", url, v.Name)
+				}
+			}
 		}
 	}
 

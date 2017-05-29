@@ -57,9 +57,12 @@ func (e *Engine) ReplicaList() (map[string]*Replica, error) {
 		if strings.HasPrefix(l, "ADDRESS") {
 			continue
 		}
+		if l == "" {
+			continue
+		}
 		replica, err := parseReplica(l)
 		if err != nil {
-			return nil, errors.Wrapf(err, "error parsing replica status from `%s`", l)
+			return nil, errors.Wrapf(err, "error parsing replica status from `%s`, output %v", l, output)
 		}
 		replicas[replica.URL] = replica
 	}

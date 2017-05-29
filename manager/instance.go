@@ -213,12 +213,17 @@ func (v *Volume) deleteController() (err error) {
 		return nil
 	}
 
-	if err := v.m.orch.DeleteInstance(&orchestrator.Request{
+	req := &orchestrator.Request{
 		NodeID:       v.Controller.NodeID,
 		InstanceID:   v.Controller.ID,
 		InstanceName: v.Controller.Name,
 		VolumeName:   v.Controller.VolumeName,
-	}); err != nil {
+	}
+	// TODO make it idempotent
+	if _, err := v.m.orch.StopInstance(req); err != nil {
+		return err
+	}
+	if err := v.m.orch.DeleteInstance(req); err != nil {
 		return err
 	}
 	if err := v.m.kv.DeleteVolumeController(v.Name); err != nil {

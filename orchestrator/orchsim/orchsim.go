@@ -169,7 +169,8 @@ func (s *OrchSim) StopInstance(request *orchestrator.Request) (*orchestrator.Ins
 		return nil, err
 	}
 
-	if instance.State != StateStopped {
+	// Hack to check if it's a replica
+	if instance.State != StateStopped && strings.Contains(instance.Name, "replica") {
 		if engine, err := s.engines.GetEngineSimulator(request.VolumeName); err == nil {
 			if err := engine.SimulateStopReplica(engineapi.GetReplicaDefaultURL(instance.IP)); err != nil {
 				return nil, err

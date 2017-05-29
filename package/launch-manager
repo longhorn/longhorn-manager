@@ -1,0 +1,25 @@
+#!/bin/bash
+
+orc=
+orc_opt=0
+for i in "$@"
+do
+        if [ $orc_opt -eq 1 ]
+        then
+                orc=$i
+                break
+        fi
+        case $i in
+                --orchestrator)
+                        orc_opt=1
+                        ;;
+                *)
+                        ;;
+        esac
+done
+
+if [ "$orc" == "docker" ]; then
+        mount --rbind /host/dev /dev
+fi
+
+exec longhorn-manager "$@"

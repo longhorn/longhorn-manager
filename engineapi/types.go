@@ -9,7 +9,7 @@ type ReplicaMode string
 
 const (
 	ControllerDefaultPort = "9501"
-	ReplicaDefaultPort    = "9503"
+	ReplicaDefaultPort    = "9502"
 
 	ReplicaModeRW  = ReplicaMode("RW")
 	ReplicaModeWO  = ReplicaMode("WO")

@@ -259,6 +259,14 @@ func (m *VolumeManager) VolumeInfo(volumeName string) (*types.VolumeInfo, error)
 	return m.kv.GetVolume(volumeName)
 }
 
+func (m *VolumeManager) VolumeControllerInfo(volumeName string) (*types.ControllerInfo, error) {
+	return m.kv.GetVolumeController(volumeName)
+}
+
+func (m *VolumeManager) VolumeReplicaList(volumeName string) (map[string]*types.ReplicaInfo, error) {
+	return m.kv.ListVolumeReplicas(volumeName)
+}
+
 func (m *VolumeManager) ScheduleReplica(volume *types.VolumeInfo, nodeIDs map[string]struct{}) (string, error) {
 	spec := &scheduler.Spec{
 		Size: volume.Size,

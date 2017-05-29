@@ -5,6 +5,8 @@ import (
 )
 
 const (
+	DefaultListenPort = 9500
+
 	DefaultManagerPort      = 9507
 	DefaultOrchestratorPort = 9508
 )

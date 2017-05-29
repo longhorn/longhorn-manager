@@ -3,11 +3,11 @@ set -e
 
 cd $(dirname $0)
 
-#./build
+./build
 ./validate
 ./test -cover
-#./package
+./package
 #./integration-test
 
-#image=`cat ../bin/latest_image`
-#echo Longhorn Manager image: ${image}
+image=`cat ../bin/latest_image`
+echo Longhorn Manager image: ${image}
