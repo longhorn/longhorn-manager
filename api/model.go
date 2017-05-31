@@ -3,9 +3,11 @@ package api
 import (
 	"strconv"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 
+	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/manager"
 	"github.com/yasker/lm-rewrite/types"
 )
@@ -26,6 +28,11 @@ type Volume struct {
 
 	Replicas   []Replica   `json:"replicas,omitempty"`
 	Controller *Controller `json:"controller,omitempty"`
+}
+
+type Snapshot struct {
+	client.Resource
+	engineapi.Snapshot
 }
 
 type Host struct {
@@ -58,7 +65,10 @@ type AttachInput struct {
 	HostID string `json:"hostId,omitempty"`
 }
 
-type Empty struct{}
+type SnapshotInput struct {
+	Name   string            `json:"name,omitempty"`
+	Labels map[string]string `json:"labels,omitempty"`
+}
 
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
@@ -66,7 +76,9 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("apiVersion", client.Resource{})
 	schemas.AddType("schema", client.Schema{})
 	schemas.AddType("error", client.ServerApiError{})
+	schemas.AddType("snapshot", Snapshot{})
 	schemas.AddType("attachInput", AttachInput{})
+	schemas.AddType("snapshotInput", SnapshotInput{})
 
 	hostSchema(schemas.AddType("host", Host{}))
 	volumeSchema(schemas.AddType("volume", Volume{}))
@@ -89,6 +101,24 @@ func volumeSchema(volume *client.Schema) {
 		},
 		"detach": {
 			Output: "volume",
+		},
+		"snapshotPurge": {},
+		"snapshotCreate": {
+			Input:  "snapshotInput",
+			Output: "snapshot",
+		},
+		"snapshotGet": {
+			Input:  "snapshotInput",
+			Output: "snapshot",
+		},
+		"snapshotList": {},
+		"snapshotDelete": {
+			Input:  "snapshotInput",
+			Output: "snapshot",
+		},
+		"snapshotRevert": {
+			Input:  "snapshotInput",
+			Output: "snapshot",
 		},
 	}
 	volume.ResourceFields["controller"] = client.Field{
@@ -186,30 +216,30 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		//actions["replicaRemove"] = struct{}{}
 	case types.VolumeStateHealthy:
 		actions["detach"] = struct{}{}
-		//actions["snapshotPurge"] = struct{}{}
-		//actions["snapshotCreate"] = struct{}{}
-		//actions["snapshotList"] = struct{}{}
-		//actions["snapshotGet"] = struct{}{}
-		//actions["snapshotDelete"] = struct{}{}
-		//actions["snapshotRevert"] = struct{}{}
+		actions["snapshotPurge"] = struct{}{}
+		actions["snapshotCreate"] = struct{}{}
+		actions["snapshotList"] = struct{}{}
+		actions["snapshotGet"] = struct{}{}
+		actions["snapshotDelete"] = struct{}{}
+		actions["snapshotRevert"] = struct{}{}
 		//actions["snapshotBackup"] = struct{}{}
 		//actions["recurringUpdate"] = struct{}{}
 		//actions["bgTaskQueue"] = struct{}{}
 		//actions["replicaRemove"] = struct{}{}
 	case types.VolumeStateDegraded:
 		actions["detach"] = struct{}{}
-		//actions["snapshotPurge"] = struct{}{}
-		//actions["snapshotCreate"] = struct{}{}
-		//actions["snapshotList"] = struct{}{}
-		//actions["snapshotGet"] = struct{}{}
-		//actions["snapshotDelete"] = struct{}{}
-		//actions["snapshotRevert"] = struct{}{}
+		actions["snapshotPurge"] = struct{}{}
+		actions["snapshotCreate"] = struct{}{}
+		actions["snapshotList"] = struct{}{}
+		actions["snapshotGet"] = struct{}{}
+		actions["snapshotDelete"] = struct{}{}
+		actions["snapshotRevert"] = struct{}{}
 		//actions["snapshotBackup"] = struct{}{}
 		//actions["recurringUpdate"] = struct{}{}
 		//actions["bgTaskQueue"] = struct{}{}
 		//actions["replicaRemove"] = struct{}{}
 	case types.VolumeStateCreated:
-		actions["recurringUpdate"] = struct{}{}
+		//actions["recurringUpdate"] = struct{}{}
 	case types.VolumeStateFault:
 	}
 
@@ -218,6 +248,28 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 	}
 
 	return r
+}
+
+func toSnapshotResource(s *engineapi.Snapshot) *Snapshot {
+	if s == nil {
+		logrus.Warn("weird: nil snapshot")
+		return nil
+	}
+	return &Snapshot{
+		Resource: client.Resource{
+			Id:   s.Name,
+			Type: "snapshot",
+		},
+		Snapshot: *s,
+	}
+}
+
+func toSnapshotCollection(ss map[string]*engineapi.Snapshot) *client.GenericCollection {
+	data := []interface{}{}
+	for _, v := range ss {
+		data = append(data, toSnapshotResource(v))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshot"}}
 }
 
 func toHostCollection(hosts map[string]*types.NodeInfo) *client.GenericCollection {

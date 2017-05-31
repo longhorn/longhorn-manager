@@ -17,7 +17,7 @@ DEV_PATH = "/dev/longhorn/"
 
 PORT = ":9500"
 
-RETRY_COUNTS = 50
+RETRY_COUNTS = 100
 RETRY_ITERVAL = 0.1
 
 

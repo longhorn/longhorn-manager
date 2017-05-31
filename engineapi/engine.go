@@ -23,6 +23,8 @@ func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (Engine
 	return &Engine{
 		name: request.VolumeName,
 		cURL: request.ControllerURL,
+
+		purgeQueue: make(chan struct{}, 1),
 	}, nil
 }
 

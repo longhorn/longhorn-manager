@@ -62,7 +62,6 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 
 	if v == nil {
 		rw.WriteHeader(http.StatusNotFound)
-		apiContext.Write(&Empty{})
 		return nil
 	}
 	controller, err := s.m.VolumeControllerInfo(id)

@@ -47,14 +47,14 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("POST").Path("/v1/volumes").Handler(f(schemas, s.VolumeCreate))
 
 	volumeActions := map[string]func(http.ResponseWriter, *http.Request) error{
-		"attach": s.VolumeAttach,
-		"detach": s.VolumeDetach,
-		//"snapshotPurge":  s.fwd.Handler(HostIDFromVolume(s.man), s.snapshots.Purge),
-		//"snapshotCreate": s.fwd.Handler(HostIDFromVolume(s.man), s.snapshots.Create),
-		//"snapshotList":   s.fwd.Handler(HostIDFromVolume(s.man), s.snapshots.List),
-		//"snapshotGet":    s.fwd.Handler(HostIDFromVolume(s.man), s.snapshots.Get),
-		//"snapshotDelete": s.fwd.Handler(HostIDFromVolume(s.man), s.snapshots.Delete),
-		//"snapshotRevert": s.fwd.Handler(HostIDFromVolume(s.man), s.snapshots.Revert),
+		"attach":         s.VolumeAttach,
+		"detach":         s.VolumeDetach,
+		"snapshotPurge":  s.SnapshotPurge,
+		"snapshotCreate": s.SnapshotCreate,
+		"snapshotList":   s.SnapshotList,
+		"snapshotGet":    s.SnapshotGet,
+		"snapshotDelete": s.SnapshotDelete,
+		"snapshotRevert": s.SnapshotRevert,
 		//"snapshotBackup": s.fwd.Handler(HostIDFromVolume(s.man), s.snapshots.Backup),
 		//"recurringUpdate": s.fwd.Handler(HostIDFromVolume(s.man), s.UpdateRecurring),
 		//"bgTaskQueue":     s.fwd.Handler(HostIDFromVolume(s.man), s.BgTaskQueue),

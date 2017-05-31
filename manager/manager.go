@@ -282,3 +282,21 @@ func (m *VolumeManager) ScheduleReplica(volume *types.VolumeInfo, nodeIDs map[st
 	}
 	return schedNode.ID, nil
 }
+
+func (m *VolumeManager) GetEngineClient(volumeName string) (engineapi.EngineClient, error) {
+	volume, err := m.GetVolume(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	if volume.Controller == nil {
+		return nil, fmt.Errorf("cannot find volume %v controller", volumeName)
+	}
+	engine, err := m.engines.NewEngineClient(&engineapi.EngineClientRequest{
+		VolumeName:    volume.Name,
+		ControllerURL: engineapi.GetControllerDefaultURL(volume.Controller.IP),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return engine, nil
+}
