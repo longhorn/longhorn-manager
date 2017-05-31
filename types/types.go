@@ -44,12 +44,12 @@ const (
 //
 //	ProcessSchedule(spec *ScheduleSpec, item *ScheduleItem) (*InstanceInfo, error)
 //}
-
+//
 //type Settings interface {
 //	GetSettings() (*SettingsInfo, error)
 //	SetSettings(*SettingsInfo) error
 //}
-
+//
 //type SnapshotOps interface {
 //	Create(name string, labels map[string]string) (string, error)
 //	List() ([]*SnapshotInfo, error)
@@ -58,23 +58,23 @@ const (
 //	Revert(name string) error
 //	Purge() error
 //}
-
-type VolumeBackupOps interface {
-	StartBackup(snapName, backupTarget string) error
-	Restore(backup string) error
-	DeleteBackup(backup string) error
-}
-
-type GetManagerBackupOps func(backupTarget string) ManagerBackupOps
-
-type ManagerBackupOps interface {
-	List(volumeName string) ([]*BackupInfo, error)
-	Get(url string) (*BackupInfo, error)
-	Delete(url string) error
-
-	ListVolumes() ([]*BackupVolumeInfo, error)
-	GetVolume(volumeName string) (*BackupVolumeInfo, error)
-}
+//
+//type VolumeBackupOps interface {
+//	StartBackup(snapName, backupTarget string) error
+//	Restore(backup string) error
+//	DeleteBackup(backup string) error
+//}
+//
+//type GetManagerBackupOps func(backupTarget string) ManagerBackupOps
+//
+//type ManagerBackupOps interface {
+//	List(volumeName string) ([]*BackupInfo, error)
+//	Get(url string) (*BackupInfo, error)
+//	Delete(url string) error
+//
+//	ListVolumes() ([]*BackupVolumeInfo, error)
+//	GetVolume(volumeName string) (*BackupVolumeInfo, error)
+//}
 
 type Event interface{}
 
@@ -141,18 +141,6 @@ type Monitor interface {
 //	Labels      map[string]string `json:"labels"`
 //}
 
-type BackupInfo struct {
-	Name            string `json:"name,omitempty"`
-	URL             string `json:"url,omitempty"`
-	SnapshotName    string `json:"snapshotName,omitempty"`
-	SnapshotCreated string `json:"snapshotCreated,omitempty"`
-	Created         string `json:"created,omitempty"`
-	Size            string `json:"size,omitempty"`
-	VolumeName      string `json:"volumeName,omitempty"`
-	VolumeSize      string `json:"volumeSize,omitempty"`
-	VolumeCreated   string `json:"volumeCreated,omitempty"`
-}
-
 type TaskQueue interface {
 	io.Closer
 	List() []*BgTask
@@ -176,11 +164,11 @@ type BackupBgTask struct {
 	CleanupHook func() error `json:"-"`
 }
 
-type BackupVolumeInfo struct {
-	Name    string `json:"name"`
-	Size    string `json:"size"`
-	Created string `json:"created"`
-}
+//type BackupVolumeInfo struct {
+//	Name    string `json:"name"`
+//	Size    string `json:"size"`
+//	Created string `json:"created"`
+//}
 
 const (
 	SnapshotTaskName = "snapshot"

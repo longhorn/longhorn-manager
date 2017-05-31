@@ -250,3 +250,20 @@ func (v *Volume) SnapshotPurge() error {
 	}
 	return nil
 }
+
+func (v *Volume) SnapshotBackup(snapName, backupTarget string) error {
+	backupJobs := v.listOngoingJobsByTypeAndAssociateID(JobTypeSnapshotBackup, snapName)
+	if len(backupJobs) != 0 {
+		return nil
+	}
+
+	errCh := make(chan error)
+	go func() {
+		errCh <- v.jobSnapshotBackup(snapName, backupTarget)
+	}()
+
+	if _, err := v.registerJob(JobTypeSnapshotBackup, snapName, nil, errCh); err != nil {
+		return err
+	}
+	return nil
+}

@@ -1,3 +1,6 @@
+import time
+import common
+
 from common import clients  # NOQA
 from common import SIZE, VOLUME_NAME
 from common import wait_for_volume_state, wait_for_volume_delete
@@ -327,83 +330,88 @@ def snapshot_test(client):  # NOQA
     assert snapMap[snap2["name"]]["removed"] is True
 
 
-#def test_backup(clients):  # NOQA
-#    for host_id, client in clients.iteritems():
-#        break
-#
-#    volume = client.create_volume(name=VOLUME_NAME, size=SIZE,
-#                                  numberOfReplicas=2)
-#    assert volume["name"] == VOLUME_NAME
-#    assert volume["size"] == SIZE
-#    assert volume["numberOfReplicas"] == 2
-#    assert volume["state"] == "detached"
-#
-#    volume = volume.attach(hostId=host_id)
-#    backup_test(client)
-#    volume = volume.detach()
-#
-#    client.delete(volume)
-#
-#    volumes = client.list_volume()
-#    assert len(volumes) == 0
-#
-#
-#def backup_test(client):  # NOQA
-#    volume = client.by_id_volume(VOLUME_NAME)
-#
-#    setting = client.by_id_setting("backupTarget")
-#    setting = client.update(setting, value=common.get_backupstore_url())
-#    assert setting["value"] == common.get_backupstore_url()
-#
-#    volume.snapshotCreate()
-#    snap2 = volume.snapshotCreate()
-#    volume.snapshotCreate()
-#
-#    volume.snapshotBackup(name=snap2["name"])
-#
-#    found = False
-#    for i in range(100):
-#        bvs = client.list_backupVolume()
-#        for bv in bvs:
-#            if bv["name"] == VOLUME_NAME:
-#                found = True
-#                break
-#        if found:
-#            break
-#        time.sleep(1)
-#    assert found
-#
-#    found = False
-#    for i in range(20):
-#        backups = bv.backupList()
-#        for b in backups:
-#            if b["snapshotName"] == snap2["name"]:
-#                found = True
-#                break
-#        if found:
-#            break
-#        time.sleep(1)
-#    assert found
-#
-#    new_b = bv.backupGet(name=b["name"])
-#    assert new_b["name"] == b["name"]
-#    assert new_b["url"] == b["url"]
-#    assert new_b["snapshotName"] == b["snapshotName"]
-#    assert new_b["snapshotCreated"] == b["snapshotCreated"]
-#    assert new_b["created"] == b["created"]
-#    assert new_b["volumeName"] == b["volumeName"]
-#    assert new_b["volumeSize"] == b["volumeSize"]
-#    assert new_b["volumeCreated"] == b["volumeCreated"]
-#
-#    bv.backupDelete(name=b["name"])
-#
-#    backups = bv.backupList()
-#    found = False
-#    for b in backups:
-#        if b["snapshotName"] == snap2["name"]:
-#            found = True
-#            break
-#    assert not found
+def test_backup(clients):  # NOQA
+    for host_id, client in clients.iteritems():
+        break
+
+    volume = client.create_volume(name=VOLUME_NAME, size=SIZE,
+                                  numberOfReplicas=2)
+    volume = wait_for_volume_state(client, VOLUME_NAME, "detached")
+    assert volume["name"] == VOLUME_NAME
+    assert volume["size"] == SIZE
+    assert volume["numberOfReplicas"] == 2
+    assert volume["state"] == "detached"
+
+    volume = volume.attach(hostId=host_id)
+    volume = wait_for_volume_state(client, VOLUME_NAME, "healthy")
+
+    backup_test(client)
+    volume = volume.detach()
+    volume = wait_for_volume_state(client, VOLUME_NAME, "detached")
+
+    client.delete(volume)
+    volume = wait_for_volume_delete(client, VOLUME_NAME)
+
+    volumes = client.list_volume()
+    assert len(volumes) == 0
+
+
+def backup_test(client):  # NOQA
+    volume = client.by_id_volume(VOLUME_NAME)
+
+    setting = client.by_id_setting("backupTarget")
+    setting = client.update(setting, value=common.get_backupstore_url())
+    assert setting["value"] == common.get_backupstore_url()
+
+    volume.snapshotCreate()
+    snap2 = volume.snapshotCreate()
+    volume.snapshotCreate()
+
+    volume.snapshotBackup(name=snap2["name"])
+
+    found = False
+    for i in range(100):
+        bvs = client.list_backupVolume()
+        for bv in bvs:
+            if bv["name"] == VOLUME_NAME:
+                found = True
+                break
+        if found:
+            break
+        time.sleep(1)
+    assert found
+
+    found = False
+    for i in range(20):
+        backups = bv.backupList()
+        for b in backups:
+            if b["snapshotName"] == snap2["name"]:
+                found = True
+                break
+        if found:
+            break
+        time.sleep(1)
+    assert found
+
+    new_b = bv.backupGet(name=b["name"])
+    assert new_b["name"] == b["name"]
+    assert new_b["url"] == b["url"]
+    assert new_b["snapshotName"] == b["snapshotName"]
+    assert new_b["snapshotCreated"] == b["snapshotCreated"]
+    assert new_b["created"] == b["created"]
+    assert new_b["volumeName"] == b["volumeName"]
+    assert new_b["volumeSize"] == b["volumeSize"]
+    assert new_b["volumeCreated"] == b["volumeCreated"]
+
+    bv.backupDelete(name=b["name"])
+
+    backups = bv.backupList()
+    found = False
+    for b in backups:
+        if b["snapshotName"] == snap2["name"]:
+            found = True
+            break
+    assert not found
 
 
 def test_volume_multinode(clients):  # NOQA
@@ -429,8 +437,8 @@ def test_volume_multinode(clients):  # NOQA
     assert volume["controller"]["hostId"] == hosts[0]
 
     snapshot_test(clients[hosts[1]])
-#    backup_test(clients[hosts[2]])
-#
+    backup_test(clients[hosts[2]])
+
     clients[hosts[0]].delete(volume)
     wait_for_volume_delete(clients[hosts[1]], VOLUME_NAME)
 

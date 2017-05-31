@@ -43,6 +43,16 @@ type Host struct {
 	Address string `json:"address,omitempty"`
 }
 
+type BackupVolume struct {
+	client.Resource
+	engineapi.BackupVolume
+}
+
+type Backup struct {
+	client.Resource
+	engineapi.Backup
+}
+
 type Setting struct {
 	client.Resource
 	Name  string `json:"name"`
@@ -76,6 +86,10 @@ type SnapshotInput struct {
 	Labels map[string]string `json:"labels,omitempty"`
 }
 
+type BackupInput struct {
+	Name string `json:"name,omitempty"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -85,12 +99,31 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("snapshot", Snapshot{})
 	schemas.AddType("attachInput", AttachInput{})
 	schemas.AddType("snapshotInput", SnapshotInput{})
+	schemas.AddType("backup", Backup{})
+	schemas.AddType("backupInput", BackupInput{})
 
 	hostSchema(schemas.AddType("host", Host{}))
 	volumeSchema(schemas.AddType("volume", Volume{}))
+	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
 
 	return schemas
+}
+
+func backupVolumeSchema(backupVolume *client.Schema) {
+	backupVolume.CollectionMethods = []string{"GET"}
+	backupVolume.ResourceMethods = []string{"GET"}
+	backupVolume.ResourceActions = map[string]client.Action{
+		"backupList": {},
+		"backupGet": {
+			Input:  "backupInput",
+			Output: "backup",
+		},
+		"backupDelete": {
+			Input:  "backupInput",
+			Output: "backupVolume",
+		},
+	}
 }
 
 func settingSchema(setting *client.Schema) {
@@ -141,6 +174,9 @@ func volumeSchema(volume *client.Schema) {
 		"snapshotRevert": {
 			Input:  "snapshotInput",
 			Output: "snapshot",
+		},
+		"snapshotBackup": {
+			Input: "snapshotInput",
 		},
 	}
 	volume.ResourceFields["controller"] = client.Field{
@@ -262,7 +298,7 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		actions["snapshotGet"] = struct{}{}
 		actions["snapshotDelete"] = struct{}{}
 		actions["snapshotRevert"] = struct{}{}
-		//actions["snapshotBackup"] = struct{}{}
+		actions["snapshotBackup"] = struct{}{}
 		//actions["recurringUpdate"] = struct{}{}
 		//actions["bgTaskQueue"] = struct{}{}
 		//actions["replicaRemove"] = struct{}{}
@@ -274,7 +310,7 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		actions["snapshotGet"] = struct{}{}
 		actions["snapshotDelete"] = struct{}{}
 		actions["snapshotRevert"] = struct{}{}
-		//actions["snapshotBackup"] = struct{}{}
+		actions["snapshotBackup"] = struct{}{}
 		//actions["recurringUpdate"] = struct{}{}
 		//actions["bgTaskQueue"] = struct{}{}
 		//actions["replicaRemove"] = struct{}{}
@@ -331,6 +367,58 @@ func toHostResource(h *types.NodeInfo) *Host {
 		Name:    h.Name,
 		Address: h.IP,
 	}
+}
+
+func toBackupVolumeResource(bv *engineapi.BackupVolume, apiContext *api.ApiContext) *BackupVolume {
+	if bv == nil {
+		logrus.Warnf("weird: nil backupVolume")
+		return nil
+	}
+	b := &BackupVolume{
+		Resource: client.Resource{
+			Id:    bv.Name,
+			Type:  "backupVolume",
+			Links: map[string]string{},
+		},
+		BackupVolume: *bv,
+	}
+	b.Actions = map[string]string{
+		"backupList":   apiContext.UrlBuilder.ActionLink(b.Resource, "backupList"),
+		"backupGet":    apiContext.UrlBuilder.ActionLink(b.Resource, "backupGet"),
+		"backupDelete": apiContext.UrlBuilder.ActionLink(b.Resource, "backupDelete"),
+	}
+	return b
+}
+
+func toBackupVolumeCollection(bv []*engineapi.BackupVolume, apiContext *api.ApiContext) *client.GenericCollection {
+	data := []interface{}{}
+	for _, v := range bv {
+		data = append(data, toBackupVolumeResource(v, apiContext))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backupVolume"}}
+}
+
+func toBackupResource(b *engineapi.Backup) *Backup {
+	if b == nil {
+		logrus.Warnf("weird: nil backup")
+		return nil
+	}
+	return &Backup{
+		Resource: client.Resource{
+			Id:    b.Name,
+			Type:  "backup",
+			Links: map[string]string{},
+		},
+		Backup: *b,
+	}
+}
+
+func toBackupCollection(bs []*engineapi.Backup) *client.GenericCollection {
+	data := []interface{}{}
+	for _, v := range bs {
+		data = append(data, toBackupResource(v))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backup"}}
 }
 
 type Server struct {

@@ -15,6 +15,7 @@ import (
 const (
 	VolumeHeadName = "volume-head"
 	purgeTimeout   = 15 * time.Minute
+	backupTimeout  = 360 * time.Minute
 )
 
 func (e *Engine) SnapshotCreate(name string, labels map[string]string) (string, error) {
@@ -82,5 +83,22 @@ func (e *Engine) SnapshotPurge() error {
 		"snapshot", "purge"); err != nil {
 		return errors.Wrapf(err, "error purging snapshots")
 	}
+	logrus.Debugf("Volume %v snapshot purge completed", e.Name())
+	return nil
+}
+
+func (e *Engine) SnapshotBackup(snapName, backupTarget string) error {
+	snap, err := e.SnapshotGet(snapName)
+	if err != nil {
+		return errors.Wrapf(err, "error getting snapshot '%s', volume '%s'", snapName, e.name)
+	}
+	if snap == nil {
+		return errors.Errorf("could not find snapshot '%s' to backup, volume '%s'", snapName, e.name)
+	}
+	backup, err := util.ExecuteWithTimeout(backupTimeout, "longhorn", "--url", e.cURL, "backup", "create", "--dest", backupTarget, snapName)
+	if err != nil {
+		return err
+	}
+	logrus.Debugf("Backup %v created for volume %v snapshot %v", backup, e.Name(), snapName)
 	return nil
 }

@@ -329,3 +329,11 @@ func (m *VolumeManager) SnapshotPurge(volumeName string) error {
 	}
 	return volume.SnapshotPurge()
 }
+
+func (m *VolumeManager) SnapshotBackup(volumeName, snapshotName, backupTarget string) error {
+	volume, err := m.GetVolume(volumeName)
+	if err != nil {
+		return err
+	}
+	return volume.SnapshotBackup(snapshotName, backupTarget)
+}

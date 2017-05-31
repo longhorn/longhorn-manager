@@ -55,7 +55,7 @@ func NewRouter(s *Server) *mux.Router {
 		"snapshotGet":    s.SnapshotGet,
 		"snapshotDelete": s.SnapshotDelete,
 		"snapshotRevert": s.SnapshotRevert,
-		//"snapshotBackup": s.fwd.Handler(HostIDFromVolume(s.man), s.snapshots.Backup),
+		"snapshotBackup": s.SnapshotBackup,
 		//"recurringUpdate": s.fwd.Handler(HostIDFromVolume(s.man), s.UpdateRecurring),
 		//"bgTaskQueue":     s.fwd.Handler(HostIDFromVolume(s.man), s.BgTaskQueue),
 		//"replicaRemove":   s.fwd.Handler(HostIDFromVolume(s.man), s.ReplicaRemove),
@@ -64,16 +64,16 @@ func NewRouter(s *Server) *mux.Router {
 		r.Methods("POST").Path("/v1/volumes/{name}").Queries("action", name).Handler(f(schemas, action))
 	}
 
-	//r.Methods("GET").Path("/v1/backupvolumes").Handler(f(schemas, s.backups.ListVolume))
-	//r.Methods("GET").Path("/v1/backupvolumes/{volName}").Handler(f(schemas, s.backups.GetVolume))
-	//backupActions := map[string]func(http.ResponseWriter, *http.Request) error{
-	//	"backupList":   s.backups.List,
-	//	"backupGet":    s.backups.Get,
-	//	"backupDelete": s.backups.Delete,
-	//}
-	//for name, action := range backupActions {
-	//	r.Methods("POST").Path("/v1/backupvolumes/{volName}").Queries("action", name).Handler(f(schemas, action))
-	//}
+	r.Methods("GET").Path("/v1/backupvolumes").Handler(f(schemas, s.BackupVolumeList))
+	r.Methods("GET").Path("/v1/backupvolumes/{volName}").Handler(f(schemas, s.BackupVolumeGet))
+	backupActions := map[string]func(http.ResponseWriter, *http.Request) error{
+		"backupList":   s.BackupList,
+		"backupGet":    s.BackupGet,
+		"backupDelete": s.BackupDelete,
+	}
+	for name, action := range backupActions {
+		r.Methods("POST").Path("/v1/backupvolumes/{volName}").Queries("action", name).Handler(f(schemas, action))
+	}
 
 	r.Methods("GET").Path("/v1/hosts").Handler(f(schemas, s.NodeList))
 	r.Methods("GET").Path("/v1/hosts/{id}").Handler(f(schemas, s.NodeGet))

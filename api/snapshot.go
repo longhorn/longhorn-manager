@@ -189,43 +189,41 @@ func (s *Server) SnapshotRevert(w http.ResponseWriter, req *http.Request) (err e
 	return nil
 }
 
-//func (s *Server) Backup(w http.ResponseWriter, req *http.Request) error {
-//	var input SnapshotInput
-//
-//	apiContext := api.GetApiContext(req)
-//	if err := apiContext.Read(&input); err != nil {
-//		return errors.Wrapf(err, "error read snapshotInput")
-//	}
-//	if input.Name == "" {
-//		return errors.Errorf("empty snapshot name not allowed")
-//	}
-//
-//	volName := mux.Vars(req)["name"]
-//	if volName == "" {
-//		return errors.Errorf("volume name required")
-//	}
-//
-//	settings, err := s.m.Settings().GetSettings()
-//	if err != nil || settings == nil {
-//		return errors.New("cannot backup: unable to read settings")
-//	}
-//	backupTarget := settings.BackupTarget
-//	if backupTarget == "" {
-//		return errors.New("cannot backup: backupTarget not set")
-//	}
-//
-//	backups, err := s.m.VolumeBackupOps(volName)
-//	if err != nil {
-//		return errors.Wrapf(err, "error getting VolumeBackupOps for volume '%s'", volName)
-//	}
-//
-//	if err := backups.StartBackup(input.Name, backupTarget); err != nil {
-//		return errors.Wrapf(err, "error creating backup: snapshot '%s', volume '%s', dest '%s'", input.Name, volName, backupTarget)
-//	}
-//	logrus.Debugf("success: started backup: snapshot '%s', volume '%s', dest '%s'", input.Name, volName, backupTarget)
-//	apiContext.Write(&Empty{})
-//	return nil
-//}
+func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err error) {
+	defer func() {
+		err = errors.Wrap(err, "fail to backup snapshot")
+	}()
+
+	var input SnapshotInput
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+	if input.Name == "" {
+		return fmt.Errorf("empty snapshot name not allowed")
+	}
+
+	volName := mux.Vars(req)["name"]
+	if volName == "" {
+		return fmt.Errorf("volume name required")
+	}
+
+	settings, err := s.m.SettingsGet()
+	if err != nil || settings == nil {
+		return fmt.Errorf("cannot backup: unable to read settings")
+	}
+	backupTarget := settings.BackupTarget
+	if backupTarget == "" {
+		return fmt.Errorf("cannot backup: backupTarget not set")
+	}
+
+	if err := s.m.SnapshotBackup(volName, input.Name, backupTarget); err != nil {
+		return err
+	}
+
+	return nil
+}
 
 func (s *Server) SnapshotPurge(w http.ResponseWriter, req *http.Request) (err error) {
 	defer func() {

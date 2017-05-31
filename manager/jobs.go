@@ -84,6 +84,19 @@ func (v *Volume) listOngoingJobsByType(jobType JobType) map[string]*Job {
 	return result
 }
 
+func (v *Volume) listOngoingJobsByTypeAndAssociateID(jobType JobType, assoicateID string) map[string]*Job {
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+
+	result := map[string]*Job{}
+	for id, job := range v.Jobs {
+		if job.State == JobStateOngoing && job.Type == jobType && job.AssoicateID == assoicateID {
+			result[id] = job
+		}
+	}
+	return result
+}
+
 func (v *Volume) jobReplicaCreate(req *orchestrator.Request) (err error) {
 	defer func() {
 		errors.Wrap(err, "fail to finish job replica create")
@@ -152,7 +165,7 @@ func (v *Volume) jobReplicaRebuild(req *orchestrator.Request) (err error) {
 
 func (v *Volume) jobSnapshotPurge() (err error) {
 	defer func() {
-		errors.Wrap(err, "fail to finish job replica rebuild")
+		errors.Wrap(err, "fail to finish job snapshot purge")
 	}()
 
 	if v.Controller == nil {
@@ -166,4 +179,22 @@ func (v *Volume) jobSnapshotPurge() (err error) {
 		return err
 	}
 	return engine.SnapshotPurge()
+}
+
+func (v *Volume) jobSnapshotBackup(snapName, backupTarget string) (err error) {
+	defer func() {
+		errors.Wrap(err, "fail to finish job snapshot backup")
+	}()
+
+	if v.Controller == nil {
+		return fmt.Errorf("cannot find volume %v controller", v.Name)
+	}
+	engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
+		VolumeName:    v.Name,
+		ControllerURL: engineapi.GetControllerDefaultURL(v.Controller.IP),
+	})
+	if err != nil {
+		return err
+	}
+	return engine.SnapshotBackup(snapName, backupTarget)
 }

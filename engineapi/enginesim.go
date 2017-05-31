@@ -178,3 +178,7 @@ func (e *EngineSimulator) SnapshotRevert(name string) error {
 func (e *EngineSimulator) SnapshotPurge() error {
 	return fmt.Errorf("Not implemented")
 }
+
+func (e *EngineSimulator) SnapshotBackup(snapName, backupTarget string) error {
+	return fmt.Errorf("Not implemented")
+}
