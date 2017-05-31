@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
 	"github.com/yasker/lm-rewrite/engineapi"
@@ -299,4 +300,24 @@ func (m *VolumeManager) GetEngineClient(volumeName string) (engineapi.EngineClie
 		return nil, err
 	}
 	return engine, nil
+}
+
+func (m *VolumeManager) SettingsGet() (*types.SettingsInfo, error) {
+	settings, err := m.kv.GetSettings()
+	if err != nil {
+		return nil, err
+	}
+	if settings == nil {
+		settings = &types.SettingsInfo{}
+		err := m.kv.CreateSettings(settings)
+		if err != nil {
+			logrus.Warnf("fail to create settings")
+		}
+		settings, err = m.kv.GetSettings()
+	}
+	return settings, err
+}
+
+func (m *VolumeManager) SettingsSet(settings *types.SettingsInfo) error {
+	return m.kv.UpdateSettings(settings)
 }

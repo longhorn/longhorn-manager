@@ -45,10 +45,10 @@ const (
 //	ProcessSchedule(spec *ScheduleSpec, item *ScheduleItem) (*InstanceInfo, error)
 //}
 
-type Settings interface {
-	GetSettings() (*SettingsInfo, error)
-	SetSettings(*SettingsInfo) error
-}
+//type Settings interface {
+//	GetSettings() (*SettingsInfo, error)
+//	SetSettings(*SettingsInfo) error
+//}
 
 //type SnapshotOps interface {
 //	Create(name string, labels map[string]string) (string, error)

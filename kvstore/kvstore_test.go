@@ -170,7 +170,6 @@ func (s *TestSuite) testSettings(c *C, st *KVStore) {
 
 	settings := &types.SettingsInfo{
 		BackupTarget: "nfs://1.2.3.4:/test",
-		EngineImage:  "rancher/longhorn",
 	}
 
 	s.verifyConcurrentExecution(c, st.CreateSettings, settings)
@@ -180,7 +179,7 @@ func (s *TestSuite) testSettings(c *C, st *KVStore) {
 	UpdateKVIndex(settings, newSettings)
 	c.Assert(newSettings, DeepEquals, settings)
 
-	settings.EngineImage = "rancher/longhorn:latest"
+	settings.BackupTarget = "nfs://4.3.2.1:/test"
 	s.verifyConcurrentExecution(c, st.UpdateSettings, settings)
 
 	newSettings, err = st.GetSettings()

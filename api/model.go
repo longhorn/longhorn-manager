@@ -43,6 +43,12 @@ type Host struct {
 	Address string `json:"address,omitempty"`
 }
 
+type Setting struct {
+	client.Resource
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 type Instance struct {
 	Name    string `json:"name,omitempty"`
 	NodeID  string `json:"hostId,omitempty"`
@@ -82,8 +88,24 @@ func NewSchema() *client.Schemas {
 
 	hostSchema(schemas.AddType("host", Host{}))
 	volumeSchema(schemas.AddType("volume", Volume{}))
+	settingSchema(schemas.AddType("setting", Setting{}))
 
 	return schemas
+}
+
+func settingSchema(setting *client.Schema) {
+	setting.CollectionMethods = []string{"GET"}
+	setting.ResourceMethods = []string{"GET", "PUT"}
+
+	settingName := setting.ResourceFields["name"]
+	settingName.Required = true
+	settingName.Unique = true
+	setting.ResourceFields["name"] = settingName
+
+	settingValue := setting.ResourceFields["value"]
+	settingValue.Required = true
+	settingValue.Update = true
+	setting.ResourceFields["value"] = settingValue
 }
 
 func hostSchema(host *client.Schema) {
@@ -151,6 +173,24 @@ func volumeSchema(volume *client.Schema) {
 	volumeStaleReplicaTimeout.Create = true
 	volumeStaleReplicaTimeout.Default = 20
 	volume.ResourceFields["staleReplicaTimeout"] = volumeStaleReplicaTimeout
+}
+
+func toSettingResource(name, value string) *Setting {
+	return &Setting{
+		Resource: client.Resource{
+			Id:   name,
+			Type: "setting",
+		},
+		Name:  name,
+		Value: value,
+	}
+}
+
+func toSettingCollection(settings *types.SettingsInfo) *client.GenericCollection {
+	data := []interface{}{
+		toSettingResource("backupTarget", settings.BackupTarget),
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }
 
 func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[string]*types.ReplicaInfo, apiContext *api.ApiContext) *Volume {

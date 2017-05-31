@@ -87,7 +87,6 @@ type NodeInfo struct {
 
 type SettingsInfo struct {
 	BackupTarget string `json:"backupTarget"`
-	EngineImage  string `json:"engineImage"`
 
 	KVMetadata
 }

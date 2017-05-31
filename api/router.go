@@ -37,9 +37,9 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("GET").Path("/v1/schemas").Handler(api.SchemasHandler(schemas))
 	r.Methods("GET").Path("/v1/schemas/{id}").Handler(api.SchemaHandler(schemas))
 
-	//r.Methods("GET").Path("/v1/settings").Handler(f(schemas, s.settings.List))
-	//r.Methods("GET").Path("/v1/settings/{name}").Handler(f(schemas, s.settings.Get))
-	//r.Methods("PUT").Path("/v1/settings/{name}").Handler(f(schemas, s.settings.Set))
+	r.Methods("GET").Path("/v1/settings").Handler(f(schemas, s.SettingsList))
+	r.Methods("GET").Path("/v1/settings/{name}").Handler(f(schemas, s.SettingsGet))
+	r.Methods("PUT").Path("/v1/settings/{name}").Handler(f(schemas, s.SettingsSet))
 
 	r.Methods("GET").Path("/v1/volumes").Handler(f(schemas, s.VolumeList))
 	r.Methods("GET").Path("/v1/volumes/{name}").Handler(f(schemas, s.VolumeGet))
