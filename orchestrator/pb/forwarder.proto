@@ -14,6 +14,8 @@ message InstanceOperationRequest {
 	string volumeName = 5;
 	int64 volumeSize = 6;
 	repeated string replicaURLs = 7;
+        string restoreFrom = 8;
+        string restoreName = 9;
 }
 
 message InstanceOperationResponse {

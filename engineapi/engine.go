@@ -114,5 +114,6 @@ func (e *Engine) BackupRestore(backup string) error {
 	if _, err := util.Execute("longhorn", "--url", e.cURL, "backup", "restore", backup); err != nil {
 		return errors.Wrapf(err, "error restoring backup '%s'", backup)
 	}
+	logrus.Debugf("Backup %v restored for volume %v", backup, e.Name())
 	return nil
 }

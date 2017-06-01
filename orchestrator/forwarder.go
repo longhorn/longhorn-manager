@@ -73,6 +73,8 @@ func (f *Forwarder) InstanceOperationRPC(ctx context.Context, req *pb.InstanceOp
 		VolumeName:   req.VolumeName,
 		VolumeSize:   req.VolumeSize,
 		ReplicaURLs:  req.ReplicaURLs,
+		RestoreFrom:  req.RestoreFrom,
+		RestoreName:  req.RestoreName,
 	}
 	switch InstanceOperationType(req.Type) {
 	case InstanceOperationTypeCreateController:
@@ -219,6 +221,8 @@ func (f *Forwarder) InstanceOperation(address string, opType InstanceOperationTy
 		VolumeName:   request.VolumeName,
 		VolumeSize:   request.VolumeSize,
 		ReplicaURLs:  request.ReplicaURLs,
+		RestoreFrom:  request.RestoreFrom,
+		RestoreName:  request.RestoreName,
 	})
 	if err != nil {
 		return nil, errors.Wrapf(err, "fail to execute instance operation on %v", address)

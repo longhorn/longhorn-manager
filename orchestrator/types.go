@@ -13,6 +13,8 @@ type Request struct {
 	VolumeSize int64
 
 	ReplicaURLs []string
+	RestoreFrom string
+	RestoreName string
 }
 
 type Orchestrator interface {

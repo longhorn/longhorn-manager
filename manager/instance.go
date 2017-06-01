@@ -26,14 +26,23 @@ func (v *ManagedVolume) createReplica(nodeID string) (err error) {
 
 	replicaName := v.generateReplicaName()
 
+	req := &orchestrator.Request{
+		NodeID:       nodeID,
+		InstanceName: replicaName,
+		VolumeName:   v.Name,
+		VolumeSize:   v.Size,
+	}
+	if v.FromBackup != "" {
+		backupID, err := util.GetBackupID(v.FromBackup)
+		if err != nil {
+			return err
+		}
+		req.RestoreFrom = v.FromBackup
+		req.RestoreName = backupID
+	}
 	errCh := make(chan error)
 	go func() {
-		errCh <- v.jobReplicaCreate(&orchestrator.Request{
-			NodeID:       nodeID,
-			InstanceName: replicaName,
-			VolumeName:   v.Name,
-			VolumeSize:   v.Size,
-		})
+		errCh <- v.jobReplicaCreate(req)
 	}()
 
 	data := map[string]string{

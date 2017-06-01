@@ -240,8 +240,11 @@ func (d *Docker) CreateReplica(req *orchestrator.Request) (instance *orchestrato
 		"launch", "replica",
 		"--listen", "0.0.0.0:9502",
 		"--size", strconv.FormatInt(req.VolumeSize, 10),
-		"/volume",
 	}
+	if req.RestoreFrom != "" && req.RestoreName != "" {
+		cmd = append(cmd, "--restore-from", req.RestoreFrom, "--restore-name", req.RestoreName)
+	}
+	cmd = append(cmd, "/volume")
 	createBody, err := d.cli.ContainerCreate(context.Background(),
 		&dContainer.Config{
 			Image: d.EngineImage,

@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -209,4 +211,23 @@ func ExecuteWithTimeout(timeout time.Duration, binary string, args ...string) (s
 
 func TimestampAfterTimeout(ts string, timeoutInSeconds int) bool {
 	return false
+}
+
+func ValidateName(name string) bool {
+	validName := regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]+$`)
+	return validName.MatchString(name)
+}
+
+func GetBackupID(backupURL string) (string, error) {
+	u, err := url.Parse(backupURL)
+	if err != nil {
+		return "", err
+	}
+	v := u.Query()
+	volumeName := v.Get("volume")
+	backupName := v.Get("backup")
+	if !ValidateName(volumeName) || !ValidateName(backupName) {
+		return "", fmt.Errorf("Invalid name parsed, got %v and %v", backupName, volumeName)
+	}
+	return backupName, nil
 }
