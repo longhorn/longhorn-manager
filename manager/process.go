@@ -19,6 +19,17 @@ var (
 )
 
 func (m *VolumeManager) startProcessing() {
+	volumes, err := m.VolumeList()
+	if err != nil {
+		logrus.Fatalf("fail to acquire existing volume list")
+	}
+	if volumes != nil {
+		for name, volume := range volumes {
+			if volume.TargetNodeID == m.GetCurrentNodeID() {
+				go m.notifyVolume(name)
+			}
+		}
+	}
 	for event := range m.EventChan {
 		switch event.Type {
 		case EventTypeNotify:
