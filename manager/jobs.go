@@ -149,3 +149,21 @@ func (v *Volume) jobReplicaRebuild(req *orchestrator.Request) (err error) {
 
 	return nil
 }
+
+func (v *Volume) jobSnapshotPurge() (err error) {
+	defer func() {
+		errors.Wrap(err, "fail to finish job replica rebuild")
+	}()
+
+	if v.Controller == nil {
+		return fmt.Errorf("cannot find volume %v controller", v.Name)
+	}
+	engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
+		VolumeName:    v.Name,
+		ControllerURL: engineapi.GetControllerDefaultURL(v.Controller.IP),
+	})
+	if err != nil {
+		return err
+	}
+	return engine.SnapshotPurge()
+}

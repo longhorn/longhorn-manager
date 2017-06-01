@@ -233,3 +233,20 @@ func (v *Volume) getNodesWithReplica() map[string]struct{} {
 	}
 	return ret
 }
+
+func (v *Volume) SnapshotPurge() error {
+	purgingJobs := v.listOngoingJobsByType(JobTypeSnapshotPurge)
+	if len(purgingJobs) != 0 {
+		return nil
+	}
+
+	errCh := make(chan error)
+	go func() {
+		errCh <- v.jobSnapshotPurge()
+	}()
+
+	if _, err := v.registerJob(JobTypeSnapshotPurge, v.Name, nil, errCh); err != nil {
+		return err
+	}
+	return nil
+}

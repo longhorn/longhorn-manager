@@ -84,3 +84,20 @@ def wait_for_volume_delete(client, name):
             break
         time.sleep(RETRY_ITERVAL)
     assert not found
+
+
+def wait_for_snapshot_purge(volume, *snaps):
+    for i in range(RETRY_COUNTS):
+        snapshots = volume.snapshotList(volume=VOLUME_NAME)
+        snapMap = {}
+        for snap in snapshots:
+            snapMap[snap["name"]] = snap
+        found = False
+        for snap in snaps:
+            if snap in snapMap:
+                found = True
+                break
+        if not found:
+            break
+        time.sleep(RETRY_ITERVAL)
+    assert not found

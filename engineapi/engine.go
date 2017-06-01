@@ -15,16 +15,12 @@ type EngineCollection struct{}
 type Engine struct {
 	name string
 	cURL string
-
-	purgeQueue chan struct{}
 }
 
 func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (EngineClient, error) {
 	return &Engine{
 		name: request.VolumeName,
 		cURL: request.ControllerURL,
-
-		purgeQueue: make(chan struct{}, 1),
 	}, nil
 }
 

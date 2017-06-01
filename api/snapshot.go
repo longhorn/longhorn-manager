@@ -237,11 +237,7 @@ func (s *Server) SnapshotPurge(w http.ResponseWriter, req *http.Request) (err er
 		return fmt.Errorf("volume name required")
 	}
 
-	engine, err := s.m.GetEngineClient(volName)
-	if err != nil {
-		return err
-	}
-	if err := engine.SnapshotPurge(); err != nil {
+	if err := s.m.SnapshotPurge(volName); err != nil {
 		return err
 	}
 	return nil

@@ -1,6 +1,7 @@
 from common import clients  # NOQA
 from common import SIZE, VOLUME_NAME
 from common import wait_for_volume_state, wait_for_volume_delete
+from common import wait_for_snapshot_purge
 
 
 def test_hosts_and_settings(clients):  # NOQA
@@ -310,6 +311,7 @@ def snapshot_test(client):  # NOQA
     volume.snapshotDelete(name=snap2["name"])
 
     volume.snapshotPurge()
+    wait_for_snapshot_purge(volume, snap1["name"], snap3["name"])
 
     snapshots = volume.snapshotList(volume=VOLUME_NAME)
     snapMap = {}

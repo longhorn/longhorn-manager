@@ -321,3 +321,11 @@ func (m *VolumeManager) SettingsGet() (*types.SettingsInfo, error) {
 func (m *VolumeManager) SettingsSet(settings *types.SettingsInfo) error {
 	return m.kv.UpdateSettings(settings)
 }
+
+func (m *VolumeManager) SnapshotPurge(volumeName string) error {
+	volume, err := m.GetVolume(volumeName)
+	if err != nil {
+		return err
+	}
+	return volume.SnapshotPurge()
+}

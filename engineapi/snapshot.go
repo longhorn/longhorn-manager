@@ -78,16 +78,6 @@ func (e *Engine) SnapshotRevert(name string) error {
 }
 
 func (e *Engine) SnapshotPurge() error {
-	logrus.Debugf("Snapshot purge called, volume '%s', purgeQueue '%v'", e.name, e.purgeQueue)
-
-	select {
-	case e.purgeQueue <- struct{}{}:
-		defer func() { <-e.purgeQueue }()
-	default:
-		logrus.Debugf("Skipping snapshot purge: another one is pending, volume '%s'", e.name)
-		return nil
-	}
-
 	if _, err := util.ExecuteWithTimeout(purgeTimeout, "longhorn", "--url", e.cURL,
 		"snapshot", "purge"); err != nil {
 		return errors.Wrapf(err, "error purging snapshots")
