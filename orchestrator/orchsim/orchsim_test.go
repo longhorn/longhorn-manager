@@ -203,7 +203,7 @@ type NodeMap struct {
 	nodes map[string]string
 }
 
-func (m *NodeMap) Node2Address(nodeID string) (string, error) {
+func (m *NodeMap) Node2OrchestratorAddress(nodeID string) (string, error) {
 	addr := m.nodes[nodeID]
 	if addr == "" {
 		return addr, fmt.Errorf("cannot find node %v", nodeID)

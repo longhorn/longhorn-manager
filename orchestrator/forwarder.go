@@ -116,7 +116,7 @@ func (f *Forwarder) CreateController(request *Request) (*Instance, error) {
 	if f.locator == nil {
 		return nil, fmt.Errorf("BUG: locator wasn't set for forwarder")
 	}
-	address, err := f.locator.Node2Address(request.NodeID)
+	address, err := f.locator.Node2OrchestratorAddress(request.NodeID)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to create controller")
 	}
@@ -130,7 +130,7 @@ func (f *Forwarder) CreateReplica(request *Request) (*Instance, error) {
 	if f.locator == nil {
 		return nil, fmt.Errorf("BUG: locator wasn't set for forwarder")
 	}
-	address, err := f.locator.Node2Address(request.NodeID)
+	address, err := f.locator.Node2OrchestratorAddress(request.NodeID)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to create replica")
 	}
@@ -144,7 +144,7 @@ func (f *Forwarder) StartInstance(request *Request) (*Instance, error) {
 	if f.locator == nil {
 		return nil, fmt.Errorf("BUG: locator wasn't set for forwarder")
 	}
-	address, err := f.locator.Node2Address(request.NodeID)
+	address, err := f.locator.Node2OrchestratorAddress(request.NodeID)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to start instance")
 	}
@@ -158,7 +158,7 @@ func (f *Forwarder) StopInstance(request *Request) (*Instance, error) {
 	if f.locator == nil {
 		return nil, fmt.Errorf("BUG: locator wasn't set for forwarder")
 	}
-	address, err := f.locator.Node2Address(request.NodeID)
+	address, err := f.locator.Node2OrchestratorAddress(request.NodeID)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to stop instance")
 	}
@@ -172,7 +172,7 @@ func (f *Forwarder) DeleteInstance(request *Request) error {
 	if f.locator == nil {
 		return fmt.Errorf("BUG: locator wasn't set for forwarder")
 	}
-	address, err := f.locator.Node2Address(request.NodeID)
+	address, err := f.locator.Node2OrchestratorAddress(request.NodeID)
 	if err != nil {
 		return errors.Wrap(err, "unable to delete instance")
 	}
@@ -189,7 +189,7 @@ func (f *Forwarder) InspectInstance(request *Request) (*Instance, error) {
 	if f.locator == nil {
 		return nil, fmt.Errorf("BUG: locator wasn't set for forwarder")
 	}
-	address, err := f.locator.Node2Address(request.NodeID)
+	address, err := f.locator.Node2OrchestratorAddress(request.NodeID)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to inspect instance")
 	}

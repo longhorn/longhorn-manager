@@ -47,5 +47,5 @@ const (
 )
 
 type NodeLocator interface {
-	Node2Address(nodeID string) (string, error)
+	Node2OrchestratorAddress(nodeID string) (string, error)
 }

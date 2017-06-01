@@ -123,8 +123,7 @@ func (m *VolumeManager) ListSchedulingNodes() (map[string]*scheduler.Node, error
 	return ret, nil
 }
 
-// Node2Address implements orchestrator.Locator
-func (m *VolumeManager) Node2Address(nodeID string) (string, error) {
+func (m *VolumeManager) Node2OrchestratorAddress(nodeID string) (string, error) {
 	node, err := m.GetNode(nodeID)
 	if err != nil {
 		return "", err
