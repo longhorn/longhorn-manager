@@ -5,8 +5,7 @@ import (
 )
 
 const (
-	DefaultListenPort = 9500
-
+	DefaultAPIPort          = 9500
 	DefaultManagerPort      = 9507
 	DefaultOrchestratorPort = 9508
 )
@@ -127,7 +126,7 @@ type Monitor interface {
 
 //type ServiceLocator interface {
 //	GetCurrentNodeID() string
-//	GetAddress(nodeID string) (string, error) // Return <node>:<port>
+//	Node2APIAddress(nodeID string) (string, error) // Return <node>:<port>
 //}
 
 //type SnapshotInfo struct {

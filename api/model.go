@@ -422,11 +422,14 @@ func toBackupCollection(bs []*engineapi.Backup) *client.GenericCollection {
 }
 
 type Server struct {
-	m *manager.VolumeManager
+	m   *manager.VolumeManager
+	fwd *Fwd
 }
 
 func NewServer(m *manager.VolumeManager) *Server {
+	fwd := NewFwd(m)
 	return &Server{
-		m: m,
+		m:   m,
+		fwd: fwd,
 	}
 }

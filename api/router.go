@@ -11,8 +11,6 @@ import (
 
 type HandleFuncWithError func(http.ResponseWriter, *http.Request) error
 
-const DefaultPort int = 9500
-
 func HandleError(s *client.Schemas, t HandleFuncWithError) http.Handler {
 	return api.ApiHandler(s, http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		if err := t(rw, req); err != nil {
@@ -49,13 +47,13 @@ func NewRouter(s *Server) *mux.Router {
 	volumeActions := map[string]func(http.ResponseWriter, *http.Request) error{
 		"attach":         s.VolumeAttach,
 		"detach":         s.VolumeDetach,
-		"snapshotPurge":  s.SnapshotPurge,
-		"snapshotCreate": s.SnapshotCreate,
-		"snapshotList":   s.SnapshotList,
-		"snapshotGet":    s.SnapshotGet,
-		"snapshotDelete": s.SnapshotDelete,
-		"snapshotRevert": s.SnapshotRevert,
-		"snapshotBackup": s.SnapshotBackup,
+		"snapshotPurge":  s.fwd.Handler(NodeIDFromVolume(s.m), s.SnapshotPurge),
+		"snapshotCreate": s.fwd.Handler(NodeIDFromVolume(s.m), s.SnapshotCreate),
+		"snapshotList":   s.fwd.Handler(NodeIDFromVolume(s.m), s.SnapshotList),
+		"snapshotGet":    s.fwd.Handler(NodeIDFromVolume(s.m), s.SnapshotGet),
+		"snapshotDelete": s.fwd.Handler(NodeIDFromVolume(s.m), s.SnapshotDelete),
+		"snapshotRevert": s.fwd.Handler(NodeIDFromVolume(s.m), s.SnapshotRevert),
+		"snapshotBackup": s.fwd.Handler(NodeIDFromVolume(s.m), s.SnapshotBackup),
 		//"recurringUpdate": s.fwd.Handler(HostIDFromVolume(s.man), s.UpdateRecurring),
 		//"bgTaskQueue":     s.fwd.Handler(HostIDFromVolume(s.man), s.BgTaskQueue),
 		//"replicaRemove":   s.fwd.Handler(HostIDFromVolume(s.man), s.ReplicaRemove),

@@ -141,7 +141,7 @@ func RunManager(c *cli.Context) error {
 
 	router := http.Handler(api.NewRouter(api.NewServer(m)))
 
-	listen := m.GetCurrentNode().IP + ":" + strconv.Itoa(types.DefaultListenPort)
+	listen := m.GetCurrentNode().IP + ":" + strconv.Itoa(types.DefaultAPIPort)
 	logrus.Infof("Listening on %s", listen)
 
 	return http.ListenAndServe(listen, router)

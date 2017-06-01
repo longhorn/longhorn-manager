@@ -139,6 +139,10 @@ func (n *Node) GetManagerAddress() string {
 	return n.IP + ":" + strconv.Itoa(n.ManagerPort)
 }
 
+func (n *Node) GetAPIAddress() string {
+	return n.IP + ":" + strconv.Itoa(types.DefaultAPIPort)
+}
+
 func (n *Node) Notify(volumeName string) error {
 	if err := n.m.rpc.NodeNotify(n.GetManagerAddress(),
 		&Event{
@@ -148,4 +152,16 @@ func (n *Node) Notify(volumeName string) error {
 		return err
 	}
 	return nil
+}
+
+func (m *VolumeManager) GetCurrentNodeID() string {
+	return m.currentNode.ID
+}
+
+func (m *VolumeManager) Node2APIAddress(nodeID string) (string, error) {
+	node, err := m.GetNode(nodeID)
+	if err != nil {
+		return "", err
+	}
+	return node.GetAPIAddress(), nil
 }
