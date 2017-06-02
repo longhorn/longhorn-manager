@@ -15,19 +15,19 @@ import (
 type Volume struct {
 	client.Resource
 
-	Name                string `json:"name,omitempty"`
-	Size                string `json:"size,omitempty"`
-	BaseImage           string `json:"baseImage,omitempty"`
-	FromBackup          string `json:"fromBackup,omitempty"`
-	NumberOfReplicas    int    `json:"numberOfReplicas,omitempty"`
-	StaleReplicaTimeout int    `json:"staleReplicaTimeout,omitempty"`
-	State               string `json:"state,omitempty"`
-	EngineImage         string `json:"engineImage,omitempty"`
+	Name                string `json:"name"`
+	Size                string `json:"size"`
+	BaseImage           string `json:"baseImage"`
+	FromBackup          string `json:"fromBackup"`
+	NumberOfReplicas    int    `json:"numberOfReplicas"`
+	StaleReplicaTimeout int    `json:"staleReplicaTimeout"`
+	State               string `json:"state"`
+	EngineImage         string `json:"engineImage"`
 	Endpoint            string `json:"endpoint,omitemtpy"`
 	Created             string `json:"created,omitemtpy"`
 
-	Replicas   []Replica   `json:"replicas,omitempty"`
-	Controller *Controller `json:"controller,omitempty"`
+	Replicas   []Replica   `json:"replicas"`
+	Controller *Controller `json:"controller"`
 }
 
 type Snapshot struct {
@@ -38,9 +38,9 @@ type Snapshot struct {
 type Host struct {
 	client.Resource
 
-	UUID    string `json:"uuid,omitempty"`
-	Name    string `json:"name,omitempty"`
-	Address string `json:"address,omitempty"`
+	UUID    string `json:"uuid"`
+	Name    string `json:"name"`
+	Address string `json:"address"`
 }
 
 type BackupVolume struct {
@@ -60,10 +60,10 @@ type Setting struct {
 }
 
 type Instance struct {
-	Name    string `json:"name,omitempty"`
-	NodeID  string `json:"hostId,omitempty"`
-	Address string `json:"address,omitempty"`
-	Running bool   `json:"running,omitempty"`
+	Name    string `json:"name"`
+	NodeID  string `json:"hostId"`
+	Address string `json:"address"`
+	Running bool   `json:"running"`
 }
 
 type Controller struct {
@@ -73,21 +73,21 @@ type Controller struct {
 type Replica struct {
 	Instance
 
-	Mode     string `json:"mode,omitempty"`
-	FailedAt string `json:"badTimestamp,omitempty"`
+	Mode     string `json:"mode"`
+	FailedAt string `json:"badTimestamp"`
 }
 
 type AttachInput struct {
-	HostID string `json:"hostId,omitempty"`
+	HostID string `json:"hostId"`
 }
 
 type SnapshotInput struct {
-	Name   string            `json:"name,omitempty"`
-	Labels map[string]string `json:"labels,omitempty"`
+	Name   string            `json:"name"`
+	Labels map[string]string `json:"labels"`
 }
 
 type BackupInput struct {
-	Name string `json:"name,omitempty"`
+	Name string `json:"name"`
 }
 
 type ReplicaRemoveInput struct {

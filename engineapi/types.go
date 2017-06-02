@@ -79,15 +79,15 @@ type BackupVolume struct {
 }
 
 type Backup struct {
-	Name            string `json:"name,omitempty"`
-	URL             string `json:"url,omitempty"`
-	SnapshotName    string `json:"snapshotName,omitempty"`
-	SnapshotCreated string `json:"snapshotCreated,omitempty"`
-	Created         string `json:"created,omitempty"`
-	Size            string `json:"size,omitempty"`
-	VolumeName      string `json:"volumeName,omitempty"`
-	VolumeSize      string `json:"volumeSize,omitempty"`
-	VolumeCreated   string `json:"volumeCreated,omitempty"`
+	Name            string `json:"name"`
+	URL             string `json:"url"`
+	SnapshotName    string `json:"snapshotName"`
+	SnapshotCreated string `json:"snapshotCreated"`
+	Created         string `json:"created"`
+	Size            string `json:"size"`
+	VolumeName      string `json:"volumeName"`
+	VolumeSize      string `json:"volumeSize"`
+	VolumeCreated   string `json:"volumeCreated"`
 }
 
 func GetControllerDefaultURL(ip string) string {
