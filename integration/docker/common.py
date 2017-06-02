@@ -1,6 +1,7 @@
 import os
 import string
 import time
+import subprocess
 
 import pytest
 
@@ -101,3 +102,10 @@ def wait_for_snapshot_purge(volume, *snaps):
             break
         time.sleep(RETRY_ITERVAL)
     assert not found
+
+
+def docker_stop(*containers):
+    cmd = ["docker", "stop"]
+    for c in containers:
+        cmd.append(c)
+    return subprocess.check_call(cmd)

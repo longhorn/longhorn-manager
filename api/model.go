@@ -94,6 +94,10 @@ type ReplicaRemoveInput struct {
 	Name string `json:"name"`
 }
 
+type SalvageInput struct {
+	Names []string `json:"names"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -106,6 +110,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("backup", Backup{})
 	schemas.AddType("backupInput", BackupInput{})
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
+	schemas.AddType("salvageInput", SalvageInput{})
 
 	hostSchema(schemas.AddType("host", Host{}))
 	volumeSchema(schemas.AddType("volume", Volume{}))
@@ -162,6 +167,11 @@ func volumeSchema(volume *client.Schema) {
 		"detach": {
 			Output: "volume",
 		},
+		"salvage": {
+			Input:  "salvageInput",
+			Output: "volume",
+		},
+
 		"snapshotPurge": {},
 		"snapshotCreate": {
 			Input:  "snapshotInput",
@@ -326,6 +336,7 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 	case types.VolumeStateCreated:
 		//actions["recurringUpdate"] = struct{}{}
 	case types.VolumeStateFault:
+		actions["salvage"] = struct{}{}
 	}
 
 	for action := range actions {

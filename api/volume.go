@@ -155,6 +155,26 @@ func (s *Server) VolumeDetach(rw http.ResponseWriter, req *http.Request) error {
 	return s.responseWithVolume(rw, req, id)
 }
 
+func (s *Server) VolumeSalvage(rw http.ResponseWriter, req *http.Request) error {
+	var input SalvageInput
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrapf(err, "error read replicaRemoveInput")
+	}
+
+	id := mux.Vars(req)["name"]
+
+	if err := s.m.VolumeSalvage(&manager.VolumeSalvageRequest{
+		Name:                id,
+		SalvageReplicaNames: input.Names,
+	}); err != nil {
+		return errors.Wrap(err, "unable to remove replica")
+	}
+
+	return s.responseWithVolume(rw, req, id)
+}
+
 func (s *Server) ReplicaRemove(rw http.ResponseWriter, req *http.Request) error {
 	var input ReplicaRemoveInput
 

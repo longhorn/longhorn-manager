@@ -209,6 +209,9 @@ func (v *Volume) RefreshState() (err error) {
 				return err
 			}
 		}
+		if err := v.deleteController(); err != nil {
+			return err
+		}
 	}
 
 	if err := v.m.kv.UpdateVolume(&v.VolumeInfo); err != nil {

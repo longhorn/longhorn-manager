@@ -338,7 +338,10 @@ func (m *VolumeManager) SnapshotBackup(volumeName, snapshotName, backupTarget st
 	return volume.SnapshotBackup(snapshotName, backupTarget)
 }
 
-func (m *VolumeManager) ReplicaRemove(volumeName, replicaName string) error {
+func (m *VolumeManager) ReplicaRemove(volumeName, replicaName string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "fail to remove replica %v of volume %v", replicaName, volumeName)
+	}()
 	volume, err := m.GetVolume(volumeName)
 	if err != nil {
 		return err
