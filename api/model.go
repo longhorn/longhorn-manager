@@ -90,6 +90,10 @@ type BackupInput struct {
 	Name string `json:"name,omitempty"`
 }
 
+type ReplicaRemoveInput struct {
+	Name string `json:"name"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -101,6 +105,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("snapshotInput", SnapshotInput{})
 	schemas.AddType("backup", Backup{})
 	schemas.AddType("backupInput", BackupInput{})
+	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
 
 	hostSchema(schemas.AddType("host", Host{}))
 	volumeSchema(schemas.AddType("volume", Volume{}))
@@ -177,6 +182,10 @@ func volumeSchema(volume *client.Schema) {
 		},
 		"snapshotBackup": {
 			Input: "snapshotInput",
+		},
+		"replicaRemove": {
+			Input:  "replicaRemoveInput",
+			Output: "volume",
 		},
 	}
 	volume.ResourceFields["controller"] = client.Field{
@@ -288,8 +297,8 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 	switch v.State {
 	case types.VolumeStateDetached:
 		actions["attach"] = struct{}{}
+		actions["replicaRemove"] = struct{}{}
 		//actions["recurringUpdate"] = struct{}{}
-		//actions["replicaRemove"] = struct{}{}
 	case types.VolumeStateHealthy:
 		actions["detach"] = struct{}{}
 		actions["snapshotPurge"] = struct{}{}
@@ -299,9 +308,9 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		actions["snapshotDelete"] = struct{}{}
 		actions["snapshotRevert"] = struct{}{}
 		actions["snapshotBackup"] = struct{}{}
+		actions["replicaRemove"] = struct{}{}
 		//actions["recurringUpdate"] = struct{}{}
 		//actions["bgTaskQueue"] = struct{}{}
-		//actions["replicaRemove"] = struct{}{}
 	case types.VolumeStateDegraded:
 		actions["detach"] = struct{}{}
 		actions["snapshotPurge"] = struct{}{}
@@ -311,9 +320,9 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		actions["snapshotDelete"] = struct{}{}
 		actions["snapshotRevert"] = struct{}{}
 		actions["snapshotBackup"] = struct{}{}
+		actions["replicaRemove"] = struct{}{}
 		//actions["recurringUpdate"] = struct{}{}
 		//actions["bgTaskQueue"] = struct{}{}
-		//actions["replicaRemove"] = struct{}{}
 	case types.VolumeStateCreated:
 		//actions["recurringUpdate"] = struct{}{}
 	case types.VolumeStateFault:
