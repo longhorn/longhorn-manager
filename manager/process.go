@@ -73,92 +73,55 @@ func (m *VolumeManager) notifyVolume(volumeName string) (err error) {
 		return err
 	}
 
-	volumeChan := m.getManagedVolumeChan(volumeName)
-	volumeChan.Notify <- struct{}{}
+	volume, err := m.getManagedVolume(volumeName)
+	if err != nil {
+		return err
+	}
+	volume.Notify <- struct{}{}
 
 	return nil
 }
 
-func (m *VolumeManager) getManagedVolumeChan(volumeName string) VolumeChan {
-	m.managedVolumesMutex.Lock()
-	defer m.managedVolumesMutex.Unlock()
-
-	volumeChan, ok := m.managedVolumes[volumeName]
-	if !ok {
-		volumeChan = VolumeChan{
-			Notify: make(chan struct{}),
-		}
-		m.managedVolumes[volumeName] = volumeChan
-		go m.processVolume(volumeName, volumeChan)
-	}
-	return volumeChan
-}
-
-func (m *VolumeManager) processVolume(volumeName string, volumeChan VolumeChan) {
-	defer m.releaseVolume(volumeName)
+func (v *ManagedVolume) process() {
+	defer v.m.releaseVolume(v.Name)
 
 	tick := time.NewTicker(ReconcileInterval)
 	for {
 		select {
 		case <-tick.C:
 			break
-		case <-volumeChan.Notify:
+		case <-v.Notify:
 			break
 		}
-		volume, err := m.getManagedVolume(volumeName)
-		if err != nil {
+		if err := v.refresh(); err != nil {
 			logrus.Errorf("Fail get volume: %v", err)
 			continue
 		}
-		if volume.TargetNodeID != m.currentNode.ID {
-			logrus.Infof("Volume %v no longer belong to current node, release it", volumeName)
+		if v.TargetNodeID != v.m.currentNode.ID {
+			logrus.Infof("Volume %v no longer belong to current node, release it", v.Name)
 			break
 		}
 
-		if err := volume.RefreshState(); err != nil {
+		if err := v.RefreshState(); err != nil {
 			logrus.Errorf("Fail to refresh volume state: %v", err)
 			continue
 		}
-		logrus.Debugf("volume %v state is %v", volumeName, volume.State)
+		logrus.Debugf("volume %v state is %v", v.Name, v.State)
 
-		if err := volume.Cleanup(); err != nil {
+		if err := v.Cleanup(); err != nil {
 			logrus.Errorf("Fail to cleanup stale replicas: %v", err)
 		}
 
-		logrus.Debugf("volume %v desire state is %v", volumeName, volume.DesireState)
+		logrus.Debugf("volume %v desire state is %v", v.Name, v.DesireState)
 
-		if err := volume.Reconcile(); err != nil {
+		if err := v.Reconcile(); err != nil {
 			logrus.Errorf("Fail to reconcile volume state: %v", err)
 		}
-		logrus.Debugf("volume %v refreshed state is %v", volumeName, volume.State)
-		if volume.State == types.VolumeStateDeleted {
+		logrus.Debugf("volume %v refreshed state is %v", v.Name, v.State)
+		if v.State == types.VolumeStateDeleted {
 			break
 		}
 	}
-}
-
-func (m *VolumeManager) releaseVolume(volumeName string) {
-	m.managedVolumesMutex.Lock()
-	defer m.managedVolumesMutex.Unlock()
-
-	delete(m.managedVolumes, volumeName)
-
-	volume, err := m.getManagedVolume(volumeName)
-	if err != nil {
-		logrus.Errorf("Fail to release volume: %v", err)
-		return
-	}
-
-	if volume.TargetNodeID != m.currentNode.ID {
-		return
-	}
-	if volume.State == types.VolumeStateDeleted {
-		if err := m.kv.DeleteVolume(volumeName); err != nil {
-			logrus.Errorf("Fail to remove volume entry from kvstore: %v", err)
-		}
-		return
-	}
-	logrus.Errorf("BUG: release volume processed but don't know the reason")
 }
 
 func (v *ManagedVolume) RefreshState() (err error) {

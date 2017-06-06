@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
 	"github.com/yasker/lm-rewrite/engineapi"
@@ -62,16 +63,63 @@ func (m *VolumeManager) GetVolume(volumeName string) (*Volume, error) {
 }
 
 func (m *VolumeManager) getManagedVolume(volumeName string) (*ManagedVolume, error) {
+	var v *ManagedVolume
+
+	m.managedVolumesMutex.Lock()
+	defer m.managedVolumesMutex.Unlock()
+
+	v = m.managedVolumes[volumeName]
+	if v != nil {
+		return v, nil
+	}
+
 	volume, err := m.GetVolume(volumeName)
 	if err != nil {
 		return nil, err
 	}
-	return &ManagedVolume{
+	v = &ManagedVolume{
 		Volume: *volume,
-		mutex:  &sync.RWMutex{},
 		Jobs:   map[string]*Job{},
+		mutex:  &sync.RWMutex{},
+		Notify: make(chan struct{}),
 		m:      m,
-	}, nil
+	}
+	m.managedVolumes[volumeName] = v
+	go v.process()
+	return v, nil
+}
+
+func (v *ManagedVolume) refresh() error {
+	volume, err := v.m.GetVolume(v.Name)
+	if err != nil {
+		return err
+	}
+	v.Volume = *volume
+	return nil
+}
+
+func (m *VolumeManager) releaseVolume(volumeName string) {
+	m.managedVolumesMutex.Lock()
+	defer m.managedVolumesMutex.Unlock()
+
+	volume := m.managedVolumes[volumeName]
+	if volume == nil {
+		logrus.Errorf("Cannot find volume to be released: %v", volumeName)
+		return
+	}
+
+	delete(m.managedVolumes, volumeName)
+
+	if volume.TargetNodeID != m.currentNode.ID {
+		return
+	}
+	if volume.State == types.VolumeStateDeleted {
+		if err := m.kv.DeleteVolume(volumeName); err != nil {
+			logrus.Errorf("Fail to remove volume entry from kvstore: %v", err)
+		}
+		return
+	}
+	logrus.Errorf("BUG: release volume processed but don't know the reason")
 }
 
 func (v *ManagedVolume) badReplicaCounts() int {

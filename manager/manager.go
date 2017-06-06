@@ -25,7 +25,7 @@ type VolumeManager struct {
 	scheduler *scheduler.Scheduler
 
 	EventChan           chan Event
-	managedVolumes      map[string]VolumeChan
+	managedVolumes      map[string]*ManagedVolume
 	managedVolumesMutex *sync.Mutex
 }
 
@@ -43,7 +43,7 @@ func NewVolumeManager(kv *kvstore.KVStore,
 		rpc:     rpc,
 
 		EventChan:           make(chan Event),
-		managedVolumes:      map[string]VolumeChan{},
+		managedVolumes:      make(map[string]*ManagedVolume),
 		managedVolumesMutex: &sync.Mutex{},
 	}
 	manager.scheduler = scheduler.NewScheduler(manager)

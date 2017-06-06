@@ -16,10 +16,6 @@ type Event struct {
 	VolumeName string
 }
 
-type VolumeChan struct {
-	Notify chan struct{}
-}
-
 type VolumeCreateRequest struct {
 	Name                string `json:"name"`
 	Size                string `json:"size"`
@@ -55,10 +51,12 @@ type Volume struct {
 
 type ManagedVolume struct {
 	Volume
+	Jobs map[string]*Job
 
+	// mutex protects above
 	mutex *sync.RWMutex
 
-	Jobs map[string]*Job
+	Notify chan struct{}
 
 	m *VolumeManager
 }
