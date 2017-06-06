@@ -190,11 +190,13 @@ func (v *Volume) RefreshState() (err error) {
 		}
 	}
 
-	v.syncWithEngineState(engineReps)
+	badReplicas := v.syncWithEngineState(engineReps)
 
-	for name := range v.badReplicas {
-		if err := v.markBadReplica(name); err != nil {
-			return err
+	for name := range badReplicas {
+		if v.Replicas[name].FailedAt == "" {
+			if err := v.markBadReplica(name); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -220,13 +222,15 @@ func (v *Volume) RefreshState() (err error) {
 	return nil
 }
 
-func (v *Volume) syncWithEngineState(engineReps map[string]*engineapi.Replica) {
+// syncWithEngineState() will return all bad replicas for the volume
+func (v *Volume) syncWithEngineState(engineReps map[string]*engineapi.Replica) map[string]struct{} {
 	healthyReplicaCount := 0
 	rebuildingReplicaCount := 0
 
+	badReplicas := map[string]struct{}{}
 	for _, replica := range v.Replicas {
 		if replica.FailedAt != "" {
-			v.badReplicas[replica.Name] = struct{}{}
+			badReplicas[replica.Name] = struct{}{}
 		}
 	}
 
@@ -260,7 +264,7 @@ func (v *Volume) syncWithEngineState(engineReps map[string]*engineapi.Replica) {
 		}
 		// those replicas doesn't show up in controller as WO or RW
 		for _, replica := range addr2Replica {
-			v.badReplicas[replica.Name] = struct{}{}
+			badReplicas[replica.Name] = struct{}{}
 		}
 	}
 
@@ -274,7 +278,7 @@ func (v *Volume) syncWithEngineState(engineReps map[string]*engineapi.Replica) {
 			}
 		}
 	} else if healthyReplicaCount == 0 {
-		if len(v.badReplicas) == 0 && v.DesireState == types.VolumeStateDeleted {
+		if len(badReplicas) == 0 && v.DesireState == types.VolumeStateDeleted {
 			state = types.VolumeStateDeleted
 		} else {
 			state = types.VolumeStateFault
@@ -298,6 +302,8 @@ func (v *Volume) syncWithEngineState(engineReps map[string]*engineapi.Replica) {
 		state = types.VolumeStateDetached
 	}
 	v.State = state
+
+	return badReplicas
 }
 
 func (v *Volume) Reconcile() (err error) {

@@ -364,7 +364,7 @@ func (s *TestSuite) TestVolumeHeal(c *C) {
 		time.Sleep(RetryInterval)
 	}
 	c.Assert(volume.Replicas, HasLen, VolumeNumberOfReplicas+1)
-	c.Assert(volume.badReplicas, HasLen, 1)
+	c.Assert(volume.badReplicaCounts(), Equals, 1)
 	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateHealthy)
 	c.Assert(volume.Controller, NotNil)
 

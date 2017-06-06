@@ -54,8 +54,6 @@ type Volume struct {
 	Controller *types.ControllerInfo
 	Replicas   map[string]*types.ReplicaInfo
 
-	badReplicas map[string]struct{}
-
 	Jobs map[string]*Job
 
 	m *VolumeManager
