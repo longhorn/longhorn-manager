@@ -6,6 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/types"
 	"github.com/yasker/lm-rewrite/util"
 )
@@ -276,6 +277,40 @@ func (v *ManagedVolume) SnapshotBackup(snapName, backupTarget string) error {
 	}()
 
 	if _, err := v.registerJob(JobTypeSnapshotBackup, snapName, nil, errCh); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *ManagedVolume) GetEngineClient() (engineapi.EngineClient, error) {
+	if v.Controller == nil {
+		return nil, fmt.Errorf("cannot find volume %v controller", v.Name)
+	}
+	engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
+		VolumeName:    v.Name,
+		ControllerURL: engineapi.GetControllerDefaultURL(v.Controller.IP),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return engine, nil
+}
+
+func (v *ManagedVolume) ReplicaRemove(replicaName string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "fail to remove replica %v of volume %v", replicaName, v.Name)
+	}()
+
+	replica := v.Replicas[replicaName]
+	if replica == nil {
+		return fmt.Errorf("cannot find replica %v", replicaName)
+	}
+	if replica.Running {
+		if err := v.stopReplica(replicaName); err != nil {
+			return err
+		}
+	}
+	if err := v.deleteReplica(replicaName); err != nil {
 		return err
 	}
 	return nil

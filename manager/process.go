@@ -170,10 +170,7 @@ func (v *ManagedVolume) RefreshState() (err error) {
 
 	engineReps := map[string]*engineapi.Replica{}
 	if v.Controller != nil {
-		engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
-			VolumeName:    v.Name,
-			ControllerURL: engineapi.GetControllerDefaultURL(v.Controller.IP),
-		})
+		engine, err := v.GetEngineClient()
 		if err != nil {
 			return err
 		}

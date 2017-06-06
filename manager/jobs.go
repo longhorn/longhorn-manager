@@ -145,10 +145,7 @@ func (v *ManagedVolume) jobReplicaRebuild(req *orchestrator.Request) (err error)
 		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
 
-	engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:    v.Name,
-		ControllerURL: engineapi.GetControllerDefaultURL(v.Controller.IP),
-	})
+	engine, err := v.GetEngineClient()
 	if err != nil {
 		return err
 	}
@@ -168,16 +165,11 @@ func (v *ManagedVolume) jobSnapshotPurge() (err error) {
 		errors.Wrap(err, "fail to finish job snapshot purge")
 	}()
 
-	if v.Controller == nil {
-		return fmt.Errorf("cannot find volume %v controller", v.Name)
-	}
-	engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:    v.Name,
-		ControllerURL: engineapi.GetControllerDefaultURL(v.Controller.IP),
-	})
+	engine, err := v.GetEngineClient()
 	if err != nil {
 		return err
 	}
+
 	return engine.SnapshotPurge()
 }
 
@@ -186,15 +178,10 @@ func (v *ManagedVolume) jobSnapshotBackup(snapName, backupTarget string) (err er
 		errors.Wrap(err, "fail to finish job snapshot backup")
 	}()
 
-	if v.Controller == nil {
-		return fmt.Errorf("cannot find volume %v controller", v.Name)
-	}
-	engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:    v.Name,
-		ControllerURL: engineapi.GetControllerDefaultURL(v.Controller.IP),
-	})
+	engine, err := v.GetEngineClient()
 	if err != nil {
 		return err
 	}
+
 	return engine.SnapshotBackup(snapName, backupTarget)
 }

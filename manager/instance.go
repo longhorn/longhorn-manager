@@ -286,10 +286,7 @@ func (v *ManagedVolume) stopRebuild() (err error) {
 		return nil
 	}
 
-	engine, err := v.m.engines.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:    v.Name,
-		ControllerURL: engineapi.GetControllerDefaultURL(v.Controller.IP),
-	})
+	engine, err := v.GetEngineClient()
 	if err != nil {
 		return err
 	}

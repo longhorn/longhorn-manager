@@ -284,24 +284,6 @@ func (m *VolumeManager) ScheduleReplica(volume *types.VolumeInfo, nodeIDs map[st
 	return schedNode.ID, nil
 }
 
-func (m *VolumeManager) GetEngineClient(volumeName string) (engineapi.EngineClient, error) {
-	volume, err := m.getManagedVolume(volumeName)
-	if err != nil {
-		return nil, err
-	}
-	if volume.Controller == nil {
-		return nil, fmt.Errorf("cannot find volume %v controller", volumeName)
-	}
-	engine, err := m.engines.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:    volume.Name,
-		ControllerURL: engineapi.GetControllerDefaultURL(volume.Controller.IP),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return engine, nil
-}
-
 func (m *VolumeManager) SettingsGet() (*types.SettingsInfo, error) {
 	settings, err := m.kv.GetSettings()
 	if err != nil {
@@ -322,6 +304,14 @@ func (m *VolumeManager) SettingsSet(settings *types.SettingsInfo) error {
 	return m.kv.UpdateSettings(settings)
 }
 
+func (m *VolumeManager) GetEngineClient(volumeName string) (engineapi.EngineClient, error) {
+	volume, err := m.getManagedVolume(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	return volume.GetEngineClient()
+}
+
 func (m *VolumeManager) SnapshotPurge(volumeName string) error {
 	volume, err := m.getManagedVolume(volumeName)
 	if err != nil {
@@ -339,24 +329,9 @@ func (m *VolumeManager) SnapshotBackup(volumeName, snapshotName, backupTarget st
 }
 
 func (m *VolumeManager) ReplicaRemove(volumeName, replicaName string) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "fail to remove replica %v of volume %v", replicaName, volumeName)
-	}()
 	volume, err := m.getManagedVolume(volumeName)
 	if err != nil {
 		return err
 	}
-	replica := volume.Replicas[replicaName]
-	if replica == nil {
-		return fmt.Errorf("cannot find replica %v", replicaName)
-	}
-	if replica.Running {
-		if err := volume.stopReplica(replicaName); err != nil {
-			return err
-		}
-	}
-	if err := volume.deleteReplica(replicaName); err != nil {
-		return err
-	}
-	return nil
+	return volume.ReplicaRemove(replicaName)
 }
