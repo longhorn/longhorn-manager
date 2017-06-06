@@ -285,7 +285,7 @@ func (m *VolumeManager) ScheduleReplica(volume *types.VolumeInfo, nodeIDs map[st
 }
 
 func (m *VolumeManager) GetEngineClient(volumeName string) (engineapi.EngineClient, error) {
-	volume, err := m.GetVolume(volumeName)
+	volume, err := m.getManagedVolume(volumeName)
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +323,7 @@ func (m *VolumeManager) SettingsSet(settings *types.SettingsInfo) error {
 }
 
 func (m *VolumeManager) SnapshotPurge(volumeName string) error {
-	volume, err := m.GetVolume(volumeName)
+	volume, err := m.getManagedVolume(volumeName)
 	if err != nil {
 		return err
 	}
@@ -331,7 +331,7 @@ func (m *VolumeManager) SnapshotPurge(volumeName string) error {
 }
 
 func (m *VolumeManager) SnapshotBackup(volumeName, snapshotName, backupTarget string) error {
-	volume, err := m.GetVolume(volumeName)
+	volume, err := m.getManagedVolume(volumeName)
 	if err != nil {
 		return err
 	}
@@ -342,7 +342,7 @@ func (m *VolumeManager) ReplicaRemove(volumeName, replicaName string) (err error
 	defer func() {
 		err = errors.Wrapf(err, "fail to remove replica %v of volume %v", replicaName, volumeName)
 	}()
-	volume, err := m.GetVolume(volumeName)
+	volume, err := m.getManagedVolume(volumeName)
 	if err != nil {
 		return err
 	}

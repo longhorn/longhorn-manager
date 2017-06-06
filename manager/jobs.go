@@ -12,7 +12,7 @@ import (
 	"github.com/yasker/lm-rewrite/util"
 )
 
-func (v *Volume) registerJob(jobType JobType, assoicateID string, data map[string]string, errCh chan error) (string, error) {
+func (v *ManagedVolume) registerJob(jobType JobType, assoicateID string, data map[string]string, errCh chan error) (string, error) {
 	job := &Job{
 		ID:          util.UUID(),
 		AssoicateID: assoicateID,
@@ -27,7 +27,7 @@ func (v *Volume) registerJob(jobType JobType, assoicateID string, data map[strin
 	return job.ID, nil
 }
 
-func (v *Volume) waitForJob(jobID string, errCh chan error) {
+func (v *ManagedVolume) waitForJob(jobID string, errCh chan error) {
 	err := <-errCh
 	job := v.getJob(jobID)
 	updateJob := *job
@@ -44,21 +44,21 @@ func (v *Volume) waitForJob(jobID string, errCh chan error) {
 	return
 }
 
-func (v *Volume) setJob(job *Job) {
+func (v *ManagedVolume) setJob(job *Job) {
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 
 	v.Jobs[job.ID] = job
 }
 
-func (v *Volume) getJob(id string) *Job {
+func (v *ManagedVolume) getJob(id string) *Job {
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 
 	return v.Jobs[id]
 }
 
-func (v *Volume) listJobsByTypeAndAssociateID(jobType JobType, assoicateID string) map[string]*Job {
+func (v *ManagedVolume) listJobsByTypeAndAssociateID(jobType JobType, assoicateID string) map[string]*Job {
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 
@@ -71,7 +71,7 @@ func (v *Volume) listJobsByTypeAndAssociateID(jobType JobType, assoicateID strin
 	return result
 }
 
-func (v *Volume) listOngoingJobsByType(jobType JobType) map[string]*Job {
+func (v *ManagedVolume) listOngoingJobsByType(jobType JobType) map[string]*Job {
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 
@@ -84,7 +84,7 @@ func (v *Volume) listOngoingJobsByType(jobType JobType) map[string]*Job {
 	return result
 }
 
-func (v *Volume) listOngoingJobsByTypeAndAssociateID(jobType JobType, assoicateID string) map[string]*Job {
+func (v *ManagedVolume) listOngoingJobsByTypeAndAssociateID(jobType JobType, assoicateID string) map[string]*Job {
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 
@@ -97,7 +97,7 @@ func (v *Volume) listOngoingJobsByTypeAndAssociateID(jobType JobType, assoicateI
 	return result
 }
 
-func (v *Volume) jobReplicaCreate(req *orchestrator.Request) (err error) {
+func (v *ManagedVolume) jobReplicaCreate(req *orchestrator.Request) (err error) {
 	defer func() {
 		errors.Wrap(err, "fail to finish job replica create")
 	}()
@@ -125,7 +125,7 @@ func (v *Volume) jobReplicaCreate(req *orchestrator.Request) (err error) {
 	return nil
 }
 
-func (v *Volume) jobReplicaRebuild(req *orchestrator.Request) (err error) {
+func (v *ManagedVolume) jobReplicaRebuild(req *orchestrator.Request) (err error) {
 	defer func() {
 		errors.Wrap(err, "fail to finish job replica rebuild")
 	}()
@@ -163,7 +163,7 @@ func (v *Volume) jobReplicaRebuild(req *orchestrator.Request) (err error) {
 	return nil
 }
 
-func (v *Volume) jobSnapshotPurge() (err error) {
+func (v *ManagedVolume) jobSnapshotPurge() (err error) {
 	defer func() {
 		errors.Wrap(err, "fail to finish job snapshot purge")
 	}()
@@ -181,7 +181,7 @@ func (v *Volume) jobSnapshotPurge() (err error) {
 	return engine.SnapshotPurge()
 }
 
-func (v *Volume) jobSnapshotBackup(snapName, backupTarget string) (err error) {
+func (v *ManagedVolume) jobSnapshotBackup(snapName, backupTarget string) (err error) {
 	defer func() {
 		errors.Wrap(err, "fail to finish job snapshot backup")
 	}()

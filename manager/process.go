@@ -105,7 +105,7 @@ func (m *VolumeManager) processVolume(volumeName string, volumeChan VolumeChan) 
 		case <-volumeChan.Notify:
 			break
 		}
-		volume, err := m.GetVolume(volumeName)
+		volume, err := m.getManagedVolume(volumeName)
 		if err != nil {
 			logrus.Errorf("Fail get volume: %v", err)
 			continue
@@ -143,7 +143,7 @@ func (m *VolumeManager) releaseVolume(volumeName string) {
 
 	delete(m.managedVolumes, volumeName)
 
-	volume, err := m.GetVolume(volumeName)
+	volume, err := m.getManagedVolume(volumeName)
 	if err != nil {
 		logrus.Errorf("Fail to release volume: %v", err)
 		return
@@ -161,7 +161,7 @@ func (m *VolumeManager) releaseVolume(volumeName string) {
 	logrus.Errorf("BUG: release volume processed but don't know the reason")
 }
 
-func (v *Volume) RefreshState() (err error) {
+func (v *ManagedVolume) RefreshState() (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrap(err, "cannot refresh volume state")
@@ -223,7 +223,7 @@ func (v *Volume) RefreshState() (err error) {
 }
 
 // syncWithEngineState() will return all bad replicas for the volume
-func (v *Volume) syncWithEngineState(engineReps map[string]*engineapi.Replica) map[string]struct{} {
+func (v *ManagedVolume) syncWithEngineState(engineReps map[string]*engineapi.Replica) map[string]struct{} {
 	healthyReplicaCount := 0
 	rebuildingReplicaCount := 0
 
@@ -306,7 +306,7 @@ func (v *Volume) syncWithEngineState(engineReps map[string]*engineapi.Replica) m
 	return badReplicas
 }
 
-func (v *Volume) Reconcile() (err error) {
+func (v *ManagedVolume) Reconcile() (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "fail to transit volume from state %v to %v", v.State, v.DesireState)

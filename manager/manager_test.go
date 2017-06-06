@@ -129,7 +129,7 @@ func (s *TestSuite) TestVolume(c *C) {
 	})
 	c.Assert(err, IsNil)
 
-	volume, err := s.manager.GetVolume(VolumeName)
+	volume, err := s.manager.getManagedVolume(VolumeName)
 	c.Assert(err, IsNil)
 	c.Assert(volume.Name, Equals, VolumeName)
 	c.Assert(volume.Controller, IsNil)
@@ -188,7 +188,7 @@ func (s *TestSuite) TestVolume(c *C) {
 	s.checkVolumeConsistency(c, volume)
 }
 
-func (s *TestSuite) checkVolumeConsistency(c *C, volume *Volume) {
+func (s *TestSuite) checkVolumeConsistency(c *C, volume *ManagedVolume) {
 	newVol, err := s.manager.GetVolume(volume.Name)
 	c.Assert(err, IsNil)
 	kvstore.UpdateKVIndex(newVol.VolumeInfo, volume.VolumeInfo)
@@ -225,7 +225,7 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 
 	ReconcileInterval = 1 * time.Second
 
-	volume, err := s.manager.GetVolume(VolumeName)
+	volume, err := s.manager.getManagedVolume(VolumeName)
 	c.Assert(err, IsNil)
 	c.Assert(volume.Name, Equals, VolumeName)
 	c.Assert(volume.Controller, IsNil)
@@ -245,7 +245,7 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 		NodeID: node.ID,
 	})
 	c.Assert(err, IsNil)
-	volume, err = s.manager.GetVolume(VolumeName)
+	volume, err = s.manager.getManagedVolume(VolumeName)
 	c.Assert(volume.TargetNodeID, Equals, node.ID)
 	c.Assert(volume.DesireState, Equals, types.VolumeStateHealthy)
 
@@ -257,7 +257,7 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 		Name: VolumeName,
 	})
 	c.Assert(err, IsNil)
-	volume, err = s.manager.GetVolume(VolumeName)
+	volume, err = s.manager.getManagedVolume(VolumeName)
 	c.Assert(volume.TargetNodeID, Equals, node.ID)
 	c.Assert(volume.DesireState, Equals, types.VolumeStateDetached)
 
@@ -268,7 +268,7 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 		Name: VolumeName,
 	})
 	c.Assert(err, IsNil)
-	volume, err = s.manager.GetVolume(VolumeName)
+	volume, err = s.manager.getManagedVolume(VolumeName)
 	c.Assert(volume.TargetNodeID, Equals, node.ID)
 	c.Assert(volume.DesireState, Equals, types.VolumeStateDeleted)
 
@@ -284,13 +284,13 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 	c.Assert(infos[VolumeName], IsNil)
 }
 
-func (s *TestSuite) waitForVolumeState(c *C, volumeName string, state types.VolumeState) *Volume {
+func (s *TestSuite) waitForVolumeState(c *C, volumeName string, state types.VolumeState) *ManagedVolume {
 	var (
-		volume *Volume
+		volume *ManagedVolume
 		err    error
 	)
 	for i := 0; i < RetryCounts; i++ {
-		volume, err = s.manager.GetVolume(VolumeName)
+		volume, err = s.manager.getManagedVolume(VolumeName)
 		c.Assert(err, IsNil)
 		if volume.State == state {
 			break
@@ -314,7 +314,7 @@ func (s *TestSuite) TestVolumeHeal(c *C) {
 
 	ReconcileInterval = 1 * time.Second
 
-	volume, err := s.manager.GetVolume(VolumeName)
+	volume, err := s.manager.getManagedVolume(VolumeName)
 	c.Assert(err, IsNil)
 	c.Assert(volume.Name, Equals, VolumeName)
 	c.Assert(volume.Controller, IsNil)
@@ -337,7 +337,7 @@ func (s *TestSuite) TestVolumeHeal(c *C) {
 		NodeID: node.ID,
 	})
 	c.Assert(err, IsNil)
-	volume, err = s.manager.GetVolume(VolumeName)
+	volume, err = s.manager.getManagedVolume(VolumeName)
 	c.Assert(volume.TargetNodeID, Equals, node.ID)
 	c.Assert(volume.DesireState, Equals, types.VolumeStateHealthy)
 	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateHealthy)
@@ -356,7 +356,7 @@ func (s *TestSuite) TestVolumeHeal(c *C) {
 		break
 	}
 	for i := 0; i < RetryCounts; i++ {
-		volume, err = s.manager.GetVolume(VolumeName)
+		volume, err = s.manager.getManagedVolume(VolumeName)
 		c.Assert(err, IsNil)
 		if len(volume.Replicas) == VolumeNumberOfReplicas+1 {
 			break
@@ -372,7 +372,7 @@ func (s *TestSuite) TestVolumeHeal(c *C) {
 		Name: VolumeName,
 	})
 	c.Assert(err, IsNil)
-	volume, err = s.manager.GetVolume(VolumeName)
+	volume, err = s.manager.getManagedVolume(VolumeName)
 	c.Assert(volume.TargetNodeID, Equals, node.ID)
 	c.Assert(volume.DesireState, Equals, types.VolumeStateDeleted)
 

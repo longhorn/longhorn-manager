@@ -49,15 +49,18 @@ type VolumeSalvageRequest struct {
 
 type Volume struct {
 	types.VolumeInfo
-	mutex *sync.RWMutex
-
 	Controller *types.ControllerInfo
 	Replicas   map[string]*types.ReplicaInfo
+}
+
+type ManagedVolume struct {
+	Volume
+
+	mutex *sync.RWMutex
 
 	Jobs map[string]*Job
 
 	m *VolumeManager
-	//done chan struct{}
 }
 
 type Node struct {

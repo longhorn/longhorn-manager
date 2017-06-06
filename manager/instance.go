@@ -11,15 +11,15 @@ import (
 	"github.com/yasker/lm-rewrite/util"
 )
 
-func (v *Volume) getControllerName() string {
+func (v *ManagedVolume) getControllerName() string {
 	return v.Name + "-controller"
 }
 
-func (v *Volume) generateReplicaName() string {
+func (v *ManagedVolume) generateReplicaName() string {
 	return v.Name + "-replica-" + util.RandomID()
 }
 
-func (v *Volume) createReplica(nodeID string) (err error) {
+func (v *ManagedVolume) createReplica(nodeID string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to create replica for volume %v", v.Name)
 	}()
@@ -46,7 +46,7 @@ func (v *Volume) createReplica(nodeID string) (err error) {
 	return nil
 }
 
-func (v *Volume) startReplica(replicaName string) (err error) {
+func (v *ManagedVolume) startReplica(replicaName string) (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "fail to start replica %v for volume %v", replicaName, v.Name)
@@ -79,7 +79,7 @@ func (v *Volume) startReplica(replicaName string) (err error) {
 	return nil
 }
 
-func (v *Volume) stopReplica(replicaName string) (err error) {
+func (v *ManagedVolume) stopReplica(replicaName string) (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "fail to stop replica %v for volume %v", replicaName, v.Name)
@@ -111,7 +111,7 @@ func (v *Volume) stopReplica(replicaName string) (err error) {
 	return nil
 }
 
-func (v *Volume) markBadReplica(replicaName string) (err error) {
+func (v *ManagedVolume) markBadReplica(replicaName string) (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "fail to mark bad replica %v for volume %v", replicaName, v.Name)
@@ -135,7 +135,7 @@ func (v *Volume) markBadReplica(replicaName string) (err error) {
 	return nil
 }
 
-func (v *Volume) deleteReplica(replicaName string) (err error) {
+func (v *ManagedVolume) deleteReplica(replicaName string) (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "fail to delete replica %v for volume %v", replicaName, v.Name)
@@ -160,7 +160,7 @@ func (v *Volume) deleteReplica(replicaName string) (err error) {
 	return nil
 }
 
-func (v *Volume) createController(startReplicas map[string]*types.ReplicaInfo) (err error) {
+func (v *ManagedVolume) createController(startReplicas map[string]*types.ReplicaInfo) (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "fail to create controller for volume %v", v.Name)
@@ -203,7 +203,7 @@ func (v *Volume) createController(startReplicas map[string]*types.ReplicaInfo) (
 	return nil
 }
 
-func (v *Volume) deleteController() (err error) {
+func (v *ManagedVolume) deleteController() (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "fail to delete controller for volume %v", v.Name)
@@ -233,7 +233,7 @@ func (v *Volume) deleteController() (err error) {
 	return nil
 }
 
-func (v *Volume) startRebuild() (err error) {
+func (v *ManagedVolume) startRebuild() (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "fail to start rebuild for volume %v", v.Name)
@@ -274,7 +274,7 @@ func (v *Volume) startRebuild() (err error) {
 	return nil
 }
 
-func (v *Volume) stopRebuild() (err error) {
+func (v *ManagedVolume) stopRebuild() (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "fail to stop rebuild for volume %v", v.Name)
@@ -307,7 +307,7 @@ func (v *Volume) stopRebuild() (err error) {
 	return nil
 }
 
-func (v *Volume) setReplica(replica *types.ReplicaInfo) error {
+func (v *ManagedVolume) setReplica(replica *types.ReplicaInfo) error {
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 
@@ -319,14 +319,14 @@ func (v *Volume) setReplica(replica *types.ReplicaInfo) error {
 }
 
 //NOTE: this only protect the map, not the content
-func (v *Volume) getReplica(name string) *types.ReplicaInfo {
+func (v *ManagedVolume) getReplica(name string) *types.ReplicaInfo {
 	v.mutex.RLock()
 	defer v.mutex.RUnlock()
 
 	return v.Replicas[name]
 }
 
-func (v *Volume) rmReplica(name string) error {
+func (v *ManagedVolume) rmReplica(name string) error {
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 
@@ -337,7 +337,7 @@ func (v *Volume) rmReplica(name string) error {
 	return nil
 }
 
-func (v *Volume) countReplicas() int {
+func (v *ManagedVolume) countReplicas() int {
 	v.mutex.RLock()
 	defer v.mutex.RUnlock()
 

@@ -55,15 +55,25 @@ func (m *VolumeManager) GetVolume(volumeName string) (*Volume, error) {
 
 	return &Volume{
 		VolumeInfo: *info,
-		mutex:      &sync.RWMutex{},
 		Controller: controller,
 		Replicas:   replicas,
-		Jobs:       map[string]*Job{},
-		m:          m,
 	}, nil
 }
 
-func (v *Volume) badReplicaCounts() int {
+func (m *VolumeManager) getManagedVolume(volumeName string) (*ManagedVolume, error) {
+	volume, err := m.GetVolume(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	return &ManagedVolume{
+		Volume: *volume,
+		mutex:  &sync.RWMutex{},
+		Jobs:   map[string]*Job{},
+		m:      m,
+	}, nil
+}
+
+func (v *ManagedVolume) badReplicaCounts() int {
 	count := 0
 	for _, replica := range v.Replicas {
 		if replica.FailedAt != "" {
@@ -73,7 +83,7 @@ func (v *Volume) badReplicaCounts() int {
 	return count
 }
 
-func (v *Volume) Cleanup() (err error) {
+func (v *ManagedVolume) Cleanup() (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrap(err, "cannot cleanup stale replicas")
@@ -98,7 +108,7 @@ func (v *Volume) Cleanup() (err error) {
 	return nil
 }
 
-func (v *Volume) create() (err error) {
+func (v *ManagedVolume) create() (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrap(err, "cannot create volume")
@@ -136,7 +146,7 @@ func (v *Volume) create() (err error) {
 	return nil
 }
 
-func (v *Volume) start() (err error) {
+func (v *ManagedVolume) start() (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrap(err, "cannot start volume")
@@ -164,7 +174,7 @@ func (v *Volume) start() (err error) {
 	return nil
 }
 
-func (v *Volume) stop() (err error) {
+func (v *ManagedVolume) stop() (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrap(err, "cannot stop volume")
@@ -189,7 +199,7 @@ func (v *Volume) stop() (err error) {
 	return nil
 }
 
-func (v *Volume) heal() (err error) {
+func (v *ManagedVolume) heal() (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrap(err, "cannot heal volume")
@@ -205,7 +215,7 @@ func (v *Volume) heal() (err error) {
 	return nil
 }
 
-func (v *Volume) destroy() (err error) {
+func (v *ManagedVolume) destroy() (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrap(err, "cannot destroy volume")
@@ -224,7 +234,7 @@ func (v *Volume) destroy() (err error) {
 	return nil
 }
 
-func (v *Volume) getNodesWithReplica() map[string]struct{} {
+func (v *ManagedVolume) getNodesWithReplica() map[string]struct{} {
 	ret := map[string]struct{}{}
 
 	v.mutex.RLock()
@@ -237,7 +247,7 @@ func (v *Volume) getNodesWithReplica() map[string]struct{} {
 	return ret
 }
 
-func (v *Volume) SnapshotPurge() error {
+func (v *ManagedVolume) SnapshotPurge() error {
 	purgingJobs := v.listOngoingJobsByType(JobTypeSnapshotPurge)
 	if len(purgingJobs) != 0 {
 		return nil
@@ -254,7 +264,7 @@ func (v *Volume) SnapshotPurge() error {
 	return nil
 }
 
-func (v *Volume) SnapshotBackup(snapName, backupTarget string) error {
+func (v *ManagedVolume) SnapshotBackup(snapName, backupTarget string) error {
 	backupJobs := v.listOngoingJobsByTypeAndAssociateID(JobTypeSnapshotBackup, snapName)
 	if len(backupJobs) != 0 {
 		return nil
