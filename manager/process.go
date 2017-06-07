@@ -73,7 +73,7 @@ func (m *VolumeManager) notifyVolume(volumeName string) (err error) {
 		return err
 	}
 
-	volume, err := m.getManagedVolume(volumeName)
+	volume, err := m.getManagedVolume(volumeName, true)
 	if err != nil {
 		return err
 	}

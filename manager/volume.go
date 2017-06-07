@@ -62,7 +62,7 @@ func (m *VolumeManager) GetVolume(volumeName string) (*Volume, error) {
 	}, nil
 }
 
-func (m *VolumeManager) getManagedVolume(volumeName string) (*ManagedVolume, error) {
+func (m *VolumeManager) getManagedVolume(volumeName string, create bool) (*ManagedVolume, error) {
 	var v *ManagedVolume
 
 	m.managedVolumesMutex.Lock()
@@ -71,6 +71,10 @@ func (m *VolumeManager) getManagedVolume(volumeName string) (*ManagedVolume, err
 	v = m.managedVolumes[volumeName]
 	if v != nil {
 		return v, nil
+	}
+
+	if !create {
+		return nil, fmt.Errorf("cannot find managed volume %v", volumeName)
 	}
 
 	volume, err := m.GetVolume(volumeName)

@@ -305,7 +305,7 @@ func (m *VolumeManager) SettingsSet(settings *types.SettingsInfo) error {
 }
 
 func (m *VolumeManager) GetEngineClient(volumeName string) (engineapi.EngineClient, error) {
-	volume, err := m.getManagedVolume(volumeName)
+	volume, err := m.getManagedVolume(volumeName, false)
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +313,7 @@ func (m *VolumeManager) GetEngineClient(volumeName string) (engineapi.EngineClie
 }
 
 func (m *VolumeManager) SnapshotPurge(volumeName string) error {
-	volume, err := m.getManagedVolume(volumeName)
+	volume, err := m.getManagedVolume(volumeName, false)
 	if err != nil {
 		return err
 	}
@@ -321,7 +321,7 @@ func (m *VolumeManager) SnapshotPurge(volumeName string) error {
 }
 
 func (m *VolumeManager) SnapshotBackup(volumeName, snapshotName, backupTarget string) error {
-	volume, err := m.getManagedVolume(volumeName)
+	volume, err := m.getManagedVolume(volumeName, false)
 	if err != nil {
 		return err
 	}
@@ -329,7 +329,7 @@ func (m *VolumeManager) SnapshotBackup(volumeName, snapshotName, backupTarget st
 }
 
 func (m *VolumeManager) ReplicaRemove(volumeName, replicaName string) (err error) {
-	volume, err := m.getManagedVolume(volumeName)
+	volume, err := m.getManagedVolume(volumeName, false)
 	if err != nil {
 		return err
 	}

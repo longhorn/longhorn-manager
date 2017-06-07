@@ -132,7 +132,7 @@ func (s *TestSuite) TestVolume(c *C) {
 	})
 	c.Assert(err, IsNil)
 
-	volume, err := s.manager.getManagedVolume(VolumeName)
+	volume, err := s.manager.getManagedVolume(VolumeName, true)
 	c.Assert(err, IsNil)
 
 	volume.mutex.Lock()
@@ -158,7 +158,7 @@ func (s *TestSuite) TestVolume(c *C) {
 	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
 	s.checkVolumeConsistency(c, volume)
 
-	v, err := s.manager.getManagedVolume(VolumeName)
+	v, err := s.manager.getManagedVolume(VolumeName, false)
 	c.Assert(err, IsNil)
 	c.Assert(v, DeepEquals, volume)
 
