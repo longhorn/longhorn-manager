@@ -191,3 +191,17 @@ func (s *Server) ReplicaRemove(rw http.ResponseWriter, req *http.Request) error 
 
 	return s.responseWithVolume(rw, req, id)
 }
+
+func (s *Server) JobList(rw http.ResponseWriter, req *http.Request) error {
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+
+	jobs, err := s.m.JobList(id)
+	if err != nil {
+		return errors.Wrap(err, "unable to list jobs")
+	}
+
+	apiContext.Write(toJobCollection(jobs))
+	return nil
+}

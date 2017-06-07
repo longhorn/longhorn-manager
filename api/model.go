@@ -77,6 +77,13 @@ type Replica struct {
 	FailedAt string `json:"badTimestamp"`
 }
 
+type Job struct {
+	client.Resource
+	manager.Job
+	//because `type` cannot be used as key in response
+	JobType string `json:"jobType"`
+}
+
 type AttachInput struct {
 	HostID string `json:"hostId"`
 }
@@ -111,6 +118,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("backupInput", BackupInput{})
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
 	schemas.AddType("salvageInput", SalvageInput{})
+	schemas.AddType("job", Job{})
 
 	hostSchema(schemas.AddType("host", Host{}))
 	volumeSchema(schemas.AddType("volume", Volume{}))
@@ -193,6 +201,9 @@ func volumeSchema(volume *client.Schema) {
 		"snapshotBackup": {
 			Input: "snapshotInput",
 		},
+
+		"jobList": {},
+
 		"replicaRemove": {
 			Input:  "replicaRemoveInput",
 			Output: "volume",
@@ -319,6 +330,7 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		actions["snapshotRevert"] = struct{}{}
 		actions["snapshotBackup"] = struct{}{}
 		actions["replicaRemove"] = struct{}{}
+		actions["jobList"] = struct{}{}
 		//actions["recurringUpdate"] = struct{}{}
 		//actions["bgTaskQueue"] = struct{}{}
 	case types.VolumeStateDegraded:
@@ -331,6 +343,7 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		actions["snapshotRevert"] = struct{}{}
 		actions["snapshotBackup"] = struct{}{}
 		actions["replicaRemove"] = struct{}{}
+		actions["jobList"] = struct{}{}
 		//actions["recurringUpdate"] = struct{}{}
 		//actions["bgTaskQueue"] = struct{}{}
 	case types.VolumeStateCreated:
@@ -439,6 +452,26 @@ func toBackupCollection(bs []*engineapi.Backup) *client.GenericCollection {
 		data = append(data, toBackupResource(v))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backup"}}
+}
+
+func toJobResource(job manager.Job) *Job {
+	return &Job{
+		Resource: client.Resource{
+			Id:    job.ID,
+			Type:  "job",
+			Links: map[string]string{},
+		},
+		Job:     job,
+		JobType: string(job.Type),
+	}
+}
+
+func toJobCollection(jobs map[string]manager.Job) *client.GenericCollection {
+	data := []interface{}{}
+	for _, v := range jobs {
+		data = append(data, toJobResource(v))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "job"}}
 }
 
 type Server struct {

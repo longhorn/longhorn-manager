@@ -328,10 +328,18 @@ func (m *VolumeManager) SnapshotBackup(volumeName, snapshotName, backupTarget st
 	return volume.SnapshotBackup(snapshotName, backupTarget)
 }
 
-func (m *VolumeManager) ReplicaRemove(volumeName, replicaName string) (err error) {
+func (m *VolumeManager) ReplicaRemove(volumeName, replicaName string) error {
 	volume, err := m.getManagedVolume(volumeName, false)
 	if err != nil {
 		return err
 	}
 	return volume.ReplicaRemove(replicaName)
+}
+
+func (m *VolumeManager) JobList(volumeName string) (map[string]Job, error) {
+	volume, err := m.getManagedVolume(volumeName, false)
+	if err != nil {
+		return nil, err
+	}
+	return volume.ListJobsInfo(), nil
 }

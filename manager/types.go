@@ -99,12 +99,12 @@ const (
 )
 
 type Job struct {
-	ID          string
-	Type        JobType
-	AssoicateID string
-	CreatedAt   string
-	CompletedAt string
-	State       JobState
-	Error       error
-	Data        map[string]string
+	ID          string            `json:"id"`
+	Type        JobType           `json:"type"`
+	AssoicateID string            `json:"assoicateID"`
+	CreatedAt   string            `json:"createdAt"`
+	CompletedAt string            `json:"completedAt"`
+	State       JobState          `json:"state"`
+	Error       error             `json:"error"`
+	Data        map[string]string `json:"data"`
 }

@@ -58,6 +58,7 @@ func NewRouter(s *Server) *mux.Router {
 		"snapshotBackup": s.fwd.Handler(NodeIDFromVolume(s.m), s.SnapshotBackup),
 
 		"replicaRemove": s.fwd.Handler(NodeIDFromVolume(s.m), s.ReplicaRemove),
+		"jobList":       s.fwd.Handler(NodeIDFromVolume(s.m), s.JobList),
 
 		//"recurringUpdate": s.fwd.Handler(HostIDFromVolume(s.man), s.UpdateRecurring),
 		//"bgTaskQueue":     s.fwd.Handler(HostIDFromVolume(s.man), s.BgTaskQueue),

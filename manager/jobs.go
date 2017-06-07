@@ -61,6 +61,18 @@ func (v *ManagedVolume) getJob(id string) *Job {
 	return v.Jobs[id]
 }
 
+// ListJobsInfo provides a copy of job list
+func (v *ManagedVolume) ListJobsInfo() map[string]Job {
+	v.jobsMutex.Lock()
+	defer v.jobsMutex.Unlock()
+
+	result := map[string]Job{}
+	for id, job := range v.Jobs {
+		result[id] = *job
+	}
+	return result
+}
+
 func (v *ManagedVolume) listJobsByTypeAndAssociateID(jobType JobType, assoicateID string) map[string]*Job {
 	v.jobsMutex.Lock()
 	defer v.jobsMutex.Unlock()
