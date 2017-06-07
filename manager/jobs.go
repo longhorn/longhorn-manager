@@ -1,12 +1,9 @@
 package manager
 
 import (
-	"fmt"
-
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
-	"github.com/yasker/lm-rewrite/engineapi"
 	"github.com/yasker/lm-rewrite/orchestrator"
 	"github.com/yasker/lm-rewrite/types"
 	"github.com/yasker/lm-rewrite/util"
@@ -36,31 +33,37 @@ func (v *ManagedVolume) waitForJob(jobID string, errCh chan error) {
 	if err != nil {
 		updateJob.State = JobStateFailed
 		updateJob.Error = err
-		logrus.Errorf("job %v failed: %v", jobID, err)
+		logrus.Errorf("job: failed: %v %+v", err, updateJob)
 	} else {
 		updateJob.State = JobStateSucceed
+		logrus.Debugf("Job: successed: %+v", updateJob)
 	}
 	v.setJob(&updateJob)
 	return
 }
 
 func (v *ManagedVolume) setJob(job *Job) {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
+	v.jobsMutex.Lock()
+	defer v.jobsMutex.Unlock()
 
+	if v.Jobs[job.ID] == nil {
+		logrus.Debugf("Job: created: %+v", job)
+	} else {
+		logrus.Debugf("Job: updated: %+v", job)
+	}
 	v.Jobs[job.ID] = job
 }
 
 func (v *ManagedVolume) getJob(id string) *Job {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
+	v.jobsMutex.Lock()
+	defer v.jobsMutex.Unlock()
 
 	return v.Jobs[id]
 }
 
 func (v *ManagedVolume) listJobsByTypeAndAssociateID(jobType JobType, assoicateID string) map[string]*Job {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
+	v.jobsMutex.Lock()
+	defer v.jobsMutex.Unlock()
 
 	result := map[string]*Job{}
 	for id, job := range v.Jobs {
@@ -72,8 +75,8 @@ func (v *ManagedVolume) listJobsByTypeAndAssociateID(jobType JobType, assoicateI
 }
 
 func (v *ManagedVolume) listOngoingJobsByType(jobType JobType) map[string]*Job {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
+	v.jobsMutex.Lock()
+	defer v.jobsMutex.Unlock()
 
 	result := map[string]*Job{}
 	for id, job := range v.Jobs {
@@ -85,8 +88,8 @@ func (v *ManagedVolume) listOngoingJobsByType(jobType JobType) map[string]*Job {
 }
 
 func (v *ManagedVolume) listOngoingJobsByTypeAndAssociateID(jobType JobType, assoicateID string) map[string]*Job {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
+	v.jobsMutex.Lock()
+	defer v.jobsMutex.Unlock()
 
 	result := map[string]*Job{}
 	for id, job := range v.Jobs {
@@ -97,6 +100,8 @@ func (v *ManagedVolume) listOngoingJobsByTypeAndAssociateID(jobType JobType, ass
 	return result
 }
 
+// following method cannot be called with v.mutex hold
+
 func (v *ManagedVolume) jobReplicaCreate(req *orchestrator.Request) (err error) {
 	defer func() {
 		errors.Wrap(err, "fail to finish job replica create")
@@ -105,6 +110,10 @@ func (v *ManagedVolume) jobReplicaCreate(req *orchestrator.Request) (err error) 
 	if err != nil {
 		return err
 	}
+
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+
 	replica := &types.ReplicaInfo{
 		InstanceInfo: types.InstanceInfo{
 			ID:         instance.ID,
@@ -136,13 +145,9 @@ func (v *ManagedVolume) jobReplicaRebuild(req *orchestrator.Request) (err error)
 
 	replicaName := req.InstanceName
 
-	if err := v.startReplica(replicaName); err != nil {
+	rURL, err := v.StartReplicaAndGetURL(replicaName)
+	if err != nil {
 		return err
-	}
-
-	replica := v.Replicas[replicaName]
-	if replica == nil {
-		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
 
 	engine, err := v.GetEngineClient()
@@ -150,10 +155,7 @@ func (v *ManagedVolume) jobReplicaRebuild(req *orchestrator.Request) (err error)
 		return err
 	}
 
-	if replica.IP == "" {
-		return fmt.Errorf("cannot add replica %v without IP", replicaName)
-	}
-	if err := engine.ReplicaAdd(engineapi.GetReplicaDefaultURL(replica.IP)); err != nil {
+	if err := engine.ReplicaAdd(rURL); err != nil {
 		return err
 	}
 

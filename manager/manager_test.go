@@ -54,10 +54,13 @@ type TestSuite struct {
 
 var _ = Suite(&TestSuite{})
 
+func (s *TestSuite) SetUpSuite(c *C) {
+	logrus.SetLevel(logrus.DebugLevel)
+	ReconcileInterval = 1 * time.Second
+}
+
 func (s *TestSuite) SetUpTest(c *C) {
 	var err error
-
-	logrus.SetLevel(logrus.DebugLevel)
 
 	etcdIP := os.Getenv(EnvEtcdServer)
 	c.Assert(etcdIP, Not(Equals), "")
@@ -131,6 +134,10 @@ func (s *TestSuite) TestVolume(c *C) {
 
 	volume, err := s.manager.getManagedVolume(VolumeName)
 	c.Assert(err, IsNil)
+
+	volume.mutex.Lock()
+	defer volume.mutex.Unlock()
+
 	c.Assert(volume.Name, Equals, VolumeName)
 	c.Assert(volume.Controller, IsNil)
 	c.Assert(volume.Replicas, NotNil)
@@ -138,14 +145,22 @@ func (s *TestSuite) TestVolume(c *C) {
 
 	err = volume.create()
 	c.Assert(err, IsNil)
+
 	c.Assert(volume.Controller, IsNil)
+
 	for i := 0; i < RetryCounts; i++ {
 		if volume.countReplicas() != VolumeNumberOfReplicas {
+			volume.mutex.Unlock()
 			time.Sleep(RetryInterval)
+			volume.mutex.Lock()
 		}
 	}
 	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
 	s.checkVolumeConsistency(c, volume)
+
+	v, err := s.manager.getManagedVolume(VolumeName)
+	c.Assert(err, IsNil)
+	c.Assert(v, DeepEquals, volume)
 
 	err = volume.start()
 	c.Assert(err, IsNil)
@@ -153,7 +168,9 @@ func (s *TestSuite) TestVolume(c *C) {
 	c.Assert(volume.Controller.Running, Equals, true)
 	for i := 0; i < RetryCounts; i++ {
 		if volume.countReplicas() != VolumeNumberOfReplicas {
+			volume.mutex.Unlock()
 			time.Sleep(RetryInterval)
+			volume.mutex.Lock()
 		}
 	}
 	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
@@ -164,7 +181,9 @@ func (s *TestSuite) TestVolume(c *C) {
 	c.Assert(volume.Controller, IsNil)
 	for i := 0; i < RetryCounts; i++ {
 		if volume.countReplicas() != VolumeNumberOfReplicas {
+			volume.mutex.Unlock()
 			time.Sleep(RetryInterval)
+			volume.mutex.Lock()
 		}
 	}
 	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
@@ -175,7 +194,9 @@ func (s *TestSuite) TestVolume(c *C) {
 	c.Assert(volume.Controller, IsNil)
 	for i := 0; i < RetryCounts; i++ {
 		if volume.countReplicas() != VolumeNumberOfReplicas {
+			volume.mutex.Unlock()
 			time.Sleep(RetryInterval)
+			volume.mutex.Lock()
 		}
 	}
 	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
@@ -223,16 +244,14 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 
 	node := s.manager.GetCurrentNode()
 
-	ReconcileInterval = 1 * time.Second
-
-	volume, err := s.manager.getManagedVolume(VolumeName)
+	volume, err := s.manager.GetVolume(VolumeName)
 	c.Assert(err, IsNil)
 	c.Assert(volume.Name, Equals, VolumeName)
 	c.Assert(volume.Controller, IsNil)
 	c.Assert(volume.DesireState, Equals, types.VolumeStateDetached)
 
 	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateDetached)
-	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
+	c.Assert(volume.Replicas, HasLen, VolumeNumberOfReplicas)
 	for _, replica := range volume.Replicas {
 		c.Assert(replica.Name, Not(Equals), "")
 		c.Assert(replica.IP, Equals, "")
@@ -245,7 +264,7 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 		NodeID: node.ID,
 	})
 	c.Assert(err, IsNil)
-	volume, err = s.manager.getManagedVolume(VolumeName)
+	volume, err = s.manager.GetVolume(VolumeName)
 	c.Assert(volume.TargetNodeID, Equals, node.ID)
 	c.Assert(volume.DesireState, Equals, types.VolumeStateHealthy)
 
@@ -257,7 +276,7 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 		Name: VolumeName,
 	})
 	c.Assert(err, IsNil)
-	volume, err = s.manager.getManagedVolume(VolumeName)
+	volume, err = s.manager.GetVolume(VolumeName)
 	c.Assert(volume.TargetNodeID, Equals, node.ID)
 	c.Assert(volume.DesireState, Equals, types.VolumeStateDetached)
 
@@ -268,7 +287,7 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 		Name: VolumeName,
 	})
 	c.Assert(err, IsNil)
-	volume, err = s.manager.getManagedVolume(VolumeName)
+	volume, err = s.manager.GetVolume(VolumeName)
 	c.Assert(volume.TargetNodeID, Equals, node.ID)
 	c.Assert(volume.DesireState, Equals, types.VolumeStateDeleted)
 
@@ -284,13 +303,13 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 	c.Assert(infos[VolumeName], IsNil)
 }
 
-func (s *TestSuite) waitForVolumeState(c *C, volumeName string, state types.VolumeState) *ManagedVolume {
+func (s *TestSuite) waitForVolumeState(c *C, volumeName string, state types.VolumeState) *Volume {
 	var (
-		volume *ManagedVolume
+		volume *Volume
 		err    error
 	)
 	for i := 0; i < RetryCounts; i++ {
-		volume, err = s.manager.getManagedVolume(VolumeName)
+		volume, err = s.manager.GetVolume(VolumeName)
 		c.Assert(err, IsNil)
 		if volume.State == state {
 			break
@@ -312,16 +331,14 @@ func (s *TestSuite) TestVolumeHeal(c *C) {
 
 	node := s.manager.GetCurrentNode()
 
-	ReconcileInterval = 1 * time.Second
-
-	volume, err := s.manager.getManagedVolume(VolumeName)
+	volume, err := s.manager.GetVolume(VolumeName)
 	c.Assert(err, IsNil)
 	c.Assert(volume.Name, Equals, VolumeName)
 	c.Assert(volume.Controller, IsNil)
 	c.Assert(volume.DesireState, Equals, types.VolumeStateDetached)
 
 	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateDetached)
-	c.Assert(volume.countReplicas(), Equals, VolumeNumberOfReplicas)
+	c.Assert(volume.Replicas, HasLen, VolumeNumberOfReplicas)
 
 	//stop one random replica
 	allocateNodes := map[string]struct{}{}
@@ -337,7 +354,7 @@ func (s *TestSuite) TestVolumeHeal(c *C) {
 		NodeID: node.ID,
 	})
 	c.Assert(err, IsNil)
-	volume, err = s.manager.getManagedVolume(VolumeName)
+	volume, err = s.manager.GetVolume(VolumeName)
 	c.Assert(volume.TargetNodeID, Equals, node.ID)
 	c.Assert(volume.DesireState, Equals, types.VolumeStateHealthy)
 	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateHealthy)
@@ -356,7 +373,7 @@ func (s *TestSuite) TestVolumeHeal(c *C) {
 		break
 	}
 	for i := 0; i < RetryCounts; i++ {
-		volume, err = s.manager.getManagedVolume(VolumeName)
+		volume, err = s.manager.GetVolume(VolumeName)
 		c.Assert(err, IsNil)
 		if len(volume.Replicas) == VolumeNumberOfReplicas+1 {
 			break
@@ -364,7 +381,15 @@ func (s *TestSuite) TestVolumeHeal(c *C) {
 		time.Sleep(RetryInterval)
 	}
 	c.Assert(volume.Replicas, HasLen, VolumeNumberOfReplicas+1)
-	c.Assert(volume.badReplicaCounts(), Equals, 1)
+
+	badReplicas := 0
+	for _, replica := range volume.Replicas {
+		if replica.FailedAt != "" {
+			badReplicas++
+		}
+	}
+	c.Assert(badReplicas, Equals, 1)
+
 	volume = s.waitForVolumeState(c, VolumeName, types.VolumeStateHealthy)
 	c.Assert(volume.Controller, NotNil)
 
@@ -372,7 +397,7 @@ func (s *TestSuite) TestVolumeHeal(c *C) {
 		Name: VolumeName,
 	})
 	c.Assert(err, IsNil)
-	volume, err = s.manager.getManagedVolume(VolumeName)
+	volume, err = s.manager.GetVolume(VolumeName)
 	c.Assert(volume.TargetNodeID, Equals, node.ID)
 	c.Assert(volume.DesireState, Equals, types.VolumeStateDeleted)
 

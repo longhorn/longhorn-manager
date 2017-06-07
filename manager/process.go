@@ -97,8 +97,9 @@ func (v *ManagedVolume) process() {
 			logrus.Errorf("Fail get volume: %v", err)
 			continue
 		}
-		if v.TargetNodeID != v.m.currentNode.ID {
-			logrus.Infof("Volume %v no longer belong to current node, release it", v.Name)
+		if v.getTargetNodeID() != v.m.currentNode.ID {
+			logrus.Infof("Volume %v no longer belong to current node, release it: target node ID %v, currentNode ID %v ",
+				v.Name, v.getTargetNodeID(), v.m.currentNode.ID)
 			break
 		}
 
@@ -106,28 +107,43 @@ func (v *ManagedVolume) process() {
 			logrus.Errorf("Fail to refresh volume state: %v", err)
 			continue
 		}
-		logrus.Debugf("volume %v state is %v", v.Name, v.State)
 
 		if err := v.Cleanup(); err != nil {
 			logrus.Errorf("Fail to cleanup stale replicas: %v", err)
 		}
 
-		logrus.Debugf("volume %v desire state is %v", v.Name, v.DesireState)
-
 		if err := v.Reconcile(); err != nil {
 			logrus.Errorf("Fail to reconcile volume state: %v", err)
 		}
-		logrus.Debugf("volume %v refreshed state is %v", v.Name, v.State)
-		if v.State == types.VolumeStateDeleted {
+		if err := v.RefreshState(); err != nil {
+			logrus.Errorf("Fail to refresh volume state: %v", err)
+		}
+		if v.isDeleted() {
 			break
 		}
 	}
+}
+
+func (v *ManagedVolume) isDeleted() bool {
+	v.mutex.RLock()
+	defer v.mutex.RUnlock()
+
+	return v.State == types.VolumeStateDeleted
+}
+
+func (v *ManagedVolume) getTargetNodeID() string {
+	v.mutex.RLock()
+	defer v.mutex.RUnlock()
+
+	return v.TargetNodeID
 }
 
 func (v *ManagedVolume) RefreshState() (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrap(err, "cannot refresh volume state")
+		} else {
+			logrus.Debugf("volume %v state is %v", v.Name, v.State)
 		}
 	}()
 
@@ -149,6 +165,9 @@ func (v *ManagedVolume) RefreshState() (err error) {
 			}
 		}
 	}
+
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
 
 	badReplicas := v.syncWithEngineState(engineReps)
 
@@ -273,6 +292,10 @@ func (v *ManagedVolume) Reconcile() (err error) {
 		}
 	}()
 
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+
+	logrus.Debugf("volume %v desire state is %v", v.Name, v.DesireState)
 	if v.State == v.DesireState {
 		return nil
 	}
@@ -285,11 +308,6 @@ func (v *ManagedVolume) Reconcile() (err error) {
 		return nil
 	}
 
-	defer func() {
-		if err == nil {
-			err = v.RefreshState()
-		}
-	}()
 	switch v.DesireState {
 	case types.VolumeStateDetached:
 		switch v.State {

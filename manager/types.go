@@ -51,10 +51,10 @@ type Volume struct {
 
 type ManagedVolume struct {
 	Volume
-	Jobs map[string]*Job
-
-	// mutex protects above
 	mutex *sync.RWMutex
+
+	Jobs      map[string]*Job
+	jobsMutex *sync.RWMutex
 
 	Notify chan struct{}
 

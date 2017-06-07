@@ -78,11 +78,12 @@ func (m *VolumeManager) getManagedVolume(volumeName string) (*ManagedVolume, err
 		return nil, err
 	}
 	v = &ManagedVolume{
-		Volume: *volume,
-		Jobs:   map[string]*Job{},
-		mutex:  &sync.RWMutex{},
-		Notify: make(chan struct{}),
-		m:      m,
+		Volume:    *volume,
+		mutex:     &sync.RWMutex{},
+		Jobs:      map[string]*Job{},
+		jobsMutex: &sync.RWMutex{},
+		Notify:    make(chan struct{}),
+		m:         m,
 	}
 	m.managedVolumes[volumeName] = v
 	go v.process()
@@ -90,6 +91,9 @@ func (m *VolumeManager) getManagedVolume(volumeName string) (*ManagedVolume, err
 }
 
 func (v *ManagedVolume) refresh() error {
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+
 	volume, err := v.m.GetVolume(v.Name)
 	if err != nil {
 		return err
@@ -122,22 +126,15 @@ func (m *VolumeManager) releaseVolume(volumeName string) {
 	logrus.Errorf("BUG: release volume processed but don't know the reason")
 }
 
-func (v *ManagedVolume) badReplicaCounts() int {
-	count := 0
-	for _, replica := range v.Replicas {
-		if replica.FailedAt != "" {
-			count++
-		}
-	}
-	return count
-}
-
 func (v *ManagedVolume) Cleanup() (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrap(err, "cannot cleanup stale replicas")
 		}
 	}()
+
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
 
 	staleReplicas := map[string]*types.ReplicaInfo{}
 
@@ -164,12 +161,7 @@ func (v *ManagedVolume) create() (err error) {
 		}
 	}()
 
-	ready := 0
-	for _, replica := range v.Replicas {
-		if replica.FailedAt != "" {
-			ready++
-		}
-	}
+	ready := len(v.Replicas) - v.badReplicaCounts()
 	nodesWithReplica := v.getNodesWithReplica()
 
 	creatingJobs := v.listOngoingJobsByType(JobTypeReplicaCreate)
@@ -270,9 +262,11 @@ func (v *ManagedVolume) destroy() (err error) {
 			err = errors.Wrap(err, "cannot destroy volume")
 		}
 	}()
+
 	if err := v.stop(); err != nil {
 		return err
 	}
+
 	if v.Replicas != nil {
 		for name := range v.Replicas {
 			if err := v.deleteReplica(name); err != nil {
@@ -286,8 +280,6 @@ func (v *ManagedVolume) destroy() (err error) {
 func (v *ManagedVolume) getNodesWithReplica() map[string]struct{} {
 	ret := map[string]struct{}{}
 
-	v.mutex.RLock()
-	defer v.mutex.RUnlock()
 	for _, replica := range v.Replicas {
 		if replica.FailedAt != "" {
 			ret[replica.NodeID] = struct{}{}
@@ -297,6 +289,9 @@ func (v *ManagedVolume) getNodesWithReplica() map[string]struct{} {
 }
 
 func (v *ManagedVolume) SnapshotPurge() error {
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+
 	purgingJobs := v.listOngoingJobsByType(JobTypeSnapshotPurge)
 	if len(purgingJobs) != 0 {
 		return nil
@@ -314,6 +309,9 @@ func (v *ManagedVolume) SnapshotPurge() error {
 }
 
 func (v *ManagedVolume) SnapshotBackup(snapName, backupTarget string) error {
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+
 	backupJobs := v.listOngoingJobsByTypeAndAssociateID(JobTypeSnapshotBackup, snapName)
 	if len(backupJobs) != 0 {
 		return nil
@@ -331,6 +329,9 @@ func (v *ManagedVolume) SnapshotBackup(snapName, backupTarget string) error {
 }
 
 func (v *ManagedVolume) GetEngineClient() (engineapi.EngineClient, error) {
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+
 	if v.Controller == nil {
 		return nil, fmt.Errorf("cannot find volume %v controller", v.Name)
 	}
@@ -349,6 +350,9 @@ func (v *ManagedVolume) ReplicaRemove(replicaName string) (err error) {
 		err = errors.Wrapf(err, "fail to remove replica %v of volume %v", replicaName, v.Name)
 	}()
 
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+
 	replica := v.Replicas[replicaName]
 	if replica == nil {
 		return fmt.Errorf("cannot find replica %v", replicaName)
@@ -362,4 +366,24 @@ func (v *ManagedVolume) ReplicaRemove(replicaName string) (err error) {
 		return err
 	}
 	return nil
+}
+
+func (v *ManagedVolume) StartReplicaAndGetURL(replicaName string) (string, error) {
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+
+	if err := v.startReplica(replicaName); err != nil {
+		return "", err
+	}
+
+	replica := v.Replicas[replicaName]
+	if replica == nil {
+		return "", fmt.Errorf("cannot find replica %v", replicaName)
+	}
+
+	if replica.IP == "" {
+		return "", fmt.Errorf("cannot add replica %v without IP", replicaName)
+	}
+
+	return engineapi.GetReplicaDefaultURL(replica.IP), nil
 }

@@ -305,9 +305,6 @@ func (v *ManagedVolume) stopRebuild() (err error) {
 }
 
 func (v *ManagedVolume) setReplica(replica *types.ReplicaInfo) error {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
-
 	if err := v.m.kv.UpdateVolumeReplica(replica); err != nil {
 		return err
 	}
@@ -315,18 +312,11 @@ func (v *ManagedVolume) setReplica(replica *types.ReplicaInfo) error {
 	return nil
 }
 
-//NOTE: this only protect the map, not the content
 func (v *ManagedVolume) getReplica(name string) *types.ReplicaInfo {
-	v.mutex.RLock()
-	defer v.mutex.RUnlock()
-
 	return v.Replicas[name]
 }
 
 func (v *ManagedVolume) rmReplica(name string) error {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
-
 	if err := v.m.kv.DeleteVolumeReplica(v.Name, name); err != nil {
 		return err
 	}
@@ -335,8 +325,15 @@ func (v *ManagedVolume) rmReplica(name string) error {
 }
 
 func (v *ManagedVolume) countReplicas() int {
-	v.mutex.RLock()
-	defer v.mutex.RUnlock()
-
 	return len(v.Replicas)
+}
+
+func (v *ManagedVolume) badReplicaCounts() int {
+	count := 0
+	for _, replica := range v.Replicas {
+		if replica.FailedAt != "" {
+			count++
+		}
+	}
+	return count
 }
