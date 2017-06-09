@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -170,6 +171,31 @@ func (s *Server) VolumeSalvage(rw http.ResponseWriter, req *http.Request) error 
 		SalvageReplicaNames: input.Names,
 	}); err != nil {
 		return errors.Wrap(err, "unable to remove replica")
+	}
+
+	return s.responseWithVolume(rw, req, id)
+}
+
+func (s *Server) VolumeRecurringUpdate(rw http.ResponseWriter, req *http.Request) error {
+	var input RecurringInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrapf(err, "error reading recurringInput")
+	}
+
+	for _, job := range input.Jobs {
+		if job.Cron == "" || job.Type == "" || job.Name == "" || job.Retain == 0 {
+			return fmt.Errorf("invalid job %+v", job)
+		}
+	}
+
+	if err := s.m.VolumeRecurringUpdate(&manager.VolumeRecurringUpdateRequest{
+		Name:          id,
+		RecurringJobs: input.Jobs,
+	}); err != nil {
+		return errors.Wrapf(err, "unable to update recurring jobs for volume %v", id)
 	}
 
 	return s.responseWithVolume(rw, req, id)

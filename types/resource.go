@@ -25,15 +25,32 @@ type VolumeInfo struct {
 	NumberOfReplicas    int
 	StaleReplicaTimeout int
 
+	// Running spec
+	TargetNodeID  string
+	DesireState   VolumeState
+	RecurringJobs []RecurringJob
+
 	// Running state
-	Created      string
-	TargetNodeID string
-	NodeID       string
-	State        VolumeState
-	DesireState  VolumeState
-	Endpoint     string
+	Created  string
+	NodeID   string
+	State    VolumeState
+	Endpoint string
 
 	KVMetadata
+}
+
+type RecurringJobType string
+
+const (
+	RecurringJobTypeSnapshot = RecurringJobType("snapshot")
+	RecurringJobTypeBackup   = RecurringJobType("backup")
+)
+
+type RecurringJob struct {
+	Name   string           `json:"name"`
+	Type   RecurringJobType `json:"task"`
+	Cron   string           `json:"cron"`
+	Retain int              `json:"retain"`
 }
 
 type InstanceType string

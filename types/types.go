@@ -173,10 +173,3 @@ const (
 	SnapshotTaskName = "snapshot"
 	BackupTaskName   = "backup"
 )
-
-type RecurringJob struct {
-	Name   string `json:"name,omitempty"`
-	Cron   string `json:"cron,omitempty"`
-	Task   string `json:"task,omitempty"`
-	Retain int    `json:"retain,omitempty"`
-}

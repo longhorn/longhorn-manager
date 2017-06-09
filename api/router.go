@@ -45,9 +45,10 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("POST").Path("/v1/volumes").Handler(f(schemas, s.VolumeCreate))
 
 	volumeActions := map[string]func(http.ResponseWriter, *http.Request) error{
-		"attach":  s.VolumeAttach,
-		"detach":  s.VolumeDetach,
-		"salvage": s.VolumeSalvage,
+		"attach":          s.VolumeAttach,
+		"detach":          s.VolumeDetach,
+		"salvage":         s.VolumeSalvage,
+		"recurringUpdate": s.VolumeRecurringUpdate,
 
 		"snapshotPurge":  s.fwd.Handler(NodeIDFromVolume(s.m), s.SnapshotPurge),
 		"snapshotCreate": s.fwd.Handler(NodeIDFromVolume(s.m), s.SnapshotCreate),
@@ -59,9 +60,6 @@ func NewRouter(s *Server) *mux.Router {
 
 		"replicaRemove": s.fwd.Handler(NodeIDFromVolume(s.m), s.ReplicaRemove),
 		"jobList":       s.fwd.Handler(NodeIDFromVolume(s.m), s.JobList),
-
-		//"recurringUpdate": s.fwd.Handler(HostIDFromVolume(s.man), s.UpdateRecurring),
-		//"bgTaskQueue":     s.fwd.Handler(HostIDFromVolume(s.man), s.BgTaskQueue),
 	}
 	for name, action := range volumeActions {
 		r.Methods("POST").Path("/v1/volumes/{name}").Queries("action", name).Handler(f(schemas, action))

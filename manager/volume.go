@@ -103,6 +103,10 @@ func (v *ManagedVolume) refresh() error {
 		return err
 	}
 	v.Volume = *volume
+
+	if err := v.updateRecurringJobs(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -110,12 +114,16 @@ func (m *VolumeManager) releaseVolume(volumeName string) {
 	m.managedVolumesMutex.Lock()
 	defer m.managedVolumesMutex.Unlock()
 
+	logrus.Debugf("Releasing volume %v", volumeName)
 	volume := m.managedVolumes[volumeName]
 	if volume == nil {
 		logrus.Errorf("Cannot find volume to be released: %v", volumeName)
 		return
 	}
 
+	if volume.recurringCron != nil {
+		volume.recurringCron.Stop()
+	}
 	delete(m.managedVolumes, volumeName)
 
 	if volume.TargetNodeID != m.currentNode.ID {
@@ -216,6 +224,9 @@ func (v *ManagedVolume) start() (err error) {
 			return err
 		}
 	}
+	if v.recurringCron != nil {
+		v.recurringCron.Start()
+	}
 	return nil
 }
 
@@ -226,6 +237,9 @@ func (v *ManagedVolume) stop() (err error) {
 		}
 	}()
 
+	if v.recurringCron != nil {
+		v.recurringCron.Stop()
+	}
 	if err := v.stopRebuild(); err != nil {
 		return err
 	}

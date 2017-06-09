@@ -26,6 +26,8 @@ type Volume struct {
 	Endpoint            string `json:"endpoint,omitemtpy"`
 	Created             string `json:"created,omitemtpy"`
 
+	RecurringJobs []types.RecurringJob `json:"recurringJobs"`
+
 	Replicas   []Replica   `json:"replicas"`
 	Controller *Controller `json:"controller"`
 }
@@ -97,6 +99,10 @@ type BackupInput struct {
 	Name string `json:"name"`
 }
 
+type RecurringInput struct {
+	Jobs []types.RecurringJob `json:"jobs"`
+}
+
 type ReplicaRemoveInput struct {
 	Name string `json:"name"`
 }
@@ -116,6 +122,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("snapshotInput", SnapshotInput{})
 	schemas.AddType("backup", Backup{})
 	schemas.AddType("backupInput", BackupInput{})
+	schemas.AddType("recurringJob", types.RecurringJob{})
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
 	schemas.AddType("salvageInput", SalvageInput{})
 	schemas.AddType("job", Job{})
@@ -124,8 +131,15 @@ func NewSchema() *client.Schemas {
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
+	recurringSchema(schemas.AddType("recurringInput", RecurringInput{}))
 
 	return schemas
+}
+
+func recurringSchema(recurring *client.Schema) {
+	jobs := recurring.ResourceFields["jobs"]
+	jobs.Type = "array[recurringJob]"
+	recurring.ResourceFields["jobs"] = jobs
 }
 
 func backupVolumeSchema(backupVolume *client.Schema) {
@@ -200,6 +214,10 @@ func volumeSchema(volume *client.Schema) {
 		},
 		"snapshotBackup": {
 			Input: "snapshotInput",
+		},
+
+		"recurringUpdate": {
+			Input: "recurringInput",
 		},
 
 		"jobList": {},
@@ -304,7 +322,7 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		NumberOfReplicas: v.NumberOfReplicas,
 		State:            string(v.State),
 		//EngineImage:         v.EngineImage,
-		//RecurringJobs:       v.RecurringJobs,
+		RecurringJobs:       v.RecurringJobs,
 		StaleReplicaTimeout: v.StaleReplicaTimeout,
 		Endpoint:            v.Endpoint,
 		Created:             v.Created,
@@ -318,8 +336,8 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 	switch v.State {
 	case types.VolumeStateDetached:
 		actions["attach"] = struct{}{}
+		actions["recurringUpdate"] = struct{}{}
 		actions["replicaRemove"] = struct{}{}
-		//actions["recurringUpdate"] = struct{}{}
 	case types.VolumeStateHealthy:
 		actions["detach"] = struct{}{}
 		actions["snapshotPurge"] = struct{}{}
@@ -329,9 +347,9 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		actions["snapshotDelete"] = struct{}{}
 		actions["snapshotRevert"] = struct{}{}
 		actions["snapshotBackup"] = struct{}{}
+		actions["recurringUpdate"] = struct{}{}
 		actions["replicaRemove"] = struct{}{}
 		actions["jobList"] = struct{}{}
-		//actions["recurringUpdate"] = struct{}{}
 		//actions["bgTaskQueue"] = struct{}{}
 	case types.VolumeStateDegraded:
 		actions["detach"] = struct{}{}
@@ -342,12 +360,12 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		actions["snapshotDelete"] = struct{}{}
 		actions["snapshotRevert"] = struct{}{}
 		actions["snapshotBackup"] = struct{}{}
+		actions["recurringUpdate"] = struct{}{}
 		actions["replicaRemove"] = struct{}{}
 		actions["jobList"] = struct{}{}
-		//actions["recurringUpdate"] = struct{}{}
 		//actions["bgTaskQueue"] = struct{}{}
 	case types.VolumeStateCreated:
-		//actions["recurringUpdate"] = struct{}{}
+		actions["recurringUpdate"] = struct{}{}
 	case types.VolumeStateFault:
 		actions["salvage"] = struct{}{}
 	}

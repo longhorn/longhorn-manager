@@ -248,6 +248,37 @@ func (m *VolumeManager) VolumeSalvage(request *VolumeSalvageRequest) (err error)
 	return nil
 }
 
+func (m *VolumeManager) VolumeRecurringUpdate(request *VolumeRecurringUpdateRequest) (err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrap(err, "unable to update volume recurring jobs")
+		}
+	}()
+
+	volume, err := m.kv.GetVolume(request.Name)
+	if err != nil {
+		return err
+	}
+	if volume == nil {
+		return fmt.Errorf("cannot find volume %v", request.Name)
+	}
+
+	node, err := m.GetNode(volume.TargetNodeID)
+	if err != nil {
+		return err
+	}
+
+	volume.RecurringJobs = request.RecurringJobs
+	if err := m.kv.UpdateVolume(volume); err != nil {
+		return err
+	}
+
+	if err := node.Notify(volume.Name); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (m *VolumeManager) Shutdown() {
 	m.rpc.StopServer()
 }

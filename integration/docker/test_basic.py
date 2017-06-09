@@ -121,72 +121,39 @@ def test_volume_basic(clients):  # NOQA
     assert len(volumes) == 0
 
 
-#def test_recurring_snapshot(clients):  # NOQA
-#    for host_id, client in clients.iteritems():
-#        break
-#
-#    volume = client.create_volume(name=VOLUME_NAME, size=SIZE,
-#                                  numberOfReplicas=2)
-#
-#    snap3s = {"name": "snap3s", "cron": "@every 3s", "task": "snapshot"}
-#    snap5s = {"name": "snap5s", "cron": "@every 5s", "task": "snapshot"}
-#    volume.recurringUpdate(jobs=[snap3s, snap5s])
-#
-#    volume = volume.attach(hostId=host_id)
-#
-#    time.sleep(10)
-#
-#    assert len(volume.snapshotList()) == 5
-#
-#
-#def test_recurring_snapshot_live_update(clients):  # NOQA
-#    for host_id, client in clients.iteritems():
-#        break
-#
-#    volume = client.create_volume(name=VOLUME_NAME, size=SIZE,
-#                                  numberOfReplicas=2)
-#
-#    volume = volume.attach(hostId=host_id)
-#
-#    snap3s = {"name": "snap3s", "cron": "@every 3s", "task": "snapshot"}
-#    snap5s = {"name": "snap5s", "cron": "@every 5s", "task": "snapshot"}
-#    volume.recurringUpdate(jobs=[snap3s, snap5s])
-#
-#    time.sleep(10)
-#
-#    assert len(volume.snapshotList()) == 5
-#
-#
-#def test_recurring_snapshot_live_update_retain(clients):  # NOQA
-#    for host_id, client in clients.iteritems():
-#        break
-#
-#    volume = client.create_volume(name=VOLUME_NAME, size=SIZE,
-#                                  numberOfReplicas=2)
-#
-#    volume = volume.attach(hostId=host_id)
-#
-#    snap3s = {"name": "snap3s", "cron": "@every 3s", "task": "snapshot",
-#              "retain": 2}
-#    snap5s = {"name": "snap5s", "cron": "@every 5s", "task": "snapshot",
-#              "retain": 1}
-#    volume.recurringUpdate(jobs=[snap3s, snap5s])
-#
-#    time.sleep(15)
-#
-#    snapshots = volume.snapshotList()
-#    retained = filter(lambda s: s["removed"] is False, snapshots)
-#    assert len(retained) == 3
-#
-#    time.sleep(2)
-#
-#    removed = filter(lambda s: s["removed"] is True, snapshots)
-#    removed_names = map(lambda s: s["name"], removed)
-#
-#    left = filter(lambda s: s["name"] in removed_names, volume.snapshotList())
-#    assert len(left) == 0
-#
-#
+def test_recurring_snapshot(clients):  # NOQA
+    for host_id, client in clients.iteritems():
+        break
+
+    volume = client.create_volume(name=VOLUME_NAME, size=SIZE,
+                                  numberOfReplicas=2)
+    volume = wait_for_volume_state(client, VOLUME_NAME, "detached")
+
+    snap2s = {"name": "snap2s", "cron": "@every 2s",
+              "task": "snapshot", "retain": 3}
+    snap3s = {"name": "snap3s", "cron": "@every 3s",
+              "task": "snapshot", "retain": 2}
+    volume.recurringUpdate(jobs=[snap2s, snap3s])
+
+    time.sleep(0.1)
+    volume = volume.attach(hostId=host_id)
+    volume = wait_for_volume_state(client, VOLUME_NAME, "healthy")
+
+    time.sleep(10)
+
+    snapshots = volume.snapshotList()
+    assert len(snapshots) == 5
+
+    snap4s = {"name": "snap4s", "cron": "@every 4s",
+              "task": "snapshot", "retain": 2}
+    volume.recurringUpdate(jobs=[snap2s, snap4s])
+
+    time.sleep(10)
+
+    snapshots = volume.snapshotList()
+    assert len(snapshots) == 7
+
+
 #def test_bgtasks(clients):  # NOQA
 #    for host_id, client in clients.iteritems():
 #        break

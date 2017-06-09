@@ -1,8 +1,11 @@
 package manager
 
 import (
-	"github.com/yasker/lm-rewrite/types"
 	"sync"
+
+	"github.com/robfig/cron"
+
+	"github.com/yasker/lm-rewrite/types"
 )
 
 type EventType string
@@ -43,6 +46,11 @@ type VolumeSalvageRequest struct {
 	SalvageReplicaNames []string `json:"salvageReplicaNames"`
 }
 
+type VolumeRecurringUpdateRequest struct {
+	Name          string               `json:"name"`
+	RecurringJobs []types.RecurringJob `json:"recurringJobs"`
+}
+
 type Volume struct {
 	types.VolumeInfo
 	Controller *types.ControllerInfo
@@ -55,6 +63,9 @@ type ManagedVolume struct {
 
 	Jobs      map[string]*Job
 	jobsMutex *sync.RWMutex
+
+	recurringJobScheduled []types.RecurringJob
+	recurringCron         *cron.Cron
 
 	Notify chan struct{}
 
@@ -107,4 +118,11 @@ type Job struct {
 	State       JobState          `json:"state"`
 	Error       error             `json:"error"`
 	Data        map[string]string `json:"data"`
+}
+
+type CronJob struct {
+	types.RecurringJob
+
+	volumeName string
+	m          *VolumeManager
 }
