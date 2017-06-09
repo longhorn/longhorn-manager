@@ -8,7 +8,7 @@ ETCD_IMAGE=quay.io/coreos/etcd:v3.1.5
 NFS_SERVER=${TEST_PREFIX}-nfs-server
 NFS_IMAGE=docker.io/erezhorev/dockerized_nfs_server
 
-LONGHORN_ENGINE_IMAGE=rancher/longhorn-engine:2f9c62f
+LONGHORN_ENGINE_IMAGE=rancher/longhorn-engine:17e33fc
 
 LONGHORN_ENGINE_BINARY_NAME=${TEST_PREFIX}-engine-binary
 LONGHORN_MANAGER_NAME=${TEST_PREFIX}-manager

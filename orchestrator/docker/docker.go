@@ -170,6 +170,10 @@ func (d *Docker) CreateController(req *orchestrator.Request) (instance *orchestr
 		"--frontend", "tgt",
 	}
 	for _, url := range req.ReplicaURLs {
+		waitURL := strings.Replace(url, "tcp://", "http://", 1) + "/v1"
+		if err := util.WaitForAPI(waitURL, WaitAPITimeout); err != nil {
+			return nil, err
+		}
 		cmd = append(cmd, "--replica", url)
 	}
 	cmd = append(cmd, req.VolumeName)
@@ -262,11 +266,40 @@ func (d *Docker) CreateReplica(req *orchestrator.Request) (instance *orchestrato
 	}
 
 	req.InstanceID = createBody.ID
+
+	defer func() {
+		if err != nil {
+			d.StopInstance(req)
+			d.DeleteInstance(req)
+		}
+	}()
+
 	instance, err = d.InspectInstance(req)
 	if err != nil {
-		logrus.Errorf("fail to create replica %v of %v, cleaning up: %v", req.InstanceName, req.VolumeName, err)
-		d.StopInstance(req)
-		d.DeleteInstance(req)
+		logrus.Errorf("fail to inspect when create replica %v of %v, cleaning up: %v", req.InstanceName, req.VolumeName, err)
+		return nil, err
+	}
+
+	// make sure replica is initialized, especially for restoring backup
+	instance, err = d.StartInstance(req)
+	if err != nil {
+		logrus.Errorf("fail to start when create replica %v of %v, cleaning up: %v", req.InstanceName, req.VolumeName, err)
+		return nil, err
+	}
+
+	timeout := WaitAPITimeout
+	// More time for backup restore, may need to customerize it
+	if req.RestoreFrom != "" && req.RestoreName != "" {
+		timeout = timeout * 10
+	}
+	url := "http://" + instance.IP + ":9502/v1"
+	if err := util.WaitForAPI(url, timeout); err != nil {
+		return nil, err
+	}
+
+	instance, err = d.StopInstance(req)
+	if err != nil {
+		logrus.Errorf("fail to stop when create replica %v of %v, cleaning up: %v", req.InstanceName, req.VolumeName, err)
 		return nil, err
 	}
 
