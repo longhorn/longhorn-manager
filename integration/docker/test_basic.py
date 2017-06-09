@@ -2,7 +2,7 @@ import time
 import common
 
 from common import clients  # NOQA
-from common import SIZE, VOLUME_NAME
+from common import SIZE, VOLUME_NAME, VOLUME_RESTORE_NAME
 from common import wait_for_volume_state, wait_for_volume_delete
 from common import wait_for_snapshot_purge
 
@@ -345,7 +345,7 @@ def test_backup(clients):  # NOQA
     volume = volume.attach(hostId=host_id)
     volume = wait_for_volume_state(client, VOLUME_NAME, "healthy")
 
-    backup_test(client)
+    backup_test(client, host_id)
     volume = volume.detach()
     volume = wait_for_volume_state(client, VOLUME_NAME, "detached")
 
@@ -356,7 +356,7 @@ def test_backup(clients):  # NOQA
     assert len(volumes) == 0
 
 
-def backup_test(client):  # NOQA
+def backup_test(client, host_id):  # NOQA
     volume = client.by_id_volume(VOLUME_NAME)
 
     setting = client.by_id_setting("backupTarget")
@@ -411,6 +411,23 @@ def backup_test(client):  # NOQA
     assert new_b["volumeSize"] == b["volumeSize"]
     assert new_b["volumeCreated"] == b["volumeCreated"]
 
+    # test restore
+    volume = client.create_volume(name=VOLUME_RESTORE_NAME, size=SIZE,
+                                  numberOfReplicas=2,
+                                  fromBackup=b["url"])
+    volume = wait_for_volume_state(client, VOLUME_RESTORE_NAME, "detached")
+    assert volume["name"] == VOLUME_RESTORE_NAME
+    assert volume["size"] == SIZE
+    assert volume["numberOfReplicas"] == 2
+    assert volume["state"] == "detached"
+    volume = volume.attach(hostId=host_id)
+    volume = wait_for_volume_state(client, VOLUME_RESTORE_NAME, "healthy")
+    volume = volume.detach()
+    volume = wait_for_volume_state(client, VOLUME_RESTORE_NAME, "detached")
+    client.delete(volume)
+
+    volume = wait_for_volume_delete(client, VOLUME_RESTORE_NAME)
+
     bv.backupDelete(name=b["name"])
 
     backups = bv.backupList()
@@ -445,7 +462,7 @@ def test_volume_multinode(clients):  # NOQA
     assert volume["controller"]["hostId"] == hosts[0]
 
     snapshot_test(clients[hosts[1]])
-    backup_test(clients[hosts[2]])
+    backup_test(clients[hosts[2]], hosts[2])
 
     clients[hosts[0]].delete(volume)
     wait_for_volume_delete(clients[hosts[1]], VOLUME_NAME)

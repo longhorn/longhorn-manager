@@ -14,6 +14,7 @@ MANAGER = 'http://localhost:9500'
 
 SIZE = str(16 * 1024 * 1024)
 VOLUME_NAME = "longhorn-manager-test_vol-1.0"
+VOLUME_RESTORE_NAME = "longhorn-manager-test_vol-1.0-restore"
 DEV_PATH = "/dev/longhorn/"
 
 PORT = ":9500"

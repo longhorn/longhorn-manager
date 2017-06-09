@@ -112,7 +112,7 @@ func (b *BackupTarget) ListVolumes() ([]*BackupVolume, error) {
 	}
 	defer func() {
 		if err := cmd.Wait(); err != nil {
-			logrus.Errorf("%+v", errors.Wrapf(err, "error waiting for cmd '%v'", cmd))
+			logrus.Debugf("error waiting for cmd '%v' %v", cmd, err)
 		}
 	}()
 	return parseBackupVolumesList(stdout)
@@ -129,7 +129,7 @@ func (b *BackupTarget) GetVolume(volumeName string) (*BackupVolume, error) {
 	}
 	defer func() {
 		if err := cmd.Wait(); err != nil {
-			logrus.Errorf("%+v", errors.Wrapf(err, "error waiting for cmd '%v'", cmd))
+			logrus.Debugf("error waiting for cmd '%v' %v", cmd, err)
 		}
 	}()
 	list, err := parseBackupVolumesList(stdout)
@@ -153,7 +153,7 @@ func (b *BackupTarget) List(volumeName string) ([]*Backup, error) {
 	}
 	defer func() {
 		if err := cmd.Wait(); err != nil {
-			logrus.Errorf("%+v", errors.Wrapf(err, "error waiting for cmd '%v'", cmd))
+			logrus.Debugf("error waiting for cmd '%v' %v", cmd, err)
 		}
 	}()
 	return parseBackupsList(stdout, volumeName)
@@ -170,7 +170,7 @@ func (b *BackupTarget) Get(url string) (*Backup, error) {
 	}
 	defer func() {
 		if err := cmd.Wait(); err != nil {
-			logrus.Errorf("%+v", errors.Wrapf(err, "error waiting for cmd '%v'", cmd))
+			logrus.Debugf("error waiting for cmd '%v' %v", cmd, err)
 		}
 	}()
 	return parseOneBackup(stdout)
