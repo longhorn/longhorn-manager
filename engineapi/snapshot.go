@@ -87,7 +87,7 @@ func (e *Engine) SnapshotPurge() error {
 	return nil
 }
 
-func (e *Engine) SnapshotBackup(snapName, backupTarget string) error {
+func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string]string) error {
 	snap, err := e.SnapshotGet(snapName)
 	if err != nil {
 		return errors.Wrapf(err, "error getting snapshot '%s', volume '%s'", snapName, e.name)
@@ -95,7 +95,12 @@ func (e *Engine) SnapshotBackup(snapName, backupTarget string) error {
 	if snap == nil {
 		return errors.Errorf("could not find snapshot '%s' to backup, volume '%s'", snapName, e.name)
 	}
-	backup, err := util.ExecuteWithTimeout(backupTimeout, "longhorn", "--url", e.cURL, "backup", "create", "--dest", backupTarget, snapName)
+	args := []string{"--url", e.cURL, "backup", "create", "--dest", backupTarget}
+	for k, v := range labels {
+		args = append(args, "--label", k+"="+v)
+	}
+	args = append(args, snapName)
+	backup, err := util.ExecuteWithTimeout(backupTimeout, "longhorn", args...)
 	if err != nil {
 		return err
 	}

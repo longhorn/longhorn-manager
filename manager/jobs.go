@@ -197,5 +197,5 @@ func (v *ManagedVolume) jobSnapshotBackup(snapName, backupTarget string) (err er
 		return err
 	}
 
-	return engine.SnapshotBackup(snapName, backupTarget)
+	return engine.SnapshotBackup(snapName, backupTarget, nil)
 }

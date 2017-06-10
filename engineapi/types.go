@@ -40,7 +40,7 @@ type EngineClient interface {
 	SnapshotDelete(name string) error
 	SnapshotRevert(name string) error
 	SnapshotPurge() error
-	SnapshotBackup(snapName, backupTarget string) error
+	SnapshotBackup(snapName, backupTarget string, labels map[string]string) error
 }
 
 type EngineClientRequest struct {
@@ -79,15 +79,16 @@ type BackupVolume struct {
 }
 
 type Backup struct {
-	Name            string `json:"name"`
-	URL             string `json:"url"`
-	SnapshotName    string `json:"snapshotName"`
-	SnapshotCreated string `json:"snapshotCreated"`
-	Created         string `json:"created"`
-	Size            string `json:"size"`
-	VolumeName      string `json:"volumeName"`
-	VolumeSize      string `json:"volumeSize"`
-	VolumeCreated   string `json:"volumeCreated"`
+	Name            string            `json:"name"`
+	URL             string            `json:"url"`
+	SnapshotName    string            `json:"snapshotName"`
+	SnapshotCreated string            `json:"snapshotCreated"`
+	Created         string            `json:"created"`
+	Size            string            `json:"size"`
+	Labels          map[string]string `json:"labels"`
+	VolumeName      string            `json:"volumeName"`
+	VolumeSize      string            `json:"volumeSize"`
+	VolumeCreated   string            `json:"volumeCreated"`
 }
 
 func GetControllerDefaultURL(ip string) string {
