@@ -154,39 +154,6 @@ def test_recurring_snapshot(clients):  # NOQA
     assert len(snapshots) == 7
 
 
-#def test_bgtasks(clients):  # NOQA
-#    for host_id, client in clients.iteritems():
-#        break
-#
-#    setting = client.by_id_setting("backupTarget")
-#    setting = client.update(setting, value=common.get_backupstore_url())
-#
-#    volume = client.create_volume(name=VOLUME_NAME, size=SIZE,
-#                                  numberOfReplicas=2)
-#    volume = volume.attach(hostId=host_id)
-#
-#    num_tasks = 4
-#    snaps = map(lambda _: volume.snapshotCreate(), range(num_tasks))
-#    for snap in snaps:
-#        volume.snapshotBackup(name=snap["name"])
-#
-#    queue = volume.bgTaskQueue()
-#    q_len = len(queue)
-#    assert len(queue) == num_tasks
-#    assert queue[0]["num"] == 1
-#    assert queue[0]["finished"] == ""  # running: finished is not set
-#
-#    while q_len > 1:
-#        queue = volume.bgTaskQueue()
-#        if len(queue) < q_len:
-#            q_len = len(queue)
-#            assert queue[0]["finished"] != ""  # done: finished is set
-#            assert queue[0]["err"] is None
-#            assert queue[0]["num"] == 1 + num_tasks - q_len
-#        else:
-#            time.sleep(1)
-#
-#
 def test_snapshot(clients):  # NOQA
     for host_id, client in clients.iteritems():
         break
