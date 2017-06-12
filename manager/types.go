@@ -5,7 +5,7 @@ import (
 
 	"github.com/robfig/cron"
 
-	"github.com/yasker/lm-rewrite/types"
+	"github.com/rancher/longhorn-manager/types"
 )
 
 type EventType string

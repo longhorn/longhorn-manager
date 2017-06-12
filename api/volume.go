@@ -10,8 +10,8 @@ import (
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 
-	"github.com/yasker/lm-rewrite/manager"
-	"github.com/yasker/lm-rewrite/util"
+	"github.com/rancher/longhorn-manager/manager"
+	"github.com/rancher/longhorn-manager/util"
 )
 
 func (s *Server) VolumeList(rw http.ResponseWriter, req *http.Request) (err error) {

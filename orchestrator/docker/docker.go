@@ -17,9 +17,9 @@ import (
 	dContainer "github.com/docker/docker/api/types/container"
 	dCli "github.com/docker/docker/client"
 
-	"github.com/yasker/lm-rewrite/orchestrator"
-	"github.com/yasker/lm-rewrite/types"
-	"github.com/yasker/lm-rewrite/util"
+	"github.com/rancher/longhorn-manager/orchestrator"
+	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 )
 
 const (

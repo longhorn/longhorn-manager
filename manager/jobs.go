@@ -4,9 +4,9 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
-	"github.com/yasker/lm-rewrite/orchestrator"
-	"github.com/yasker/lm-rewrite/types"
-	"github.com/yasker/lm-rewrite/util"
+	"github.com/rancher/longhorn-manager/orchestrator"
+	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 )
 
 func (v *ManagedVolume) registerJob(jobType JobType, assoicateID string, data map[string]string, errCh chan error) (string, error) {

@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/yasker/lm-rewrite/types"
-	"github.com/yasker/lm-rewrite/util"
+	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 
 	. "gopkg.in/check.v1"
 )

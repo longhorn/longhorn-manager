@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yasker/lm-rewrite/engineapi"
-	"github.com/yasker/lm-rewrite/orchestrator"
-	"github.com/yasker/lm-rewrite/types"
+	"github.com/rancher/longhorn-manager/engineapi"
+	"github.com/rancher/longhorn-manager/orchestrator"
+	"github.com/rancher/longhorn-manager/types"
 
 	. "gopkg.in/check.v1"
 )

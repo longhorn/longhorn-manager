@@ -10,8 +10,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
-	"github.com/yasker/lm-rewrite/orchestrator/pb"
-	"github.com/yasker/lm-rewrite/types"
+	"github.com/rancher/longhorn-manager/orchestrator/pb"
+	"github.com/rancher/longhorn-manager/types"
 )
 
 type Forwarder struct {

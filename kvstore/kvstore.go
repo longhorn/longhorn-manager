@@ -8,7 +8,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
-	"github.com/yasker/lm-rewrite/types"
+	"github.com/rancher/longhorn-manager/types"
 )
 
 type Backend interface {

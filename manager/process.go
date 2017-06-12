@@ -7,8 +7,8 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
-	"github.com/yasker/lm-rewrite/engineapi"
-	"github.com/yasker/lm-rewrite/types"
+	"github.com/rancher/longhorn-manager/engineapi"
+	"github.com/rancher/longhorn-manager/types"
 )
 
 var (

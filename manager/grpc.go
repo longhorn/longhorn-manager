@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
-	"github.com/yasker/lm-rewrite/manager/pb"
+	"github.com/rancher/longhorn-manager/manager/pb"
 )
 
 type GRPCManager struct {

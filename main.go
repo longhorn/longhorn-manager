@@ -9,13 +9,13 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/urfave/cli"
 
-	"github.com/yasker/lm-rewrite/api"
-	"github.com/yasker/lm-rewrite/engineapi"
-	"github.com/yasker/lm-rewrite/kvstore"
-	"github.com/yasker/lm-rewrite/manager"
-	"github.com/yasker/lm-rewrite/orchestrator"
-	"github.com/yasker/lm-rewrite/orchestrator/docker"
-	"github.com/yasker/lm-rewrite/types"
+	"github.com/rancher/longhorn-manager/api"
+	"github.com/rancher/longhorn-manager/engineapi"
+	"github.com/rancher/longhorn-manager/kvstore"
+	"github.com/rancher/longhorn-manager/manager"
+	"github.com/rancher/longhorn-manager/orchestrator"
+	"github.com/rancher/longhorn-manager/orchestrator/docker"
+	"github.com/rancher/longhorn-manager/types"
 )
 
 const (

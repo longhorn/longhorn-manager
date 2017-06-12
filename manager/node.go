@@ -7,10 +7,10 @@ import (
 
 	"github.com/Sirupsen/logrus"
 
-	"github.com/yasker/lm-rewrite/kvstore"
-	"github.com/yasker/lm-rewrite/scheduler"
-	"github.com/yasker/lm-rewrite/types"
-	"github.com/yasker/lm-rewrite/util"
+	"github.com/rancher/longhorn-manager/kvstore"
+	"github.com/rancher/longhorn-manager/scheduler"
+	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 )
 
 var (

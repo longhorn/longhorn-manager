@@ -1,7 +1,7 @@
 package orchestrator
 
 import (
-	"github.com/yasker/lm-rewrite/types"
+	"github.com/rancher/longhorn-manager/types"
 )
 
 type Request struct {

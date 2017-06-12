@@ -11,7 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 
-	"github.com/yasker/lm-rewrite/manager"
+	"github.com/rancher/longhorn-manager/manager"
 )
 
 type NodeIDFunc func(req *http.Request) (string, error)

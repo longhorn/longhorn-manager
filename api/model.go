@@ -7,9 +7,9 @@ import (
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 
-	"github.com/yasker/lm-rewrite/engineapi"
-	"github.com/yasker/lm-rewrite/manager"
-	"github.com/yasker/lm-rewrite/types"
+	"github.com/rancher/longhorn-manager/engineapi"
+	"github.com/rancher/longhorn-manager/manager"
+	"github.com/rancher/longhorn-manager/types"
 )
 
 type Volume struct {

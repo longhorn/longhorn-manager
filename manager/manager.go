@@ -7,12 +7,12 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
-	"github.com/yasker/lm-rewrite/engineapi"
-	"github.com/yasker/lm-rewrite/kvstore"
-	"github.com/yasker/lm-rewrite/orchestrator"
-	"github.com/yasker/lm-rewrite/scheduler"
-	"github.com/yasker/lm-rewrite/types"
-	"github.com/yasker/lm-rewrite/util"
+	"github.com/rancher/longhorn-manager/engineapi"
+	"github.com/rancher/longhorn-manager/kvstore"
+	"github.com/rancher/longhorn-manager/orchestrator"
+	"github.com/rancher/longhorn-manager/scheduler"
+	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 )
 
 type VolumeManager struct {
