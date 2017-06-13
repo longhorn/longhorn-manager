@@ -153,6 +153,17 @@ def test_recurring_snapshot(clients):  # NOQA
     snapshots = volume.snapshotList()
     assert len(snapshots) == 7
 
+    volume = volume.detach()
+
+    wait_for_volume_state(client, VOLUME_NAME, "detached")
+
+    client.delete(volume)
+
+    wait_for_volume_delete(client, VOLUME_NAME)
+
+    volumes = client.list_volume()
+    assert len(volumes) == 0
+
 
 def test_snapshot(clients):  # NOQA
     for host_id, client in clients.iteritems():
