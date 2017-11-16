@@ -138,7 +138,7 @@ func (v *ManagedVolume) jobReplicaCreate(req *orchestrator.Request) (err error) 
 		},
 	}
 
-	if err := v.m.kv.CreateVolumeReplica(replica); err != nil {
+	if err := v.m.ds.CreateVolumeReplica(replica); err != nil {
 		return err
 	}
 
