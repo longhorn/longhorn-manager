@@ -22,19 +22,19 @@ func (m *VolumeManager) RegisterNode(port int) error {
 	currentInfo := m.orch.GetCurrentNode()
 	currentInfo.ManagerPort = port
 
-	existInfo, err := m.kv.GetNode(currentInfo.ID)
+	existInfo, err := m.ds.GetNode(currentInfo.ID)
 	if err != nil {
 		return err
 	}
 	if existInfo == nil {
-		if err := m.kv.CreateNode(currentInfo); err != nil {
+		if err := m.ds.CreateNode(currentInfo); err != nil {
 			return err
 		}
 	} else {
 		if err := kvstore.UpdateKVIndex(currentInfo, existInfo); err != nil {
 			return err
 		}
-		if err := m.kv.UpdateNode(currentInfo); err != nil {
+		if err := m.ds.UpdateNode(currentInfo); err != nil {
 			return err
 		}
 	}
@@ -54,8 +54,8 @@ func (m *VolumeManager) nodeHealthCheckin() {
 	for {
 		//TODO If KVIndex of the node changed outside of this node, it will fail to update
 		info.LastCheckin = util.Now()
-		if err := m.kv.UpdateNode(info); err != nil {
-			logrus.Errorf("cannot update node checkin in kvstore: %v", err)
+		if err := m.ds.UpdateNode(info); err != nil {
+			logrus.Errorf("cannot update node checkin in data store: %v", err)
 		}
 		time.Sleep(time.Duration(NodeCheckinIntervalInSeconds) * time.Second)
 	}
@@ -66,7 +66,7 @@ func (m *VolumeManager) GetCurrentNode() *Node {
 }
 
 func (m *VolumeManager) GetNode(nodeID string) (*Node, error) {
-	info, err := m.kv.GetNode(nodeID)
+	info, err := m.ds.GetNode(nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func (m *VolumeManager) GetNode(nodeID string) (*Node, error) {
 
 func (m *VolumeManager) GetRandomNode() (*Node, error) {
 	var node *types.NodeInfo
-	nodes, err := m.kv.ListNodes()
+	nodes, err := m.ds.ListNodes()
 	if err != nil {
 		return nil, err
 	}
@@ -106,11 +106,11 @@ func (m *VolumeManager) GetRandomNode() (*Node, error) {
 }
 
 func (m *VolumeManager) ListNodes() (map[string]*types.NodeInfo, error) {
-	return m.kv.ListNodes()
+	return m.ds.ListNodes()
 }
 
 func (m *VolumeManager) ListSchedulingNodes() (map[string]*scheduler.Node, error) {
-	nodes, err := m.kv.ListNodes()
+	nodes, err := m.ds.ListNodes()
 	if err != nil {
 		return nil, err
 	}
