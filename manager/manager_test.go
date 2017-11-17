@@ -1,12 +1,12 @@
 package manager
 
 import (
-	"os"
 	"testing"
 	"time"
 
 	"github.com/Sirupsen/logrus"
 
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/kvstore"
 	"github.com/rancher/longhorn-manager/orchestrator"
@@ -18,9 +18,6 @@ import (
 )
 
 const (
-	TestPrefix    = "longhorn-manager-test"
-	EnvEtcdServer = "LONGHORN_MANAGER_TEST_ETCD_SERVER"
-
 	VolumeName                = "vol"
 	VolumeSize                = 10 * 1024 * 1024 * 1024
 	VolumeSizeString          = "10g"
@@ -38,7 +35,7 @@ const (
 func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
-	etcd       *kvstore.KVStore
+	ds         datastore.DataStore
 	engines    *engineapi.EngineSimulatorCollection
 	orchsims   []*orchsim.OrchSim
 	forwarder  *orchestrator.Forwarder
@@ -59,17 +56,13 @@ func (s *TestSuite) SetUpSuite(c *C) {
 func (s *TestSuite) SetUpTest(c *C) {
 	var err error
 
-	etcdIP := os.Getenv(EnvEtcdServer)
-	c.Assert(etcdIP, Not(Equals), "")
-
-	etcdBackend, err := kvstore.NewETCDBackend([]string{"http://" + etcdIP + ":2379"})
+	memoryBackend, err := kvstore.NewMemoryBackend()
 	c.Assert(err, IsNil)
 
-	etcd, err := kvstore.NewKVStore("/longhorn_manager_test", etcdBackend)
+	s.ds, err = kvstore.NewKVStore("/longhorn_manager_test", memoryBackend)
 	c.Assert(err, IsNil)
-	s.etcd = etcd
 
-	err = s.etcd.Nuclear("nuke key value store")
+	err = s.ds.Nuclear("nuke key value store")
 	c.Assert(err, IsNil)
 
 	s.engines = engineapi.NewEngineSimulatorCollection()
@@ -85,7 +78,7 @@ func (s *TestSuite) SetUpTest(c *C) {
 	s.forwarders = make([]*orchestrator.Forwarder, NodeCounts)
 	for i := 0; i < NodeCounts; i++ {
 		s.forwarders[i] = orchestrator.NewForwarder(s.orchsims[i])
-		s.managers[i], err = NewVolumeManager(s.etcd, s.forwarders[i], s.engines, s.rpc, ManagerPort+i)
+		s.managers[i], err = NewVolumeManager(s.ds, s.forwarders[i], s.engines, s.rpc, ManagerPort+i)
 		c.Assert(err, IsNil)
 		s.forwarders[i].SetLocator(s.managers[i])
 		s.forwarders[i].StartServer(s.managers[i].GetCurrentNode().GetOrchestratorAddress())
@@ -100,10 +93,8 @@ func (s *TestSuite) TearDownTest(c *C) {
 		s.forwarders[i].StopServer()
 		s.managers[i].Shutdown()
 	}
-	if s.etcd != nil {
-		err := s.etcd.Nuclear("nuke key value store")
-		c.Assert(err, IsNil)
-	}
+	err := s.ds.Nuclear("nuke key value store")
+	c.Assert(err, IsNil)
 }
 
 func (s *TestSuite) TestVolume(c *C) {
