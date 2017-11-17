@@ -7,8 +7,8 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
-	"github.com/rancher/longhorn-manager/kvstore"
 	"github.com/rancher/longhorn-manager/orchestrator"
 	"github.com/rancher/longhorn-manager/scheduler"
 	"github.com/rancher/longhorn-manager/types"
@@ -18,7 +18,7 @@ import (
 type VolumeManager struct {
 	currentNode *Node
 
-	kv        *kvstore.KVStore
+	ds        datastore.DataStore
 	orch      orchestrator.Orchestrator
 	engines   engineapi.EngineClientCollection
 	rpc       RPCManager
@@ -29,7 +29,7 @@ type VolumeManager struct {
 	managedVolumesMutex *sync.Mutex
 }
 
-func NewVolumeManager(kv *kvstore.KVStore,
+func NewVolumeManager(ds datastore.DataStore,
 	orch orchestrator.Orchestrator,
 	engines engineapi.EngineClientCollection,
 	rpc RPCManager, port int) (*VolumeManager, error) {
@@ -37,7 +37,7 @@ func NewVolumeManager(kv *kvstore.KVStore,
 		return nil, fmt.Errorf("invalid manager port")
 	}
 	manager := &VolumeManager{
-		kv:      kv,
+		ds:      ds,
 		orch:    orch,
 		engines: engines,
 		rpc:     rpc,
@@ -104,7 +104,7 @@ func (m *VolumeManager) VolumeAttach(request *VolumeAttachRequest) (err error) {
 		}
 	}()
 
-	volume, err := m.kv.GetVolume(request.Name)
+	volume, err := m.ds.GetVolume(request.Name)
 	if err != nil {
 		return err
 	}
@@ -123,7 +123,7 @@ func (m *VolumeManager) VolumeAttach(request *VolumeAttachRequest) (err error) {
 
 	volume.TargetNodeID = request.NodeID
 	volume.DesireState = types.VolumeStateHealthy
-	if err := m.kv.UpdateVolume(volume); err != nil {
+	if err := m.ds.UpdateVolume(volume); err != nil {
 		return err
 	}
 
@@ -140,7 +140,7 @@ func (m *VolumeManager) VolumeDetach(request *VolumeDetachRequest) (err error) {
 		}
 	}()
 
-	volume, err := m.kv.GetVolume(request.Name)
+	volume, err := m.ds.GetVolume(request.Name)
 	if err != nil {
 		return err
 	}
@@ -158,7 +158,7 @@ func (m *VolumeManager) VolumeDetach(request *VolumeDetachRequest) (err error) {
 	}
 
 	volume.DesireState = types.VolumeStateDetached
-	if err := m.kv.UpdateVolume(volume); err != nil {
+	if err := m.ds.UpdateVolume(volume); err != nil {
 		return err
 	}
 
@@ -175,7 +175,7 @@ func (m *VolumeManager) VolumeDelete(request *VolumeDeleteRequest) (err error) {
 		}
 	}()
 
-	volume, err := m.kv.GetVolume(request.Name)
+	volume, err := m.ds.GetVolume(request.Name)
 	if err != nil {
 		return err
 	}
@@ -189,7 +189,7 @@ func (m *VolumeManager) VolumeDelete(request *VolumeDeleteRequest) (err error) {
 	}
 
 	volume.DesireState = types.VolumeStateDeleted
-	if err := m.kv.UpdateVolume(volume); err != nil {
+	if err := m.ds.UpdateVolume(volume); err != nil {
 		return err
 	}
 
@@ -206,7 +206,7 @@ func (m *VolumeManager) VolumeSalvage(request *VolumeSalvageRequest) (err error)
 		}
 	}()
 
-	volume, err := m.kv.GetVolume(request.Name)
+	volume, err := m.ds.GetVolume(request.Name)
 	if err != nil {
 		return err
 	}
@@ -224,7 +224,7 @@ func (m *VolumeManager) VolumeSalvage(request *VolumeSalvageRequest) (err error)
 	}
 
 	for _, repName := range request.SalvageReplicaNames {
-		replica, err := m.kv.GetVolumeReplica(volume.Name, repName)
+		replica, err := m.ds.GetVolumeReplica(volume.Name, repName)
 		if err != nil {
 			return err
 		}
@@ -232,13 +232,13 @@ func (m *VolumeManager) VolumeSalvage(request *VolumeSalvageRequest) (err error)
 			return fmt.Errorf("replica %v is not bad", repName)
 		}
 		replica.FailedAt = ""
-		if err := m.kv.UpdateVolumeReplica(replica); err != nil {
+		if err := m.ds.UpdateVolumeReplica(replica); err != nil {
 			return err
 		}
 	}
 
 	volume.DesireState = types.VolumeStateDetached
-	if err := m.kv.UpdateVolume(volume); err != nil {
+	if err := m.ds.UpdateVolume(volume); err != nil {
 		return err
 	}
 
@@ -255,7 +255,7 @@ func (m *VolumeManager) VolumeRecurringUpdate(request *VolumeRecurringUpdateRequ
 		}
 	}()
 
-	volume, err := m.kv.GetVolume(request.Name)
+	volume, err := m.ds.GetVolume(request.Name)
 	if err != nil {
 		return err
 	}
@@ -269,7 +269,7 @@ func (m *VolumeManager) VolumeRecurringUpdate(request *VolumeRecurringUpdateRequ
 	}
 
 	volume.RecurringJobs = request.RecurringJobs
-	if err := m.kv.UpdateVolume(volume); err != nil {
+	if err := m.ds.UpdateVolume(volume); err != nil {
 		return err
 	}
 
@@ -284,19 +284,19 @@ func (m *VolumeManager) Shutdown() {
 }
 
 func (m *VolumeManager) VolumeList() (map[string]*types.VolumeInfo, error) {
-	return m.kv.ListVolumes()
+	return m.ds.ListVolumes()
 }
 
 func (m *VolumeManager) VolumeInfo(volumeName string) (*types.VolumeInfo, error) {
-	return m.kv.GetVolume(volumeName)
+	return m.ds.GetVolume(volumeName)
 }
 
 func (m *VolumeManager) VolumeControllerInfo(volumeName string) (*types.ControllerInfo, error) {
-	return m.kv.GetVolumeController(volumeName)
+	return m.ds.GetVolumeController(volumeName)
 }
 
 func (m *VolumeManager) VolumeReplicaList(volumeName string) (map[string]*types.ReplicaInfo, error) {
-	return m.kv.ListVolumeReplicas(volumeName)
+	return m.ds.ListVolumeReplicas(volumeName)
 }
 
 func (m *VolumeManager) ScheduleReplica(volume *types.VolumeInfo, nodeIDs map[string]struct{}) (string, error) {
@@ -316,23 +316,23 @@ func (m *VolumeManager) ScheduleReplica(volume *types.VolumeInfo, nodeIDs map[st
 }
 
 func (m *VolumeManager) SettingsGet() (*types.SettingsInfo, error) {
-	settings, err := m.kv.GetSettings()
+	settings, err := m.ds.GetSettings()
 	if err != nil {
 		return nil, err
 	}
 	if settings == nil {
 		settings = &types.SettingsInfo{}
-		err := m.kv.CreateSettings(settings)
+		err := m.ds.CreateSettings(settings)
 		if err != nil {
 			logrus.Warnf("fail to create settings")
 		}
-		settings, err = m.kv.GetSettings()
+		settings, err = m.ds.GetSettings()
 	}
 	return settings, err
 }
 
 func (m *VolumeManager) SettingsSet(settings *types.SettingsInfo) error {
-	return m.kv.UpdateSettings(settings)
+	return m.ds.UpdateSettings(settings)
 }
 
 func (m *VolumeManager) GetEngineClient(volumeName string) (engineapi.EngineClient, error) {

@@ -205,7 +205,7 @@ func (v *ManagedVolume) createController(startReplicas map[string]*types.Replica
 			VolumeName: v.Name,
 		},
 	}
-	if err := v.m.kv.CreateVolumeController(controller); err != nil {
+	if err := v.m.ds.CreateVolumeController(controller); err != nil {
 		return err
 	}
 	v.Controller = controller
@@ -235,7 +235,7 @@ func (v *ManagedVolume) deleteController() (err error) {
 	if err := v.m.orch.DeleteInstance(req); err != nil {
 		return err
 	}
-	if err := v.m.kv.DeleteVolumeController(v.Name); err != nil {
+	if err := v.m.ds.DeleteVolumeController(v.Name); err != nil {
 		return err
 	}
 	v.Controller = nil
@@ -314,7 +314,7 @@ func (v *ManagedVolume) stopRebuild() (err error) {
 }
 
 func (v *ManagedVolume) setReplica(replica *types.ReplicaInfo) error {
-	if err := v.m.kv.UpdateVolumeReplica(replica); err != nil {
+	if err := v.m.ds.UpdateVolumeReplica(replica); err != nil {
 		return err
 	}
 	v.Replicas[replica.Name] = replica
@@ -326,7 +326,7 @@ func (v *ManagedVolume) getReplica(name string) *types.ReplicaInfo {
 }
 
 func (v *ManagedVolume) rmReplica(name string) error {
-	if err := v.m.kv.DeleteVolumeReplica(v.Name, name); err != nil {
+	if err := v.m.ds.DeleteVolumeReplica(v.Name, name); err != nil {
 		return err
 	}
 	delete(v.Replicas, name)

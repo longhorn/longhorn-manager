@@ -48,6 +48,7 @@ type Docker struct {
 type Config struct {
 	EngineImage string
 	Network     string
+	LocalIP		string
 }
 
 func NewDockerOrchestrator(cfg *Config) (*Docker, error) {
@@ -69,11 +70,13 @@ func NewDockerOrchestrator(cfg *Config) (*Docker, error) {
 	if _, err := docker.cli.ContainerList(context.Background(), dTypes.ContainerListOptions{}); err != nil {
 		return nil, errors.Wrap(err, "cannot pass test to get container list")
 	}
-
-	if err = docker.updateNetwork(cfg.Network); err != nil {
-		return nil, errors.Wrapf(err, "fail to detect dedicated container network: %v", cfg.Network)
-	}
-
+	/*
+		if err = docker.updateNetwork(cfg.Network); err != nil {
+			return nil, errors.Wrapf(err, "fail to detect dedicated container network: %v", cfg.Network)
+		}
+	*/
+	docker.Network = cfg.Network
+	docker.IP = cfg.LocalIP
 	logrus.Infof("Detected network is %s, IP is %s", docker.Network, docker.IP)
 
 	if err := docker.updateCurrentNode(); err != nil {

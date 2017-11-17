@@ -58,7 +58,7 @@ func (m *VolumeManager) notifyVolume(volumeName string) (err error) {
 			}
 			if volume.TargetNodeID == currentNode.ID {
 				volume.NodeID = currentNode.ID
-				if err := m.kv.UpdateVolume(&volume.VolumeInfo); err != nil {
+				if err := m.ds.UpdateVolume(&volume.VolumeInfo); err != nil {
 					return err
 				}
 				break
@@ -195,7 +195,7 @@ func (v *ManagedVolume) RefreshState() (err error) {
 		}
 	}
 
-	if err := v.m.kv.UpdateVolume(&v.VolumeInfo); err != nil {
+	if err := v.m.ds.UpdateVolume(&v.VolumeInfo); err != nil {
 		return err
 	}
 	return nil
