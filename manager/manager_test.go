@@ -18,9 +18,8 @@ import (
 )
 
 const (
-	TestPrefix     = "longhorn-manager-test"
-	EnvEtcdServer  = "LONGHORN_MANAGER_TEST_ETCD_SERVER"
-	EnvEngineImage = "LONGHORN_ENGINE_IMAGE"
+	TestPrefix    = "longhorn-manager-test"
+	EnvEtcdServer = "LONGHORN_MANAGER_TEST_ETCD_SERVER"
 
 	VolumeName                = "vol"
 	VolumeSize                = 10 * 1024 * 1024 * 1024
@@ -48,8 +47,6 @@ type TestSuite struct {
 	rpcdb      *MockRPCDB
 	manager    *VolumeManager
 	managers   []*VolumeManager
-
-	engineImage string
 }
 
 var _ = Suite(&TestSuite{})
@@ -64,9 +61,6 @@ func (s *TestSuite) SetUpTest(c *C) {
 
 	etcdIP := os.Getenv(EnvEtcdServer)
 	c.Assert(etcdIP, Not(Equals), "")
-
-	s.engineImage = os.Getenv(EnvEngineImage)
-	c.Assert(s.engineImage, Not(Equals), "")
 
 	etcdBackend, err := kvstore.NewETCDBackend([]string{"http://" + etcdIP + ":2379"})
 	c.Assert(err, IsNil)
