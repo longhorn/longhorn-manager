@@ -1,7 +1,6 @@
 package kvstore
 
 import (
-	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -33,9 +32,7 @@ var (
 func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
-	etcd        *KVStore
-	memory      *KVStore
-	engineImage string
+	memory *KVStore
 }
 
 var _ = Suite(&TestSuite{})
@@ -49,45 +46,16 @@ func (s *TestSuite) SetUpTest(c *C) {
 	memory, err := NewKVStore("/longhorn", memoryBackend)
 	c.Assert(err, IsNil)
 	s.memory = memory
-
-	// Setup ETCD kv store
-	etcdIP := os.Getenv(EnvEtcdServer)
-	c.Assert(etcdIP, Not(Equals), "")
-
-	s.engineImage = os.Getenv(EnvEngineImage)
-	c.Assert(s.engineImage, Not(Equals), "")
-
-	etcdBackend, err := NewETCDBackend([]string{"http://" + etcdIP + ":2379"})
-	c.Assert(err, IsNil)
-
-	etcd, err := NewKVStore("/longhorn_kvstore_test", etcdBackend)
-	c.Assert(err, IsNil)
-	s.etcd = etcd
-
-	err = s.etcd.Nuclear("nuke key value store")
-	c.Assert(err, IsNil)
 }
 
 func (s *TestSuite) TearDownTest(c *C) {
-	if s.memory != nil {
-		err := s.memory.Nuclear("nuke key value store")
-		c.Assert(err, IsNil)
-	}
+	err := s.memory.Nuclear("nuke key value store")
+	c.Assert(err, IsNil)
 
-	if s.etcd != nil {
-		err := s.etcd.Nuclear("nuke key value store")
-		c.Assert(err, IsNil)
-	}
 }
 
 func (s *TestSuite) TestNode(c *C) {
-	if s.memory != nil {
-		s.testNode(c, s.memory)
-	}
-
-	if s.etcd != nil {
-		s.testNode(c, s.etcd)
-	}
+	s.testNode(c, s.memory)
 }
 
 func (s *TestSuite) testNode(c *C, st *KVStore) {
@@ -175,13 +143,7 @@ func (s *TestSuite) testNode(c *C, st *KVStore) {
 }
 
 func (s *TestSuite) TestSettings(c *C) {
-	if s.memory != nil {
-		s.testSettings(c, s.memory)
-	}
-
-	if s.etcd != nil {
-		s.testSettings(c, s.etcd)
-	}
+	s.testSettings(c, s.memory)
 }
 
 func (s *TestSuite) testSettings(c *C, st *KVStore) {
@@ -388,13 +350,7 @@ func (s *TestSuite) verifyReplicas(c *C, st *KVStore, volumeName string, replica
 }
 
 func (s *TestSuite) TestVolume(c *C) {
-	if s.memory != nil {
-		s.testVolume(c, s.memory)
-	}
-
-	if s.etcd != nil {
-		s.testVolume(c, s.etcd)
-	}
+	s.testVolume(c, s.memory)
 }
 
 func (s *TestSuite) testVolume(c *C, st *KVStore) {
