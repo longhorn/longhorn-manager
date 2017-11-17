@@ -59,8 +59,12 @@ function start_etcd {
 function cleanup_mgr_test {
     echo clean up test containers
     set +e
-    docker stop $(docker ps -f name=$TEST_PREFIX -a -q)
-    docker rm -v $(docker ps -f name=$TEST_PREFIX -a -q)
+    container_list=$(docker ps -f name=$TEST_PREFIX -a -q)
+    if [ "$container_list" != "" ]
+    then
+	docker stop $container_list
+	docker rm -v $container_list
+    fi
     set -e
 }
 
