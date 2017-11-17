@@ -34,6 +34,7 @@ func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
 	etcd        *KVStore
+	memory      *KVStore
 	engineImage string
 }
 
@@ -41,6 +42,13 @@ var _ = Suite(&TestSuite{})
 
 func (s *TestSuite) SetUpTest(c *C) {
 	var err error
+
+	memoryBackend, err := NewMemoryBackend()
+	c.Assert(err, IsNil)
+
+	memory, err := NewKVStore("/longhorn", memoryBackend)
+	c.Assert(err, IsNil)
+	s.memory = memory
 
 	// Setup ETCD kv store
 	etcdIP := os.Getenv(EnvEtcdServer)
@@ -61,6 +69,11 @@ func (s *TestSuite) SetUpTest(c *C) {
 }
 
 func (s *TestSuite) TearDownTest(c *C) {
+	if s.memory != nil {
+		err := s.memory.Nuclear("nuke key value store")
+		c.Assert(err, IsNil)
+	}
+
 	if s.etcd != nil {
 		err := s.etcd.Nuclear("nuke key value store")
 		c.Assert(err, IsNil)
@@ -68,6 +81,10 @@ func (s *TestSuite) TearDownTest(c *C) {
 }
 
 func (s *TestSuite) TestNode(c *C) {
+	if s.memory != nil {
+		s.testNode(c, s.memory)
+	}
+
 	if s.etcd != nil {
 		s.testNode(c, s.etcd)
 	}
@@ -158,6 +175,10 @@ func (s *TestSuite) testNode(c *C, st *KVStore) {
 }
 
 func (s *TestSuite) TestSettings(c *C) {
+	if s.memory != nil {
+		s.testSettings(c, s.memory)
+	}
+
 	if s.etcd != nil {
 		s.testSettings(c, s.etcd)
 	}
@@ -367,6 +388,10 @@ func (s *TestSuite) verifyReplicas(c *C, st *KVStore, volumeName string, replica
 }
 
 func (s *TestSuite) TestVolume(c *C) {
+	if s.memory != nil {
+		s.testVolume(c, s.memory)
+	}
+
 	if s.etcd != nil {
 		s.testVolume(c, s.etcd)
 	}
