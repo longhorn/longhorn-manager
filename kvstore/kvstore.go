@@ -153,7 +153,7 @@ func (s *KVStore) UpdateSettings(settings *types.SettingsInfo) error {
 
 func (s *KVStore) GetSettings() (*types.SettingsInfo, error) {
 	settings := &types.SettingsInfo{}
-	index, err := s.b.Get(s.settingsKey(), &settings)
+	index, err := s.b.Get(s.settingsKey(), settings)
 	if err != nil {
 		if s.b.IsNotFoundError(err) {
 			return nil, nil

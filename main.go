@@ -11,11 +11,12 @@ import (
 
 	"github.com/rancher/longhorn-manager/api"
 	"github.com/rancher/longhorn-manager/engineapi"
-	"github.com/rancher/longhorn-manager/kvstore"
 	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/orchestrator"
 	"github.com/rancher/longhorn-manager/orchestrator/docker"
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/crdstore"
+	"github.com/rancher/longhorn-manager/datastore"
 )
 
 const (
@@ -29,6 +30,7 @@ const (
 	FlagDockerNetwork = "docker-network"
 
 	EnvEngineImage = "LONGHORN_ENGINE_IMAGE"
+	FlagLocalIP		= "local-ip"
 )
 
 var VERSION = "0.2.0"
@@ -51,6 +53,11 @@ func main() {
 			Name:  FlagOrchestrator,
 			Usage: "Choose orchestrator: docker",
 			Value: "docker",
+		},
+
+		cli.StringFlag{
+			Name:   FlagLocalIP,
+			Usage:  "Specify Longhorn manage IP",
 		},
 
 		cli.StringFlag{
@@ -102,6 +109,7 @@ func RunManager(c *cli.Context) error {
 		cfg := &docker.Config{
 			EngineImage: engineImage,
 			Network:     c.String(FlagDockerNetwork),
+			LocalIP: 	 c.String(FlagLocalIP),
 		}
 		docker, err := docker.NewDockerOrchestrator(cfg)
 		if err != nil {
@@ -113,15 +121,11 @@ func RunManager(c *cli.Context) error {
 		return fmt.Errorf("invalid orchestrator %v", orchName)
 	}
 
-	etcdServers := c.StringSlice(FlagETCDServers)
-	if len(etcdServers) == 0 {
-		return fmt.Errorf("require %v", FlagETCDServers)
-	}
-	etcdBackend, err := kvstore.NewETCDBackend(etcdServers)
-	if err != nil {
-		return err
-	}
-	etcd, err := kvstore.NewKVStore("/longhorn_manager_test", etcdBackend)
+	var ds datastore.DataStore
+
+	ds, err = crdstore.NewCRDStore("/longhorn_manager_test", "")
+
+
 	if err != nil {
 		return err
 	}
@@ -129,7 +133,7 @@ func RunManager(c *cli.Context) error {
 	engines := &engineapi.EngineCollection{}
 	rpc := manager.NewGRPCManager()
 
-	m, err := manager.NewVolumeManager(etcd, orch, engines, rpc, types.DefaultManagerPort)
+	m, err := manager.NewVolumeManager(ds, orch, engines, rpc, types.DefaultManagerPort)
 	if err != nil {
 		return err
 	}
