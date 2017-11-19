@@ -5,10 +5,8 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-
 	"github.com/Sirupsen/logrus"
 	"github.com/urfave/cli"
-
 	"github.com/rancher/longhorn-manager/api"
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/manager"
@@ -17,6 +15,8 @@ import (
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/crdstore"
 	"github.com/rancher/longhorn-manager/datastore"
+	"github.com/rancher/longhorn-manager/orchestrator/kubernetes"
+	"github.com/rancher/longhorn-manager/kvstore"
 )
 
 const (
@@ -53,11 +53,6 @@ func main() {
 			Name:  FlagOrchestrator,
 			Usage: "Choose orchestrator: docker",
 			Value: "docker",
-		},
-
-		cli.StringFlag{
-			Name:   FlagLocalIP,
-			Usage:  "Specify Longhorn manage IP",
 		},
 
 		cli.StringFlag{
@@ -103,33 +98,50 @@ func RunManager(c *cli.Context) error {
 	if engineImage == "" {
 		return fmt.Errorf("require %v", FlagEngineImage)
 	}
-
+	var ds datastore.DataStore
 	orchName := c.String("orchestrator")
 	if orchName == "docker" {
 		cfg := &docker.Config{
 			EngineImage: engineImage,
 			Network:     c.String(FlagDockerNetwork),
-			LocalIP: 	 c.String(FlagLocalIP),
 		}
 		docker, err := docker.NewDockerOrchestrator(cfg)
 		if err != nil {
 			return err
 		}
+
+		etcdServers := c.StringSlice(FlagETCDServers)
+		if len(etcdServers) == 0 {
+			return fmt.Errorf("require %v", FlagETCDServers)
+		}
+		etcdBackend, err := kvstore.NewETCDBackend(etcdServers)
+		if err != nil {
+			return err
+		}
+		ds, err = kvstore.NewKVStore("/longhorn_manager_test", etcdBackend)
+		if err != nil {
+			return err
+		}
 		forwarder = orchestrator.NewForwarder(docker)
-		orch = forwarder
+	} else if orchName == "kubernetes" {
+		cfg := &kubernetes.Config{
+			EngineImage: engineImage,
+		}
+		kuber, err := kubernetes.NewKuberOrchestrator(cfg)
+		if err != nil {
+			return err
+		}
+
+		ds, err = crdstore.NewCRDStore("/longhorn_manager_test", "")
+		if err != nil {
+			return err
+		}
+		forwarder = orchestrator.NewForwarder(kuber)
 	} else {
 		return fmt.Errorf("invalid orchestrator %v", orchName)
 	}
 
-	var ds datastore.DataStore
-
-	ds, err = crdstore.NewCRDStore("/longhorn_manager_test", "")
-
-
-	if err != nil {
-		return err
-	}
-
+	orch = forwarder
 	engines := &engineapi.EngineCollection{}
 	rpc := manager.NewGRPCManager()
 
