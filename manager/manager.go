@@ -374,3 +374,139 @@ func (m *VolumeManager) JobList(volumeName string) (map[string]Job, error) {
 	}
 	return volume.ListJobsInfo(), nil
 }
+
+
+
+func (m * VolumeManager)CRDVolumeDelete( r *types.VolumeInfo) (err error) {
+	defer
+		func() {
+			if err != nil {
+				err = errors.Wrap(err, "unable to delete volume")
+			}
+		}()
+
+	if r.DesireState == types.VolumeStateDeleted {
+		return nil
+	}
+
+	node, err := m.GetNode(r.TargetNodeID)
+	if err != nil {
+		return err
+	}
+
+	r.DesireState = types.VolumeStateDeleted
+	if err := m.NewVolume(r); err != nil {
+		return err
+	}
+
+	if err := node.Notify(r.Name); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *VolumeManager)CRDVolumeAttachDetach(oldVolume *types.VolumeInfo, newVolume *types.VolumeInfo, index uint64) (err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrap(err, "unable to attach volume")
+		}
+	}()
+
+	//Attach
+	if oldVolume.State == types.VolumeStateDetached && newVolume.DesireState == types.VolumeStateHealthy {
+		node, err := m.GetNode(newVolume.TargetNodeID)
+		if err != nil || node == nil {
+			return err
+		}
+
+		oldVolume.TargetNodeID = newVolume.TargetNodeID
+		oldVolume.DesireState = types.VolumeStateHealthy
+		oldVolume.KVIndex = index
+
+		if err := m.ds.UpdateVolume(oldVolume); err != nil {
+			return err
+		}
+		if err := node.Notify(oldVolume.Name); err != nil {
+			return err
+		}
+		return nil
+	}
+
+
+	//Detach
+	if (oldVolume.State == types.VolumeStateHealthy || oldVolume.State == types.VolumeStateDegraded) &&
+		newVolume.DesireState == types.VolumeStateDetached {
+
+		node, err := m.GetNode(oldVolume.TargetNodeID)
+		if err != nil || node == nil {
+			return err
+		}
+
+		oldVolume.DesireState = types.VolumeStateDetached
+		oldVolume.KVIndex = index
+
+		if err := m.ds.UpdateVolume(oldVolume); err != nil {
+			return err
+		}
+
+		if err := node.Notify(oldVolume.Name); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	fmt.Errorf("Warnning: can't detach or attach")
+	return nil
+}
+
+func (m *VolumeManager) CRDVolumeCreate(request *types.VolumeInfo, metaName string) (err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrap(err, "unable to create volume")
+		}
+	}()
+
+	oldVolume, err := m.ds.GetVolume(metaName)
+	if err != nil || oldVolume == nil {
+		return err
+	}
+
+	size, err := util.ConvertSize(request.Size)
+	if err != nil {
+		return err
+	}
+
+	// make it random node's responsibility
+	node, err := m.GetRandomNode()
+	if err != nil {
+		return err
+	}
+	newVolume := &types.VolumeInfo{
+		Name:                metaName,
+		Size:                size,
+		BaseImage:           request.BaseImage,
+		FromBackup:          request.FromBackup,
+		NumberOfReplicas:    request.NumberOfReplicas,
+		StaleReplicaTimeout: request.StaleReplicaTimeout,
+
+		Created:      util.Now(),
+		TargetNodeID: node.ID,
+		State:        types.VolumeStateCreated,
+		DesireState:  types.VolumeStateDetached,
+		KVMetadata: types.KVMetadata{
+			KVIndex: oldVolume.KVIndex,
+		},
+	}
+
+
+	if err := m.ds.UpdateVolume(newVolume); err != nil {
+		return err
+	}
+
+	if err := node.Notify(newVolume.Name); err != nil {
+		//Don't rollback here, target node is still possible to pickup
+		//the volume. User can call delete explicitly for the volume
+		return err
+	}
+	return nil
+}

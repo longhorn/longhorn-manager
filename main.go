@@ -5,17 +5,19 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-
 	"github.com/Sirupsen/logrus"
 	"github.com/urfave/cli"
-
 	"github.com/rancher/longhorn-manager/api"
 	"github.com/rancher/longhorn-manager/engineapi"
-	"github.com/rancher/longhorn-manager/kvstore"
 	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/orchestrator"
 	"github.com/rancher/longhorn-manager/orchestrator/docker"
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/crdstore"
+	"github.com/rancher/longhorn-manager/datastore"
+	"github.com/rancher/longhorn-manager/orchestrator/kubernetes"
+	"github.com/rancher/longhorn-manager/kvstore"
+	"github.com/rancher/longhorn-manager/crd/controller"
 )
 
 const (
@@ -29,6 +31,7 @@ const (
 	FlagDockerNetwork = "docker-network"
 
 	EnvEngineImage = "LONGHORN_ENGINE_IMAGE"
+	FlagLocalIP		= "local-ip"
 )
 
 var VERSION = "0.2.0"
@@ -83,6 +86,8 @@ func main() {
 
 func RunManager(c *cli.Context) error {
 	var (
+		ds        datastore.DataStore
+		crdStore  *crdstore.CRDStore
 		orch      orchestrator.Orchestrator
 		forwarder *orchestrator.Forwarder
 		err       error
@@ -107,31 +112,51 @@ func RunManager(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
+
+		etcdServers := c.StringSlice(FlagETCDServers)
+		if len(etcdServers) == 0 {
+			return fmt.Errorf("require %v", FlagETCDServers)
+		}
+		etcdBackend, err := kvstore.NewETCDBackend(etcdServers)
+		if err != nil {
+			return err
+		}
+		ds, err = kvstore.NewKVStore("/longhorn_manager_test", etcdBackend)
+		if err != nil {
+			return err
+		}
 		forwarder = orchestrator.NewForwarder(docker)
-		orch = forwarder
+	} else if orchName == "kubernetes" {
+		cfg := &kubernetes.Config{
+			EngineImage: engineImage,
+		}
+		kuber, err := kubernetes.NewKuberOrchestrator(cfg)
+		if err != nil {
+			return err
+		}
+
+		crdStore, err = crdstore.NewCRDStore("/longhorn_manager_test", "")
+		if err != nil {
+			return err
+		}
+		ds = crdStore
+		forwarder = orchestrator.NewForwarder(kuber)
+
 	} else {
 		return fmt.Errorf("invalid orchestrator %v", orchName)
 	}
 
-	etcdServers := c.StringSlice(FlagETCDServers)
-	if len(etcdServers) == 0 {
-		return fmt.Errorf("require %v", FlagETCDServers)
-	}
-	etcdBackend, err := kvstore.NewETCDBackend(etcdServers)
-	if err != nil {
-		return err
-	}
-	etcd, err := kvstore.NewKVStore("/longhorn_manager_test", etcdBackend)
-	if err != nil {
-		return err
-	}
-
+	orch = forwarder
 	engines := &engineapi.EngineCollection{}
 	rpc := manager.NewGRPCManager()
 
-	m, err := manager.NewVolumeManager(etcd, orch, engines, rpc, types.DefaultManagerPort)
+	m, err := manager.NewVolumeManager(ds, orch, engines, rpc, types.DefaultManagerPort)
 	if err != nil {
 		return err
+	}
+
+	if orchName == "kubernetes" {
+		controller.RegisterVolumeController(m, crdStore)
 	}
 
 	if forwarder != nil {
