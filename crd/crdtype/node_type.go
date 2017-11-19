@@ -13,7 +13,8 @@ const (
 	NodeShortname	   string = "cn"
 )
 
-
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type Crdnode struct {
 	meta_v1.TypeMeta   `json:",inline"`
 	meta_v1.ObjectMeta `json:"metadata"`
@@ -30,7 +31,7 @@ type CrdNodeSpec struct {
 	LastCheckin      string    `json:"lastCheckin"`
 }
 
-
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type CrdnodeList struct {
 	meta_v1.TypeMeta             `json:",inline"`
 	meta_v1.ListMeta             `json:"metadata"`

@@ -12,7 +12,8 @@ const (
 	SettingShortname	   string = "crs"
 )
 
-
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type Crdsetting struct {
 	meta_v1.TypeMeta   `json:",inline"`
 	meta_v1.ObjectMeta `json:"metadata"`
@@ -28,7 +29,7 @@ type CrdSettingSpec struct {
 
 }
 
-
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type CrdsettingList struct {
 	meta_v1.TypeMeta             `json:",inline"`
 	meta_v1.ListMeta             `json:"metadata"`

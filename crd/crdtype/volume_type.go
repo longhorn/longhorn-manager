@@ -14,7 +14,8 @@ const (
 	VolumeShortname	   string = "cv"
 )
 
-
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type Crdvolume struct {
 	meta_v1.TypeMeta   `json:",inline"`
 	meta_v1.ObjectMeta `json:"metadata"`
@@ -46,7 +47,7 @@ type CrdVolumeSpec struct {
 	types.KVMetadata
 }
 
-
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type CrdvolumeList struct {
 	meta_v1.TypeMeta             `json:",inline"`
 	meta_v1.ListMeta             `json:"metadata"`

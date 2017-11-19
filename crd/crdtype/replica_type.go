@@ -11,7 +11,8 @@ const (
 	ReplicaFullName    string = ReplicaPlural + "." + CRDGroup
 	ReplicaShortname	   string = "cr"
 )
-
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type Crdreplica struct {
 	meta_v1.TypeMeta   `json:",inline"`
 	meta_v1.ObjectMeta `json:"metadata"`
@@ -24,7 +25,7 @@ type CrdReplicasSpec struct {
 	FailedAt string
 }
 
-
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type CrdreplicaList struct {
 	meta_v1.TypeMeta             `json:",inline"`
 	meta_v1.ListMeta             `json:"metadata"`

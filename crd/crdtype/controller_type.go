@@ -11,7 +11,8 @@ const (
 	ControllerFullName    string = ControllerPlural + "." + CRDGroup
 	ControllerShortname	   string = "cc"
 )
-
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type Crdcontroller struct {
 	meta_v1.TypeMeta   `json:",inline"`
 	meta_v1.ObjectMeta `json:"metadata"`
@@ -22,7 +23,7 @@ type CrdControllerSpec struct {
 	types.InstanceInfo
 
 }
-
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type CrdcontrollerList struct {
 	meta_v1.TypeMeta             `json:",inline"`
 	meta_v1.ListMeta             `json:"metadata"`
