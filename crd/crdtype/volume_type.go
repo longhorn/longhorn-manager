@@ -19,8 +19,8 @@ type Crdvolume struct {
 	meta_v1.TypeMeta   `json:",inline"`
 	meta_v1.ObjectMeta `json:"metadata"`
 	Spec               CrdVolumeSpec   `json:"spec"`
+	OperateFromKubectl 	bool   `json:"operatefromkubectl, bool, omitempyt"`
 }
-
 
 
 type CrdVolumeSpec struct {

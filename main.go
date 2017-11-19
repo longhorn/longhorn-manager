@@ -17,6 +17,7 @@ import (
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/orchestrator/kubernetes"
 	"github.com/rancher/longhorn-manager/kvstore"
+	"github.com/rancher/longhorn-manager/crd/controller"
 )
 
 const (
@@ -85,6 +86,8 @@ func main() {
 
 func RunManager(c *cli.Context) error {
 	var (
+		ds        datastore.DataStore
+		crdStore  *crdstore.CRDStore
 		orch      orchestrator.Orchestrator
 		forwarder *orchestrator.Forwarder
 		err       error
@@ -98,7 +101,7 @@ func RunManager(c *cli.Context) error {
 	if engineImage == "" {
 		return fmt.Errorf("require %v", FlagEngineImage)
 	}
-	var ds datastore.DataStore
+
 	orchName := c.String("orchestrator")
 	if orchName == "docker" {
 		cfg := &docker.Config{
@@ -132,11 +135,13 @@ func RunManager(c *cli.Context) error {
 			return err
 		}
 
-		ds, err = crdstore.NewCRDStore("/longhorn_manager_test", "")
+		crdStore, err = crdstore.NewCRDStore("/longhorn_manager_test", "")
 		if err != nil {
 			return err
 		}
+		ds = crdStore
 		forwarder = orchestrator.NewForwarder(kuber)
+
 	} else {
 		return fmt.Errorf("invalid orchestrator %v", orchName)
 	}
@@ -148,6 +153,10 @@ func RunManager(c *cli.Context) error {
 	m, err := manager.NewVolumeManager(ds, orch, engines, rpc, types.DefaultManagerPort)
 	if err != nil {
 		return err
+	}
+
+	if orchName == "kubernetes" {
+		controller.RegisterVolumeController(m, crdStore)
 	}
 
 	if forwarder != nil {
