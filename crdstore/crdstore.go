@@ -28,7 +28,6 @@ const (
 	keySettings = "settings"
 )
 
-// note
 func GetClientConfig(kubeconfig string) (*rest.Config, error) {
 	if kubeconfig != "" {
 		return clientcmd.BuildConfigFromFlags("", kubeconfig)

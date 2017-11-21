@@ -11,7 +11,7 @@ import (
 type CrdReplica struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec               ReplicasSpec `json:"spec"`
+	Spec              ReplicasSpec `json:"spec"`
 }
 
 type ReplicasSpec struct {
@@ -24,7 +24,7 @@ type ReplicasSpec struct {
 type CrdReplicaList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
-	Items            []CrdReplica `json:"items"`
+	Items           []CrdReplica `json:"items"`
 }
 
 func LhReplicas2CRDReplicas(rinfo *types.ReplicaInfo, crdreplica *CrdReplica, key string) {

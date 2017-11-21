@@ -19,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
-
 )
 
 func WaitCRDCreateDone(clientset apiextcs.Interface, FullCrdName string) error {
@@ -80,7 +79,7 @@ func NewClient(cfg *rest.Config) (*rest.RESTClient, *runtime.Scheme, error) {
 	return client, scheme, nil
 }
 
-// Create the CRD resource, ignore error if it already exists
+// CreateCRD creates the CRD resource, ignore error if it already exists
 func CreateCRD(clientset apiextcs.Interface) error {
 
 	for _, crdType := range crdtype.CrdMap {

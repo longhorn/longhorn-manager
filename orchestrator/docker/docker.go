@@ -17,14 +17,14 @@ import (
 	dContainer "github.com/docker/docker/api/types/container"
 	dCli "github.com/docker/docker/client"
 
-	kCli "k8s.io/client-go/kubernetes"
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiv1 "k8s.io/api/core/v1"
+	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kCli "k8s.io/client-go/kubernetes"
 
+	"github.com/rancher/longhorn-manager/crdstore"
 	"github.com/rancher/longhorn-manager/orchestrator"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
-	"github.com/rancher/longhorn-manager/crdstore"
 )
 
 const (

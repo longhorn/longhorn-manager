@@ -11,7 +11,7 @@ import (
 type CrdSetting struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec               SettingSpec `json:"spec"`
+	Spec              SettingSpec `json:"spec"`
 }
 
 type SettingSpec struct {
@@ -24,7 +24,7 @@ type SettingSpec struct {
 type CrdSettingList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
-	Items            []CrdSetting `json:"items"`
+	Items           []CrdSetting `json:"items"`
 }
 
 func LhSetting2CRDSetting(sinfo *types.SettingsInfo, crdsetting *CrdSetting, key string) {

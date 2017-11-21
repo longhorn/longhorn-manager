@@ -9,10 +9,10 @@ import (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type CrdVolume struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
+	metav1.TypeMeta    `json:",inline"`
+	metav1.ObjectMeta  `json:"metadata"`
 	Spec               VolumeSpec `json:"spec"`
-	OperateFromKubectl bool          `json:"operatefromkubectl, bool, omitempyt"`
+	OperateFromKubectl bool       `json:"operatefromkubectl, bool, omitempyt"`
 }
 
 type VolumeSpec struct {
@@ -42,7 +42,7 @@ type VolumeSpec struct {
 type CrdVolumeList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
-	Items            []CrdVolume `json:"items"`
+	Items           []CrdVolume `json:"items"`
 }
 
 func LhVoulme2CRDVolume(vinfo *types.VolumeInfo, crdvolume *CrdVolume) {

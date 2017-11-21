@@ -11,7 +11,7 @@ import (
 type CrdNode struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec               NodeSpec `json:"spec"`
+	Spec              NodeSpec `json:"spec"`
 }
 
 type NodeSpec struct {
@@ -28,7 +28,7 @@ type NodeSpec struct {
 type CrdNodeList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
-	Items            []CrdNode `json:"items"`
+	Items           []CrdNode `json:"items"`
 }
 
 func LhNode2CRDNode(vinfo *types.NodeInfo, crdnode *CrdNode, key string) {

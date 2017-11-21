@@ -10,12 +10,12 @@ import (
 	"github.com/urfave/cli"
 
 	"github.com/rancher/longhorn-manager/api"
+	"github.com/rancher/longhorn-manager/crdstore"
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/orchestrator"
 	"github.com/rancher/longhorn-manager/orchestrator/docker"
 	"github.com/rancher/longhorn-manager/types"
-	"github.com/rancher/longhorn-manager/crdstore"
 )
 
 const (
