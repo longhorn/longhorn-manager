@@ -11,7 +11,9 @@ import (
 
 	"github.com/rancher/longhorn-manager/api"
 	"github.com/rancher/longhorn-manager/crdstore"
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
+	"github.com/rancher/longhorn-manager/kvstore"
 	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/orchestrator"
 	"github.com/rancher/longhorn-manager/orchestrator/docker"
@@ -86,6 +88,7 @@ func RunManager(c *cli.Context) error {
 		orch      orchestrator.Orchestrator
 		forwarder *orchestrator.Forwarder
 		err       error
+		ds        datastore.DataStore
 	)
 
 	if c.Bool("debug") {
@@ -114,9 +117,24 @@ func RunManager(c *cli.Context) error {
 		return fmt.Errorf("invalid orchestrator %v", orchName)
 	}
 
-	ds, err := crdstore.NewCRDStore("/longhorn_manager_test", "")
-	if err != nil {
-		return err
+	etcdServers := c.StringSlice(FlagETCDServers)
+	if len(etcdServers) == 0 {
+		// Fall back to CRD
+		crd, err := crdstore.NewCRDStore("/longhorn_manager_test", "")
+		if err != nil {
+			return err
+		}
+		ds = crd
+	} else {
+		etcdBackend, err := kvstore.NewETCDBackend(etcdServers)
+		if err != nil {
+			return err
+		}
+		etcd, err := kvstore.NewKVStore("/longhorn_manager_test", etcdBackend)
+		if err != nil {
+			return err
+		}
+		ds = etcd
 	}
 
 	engines := &engineapi.EngineCollection{}

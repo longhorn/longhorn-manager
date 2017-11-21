@@ -114,12 +114,44 @@ func (d *Docker) getCurrentNodePod() (*apiv1.Pod, error) {
 }
 
 func (d *Docker) updateNetwork(userSpecifiedNetwork string) error {
-	pod, err := d.getCurrentNodePod()
+	containerID := os.Getenv("HOSTNAME")
+
+	inspectJSON, err := d.cli.ContainerInspect(context.Background(), containerID)
 	if err != nil {
-		return err
+		logrus.Warnf("Not inside Docker container? Trying Kubernetes")
+		// K8s container detection
+		pod, err := d.getCurrentNodePod()
+		if err != nil {
+			return errors.Wrapf(err, "failing back to k8s failed, cannot find network")
+		}
+		d.IP = pod.Status.PodIP
+		d.Network = "bridge"
+		return nil
 	}
-	d.IP = pod.Status.PodIP
-	d.Network = "bridge"
+	networks := inspectJSON.NetworkSettings.Networks
+	if len(networks) == 0 {
+		return errors.Errorf("cannot find manager container's network")
+	}
+	if userSpecifiedNetwork != "" {
+		net := networks[userSpecifiedNetwork]
+		if net == nil {
+			return errors.Errorf("user specified network %v doesn't exist", userSpecifiedNetwork)
+		}
+		d.Network = userSpecifiedNetwork
+		d.IP = net.IPAddress
+		return nil
+	}
+	if len(networks) > 1 {
+		return errors.Errorf("found multiple networks for container %v, "+
+			"unable to decide which one to use, "+
+			"please specify: %+v", containerID, networks)
+	}
+	// only one entry here
+	for k, v := range networks {
+		d.Network = k
+		d.IP = v.IPAddress
+	}
+
 	return nil
 }
 
