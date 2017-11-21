@@ -11,11 +11,11 @@ import (
 
 	"github.com/rancher/longhorn-manager/api"
 	"github.com/rancher/longhorn-manager/engineapi"
-	"github.com/rancher/longhorn-manager/kvstore"
 	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/orchestrator"
 	"github.com/rancher/longhorn-manager/orchestrator/docker"
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/crdstore"
 )
 
 const (
@@ -107,21 +107,14 @@ func RunManager(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
+
 		forwarder = orchestrator.NewForwarder(docker)
 		orch = forwarder
 	} else {
 		return fmt.Errorf("invalid orchestrator %v", orchName)
 	}
 
-	etcdServers := c.StringSlice(FlagETCDServers)
-	if len(etcdServers) == 0 {
-		return fmt.Errorf("require %v", FlagETCDServers)
-	}
-	etcdBackend, err := kvstore.NewETCDBackend(etcdServers)
-	if err != nil {
-		return err
-	}
-	etcd, err := kvstore.NewKVStore("/longhorn_manager_test", etcdBackend)
+	ds, err := crdstore.NewCRDStore("/longhorn_manager_test", "")
 	if err != nil {
 		return err
 	}
@@ -129,7 +122,7 @@ func RunManager(c *cli.Context) error {
 	engines := &engineapi.EngineCollection{}
 	rpc := manager.NewGRPCManager()
 
-	m, err := manager.NewVolumeManager(etcd, orch, engines, rpc, types.DefaultManagerPort)
+	m, err := manager.NewVolumeManager(ds, orch, engines, rpc, types.DefaultManagerPort)
 	if err != nil {
 		return err
 	}
