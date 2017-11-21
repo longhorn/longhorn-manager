@@ -17,9 +17,14 @@ import (
 	dContainer "github.com/docker/docker/api/types/container"
 	dCli "github.com/docker/docker/client"
 
+	kCli "k8s.io/client-go/kubernetes"
+	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apiv1 "k8s.io/api/core/v1"
+
 	"github.com/rancher/longhorn-manager/orchestrator"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
+	"github.com/rancher/longhorn-manager/crdstore"
 )
 
 const (
@@ -84,36 +89,37 @@ func NewDockerOrchestrator(cfg *Config) (*Docker, error) {
 	return docker, nil
 }
 
-func (d *Docker) updateNetwork(userSpecifiedNetwork string) error {
-	containerID := os.Getenv("HOSTNAME")
-
-	inspectJSON, err := d.cli.ContainerInspect(context.Background(), containerID)
+func (d *Docker) getCurrentNodePod() (*apiv1.Pod, error) {
+	podName, err := os.Hostname()
 	if err != nil {
-		return errors.Errorf("cannot find manager container, may not be running inside container")
+		return nil, err
 	}
-	networks := inspectJSON.NetworkSettings.Networks
-	if len(networks) == 0 {
-		return errors.Errorf("cannot find manager container's network")
+	config, err := crdstore.GetClientConfig("")
+	if err != nil {
+		panic(err.Error())
 	}
-	if userSpecifiedNetwork != "" {
-		net := networks[userSpecifiedNetwork]
-		if net == nil {
-			return errors.Errorf("user specified network %v doesn't exist", userSpecifiedNetwork)
-		}
-		d.Network = userSpecifiedNetwork
-		d.IP = net.IPAddress
-		return nil
+
+	cli, err := kCli.NewForConfig(config)
+	if err != nil {
+		return nil, errors.Wrap(err, "cannot connect to kubernetes")
+
 	}
-	if len(networks) > 1 {
-		return errors.Errorf("found multiple networks for container %v, "+
-			"unable to decide which one to use, "+
-			"please specify: %+v", containerID, networks)
+
+	pod, err := cli.CoreV1().Pods(apiv1.NamespaceDefault).Get(podName, meta_v1.GetOptions{})
+	if err != nil {
+		return nil, err
 	}
-	// only one entry here
-	for k, v := range networks {
-		d.Network = k
-		d.IP = v.IPAddress
+
+	return pod, nil
+}
+
+func (d *Docker) updateNetwork(userSpecifiedNetwork string) error {
+	pod, err := d.getCurrentNodePod()
+	if err != nil {
+		return err
 	}
+	d.IP = pod.Status.PodIP
+	d.Network = "bridge"
 	return nil
 }
 
