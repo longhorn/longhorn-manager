@@ -17,6 +17,7 @@ import (
 	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/orchestrator"
 	"github.com/rancher/longhorn-manager/orchestrator/docker"
+	"github.com/rancher/longhorn-manager/orchestrator/kubernetes"
 	"github.com/rancher/longhorn-manager/types"
 )
 
@@ -106,16 +107,24 @@ func RunManager(c *cli.Context) error {
 			EngineImage: engineImage,
 			Network:     c.String(FlagDockerNetwork),
 		}
-		docker, err := docker.NewDockerOrchestrator(cfg)
+		orch, err = docker.NewDockerOrchestrator(cfg)
 		if err != nil {
 			return err
 		}
-
-		forwarder = orchestrator.NewForwarder(docker)
-		orch = forwarder
+	} else if orchName == "kubernetes" {
+		cfg := &kubernetes.Config{
+			EngineImage: engineImage,
+		}
+		orch, err = kubernetes.NewKuberOrchestrator(cfg)
+		if err != nil {
+			return err
+		}
 	} else {
 		return fmt.Errorf("invalid orchestrator %v", orchName)
 	}
+
+	forwarder = orchestrator.NewForwarder(orch)
+	orch = forwarder
 
 	etcdServers := c.StringSlice(FlagETCDServers)
 	if len(etcdServers) == 0 {
