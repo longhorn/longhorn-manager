@@ -12,7 +12,11 @@ echo Running: go vet
 go vet ${PACKAGES}
 echo Running: golint
 for i in ${PACKAGES}; do
-    if [ -n "$(golint $i | grep -v 'should have comment.*or be unexported' | grep -v 'just return error instead.' | tee /dev/stderr)" ]; then
+    if [ -n "$(golint $i | grep -v 'should have comment.*or be unexported' | \
+	    grep -v 'just return error instead.' | \
+	    grep -v 'comment on exported type' | \
+	    grep -v generated | \
+	    tee /dev/stderr)" ]; then
         failed=true
     fi
 done

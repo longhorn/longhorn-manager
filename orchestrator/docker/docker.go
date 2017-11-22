@@ -17,6 +17,11 @@ import (
 	dContainer "github.com/docker/docker/api/types/container"
 	dCli "github.com/docker/docker/client"
 
+	apiv1 "k8s.io/api/core/v1"
+	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kCli "k8s.io/client-go/kubernetes"
+
+	"github.com/rancher/longhorn-manager/crdstore"
 	"github.com/rancher/longhorn-manager/orchestrator"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
@@ -84,12 +89,44 @@ func NewDockerOrchestrator(cfg *Config) (*Docker, error) {
 	return docker, nil
 }
 
+func (d *Docker) getCurrentNodePod() (*apiv1.Pod, error) {
+	podName, err := os.Hostname()
+	if err != nil {
+		return nil, err
+	}
+	config, err := crdstore.GetClientConfig("")
+	if err != nil {
+		panic(err.Error())
+	}
+
+	cli, err := kCli.NewForConfig(config)
+	if err != nil {
+		return nil, errors.Wrap(err, "cannot connect to kubernetes")
+
+	}
+
+	pod, err := cli.CoreV1().Pods(apiv1.NamespaceDefault).Get(podName, meta_v1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return pod, nil
+}
+
 func (d *Docker) updateNetwork(userSpecifiedNetwork string) error {
 	containerID := os.Getenv("HOSTNAME")
 
 	inspectJSON, err := d.cli.ContainerInspect(context.Background(), containerID)
 	if err != nil {
-		return errors.Errorf("cannot find manager container, may not be running inside container")
+		logrus.Warnf("Not inside Docker container? Trying Kubernetes")
+		// K8s container detection
+		pod, err := d.getCurrentNodePod()
+		if err != nil {
+			return errors.Wrapf(err, "failing back to k8s failed, cannot find network")
+		}
+		d.IP = pod.Status.PodIP
+		d.Network = "bridge"
+		return nil
 	}
 	networks := inspectJSON.NetworkSettings.Networks
 	if len(networks) == 0 {
@@ -114,6 +151,7 @@ func (d *Docker) updateNetwork(userSpecifiedNetwork string) error {
 		d.Network = k
 		d.IP = v.IPAddress
 	}
+
 	return nil
 }
 

@@ -10,6 +10,8 @@ import (
 	"github.com/urfave/cli"
 
 	"github.com/rancher/longhorn-manager/api"
+	"github.com/rancher/longhorn-manager/crdstore"
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/kvstore"
 	"github.com/rancher/longhorn-manager/manager"
@@ -86,6 +88,7 @@ func RunManager(c *cli.Context) error {
 		orch      orchestrator.Orchestrator
 		forwarder *orchestrator.Forwarder
 		err       error
+		ds        datastore.DataStore
 	)
 
 	if c.Bool("debug") {
@@ -107,6 +110,7 @@ func RunManager(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
+
 		forwarder = orchestrator.NewForwarder(docker)
 		orch = forwarder
 	} else {
@@ -115,21 +119,28 @@ func RunManager(c *cli.Context) error {
 
 	etcdServers := c.StringSlice(FlagETCDServers)
 	if len(etcdServers) == 0 {
-		return fmt.Errorf("require %v", FlagETCDServers)
-	}
-	etcdBackend, err := kvstore.NewETCDBackend(etcdServers)
-	if err != nil {
-		return err
-	}
-	etcd, err := kvstore.NewKVStore("/longhorn_manager_test", etcdBackend)
-	if err != nil {
-		return err
+		// Fall back to CRD
+		crd, err := crdstore.NewCRDStore("/longhorn_manager_test", "")
+		if err != nil {
+			return err
+		}
+		ds = crd
+	} else {
+		etcdBackend, err := kvstore.NewETCDBackend(etcdServers)
+		if err != nil {
+			return err
+		}
+		etcd, err := kvstore.NewKVStore("/longhorn_manager_test", etcdBackend)
+		if err != nil {
+			return err
+		}
+		ds = etcd
 	}
 
 	engines := &engineapi.EngineCollection{}
 	rpc := manager.NewGRPCManager()
 
-	m, err := manager.NewVolumeManager(etcd, orch, engines, rpc, types.DefaultManagerPort)
+	m, err := manager.NewVolumeManager(ds, orch, engines, rpc, types.DefaultManagerPort)
 	if err != nil {
 		return err
 	}
