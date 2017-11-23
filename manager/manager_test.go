@@ -197,18 +197,18 @@ func (s *TestSuite) TestVolume(c *C) {
 func (s *TestSuite) checkVolumeConsistency(c *C, volume *ManagedVolume) {
 	newVol, err := s.manager.GetVolume(volume.Name)
 	c.Assert(err, IsNil)
-	kvstore.UpdateKVIndex(newVol.VolumeInfo, volume.VolumeInfo)
+	kvstore.UpdateResourceVersion(newVol.VolumeInfo, volume.VolumeInfo)
 	c.Assert(newVol.VolumeInfo, DeepEquals, volume.VolumeInfo)
 
 	if volume.Controller != nil {
-		kvstore.UpdateKVIndex(newVol.Controller, volume.Controller)
+		kvstore.UpdateResourceVersion(newVol.Controller, volume.Controller)
 		c.Assert(newVol.VolumeInfo, DeepEquals, volume.VolumeInfo)
 	}
 	if volume.countReplicas() != 0 {
 		for name := range volume.Replicas {
 			replica := volume.getReplica(name)
 			c.Assert(newVol.Replicas[name], NotNil)
-			kvstore.UpdateKVIndex(newVol.Replicas[name], replica)
+			kvstore.UpdateResourceVersion(newVol.Replicas[name], replica)
 			c.Assert(newVol.Replicas[name], DeepEquals, replica)
 		}
 	}

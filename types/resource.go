@@ -12,8 +12,8 @@ const (
 	VolumeStateDegraded = VolumeState("degraded")
 )
 
-type KVMetadata struct {
-	KVIndex uint64 `json:"-"`
+type Metadata struct {
+	ResourceVersion string `json:"-"`
 }
 
 type VolumeInfo struct {
@@ -36,7 +36,7 @@ type VolumeInfo struct {
 	State    VolumeState
 	Endpoint string
 
-	KVMetadata
+	Metadata
 }
 
 type RecurringJobType string
@@ -70,7 +70,7 @@ type InstanceInfo struct {
 	Running    bool
 	VolumeName string
 
-	KVMetadata
+	Metadata
 }
 
 type ControllerInfo struct {
@@ -99,11 +99,11 @@ type NodeInfo struct {
 	State            NodeState `json:"state"`
 	LastCheckin      string    `json:"lastCheckin"`
 
-	KVMetadata
+	Metadata
 }
 
 type SettingsInfo struct {
 	BackupTarget string `json:"backupTarget"`
 
-	KVMetadata
+	Metadata
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"strconv"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
@@ -65,7 +66,7 @@ func (s *KVStore) CreateNode(node *types.NodeInfo) error {
 	if err != nil {
 		return err
 	}
-	node.KVIndex = index
+	node.ResourceVersion = strconv.FormatUint(index, 10)
 	logrus.Infof("Add node %v name %v longhorn-manager IP %v", node.ID, node.Name, node.IP)
 	return nil
 }
@@ -74,11 +75,15 @@ func (s *KVStore) UpdateNode(node *types.NodeInfo) error {
 	if err := s.checkNode(node); err != nil {
 		return err
 	}
-	index, err := s.b.Update(s.nodeKey(node.ID), node, node.KVIndex)
+	oldIndex, err := strconv.ParseUint(node.ResourceVersion, 10, 64)
+	if err != nil {
+		return nil
+	}
+	index, err := s.b.Update(s.nodeKey(node.ID), node, oldIndex)
 	if err != nil {
 		return err
 	}
-	node.KVIndex = index
+	node.ResourceVersion = strconv.FormatUint(index, 10)
 	return nil
 }
 
@@ -106,7 +111,7 @@ func (s *KVStore) getNodeByKey(key string) (*types.NodeInfo, error) {
 		}
 		return nil, err
 	}
-	node.KVIndex = index
+	node.ResourceVersion = strconv.FormatUint(index, 10)
 	return &node, nil
 }
 
@@ -138,16 +143,20 @@ func (s *KVStore) CreateSettings(settings *types.SettingsInfo) error {
 	if err != nil {
 		return err
 	}
-	settings.KVIndex = index
+	settings.ResourceVersion = strconv.FormatUint(index, 10)
 	return nil
 }
 
 func (s *KVStore) UpdateSettings(settings *types.SettingsInfo) error {
-	index, err := s.b.Update(s.settingsKey(), settings, settings.KVIndex)
+	oldIndex, err := strconv.ParseUint(settings.ResourceVersion, 10, 64)
+	if err != nil {
+		return nil
+	}
+	index, err := s.b.Update(s.settingsKey(), settings, oldIndex)
 	if err != nil {
 		return err
 	}
-	settings.KVIndex = index
+	settings.ResourceVersion = strconv.FormatUint(index, 10)
 	return nil
 }
 
@@ -160,7 +169,7 @@ func (s *KVStore) GetSettings() (*types.SettingsInfo, error) {
 		}
 		return nil, errors.Wrap(err, "unable to get settings")
 	}
-	settings.KVIndex = index
+	settings.ResourceVersion = strconv.FormatUint(index, 10)
 
 	return settings, nil
 }
@@ -176,18 +185,18 @@ func (s *KVStore) Nuclear(nuclearCode string) error {
 	return nil
 }
 
-func getFieldUint64(obj interface{}, field string) (uint64, error) {
+func getFieldString(obj interface{}, field string) (string, error) {
 	if reflect.TypeOf(obj).Kind() != reflect.Ptr {
-		return 0, fmt.Errorf("BUG: Non-pointer was passed in")
+		return "", fmt.Errorf("BUG: Non-pointer was passed in")
 	}
 	t := reflect.TypeOf(obj).Elem()
 	if _, found := t.FieldByName(field); !found {
-		return 0, fmt.Errorf("BUG: %v doesn't have required field %v", t, field)
+		return "", fmt.Errorf("BUG: %v doesn't have required field %v", t, field)
 	}
-	return reflect.ValueOf(obj).Elem().FieldByName(field).Uint(), nil
+	return reflect.ValueOf(obj).Elem().FieldByName(field).String(), nil
 }
 
-func setFieldUint64(obj interface{}, field string, value uint64) error {
+func setFieldString(obj interface{}, field string, value string) error {
 	if reflect.TypeOf(obj).Kind() != reflect.Ptr {
 		return fmt.Errorf("BUG: Non-pointer was passed in")
 	}
@@ -199,14 +208,14 @@ func setFieldUint64(obj interface{}, field string, value uint64) error {
 	if !v.CanSet() {
 		return fmt.Errorf("BUG: %v doesn't have setable field %v", t, field)
 	}
-	v.SetUint(value)
+	v.SetString(value)
 	return nil
 }
 
-func UpdateKVIndex(dst, src interface{}) error {
-	srcIndex, err := getFieldUint64(src, "KVIndex")
+func UpdateResourceVersion(dst, src interface{}) error {
+	srcVersion, err := getFieldString(src, "ResourceVersion")
 	if err != nil {
 		return err
 	}
-	return setFieldUint64(dst, "KVIndex", srcIndex)
+	return setFieldString(dst, "ResourceVersion", srcVersion)
 }

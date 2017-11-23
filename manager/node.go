@@ -31,7 +31,7 @@ func (m *VolumeManager) RegisterNode(port int) error {
 			return err
 		}
 	} else {
-		if err := kvstore.UpdateKVIndex(currentInfo, existInfo); err != nil {
+		if err := kvstore.UpdateResourceVersion(currentInfo, existInfo); err != nil {
 			return err
 		}
 		if err := m.ds.UpdateNode(currentInfo); err != nil {
@@ -52,7 +52,7 @@ func (m *VolumeManager) RegisterNode(port int) error {
 func (m *VolumeManager) nodeHealthCheckin() {
 	info := &m.currentNode.NodeInfo
 	for {
-		//TODO If KVIndex of the node changed outside of this node, it will fail to update
+		//TODO If ResourceVersion of the node changed outside of this node, it will fail to update
 		info.LastCheckin = util.Now()
 		if err := m.ds.UpdateNode(info); err != nil {
 			logrus.Errorf("cannot update node checkin in data store: %v", err)
