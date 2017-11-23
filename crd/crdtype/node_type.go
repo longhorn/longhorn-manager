@@ -8,7 +8,7 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type CrdNode struct {
+type Node struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
 	Spec              NodeSpec `json:"spec"`
@@ -25,17 +25,17 @@ type NodeSpec struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type CrdNodeList struct {
+type NodeList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
-	Items           []CrdNode `json:"items"`
+	Items           []Node `json:"items"`
 }
 
-func LhNode2CRDNode(vinfo *types.NodeInfo, crdnode *CrdNode, key string) {
+func LhNode2CRDNode(vinfo *types.NodeInfo, crdnode *Node, key string) {
 	crdnode.ObjectMeta.Name = key
 	crdcopy.CRDDeepCopy(&crdnode.Spec, vinfo)
 }
 
-func CRDNode2LhNode(crdnode *CrdNode, vinfo *types.NodeInfo) {
+func CRDNode2LhNode(crdnode *Node, vinfo *types.NodeInfo) {
 	crdcopy.CRDDeepCopy(vinfo, &crdnode.Spec)
 }

@@ -22,16 +22,16 @@ func Resource(resource string) schema.GroupResource {
 // addKnownTypes adds the set of types defined in this package to the supplied scheme.
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
-		&CrdVolume{},
-		&CrdVolumeList{},
-		&CrdNode{},
-		&CrdNodeList{},
-		&CrdController{},
-		&CrdControllerList{},
-		&CrdReplica{},
-		&CrdReplicaList{},
-		&CrdSetting{},
-		&CrdSettingList{},
+		&Volume{},
+		&VolumeList{},
+		&Node{},
+		&NodeList{},
+		&Controller{},
+		&ControllerList{},
+		&Replica{},
+		&ReplicaList{},
+		&Setting{},
+		&SettingList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

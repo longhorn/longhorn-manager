@@ -8,7 +8,7 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type CrdSetting struct {
+type Setting struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
 	Spec              SettingSpec `json:"spec"`
@@ -21,17 +21,17 @@ type SettingSpec struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type CrdSettingList struct {
+type SettingList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
-	Items           []CrdSetting `json:"items"`
+	Items           []Setting `json:"items"`
 }
 
-func LhSetting2CRDSetting(sinfo *types.SettingsInfo, crdsetting *CrdSetting, key string) {
+func LhSetting2CRDSetting(sinfo *types.SettingsInfo, crdsetting *Setting, key string) {
 	crdsetting.ObjectMeta.Name = key
 	crdcopy.CRDDeepCopy(&crdsetting.Spec, sinfo)
 }
 
-func CRDSetting2LhSetting(crdsetting *CrdSetting, sinfo *types.SettingsInfo) {
+func CRDSetting2LhSetting(crdsetting *Setting, sinfo *types.SettingsInfo) {
 	crdcopy.CRDDeepCopy(sinfo, &crdsetting.Spec)
 }

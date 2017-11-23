@@ -26,9 +26,9 @@ func (s *CRDStore) CreateVolume(volume *types.VolumeInfo) error {
 		return err
 	}
 
-	CRDobj := crdtype.CrdVolume{}
-	crdtype.LhVoulme2CRDVolume(volume, &CRDobj)
-	var result crdtype.CrdVolume
+	CRDobj := crdtype.Volume{}
+	crdtype.LhVolume2CRDVolume(volume, &CRDobj)
+	var result crdtype.Volume
 	if err := s.Operator.Create(&CRDobj, crdtype.CrdMap[crdtype.KeyVolume].CrdPlural, &result); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			fmt.Printf("ALREADY EXISTS: %#v\n", result)
@@ -50,11 +50,11 @@ func (s *CRDStore) UpdateVolume(volume *types.VolumeInfo) error {
 		return err
 	}
 
-	CRDobj := crdtype.CrdVolume{}
+	CRDobj := crdtype.Volume{}
 	CRDobj.ResourceVersion = strconv.FormatUint(volume.KVIndex, 10)
-	crdtype.LhVoulme2CRDVolume(volume, &CRDobj)
+	crdtype.LhVolume2CRDVolume(volume, &CRDobj)
 
-	var result crdtype.CrdVolume
+	var result crdtype.Volume
 	if err := s.Operator.Update(&CRDobj, crdtype.CrdMap[crdtype.KeyVolume].CrdPlural, &result, volume.Name); err != nil {
 		return err
 	}
@@ -83,10 +83,10 @@ func (s *CRDStore) CreateVolumeController(controller *types.ControllerInfo) erro
 		return err
 	}
 
-	CRDobj := crdtype.CrdController{}
+	CRDobj := crdtype.Controller{}
 	crdtype.LhController2CRDController(controller, &CRDobj, controller.VolumeName)
 
-	var result crdtype.CrdController
+	var result crdtype.Controller
 	if err := s.Operator.Create(&CRDobj, crdtype.CrdMap[crdtype.KeyController].CrdPlural, &result); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			fmt.Printf("ALREADY EXISTS: %#v\n", result)
@@ -108,11 +108,11 @@ func (s *CRDStore) UpdateVolumeController(controller *types.ControllerInfo) erro
 		return err
 	}
 
-	CRDobj := crdtype.CrdController{}
+	CRDobj := crdtype.Controller{}
 	CRDobj.ResourceVersion = strconv.FormatUint(controller.KVIndex, 10)
 	crdtype.LhController2CRDController(controller, &CRDobj, controller.VolumeName)
 
-	var result crdtype.CrdController
+	var result crdtype.Controller
 	if err := s.Operator.Update(&CRDobj, crdtype.CrdMap[crdtype.KeyController].CrdPlural, &result, controller.VolumeName); err != nil {
 		return err
 	}
@@ -131,9 +131,9 @@ func (s *CRDStore) CreateVolumeReplica(replica *types.ReplicaInfo) error {
 		return err
 	}
 
-	CRDobj := crdtype.CrdReplica{}
+	CRDobj := crdtype.Replica{}
 	crdtype.LhReplicas2CRDReplicas(replica, &CRDobj, replica.Name)
-	var result crdtype.CrdReplica
+	var result crdtype.Replica
 	if err := s.Operator.Create(&CRDobj, crdtype.CrdMap[crdtype.KeyReplica].CrdPlural, &result); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			fmt.Printf("ALREADY EXISTS: %#v\n", result)
@@ -154,10 +154,10 @@ func (s *CRDStore) UpdateVolumeReplica(replica *types.ReplicaInfo) error {
 		return err
 	}
 
-	CRDobj := crdtype.CrdReplica{}
+	CRDobj := crdtype.Replica{}
 	CRDobj.ResourceVersion = strconv.FormatUint(replica.KVIndex, 10)
 	crdtype.LhReplicas2CRDReplicas(replica, &CRDobj, replica.Name)
-	var result crdtype.CrdReplica
+	var result crdtype.Replica
 	if err := s.Operator.Update(&CRDobj, crdtype.CrdMap[crdtype.KeyReplica].CrdPlural, &result, replica.Name); err != nil {
 		return err
 	}
@@ -174,7 +174,7 @@ func (s *CRDStore) UpdateVolumeReplica(replica *types.ReplicaInfo) error {
 func (s *CRDStore) GetVolume(key string) (*types.VolumeInfo, error) {
 
 	v := types.VolumeInfo{}
-	var result crdtype.CrdVolume
+	var result crdtype.Volume
 	if err := s.Operator.Get(key, crdtype.CrdMap[crdtype.KeyVolume].CrdPlural, &result); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
@@ -193,7 +193,7 @@ func (s *CRDStore) GetVolume(key string) (*types.VolumeInfo, error) {
 
 func (s *CRDStore) GetVolumeController(volumeName string) (*types.ControllerInfo, error) {
 	controller := types.ControllerInfo{}
-	var result crdtype.CrdController
+	var result crdtype.Controller
 	if err := s.Operator.Get(volumeName, crdtype.CrdMap[crdtype.KeyController].CrdPlural, &result); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
@@ -214,7 +214,7 @@ func (s *CRDStore) GetVolumeController(volumeName string) (*types.ControllerInfo
 func (s *CRDStore) GetVolumeReplica(volumeName, replicaName string) (*types.ReplicaInfo, error) {
 	replica := types.ReplicaInfo{}
 
-	var result crdtype.CrdReplica
+	var result crdtype.Replica
 	if err := s.Operator.Get(replicaName, crdtype.CrdMap[crdtype.KeyReplica].CrdPlural, &result); err != nil {
 		return nil, errors.Wrapf(err, "unable to get replica %v of volume %v", replicaName, volumeName)
 	}
@@ -231,7 +231,7 @@ func (s *CRDStore) GetVolumeReplica(volumeName, replicaName string) (*types.Repl
 
 func (s *CRDStore) ListVolumeReplicas(volumeName string) (map[string]*types.ReplicaInfo, error) {
 	replicaMap := make(map[string]*types.ReplicaInfo)
-	var result crdtype.CrdReplicaList
+	var result crdtype.ReplicaList
 	if err := s.Operator.List(metav1.ListOptions{}, crdtype.CrdMap[crdtype.KeyReplica].CrdPlural, &result); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
@@ -285,7 +285,7 @@ func (s *CRDStore) DeleteVolume(id string) error {
 func (s *CRDStore) ListVolumes() (map[string]*types.VolumeInfo, error) {
 
 	volumeMap := make(map[string]*types.VolumeInfo)
-	var result crdtype.CrdVolumeList
+	var result crdtype.VolumeList
 
 	if err := s.Operator.List(metav1.ListOptions{}, crdtype.CrdMap[crdtype.KeyVolume].CrdPlural, &result); err != nil {
 		return nil, err

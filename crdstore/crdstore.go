@@ -70,10 +70,10 @@ func (s *CRDStore) CreateNode(node *types.NodeInfo) error {
 		return err
 	}
 
-	CRDobj := crdtype.CrdNode{}
+	CRDobj := crdtype.Node{}
 	crdtype.LhNode2CRDNode(node, &CRDobj, node.ID)
 
-	var result crdtype.CrdNode
+	var result crdtype.Node
 	if err := s.Operator.Create(&CRDobj, crdtype.CrdMap[crdtype.KeyNode].CrdPlural, &result); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			fmt.Printf("ALREADY EXISTS: %#v\n", result)
@@ -98,11 +98,11 @@ func (s *CRDStore) UpdateNode(node *types.NodeInfo) error {
 		return err
 	}
 
-	CRDobj := crdtype.CrdNode{}
+	CRDobj := crdtype.Node{}
 	CRDobj.ResourceVersion = strconv.FormatUint(node.KVIndex, 10)
 	crdtype.LhNode2CRDNode(node, &CRDobj, node.ID)
 
-	var result crdtype.CrdNode
+	var result crdtype.Node
 	if err := s.Operator.Update(&CRDobj, crdtype.CrdMap[crdtype.KeyNode].CrdPlural, &result, node.ID); err != nil {
 		return err
 	}
@@ -128,7 +128,7 @@ func (s *CRDStore) DeleteNode(nodeID string) error {
 func (s *CRDStore) GetNode(key string) (*types.NodeInfo, error) {
 	node := types.NodeInfo{}
 
-	var result crdtype.CrdNode
+	var result crdtype.Node
 	if err := s.Operator.Get(key, crdtype.CrdMap[crdtype.KeyNode].CrdPlural, &result); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
@@ -149,7 +149,7 @@ func (s *CRDStore) GetNode(key string) (*types.NodeInfo, error) {
 func (s *CRDStore) ListNodes() (map[string]*types.NodeInfo, error) {
 	nodeMap := make(map[string]*types.NodeInfo)
 
-	var result crdtype.CrdNodeList
+	var result crdtype.NodeList
 	if err := s.Operator.List(metav1.ListOptions{}, crdtype.CrdMap[crdtype.KeyNode].CrdPlural, &result); err != nil {
 		return nil, err
 	}
@@ -175,10 +175,10 @@ func (s *CRDStore) ListNodes() (map[string]*types.NodeInfo, error) {
 
 func (s *CRDStore) CreateSettings(settings *types.SettingsInfo) error {
 
-	CRDobj := crdtype.CrdSetting{}
+	CRDobj := crdtype.Setting{}
 	crdtype.LhSetting2CRDSetting(settings, &CRDobj, keySettings)
 
-	var result crdtype.CrdSetting
+	var result crdtype.Setting
 	if err := s.Operator.Create(&CRDobj, crdtype.CrdMap[crdtype.KeySetting].CrdPlural, &result); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			fmt.Printf("ALREADY EXISTS: %#v\n", result)
@@ -197,11 +197,11 @@ func (s *CRDStore) CreateSettings(settings *types.SettingsInfo) error {
 
 func (s *CRDStore) UpdateSettings(settings *types.SettingsInfo) error {
 
-	CRDobj := crdtype.CrdSetting{}
+	CRDobj := crdtype.Setting{}
 	CRDobj.ResourceVersion = strconv.FormatUint(settings.KVIndex, 10)
 	crdtype.LhSetting2CRDSetting(settings, &CRDobj, keySettings)
 
-	var result crdtype.CrdSetting
+	var result crdtype.Setting
 	if err := s.Operator.Update(&CRDobj, crdtype.CrdMap[crdtype.KeySetting].CrdPlural, &result, keySettings); err != nil {
 		return err
 	}
@@ -216,7 +216,7 @@ func (s *CRDStore) UpdateSettings(settings *types.SettingsInfo) error {
 }
 
 func (s *CRDStore) GetSettings() (*types.SettingsInfo, error) {
-	var result crdtype.CrdSetting
+	var result crdtype.Setting
 
 	if err := s.Operator.Get(keySettings, crdtype.CrdMap[crdtype.KeySetting].CrdPlural, &result); err != nil {
 		if apierrors.IsNotFound(err) {

@@ -9,7 +9,7 @@ import (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-type CrdController struct {
+type Controller struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	Spec              ControllerSpec `json:"spec"`
@@ -20,17 +20,17 @@ type ControllerSpec struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type CrdControllerList struct {
+type ControllerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []CrdController `json:"items"`
+	Items           []Controller `json:"items"`
 }
 
-func LhController2CRDController(cinfo *types.ControllerInfo, crdcontroller *CrdController, key string) {
+func LhController2CRDController(cinfo *types.ControllerInfo, crdcontroller *Controller, key string) {
 	crdcontroller.ObjectMeta.Name = key
 	crdcopy.CRDDeepCopy(&crdcontroller.Spec, cinfo)
 }
 
-func CRDController2LhController(crdcontroller *CrdController, cinfo *types.ControllerInfo) {
+func CRDController2LhController(crdcontroller *Controller, cinfo *types.ControllerInfo) {
 	crdcopy.CRDDeepCopy(cinfo, &crdcontroller.Spec)
 }

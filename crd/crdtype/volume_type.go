@@ -8,11 +8,11 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type CrdVolume struct {
+type Volume struct {
 	metav1.TypeMeta    `json:",inline"`
 	metav1.ObjectMeta  `json:"metadata"`
 	Spec               VolumeSpec `json:"spec"`
-	OperateFromKubectl bool       `json:"operatefromkubectl, bool, omitempyt"`
+	OperateFromKubectl bool       `json:"operatefromkubectl, bool, omitempty"`
 }
 
 type VolumeSpec struct {
@@ -39,17 +39,17 @@ type VolumeSpec struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type CrdVolumeList struct {
+type VolumeList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
-	Items           []CrdVolume `json:"items"`
+	Items           []Volume `json:"items"`
 }
 
-func LhVoulme2CRDVolume(vinfo *types.VolumeInfo, crdvolume *CrdVolume) {
+func LhVolume2CRDVolume(vinfo *types.VolumeInfo, crdvolume *Volume) {
 	crdvolume.ObjectMeta.Name = vinfo.Name
 	crdcopy.CRDDeepCopy(&crdvolume.Spec, vinfo)
 }
 
-func CRDVolume2LhVolume(crdvolume *CrdVolume, vinfo *types.VolumeInfo) {
+func CRDVolume2LhVolume(crdvolume *Volume, vinfo *types.VolumeInfo) {
 	crdcopy.CRDDeepCopy(vinfo, &crdvolume.Spec)
 }

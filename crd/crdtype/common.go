@@ -20,14 +20,14 @@ type Crdtype struct {
 }
 
 var CrdMap = map[string]Crdtype{
-	KeyVolume: Crdtype{"crdvolumes", "crdvolumes" + "." + CRDGroup,
-		"cv", CrdVolume{}},
-	KeyNode: Crdtype{"crdnodes", "crdnodes" + "." + CRDGroup,
-		"cnc", CrdNode{}},
-	KeyReplica: Crdtype{"crdreplicas", "crdreplicas" + "." + CRDGroup,
-		"cr", CrdReplica{}},
-	KeySetting: Crdtype{"crdsettings", "crdsettings" + "." + CRDGroup,
-		"crs", CrdSetting{}},
-	KeyController: Crdtype{"crdcontrollers", "crdcontrollers" + "." + CRDGroup,
-		"cc", CrdController{}},
+	KeyVolume: {"volumes", "volumes" + "." + CRDGroup,
+		"cv", Volume{}},
+	KeyNode: {"nodes", "nodes" + "." + CRDGroup,
+		"cnc", Node{}},
+	KeyReplica: {"replicas", "replicas" + "." + CRDGroup,
+		"cr", Replica{}},
+	KeySetting: {"settings", "settings" + "." + CRDGroup,
+		"crs", Setting{}},
+	KeyController: {"controllers", "controllers" + "." + CRDGroup,
+		"cc", Controller{}},
 }
