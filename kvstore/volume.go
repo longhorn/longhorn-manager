@@ -3,6 +3,7 @@ package kvstore
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 
 	"github.com/pkg/errors"
 
@@ -78,7 +79,7 @@ func (s *KVStore) CreateVolume(volume *types.VolumeInfo) error {
 	if err != nil {
 		return err
 	}
-	volume.KVIndex = index
+	volume.ResourceVersion = strconv.FormatUint(index, 10)
 	return nil
 }
 
@@ -86,11 +87,15 @@ func (s *KVStore) UpdateVolume(volume *types.VolumeInfo) error {
 	if err := s.checkVolume(volume); err != nil {
 		return err
 	}
-	index, err := s.b.Update(s.NewVolumeKeyFromName(volume.Name).Base(), volume, volume.KVIndex)
+	oldIndex, err := strconv.ParseUint(volume.ResourceVersion, 10, 64)
+	if err != nil {
+		return nil
+	}
+	index, err := s.b.Update(s.NewVolumeKeyFromName(volume.Name).Base(), volume, oldIndex)
 	if err != nil {
 		return err
 	}
-	volume.KVIndex = index
+	volume.ResourceVersion = strconv.FormatUint(index, 10)
 	return nil
 }
 
@@ -112,7 +117,7 @@ func (s *KVStore) CreateVolumeController(controller *types.ControllerInfo) error
 	if err != nil {
 		return err
 	}
-	controller.KVIndex = index
+	controller.ResourceVersion = strconv.FormatUint(index, 10)
 	return nil
 }
 
@@ -120,11 +125,15 @@ func (s *KVStore) UpdateVolumeController(controller *types.ControllerInfo) error
 	if err := s.checkVolumeInstance(&controller.InstanceInfo); err != nil {
 		return err
 	}
-	index, err := s.b.Update(s.NewVolumeKeyFromName(controller.VolumeName).Controller(), controller, controller.KVIndex)
+	oldIndex, err := strconv.ParseUint(controller.ResourceVersion, 10, 64)
+	if err != nil {
+		return nil
+	}
+	index, err := s.b.Update(s.NewVolumeKeyFromName(controller.VolumeName).Controller(), controller, oldIndex)
 	if err != nil {
 		return err
 	}
-	controller.KVIndex = index
+	controller.ResourceVersion = strconv.FormatUint(index, 10)
 	return nil
 }
 
@@ -136,7 +145,7 @@ func (s *KVStore) CreateVolumeReplica(replica *types.ReplicaInfo) error {
 	if err != nil {
 		return err
 	}
-	replica.KVIndex = index
+	replica.ResourceVersion = strconv.FormatUint(index, 10)
 	return nil
 }
 
@@ -144,11 +153,15 @@ func (s *KVStore) UpdateVolumeReplica(replica *types.ReplicaInfo) error {
 	if err := s.checkVolumeInstance(&replica.InstanceInfo); err != nil {
 		return err
 	}
-	index, err := s.b.Update(s.NewVolumeKeyFromName(replica.VolumeName).Replica(replica.Name), replica, replica.KVIndex)
+	oldIndex, err := strconv.ParseUint(replica.ResourceVersion, 10, 64)
+	if err != nil {
+		return nil
+	}
+	index, err := s.b.Update(s.NewVolumeKeyFromName(replica.VolumeName).Replica(replica.Name), replica, oldIndex)
 	if err != nil {
 		return err
 	}
-	replica.KVIndex = index
+	replica.ResourceVersion = strconv.FormatUint(index, 10)
 	return nil
 }
 
@@ -169,7 +182,7 @@ func (s *KVStore) getVolumeBaseByKey(key string) (*types.VolumeInfo, error) {
 		}
 		return nil, err
 	}
-	volume.KVIndex = index
+	volume.ResourceVersion = strconv.FormatUint(index, 10)
 	return &volume, nil
 }
 
@@ -190,7 +203,7 @@ func (s *KVStore) getVolumeControllerByKey(key string) (*types.ControllerInfo, e
 		}
 		return nil, err
 	}
-	controller.KVIndex = index
+	controller.ResourceVersion = strconv.FormatUint(index, 10)
 	return &controller, nil
 }
 
@@ -211,7 +224,7 @@ func (s *KVStore) getVolumeReplicaByKey(key string) (*types.ReplicaInfo, error) 
 		}
 		return nil, err
 	}
-	replica.KVIndex = index
+	replica.ResourceVersion = strconv.FormatUint(index, 10)
 	return &replica, nil
 }
 
