@@ -2,7 +2,7 @@ package crdtype
 
 const (
 	CRDVersion string = "v1"
-	CRDGroup   string = "rancher.io"
+	CRDGroup   string = "longhorn.rancher.io"
 
 	KeyVolume     string = "volume"
 	KeyNode       string = "node"
