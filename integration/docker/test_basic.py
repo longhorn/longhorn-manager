@@ -142,7 +142,11 @@ def test_recurring_snapshot(clients):  # NOQA
     time.sleep(10)
 
     snapshots = volume.snapshotList()
-    assert len(snapshots) == 5
+    count = 0
+    for snapshot in snapshots:
+        if snapshot["removed"] is False:
+            count += 1
+    assert count == 5
 
     snap4s = {"name": "snap4s", "cron": "@every 4s",
               "task": "snapshot", "retain": 2}
@@ -151,7 +155,11 @@ def test_recurring_snapshot(clients):  # NOQA
     time.sleep(10)
 
     snapshots = volume.snapshotList()
-    assert len(snapshots) == 7
+    count = 0
+    for snapshot in snapshots:
+        if snapshot["removed"] is False:
+            count += 1
+    assert count == 7
 
     volume = volume.detach()
 
