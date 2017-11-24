@@ -22,6 +22,8 @@ const (
 	VolumeStackPrefix     = "volume-"
 	ControllerServiceName = "controller"
 	ReplicaServiceName    = "replica"
+
+	Gi = 1024 * 1024 * 1024
 )
 
 var (
