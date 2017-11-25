@@ -130,11 +130,13 @@ func (v *ManagedVolume) jobReplicaCreate(req *orchestrator.Request) (err error) 
 		InstanceInfo: types.InstanceInfo{
 			ID:         instance.ID,
 			Type:       types.InstanceTypeReplica,
-			Name:       instance.Name,
 			NodeID:     req.NodeID,
 			IP:         instance.IP,
 			Running:    instance.Running,
 			VolumeName: v.Name,
+			Metadata: types.Metadata{
+				Name: instance.Name,
+			},
 		},
 	}
 

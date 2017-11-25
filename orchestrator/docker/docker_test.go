@@ -82,8 +82,10 @@ func (s *TestSuite) TestCreateVolume(c *C) {
 	defer s.Cleanup()
 
 	volume := &types.VolumeInfo{
-		Name: VolumeName,
 		Size: 8 * 1024 * 1024, // 8M
+		Metadata: types.Metadata{
+			Name: VolumeName,
+		},
 	}
 	replica1Req := &orchestrator.Request{
 		NodeID:       s.d.GetCurrentNode().ID,

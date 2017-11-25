@@ -39,9 +39,11 @@ func NewOrchestratorSimulator(port int, engines *engineapi.EngineSimulatorCollec
 	return &OrchSim{
 		currentNode: &types.NodeInfo{
 			ID:               nodeID,
-			Name:             "sim-" + nodeID,
 			IP:               "127.0.0.1",
 			OrchestratorPort: port,
+			Metadata: types.Metadata{
+				Name: "sim-" + nodeID,
+			},
 		},
 		records: map[string]*InstanceRecord{},
 		mutex:   &sync.RWMutex{},

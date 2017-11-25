@@ -198,11 +198,13 @@ func (v *ManagedVolume) createController(startReplicas map[string]*types.Replica
 		InstanceInfo: types.InstanceInfo{
 			ID:         instance.ID,
 			Type:       types.InstanceTypeController,
-			Name:       instance.Name,
 			NodeID:     nodeID,
 			IP:         instance.IP,
 			Running:    instance.Running,
 			VolumeName: v.Name,
+			Metadata: types.Metadata{
+				Name: instance.Name,
+			},
 		},
 	}
 	if err := v.m.ds.CreateVolumeController(controller); err != nil {
