@@ -60,19 +60,25 @@ func (s *TestSuite) TestNode(c *C) {
 
 func (s *TestSuite) testNode(c *C, st *KVStore) {
 	node1 := &types.NodeInfo{
-		ID:   util.UUID(),
-		Name: "node-1",
-		IP:   "127.0.1.1",
+		ID: util.UUID(),
+		IP: "127.0.1.1",
+		Metadata: types.Metadata{
+			Name: "node-1",
+		},
 	}
 	node2 := &types.NodeInfo{
-		ID:   util.UUID(),
-		Name: "node-2",
-		IP:   "127.0.1.2",
+		ID: util.UUID(),
+		IP: "127.0.1.2",
+		Metadata: types.Metadata{
+			Name: "node-2",
+		},
 	}
 	node3 := &types.NodeInfo{
-		ID:   util.UUID(),
-		Name: "node-3",
-		IP:   "127.0.1.3",
+		ID: util.UUID(),
+		IP: "127.0.1.3",
+		Metadata: types.Metadata{
+			Name: "node-3",
+		},
 	}
 
 	node, err := st.GetNode("random")
@@ -173,10 +179,12 @@ func (s *TestSuite) testSettings(c *C, st *KVStore) {
 
 func generateTestVolume(name string) *types.VolumeInfo {
 	return &types.VolumeInfo{
-		Name:                name,
 		Size:                1024 * 1024,
 		NumberOfReplicas:    2,
 		StaleReplicaTimeout: 1,
+		Metadata: types.Metadata{
+			Name: name,
+		},
 	}
 }
 
@@ -185,10 +193,12 @@ func generateTestController(volName string) *types.ControllerInfo {
 		types.InstanceInfo{
 			ID:         "controller-id-" + volName,
 			Type:       types.InstanceTypeController,
-			Name:       "controller-name-" + volName,
 			Running:    true,
 			IP:         "1.2.3.4",
 			VolumeName: volName,
+			Metadata: types.Metadata{
+				Name: "controller-name-" + volName,
+			},
 		},
 	}
 }
@@ -198,10 +208,12 @@ func generateTestReplica(volName, replicaName string) *types.ReplicaInfo {
 		InstanceInfo: types.InstanceInfo{
 			ID:         "replica-id-" + replicaName + "-" + volName,
 			Type:       types.InstanceTypeReplica,
-			Name:       "replica-name-" + replicaName + "-" + volName,
 			Running:    true,
 			IP:         "5.6.7.8",
 			VolumeName: volName,
+			Metadata: types.Metadata{
+				Name: "replica-name-" + replicaName + "-" + volName,
+			},
 		},
 	}
 }

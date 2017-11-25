@@ -13,12 +13,12 @@ const (
 )
 
 type Metadata struct {
+	Name            string
 	ResourceVersion string `json:"-"`
 }
 
 type VolumeInfo struct {
 	// Attributes
-	Name                string
 	Size                int64 `json:",string"`
 	BaseImage           string
 	FromBackup          string
@@ -64,7 +64,6 @@ const (
 type InstanceInfo struct {
 	ID         string
 	Type       InstanceType
-	Name       string
 	NodeID     string
 	IP         string
 	Running    bool
@@ -92,7 +91,6 @@ const (
 
 type NodeInfo struct {
 	ID               string    `json:"id"`
-	Name             string    `json:"name"`
 	IP               string    `json:"ip"`
 	ManagerPort      int       `json:"managerPort"`
 	OrchestratorPort int       `json:"orchestratorPort"`

@@ -105,7 +105,6 @@ func (s *TestSuite) TestVolume(c *C) {
 	node, err := s.manager.GetRandomNode()
 	c.Assert(err, IsNil)
 	err = s.manager.NewVolume(&types.VolumeInfo{
-		Name:                VolumeName,
 		Size:                VolumeSize,
 		NumberOfReplicas:    VolumeNumberOfReplicas,
 		StaleReplicaTimeout: VolumeStaleReplicaTimeout,
@@ -114,6 +113,10 @@ func (s *TestSuite) TestVolume(c *C) {
 		TargetNodeID: node.ID,
 		State:        types.VolumeStateCreated,
 		DesireState:  types.VolumeStateDetached,
+
+		Metadata: types.Metadata{
+			Name: VolumeName,
+		},
 	})
 	c.Assert(err, IsNil)
 
