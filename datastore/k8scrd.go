@@ -8,11 +8,10 @@ import (
 	apiextcs "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/rancher/longhorn-manager/types"
 
+	"github.com/rancher/longhorn-manager/k8s"
 	"github.com/rancher/longhorn-manager/k8s/crdclient"
 	lh "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhclientset "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -27,15 +26,8 @@ type CRDStore struct {
 
 const SettingName = "longhorn-manager-settings"
 
-func GetClientConfig(kubeconfig string) (*rest.Config, error) {
-	if kubeconfig != "" {
-		return clientcmd.BuildConfigFromFlags("", kubeconfig)
-	}
-	return rest.InClusterConfig()
-}
-
 func NewCRDStore(kubeconfig string) (*CRDStore, error) {
-	config, err := GetClientConfig(kubeconfig)
+	config, err := k8s.GetClientConfig(kubeconfig)
 	if err != nil {
 		return nil, err
 	}
