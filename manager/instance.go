@@ -3,6 +3,7 @@ package manager
 import (
 	"fmt"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
 	"github.com/rancher/longhorn-manager/engineapi"
@@ -135,6 +136,8 @@ func (v *ManagedVolume) markBadReplica(replicaName string) (err error) {
 	if err := v.setReplica(replica); err != nil {
 		return err
 	}
+
+	logrus.Warnf("Maked %v as bad replica", replicaName)
 
 	if replica.Running {
 		if err := v.stopReplica(replica.Name); err != nil {
