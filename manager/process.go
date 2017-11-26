@@ -234,6 +234,7 @@ func (v *ManagedVolume) syncWithEngineState(engineReps map[string]*engineapi.Rep
 				rebuildingReplicaCount++
 			} else {
 				// means engineRep.Mode == engineapi.ReplicaModeERR
+				badReplicas[addr2Replica[addr].Name] = struct{}{}
 				continue
 			}
 			if addr2Replica[addr] == nil {
@@ -241,10 +242,9 @@ func (v *ManagedVolume) syncWithEngineState(engineReps map[string]*engineapi.Rep
 			}
 			delete(addr2Replica, addr)
 		}
-		// those replicas doesn't show up in controller as WO or RW
-		for _, replica := range addr2Replica {
-			badReplicas[replica.Name] = struct{}{}
-		}
+		// those replicas doesn't show up in controller as WO or RW,
+		// assuming there are rebuilding
+		rebuildingReplicaCount += len(addr2Replica)
 	}
 
 	state := v.State
