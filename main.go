@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 
 	"github.com/rancher/longhorn-manager/api"
@@ -112,7 +113,7 @@ func RunManager(c *cli.Context) error {
 
 		ds, err = datastore.NewCRDStore("")
 		if err != nil {
-			return err
+			return errors.Wrap(err, "fail to create CRD store")
 		}
 	} else if orchName == "docker" {
 		cfg := &docker.Config{
