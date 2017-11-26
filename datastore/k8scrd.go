@@ -29,21 +29,21 @@ const SettingName = "longhorn-manager-settings"
 func NewCRDStore(kubeconfig string) (*CRDStore, error) {
 	config, err := k8s.GetClientConfig(kubeconfig)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "unable to get client config")
 	}
 
 	cliset, err := apiextcs.NewForConfig(config)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "unable to get k8s client")
 	}
 
 	if err := crdclient.CreateCRD(cliset, config); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "unable to create CRDs")
 	}
 
 	clientset, err := lhclientset.NewForConfig(config)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "unable to get clientset")
 	}
 
 	return &CRDStore{
@@ -61,7 +61,7 @@ func NewFakeCRDStore() *CRDStore {
 
 func (s *CRDStore) CreateNode(node *types.NodeInfo) error {
 	if err := CheckNode(node); err != nil {
-		return err
+		return errors.Wrap(err, "failed checking node")
 	}
 
 	crdNode := &lh.Node{
@@ -72,7 +72,7 @@ func (s *CRDStore) CreateNode(node *types.NodeInfo) error {
 	}
 	result, err := s.clientset.LonghornV1alpha1().Nodes(s.namespace).Create(crdNode)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "fail to create resource")
 	}
 
 	node.Metadata.ResourceVersion = result.ResourceVersion
@@ -94,7 +94,7 @@ func (s *CRDStore) UpdateNode(node *types.NodeInfo) error {
 	}
 	result, err := s.clientset.LonghornV1alpha1().Nodes(s.namespace).Update(crdNode)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "fail to update resource")
 	}
 
 	node.Metadata.ResourceVersion = result.ResourceVersion
@@ -104,7 +104,7 @@ func (s *CRDStore) UpdateNode(node *types.NodeInfo) error {
 func (s *CRDStore) DeleteNode(nodeName string) error {
 	err := s.clientset.LonghornV1alpha1().Nodes(s.namespace).Delete(nodeName, &metav1.DeleteOptions{})
 	if err != nil {
-		return errors.Wrapf(err, "unable to delete node %v", nodeName)
+		return errors.Wrapf(err, "fail to delete node %v", nodeName)
 	}
 
 	return nil
@@ -132,7 +132,7 @@ func (s *CRDStore) ListNodes() (map[string]*types.NodeInfo, error) {
 
 	result, err := s.clientset.LonghornV1alpha1().Nodes(s.namespace).List(metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "fail to list resource")
 	}
 	if len(result.Items) <= 0 {
 		return nil, nil
@@ -160,7 +160,7 @@ func (s *CRDStore) CreateSettings(settings *types.SettingsInfo) error {
 	}
 	result, err := s.clientset.LonghornV1alpha1().Settings(s.namespace).Create(crdSetting)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "fail to create resource")
 	}
 
 	settings.Metadata.ResourceVersion = result.ResourceVersion
@@ -177,7 +177,7 @@ func (s *CRDStore) UpdateSettings(settings *types.SettingsInfo) error {
 	}
 	result, err := s.clientset.LonghornV1alpha1().Settings(s.namespace).Update(crdSetting)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "fail to update resource")
 	}
 
 	settings.Metadata.ResourceVersion = result.ResourceVersion
@@ -220,7 +220,7 @@ func (s *CRDStore) CreateVolume(volume *types.VolumeInfo) error {
 	}
 	result, err := s.clientset.LonghornV1alpha1().Volumes(s.namespace).Create(resource)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "fail to create resource")
 	}
 
 	volume.Metadata.ResourceVersion = result.ResourceVersion
@@ -301,7 +301,7 @@ func (s *CRDStore) ListVolumes() (map[string]*types.VolumeInfo, error) {
 
 func (s *CRDStore) CreateVolumeController(info *types.ControllerInfo) error {
 	if err := CheckVolumeInstance(&info.InstanceInfo); err != nil {
-		return err
+		return errors.Wrap(err, "check fail")
 	}
 	resource := &lh.Controller{
 		ObjectMeta: metav1.ObjectMeta{
@@ -312,7 +312,7 @@ func (s *CRDStore) CreateVolumeController(info *types.ControllerInfo) error {
 	}
 	result, err := s.clientset.LonghornV1alpha1().Controllers(s.namespace).Create(resource)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "fail to create resource")
 	}
 
 	info.Metadata.ResourceVersion = result.ResourceVersion
@@ -321,7 +321,7 @@ func (s *CRDStore) CreateVolumeController(info *types.ControllerInfo) error {
 
 func (s *CRDStore) UpdateVolumeController(info *types.ControllerInfo) error {
 	if err := CheckVolumeInstance(&info.InstanceInfo); err != nil {
-		return err
+		return errors.Wrap(err, "check fail")
 	}
 
 	resource := &lh.Controller{
@@ -334,7 +334,7 @@ func (s *CRDStore) UpdateVolumeController(info *types.ControllerInfo) error {
 	}
 	result, err := s.clientset.LonghornV1alpha1().Controllers(s.namespace).Update(resource)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "fail to update resource")
 	}
 
 	info.Metadata.ResourceVersion = result.ResourceVersion
@@ -377,7 +377,7 @@ func (s *CRDStore) DeleteVolumeController(volumeName string) error {
 
 func (s *CRDStore) CreateVolumeReplica(info *types.ReplicaInfo) error {
 	if err := CheckVolumeInstance(&info.InstanceInfo); err != nil {
-		return err
+		return errors.Wrap(err, "check fail")
 	}
 	resource := &lh.Replica{
 		ObjectMeta: metav1.ObjectMeta{
@@ -388,7 +388,7 @@ func (s *CRDStore) CreateVolumeReplica(info *types.ReplicaInfo) error {
 	}
 	result, err := s.clientset.LonghornV1alpha1().Replicas(s.namespace).Create(resource)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "fail to create resource")
 	}
 
 	info.Metadata.ResourceVersion = result.ResourceVersion
@@ -397,7 +397,7 @@ func (s *CRDStore) CreateVolumeReplica(info *types.ReplicaInfo) error {
 
 func (s *CRDStore) UpdateVolumeReplica(info *types.ReplicaInfo) error {
 	if err := CheckVolumeInstance(&info.InstanceInfo); err != nil {
-		return err
+		return errors.Wrap(err, "check fail")
 	}
 
 	resource := &lh.Replica{
@@ -410,7 +410,7 @@ func (s *CRDStore) UpdateVolumeReplica(info *types.ReplicaInfo) error {
 	}
 	result, err := s.clientset.LonghornV1alpha1().Replicas(s.namespace).Update(resource)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "fail to update resource")
 	}
 
 	info.Metadata.ResourceVersion = result.ResourceVersion
@@ -450,7 +450,7 @@ func (s *CRDStore) ListVolumeReplicas(volumeName string) (map[string]*types.Repl
 		LabelSelector: "longhornvolume=" + volumeName,
 	})
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "fail to list resource")
 	}
 	if len(result.Items) <= 0 {
 		return nil, nil
