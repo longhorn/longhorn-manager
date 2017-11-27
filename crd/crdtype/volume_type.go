@@ -12,21 +12,21 @@ type Volume struct {
 	metav1.TypeMeta    `json:",inline"`
 	metav1.ObjectMeta  `json:"metadata"`
 	Spec               VolumeSpec `json:"spec"`
-	OperateFromKubectl bool       `json:"operatefromkubectl, bool, omitempty"`
+	OperateFromKubectl bool       `json:"operateFromKubectl, bool, omitempty"`
 }
 
 type VolumeSpec struct {
 	// Attributes
 	Name                string `json:"name"`
 	Size                int64  `json:"size, int64"`
-	BaseImage           string `json:"baseimage,omitempty"`
-	FromBackup          string `json:"frombackup,omitempty"`
-	NumberOfReplicas    int    `json:"numreplicas, int"`
-	StaleReplicaTimeout int    `json:"stalereplicatimeout, int"`
+	BaseImage           string `json:"baseImage,omitempty"`
+	FromBackup          string `json:"fromBackup,omitempty"`
+	NumberOfReplicas    int    `json:"numReplicas, int"`
+	StaleReplicaTimeout int    `json:"staleReplicaTimeout, int"`
 
 	// Running spec
-	TargetNodeID  string            `json:"targetnodeid,omitempty"`
-	DesireState   types.VolumeState `json:"desirestate,omitempty"`
+	TargetNodeID  string            `json:"targetNodeID,omitempty"`
+	DesireState   types.VolumeState `json:"desireState,omitempty"`
 	RecurringJobs []types.RecurringJob
 
 	// Running state

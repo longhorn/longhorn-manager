@@ -10,6 +10,7 @@ import (
 	"github.com/urfave/cli"
 
 	"github.com/rancher/longhorn-manager/api"
+	"github.com/rancher/longhorn-manager/crd/controller"
 	"github.com/rancher/longhorn-manager/crdstore"
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
@@ -152,6 +153,10 @@ func RunManager(c *cli.Context) error {
 	m, err := manager.NewVolumeManager(ds, orch, engines, rpc, types.DefaultManagerPort)
 	if err != nil {
 		return err
+	}
+
+	if len(etcdServers) == 0 {
+		crdcontroller.RegisterVolumeController(m, ds)
 	}
 
 	if forwarder != nil {

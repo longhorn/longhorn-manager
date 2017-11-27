@@ -374,3 +374,137 @@ func (m *VolumeManager) JobList(volumeName string) (map[string]Job, error) {
 	}
 	return volume.ListJobsInfo(), nil
 }
+
+func (m *VolumeManager) CRDVolumeDelete(volumeDeleted *types.VolumeInfo) (err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrap(err, "unable to delete volume")
+		}
+	}()
+
+	if volumeDeleted.TargetNodeID != m.GetCurrentNodeID() {
+		return nil
+	}
+
+	if volumeDeleted.DesireState == types.VolumeStateDeleted {
+		return nil
+	}
+
+	node, err := m.GetNode(volumeDeleted.TargetNodeID)
+	if err != nil {
+		return err
+	}
+
+	volumeDeleted.DesireState = types.VolumeStateDeleted
+	if err := m.NewVolume(volumeDeleted); err != nil {
+		return err
+	}
+
+	if err := node.Notify(volumeDeleted.Name); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *VolumeManager) CRDVolumeAttachDetach(oldVolume *types.VolumeInfo, newVolume *types.VolumeInfo, kvIndex uint64) (err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrap(err, "unable to attach volume")
+		}
+	}()
+
+	if oldVolume.TargetNodeID != m.GetCurrentNodeID() {
+		return nil
+	}
+	var node *Node
+	//Attach
+	if oldVolume.State == types.VolumeStateDetached && newVolume.DesireState == types.VolumeStateHealthy {
+		node, err = m.GetNode(newVolume.TargetNodeID)
+		if err != nil {
+			return err
+		}
+		oldVolume.TargetNodeID = newVolume.TargetNodeID
+		oldVolume.DesireState = types.VolumeStateHealthy
+
+	} else if (oldVolume.State == types.VolumeStateHealthy || oldVolume.State == types.VolumeStateDegraded) &&
+		newVolume.DesireState == types.VolumeStateDetached {
+		//Detach
+		node, err = m.GetNode(oldVolume.TargetNodeID)
+		if err != nil {
+			return err
+		}
+		oldVolume.DesireState = types.VolumeStateDetached
+	} else {
+		node, err = m.GetNode(oldVolume.TargetNodeID)
+		if err != nil {
+			return err
+		}
+		fmt.Errorf("Error: kubectl can't detach or attach")
+	}
+
+	oldVolume.KVIndex = kvIndex
+	if err := m.ds.UpdateVolume(oldVolume); err != nil {
+		return err
+	}
+	if err := node.Notify(oldVolume.Name); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *VolumeManager) CRDVolumeCreate(request *types.VolumeInfo, metaName string) (err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrap(err, "kubectl unable to create volume")
+		}
+	}()
+
+	oldVolume, err := m.ds.GetVolume(metaName)
+	if err != nil {
+		return err
+	}
+	if oldVolume == nil {
+		return fmt.Errorf("Error: kubectl can't find the created crd volume")
+	}
+
+	request.Size *= util.Gi
+
+	size, err := util.ConvertSize(request.Size)
+	if err != nil {
+		return err
+	}
+
+	// make it random node's responsibility
+	node, err := m.GetRandomNode()
+	if err != nil {
+		return err
+	}
+	newVolume := &types.VolumeInfo{
+		Name:                metaName,
+		Size:                size,
+		BaseImage:           request.BaseImage,
+		FromBackup:          request.FromBackup,
+		NumberOfReplicas:    request.NumberOfReplicas,
+		StaleReplicaTimeout: request.StaleReplicaTimeout,
+
+		Created:      util.Now(),
+		TargetNodeID: node.ID,
+		State:        types.VolumeStateCreated,
+		DesireState:  types.VolumeStateDetached,
+		KVMetadata: types.KVMetadata{
+			KVIndex: oldVolume.KVIndex,
+		},
+	}
+
+	if err := m.ds.UpdateVolume(newVolume); err != nil {
+		return err
+	}
+
+	if err := node.Notify(newVolume.Name); err != nil {
+		//Don't rollback here, target node is still possible to pickup
+		//the volume. User can call delete explicitly for the volume
+		return err
+	}
+	return nil
+}

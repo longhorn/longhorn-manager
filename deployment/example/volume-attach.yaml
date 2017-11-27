@@ -1,0 +1,13 @@
+apiVersion: longhorn.rancher.io/v1
+kind: Volume
+metadata:
+  name: longhorn-volume
+spec:
+  name: "volume0"
+  numReplicas: 2
+  staleReplicaTimeout: 20
+#Gi
+  size: 2
+  desireState: healthy
+  targetNodeID: ac6d6144-6380-4a47-96ee-95bf91afe6cc    
+operateFromKubectl: true
