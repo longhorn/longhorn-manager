@@ -6,6 +6,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/types"
@@ -15,6 +16,10 @@ import (
 func (m *VolumeManager) NewVolume(info *types.VolumeInfo) error {
 	if info.Name == "" || info.Size == 0 || info.NumberOfReplicas == 0 {
 		return fmt.Errorf("missing required parameter %+v", info)
+	}
+	errs := validation.IsDNS1123Label(info.Name)
+	if len(errs) != 0 {
+		return fmt.Errorf("Invalid volume name: %+v", errs)
 	}
 	vol, err := m.ds.GetVolume(info.Name)
 	if err != nil {
