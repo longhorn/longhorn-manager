@@ -234,8 +234,9 @@ func (v *ManagedVolume) syncWithEngineState(engineReps map[string]*engineapi.Rep
 				rebuildingReplicaCount++
 			} else {
 				// means engineRep.Mode == engineapi.ReplicaModeERR
-				badReplicas[addr2Replica[addr].Name] = struct{}{}
-				continue
+				if replica, ok := addr2Replica[addr]; ok {
+					badReplicas[replica.Name] = struct{}{}
+				}
 			}
 			if addr2Replica[addr] == nil {
 				logrus.Errorf("BUG: cannot find replica address %v in replicas", addr)
