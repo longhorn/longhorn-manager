@@ -123,8 +123,7 @@ func (k *Kubernetes) updateNodeName() error {
 
 func (k *Kubernetes) updateCurrentNode() error {
 	node := &types.NodeInfo{
-		IP:               k.IP,
-		OrchestratorPort: types.DefaultOrchestratorPort,
+		IP: k.IP,
 	}
 	node.Name = k.NodeName
 	node.ID = node.Name
@@ -144,11 +143,6 @@ func (k *Kubernetes) CreateController(req *orchestrator.Request) (instance *orch
 
 	if err := orchestrator.ValidateRequestCreateController(req); err != nil {
 		return nil, err
-	}
-
-	if req.NodeID != k.currentNode.ID {
-		return nil, fmt.Errorf("incorrect node, requested %v, current %v", req.NodeID,
-			k.currentNode.ID)
 	}
 
 	cmd := []string{
@@ -172,7 +166,7 @@ func (k *Kubernetes) CreateController(req *orchestrator.Request) (instance *orch
 		},
 		Spec: apiv1.PodSpec{
 			NodeSelector: map[string]string{
-				"kubernetes.io/hostname": k.NodeName,
+				"kubernetes.io/hostname": req.NodeID,
 			},
 			Containers: []apiv1.Container{
 				{
@@ -255,16 +249,11 @@ func (k *Kubernetes) CreateReplica(req *orchestrator.Request) (instance *orchest
 	if err := orchestrator.ValidateRequestCreateReplica(req); err != nil {
 		return nil, err
 	}
-	if req.NodeID != k.currentNode.ID {
-		return nil, fmt.Errorf("incorrect node, requested %v, current %v", req.NodeID,
-			k.currentNode.ID)
-	}
-
 	instance = &orchestrator.Instance{
 		ID:      req.InstanceName,
 		Name:    req.InstanceName,
 		Running: false,
-		NodeID:  k.GetCurrentNode().ID,
+		NodeID:  req.NodeID,
 	}
 	return instance, nil
 }
@@ -277,11 +266,6 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 
 	if err := orchestrator.ValidateRequestCreateReplica(req); err != nil {
 		return nil, err
-	}
-
-	if req.NodeID != k.currentNode.ID {
-		return nil, fmt.Errorf("incorrect node, requested %v, current %v", req.NodeID,
-			k.currentNode.ID)
 	}
 
 	cmd := []string{
@@ -301,7 +285,7 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 		},
 		Spec: apiv1.PodSpec{
 			NodeSelector: map[string]string{
-				"kubernetes.io/hostname": k.NodeName,
+				"kubernetes.io/hostname": req.NodeID,
 			},
 			Containers: []apiv1.Container{
 				{
@@ -397,10 +381,6 @@ func (k *Kubernetes) InspectInstance(req *orchestrator.Request) (instance *orche
 	if err := orchestrator.ValidateRequestInstanceOps(req); err != nil {
 		return nil, err
 	}
-	if req.NodeID != k.currentNode.ID {
-		return nil, fmt.Errorf("incorrect node, requested %v, current %v", req.NodeID,
-			k.currentNode.ID)
-	}
 
 	pod, err := k.waitForPodReady(req.InstanceName)
 	if err != nil {
@@ -415,7 +395,7 @@ func (k *Kubernetes) InspectInstance(req *orchestrator.Request) (instance *orche
 		ID:      pod.ObjectMeta.Name,
 		Name:    pod.ObjectMeta.Name,
 		Running: pod.Status.Phase == apiv1.PodPhase("Running"),
-		NodeID:  k.GetCurrentNode().ID,
+		NodeID:  req.NodeID,
 	}
 
 	instance.IP = pod.Status.PodIP
@@ -438,11 +418,6 @@ func (k *Kubernetes) StartInstance(req *orchestrator.Request) (instance *orchest
 }
 
 func (k *Kubernetes) StopInstance(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
-	if req.NodeID != k.currentNode.ID {
-		return instance, fmt.Errorf("incorrect node, requested %v, current %v", req.NodeID,
-			k.currentNode.ID)
-	}
-
 	instance, err = k.InspectInstance(req)
 	if err != nil {
 		instance = &orchestrator.Instance{

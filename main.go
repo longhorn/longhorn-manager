@@ -126,6 +126,10 @@ func RunManager(c *cli.Context) error {
 		}
 		orch = docker
 
+		// Docker cannot manage cluster, we need forwarder to help
+		forwarder = orchestrator.NewForwarder(docker)
+		orch = forwarder
+
 		etcdServers := c.StringSlice(FlagETCDServers)
 		if len(etcdServers) == 0 {
 			return fmt.Errorf("require %v", FlagETCDServers)
@@ -142,9 +146,6 @@ func RunManager(c *cli.Context) error {
 	} else {
 		return fmt.Errorf("invalid orchestrator %v", orchName)
 	}
-
-	forwarder = orchestrator.NewForwarder(orch)
-	orch = forwarder
 
 	engines := &engineapi.EngineCollection{}
 	rpc := manager.NewGRPCManager()
