@@ -168,6 +168,7 @@ func (k *Kubernetes) CreateController(req *orchestrator.Request) (instance *orch
 			NodeSelector: map[string]string{
 				"kubernetes.io/hostname": req.NodeID,
 			},
+			RestartPolicy: apiv1.RestartPolicyNever,
 			Containers: []apiv1.Container{
 				{
 					Name:    req.InstanceName,
@@ -287,6 +288,7 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 			NodeSelector: map[string]string{
 				"kubernetes.io/hostname": req.NodeID,
 			},
+			RestartPolicy: apiv1.RestartPolicyNever,
 			Containers: []apiv1.Container{
 				{
 					Name:    req.InstanceName,
