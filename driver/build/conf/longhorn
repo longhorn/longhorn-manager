@@ -1,0 +1,344 @@
+#!/bin/bash
+# Notes:
+#  - Please install "jq" package before using this driver.
+LONGHORN_DEV_PATH="/dev/longhorn/"
+LONGHORN_NODEID="/var/lib/rancher/longhorn/.physical_host_uuid"
+WAIT_VOLUME_READY_TIMEOUT=120
+WAIT_DEVICE_READY_TIMEOUT=120
+CURL_TIMEOUT=5
+LONGHORN_SVC="127.0.0.1:9500"
+
+usage() {
+    err "Invalid usage. Usage: \n"
+    err "\t$0 init\n"
+    err "\t$0 mount <mount dir>  <json params> \n"
+    err "\t$0 unmount <mount dir> \n"
+    exit 1
+}
+
+err() {
+    echo -ne $* 1>&2
+}
+
+log() {
+    echo -ne $* >&1
+}
+
+checkParam() {
+    local jsonParams=$1
+    local volumeInfo=$2
+
+    local newSize=$(echo ${jsonParams} | jq -r '.size')
+    local newSize=${newSize%"G"}
+    local newSize=$[ $newSize * 1024 * 1024 * 1024 ]
+    local newNumOfReplicas=$(echo ${jsonParams} | jq -r '.numberOfReplicas')
+    local newStaleReplicaTimeout=$(echo ${jsonParams} | jq -r '.staleReplicaTimeout')
+
+    local oldSize=$(echo ${volumeInfo} | jq -r '.size')
+    local oldNumOfReplicas=$(echo ${volumeInfo} | jq -r '.numberOfReplicas')
+    local oldStaleReplicaTimeout=$(echo ${volumeInfo} | jq -r '.staleReplicaTimeout')
+
+    [ "${newSize}" == "${oldSize}" ] && \
+    [ "${newNumOfReplicas}" == "${oldNumOfReplicas}" ] && \
+    [ "${newStaleReplicaTimeout}" == "${oldStaleReplicaTimeout}" ] && echo -ne "Success"
+}
+
+dealExistedVolume() {
+    local jsonParams=$1
+    local volumeName=$2
+    local OUT=$(curl -s --connect-timeout 1 http://${LONGHORN_SVC}/v1/volumes/${volumeName})
+    local STATE=$(echo ${OUT} | jq -r '.state')
+    if [ "${STATE}" == "detached" ]; then
+        if [ "$(checkParam ${jsonParams} ${OUT})" == "Success" ]; then
+            echo -ne "Success"
+        else
+            echo -ne "${volumeName} is existed and new volume params is different old one"
+        fi
+    else
+        echo -ne "${volumeName} is existed and is attached"
+    fi
+}
+
+createVolume() {
+    local jsonParams=$1
+    local numReplicas=$(echo ${jsonParams} | jq -r '.numberOfReplicas')
+    numReplicas=${numReplicas:-"2"}
+    local volumeSize=$(echo ${jsonParams} | jq -r '.size')
+    volumeSize=${volumeSize:-"1G"}
+    local volumeName=$(echo ${jsonParams} | jq -r '.["kubernetes.io/pvOrVolumeName"]')
+    local staleReplicaTimeout=$(echo ${jsonParams} | jq -r '.staleReplicaTimeout')
+    staleReplicaTimeout=${staleReplicaTimeout:-"20"}
+    local fromBackup=$(echo ${jsonParams} | jq -r '.fromBackup')
+    fromBackup=${fromBackup:-""}
+
+    local OUT=$(curl -s -X POST --connect-timeout ${CURL_TIMEOUT} \
+              -d '{"name":"'${volumeName}'","size":"'${volumeSize}'","numberOfReplicas":'${numReplicas}',"staleReplicaTimeout":'${staleReplicaTimeout}',"fromBackup":"'${fromBackup}'"}' \
+              http://${LONGHORN_SVC}/v1/volumes)
+
+    local TYPE=$(echo ${OUT} | jq -r '.type')
+    local STATE=$(echo ${OUT} | jq -r '.state')
+    local MESSAGE=$(echo ${OUT} | jq -r '.message')
+    if [ "${OUT}" == "" ]; then
+	    echo -ne "create volume err: curl timeout"
+    elif [ "${STATE}" == "created" -a "${TYPE}" == "volume" ]; then
+        echo -ne "Success"
+    elif [ "${TYPE}" == "error" -a "$(echo "${MESSAGE}" | grep -o 'already exists')" ]; then
+        OUT=$(dealExistedVolume ${jsonParams} ${volumeName})
+        echo -ne "${OUT}"
+    else
+        echo -ne "create volume fail: ${MESSAGE}"
+    fi
+}
+
+detachVolume() {
+    local volumeName=$1
+    local OUT=$(curl -s -X POST  --connect-timeout ${CURL_TIMEOUT} \
+              http://${LONGHORN_SVC}/v1/volumes/${volumeName}?action=detach)
+
+    OUT=$(waitVolumeReady ${volumeName} "detached")
+    return
+}
+
+attachVolume() {
+    local volumeName=$1
+    local OUT=$(curl -s -X POST  --connect-timeout ${CURL_TIMEOUT} \
+              -d '{"hostId":"'${LONGHORN_NODEID}'"}' \
+              http://${LONGHORN_SVC}/v1/volumes/${volumeName}?action=attach)
+    local TYPE=$(echo ${OUT} | jq -r '.type')
+    local STATE=$(echo ${OUT} | jq -r '.state')
+    local MESSAGE=$(echo ${OUT} | jq -r '.message')
+    if [ "${OUT}" == "" ]; then
+	    echo -ne "attach volume err: curl timeout"
+    elif [ "${TYPE}" == "volume" -a "${STATE}" == "detached" ]; then
+        echo -ne "Success"
+    else
+        echo -ne "attach volume err: ${MESSAGE}"
+    fi
+}
+
+waitVolumeReady() {
+    local volumeName=$1
+    local state=$2
+    local timeout=${WAIT_VOLUME_READY_TIMEOUT}
+
+    local VOLUME_STATE=""
+    until [ "${VOLUME_STATE}" == ${state} ]; do
+        VOLUME_STATE=$(curl -s --connect-timeout 1 http://${LONGHORN_SVC}/v1/volumes/${volumeName} | jq -r '.state')
+        ((timeout--))
+        if [ ${timeout} -le 0 ]; then
+            echo -ne "Wait Volume ${volumeName} ${state} ready timeout"
+            return
+        fi
+        sleep 1
+    done
+    echo -ne "Success"
+    return
+}
+
+waitDeviceReady() {
+    local blockDevice=$1
+    local timeout=${WAIT_DEVICE_READY_TIMEOUT}
+
+    until [ -b "${blockDevice}" ]; do
+        ((timeout--))
+        if [ ${timeout} -le 0 ]; then
+            echo -ne "Wait block device ${blockDevice} timeout"
+            return
+        fi
+        sleep 1
+    done
+    echo -ne "Success"
+    return
+}
+
+formatDevIfNeed() {
+    local fullDevName=$1
+    local newFsType=$2
+    local oldFsType
+    local OUT
+
+    if [ ! -e ${fullDevName} ]; then
+        echo -ne "Device ${fullDevName} is not ready"
+        return
+    fi
+
+    if OUT=$(blkid ${fullDevName}); then
+        oldFsType=$(echo ${OUT} | grep -E -o 'TYPE=\"[[:alnum:]]{1,}\"' | awk -F"\"" '{print $2}')
+        if [ "${oldFsType}" != "${newFsType}" ]; then
+            echo -ne "Failed to create device ${fullDevName} newfs ${newFsType} oldfs ${oldFsType}"
+        else
+            echo -ne "Success"
+        fi
+    else
+        if ! OUT=$(mkfs -t ${newFsType} ${fullDevName} >/dev/null 2>&1); then
+            echo -ne "Failed to create fs ${newFsType} on device ${fullDevName}"
+        else
+            echo -ne "Success"
+        fi
+    fi
+}
+
+createDevice() {
+    local jsonParams=$1
+    local volumeName=$(echo ${jsonParams} | jq -r '.["kubernetes.io/pvOrVolumeName"]')
+    local fullDevName=${LONGHORN_DEV_PATH}${volumeName}
+    local fsType=$(echo ${jsonParams} | jq -r '.["kubernetes.io/fsType"]')
+
+    if [ -e ${fullDevName} ]; then
+        echo -ne "Device ${fullDevName} is already existed"
+        return
+    fi
+
+    local OUT=$(createVolume "${jsonParams}")
+    if [ "${OUT}" != "Success" ]; then
+        echo -ne ${OUT}
+        return
+    fi
+
+    OUT=$(waitVolumeReady ${volumeName} "detached")
+    if [ "${OUT}" != "Success" ]; then
+        echo -ne ${OUT}
+        return
+    fi
+
+    OUT=$(attachVolume "${volumeName}")
+    if [ "${OUT}" != "Success" ]; then
+        echo -ne ${OUT}
+        return
+    fi
+
+    OUT=$(waitVolumeReady ${volumeName} "healthy")
+    if [ "${OUT}" != "Success" ]; then
+        detachVolume "${volumeName}"
+        echo -ne ${OUT}
+        return
+    fi
+
+    OUT=$(waitDeviceReady ${fullDevName})
+    if [ "${OUT}" != "Success" ]; then
+        detachVolume "${volumeName}"
+        echo -ne ${OUT}
+        return
+    fi
+
+    OUT=$(formatDevIfNeed ${fullDevName} ${fsType})
+    if [ "${OUT}" != "Success" ]; then
+        detachVolume "${volumeName}"
+        echo -ne ${OUT}
+        return
+    fi
+
+    echo -ne ${fullDevName}
+}
+
+deleteVolume() {
+    local volumeName=$1
+    local OUT=$(curl -s --connect-timeout ${CURL_TIMEOUT} -X DELETE \
+              http://${LONGHORN_SVC}/v1/volumes/${volumeName})
+}
+
+deleteDevice() {
+    local fullDevName=$1
+    local volumeName=${fullDevName#${LONGHORN_DEV_PATH}}
+    deleteVolume ${volumeName}
+
+    local timeout=${WAIT_DEVICE_READY_TIMEOUT}
+    until [ ! -b "${fullDevName}" ]; do
+        ((timeout--))
+        if [ ${timeout} -le 0 ]; then
+            echo -ne "Volume ${volumeName} detach timeout"
+            return
+        fi
+        sleep 1
+    done
+}
+
+domount() {
+    local mntPath=$1
+    local jsonParams=$2
+    local volumeName=$(echo ${jsonParams} | jq -r '.["kubernetes.io/pvOrVolumeName"]')
+    local fullDevName=${LONGHORN_DEV_PATH}${volumeName}
+    local fsType=$(echo ${jsonParams} | jq -r '.["kubernetes.io/fsType"]')
+
+    if [ ! -d "${mntPath}" ]; then
+        echo -ne "${mntPath} does not exist"
+        return
+    fi
+
+    if ! OUT=$(mount "${fullDevName}" "${mntPath}" 2>&1); then
+        echo -ne "Failed to mount device ${fullDevName} at ${mntPath}"
+        return
+    fi
+    echo -ne "Success"
+}
+
+domountdevice() {
+    local mntPath=$1
+    local jsonParams=$2
+    local volumeName=$(echo ${jsonParams} | jq -r '.["kubernetes.io/pvOrVolumeName"]')
+    local fullDevName=${LONGHORN_DEV_PATH}${volumeName}
+
+    local OUT=$(createDevice "${jsonParams}")
+    if [ "${OUT}" != "${fullDevName}" ]; then
+        err "{\"status\": \"Failure\", \"message\": \"${OUT}\"}"
+        exit 1
+    fi
+
+    OUT=$(domount ${mntPath} "${jsonParams}")
+    if [ "${OUT}" != "Success" ]; then
+        detachVolume "${volumeName}"
+        err "{\"status\": \"Failure\", \"message\": \"${OUT}\"}"
+        exit 1
+    fi
+
+    log "{\"status\": \"Success\"}"
+    exit 0
+}
+
+unmountdevice() {
+    local mntPath=$1
+    local fullDevName=`findmnt -n ${mntPath} | awk '{print $2}'`
+    local volumeName=${fullDevName#${LONGHORN_DEV_PATH}}
+
+    local OUT
+    if ! OUT=$(umount "${mntPath}" 2>&1); then
+        if [ "$(echo ${OUT} | grep 'not mounted')" ]; then
+            :
+        elif [ "$(echo ${OUT} | grep 'mountpoint not found')" ]; then
+            :
+        else
+            err "{ \"status\": \"Failure\", \"message\": \"Failed to unmount volume at ${mntPath}\"}"
+            exit 1
+        fi
+    fi
+    detachVolume "${volumeName}"
+    log "{\"status\": \"Success\"}"
+    exit 0
+}
+
+op=$1
+
+if [ "$op" = "init" ]; then
+    log "{\"status\": \"Success\", \"capabilities\": {\"attach\": false}}"
+    exit 0
+fi
+
+if [ $# -lt 1 ]; then
+    usage
+fi
+
+shift
+
+case "$op" in
+    mount)
+        domountdevice $*
+        ;;
+    unmount)
+        unmountdevice $*
+        ;;
+    *)
+        log "{ \"status\": \"Not supported\" }"
+        exit 0
+esac
+
+exit 0
