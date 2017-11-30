@@ -16,14 +16,14 @@ import (
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 
+	batchv1 "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kCli "k8s.io/client-go/kubernetes"
 )
 
 const (
-	cfgDirectory = "/var/lib/rancher/longhorn/"
-	hostUUIDFile = cfgDirectory + ".physical_host_uuid"
+	longhornDirectory = "/var/lib/rancher/longhorn/"
 
 	keyNodeName  = "NODE_NAME"
 	keyNameSpace = "POD_NAMESPACE"
@@ -35,6 +35,8 @@ var (
 	WaitAPITimeout    = 30 //seconds
 	WaitPodPeriod     = 5  //seconds
 	WaitPodCounter    = 10
+	WaitJobPeriod     = 5 //seconds
+	WaitJobCounter    = 20
 )
 
 type Kubernetes struct {
@@ -245,6 +247,10 @@ func (k *Kubernetes) getDeviceName(volumeName string) string {
 	return filepath.Join("/dev/longhorn/", volumeName)
 }
 
+func (k *Kubernetes) getReplicaVolumeDirectory(replicaName string) string {
+	return longhornDirectory + "/replicas/" + replicaName
+}
+
 func (k *Kubernetes) CreateReplica(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
 	if err := orchestrator.ValidateRequestCreateReplica(req); err != nil {
 		return nil, err
@@ -309,7 +315,7 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 					Name: "volume",
 					VolumeSource: apiv1.VolumeSource{
 						HostPath: &apiv1.HostPathVolumeSource{
-							Path: "/var/longhorn/replica/" + req.InstanceName,
+							Path: k.getReplicaVolumeDirectory(req.InstanceName),
 						},
 					},
 				},
@@ -404,6 +410,10 @@ func (k *Kubernetes) InspectInstance(req *orchestrator.Request) (instance *orche
 }
 
 func (k *Kubernetes) StartInstance(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
+	if err := orchestrator.ValidateRequestInstanceOps(req); err != nil {
+		return nil, err
+	}
+
 	if strings.HasPrefix(req.InstanceName, req.VolumeName+"-replica") &&
 		!strings.HasSuffix(req.InstanceName, "controller") {
 		return k.startReplica(req)
@@ -413,6 +423,10 @@ func (k *Kubernetes) StartInstance(req *orchestrator.Request) (instance *orchest
 }
 
 func (k *Kubernetes) StopInstance(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
+	if err := orchestrator.ValidateRequestInstanceOps(req); err != nil {
+		return nil, err
+	}
+
 	instance, err = k.InspectInstance(req)
 	if err != nil {
 		instance = &orchestrator.Instance{
@@ -428,14 +442,105 @@ func (k *Kubernetes) StopInstance(req *orchestrator.Request) (instance *orchestr
 		err = errors.Wrapf(err, "fail to delete instance %v(%v)", req.InstanceName, req.InstanceID)
 	}()
 
-	if err := orchestrator.ValidateRequestInstanceOps(req); err != nil {
-		return instance, err
-	}
-
 	return instance, k.cli.CoreV1().Pods(k.NameSpace).Delete(req.InstanceName, &meta_v1.DeleteOptions{})
 }
 
 func (k *Kubernetes) DeleteInstance(req *orchestrator.Request) (err error) {
-	// TODO the Deleting for replica needs to clean the volume file
+	if err := orchestrator.ValidateRequestInstanceOps(req); err != nil {
+		return err
+	}
+
+	if strings.HasPrefix(req.InstanceName, req.VolumeName+"-replica") &&
+		!strings.HasSuffix(req.InstanceName, "controller") {
+		return k.deleteReplica(req)
+	}
+	return nil
+}
+
+func (k *Kubernetes) deleteReplica(req *orchestrator.Request) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "fail to delete replica %v for volume %v", req.InstanceName, req.VolumeName)
+	}()
+
+	if err := orchestrator.ValidateRequestInstanceOps(req); err != nil {
+		return err
+	}
+
+	cmd := []string{"/bin/bash", "-c"}
+	// There is a delay between starting pod and mount the volume, so
+	// workaround it for now
+	args := []string{"sleep 1 && rm -f /volume/*"}
+
+	jobName := "cleanup-" + req.InstanceName
+	backoffLimit := int32(1)
+	job := &batchv1.Job{
+		ObjectMeta: meta_v1.ObjectMeta{
+			Name: jobName,
+		},
+		Spec: batchv1.JobSpec{
+			BackoffLimit: &backoffLimit,
+			Template: apiv1.PodTemplateSpec{
+				ObjectMeta: meta_v1.ObjectMeta{
+					Name: "cleanup-pod-" + req.InstanceName,
+				},
+				Spec: apiv1.PodSpec{
+					NodeSelector: map[string]string{
+						"kubernetes.io/hostname": req.NodeID,
+					},
+					RestartPolicy: apiv1.RestartPolicyNever,
+					Containers: []apiv1.Container{
+						{
+							Name:    "cleanup-" + req.InstanceName,
+							Image:   k.EngineImage,
+							Command: cmd,
+							Args:    args,
+							VolumeMounts: []apiv1.VolumeMount{
+								{
+									Name:      "volume",
+									MountPath: "/volume",
+								},
+							},
+						},
+					},
+					Volumes: []apiv1.Volume{
+						{
+							Name: "volume",
+							VolumeSource: apiv1.VolumeSource{
+								HostPath: &apiv1.HostPathVolumeSource{
+									Path: k.getReplicaVolumeDirectory(req.InstanceName),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	job, err = k.cli.BatchV1().Jobs(k.NameSpace).Create(job)
+	if err != nil {
+		return errors.Wrap(err, "failed to create cleanup job")
+	}
+
+	propagationPolicy := meta_v1.DeletePropagationBackground
+	defer k.cli.BatchV1().Jobs(k.NameSpace).Delete(jobName, &meta_v1.DeleteOptions{
+		PropagationPolicy: &propagationPolicy,
+	})
+
+	for i := 0; i < WaitJobCounter; i++ {
+		job, err = k.cli.BatchV1().Jobs(k.NameSpace).Get(jobName, meta_v1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		if job.Status.CompletionTime != nil {
+			break
+		}
+		time.Sleep(time.Second * time.Duration(WaitJobPeriod))
+	}
+	if job.Status.CompletionTime == nil {
+		return errors.Errorf("clean up job cannot finish")
+	}
+	if job.Status.Succeeded == 0 {
+		return errors.Errorf("clean up job failed")
+	}
 	return nil
 }
