@@ -89,6 +89,7 @@ func RunManager(c *cli.Context) error {
 		orch      orchestrator.Orchestrator
 		forwarder *orchestrator.Forwarder
 		ds        datastore.DataStore
+		notifier  manager.Notifier
 		err       error
 	)
 
@@ -115,6 +116,7 @@ func RunManager(c *cli.Context) error {
 		if err != nil {
 			return errors.Wrap(err, "fail to create CRD store")
 		}
+		notifier = manager.NewTargetWatcher(orch.GetCurrentNode().ID)
 	} else if orchName == "docker" {
 		cfg := &docker.Config{
 			EngineImage: engineImage,
@@ -143,14 +145,14 @@ func RunManager(c *cli.Context) error {
 			return err
 		}
 		ds = etcd
+		notifier = manager.NewGRPCNotifier(orch.GetCurrentNode().IP, types.DefaultManagerPort)
 	} else {
 		return fmt.Errorf("invalid orchestrator %v", orchName)
 	}
 
 	engines := &engineapi.EngineCollection{}
-	rpc := manager.NewGRPCNotifier(orch.GetCurrentNode().IP, types.DefaultManagerPort)
 
-	m, err := manager.NewVolumeManager(ds, orch, engines, rpc)
+	m, err := manager.NewVolumeManager(ds, orch, engines, notifier)
 	if err != nil {
 		return err
 	}
