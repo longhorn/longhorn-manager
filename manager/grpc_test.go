@@ -5,9 +5,9 @@ import (
 )
 
 const (
-	GRPCAddress1 = ":50001"
-	GRPCAddress2 = ":50002"
-	GRPCAddress3 = ":50003"
+	GRPCPort1 = 50001
+	GRPCPort2 = 50002
+	GRPCPort3 = 50003
 )
 
 var (
@@ -26,48 +26,48 @@ func (s *TestSuite) callback(c *C, ch chan Event) {
 
 func (s *TestSuite) TestGRPC(c *C) {
 	var err error
-	grpcMgr1 := NewGRPCManager()
+	grpcMgr1 := NewGRPCManager("", GRPCPort1)
 	callbackChan1 := make(chan Event)
-	err = grpcMgr1.StartServer(GRPCAddress1, callbackChan1)
+	err = grpcMgr1.Start(callbackChan1)
 	c.Assert(err, IsNil)
 	go s.callback(c, callbackChan1)
 
-	grpcMgr2 := NewGRPCManager()
+	grpcMgr2 := NewGRPCManager("", GRPCPort2)
 	callbackChan2 := make(chan Event)
-	err = grpcMgr2.StartServer(GRPCAddress2, callbackChan2)
+	err = grpcMgr2.Start(callbackChan2)
 	c.Assert(err, IsNil)
 	go s.callback(c, callbackChan2)
 
-	grpcMgr3 := NewGRPCManager()
+	grpcMgr3 := NewGRPCManager("", GRPCPort3)
 	callbackChan3 := make(chan Event)
-	err = grpcMgr3.StartServer(GRPCAddress3, callbackChan3)
+	err = grpcMgr3.Start(callbackChan3)
 	c.Assert(err, IsNil)
 	go s.callback(c, callbackChan3)
 
-	err = grpcMgr1.NodeNotify(GRPCAddress1, &event)
+	err = grpcMgr1.NodeNotify(grpcMgr1.GetAddress(), &event)
 	c.Assert(err, IsNil)
 
-	err = grpcMgr2.NodeNotify(GRPCAddress2, &event)
+	err = grpcMgr2.NodeNotify(grpcMgr2.GetAddress(), &event)
 	c.Assert(err, IsNil)
 
-	err = grpcMgr3.NodeNotify(GRPCAddress3, &event)
+	err = grpcMgr3.NodeNotify(grpcMgr3.GetAddress(), &event)
 	c.Assert(err, IsNil)
 
-	err = grpcMgr1.NodeNotify(GRPCAddress2, &event)
+	err = grpcMgr1.NodeNotify(grpcMgr2.GetAddress(), &event)
 	c.Assert(err, IsNil)
 
-	err = grpcMgr2.NodeNotify(GRPCAddress1, &event)
+	err = grpcMgr2.NodeNotify(grpcMgr1.GetAddress(), &event)
 	c.Assert(err, IsNil)
 
-	err = grpcMgr1.NodeNotify(GRPCAddress3, &event)
+	err = grpcMgr1.NodeNotify(grpcMgr3.GetAddress(), &event)
 	c.Assert(err, IsNil)
 
-	err = grpcMgr3.NodeNotify(GRPCAddress1, &event)
+	err = grpcMgr3.NodeNotify(grpcMgr1.GetAddress(), &event)
 	c.Assert(err, IsNil)
 
-	err = grpcMgr2.NodeNotify(GRPCAddress3, &event)
+	err = grpcMgr2.NodeNotify(grpcMgr3.GetAddress(), &event)
 	c.Assert(err, IsNil)
 
-	err = grpcMgr3.NodeNotify(GRPCAddress2, &event)
+	err = grpcMgr3.NodeNotify(grpcMgr2.GetAddress(), &event)
 	c.Assert(err, IsNil)
 }

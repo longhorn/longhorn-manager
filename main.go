@@ -148,9 +148,9 @@ func RunManager(c *cli.Context) error {
 	}
 
 	engines := &engineapi.EngineCollection{}
-	rpc := manager.NewGRPCManager()
+	rpc := manager.NewGRPCManager(orch.GetCurrentNode().IP, types.DefaultManagerPort)
 
-	m, err := manager.NewVolumeManager(ds, orch, engines, rpc, types.DefaultManagerPort)
+	m, err := manager.NewVolumeManager(ds, orch, engines, rpc)
 	if err != nil {
 		return err
 	}

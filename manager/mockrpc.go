@@ -2,12 +2,14 @@ package manager
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
 )
 
 type MockRPCManager struct {
 	callbackChan chan Event
-	address      string
+	ip           string
+	port         int
 	db           *MockRPCDB
 }
 
@@ -37,25 +39,34 @@ func (db *MockRPCDB) GetAddress2Channel(address string) chan Event {
 	return db.addressChanMap[address]
 }
 
-func NewMockRPCManager(db *MockRPCDB) *MockRPCManager {
+func NewMockRPCManager(db *MockRPCDB, ip string, port int) *MockRPCManager {
 	return &MockRPCManager{
-		db: db,
+		db:   db,
+		ip:   ip,
+		port: port,
 	}
 }
 
-func (r *MockRPCManager) StartServer(address string, ch chan Event) error {
-	r.address = address
+func (r *MockRPCManager) GetAddress() string {
+	return r.ip + ":" + strconv.Itoa(r.port)
+}
+
+func (r *MockRPCManager) Start(ch chan Event) error {
 	r.callbackChan = ch
-	r.db.SetAddress2Channel(r.address, ch)
+	r.db.SetAddress2Channel(r.GetAddress(), ch)
 	return nil
 }
 
-func (r *MockRPCManager) StopServer() {
+func (r *MockRPCManager) Stop() {
+}
+
+func (r *MockRPCManager) GetPort() int {
+	return r.port
 }
 
 func (r *MockRPCManager) NodeNotify(address string, event *Event) error {
 	var ch chan Event
-	if address == r.address {
+	if address == r.GetAddress() {
 		ch = r.callbackChan
 	} else {
 		ch = r.db.GetAddress2Channel(address)
