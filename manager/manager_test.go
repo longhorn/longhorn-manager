@@ -40,7 +40,7 @@ type TestSuite struct {
 	orchsims   []*orchsim.OrchSim
 	forwarder  *orchestrator.Forwarder
 	forwarders []*orchestrator.Forwarder
-	rpcs       []*MockRPCManager
+	rpcs       []*MockRPCNotifier
 	rpcdb      *MockRPCDB
 	manager    *VolumeManager
 	managers   []*VolumeManager
@@ -73,12 +73,12 @@ func (s *TestSuite) SetUpTest(c *C) {
 
 	s.rpcdb = NewMockRPCDB()
 
-	s.rpcs = make([]*MockRPCManager, NodeCounts)
+	s.rpcs = make([]*MockRPCNotifier, NodeCounts)
 	s.managers = make([]*VolumeManager, NodeCounts)
 	s.forwarders = make([]*orchestrator.Forwarder, NodeCounts)
 	for i := 0; i < NodeCounts; i++ {
 		s.forwarders[i] = orchestrator.NewForwarder(s.orchsims[i])
-		s.rpcs[i] = NewMockRPCManager(s.rpcdb, s.orchsims[i].GetCurrentNode().IP, ManagerPort+i)
+		s.rpcs[i] = NewMockRPCNotifier(s.rpcdb, s.orchsims[i].GetCurrentNode().IP, ManagerPort+i)
 		s.managers[i], err = NewVolumeManager(s.ds, s.forwarders[i], s.engines, s.rpcs[i])
 		c.Assert(err, IsNil)
 		s.forwarders[i].SetLocator(s.managers[i])

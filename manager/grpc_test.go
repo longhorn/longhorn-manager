@@ -26,19 +26,19 @@ func (s *TestSuite) callback(c *C, ch chan Event) {
 
 func (s *TestSuite) TestGRPC(c *C) {
 	var err error
-	grpcMgr1 := NewGRPCManager("", GRPCPort1)
+	grpcMgr1 := NewGRPCNotifier("", GRPCPort1)
 	callbackChan1 := make(chan Event)
 	err = grpcMgr1.Start(callbackChan1)
 	c.Assert(err, IsNil)
 	go s.callback(c, callbackChan1)
 
-	grpcMgr2 := NewGRPCManager("", GRPCPort2)
+	grpcMgr2 := NewGRPCNotifier("", GRPCPort2)
 	callbackChan2 := make(chan Event)
 	err = grpcMgr2.Start(callbackChan2)
 	c.Assert(err, IsNil)
 	go s.callback(c, callbackChan2)
 
-	grpcMgr3 := NewGRPCManager("", GRPCPort3)
+	grpcMgr3 := NewGRPCNotifier("", GRPCPort3)
 	callbackChan3 := make(chan Event)
 	err = grpcMgr3.Start(callbackChan3)
 	c.Assert(err, IsNil)

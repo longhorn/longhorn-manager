@@ -145,7 +145,7 @@ func (n *Node) Notify(volumeName string) error {
 	if n.ManagerPort == -1 {
 		return nil
 	}
-	if err := n.m.rpc.NodeNotify(n.GetManagerAddress(),
+	if err := n.m.notifier.NodeNotify(n.GetManagerAddress(),
 		&Event{
 			Type:       EventTypeNotify,
 			VolumeName: volumeName,

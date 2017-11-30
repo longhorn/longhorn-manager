@@ -14,26 +14,26 @@ import (
 	"github.com/rancher/longhorn-manager/manager/pb"
 )
 
-type GRPCManager struct {
+type GRPCNotifier struct {
 	ip           string
 	port         int
 	callbackChan chan Event
 	done         chan struct{}
 }
 
-func NewGRPCManager(ip string, port int) *GRPCManager {
-	return &GRPCManager{
+func NewGRPCNotifier(ip string, port int) *GRPCNotifier {
+	return &GRPCNotifier{
 		done: make(chan struct{}),
 		ip:   ip,
 		port: port,
 	}
 }
 
-func (r *GRPCManager) GetAddress() string {
+func (r *GRPCNotifier) GetAddress() string {
 	return r.ip + ":" + strconv.Itoa(r.port)
 }
 
-func (r *GRPCManager) NodeNotifyRPC(ctx context.Context, req *pb.NodeNotifyRequest) (*pb.NodeNotifyResponse, error) {
+func (r *GRPCNotifier) NodeNotifyRPC(ctx context.Context, req *pb.NodeNotifyRequest) (*pb.NodeNotifyResponse, error) {
 	r.callbackChan <- Event{
 		Type:       EventType(req.Event),
 		VolumeName: req.VolumeName,
@@ -43,7 +43,7 @@ func (r *GRPCManager) NodeNotifyRPC(ctx context.Context, req *pb.NodeNotifyReque
 	}, nil
 }
 
-func (r *GRPCManager) Start(callbackChan chan Event) (err error) {
+func (r *GRPCNotifier) Start(callbackChan chan Event) (err error) {
 	l, err := net.Listen("tcp", r.GetAddress())
 	if err != nil {
 		return errors.Wrap(err, "fail to start GRPC server")
@@ -65,15 +65,15 @@ func (r *GRPCManager) Start(callbackChan chan Event) (err error) {
 	return nil
 }
 
-func (r *GRPCManager) Stop() {
+func (r *GRPCNotifier) Stop() {
 	close(r.done)
 }
 
-func (r *GRPCManager) GetPort() int {
+func (r *GRPCNotifier) GetPort() int {
 	return r.port
 }
 
-func (r *GRPCManager) NodeNotify(address string, event *Event) error {
+func (r *GRPCNotifier) NodeNotify(address string, event *Event) error {
 	//FIXME insecure
 	conn, err := grpc.Dial(address, grpc.WithInsecure())
 	if err != nil {
