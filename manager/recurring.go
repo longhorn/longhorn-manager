@@ -75,7 +75,7 @@ func (job *CronJob) Run() {
 		return
 	}
 	if v.Controller == nil {
-		err = fmt.Errorf("Volume %v is not running, cannot perform cron job", v.Name)
+		logrus.Debugf("Volume %v is not running, skip cron job", v.Name)
 		return
 	}
 	engine, err := v.GetEngineClient()

@@ -21,7 +21,7 @@ var (
 func (m *VolumeManager) startProcessing() {
 	volumes, err := m.VolumeList()
 	if err != nil {
-		logrus.Fatalf("fail to acquire existing volume list")
+		logrus.Fatalf("Failed to acquire existing volume list")
 	}
 	if volumes != nil {
 		for name, volume := range volumes {
@@ -44,7 +44,7 @@ func (m *VolumeManager) startProcessing() {
 func (m *VolumeManager) notifyVolume(volumeName string) (err error) {
 	defer func() {
 		if err != nil {
-			logrus.Errorf("fail to notify volume due to %v", err)
+			logrus.Warnf("Failed to notify volume due to %v", err)
 		}
 	}()
 	currentNode := m.GetCurrentNode()
@@ -53,7 +53,7 @@ func (m *VolumeManager) notifyVolume(volumeName string) (err error) {
 		volume, err := m.GetVolume(volumeName)
 		if err == nil {
 			if volume == nil {
-				logrus.Errorf("volume %v has been deleted", volumeName)
+				logrus.Warnf("Cannot manage volume, volume %v has been deleted", volumeName)
 				return nil
 			}
 			if volume.TargetNodeID == currentNode.ID {
@@ -63,7 +63,7 @@ func (m *VolumeManager) notifyVolume(volumeName string) (err error) {
 				}
 				break
 			} else {
-				err = fmt.Errorf("target node ID %v doesn't match with the current one %v",
+				err = fmt.Errorf("Target node ID %v doesn't match with the current one %v",
 					volume.TargetNodeID, currentNode.ID)
 			}
 		}
@@ -94,7 +94,7 @@ func (v *ManagedVolume) process() {
 			break
 		}
 		if err := v.refresh(); err != nil {
-			logrus.Errorf("Fail get volume: %v", err)
+			logrus.Warnf("Failed to get volume: %v", err)
 			continue
 		}
 		if v.getTargetNodeID() != v.m.currentNode.ID {
@@ -104,19 +104,19 @@ func (v *ManagedVolume) process() {
 		}
 
 		if err := v.RefreshState(); err != nil {
-			logrus.Errorf("Fail to refresh volume state: %v", err)
+			logrus.Warnf("Failed to refresh volume state: %v", err)
 			continue
 		}
 
 		if err := v.Cleanup(); err != nil {
-			logrus.Errorf("Fail to cleanup stale replicas: %v", err)
+			logrus.Warnf("Failed to cleanup stale replicas: %v", err)
 		}
 
 		if err := v.Reconcile(); err != nil {
-			logrus.Errorf("Fail to reconcile volume state: %v", err)
+			logrus.Warnf("Fail to reconcile volume state: %v", err)
 		}
 		if err := v.RefreshState(); err != nil {
-			logrus.Errorf("Fail to refresh volume state: %v", err)
+			logrus.Warnf("Fail to refresh volume state: %v", err)
 		}
 		if v.isDeleted() {
 			break
@@ -160,7 +160,7 @@ func (v *ManagedVolume) RefreshState() (err error) {
 		for url, rep := range engineReps {
 			if rep.Mode == engineapi.ReplicaModeERR {
 				if err := engine.ReplicaRemove(url); err != nil {
-					logrus.Errorf("fail to clean up ERR replica %v for volume %v", url, v.Name)
+					logrus.Warnf("fail to clean up ERR replica %v for volume %v", url, v.Name)
 				}
 			}
 		}

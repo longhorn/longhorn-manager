@@ -122,7 +122,7 @@ func (m *VolumeManager) releaseVolume(volumeName string) {
 	logrus.Debugf("Releasing volume %v", volumeName)
 	volume := m.managedVolumes[volumeName]
 	if volume == nil {
-		logrus.Errorf("Cannot find volume to be released: %v", volumeName)
+		logrus.Warnf("Cannot find volume to be released: %v", volumeName)
 		return
 	}
 
@@ -136,7 +136,7 @@ func (m *VolumeManager) releaseVolume(volumeName string) {
 	}
 	if volume.State == types.VolumeStateDeleted {
 		if err := m.ds.DeleteVolume(volumeName); err != nil {
-			logrus.Errorf("Fail to remove volume entry from data store: %v", err)
+			logrus.Warnf("Fail to remove volume entry from data store: %v", err)
 		}
 		return
 	}
