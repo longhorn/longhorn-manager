@@ -3,6 +3,7 @@ package manager
 import (
 	"fmt"
 	"net"
+	"strconv"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
@@ -14,14 +15,22 @@ import (
 )
 
 type GRPCManager struct {
+	ip           string
+	port         int
 	callbackChan chan Event
 	done         chan struct{}
 }
 
-func NewGRPCManager() RPCManager {
+func NewGRPCManager(ip string, port int) *GRPCManager {
 	return &GRPCManager{
 		done: make(chan struct{}),
+		ip:   ip,
+		port: port,
 	}
+}
+
+func (r *GRPCManager) GetAddress() string {
+	return r.ip + ":" + strconv.Itoa(r.port)
 }
 
 func (r *GRPCManager) NodeNotifyRPC(ctx context.Context, req *pb.NodeNotifyRequest) (*pb.NodeNotifyResponse, error) {
@@ -34,8 +43,8 @@ func (r *GRPCManager) NodeNotifyRPC(ctx context.Context, req *pb.NodeNotifyReque
 	}, nil
 }
 
-func (r *GRPCManager) StartServer(address string, callbackChan chan Event) (err error) {
-	l, err := net.Listen("tcp", address)
+func (r *GRPCManager) Start(callbackChan chan Event) (err error) {
+	l, err := net.Listen("tcp", r.GetAddress())
 	if err != nil {
 		return errors.Wrap(err, "fail to start GRPC server")
 	}
@@ -56,8 +65,12 @@ func (r *GRPCManager) StartServer(address string, callbackChan chan Event) (err 
 	return nil
 }
 
-func (r *GRPCManager) StopServer() {
+func (r *GRPCManager) Stop() {
 	close(r.done)
+}
+
+func (r *GRPCManager) GetPort() int {
+	return r.port
 }
 
 func (r *GRPCManager) NodeNotify(address string, event *Event) error {

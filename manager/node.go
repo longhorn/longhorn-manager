@@ -42,9 +42,6 @@ func (m *VolumeManager) RegisterNode(port int) error {
 		NodeInfo: *currentInfo,
 		m:        m,
 	}
-	if err := m.rpc.StartServer(m.currentNode.GetManagerAddress(), m.EventChan); err != nil {
-		return err
-	}
 	go m.nodeHealthCheckin()
 	return nil
 }
@@ -144,6 +141,10 @@ func (n *Node) GetAPIAddress() string {
 }
 
 func (n *Node) Notify(volumeName string) error {
+	// It's not notified through manager port, so skip
+	if n.ManagerPort == -1 {
+		return nil
+	}
 	if err := n.m.rpc.NodeNotify(n.GetManagerAddress(),
 		&Event{
 			Type:       EventTypeNotify,

@@ -32,10 +32,7 @@ type VolumeManager struct {
 func NewVolumeManager(ds datastore.DataStore,
 	orch orchestrator.Orchestrator,
 	engines engineapi.EngineClientCollection,
-	rpc RPCManager, port int) (*VolumeManager, error) {
-	if port == 0 {
-		return nil, fmt.Errorf("invalid manager port")
-	}
+	rpc RPCManager) (*VolumeManager, error) {
 	manager := &VolumeManager{
 		ds:      ds,
 		orch:    orch,
@@ -48,7 +45,10 @@ func NewVolumeManager(ds datastore.DataStore,
 	}
 	manager.scheduler = scheduler.NewScheduler(manager)
 
-	if err := manager.RegisterNode(port); err != nil {
+	if err := manager.RegisterNode(rpc.GetPort()); err != nil {
+		return nil, err
+	}
+	if err := manager.rpc.Start(manager.EventChan); err != nil {
 		return nil, err
 	}
 	go manager.startProcessing()
@@ -282,7 +282,7 @@ func (m *VolumeManager) VolumeRecurringUpdate(request *VolumeRecurringUpdateRequ
 }
 
 func (m *VolumeManager) Shutdown() {
-	m.rpc.StopServer()
+	m.rpc.Stop()
 }
 
 func (m *VolumeManager) VolumeList() (map[string]*types.VolumeInfo, error) {

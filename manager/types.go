@@ -79,9 +79,10 @@ type Node struct {
 }
 
 type RPCManager interface {
-	StartServer(address string, ch chan Event) error
-	StopServer()
+	Start(chan Event) error
+	Stop()
 
+	GetPort() int
 	NodeNotify(address string, event *Event) error
 }
 
