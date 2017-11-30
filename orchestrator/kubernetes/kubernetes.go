@@ -33,9 +33,8 @@ const (
 var (
 	WaitDeviceTimeout = 30 //seconds
 	WaitAPITimeout    = 30 //seconds
-	WaitPodTimeout    = 5  //seconds
-	WaitPodPeriod     = 3  //seconds
-	WaitPodCounter    = 5
+	WaitPodPeriod     = 5  //seconds
+	WaitPodCounter    = 10
 )
 
 type Kubernetes struct {
@@ -355,24 +354,18 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 }
 
 func (k *Kubernetes) waitForPodReady(podName string) (*apiv1.Pod, error) {
-	c := time.After(time.Second * time.Duration(WaitPodTimeout))
-
 	for i := 0; i < WaitPodCounter; i++ {
-		select {
-		case <-c:
-			pod, err := k.cli.CoreV1().Pods(k.NameSpace).Get(podName, meta_v1.GetOptions{})
-			if err != nil {
-				return nil, err
-			}
-			if pod.Status.PodIP == "" {
-				c = time.After(time.Duration(WaitPodPeriod))
-			} else {
-				return pod, err
-			}
+		pod, err := k.cli.CoreV1().Pods(k.NameSpace).Get(podName, meta_v1.GetOptions{})
+		if err != nil {
+			return nil, err
 		}
+		if pod.Status.PodIP != "" {
+			return pod, nil
+		}
+		time.Sleep(time.Second * time.Duration(WaitPodPeriod))
 	}
 
-	return nil, fmt.Errorf("pod %v IP can't be acquired, timeout", podName)
+	return nil, fmt.Errorf("timeout: pod %v IP can't be acquired", podName)
 }
 
 func (k *Kubernetes) InspectInstance(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
