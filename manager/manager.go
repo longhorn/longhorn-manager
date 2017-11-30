@@ -21,7 +21,7 @@ type VolumeManager struct {
 	ds        datastore.DataStore
 	orch      orchestrator.Orchestrator
 	engines   engineapi.EngineClientCollection
-	rpc       RPCManager
+	notifier  Notifier
 	scheduler *scheduler.Scheduler
 
 	EventChan           chan Event
@@ -32,12 +32,12 @@ type VolumeManager struct {
 func NewVolumeManager(ds datastore.DataStore,
 	orch orchestrator.Orchestrator,
 	engines engineapi.EngineClientCollection,
-	rpc RPCManager) (*VolumeManager, error) {
+	notifier Notifier) (*VolumeManager, error) {
 	manager := &VolumeManager{
-		ds:      ds,
-		orch:    orch,
-		engines: engines,
-		rpc:     rpc,
+		ds:       ds,
+		orch:     orch,
+		engines:  engines,
+		notifier: notifier,
 
 		EventChan:           make(chan Event),
 		managedVolumes:      make(map[string]*ManagedVolume),
@@ -45,10 +45,10 @@ func NewVolumeManager(ds datastore.DataStore,
 	}
 	manager.scheduler = scheduler.NewScheduler(manager)
 
-	if err := manager.RegisterNode(rpc.GetPort()); err != nil {
+	if err := manager.RegisterNode(notifier.GetPort()); err != nil {
 		return nil, err
 	}
-	if err := manager.rpc.Start(manager.EventChan); err != nil {
+	if err := manager.notifier.Start(manager.EventChan); err != nil {
 		return nil, err
 	}
 	go manager.startProcessing()
@@ -282,7 +282,7 @@ func (m *VolumeManager) VolumeRecurringUpdate(request *VolumeRecurringUpdateRequ
 }
 
 func (m *VolumeManager) Shutdown() {
-	m.rpc.Stop()
+	m.notifier.Stop()
 }
 
 func (m *VolumeManager) VolumeList() (map[string]*types.VolumeInfo, error) {

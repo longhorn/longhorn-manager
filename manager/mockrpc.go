@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-type MockRPCManager struct {
+type MockRPCNotifier struct {
 	callbackChan chan Event
 	ip           string
 	port         int
@@ -39,32 +39,32 @@ func (db *MockRPCDB) GetAddress2Channel(address string) chan Event {
 	return db.addressChanMap[address]
 }
 
-func NewMockRPCManager(db *MockRPCDB, ip string, port int) *MockRPCManager {
-	return &MockRPCManager{
+func NewMockRPCNotifier(db *MockRPCDB, ip string, port int) *MockRPCNotifier {
+	return &MockRPCNotifier{
 		db:   db,
 		ip:   ip,
 		port: port,
 	}
 }
 
-func (r *MockRPCManager) GetAddress() string {
+func (r *MockRPCNotifier) GetAddress() string {
 	return r.ip + ":" + strconv.Itoa(r.port)
 }
 
-func (r *MockRPCManager) Start(ch chan Event) error {
+func (r *MockRPCNotifier) Start(ch chan Event) error {
 	r.callbackChan = ch
 	r.db.SetAddress2Channel(r.GetAddress(), ch)
 	return nil
 }
 
-func (r *MockRPCManager) Stop() {
+func (r *MockRPCNotifier) Stop() {
 }
 
-func (r *MockRPCManager) GetPort() int {
+func (r *MockRPCNotifier) GetPort() int {
 	return r.port
 }
 
-func (r *MockRPCManager) NodeNotify(address string, event *Event) error {
+func (r *MockRPCNotifier) NodeNotify(address string, event *Event) error {
 	var ch chan Event
 	if address == r.GetAddress() {
 		ch = r.callbackChan

@@ -78,7 +78,7 @@ type Node struct {
 	m *VolumeManager
 }
 
-type RPCManager interface {
+type Notifier interface {
 	Start(chan Event) error
 	Stop()
 
