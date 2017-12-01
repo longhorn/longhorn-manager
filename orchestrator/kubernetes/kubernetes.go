@@ -146,6 +146,7 @@ func (k *Kubernetes) CreateController(req *orchestrator.Request) (instance *orch
 		return nil, err
 	}
 
+	logrus.Debugf("Starting controller %v for %v", req.InstanceName, req.VolumeName)
 	cmd := []string{
 		"launch", "controller",
 		"--listen", "0.0.0.0:9501",
@@ -239,6 +240,7 @@ func (k *Kubernetes) CreateController(req *orchestrator.Request) (instance *orch
 	if err := util.WaitForDevice(k.getDeviceName(req.VolumeName), WaitDeviceTimeout); err != nil {
 		return nil, err
 	}
+	logrus.Debugf("Started controller %v for %v", req.InstanceName, req.VolumeName)
 
 	return instance, nil
 }
@@ -274,6 +276,7 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 		return nil, err
 	}
 
+	logrus.Debugf("Starting replica %v for %v", req.InstanceName, req.VolumeName)
 	cmd := []string{
 		"launch", "replica",
 		"--listen", "0.0.0.0:9502",
@@ -355,6 +358,7 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 	if err := util.WaitForAPI(url, timeout); err != nil {
 		return nil, err
 	}
+	logrus.Debugf("Started replica %v for %v", req.InstanceName, req.VolumeName)
 
 	return instance, nil
 }
@@ -427,6 +431,7 @@ func (k *Kubernetes) StopInstance(req *orchestrator.Request) (instance *orchestr
 		return nil, err
 	}
 
+	logrus.Debugf("Stopping instance %v for %v", req.InstanceName, req.VolumeName)
 	instance, err = k.InspectInstance(req)
 	if err != nil {
 		instance = &orchestrator.Instance{
@@ -442,7 +447,11 @@ func (k *Kubernetes) StopInstance(req *orchestrator.Request) (instance *orchestr
 		err = errors.Wrapf(err, "fail to delete instance %v(%v)", req.InstanceName, req.InstanceID)
 	}()
 
-	return instance, k.cli.CoreV1().Pods(k.NameSpace).Delete(req.InstanceName, &meta_v1.DeleteOptions{})
+	if err := k.cli.CoreV1().Pods(k.NameSpace).Delete(req.InstanceName, &meta_v1.DeleteOptions{}); err != nil {
+		return nil, err
+	}
+	logrus.Debugf("Stopped instance %v for %v", req.InstanceName, req.VolumeName)
+	return instance, nil
 }
 
 func (k *Kubernetes) DeleteInstance(req *orchestrator.Request) (err error) {
@@ -461,6 +470,8 @@ func (k *Kubernetes) deleteReplica(req *orchestrator.Request) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to delete replica %v for volume %v", req.InstanceName, req.VolumeName)
 	}()
+
+	logrus.Debugf("Deleting replica %v for %v", req.InstanceName, req.VolumeName)
 
 	if err := orchestrator.ValidateRequestInstanceOps(req); err != nil {
 		return err
@@ -542,5 +553,7 @@ func (k *Kubernetes) deleteReplica(req *orchestrator.Request) (err error) {
 	if job.Status.Succeeded == 0 {
 		return errors.Errorf("clean up job failed")
 	}
+
+	logrus.Debugf("Deleted replica %v for %v", req.InstanceName, req.VolumeName)
 	return nil
 }

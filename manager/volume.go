@@ -129,6 +129,7 @@ func (m *VolumeManager) releaseVolume(volumeName string) {
 	defer m.managedVolumesMutex.Unlock()
 
 	logrus.Debugf("Releasing volume %v", volumeName)
+	defer logrus.Debugf("Released volume %v", volumeName)
 	volume := m.managedVolumes[volumeName]
 	if volume == nil {
 		logrus.Warnf("Cannot find volume to be released: %v", volumeName)

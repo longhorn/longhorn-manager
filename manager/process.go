@@ -84,7 +84,9 @@ func (m *VolumeManager) notifyVolume(volumeName string) (err error) {
 
 func (v *ManagedVolume) process() {
 	defer v.m.releaseVolume(v.Name)
+	defer logrus.Debugf("Stop managing volume %v", v.Name)
 
+	logrus.Debugf("Start managing volume %v", v.Name)
 	tick := time.NewTicker(ReconcileInterval)
 	for {
 		select {
@@ -98,7 +100,7 @@ func (v *ManagedVolume) process() {
 			continue
 		}
 		if v.getTargetNodeID() != v.m.currentNode.ID {
-			logrus.Infof("Volume %v no longer belong to current node, release it: target node ID %v, currentNode ID %v ",
+			logrus.Infof("Volume %v no longer belong to current node, releasing it: target node ID %v, currentNode ID %v ",
 				v.Name, v.getTargetNodeID(), v.m.currentNode.ID)
 			break
 		}
