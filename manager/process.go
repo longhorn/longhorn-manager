@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	ConfirmationInterval = 5 * time.Second
-	ConfirmationCounts   = 6
+	ConfirmationInterval = 1 * time.Second
+	ConfirmationCounts   = 30
 
 	ReconcileInterval = 5 * time.Second
 )
@@ -47,21 +47,24 @@ func (m *VolumeManager) notifyVolume(volumeName string) (err error) {
 			logrus.Warnf("Failed to notify volume due to %v", err)
 		}
 	}()
+
+	var volume *Volume
+
 	currentNode := m.GetCurrentNode()
 	// wait until we can confirm that this node owns volume
 	for i := 0; i < ConfirmationCounts; i++ {
-		volume, err := m.GetVolume(volumeName)
+		volume, err = m.GetVolume(volumeName)
 		if err == nil {
 			if volume == nil {
 				logrus.Warnf("Cannot manage volume, volume %v has been deleted", volumeName)
 				return nil
 			}
 			if volume.TargetNodeID == currentNode.ID {
-				volume.NodeID = currentNode.ID
-				if err := m.ds.UpdateVolume(&volume.VolumeInfo); err != nil {
-					return err
+				if volume.NodeID == "" || volume.NodeID == currentNode.ID {
+					break
 				}
-				break
+				logrus.Debugf("Waiting for the other manager %v to yield volume %v, this node %v",
+					volume.NodeID, volumeName, currentNode.ID)
 			} else {
 				err = fmt.Errorf("Target node ID %v doesn't match with the current one %v",
 					volume.TargetNodeID, currentNode.ID)
@@ -72,12 +75,18 @@ func (m *VolumeManager) notifyVolume(volumeName string) (err error) {
 	if err != nil {
 		return err
 	}
+	if volume.NodeID != currentNode.ID {
+		volume.NodeID = currentNode.ID
+		if err := m.ds.UpdateVolume(&volume.VolumeInfo); err != nil {
+			return err
+		}
+	}
 
-	volume, err := m.getManagedVolume(volumeName, true)
+	v, err := m.getManagedVolume(volumeName, true)
 	if err != nil {
 		return err
 	}
-	volume.Notify <- struct{}{}
+	v.Notify <- struct{}{}
 
 	return nil
 }

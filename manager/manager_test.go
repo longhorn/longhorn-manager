@@ -24,7 +24,7 @@ const (
 	VolumeNumberOfReplicas    = 3
 	VolumeStaleReplicaTimeout = 3600
 
-	RetryCounts   = 20
+	RetryCounts   = 50
 	RetryInterval = 100 * time.Millisecond
 
 	NodeCounts       = 3
@@ -103,8 +103,7 @@ func (s *TestSuite) TestVolume(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(len(nodes), Equals, NodeCounts)
 
-	node, err := s.manager.GetRandomNode()
-	c.Assert(err, IsNil)
+	node := s.manager.GetCurrentNode()
 	err = s.manager.NewVolume(&types.VolumeInfo{
 		Size:                VolumeSize,
 		NumberOfReplicas:    VolumeNumberOfReplicas,

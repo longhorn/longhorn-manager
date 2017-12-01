@@ -148,6 +148,16 @@ func (m *VolumeManager) releaseVolume(volumeName string) {
 	delete(m.managedVolumes, volumeName)
 
 	if volume.TargetNodeID != m.currentNode.ID {
+		// Yield
+		v, err := m.GetVolume(volumeName)
+		if err != nil {
+			return
+		}
+		v.NodeID = ""
+		if err := m.ds.UpdateVolume(&v.VolumeInfo); err != nil {
+			return
+		}
+		logrus.Infof("Yield volume %v to %v", v.Name, v.TargetNodeID)
 		return
 	}
 	if volume.State == types.VolumeStateDeleted {
