@@ -95,6 +95,12 @@ func (m *VolumeManager) getManagedVolume(volumeName string, create bool) (*Manag
 	if err != nil {
 		return nil, err
 	}
+
+	// Things may change when we hit here because the mutex lock above
+	if volume.TargetNodeID != m.currentNode.ID {
+		return nil, fmt.Errorf("volume no longer belong to the current node")
+	}
+
 	v = &ManagedVolume{
 		Volume:    *volume,
 		mutex:     &sync.RWMutex{},
