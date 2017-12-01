@@ -81,18 +81,8 @@ func (t *TargetWatcher) onAdd(obj interface{}) {
 }
 
 func (t *TargetWatcher) onUpdate(oldObj, newObj interface{}) {
-	oldVolume, ok := oldObj.(*longhornv1alpha1.Volume)
-	if !ok {
-		logrus.Errorf("BUG: fail to convert new resource object to volume on update")
-	}
-	if oldVolume.TargetNodeID == t.nodeID {
-		event := Event{
-			Type:       EventTypeNotify,
-			VolumeName: oldVolume.Name,
-		}
-		t.eventChan <- event
-	}
-
+	// Don't need notify old volume since the old owner will notice it after
+	// ReconcileInterval
 	newVolume, ok := newObj.(*longhornv1alpha1.Volume)
 	if !ok {
 		logrus.Errorf("BUG: fail to convert new resource object to volume on update")
