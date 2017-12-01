@@ -13,6 +13,11 @@ import (
 	"github.com/rancher/longhorn-manager/util"
 )
 
+const (
+	// NameMaximumLength restricted the length due to Kubernetes name limitation
+	NameMaximumLength = 32
+)
+
 func (m *VolumeManager) NewVolume(info *types.VolumeInfo) error {
 	if info.Name == "" || info.Size == 0 || info.NumberOfReplicas == 0 {
 		return fmt.Errorf("missing required parameter %+v", info)
@@ -20,6 +25,10 @@ func (m *VolumeManager) NewVolume(info *types.VolumeInfo) error {
 	errs := validation.IsDNS1123Label(info.Name)
 	if len(errs) != 0 {
 		return fmt.Errorf("Invalid volume name: %+v", errs)
+	}
+	if len(info.Name) > NameMaximumLength {
+		return fmt.Errorf("Volume name is too long %v, must be less than %v characters",
+			info.Name, NameMaximumLength)
 	}
 	vol, err := m.ds.GetVolume(info.Name)
 	if err != nil {

@@ -135,7 +135,7 @@ func WaitForDevice(dev string, timeout int) error {
 }
 
 func RandomID() string {
-	return UUID()[:18]
+	return UUID()[:8]
 }
 
 func GetLocalIPs() ([]string, error) {
