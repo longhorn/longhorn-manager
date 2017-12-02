@@ -73,19 +73,22 @@ func (m *VolumeManager) VolumeCreate(request *VolumeCreateRequest) (err error) {
 		return err
 	}
 	info := &types.VolumeInfo{
-		Size:                size,
-		BaseImage:           request.BaseImage,
-		FromBackup:          request.FromBackup,
-		NumberOfReplicas:    request.NumberOfReplicas,
-		StaleReplicaTimeout: request.StaleReplicaTimeout,
+		VolumeSpec: types.VolumeSpec{
+			Size:                size,
+			BaseImage:           request.BaseImage,
+			FromBackup:          request.FromBackup,
+			NumberOfReplicas:    request.NumberOfReplicas,
+			StaleReplicaTimeout: request.StaleReplicaTimeout,
+			DesireState:         types.VolumeStateDetached,
+			TargetNodeID:        node.ID,
+		},
+		VolumeStatus: types.VolumeStatus{
+			Created: util.Now(),
+			State:   types.VolumeStateCreated,
+		},
 		Metadata: types.Metadata{
 			Name: request.Name,
 		},
-
-		Created:      util.Now(),
-		TargetNodeID: node.ID,
-		State:        types.VolumeStateCreated,
-		DesireState:  types.VolumeStateDetached,
 	}
 	if err := m.NewVolume(info); err != nil {
 		return err

@@ -105,14 +105,18 @@ func (s *TestSuite) TestVolume(c *C) {
 
 	node := s.manager.GetCurrentNode()
 	err = s.manager.NewVolume(&types.VolumeInfo{
-		Size:                VolumeSize,
-		NumberOfReplicas:    VolumeNumberOfReplicas,
-		StaleReplicaTimeout: VolumeStaleReplicaTimeout,
+		VolumeSpec: types.VolumeSpec{
+			Size:                VolumeSize,
+			NumberOfReplicas:    VolumeNumberOfReplicas,
+			StaleReplicaTimeout: VolumeStaleReplicaTimeout,
+			TargetNodeID:        node.ID,
+			DesireState:         types.VolumeStateDetached,
+		},
 
-		Created:      util.Now(),
-		TargetNodeID: node.ID,
-		State:        types.VolumeStateCreated,
-		DesireState:  types.VolumeStateDetached,
+		VolumeStatus: types.VolumeStatus{
+			Created: util.Now(),
+			State:   types.VolumeStateCreated,
+		},
 
 		Metadata: types.Metadata{
 			Name: VolumeName,

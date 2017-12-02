@@ -179,9 +179,11 @@ func (s *TestSuite) testSettings(c *C, st *KVStore) {
 
 func generateTestVolume(name string) *types.VolumeInfo {
 	return &types.VolumeInfo{
-		Size:                1024 * 1024,
-		NumberOfReplicas:    2,
-		StaleReplicaTimeout: 1,
+		VolumeSpec: types.VolumeSpec{
+			Size:                1024 * 1024,
+			NumberOfReplicas:    2,
+			StaleReplicaTimeout: 1,
+		},
 		Metadata: types.Metadata{
 			Name: name,
 		},

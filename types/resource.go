@@ -18,25 +18,28 @@ type Metadata struct {
 }
 
 type VolumeInfo struct {
-	// Attributes
+	VolumeSpec
+	VolumeStatus
+
+	Metadata
+}
+
+type VolumeSpec struct {
 	Size                int64 `json:",string"`
 	BaseImage           string
 	FromBackup          string
 	NumberOfReplicas    int
 	StaleReplicaTimeout int
+	TargetNodeID        string
+	RecurringJobs       []RecurringJob
+	DesireState         VolumeState
+}
 
-	// Running spec
-	TargetNodeID  string
-	DesireState   VolumeState
-	RecurringJobs []RecurringJob
-
-	// Running state
+type VolumeStatus struct {
 	Created  string
 	NodeID   string
 	State    VolumeState
 	Endpoint string
-
-	Metadata
 }
 
 type RecurringJobType string
