@@ -7,6 +7,7 @@ import (
 
 	"github.com/rancher/longhorn-manager/orchestrator"
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 
 	. "gopkg.in/check.v1"
 )
@@ -83,16 +84,19 @@ func (s *TestSuite) TestCreateVolume(c *C) {
 
 	volume := &types.VolumeInfo{
 		VolumeSpec: types.VolumeSpec{
-			Size: 8 * 1024 * 1024, // 8M
+			Size: "8M",
 		},
 		Metadata: types.Metadata{
 			Name: VolumeName,
 		},
 	}
+	size, err := util.ConvertSize(volume.Size)
+	c.Assert(err, IsNil)
+
 	replica1Req := &orchestrator.Request{
 		NodeID:       s.d.GetCurrentNode().ID,
 		VolumeName:   volume.Name,
-		VolumeSize:   volume.Size,
+		VolumeSize:   size,
 		InstanceName: Replica1Name,
 	}
 	replica1, err := s.d.CreateReplica(replica1Req)
@@ -131,7 +135,7 @@ func (s *TestSuite) TestCreateVolume(c *C) {
 	replica2Req := &orchestrator.Request{
 		NodeID:       s.d.GetCurrentNode().ID,
 		VolumeName:   volume.Name,
-		VolumeSize:   volume.Size,
+		VolumeSize:   size,
 		InstanceName: Replica2Name,
 	}
 	replica2, err := s.d.CreateReplica(replica2Req)
@@ -153,7 +157,7 @@ func (s *TestSuite) TestCreateVolume(c *C) {
 		NodeID:       s.d.GetCurrentNode().ID,
 		InstanceName: ControllerName,
 		VolumeName:   volume.Name,
-		VolumeSize:   volume.Size,
+		VolumeSize:   size,
 		ReplicaURLs: []string{
 			"tcp://" + replica1.IP + ":9502",
 			"tcp://" + replica2.IP + ":9502",

@@ -19,8 +19,7 @@ import (
 
 const (
 	VolumeName                = "vol"
-	VolumeSize                = 10 * 1024 * 1024 * 1024
-	VolumeSizeString          = "10g"
+	VolumeSize                = "10g"
 	VolumeNumberOfReplicas    = 3
 	VolumeStaleReplicaTimeout = 3600
 
@@ -228,7 +227,7 @@ func (s *TestSuite) TestVolumeReconcile(c *C) {
 
 	err = s.manager.VolumeCreate(&VolumeCreateRequest{
 		Name:                VolumeName,
-		Size:                VolumeSizeString,
+		Size:                VolumeSize,
 		NumberOfReplicas:    VolumeNumberOfReplicas,
 		StaleReplicaTimeout: VolumeStaleReplicaTimeout,
 	})
@@ -315,7 +314,7 @@ func (s *TestSuite) waitForVolumeState(c *C, volumeName string, state types.Volu
 func (s *TestSuite) TestVolumeHeal(c *C) {
 	err := s.manager.VolumeCreate(&VolumeCreateRequest{
 		Name:                VolumeName,
-		Size:                VolumeSizeString,
+		Size:                VolumeSize,
 		NumberOfReplicas:    VolumeNumberOfReplicas,
 		StaleReplicaTimeout: VolumeStaleReplicaTimeout,
 	})
