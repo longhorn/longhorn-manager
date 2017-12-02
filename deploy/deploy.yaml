@@ -148,7 +148,7 @@ spec:
     spec:
       containers:
       - name: longhorn-ui
-        image: rancher/longhorn-ui:b09b215
+        image: rancher/longhorn-ui:b161e3a
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
