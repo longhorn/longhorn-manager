@@ -159,11 +159,13 @@ func (v *ManagedVolume) RefreshState() (err error) {
 	}()
 
 	engineReps := map[string]*engineapi.Replica{}
+	endpoint := ""
 	if v.Controller != nil {
 		engine, err := v.GetEngineClient()
 		if err != nil {
 			return err
 		}
+		endpoint = engine.Endpoint()
 		engineReps, err = engine.ReplicaList()
 		if err != nil {
 			return err
@@ -206,6 +208,7 @@ func (v *ManagedVolume) RefreshState() (err error) {
 		}
 	}
 
+	v.Endpoint = endpoint
 	if err := v.m.ds.UpdateVolume(&v.VolumeInfo); err != nil {
 		return err
 	}
