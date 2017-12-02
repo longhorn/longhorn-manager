@@ -24,7 +24,7 @@ var (
 	Replica4Name         = VolumeName + "-replica4"
 
 	NodeCount     = 3
-	OrchPortStart = 50000
+	OrchPortStart = 60000
 )
 
 func Test(t *testing.T) { TestingT(t) }
