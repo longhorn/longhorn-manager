@@ -81,6 +81,9 @@ func (v *ManagedVolume) startReplica(replicaName string) (err error) {
 	if err != nil {
 		return err
 	}
+	if !instance.Running {
+		return fmt.Errorf("Failed to start replica %v", replicaName)
+	}
 	replica.Running = instance.Running
 	replica.IP = instance.IP
 	if err := v.setReplica(replica); err != nil {
@@ -112,6 +115,9 @@ func (v *ManagedVolume) stopReplica(replicaName string) (err error) {
 	})
 	if err != nil {
 		return err
+	}
+	if instance.Running {
+		return fmt.Errorf("Failed to stop replica %v", replicaName)
 	}
 	replica.Running = instance.Running
 	replica.IP = instance.IP

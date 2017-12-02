@@ -434,6 +434,7 @@ func (k *Kubernetes) StopInstance(req *orchestrator.Request) (instance *orchestr
 	logrus.Debugf("Stopping instance %v for %v", req.InstanceName, req.VolumeName)
 	instance, err = k.InspectInstance(req)
 	if err != nil {
+		logrus.Debugf("Cannot find instance %v, assume it's stopped", req.InstanceName)
 		instance = &orchestrator.Instance{
 			ID:      req.InstanceName,
 			Name:    req.InstanceName,
@@ -451,6 +452,12 @@ func (k *Kubernetes) StopInstance(req *orchestrator.Request) (instance *orchestr
 		return nil, err
 	}
 	logrus.Debugf("Stopped instance %v for %v", req.InstanceName, req.VolumeName)
+	instance = &orchestrator.Instance{
+		ID:      req.InstanceName,
+		Name:    req.InstanceName,
+		Running: false,
+		NodeID:  req.NodeID,
+	}
 	return instance, nil
 }
 
