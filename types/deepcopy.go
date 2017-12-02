@@ -1,6 +1,6 @@
 package types
 
-func (v *VolumeInfo) DeepCopyInto(to *VolumeInfo) {
+func (v *VolumeSpec) DeepCopyInto(to *VolumeSpec) {
 	*to = *v
 	if v.RecurringJobs == nil {
 		return

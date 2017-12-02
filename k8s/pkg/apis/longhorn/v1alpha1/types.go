@@ -13,7 +13,8 @@ import (
 type Volume struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	types.VolumeInfo
+	Spec              types.VolumeSpec   `json:'spec'`
+	Status            types.VolumeStatus `json:'status'`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

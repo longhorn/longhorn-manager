@@ -71,7 +71,7 @@ func (t *TargetWatcher) onAdd(obj interface{}) {
 	if !ok {
 		logrus.Errorf("BUG: fail to convert resource object to volume on add")
 	}
-	if volume.TargetNodeID == t.nodeID {
+	if volume.Spec.TargetNodeID == t.nodeID {
 		event := Event{
 			Type:       EventTypeNotify,
 			VolumeName: volume.Name,
@@ -87,7 +87,7 @@ func (t *TargetWatcher) onUpdate(oldObj, newObj interface{}) {
 	if !ok {
 		logrus.Errorf("BUG: fail to convert new resource object to volume on update")
 	}
-	if newVolume.TargetNodeID == t.nodeID {
+	if newVolume.Spec.TargetNodeID == t.nodeID {
 		event := Event{
 			Type:       EventTypeNotify,
 			VolumeName: newVolume.Name,
@@ -102,7 +102,7 @@ func (t *TargetWatcher) onDelete(obj interface{}) {
 		logrus.Errorf("BUG: fail to convert resource object to volume on delete")
 	}
 	//FIXME Delete won't work if CRD was deleted directly
-	if volume.TargetNodeID == t.nodeID {
+	if volume.Spec.TargetNodeID == t.nodeID {
 		event := Event{
 			Type:       EventTypeNotify,
 			VolumeName: volume.Name,

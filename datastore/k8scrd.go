@@ -216,7 +216,8 @@ func (s *CRDStore) CreateVolume(volume *types.VolumeInfo) error {
 			Name:   volume.Name,
 			Labels: s.getVolumeLabels(volume.Name),
 		},
-		VolumeInfo: *volume,
+		Spec:   volume.VolumeSpec,
+		Status: volume.VolumeStatus,
 	}
 	result, err := s.clientset.LonghornV1alpha1().Volumes(s.namespace).Create(resource)
 	if err != nil {
@@ -238,7 +239,8 @@ func (s *CRDStore) UpdateVolume(volume *types.VolumeInfo) error {
 			ResourceVersion: volume.ResourceVersion,
 			Labels:          s.getVolumeLabels(volume.Name),
 		},
-		VolumeInfo: *volume,
+		Spec:   volume.VolumeSpec,
+		Status: volume.VolumeStatus,
 	}
 	result, err := s.clientset.LonghornV1alpha1().Volumes(s.namespace).Update(cr)
 	if err != nil {
@@ -260,8 +262,13 @@ func (s *CRDStore) GetVolume(id string) (*types.VolumeInfo, error) {
 	}
 	// Cannot use cached object
 	resultCopy := result.DeepCopy()
-	info := resultCopy.VolumeInfo
-	info.ResourceVersion = resultCopy.ResourceVersion
+	info := types.VolumeInfo{}
+	info.VolumeSpec = resultCopy.Spec
+	info.VolumeStatus = resultCopy.Status
+	info.Metadata = types.Metadata{
+		ResourceVersion: resultCopy.ResourceVersion,
+		Name:            resultCopy.Name,
+	}
 
 	return &info, nil
 }
@@ -289,7 +296,9 @@ func (s *CRDStore) ListVolumes() (map[string]*types.VolumeInfo, error) {
 	for _, item := range result.Items {
 		// Cannot use cached object
 		itemCopy := item.DeepCopy()
-		info := itemCopy.VolumeInfo
+		info := types.VolumeInfo{}
+		info.VolumeSpec = itemCopy.Spec
+		info.VolumeStatus = itemCopy.Status
 		info.Metadata = types.Metadata{
 			ResourceVersion: itemCopy.ResourceVersion,
 			Name:            itemCopy.Name,
@@ -359,7 +368,10 @@ func (s *CRDStore) GetVolumeController(volumeName string) (*types.ControllerInfo
 	// Cannot use cached object
 	resultCopy := result.DeepCopy()
 	info := resultCopy.ControllerInfo
-	info.ResourceVersion = resultCopy.ResourceVersion
+	info.Metadata = types.Metadata{
+		ResourceVersion: resultCopy.ResourceVersion,
+		Name:            resultCopy.Name,
+	}
 
 	return &info, nil
 }
@@ -429,7 +441,10 @@ func (s *CRDStore) GetVolumeReplica(volumeName, replicaName string) (*types.Repl
 	// Cannot use cached object
 	resultCopy := result.DeepCopy()
 	info := resultCopy.ReplicaInfo
-	info.ResourceVersion = resultCopy.ResourceVersion
+	info.Metadata = types.Metadata{
+		ResourceVersion: resultCopy.ResourceVersion,
+		Name:            resultCopy.Name,
+	}
 
 	return &info, nil
 }

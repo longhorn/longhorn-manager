@@ -82,7 +82,9 @@ func (s *TestSuite) TestCreateVolume(c *C) {
 	defer s.Cleanup()
 
 	volume := &types.VolumeInfo{
-		Size: 8 * 1024 * 1024, // 8M
+		VolumeSpec: types.VolumeSpec{
+			Size: 8 * 1024 * 1024, // 8M
+		},
 		Metadata: types.Metadata{
 			Name: VolumeName,
 		},

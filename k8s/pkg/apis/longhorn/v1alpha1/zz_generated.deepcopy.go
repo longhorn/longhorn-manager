@@ -332,7 +332,8 @@ func (in *Volume) DeepCopyInto(out *Volume) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
-	in.VolumeInfo.DeepCopyInto(&out.VolumeInfo)
+	in.Spec.DeepCopyInto(&out.Spec)
+	out.Status = in.Status
 	return
 }
 
