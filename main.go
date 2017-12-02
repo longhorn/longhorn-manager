@@ -10,6 +10,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 
+	"github.com/rancher/go-iscsi-helper/iscsi"
+	iscsi_util "github.com/rancher/go-iscsi-helper/util"
+
 	"github.com/rancher/longhorn-manager/api"
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
@@ -102,6 +105,12 @@ func RunManager(c *cli.Context) error {
 		return fmt.Errorf("require %v", FlagEngineImage)
 	}
 
+	if err := environmentCheck(); err != nil {
+		logrus.Errorf("Failed environment check, please make sure you " +
+			"have iscsiadm/open-iscsi installed on the host")
+		return fmt.Errorf("Environment check failed: %v", err)
+	}
+
 	orchName := c.String("orchestrator")
 	if orchName == "kubernetes" {
 		cfg := &kubernetes.Config{
@@ -168,4 +177,15 @@ func RunManager(c *cli.Context) error {
 	logrus.Infof("Listening on %s", listen)
 
 	return http.ListenAndServe(listen, router)
+}
+
+func environmentCheck() error {
+	namespace, err := iscsi_util.NewNamespaceExecutor("/host/proc/1/ns")
+	if err != nil {
+		return err
+	}
+	if err := iscsi.CheckForInitiatorExistence(namespace); err != nil {
+		return err
+	}
+	return nil
 }

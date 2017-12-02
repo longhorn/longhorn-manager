@@ -1,6 +1,6 @@
 FROM ubuntu:16.04
 
-RUN apt-get update && apt-get install -y curl vim nfs-common
+RUN apt-get update && apt-get install -y curl vim nfs-common iproute
 
 COPY bin launch-manager /usr/local/sbin/
 VOLUME /usr/local/sbin
