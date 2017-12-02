@@ -8,6 +8,8 @@ import (
 
 	"k8s.io/client-go/tools/cache"
 
+	"github.com/rancher/longhorn-manager/types"
+
 	"github.com/rancher/longhorn-manager/k8s"
 	longhornv1alpha1 "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	longhornClientset "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -72,9 +74,18 @@ func (t *TargetWatcher) onAdd(obj interface{}) {
 		logrus.Errorf("BUG: fail to convert resource object to volume on add")
 	}
 	if volume.Spec.TargetNodeID == t.nodeID {
-		event := Event{
-			Type:       EventTypeNotify,
-			VolumeName: volume.Name,
+		var event Event
+		// Don't call Create for to be deleted reconstructed volume
+		if volume.Spec.DesireState != types.VolumeStateDeleted {
+			event = Event{
+				Type:       EventTypeCreate,
+				VolumeName: volume.Name,
+			}
+		} else {
+			event = Event{
+				Type:       EventTypeNotify,
+				VolumeName: volume.Name,
+			}
 		}
 		t.eventChan <- event
 	}
@@ -101,11 +112,27 @@ func (t *TargetWatcher) onDelete(obj interface{}) {
 	if !ok {
 		logrus.Errorf("BUG: fail to convert resource object to volume on delete")
 	}
-	//FIXME Delete won't work if CRD was deleted directly
 	if volume.Spec.TargetNodeID == t.nodeID {
-		event := Event{
-			Type:       EventTypeNotify,
-			VolumeName: volume.Name,
+		// We're going to reconstruct the volume and change state to deleted
+		var event Event
+		if volume.Spec.DesireState != types.VolumeStateDeleted {
+			v := &types.VolumeInfo{
+				VolumeSpec:   volume.Spec,
+				VolumeStatus: volume.Status,
+				Metadata: types.Metadata{
+					Name:            volume.Name,
+					ResourceVersion: volume.ResourceVersion,
+				},
+			}
+			event = Event{
+				Type:   EventTypeDelete,
+				Volume: v,
+			}
+		} else {
+			event = Event{
+				Type:       EventTypeNotify,
+				VolumeName: volume.Name,
+			}
 		}
 		t.eventChan <- event
 	}
