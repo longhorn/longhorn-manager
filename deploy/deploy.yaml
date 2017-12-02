@@ -80,6 +80,8 @@ spec:
         volumeMounts:
         - name: dev
           mountPath: /host/dev/
+        - name: proc
+          mountPath: /host/proc/
         - name: varrun
           mountPath: /var/run/
         - name: longhorn
@@ -103,6 +105,9 @@ spec:
       - name: dev
         hostPath:
           path: /dev/
+      - name: proc
+        hostPath:
+          path: /proc/
       - name: varrun
         hostPath:
           path: /var/run/
