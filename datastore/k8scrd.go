@@ -1,6 +1,8 @@
 package datastore
 
 import (
+	"os"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
@@ -27,6 +29,13 @@ type CRDStore struct {
 const SettingName = "longhorn-manager-settings"
 
 func NewCRDStore(kubeconfig string) (*CRDStore, error) {
+	namespace := os.Getenv(k8s.EnvPodNamespace)
+	if namespace == "" {
+		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, " +
+			"using default namespace")
+		namespace = apiv1.NamespaceDefault
+	}
+
 	config, err := k8s.GetClientConfig(kubeconfig)
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to get client config")
@@ -48,8 +57,7 @@ func NewCRDStore(kubeconfig string) (*CRDStore, error) {
 
 	return &CRDStore{
 		clientset: clientset,
-		//FIXME: Need to detect the current namespace
-		namespace: apiv1.NamespaceDefault,
+		namespace: namespace,
 	}, nil
 }
 
