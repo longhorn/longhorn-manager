@@ -18,7 +18,7 @@ const (
 	NameMaximumLength = 32
 )
 
-func (m *VolumeManager) NewVolume(info *types.VolumeInfo) error {
+func (m *VolumeManager) ValidateVolume(info *types.VolumeInfo) error {
 	size, err := util.ConvertSize(info.Size)
 	if err != nil {
 		return err
@@ -33,6 +33,13 @@ func (m *VolumeManager) NewVolume(info *types.VolumeInfo) error {
 	if len(info.Name) > NameMaximumLength {
 		return fmt.Errorf("Volume name is too long %v, must be less than %v characters",
 			info.Name, NameMaximumLength)
+	}
+	return nil
+}
+
+func (m *VolumeManager) NewVolume(info *types.VolumeInfo) error {
+	if err := m.ValidateVolume(info); err != nil {
+		return err
 	}
 	vol, err := m.ds.GetVolume(info.Name)
 	if err != nil {

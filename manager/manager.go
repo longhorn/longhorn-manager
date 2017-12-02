@@ -99,6 +99,7 @@ func (m *VolumeManager) VolumeCreate(request *VolumeCreateRequest) (err error) {
 		//the volume. User can call delete explicitly for the volume
 		return err
 	}
+	logrus.Debugf("Created volume %v", info.Name)
 	return nil
 }
 
@@ -135,6 +136,7 @@ func (m *VolumeManager) VolumeAttach(request *VolumeAttachRequest) (err error) {
 	if err := node.Notify(volume.Name); err != nil {
 		return err
 	}
+	logrus.Debugf("Attaching volume %v to %v", volume.Name, request.NodeID)
 	return nil
 }
 
@@ -170,6 +172,7 @@ func (m *VolumeManager) VolumeDetach(request *VolumeDetachRequest) (err error) {
 	if err := node.Notify(volume.Name); err != nil {
 		return err
 	}
+	logrus.Debugf("Detaching volume %v from %v", volume.Name, volume.TargetNodeID)
 	return nil
 }
 
@@ -201,6 +204,7 @@ func (m *VolumeManager) VolumeDelete(request *VolumeDeleteRequest) (err error) {
 	if err := node.Notify(volume.Name); err != nil {
 		return err
 	}
+	logrus.Debugf("Deleting volume %v", volume.Name)
 	return nil
 }
 
@@ -250,6 +254,7 @@ func (m *VolumeManager) VolumeSalvage(request *VolumeSalvageRequest) (err error)
 	if err := node.Notify(volume.Name); err != nil {
 		return err
 	}
+	logrus.Debugf("Salvaging volume %v", volume.Name)
 	return nil
 }
 
@@ -281,10 +286,12 @@ func (m *VolumeManager) VolumeRecurringUpdate(request *VolumeRecurringUpdateRequ
 	if err := node.Notify(volume.Name); err != nil {
 		return err
 	}
+	logrus.Debugf("Updating volume %v recurring schedule", volume.Name)
 	return nil
 }
 
 func (m *VolumeManager) Shutdown() {
+	logrus.Debugf("Shutting down")
 	m.notifier.Stop()
 }
 
@@ -382,4 +389,62 @@ func (m *VolumeManager) JobList(volumeName string) (map[string]Job, error) {
 		return nil, err
 	}
 	return volume.ListJobsInfo(), nil
+}
+
+func (m *VolumeManager) VolumeCreateBySpec(name string) (err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrap(err, "unable to create volume by spec")
+		}
+	}()
+
+	volume, err := m.ds.GetVolume(name)
+	if err != nil {
+		return err
+	}
+	if volume == nil {
+		return fmt.Errorf("cannot find volume %v", volume.Name)
+	}
+
+	// It has been created by manager API call
+	if volume.State == types.VolumeStateCreated {
+		return nil
+	}
+
+	if volume.TargetNodeID == "" {
+		return fmt.Errorf("cannot create volume without target node ID: volume %v", volume.Name)
+	}
+	// Validate the size
+	if _, err := util.ConvertSize(volume.Size); err != nil {
+		return err
+	}
+
+	volume.Created = util.Now()
+	volume.State = types.VolumeStateCreated
+	volume.Metadata.Name = name
+	volume.DesireState = types.VolumeStateDetached
+
+	if err := m.ValidateVolume(volume); err != nil {
+		return err
+	}
+	if err := m.ds.UpdateVolume(volume); err != nil {
+		return err
+	}
+	logrus.Debugf("Created volume by spec %v", volume.Name)
+
+	return nil
+}
+
+func (m *VolumeManager) VolumeDeleteBySpec(volume *types.VolumeInfo) (err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrap(err, "unable to delete volume by spec")
+		}
+	}()
+
+	volume.DesireState = types.VolumeStateDeleted
+	if err := m.NewVolume(volume); err != nil {
+		return errors.Wrap(err, "fail to reconstruct the volume for clean up")
+	}
+	return nil
 }

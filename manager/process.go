@@ -34,7 +34,10 @@ func (m *VolumeManager) startProcessing() {
 		switch event.Type {
 		case EventTypeNotify:
 			go m.notifyVolume(event.VolumeName)
-			break
+		case EventTypeCreate:
+			go m.VolumeCreateBySpec(event.VolumeName)
+		case EventTypeDelete:
+			go m.VolumeDeleteBySpec(event.Volume)
 		default:
 			logrus.Errorf("Unrecongized event %+v", event)
 		}

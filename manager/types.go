@@ -11,12 +11,15 @@ import (
 type EventType string
 
 const (
+	EventTypeCreate = EventType("create")
+	EventTypeDelete = EventType("delete")
 	EventTypeNotify = EventType("notify")
 )
 
 type Event struct {
 	Type       EventType
 	VolumeName string
+	Volume     *types.VolumeInfo
 }
 
 type VolumeCreateRequest struct {
