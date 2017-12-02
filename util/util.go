@@ -231,3 +231,11 @@ func GetBackupID(backupURL string) (string, error) {
 	}
 	return backupName, nil
 }
+
+func GetRequiredEnv(key string) (string, error) {
+	env := os.Getenv(key)
+	if env == "" {
+		return "", fmt.Errorf("can't get required environment variable, env %v wasn't set", key)
+	}
+	return env, nil
+}
