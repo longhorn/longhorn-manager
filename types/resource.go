@@ -13,7 +13,7 @@ const (
 )
 
 type Metadata struct {
-	Name            string
+	Name            string `json:"name"`
 	ResourceVersion string `json:"-"`
 }
 
@@ -25,21 +25,21 @@ type VolumeInfo struct {
 }
 
 type VolumeSpec struct {
-	Size                int64 `json:",string"`
-	BaseImage           string
-	FromBackup          string
-	NumberOfReplicas    int
-	StaleReplicaTimeout int
-	TargetNodeID        string
-	RecurringJobs       []RecurringJob
-	DesireState         VolumeState
+	Size                int64          `json:"size, string"`
+	BaseImage           string         `json:"baseImage"`
+	FromBackup          string         `json:"fromBackup"`
+	NumberOfReplicas    int            `json:"numberOfReplicas"`
+	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`
+	TargetNodeID        string         `json:"targetNodeID"`
+	RecurringJobs       []RecurringJob `json:"recurringJobs"`
+	DesireState         VolumeState    `json:"desireState"`
 }
 
 type VolumeStatus struct {
-	Created  string
-	NodeID   string
-	State    VolumeState
-	Endpoint string
+	Created  string      `json:"created"`
+	NodeID   string      `json:"nodeID"`
+	State    VolumeState `json:"state"`
+	Endpoint string      `json:"endpoint"`
 }
 
 type RecurringJobType string
@@ -65,12 +65,12 @@ const (
 )
 
 type InstanceInfo struct {
-	ID         string
-	Type       InstanceType
-	NodeID     string
-	IP         string
-	Running    bool
-	VolumeName string
+	ID         string       `json:"id"`
+	Type       InstanceType `json:"type"`
+	NodeID     string       `json:"nodeID"`
+	IP         string       `json:"ip"`
+	Running    bool         `json:"running"`
+	VolumeName string       `json:"volumeName"`
 
 	Metadata
 }
@@ -82,7 +82,7 @@ type ControllerInfo struct {
 type ReplicaInfo struct {
 	InstanceInfo
 
-	FailedAt string
+	FailedAt string `json:"failedAt"`
 }
 
 type NodeState string
