@@ -62,8 +62,8 @@ func (m *VolumeManager) VolumeCreate(request *VolumeCreateRequest) (err error) {
 		}
 	}()
 
-	size, err := util.ConvertSize(request.Size)
-	if err != nil {
+	// validate the size
+	if _, err := util.ConvertSize(request.Size); err != nil {
 		return err
 	}
 
@@ -74,7 +74,7 @@ func (m *VolumeManager) VolumeCreate(request *VolumeCreateRequest) (err error) {
 	}
 	info := &types.VolumeInfo{
 		VolumeSpec: types.VolumeSpec{
-			Size:                size,
+			Size:                request.Size,
 			BaseImage:           request.BaseImage,
 			FromBackup:          request.FromBackup,
 			NumberOfReplicas:    request.NumberOfReplicas,
@@ -305,8 +305,12 @@ func (m *VolumeManager) VolumeReplicaList(volumeName string) (map[string]*types.
 }
 
 func (m *VolumeManager) ScheduleReplica(volume *types.VolumeInfo, nodeIDs map[string]struct{}) (string, error) {
+	size, err := util.ConvertSize(volume.Size)
+	if err != nil {
+		return "", err
+	}
 	spec := &scheduler.Spec{
-		Size: volume.Size,
+		Size: size,
 	}
 	policy := &scheduler.Policy{
 		Binding: scheduler.PolicyBindingTypeSoftAntiAffinity,

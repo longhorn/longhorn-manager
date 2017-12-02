@@ -1,12 +1,12 @@
 package kvstore
 
 import (
-	"fmt"
 	"path/filepath"
 	"strconv"
 
 	"github.com/pkg/errors"
 
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
 )
 
@@ -64,15 +64,8 @@ func (k *VolumeKey) Replica(replicaName string) string {
 	return filepath.Join(k.Replicas(), replicaName)
 }
 
-func (s *KVStore) checkVolume(volume *types.VolumeInfo) error {
-	if volume.Name == "" || volume.Size == 0 || volume.NumberOfReplicas == 0 {
-		return fmt.Errorf("BUG: missing required field %+v", volume)
-	}
-	return nil
-}
-
 func (s *KVStore) CreateVolume(volume *types.VolumeInfo) error {
-	if err := s.checkVolume(volume); err != nil {
+	if err := datastore.CheckVolume(volume); err != nil {
 		return err
 	}
 	index, err := s.b.Create(s.NewVolumeKeyFromName(volume.Name).Base(), volume)
@@ -84,7 +77,7 @@ func (s *KVStore) CreateVolume(volume *types.VolumeInfo) error {
 }
 
 func (s *KVStore) UpdateVolume(volume *types.VolumeInfo) error {
-	if err := s.checkVolume(volume); err != nil {
+	if err := datastore.CheckVolume(volume); err != nil {
 		return err
 	}
 	oldIndex, err := strconv.ParseUint(volume.ResourceVersion, 10, 64)
@@ -99,18 +92,8 @@ func (s *KVStore) UpdateVolume(volume *types.VolumeInfo) error {
 	return nil
 }
 
-func (s *KVStore) checkVolumeInstance(instance *types.InstanceInfo) error {
-	if instance.ID == "" || instance.Name == "" || instance.VolumeName == "" {
-		return fmt.Errorf("BUG: missing required field %+v", instance)
-	}
-	if instance.Running && instance.IP == "" {
-		return fmt.Errorf("BUG: instance is running but lack of address %+v", instance)
-	}
-	return nil
-}
-
 func (s *KVStore) CreateVolumeController(controller *types.ControllerInfo) error {
-	if err := s.checkVolumeInstance(&controller.InstanceInfo); err != nil {
+	if err := datastore.CheckVolumeInstance(&controller.InstanceInfo); err != nil {
 		return err
 	}
 	index, err := s.b.Create(s.NewVolumeKeyFromName(controller.VolumeName).Controller(), controller)
@@ -122,7 +105,7 @@ func (s *KVStore) CreateVolumeController(controller *types.ControllerInfo) error
 }
 
 func (s *KVStore) UpdateVolumeController(controller *types.ControllerInfo) error {
-	if err := s.checkVolumeInstance(&controller.InstanceInfo); err != nil {
+	if err := datastore.CheckVolumeInstance(&controller.InstanceInfo); err != nil {
 		return err
 	}
 	oldIndex, err := strconv.ParseUint(controller.ResourceVersion, 10, 64)
@@ -138,7 +121,7 @@ func (s *KVStore) UpdateVolumeController(controller *types.ControllerInfo) error
 }
 
 func (s *KVStore) CreateVolumeReplica(replica *types.ReplicaInfo) error {
-	if err := s.checkVolumeInstance(&replica.InstanceInfo); err != nil {
+	if err := datastore.CheckVolumeInstance(&replica.InstanceInfo); err != nil {
 		return err
 	}
 	index, err := s.b.Create(s.NewVolumeKeyFromName(replica.VolumeName).Replica(replica.Name), replica)
@@ -150,7 +133,7 @@ func (s *KVStore) CreateVolumeReplica(replica *types.ReplicaInfo) error {
 }
 
 func (s *KVStore) UpdateVolumeReplica(replica *types.ReplicaInfo) error {
-	if err := s.checkVolumeInstance(&replica.InstanceInfo); err != nil {
+	if err := datastore.CheckVolumeInstance(&replica.InstanceInfo); err != nil {
 		return err
 	}
 	oldIndex, err := strconv.ParseUint(replica.ResourceVersion, 10, 64)

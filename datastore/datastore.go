@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 )
 
 type DataStore interface {
@@ -81,7 +82,11 @@ func CheckNode(node *types.NodeInfo) error {
 }
 
 func CheckVolume(volume *types.VolumeInfo) error {
-	if volume.Name == "" || volume.Size == 0 || volume.NumberOfReplicas == 0 {
+	size, err := util.ConvertSize(volume.Size)
+	if err != nil {
+		return err
+	}
+	if volume.Name == "" || size == 0 || volume.NumberOfReplicas == 0 {
 		return fmt.Errorf("BUG: missing required field %+v", volume)
 	}
 	return nil

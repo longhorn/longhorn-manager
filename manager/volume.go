@@ -19,7 +19,11 @@ const (
 )
 
 func (m *VolumeManager) NewVolume(info *types.VolumeInfo) error {
-	if info.Name == "" || info.Size == 0 || info.NumberOfReplicas == 0 {
+	size, err := util.ConvertSize(info.Size)
+	if err != nil {
+		return err
+	}
+	if info.Name == "" || size == 0 || info.NumberOfReplicas == 0 {
 		return fmt.Errorf("missing required parameter %+v", info)
 	}
 	errs := validation.IsDNS1123Label(info.Name)

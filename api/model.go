@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 )
 
 type Volume struct {
@@ -308,6 +309,11 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		}}
 	}
 
+	size, err := util.ConvertSize(v.Size)
+	if err != nil {
+		logrus.Error("BUG: invalid size %v for volume %v", v.Size, v.Name)
+	}
+
 	r := &Volume{
 		Resource: client.Resource{
 			Id:      v.Name,
@@ -316,7 +322,7 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 			Links:   map[string]string{},
 		},
 		Name:             v.Name,
-		Size:             strconv.FormatInt(v.Size, 10),
+		Size:             strconv.FormatInt(size, 10),
 		BaseImage:        v.BaseImage,
 		FromBackup:       v.FromBackup,
 		NumberOfReplicas: v.NumberOfReplicas,

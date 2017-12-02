@@ -25,7 +25,7 @@ type VolumeInfo struct {
 }
 
 type VolumeSpec struct {
-	Size                int64          `json:"size, string"`
+	Size                string         `json:"size"`
 	BaseImage           string         `json:"baseImage"`
 	FromBackup          string         `json:"fromBackup"`
 	NumberOfReplicas    int            `json:"numberOfReplicas"`

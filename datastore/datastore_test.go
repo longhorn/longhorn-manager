@@ -151,7 +151,7 @@ func (s *TestSuite) testSettings(c *C, st DataStore) {
 func generateTestVolume(name string) *types.VolumeInfo {
 	return &types.VolumeInfo{
 		VolumeSpec: types.VolumeSpec{
-			Size:                1024 * 1024,
+			Size:                "1M",
 			NumberOfReplicas:    2,
 			StaleReplicaTimeout: 1,
 		},
