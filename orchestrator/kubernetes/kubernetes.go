@@ -2,7 +2,6 @@ package kubernetes
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -24,10 +23,6 @@ import (
 
 const (
 	longhornDirectory = "/var/lib/rancher/longhorn/"
-
-	keyNodeName  = "NODE_NAME"
-	keyNameSpace = "POD_NAMESPACE"
-	keyNodeIP    = "POD_IP"
 )
 
 var (
@@ -43,7 +38,7 @@ type Kubernetes struct {
 	EngineImage string
 	IP          string
 	NodeName    string
-	NameSpace   string
+	Namespace   string
 	currentNode *types.NodeInfo
 	cli         *kCli.Clientset
 }
@@ -70,16 +65,19 @@ func NewOrchestrator(cfg *Config) (*Kubernetes, error) {
 		return nil, errors.Wrap(err, "cannot connect to kubernetes")
 	}
 
-	if err = kubernetes.updateNetwork(); err != nil {
-		return nil, errors.Wrapf(err, "fail to detect dedicated pod network")
+	kubernetes.IP, err = util.GetRequiredEnv(k8s.EnvPodIP)
+	if err != nil {
+		return nil, errors.Wrapf(err, "fail to detect the pod IP")
 	}
 
-	if err = kubernetes.updateNameSpace(); err != nil {
-		return nil, errors.Wrapf(err, "fail to detect namespace")
+	kubernetes.Namespace, err = util.GetRequiredEnv(k8s.EnvPodNamespace)
+	if err != nil {
+		return nil, errors.Wrapf(err, "fail to detect the pod namespace")
 	}
 
-	if err = kubernetes.updateNodeName(); err != nil {
-		return nil, errors.Wrapf(err, "fail to detect nodename")
+	kubernetes.NodeName, err = util.GetRequiredEnv(k8s.EnvNodeName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "fail to detect the node name")
 	}
 
 	logrus.Infof("Detected IP is %s", kubernetes.IP)
@@ -90,36 +88,6 @@ func NewOrchestrator(cfg *Config) (*Kubernetes, error) {
 
 	logrus.Info("Kubernetes orchestrator is ready")
 	return kubernetes, nil
-}
-
-func (k *Kubernetes) updateNetwork() error {
-	IP := os.Getenv(keyNodeIP)
-	if IP == "" {
-		return fmt.Errorf("can't get the Node IP")
-	}
-
-	k.IP = IP
-	return nil
-}
-
-func (k *Kubernetes) updateNameSpace() error {
-	nodeNameSpace := os.Getenv(keyNameSpace)
-	if nodeNameSpace == "" {
-		return fmt.Errorf("can't get the Node namespace")
-	}
-
-	k.NameSpace = nodeNameSpace
-	return nil
-}
-
-func (k *Kubernetes) updateNodeName() error {
-	nodeName := os.Getenv(keyNodeName)
-	if nodeName == "" {
-		return fmt.Errorf("can't get the Node name")
-	}
-
-	k.NodeName = nodeName
-	return nil
 }
 
 func (k *Kubernetes) updateCurrentNode() error {
@@ -212,7 +180,7 @@ func (k *Kubernetes) CreateController(req *orchestrator.Request) (instance *orch
 		},
 	}
 
-	podController, err := k.cli.CoreV1().Pods(k.NameSpace).Create(pod)
+	podController, err := k.cli.CoreV1().Pods(k.Namespace).Create(pod)
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +294,7 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 		},
 	}
 
-	podReplica, err := k.cli.CoreV1().Pods(k.NameSpace).Create(pod)
+	podReplica, err := k.cli.CoreV1().Pods(k.Namespace).Create(pod)
 
 	if err != nil {
 		return nil, err
@@ -365,7 +333,7 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 
 func (k *Kubernetes) waitForPodReady(podName string) (*apiv1.Pod, error) {
 	for i := 0; i < WaitPodCounter; i++ {
-		pod, err := k.cli.CoreV1().Pods(k.NameSpace).Get(podName, meta_v1.GetOptions{})
+		pod, err := k.cli.CoreV1().Pods(k.Namespace).Get(podName, meta_v1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -448,7 +416,7 @@ func (k *Kubernetes) StopInstance(req *orchestrator.Request) (instance *orchestr
 		err = errors.Wrapf(err, "fail to delete instance %v(%v)", req.InstanceName, req.InstanceID)
 	}()
 
-	if err := k.cli.CoreV1().Pods(k.NameSpace).Delete(req.InstanceName, &meta_v1.DeleteOptions{}); err != nil {
+	if err := k.cli.CoreV1().Pods(k.Namespace).Delete(req.InstanceName, &meta_v1.DeleteOptions{}); err != nil {
 		return nil, err
 	}
 	logrus.Debugf("Stopped instance %v for %v", req.InstanceName, req.VolumeName)
@@ -534,18 +502,18 @@ func (k *Kubernetes) deleteReplica(req *orchestrator.Request) (err error) {
 			},
 		},
 	}
-	job, err = k.cli.BatchV1().Jobs(k.NameSpace).Create(job)
+	job, err = k.cli.BatchV1().Jobs(k.Namespace).Create(job)
 	if err != nil {
 		return errors.Wrap(err, "failed to create cleanup job")
 	}
 
 	propagationPolicy := meta_v1.DeletePropagationBackground
-	defer k.cli.BatchV1().Jobs(k.NameSpace).Delete(jobName, &meta_v1.DeleteOptions{
+	defer k.cli.BatchV1().Jobs(k.Namespace).Delete(jobName, &meta_v1.DeleteOptions{
 		PropagationPolicy: &propagationPolicy,
 	})
 
 	for i := 0; i < WaitJobCounter; i++ {
-		job, err = k.cli.BatchV1().Jobs(k.NameSpace).Get(jobName, meta_v1.GetOptions{})
+		job, err = k.cli.BatchV1().Jobs(k.Namespace).Get(jobName, meta_v1.GetOptions{})
 		if err != nil {
 			return err
 		}
