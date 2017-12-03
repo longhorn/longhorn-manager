@@ -1,0 +1,32 @@
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: longhorn-volume-driver
+spec:
+  template:
+    metadata:
+      name: longhorn-volume-driver
+      labels:
+        app: longhorn-volume-driver
+    spec:
+      containers:
+        - image: penglintao/lh-volume-driver
+          imagePullPolicy: IfNotPresent
+          name: longhorn-volume-driver-container
+          command: ["/entrypoint.sh"]
+          securityContext:
+              privileged: true
+          volumeMounts:
+            - mountPath: /flexmnt
+              name: flexvolume-longhorn-mount
+          env:
+            - name: LONGHORN_BACKEND_SVC
+              value: "longhorn-backend"
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+      volumes:
+        - name: flexvolume-longhorn-mount
+          hostPath:
+            path: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/
