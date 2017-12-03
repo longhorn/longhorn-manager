@@ -5,30 +5,45 @@ Manager for Longhorn.
 
 ## Requirement
 
-1. Ubuntu v16.04
-2. Docker v1.13+
-3. Make sure `iscsiadm`/`open-iscsi` has been installed on the host.
-4. Make sure `nfs-kernel-server` has been installed on the host for testing NFS server.
+1. Existing Kubernetes Cluster 1.8+
+2. Make sure `iscsiadm`/`open-iscsi` has been installed on the host.
+3. Make sure `jq`, `findmnt`, `curl` has been installed on the host, for the Longhorn Flexvolume Driver.
 
-## Building
+## Build
 
 `make`
 
-## Running
+## Deployment
 
-`./bin/longhorn-manager`
+`kubectl create -f deploy/deploy.yaml`
 
-## Experimental Server
+It will deploy:
+1. Longhorn Manager
+2. Longhorn Flexvolume Driver for Kubernetes
+3. Longhorn UI
 
-It can be run as a single node experimental server.
+## Cleanup
 
-`make server` will start the server bind-mounted to host port `9500`. Then you can use web browser to take a look at it's API UI, by accessing `http://<host_ip>:9500/v1`
+`kubectl delete -f deploy/deploy.yaml`
+`./deploy/cleanup-crd.sh`
 
-This experimental server will contain necessary components for Docker orchestrator to work, e.g. etcd server for k/v store, nfs server for backupstore. Each of them will be started as a container.
+## Integration test
 
-The backupstore URL will show up as: `nfs://xxx.xxx.xxx.xxx:/opt/backupstore` in the console when you starting the server. You can update `backupTarget` accordingly in the `v1/settings/backupTarget`.
+See [longhorn-tests repo](https://github.com/rancher/longhorn-tests/tree/master/manager/integration)
 
-`make server-cleanup` will cleanup the servers.
+## Notes:
+
+### Google Kubernetes Engine
+You will need to create cluster-admin role binding for yourselves before creating the deployment, see
+[here](https://cloud.google.com/kubernetes-engine/docs/how-to/role-based-access-control) for details.
+```
+kubectl create clusterrolebinding cluster-admin-binding --clusterrole=cluster-admin --user=<name@example.com>
+```
+
+### Flexvolume Plugin Directory
+By default we're using the GKE Flexvolume Plugin directory, which is at: `/home/kubernetes/flexvolume`.
+
+You may need to change `deploy/deploy.yaml` volume `flexvolume-longhorn-mount` location according to your own environment.
 
 ## License
 Copyright (c) 2014-2017 [Rancher Labs, Inc.](http://rancher.com)
