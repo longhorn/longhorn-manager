@@ -25,6 +25,6 @@ Manager for Longhorn
 
 ## Test
 1. Go the dir `driver/test`.
-2. Exec `kubectl create -f test.yaml` to create the pod.
+2. Exec `kubectl create -f example.yaml` to create the pod.
 3. Exec `kubectl describe pod volume-test`, you will see the volume has been mounted successfully.
 4. Exec `kubectl get pods`, you will find the pod for longhorn volume has been built.
