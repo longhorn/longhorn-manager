@@ -1,12 +1,13 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: pv-test
+  name: longhorn-volv-pv
 spec:
   capacity:
-    storage: 2Gi 
+    storage: 2Gi
   accessModes:
     - ReadWriteOnce
+  storageClassName: longhorn
   flexVolume:
     driver: "rancher.io/longhorn"
     fsType: "ext4"
@@ -14,15 +15,16 @@ spec:
       size: "2G"
       numberOfReplicas: "2"
       staleReplicaTimeout: "20"
-      fromBackup: 
+      fromBackup: ""
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: pv-test
+  name: longhorn-volv-pvc
 spec:
   accessModes:
     - ReadWriteOnce
+  storageClassName: longhorn
   resources:
     requests:
       storage: 2Gi
@@ -38,11 +40,11 @@ spec:
     image: nginx
     imagePullPolicy: IfNotPresent
     volumeMounts:
-    - name: voll
+    - name: volv
       mountPath: /data
     ports:
     - containerPort: 80
   volumes:
-  - name: voll
+  - name: volv
     persistentVolumeClaim:
-      claimName: pv-test
+      claimName: longhorn-volv-pvc
