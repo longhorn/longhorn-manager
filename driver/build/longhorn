@@ -297,7 +297,7 @@ domountdevice() {
 
 unmountdevice() {
     local mntPath=$1
-    local fullDevName=`findmnt -n ${mntPath} | awk '{print $2}'`
+    local fullDevName=`findmnt -n ${mntPath} | awk 'NR==1{print $2}'`
     local volumeName=${fullDevName#${LONGHORN_DEV_PATH}}
 
     local OUT
