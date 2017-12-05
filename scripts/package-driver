@@ -13,14 +13,7 @@ TAG=${TAG:-${VERSION}${SUFFIX}}
 REPO=${REPO:-rancher}
 IMAGE=${IMAGE:-${REPO}/longhorn-driver:${TAG}}
 
-if [ ! -e ./bin/longhorn-manager ]; then
-    ./scripts/build
-fi
-
-cp -a ./bin ./package/
-trap 'rm -rf ./package/bin' exit
-docker build -t ${IMAGE} ./package
+cd driver
+docker build -t ${IMAGE} ./build
 
 echo Built ${IMAGE}
-
-echo ${IMAGE} > ./bin/latest_image
