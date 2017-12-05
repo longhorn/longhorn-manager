@@ -185,7 +185,7 @@ spec:
         app: longhorn-driver
     spec:
       containers:
-        - image: penglintao/lh-volume-driver
+        - image: rancher/longhorn-driver:5260c7b
           imagePullPolicy: Always
           name: longhorn-driver-container
           command: ["/entrypoint.sh"]
@@ -204,4 +204,5 @@ spec:
       volumes:
         - name: flexvolume-longhorn-mount
           hostPath:
-            path: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/
+            path: /home/kubernetes/flexvolume
+            #path: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/
