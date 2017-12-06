@@ -22,6 +22,8 @@ fi
 cp "/$DRIVER" "/flexmnt/$driver_dir/.$DRIVER"
 mv -f "/flexmnt/$driver_dir/.$DRIVER" "/flexmnt/$driver_dir/$DRIVER"
 
+cp /jq /binmnt/
+
 while : ; do
   sleep 3600
 done
