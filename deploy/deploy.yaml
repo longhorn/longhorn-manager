@@ -194,6 +194,8 @@ spec:
           volumeMounts:
             - mountPath: /flexmnt
               name: flexvolume-longhorn-mount
+            - mountPath: /binmnt
+              name: usr-local-bin-mount
           env:
             - name: LONGHORN_BACKEND_SVC
               value: "longhorn-backend"
@@ -204,5 +206,8 @@ spec:
       volumes:
         - name: flexvolume-longhorn-mount
           hostPath:
-            path: /home/kubernetes/flexvolume
+            path: /home/kubernetes/flexvolume/
             #path: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/
+        - name: usr-local-bin-mount
+          hostPath:
+            path: /usr/local/bin/
