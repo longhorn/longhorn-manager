@@ -2,6 +2,7 @@
 # Notes:
 #  - Please install "jq" package before using this driver.
 LONGHORN_DEV_PATH="/dev/longhorn/"
+LONGHORN_DRIVER_LOG="/var/log/longhorn_driver.log"
 LONGHORN_NODEID="/var/lib/rancher/longhorn/.physical_host_uuid"
 WAIT_VOLUME_READY_TIMEOUT=120
 WAIT_DEVICE_READY_TIMEOUT=120
@@ -16,12 +17,28 @@ usage() {
     exit 1
 }
 
+debug() {
+    if [ -e ${LONGHORN_DRIVER_LOG} ]; then
+         echo $(date +'%x %T') $* >> ${LONGHORN_DRIVER_LOG}
+    fi
+}
+
 err() {
-    echo -ne $* 1>&2
+    if [ -e ${LONGHORN_DRIVER_LOG} ]; then
+         echo -ne $* 1>&2
+         echo $(date +'%x %T') $* >> ${LONGHORN_DRIVER_LOG}
+    else
+         echo -ne $* 1>&2
+    fi
 }
 
 log() {
-    echo -ne $* >&1
+    if [ -e ${LONGHORN_DRIVER_LOG} ]; then
+         echo -ne $* >&1
+         echo $(date +'%x %T') $* >> ${LONGHORN_DRIVER_LOG}
+    else
+         echo -ne $* >&1
+    fi
 }
 
 checkParam() {
@@ -47,6 +64,7 @@ dealExistedVolume() {
     local jsonParams=$1
     local volumeName=$2
     local OUT=$(curl -s --connect-timeout 1 http://${LONGHORN_SVC}/v1/volumes/${volumeName})
+    debug "acquire existed volume info: ${OUT}"
     local STATE=$(echo ${OUT} | jq -r '.state')
     if [ "${STATE}" == "detached" ]; then
         if [ "$(checkParam ${jsonParams} ${OUT})" == "Success" ]; then
@@ -74,7 +92,7 @@ createVolume() {
     local OUT=$(curl -s -X POST --connect-timeout ${CURL_TIMEOUT} \
               -d '{"name":"'${volumeName}'","size":"'${volumeSize}'","numberOfReplicas":'${numReplicas}',"staleReplicaTimeout":'${staleReplicaTimeout}',"fromBackup":"'${fromBackup}'"}' \
               http://${LONGHORN_SVC}/v1/volumes)
-
+    debug "create volume response from http://${LONGHORN_SVC}/v1/volumes: ${OUT}"
     local TYPE=$(echo ${OUT} | jq -r '.type')
     local STATE=$(echo ${OUT} | jq -r '.state')
     local MESSAGE=$(echo ${OUT} | jq -r '.message')
@@ -83,6 +101,7 @@ createVolume() {
     elif [ "${STATE}" == "created" -a "${TYPE}" == "volume" ]; then
         echo -ne "Success"
     elif [ "${TYPE}" == "error" -a "$(echo "${MESSAGE}" | grep -o 'already exists')" ]; then
+        debug "enter existed volume process: ${volumeName}"
         OUT=$(dealExistedVolume ${jsonParams} ${volumeName})
         echo -ne "${OUT}"
     else
@@ -94,7 +113,7 @@ detachVolume() {
     local volumeName=$1
     local OUT=$(curl -s -X POST  --connect-timeout ${CURL_TIMEOUT} \
               http://${LONGHORN_SVC}/v1/volumes/${volumeName}?action=detach)
-
+    debug "detach volume: ${OUT}"
     OUT=$(waitVolumeReady ${volumeName} "detached")
     return
 }
@@ -107,8 +126,10 @@ attachVolume() {
     local TYPE=$(echo ${OUT} | jq -r '.type')
     local STATE=$(echo ${OUT} | jq -r '.state')
     local MESSAGE=$(echo ${OUT} | jq -r '.message')
+    debug "attach volume: ${OUT}"
     if [ "${OUT}" == "" ]; then
-	    echo -ne "attach volume err: curl timeout"
+        debug "curl timeout: http://${LONGHORN_SVC}/v1/volumes/${volumeName}?action=attach"
+        echo -ne "attach volume err: curl timeout"
     elif [ "${TYPE}" == "volume" -a "${STATE}" == "detached" ]; then
         echo -ne "Success"
     else
@@ -126,6 +147,7 @@ waitVolumeReady() {
         VOLUME_STATE=$(curl -s --connect-timeout 1 http://${LONGHORN_SVC}/v1/volumes/${volumeName} | jq -r '.state')
         ((timeout--))
         if [ ${timeout} -le 0 ]; then
+            debug "wait volume ${volumeName} desired ${state} ready timeout:  ${VOLUME_STATE}"
             echo -ne "Wait Volume ${volumeName} ${state} ready timeout"
             return
         fi
@@ -164,6 +186,7 @@ formatDevIfNeed() {
 
     if OUT=$(blkid ${fullDevName}); then
         oldFsType=$(echo ${OUT} | grep -E -o 'TYPE=\"[[:alnum:]]{1,}\"' | awk -F"\"" '{print $2}')
+        debug "dev ${fullDevName} have already fstype ${oldFsType}"
         if [ "${oldFsType}" != "${newFsType}" ]; then
             echo -ne "Failed to create device ${fullDevName} newfs ${newFsType} oldfs ${oldFsType}"
         else
@@ -173,6 +196,7 @@ formatDevIfNeed() {
         if ! OUT=$(mkfs -t ${newFsType} ${fullDevName} >/dev/null 2>&1); then
             echo -ne "Failed to create fs ${newFsType} on device ${fullDevName}"
         else
+            debug "format fs ${fullDevName} ${newFsType} successfully"
             echo -ne "Success"
         fi
     fi
@@ -269,6 +293,7 @@ domount() {
         echo -ne "Failed to mount device ${fullDevName} at ${mntPath}"
         return
     fi
+    debug "mount device: ${fullDevName} ${mntPath}" 
     echo -ne "Success"
 }
 
@@ -277,6 +302,11 @@ domountdevice() {
     local jsonParams=$2
     local volumeName=$(echo ${jsonParams} | jq -r '.["kubernetes.io/pvOrVolumeName"]')
     local fullDevName=${LONGHORN_DEV_PATH}${volumeName}
+
+    debug "mount -------begin-------------"
+    debug "volume name: ${volumeName}"
+    debug "json param: ${jsonParams}"
+    debug "mount path: ${mntPath}"
 
     local OUT=$(createDevice "${jsonParams}")
     if [ "${OUT}" != "${fullDevName}" ]; then
@@ -299,6 +329,11 @@ unmountdevice() {
     local mntPath=$1
     local fullDevName=`findmnt -n ${mntPath} | awk 'NR==1{print $2}'`
     local volumeName=${fullDevName#${LONGHORN_DEV_PATH}}
+
+    debug "unmount -------begin-------------"
+    debug "mount path: ${mntPath}"
+    debug "fullDevName: ${fullDevName}"
+    debug "volume name: ${volumeName}"
 
     local OUT
     if ! OUT=$(umount "${mntPath}" 2>&1); then
