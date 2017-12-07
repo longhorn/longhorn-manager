@@ -184,6 +184,15 @@ spec:
       labels:
         app: longhorn-driver
     spec:
+      initContainers:
+      - name: init-container
+        image: rancher/longhorn-driver:5260c7b
+        securityContext:
+            privileged: true
+        command: ["/checkdependency.sh"]
+        volumeMounts:
+        - name: host-proc-mount
+          mountPath: /host/proc/
       containers:
         - image: rancher/longhorn-driver:5260c7b
           imagePullPolicy: Always
@@ -211,3 +220,6 @@ spec:
         - name: usr-local-bin-mount
           hostPath:
             path: /usr/local/bin/
+        - name: host-proc-mount
+          hostPath:
+            path: /proc/
