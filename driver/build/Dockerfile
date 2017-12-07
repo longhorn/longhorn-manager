@@ -5,5 +5,6 @@ RUN apt-get update && apt-get install -y dnsutils
 ADD longhorn /
 ADD entrypoint.sh /
 ADD jq /
+ADD checkdependency.sh /
 
 CMD ["/entrypoint.sh"]
