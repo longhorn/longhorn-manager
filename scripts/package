@@ -11,7 +11,7 @@ export VERSION=${VERSION:-$(./scripts/version)}
 
 TAG=${TAG:-${VERSION}${SUFFIX}}
 REPO=${REPO:-rancher}
-IMAGE=${IMAGE:-${REPO}/longhorn-driver:${TAG}}
+IMAGE=${IMAGE:-${REPO}/longhorn-manager:${TAG}}
 
 if [ ! -e ./bin/longhorn-manager ]; then
     ./scripts/build
