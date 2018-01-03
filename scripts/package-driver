@@ -16,4 +16,8 @@ IMAGE=${IMAGE:-${REPO}/longhorn-driver:${TAG}}
 cd driver
 docker build -t ${IMAGE} ./build
 
+cd ..
+
 echo Built ${IMAGE}
+
+echo ${IMAGE} > ./bin/latest_driver_image
