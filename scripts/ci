@@ -10,4 +10,8 @@ cd $(dirname $0)
 ./package-driver
 
 image=`cat ../bin/latest_image`
+drv_image=`cat ../bin/latest_driver_image`
+
+echo
 echo Longhorn Manager image: ${image}
+echo Longhorn Driver image: ${drv_image}
