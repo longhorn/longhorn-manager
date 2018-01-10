@@ -127,6 +127,8 @@ func RunManager(c *cli.Context) error {
 		}
 		notifier = manager.NewTargetWatcher(orch.GetCurrentNode().ID)
 	} else if orchName == "docker" {
+		logrus.Warnf("DOCKER SUPPORT IS OBSOLETE, USE IT AT YOUR OWN RISK")
+
 		cfg := &docker.Config{
 			EngineImage: engineImage,
 			Network:     c.String(FlagDockerNetwork),
