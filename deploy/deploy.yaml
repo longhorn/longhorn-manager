@@ -1,3 +1,14 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: longhorn-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: longhorn-service-account
+  namespace: longhorn-system
+---
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRoleBinding
 metadata:
@@ -9,7 +20,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: longhorn-service-account
-  namespace: default
+  namespace: longhorn-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRole
@@ -41,17 +52,13 @@ rules:
   resources: ["controllers"]
   verbs: ["*"]
 ---
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: longhorn-service-account
----
 apiVersion: extensions/v1beta1
 kind: DaemonSet
 metadata:
   labels:
     app: longhorn-manager
   name: longhorn-manager
+  namespace: longhorn-system
 spec:
   template:
     metadata:
@@ -123,6 +130,7 @@ metadata:
   labels:
     app: longhorn-manager
   name: longhorn-backend
+  namespace: longhorn-system
 spec:
   selector:
     app: longhorn-manager
@@ -138,6 +146,7 @@ metadata:
   labels:
     app: longhorn-ui
   name: longhorn-ui
+  namespace: longhorn-system
 spec:
   replicas: 1
   template:
@@ -161,6 +170,7 @@ metadata:
   labels:
     app: longhorn-ui
   name: longhorn-frontend
+  namespace: longhorn-system
 spec:
   selector:
     app: longhorn-ui
@@ -175,6 +185,7 @@ apiVersion: extensions/v1beta1
 kind: DaemonSet
 metadata:
   name: longhorn-driver
+  namespace: longhorn-system
 spec:
   template:
     metadata:
