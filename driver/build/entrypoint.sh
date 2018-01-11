@@ -22,14 +22,15 @@ if [ ! -d "/flexmnt/$driver_dir" ]; then
   mkdir "/flexmnt/$driver_dir"
 fi
 
+cp /jq /binmnt/
+
 cp "/$DRIVER" "/flexmnt/$driver_dir/.$DRIVER"
 mv -f "/flexmnt/$driver_dir/.$DRIVER" "/flexmnt/$driver_dir/$DRIVER"
 
-echo Flexvolume driver installed
+trap "rm -f /flexmnt/$driver_dir/$DRIVER" EXIT
 
-cp /jq /binmnt/
+echo Flexvolume driver installed
 
 while : ; do
   sleep 3600
 done
-
