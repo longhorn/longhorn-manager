@@ -10,19 +10,6 @@ metadata:
   namespace: longhorn-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
-kind: ClusterRoleBinding
-metadata:
-  name: longhorn-bind
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: longhorn-role
-subjects:
-- kind: ServiceAccount
-  name: longhorn-service-account
-  namespace: longhorn-system
----
-apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRole
 metadata:
   name: longhorn-role
@@ -35,6 +22,9 @@ rules:
   - "*"
 - apiGroups: [""]
   resources: ["pods"]
+  verbs: ["*"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
   verbs: ["*"]
 - apiGroups: ["longhorn.rancher.io"]
   resources: ["nodes"]
@@ -51,6 +41,19 @@ rules:
 - apiGroups: ["longhorn.rancher.io"]
   resources: ["controllers"]
   verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: longhorn-bind
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: longhorn-role
+subjects:
+- kind: ServiceAccount
+  name: longhorn-service-account
+  namespace: longhorn-system
 ---
 apiVersion: extensions/v1beta1
 kind: DaemonSet
