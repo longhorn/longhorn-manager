@@ -25,6 +25,7 @@ It will deploy:
 ## Cleanup
 
 `kubectl delete -f deploy/deploy.yaml`
+
 `./deploy/cleanup-crd.sh`
 
 ## Integration test
