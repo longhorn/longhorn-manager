@@ -77,7 +77,7 @@ spec:
           mountPath: /data/
       containers:
       - name: longhorn-manager
-        image: rancher/longhorn-manager:8d35a7f
+        image: rancher/longhorn-manager:85142fe
         securityContext:
           privileged: true
         command: ["launch-manager", "-d",
@@ -198,7 +198,7 @@ spec:
     spec:
       initContainers:
       - name: init-container
-        image: rancher/longhorn-driver:8d35a7f
+        image: rancher/longhorn-driver:85142fe
         securityContext:
             privileged: true
         command: ["/checkdependency.sh"]
@@ -206,7 +206,7 @@ spec:
         - name: host-proc-mount
           mountPath: /host/proc/
       containers:
-        - image: rancher/longhorn-driver:8d35a7f
+        - image: rancher/longhorn-driver:85142fe
           imagePullPolicy: Always
           name: longhorn-driver-container
           command: ["/entrypoint.sh"]
@@ -227,8 +227,9 @@ spec:
       volumes:
         - name: flexvolume-longhorn-mount
           hostPath:
-            path: /home/kubernetes/flexvolume/
-            #path: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/
+            path: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/
+            #FOR GKE
+            #path: /home/kubernetes/flexvolume/
         - name: usr-local-bin-mount
           hostPath:
             path: /usr/local/bin/
