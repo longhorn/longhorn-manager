@@ -17,7 +17,7 @@ Manager for Longhorn.
 
 `kubectl create -f deploy/deploy.yaml`
 
-It will deploy:
+It will deploy the following components in the `longhorn-system` namespace:
 1. Longhorn Manager
 2. Longhorn Flexvolume Driver for Kubernetes
 3. Longhorn UI
@@ -42,12 +42,14 @@ kubectl create clusterrolebinding cluster-admin-binding --clusterrole=cluster-ad
 ```
 
 ### Flexvolume Plugin Directory
-By default we're using the GKE Flexvolume Plugin directory, which is at: `/home/kubernetes/flexvolume`.
+By default we're using the [default Flexvolume Plugin directory](https://github.com/kubernetes/community/blob/master/contributors/devel/flexvolume.md#prerequisites), which is `/usr/libexec/kubernetes/kubelet-plugins/volume/exec/`.
+
+For GKE 1.8+, it should be at: `/home/kubernetes/flexvolume`.
 
 You may need to change `deploy/deploy.yaml` volume `flexvolume-longhorn-mount` location according to your own environment.
 
 ## License
-Copyright (c) 2014-2017 [Rancher Labs, Inc.](http://rancher.com)
+Copyright (c) 2014-2018 [Rancher Labs, Inc.](http://rancher.com)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
