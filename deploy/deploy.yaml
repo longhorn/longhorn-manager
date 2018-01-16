@@ -77,7 +77,7 @@ spec:
           mountPath: /data/
       containers:
       - name: longhorn-manager
-        image: rancher/longhorn-manager:85142fe
+        image: rancher/longhorn-manager:4d21cac
         securityContext:
           privileged: true
         command: ["launch-manager", "-d",
@@ -198,7 +198,7 @@ spec:
     spec:
       initContainers:
       - name: init-container
-        image: rancher/longhorn-driver:85142fe
+        image: rancher/longhorn-driver:4d21cac
         securityContext:
             privileged: true
         command: ["/checkdependency.sh"]
@@ -206,7 +206,7 @@ spec:
         - name: host-proc-mount
           mountPath: /host/proc/
       containers:
-        - image: rancher/longhorn-driver:85142fe
+        - image: rancher/longhorn-driver:4d21cac
           imagePullPolicy: Always
           name: longhorn-driver-container
           command: ["/entrypoint.sh"]
