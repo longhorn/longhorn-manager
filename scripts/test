@@ -7,7 +7,7 @@ args=$1
 
 echo Running tests
 
-PACKAGES="$(find . -name '*.go' | xargs -I{} dirname {} | sort -u | grep -Ev '(.git|.trash-cache|vendor|bin)')"
+PACKAGES="$(find . -name '*.go' | xargs -I{} dirname {} | sort -u | grep -Ev '(.git|.trash-cache|vendor|bin|k8s)')"
 
 echo Packages: ${PACKAGES}
 
