@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -91,18 +91,6 @@ func (c *FakeVolumes) Create(volume *v1alpha1.Volume) (result *v1alpha1.Volume, 
 func (c *FakeVolumes) Update(volume *v1alpha1.Volume) (result *v1alpha1.Volume, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewUpdateAction(volumesResource, c.ns, volume), &v1alpha1.Volume{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.Volume), err
-}
-
-// UpdateStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeVolumes) UpdateStatus(volume *v1alpha1.Volume) (*v1alpha1.Volume, error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewUpdateSubresourceAction(volumesResource, "status", c.ns, volume), &v1alpha1.Volume{})
 
 	if obj == nil {
 		return nil, err

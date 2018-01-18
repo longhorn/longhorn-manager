@@ -164,10 +164,14 @@ func generateTestVolume(name string) *types.VolumeInfo {
 func generateTestController(volName string) *types.ControllerInfo {
 	return &types.ControllerInfo{
 		types.InstanceInfo{
-			Running:    true,
-			IP:         "1.2.3.4",
-			VolumeName: volName,
-			Metadata: types.Metadata{
+			types.InstanceSpec{
+				VolumeName: volName,
+			},
+			types.InstanceStatus{
+				Running: true,
+				IP:      "1.2.3.4",
+			},
+			types.Metadata{
 				Name: volName + "-controller",
 			},
 		},
@@ -177,10 +181,14 @@ func generateTestController(volName string) *types.ControllerInfo {
 func generateTestReplica(volName, replicaName string) *types.ReplicaInfo {
 	return &types.ReplicaInfo{
 		InstanceInfo: types.InstanceInfo{
-			Running:    true,
-			IP:         "5.6.7.8",
-			VolumeName: volName,
-			Metadata: types.Metadata{
+			types.InstanceSpec{
+				VolumeName: volName,
+			},
+			types.InstanceStatus{
+				Running: true,
+				IP:      "5.6.7.8",
+			},
+			types.Metadata{
 				Name: volName + "-replica-" + replicaName,
 			},
 		},

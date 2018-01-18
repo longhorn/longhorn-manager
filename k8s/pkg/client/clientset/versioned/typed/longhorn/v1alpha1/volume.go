@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,7 +35,6 @@ type VolumesGetter interface {
 type VolumeInterface interface {
 	Create(*v1alpha1.Volume) (*v1alpha1.Volume, error)
 	Update(*v1alpha1.Volume) (*v1alpha1.Volume, error)
-	UpdateStatus(*v1alpha1.Volume) (*v1alpha1.Volume, error)
 	Delete(name string, options *v1.DeleteOptions) error
 	DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error
 	Get(name string, options v1.GetOptions) (*v1alpha1.Volume, error)
@@ -113,22 +112,6 @@ func (c *volumes) Update(volume *v1alpha1.Volume) (result *v1alpha1.Volume, err 
 		Namespace(c.ns).
 		Resource("volumes").
 		Name(volume.Name).
-		Body(volume).
-		Do().
-		Into(result)
-	return
-}
-
-// UpdateStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-
-func (c *volumes) UpdateStatus(volume *v1alpha1.Volume) (result *v1alpha1.Volume, err error) {
-	result = &v1alpha1.Volume{}
-	err = c.client.Put().
-		Namespace(c.ns).
-		Resource("volumes").
-		Name(volume.Name).
-		SubResource("status").
 		Body(volume).
 		Do().
 		Into(result)

@@ -215,12 +215,16 @@ func (v *ManagedVolume) createController(startReplicas map[string]*types.Replica
 		return err
 	}
 	controller := &types.ControllerInfo{
-		InstanceInfo: types.InstanceInfo{
-			NodeID:     nodeID,
-			IP:         instance.IP,
-			Running:    instance.Running,
-			VolumeName: v.Name,
-			Metadata: types.Metadata{
+		types.InstanceInfo{
+			types.InstanceSpec{
+				NodeID:     nodeID,
+				VolumeName: v.Name,
+			},
+			types.InstanceStatus{
+				IP:      instance.IP,
+				Running: instance.Running,
+			},
+			types.Metadata{
 				Name: instance.Name,
 			},
 		},

@@ -127,12 +127,16 @@ func (v *ManagedVolume) jobReplicaCreate(req *orchestrator.Request) (err error) 
 	defer v.mutex.Unlock()
 
 	replica := &types.ReplicaInfo{
-		InstanceInfo: types.InstanceInfo{
-			NodeID:     req.NodeID,
-			IP:         instance.IP,
-			Running:    instance.Running,
-			VolumeName: v.Name,
-			Metadata: types.Metadata{
+		types.InstanceInfo{
+			types.InstanceSpec{
+				VolumeName: v.Name,
+				NodeID:     req.NodeID,
+			},
+			types.InstanceStatus{
+				IP:      instance.IP,
+				Running: instance.Running,
+			},
+			types.Metadata{
 				Name: instance.Name,
 			},
 		},

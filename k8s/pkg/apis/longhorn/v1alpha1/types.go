@@ -9,6 +9,7 @@ import (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +resource:path=volume
+// +genclient:noStatus
 
 type Volume struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -29,11 +30,13 @@ type VolumeList struct {
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +resource:path=controller
+// +genclient:noStatus
 
 type Controller struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	types.ControllerInfo
+	Spec              types.InstanceSpec   `json:"spec"`
+	Status            types.InstanceStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -48,11 +51,13 @@ type ControllerList struct {
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +resource:path=replica
+// +genclient:noStatus
 
 type Replica struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	types.ReplicaInfo
+	Spec              types.InstanceSpec   `json:"spec"`
+	Status            types.InstanceStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
