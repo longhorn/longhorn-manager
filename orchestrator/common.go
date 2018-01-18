@@ -5,7 +5,7 @@ import (
 )
 
 func ValidateRequestCreateController(request *Request) error {
-	if request.InstanceName == "" {
+	if request.Instance == "" {
 		return fmt.Errorf("missing required field %+v", request)
 	}
 
@@ -18,14 +18,14 @@ func ValidateRequestCreateController(request *Request) error {
 }
 
 func ValidateRequestCreateReplica(request *Request) error {
-	if request.InstanceName == "" || request.VolumeSize == 0 {
+	if request.Instance == "" || request.VolumeSize == 0 {
 		return fmt.Errorf("missing required field %+v", request)
 	}
 	return nil
 }
 
 func ValidateRequestInstanceOps(request *Request) error {
-	if request.InstanceName == "" || request.InstanceID == "" || request.VolumeName == "" {
+	if request.Instance == "" || request.VolumeName == "" {
 		return fmt.Errorf("missing required field %+v", request)
 	}
 	return nil

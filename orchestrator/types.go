@@ -5,9 +5,8 @@ import (
 )
 
 type Request struct {
-	NodeID       string
-	InstanceID   string
-	InstanceName string
+	NodeID   string
+	Instance string
 
 	VolumeName string
 	VolumeSize int64
@@ -30,7 +29,6 @@ type Orchestrator interface {
 }
 
 type Instance struct {
-	ID      string
 	Name    string
 	NodeID  string
 	Running bool

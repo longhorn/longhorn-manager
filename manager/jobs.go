@@ -128,7 +128,6 @@ func (v *ManagedVolume) jobReplicaCreate(req *orchestrator.Request) (err error) 
 
 	replica := &types.ReplicaInfo{
 		InstanceInfo: types.InstanceInfo{
-			ID:         instance.ID,
 			NodeID:     req.NodeID,
 			IP:         instance.IP,
 			Running:    instance.Running,
@@ -156,7 +155,7 @@ func (v *ManagedVolume) jobReplicaRebuild(req *orchestrator.Request) (err error)
 		return err
 	}
 
-	replicaName := req.InstanceName
+	replicaName := req.Instance
 
 	rURL, err := v.StartReplicaAndGetURL(replicaName)
 	if err != nil {

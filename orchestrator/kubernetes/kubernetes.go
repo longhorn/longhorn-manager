@@ -114,7 +114,7 @@ func (k *Kubernetes) CreateController(req *orchestrator.Request) (instance *orch
 		return nil, err
 	}
 
-	logrus.Debugf("Starting controller %v for %v", req.InstanceName, req.VolumeName)
+	logrus.Debugf("Starting controller %v for %v", req.Instance, req.VolumeName)
 	cmd := []string{
 		"launch", "controller",
 		"--listen", "0.0.0.0:9501",
@@ -132,7 +132,7 @@ func (k *Kubernetes) CreateController(req *orchestrator.Request) (instance *orch
 	privilege := true
 	pod := &apiv1.Pod{
 		ObjectMeta: meta_v1.ObjectMeta{
-			Name: req.InstanceName,
+			Name: req.Instance,
 		},
 		Spec: apiv1.PodSpec{
 			NodeSelector: map[string]string{
@@ -141,7 +141,7 @@ func (k *Kubernetes) CreateController(req *orchestrator.Request) (instance *orch
 			RestartPolicy: apiv1.RestartPolicyNever,
 			Containers: []apiv1.Container{
 				{
-					Name:    req.InstanceName,
+					Name:    req.Instance,
 					Image:   k.EngineImage,
 					Command: cmd,
 					SecurityContext: &apiv1.SecurityContext{
@@ -180,17 +180,14 @@ func (k *Kubernetes) CreateController(req *orchestrator.Request) (instance *orch
 		},
 	}
 
-	podController, err := k.cli.CoreV1().Pods(k.Namespace).Create(pod)
-	if err != nil {
+	if _, err := k.cli.CoreV1().Pods(k.Namespace).Create(pod); err != nil {
 		return nil, err
 	}
-
-	req.InstanceID = podController.ObjectMeta.Name
 
 	defer func() {
 		if err != nil {
 			logrus.Errorf("fail to start controller %v of %v, cleaning up: %v",
-				req.InstanceName, req.VolumeName, err)
+				req.Instance, req.VolumeName, err)
 			k.StopInstance(req)
 		}
 	}()
@@ -208,7 +205,7 @@ func (k *Kubernetes) CreateController(req *orchestrator.Request) (instance *orch
 	if err := util.WaitForDevice(k.getDeviceName(req.VolumeName), WaitDeviceTimeout); err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Started controller %v for %v", req.InstanceName, req.VolumeName)
+	logrus.Debugf("Started controller %v for %v", req.Instance, req.VolumeName)
 
 	return instance, nil
 }
@@ -226,8 +223,7 @@ func (k *Kubernetes) CreateReplica(req *orchestrator.Request) (instance *orchest
 		return nil, err
 	}
 	instance = &orchestrator.Instance{
-		ID:      req.InstanceName,
-		Name:    req.InstanceName,
+		Name:    req.Instance,
 		Running: false,
 		NodeID:  req.NodeID,
 	}
@@ -237,14 +233,14 @@ func (k *Kubernetes) CreateReplica(req *orchestrator.Request) (instance *orchest
 func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to create replica %v for %v",
-			req.InstanceName, req.VolumeName)
+			req.Instance, req.VolumeName)
 	}()
 
 	if err := orchestrator.ValidateRequestCreateReplica(req); err != nil {
 		return nil, err
 	}
 
-	logrus.Debugf("Starting replica %v for %v", req.InstanceName, req.VolumeName)
+	logrus.Debugf("Starting replica %v for %v", req.Instance, req.VolumeName)
 	cmd := []string{
 		"launch", "replica",
 		"--listen", "0.0.0.0:9502",
@@ -258,7 +254,7 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 	privilege := true
 	pod := &apiv1.Pod{
 		ObjectMeta: meta_v1.ObjectMeta{
-			Name: req.InstanceName,
+			Name: req.Instance,
 		},
 		Spec: apiv1.PodSpec{
 			NodeSelector: map[string]string{
@@ -267,7 +263,7 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 			RestartPolicy: apiv1.RestartPolicyNever,
 			Containers: []apiv1.Container{
 				{
-					Name:    req.InstanceName,
+					Name:    req.Instance,
 					Image:   k.EngineImage,
 					Command: cmd,
 					SecurityContext: &apiv1.SecurityContext{
@@ -286,7 +282,7 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 					Name: "volume",
 					VolumeSource: apiv1.VolumeSource{
 						HostPath: &apiv1.HostPathVolumeSource{
-							Path: k.getReplicaVolumeDirectory(req.InstanceName),
+							Path: k.getReplicaVolumeDirectory(req.Instance),
 						},
 					},
 				},
@@ -294,13 +290,9 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 		},
 	}
 
-	podReplica, err := k.cli.CoreV1().Pods(k.Namespace).Create(pod)
-
-	if err != nil {
+	if _, err := k.cli.CoreV1().Pods(k.Namespace).Create(pod); err != nil {
 		return nil, err
 	}
-
-	req.InstanceID = podReplica.ObjectMeta.Name
 
 	defer func() {
 		if err != nil {
@@ -311,7 +303,7 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 
 	instance, err = k.InspectInstance(req)
 	if err != nil {
-		logrus.Errorf("fail to inspect when create replica %v of %v, cleaning up: %v", req.InstanceName, req.VolumeName, err)
+		logrus.Errorf("fail to inspect when create replica %v of %v, cleaning up: %v", req.Instance, req.VolumeName, err)
 		return nil, err
 	}
 
@@ -326,7 +318,7 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 	if err := util.WaitForAPI(url, timeout); err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Started replica %v for %v", req.InstanceName, req.VolumeName)
+	logrus.Debugf("Started replica %v for %v", req.Instance, req.VolumeName)
 
 	return instance, nil
 }
@@ -348,24 +340,23 @@ func (k *Kubernetes) waitForPodReady(podName string) (*apiv1.Pod, error) {
 
 func (k *Kubernetes) InspectInstance(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to inspect instance %v(%v)", req.InstanceName, req.InstanceID)
+		err = errors.Wrapf(err, "fail to inspect instance %v", req.Instance)
 	}()
 
 	if err := orchestrator.ValidateRequestInstanceOps(req); err != nil {
 		return nil, err
 	}
 
-	pod, err := k.waitForPodReady(req.InstanceName)
+	pod, err := k.waitForPodReady(req.Instance)
 	if err != nil {
 		return nil, err
 	}
 
 	if pod == nil {
-		return nil, fmt.Errorf("incrediable error, can't get pod Instance %v", req.InstanceName)
+		return nil, fmt.Errorf("incrediable error, can't get pod Instance %v", req.Instance)
 	}
 
 	instance = &orchestrator.Instance{
-		ID:      pod.ObjectMeta.Name,
 		Name:    pod.ObjectMeta.Name,
 		Running: pod.Status.Phase == apiv1.PodPhase("Running"),
 		NodeID:  req.NodeID,
@@ -374,7 +365,7 @@ func (k *Kubernetes) InspectInstance(req *orchestrator.Request) (instance *orche
 	instance.IP = pod.Status.PodIP
 
 	if instance.Running && instance.IP == "" {
-		msg := fmt.Sprintf("BUG: Cannot find IP address of %v", instance.ID)
+		msg := fmt.Sprintf("BUG: Cannot find IP address of %v", instance.Name)
 		logrus.Errorf(msg)
 		return nil, errors.Errorf(msg)
 	}
@@ -386,12 +377,12 @@ func (k *Kubernetes) StartInstance(req *orchestrator.Request) (instance *orchest
 		return nil, err
 	}
 
-	if strings.HasPrefix(req.InstanceName, req.VolumeName+"-replica") &&
-		!strings.HasSuffix(req.InstanceName, "controller") {
+	if strings.HasPrefix(req.Instance, req.VolumeName+"-replica") &&
+		!strings.HasSuffix(req.Instance, "controller") {
 		return k.startReplica(req)
 	}
 
-	return nil, fmt.Errorf("Bug: the name of instance %s is not known", req.InstanceName)
+	return nil, fmt.Errorf("Bug: the name of instance %s is not known", req.Instance)
 }
 
 func (k *Kubernetes) StopInstance(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
@@ -399,13 +390,12 @@ func (k *Kubernetes) StopInstance(req *orchestrator.Request) (instance *orchestr
 		return nil, err
 	}
 
-	logrus.Debugf("Stopping instance %v for %v", req.InstanceName, req.VolumeName)
+	logrus.Debugf("Stopping instance %v for %v", req.Instance, req.VolumeName)
 	instance, err = k.InspectInstance(req)
 	if err != nil {
-		logrus.Debugf("Cannot find instance %v, assume it's stopped", req.InstanceName)
+		logrus.Debugf("Cannot find instance %v, assume it's stopped", req.Instance)
 		instance = &orchestrator.Instance{
-			ID:      req.InstanceName,
-			Name:    req.InstanceName,
+			Name:    req.Instance,
 			Running: false,
 			NodeID:  req.NodeID,
 		}
@@ -413,16 +403,15 @@ func (k *Kubernetes) StopInstance(req *orchestrator.Request) (instance *orchestr
 	}
 
 	defer func() {
-		err = errors.Wrapf(err, "fail to delete instance %v(%v)", req.InstanceName, req.InstanceID)
+		err = errors.Wrapf(err, "fail to delete instance %v", req.Instance)
 	}()
 
-	if err := k.cli.CoreV1().Pods(k.Namespace).Delete(req.InstanceName, &meta_v1.DeleteOptions{}); err != nil {
+	if err := k.cli.CoreV1().Pods(k.Namespace).Delete(req.Instance, &meta_v1.DeleteOptions{}); err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Stopped instance %v for %v", req.InstanceName, req.VolumeName)
+	logrus.Debugf("Stopped instance %v for %v", req.Instance, req.VolumeName)
 	instance = &orchestrator.Instance{
-		ID:      req.InstanceName,
-		Name:    req.InstanceName,
+		Name:    req.Instance,
 		Running: false,
 		NodeID:  req.NodeID,
 	}
@@ -434,8 +423,8 @@ func (k *Kubernetes) DeleteInstance(req *orchestrator.Request) (err error) {
 		return err
 	}
 
-	if strings.HasPrefix(req.InstanceName, req.VolumeName+"-replica") &&
-		!strings.HasSuffix(req.InstanceName, "controller") {
+	if strings.HasPrefix(req.Instance, req.VolumeName+"-replica") &&
+		!strings.HasSuffix(req.Instance, "controller") {
 		return k.deleteReplica(req)
 	}
 	return nil
@@ -443,10 +432,10 @@ func (k *Kubernetes) DeleteInstance(req *orchestrator.Request) (err error) {
 
 func (k *Kubernetes) deleteReplica(req *orchestrator.Request) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to delete replica %v for volume %v", req.InstanceName, req.VolumeName)
+		err = errors.Wrapf(err, "fail to delete replica %v for volume %v", req.Instance, req.VolumeName)
 	}()
 
-	logrus.Debugf("Deleting replica %v for %v", req.InstanceName, req.VolumeName)
+	logrus.Debugf("Deleting replica %v for %v", req.Instance, req.VolumeName)
 
 	if err := orchestrator.ValidateRequestInstanceOps(req); err != nil {
 		return err
@@ -457,7 +446,7 @@ func (k *Kubernetes) deleteReplica(req *orchestrator.Request) (err error) {
 	// workaround it for now
 	args := []string{"sleep 1 && rm -f /volume/*"}
 
-	jobName := "cleanup-" + req.InstanceName
+	jobName := "cleanup-" + req.Instance
 	backoffLimit := int32(1)
 	job := &batchv1.Job{
 		ObjectMeta: meta_v1.ObjectMeta{
@@ -467,7 +456,7 @@ func (k *Kubernetes) deleteReplica(req *orchestrator.Request) (err error) {
 			BackoffLimit: &backoffLimit,
 			Template: apiv1.PodTemplateSpec{
 				ObjectMeta: meta_v1.ObjectMeta{
-					Name: "cleanup-pod-" + req.InstanceName,
+					Name: "cleanup-pod-" + req.Instance,
 				},
 				Spec: apiv1.PodSpec{
 					NodeSelector: map[string]string{
@@ -476,7 +465,7 @@ func (k *Kubernetes) deleteReplica(req *orchestrator.Request) (err error) {
 					RestartPolicy: apiv1.RestartPolicyNever,
 					Containers: []apiv1.Container{
 						{
-							Name:    "cleanup-" + req.InstanceName,
+							Name:    "cleanup-" + req.Instance,
 							Image:   k.EngineImage,
 							Command: cmd,
 							Args:    args,
@@ -493,7 +482,7 @@ func (k *Kubernetes) deleteReplica(req *orchestrator.Request) (err error) {
 							Name: "volume",
 							VolumeSource: apiv1.VolumeSource{
 								HostPath: &apiv1.HostPathVolumeSource{
-									Path: k.getReplicaVolumeDirectory(req.InstanceName),
+									Path: k.getReplicaVolumeDirectory(req.Instance),
 								},
 							},
 						},
@@ -529,6 +518,6 @@ func (k *Kubernetes) deleteReplica(req *orchestrator.Request) (err error) {
 		return errors.Errorf("clean up job failed")
 	}
 
-	logrus.Debugf("Deleted replica %v for %v", req.InstanceName, req.VolumeName)
+	logrus.Debugf("Deleted replica %v for %v", req.Instance, req.VolumeName)
 	return nil
 }

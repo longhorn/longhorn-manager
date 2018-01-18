@@ -487,7 +487,7 @@ func (s *CRDStore) ListVolumeReplicas(volumeName string) (map[string]*types.Repl
 			ResourceVersion: itemCopy.ResourceVersion,
 			Name:            itemCopy.Name,
 		}
-		infoMap[itemCopy.ID] = &info
+		infoMap[itemCopy.Name] = &info
 	}
 	return infoMap, nil
 }
