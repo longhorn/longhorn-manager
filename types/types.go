@@ -1,9 +1,7 @@
 package types
 
 const (
-	DefaultAPIPort          = 9500
-	DefaultManagerPort      = 9507
-	DefaultOrchestratorPort = 9508
+	DefaultAPIPort = 9500
 )
 
 type ReplicaMode string

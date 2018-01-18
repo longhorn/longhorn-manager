@@ -20,7 +20,6 @@ var (
 
 func (m *VolumeManager) RegisterNode(port int) error {
 	currentInfo := m.orch.GetCurrentNode()
-	currentInfo.ManagerPort = port
 
 	existInfo, err := m.ds.GetNode(currentInfo.ID)
 	if err != nil {
@@ -120,39 +119,8 @@ func (m *VolumeManager) ListSchedulingNodes() (map[string]*scheduler.Node, error
 	return ret, nil
 }
 
-func (m *VolumeManager) Node2OrchestratorAddress(nodeID string) (string, error) {
-	node, err := m.GetNode(nodeID)
-	if err != nil {
-		return "", err
-	}
-	return node.GetOrchestratorAddress(), nil
-}
-
-func (n *Node) GetOrchestratorAddress() string {
-	return n.IP + ":" + strconv.Itoa(n.OrchestratorPort)
-}
-
-func (n *Node) GetManagerAddress() string {
-	return n.IP + ":" + strconv.Itoa(n.ManagerPort)
-}
-
 func (n *Node) GetAPIAddress() string {
 	return n.IP + ":" + strconv.Itoa(types.DefaultAPIPort)
-}
-
-func (n *Node) Notify(volumeName string) error {
-	// It's not notified through manager port, so skip
-	if n.ManagerPort == -1 {
-		return nil
-	}
-	if err := n.m.notifier.NodeNotify(n.GetManagerAddress(),
-		&Event{
-			Type:       EventTypeNotify,
-			VolumeName: volumeName,
-		}); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (m *VolumeManager) GetCurrentNodeID() string {

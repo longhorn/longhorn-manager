@@ -47,7 +47,3 @@ const (
 	InstanceOperationTypeDeleteInstance   = InstanceOperationType("delete")
 	InstanceOperationTypeInspectInstance  = InstanceOperationType("inspect")
 )
-
-type NodeLocator interface {
-	Node2OrchestratorAddress(nodeID string) (string, error)
-}
