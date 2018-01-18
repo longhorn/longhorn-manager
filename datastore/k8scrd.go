@@ -491,8 +491,3 @@ func (s *CRDStore) ListVolumeReplicas(volumeName string) (map[string]*types.Repl
 	}
 	return infoMap, nil
 }
-
-func (s *CRDStore) Nuclear(nuclearCode string) error {
-	//Fake CRDStore doesn't persist
-	return nil
-}

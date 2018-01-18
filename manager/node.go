@@ -7,7 +7,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 
-	"github.com/rancher/longhorn-manager/kvstore"
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/scheduler"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
@@ -31,7 +31,7 @@ func (m *VolumeManager) RegisterNode(port int) error {
 			return err
 		}
 	} else {
-		if err := kvstore.UpdateResourceVersion(currentInfo, existInfo); err != nil {
+		if err := datastore.UpdateResourceVersion(currentInfo, existInfo); err != nil {
 			return err
 		}
 		if err := m.ds.UpdateNode(currentInfo); err != nil {
