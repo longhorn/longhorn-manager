@@ -91,7 +91,7 @@ func CheckVolume(volume *types.VolumeInfo) error {
 }
 
 func CheckVolumeInstance(instance *types.InstanceInfo) error {
-	if instance.ID == "" || instance.Name == "" || instance.VolumeName == "" {
+	if instance.Name == "" || instance.VolumeName == "" {
 		return fmt.Errorf("BUG: missing required field %+v", instance)
 	}
 	if instance.Running && instance.IP == "" {

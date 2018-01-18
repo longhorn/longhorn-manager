@@ -32,10 +32,10 @@ func (v *ManagedVolume) createReplica(nodeID string) (err error) {
 	}
 
 	req := &orchestrator.Request{
-		NodeID:       nodeID,
-		InstanceName: replicaName,
-		VolumeName:   v.Name,
-		VolumeSize:   size,
+		NodeID:     nodeID,
+		Instance:   replicaName,
+		VolumeName: v.Name,
+		VolumeSize: size,
 	}
 	if v.FromBackup != "" {
 		backupID, err := util.GetBackupID(v.FromBackup)
@@ -81,11 +81,10 @@ func (v *ManagedVolume) startReplica(replicaName string) (err error) {
 	}
 
 	instance, err := v.m.orch.StartInstance(&orchestrator.Request{
-		NodeID:       replica.NodeID,
-		InstanceID:   replica.ID,
-		InstanceName: replica.Name,
-		VolumeName:   replica.VolumeName,
-		VolumeSize:   size,
+		NodeID:     replica.NodeID,
+		Instance:   replica.Name,
+		VolumeName: replica.VolumeName,
+		VolumeSize: size,
 	})
 	if err != nil {
 		return err
@@ -117,10 +116,9 @@ func (v *ManagedVolume) stopReplica(replicaName string) (err error) {
 	}
 
 	instance, err := v.m.orch.StopInstance(&orchestrator.Request{
-		NodeID:       replica.NodeID,
-		InstanceID:   replica.ID,
-		InstanceName: replica.Name,
-		VolumeName:   v.Name,
+		NodeID:     replica.NodeID,
+		Instance:   replica.Name,
+		VolumeName: v.Name,
 	})
 	if err != nil {
 		return err
@@ -174,10 +172,9 @@ func (v *ManagedVolume) deleteReplica(replicaName string) (err error) {
 		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
 	if err := v.m.orch.DeleteInstance(&orchestrator.Request{
-		NodeID:       replica.NodeID,
-		InstanceID:   replica.ID,
-		InstanceName: replica.Name,
-		VolumeName:   v.Name,
+		NodeID:     replica.NodeID,
+		Instance:   replica.Name,
+		VolumeName: v.Name,
 	}); err != nil {
 		return err
 	}
@@ -208,18 +205,17 @@ func (v *ManagedVolume) createController(startReplicas map[string]*types.Replica
 	}
 
 	instance, err := v.m.orch.CreateController(&orchestrator.Request{
-		NodeID:       nodeID,
-		InstanceName: v.getControllerName(),
-		VolumeName:   v.Name,
-		VolumeSize:   size,
-		ReplicaURLs:  urls,
+		NodeID:      nodeID,
+		Instance:    v.getControllerName(),
+		VolumeName:  v.Name,
+		VolumeSize:  size,
+		ReplicaURLs: urls,
 	})
 	if err != nil {
 		return err
 	}
 	controller := &types.ControllerInfo{
 		InstanceInfo: types.InstanceInfo{
-			ID:         instance.ID,
 			NodeID:     nodeID,
 			IP:         instance.IP,
 			Running:    instance.Running,
@@ -247,10 +243,9 @@ func (v *ManagedVolume) deleteController() (err error) {
 	}
 
 	req := &orchestrator.Request{
-		NodeID:       v.Controller.NodeID,
-		InstanceID:   v.Controller.ID,
-		InstanceName: v.Controller.Name,
-		VolumeName:   v.Controller.VolumeName,
+		NodeID:     v.Controller.NodeID,
+		Instance:   v.Controller.Name,
+		VolumeName: v.Controller.VolumeName,
 	}
 	// TODO make it idempotent
 	if _, err := v.m.orch.StopInstance(req); err != nil {
@@ -299,10 +294,10 @@ func (v *ManagedVolume) startRebuild() (err error) {
 	errCh := make(chan error)
 	go func() {
 		errCh <- v.jobReplicaRebuild(&orchestrator.Request{
-			NodeID:       nodeID,
-			InstanceName: replicaName,
-			VolumeName:   v.Name,
-			VolumeSize:   size,
+			NodeID:     nodeID,
+			Instance:   replicaName,
+			VolumeName: v.Name,
+			VolumeSize: size,
 		})
 	}()
 
