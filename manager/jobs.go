@@ -129,7 +129,6 @@ func (v *ManagedVolume) jobReplicaCreate(req *orchestrator.Request) (err error) 
 	replica := &types.ReplicaInfo{
 		InstanceInfo: types.InstanceInfo{
 			ID:         instance.ID,
-			Type:       types.InstanceTypeReplica,
 			NodeID:     req.NodeID,
 			IP:         instance.IP,
 			Running:    instance.Running,

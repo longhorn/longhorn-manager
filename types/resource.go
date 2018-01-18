@@ -56,21 +56,12 @@ type RecurringJob struct {
 	Retain int              `json:"retain"`
 }
 
-type InstanceType string
-
-const (
-	InstanceTypeNone       = InstanceType("")
-	InstanceTypeController = InstanceType("controller")
-	InstanceTypeReplica    = InstanceType("replica")
-)
-
 type InstanceInfo struct {
-	ID         string       `json:"id"`
-	Type       InstanceType `json:"type"`
-	NodeID     string       `json:"nodeID"`
-	IP         string       `json:"ip"`
-	Running    bool         `json:"running"`
-	VolumeName string       `json:"volumeName"`
+	ID         string `json:"id"`
+	NodeID     string `json:"nodeID"`
+	IP         string `json:"ip"`
+	Running    bool   `json:"running"`
+	VolumeName string `json:"volumeName"`
 
 	Metadata
 }

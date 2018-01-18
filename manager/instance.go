@@ -220,7 +220,6 @@ func (v *ManagedVolume) createController(startReplicas map[string]*types.Replica
 	controller := &types.ControllerInfo{
 		InstanceInfo: types.InstanceInfo{
 			ID:         instance.ID,
-			Type:       types.InstanceTypeController,
 			NodeID:     nodeID,
 			IP:         instance.IP,
 			Running:    instance.Running,
