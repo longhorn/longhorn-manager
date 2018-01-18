@@ -93,12 +93,6 @@ func (m *VolumeManager) VolumeCreate(request *VolumeCreateRequest) (err error) {
 	if err := m.NewVolume(info); err != nil {
 		return err
 	}
-
-	if err := node.Notify(info.Name); err != nil {
-		//Don't rollback here, target node is still possible to pickup
-		//the volume. User can call delete explicitly for the volume
-		return err
-	}
 	logrus.Debugf("Created volume %v", info.Name)
 	return nil
 }
@@ -118,11 +112,6 @@ func (m *VolumeManager) VolumeAttach(request *VolumeAttachRequest) (err error) {
 		return fmt.Errorf("cannot find volume %v", request.Name)
 	}
 
-	node, err := m.GetNode(request.NodeID)
-	if err != nil {
-		return err
-	}
-
 	if volume.State != types.VolumeStateDetached {
 		return fmt.Errorf("invalid state to attach: %v", volume.State)
 	}
@@ -130,10 +119,6 @@ func (m *VolumeManager) VolumeAttach(request *VolumeAttachRequest) (err error) {
 	volume.TargetNodeID = request.NodeID
 	volume.DesireState = types.VolumeStateHealthy
 	if err := m.ds.UpdateVolume(volume); err != nil {
-		return err
-	}
-
-	if err := node.Notify(volume.Name); err != nil {
 		return err
 	}
 	logrus.Debugf("Attaching volume %v to %v", volume.Name, request.NodeID)
@@ -155,21 +140,12 @@ func (m *VolumeManager) VolumeDetach(request *VolumeDetachRequest) (err error) {
 		return fmt.Errorf("cannot find volume %v", request.Name)
 	}
 
-	node, err := m.GetNode(volume.TargetNodeID)
-	if err != nil {
-		return err
-	}
-
 	if volume.State != types.VolumeStateHealthy && volume.State != types.VolumeStateDegraded {
 		return fmt.Errorf("invalid state to detach: %v", volume.State)
 	}
 
 	volume.DesireState = types.VolumeStateDetached
 	if err := m.ds.UpdateVolume(volume); err != nil {
-		return err
-	}
-
-	if err := node.Notify(volume.Name); err != nil {
 		return err
 	}
 	logrus.Debugf("Detaching volume %v from %v", volume.Name, volume.TargetNodeID)
@@ -191,17 +167,8 @@ func (m *VolumeManager) VolumeDelete(request *VolumeDeleteRequest) (err error) {
 		return fmt.Errorf("cannot find volume %v", request.Name)
 	}
 
-	node, err := m.GetNode(volume.TargetNodeID)
-	if err != nil {
-		return err
-	}
-
 	volume.DesireState = types.VolumeStateDeleted
 	if err := m.ds.UpdateVolume(volume); err != nil {
-		return err
-	}
-
-	if err := node.Notify(volume.Name); err != nil {
 		return err
 	}
 	logrus.Debugf("Deleting volume %v", volume.Name)
@@ -221,11 +188,6 @@ func (m *VolumeManager) VolumeSalvage(request *VolumeSalvageRequest) (err error)
 	}
 	if volume == nil {
 		return fmt.Errorf("cannot find volume %v", request.Name)
-	}
-
-	node, err := m.GetNode(volume.TargetNodeID)
-	if err != nil {
-		return err
 	}
 
 	if volume.State != types.VolumeStateFault {
@@ -250,10 +212,6 @@ func (m *VolumeManager) VolumeSalvage(request *VolumeSalvageRequest) (err error)
 	if err := m.ds.UpdateVolume(volume); err != nil {
 		return err
 	}
-
-	if err := node.Notify(volume.Name); err != nil {
-		return err
-	}
 	logrus.Debugf("Salvaging volume %v", volume.Name)
 	return nil
 }
@@ -273,17 +231,8 @@ func (m *VolumeManager) VolumeRecurringUpdate(request *VolumeRecurringUpdateRequ
 		return fmt.Errorf("cannot find volume %v", request.Name)
 	}
 
-	node, err := m.GetNode(volume.TargetNodeID)
-	if err != nil {
-		return err
-	}
-
 	volume.RecurringJobs = request.RecurringJobs
 	if err := m.ds.UpdateVolume(volume); err != nil {
-		return err
-	}
-
-	if err := node.Notify(volume.Name); err != nil {
 		return err
 	}
 	logrus.Debugf("Updating volume %v recurring schedule", volume.Name)

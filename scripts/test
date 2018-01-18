@@ -5,20 +5,6 @@ cd $(dirname $0)/..
 
 args=$1
 
-mount --bind /host/dev /dev
-
-source ./scripts/common.sh
-
-# Removing any existing testing containers, e.g. from scripts/server
-cleanup_mgr_test
-
-trap cleanup_mgr_test EXIT
-
-export LONGHORN_MANAGER_TEST_COMP="true"
-export LONGHORN_ENGINE_IMAGE="${LONGHORN_ENGINE_IMAGE}"
-
-docker inspect ${LONGHORN_ENGINE_IMAGE} >/dev/null || docker pull ${LONGHORN_ENGINE_IMAGE}
-
 echo Running tests
 
 PACKAGES="$(find . -name '*.go' | xargs -I{} dirname {} | sort -u | grep -Ev '(.git|.trash-cache|vendor|bin)')"

@@ -19,8 +19,6 @@ type DataStore interface {
 	UpdateSettings(settings *types.SettingsInfo) error
 	GetSettings() (*types.SettingsInfo, error)
 
-	Nuclear(nuclearCode string) error
-
 	CreateVolume(volume *types.VolumeInfo) error
 	UpdateVolume(volume *types.VolumeInfo) error
 	GetVolume(id string) (*types.VolumeInfo, error)
