@@ -325,7 +325,8 @@ func (s *CRDStore) CreateVolumeController(info *types.ControllerInfo) error {
 			Name:   info.Name,
 			Labels: s.getVolumeLabels(info.VolumeName),
 		},
-		ControllerInfo: *info,
+		Spec:   info.InstanceInfo.InstanceSpec,
+		Status: info.InstanceInfo.InstanceStatus,
 	}
 	result, err := s.clientset.LonghornV1alpha1().Controllers(s.namespace).Create(resource)
 	if err != nil {
@@ -347,7 +348,8 @@ func (s *CRDStore) UpdateVolumeController(info *types.ControllerInfo) error {
 			ResourceVersion: info.ResourceVersion,
 			Labels:          s.getVolumeLabels(info.VolumeName),
 		},
-		ControllerInfo: *info,
+		Spec:   info.InstanceInfo.InstanceSpec,
+		Status: info.InstanceInfo.InstanceStatus,
 	}
 	result, err := s.clientset.LonghornV1alpha1().Controllers(s.namespace).Update(resource)
 	if err != nil {
@@ -373,15 +375,8 @@ func (s *CRDStore) GetVolumeController(volumeName string) (*types.ControllerInfo
 		}
 		return nil, errors.Wrap(err, "unable to get volume")
 	}
-	// Cannot use cached object
-	resultCopy := result.DeepCopy()
-	info := resultCopy.ControllerInfo
-	info.Metadata = types.Metadata{
-		ResourceVersion: resultCopy.ResourceVersion,
-		Name:            resultCopy.Name,
-	}
-
-	return &info, nil
+	// Cannot modify cached object
+	return cr2Controller(result.DeepCopy()), nil
 }
 
 func (s *CRDStore) DeleteVolumeController(volumeName string) error {
@@ -395,6 +390,19 @@ func (s *CRDStore) DeleteVolumeController(volumeName string) error {
 	return nil
 }
 
+func cr2Controller(cr *lh.Controller) *types.ControllerInfo {
+	return &types.ControllerInfo{
+		types.InstanceInfo{
+			InstanceSpec:   cr.Spec,
+			InstanceStatus: cr.Status,
+			Metadata: types.Metadata{
+				ResourceVersion: cr.ResourceVersion,
+				Name:            cr.Name,
+			},
+		},
+	}
+}
+
 func (s *CRDStore) CreateVolumeReplica(info *types.ReplicaInfo) error {
 	if err := CheckVolumeInstance(&info.InstanceInfo); err != nil {
 		return errors.Wrap(err, "check fail")
@@ -404,7 +412,8 @@ func (s *CRDStore) CreateVolumeReplica(info *types.ReplicaInfo) error {
 			Name:   info.Name,
 			Labels: s.getVolumeLabels(info.VolumeName),
 		},
-		ReplicaInfo: *info,
+		Spec:   info.InstanceInfo.InstanceSpec,
+		Status: info.InstanceInfo.InstanceStatus,
 	}
 	result, err := s.clientset.LonghornV1alpha1().Replicas(s.namespace).Create(resource)
 	if err != nil {
@@ -426,7 +435,8 @@ func (s *CRDStore) UpdateVolumeReplica(info *types.ReplicaInfo) error {
 			ResourceVersion: info.ResourceVersion,
 			Labels:          s.getVolumeLabels(info.VolumeName),
 		},
-		ReplicaInfo: *info,
+		Spec:   info.InstanceInfo.InstanceSpec,
+		Status: info.InstanceInfo.InstanceStatus,
 	}
 	result, err := s.clientset.LonghornV1alpha1().Replicas(s.namespace).Update(resource)
 	if err != nil {
@@ -446,15 +456,8 @@ func (s *CRDStore) GetVolumeReplica(volumeName, replicaName string) (*types.Repl
 		}
 		return nil, errors.Wrap(err, "unable to get volume")
 	}
-	// Cannot use cached object
-	resultCopy := result.DeepCopy()
-	info := resultCopy.ReplicaInfo
-	info.Metadata = types.Metadata{
-		ResourceVersion: resultCopy.ResourceVersion,
-		Name:            resultCopy.Name,
-	}
-
-	return &info, nil
+	// Cannot modify cached object
+	return cr2Replica(result.DeepCopy()), nil
 }
 
 func (s *CRDStore) DeleteVolumeReplica(volumeName, replicaName string) error {
@@ -480,14 +483,21 @@ func (s *CRDStore) ListVolumeReplicas(volumeName string) (map[string]*types.Repl
 	}
 
 	for _, item := range result.Items {
-		// Cannot use cached object
-		itemCopy := item.DeepCopy()
-		info := itemCopy.ReplicaInfo
-		info.Metadata = types.Metadata{
-			ResourceVersion: itemCopy.ResourceVersion,
-			Name:            itemCopy.Name,
-		}
-		infoMap[itemCopy.Name] = &info
+		// Cannot modify cached object
+		infoMap[item.Name] = cr2Replica(item.DeepCopy())
 	}
 	return infoMap, nil
+}
+
+func cr2Replica(cr *lh.Replica) *types.ReplicaInfo {
+	return &types.ReplicaInfo{
+		types.InstanceInfo{
+			InstanceSpec:   cr.Spec,
+			InstanceStatus: cr.Status,
+			Metadata: types.Metadata{
+				ResourceVersion: cr.ResourceVersion,
+				Name:            cr.Name,
+			},
+		},
+	}
 }

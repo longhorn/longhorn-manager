@@ -56,11 +56,20 @@ type RecurringJob struct {
 	Retain int              `json:"retain"`
 }
 
-type InstanceInfo struct {
-	NodeID     string `json:"nodeID"`
-	IP         string `json:"ip"`
-	Running    bool   `json:"running"`
+type InstanceSpec struct {
 	VolumeName string `json:"volumeName"`
+	NodeID     string `json:"nodeID"`
+}
+
+type InstanceStatus struct {
+	Running  bool   `json:"running"`
+	IP       string `json:"ip"`
+	FailedAt string `json:"failedAt"`
+}
+
+type InstanceInfo struct {
+	InstanceSpec
+	InstanceStatus
 
 	Metadata
 }
@@ -71,8 +80,6 @@ type ControllerInfo struct {
 
 type ReplicaInfo struct {
 	InstanceInfo
-
-	FailedAt string `json:"failedAt"`
 }
 
 type NodeState string
