@@ -34,7 +34,6 @@ type ScheduleItem struct {
 
 type ScheduleInstance struct {
 	ID         string
-	Type       InstanceType
 	NodeID     string
 	VolumeName string
 	Name       string

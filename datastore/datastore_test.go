@@ -165,7 +165,6 @@ func generateTestController(volName string) *types.ControllerInfo {
 	return &types.ControllerInfo{
 		types.InstanceInfo{
 			ID:         volName + "-controller",
-			Type:       types.InstanceTypeController,
 			Running:    true,
 			IP:         "1.2.3.4",
 			VolumeName: volName,
@@ -180,7 +179,6 @@ func generateTestReplica(volName, replicaName string) *types.ReplicaInfo {
 	return &types.ReplicaInfo{
 		InstanceInfo: types.InstanceInfo{
 			ID:         volName + "-replica-" + replicaName,
-			Type:       types.InstanceTypeReplica,
 			Running:    true,
 			IP:         "5.6.7.8",
 			VolumeName: volName,
