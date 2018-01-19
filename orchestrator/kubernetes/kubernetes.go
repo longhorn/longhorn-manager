@@ -192,6 +192,10 @@ func (k *Kubernetes) CreateController(req *orchestrator.Request) (instance *orch
 		}
 	}()
 
+	if err := k.waitForPodReady(req.Instance); err != nil {
+		return nil, err
+	}
+
 	instance, err = k.InspectInstance(req)
 	if err != nil {
 		return nil, err
@@ -301,6 +305,10 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 		}
 	}()
 
+	if err := k.waitForPodReady(req.Instance); err != nil {
+		return nil, err
+	}
+
 	instance, err = k.InspectInstance(req)
 	if err != nil {
 		logrus.Errorf("fail to inspect when create replica %v of %v, cleaning up: %v", req.Instance, req.VolumeName, err)
@@ -323,19 +331,23 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 	return instance, nil
 }
 
-func (k *Kubernetes) waitForPodReady(podName string) (*apiv1.Pod, error) {
+func (k *Kubernetes) getPod(podName string) (*apiv1.Pod, error) {
+	return k.cli.CoreV1().Pods(k.Namespace).Get(podName, meta_v1.GetOptions{})
+}
+
+func (k *Kubernetes) waitForPodReady(podName string) error {
 	for i := 0; i < WaitPodCounter; i++ {
-		pod, err := k.cli.CoreV1().Pods(k.Namespace).Get(podName, meta_v1.GetOptions{})
+		pod, err := k.getPod(podName)
 		if err != nil {
-			return nil, err
+			return fmt.Errorf("fail to acquire pod %v: %v", podName, err)
 		}
 		if pod.Status.PodIP != "" {
-			return pod, nil
+			return nil
 		}
 		time.Sleep(time.Second * time.Duration(WaitPodPeriod))
 	}
 
-	return nil, fmt.Errorf("timeout: pod %v IP can't be acquired", podName)
+	return fmt.Errorf("timeout: pod %v IP can't be acquired", podName)
 }
 
 func (k *Kubernetes) InspectInstance(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
@@ -347,22 +359,17 @@ func (k *Kubernetes) InspectInstance(req *orchestrator.Request) (instance *orche
 		return nil, err
 	}
 
-	pod, err := k.waitForPodReady(req.Instance)
+	pod, err := k.getPod(req.Instance)
 	if err != nil {
 		return nil, err
-	}
-
-	if pod == nil {
-		return nil, fmt.Errorf("incrediable error, can't get pod Instance %v", req.Instance)
 	}
 
 	instance = &orchestrator.Instance{
 		Name:    pod.ObjectMeta.Name,
 		Running: pod.Status.Phase == apiv1.PodPhase("Running"),
 		NodeID:  req.NodeID,
+		IP:      pod.Status.PodIP,
 	}
-
-	instance.IP = pod.Status.PodIP
 
 	if instance.Running && instance.IP == "" {
 		msg := fmt.Sprintf("BUG: Cannot find IP address of %v", instance.Name)
@@ -393,7 +400,7 @@ func (k *Kubernetes) StopInstance(req *orchestrator.Request) (instance *orchestr
 	logrus.Debugf("Stopping instance %v for %v", req.Instance, req.VolumeName)
 	instance, err = k.InspectInstance(req)
 	if err != nil {
-		logrus.Debugf("Cannot find instance %v, assume it's stopped", req.Instance)
+		logrus.Debugf("Cannot find instance %v, assume it's stopped. Error %v", req.Instance, err)
 		instance = &orchestrator.Instance{
 			Name:    req.Instance,
 			Running: false,
