@@ -384,3 +384,44 @@ func (v *ManagedVolume) badReplicaCounts() int {
 	}
 	return count
 }
+
+func (v *ManagedVolume) refreshInstances() (err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrapf(err, "fail to refresh instances for volume %v", v.Name)
+		}
+	}()
+
+	if v.Controller != nil {
+		if err := v.refreshInstance(&v.Controller.InstanceInfo); err != nil {
+			return err
+		}
+		if !v.Controller.InstanceInfo.Running {
+			if err := v.deleteController(); err != nil {
+				return err
+			}
+		}
+	}
+
+	for _, replica := range v.Replicas {
+		if err := v.refreshInstance(&replica.InstanceInfo); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (v *ManagedVolume) refreshInstance(i *types.InstanceInfo) error {
+	req := &orchestrator.Request{
+		NodeID:     i.NodeID,
+		Instance:   i.Name,
+		VolumeName: v.Name,
+	}
+	n, err := v.m.orch.InspectInstance(req)
+	if err != nil {
+		return fmt.Errorf("fail to refresh instance state for %v: %v", i.Name, err)
+	}
+	i.InstanceStatus.Running = n.Running
+	i.InstanceStatus.IP = n.IP
+	return nil
+}

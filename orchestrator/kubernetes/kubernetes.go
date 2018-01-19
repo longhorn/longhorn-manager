@@ -17,6 +17,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kCli "k8s.io/client-go/kubernetes"
 )
@@ -200,6 +201,9 @@ func (k *Kubernetes) CreateController(req *orchestrator.Request) (instance *orch
 	if err != nil {
 		return nil, err
 	}
+	if !instance.Running || instance.IP == "" {
+		return nil, fmt.Errorf("instance %v is not ready", req.Instance)
+	}
 
 	url := "http://" + instance.IP + ":9501/v1"
 	if err := util.WaitForAPI(url, WaitAPITimeout); err != nil {
@@ -314,6 +318,9 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 		logrus.Errorf("fail to inspect when create replica %v of %v, cleaning up: %v", req.Instance, req.VolumeName, err)
 		return nil, err
 	}
+	if !instance.Running || instance.IP == "" {
+		return nil, fmt.Errorf("instance %v is not ready", req.Instance)
+	}
 
 	timeout := WaitAPITimeout
 	// More time for backup restore, may need to customerize it
@@ -361,6 +368,14 @@ func (k *Kubernetes) InspectInstance(req *orchestrator.Request) (instance *orche
 
 	pod, err := k.getPod(req.Instance)
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return &orchestrator.Instance{
+				Name:    req.Instance,
+				Running: false,
+				NodeID:  req.NodeID,
+				IP:      "",
+			}, nil
+		}
 		return nil, err
 	}
 

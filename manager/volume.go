@@ -135,6 +135,10 @@ func (v *ManagedVolume) refresh() error {
 	}
 	v.Volume = *volume
 
+	if err := v.refreshInstances(); err != nil {
+		return err
+	}
+
 	if err := v.updateRecurringJobs(); err != nil {
 		return err
 	}
