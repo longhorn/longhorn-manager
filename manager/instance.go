@@ -80,12 +80,22 @@ func (v *ManagedVolume) startReplica(replicaName string) (err error) {
 		return err
 	}
 
-	instance, err := v.m.orch.StartInstance(&orchestrator.Request{
+	req := &orchestrator.Request{
 		NodeID:     replica.NodeID,
 		Instance:   replica.Name,
 		VolumeName: replica.VolumeName,
 		VolumeSize: size,
-	})
+	}
+	if v.FromBackup != "" {
+		backupID, err := util.GetBackupID(v.FromBackup)
+		if err != nil {
+			return err
+		}
+		req.RestoreFrom = v.FromBackup
+		req.RestoreName = backupID
+	}
+
+	instance, err := v.m.orch.StartInstance(req)
 	if err != nil {
 		return err
 	}
