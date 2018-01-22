@@ -70,7 +70,7 @@ spec:
     spec:
       initContainers:
       - name: init-container
-        image: rancher/longhorn-engine:17e33fc
+        image: rancher/longhorn-engine:8c8289f
         command: ['sh', '-c', 'cp /usr/local/bin/* /data/']
         volumeMounts:
         - name: execbin
@@ -82,7 +82,7 @@ spec:
           privileged: true
         command: ["launch-manager", "-d",
                 "--orchestrator", "kubernetes",
-                "--engine-image", "rancher/longhorn-engine:17e33fc"]
+                "--engine-image", "rancher/longhorn-engine:8c8289f"]
         ports:
         - containerPort: 9500
           name: manager
