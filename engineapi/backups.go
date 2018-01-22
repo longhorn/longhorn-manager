@@ -159,7 +159,7 @@ func (b *BackupTarget) List(volumeName string) ([]*Backup, error) {
 	return parseBackupsList(stdout, volumeName)
 }
 
-func (b *BackupTarget) Get(url string) (*Backup, error) {
+func GetBackup(url string) (*Backup, error) {
 	cmd := exec.Command("longhorn", "backup", "inspect", url)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -176,7 +176,7 @@ func (b *BackupTarget) Get(url string) (*Backup, error) {
 	return parseOneBackup(stdout)
 }
 
-func (b *BackupTarget) Delete(url string) error {
+func DeleteBackup(url string) error {
 	cmd := exec.Command("longhorn", "backup", "rm", url)
 	errBuff := new(bytes.Buffer)
 	cmd.Stderr = errBuff
