@@ -1,0 +1,52 @@
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: longhorn-driver
+  namespace: longhorn-system
+spec:
+  template:
+    metadata:
+      name: longhorn-driver
+      labels:
+        app: longhorn-driver
+    spec:
+      initContainers:
+      - name: init-container
+        image: rancher/longhorn-driver:4d21cac
+        securityContext:
+            privileged: true
+        command: ["/checkdependency.sh"]
+        volumeMounts:
+        - name: host-proc-mount
+          mountPath: /host/proc/
+      containers:
+        - image: rancher/longhorn-driver:4d21cac
+          imagePullPolicy: Always
+          name: longhorn-driver-container
+          command: ["/entrypoint.sh"]
+          securityContext:
+              privileged: true
+          volumeMounts:
+            - mountPath: /flexmnt
+              name: flexvolume-longhorn-mount
+            - mountPath: /binmnt
+              name: usr-local-bin-mount
+          env:
+            - name: LONGHORN_BACKEND_SVC
+              value: "longhorn-backend"
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+      volumes:
+        - name: usr-local-bin-mount
+          hostPath:
+            path: /usr/local/bin/
+        - name: host-proc-mount
+          hostPath:
+            path: /proc/
+        - name: flexvolume-longhorn-mount
+          hostPath:
+            path: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/
+            #FOR GKE
+            #path: /home/kubernetes/flexvolume/
