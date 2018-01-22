@@ -186,7 +186,7 @@ func (job *CronJob) backupAndCleanup(engine engineapi.EngineClient) error {
 	}
 	cleanupBackupURLs := job.listBackupURLsForCleanup(backups, job.Retain)
 	for _, url := range cleanupBackupURLs {
-		if err := bt.Delete(url); err != nil {
+		if err := engineapi.DeleteBackup(url); err != nil {
 			return fmt.Errorf("Cleaned up backup %v failed for %v: %v", url, engine.Name(), err)
 		}
 		logrus.Debugf("Cleaned up backup %v for %v", url, engine.Name())

@@ -106,10 +106,8 @@ func (s *Server) BackupGet(w http.ResponseWriter, req *http.Request) error {
 		return errors.New("cannot backup: backupTarget not set")
 	}
 
-	backups := engineapi.NewBackupTarget(backupTarget)
-
 	url := backupURL(backupTarget, input.Name, volName)
-	backup, err := backups.Get(url)
+	backup, err := engineapi.GetBackup(url)
 	if err != nil {
 		return errors.Wrapf(err, "error getting backup '%s'", url)
 	}
@@ -145,10 +143,8 @@ func (s *Server) BackupDelete(w http.ResponseWriter, req *http.Request) error {
 		return errors.New("cannot backup: backupTarget not set")
 	}
 
-	backups := engineapi.NewBackupTarget(backupTarget)
-
 	url := backupURL(backupTarget, input.Name, volName)
-	if err := backups.Delete(url); err != nil {
+	if err := engineapi.DeleteBackup(url); err != nil {
 		return errors.Wrapf(err, "error deleting backup '%s'", url)
 	}
 	logrus.Debugf("success: removed backup '%s'", url)
