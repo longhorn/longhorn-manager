@@ -75,6 +75,7 @@ func (t *TargetWatcher) onAdd(obj interface{}) {
 	}
 	if volume.Spec.TargetNodeID == t.nodeID {
 		var event Event
+		logrus.Debugf("watcher: volume %v created", volume.Name)
 		// Don't call Create for to be deleted reconstructed volume
 		if volume.Spec.DesireState != types.VolumeStateDeleted {
 			event = Event{
@@ -99,6 +100,7 @@ func (t *TargetWatcher) onUpdate(oldObj, newObj interface{}) {
 		logrus.Errorf("BUG: fail to convert new resource object to volume on update")
 	}
 	if newVolume.Spec.TargetNodeID == t.nodeID {
+		logrus.Debugf("watcher: volume %v updated", newVolume.Name)
 		event := Event{
 			Type:       EventTypeNotify,
 			VolumeName: newVolume.Name,
@@ -115,6 +117,7 @@ func (t *TargetWatcher) onDelete(obj interface{}) {
 	if volume.Spec.TargetNodeID == t.nodeID {
 		// We're going to reconstruct the volume and change state to deleted
 		var event Event
+		logrus.Debugf("watcher: volume %v to be deleted", volume.Name)
 		if volume.Spec.DesireState != types.VolumeStateDeleted {
 			v := &types.VolumeInfo{
 				VolumeSpec:   volume.Spec,

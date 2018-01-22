@@ -354,6 +354,8 @@ func (m *VolumeManager) VolumeCreateBySpec(name string) (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrap(err, "unable to create volume by spec")
+		} else {
+			m.notifyVolume(name)
 		}
 	}()
 
@@ -398,6 +400,8 @@ func (m *VolumeManager) VolumeDeleteBySpec(volume *types.VolumeInfo) (err error)
 	defer func() {
 		if err != nil {
 			err = errors.Wrap(err, "unable to delete volume by spec")
+		} else {
+			m.notifyVolume(volume.Name)
 		}
 	}()
 
