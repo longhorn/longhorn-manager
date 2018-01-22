@@ -72,9 +72,19 @@ func (m *VolumeManager) VolumeCreate(request *VolumeCreateRequest) (err error) {
 	if err != nil {
 		return err
 	}
+
+	size := request.Size
+	if request.FromBackup != "" {
+		backup, err := engineapi.GetBackup(request.FromBackup)
+		if err != nil {
+			return fmt.Errorf("cannot get backup %v: %v", request.FromBackup, err)
+		}
+		size = backup.VolumeSize
+	}
+
 	info := &types.VolumeInfo{
 		VolumeSpec: types.VolumeSpec{
-			Size:                request.Size,
+			Size:                size,
 			BaseImage:           request.BaseImage,
 			FromBackup:          request.FromBackup,
 			NumberOfReplicas:    request.NumberOfReplicas,
