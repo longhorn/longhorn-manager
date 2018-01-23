@@ -77,7 +77,7 @@ func (v *ManagedVolume) startReplica(replicaName string) (err error) {
 		req.RestoreName = backupID
 	}
 
-	instance, err := v.m.orch.StartInstance(req)
+	instance, err := v.m.orch.StartReplica(req)
 	if err != nil {
 		return err
 	}
