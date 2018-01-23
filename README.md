@@ -15,7 +15,7 @@ Manager for Longhorn.
 
 ## Deployment
 
-`kubectl create -f deploy/deploy.yaml`
+`kubectl create -Rf deploy`
 
 It will deploy the following components in the `longhorn-system` namespace:
 1. Longhorn Manager
@@ -24,9 +24,7 @@ It will deploy the following components in the `longhorn-system` namespace:
 
 ## Cleanup
 
-`kubectl delete -f deploy/deploy.yaml`
-
-`./deploy/cleanup-crd.sh`
+`kubectl delete -Rf deploy`
 
 ## Integration test
 
