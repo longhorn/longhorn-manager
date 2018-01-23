@@ -34,14 +34,3 @@ type Instance struct {
 	Running bool
 	IP      string
 }
-
-type InstanceOperationType string
-
-const (
-	InstanceOperationTypeCreateController = InstanceOperationType("createcontroller")
-	InstanceOperationTypeCreateReplica    = InstanceOperationType("createreplica")
-	InstanceOperationTypeStartInstance    = InstanceOperationType("start")
-	InstanceOperationTypeStopInstance     = InstanceOperationType("stop")
-	InstanceOperationTypeDeleteInstance   = InstanceOperationType("delete")
-	InstanceOperationTypeInspectInstance  = InstanceOperationType("inspect")
-)
