@@ -357,6 +357,20 @@ func (k *Kubernetes) waitForPodReady(podName string) error {
 	return fmt.Errorf("timeout: pod %v IP can't be acquired", podName)
 }
 
+func (k *Kubernetes) waitForPodDeletion(podName string) error {
+	for i := 0; i < WaitPodCounter; i++ {
+		if _, err := k.getPod(podName); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return fmt.Errorf("fail to acquire pod %v: %v", podName, err)
+		}
+		time.Sleep(time.Second * time.Duration(WaitPodPeriod))
+	}
+
+	return fmt.Errorf("timeout: timeout waiting for deletion of %v", podName)
+}
+
 func (k *Kubernetes) InspectInstance(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to inspect instance %v", req.Instance)
@@ -429,6 +443,10 @@ func (k *Kubernetes) StopInstance(req *orchestrator.Request) (instance *orchestr
 	}()
 
 	if err := k.cli.CoreV1().Pods(k.Namespace).Delete(req.Instance, &meta_v1.DeleteOptions{}); err != nil {
+		return nil, err
+	}
+
+	if err := k.waitForPodDeletion(req.Instance); err != nil {
 		return nil, err
 	}
 	logrus.Debugf("Stopped instance %v for %v", req.Instance, req.VolumeName)
