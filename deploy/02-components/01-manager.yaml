@@ -21,6 +21,7 @@ spec:
       containers:
       - name: longhorn-manager
         image: rancher/longhorn-manager:4d21cac
+        imagePullPolicy: Always
         securityContext:
           privileged: true
         command: ["launch-manager", "-d",
