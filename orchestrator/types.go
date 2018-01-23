@@ -18,9 +18,6 @@ type Request struct {
 
 type Orchestrator interface {
 	StartController(request *Request) (*Instance, error)
-
-	CreateReplica(request *Request) (*Instance, error)
-
 	StartInstance(request *Request) (*Instance, error)
 	StopInstance(request *Request) (*Instance, error)
 	CleanupReplica(request *Request) error

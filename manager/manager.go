@@ -10,7 +10,6 @@ import (
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/orchestrator"
-	"github.com/rancher/longhorn-manager/scheduler"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 )
@@ -18,11 +17,10 @@ import (
 type VolumeManager struct {
 	currentNode *Node
 
-	ds        datastore.DataStore
-	orch      orchestrator.Orchestrator
-	engines   engineapi.EngineClientCollection
-	notifier  Notifier
-	scheduler *scheduler.Scheduler
+	ds       datastore.DataStore
+	orch     orchestrator.Orchestrator
+	engines  engineapi.EngineClientCollection
+	notifier Notifier
 
 	EventChan           chan Event
 	managedVolumes      map[string]*ManagedVolume
@@ -43,7 +41,6 @@ func NewVolumeManager(ds datastore.DataStore,
 		managedVolumes:      make(map[string]*ManagedVolume),
 		managedVolumesMutex: &sync.Mutex{},
 	}
-	manager.scheduler = scheduler.NewScheduler(manager)
 
 	if err := manager.RegisterNode(notifier.GetPort()); err != nil {
 		return nil, err
@@ -268,26 +265,6 @@ func (m *VolumeManager) VolumeControllerInfo(volumeName string) (*types.Controll
 
 func (m *VolumeManager) VolumeReplicaList(volumeName string) (map[string]*types.ReplicaInfo, error) {
 	return m.ds.ListVolumeReplicas(volumeName)
-}
-
-func (m *VolumeManager) ScheduleReplica(volume *types.VolumeInfo, nodeIDs map[string]struct{}) (string, error) {
-	size, err := util.ConvertSize(volume.Size)
-	if err != nil {
-		return "", err
-	}
-	spec := &scheduler.Spec{
-		Size: size,
-	}
-	policy := &scheduler.Policy{
-		Binding: scheduler.PolicyBindingTypeSoftAntiAffinity,
-		NodeIDs: nodeIDs,
-	}
-
-	schedNode, err := m.scheduler.Schedule(spec, policy)
-	if err != nil {
-		return "", err
-	}
-	return schedNode.ID, nil
 }
 
 func (m *VolumeManager) SettingsGet() (*types.SettingsInfo, error) {

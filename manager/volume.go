@@ -213,34 +213,10 @@ func (v *ManagedVolume) Cleanup() (err error) {
 }
 
 func (v *ManagedVolume) create() (err error) {
-	defer func() {
-		if err != nil {
-			err = errors.Wrap(err, "cannot create volume")
+	for i := 0; i < v.NumberOfReplicas-len(v.Replicas); i++ {
+		if err = v.createReplica(v.generateReplicaName()); err != nil {
+			return errors.Wrap(err, "cannot create volume")
 		}
-	}()
-
-	ready := len(v.Replicas) - v.badReplicaCounts()
-	nodesWithReplica := v.getNodesWithReplica()
-
-	creatingJobs := v.listOngoingJobsByType(JobTypeReplicaCreate)
-	creating := len(creatingJobs)
-	for _, job := range creatingJobs {
-		data := job.Data
-		if data["NodeID"] != "" {
-			nodesWithReplica[data["NodeID"]] = struct{}{}
-		}
-	}
-
-	for i := 0; i < v.NumberOfReplicas-creating-ready; i++ {
-		nodeID, err := v.m.ScheduleReplica(&v.VolumeInfo, nodesWithReplica)
-		if err != nil {
-			return err
-		}
-
-		if err := v.createReplica(nodeID); err != nil {
-			return err
-		}
-		nodesWithReplica[nodeID] = struct{}{}
 	}
 	return nil
 }

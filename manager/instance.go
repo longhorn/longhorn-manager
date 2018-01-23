@@ -20,43 +20,23 @@ func (v *ManagedVolume) generateReplicaName() string {
 	return v.Name + "-replica-" + util.RandomID()
 }
 
-func (v *ManagedVolume) createReplica(nodeID string) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "fail to create replica for volume %v", v.Name)
-	}()
-
-	replicaName := v.generateReplicaName()
-	size, err := util.ConvertSize(v.Size)
-	if err != nil {
-		return err
+func (v *ManagedVolume) createReplica(name string) error {
+	replica := &types.ReplicaInfo{
+		types.InstanceInfo{
+			types.InstanceSpec{
+				VolumeName: v.Name,
+			},
+			types.InstanceStatus{},
+			types.Metadata{
+				Name: name,
+			},
+		},
 	}
 
-	req := &orchestrator.Request{
-		NodeID:     nodeID,
-		Instance:   replicaName,
-		VolumeName: v.Name,
-		VolumeSize: size,
+	if err := v.m.ds.CreateVolumeReplica(replica); err != nil {
+		return errors.Wrapf(err, "cannot create replica")
 	}
-	if v.FromBackup != "" {
-		backupID, err := util.GetBackupID(v.FromBackup)
-		if err != nil {
-			return err
-		}
-		req.RestoreFrom = v.FromBackup
-		req.RestoreName = backupID
-	}
-	errCh := make(chan error)
-	go func() {
-		errCh <- v.jobReplicaCreate(req)
-	}()
-
-	data := map[string]string{
-		"NodeID": nodeID,
-	}
-
-	if _, err := v.registerJob(JobTypeReplicaCreate, replicaName, data, errCh); err != nil {
-		return err
-	}
+	v.Replicas[replica.Name] = replica
 	return nil
 }
 
@@ -80,6 +60,8 @@ func (v *ManagedVolume) startReplica(replicaName string) (err error) {
 		return err
 	}
 
+	// the first time replica.NodeID will be empty, allow scheduler to work
+	// later it must be pinned to that node
 	req := &orchestrator.Request{
 		NodeID:     replica.NodeID,
 		Instance:   replica.Name,
@@ -102,6 +84,7 @@ func (v *ManagedVolume) startReplica(replicaName string) (err error) {
 	if !instance.Running {
 		return fmt.Errorf("Failed to start replica %v", replicaName)
 	}
+	replica.NodeID = instance.NodeID
 	replica.Running = instance.Running
 	replica.IP = instance.IP
 	if err := v.setReplica(replica); err != nil {
@@ -290,13 +273,6 @@ func (v *ManagedVolume) startRebuild() (err error) {
 
 	replicaName := v.generateReplicaName()
 
-	nodesWithReplica := v.getNodesWithReplica()
-
-	nodeID, err := v.m.ScheduleReplica(&v.VolumeInfo, nodesWithReplica)
-	if err != nil {
-		return err
-	}
-
 	size, err := util.ConvertSize(v.Size)
 	if err != nil {
 		return err
@@ -305,7 +281,7 @@ func (v *ManagedVolume) startRebuild() (err error) {
 	errCh := make(chan error)
 	go func() {
 		errCh <- v.jobReplicaRebuild(&orchestrator.Request{
-			NodeID:     nodeID,
+			NodeID:     "",
 			Instance:   replicaName,
 			VolumeName: v.Name,
 			VolumeSize: size,

@@ -8,7 +8,6 @@ import (
 	"github.com/Sirupsen/logrus"
 
 	"github.com/rancher/longhorn-manager/datastore"
-	"github.com/rancher/longhorn-manager/scheduler"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 )
@@ -103,20 +102,6 @@ func (m *VolumeManager) GetRandomNode() (*Node, error) {
 
 func (m *VolumeManager) ListNodes() (map[string]*types.NodeInfo, error) {
 	return m.ds.ListNodes()
-}
-
-func (m *VolumeManager) ListSchedulingNodes() (map[string]*scheduler.Node, error) {
-	nodes, err := m.ds.ListNodes()
-	if err != nil {
-		return nil, err
-	}
-	ret := map[string]*scheduler.Node{}
-	for id := range nodes {
-		ret[id] = &scheduler.Node{
-			ID: id,
-		}
-	}
-	return ret, nil
 }
 
 func (n *Node) GetAPIAddress() string {

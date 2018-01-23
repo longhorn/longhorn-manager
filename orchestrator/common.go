@@ -18,8 +18,8 @@ func ValidateRequestStartController(request *Request) error {
 	return nil
 }
 
-func ValidateRequestCreateReplica(request *Request) error {
-	if request.Instance == "" || request.VolumeSize == 0 {
+func ValidateRequestStartReplica(request *Request) error {
+	if request.Instance == "" || request.VolumeName == "" || request.VolumeSize == 0 {
 		return fmt.Errorf("missing required field %+v", request)
 	}
 	return nil

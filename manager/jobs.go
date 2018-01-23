@@ -5,7 +5,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/rancher/longhorn-manager/orchestrator"
-	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 )
 
@@ -112,50 +111,14 @@ func (v *ManagedVolume) listOngoingJobsByTypeAndAssociateID(jobType JobType, ass
 	return result
 }
 
-// following method cannot be called with v.mutex hold
-
-func (v *ManagedVolume) jobReplicaCreate(req *orchestrator.Request) (err error) {
-	defer func() {
-		errors.Wrap(err, "fail to finish job replica create")
-	}()
-	instance, err := v.m.orch.CreateReplica(req)
-	if err != nil {
-		return err
-	}
-
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
-
-	replica := &types.ReplicaInfo{
-		types.InstanceInfo{
-			types.InstanceSpec{
-				VolumeName: v.Name,
-				NodeID:     req.NodeID,
-			},
-			types.InstanceStatus{
-				IP:      instance.IP,
-				Running: instance.Running,
-			},
-			types.Metadata{
-				Name: instance.Name,
-			},
-		},
-	}
-
-	if err := v.m.ds.CreateVolumeReplica(replica); err != nil {
-		return err
-	}
-
-	v.setReplica(replica)
-	return nil
-}
+// following methods cannot be called with v.mutex hold
 
 func (v *ManagedVolume) jobReplicaRebuild(req *orchestrator.Request) (err error) {
 	defer func() {
 		errors.Wrap(err, "fail to finish job replica rebuild")
 	}()
 
-	if err := v.jobReplicaCreate(req); err != nil {
+	if err := v.createReplica(req.Instance); err != nil {
 		return err
 	}
 
