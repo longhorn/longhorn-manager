@@ -224,25 +224,13 @@ func (k *Kubernetes) getReplicaVolumeDirectory(replicaName string) string {
 	return longhornDirectory + "/replicas/" + replicaName
 }
 
-func (k *Kubernetes) CreateReplica(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
-	if err := orchestrator.ValidateRequestCreateReplica(req); err != nil {
-		return nil, err
-	}
-	instance = &orchestrator.Instance{
-		Name:    req.Instance,
-		Running: false,
-		NodeID:  req.NodeID,
-	}
-	return instance, nil
-}
-
 func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to create replica %v for %v",
 			req.Instance, req.VolumeName)
 	}()
 
-	if err := orchestrator.ValidateRequestCreateReplica(req); err != nil {
+	if err := orchestrator.ValidateRequestStartReplica(req); err != nil {
 		return nil, err
 	}
 
