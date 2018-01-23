@@ -245,7 +245,7 @@ func (k *Kubernetes) getReplicaVolumeDirectory(replicaName string) string {
 	return longhornDirectory + "/replicas/" + replicaName
 }
 
-func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
+func (k *Kubernetes) StartReplica(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to create replica %v for %v",
 			req.Instance, req.VolumeName)
@@ -413,19 +413,6 @@ func (k *Kubernetes) InspectInstance(req *orchestrator.Request) (instance *orche
 		return nil, errors.Errorf(msg)
 	}
 	return instance, nil
-}
-
-func (k *Kubernetes) StartInstance(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
-	if err := orchestrator.ValidateRequestInstanceOps(req); err != nil {
-		return nil, err
-	}
-
-	if strings.HasPrefix(req.Instance, req.VolumeName+"-replica") &&
-		!strings.HasSuffix(req.Instance, "controller") {
-		return k.startReplica(req)
-	}
-
-	return nil, fmt.Errorf("Bug: the name of instance %s is not known", req.Instance)
 }
 
 func (k *Kubernetes) StopInstance(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
