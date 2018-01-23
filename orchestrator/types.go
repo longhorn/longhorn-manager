@@ -17,7 +17,8 @@ type Request struct {
 }
 
 type Orchestrator interface {
-	CreateController(request *Request) (*Instance, error)
+	StartController(request *Request) (*Instance, error)
+
 	CreateReplica(request *Request) (*Instance, error)
 
 	StartInstance(request *Request) (*Instance, error)
