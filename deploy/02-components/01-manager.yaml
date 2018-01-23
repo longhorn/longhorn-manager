@@ -20,7 +20,7 @@ spec:
           mountPath: /data/
       containers:
       - name: longhorn-manager
-        image: rancher/longhorn-manager:fc47da9
+        image: rancher/longhorn-manager:f111052
         imagePullPolicy: Always
         securityContext:
           privileged: true
