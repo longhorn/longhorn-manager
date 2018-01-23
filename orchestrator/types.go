@@ -23,7 +23,7 @@ type Orchestrator interface {
 
 	StartInstance(request *Request) (*Instance, error)
 	StopInstance(request *Request) (*Instance, error)
-	DeleteInstance(request *Request) error
+	CleanupReplica(request *Request) error
 	InspectInstance(request *Request) (*Instance, error)
 
 	GetCurrentNode() *types.NodeInfo
