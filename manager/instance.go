@@ -194,7 +194,7 @@ func (v *ManagedVolume) deleteReplica(replicaName string) (err error) {
 	return nil
 }
 
-func (v *ManagedVolume) createController(startReplicas map[string]*types.ReplicaInfo) (err error) {
+func (v *ManagedVolume) startController(startReplicas map[string]*types.ReplicaInfo) (err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "fail to create controller for volume %v", v.Name)
@@ -214,7 +214,7 @@ func (v *ManagedVolume) createController(startReplicas map[string]*types.Replica
 		return err
 	}
 
-	instance, err := v.m.orch.CreateController(&orchestrator.Request{
+	instance, err := v.m.orch.StartController(&orchestrator.Request{
 		NodeID:      nodeID,
 		Instance:    v.getControllerName(),
 		VolumeName:  v.Name,

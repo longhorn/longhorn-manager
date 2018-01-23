@@ -106,12 +106,12 @@ func (k *Kubernetes) GetCurrentNode() *types.NodeInfo {
 	return k.currentNode
 }
 
-func (k *Kubernetes) CreateController(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
+func (k *Kubernetes) StartController(req *orchestrator.Request) (instance *orchestrator.Instance, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to create controller for %v", req.VolumeName)
 	}()
 
-	if err := orchestrator.ValidateRequestCreateController(req); err != nil {
+	if err := orchestrator.ValidateRequestStartController(req); err != nil {
 		return nil, err
 	}
 

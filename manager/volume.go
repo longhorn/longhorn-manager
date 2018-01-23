@@ -266,7 +266,7 @@ func (v *ManagedVolume) start() (err error) {
 		return fmt.Errorf("cannot start with no replicas")
 	}
 	if v.Controller == nil {
-		if err := v.createController(startReplicas); err != nil {
+		if err := v.startController(startReplicas); err != nil {
 			return err
 		}
 	}

@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-func ValidateRequestCreateController(request *Request) error {
+func ValidateRequestStartController(request *Request) error {
 	if request.Instance == "" {
 		return fmt.Errorf("missing required field %+v", request)
 	}
