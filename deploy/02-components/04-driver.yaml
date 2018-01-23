@@ -12,7 +12,7 @@ spec:
     spec:
       initContainers:
       - name: init-container
-        image: rancher/longhorn-driver:fc47da9
+        image: rancher/longhorn-driver:f111052
         securityContext:
             privileged: true
         command: ["/checkdependency.sh"]
@@ -20,7 +20,7 @@ spec:
         - name: host-proc-mount
           mountPath: /host/proc/
       containers:
-        - image: rancher/longhorn-driver:fc47da9
+        - image: rancher/longhorn-driver:f111052
           imagePullPolicy: Always
           name: longhorn-driver-container
           command: ["/entrypoint.sh"]
