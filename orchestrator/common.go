@@ -11,7 +11,8 @@ func ValidateRequestStartController(request *Request) error {
 
 	if request.VolumeName == "" ||
 		request.VolumeSize == 0 ||
-		request.ReplicaURLs == nil {
+		request.ReplicaURLs == nil ||
+		request.NodeID == "" {
 		return fmt.Errorf("missing required field %+v", request)
 	}
 	return nil

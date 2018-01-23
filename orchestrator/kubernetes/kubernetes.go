@@ -136,9 +136,7 @@ func (k *Kubernetes) StartController(req *orchestrator.Request) (instance *orche
 			Name: req.Instance,
 		},
 		Spec: apiv1.PodSpec{
-			NodeSelector: map[string]string{
-				"kubernetes.io/hostname": req.NodeID,
-			},
+			NodeName:      req.NodeID,
 			RestartPolicy: apiv1.RestartPolicyNever,
 			Containers: []apiv1.Container{
 				{
@@ -265,9 +263,6 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 			Name: req.Instance,
 		},
 		Spec: apiv1.PodSpec{
-			NodeSelector: map[string]string{
-				"kubernetes.io/hostname": req.NodeID,
-			},
 			RestartPolicy: apiv1.RestartPolicyNever,
 			Containers: []apiv1.Container{
 				{
@@ -296,6 +291,9 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 				},
 			},
 		},
+	}
+	if req.NodeID != "" {
+		pod.Spec.NodeName = req.NodeID
 	}
 
 	if _, err := k.cli.CoreV1().Pods(k.Namespace).Create(pod); err != nil {
@@ -396,7 +394,7 @@ func (k *Kubernetes) InspectInstance(req *orchestrator.Request) (instance *orche
 	instance = &orchestrator.Instance{
 		Name:    pod.ObjectMeta.Name,
 		Running: pod.Status.Phase == apiv1.PodPhase("Running"),
-		NodeID:  req.NodeID,
+		NodeID:  pod.Spec.NodeName,
 		IP:      pod.Status.PodIP,
 	}
 
@@ -463,6 +461,11 @@ func (k *Kubernetes) CleanupReplica(req *orchestrator.Request) (err error) {
 		return err
 	}
 
+	if req.NodeID == "" {
+		// replica wasn't created once, doesn't need clean up
+		return nil
+	}
+
 	defer func() {
 		err = errors.Wrapf(err, "fail to delete replica %v for volume %v", req.Instance, req.VolumeName)
 	}()
@@ -491,9 +494,7 @@ func (k *Kubernetes) CleanupReplica(req *orchestrator.Request) (err error) {
 					Name: "cleanup-pod-" + req.Instance,
 				},
 				Spec: apiv1.PodSpec{
-					NodeSelector: map[string]string{
-						"kubernetes.io/hostname": req.NodeID,
-					},
+					NodeName:      req.NodeID,
 					RestartPolicy: apiv1.RestartPolicyNever,
 					Containers: []apiv1.Container{
 						{
