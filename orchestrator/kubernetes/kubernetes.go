@@ -23,7 +23,8 @@ import (
 )
 
 const (
-	longhornDirectory = "/var/lib/rancher/longhorn/"
+	longhornDirectory  = "/var/lib/rancher/longhorn/"
+	longhornReplicaKey = "longhorn-volume-replica"
 )
 
 var (
@@ -134,10 +135,30 @@ func (k *Kubernetes) StartController(req *orchestrator.Request) (instance *orche
 	pod := &apiv1.Pod{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name: req.Instance,
+			Labels: map[string]string{
+				longhornReplicaKey: req.VolumeName,
+			},
 		},
 		Spec: apiv1.PodSpec{
 			NodeName:      req.NodeID,
 			RestartPolicy: apiv1.RestartPolicyNever,
+			Affinity: &apiv1.Affinity{
+				PodAntiAffinity: &apiv1.PodAntiAffinity{
+					PreferredDuringSchedulingIgnoredDuringExecution: []apiv1.WeightedPodAffinityTerm{
+						{
+							Weight: 100,
+							PodAffinityTerm: apiv1.PodAffinityTerm{
+								LabelSelector: &meta_v1.LabelSelector{
+									MatchLabels: map[string]string{
+										longhornReplicaKey: req.VolumeName,
+									},
+								},
+								TopologyKey: "kubernetes.io/hostname",
+							},
+						},
+					},
+				},
+			},
 			Containers: []apiv1.Container{
 				{
 					Name:    req.Instance,
