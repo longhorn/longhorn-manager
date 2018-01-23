@@ -305,7 +305,7 @@ func (k *Kubernetes) startReplica(req *orchestrator.Request) (instance *orchestr
 	defer func() {
 		if err != nil {
 			k.StopInstance(req)
-			k.DeleteInstance(req)
+			k.CleanupReplica(req)
 		}
 	}()
 
@@ -458,19 +458,11 @@ func (k *Kubernetes) StopInstance(req *orchestrator.Request) (instance *orchestr
 	return instance, nil
 }
 
-func (k *Kubernetes) DeleteInstance(req *orchestrator.Request) (err error) {
+func (k *Kubernetes) CleanupReplica(req *orchestrator.Request) (err error) {
 	if err := orchestrator.ValidateRequestInstanceOps(req); err != nil {
 		return err
 	}
 
-	if strings.HasPrefix(req.Instance, req.VolumeName+"-replica") &&
-		!strings.HasSuffix(req.Instance, "controller") {
-		return k.deleteReplica(req)
-	}
-	return nil
-}
-
-func (k *Kubernetes) deleteReplica(req *orchestrator.Request) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to delete replica %v for volume %v", req.Instance, req.VolumeName)
 	}()

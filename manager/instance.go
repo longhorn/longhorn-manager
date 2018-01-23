@@ -181,7 +181,7 @@ func (v *ManagedVolume) deleteReplica(replicaName string) (err error) {
 	if replica == nil {
 		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
-	if err := v.m.orch.DeleteInstance(&orchestrator.Request{
+	if err := v.m.orch.CleanupReplica(&orchestrator.Request{
 		NodeID:     replica.NodeID,
 		Instance:   replica.Name,
 		VolumeName: v.Name,
@@ -263,9 +263,6 @@ func (v *ManagedVolume) deleteController() (err error) {
 	}
 	// TODO make it idempotent
 	if _, err := v.m.orch.StopInstance(req); err != nil {
-		return err
-	}
-	if err := v.m.orch.DeleteInstance(req); err != nil {
 		return err
 	}
 	if err := v.m.ds.DeleteVolumeController(v.Name); err != nil {
