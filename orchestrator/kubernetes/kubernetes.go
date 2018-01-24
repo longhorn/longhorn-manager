@@ -135,30 +135,10 @@ func (k *Kubernetes) StartController(req *orchestrator.Request) (instance *orche
 	pod := &apiv1.Pod{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name: req.Instance,
-			Labels: map[string]string{
-				longhornReplicaKey: req.VolumeName,
-			},
 		},
 		Spec: apiv1.PodSpec{
 			NodeName:      req.NodeID,
 			RestartPolicy: apiv1.RestartPolicyNever,
-			Affinity: &apiv1.Affinity{
-				PodAntiAffinity: &apiv1.PodAntiAffinity{
-					PreferredDuringSchedulingIgnoredDuringExecution: []apiv1.WeightedPodAffinityTerm{
-						{
-							Weight: 100,
-							PodAffinityTerm: apiv1.PodAffinityTerm{
-								LabelSelector: &meta_v1.LabelSelector{
-									MatchLabels: map[string]string{
-										longhornReplicaKey: req.VolumeName,
-									},
-								},
-								TopologyKey: "kubernetes.io/hostname",
-							},
-						},
-					},
-				},
-			},
 			Containers: []apiv1.Container{
 				{
 					Name:    req.Instance,
@@ -270,6 +250,9 @@ func (k *Kubernetes) StartReplica(req *orchestrator.Request) (instance *orchestr
 	pod := &apiv1.Pod{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name: req.Instance,
+			Labels: map[string]string{
+				longhornReplicaKey: req.VolumeName,
+			},
 		},
 		Spec: apiv1.PodSpec{
 			RestartPolicy: apiv1.RestartPolicyNever,
@@ -303,6 +286,24 @@ func (k *Kubernetes) StartReplica(req *orchestrator.Request) (instance *orchestr
 	}
 	if req.NodeID != "" {
 		pod.Spec.NodeName = req.NodeID
+	} else {
+		pod.Spec.Affinity = &apiv1.Affinity{
+			PodAntiAffinity: &apiv1.PodAntiAffinity{
+				PreferredDuringSchedulingIgnoredDuringExecution: []apiv1.WeightedPodAffinityTerm{
+					{
+						Weight: 100,
+						PodAffinityTerm: apiv1.PodAffinityTerm{
+							LabelSelector: &meta_v1.LabelSelector{
+								MatchLabels: map[string]string{
+									longhornReplicaKey: req.VolumeName,
+								},
+							},
+							TopologyKey: "kubernetes.io/hostname",
+						},
+					},
+				},
+			},
+		}
 	}
 
 	if _, err := k.cli.CoreV1().Pods(k.Namespace).Create(pod); err != nil {
