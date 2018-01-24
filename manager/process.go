@@ -106,6 +106,10 @@ func (v *ManagedVolume) process() {
 			break
 		}
 		if err := v.refresh(); err != nil {
+			if _, ok := err.(*types.NotFoundError); ok {
+				logrus.Errorf("Cannot found volume %v, releasing it", v.Name)
+				break
+			}
 			logrus.Warnf("Failed to get volume: %v", err)
 			continue
 		}

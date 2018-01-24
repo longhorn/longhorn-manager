@@ -66,7 +66,7 @@ func (m *VolumeManager) GetVolume(volumeName string) (*Volume, error) {
 		return nil, err
 	}
 	if info == nil {
-		return nil, fmt.Errorf("cannot find volume %v", volumeName)
+		return nil, &types.NotFoundError{volumeName}
 	}
 	controller, err := m.ds.GetVolumeController(volumeName)
 	if err != nil {
