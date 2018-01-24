@@ -12,7 +12,6 @@ type EventType string
 
 const (
 	EventTypeCreate = EventType("create")
-	EventTypeDelete = EventType("delete")
 	EventTypeNotify = EventType("notify")
 )
 

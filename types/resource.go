@@ -15,6 +15,7 @@ const (
 type Metadata struct {
 	Name            string `json:"name"`
 	ResourceVersion string `json:"-"`
+	DeletionPending bool   `json:"-"`
 }
 
 type VolumeInfo struct {

@@ -372,19 +372,3 @@ func (m *VolumeManager) VolumeCreateBySpec(name string) (err error) {
 
 	return nil
 }
-
-func (m *VolumeManager) VolumeDeleteBySpec(volume *types.VolumeInfo) (err error) {
-	defer func() {
-		if err != nil {
-			err = errors.Wrap(err, "unable to delete volume by spec")
-		} else {
-			m.notifyVolume(volume.Name)
-		}
-	}()
-
-	volume.DesireState = types.VolumeStateDeleted
-	if err := m.NewVolume(volume); err != nil {
-		return errors.Wrap(err, "fail to reconstruct the volume for clean up")
-	}
-	return nil
-}

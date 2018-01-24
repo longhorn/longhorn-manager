@@ -36,8 +36,6 @@ func (m *VolumeManager) startProcessing() {
 			go m.notifyVolume(event.VolumeName)
 		case EventTypeCreate:
 			go m.VolumeCreateBySpec(event.VolumeName)
-		case EventTypeDelete:
-			go m.VolumeDeleteBySpec(event.Volume)
 		default:
 			logrus.Errorf("Unrecongized event %+v", event)
 		}
@@ -160,6 +158,15 @@ func (v *ManagedVolume) RefreshState() (err error) {
 			logrus.Debugf("volume %v state is %v", v.Name, v.State)
 		}
 	}()
+
+	if v.DeletionPending && v.DesireState != types.VolumeStateDeleted {
+		logrus.Debugf("Update volume %v's DesireState to Deleted due to deletion pending", v.Name)
+		v.DesireState = types.VolumeStateDeleted
+		if err := v.m.ds.UpdateVolume(&v.VolumeInfo); err != nil {
+			return err
+		}
+		return fmt.Errorf("volume is in deletion pending state")
+	}
 
 	engineReps := map[string]*engineapi.Replica{}
 	endpoint := ""

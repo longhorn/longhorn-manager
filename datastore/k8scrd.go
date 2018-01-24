@@ -15,6 +15,7 @@ import (
 
 	"github.com/rancher/longhorn-manager/k8s"
 	"github.com/rancher/longhorn-manager/k8s/crdclient"
+	"github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn"
 	lh "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhclientset "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
 
@@ -223,6 +224,9 @@ func (s *CRDStore) CreateVolume(volume *types.VolumeInfo) error {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   volume.Name,
 			Labels: s.getVolumeLabels(volume.Name),
+			Finalizers: []string{
+				longhorn.GroupName,
+			},
 		},
 		Spec:   volume.VolumeSpec,
 		Status: volume.VolumeStatus,
@@ -246,6 +250,9 @@ func (s *CRDStore) UpdateVolume(volume *types.VolumeInfo) error {
 			Name:            volume.Name,
 			ResourceVersion: volume.ResourceVersion,
 			Labels:          s.getVolumeLabels(volume.Name),
+			Finalizers: []string{
+				longhorn.GroupName,
+			},
 		},
 		Spec:   volume.VolumeSpec,
 		Status: volume.VolumeStatus,
@@ -276,15 +283,34 @@ func (s *CRDStore) GetVolume(id string) (*types.VolumeInfo, error) {
 	info.Metadata = types.Metadata{
 		ResourceVersion: resultCopy.ResourceVersion,
 		Name:            resultCopy.Name,
+		DeletionPending: resultCopy.DeletionTimestamp != nil,
 	}
 
 	return &info, nil
 }
 
 func (s *CRDStore) DeleteVolume(name string) error {
-	err := s.clientset.LonghornV1alpha1().Volumes(s.namespace).Delete(name, &metav1.DeleteOptions{})
+	result, err := s.clientset.LonghornV1alpha1().Volumes(s.namespace).Get(name,
+		metav1.GetOptions{})
 	if err != nil {
-		return errors.Wrapf(err, "unable to delete volume %v", name)
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to get volume in delete volume %v", name)
+	}
+	resultCopy := result.DeepCopy()
+	// Remove the finalizer to allow deletion of the object
+	resultCopy.Finalizers = []string{}
+	result, err = s.clientset.LonghornV1alpha1().Volumes(s.namespace).Update(resultCopy)
+	if err != nil {
+		return errors.Wrapf(err, "unable to update finalizer in delete volume %v", name)
+	}
+	// No previous deletion operation, so we need to do it ourselves
+	if result.DeletionTimestamp == nil {
+		if err := s.clientset.LonghornV1alpha1().Volumes(s.namespace).Delete(name,
+			&metav1.DeleteOptions{}); err != nil {
+			return errors.Wrapf(err, "unable to delete volume %v", name)
+		}
 	}
 
 	return nil
