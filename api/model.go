@@ -290,7 +290,7 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		replicas = append(replicas, Replica{
 			Instance: Instance{
 				Name:    r.Name,
-				Running: r.Running,
+				Running: r.Running(),
 				Address: r.IP,
 				NodeID:  r.NodeID,
 			},
@@ -303,7 +303,7 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 	if vc != nil {
 		controller = &Controller{Instance{
 			Name:    vc.Name,
-			Running: vc.Running,
+			Running: vc.Running(),
 			NodeID:  vc.NodeID,
 			Address: vc.IP,
 		}}

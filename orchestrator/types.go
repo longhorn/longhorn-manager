@@ -33,3 +33,10 @@ type Instance struct {
 	Running bool
 	IP      string
 }
+
+func (i *Instance) State() types.InstanceState {
+	if i.Running {
+		return types.InstanceStateRunning
+	}
+	return types.InstanceStateStopped
+}

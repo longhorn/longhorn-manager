@@ -168,8 +168,8 @@ func generateTestController(volName string) *types.ControllerInfo {
 				VolumeName: volName,
 			},
 			types.InstanceStatus{
-				Running: true,
-				IP:      "1.2.3.4",
+				State: types.InstanceStateRunning,
+				IP:    "1.2.3.4",
 			},
 			types.Metadata{
 				Name: volName + "-controller",
@@ -185,8 +185,8 @@ func generateTestReplica(volName, replicaName string) *types.ReplicaInfo {
 				VolumeName: volName,
 			},
 			types.InstanceStatus{
-				Running: true,
-				IP:      "5.6.7.8",
+				State: types.InstanceStateRunning,
+				IP:    "5.6.7.8",
 			},
 			types.Metadata{
 				Name: volName + "-replica-" + replicaName,
@@ -263,7 +263,7 @@ func (s *TestSuite) createUpdateVerifyController(c *C, st DataStore, controller 
 	UpdateResourceVersion(controller, ctl)
 	c.Assert(ctl, DeepEquals, controller)
 
-	controller.Running = false
+	controller.State = types.InstanceStateRunning
 	s.verifyConcurrentExecution(c, st.UpdateVolumeController, controller)
 	c.Assert(err, IsNil)
 
@@ -305,7 +305,7 @@ func (s *TestSuite) createUpdateVerifyReplica(c *C, st DataStore, replica *types
 	c.Assert(err, IsNil)
 	c.Assert(reps[replica.Name], DeepEquals, replica)
 
-	replica.Running = false
+	replica.State = types.InstanceStateRunning
 	s.verifyConcurrentExecution(c, st.UpdateVolumeReplica, replica)
 	c.Assert(err, IsNil)
 

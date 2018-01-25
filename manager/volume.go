@@ -397,7 +397,7 @@ func (v *ManagedVolume) ReplicaRemove(replicaName string) (err error) {
 	if replica == nil {
 		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
-	if replica.Running {
+	if replica.Running() {
 		if err := v.stopReplica(replicaName); err != nil {
 			return err
 		}

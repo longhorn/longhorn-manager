@@ -51,7 +51,7 @@ func (v *ManagedVolume) startReplica(replicaName string) (err error) {
 	if replica == nil {
 		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
-	if replica.Running {
+	if replica.Running() {
 		return nil
 	}
 
@@ -85,7 +85,7 @@ func (v *ManagedVolume) startReplica(replicaName string) (err error) {
 		return fmt.Errorf("Failed to start replica %v", replicaName)
 	}
 	replica.NodeID = instance.NodeID
-	replica.Running = instance.Running
+	replica.State = types.InstanceStateRunning
 	replica.IP = instance.IP
 	if err := v.setReplica(replica); err != nil {
 		return err
@@ -104,7 +104,7 @@ func (v *ManagedVolume) stopReplica(replicaName string) (err error) {
 	if replica == nil {
 		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
-	if !replica.Running {
+	if !replica.Running() {
 		return nil
 	}
 
@@ -119,7 +119,7 @@ func (v *ManagedVolume) stopReplica(replicaName string) (err error) {
 	if instance.Running {
 		return fmt.Errorf("Failed to stop replica %v", replicaName)
 	}
-	replica.Running = instance.Running
+	replica.State = types.InstanceStateStopped
 	replica.IP = instance.IP
 	if err := v.setReplica(replica); err != nil {
 		return err
@@ -145,7 +145,7 @@ func (v *ManagedVolume) markBadReplica(replicaName string) (err error) {
 
 	logrus.Warnf("Maked %v as bad replica", replicaName)
 
-	if replica.Running {
+	if replica.Running() {
 		if err := v.stopReplica(replica.Name); err != nil {
 			return err
 		}
@@ -214,8 +214,8 @@ func (v *ManagedVolume) startController(startReplicas map[string]*types.ReplicaI
 				VolumeName: v.Name,
 			},
 			types.InstanceStatus{
-				IP:      instance.IP,
-				Running: instance.Running,
+				IP:    instance.IP,
+				State: instance.State(),
 			},
 			types.Metadata{
 				Name: instance.Name,
@@ -369,7 +369,7 @@ func (v *ManagedVolume) refreshInstances() (err error) {
 		if err := v.refreshInstance(&v.Controller.InstanceInfo); err != nil {
 			return err
 		}
-		if !v.Controller.InstanceInfo.Running {
+		if !v.Controller.Running() {
 			if err := v.deleteController(); err != nil {
 				return err
 			}
@@ -394,7 +394,7 @@ func (v *ManagedVolume) refreshInstance(i *types.InstanceInfo) error {
 	if err != nil {
 		return fmt.Errorf("fail to refresh instance state for %v: %v", i.Name, err)
 	}
-	i.InstanceStatus.Running = n.Running
+	i.InstanceStatus.State = n.State()
 	i.InstanceStatus.IP = n.IP
 	return nil
 }

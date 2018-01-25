@@ -210,7 +210,7 @@ func (v *ManagedVolume) RefreshState() (err error) {
 	if v.State == types.VolumeStateCreated || v.State == types.VolumeStateDetached ||
 		v.State == types.VolumeStateFault || v.State == types.VolumeStateDeleted {
 		for name, replica := range v.Replicas {
-			if !replica.Running {
+			if !replica.Running() {
 				continue
 			}
 			if err := v.stopReplica(name); err != nil {
@@ -250,7 +250,7 @@ func (v *ManagedVolume) syncWithEngineState(engineReps map[string]*engineapi.Rep
 	} else {
 		addr2Replica := make(map[string]*types.ReplicaInfo)
 		for _, replica := range v.Replicas {
-			if replica.Running {
+			if replica.Running() {
 				addr2Replica[engineapi.GetReplicaDefaultURL(replica.IP)] = replica
 			}
 		}
