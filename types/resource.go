@@ -92,6 +92,7 @@ type ControllerInfo struct {
 
 type ReplicaSpec struct {
 	InstanceSpec
+	VolumeSize  string `json:"volumeSize"`
 	RestoreFrom string `json:"restoreFrom"`
 	RestoreName string `json:"restoreName"`
 }

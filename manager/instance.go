@@ -26,11 +26,20 @@ func (v *ManagedVolume) createReplica(name string) error {
 			InstanceSpec: types.InstanceSpec{
 				VolumeName: v.Name,
 			},
+			VolumeSize: v.Size,
 		},
 		types.ReplicaStatus{},
 		types.Metadata{
 			Name: name,
 		},
+	}
+	if v.FromBackup != "" {
+		backupID, err := util.GetBackupID(v.FromBackup)
+		if err != nil {
+			return err
+		}
+		replica.RestoreFrom = v.FromBackup
+		replica.RestoreName = backupID
 	}
 
 	if err := v.m.ds.CreateVolumeReplica(replica); err != nil {
@@ -55,7 +64,7 @@ func (v *ManagedVolume) startReplica(replicaName string) (err error) {
 		return nil
 	}
 
-	size, err := util.ConvertSize(v.Size)
+	size, err := util.ConvertSize(replica.VolumeSize)
 	if err != nil {
 		return err
 	}
@@ -63,18 +72,12 @@ func (v *ManagedVolume) startReplica(replicaName string) (err error) {
 	// the first time replica.NodeID will be empty, allow scheduler to work
 	// later it must be pinned to that node
 	req := &orchestrator.Request{
-		NodeID:     replica.NodeID,
-		Instance:   replica.Name,
-		VolumeName: replica.VolumeName,
-		VolumeSize: size,
-	}
-	if v.FromBackup != "" {
-		backupID, err := util.GetBackupID(v.FromBackup)
-		if err != nil {
-			return err
-		}
-		req.RestoreFrom = v.FromBackup
-		req.RestoreName = backupID
+		NodeID:      replica.NodeID,
+		Instance:    replica.Name,
+		VolumeName:  replica.VolumeName,
+		VolumeSize:  size,
+		RestoreFrom: replica.RestoreFrom,
+		RestoreName: replica.RestoreName,
 	}
 
 	instance, err := v.m.orch.StartReplica(req)
