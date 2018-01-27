@@ -3,7 +3,6 @@ package kubernetes
 import (
 	"fmt"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -239,7 +238,7 @@ func (k *Kubernetes) StartReplica(req *orchestrator.Request) (instance *orchestr
 	cmd := []string{
 		"launch", "replica",
 		"--listen", "0.0.0.0:9502",
-		"--size", strconv.FormatInt(req.VolumeSize, 10),
+		"--size", req.VolumeSize,
 	}
 	if req.RestoreFrom != "" && req.RestoreName != "" {
 		cmd = append(cmd, "--restore-from", req.RestoreFrom, "--restore-name", req.RestoreName)

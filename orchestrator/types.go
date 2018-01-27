@@ -9,7 +9,7 @@ type Request struct {
 	Instance string
 
 	VolumeName string
-	VolumeSize int64
+	VolumeSize string
 
 	ReplicaURLs []string
 	RestoreFrom string

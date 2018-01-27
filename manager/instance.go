@@ -64,18 +64,13 @@ func (v *ManagedVolume) startReplica(replicaName string) (err error) {
 		return nil
 	}
 
-	size, err := util.ConvertSize(replica.VolumeSize)
-	if err != nil {
-		return err
-	}
-
 	// the first time replica.NodeID will be empty, allow scheduler to work
 	// later it must be pinned to that node
 	req := &orchestrator.Request{
 		NodeID:      replica.NodeID,
 		Instance:    replica.Name,
 		VolumeName:  replica.VolumeName,
-		VolumeSize:  size,
+		VolumeSize:  replica.VolumeSize,
 		RestoreFrom: replica.RestoreFrom,
 		RestoreName: replica.RestoreName,
 	}
@@ -195,16 +190,11 @@ func (v *ManagedVolume) startController(startReplicas map[string]*types.ReplicaI
 		urls = append(urls, engineapi.GetReplicaDefaultURL(replica.IP))
 	}
 	nodeID := v.m.orch.GetCurrentNode().ID
-	size, err := util.ConvertSize(v.Size)
-	if err != nil {
-		return err
-	}
 
 	instance, err := v.m.orch.StartController(&orchestrator.Request{
 		NodeID:      nodeID,
 		Instance:    v.getControllerName(),
 		VolumeName:  v.Name,
-		VolumeSize:  size,
 		ReplicaURLs: urls,
 	})
 	if err != nil {
@@ -276,18 +266,13 @@ func (v *ManagedVolume) startRebuild() (err error) {
 
 	replicaName := v.generateReplicaName()
 
-	size, err := util.ConvertSize(v.Size)
-	if err != nil {
-		return err
-	}
-
 	errCh := make(chan error)
 	go func() {
 		errCh <- v.jobReplicaRebuild(&orchestrator.Request{
 			NodeID:     "",
 			Instance:   replicaName,
 			VolumeName: v.Name,
-			VolumeSize: size,
+			VolumeSize: v.Size,
 		})
 	}()
 
