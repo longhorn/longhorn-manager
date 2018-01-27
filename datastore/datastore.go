@@ -99,3 +99,16 @@ func CheckVolumeInstance(instance *types.InstanceInfo) error {
 	}
 	return nil
 }
+
+func CheckVolumeReplica(instance *types.ReplicaInfo) error {
+	if instance.Name == "" || instance.VolumeName == "" {
+		return fmt.Errorf("BUG: missing required field %+v", instance)
+	}
+	if instance.Running() != (instance.IP != "") {
+		return fmt.Errorf("BUG: instance state and IP wasn't in sync %+v", instance)
+	}
+	if (instance.RestoreFrom != "") != (instance.RestoreName != "") {
+		return fmt.Errorf("BUG: replica RestoreFrom and RestoreName value wasn't in sync %+v", instance)
+	}
+	return nil
+}

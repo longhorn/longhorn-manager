@@ -22,14 +22,14 @@ func (v *ManagedVolume) generateReplicaName() string {
 
 func (v *ManagedVolume) createReplica(name string) error {
 	replica := &types.ReplicaInfo{
-		types.InstanceInfo{
-			types.InstanceSpec{
+		types.ReplicaSpec{
+			InstanceSpec: types.InstanceSpec{
 				VolumeName: v.Name,
 			},
-			types.InstanceStatus{},
-			types.Metadata{
-				Name: name,
-			},
+		},
+		types.ReplicaStatus{},
+		types.Metadata{
+			Name: name,
 		},
 	}
 
@@ -365,11 +365,12 @@ func (v *ManagedVolume) refreshInstances() (err error) {
 		}
 	}()
 
-	if v.Controller != nil {
-		if err := v.refreshInstance(&v.Controller.InstanceInfo); err != nil {
+	controller := v.Controller
+	if controller != nil {
+		if err := v.refreshInstance(controller.Name, &controller.InstanceSpec, &controller.InstanceStatus); err != nil {
 			return err
 		}
-		if !v.Controller.Running() {
+		if !controller.Running() {
 			if err := v.deleteController(); err != nil {
 				return err
 			}
@@ -377,24 +378,24 @@ func (v *ManagedVolume) refreshInstances() (err error) {
 	}
 
 	for _, replica := range v.Replicas {
-		if err := v.refreshInstance(&replica.InstanceInfo); err != nil {
+		if err := v.refreshInstance(replica.Name, &replica.InstanceSpec, &replica.InstanceStatus); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (v *ManagedVolume) refreshInstance(i *types.InstanceInfo) error {
+func (v *ManagedVolume) refreshInstance(name string, spec *types.InstanceSpec, status *types.InstanceStatus) error {
 	req := &orchestrator.Request{
-		NodeID:     i.NodeID,
-		Instance:   i.Name,
+		NodeID:     spec.NodeID,
+		Instance:   name,
 		VolumeName: v.Name,
 	}
 	n, err := v.m.orch.InspectInstance(req)
 	if err != nil {
-		return fmt.Errorf("fail to refresh instance state for %v: %v", i.Name, err)
+		return fmt.Errorf("fail to refresh instance state for %v: %v", name, err)
 	}
-	i.InstanceStatus.State = n.State()
-	i.InstanceStatus.IP = n.IP
+	status.State = n.State()
+	status.IP = n.IP
 	return nil
 }

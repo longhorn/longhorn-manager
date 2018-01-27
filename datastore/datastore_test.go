@@ -180,17 +180,19 @@ func generateTestController(volName string) *types.ControllerInfo {
 
 func generateTestReplica(volName, replicaName string) *types.ReplicaInfo {
 	return &types.ReplicaInfo{
-		InstanceInfo: types.InstanceInfo{
-			types.InstanceSpec{
+		types.ReplicaSpec{
+			InstanceSpec: types.InstanceSpec{
 				VolumeName: volName,
 			},
-			types.InstanceStatus{
+		},
+		types.ReplicaStatus{
+			InstanceStatus: types.InstanceStatus{
 				State: types.InstanceStateRunning,
 				IP:    "5.6.7.8",
 			},
-			types.Metadata{
-				Name: volName + "-replica-" + replicaName,
-			},
+		},
+		types.Metadata{
+			Name: volName + "-replica-" + replicaName,
 		},
 	}
 }

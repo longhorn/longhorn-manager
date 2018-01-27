@@ -56,8 +56,8 @@ type ControllerList struct {
 type Replica struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.InstanceSpec   `json:"spec"`
-	Status            types.InstanceStatus `json:"status"`
+	Spec              types.ReplicaSpec   `json:"spec"`
+	Status            types.ReplicaStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

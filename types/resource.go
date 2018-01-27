@@ -65,14 +65,14 @@ const (
 )
 
 type InstanceSpec struct {
-	VolumeName string `json:"volumeName"`
-	NodeID     string `json:"nodeID"`
+	VolumeName  string `json:"volumeName"`
+	NodeID      string `json:"nodeID"`
+	DesireState InstanceState
 }
 
 type InstanceStatus struct {
-	State    InstanceState `json:"state"`
-	IP       string        `json:"ip"`
-	FailedAt string        `json:"failedAt"`
+	State InstanceState `json:"state"`
+	IP    string        `json:"ip"`
 }
 
 type InstanceInfo struct {
@@ -90,8 +90,22 @@ type ControllerInfo struct {
 	InstanceInfo
 }
 
+type ReplicaSpec struct {
+	InstanceSpec
+	RestoreFrom string `json:"restoreFrom"`
+	RestoreName string `json:"restoreName"`
+}
+
+type ReplicaStatus struct {
+	InstanceStatus
+	FailedAt string `json:"failedAt"`
+}
+
 type ReplicaInfo struct {
-	InstanceInfo
+	ReplicaSpec
+	ReplicaStatus
+
+	Metadata
 }
 
 type NodeState string

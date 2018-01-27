@@ -430,16 +430,16 @@ func cr2Controller(cr *lh.Controller) *types.ControllerInfo {
 }
 
 func (s *CRDStore) CreateVolumeReplica(info *types.ReplicaInfo) error {
-	if err := CheckVolumeInstance(&info.InstanceInfo); err != nil {
-		return errors.Wrap(err, "check fail")
+	if err := CheckVolumeReplica(info); err != nil {
+		return errors.Wrap(err, "precheck fail")
 	}
 	resource := &lh.Replica{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   info.Name,
 			Labels: s.getVolumeLabels(info.VolumeName),
 		},
-		Spec:   info.InstanceInfo.InstanceSpec,
-		Status: info.InstanceInfo.InstanceStatus,
+		Spec:   info.ReplicaSpec,
+		Status: info.ReplicaStatus,
 	}
 	result, err := s.clientset.LonghornV1alpha1().Replicas(s.namespace).Create(resource)
 	if err != nil {
@@ -451,7 +451,7 @@ func (s *CRDStore) CreateVolumeReplica(info *types.ReplicaInfo) error {
 }
 
 func (s *CRDStore) UpdateVolumeReplica(info *types.ReplicaInfo) error {
-	if err := CheckVolumeInstance(&info.InstanceInfo); err != nil {
+	if err := CheckVolumeReplica(info); err != nil {
 		return errors.Wrap(err, "check fail")
 	}
 
@@ -461,8 +461,8 @@ func (s *CRDStore) UpdateVolumeReplica(info *types.ReplicaInfo) error {
 			ResourceVersion: info.ResourceVersion,
 			Labels:          s.getVolumeLabels(info.VolumeName),
 		},
-		Spec:   info.InstanceInfo.InstanceSpec,
-		Status: info.InstanceInfo.InstanceStatus,
+		Spec:   info.ReplicaSpec,
+		Status: info.ReplicaStatus,
 	}
 	result, err := s.clientset.LonghornV1alpha1().Replicas(s.namespace).Update(resource)
 	if err != nil {
@@ -517,13 +517,11 @@ func (s *CRDStore) ListVolumeReplicas(volumeName string) (map[string]*types.Repl
 
 func cr2Replica(cr *lh.Replica) *types.ReplicaInfo {
 	return &types.ReplicaInfo{
-		types.InstanceInfo{
-			InstanceSpec:   cr.Spec,
-			InstanceStatus: cr.Status,
-			Metadata: types.Metadata{
-				ResourceVersion: cr.ResourceVersion,
-				Name:            cr.Name,
-			},
+		ReplicaSpec:   cr.Spec,
+		ReplicaStatus: cr.Status,
+		Metadata: types.Metadata{
+			ResourceVersion: cr.ResourceVersion,
+			Name:            cr.Name,
 		},
 	}
 }
