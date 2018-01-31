@@ -20,6 +20,8 @@ import (
 	"github.com/rancher/longhorn-manager/orchestrator"
 	"github.com/rancher/longhorn-manager/orchestrator/kubernetes"
 	"github.com/rancher/longhorn-manager/types"
+
+	_ "github.com/rancher/longhorn-manager/controller"
 )
 
 const (

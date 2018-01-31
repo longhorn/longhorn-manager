@@ -62,6 +62,8 @@ type InstanceState string
 const (
 	InstanceStateRunning = InstanceState("running")
 	InstanceStateStopped = InstanceState("stopped")
+	InstanceStateDeleted = InstanceState("deleted")
+	InstanceStateUnknown = InstanceState("unknown")
 )
 
 type InstanceSpec struct {
