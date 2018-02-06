@@ -13,10 +13,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	batchinformers "k8s.io/client-go/informers/batch/v1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+	batchlisters "k8s.io/client-go/listers/batch/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -73,6 +75,9 @@ type ReplicaController struct {
 	pLister      corelisters.PodLister
 	pStoreSynced cache.InformerSynced
 
+	jLister      batchlisters.JobLister
+	jStoreSynced cache.InformerSynced
+
 	queue workqueue.RateLimitingInterface
 }
 
@@ -81,7 +86,7 @@ type Replica struct {
 	namespace string
 }
 
-func NewReplicaController(replicaInformer lhinformers.ReplicaInformer, podInformer coreinformers.PodInformer, lhClient lhclientset.Interface, kubeClient clientset.Interface, namespace string) *ReplicaController {
+func NewReplicaController(replicaInformer lhinformers.ReplicaInformer, podInformer coreinformers.PodInformer, jobInformer batchinformers.JobInformer, lhClient lhclientset.Interface, kubeClient clientset.Interface, namespace string) *ReplicaController {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -122,14 +127,33 @@ func NewReplicaController(replicaInformer lhinformers.ReplicaInformer, podInform
 	rc.rLister = replicaInformer.Lister()
 	rc.rStoreSynced = replicaInformer.Informer().HasSynced
 
+	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			rc.enqueueControlleeChange(obj)
+		},
+		UpdateFunc: func(old, cur interface{}) {
+			rc.enqueueControlleeChange(cur)
+		},
+		DeleteFunc: func(obj interface{}) {
+			rc.enqueueControlleeChange(obj)
+		},
+	})
 	rc.pLister = podInformer.Lister()
 	rc.pStoreSynced = podInformer.Informer().HasSynced
 
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    rc.addPod,
-		UpdateFunc: rc.updatePod,
-		DeleteFunc: rc.deletePod,
+	jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			rc.enqueueControlleeChange(obj)
+		},
+		UpdateFunc: func(old, cur interface{}) {
+			rc.enqueueControlleeChange(cur)
+		},
+		DeleteFunc: func(obj interface{}) {
+			rc.enqueueControlleeChange(obj)
+		},
 	})
+	rc.jLister = jobInformer.Lister()
+	rc.jStoreSynced = jobInformer.Informer().HasSynced
 
 	rc.syncHandler = rc.syncReplica
 	rc.enqueueReplicaHandler = rc.enqueueReplica
@@ -226,6 +250,16 @@ func (rc *ReplicaController) syncReplica(key string) error {
 			replica.Status.State = types.InstanceStateStopped
 		case v1.PodRunning:
 			replica.Status.State = types.InstanceStateRunning
+			replica.Status.IP = pod.Status.PodIP
+			// pin down to this node ID from now on
+			if replica.Spec.NodeID == "" {
+				replica.Spec.NodeID = pod.Spec.NodeName
+			} else if replica.Spec.NodeID != pod.Spec.NodeName {
+				// it shouldn't happen
+				err := fmt.Errorf("BUG: replica %v wasn't pin down to the host %v", replica.Name, replica.Spec.NodeID)
+				logrus.Errorf("%v", err)
+				return err
+			}
 		default:
 			logrus.Warnf("volume %v replica %v instance state is failed/unknown, pod state %v",
 				replica.Spec.VolumeName, replica.Name, pod.Status.Phase)
@@ -530,65 +564,32 @@ func (rc *ReplicaController) cleanupReplicaInstance(r *longhorn.Replica) (err er
 	return nil
 }
 
-func (rc *ReplicaController) addPod(obj interface{}) {
-	pod := obj.(*v1.Pod)
-	if controllerRef := metav1.GetControllerOf(pod); controllerRef != nil {
-		replica := rc.resolveControllerRef(pod.Namespace, controllerRef)
+func (rc *ReplicaController) enqueueControlleeChange(obj interface{}) {
+	metaObj, ok := obj.(metav1.Object)
+	if !ok {
+		logrus.Warnf("BUG: %v cannot be convert to metav1.Object", obj)
+		return
+	}
+	if controllerRef := metav1.GetControllerOf(metaObj); controllerRef != nil {
+		if controllerRef.Kind != controllerKind.Kind {
+			return
+		}
+		namespace := ""
+		if pod, ok := obj.(*v1.Pod); ok {
+			namespace = pod.Namespace
+		} else if job, ok := obj.(*batchv1.Job); ok {
+			namespace = job.Namespace
+		} else {
+			// not what we recognized
+			return
+		}
+		replica := rc.resolveControllerRef(namespace, controllerRef)
 		if replica == nil {
 			return
 		}
 		rc.enqueueReplicaHandler(replica)
 		return
 	}
-}
-
-func (rc *ReplicaController) updatePod(old, cur interface{}) {
-	curPod := cur.(*v1.Pod)
-	oldPod := old.(*v1.Pod)
-	if curPod.ResourceVersion == oldPod.ResourceVersion {
-		// Periodic resync will send update events for all known pods.
-		// Two different versions of the same pod will always have
-		// different RVs.
-		return
-	}
-	if curPod.DeletionTimestamp != nil {
-		// when a pod is deleted gracefully it's deletion timestamp is
-		// first modified to reflect a grace period, and after such time
-		// has passed, the kubelet actually deletes it from the store.
-		// We receive an update for modification of the deletion
-		// timestamp and expect to operate on it ASAP, not until the
-		// kubelet actually deletes the pod.
-		rc.deletePod(curPod)
-		return
-	}
-
-	curControllerRef := metav1.GetControllerOf(curPod)
-	// Only deal with replica belonged to this controller at this time
-	replica := rc.resolveControllerRef(curPod.Name, curControllerRef)
-	if replica == nil {
-		return
-	}
-	rc.enqueueReplicaHandler(replica)
-}
-
-func (rc *ReplicaController) deletePod(obj interface{}) {
-	pod, ok := obj.(*v1.Pod)
-
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("couldn't get object %+v", obj))
-		return
-	}
-
-	controllerRef := metav1.GetControllerOf(pod)
-	if controllerRef == nil {
-		// No controller should care about orphans being deleted.
-		return
-	}
-	replica := rc.resolveControllerRef(pod.Namespace, controllerRef)
-	if replica == nil {
-		return
-	}
-	rc.enqueueReplicaHandler(replica)
 }
 
 // resolveControllerRef returns the controller referenced by a ControllerRef,

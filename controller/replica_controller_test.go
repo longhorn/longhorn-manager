@@ -93,13 +93,17 @@ func getReplica(name string, lister lhlisters.ReplicaLister) (*longhorn.Replica,
 func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory, lhClient *lhfake.Clientset, kubeClient *fake.Clientset) (*ReplicaController, *controller.FakePodControl) {
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
+	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
 
-	rc := NewReplicaController(replicaInformer, podInformer, lhClient, kubeClient, TestNamespace)
+	rc := NewReplicaController(replicaInformer, podInformer, jobInformer, lhClient, kubeClient, TestNamespace)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	rc.eventRecorder = fakeRecorder
 
 	rc.rStoreSynced = alwaysReady
+	rc.pStoreSynced = alwaysReady
+	rc.jStoreSynced = alwaysReady
+
 	fakePodControl := &controller.FakePodControl{}
 	rc.podControl = fakePodControl
 
@@ -187,10 +191,6 @@ func (s *TestSuite) TestReplicaCRUD(c *C) {
 			c.Assert(controllerRef.Controller, NotNil)
 			c.Assert(*controllerRef.Controller, Equals, true)
 		}
-		// wait for replica to change to start state
-		//replica, err := getReplica(replica.Name, lhLister)
-		//c.Assert(err, IsNil)
-		//c.Assert(replica.Status.InstanceStatus.State, Equals, tc.expectedState)
 	}
 
 }
