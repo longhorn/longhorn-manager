@@ -127,6 +127,11 @@ func (s *TestSuite) TestReplicaCRUD(c *C) {
 		expectedCreations int
 		expectedDeletions int
 	}{
+		"replica keep stopped": {
+			types.InstanceStateStopped, types.InstanceStateStopped,
+			types.InstanceStateStopped,
+			0, 0,
+		},
 		"replica start": {
 			types.InstanceStateRunning, types.InstanceStateStopped,
 			types.InstanceStateRunning,
@@ -150,15 +155,16 @@ func (s *TestSuite) TestReplicaCRUD(c *C) {
 		kubeClient := fake.NewSimpleClientset()
 		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+		defer pIndexer.Replace(make([]interface{}, 0), "0")
 
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 		rIndexer := lhInformerFactory.Longhorn().V1alpha1().Replicas().Informer().GetIndexer()
-		//lhLister := lhInformerFactory.Longhorn().V1alpha1().Replicas().Lister()
+		defer rIndexer.Replace(make([]interface{}, 0), "0")
 
 		rc, fakePodControl := newTestReplicaController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
 
-		// Swap for indexer since fakeClientset won't update indexer store now
+		// Use indexer since fakeClientset won't update indexer store now
 		rc.updateReplicaHandler = func(r *longhorn.Replica) (*longhorn.Replica, error) {
 			err := rIndexer.Update(r)
 			if err != nil {
