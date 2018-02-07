@@ -21,7 +21,7 @@ import (
 	"github.com/rancher/longhorn-manager/orchestrator/kubernetes"
 	"github.com/rancher/longhorn-manager/types"
 
-	_ "github.com/rancher/longhorn-manager/controller"
+	"github.com/rancher/longhorn-manager/controller"
 )
 
 const (
@@ -120,6 +120,10 @@ func RunManager(c *cli.Context) error {
 
 	listen := m.GetCurrentNode().IP + ":" + strconv.Itoa(types.DefaultAPIPort)
 	logrus.Infof("Listening on %s", listen)
+
+	if err := controller.StartControllers(); err != nil {
+		return err
+	}
 
 	return http.ListenAndServe(listen, router)
 }
