@@ -223,6 +223,43 @@ func (rc *ReplicaController) getJobForReplica(r *longhorn.Replica) (*batchv1.Job
 	return rc.kubeClient.BatchV1().Jobs(rc.namespace).Get(r.Name, metav1.GetOptions{})
 }
 
+func (rc *ReplicaController) syncReplicaWithPod(r *longhorn.Replica) error {
+	pod, err := rc.getPodForReplica(r)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			r.Status.State = types.InstanceStateStopped
+			r.Status.IP = ""
+		} else {
+			return err
+		}
+	} else {
+		switch pod.Status.Phase {
+		case v1.PodPending:
+			r.Status.State = types.InstanceStateStopped
+			r.Status.IP = ""
+		case v1.PodRunning:
+			r.Status.State = types.InstanceStateRunning
+			r.Status.IP = pod.Status.PodIP
+			// pin down to this node ID from now on
+			if r.Spec.NodeID == "" {
+				r.Spec.NodeID = pod.Spec.NodeName
+			} else if r.Spec.NodeID != pod.Spec.NodeName {
+				// it shouldn't happen
+				r.Status.State = types.InstanceStateError
+				r.Status.IP = ""
+				err := fmt.Errorf("BUG: replica %v wasn't pin down to the host %v", r.Name, r.Spec.NodeID)
+				logrus.Errorf("%v", err)
+				return err
+			}
+		default:
+			logrus.Warnf("volume %v replica %v instance state is failed/unknown, pod state %v",
+				r.Spec.VolumeName, r.Name, pod.Status.Phase)
+			r.Status.State = types.InstanceStateError
+		}
+	}
+	return nil
+}
+
 func (rc *ReplicaController) syncReplica(key string) (err error) {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -252,36 +289,8 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	}()
 
 	// we will sync up with pod status before proceed
-	pod, err := rc.getPodForReplica(replica)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			replica.Status.State = types.InstanceStateStopped
-			replica.Status.IP = ""
-		} else {
-			return err
-		}
-	} else {
-		switch pod.Status.Phase {
-		case v1.PodPending:
-			replica.Status.State = types.InstanceStateStopped
-			replica.Status.IP = ""
-		case v1.PodRunning:
-			replica.Status.State = types.InstanceStateRunning
-			replica.Status.IP = pod.Status.PodIP
-			// pin down to this node ID from now on
-			if replica.Spec.NodeID == "" {
-				replica.Spec.NodeID = pod.Spec.NodeName
-			} else if replica.Spec.NodeID != pod.Spec.NodeName {
-				// it shouldn't happen
-				err := fmt.Errorf("BUG: replica %v wasn't pin down to the host %v", replica.Name, replica.Spec.NodeID)
-				logrus.Errorf("%v", err)
-				return err
-			}
-		default:
-			logrus.Warnf("volume %v replica %v instance state is failed/unknown, pod state %v",
-				replica.Spec.VolumeName, replica.Name, pod.Status.Phase)
-			replica.Status.State = types.InstanceStateError
-		}
+	if err := rc.syncReplicaWithPod(replica); err != nil {
+		return err
 	}
 
 	// we need to stop the replica which failed connection with controller
@@ -339,6 +348,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 				if err := rc.stopReplicaInstance(replica); err != nil {
 					return err
 				}
+				break
 			}
 			if state == types.InstanceStateStopped {
 				if err := rc.cleanupReplicaInstance(replica); err != nil {
