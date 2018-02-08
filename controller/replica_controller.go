@@ -62,7 +62,6 @@ type ReplicaController struct {
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
-	podControl    controller.PodControlInterface
 
 	lhClient lhclientset.Interface
 
@@ -107,10 +106,6 @@ func NewReplicaController(
 		lhClient:      lhClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "longhorn-replica-controller"}),
 
-		podControl: controller.RealPodControl{
-			KubeClient: kubeClient,
-			Recorder:   eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "longhorn-replica-controller"}),
-		},
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-replica"),
 	}
 
@@ -430,6 +425,7 @@ func (rc *ReplicaController) deleteReplica(r *longhorn.Replica) (err error) {
 	}
 	resultCopy := result.DeepCopy()
 	// Remove the finalizer to allow deletion of the object
+	// FIXME only remove myself from the finalizer
 	resultCopy.Finalizers = []string{}
 	result, err = rc.updateReplicaHandler(result)
 	if err != nil {
@@ -449,7 +445,7 @@ func (rc *ReplicaController) getReplicaVolumeDirectory(replicaName string) strin
 	return longhornDirectory + "/replicas/" + replicaName
 }
 
-func (rc *ReplicaController) createPodTemplateSpec(r *longhorn.Replica) *v1.PodTemplateSpec {
+func (rc *ReplicaController) createPod(r *longhorn.Replica) *v1.Pod {
 	cmd := []string{
 		"launch", "replica",
 		"--listen", "0.0.0.0:9502",
@@ -461,7 +457,7 @@ func (rc *ReplicaController) createPodTemplateSpec(r *longhorn.Replica) *v1.PodT
 	cmd = append(cmd, "/volume")
 
 	privilege := true
-	pod := &v1.PodTemplateSpec{
+	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      r.Name,
 			Namespace: r.Namespace,
@@ -605,10 +601,10 @@ func (rc *ReplicaController) startReplicaInstance(r *longhorn.Replica) (err erro
 	if pod != nil {
 		return nil
 	}
-	podSpec := rc.createPodTemplateSpec(r)
+	podSpec := rc.createPod(r)
 
 	logrus.Debugf("Starting replica %v for %v", r.Name, r.Spec.VolumeName)
-	if err := rc.podControl.CreatePods(rc.namespace, podSpec, r); err != nil {
+	if _, err := rc.kubeClient.CoreV1().Pods(rc.namespace).Create(podSpec); err != nil {
 		return err
 	}
 	return nil
@@ -631,7 +627,7 @@ func (rc *ReplicaController) stopReplicaInstance(r *longhorn.Replica) (err error
 		return nil
 	}
 	logrus.Debugf("Stopping replica %v for %v", r.Name, r.Spec.VolumeName)
-	if err := rc.podControl.DeletePod(rc.namespace, r.Name, r); err != nil {
+	if err := rc.kubeClient.CoreV1().Pods(rc.namespace).Delete(r.Name, nil); err != nil {
 		return err
 	}
 	return nil

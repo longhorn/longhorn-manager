@@ -101,7 +101,7 @@ func getReplica(name string, lister lhlisters.ReplicaLister) (*longhorn.Replica,
 
 func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
-	controllerID string) (*ReplicaController, *controller.FakePodControl) {
+	controllerID string) *ReplicaController {
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
@@ -115,10 +115,7 @@ func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformer
 	rc.pStoreSynced = alwaysReady
 	rc.jStoreSynced = alwaysReady
 
-	fakePodControl := &controller.FakePodControl{}
-	rc.podControl = fakePodControl
-
-	return rc, fakePodControl
+	return rc
 }
 
 func (s *TestSuite) TestSyncReplicaWithPod(c *C) {
@@ -181,7 +178,7 @@ func (s *TestSuite) TestSyncReplicaWithPod(c *C) {
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 
-		rc, _ := newTestReplicaController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestOwnerID1)
+		rc := newTestReplicaController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestOwnerID1)
 
 		// the existing states doesn't matter here
 		replica := newReplica(types.InstanceStateError, tc.replicaCurrentState, TestNode1, TestNode1, "")
@@ -223,43 +220,42 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 		err             bool
 
 		//pod expection
-		expectedCreations int
-		expectedDeletions int
+		expectedPods int
 	}{
 		"replica keep stopped": {
 			types.InstanceStateStopped, types.InstanceStateStopped, TestOwnerID1, TestOwnerID1,
 			types.InstanceStateStopped, TestOwnerID1, false,
-			0, 0,
+			0,
 		},
 		"replica start": {
 			types.InstanceStateRunning, types.InstanceStateStopped, TestOwnerID1, TestOwnerID1,
 			types.InstanceStateRunning, TestOwnerID1, false,
-			1, 0,
+			1,
 		},
 		"replica keep running": {
 			types.InstanceStateRunning, types.InstanceStateRunning, TestOwnerID1, TestOwnerID1,
 			types.InstanceStateRunning, TestOwnerID1, false,
-			0, 0,
+			1,
 		},
 		"replica stop": {
 			types.InstanceStateStopped, types.InstanceStateRunning, TestOwnerID1, TestOwnerID1,
 			types.InstanceStateStopped, TestOwnerID1, false,
-			0, 1,
+			0,
 		},
 		"replica deleted when running": {
 			types.InstanceStateDeleted, types.InstanceStateRunning, TestOwnerID1, TestOwnerID1,
 			types.InstanceStateDeleted, TestOwnerID1, false,
-			0, 1,
+			0,
 		},
 		"replica stop and transfer ownership": {
 			types.InstanceStateStopped, types.InstanceStateStopped, TestOwnerID1, "",
 			types.InstanceStateStopped, TestOwnerID1, false,
-			0, 0,
+			0,
 		},
 		"replica stop and transfer ownership but other hasn't yield": {
 			types.InstanceStateStopped, types.InstanceStateStopped, TestOwnerID1, TestOwnerID2,
 			types.InstanceStateStopped, TestOwnerID2, true,
-			0, 0,
+			0,
 		},
 	}
 
@@ -276,23 +272,22 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 		rIndexer := lhInformerFactory.Longhorn().V1alpha1().Replicas().Informer().GetIndexer()
 		defer rIndexer.Replace(make([]interface{}, 0), "0")
 
-		rc, fakePodControl := newTestReplicaController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestOwnerID1)
+		rc := newTestReplicaController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestOwnerID1)
 
-		// Use indexer since fakeClientset won't update indexer store now
-		rc.updateReplicaHandler = func(r *longhorn.Replica) (*longhorn.Replica, error) {
-			err := rIndexer.Update(r)
-			if err != nil {
-				return nil, err
-			}
-			return r, nil
-		}
-
+		// Need add to both indexer store and fake clientset, since they
+		// haven't connected yet
 		replica := newReplica(tc.desireState, tc.currentState, tc.desireOwnerID, tc.currentOwnerID, "")
 		err = rIndexer.Add(replica)
 		c.Assert(err, IsNil)
+		_, err = lhClient.LonghornV1alpha1().Replicas(replica.Namespace).Create(replica)
+		c.Assert(err, IsNil)
 
 		if tc.currentState == types.InstanceStateRunning {
-			pIndexer.Add(newPod(v1.PodRunning, replica))
+			pod := newPod(v1.PodRunning, replica)
+			err = pIndexer.Add(pod)
+			c.Assert(err, IsNil)
+			_, err = kubeClient.CoreV1().Pods(replica.Namespace).Create(pod)
+			c.Assert(err, IsNil)
 		}
 
 		err = rc.syncReplica(getKey(replica, c))
@@ -302,14 +297,15 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 			c.Assert(err, IsNil)
 		}
 
-		// get replica pod, it should be added
-		c.Assert(len(fakePodControl.Templates), Equals, tc.expectedCreations)
-		c.Assert(len(fakePodControl.DeletePodName), Equals, tc.expectedDeletions)
-		obj, exists, err := rIndexer.Get(replica)
+		// check fake clientset for resource update
+		podList, err := kubeClient.CoreV1().Pods(replica.Namespace).List(metav1.ListOptions{})
 		c.Assert(err, IsNil)
-		c.Assert(exists, Equals, true)
-		updatedReplica, ok := obj.(*longhorn.Replica)
-		c.Assert(ok, Equals, true)
+		c.Assert(podList.Items, HasLen, tc.expectedPods)
+
+		updatedReplica, err := lhClient.LonghornV1alpha1().Replicas(rc.namespace).Get(replica.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+		// TODO State change won't work for now since pod state wasn't changed
+		//c.Assert(updatedReplica.Status.State, Equals, tc.expectedState)
 		c.Assert(updatedReplica.Status.CurrentOwnerID, Equals, tc.expectedOwnerID)
 	}
 
