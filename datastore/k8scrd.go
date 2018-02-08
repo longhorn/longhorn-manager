@@ -15,7 +15,6 @@ import (
 
 	"github.com/rancher/longhorn-manager/k8s"
 	"github.com/rancher/longhorn-manager/k8s/crdclient"
-	"github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn"
 	lh "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhclientset "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
 
@@ -27,7 +26,13 @@ type CRDStore struct {
 	namespace string
 }
 
-const SettingName = "longhorn-manager-settings"
+const (
+	SettingName = "longhorn-manager-settings"
+)
+
+var (
+	longhornFinalizerKey = lh.SchemeGroupVersion.Group
+)
 
 func NewCRDStore(kubeconfig string) (*CRDStore, error) {
 	namespace := os.Getenv(k8s.EnvPodNamespace)
@@ -225,7 +230,7 @@ func (s *CRDStore) CreateVolume(volume *types.VolumeInfo) error {
 			Name:   volume.Name,
 			Labels: s.getVolumeLabels(volume.Name),
 			Finalizers: []string{
-				longhorn.GroupName,
+				longhornFinalizerKey,
 			},
 		},
 		Spec:   volume.VolumeSpec,
@@ -251,7 +256,7 @@ func (s *CRDStore) UpdateVolume(volume *types.VolumeInfo) error {
 			ResourceVersion: volume.ResourceVersion,
 			Labels:          s.getVolumeLabels(volume.Name),
 			Finalizers: []string{
-				longhorn.GroupName,
+				longhornFinalizerKey,
 			},
 		},
 		Spec:   volume.VolumeSpec,
@@ -437,6 +442,9 @@ func (s *CRDStore) CreateVolumeReplica(info *types.ReplicaInfo) error {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   info.Name,
 			Labels: s.getVolumeLabels(info.VolumeName),
+			Finalizers: []string{
+				longhornFinalizerKey,
+			},
 		},
 		Spec:   info.ReplicaSpec,
 		Status: info.ReplicaStatus,

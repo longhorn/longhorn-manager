@@ -242,11 +242,6 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 			types.InstanceStateStopped, TestOwnerID1, false,
 			0,
 		},
-		"replica deleted when running": {
-			types.InstanceStateDeleted, types.InstanceStateRunning, TestOwnerID1, TestOwnerID1,
-			types.InstanceStateDeleted, TestOwnerID1, false,
-			0,
-		},
 		"replica stop and transfer ownership": {
 			types.InstanceStateStopped, types.InstanceStateStopped, TestOwnerID1, "",
 			types.InstanceStateStopped, TestOwnerID1, false,

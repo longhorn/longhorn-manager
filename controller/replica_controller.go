@@ -26,6 +26,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhclientset "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -54,6 +55,10 @@ const (
 	longhornReplicaKey = "longhorn-volume-replica"
 )
 
+var (
+	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
+)
+
 type ReplicaController struct {
 	// which namespace controller is running with
 	namespace string
@@ -80,11 +85,6 @@ type ReplicaController struct {
 	jStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
-}
-
-type Replica struct {
-	longhorn.Replica
-	namespace string
 }
 
 func NewReplicaController(
@@ -318,34 +318,26 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		return err
 	}
 
-	// we need to stop the replica which failed connection with controller
-	if replica.Spec.FailedAt != "" && replica.Spec.DesireState != types.InstanceStateStopped {
-		replica.Spec.DesireState = types.InstanceStateStopped
-		_, err := rc.updateReplicaHandler(replica)
-		if err != nil {
+	// we need to stop the replica when:
+	// 1. replica failed connection with controller
+	// 2. replica to be deleted
+	if replica.Spec.FailedAt != "" || replica.DeletionTimestamp != nil {
+		if replica.Spec.DesireState != types.InstanceStateStopped {
+			replica.Spec.DesireState = types.InstanceStateStopped
+			_, err := rc.updateReplicaHandler(replica)
 			return err
 		}
-		rc.enqueueReplicaHandler(replica)
-		return nil
 	}
 
-	// API server set the replica to be deleted but we haven't cleaned up
-	// yet, so we keep the initializer in place and continuing with clean up
-	if replica.DeletionTimestamp != nil && replica.Spec.DesireState != types.InstanceStateDeleted {
-		replica.Spec.DesireState = types.InstanceStateDeleted
-		_, err := rc.updateReplicaHandler(replica)
-		if err != nil {
-			return err
+	if replica.DeletionTimestamp != nil && replica.Status.State == types.InstanceStateStopped {
+		if replica.Spec.NodeID != "" {
+			return rc.cleanupReplicaInstance(replica)
 		}
-		rc.enqueueReplicaHandler(replica)
-		return nil
+		return rc.deleteReplica(replica)
 	}
 
 	state := replica.Status.State
 	desireState := replica.Spec.DesireState
-	if desireState == types.InstanceStateDeleted && state == desireState {
-		return rc.deleteReplica(replica)
-	}
 	if state == types.InstanceStateError {
 		return rc.stopReplicaInstance(replica)
 	}
@@ -368,20 +360,6 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 				break
 			}
 			logrus.Errorf("unable to do replica transition: current %v, desire %v", state, desireState)
-		case types.InstanceStateDeleted:
-			if state == types.InstanceStateRunning {
-				if err := rc.stopReplicaInstance(replica); err != nil {
-					return err
-				}
-				break
-			}
-			if state == types.InstanceStateStopped {
-				if err := rc.cleanupReplicaInstance(replica); err != nil {
-					return err
-				}
-				break
-			}
-			logrus.Errorf("unable to delete replica due to unknown state %v", state)
 		default:
 			logrus.Errorf("unknown replica transition: current %v, desire %v", state, desireState)
 		}
@@ -401,7 +379,10 @@ func (rc *ReplicaController) enqueueReplica(replica *longhorn.Replica) {
 
 func (rc *ReplicaController) updateReplica(r *longhorn.Replica) (replica *longhorn.Replica, err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to update replica for %v", r.Name)
+		if err != nil {
+			err = errors.Wrapf(err, "fail to update replica for %v", r.Name)
+			rc.enqueueReplica(r)
+		}
 	}()
 	return rc.lhClient.LonghornV1alpha1().Replicas(rc.namespace).Update(r)
 }
@@ -411,7 +392,7 @@ func (rc *ReplicaController) deleteReplica(r *longhorn.Replica) (err error) {
 		err = errors.Wrapf(err, "fail to delete replica for %v", r.Name)
 	}()
 	name := r.Name
-	result, err := rc.rLister.Replicas(r.Namespace).Get(name)
+	resultRO, err := rc.rLister.Replicas(r.Namespace).Get(name)
 	if err != nil {
 		// already deleted
 		if apierrors.IsNotFound(err) {
@@ -419,10 +400,13 @@ func (rc *ReplicaController) deleteReplica(r *longhorn.Replica) (err error) {
 		}
 		return errors.Wrapf(err, "unable to get replica during replica deletion %v", name)
 	}
-	resultCopy := result.DeepCopy()
+	result := resultRO.DeepCopy()
+
 	// Remove the finalizer to allow deletion of the object
 	// FIXME only remove myself from the finalizer
-	resultCopy.Finalizers = []string{}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, result); err != nil {
+		return errors.Wrapf(err, "unable to remove finalizer of %v", name)
+	}
 	result, err = rc.updateReplicaHandler(result)
 	if err != nil {
 		return errors.Wrapf(err, "unable to update finalizer during replica deletion %v", name)
@@ -540,9 +524,10 @@ func (rc *ReplicaController) createCleanupJobSpec(r *longhorn.Replica) *batchv1.
 			Namespace: r.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					Kind: ownerKind,
-					UID:  r.UID,
-					Name: r.Name,
+					APIVersion: longhorn.SchemeGroupVersion.String(),
+					Kind:       ownerKind,
+					UID:        r.UID,
+					Name:       r.Name,
 				},
 			},
 		},
@@ -590,12 +575,12 @@ func (rc *ReplicaController) startReplicaInstance(r *longhorn.Replica) (err erro
 	defer func() {
 		err = errors.Wrapf(err, "fail to start replica instance for %v", r.Name)
 	}()
-	pod, err := rc.getPodForReplica(r)
+	_, err = rc.getPodForReplica(r)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 	// pod already started
-	if pod != nil {
+	if !apierrors.IsNotFound(err) {
 		return nil
 	}
 	podSpec := rc.createPod(r)
@@ -616,7 +601,7 @@ func (rc *ReplicaController) stopReplicaInstance(r *longhorn.Replica) (err error
 		return err
 	}
 	// pod already stopped
-	if pod == nil {
+	if apierrors.IsNotFound(err) {
 		return nil
 	}
 	// pod has been already asked to stop
@@ -634,7 +619,7 @@ func (rc *ReplicaController) cleanupReplicaInstance(r *longhorn.Replica) (err er
 	defer func() {
 		err = errors.Wrapf(err, "fail to cleanup replica instance for %v", r.Name)
 	}()
-	// replica wasn't created once, doesn't need clean up
+	// replica wasn't created once or has been cleaned up
 	if r.Spec.NodeID == "" {
 		return nil
 	}
@@ -642,13 +627,15 @@ func (rc *ReplicaController) cleanupReplicaInstance(r *longhorn.Replica) (err er
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
-	if job == nil {
+
+	if apierrors.IsNotFound(err) {
 		job := rc.createCleanupJobSpec(r)
 
 		_, err = rc.kubeClient.BatchV1().Jobs(rc.namespace).Create(job)
 		if err != nil {
 			return errors.Wrap(err, "failed to create cleanup job")
 		}
+		logrus.Infof("Replica cleanup job created for %v", r.Name)
 		return nil
 	}
 
@@ -663,7 +650,7 @@ func (rc *ReplicaController) cleanupReplicaInstance(r *longhorn.Replica) (err er
 
 		if job.Status.Succeeded != 0 {
 			logrus.Infof("Cleanup for volume %v replica %v succeed", r.Spec.VolumeName, r.Name)
-			r.Status.State = types.InstanceStateDeleted
+			r.Spec.NodeID = ""
 			if _, err := rc.updateReplicaHandler(r); err != nil {
 				return err
 			}

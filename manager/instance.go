@@ -174,8 +174,7 @@ func (v *ManagedVolume) deleteReplica(replicaName string) (err error) {
 	if replica == nil {
 		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
-	replica.DesireState = types.InstanceStateDeleted
-	if err := v.setReplica(replica); err != nil {
+	if err := v.rmReplica(replica.Name); err != nil {
 		return err
 	}
 
