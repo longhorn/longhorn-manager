@@ -233,7 +233,10 @@ func (rc *ReplicaController) getJobForReplica(r *longhorn.Replica) (*batchv1.Job
 	return rc.kubeClient.BatchV1().Jobs(rc.namespace).Get(r.Name, metav1.GetOptions{})
 }
 
-func (rc *ReplicaController) syncReplicaWithPod(r *longhorn.Replica) error {
+func (rc *ReplicaController) syncReplicaWithPod(r *longhorn.Replica) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "fail to sync replica with pod for %v", r.Name)
+	}()
 	pod, err := rc.getPodForReplica(r)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -271,6 +274,9 @@ func (rc *ReplicaController) syncReplicaWithPod(r *longhorn.Replica) error {
 }
 
 func (rc *ReplicaController) syncReplica(key string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "fail to sync replica for %v", key)
+	}()
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return err
@@ -402,11 +408,17 @@ func (rc *ReplicaController) enqueueReplica(replica *longhorn.Replica) {
 	rc.queue.AddRateLimited(key)
 }
 
-func (rc *ReplicaController) updateReplica(r *longhorn.Replica) (*longhorn.Replica, error) {
+func (rc *ReplicaController) updateReplica(r *longhorn.Replica) (replica *longhorn.Replica, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "fail to update replica for %v", r.Name)
+	}()
 	return rc.lhClient.LonghornV1alpha1().Replicas(rc.namespace).Update(r)
 }
 
-func (rc *ReplicaController) deleteReplica(r *longhorn.Replica) error {
+func (rc *ReplicaController) deleteReplica(r *longhorn.Replica) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "fail to delete replica for %v", r.Name)
+	}()
 	name := r.Name
 	result, err := rc.rLister.Replicas(r.Namespace).Get(name)
 	if err != nil {
@@ -581,7 +593,10 @@ func (rc *ReplicaController) createCleanupJobSpec(r *longhorn.Replica) *batchv1.
 	return job
 }
 
-func (rc *ReplicaController) startReplicaInstance(r *longhorn.Replica) error {
+func (rc *ReplicaController) startReplicaInstance(r *longhorn.Replica) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "fail to start replica instance for %v", r.Name)
+	}()
 	pod, err := rc.getPodForReplica(r)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
@@ -599,7 +614,10 @@ func (rc *ReplicaController) startReplicaInstance(r *longhorn.Replica) error {
 	return nil
 }
 
-func (rc *ReplicaController) stopReplicaInstance(r *longhorn.Replica) error {
+func (rc *ReplicaController) stopReplicaInstance(r *longhorn.Replica) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "fail to stop replica instance for %v", r.Name)
+	}()
 	pod, err := rc.getPodForReplica(r)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
@@ -619,7 +637,10 @@ func (rc *ReplicaController) stopReplicaInstance(r *longhorn.Replica) error {
 	return nil
 }
 
-func (rc *ReplicaController) cleanupReplicaInstance(r *longhorn.Replica) error {
+func (rc *ReplicaController) cleanupReplicaInstance(r *longhorn.Replica) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "fail to cleanup replica instance for %v", r.Name)
+	}()
 	// replica wasn't created once, doesn't need clean up
 	if r.Spec.NodeID == "" {
 		return nil
