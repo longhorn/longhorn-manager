@@ -112,18 +112,14 @@ func NewReplicaController(
 	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			r := obj.(*longhorn.Replica)
-			logrus.Debug("Add replica %s", r.Name)
 			rc.enqueueReplicaHandler(r)
 		},
 		UpdateFunc: func(old, cur interface{}) {
-			oldR := old.(*longhorn.Replica)
 			curR := cur.(*longhorn.Replica)
-			logrus.Debug("Update replica %s", oldR.Name)
 			rc.enqueueReplicaHandler(curR)
 		},
 		DeleteFunc: func(obj interface{}) {
 			r := obj.(*longhorn.Replica)
-			logrus.Debug("Delete replica %s", r.Name)
 			rc.enqueueReplicaHandler(r)
 		},
 	})
@@ -466,9 +462,10 @@ func (rc *ReplicaController) createPod(r *longhorn.Replica) *v1.Pod {
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					Kind: ownerKind,
-					UID:  r.UID,
-					Name: r.Name,
+					APIVersion: longhorn.SchemeGroupVersion.String(),
+					Kind:       ownerKind,
+					UID:        r.UID,
+					Name:       r.Name,
 				},
 			},
 		},
