@@ -24,7 +24,10 @@ func (v *ManagedVolume) createReplica(name string) error {
 	replica := &types.ReplicaInfo{
 		types.ReplicaSpec{
 			InstanceSpec: types.InstanceSpec{
-				VolumeName: v.Name,
+				VolumeName:    v.Name,
+				EngineImage:   v.m.GetEngineImage(),
+				DesireState:   types.InstanceStateStopped,
+				DesireOwnerID: v.TargetNodeID,
 			},
 			VolumeSize: v.Size,
 		},
@@ -64,30 +67,34 @@ func (v *ManagedVolume) startReplica(replicaName string) (err error) {
 		return nil
 	}
 
-	// the first time replica.NodeID will be empty, allow scheduler to work
-	// later it must be pinned to that node
-	req := &orchestrator.Request{
-		NodeID:      replica.NodeID,
-		Instance:    replica.Name,
-		VolumeName:  replica.VolumeName,
-		VolumeSize:  replica.VolumeSize,
-		RestoreFrom: replica.RestoreFrom,
-		RestoreName: replica.RestoreName,
-	}
+	/*
+		// the first time replica.NodeID will be empty, allow scheduler to work
+		// later it must be pinned to that node
+		req := &orchestrator.Request{
+			NodeID:      replica.NodeID,
+			Instance:    replica.Name,
+			VolumeName:  replica.VolumeName,
+			VolumeSize:  replica.VolumeSize,
+			RestoreFrom: replica.RestoreFrom,
+			RestoreName: replica.RestoreName,
+		}
 
-	instance, err := v.m.orch.StartReplica(req)
-	if err != nil {
-		return err
-	}
-	if !instance.Running {
-		return fmt.Errorf("Failed to start replica %v", replicaName)
-	}
-	replica.NodeID = instance.NodeID
-	replica.State = types.InstanceStateRunning
-	replica.IP = instance.IP
+		instance, err := v.m.orch.StartReplica(req)
+		if err != nil {
+			return err
+		}
+		if !instance.Running {
+			return fmt.Errorf("Failed to start replica %v", replicaName)
+		}
+		replica.NodeID = instance.NodeID
+		replica.State = types.InstanceStateRunning
+		replica.IP = instance.IP
+	*/
+	replica.DesireState = types.InstanceStateRunning
 	if err := v.setReplica(replica); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -106,19 +113,22 @@ func (v *ManagedVolume) stopReplica(replicaName string) (err error) {
 		return nil
 	}
 
-	instance, err := v.m.orch.StopInstance(&orchestrator.Request{
-		NodeID:     replica.NodeID,
-		Instance:   replica.Name,
-		VolumeName: v.Name,
-	})
-	if err != nil {
-		return err
-	}
-	if instance.Running {
-		return fmt.Errorf("Failed to stop replica %v", replicaName)
-	}
-	replica.State = types.InstanceStateStopped
-	replica.IP = instance.IP
+	/*
+		instance, err := v.m.orch.StopInstance(&orchestrator.Request{
+			NodeID:     replica.NodeID,
+			Instance:   replica.Name,
+			VolumeName: v.Name,
+		})
+		if err != nil {
+			return err
+		}
+		if instance.Running {
+			return fmt.Errorf("Failed to stop replica %v", replicaName)
+		}
+		replica.State = types.InstanceStateStopped
+		replica.IP = instance.IP
+	*/
+	replica.DesireState = types.InstanceStateStopped
 	if err := v.setReplica(replica); err != nil {
 		return err
 	}
@@ -143,11 +153,13 @@ func (v *ManagedVolume) markBadReplica(replicaName string) (err error) {
 
 	logrus.Warnf("Maked %v as bad replica", replicaName)
 
-	if replica.Running() {
-		if err := v.stopReplica(replica.Name); err != nil {
-			return err
+	/*
+		if replica.Running() {
+			if err := v.stopReplica(replica.Name); err != nil {
+				return err
+			}
 		}
-	}
+	*/
 	return nil
 }
 
@@ -162,16 +174,23 @@ func (v *ManagedVolume) deleteReplica(replicaName string) (err error) {
 	if replica == nil {
 		return fmt.Errorf("cannot find replica %v", replicaName)
 	}
-	if err := v.m.orch.CleanupReplica(&orchestrator.Request{
-		NodeID:     replica.NodeID,
-		Instance:   replica.Name,
-		VolumeName: v.Name,
-	}); err != nil {
+	replica.DesireState = types.InstanceStateDeleted
+	if err := v.setReplica(replica); err != nil {
 		return err
 	}
-	if err := v.rmReplica(replica.Name); err != nil {
-		return err
-	}
+
+	/*
+		if err := v.m.orch.CleanupReplica(&orchestrator.Request{
+			NodeID:     replica.NodeID,
+			Instance:   replica.Name,
+			VolumeName: v.Name,
+		}); err != nil {
+			return err
+		}
+		if err := v.rmReplica(replica.Name); err != nil {
+			return err
+		}
+	*/
 	return nil
 }
 

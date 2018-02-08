@@ -107,11 +107,12 @@ func RunManager(c *cli.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "fail to create CRD store")
 	}
-	notifier = manager.NewTargetWatcher(orch.GetCurrentNode().ID)
+	currentNodeID := orch.GetCurrentNode().ID
+	notifier = manager.NewTargetWatcher(currentNodeID)
 
 	engines := &engineapi.EngineCollection{}
 
-	m, err := manager.NewVolumeManager(ds, orch, engines, notifier)
+	m, err := manager.NewVolumeManager(ds, orch, engines, notifier, engineImage)
 	if err != nil {
 		return err
 	}
@@ -121,7 +122,7 @@ func RunManager(c *cli.Context) error {
 	listen := m.GetCurrentNode().IP + ":" + strconv.Itoa(types.DefaultAPIPort)
 	logrus.Infof("Listening on %s", listen)
 
-	if err := controller.StartControllers(); err != nil {
+	if err := controller.StartControllers(currentNodeID); err != nil {
 		return err
 	}
 

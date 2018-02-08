@@ -25,12 +25,16 @@ type VolumeManager struct {
 	EventChan           chan Event
 	managedVolumes      map[string]*ManagedVolume
 	managedVolumesMutex *sync.Mutex
+
+	engineImage string
 }
 
 func NewVolumeManager(ds datastore.DataStore,
 	orch orchestrator.Orchestrator,
 	engines engineapi.EngineClientCollection,
-	notifier Notifier) (*VolumeManager, error) {
+	notifier Notifier,
+	engineImage string) (*VolumeManager, error) {
+
 	manager := &VolumeManager{
 		ds:       ds,
 		orch:     orch,
@@ -40,6 +44,8 @@ func NewVolumeManager(ds datastore.DataStore,
 		EventChan:           make(chan Event),
 		managedVolumes:      make(map[string]*ManagedVolume),
 		managedVolumesMutex: &sync.Mutex{},
+
+		engineImage: engineImage,
 	}
 
 	if err := manager.RegisterNode(notifier.GetPort()); err != nil {
@@ -371,4 +377,8 @@ func (m *VolumeManager) VolumeCreateBySpec(name string) (err error) {
 	logrus.Debugf("Created volume by spec %v", volume.Name)
 
 	return nil
+}
+
+func (m *VolumeManager) GetEngineImage() string {
+	return m.engineImage
 }
