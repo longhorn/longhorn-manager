@@ -30,7 +30,10 @@ const (
 	TestRestoreName = "empty"
 	TestIP1         = "1.2.3.4"
 	TestIP2         = "5.6.7.8"
-	TestNode        = "test-node-name"
+	TestNode1       = "test-node-name-1"
+	TestNode2       = "test-node-name-2"
+	TestOwnerID1    = TestNode1
+	TestOwnerID2    = TestNode2
 
 	TestReplica1Name = "replica-volumename-1"
 )
@@ -49,7 +52,7 @@ var _ = Suite(&TestSuite{})
 func (s *TestSuite) SetUpTest(c *C) {
 }
 
-func newReplica(desireState, currentState types.InstanceState, failedAt string) *longhorn.Replica {
+func newReplica(desireState, currentState types.InstanceState, desireOwnerID, currentOwnerID, failedAt string) *longhorn.Replica {
 	return &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      TestReplica1Name,
@@ -58,7 +61,8 @@ func newReplica(desireState, currentState types.InstanceState, failedAt string) 
 		},
 		Spec: types.ReplicaSpec{
 			InstanceSpec: types.InstanceSpec{
-				DesireState: desireState,
+				DesireState:   desireState,
+				DesireOwnerID: desireOwnerID,
 			},
 			VolumeSize:  TestVolumeSize,
 			RestoreFrom: TestRestoreFrom,
@@ -66,7 +70,8 @@ func newReplica(desireState, currentState types.InstanceState, failedAt string) 
 		},
 		Status: types.ReplicaStatus{
 			InstanceStatus: types.InstanceStatus{
-				State: currentState,
+				State:          currentState,
+				CurrentOwnerID: currentOwnerID,
 			},
 		},
 	}
@@ -75,9 +80,8 @@ func newReplica(desireState, currentState types.InstanceState, failedAt string) 
 func newPod(phase v1.PodPhase, replica *longhorn.Replica) *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            replica.Name,
-			Namespace:       replica.Namespace,
-			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(replica, controllerKind)},
+			Name:      replica.Name,
+			Namespace: replica.Namespace,
 		},
 		Status: v1.PodStatus{
 			Phase: phase,
@@ -95,12 +99,14 @@ func getReplica(name string, lister lhlisters.ReplicaLister) (*longhorn.Replica,
 	return lister.Replicas(TestNamespace).Get(name)
 }
 
-func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory, lhClient *lhfake.Clientset, kubeClient *fake.Clientset) (*ReplicaController, *controller.FakePodControl) {
+func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
+	lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
+	controllerID string) (*ReplicaController, *controller.FakePodControl) {
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
 
-	rc := NewReplicaController(replicaInformer, podInformer, jobInformer, lhClient, kubeClient, TestNamespace)
+	rc := NewReplicaController(replicaInformer, podInformer, jobInformer, lhClient, kubeClient, TestNamespace, controllerID)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	rc.eventRecorder = fakeRecorder
@@ -139,29 +145,29 @@ func (s *TestSuite) TestSyncReplicaWithPod(c *C) {
 			types.InstanceStateStopped, "", "", false,
 		},
 		"pod starting for the first time": {
-			v1.PodPending, TestNode, "",
+			v1.PodPending, TestNode1, "",
 			types.InstanceStateError, "",
 			types.InstanceStateStopped, "", "", false,
 		},
 		"pod running for first time": {
-			v1.PodRunning, TestNode, TestIP1,
+			v1.PodRunning, TestNode1, TestIP1,
 			types.InstanceStateError, "",
-			types.InstanceStateRunning, TestNode, TestIP1, false,
+			types.InstanceStateRunning, TestNode1, TestIP1, false,
 		},
 		"pod stopped after first run": {
 			v1.PodPending, "", TestIP1,
-			types.InstanceStateRunning, TestNode,
-			types.InstanceStateStopped, TestNode, "", false,
+			types.InstanceStateRunning, TestNode1,
+			types.InstanceStateStopped, TestNode1, "", false,
 		},
 		"pod run after first run": {
-			v1.PodRunning, TestNode, TestIP2,
-			types.InstanceStateStopped, TestNode,
-			types.InstanceStateRunning, TestNode, TestIP2, false,
+			v1.PodRunning, TestNode1, TestIP2,
+			types.InstanceStateStopped, TestNode1,
+			types.InstanceStateRunning, TestNode1, TestIP2, false,
 		},
 		"pod run at another node after first run": {
-			v1.PodRunning, "some-other-node", TestIP2,
-			types.InstanceStateStopped, TestNode,
-			types.InstanceStateError, TestNode, "", true,
+			v1.PodRunning, TestNode2, TestIP2,
+			types.InstanceStateStopped, TestNode1,
+			types.InstanceStateError, TestNode1, "", true,
 		},
 	}
 	for name, tc := range testCases {
@@ -175,10 +181,10 @@ func (s *TestSuite) TestSyncReplicaWithPod(c *C) {
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 
-		rc, _ := newTestReplicaController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
+		rc, _ := newTestReplicaController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestOwnerID1)
 
 		// the existing states doesn't matter here
-		replica := newReplica(types.InstanceStateError, tc.replicaCurrentState, "")
+		replica := newReplica(types.InstanceStateError, tc.replicaCurrentState, TestNode1, TestNode1, "")
 		replica.Spec.NodeID = tc.replicaNodeID
 		if tc.podPhase != "" {
 			pod := newPod(tc.podPhase, replica)
@@ -206,40 +212,54 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 
 	testCases := map[string]struct {
 		//replica setup
-		desireState  types.InstanceState
-		currentState types.InstanceState
+		desireState    types.InstanceState
+		currentState   types.InstanceState
+		desireOwnerID  string
+		currentOwnerID string
 
 		//replica exception
-		expectedState types.InstanceState
+		expectedState   types.InstanceState
+		expectedOwnerID string
+		err             bool
 
 		//pod expection
 		expectedCreations int
 		expectedDeletions int
 	}{
 		"replica keep stopped": {
-			types.InstanceStateStopped, types.InstanceStateStopped,
-			types.InstanceStateStopped,
+			types.InstanceStateStopped, types.InstanceStateStopped, TestOwnerID1, TestOwnerID1,
+			types.InstanceStateStopped, TestOwnerID1, false,
 			0, 0,
 		},
 		"replica start": {
-			types.InstanceStateRunning, types.InstanceStateStopped,
-			types.InstanceStateRunning,
+			types.InstanceStateRunning, types.InstanceStateStopped, TestOwnerID1, TestOwnerID1,
+			types.InstanceStateRunning, TestOwnerID1, false,
 			1, 0,
 		},
 		"replica keep running": {
-			types.InstanceStateRunning, types.InstanceStateRunning,
-			types.InstanceStateRunning,
+			types.InstanceStateRunning, types.InstanceStateRunning, TestOwnerID1, TestOwnerID1,
+			types.InstanceStateRunning, TestOwnerID1, false,
 			0, 0,
 		},
 		"replica stop": {
-			types.InstanceStateStopped, types.InstanceStateRunning,
-			types.InstanceStateStopped,
+			types.InstanceStateStopped, types.InstanceStateRunning, TestOwnerID1, TestOwnerID1,
+			types.InstanceStateStopped, TestOwnerID1, false,
 			0, 1,
 		},
 		"replica deleted when running": {
-			types.InstanceStateDeleted, types.InstanceStateRunning,
-			types.InstanceStateDeleted,
+			types.InstanceStateDeleted, types.InstanceStateRunning, TestOwnerID1, TestOwnerID1,
+			types.InstanceStateDeleted, TestOwnerID1, false,
 			0, 1,
+		},
+		"replica stop and transfer ownership": {
+			types.InstanceStateStopped, types.InstanceStateStopped, TestOwnerID1, "",
+			types.InstanceStateStopped, TestOwnerID1, false,
+			0, 0,
+		},
+		"replica stop and transfer ownership but other hasn't yield": {
+			types.InstanceStateStopped, types.InstanceStateStopped, TestOwnerID1, TestOwnerID2,
+			types.InstanceStateStopped, TestOwnerID2, true,
+			0, 0,
 		},
 	}
 
@@ -256,7 +276,7 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 		rIndexer := lhInformerFactory.Longhorn().V1alpha1().Replicas().Informer().GetIndexer()
 		defer rIndexer.Replace(make([]interface{}, 0), "0")
 
-		rc, fakePodControl := newTestReplicaController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
+		rc, fakePodControl := newTestReplicaController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestOwnerID1)
 
 		// Use indexer since fakeClientset won't update indexer store now
 		rc.updateReplicaHandler = func(r *longhorn.Replica) (*longhorn.Replica, error) {
@@ -267,7 +287,7 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 			return r, nil
 		}
 
-		replica := newReplica(tc.desireState, tc.currentState, "")
+		replica := newReplica(tc.desireState, tc.currentState, tc.desireOwnerID, tc.currentOwnerID, "")
 		err = rIndexer.Add(replica)
 		c.Assert(err, IsNil)
 
@@ -276,21 +296,21 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 		}
 
 		err = rc.syncReplica(getKey(replica, c))
-		c.Assert(err, IsNil)
+		if tc.err {
+			c.Assert(err, NotNil)
+		} else {
+			c.Assert(err, IsNil)
+		}
 
 		// get replica pod, it should be added
 		c.Assert(len(fakePodControl.Templates), Equals, tc.expectedCreations)
 		c.Assert(len(fakePodControl.DeletePodName), Equals, tc.expectedDeletions)
-
-		// Make sure the ControllerRefs are correct.
-		for _, controllerRef := range fakePodControl.ControllerRefs {
-			c.Assert(controllerRef.APIVersion, Equals, "longhorn.rancher.io/v1alpha1")
-			c.Assert(controllerRef.Kind, Equals, "Replica")
-			c.Assert(controllerRef.Name, Equals, replica.Name)
-			c.Assert(controllerRef.UID, Equals, replica.UID)
-			c.Assert(controllerRef.Controller, NotNil)
-			c.Assert(*controllerRef.Controller, Equals, true)
-		}
+		obj, exists, err := rIndexer.Get(replica)
+		c.Assert(err, IsNil)
+		c.Assert(exists, Equals, true)
+		updatedReplica, ok := obj.(*longhorn.Replica)
+		c.Assert(ok, Equals, true)
+		c.Assert(updatedReplica.Status.CurrentOwnerID, Equals, tc.expectedOwnerID)
 	}
 
 }

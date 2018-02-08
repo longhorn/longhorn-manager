@@ -67,15 +67,17 @@ const (
 )
 
 type InstanceSpec struct {
-	VolumeName  string `json:"volumeName"`
-	NodeID      string `json:"nodeID"`
-	EngineImage string `json:"engineImage"`
-	DesireState InstanceState
+	VolumeName    string        `json:"volumeName"`
+	NodeID        string        `json:"nodeID"`
+	EngineImage   string        `json:"engineImage"`
+	DesireState   InstanceState `json:"desireState"`
+	DesireOwnerID string        `json:"desireOwnerID"`
 }
 
 type InstanceStatus struct {
-	State InstanceState `json:"state"`
-	IP    string        `json:"ip"`
+	CurrentOwnerID string        `json:"currentOwnerID"`
+	State          InstanceState `json:"state"`
+	IP             string        `json:"ip"`
 }
 
 type InstanceInfo struct {

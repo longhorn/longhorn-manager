@@ -20,7 +20,7 @@ var (
 	Workers = 5
 )
 
-func StartControllers() error {
+func StartControllers(controllerID string) error {
 	namespace := os.Getenv(k8s.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, " +
@@ -50,7 +50,7 @@ func StartControllers() error {
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
 
-	rc := NewReplicaController(replicaInformer, podInformer, jobInformer, lhClient, kubeClient, namespace)
+	rc := NewReplicaController(replicaInformer, podInformer, jobInformer, lhClient, kubeClient, namespace, controllerID)
 
 	//FIXME
 	stopCh := make(chan struct{})

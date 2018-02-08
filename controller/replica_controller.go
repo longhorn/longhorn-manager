@@ -34,11 +34,6 @@ import (
 )
 
 var (
-	// controllerKind contains the schema.GroupVersionKind for this controller type.
-	controllerKind = longhorn.SchemeGroupVersion.WithKind("Replica")
-)
-
-const (
 	// maxRetries is the number of times a deployment will be retried before it is dropped out of the queue.
 	// With the current rate-limiter in use (5ms*2^(maxRetries-1)) the following numbers represent the times
 	// a deployment is going to be requeued:
@@ -46,6 +41,10 @@ const (
 	// 5ms, 10ms, 20ms
 	maxRetries = 3
 
+	ownerKind = longhorn.SchemeGroupVersion.WithKind("Replica").String()
+)
+
+const (
 	// longhornDirectory is the directory going to be bind mounted on the
 	// host to provide storage space to replica data
 	longhornDirectory = "/var/lib/rancher/longhorn/"
@@ -56,7 +55,10 @@ const (
 )
 
 type ReplicaController struct {
+	// which namespace controller is running with
 	namespace string
+	// use as the OwnerID of replica
+	controllerID string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -86,7 +88,13 @@ type Replica struct {
 	namespace string
 }
 
-func NewReplicaController(replicaInformer lhinformers.ReplicaInformer, podInformer coreinformers.PodInformer, jobInformer batchinformers.JobInformer, lhClient lhclientset.Interface, kubeClient clientset.Interface, namespace string) *ReplicaController {
+func NewReplicaController(
+	replicaInformer lhinformers.ReplicaInformer,
+	podInformer coreinformers.PodInformer,
+	jobInformer batchinformers.JobInformer,
+	lhClient lhclientset.Interface, kubeClient clientset.Interface,
+	namespace string, controllerID string) *ReplicaController {
+
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -158,6 +166,8 @@ func NewReplicaController(replicaInformer lhinformers.ReplicaInformer, podInform
 	rc.syncHandler = rc.syncReplica
 	rc.enqueueReplicaHandler = rc.enqueueReplica
 	rc.updateReplicaHandler = rc.updateReplica
+
+	rc.controllerID = controllerID
 	return rc
 }
 
@@ -281,12 +291,30 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 
 	replica := replicaRO.DeepCopy()
 
+	// Not ours
+	if replica.Spec.DesireOwnerID != rc.controllerID {
+		return nil
+	}
+
+	// Previous controller hasn't yield the control yet
+	//
+	// TODO Currently the waiting timeout is indefinite. If the other
+	// controller is down or malfunctioning, this controller should take it
+	// over after a period of time
+	if replica.Status.CurrentOwnerID != "" && replica.Status.CurrentOwnerID != rc.controllerID {
+		return fmt.Errorf("replica-controller %v: Waiting for previous controller %v to yield the control for replica %v", rc.controllerID, replica.Status.CurrentOwnerID, replica.Name)
+	}
+
 	defer func() {
 		// we're going to update replica assume things changes
 		if err == nil {
 			_, err = rc.updateReplicaHandler(replica)
 		}
 	}()
+
+	if replica.Status.CurrentOwnerID == "" {
+		replica.Status.CurrentOwnerID = rc.controllerID
+	}
 
 	// we will sync up with pod status before proceed
 	if err := rc.syncReplicaWithPod(replica); err != nil {
@@ -334,7 +362,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 				}
 				break
 			}
-			logrus.Errorf("unknown replica transition: current %v, desire %v", state, desireState)
+			logrus.Errorf("unable to do replica transition: current %v, desire %v", state, desireState)
 		case types.InstanceStateStopped:
 			if state == types.InstanceStateRunning {
 				if err := rc.stopReplicaInstance(replica); err != nil {
@@ -342,7 +370,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 				}
 				break
 			}
-			logrus.Errorf("unknown replica transition: current %v, desire %v", state, desireState)
+			logrus.Errorf("unable to do replica transition: current %v, desire %v", state, desireState)
 		case types.InstanceStateDeleted:
 			if state == types.InstanceStateRunning {
 				if err := rc.stopReplicaInstance(replica); err != nil {
@@ -423,9 +451,17 @@ func (rc *ReplicaController) createPodTemplateSpec(r *longhorn.Replica) *v1.PodT
 	privilege := true
 	pod := &v1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: r.Name,
+			Name:      r.Name,
+			Namespace: r.Namespace,
 			Labels: map[string]string{
 				longhornReplicaKey: r.Spec.VolumeName,
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					Kind: ownerKind,
+					UID:  r.UID,
+					Name: r.Name,
+				},
 			},
 		},
 		Spec: v1.PodSpec{
@@ -495,9 +531,15 @@ func (rc *ReplicaController) createCleanupJobSpec(r *longhorn.Replica) *batchv1.
 	backoffLimit := int32(1)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            jobName,
-			Namespace:       r.Namespace,
-			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(r, controllerKind)},
+			Name:      jobName,
+			Namespace: r.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					Kind: ownerKind,
+					UID:  r.UID,
+					Name: r.Name,
+				},
+			},
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit: &backoffLimit,
@@ -551,7 +593,7 @@ func (rc *ReplicaController) startReplicaInstance(r *longhorn.Replica) error {
 	podSpec := rc.createPodTemplateSpec(r)
 
 	logrus.Debugf("Starting replica %v for %v", r.Name, r.Spec.VolumeName)
-	if err := rc.podControl.CreatePodsWithControllerRef(rc.namespace, podSpec, r, metav1.NewControllerRef(r, controllerKind)); err != nil {
+	if err := rc.podControl.CreatePods(rc.namespace, podSpec, r); err != nil {
 		return err
 	}
 	return nil
@@ -625,9 +667,10 @@ func (rc *ReplicaController) enqueueControlleeChange(obj interface{}) {
 		logrus.Warnf("BUG: %v cannot be convert to metav1.Object", obj)
 		return
 	}
-	if controllerRef := metav1.GetControllerOf(metaObj); controllerRef != nil {
-		if controllerRef.Kind != controllerKind.Kind {
-			return
+	ownerRefs := metaObj.GetOwnerReferences()
+	for _, ref := range ownerRefs {
+		if ref.Kind != ownerKind {
+			continue
 		}
 		namespace := ""
 		if pod, ok := obj.(*v1.Pod); ok {
@@ -636,9 +679,9 @@ func (rc *ReplicaController) enqueueControlleeChange(obj interface{}) {
 			namespace = job.Namespace
 		} else {
 			// not what we recognized
-			return
+			continue
 		}
-		replica := rc.resolveControllerRef(namespace, controllerRef)
+		replica := rc.resolveOwnerRef(namespace, &ref)
 		if replica == nil {
 			return
 		}
@@ -647,22 +690,21 @@ func (rc *ReplicaController) enqueueControlleeChange(obj interface{}) {
 	}
 }
 
-// resolveControllerRef returns the controller referenced by a ControllerRef,
-// or nil if the ControllerRef could not be resolved to a matching controller
-// of the correct Kind.
-func (rc *ReplicaController) resolveControllerRef(namespace string, controllerRef *metav1.OwnerReference) *longhorn.Replica {
-	// We can't look up by UID, so look up by Name and then verify UID.
-	// Don't even try to look up by Name if it's the wrong Kind.
-	if controllerRef.Kind != controllerKind.Kind {
+func (rc *ReplicaController) resolveOwnerRef(namespace string, ref *metav1.OwnerReference) *longhorn.Replica {
+	if ref.Kind != ownerKind {
 		return nil
 	}
-	replica, err := rc.rLister.Replicas(namespace).Get(controllerRef.Name)
+	replica, err := rc.rLister.Replicas(namespace).Get(ref.Name)
 	if err != nil {
 		return nil
 	}
-	if replica.UID != controllerRef.UID {
+	if replica.UID != ref.UID {
 		// The controller we found with this Name is not the same one that the
-		// ControllerRef points to.
+		// OwnerRef points to.
+		return nil
+	}
+	// Not ours
+	if replica.Status.CurrentOwnerID != rc.controllerID {
 		return nil
 	}
 	return replica
