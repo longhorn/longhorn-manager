@@ -70,11 +70,6 @@ type ReplicaController struct {
 
 	lhClient lhclientset.Interface
 
-	// To allow injection for testing
-	syncHandler           func(rKey string) error
-	enqueueReplicaHandler func(r *longhorn.Replica)
-	updateReplicaHandler  func(r *longhorn.Replica) (*longhorn.Replica, error)
-
 	rLister      lhlisters.ReplicaLister
 	rStoreSynced cache.InformerSynced
 
@@ -112,15 +107,15 @@ func NewReplicaController(
 	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			r := obj.(*longhorn.Replica)
-			rc.enqueueReplicaHandler(r)
+			rc.enqueueReplica(r)
 		},
 		UpdateFunc: func(old, cur interface{}) {
 			curR := cur.(*longhorn.Replica)
-			rc.enqueueReplicaHandler(curR)
+			rc.enqueueReplica(curR)
 		},
 		DeleteFunc: func(obj interface{}) {
 			r := obj.(*longhorn.Replica)
-			rc.enqueueReplicaHandler(r)
+			rc.enqueueReplica(r)
 		},
 	})
 	rc.rLister = replicaInformer.Lister()
@@ -153,10 +148,6 @@ func NewReplicaController(
 	})
 	rc.jLister = jobInformer.Lister()
 	rc.jStoreSynced = jobInformer.Informer().HasSynced
-
-	rc.syncHandler = rc.syncReplica
-	rc.enqueueReplicaHandler = rc.enqueueReplica
-	rc.updateReplicaHandler = rc.updateReplica
 
 	rc.controllerID = controllerID
 	return rc
@@ -193,7 +184,7 @@ func (rc *ReplicaController) processNextWorkItem() bool {
 	}
 	defer rc.queue.Done(key)
 
-	err := rc.syncHandler(key.(string))
+	err := rc.syncReplica(key.(string))
 	rc.handleErr(err, key)
 
 	return true
@@ -305,7 +296,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	defer func() {
 		// we're going to update replica assume things changes
 		if err == nil {
-			_, err = rc.updateReplicaHandler(replica)
+			_, err = rc.updateReplica(replica)
 		}
 	}()
 
@@ -324,7 +315,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	if replica.Spec.FailedAt != "" || replica.DeletionTimestamp != nil {
 		if replica.Spec.DesireState != types.InstanceStateStopped {
 			replica.Spec.DesireState = types.InstanceStateStopped
-			_, err := rc.updateReplicaHandler(replica)
+			_, err := rc.updateReplica(replica)
 			return err
 		}
 	}
@@ -407,7 +398,7 @@ func (rc *ReplicaController) deleteReplica(r *longhorn.Replica) (err error) {
 	if err := util.RemoveFinalizer(longhornFinalizerKey, result); err != nil {
 		return errors.Wrapf(err, "unable to remove finalizer of %v", name)
 	}
-	result, err = rc.updateReplicaHandler(result)
+	result, err = rc.updateReplica(result)
 	if err != nil {
 		return errors.Wrapf(err, "unable to update finalizer during replica deletion %v", name)
 	}
@@ -645,13 +636,13 @@ func (rc *ReplicaController) cleanupReplicaInstance(r *longhorn.Replica) (err er
 			if err != nil {
 				logrus.Warnf("Failed to delete the cleanup job for %v: %v", r.Name, err)
 			}
-			rc.enqueueReplicaHandler(r)
+			rc.enqueueReplica(r)
 		}()
 
 		if job.Status.Succeeded != 0 {
 			logrus.Infof("Cleanup for volume %v replica %v succeed", r.Spec.VolumeName, r.Name)
 			r.Spec.NodeID = ""
-			if _, err := rc.updateReplicaHandler(r); err != nil {
+			if _, err := rc.updateReplica(r); err != nil {
 				return err
 			}
 		} else {
@@ -686,7 +677,7 @@ func (rc *ReplicaController) enqueueControlleeChange(obj interface{}) {
 		if replica == nil {
 			return
 		}
-		rc.enqueueReplicaHandler(replica)
+		rc.enqueueReplica(replica)
 		return
 	}
 }
