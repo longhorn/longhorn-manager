@@ -1,0 +1,18 @@
+apiVersion: longhorn.rancher.io/v1alpha1
+kind: Controller
+metadata:
+  finalizers:
+  - longhorn.rancher.io
+  labels:
+    longhornvolume: example-vol
+  name: example-vol-controller
+  namespace: longhorn-system
+spec:
+  desireOwnerID: yasker-longhorn-dev-1
+  desireState: stopped
+  engineImage: rancher/longhorn-engine:8c8289f
+  nodeID: yasker-longhorn-dev-1
+  replicaAddressMap:
+    example-vol-replica-1: <ip1>
+    example-vol-replica-2: <ip2>
+  volumeName: example-vol

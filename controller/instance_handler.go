@@ -108,6 +108,9 @@ func (h *InstanceHandler) startInstance(pod *corev1.Pod) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to start instance %v", pod.Name)
 	}()
+	if pod == nil {
+		return fmt.Errorf("cannot start empty pod")
+	}
 	_, err = h.getPod(pod.Name)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err

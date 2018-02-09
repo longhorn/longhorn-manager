@@ -49,16 +49,19 @@ func StartControllers(controllerID string) error {
 	lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, time.Second*30)
 
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
+	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Controllers()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
 
 	rc := NewReplicaController(replicaInformer, podInformer, jobInformer, lhClient, kubeClient, namespace, controllerID)
+	ec := NewEngineController(engineInformer, podInformer, lhClient, kubeClient, namespace, controllerID)
 
 	//FIXME stopch should be exposed
 	stopCh := make(chan struct{})
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
 	go rc.Run(Workers, stopCh)
+	go ec.Run(Workers, stopCh)
 
 	return nil
 }
