@@ -10,6 +10,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -42,7 +43,7 @@ var (
 	// 5ms, 10ms, 20ms
 	maxRetries = 3
 
-	ownerKind = longhorn.SchemeGroupVersion.WithKind("Replica").String()
+	ownerKindReplica = longhorn.SchemeGroupVersion.WithKind("Replica").String()
 )
 
 const (
@@ -53,10 +54,6 @@ const (
 	// longhornReplicaKey is the key to identify which volume the replica
 	// belongs to, for scheduling purpose
 	longhornReplicaKey = "longhorn-volume-replica"
-)
-
-var (
-	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
 type ReplicaController struct {
@@ -80,6 +77,8 @@ type ReplicaController struct {
 	jStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
+
+	instanceHandler *InstanceHandler
 }
 
 func NewReplicaController(
@@ -102,6 +101,8 @@ func NewReplicaController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "longhorn-replica-controller"}),
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-replica"),
+
+		instanceHandler: NewInstanceHandler(podInformer, kubeClient, namespace),
 	}
 
 	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -207,52 +208,8 @@ func (rc *ReplicaController) handleErr(err error, key interface{}) {
 	rc.queue.Forget(key)
 }
 
-func (rc *ReplicaController) getPodForReplica(r *longhorn.Replica) (*v1.Pod, error) {
-	return rc.pLister.Pods(rc.namespace).Get(r.Name)
-}
-
 func (rc *ReplicaController) getJobForReplica(r *longhorn.Replica) (*batchv1.Job, error) {
 	return rc.kubeClient.BatchV1().Jobs(rc.namespace).Get(r.Name, metav1.GetOptions{})
-}
-
-func (rc *ReplicaController) syncReplicaWithPod(r *longhorn.Replica) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "fail to sync replica with pod for %v", r.Name)
-	}()
-	pod, err := rc.getPodForReplica(r)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			r.Status.State = types.InstanceStateStopped
-			r.Status.IP = ""
-		} else {
-			return err
-		}
-	} else {
-		switch pod.Status.Phase {
-		case v1.PodPending:
-			r.Status.State = types.InstanceStateStopped
-			r.Status.IP = ""
-		case v1.PodRunning:
-			r.Status.State = types.InstanceStateRunning
-			r.Status.IP = pod.Status.PodIP
-			// pin down to this node ID from now on
-			if r.Spec.NodeID == "" {
-				r.Spec.NodeID = pod.Spec.NodeName
-			} else if r.Spec.NodeID != pod.Spec.NodeName {
-				// it shouldn't happen
-				r.Status.State = types.InstanceStateError
-				r.Status.IP = ""
-				err := fmt.Errorf("BUG: replica %v wasn't pin down to the host %v", r.Name, r.Spec.NodeID)
-				logrus.Errorf("%v", err)
-				return err
-			}
-		default:
-			logrus.Warnf("volume %v replica %v instance state is failed/unknown, pod state %v",
-				r.Spec.VolumeName, r.Name, pod.Status.Phase)
-			r.Status.State = types.InstanceStateError
-		}
-	}
-	return nil
 }
 
 func (rc *ReplicaController) syncReplica(key string) (err error) {
@@ -279,8 +236,19 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 
 	replica := replicaRO.DeepCopy()
 
+	defer func() {
+		// we're going to update replica assume things changes
+		if err == nil {
+			_, err = rc.updateReplica(replica)
+		}
+	}()
+
 	// Not ours
 	if replica.Spec.DesireOwnerID != rc.controllerID {
+		// but we must release the control
+		if replica.Status.CurrentOwnerID == rc.controllerID {
+			replica.Status.CurrentOwnerID = ""
+		}
 		return nil
 	}
 
@@ -293,19 +261,12 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		return fmt.Errorf("replica-controller %v: Waiting for previous controller %v to yield the control for replica %v", rc.controllerID, replica.Status.CurrentOwnerID, replica.Name)
 	}
 
-	defer func() {
-		// we're going to update replica assume things changes
-		if err == nil {
-			_, err = rc.updateReplica(replica)
-		}
-	}()
-
 	if replica.Status.CurrentOwnerID == "" {
 		replica.Status.CurrentOwnerID = rc.controllerID
 	}
 
 	// we will sync up with pod status before proceed
-	if err := rc.syncReplicaWithPod(replica); err != nil {
+	if err := rc.instanceHandler.SyncInstanceState(replica.Name, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus); err != nil {
 		return err
 	}
 
@@ -327,35 +288,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		return rc.deleteReplica(replica)
 	}
 
-	state := replica.Status.State
-	desireState := replica.Spec.DesireState
-	if state == types.InstanceStateError {
-		return rc.stopReplicaInstance(replica)
-	}
-
-	if state != desireState {
-		switch desireState {
-		case types.InstanceStateRunning:
-			if state == types.InstanceStateStopped {
-				if err := rc.startReplicaInstance(replica); err != nil {
-					return err
-				}
-				break
-			}
-			logrus.Errorf("unable to do replica transition: current %v, desire %v", state, desireState)
-		case types.InstanceStateStopped:
-			if state == types.InstanceStateRunning {
-				if err := rc.stopReplicaInstance(replica); err != nil {
-					return err
-				}
-				break
-			}
-			logrus.Errorf("unable to do replica transition: current %v, desire %v", state, desireState)
-		default:
-			logrus.Errorf("unknown replica transition: current %v, desire %v", state, desireState)
-		}
-	}
-	return nil
+	return rc.instanceHandler.ReconcileInstanceState(replica.Name, rc.createPodSpec(replica), &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
 }
 
 func (rc *ReplicaController) enqueueReplica(replica *longhorn.Replica) {
@@ -394,7 +327,6 @@ func (rc *ReplicaController) deleteReplica(r *longhorn.Replica) (err error) {
 	result := resultRO.DeepCopy()
 
 	// Remove the finalizer to allow deletion of the object
-	// FIXME only remove myself from the finalizer
 	if err := util.RemoveFinalizer(longhornFinalizerKey, result); err != nil {
 		return errors.Wrapf(err, "unable to remove finalizer of %v", name)
 	}
@@ -402,13 +334,8 @@ func (rc *ReplicaController) deleteReplica(r *longhorn.Replica) (err error) {
 	if err != nil {
 		return errors.Wrapf(err, "unable to update finalizer during replica deletion %v", name)
 	}
-	// No pending deletion operation, so we need to do it ourselves
-	if result.DeletionTimestamp == nil {
-		if err := rc.lhClient.LonghornV1alpha1().Replicas(rc.namespace).Delete(name, nil); err != nil {
-			return errors.Wrapf(err, "unable to delete replica %v", name)
-		}
-	}
-
+	// the function was called when r.DeletionTimestamp was set, so
+	// Kubernetes will delete it after all the finalizers have been removed
 	return nil
 }
 
@@ -416,7 +343,7 @@ func (rc *ReplicaController) getReplicaVolumeDirectory(replicaName string) strin
 	return longhornDirectory + "/replicas/" + replicaName
 }
 
-func (rc *ReplicaController) createPod(r *longhorn.Replica) *v1.Pod {
+func (rc *ReplicaController) createPodSpec(r *longhorn.Replica) *v1.Pod {
 	cmd := []string{
 		"launch", "replica",
 		"--listen", "0.0.0.0:9502",
@@ -438,7 +365,7 @@ func (rc *ReplicaController) createPod(r *longhorn.Replica) *v1.Pod {
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: longhorn.SchemeGroupVersion.String(),
-					Kind:       ownerKind,
+					Kind:       ownerKindReplica,
 					UID:        r.UID,
 					Name:       r.Name,
 				},
@@ -516,7 +443,7 @@ func (rc *ReplicaController) createCleanupJobSpec(r *longhorn.Replica) *batchv1.
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: longhorn.SchemeGroupVersion.String(),
-					Kind:       ownerKind,
+					Kind:       ownerKindReplica,
 					UID:        r.UID,
 					Name:       r.Name,
 				},
@@ -560,50 +487,6 @@ func (rc *ReplicaController) createCleanupJobSpec(r *longhorn.Replica) *batchv1.
 		},
 	}
 	return job
-}
-
-func (rc *ReplicaController) startReplicaInstance(r *longhorn.Replica) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "fail to start replica instance for %v", r.Name)
-	}()
-	_, err = rc.getPodForReplica(r)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return err
-	}
-	// pod already started
-	if !apierrors.IsNotFound(err) {
-		return nil
-	}
-	podSpec := rc.createPod(r)
-
-	logrus.Debugf("Starting replica %v for %v", r.Name, r.Spec.VolumeName)
-	if _, err := rc.kubeClient.CoreV1().Pods(rc.namespace).Create(podSpec); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (rc *ReplicaController) stopReplicaInstance(r *longhorn.Replica) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "fail to stop replica instance for %v", r.Name)
-	}()
-	pod, err := rc.getPodForReplica(r)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return err
-	}
-	// pod already stopped
-	if apierrors.IsNotFound(err) {
-		return nil
-	}
-	// pod has been already asked to stop
-	if pod.DeletionTimestamp != nil {
-		return nil
-	}
-	logrus.Debugf("Stopping replica %v for %v", r.Name, r.Spec.VolumeName)
-	if err := rc.kubeClient.CoreV1().Pods(rc.namespace).Delete(r.Name, nil); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (rc *ReplicaController) cleanupReplicaInstance(r *longhorn.Replica) (err error) {
@@ -654,50 +537,38 @@ func (rc *ReplicaController) cleanupReplicaInstance(r *longhorn.Replica) (err er
 }
 
 func (rc *ReplicaController) enqueueControlleeChange(obj interface{}) {
-	metaObj, ok := obj.(metav1.Object)
-	if !ok {
-		logrus.Warnf("BUG: %v cannot be convert to metav1.Object", obj)
+	metaObj, err := meta.Accessor(obj)
+	if err != nil {
+		logrus.Warnf("BUG: %v cannot be convert to metav1.Object: %v", obj, err)
 		return
 	}
 	ownerRefs := metaObj.GetOwnerReferences()
 	for _, ref := range ownerRefs {
-		if ref.Kind != ownerKind {
+		if ref.Kind != ownerKindReplica {
 			continue
 		}
-		namespace := ""
-		if pod, ok := obj.(*v1.Pod); ok {
-			namespace = pod.Namespace
-		} else if job, ok := obj.(*batchv1.Job); ok {
-			namespace = job.Namespace
-		} else {
-			// not what we recognized
-			continue
-		}
-		replica := rc.resolveOwnerRef(namespace, &ref)
-		if replica == nil {
-			return
-		}
-		rc.enqueueReplica(replica)
+		namespace := metaObj.GetNamespace()
+		rc.ResolveRefAndEnqueue(namespace, &ref)
 		return
 	}
 }
 
-func (rc *ReplicaController) resolveOwnerRef(namespace string, ref *metav1.OwnerReference) *longhorn.Replica {
-	if ref.Kind != ownerKind {
-		return nil
+func (rc *ReplicaController) ResolveRefAndEnqueue(namespace string, ref *metav1.OwnerReference) {
+	if ref.Kind != ownerKindReplica {
+		return
 	}
 	replica, err := rc.rLister.Replicas(namespace).Get(ref.Name)
 	if err != nil {
-		return nil
+		return
 	}
 	if replica.UID != ref.UID {
 		// The controller we found with this Name is not the same one that the
 		// OwnerRef points to.
-		return nil
+		return
 	}
 	// Not ours
 	if replica.Status.CurrentOwnerID != rc.controllerID {
-		return nil
+		return
 	}
-	return replica
+	rc.enqueueReplica(replica)
 }

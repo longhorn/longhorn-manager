@@ -36,6 +36,7 @@ const (
 	TestOwnerID2    = TestNode2
 
 	TestReplica1Name = "replica-volumename-1"
+	TestPodName      = "test-pod-name"
 )
 
 var (
@@ -77,11 +78,11 @@ func newReplica(desireState, currentState types.InstanceState, desireOwnerID, cu
 	}
 }
 
-func newPod(phase v1.PodPhase, replica *longhorn.Replica) *v1.Pod {
+func newPod(phase v1.PodPhase, name, namespace string) *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      replica.Name,
-			Namespace: replica.Namespace,
+			Name:      name,
+			Namespace: namespace,
 		},
 		Status: v1.PodStatus{
 			Phase: phase,
@@ -116,90 +117,6 @@ func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformer
 	rc.jStoreSynced = alwaysReady
 
 	return rc
-}
-
-func (s *TestSuite) TestSyncReplicaWithPod(c *C) {
-	var err error
-	testCases := map[string]struct {
-		//pod setup
-		podPhase    v1.PodPhase
-		podNodeName string
-		podIP       string
-
-		//replica setup
-		replicaCurrentState types.InstanceState
-		replicaNodeID       string
-
-		//replica expectation
-		expectedState  types.InstanceState
-		expectedNodeID string
-		expectedIP     string
-		expectedError  bool
-	}{
-		"all stopped": {
-			"", "", "",
-			types.InstanceStateError, "",
-			types.InstanceStateStopped, "", "", false,
-		},
-		"pod starting for the first time": {
-			v1.PodPending, TestNode1, "",
-			types.InstanceStateError, "",
-			types.InstanceStateStopped, "", "", false,
-		},
-		"pod running for first time": {
-			v1.PodRunning, TestNode1, TestIP1,
-			types.InstanceStateError, "",
-			types.InstanceStateRunning, TestNode1, TestIP1, false,
-		},
-		"pod stopped after first run": {
-			v1.PodPending, "", TestIP1,
-			types.InstanceStateRunning, TestNode1,
-			types.InstanceStateStopped, TestNode1, "", false,
-		},
-		"pod run after first run": {
-			v1.PodRunning, TestNode1, TestIP2,
-			types.InstanceStateStopped, TestNode1,
-			types.InstanceStateRunning, TestNode1, TestIP2, false,
-		},
-		"pod run at another node after first run": {
-			v1.PodRunning, TestNode2, TestIP2,
-			types.InstanceStateStopped, TestNode1,
-			types.InstanceStateError, TestNode1, "", true,
-		},
-	}
-	for name, tc := range testCases {
-		fmt.Printf("testing %v\n", name)
-
-		kubeClient := fake.NewSimpleClientset()
-		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
-		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
-		defer pIndexer.Replace(make([]interface{}, 0), "0")
-
-		lhClient := lhfake.NewSimpleClientset()
-		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
-
-		rc := newTestReplicaController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestOwnerID1)
-
-		// the existing states doesn't matter here
-		replica := newReplica(types.InstanceStateError, tc.replicaCurrentState, TestNode1, TestNode1, "")
-		replica.Spec.NodeID = tc.replicaNodeID
-		if tc.podPhase != "" {
-			pod := newPod(tc.podPhase, replica)
-			pod.Spec.NodeName = tc.podNodeName
-			pod.Status.PodIP = tc.podIP
-			pIndexer.Add(pod)
-		}
-
-		err = rc.syncReplicaWithPod(replica)
-		if tc.expectedError {
-			c.Assert(err, NotNil)
-		} else {
-			c.Assert(err, IsNil)
-		}
-		c.Assert(replica.Status.State, Equals, tc.expectedState)
-		c.Assert(replica.Status.IP, Equals, tc.expectedIP)
-		c.Assert(replica.Spec.NodeID, Equals, tc.expectedNodeID)
-	}
 }
 
 func (s *TestSuite) TestSyncReplica(c *C) {
@@ -278,7 +195,7 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 		c.Assert(err, IsNil)
 
 		if tc.currentState == types.InstanceStateRunning {
-			pod := newPod(v1.PodRunning, replica)
+			pod := newPod(v1.PodRunning, replica.Name, replica.Namespace)
 			err = pIndexer.Add(pod)
 			c.Assert(err, IsNil)
 			_, err = kubeClient.CoreV1().Pods(replica.Namespace).Create(pod)
