@@ -348,7 +348,7 @@ func (s *CRDStore) ListVolumes() (map[string]*types.VolumeInfo, error) {
 }
 
 func (s *CRDStore) CreateVolumeController(info *types.ControllerInfo) error {
-	if err := CheckVolumeInstance(&info.InstanceInfo); err != nil {
+	if err := CheckVolumeController(info); err != nil {
 		return errors.Wrap(err, "check fail")
 	}
 	resource := &lh.Controller{
@@ -356,8 +356,8 @@ func (s *CRDStore) CreateVolumeController(info *types.ControllerInfo) error {
 			Name:   info.Name,
 			Labels: s.getVolumeLabels(info.VolumeName),
 		},
-		Spec:   info.InstanceInfo.InstanceSpec,
-		Status: info.InstanceInfo.InstanceStatus,
+		Spec:   info.EngineSpec,
+		Status: info.EngineStatus,
 	}
 	result, err := s.clientset.LonghornV1alpha1().Controllers(s.namespace).Create(resource)
 	if err != nil {
@@ -369,7 +369,7 @@ func (s *CRDStore) CreateVolumeController(info *types.ControllerInfo) error {
 }
 
 func (s *CRDStore) UpdateVolumeController(info *types.ControllerInfo) error {
-	if err := CheckVolumeInstance(&info.InstanceInfo); err != nil {
+	if err := CheckVolumeController(info); err != nil {
 		return errors.Wrap(err, "check fail")
 	}
 
@@ -379,8 +379,8 @@ func (s *CRDStore) UpdateVolumeController(info *types.ControllerInfo) error {
 			ResourceVersion: info.ResourceVersion,
 			Labels:          s.getVolumeLabels(info.VolumeName),
 		},
-		Spec:   info.InstanceInfo.InstanceSpec,
-		Status: info.InstanceInfo.InstanceStatus,
+		Spec:   info.EngineSpec,
+		Status: info.EngineStatus,
 	}
 	result, err := s.clientset.LonghornV1alpha1().Controllers(s.namespace).Update(resource)
 	if err != nil {
@@ -423,13 +423,11 @@ func (s *CRDStore) DeleteVolumeController(volumeName string) error {
 
 func cr2Controller(cr *lh.Controller) *types.ControllerInfo {
 	return &types.ControllerInfo{
-		types.InstanceInfo{
-			InstanceSpec:   cr.Spec,
-			InstanceStatus: cr.Status,
-			Metadata: types.Metadata{
-				ResourceVersion: cr.ResourceVersion,
-				Name:            cr.Name,
-			},
+		EngineSpec:   cr.Spec,
+		EngineStatus: cr.Status,
+		Metadata: types.Metadata{
+			ResourceVersion: cr.ResourceVersion,
+			Name:            cr.Name,
 		},
 	}
 }

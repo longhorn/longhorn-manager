@@ -35,8 +35,8 @@ type VolumeList struct {
 type Controller struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.InstanceSpec   `json:"spec"`
-	Status            types.InstanceStatus `json:"status"`
+	Spec              types.EngineSpec   `json:"spec"`
+	Status            types.EngineStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

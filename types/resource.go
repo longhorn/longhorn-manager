@@ -79,19 +79,25 @@ type InstanceStatus struct {
 	IP             string        `json:"ip"`
 }
 
-type InstanceInfo struct {
-	InstanceSpec
-	InstanceStatus
-
-	Metadata
-}
-
 func (i *InstanceStatus) Running() bool {
 	return i.State == InstanceStateRunning
 }
 
+type EngineSpec struct {
+	InstanceSpec
+	ReplicaAddressMap map[string]string `json:"replicaAddressMap"`
+}
+
+type EngineStatus struct {
+	InstanceStatus
+	ReplicaModeMap map[string]ReplicaMode `json:"replicaModeMap"`
+}
+
 type ControllerInfo struct {
-	InstanceInfo
+	EngineSpec
+	EngineStatus
+
+	Metadata
 }
 
 type ReplicaSpec struct {

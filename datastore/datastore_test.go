@@ -163,17 +163,21 @@ func generateTestVolume(name string) *types.VolumeInfo {
 
 func generateTestController(volName string) *types.ControllerInfo {
 	return &types.ControllerInfo{
-		types.InstanceInfo{
+		types.EngineSpec{
 			types.InstanceSpec{
 				VolumeName: volName,
 			},
+			nil,
+		},
+		types.EngineStatus{
 			types.InstanceStatus{
 				State: types.InstanceStateRunning,
 				IP:    "1.2.3.4",
 			},
-			types.Metadata{
-				Name: volName + "-controller",
-			},
+			nil,
+		},
+		types.Metadata{
+			Name: volName + "-controller",
 		},
 	}
 }

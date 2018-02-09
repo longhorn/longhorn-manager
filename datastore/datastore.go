@@ -90,7 +90,7 @@ func CheckVolume(volume *types.VolumeInfo) error {
 	return nil
 }
 
-func CheckVolumeInstance(instance *types.InstanceInfo) error {
+func CheckVolumeController(instance *types.ControllerInfo) error {
 	if instance.Name == "" || instance.VolumeName == "" {
 		return fmt.Errorf("BUG: missing required field %+v", instance)
 	}
