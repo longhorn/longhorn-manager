@@ -3,6 +3,8 @@ package engineapi
 import (
 	"testing"
 
+	"github.com/rancher/longhorn-manager/types"
+
 	. "gopkg.in/check.v1"
 )
 
@@ -53,8 +55,8 @@ func (s *TestSuite) TestBasic(c *C) {
 	replicas, err := sim.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
-	c.Assert(replicas[Replica1Addr].Mode, Equals, ReplicaModeRW)
-	c.Assert(replicas[Replica2Addr].Mode, Equals, ReplicaModeRW)
+	c.Assert(replicas[Replica1Addr].Mode, Equals, types.ReplicaModeRW)
+	c.Assert(replicas[Replica2Addr].Mode, Equals, types.ReplicaModeRW)
 
 	err = sim.ReplicaRemove(Replica2Addr)
 	c.Assert(err, IsNil)
@@ -62,14 +64,14 @@ func (s *TestSuite) TestBasic(c *C) {
 	replicas, err = sim.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 1)
-	c.Assert(replicas[Replica1Addr].Mode, Equals, ReplicaModeRW)
+	c.Assert(replicas[Replica1Addr].Mode, Equals, types.ReplicaModeRW)
 
 	err = sim.ReplicaAdd(Replica3Addr)
 	replicas, err = sim.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
-	c.Assert(replicas[Replica1Addr].Mode, Equals, ReplicaModeRW)
-	c.Assert(replicas[Replica3Addr].Mode, Equals, ReplicaModeRW)
+	c.Assert(replicas[Replica1Addr].Mode, Equals, types.ReplicaModeRW)
+	c.Assert(replicas[Replica3Addr].Mode, Equals, types.ReplicaModeRW)
 
 	err = coll.DeleteEngineSimulator(VolumeName)
 	c.Assert(err, IsNil)

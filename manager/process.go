@@ -185,7 +185,7 @@ func (v *ManagedVolume) RefreshState() (err error) {
 			return err
 		}
 		for url, rep := range engineReps {
-			if rep.Mode == engineapi.ReplicaModeERR {
+			if rep.Mode == types.ReplicaModeERR {
 				if err := engine.ReplicaRemove(url); err != nil {
 					logrus.Warnf("fail to clean up ERR replica %v for volume %v", url, v.Name)
 				}
@@ -256,12 +256,12 @@ func (v *ManagedVolume) syncWithEngineState(engineReps map[string]*engineapi.Rep
 		}
 
 		for addr, engineRep := range engineReps {
-			if engineRep.Mode == engineapi.ReplicaModeRW {
+			if engineRep.Mode == types.ReplicaModeRW {
 				healthyReplicaCount++
-			} else if engineRep.Mode == engineapi.ReplicaModeWO {
+			} else if engineRep.Mode == types.ReplicaModeWO {
 				rebuildingReplicaCount++
 			} else {
-				// means engineRep.Mode == engineapi.ReplicaModeERR
+				// means engineRep.Mode == types.ReplicaModeERR
 				if replica, ok := addr2Replica[addr]; ok {
 					badReplicas[replica.Name] = struct{}{}
 				}

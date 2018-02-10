@@ -3,6 +3,8 @@ package engineapi
 import (
 	"fmt"
 	"sync"
+
+	"github.com/rancher/longhorn-manager/types"
 )
 
 type EngineSimulatorRequest struct {
@@ -119,7 +121,7 @@ func (e *EngineSimulator) ReplicaAdd(url string) error {
 	defer e.mutex.Unlock()
 
 	for name, replica := range e.replicas {
-		if replica.Mode == ReplicaModeERR {
+		if replica.Mode == types.ReplicaModeERR {
 			return fmt.Errorf("replica %v is in ERR mode, cannot add new replica", name)
 		}
 	}
@@ -128,7 +130,7 @@ func (e *EngineSimulator) ReplicaAdd(url string) error {
 	}
 	e.replicas[url] = &Replica{
 		URL:  url,
-		Mode: ReplicaModeRW,
+		Mode: types.ReplicaModeRW,
 	}
 	return nil
 }
@@ -151,7 +153,7 @@ func (e *EngineSimulator) SimulateStopReplica(addr string) error {
 	if e.replicas[addr] == nil {
 		return fmt.Errorf("unable to find replica %v", addr)
 	}
-	e.replicas[addr].Mode = ReplicaModeERR
+	e.replicas[addr].Mode = types.ReplicaModeERR
 	return nil
 }
 
