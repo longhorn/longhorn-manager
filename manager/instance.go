@@ -232,6 +232,7 @@ func (v *ManagedVolume) startController(startReplicas map[string]*types.ReplicaI
 				State: instance.State(),
 			},
 			nil,
+			"",
 		},
 		types.Metadata{
 			Name: instance.Name,

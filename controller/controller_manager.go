@@ -11,6 +11,7 @@ import (
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 
+	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/k8s"
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhclientset "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -53,8 +54,10 @@ func StartControllers(controllerID string) error {
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
 
-	rc := NewReplicaController(replicaInformer, podInformer, jobInformer, lhClient, kubeClient, namespace, controllerID)
-	ec := NewEngineController(engineInformer, podInformer, lhClient, kubeClient, namespace, controllerID)
+	rc := NewReplicaController(replicaInformer, podInformer, jobInformer, lhClient, kubeClient,
+		namespace, controllerID)
+	ec := NewEngineController(engineInformer, podInformer, lhClient, kubeClient,
+		&engineapi.EngineCollection{}, namespace, controllerID)
 
 	//FIXME stopch should be exposed
 	stopCh := make(chan struct{})

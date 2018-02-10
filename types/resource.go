@@ -91,6 +91,7 @@ type EngineSpec struct {
 type EngineStatus struct {
 	InstanceStatus
 	ReplicaModeMap map[string]ReplicaMode `json:"replicaModeMap"`
+	Endpoint       string                 `json:"endpoint"`
 }
 
 type ControllerInfo struct {

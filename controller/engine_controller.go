@@ -2,6 +2,8 @@ package controller
 
 import (
 	"fmt"
+	"reflect"
+	"sync"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -33,8 +35,14 @@ import (
 	lhlisters "github.com/rancher/longhorn-manager/k8s/pkg/client/listers/longhorn/v1alpha1"
 )
 
+const (
+	unknownReplicaPrefix = "unknown-"
+)
+
 var (
 	ownerKindEngine = longhorn.SchemeGroupVersion.WithKind("Engine").String()
+
+	EngineMonitoringInterval = 5 * time.Second
 )
 
 type EngineController struct {
@@ -57,12 +65,27 @@ type EngineController struct {
 	queue workqueue.RateLimitingInterface
 
 	instanceHandler *InstanceHandler
+
+	engines            engineapi.EngineClientCollection
+	engineMonitorMutex *sync.RWMutex
+	engineMonitorMap   map[string]*EngineMonitor
+}
+
+type EngineMonitor struct {
+	namespace string
+	lhClient  lhclientset.Interface
+	eLister   lhlisters.ControllerLister
+
+	Name         string
+	engineClient engineapi.EngineClient
+	stopCh       chan struct{}
 }
 
 func NewEngineController(
 	engineInformer lhinformers.ControllerInformer,
 	podInformer coreinformers.PodInformer,
 	lhClient lhclientset.Interface, kubeClient clientset.Interface,
+	engines engineapi.EngineClientCollection,
 	namespace string, controllerID string) *EngineController {
 
 	eventBroadcaster := record.NewBroadcaster()
@@ -80,6 +103,10 @@ func NewEngineController(
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-engine"),
 
 		instanceHandler: NewInstanceHandler(podInformer, kubeClient, namespace),
+
+		engines:            engines,
+		engineMonitorMutex: &sync.RWMutex{},
+		engineMonitorMap:   make(map[string]*EngineMonitor),
 	}
 
 	engineInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -223,6 +250,13 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	// we will sync up with pod status before proceed
 	if err := ec.instanceHandler.SyncInstanceState(engine.Name, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
 		return err
+	}
+
+	// update monitoring thread, must be done before we remove the engine
+	if engine.Status.State == types.InstanceStateRunning && !ec.isMonitoring(engine) {
+		ec.startMonitoring(engine)
+	} else if engine.Status.State == types.InstanceStateStopped && ec.isMonitoring(engine) {
+		ec.stopMonitoring(engine)
 	}
 
 	// we need to stop the engine when it's being deleted
@@ -400,4 +434,117 @@ func (ec *EngineController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 		return
 	}
 	ec.enqueueEngine(engine)
+}
+
+func (ec *EngineController) isMonitoring(e *longhorn.Controller) bool {
+	ec.engineMonitorMutex.RLock()
+	defer ec.engineMonitorMutex.RUnlock()
+
+	return ec.engineMonitorMap[e.Name] != nil
+}
+
+func (ec *EngineController) startMonitoring(e *longhorn.Controller) {
+	client, err := ec.engines.NewEngineClient(&engineapi.EngineClientRequest{
+		VolumeName:    e.Spec.VolumeName,
+		ControllerURL: engineapi.GetControllerDefaultURL(e.Status.IP),
+	})
+	if err != nil {
+		logrus.Warn("Failed to start monitoring %v, cannot create engine client", e.Name)
+		return
+	}
+	endpoint := client.Endpoint()
+	if endpoint == "" {
+		logrus.Warn("Failed to start monitoring %v, cannot connect", e.Name)
+		return
+	}
+
+	e.Status.Endpoint = endpoint
+
+	monitor := &EngineMonitor{
+		Name:         e.Name,
+		namespace:    e.Namespace,
+		lhClient:     ec.lhClient,
+		eLister:      ec.eLister,
+		engineClient: client,
+		stopCh:       make(chan struct{}),
+	}
+
+	ec.engineMonitorMutex.Lock()
+	defer ec.engineMonitorMutex.Unlock()
+
+	if ec.engineMonitorMap[e.Name] != nil {
+		logrus.Warn("BUG: Monitoring for %v already exists", e.Name)
+		return
+	}
+	ec.engineMonitorMap[e.Name] = monitor
+	go monitor.Run()
+}
+
+func (ec *EngineController) stopMonitoring(e *longhorn.Controller) {
+	ec.engineMonitorMutex.Lock()
+	defer ec.engineMonitorMutex.Unlock()
+
+	monitor := ec.engineMonitorMap[e.Name]
+	if monitor == nil {
+		logrus.Warnf("Trying to stop non-exist monitoring for %v", e.Name)
+		return
+	}
+	monitor.stopCh <- struct{}{}
+	e.Status.Endpoint = ""
+	e.Status.ReplicaModeMap = nil
+	delete(ec.engineMonitorMap, e.Name)
+}
+
+func (m *EngineMonitor) Run() {
+	logrus.Debugf("Start monitoring %v", m.Name)
+	defer logrus.Debugf("Stop monitoring %v", m.Name)
+
+	wait.Until(func() {
+		if err := m.Refresh(); err != nil {
+			utilruntime.HandleError(errors.Wrapf(err, "fail to update status for engine %v", m.Name))
+		}
+	}, EngineMonitoringInterval, m.stopCh)
+}
+
+func (m *EngineMonitor) Refresh() error {
+	engineRO, err := m.eLister.Controllers(m.namespace).Get(m.Name)
+	if err != nil {
+		return err
+	}
+
+	// Wait for stop monitoring
+	if engineRO.Status.InstanceStatus == types.InstanceStateStopped {
+		return nil
+	}
+
+	addressReplicaMap := map[string]string{}
+	for replica, address := range engineRO.Spec.ReplicaAddressMap {
+		if addressReplicaMap[address] != "" {
+			return fmt.Errorf("invalid ReplicaAddressMap: duplicate IPs")
+		}
+		addressReplicaMap[address] = replica
+	}
+
+	replicaURLModeMap, err := m.engineClient.ReplicaList()
+	if err != nil {
+		return err
+	}
+
+	currentReplicaModeMap := map[string]types.ReplicaMode{}
+	for url, r := range replicaURLModeMap {
+		ip := engineapi.GetIPFromURL(url)
+		replica, exists := addressReplicaMap[ip]
+		if !exists {
+			// we have a entry doesn't exist in our spec
+			replica = unknownReplicaPrefix + ip
+		}
+		currentReplicaModeMap[replica] = r.Mode
+	}
+	if !reflect.DeepEqual(engineRO.Status.ReplicaModeMap, currentReplicaModeMap) {
+		engine := engineRO.DeepCopy()
+		engine.Status.ReplicaModeMap = currentReplicaModeMap
+		_, err = m.lhClient.LonghornV1alpha1().Controllers(m.namespace).Update(engine)
+		return err
+	}
+	return nil
 }

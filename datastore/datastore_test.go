@@ -175,6 +175,7 @@ func generateTestController(volName string) *types.ControllerInfo {
 				IP:    "1.2.3.4",
 			},
 			nil,
+			"",
 		},
 		types.Metadata{
 			Name: volName + "-controller",
