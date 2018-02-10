@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,13 +37,14 @@ import (
 )
 
 const (
-	unknownReplicaPrefix = "unknown-"
+	unknownReplicaPrefix = "UNKNOWN-"
 )
 
 var (
 	ownerKindEngine = longhorn.SchemeGroupVersion.WithKind("Engine").String()
 
-	EngineMonitoringInterval = 5 * time.Second
+	EnginePollInterval = 5 * time.Second
+	EnginePollTimeout  = 30 * time.Second
 )
 
 type EngineController struct {
@@ -252,9 +254,15 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return err
 	}
 
-	// update monitoring thread, must be done before we remove the engine
-	if engine.Status.State == types.InstanceStateRunning && !ec.isMonitoring(engine) {
-		ec.startMonitoring(engine)
+	if engine.Status.State == types.InstanceStateRunning {
+		if !ec.isMonitoring(engine) {
+			ec.startMonitoring(engine)
+		} else if engine.Status.ReplicaModeMap != nil {
+			// wait until monitoring updated for the first time
+			if err := ec.ReconcileEngineState(engine); err != nil {
+				return err
+			}
+		}
 	} else if engine.Status.State == types.InstanceStateStopped && ec.isMonitoring(engine) {
 		ec.stopMonitoring(engine)
 	}
@@ -317,7 +325,7 @@ func (ec *EngineController) deleteEngine(e *longhorn.Controller) (err error) {
 	if err != nil {
 		return errors.Wrapf(err, "unable to update finalizer during engine deletion %v", name)
 	}
-	// the function was called when r.DeletionTimestamp was set, so
+	// the function was called when DeletionTimestamp was set, so
 	// Kubernetes will delete it after all the finalizers have been removed
 	return nil
 }
@@ -351,7 +359,8 @@ func (ec *EngineController) createPodSpec(e *longhorn.Controller) *v1.Pod {
 	privilege := true
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: e.Name,
+			Name:      e.Name,
+			Namespace: e.Namespace,
 		},
 		Spec: v1.PodSpec{
 			NodeName:      e.Spec.NodeID,
@@ -444,10 +453,7 @@ func (ec *EngineController) isMonitoring(e *longhorn.Controller) bool {
 }
 
 func (ec *EngineController) startMonitoring(e *longhorn.Controller) {
-	client, err := ec.engines.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:    e.Spec.VolumeName,
-		ControllerURL: engineapi.GetControllerDefaultURL(e.Status.IP),
-	})
+	client, err := ec.getClientForEngine(e)
 	if err != nil {
 		logrus.Warn("Failed to start monitoring %v, cannot create engine client", e.Name)
 		return
@@ -503,7 +509,7 @@ func (m *EngineMonitor) Run() {
 		if err := m.Refresh(); err != nil {
 			utilruntime.HandleError(errors.Wrapf(err, "fail to update status for engine %v", m.Name))
 		}
-	}, EngineMonitoringInterval, m.stopCh)
+	}, EnginePollInterval, m.stopCh)
 }
 
 func (m *EngineMonitor) Refresh() error {
@@ -513,7 +519,7 @@ func (m *EngineMonitor) Refresh() error {
 	}
 
 	// Wait for stop monitoring
-	if engineRO.Status.InstanceStatus == types.InstanceStateStopped {
+	if engineRO.Status.State == types.InstanceStateStopped {
 		return nil
 	}
 
@@ -544,6 +550,120 @@ func (m *EngineMonitor) Refresh() error {
 		engine := engineRO.DeepCopy()
 		engine.Status.ReplicaModeMap = currentReplicaModeMap
 		_, err = m.lhClient.LonghornV1alpha1().Controllers(m.namespace).Update(engine)
+		return err
+	}
+	return nil
+}
+
+func (ec *EngineController) ReconcileEngineState(e *longhorn.Controller) error {
+	if err := ec.removeUnknownReplica(e); err != nil {
+		return err
+	}
+	if err := ec.rebuildingNewReplica(e); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (ec *EngineController) getClientForEngine(e *longhorn.Controller) (client engineapi.EngineClient, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "cannot get client for engine %v", e.Name)
+	}()
+	if e.Status.State != types.InstanceStateRunning {
+		return nil, fmt.Errorf("engine is not running")
+	}
+	client, err = ec.engines.NewEngineClient(&engineapi.EngineClientRequest{
+		VolumeName:    e.Spec.VolumeName,
+		ControllerURL: engineapi.GetControllerDefaultURL(e.Status.IP),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
+func (ec *EngineController) removeUnknownReplica(e *longhorn.Controller) error {
+	unknownReplicaIPs := []string{}
+	for replica := range e.Status.ReplicaModeMap {
+		// unknown replicas have been named as `unknownReplicaPrefix-<IP>`
+		if strings.HasPrefix(replica, unknownReplicaPrefix) {
+			unknownReplicaIPs = append(unknownReplicaIPs, strings.TrimPrefix(replica, unknownReplicaPrefix))
+		}
+	}
+	if len(unknownReplicaIPs) == 0 {
+		return nil
+	}
+
+	client, err := ec.getClientForEngine(e)
+	if err != nil {
+		return err
+	}
+	for _, ip := range unknownReplicaIPs {
+		go func(ip string) {
+			url := engineapi.GetReplicaDefaultURL(ip)
+			if err := client.ReplicaRemove(url); err != nil {
+				logrus.Errorf("Failed to remove unknown replica %v for %v: %v",
+					ip, e.Name, err)
+			}
+		}(ip)
+	}
+	return nil
+}
+
+func (ec *EngineController) rebuildingNewReplica(e *longhorn.Controller) error {
+	rebuildingInProgress := false
+	replicaExists := make(map[string]bool)
+	for replica, mode := range e.Status.ReplicaModeMap {
+		replicaExists[replica] = true
+		if mode == types.ReplicaModeWO {
+			rebuildingInProgress = true
+			break
+		}
+	}
+	// We cannot rebuild more than one replica at one time
+	if rebuildingInProgress {
+		return nil
+	}
+	for replica, ip := range e.Spec.ReplicaAddressMap {
+		// one is enough
+		if !replicaExists[replica] {
+			return ec.startRebuilding(e, replica, ip)
+		}
+	}
+	return nil
+}
+
+func (ec *EngineController) startRebuilding(e *longhorn.Controller, replica, ip string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "fail to start rebuild for %v of %v", replica, e.Name)
+	}()
+
+	logrus.Infof("Start rebuilding for %v of %v", replica, e.Name)
+
+	client, err := ec.getClientForEngine(e)
+	if err != nil {
+		return err
+	}
+	replicaURL := engineapi.GetReplicaDefaultURL(ip)
+	go func() {
+		// start rebuild
+		if err := client.ReplicaAdd(replicaURL); err != nil {
+			logrus.Warnf("fail to rebuild for %v of %v", replica, e.Name)
+		}
+	}()
+	//wait until engine confirmed that rebuild started
+	if err := wait.PollImmediate(EnginePollInterval, EnginePollTimeout, func() (bool, error) {
+		replicaURLModeMap, err := client.ReplicaList()
+		if err != nil {
+			return false, err
+		}
+		for url := range replicaURLModeMap {
+			if ip == engineapi.GetIPFromURL(url) {
+				return true, nil
+			}
+		}
+		return false, nil
+	}); err != nil {
 		return err
 	}
 	return nil
