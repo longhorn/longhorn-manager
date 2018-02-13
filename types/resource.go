@@ -34,13 +34,15 @@ type VolumeSpec struct {
 	TargetNodeID        string         `json:"targetNodeID"`
 	RecurringJobs       []RecurringJob `json:"recurringJobs"`
 	DesireState         VolumeState    `json:"desireState"`
+	DesireOwnerID       string         `json:"desireOwnerID"`
 }
 
 type VolumeStatus struct {
-	Created  string      `json:"created"`
-	NodeID   string      `json:"nodeID"`
-	State    VolumeState `json:"state"`
-	Endpoint string      `json:"endpoint"`
+	Created        string      `json:"created"`
+	NodeID         string      `json:"nodeID"`
+	State          VolumeState `json:"state"`
+	Endpoint       string      `json:"endpoint"`
+	CurrentOwnerID string      `json:"currentOwnerID"`
 }
 
 type RecurringJobType string

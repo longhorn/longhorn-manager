@@ -23,7 +23,7 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
-func StartControllers(controllerID string) error {
+func StartControllers(controllerID, engineImage string) error {
 	namespace := os.Getenv(k8s.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, " +
@@ -51,6 +51,7 @@ func StartControllers(controllerID string) error {
 
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
 	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Controllers()
+	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
 
@@ -58,6 +59,8 @@ func StartControllers(controllerID string) error {
 		namespace, controllerID)
 	ec := NewEngineController(engineInformer, podInformer, lhClient, kubeClient,
 		&engineapi.EngineCollection{}, namespace, controllerID)
+	vc := NewVolumeController(volumeInformer, engineInformer, replicaInformer, lhClient, kubeClient,
+		namespace, controllerID, engineImage)
 
 	//FIXME stopch should be exposed
 	stopCh := make(chan struct{})
@@ -65,6 +68,7 @@ func StartControllers(controllerID string) error {
 	go lhInformerFactory.Start(stopCh)
 	go rc.Run(Workers, stopCh)
 	go ec.Run(Workers, stopCh)
+	go vc.Run(Workers, stopCh)
 
 	return nil
 }

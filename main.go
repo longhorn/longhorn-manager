@@ -122,7 +122,7 @@ func RunManager(c *cli.Context) error {
 	listen := m.GetCurrentNode().IP + ":" + strconv.Itoa(types.DefaultAPIPort)
 	logrus.Infof("Listening on %s", listen)
 
-	if err := controller.StartControllers(currentNodeID); err != nil {
+	if err := controller.StartControllers(currentNodeID, engineImage); err != nil {
 		return err
 	}
 
