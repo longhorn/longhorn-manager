@@ -445,9 +445,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume) (err error)
 	defer func() {
 		err = errors.Wrapf(err, "fail to reconcile volume state for %v", v.Name)
 	}()
-	if v.Status.State == v.Spec.DesireState {
-		return nil
-	}
 
 	// Don't reconcile from Fault state
 	// User will need to salvage a replica to continue
@@ -544,6 +541,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume) (err error)
 		}
 
 		if engine.Spec.DesireState != types.InstanceStateRunning {
+			engine.Spec.NodeID = v.Spec.TargetNodeID
 			engine.Spec.ReplicaAddressMap = replicaAddressMap
 			engine.Spec.DesireState = types.InstanceStateRunning
 			_, err := vc.updateEngine(engine)

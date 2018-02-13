@@ -364,6 +364,14 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      e.Name,
 			Namespace: e.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: longhorn.SchemeGroupVersion.String(),
+					Kind:       ownerKindEngine,
+					UID:        e.UID,
+					Name:       e.Name,
+				},
+			},
 		},
 		Spec: v1.PodSpec{
 			NodeName:      e.Spec.NodeID,
@@ -458,12 +466,12 @@ func (ec *EngineController) isMonitoring(e *longhorn.Controller) bool {
 func (ec *EngineController) startMonitoring(e *longhorn.Controller) {
 	client, err := ec.getClientForEngine(e)
 	if err != nil {
-		logrus.Warn("Failed to start monitoring %v, cannot create engine client", e.Name)
+		logrus.Warnf("Failed to start monitoring %v, cannot create engine client", e.Name)
 		return
 	}
 	endpoint := client.Endpoint()
 	if endpoint == "" {
-		logrus.Warn("Failed to start monitoring %v, cannot connect", e.Name)
+		logrus.Warnf("Failed to start monitoring %v, cannot connect", e.Name)
 		return
 	}
 
@@ -482,7 +490,7 @@ func (ec *EngineController) startMonitoring(e *longhorn.Controller) {
 	defer ec.engineMonitorMutex.Unlock()
 
 	if ec.engineMonitorMap[e.Name] != nil {
-		logrus.Warn("BUG: Monitoring for %v already exists", e.Name)
+		logrus.Warnf("BUG: Monitoring for %v already exists", e.Name)
 		return
 	}
 	ec.engineMonitorMap[e.Name] = monitor
