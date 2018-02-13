@@ -101,9 +101,8 @@ func NewReplicaController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "longhorn-replica-controller"}),
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-replica"),
-
-		instanceHandler: NewInstanceHandler(podInformer, kubeClient, namespace),
 	}
+	rc.instanceHandler = NewInstanceHandler(podInformer, kubeClient, namespace, rc)
 
 	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -288,7 +287,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		return rc.deleteReplica(replica)
 	}
 
-	return rc.instanceHandler.ReconcileInstanceState(replica.Name, rc.createPodSpec(replica), &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
+	return rc.instanceHandler.ReconcileInstanceState(replica.Name, replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
 }
 
 func (rc *ReplicaController) enqueueReplica(replica *longhorn.Replica) {
@@ -343,7 +342,11 @@ func (rc *ReplicaController) getReplicaVolumeDirectory(replicaName string) strin
 	return longhornDirectory + "/replicas/" + replicaName
 }
 
-func (rc *ReplicaController) createPodSpec(r *longhorn.Replica) *v1.Pod {
+func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
+	r, ok := obj.(*longhorn.Replica)
+	if !ok {
+		return nil, fmt.Errorf("BUG: invalid object for engine pod spec creation: %v", r)
+	}
 	cmd := []string{
 		"launch", "replica",
 		"--listen", "0.0.0.0:9502",
@@ -425,7 +428,7 @@ func (rc *ReplicaController) createPodSpec(r *longhorn.Replica) *v1.Pod {
 			},
 		}
 	}
-	return pod
+	return pod, nil
 }
 
 func (rc *ReplicaController) createCleanupJobSpec(r *longhorn.Replica) *batchv1.Job {

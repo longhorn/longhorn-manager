@@ -19,13 +19,19 @@ type InstanceHandler struct {
 	namespace  string
 	kubeClient clientset.Interface
 	pLister    corelisters.PodLister
+	podCreator PodCreatorInterface
 }
 
-func NewInstanceHandler(podInformer coreinformers.PodInformer, kubeClient clientset.Interface, namespace string) *InstanceHandler {
+type PodCreatorInterface interface {
+	CreatePodSpec(obj interface{}) (*corev1.Pod, error)
+}
+
+func NewInstanceHandler(podInformer coreinformers.PodInformer, kubeClient clientset.Interface, namespace string, podCreator PodCreatorInterface) *InstanceHandler {
 	return &InstanceHandler{
 		namespace:  namespace,
 		kubeClient: kubeClient,
 		pLister:    podInformer.Lister(),
+		podCreator: podCreator,
 	}
 }
 
@@ -68,7 +74,7 @@ func (h *InstanceHandler) SyncInstanceState(podName string, spec *types.Instance
 	return nil
 }
 
-func (h *InstanceHandler) ReconcileInstanceState(podName string, pod *corev1.Pod, spec *types.InstanceSpec, status *types.InstanceStatus) (err error) {
+func (h *InstanceHandler) ReconcileInstanceState(podName string, obj interface{}, spec *types.InstanceSpec, status *types.InstanceStatus) (err error) {
 	state := status.State
 	desireState := spec.DesireState
 	if state == types.InstanceStateError {
@@ -79,6 +85,10 @@ func (h *InstanceHandler) ReconcileInstanceState(podName string, pod *corev1.Pod
 		switch desireState {
 		case types.InstanceStateRunning:
 			if state == types.InstanceStateStopped {
+				pod, err := h.podCreator.CreatePodSpec(obj)
+				if err != nil {
+					return err
+				}
 				if err := h.startInstance(pod); err != nil {
 					return err
 				}

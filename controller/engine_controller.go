@@ -104,12 +104,11 @@ func NewEngineController(
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-engine"),
 
-		instanceHandler: NewInstanceHandler(podInformer, kubeClient, namespace),
-
 		engines:            engines,
 		engineMonitorMutex: &sync.RWMutex{},
 		engineMonitorMap:   make(map[string]*EngineMonitor),
 	}
+	ec.instanceHandler = NewInstanceHandler(podInformer, kubeClient, namespace, ec)
 
 	engineInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -279,7 +278,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	}
 
-	return ec.instanceHandler.ReconcileInstanceState(engine.Name, ec.createPodSpec(engine), &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus)
+	return ec.instanceHandler.ReconcileInstanceState(engine.Name, engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus)
 }
 
 func (ec *EngineController) enqueueEngine(e *longhorn.Controller) {
@@ -339,10 +338,14 @@ func validateEngine(e *longhorn.Controller) error {
 	return nil
 }
 
-func (ec *EngineController) createPodSpec(e *longhorn.Controller) *v1.Pod {
+func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
+	e, ok := obj.(*longhorn.Controller)
+	if !ok {
+		return nil, fmt.Errorf("BUG: invalid object for engine pod spec creation: %v", obj)
+	}
 	if err := validateEngine(e); err != nil {
 		logrus.Errorf("Invalid spec for create controller: %v", e)
-		return nil
+		return nil, err
 	}
 
 	cmd := []string{
@@ -405,7 +408,7 @@ func (ec *EngineController) createPodSpec(e *longhorn.Controller) *v1.Pod {
 			},
 		},
 	}
-	return pod
+	return pod, nil
 }
 
 func (ec *EngineController) enqueueControlleeChange(obj interface{}) {

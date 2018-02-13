@@ -97,5 +97,5 @@ func (s *TestSuite) TestSyncInstanceState(c *C) {
 
 func newTestInstanceHandler(kubeInformerFactory informers.SharedInformerFactory, kubeClient *fake.Clientset) *InstanceHandler {
 	podInformer := kubeInformerFactory.Core().V1().Pods()
-	return NewInstanceHandler(podInformer, kubeClient, TestNamespace)
+	return NewInstanceHandler(podInformer, kubeClient, TestNamespace, nil)
 }
