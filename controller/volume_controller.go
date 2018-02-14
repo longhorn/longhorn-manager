@@ -2,10 +2,13 @@ package controller
 
 import (
 	"fmt"
+	"reflect"
+	"sync"
 	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	"github.com/robfig/cron"
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -22,6 +25,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
+	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 
@@ -62,6 +66,14 @@ type VolumeController struct {
 	rStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
+
+	recurringJobMutex *sync.Mutex
+	recurringJobMap   map[string]*VolumeRecurringJob
+}
+
+type VolumeRecurringJob struct {
+	recurringJobs []types.RecurringJob
+	cron          *cron.Cron
 }
 
 func NewVolumeController(
@@ -86,6 +98,9 @@ func NewVolumeController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "longhorn-volume-controller"}),
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-volume"),
+
+		recurringJobMutex: &sync.Mutex{},
+		recurringJobMap:   make(map[string]*VolumeRecurringJob),
 	}
 
 	volumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -229,7 +244,13 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
+	if err := vc.updateRecurringJobs(volume); err != nil {
+		return err
+	}
+
 	if volume.DeletionTimestamp != nil {
+		vc.stopRecurringJobs(volume)
+
 		engine, err := vc.getVolumeEngine(volume)
 		if err == nil {
 			if engine.DeletionTimestamp == nil {
@@ -737,4 +758,101 @@ func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 		return
 	}
 	vc.enqueueVolume(volume)
+}
+
+func (vc *VolumeController) cleanupRecurringJobsHoldingLock(v *longhorn.Volume) {
+	current := vc.recurringJobMap[v.Name]
+	if current != nil && current.recurringJobs != nil {
+		current.cron.Stop()
+		delete(vc.recurringJobMap, v.Name)
+	}
+}
+
+func (vc *VolumeController) stopRecurringJobs(v *longhorn.Volume) {
+	vc.recurringJobMutex.Lock()
+	defer vc.recurringJobMutex.Unlock()
+
+	vc.cleanupRecurringJobsHoldingLock(v)
+}
+
+func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "fail to update recurring jobs for %v", v.Name)
+	}()
+
+	vc.recurringJobMutex.Lock()
+	defer vc.recurringJobMutex.Unlock()
+
+	jobs := v.Spec.RecurringJobs
+	if len(jobs) == 0 {
+		vc.cleanupRecurringJobsHoldingLock(v)
+		return nil
+	}
+
+	e, err := vc.getVolumeEngine(v)
+	if err != nil {
+		return err
+	}
+	if e.Spec.DesireState == types.InstanceStateStopped || e.Status.State != types.InstanceStateRunning {
+		vc.cleanupRecurringJobsHoldingLock(v)
+		return nil
+	}
+
+	current := vc.recurringJobMap[v.Name]
+	if current.recurringJobs == nil || !reflect.DeepEqual(v.Spec.RecurringJobs, current.recurringJobs) {
+		engines := engineapi.EngineCollection{}
+		engineClient, err := engines.NewEngineClient(&engineapi.EngineClientRequest{
+			VolumeName:    v.Name,
+			ControllerURL: engineapi.GetControllerDefaultURL(e.Status.IP),
+		})
+		if err != nil {
+			return err
+		}
+
+		backupTarget, err := vc.getBackupTarget()
+		if err != nil {
+			return nil
+		}
+
+		newCron := cron.New()
+		for _, job := range jobs {
+			cronJob := &CronJob{
+				job,
+				engineClient,
+				backupTarget,
+			}
+			if backupTarget == "" && job.Type == types.RecurringJobTypeBackup {
+				return fmt.Errorf("cannot backup with empty backup target")
+			}
+			if err := newCron.AddJob(job.Cron, cronJob); err != nil {
+				return err
+			}
+		}
+		if current != nil {
+			current.cron.Stop()
+		}
+
+		vc.recurringJobMap[v.Name] = &VolumeRecurringJob{
+			recurringJobs: jobs,
+			cron:          newCron,
+		}
+		newCron.Start()
+	}
+	return nil
+}
+
+const (
+	SettingName = "longhorn-manager-settings"
+)
+
+func (vc *VolumeController) getBackupTarget() (string, error) {
+	result, err := vc.lhClient.LonghornV1alpha1().Settings(vc.namespace).Get(SettingName,
+		metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return "", nil
+		}
+		return "", errors.Wrapf(err, "unable to get %v", SettingName)
+	}
+	return result.BackupTarget, nil
 }
