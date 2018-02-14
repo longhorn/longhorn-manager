@@ -26,6 +26,7 @@ type VolumeInfo struct {
 }
 
 type VolumeSpec struct {
+	OwnerID             string         `json:"ownerID"`
 	Size                string         `json:"size"`
 	BaseImage           string         `json:"baseImage"`
 	FromBackup          string         `json:"fromBackup"`
@@ -34,15 +35,13 @@ type VolumeSpec struct {
 	TargetNodeID        string         `json:"targetNodeID"`
 	RecurringJobs       []RecurringJob `json:"recurringJobs"`
 	DesireState         VolumeState    `json:"desireState"`
-	DesireOwnerID       string         `json:"desireOwnerID"`
 }
 
 type VolumeStatus struct {
-	Created        string      `json:"created"`
-	NodeID         string      `json:"nodeID"`
-	State          VolumeState `json:"state"`
-	Endpoint       string      `json:"endpoint"`
-	CurrentOwnerID string      `json:"currentOwnerID"`
+	Created  string      `json:"created"`
+	NodeID   string      `json:"nodeID"`
+	State    VolumeState `json:"state"`
+	Endpoint string      `json:"endpoint"`
 }
 
 type RecurringJobType string
@@ -68,17 +67,16 @@ const (
 )
 
 type InstanceSpec struct {
-	VolumeName    string        `json:"volumeName"`
-	NodeID        string        `json:"nodeID"`
-	EngineImage   string        `json:"engineImage"`
-	DesireState   InstanceState `json:"desireState"`
-	DesireOwnerID string        `json:"desireOwnerID"`
+	OwnerID     string        `json:"ownerID"`
+	VolumeName  string        `json:"volumeName"`
+	NodeID      string        `json:"nodeID"`
+	EngineImage string        `json:"engineImage"`
+	DesireState InstanceState `json:"desireState"`
 }
 
 type InstanceStatus struct {
-	CurrentOwnerID string        `json:"currentOwnerID"`
-	State          InstanceState `json:"state"`
-	IP             string        `json:"ip"`
+	State InstanceState `json:"state"`
+	IP    string        `json:"ip"`
 }
 
 func (i *InstanceStatus) Running() bool {

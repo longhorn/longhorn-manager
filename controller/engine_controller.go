@@ -224,17 +224,8 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	engine := engineRO.DeepCopy()
 
 	// Not ours
-	if engine.Spec.DesireOwnerID != ec.controllerID {
+	if engine.Spec.OwnerID != ec.controllerID {
 		return nil
-	}
-
-	// Previous controller hasn't yield the control yet
-	//
-	// TODO Currently the waiting timeout is indefinite. If the other
-	// controller is down or malfunctioning, this controller should take it
-	// over after a period of time
-	if engine.Status.CurrentOwnerID != "" && engine.Status.CurrentOwnerID != ec.controllerID {
-		return fmt.Errorf("controller %v: Waiting for previous controller %v to yield the control %v", ec.controllerID, engine.Status.CurrentOwnerID, engine.Name)
 	}
 
 	defer func() {
@@ -243,10 +234,6 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 			_, err = ec.updateEngine(engine)
 		}
 	}()
-
-	if engine.Status.CurrentOwnerID == "" {
-		engine.Status.CurrentOwnerID = ec.controllerID
-	}
 
 	// we will sync up with pod status before proceed
 	if err := ec.instanceHandler.SyncInstanceState(engine.Name, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
@@ -461,7 +448,7 @@ func (ec *EngineController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 		return
 	}
 	// Not ours
-	if engine.Status.CurrentOwnerID != ec.controllerID {
+	if engine.Spec.OwnerID != ec.controllerID {
 		return
 	}
 	ec.enqueueEngine(engine)

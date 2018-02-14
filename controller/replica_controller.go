@@ -253,25 +253,8 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	}()
 
 	// Not ours
-	if replica.Spec.DesireOwnerID != rc.controllerID {
-		// but we must release the control
-		if replica.Status.CurrentOwnerID == rc.controllerID {
-			replica.Status.CurrentOwnerID = ""
-		}
+	if replica.Spec.OwnerID != rc.controllerID {
 		return nil
-	}
-
-	// Previous controller hasn't yield the control yet
-	//
-	// TODO Currently the waiting timeout is indefinite. If the other
-	// controller is down or malfunctioning, this controller should take it
-	// over after a period of time
-	if replica.Status.CurrentOwnerID != "" && replica.Status.CurrentOwnerID != rc.controllerID {
-		return fmt.Errorf("replica-controller %v: Waiting for previous controller %v to yield the control for replica %v", rc.controllerID, replica.Status.CurrentOwnerID, replica.Name)
-	}
-
-	if replica.Status.CurrentOwnerID == "" {
-		replica.Status.CurrentOwnerID = rc.controllerID
 	}
 
 	// we will sync up with pod status before proceed
@@ -605,7 +588,7 @@ func (rc *ReplicaController) ResolveRefAndEnqueue(namespace string, ref *metav1.
 		return
 	}
 	// Not ours
-	if replica.Status.CurrentOwnerID != rc.controllerID {
+	if replica.Spec.OwnerID != rc.controllerID {
 		return
 	}
 	rc.enqueueReplica(replica)

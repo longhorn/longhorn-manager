@@ -214,17 +214,8 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	volume := volumeRO.DeepCopy()
 
 	// Not ours
-	if volume.Spec.DesireOwnerID != vc.controllerID {
+	if volume.Spec.OwnerID != vc.controllerID {
 		return nil
-	}
-
-	// Previous controller hasn't yield the control yet
-	//
-	// TODO Currently the waiting timeout is indefinite. If the other
-	// controller is down or malfunctioning, this controller should take it
-	// over after a period of time
-	if volume.Status.CurrentOwnerID != "" && volume.Status.CurrentOwnerID != vc.controllerID {
-		return fmt.Errorf("controller %v: Waiting for previous controller %v to yield the control %v", vc.controllerID, volume.Status.CurrentOwnerID, volume.Name)
 	}
 
 	defer func() {
@@ -233,10 +224,6 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			_, err = vc.updateVolume(volume)
 		}
 	}()
-
-	if volume.Status.CurrentOwnerID == "" {
-		volume.Status.CurrentOwnerID = vc.controllerID
-	}
 
 	if err := vc.RefreshVolumeState(volume); err != nil {
 		return err
@@ -609,10 +596,10 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Controll
 		},
 		Spec: types.EngineSpec{
 			InstanceSpec: types.InstanceSpec{
-				VolumeName:    v.Name,
-				EngineImage:   vc.EngineImage,
-				DesireState:   types.InstanceStateStopped,
-				DesireOwnerID: vc.controllerID,
+				VolumeName:  v.Name,
+				EngineImage: vc.EngineImage,
+				DesireState: types.InstanceStateStopped,
+				OwnerID:     vc.controllerID,
 			},
 		},
 	}
@@ -638,10 +625,10 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume) (*longhorn.Replica
 		},
 		Spec: types.ReplicaSpec{
 			InstanceSpec: types.InstanceSpec{
-				VolumeName:    v.Name,
-				EngineImage:   vc.EngineImage,
-				DesireState:   types.InstanceStateStopped,
-				DesireOwnerID: vc.controllerID,
+				VolumeName:  v.Name,
+				EngineImage: vc.EngineImage,
+				DesireState: types.InstanceStateStopped,
+				OwnerID:     vc.controllerID,
 			},
 			VolumeSize: v.Spec.Size,
 		},
@@ -746,7 +733,7 @@ func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 		return
 	}
 	// Not ours
-	if volume.Status.CurrentOwnerID != vc.controllerID {
+	if volume.Spec.OwnerID != vc.controllerID {
 		return
 	}
 	vc.enqueueVolume(volume)

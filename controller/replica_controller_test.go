@@ -53,7 +53,7 @@ var _ = Suite(&TestSuite{})
 func (s *TestSuite) SetUpTest(c *C) {
 }
 
-func newReplica(desireState, currentState types.InstanceState, desireOwnerID, currentOwnerID, failedAt string) *longhorn.Replica {
+func newReplica(desireState, currentState types.InstanceState, failedAt string) *longhorn.Replica {
 	return &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      TestReplica1Name,
@@ -62,8 +62,8 @@ func newReplica(desireState, currentState types.InstanceState, desireOwnerID, cu
 		},
 		Spec: types.ReplicaSpec{
 			InstanceSpec: types.InstanceSpec{
-				DesireState:   desireState,
-				DesireOwnerID: desireOwnerID,
+				DesireState: desireState,
+				OwnerID:     TestOwnerID1,
 			},
 			VolumeSize:  TestVolumeSize,
 			RestoreFrom: TestRestoreFrom,
@@ -71,8 +71,7 @@ func newReplica(desireState, currentState types.InstanceState, desireOwnerID, cu
 		},
 		Status: types.ReplicaStatus{
 			InstanceStatus: types.InstanceStatus{
-				State:          currentState,
-				CurrentOwnerID: currentOwnerID,
+				State: currentState,
 			},
 		},
 	}
@@ -126,47 +125,34 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 
 	testCases := map[string]struct {
 		//replica setup
-		desireState    types.InstanceState
-		currentState   types.InstanceState
-		desireOwnerID  string
-		currentOwnerID string
+		desireState  types.InstanceState
+		currentState types.InstanceState
 
 		//replica exception
-		expectedState   types.InstanceState
-		expectedOwnerID string
-		err             bool
+		expectedState types.InstanceState
+		err           bool
 
 		//pod expection
 		expectedPods int
 	}{
 		"replica keep stopped": {
-			types.InstanceStateStopped, types.InstanceStateStopped, TestOwnerID1, TestOwnerID1,
-			types.InstanceStateStopped, TestOwnerID1, false,
+			types.InstanceStateStopped, types.InstanceStateStopped,
+			types.InstanceStateStopped, false,
 			0,
 		},
 		"replica start": {
-			types.InstanceStateRunning, types.InstanceStateStopped, TestOwnerID1, TestOwnerID1,
-			types.InstanceStateRunning, TestOwnerID1, false,
+			types.InstanceStateRunning, types.InstanceStateStopped,
+			types.InstanceStateRunning, false,
 			1,
 		},
 		"replica keep running": {
-			types.InstanceStateRunning, types.InstanceStateRunning, TestOwnerID1, TestOwnerID1,
-			types.InstanceStateRunning, TestOwnerID1, false,
+			types.InstanceStateRunning, types.InstanceStateRunning,
+			types.InstanceStateRunning, false,
 			1,
 		},
 		"replica stop": {
-			types.InstanceStateStopped, types.InstanceStateRunning, TestOwnerID1, TestOwnerID1,
-			types.InstanceStateStopped, TestOwnerID1, false,
-			0,
-		},
-		"replica stop and transfer ownership": {
-			types.InstanceStateStopped, types.InstanceStateStopped, TestOwnerID1, "",
-			types.InstanceStateStopped, TestOwnerID1, false,
-			0,
-		},
-		"replica stop and transfer ownership but other hasn't yield": {
-			types.InstanceStateStopped, types.InstanceStateStopped, TestOwnerID1, TestOwnerID2,
-			types.InstanceStateStopped, TestOwnerID2, true,
+			types.InstanceStateStopped, types.InstanceStateRunning,
+			types.InstanceStateStopped, false,
 			0,
 		},
 	}
@@ -188,7 +174,7 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 
 		// Need add to both indexer store and fake clientset, since they
 		// haven't connected yet
-		replica := newReplica(tc.desireState, tc.currentState, tc.desireOwnerID, tc.currentOwnerID, "")
+		replica := newReplica(tc.desireState, tc.currentState, "")
 		err = rIndexer.Add(replica)
 		c.Assert(err, IsNil)
 		_, err = lhClient.LonghornV1alpha1().Replicas(replica.Namespace).Create(replica)
@@ -214,11 +200,10 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 		c.Assert(err, IsNil)
 		c.Assert(podList.Items, HasLen, tc.expectedPods)
 
-		updatedReplica, err := lhClient.LonghornV1alpha1().Replicas(rc.namespace).Get(replica.Name, metav1.GetOptions{})
-		c.Assert(err, IsNil)
 		// TODO State change won't work for now since pod state wasn't changed
+		//updatedReplica, err := lhClient.LonghornV1alpha1().Replicas(rc.namespace).Get(replica.Name, metav1.GetOptions{})
+		//c.Assert(err, IsNil)
 		//c.Assert(updatedReplica.Status.State, Equals, tc.expectedState)
-		c.Assert(updatedReplica.Status.CurrentOwnerID, Equals, tc.expectedOwnerID)
 	}
 
 }

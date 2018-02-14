@@ -24,10 +24,10 @@ func (v *ManagedVolume) createReplica(name string) error {
 	replica := &types.ReplicaInfo{
 		types.ReplicaSpec{
 			InstanceSpec: types.InstanceSpec{
-				VolumeName:    v.Name,
-				EngineImage:   v.m.GetEngineImage(),
-				DesireState:   types.InstanceStateStopped,
-				DesireOwnerID: v.TargetNodeID,
+				VolumeName:  v.Name,
+				EngineImage: v.m.GetEngineImage(),
+				DesireState: types.InstanceStateStopped,
+				OwnerID:     v.TargetNodeID,
 			},
 			VolumeSize: v.Size,
 		},
