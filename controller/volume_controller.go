@@ -528,7 +528,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume) (err error)
 		}
 
 		if engine.Spec.DesireState != types.InstanceStateRunning {
-			engine.Spec.NodeID = v.Spec.TargetNodeID
+			engine.Spec.NodeID = v.Spec.NodeID
 			engine.Spec.ReplicaAddressMap = replicaAddressMap
 			engine.Spec.DesireState = types.InstanceStateRunning
 			_, err := vc.updateEngine(engine)

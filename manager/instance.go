@@ -27,7 +27,7 @@ func (v *ManagedVolume) createReplica(name string) error {
 				VolumeName:  v.Name,
 				EngineImage: v.m.GetEngineImage(),
 				DesireState: types.InstanceStateStopped,
-				OwnerID:     v.TargetNodeID,
+				OwnerID:     v.getOwnerID(),
 			},
 			VolumeSize: v.Size,
 		},

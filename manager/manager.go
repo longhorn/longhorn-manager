@@ -17,10 +17,9 @@ import (
 type VolumeManager struct {
 	currentNode *Node
 
-	ds       datastore.DataStore
-	orch     orchestrator.Orchestrator
-	engines  engineapi.EngineClientCollection
-	notifier Notifier
+	ds      datastore.DataStore
+	orch    orchestrator.Orchestrator
+	engines engineapi.EngineClientCollection
 
 	EventChan           chan Event
 	managedVolumes      map[string]*ManagedVolume
@@ -32,14 +31,12 @@ type VolumeManager struct {
 func NewVolumeManager(ds datastore.DataStore,
 	orch orchestrator.Orchestrator,
 	engines engineapi.EngineClientCollection,
-	notifier Notifier,
 	engineImage string) (*VolumeManager, error) {
 
 	manager := &VolumeManager{
-		ds:       ds,
-		orch:     orch,
-		engines:  engines,
-		notifier: notifier,
+		ds:      ds,
+		orch:    orch,
+		engines: engines,
 
 		EventChan:           make(chan Event),
 		managedVolumes:      make(map[string]*ManagedVolume),
@@ -48,13 +45,9 @@ func NewVolumeManager(ds datastore.DataStore,
 		engineImage: engineImage,
 	}
 
-	if err := manager.RegisterNode(notifier.GetPort()); err != nil {
+	if err := manager.RegisterNode(-1); err != nil {
 		return nil, err
 	}
-	if err := manager.notifier.Start(manager.EventChan); err != nil {
-		return nil, err
-	}
-	go manager.startProcessing()
 	return manager, nil
 }
 
@@ -87,13 +80,13 @@ func (m *VolumeManager) VolumeCreate(request *VolumeCreateRequest) (err error) {
 
 	info := &types.VolumeInfo{
 		VolumeSpec: types.VolumeSpec{
+			OwnerID:             node.ID,
 			Size:                size,
 			BaseImage:           request.BaseImage,
 			FromBackup:          request.FromBackup,
 			NumberOfReplicas:    request.NumberOfReplicas,
 			StaleReplicaTimeout: request.StaleReplicaTimeout,
 			DesireState:         types.VolumeStateDetached,
-			TargetNodeID:        node.ID,
 		},
 		VolumeStatus: types.VolumeStatus{
 			Created: util.Now(),
@@ -129,12 +122,13 @@ func (m *VolumeManager) VolumeAttach(request *VolumeAttachRequest) (err error) {
 		return fmt.Errorf("invalid state to attach: %v", volume.State)
 	}
 
-	volume.TargetNodeID = request.NodeID
+	volume.NodeID = request.NodeID
+	volume.OwnerID = volume.NodeID
 	volume.DesireState = types.VolumeStateHealthy
 	if err := m.ds.UpdateVolume(volume); err != nil {
 		return err
 	}
-	logrus.Debugf("Attaching volume %v to %v", volume.Name, request.NodeID)
+	logrus.Debugf("Attaching volume %v to %v", volume.Name, volume.NodeID)
 	return nil
 }
 
@@ -158,10 +152,11 @@ func (m *VolumeManager) VolumeDetach(request *VolumeDetachRequest) (err error) {
 	}
 
 	volume.DesireState = types.VolumeStateDetached
+	volume.NodeID = ""
 	if err := m.ds.UpdateVolume(volume); err != nil {
 		return err
 	}
-	logrus.Debugf("Detaching volume %v from %v", volume.Name, volume.TargetNodeID)
+	logrus.Debugf("Detaching volume %v from %v", volume.Name, volume.NodeID)
 	return nil
 }
 
@@ -254,7 +249,6 @@ func (m *VolumeManager) VolumeRecurringUpdate(request *VolumeRecurringUpdateRequ
 
 func (m *VolumeManager) Shutdown() {
 	logrus.Debugf("Shutting down")
-	m.notifier.Stop()
 }
 
 func (m *VolumeManager) VolumeList() (map[string]*types.VolumeInfo, error) {
@@ -355,7 +349,7 @@ func (m *VolumeManager) VolumeCreateBySpec(name string) (err error) {
 		return nil
 	}
 
-	if volume.TargetNodeID == "" {
+	if volume.OwnerID == "" {
 		return fmt.Errorf("cannot create volume without target node ID: volume %v", volume.Name)
 	}
 	// Validate the size

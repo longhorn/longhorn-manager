@@ -108,7 +108,7 @@ func (m *VolumeManager) getManagedVolume(volumeName string, create bool) (*Manag
 	}
 
 	// Things may change when we hit here because the mutex lock above
-	if volume.TargetNodeID != m.currentNode.ID {
+	if volume.OwnerID != m.currentNode.ID {
 		return nil, fmt.Errorf("volume no longer belong to the current node")
 	}
 
@@ -162,7 +162,7 @@ func (m *VolumeManager) releaseVolume(volumeName string) {
 	}
 	delete(m.managedVolumes, volumeName)
 
-	if volume.TargetNodeID != m.currentNode.ID {
+	if volume.OwnerID != m.currentNode.ID {
 		// Yield
 		v, err := m.GetVolume(volumeName)
 		if err != nil {
@@ -172,7 +172,7 @@ func (m *VolumeManager) releaseVolume(volumeName string) {
 		if err := m.ds.UpdateVolume(&v.VolumeInfo); err != nil {
 			return
 		}
-		logrus.Infof("Yield volume %v to %v", v.Name, v.TargetNodeID)
+		logrus.Infof("Yield volume %v to %v", v.Name, v.OwnerID)
 		return
 	}
 	if volume.State == types.VolumeStateDeleted {

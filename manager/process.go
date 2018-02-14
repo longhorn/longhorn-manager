@@ -25,7 +25,7 @@ func (m *VolumeManager) startProcessing() {
 	}
 	if volumes != nil {
 		for name, volume := range volumes {
-			if volume.TargetNodeID == m.GetCurrentNodeID() {
+			if volume.OwnerID == m.GetCurrentNodeID() {
 				go m.notifyVolume(name)
 			}
 		}
@@ -60,7 +60,7 @@ func (m *VolumeManager) notifyVolume(volumeName string) (err error) {
 				logrus.Warnf("Cannot manage volume, volume %v has been deleted", volumeName)
 				return nil
 			}
-			if volume.TargetNodeID == currentNode.ID {
+			if volume.OwnerID == currentNode.ID {
 				if volume.NodeID == "" || volume.NodeID == currentNode.ID {
 					break
 				}
@@ -68,7 +68,7 @@ func (m *VolumeManager) notifyVolume(volumeName string) (err error) {
 					volume.NodeID, volumeName, currentNode.ID)
 			} else {
 				err = fmt.Errorf("Target node ID %v doesn't match with the current one %v",
-					volume.TargetNodeID, currentNode.ID)
+					volume.OwnerID, currentNode.ID)
 			}
 		}
 		time.Sleep(ConfirmationInterval)
@@ -113,9 +113,9 @@ func (v *ManagedVolume) process() {
 			logrus.Warnf("Failed to get volume: %v", err)
 			continue
 		}
-		if v.getTargetNodeID() != v.m.currentNode.ID {
+		if v.getOwnerID() != v.m.currentNode.ID {
 			logrus.Infof("Volume %v no longer belong to current node, releasing it: target node ID %v, currentNode ID %v ",
-				v.Name, v.getTargetNodeID(), v.m.currentNode.ID)
+				v.Name, v.getOwnerID(), v.m.currentNode.ID)
 			break
 		}
 
@@ -147,11 +147,11 @@ func (v *ManagedVolume) isDeleted() bool {
 	return v.State == types.VolumeStateDeleted
 }
 
-func (v *ManagedVolume) getTargetNodeID() string {
+func (v *ManagedVolume) getOwnerID() string {
 	v.mutex.RLock()
 	defer v.mutex.RUnlock()
 
-	return v.TargetNodeID
+	return v.OwnerID
 }
 
 func (v *ManagedVolume) RefreshState() (err error) {

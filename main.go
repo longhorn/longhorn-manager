@@ -69,10 +69,9 @@ func main() {
 
 func RunManager(c *cli.Context) error {
 	var (
-		orch     orchestrator.Orchestrator
-		ds       datastore.DataStore
-		notifier manager.Notifier
-		err      error
+		orch orchestrator.Orchestrator
+		ds   datastore.DataStore
+		err  error
 	)
 
 	if c.Bool("debug") {
@@ -108,11 +107,10 @@ func RunManager(c *cli.Context) error {
 		return errors.Wrap(err, "fail to create CRD store")
 	}
 	currentNodeID := orch.GetCurrentNode().ID
-	notifier = manager.NewTargetWatcher(currentNodeID)
 
 	engines := &engineapi.EngineCollection{}
 
-	m, err := manager.NewVolumeManager(ds, orch, engines, notifier, engineImage)
+	m, err := manager.NewVolumeManager(ds, orch, engines, engineImage)
 	if err != nil {
 		return err
 	}

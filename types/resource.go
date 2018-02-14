@@ -32,14 +32,13 @@ type VolumeSpec struct {
 	FromBackup          string         `json:"fromBackup"`
 	NumberOfReplicas    int            `json:"numberOfReplicas"`
 	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`
-	TargetNodeID        string         `json:"targetNodeID"`
+	NodeID              string         `json:"nodeID"`
 	RecurringJobs       []RecurringJob `json:"recurringJobs"`
 	DesireState         VolumeState    `json:"desireState"`
 }
 
 type VolumeStatus struct {
 	Created  string      `json:"created"`
-	NodeID   string      `json:"nodeID"`
 	State    VolumeState `json:"state"`
 	Endpoint string      `json:"endpoint"`
 }
