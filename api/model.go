@@ -18,7 +18,6 @@ type Volume struct {
 
 	Name                string `json:"name"`
 	Size                string `json:"size"`
-	BaseImage           string `json:"baseImage"`
 	FromBackup          string `json:"fromBackup"`
 	NumberOfReplicas    int    `json:"numberOfReplicas"`
 	StaleReplicaTimeout int    `json:"staleReplicaTimeout"`
@@ -323,7 +322,6 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		},
 		Name:             v.Name,
 		Size:             strconv.FormatInt(size, 10),
-		BaseImage:        v.BaseImage,
 		FromBackup:       v.FromBackup,
 		NumberOfReplicas: v.NumberOfReplicas,
 		State:            string(v.State),

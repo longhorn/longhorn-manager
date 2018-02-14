@@ -28,7 +28,6 @@ type VolumeInfo struct {
 type VolumeSpec struct {
 	OwnerID             string         `json:"ownerID"`
 	Size                string         `json:"size"`
-	BaseImage           string         `json:"baseImage"`
 	FromBackup          string         `json:"fromBackup"`
 	NumberOfReplicas    int            `json:"numberOfReplicas"`
 	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`

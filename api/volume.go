@@ -117,7 +117,6 @@ func generateVolumeCreateRequest(v *Volume) (*manager.VolumeCreateRequest, error
 	return &manager.VolumeCreateRequest{
 		Name:                v.Name,
 		Size:                strconv.FormatInt(util.RoundUpSize(size), 10),
-		BaseImage:           v.BaseImage,
 		FromBackup:          v.FromBackup,
 		NumberOfReplicas:    v.NumberOfReplicas,
 		StaleReplicaTimeout: v.StaleReplicaTimeout,

@@ -82,7 +82,6 @@ func (m *VolumeManager) VolumeCreate(request *VolumeCreateRequest) (err error) {
 		VolumeSpec: types.VolumeSpec{
 			OwnerID:             node.ID,
 			Size:                size,
-			BaseImage:           request.BaseImage,
 			FromBackup:          request.FromBackup,
 			NumberOfReplicas:    request.NumberOfReplicas,
 			StaleReplicaTimeout: request.StaleReplicaTimeout,
