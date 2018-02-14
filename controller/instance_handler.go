@@ -53,6 +53,12 @@ func (h *InstanceHandler) SyncInstanceState(podName string, spec *types.Instance
 			status.State = types.InstanceStateStopped
 			status.IP = ""
 		case corev1.PodRunning:
+			for _, st := range pod.Status.ContainerStatuses {
+				// wait until all containers passed readiness probe
+				if !st.Ready {
+					return nil
+				}
+			}
 			status.State = types.InstanceStateRunning
 			status.IP = pod.Status.PodIP
 			// pin down to this node ID for replica

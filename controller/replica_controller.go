@@ -12,6 +12,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	batchinformers "k8s.io/client-go/informers/batch/v1"
@@ -54,6 +55,15 @@ const (
 	// longhornReplicaKey is the key to identify which volume the replica
 	// belongs to, for scheduling purpose
 	longhornReplicaKey = "longhorn-volume-replica"
+
+	// Empty replica will response fast
+	replicaReadinessProbeInitialDelay = 3
+	// Otherwise we will need to wait for a restore
+	replicaReadinessProbePeriodSeconds = 10
+	// assuming the restore will be done at least this per second
+	replicaReadinessProbeMinimalRestoreRate = 10 * 1024 * 1024
+	// if replica won't start restoring, this will be the default
+	replicaReadinessProbeFailureThresholdDefault = 3
 )
 
 type ReplicaController struct {
@@ -342,6 +352,20 @@ func (rc *ReplicaController) getReplicaVolumeDirectory(replicaName string) strin
 	return longhornDirectory + "/replicas/" + replicaName
 }
 
+func (rc *ReplicaController) getReadinessProbeFailureThreshold(r *longhorn.Replica) int32 {
+	if r.Spec.RestoreFrom == "" {
+		// default value if
+		return replicaReadinessProbeFailureThresholdDefault
+	}
+	size, err := util.ConvertSize(r.Spec.VolumeSize)
+	if err != nil {
+		logrus.Errorf("BUG: Detect invalid size in replica spec: %+v", r)
+		return replicaReadinessProbeFailureThresholdDefault
+	}
+	// this volume needs 2e9 * 1e7 * 10 which is 200+ Petabytes to overflow
+	return int32(size / replicaReadinessProbeMinimalRestoreRate / replicaReadinessProbePeriodSeconds)
+}
+
 func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
@@ -389,6 +413,17 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 							Name:      "volume",
 							MountPath: "/volume",
 						},
+					},
+					ReadinessProbe: &v1.Probe{
+						Handler: v1.Handler{
+							HTTPGet: &v1.HTTPGetAction{
+								Path: "/v1",
+								Port: intstr.FromInt(9502),
+							},
+						},
+						InitialDelaySeconds: replicaReadinessProbeInitialDelay,
+						PeriodSeconds:       replicaReadinessProbePeriodSeconds,
+						FailureThreshold:    rc.getReadinessProbeFailureThreshold(r),
 					},
 				},
 			},

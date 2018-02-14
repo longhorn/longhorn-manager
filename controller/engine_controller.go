@@ -394,6 +394,17 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 							MountPath: "/host/proc",
 						},
 					},
+					ReadinessProbe: &v1.Probe{
+						Handler: v1.Handler{
+							Exec: &v1.ExecAction{
+								Command: []string{
+									"ls", "/dev/longhorn/" + e.Spec.VolumeName,
+								},
+							},
+						},
+						InitialDelaySeconds: 5,
+						PeriodSeconds:       5,
+					},
 				},
 			},
 			Volumes: []v1.Volume{
