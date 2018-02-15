@@ -205,6 +205,7 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 	if input.Name == "" {
 		return fmt.Errorf("empty snapshot name not allowed")
 	}
+	snapName := input.Name
 
 	volName := mux.Vars(req)["name"]
 	if volName == "" {
@@ -220,11 +221,12 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 		return fmt.Errorf("cannot backup: backupTarget not set")
 	}
 
-	if err := s.m.SnapshotBackup(volName, input.Name, backupTarget); err != nil {
+	//TODO move it out of API server path
+	engine, err := s.GetEngineClient(volName)
+	if err != nil {
 		return err
 	}
-
-	return nil
+	return engine.SnapshotBackup(snapName, backupTarget)
 }
 
 func (s *Server) SnapshotPurge(w http.ResponseWriter, req *http.Request) (err error) {
@@ -237,10 +239,12 @@ func (s *Server) SnapshotPurge(w http.ResponseWriter, req *http.Request) (err er
 		return fmt.Errorf("volume name required")
 	}
 
-	if err := s.m.SnapshotPurge(volName); err != nil {
+	//TODO move it out of API server path
+	engine, err := s.GetEngineClient(volName)
+	if err != nil {
 		return err
 	}
-	return nil
+	return engine.SnapshotPurge()
 }
 
 func (s *Server) GetEngineClient(volumeName string) (client engineapi.EngineClient, err error) {

@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/controller"
 
@@ -24,6 +25,8 @@ import (
 
 const (
 	longhornVolumeKey = "longhornVolume"
+	// NameMaximumLength restricted the length due to Kubernetes name limitation
+	NameMaximumLength = 32
 )
 
 type KDataStore struct {
@@ -154,6 +157,14 @@ func checkVolume(v *longhorn.Volume) error {
 	}
 	if v.Name == "" || size == 0 || v.Spec.NumberOfReplicas == 0 {
 		return fmt.Errorf("BUG: missing required field %+v", v)
+	}
+	errs := validation.IsDNS1123Label(v.Name)
+	if len(errs) != 0 {
+		return fmt.Errorf("Invalid volume name: %+v", errs)
+	}
+	if len(v.Name) > NameMaximumLength {
+		return fmt.Errorf("Volume name is too long %v, must be less than %v characters",
+			v.Name, NameMaximumLength)
 	}
 	return nil
 }
