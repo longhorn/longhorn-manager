@@ -23,17 +23,17 @@ func (s *Server) VolumeList(rw http.ResponseWriter, req *http.Request) (err erro
 
 	resp := &client.GenericCollection{}
 
-	volumes, err := s.m.VolumeList()
+	volumes, err := s.ds.ListVolumes()
 	if err != nil {
 		return err
 	}
 
 	for _, v := range volumes {
-		controller, err := s.m.VolumeControllerInfo(v.Name)
+		controller, err := s.ds.GetVolumeEngine(v.Name)
 		if err != nil {
 			return err
 		}
-		replicas, err := s.m.VolumeReplicaList(v.Name)
+		replicas, err := s.ds.GetVolumeReplicas(v.Name)
 		if err != nil {
 			return err
 		}
@@ -56,7 +56,7 @@ func (s *Server) VolumeGet(rw http.ResponseWriter, req *http.Request) error {
 func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, id string) error {
 	apiContext := api.GetApiContext(req)
 
-	v, err := s.m.VolumeInfo(id)
+	v, err := s.ds.GetVolume(id)
 	if err != nil {
 		return errors.Wrap(err, "unable to get volume")
 	}
@@ -65,11 +65,11 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 		rw.WriteHeader(http.StatusNotFound)
 		return nil
 	}
-	controller, err := s.m.VolumeControllerInfo(id)
+	controller, err := s.ds.GetVolumeEngine(id)
 	if err != nil {
 		return err
 	}
-	replicas, err := s.m.VolumeReplicaList(id)
+	replicas, err := s.ds.GetVolumeReplicas(id)
 	if err != nil {
 		return err
 	}
@@ -100,9 +100,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 func (s *Server) VolumeDelete(rw http.ResponseWriter, req *http.Request) error {
 	id := mux.Vars(req)["name"]
 
-	if err := s.m.VolumeDelete(&manager.VolumeDeleteRequest{
-		Name: id,
-	}); err != nil {
+	if err := s.ds.DeleteVolume(id); err != nil {
 		return errors.Wrap(err, "unable to delete volume")
 	}
 
@@ -210,7 +208,7 @@ func (s *Server) ReplicaRemove(rw http.ResponseWriter, req *http.Request) error 
 
 	id := mux.Vars(req)["name"]
 
-	if err := s.m.ReplicaRemove(id, input.Name); err != nil {
+	if err := s.ds.DeleteReplica(input.Name); err != nil {
 		return errors.Wrap(err, "unable to remove replica")
 	}
 

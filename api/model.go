@@ -7,10 +7,13 @@ import (
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
+
+	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
 
 type Volume struct {
@@ -269,7 +272,7 @@ func toSettingCollection(settings *types.SettingsInfo) *client.GenericCollection
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }
 
-func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[string]*types.ReplicaInfo, apiContext *api.ApiContext) *Volume {
+func toVolumeResource(v *longhorn.Volume, vc *longhorn.Controller, vrs map[string]*longhorn.Replica, apiContext *api.ApiContext) *Volume {
 	replicas := []Replica{}
 	for _, r := range vrs {
 		/*
@@ -281,12 +284,12 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		replicas = append(replicas, Replica{
 			Instance: Instance{
 				Name:    r.Name,
-				Running: r.Running(),
-				Address: r.IP,
-				NodeID:  r.NodeID,
+				Running: r.Status.Running(),
+				Address: r.Status.IP,
+				NodeID:  r.Spec.NodeID,
 			},
 			//Mode:     mode,
-			FailedAt: r.FailedAt,
+			FailedAt: r.Spec.FailedAt,
 		})
 	}
 
@@ -294,15 +297,15 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 	if vc != nil {
 		controller = &Controller{Instance{
 			Name:    vc.Name,
-			Running: vc.Running(),
-			NodeID:  vc.NodeID,
-			Address: vc.IP,
+			Running: vc.Status.Running(),
+			NodeID:  vc.Spec.NodeID,
+			Address: vc.Status.IP,
 		}}
 	}
 
-	size, err := util.ConvertSize(v.Size)
+	size, err := util.ConvertSize(v.Spec.Size)
 	if err != nil {
-		logrus.Error("BUG: invalid size %v for volume %v", v.Size, v.Name)
+		logrus.Error("BUG: invalid size %v for volume %v", v.Spec.Size, v.Name)
 	}
 
 	r := &Volume{
@@ -314,14 +317,14 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		},
 		Name:             v.Name,
 		Size:             strconv.FormatInt(size, 10),
-		FromBackup:       v.FromBackup,
-		NumberOfReplicas: v.NumberOfReplicas,
-		State:            string(v.State),
+		FromBackup:       v.Spec.FromBackup,
+		NumberOfReplicas: v.Spec.NumberOfReplicas,
+		State:            string(v.Status.State),
 		//EngineImage:         v.EngineImage,
-		RecurringJobs:       v.RecurringJobs,
-		StaleReplicaTimeout: v.StaleReplicaTimeout,
-		Endpoint:            v.Endpoint,
-		Created:             v.Created,
+		RecurringJobs:       v.Spec.RecurringJobs,
+		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
+		Endpoint:            v.Status.Endpoint,
+		Created:             v.ObjectMeta.CreationTimestamp.String(),
 
 		Controller: controller,
 		Replicas:   replicas,
@@ -329,7 +332,7 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 
 	actions := map[string]struct{}{}
 
-	switch v.State {
+	switch v.Status.State {
 	case types.VolumeStateDetached:
 		actions["attach"] = struct{}{}
 		actions["recurringUpdate"] = struct{}{}
@@ -395,10 +398,10 @@ func toSnapshotCollection(ss map[string]*engineapi.Snapshot) *client.GenericColl
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshot"}}
 }
 
-func toHostCollection(hosts map[string]*types.NodeInfo) *client.GenericCollection {
+func toHostCollection(hosts map[string]*longhorn.Node) *client.GenericCollection {
 	data := []interface{}{}
 	for _, v := range hosts {
-		data = append(data, toHostResource(v))
+		data = append(data, toHostResource(&v.NodeInfo))
 	}
 	return &client.GenericCollection{Data: data}
 }
@@ -471,12 +474,14 @@ func toBackupCollection(bs []*engineapi.Backup) *client.GenericCollection {
 type Server struct {
 	m   *manager.VolumeManager
 	fwd *Fwd
+	ds  *datastore.KDataStore
 }
 
-func NewServer(m *manager.VolumeManager) *Server {
+func NewServer(m *manager.VolumeManager, ds *datastore.KDataStore) *Server {
 	fwd := NewFwd(m)
 	return &Server{
 		m:   m,
 		fwd: fwd,
+		ds:  ds,
 	}
 }

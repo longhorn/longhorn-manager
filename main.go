@@ -115,14 +115,15 @@ func RunManager(c *cli.Context) error {
 		return err
 	}
 
-	router := http.Handler(api.NewRouter(api.NewServer(m)))
+	kds, err := controller.StartControllers(currentNodeID, engineImage)
+	if err != nil {
+		return err
+	}
+
+	router := http.Handler(api.NewRouter(api.NewServer(m, kds)))
 
 	listen := m.GetCurrentNode().IP + ":" + strconv.Itoa(types.DefaultAPIPort)
 	logrus.Infof("Listening on %s", listen)
-
-	if err := controller.StartControllers(currentNodeID, engineImage); err != nil {
-		return err
-	}
 
 	return http.ListenAndServe(listen, router)
 }

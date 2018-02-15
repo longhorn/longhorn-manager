@@ -26,7 +26,7 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
-func StartControllers(controllerID, engineImage string) error {
+func StartControllers(controllerID, engineImage string) (*datastore.KDataStore, error) {
 	namespace := os.Getenv(k8s.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, " +
@@ -36,17 +36,17 @@ func StartControllers(controllerID, engineImage string) error {
 
 	config, err := k8s.GetClientConfig("")
 	if err != nil {
-		return errors.Wrapf(err, "unable to get client config")
+		return nil, errors.Wrapf(err, "unable to get client config")
 	}
 
 	kubeClient, err := clientset.NewForConfig(config)
 	if err != nil {
-		return errors.Wrapf(err, "unable to get k8s client")
+		return nil, errors.Wrapf(err, "unable to get k8s client")
 	}
 
 	lhClient, err := lhclientset.NewForConfig(config)
 	if err != nil {
-		return errors.Wrapf(err, "unable to get clientset")
+		return nil, errors.Wrapf(err, "unable to get clientset")
 	}
 
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
@@ -71,11 +71,11 @@ func StartControllers(controllerID, engineImage string) error {
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
 	if !ds.Sync(stopCh) {
-		return fmt.Errorf("datastore cache sync up failed")
+		return nil, fmt.Errorf("datastore cache sync up failed")
 	}
 	go rc.Run(Workers, stopCh)
 	go ec.Run(Workers, stopCh)
 	go vc.Run(Workers, stopCh)
 
-	return nil
+	return ds, nil
 }

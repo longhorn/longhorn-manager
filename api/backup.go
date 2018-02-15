@@ -15,7 +15,7 @@ import (
 func (s *Server) BackupVolumeList(w http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 
-	settings, err := s.m.SettingsGet()
+	settings, err := s.ds.GetSetting()
 	if err != nil || settings == nil {
 		return errors.New("cannot backup: unable to read settings")
 	}
@@ -39,7 +39,7 @@ func (s *Server) BackupVolumeGet(w http.ResponseWriter, req *http.Request) error
 
 	volName := mux.Vars(req)["volName"]
 
-	settings, err := s.m.SettingsGet()
+	settings, err := s.ds.GetSetting()
 	if err != nil || settings == nil {
 		return errors.New("cannot backup: unable to read settings")
 	}
@@ -61,7 +61,7 @@ func (s *Server) BackupVolumeGet(w http.ResponseWriter, req *http.Request) error
 func (s *Server) BackupList(w http.ResponseWriter, req *http.Request) error {
 	volName := mux.Vars(req)["volName"]
 
-	settings, err := s.m.SettingsGet()
+	settings, err := s.ds.GetSetting()
 	if err != nil || settings == nil {
 		return errors.New("cannot backup: unable to read settings")
 	}
@@ -97,7 +97,7 @@ func (s *Server) BackupGet(w http.ResponseWriter, req *http.Request) error {
 	}
 	volName := mux.Vars(req)["volName"]
 
-	settings, err := s.m.SettingsGet()
+	settings, err := s.ds.GetSetting()
 	if err != nil || settings == nil {
 		return errors.New("cannot backup: unable to read settings")
 	}
@@ -134,7 +134,7 @@ func (s *Server) BackupDelete(w http.ResponseWriter, req *http.Request) error {
 
 	volName := mux.Vars(req)["volName"]
 
-	settings, err := s.m.SettingsGet()
+	settings, err := s.ds.GetSetting()
 	if err != nil || settings == nil {
 		return errors.New("cannot backup: unable to read settings")
 	}
