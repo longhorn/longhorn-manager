@@ -52,7 +52,7 @@ type VolumeController struct {
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
-	ds *datastore.KDataStore
+	ds *datastore.DataStore
 
 	vStoreSynced cache.InformerSynced
 	eStoreSynced cache.InformerSynced
@@ -70,7 +70,7 @@ type VolumeRecurringJob struct {
 }
 
 func NewVolumeController(
-	ds *datastore.KDataStore,
+	ds *datastore.DataStore,
 	volumeInformer lhinformers.VolumeInformer,
 	engineInformer lhinformers.ControllerInformer,
 	replicaInformer lhinformers.ReplicaInformer,

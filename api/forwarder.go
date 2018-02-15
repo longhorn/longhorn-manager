@@ -16,7 +16,7 @@ import (
 
 type OwnerIDFunc func(req *http.Request) (string, error)
 
-func OwnerIDFromVolume(ds *datastore.KDataStore) func(req *http.Request) (string, error) {
+func OwnerIDFromVolume(ds *datastore.DataStore) func(req *http.Request) (string, error) {
 	return func(req *http.Request) (string, error) {
 		name := mux.Vars(req)["name"]
 		volume, err := ds.GetVolume(name)

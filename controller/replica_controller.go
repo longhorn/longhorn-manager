@@ -72,7 +72,7 @@ type ReplicaController struct {
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
-	ds *datastore.KDataStore
+	ds *datastore.DataStore
 
 	rStoreSynced cache.InformerSynced
 	pStoreSynced cache.InformerSynced
@@ -84,7 +84,7 @@ type ReplicaController struct {
 }
 
 func NewReplicaController(
-	ds *datastore.KDataStore,
+	ds *datastore.DataStore,
 	replicaInformer lhinformers.ReplicaInformer,
 	podInformer coreinformers.PodInformer,
 	jobInformer batchinformers.JobInformer,

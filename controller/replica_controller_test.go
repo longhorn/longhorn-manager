@@ -123,7 +123,7 @@ func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformer
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
 
-	ds := datastore.NewKDataStore(volumeInformer, engineInformer, replicaInformer, lhClient, podInformer, kubeClient, TestNamespace)
+	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, lhClient, podInformer, kubeClient, TestNamespace)
 
 	rc := NewReplicaController(ds, replicaInformer, podInformer, jobInformer, kubeClient, TestNamespace, controllerID)
 

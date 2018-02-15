@@ -80,12 +80,12 @@ func RunManager(c *cli.Context) error {
 		return fmt.Errorf("BUG: fail to detect the node name")
 	}
 
-	kds, err := controller.StartControllers(currentNodeID, engineImage)
+	ds, err := controller.StartControllers(currentNodeID, engineImage)
 	if err != nil {
 		return err
 	}
 
-	server := api.NewServer(currentNodeID, kds)
+	server := api.NewServer(currentNodeID, ds)
 	router := http.Handler(api.NewRouter(server))
 
 	listen, err := server.GetCurrentIP()

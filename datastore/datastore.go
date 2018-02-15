@@ -1,114 +1,61 @@
 package datastore
 
 import (
-	"fmt"
-	"reflect"
+	coreinformers "k8s.io/client-go/informers/core/v1"
+	clientset "k8s.io/client-go/kubernetes"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/kubernetes/pkg/controller"
 
-	"github.com/rancher/longhorn-manager/types"
-	"github.com/rancher/longhorn-manager/util"
+	lhclientset "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
+	lhinformers "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
+	lhlisters "github.com/rancher/longhorn-manager/k8s/pkg/client/listers/longhorn/v1alpha1"
 )
 
-type DataStore interface {
-	CreateNode(node *types.NodeInfo) error
-	UpdateNode(node *types.NodeInfo) error
-	DeleteNode(nodeID string) error
-	GetNode(id string) (*types.NodeInfo, error)
-	ListNodes() (map[string]*types.NodeInfo, error)
+type DataStore struct {
+	namespace string
 
-	CreateSettings(settings *types.SettingsInfo) error
-	UpdateSettings(settings *types.SettingsInfo) error
-	GetSettings() (*types.SettingsInfo, error)
+	lhClient     lhclientset.Interface
+	vLister      lhlisters.VolumeLister
+	vStoreSynced cache.InformerSynced
+	eLister      lhlisters.ControllerLister
+	eStoreSynced cache.InformerSynced
+	rLister      lhlisters.ReplicaLister
+	rStoreSynced cache.InformerSynced
 
-	CreateVolume(volume *types.VolumeInfo) error
-	UpdateVolume(volume *types.VolumeInfo) error
-	GetVolume(id string) (*types.VolumeInfo, error)
-	DeleteVolume(id string) error
-	ListVolumes() (map[string]*types.VolumeInfo, error)
-
-	CreateVolumeController(controller *types.ControllerInfo) error
-	UpdateVolumeController(controller *types.ControllerInfo) error
-	GetVolumeController(volumeName string) (*types.ControllerInfo, error)
-	DeleteVolumeController(volumeName string) error
-
-	CreateVolumeReplica(replica *types.ReplicaInfo) error
-	UpdateVolumeReplica(replica *types.ReplicaInfo) error
-	GetVolumeReplica(volumeName, replicaName string) (*types.ReplicaInfo, error)
-	ListVolumeReplicas(volumeName string) (map[string]*types.ReplicaInfo, error)
-	DeleteVolumeReplica(volumeName, replicaName string) error
+	kubeClient   clientset.Interface
+	pLister      corelisters.PodLister
+	pStoreSynced cache.InformerSynced
 }
 
-func getFieldString(obj interface{}, field string) (string, error) {
-	if reflect.TypeOf(obj).Kind() != reflect.Ptr {
-		return "", fmt.Errorf("BUG: Non-pointer was passed in")
+func NewDataStore(
+	volumeInformer lhinformers.VolumeInformer,
+	engineInformer lhinformers.ControllerInformer,
+	replicaInformer lhinformers.ReplicaInformer,
+	lhClient lhclientset.Interface,
+
+	podInformer coreinformers.PodInformer,
+	kubeClient clientset.Interface,
+	namespace string) *DataStore {
+
+	return &DataStore{
+		namespace: namespace,
+
+		lhClient:     lhClient,
+		vLister:      volumeInformer.Lister(),
+		vStoreSynced: volumeInformer.Informer().HasSynced,
+		eLister:      engineInformer.Lister(),
+		eStoreSynced: engineInformer.Informer().HasSynced,
+		rLister:      replicaInformer.Lister(),
+		rStoreSynced: replicaInformer.Informer().HasSynced,
+
+		kubeClient:   kubeClient,
+		pLister:      podInformer.Lister(),
+		pStoreSynced: podInformer.Informer().HasSynced,
 	}
-	t := reflect.TypeOf(obj).Elem()
-	if _, found := t.FieldByName(field); !found {
-		return "", fmt.Errorf("BUG: %v doesn't have required field %v", t, field)
-	}
-	return reflect.ValueOf(obj).Elem().FieldByName(field).String(), nil
 }
 
-func setFieldString(obj interface{}, field string, value string) error {
-	if reflect.TypeOf(obj).Kind() != reflect.Ptr {
-		return fmt.Errorf("BUG: Non-pointer was passed in")
-	}
-	t := reflect.TypeOf(obj).Elem()
-	if _, found := t.FieldByName(field); !found {
-		return fmt.Errorf("BUG: %v doesn't have required field %v", t, field)
-	}
-	v := reflect.ValueOf(obj).Elem().FieldByName(field)
-	if !v.CanSet() {
-		return fmt.Errorf("BUG: %v doesn't have setable field %v", t, field)
-	}
-	v.SetString(value)
-	return nil
-}
-
-func UpdateResourceVersion(dst, src interface{}) error {
-	srcVersion, err := getFieldString(src, "ResourceVersion")
-	if err != nil {
-		return err
-	}
-	return setFieldString(dst, "ResourceVersion", srcVersion)
-}
-
-func CheckNode(node *types.NodeInfo) error {
-	if node.ID == "" || node.Name == "" || node.IP == "" {
-		return fmt.Errorf("BUG: missing required field %+v", node)
-	}
-	return nil
-}
-
-func CheckVolume(volume *types.VolumeInfo) error {
-	size, err := util.ConvertSize(volume.Size)
-	if err != nil {
-		return err
-	}
-	if volume.Name == "" || size == 0 || volume.NumberOfReplicas == 0 {
-		return fmt.Errorf("BUG: missing required field %+v", volume)
-	}
-	return nil
-}
-
-func CheckVolumeController(instance *types.ControllerInfo) error {
-	if instance.Name == "" || instance.VolumeName == "" {
-		return fmt.Errorf("BUG: missing required field %+v", instance)
-	}
-	if instance.Running() && instance.IP == "" {
-		return fmt.Errorf("BUG: instance is running but lack of address %+v", instance)
-	}
-	return nil
-}
-
-func CheckVolumeReplica(instance *types.ReplicaInfo) error {
-	if instance.Name == "" || instance.VolumeName == "" {
-		return fmt.Errorf("BUG: missing required field %+v", instance)
-	}
-	if instance.Running() != (instance.IP != "") {
-		return fmt.Errorf("BUG: instance state and IP wasn't in sync %+v", instance)
-	}
-	if (instance.RestoreFrom != "") != (instance.RestoreName != "") {
-		return fmt.Errorf("BUG: replica RestoreFrom and RestoreName value wasn't in sync %+v", instance)
-	}
-	return nil
+func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
+	return !controller.WaitForCacheSync("longhorn datastore", stopCh,
+		s.vStoreSynced, s.eStoreSynced, s.rStoreSynced, s.pStoreSynced)
 }

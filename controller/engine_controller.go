@@ -52,7 +52,7 @@ type EngineController struct {
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
-	ds *datastore.KDataStore
+	ds *datastore.DataStore
 
 	eStoreSynced cache.InformerSynced
 	pStoreSynced cache.InformerSynced
@@ -68,7 +68,7 @@ type EngineController struct {
 
 type EngineMonitor struct {
 	namespace string
-	ds        *datastore.KDataStore
+	ds        *datastore.DataStore
 
 	Name         string
 	engineClient engineapi.EngineClient
@@ -76,7 +76,7 @@ type EngineMonitor struct {
 }
 
 func NewEngineController(
-	ds *datastore.KDataStore,
+	ds *datastore.DataStore,
 	engineInformer lhinformers.ControllerInformer,
 	podInformer coreinformers.PodInformer,
 	kubeClient clientset.Interface,

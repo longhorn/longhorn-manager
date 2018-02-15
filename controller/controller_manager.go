@@ -26,7 +26,7 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
-func StartControllers(controllerID, engineImage string) (*datastore.KDataStore, error) {
+func StartControllers(controllerID, engineImage string) (*datastore.DataStore, error) {
 	namespace := os.Getenv(k8s.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, " +
@@ -58,7 +58,7 @@ func StartControllers(controllerID, engineImage string) (*datastore.KDataStore, 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
 
-	ds := datastore.NewKDataStore(volumeInformer, engineInformer, replicaInformer, lhClient,
+	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, lhClient,
 		podInformer, kubeClient, namespace)
 	rc := NewReplicaController(ds, replicaInformer, podInformer, jobInformer, kubeClient,
 		namespace, controllerID)

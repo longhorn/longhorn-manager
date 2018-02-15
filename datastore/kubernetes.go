@@ -13,7 +13,7 @@ var (
 	longhornSystemManager = "manager"
 )
 
-func (s *KDataStore) getManagerLabel() map[string]string {
+func (s *DataStore) getManagerLabel() map[string]string {
 	return map[string]string{
 		//TODO standardize key
 		//longhornSystemKey: longhornSystemManager,
@@ -21,13 +21,13 @@ func (s *KDataStore) getManagerLabel() map[string]string {
 	}
 }
 
-func (s *KDataStore) getManagerSelector() (labels.Selector, error) {
+func (s *DataStore) getManagerSelector() (labels.Selector, error) {
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: s.getManagerLabel(),
 	})
 }
 
-func (s *KDataStore) GetManagerNodeIPMap() (map[string]string, error) {
+func (s *DataStore) GetManagerNodeIPMap() (map[string]string, error) {
 	selector, err := s.getManagerSelector()
 	if err != nil {
 		return nil, err
