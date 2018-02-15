@@ -9,7 +9,6 @@ import (
 
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
-	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 
@@ -472,16 +471,14 @@ func toBackupCollection(bs []*engineapi.Backup) *client.GenericCollection {
 }
 
 type Server struct {
-	m   *manager.VolumeManager
 	fwd *Fwd
 	ds  *datastore.KDataStore
 }
 
-func NewServer(m *manager.VolumeManager, ds *datastore.KDataStore) *Server {
-	fwd := NewFwd(m)
-	return &Server{
-		m:   m,
-		fwd: fwd,
-		ds:  ds,
+func NewServer(ds *datastore.KDataStore) *Server {
+	s := &Server{
+		ds: ds,
 	}
+	s.fwd = NewFwd(s)
+	return s
 }

@@ -120,10 +120,10 @@ func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformer
 	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Controllers()
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
 
-	ds := datastore.NewKDataStore(volumeInformer, engineInformer, replicaInformer, lhClient, TestNamespace)
-
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
+
+	ds := datastore.NewKDataStore(volumeInformer, engineInformer, replicaInformer, lhClient, podInformer, kubeClient, TestNamespace)
 
 	rc := NewReplicaController(ds, replicaInformer, podInformer, jobInformer, kubeClient, TestNamespace, controllerID)
 

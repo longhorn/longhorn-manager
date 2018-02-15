@@ -11,6 +11,9 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
+	coreinformers "k8s.io/client-go/informers/core/v1"
+	clientset "k8s.io/client-go/kubernetes"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/controller"
 
@@ -30,17 +33,19 @@ const (
 )
 
 type KDataStore struct {
-	clientset lhclientset.Interface
 	namespace string
 
+	lhClient     lhclientset.Interface
 	vLister      lhlisters.VolumeLister
 	vStoreSynced cache.InformerSynced
-
 	eLister      lhlisters.ControllerLister
 	eStoreSynced cache.InformerSynced
-
 	rLister      lhlisters.ReplicaLister
 	rStoreSynced cache.InformerSynced
+
+	kubeClient   clientset.Interface
+	pLister      corelisters.PodLister
+	pStoreSynced cache.InformerSynced
 }
 
 func NewKDataStore(
@@ -48,23 +53,31 @@ func NewKDataStore(
 	engineInformer lhinformers.ControllerInformer,
 	replicaInformer lhinformers.ReplicaInformer,
 	lhClient lhclientset.Interface,
+
+	podInformer coreinformers.PodInformer,
+	kubeClient clientset.Interface,
 	namespace string) *KDataStore {
 
 	return &KDataStore{
 		namespace: namespace,
-		clientset: lhClient,
 
+		lhClient:     lhClient,
 		vLister:      volumeInformer.Lister(),
 		vStoreSynced: volumeInformer.Informer().HasSynced,
 		eLister:      engineInformer.Lister(),
 		eStoreSynced: engineInformer.Informer().HasSynced,
 		rLister:      replicaInformer.Lister(),
 		rStoreSynced: replicaInformer.Informer().HasSynced,
+
+		kubeClient:   kubeClient,
+		pLister:      podInformer.Lister(),
+		pStoreSynced: podInformer.Informer().HasSynced,
 	}
 }
 
 func (s *KDataStore) Sync(stopCh <-chan struct{}) bool {
-	return !controller.WaitForCacheSync("longhorn datastore", stopCh, s.vStoreSynced, s.eStoreSynced, s.rStoreSynced)
+	return !controller.WaitForCacheSync("longhorn datastore", stopCh,
+		s.vStoreSynced, s.eStoreSynced, s.rStoreSynced, s.pStoreSynced)
 }
 
 func checkNode(node *longhorn.Node) error {
@@ -79,7 +92,7 @@ func (s *KDataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 		return nil, errors.Wrap(err, "failed checking node")
 	}
 
-	return s.clientset.LonghornV1alpha1().Nodes(s.namespace).Create(node)
+	return s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Create(node)
 }
 
 func (s *KDataStore) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) {
@@ -87,15 +100,15 @@ func (s *KDataStore) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) {
 		return nil, errors.Wrap(err, "failed checking node")
 	}
 
-	return s.clientset.LonghornV1alpha1().Nodes(s.namespace).Update(node)
+	return s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Update(node)
 }
 
 func (s *KDataStore) DeleteNode(nodeName string) error {
-	return s.clientset.LonghornV1alpha1().Nodes(s.namespace).Delete(nodeName, &metav1.DeleteOptions{})
+	return s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Delete(nodeName, &metav1.DeleteOptions{})
 }
 
 func (s *KDataStore) GetNode(key string) (*longhorn.Node, error) {
-	result, err := s.clientset.LonghornV1alpha1().Nodes(s.namespace).Get(key,
+	result, err := s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Get(key,
 		metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -107,7 +120,7 @@ func (s *KDataStore) GetNode(key string) (*longhorn.Node, error) {
 }
 
 func (s *KDataStore) ListNodes() (map[string]*longhorn.Node, error) {
-	result, err := s.clientset.LonghornV1alpha1().Nodes(s.namespace).List(metav1.ListOptions{})
+	result, err := s.lhClient.LonghornV1alpha1().Nodes(s.namespace).List(metav1.ListOptions{})
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to list resource")
 	}
@@ -124,16 +137,16 @@ func (s *KDataStore) ListNodes() (map[string]*longhorn.Node, error) {
 
 func (s *KDataStore) CreateSetting(setting *longhorn.Setting) (*longhorn.Setting, error) {
 	setting.Name = SettingName
-	return s.clientset.LonghornV1alpha1().Settings(s.namespace).Create(setting)
+	return s.lhClient.LonghornV1alpha1().Settings(s.namespace).Create(setting)
 }
 
 func (s *KDataStore) UpdateSetting(setting *longhorn.Setting) (*longhorn.Setting, error) {
 	setting.Name = SettingName
-	return s.clientset.LonghornV1alpha1().Settings(s.namespace).Update(setting)
+	return s.lhClient.LonghornV1alpha1().Settings(s.namespace).Update(setting)
 }
 
 func (s *KDataStore) GetSetting() (*longhorn.Setting, error) {
-	result, err := s.clientset.LonghornV1alpha1().Settings(s.namespace).Get(SettingName,
+	result, err := s.lhClient.LonghornV1alpha1().Settings(s.namespace).Get(SettingName,
 		metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -203,7 +216,7 @@ func (s *KDataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) 
 	if err := fixupMetadata(v.Name, v); err != nil {
 		return nil, err
 	}
-	return s.clientset.LonghornV1alpha1().Volumes(s.namespace).Create(v)
+	return s.lhClient.LonghornV1alpha1().Volumes(s.namespace).Create(v)
 }
 
 func (s *KDataStore) UpdateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
@@ -213,12 +226,12 @@ func (s *KDataStore) UpdateVolume(v *longhorn.Volume) (*longhorn.Volume, error) 
 	if err := fixupMetadata(v.Name, v); err != nil {
 		return nil, err
 	}
-	return s.clientset.LonghornV1alpha1().Volumes(s.namespace).Update(v)
+	return s.lhClient.LonghornV1alpha1().Volumes(s.namespace).Update(v)
 }
 
 // DeleteVolume won't result in immediately deletion since finalizer was set by default
 func (s *KDataStore) DeleteVolume(name string) error {
-	return s.clientset.LonghornV1alpha1().Volumes(s.namespace).Delete(name, &metav1.DeleteOptions{})
+	return s.lhClient.LonghornV1alpha1().Volumes(s.namespace).Delete(name, &metav1.DeleteOptions{})
 }
 
 // RemoveFinalizerForVolume will result in immediately deletion if DeletionTimestamp was set
@@ -231,7 +244,7 @@ func (s *KDataStore) RemoveFinalizerForVolume(name string) error {
 	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
 		return err
 	}
-	obj, err = s.clientset.LonghornV1alpha1().Volumes(s.namespace).Update(obj)
+	obj, err = s.lhClient.LonghornV1alpha1().Volumes(s.namespace).Update(obj)
 	if err != nil {
 		return errors.Wrapf(err, "unable to remove finalizer for volume %v", name)
 	}
@@ -282,7 +295,7 @@ func (s *KDataStore) CreateEngine(e *longhorn.Controller) (*longhorn.Controller,
 	if err := fixupMetadata(e.Spec.VolumeName, e); err != nil {
 		return nil, err
 	}
-	return s.clientset.LonghornV1alpha1().Controllers(s.namespace).Create(e)
+	return s.lhClient.LonghornV1alpha1().Controllers(s.namespace).Create(e)
 }
 
 func (s *KDataStore) UpdateEngine(e *longhorn.Controller) (*longhorn.Controller, error) {
@@ -292,12 +305,12 @@ func (s *KDataStore) UpdateEngine(e *longhorn.Controller) (*longhorn.Controller,
 	if err := fixupMetadata(e.Spec.VolumeName, e); err != nil {
 		return nil, err
 	}
-	return s.clientset.LonghornV1alpha1().Controllers(s.namespace).Update(e)
+	return s.lhClient.LonghornV1alpha1().Controllers(s.namespace).Update(e)
 }
 
 // DeleteEngine won't result in immediately deletion since finalizer was set by default
 func (s *KDataStore) DeleteEngine(name string) error {
-	return s.clientset.LonghornV1alpha1().Controllers(s.namespace).Delete(name, &metav1.DeleteOptions{})
+	return s.lhClient.LonghornV1alpha1().Controllers(s.namespace).Delete(name, &metav1.DeleteOptions{})
 }
 
 // RemoveFinalizerForEngine will result in immediately deletion if DeletionTimestamp was set
@@ -310,7 +323,7 @@ func (s *KDataStore) RemoveFinalizerForEngine(name string) error {
 	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
 		return err
 	}
-	obj, err = s.clientset.LonghornV1alpha1().Controllers(s.namespace).Update(obj)
+	obj, err = s.lhClient.LonghornV1alpha1().Controllers(s.namespace).Update(obj)
 	if err != nil {
 		return errors.Wrapf(err, "unable to remove finalizer for engine %v", name)
 	}
@@ -367,7 +380,7 @@ func (s *KDataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, erro
 	if err := fixupMetadata(r.Spec.VolumeName, r); err != nil {
 		return nil, err
 	}
-	return s.clientset.LonghornV1alpha1().Replicas(s.namespace).Create(r)
+	return s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Create(r)
 }
 
 func (s *KDataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error) {
@@ -377,12 +390,12 @@ func (s *KDataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, erro
 	if err := fixupMetadata(r.Spec.VolumeName, r); err != nil {
 		return nil, err
 	}
-	return s.clientset.LonghornV1alpha1().Replicas(s.namespace).Update(r)
+	return s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Update(r)
 }
 
 // DeleteReplica won't result in immediately deletion since finalizer was set by default
 func (s *KDataStore) DeleteReplica(name string) error {
-	return s.clientset.LonghornV1alpha1().Replicas(s.namespace).Delete(name, &metav1.DeleteOptions{})
+	return s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Delete(name, &metav1.DeleteOptions{})
 }
 
 // RemoveFinalizerForReplica will result in immediately deletion if DeletionTimestamp was set
@@ -395,7 +408,7 @@ func (s *KDataStore) RemoveFinalizerForReplica(name string) error {
 	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
 		return err
 	}
-	obj, err = s.clientset.LonghornV1alpha1().Replicas(s.namespace).Update(obj)
+	obj, err = s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Update(obj)
 	if err != nil {
 		return errors.Wrapf(err, "unable to remove finalizer for replica %v", name)
 	}

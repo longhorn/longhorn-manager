@@ -226,7 +226,7 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 	if err != nil {
 		return err
 	}
-	return engine.SnapshotBackup(snapName, backupTarget)
+	return engine.SnapshotBackup(snapName, backupTarget, nil)
 }
 
 func (s *Server) SnapshotPurge(w http.ResponseWriter, req *http.Request) (err error) {

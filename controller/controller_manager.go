@@ -58,7 +58,8 @@ func StartControllers(controllerID, engineImage string) (*datastore.KDataStore, 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
 
-	ds := datastore.NewKDataStore(volumeInformer, engineInformer, replicaInformer, lhClient, namespace)
+	ds := datastore.NewKDataStore(volumeInformer, engineInformer, replicaInformer, lhClient,
+		podInformer, kubeClient, namespace)
 	rc := NewReplicaController(ds, replicaInformer, podInformer, jobInformer, kubeClient,
 		namespace, controllerID)
 	ec := NewEngineController(ds, engineInformer, podInformer, kubeClient,

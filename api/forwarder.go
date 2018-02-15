@@ -4,14 +4,19 @@ import (
 	//"bytes"
 	//"encoding/json"
 	//"io/ioutil"
+	"fmt"
 	"net/http"
 	"net/http/httputil"
+	"strconv"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 
 	"github.com/rancher/longhorn-manager/datastore"
+	"github.com/rancher/longhorn-manager/k8s"
+	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 )
 
 type OwnerIDFunc func(req *http.Request) (string, error)
@@ -79,3 +84,25 @@ func (f *Fwd) Handler(getNodeID OwnerIDFunc, h HandleFuncWithError) HandleFuncWi
 //	r.Body = ioutil.NopCloser(bytes.NewBuffer(buf))
 //	return &r
 //}
+
+func (s *Server) GetCurrentNodeID() string {
+	//TODO temporarily fix
+	currentNode, err := util.GetRequiredEnv(k8s.EnvNodeName)
+	if err != nil {
+		logrus.Errorf("BUG: fail to detect the node name")
+		return ""
+	}
+	return currentNode
+}
+
+func (s *Server) Node2APIAddress(nodeID string) (string, error) {
+	nodeIPMap, err := s.ds.GetManagerNodeIPMap()
+	if err != nil {
+		return "", err
+	}
+	ip, exists := nodeIPMap[nodeID]
+	if !exists {
+		return "", fmt.Errorf("cannot find longhorn manager on node %v", nodeID)
+	}
+	return ip + ":" + strconv.Itoa(types.DefaultAPIPort), nil
+}
