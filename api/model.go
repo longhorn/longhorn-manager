@@ -79,13 +79,6 @@ type Replica struct {
 	FailedAt string `json:"badTimestamp"`
 }
 
-type Job struct {
-	client.Resource
-	manager.Job
-	//because `type` cannot be used as key in response
-	JobType string `json:"jobType"`
-}
-
 type AttachInput struct {
 	HostID string `json:"hostId"`
 }
@@ -125,7 +118,6 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("recurringJob", types.RecurringJob{})
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
 	schemas.AddType("salvageInput", SalvageInput{})
-	schemas.AddType("job", Job{})
 
 	hostSchema(schemas.AddType("host", Host{}))
 	volumeSchema(schemas.AddType("volume", Volume{}))
@@ -474,26 +466,6 @@ func toBackupCollection(bs []*engineapi.Backup) *client.GenericCollection {
 		data = append(data, toBackupResource(v))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backup"}}
-}
-
-func toJobResource(job manager.Job) *Job {
-	return &Job{
-		Resource: client.Resource{
-			Id:    job.ID,
-			Type:  "job",
-			Links: map[string]string{},
-		},
-		Job:     job,
-		JobType: string(job.Type),
-	}
-}
-
-func toJobCollection(jobs map[string]manager.Job) *client.GenericCollection {
-	data := []interface{}{}
-	for _, v := range jobs {
-		data = append(data, toJobResource(v))
-	}
-	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "job"}}
 }
 
 type Server struct {
