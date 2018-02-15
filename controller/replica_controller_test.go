@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
 
 	"k8s.io/api/core/v1"
@@ -25,6 +26,7 @@ import (
 const (
 	TestNamespace   = "default"
 	TestThreadiness = 10
+	TestVolumeName  = "test-volume"
 	TestVolumeSize  = "1g"
 	TestRestoreFrom = "vfs://empty"
 	TestRestoreName = "empty"
@@ -54,6 +56,10 @@ func (s *TestSuite) SetUpTest(c *C) {
 }
 
 func newReplica(desireState, currentState types.InstanceState, failedAt string) *longhorn.Replica {
+	ip := ""
+	if currentState == types.InstanceStateRunning {
+		ip = TestIP1
+	}
 	return &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      TestReplica1Name,
@@ -62,6 +68,7 @@ func newReplica(desireState, currentState types.InstanceState, failedAt string) 
 		},
 		Spec: types.ReplicaSpec{
 			InstanceSpec: types.InstanceSpec{
+				VolumeName:  TestVolumeName,
 				DesireState: desireState,
 				OwnerID:     TestOwnerID1,
 			},
@@ -72,12 +79,17 @@ func newReplica(desireState, currentState types.InstanceState, failedAt string) 
 		Status: types.ReplicaStatus{
 			InstanceStatus: types.InstanceStatus{
 				State: currentState,
+				IP:    ip,
 			},
 		},
 	}
 }
 
 func newPod(phase v1.PodPhase, name, namespace string) *v1.Pod {
+	ip := ""
+	if phase == v1.PodRunning {
+		ip = TestIP1
+	}
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -85,6 +97,7 @@ func newPod(phase v1.PodPhase, name, namespace string) *v1.Pod {
 		},
 		Status: v1.PodStatus{
 			Phase: phase,
+			PodIP: ip,
 		},
 	}
 }
@@ -102,11 +115,17 @@ func getReplica(name string, lister lhlisters.ReplicaLister) (*longhorn.Replica,
 func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
 	controllerID string) *ReplicaController {
+
+	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
+	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Controllers()
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
+
+	ds := datastore.NewKDataStore(volumeInformer, engineInformer, replicaInformer, lhClient, TestNamespace)
+
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
 
-	rc := NewReplicaController(replicaInformer, podInformer, jobInformer, lhClient, kubeClient, TestNamespace, controllerID)
+	rc := NewReplicaController(ds, replicaInformer, podInformer, jobInformer, kubeClient, TestNamespace, controllerID)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	rc.eventRecorder = fakeRecorder

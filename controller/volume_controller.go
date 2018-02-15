@@ -14,7 +14,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
@@ -25,14 +24,13 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-	lhclientset "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	lhinformers "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
-	lhlisters "github.com/rancher/longhorn-manager/k8s/pkg/client/listers/longhorn/v1alpha1"
 )
 
 var (
@@ -54,15 +52,10 @@ type VolumeController struct {
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
-	lhClient lhclientset.Interface
+	ds *datastore.KDataStore
 
-	vLister      lhlisters.VolumeLister
 	vStoreSynced cache.InformerSynced
-
-	eLister      lhlisters.ControllerLister
 	eStoreSynced cache.InformerSynced
-
-	rLister      lhlisters.ReplicaLister
 	rStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
@@ -77,10 +70,11 @@ type VolumeRecurringJob struct {
 }
 
 func NewVolumeController(
+	ds *datastore.KDataStore,
 	volumeInformer lhinformers.VolumeInformer,
 	engineInformer lhinformers.ControllerInformer,
 	replicaInformer lhinformers.ReplicaInformer,
-	lhClient lhclientset.Interface, kubeClient clientset.Interface,
+	kubeClient clientset.Interface,
 	namespace string, controllerID string, engineImage string) *VolumeController {
 
 	eventBroadcaster := record.NewBroadcaster()
@@ -89,13 +83,17 @@ func NewVolumeController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	vc := &VolumeController{
+		ds:           ds,
 		namespace:    namespace,
 		controllerID: controllerID,
 		EngineImage:  engineImage,
 
 		kubeClient:    kubeClient,
-		lhClient:      lhClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "longhorn-volume-controller"}),
+
+		vStoreSynced: volumeInformer.Informer().HasSynced,
+		eStoreSynced: engineInformer.Informer().HasSynced,
+		rStoreSynced: replicaInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-volume"),
 
@@ -117,9 +115,6 @@ func NewVolumeController(
 			vc.enqueueVolume(v)
 		},
 	})
-	vc.vLister = volumeInformer.Lister()
-	vc.vStoreSynced = volumeInformer.Informer().HasSynced
-
 	engineInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			vc.enqueueControlleeChange(obj)
@@ -131,9 +126,6 @@ func NewVolumeController(
 			vc.enqueueControlleeChange(obj)
 		},
 	})
-	vc.eLister = engineInformer.Lister()
-	vc.eStoreSynced = engineInformer.Informer().HasSynced
-
 	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			vc.enqueueControlleeChange(obj)
@@ -145,8 +137,6 @@ func NewVolumeController(
 			vc.enqueueControlleeChange(obj)
 		},
 	})
-	vc.rLister = replicaInformer.Lister()
-	vc.rStoreSynced = replicaInformer.Informer().HasSynced
 	return vc
 }
 
@@ -217,16 +207,11 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		return nil
 	}
 
-	volumeRO, err := vc.vLister.Volumes(vc.namespace).Get(name)
-	if apierrors.IsNotFound(err) {
+	volume, err := vc.ds.GetVolume(name)
+	if volume == nil {
 		logrus.Infof("Longhorn volume %v has been deleted", key)
 		return nil
 	}
-	if err != nil {
-		return err
-	}
-
-	volume := volumeRO.DeepCopy()
 
 	// Not ours
 	if volume.Spec.OwnerID != vc.controllerID {
@@ -236,7 +221,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	defer func() {
 		// we're going to update volume assume things changes
 		if err == nil {
-			_, err = vc.updateVolume(volume)
+			_, err = vc.ds.UpdateVolume(volume)
 		}
 	}()
 
@@ -251,10 +236,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	if volume.DeletionTimestamp != nil {
 		vc.stopRecurringJobs(volume)
 
-		engine, err := vc.getVolumeEngine(volume)
+		engine, err := vc.ds.GetVolumeEngine(volume.Name)
 		if err == nil {
 			if engine.DeletionTimestamp == nil {
-				if err := vc.deleteEngine(engine); err != nil {
+				if err := vc.ds.DeleteEngine(engine.Name); err != nil {
 					return err
 				}
 			}
@@ -264,20 +249,20 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 		// now engine has been deleted or in the process
 
-		replicas, err := vc.getVolumeReplicas(volume)
+		replicas, err := vc.ds.GetVolumeReplicas(volume.Name)
 		if err != nil {
 			return err
 		}
 		for _, r := range replicas {
 			if r.DeletionTimestamp == nil {
-				if err := vc.deleteReplica(r); err != nil {
+				if err := vc.ds.DeleteReplica(r.Name); err != nil {
 					return err
 				}
 			}
 		}
 		// now replicas has been deleted or in the process
 
-		return vc.deleteVolume(volume)
+		return vc.ds.RemoveFinalizerForVolume(volume.Name)
 	}
 
 	if err := vc.ReconcileEngineReplicaState(volume); err != nil {
@@ -291,42 +276,12 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	return nil
 }
 
-func (vc *VolumeController) getVolumeEngine(v *longhorn.Volume) (*longhorn.Controller, error) {
-	engine, err := vc.eLister.Controllers(v.Namespace).Get(vc.getEngineNameForVolume(v))
-	if err != nil {
-		return nil, err
-	}
-	return engine.DeepCopy(), nil
-}
-
-func (vc *VolumeController) getVolumeSelector(v *longhorn.Volume) (labels.Selector, error) {
-	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: vc.getVolumeLabels(v),
-	})
-}
-
-func (vc *VolumeController) getVolumeReplicas(v *longhorn.Volume) (map[string]*longhorn.Replica, error) {
-	replicas := map[string]*longhorn.Replica{}
-	selector, err := vc.getVolumeSelector(v)
-	if err != nil {
-		return nil, err
-	}
-	replicaList, err := vc.rLister.Replicas(v.Namespace).List(selector)
-	if err != nil {
-		return nil, err
-	}
-	for _, r := range replicaList {
-		replicas[r.Name] = r.DeepCopy()
-	}
-	return replicas, nil
-}
-
 func (vc *VolumeController) RefreshVolumeState(v *longhorn.Volume) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to refresh volume state for %v", v.Name)
 	}()
 
-	engine, err := vc.getVolumeEngine(v)
+	engine, err := vc.ds.GetVolumeEngine(v.Name)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
@@ -334,7 +289,7 @@ func (vc *VolumeController) RefreshVolumeState(v *longhorn.Volume) (err error) {
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
-	replicas, err := vc.getVolumeReplicas(v)
+	replicas, err := vc.ds.GetVolumeReplicas(v.Name)
 	if err != nil {
 		return err
 	}
@@ -377,11 +332,11 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume) (err
 		return nil
 	}
 
-	engine, err := vc.getVolumeEngine(v)
+	engine, err := vc.ds.GetVolumeEngine(v.Name)
 	if err != nil {
 		return err
 	}
-	replicas, err := vc.getVolumeReplicas(v)
+	replicas, err := vc.ds.GetVolumeReplicas(v.Name)
 	if err != nil {
 		return err
 	}
@@ -394,7 +349,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume) (err
 				logrus.Warnf("Engine has %v as ERR, but cannot find the replica", rName)
 			} else {
 				r.Spec.FailedAt = util.Now()
-				if _, err := vc.updateReplica(r); err != nil {
+				if _, err := vc.ds.UpdateReplica(r); err != nil {
 					return err
 				}
 			}
@@ -411,7 +366,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume) (err
 	for _, r := range replicas {
 		if r.Spec.FailedAt == "" && r.Spec.DesireState == types.InstanceStateStopped {
 			r.Spec.DesireState = types.InstanceStateRunning
-			if _, err := vc.updateReplica(r); err != nil {
+			if _, err := vc.ds.UpdateReplica(r); err != nil {
 				return err
 			}
 			continue
@@ -420,7 +375,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume) (err
 			engine.Spec.ReplicaAddressMap[r.Name] = r.Status.IP
 		}
 	}
-	if _, err := vc.updateEngine(engine); err != nil {
+	if _, err := vc.ds.UpdateEngine(engine); err != nil {
 		return err
 	}
 	return nil
@@ -431,7 +386,7 @@ func (vc *VolumeController) cleanupStaleReplicas(v *longhorn.Volume) (err error)
 		err = errors.Wrap(err, "cannot cleanup stale replicas")
 	}()
 
-	replicas, err := vc.getVolumeReplicas(v)
+	replicas, err := vc.ds.GetVolumeReplicas(v.Name)
 	if err != nil {
 		return err
 	}
@@ -440,7 +395,7 @@ func (vc *VolumeController) cleanupStaleReplicas(v *longhorn.Volume) (err error)
 		if r.Spec.FailedAt != "" {
 			if util.TimestampAfterTimeout(r.Spec.FailedAt, v.Spec.StaleReplicaTimeout*60) {
 				logrus.Infof("Cleaning up stale replica %v", r.Name)
-				if err := vc.deleteReplica(r); err != nil {
+				if err := vc.ds.DeleteReplica(r.Name); err != nil {
 					return err
 				}
 			}
@@ -460,7 +415,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume) (err error)
 		return nil
 	}
 
-	engine, err := vc.getVolumeEngine(v)
+	engine, err := vc.ds.GetVolumeEngine(v.Name)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
@@ -472,7 +427,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume) (err error)
 		}
 	}
 
-	replicas, err := vc.getVolumeReplicas(v)
+	replicas, err := vc.ds.GetVolumeReplicas(v.Name)
 	if err != nil {
 		return err
 	}
@@ -495,7 +450,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume) (err error)
 				}
 				if r.Spec.FailedAt != "" {
 					r.Spec.FailedAt = util.Now()
-					if _, err := vc.updateReplica(r); err != nil {
+					if _, err := vc.ds.UpdateReplica(r); err != nil {
 						return err
 					}
 				}
@@ -504,7 +459,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume) (err error)
 		}
 		if engine.Spec.DesireState != types.InstanceStateStopped {
 			engine.Spec.DesireState = types.InstanceStateStopped
-			_, err := vc.updateEngine(engine)
+			_, err := vc.ds.UpdateEngine(engine)
 			return err
 		}
 		// must make sure engine stopped first before stopping replicas
@@ -516,7 +471,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume) (err error)
 		for _, r := range replicas {
 			if r.Spec.DesireState != types.InstanceStateStopped {
 				r.Spec.DesireState = types.InstanceStateStopped
-				if _, err := vc.updateReplica(r); err != nil {
+				if _, err := vc.ds.UpdateReplica(r); err != nil {
 					return err
 				}
 			}
@@ -530,7 +485,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume) (err error)
 			if r.Spec.FailedAt == "" && r.Spec.DesireState != types.InstanceStateRunning {
 				r.Spec.DesireState = types.InstanceStateRunning
 				replicaUpdated = true
-				if _, err := vc.updateReplica(r); err != nil {
+				if _, err := vc.ds.UpdateReplica(r); err != nil {
 					return err
 				}
 			}
@@ -552,7 +507,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume) (err error)
 			engine.Spec.NodeID = v.Spec.NodeID
 			engine.Spec.ReplicaAddressMap = replicaAddressMap
 			engine.Spec.DesireState = types.InstanceStateRunning
-			_, err := vc.updateEngine(engine)
+			_, err := vc.ds.UpdateEngine(engine)
 			return err
 		}
 	} else {
@@ -562,7 +517,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume) (err error)
 }
 
 func (vc *VolumeController) replenishReplicas(v *longhorn.Volume) (map[string]*longhorn.Replica, error) {
-	replicas, err := vc.getVolumeReplicas(v)
+	replicas, err := vc.ds.GetVolumeReplicas(v.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -624,7 +579,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Controll
 			},
 		},
 	}
-	return vc.lhClient.Longhorn().Controllers(v.Namespace).Create(engine)
+	return vc.ds.CreateEngine(engine)
 }
 
 func (vc *VolumeController) createReplica(v *longhorn.Volume) (*longhorn.Replica, error) {
@@ -662,7 +617,7 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume) (*longhorn.Replica
 		replica.Spec.RestoreFrom = v.Spec.FromBackup
 		replica.Spec.RestoreName = backupID
 	}
-	return vc.lhClient.Longhorn().Replicas(v.Namespace).Create(replica)
+	return vc.ds.CreateReplica(replica)
 }
 
 func (vc *VolumeController) enqueueVolume(v *longhorn.Volume) {
@@ -673,54 +628,6 @@ func (vc *VolumeController) enqueueVolume(v *longhorn.Volume) {
 	}
 
 	vc.queue.AddRateLimited(key)
-}
-
-func (vc *VolumeController) updateVolume(v *longhorn.Volume) (volume *longhorn.Volume, err error) {
-	return vc.lhClient.LonghornV1alpha1().Volumes(vc.namespace).Update(v)
-}
-
-func (vc *VolumeController) deleteVolume(v *longhorn.Volume) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "fail to delete volume %v", v.Name)
-	}()
-	name := v.Name
-	resultRO, err := vc.vLister.Volumes(v.Namespace).Get(name)
-	if err != nil {
-		// already deleted
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return errors.Wrapf(err, "unable to get volume %v", name)
-	}
-	result := resultRO.DeepCopy()
-
-	// Remove the finalizer to allow deletion of the object
-	if err := util.RemoveFinalizer(longhornFinalizerKey, result); err != nil {
-		return errors.Wrapf(err, "unable to remove finalizer of %v", name)
-	}
-	result, err = vc.updateVolume(result)
-	if err != nil {
-		return errors.Wrapf(err, "unable to update finalizer during volume deletion %v", name)
-	}
-	// the function was called when DeletionTimestamp was set, so
-	// Kubernetes will delete it after all the finalizers have been removed
-	return nil
-}
-
-func (vc *VolumeController) updateReplica(r *longhorn.Replica) (*longhorn.Replica, error) {
-	return vc.lhClient.LonghornV1alpha1().Replicas(r.Namespace).Update(r)
-}
-
-func (vc *VolumeController) deleteReplica(r *longhorn.Replica) error {
-	return vc.lhClient.LonghornV1alpha1().Replicas(r.Namespace).Delete(r.Name, nil)
-}
-
-func (vc *VolumeController) updateEngine(e *longhorn.Controller) (*longhorn.Controller, error) {
-	return vc.lhClient.LonghornV1alpha1().Controllers(e.Namespace).Update(e)
-}
-
-func (vc *VolumeController) deleteEngine(e *longhorn.Controller) error {
-	return vc.lhClient.LonghornV1alpha1().Controllers(e.Namespace).Delete(e.Name, nil)
 }
 
 func (vc *VolumeController) enqueueControlleeChange(obj interface{}) {
@@ -744,8 +651,8 @@ func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 	if ref.Kind != ownerKindVolume {
 		return
 	}
-	volume, err := vc.vLister.Volumes(namespace).Get(ref.Name)
-	if err != nil {
+	volume, err := vc.ds.GetVolume(ref.Name)
+	if err != nil || volume == nil {
 		return
 	}
 	if volume.UID != ref.UID {
@@ -789,7 +696,7 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 		return nil
 	}
 
-	e, err := vc.getVolumeEngine(v)
+	e, err := vc.ds.GetVolumeEngine(v.Name)
 	if err != nil {
 		return err
 	}
@@ -809,10 +716,11 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 			return err
 		}
 
-		backupTarget, err := vc.getBackupTarget()
+		setting, err := vc.ds.GetSetting()
 		if err != nil {
-			return nil
+			return err
 		}
+		backupTarget := setting.BackupTarget
 
 		newCron := cron.New()
 		for _, job := range jobs {
@@ -839,20 +747,4 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 		newCron.Start()
 	}
 	return nil
-}
-
-const (
-	SettingName = "longhorn-manager-settings"
-)
-
-func (vc *VolumeController) getBackupTarget() (string, error) {
-	result, err := vc.lhClient.LonghornV1alpha1().Settings(vc.namespace).Get(SettingName,
-		metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return "", nil
-		}
-		return "", errors.Wrapf(err, "unable to get %v", SettingName)
-	}
-	return result.BackupTarget, nil
 }

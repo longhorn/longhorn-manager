@@ -5,6 +5,27 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+func AddFinalizer(name string, obj runtime.Object) error {
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	exists := false
+	finalizers := metadata.GetFinalizers()
+	for _, f := range finalizers {
+		if f == name {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		metadata.SetFinalizers(append(finalizers, name))
+	}
+
+	return nil
+}
+
 func RemoveFinalizer(name string, obj runtime.Object) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {

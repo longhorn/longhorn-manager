@@ -20,20 +20,17 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	batchlisters "k8s.io/client-go/listers/batch/v1"
-	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-	lhclientset "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	lhinformers "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
-	lhlisters "github.com/rancher/longhorn-manager/k8s/pkg/client/listers/longhorn/v1alpha1"
 )
 
 var (
@@ -75,15 +72,10 @@ type ReplicaController struct {
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
-	lhClient lhclientset.Interface
+	ds *datastore.KDataStore
 
-	rLister      lhlisters.ReplicaLister
 	rStoreSynced cache.InformerSynced
-
-	pLister      corelisters.PodLister
 	pStoreSynced cache.InformerSynced
-
-	jLister      batchlisters.JobLister
 	jStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
@@ -92,10 +84,11 @@ type ReplicaController struct {
 }
 
 func NewReplicaController(
+	ds *datastore.KDataStore,
 	replicaInformer lhinformers.ReplicaInformer,
 	podInformer coreinformers.PodInformer,
 	jobInformer batchinformers.JobInformer,
-	lhClient lhclientset.Interface, kubeClient clientset.Interface,
+	kubeClient clientset.Interface,
 	namespace string, controllerID string) *ReplicaController {
 
 	eventBroadcaster := record.NewBroadcaster()
@@ -104,11 +97,17 @@ func NewReplicaController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	rc := &ReplicaController{
-		namespace: namespace,
+		namespace:    namespace,
+		controllerID: controllerID,
 
 		kubeClient:    kubeClient,
-		lhClient:      lhClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "longhorn-replica-controller"}),
+
+		ds: ds,
+
+		rStoreSynced: replicaInformer.Informer().HasSynced,
+		pStoreSynced: podInformer.Informer().HasSynced,
+		jStoreSynced: jobInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-replica"),
 	}
@@ -128,8 +127,6 @@ func NewReplicaController(
 			rc.enqueueReplica(r)
 		},
 	})
-	rc.rLister = replicaInformer.Lister()
-	rc.rStoreSynced = replicaInformer.Informer().HasSynced
 
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -142,8 +139,6 @@ func NewReplicaController(
 			rc.enqueueControlleeChange(obj)
 		},
 	})
-	rc.pLister = podInformer.Lister()
-	rc.pStoreSynced = podInformer.Informer().HasSynced
 
 	jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -156,10 +151,6 @@ func NewReplicaController(
 			rc.enqueueControlleeChange(obj)
 		},
 	})
-	rc.jLister = jobInformer.Lister()
-	rc.jStoreSynced = jobInformer.Informer().HasSynced
-
-	rc.controllerID = controllerID
 	return rc
 }
 
@@ -234,21 +225,19 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		return nil
 	}
 
-	replicaRO, err := rc.rLister.Replicas(rc.namespace).Get(name)
-	if apierrors.IsNotFound(err) {
-		logrus.Infof("Longhorn replica %v has been deleted", key)
-		return nil
-	}
+	replica, err := rc.ds.GetReplica(name)
 	if err != nil {
 		return err
 	}
-
-	replica := replicaRO.DeepCopy()
+	if replica == nil {
+		logrus.Infof("Longhorn replica %v has been deleted", key)
+		return nil
+	}
 
 	defer func() {
 		// we're going to update replica assume things changes
 		if err == nil {
-			_, err = rc.updateReplica(replica)
+			_, err = rc.ds.UpdateReplica(replica)
 		}
 	}()
 
@@ -268,7 +257,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	if replica.Spec.FailedAt != "" || replica.DeletionTimestamp != nil {
 		if replica.Spec.DesireState != types.InstanceStateStopped {
 			replica.Spec.DesireState = types.InstanceStateStopped
-			_, err := rc.updateReplica(replica)
+			_, err := rc.ds.UpdateReplica(replica)
 			return err
 		}
 	}
@@ -277,7 +266,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		if replica.Spec.NodeID != "" {
 			return rc.cleanupReplicaInstance(replica)
 		}
-		return rc.deleteReplica(replica)
+		return rc.ds.RemoveFinalizerForReplica(replica.Name)
 	}
 
 	return rc.instanceHandler.ReconcileInstanceState(replica.Name, replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
@@ -291,44 +280,6 @@ func (rc *ReplicaController) enqueueReplica(replica *longhorn.Replica) {
 	}
 
 	rc.queue.AddRateLimited(key)
-}
-
-func (rc *ReplicaController) updateReplica(r *longhorn.Replica) (replica *longhorn.Replica, err error) {
-	defer func() {
-		if err != nil {
-			err = errors.Wrapf(err, "fail to update replica for %v", r.Name)
-			rc.enqueueReplica(r)
-		}
-	}()
-	return rc.lhClient.LonghornV1alpha1().Replicas(rc.namespace).Update(r)
-}
-
-func (rc *ReplicaController) deleteReplica(r *longhorn.Replica) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "fail to delete replica for %v", r.Name)
-	}()
-	name := r.Name
-	resultRO, err := rc.rLister.Replicas(r.Namespace).Get(name)
-	if err != nil {
-		// already deleted
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return errors.Wrapf(err, "unable to get replica during replica deletion %v", name)
-	}
-	result := resultRO.DeepCopy()
-
-	// Remove the finalizer to allow deletion of the object
-	if err := util.RemoveFinalizer(longhornFinalizerKey, result); err != nil {
-		return errors.Wrapf(err, "unable to remove finalizer of %v", name)
-	}
-	result, err = rc.updateReplica(result)
-	if err != nil {
-		return errors.Wrapf(err, "unable to update finalizer during replica deletion %v", name)
-	}
-	// the function was called when r.DeletionTimestamp was set, so
-	// Kubernetes will delete it after all the finalizers have been removed
-	return nil
 }
 
 func (rc *ReplicaController) getReplicaVolumeDirectory(replicaName string) string {
@@ -546,7 +497,7 @@ func (rc *ReplicaController) cleanupReplicaInstance(r *longhorn.Replica) (err er
 		if job.Status.Succeeded != 0 {
 			logrus.Infof("Cleanup for volume %v replica %v succeed", r.Spec.VolumeName, r.Name)
 			r.Spec.NodeID = ""
-			if _, err := rc.updateReplica(r); err != nil {
+			if _, err := rc.ds.UpdateReplica(r); err != nil {
 				return err
 			}
 		} else {
@@ -578,7 +529,7 @@ func (rc *ReplicaController) ResolveRefAndEnqueue(namespace string, ref *metav1.
 	if ref.Kind != ownerKindReplica {
 		return
 	}
-	replica, err := rc.rLister.Replicas(namespace).Get(ref.Name)
+	replica, err := rc.ds.GetReplica(ref.Name)
 	if err != nil {
 		return
 	}

@@ -11,7 +11,6 @@ import (
 	"github.com/pkg/errors"
 
 	"k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -20,20 +19,17 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/types"
-	"github.com/rancher/longhorn-manager/util"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-	lhclientset "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	lhinformers "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
-	lhlisters "github.com/rancher/longhorn-manager/k8s/pkg/client/listers/longhorn/v1alpha1"
 )
 
 const (
@@ -56,12 +52,9 @@ type EngineController struct {
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
-	lhClient lhclientset.Interface
+	ds *datastore.KDataStore
 
-	eLister      lhlisters.ControllerLister
 	eStoreSynced cache.InformerSynced
-
-	pLister      corelisters.PodLister
 	pStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
@@ -75,8 +68,7 @@ type EngineController struct {
 
 type EngineMonitor struct {
 	namespace string
-	lhClient  lhclientset.Interface
-	eLister   lhlisters.ControllerLister
+	ds        *datastore.KDataStore
 
 	Name         string
 	engineClient engineapi.EngineClient
@@ -84,9 +76,10 @@ type EngineMonitor struct {
 }
 
 func NewEngineController(
+	ds *datastore.KDataStore,
 	engineInformer lhinformers.ControllerInformer,
 	podInformer coreinformers.PodInformer,
-	lhClient lhclientset.Interface, kubeClient clientset.Interface,
+	kubeClient clientset.Interface,
 	engines engineapi.EngineClientCollection,
 	namespace string, controllerID string) *EngineController {
 
@@ -96,11 +89,14 @@ func NewEngineController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	ec := &EngineController{
+		ds:        ds,
 		namespace: namespace,
 
+		controllerID:  controllerID,
 		kubeClient:    kubeClient,
-		lhClient:      lhClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "longhorn-engine-controller"}),
+		eStoreSynced:  engineInformer.Informer().HasSynced,
+		pStoreSynced:  podInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-engine"),
 
@@ -124,9 +120,6 @@ func NewEngineController(
 			ec.enqueueEngine(e)
 		},
 	})
-	ec.eLister = engineInformer.Lister()
-	ec.eStoreSynced = engineInformer.Informer().HasSynced
-
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			ec.enqueueControlleeChange(obj)
@@ -138,10 +131,6 @@ func NewEngineController(
 			ec.enqueueControlleeChange(obj)
 		},
 	})
-	ec.pLister = podInformer.Lister()
-	ec.pStoreSynced = podInformer.Informer().HasSynced
-
-	ec.controllerID = controllerID
 	return ec
 }
 
@@ -212,16 +201,14 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return nil
 	}
 
-	engineRO, err := ec.eLister.Controllers(ec.namespace).Get(name)
-	if apierrors.IsNotFound(err) {
-		logrus.Infof("Longhorn engine %v has been deleted", key)
-		return nil
-	}
+	engine, err := ec.ds.GetEngine(name)
 	if err != nil {
 		return err
 	}
-
-	engine := engineRO.DeepCopy()
+	if engine == nil {
+		logrus.Infof("Longhorn engine %v has been deleted", key)
+		return nil
+	}
 
 	// Not ours
 	if engine.Spec.OwnerID != ec.controllerID {
@@ -231,7 +218,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	defer func() {
 		// we're going to update engine assume things changes
 		if err == nil {
-			_, err = ec.updateEngine(engine)
+			_, err = ec.ds.UpdateEngine(engine)
 		}
 	}()
 
@@ -257,11 +244,11 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	if engine.DeletionTimestamp != nil {
 		if engine.Spec.DesireState != types.InstanceStateStopped {
 			engine.Spec.DesireState = types.InstanceStateStopped
-			_, err := ec.updateEngine(engine)
+			_, err := ec.ds.UpdateEngine(engine)
 			return err
 		}
 		if engine.Status.State == types.InstanceStateStopped {
-			return ec.deleteEngine(engine)
+			return ec.ds.RemoveFinalizerForEngine(engine.Name)
 		}
 	}
 
@@ -276,44 +263,6 @@ func (ec *EngineController) enqueueEngine(e *longhorn.Controller) {
 	}
 
 	ec.queue.AddRateLimited(key)
-}
-
-func (ec *EngineController) updateEngine(e *longhorn.Controller) (engine *longhorn.Controller, err error) {
-	defer func() {
-		if err != nil {
-			err = errors.Wrapf(err, "fail to update engine %v", e.Name)
-			ec.enqueueEngine(e)
-		}
-	}()
-	return ec.lhClient.LonghornV1alpha1().Controllers(ec.namespace).Update(e)
-}
-
-func (ec *EngineController) deleteEngine(e *longhorn.Controller) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "fail to delete engine for %v", e.Name)
-	}()
-	name := e.Name
-	resultRO, err := ec.eLister.Controllers(e.Namespace).Get(name)
-	if err != nil {
-		// already deleted
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return errors.Wrapf(err, "unable to get engine during engine deletion %v", name)
-	}
-	result := resultRO.DeepCopy()
-
-	// Remove the finalizer to allow deletion of the object
-	if err := util.RemoveFinalizer(longhornFinalizerKey, result); err != nil {
-		return errors.Wrapf(err, "unable to remove finalizer of %v", name)
-	}
-	result, err = ec.updateEngine(result)
-	if err != nil {
-		return errors.Wrapf(err, "unable to update finalizer during engine deletion %v", name)
-	}
-	// the function was called when DeletionTimestamp was set, so
-	// Kubernetes will delete it after all the finalizers have been removed
-	return nil
 }
 
 func validateEngine(e *longhorn.Controller) error {
@@ -438,7 +387,7 @@ func (ec *EngineController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 	if ref.Kind != ownerKindEngine {
 		return
 	}
-	engine, err := ec.eLister.Controllers(namespace).Get(ref.Name)
+	engine, err := ec.ds.GetEngine(ref.Name)
 	if err != nil {
 		return
 	}
@@ -478,8 +427,7 @@ func (ec *EngineController) startMonitoring(e *longhorn.Controller) {
 	monitor := &EngineMonitor{
 		Name:         e.Name,
 		namespace:    e.Namespace,
-		lhClient:     ec.lhClient,
-		eLister:      ec.eLister,
+		ds:           ec.ds,
 		engineClient: client,
 		stopCh:       make(chan struct{}),
 	}
@@ -522,18 +470,18 @@ func (m *EngineMonitor) Run() {
 }
 
 func (m *EngineMonitor) Refresh() error {
-	engineRO, err := m.eLister.Controllers(m.namespace).Get(m.Name)
+	engine, err := m.ds.GetEngine(m.Name)
 	if err != nil {
 		return err
 	}
 
 	// Wait for stop monitoring
-	if engineRO.Status.State == types.InstanceStateStopped {
+	if engine.Status.State == types.InstanceStateStopped {
 		return nil
 	}
 
 	addressReplicaMap := map[string]string{}
-	for replica, address := range engineRO.Spec.ReplicaAddressMap {
+	for replica, address := range engine.Spec.ReplicaAddressMap {
 		if addressReplicaMap[address] != "" {
 			return fmt.Errorf("invalid ReplicaAddressMap: duplicate IPs")
 		}
@@ -555,10 +503,9 @@ func (m *EngineMonitor) Refresh() error {
 		}
 		currentReplicaModeMap[replica] = r.Mode
 	}
-	if !reflect.DeepEqual(engineRO.Status.ReplicaModeMap, currentReplicaModeMap) {
-		engine := engineRO.DeepCopy()
+	if !reflect.DeepEqual(engine.Status.ReplicaModeMap, currentReplicaModeMap) {
 		engine.Status.ReplicaModeMap = currentReplicaModeMap
-		_, err = m.lhClient.LonghornV1alpha1().Controllers(m.namespace).Update(engine)
+		_, err = m.ds.UpdateEngine(engine)
 		return err
 	}
 	return nil
