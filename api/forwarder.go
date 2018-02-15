@@ -1,9 +1,6 @@
 package api
 
 import (
-	//"bytes"
-	//"encoding/json"
-	//"io/ioutil"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
@@ -14,9 +11,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/rancher/longhorn-manager/datastore"
-	"github.com/rancher/longhorn-manager/k8s"
 	"github.com/rancher/longhorn-manager/types"
-	"github.com/rancher/longhorn-manager/util"
 )
 
 type OwnerIDFunc func(req *http.Request) (string, error)
@@ -54,7 +49,6 @@ func NewFwd(locator NodeLocator) *Fwd {
 
 func (f *Fwd) Handler(getNodeID OwnerIDFunc, h HandleFuncWithError) HandleFuncWithError {
 	return func(w http.ResponseWriter, req *http.Request) error {
-		//nodeID, err := getNodeID(copyReq(req))
 		nodeID, err := getNodeID(req)
 		if err != nil {
 			return errors.Wrap(err, "fail to get node ID")
@@ -77,22 +71,8 @@ func (f *Fwd) Handler(getNodeID OwnerIDFunc, h HandleFuncWithError) HandleFuncWi
 	}
 }
 
-//func copyReq(req *http.Request) *http.Request {
-//	r := *req
-//	buf, _ := ioutil.ReadAll(r.Body)
-//	req.Body = ioutil.NopCloser(bytes.NewBuffer(buf))
-//	r.Body = ioutil.NopCloser(bytes.NewBuffer(buf))
-//	return &r
-//}
-
 func (s *Server) GetCurrentNodeID() string {
-	//TODO temporarily fix
-	currentNode, err := util.GetRequiredEnv(k8s.EnvNodeName)
-	if err != nil {
-		logrus.Errorf("BUG: fail to detect the node name")
-		return ""
-	}
-	return currentNode
+	return s.CurrentNodeID
 }
 
 func (s *Server) Node2APIAddress(nodeID string) (string, error) {
@@ -105,4 +85,12 @@ func (s *Server) Node2APIAddress(nodeID string) (string, error) {
 		return "", fmt.Errorf("cannot find longhorn manager on node %v", nodeID)
 	}
 	return ip + ":" + strconv.Itoa(types.DefaultAPIPort), nil
+}
+
+func (s *Server) GetCurrentIP() (string, error) {
+	currentNode := s.GetCurrentNodeID()
+	if currentNode == "" {
+		return "", fmt.Errorf("cannot detect current node")
+	}
+	return s.Node2APIAddress(currentNode)
 }

@@ -471,13 +471,15 @@ func toBackupCollection(bs []*engineapi.Backup) *client.GenericCollection {
 }
 
 type Server struct {
-	fwd *Fwd
-	ds  *datastore.KDataStore
+	CurrentNodeID string
+	fwd           *Fwd
+	ds            *datastore.KDataStore
 }
 
-func NewServer(ds *datastore.KDataStore) *Server {
+func NewServer(currentNodeID string, ds *datastore.KDataStore) *Server {
 	s := &Server{
-		ds: ds,
+		CurrentNodeID: currentNodeID,
+		ds:            ds,
 	}
 	s.fwd = NewFwd(s)
 	return s
