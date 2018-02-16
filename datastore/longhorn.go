@@ -129,11 +129,15 @@ func (s *DataStore) DeleteVolume(name string) error {
 	return s.lhClient.LonghornV1alpha1().Volumes(s.namespace).Delete(name, &metav1.DeleteOptions{})
 }
 
-// RemoveFinalizerForVolume will result in immediately deletion if DeletionTimestamp was set
+// RemoveFinalizerForVolume will result in deletion if DeletionTimestamp was set
 func (s *DataStore) RemoveFinalizerForVolume(name string) error {
 	obj, err := s.GetVolume(name)
 	if obj == nil {
 		// already deleted
+		return nil
+	}
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
 		return nil
 	}
 	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
@@ -208,11 +212,15 @@ func (s *DataStore) DeleteEngine(name string) error {
 	return s.lhClient.LonghornV1alpha1().Controllers(s.namespace).Delete(name, &metav1.DeleteOptions{})
 }
 
-// RemoveFinalizerForEngine will result in immediately deletion if DeletionTimestamp was set
+// RemoveFinalizerForEngine will result in deletion if DeletionTimestamp was set
 func (s *DataStore) RemoveFinalizerForEngine(name string) error {
 	obj, err := s.GetEngine(name)
 	if obj == nil {
 		// already deleted
+		return nil
+	}
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
 		return nil
 	}
 	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
@@ -293,11 +301,15 @@ func (s *DataStore) DeleteReplica(name string) error {
 	return s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Delete(name, &metav1.DeleteOptions{})
 }
 
-// RemoveFinalizerForReplica will result in immediately deletion if DeletionTimestamp was set
+// RemoveFinalizerForReplica will result in deletion if DeletionTimestamp was set
 func (s *DataStore) RemoveFinalizerForReplica(name string) error {
 	obj, err := s.GetReplica(name)
 	if obj == nil {
 		// already deleted
+		return nil
+	}
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
 		return nil
 	}
 	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {

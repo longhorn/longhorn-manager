@@ -215,6 +215,16 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return nil
 	}
 
+	if engine.DeletionTimestamp != nil {
+		ec.stopMonitoring(engine)
+
+		// don't go through state transition because it can go wrong
+		if err := ec.instanceHandler.Delete(engine.Name); err != nil {
+			return err
+		}
+		return ec.ds.RemoveFinalizerForEngine(engine.Name)
+	}
+
 	defer func() {
 		// we're going to update engine assume things changes
 		if err == nil {
@@ -238,18 +248,6 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	} else if engine.Status.State == types.InstanceStateStopped && ec.isMonitoring(engine) {
 		ec.stopMonitoring(engine)
-	}
-
-	// we need to stop the engine when it's being deleted
-	if engine.DeletionTimestamp != nil {
-		if engine.Spec.DesireState != types.InstanceStateStopped {
-			engine.Spec.DesireState = types.InstanceStateStopped
-			_, err := ec.ds.UpdateEngine(engine)
-			return err
-		}
-		if engine.Status.State == types.InstanceStateStopped {
-			return ec.ds.RemoveFinalizerForEngine(engine.Name)
-		}
 	}
 
 	return ec.instanceHandler.ReconcileInstanceState(engine.Name, engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus)
@@ -449,7 +447,6 @@ func (ec *EngineController) stopMonitoring(e *longhorn.Controller) {
 
 	monitor := ec.engineMonitorMap[e.Name]
 	if monitor == nil {
-		logrus.Warnf("Trying to stop non-exist monitoring for %v", e.Name)
 		return
 	}
 	monitor.stopCh <- struct{}{}

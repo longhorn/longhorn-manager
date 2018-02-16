@@ -220,21 +220,6 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		return nil
 	}
 
-	defer func() {
-		// we're going to update volume assume things changes
-		if err == nil {
-			_, err = vc.ds.UpdateVolume(volume)
-		}
-	}()
-
-	if err := vc.RefreshVolumeState(volume); err != nil {
-		return err
-	}
-
-	if err := vc.updateRecurringJobs(volume); err != nil {
-		return err
-	}
-
 	if volume.DeletionTimestamp != nil {
 		vc.stopRecurringJobs(volume)
 
@@ -242,11 +227,9 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		if err != nil {
 			return err
 		}
-		if engine != nil {
-			if engine.DeletionTimestamp == nil {
-				if err := vc.ds.DeleteEngine(engine.Name); err != nil {
-					return err
-				}
+		if engine != nil && engine.DeletionTimestamp == nil {
+			if err := vc.ds.DeleteEngine(engine.Name); err != nil {
+				return err
 			}
 		}
 		// now engine has been deleted or in the process
@@ -265,6 +248,21 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		// now replicas has been deleted or in the process
 
 		return vc.ds.RemoveFinalizerForVolume(volume.Name)
+	}
+
+	defer func() {
+		// we're going to update volume assume things changes
+		if err == nil {
+			_, err = vc.ds.UpdateVolume(volume)
+		}
+	}()
+
+	if err := vc.RefreshVolumeState(volume); err != nil {
+		return err
+	}
+
+	if err := vc.updateRecurringJobs(volume); err != nil {
+		return err
 	}
 
 	if err := vc.ReconcileEngineReplicaState(volume); err != nil {

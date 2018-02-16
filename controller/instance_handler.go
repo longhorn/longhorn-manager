@@ -165,3 +165,7 @@ func (h *InstanceHandler) stopInstance(podName string) (err error) {
 	}
 	return nil
 }
+
+func (h *InstanceHandler) Delete(podName string) (err error) {
+	return h.stopInstance(podName)
+}

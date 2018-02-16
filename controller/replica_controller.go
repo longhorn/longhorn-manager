@@ -239,6 +239,17 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		return nil
 	}
 
+	if replica.DeletionTimestamp != nil {
+		if err := rc.instanceHandler.Delete(replica.Name); err != nil {
+			return err
+		}
+		// we want to make sure data was cleaned before remove the replica
+		if replica.Spec.NodeID != "" {
+			return rc.cleanupReplicaInstance(replica)
+		}
+		return rc.ds.RemoveFinalizerForReplica(replica.Name)
+	}
+
 	defer func() {
 		// we're going to update replica assume things changes
 		if err == nil {
@@ -251,22 +262,13 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		return err
 	}
 
-	// we need to stop the replica when:
-	// 1. replica failed connection with controller
-	// 2. replica to be deleted
-	if replica.Spec.FailedAt != "" || replica.DeletionTimestamp != nil {
+	// we need to stop the replica when replica failed connection with controller
+	if replica.Spec.FailedAt != "" {
 		if replica.Spec.DesireState != types.InstanceStateStopped {
 			replica.Spec.DesireState = types.InstanceStateStopped
 			_, err := rc.ds.UpdateReplica(replica)
 			return err
 		}
-	}
-
-	if replica.DeletionTimestamp != nil && replica.Status.State == types.InstanceStateStopped {
-		if replica.Spec.NodeID != "" {
-			return rc.cleanupReplicaInstance(replica)
-		}
-		return rc.ds.RemoveFinalizerForReplica(replica.Name)
 	}
 
 	return rc.instanceHandler.ReconcileInstanceState(replica.Name, replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
