@@ -11,7 +11,6 @@ import (
 	"github.com/robfig/cron"
 
 	"k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -208,6 +207,9 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	}
 
 	volume, err := vc.ds.GetVolume(name)
+	if err != nil {
+		return err
+	}
 	if volume == nil {
 		logrus.Infof("Longhorn volume %v has been deleted", key)
 		return nil
@@ -237,15 +239,15 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		vc.stopRecurringJobs(volume)
 
 		engine, err := vc.ds.GetVolumeEngine(volume.Name)
-		if err == nil {
+		if err != nil {
+			return err
+		}
+		if engine != nil {
 			if engine.DeletionTimestamp == nil {
 				if err := vc.ds.DeleteEngine(engine.Name); err != nil {
 					return err
 				}
 			}
-		}
-		if !apierrors.IsNotFound(err) {
-			return err
 		}
 		// now engine has been deleted or in the process
 
@@ -282,11 +284,11 @@ func (vc *VolumeController) RefreshVolumeState(v *longhorn.Volume) (err error) {
 	}()
 
 	engine, err := vc.ds.GetVolumeEngine(v.Name)
-	if err != nil && !apierrors.IsNotFound(err) {
+	if err != nil {
 		return err
 	}
 	// engine wasn't created or has been deleted
-	if apierrors.IsNotFound(err) {
+	if engine == nil {
 		return nil
 	}
 	replicas, err := vc.ds.GetVolumeReplicas(v.Name)
@@ -335,6 +337,9 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume) (err
 	engine, err := vc.ds.GetVolumeEngine(v.Name)
 	if err != nil {
 		return err
+	}
+	if engine == nil {
+		return fmt.Errorf("BUG: engine doesn't exist")
 	}
 	replicas, err := vc.ds.GetVolumeReplicas(v.Name)
 	if err != nil {
@@ -416,10 +421,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume) (err error)
 	}
 
 	engine, err := vc.ds.GetVolumeEngine(v.Name)
-	if err != nil && !apierrors.IsNotFound(err) {
+	if err != nil {
 		return err
 	}
-	if apierrors.IsNotFound(err) {
+	if engine == nil {
 		// first time creation
 		engine, err = vc.createEngine(v)
 		if err != nil {
@@ -463,7 +468,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume) (err error)
 			return err
 		}
 		// must make sure engine stopped first before stopping replicas
-		if engine.Status.State != types.InstanceStateStopped {
+		if engine.Status.State != "" && engine.Status.State != types.InstanceStateStopped {
 			logrus.Infof("Waiting for engine %v to stop", engine.Name)
 			return nil
 		}
@@ -547,20 +552,10 @@ func (vc *VolumeController) generateReplicaNameForVolume(v *longhorn.Volume) str
 	return v.Name + replicaSuffix + "-" + util.RandomID()
 }
 
-func (vc *VolumeController) getVolumeLabels(v *longhorn.Volume) map[string]string {
-	return map[string]string{
-		"longhornvolume": v.Name,
-	}
-}
-
 func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Controller, error) {
 	engine := &longhorn.Controller{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   vc.getEngineNameForVolume(v),
-			Labels: vc.getVolumeLabels(v),
-			Finalizers: []string{
-				longhornFinalizerKey,
-			},
+			Name: vc.getEngineNameForVolume(v),
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: longhorn.SchemeGroupVersion.String(),
@@ -585,11 +580,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Controll
 func (vc *VolumeController) createReplica(v *longhorn.Volume) (*longhorn.Replica, error) {
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   vc.generateReplicaNameForVolume(v),
-			Labels: vc.getVolumeLabels(v),
-			Finalizers: []string{
-				longhornFinalizerKey,
-			},
+			Name: vc.generateReplicaNameForVolume(v),
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: longhorn.SchemeGroupVersion.String(),
@@ -699,6 +690,9 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 	e, err := vc.ds.GetVolumeEngine(v.Name)
 	if err != nil {
 		return err
+	}
+	if e == nil {
+		return fmt.Errorf("BUG: engine doesn't exist")
 	}
 	if e.Spec.DesireState == types.InstanceStateStopped || e.Status.State != types.InstanceStateRunning {
 		vc.cleanupRecurringJobsHoldingLock(v)

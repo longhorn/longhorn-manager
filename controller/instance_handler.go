@@ -75,6 +75,7 @@ func (h *InstanceHandler) SyncInstanceState(podName string, spec *types.Instance
 			logrus.Warnf("instance %v state is failed/unknown, pod state %v",
 				podName, pod.Status.Phase)
 			status.State = types.InstanceStateError
+			status.IP = ""
 		}
 	}
 	return nil

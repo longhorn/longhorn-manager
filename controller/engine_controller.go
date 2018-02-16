@@ -388,7 +388,7 @@ func (ec *EngineController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 		return
 	}
 	engine, err := ec.ds.GetEngine(ref.Name)
-	if err != nil {
+	if err != nil || engine == nil {
 		return
 	}
 	if engine.UID != ref.UID {
@@ -473,6 +473,9 @@ func (m *EngineMonitor) Refresh() error {
 	engine, err := m.ds.GetEngine(m.Name)
 	if err != nil {
 		return err
+	}
+	if engine == nil {
+		return fmt.Errorf("engine doesn't exist")
 	}
 
 	// Wait for stop monitoring

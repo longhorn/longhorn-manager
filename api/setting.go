@@ -12,7 +12,7 @@ func (s *Server) SettingsList(w http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 
 	si, err := s.ds.GetSetting()
-	if err != nil && si == nil {
+	if err != nil || si == nil {
 		return errors.Wrap(err, "fail to read settings")
 	}
 	apiContext.Write(toSettingCollection(&si.SettingsInfo))

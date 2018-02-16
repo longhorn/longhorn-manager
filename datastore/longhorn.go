@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	longhornVolumeKey = "longhornVolume"
+	longhornVolumeKey = "longhornvolume"
 	// NameMaximumLength restricted the length due to Kubernetes name limitation
 	NameMaximumLength = 32
 
@@ -54,7 +54,7 @@ func (s *DataStore) GetSetting() (*longhorn.Setting, error) {
 
 func getVolumeLabels(volumeName string) map[string]string {
 	return map[string]string{
-		"longhornvolume": volumeName,
+		longhornVolumeKey: volumeName,
 	}
 }
 
@@ -166,7 +166,7 @@ func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 		return nil, err
 	}
 	if len(list) == 0 {
-		return nil, nil
+		return map[string]*longhorn.Volume{}, nil
 	}
 
 	for _, itemRO := range list {
@@ -177,7 +177,7 @@ func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 }
 
 func checkEngine(engine *longhorn.Controller) error {
-	if engine.Name == "" || engine.Spec.VolumeName == "" || engine.Spec.NodeID == "" {
+	if engine.Name == "" || engine.Spec.VolumeName == "" {
 		return fmt.Errorf("BUG: missing required field %+v", engine)
 	}
 	return nil
@@ -332,7 +332,7 @@ func (s *DataStore) GetVolumeReplicas(volumeName string) (map[string]*longhorn.R
 		return nil, err
 	}
 	if len(list) == 0 {
-		return nil, nil
+		return map[string]*longhorn.Replica{}, nil
 	}
 	replicas := map[string]*longhorn.Replica{}
 	for _, r := range list {

@@ -13,8 +13,11 @@ import (
 
 	"github.com/rancher/longhorn-manager/api"
 	"github.com/rancher/longhorn-manager/controller"
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
+
+	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
 
 const (
@@ -90,6 +93,10 @@ func RunManager(c *cli.Context) error {
 		return err
 	}
 
+	if err := initSettings(ds); err != nil {
+		return err
+	}
+
 	server := api.NewServer(currentNodeID, currentIP, ds)
 	router := http.Handler(api.NewRouter(server))
 
@@ -105,6 +112,23 @@ func environmentCheck() error {
 		return err
 	}
 	if err := iscsi.CheckForInitiatorExistence(namespace); err != nil {
+		return err
+	}
+	return nil
+}
+
+func initSettings(ds *datastore.DataStore) error {
+	setting, err := ds.GetSetting()
+	if err != nil {
+		return err
+	}
+	// initialization has been done
+	if setting != nil {
+		return nil
+	}
+	setting = &longhorn.Setting{}
+	setting.BackupTarget = ""
+	if _, err := ds.CreateSetting(setting); err != nil {
 		return err
 	}
 	return nil

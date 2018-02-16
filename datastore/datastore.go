@@ -56,6 +56,6 @@ func NewDataStore(
 }
 
 func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
-	return !controller.WaitForCacheSync("longhorn datastore", stopCh,
+	return controller.WaitForCacheSync("longhorn datastore", stopCh,
 		s.vStoreSynced, s.eStoreSynced, s.rStoreSynced, s.pStoreSynced)
 }

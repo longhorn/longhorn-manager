@@ -258,7 +258,7 @@ func (s *Server) GetEngineClient(volumeName string) (client engineapi.EngineClie
 	if e == nil {
 		return nil, fmt.Errorf("cannot get engine for %v", volumeName)
 	}
-	if e.Status.Running() {
+	if !e.Status.Running() {
 		return nil, fmt.Errorf("engine is not running")
 	}
 	engineCollection := &engineapi.EngineCollection{}

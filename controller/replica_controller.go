@@ -234,17 +234,17 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		return nil
 	}
 
+	// Not ours
+	if replica.Spec.OwnerID != rc.controllerID {
+		return nil
+	}
+
 	defer func() {
 		// we're going to update replica assume things changes
 		if err == nil {
 			_, err = rc.ds.UpdateReplica(replica)
 		}
 	}()
-
-	// Not ours
-	if replica.Spec.OwnerID != rc.controllerID {
-		return nil
-	}
 
 	// we will sync up with pod status before proceed
 	if err := rc.instanceHandler.SyncInstanceState(replica.Name, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus); err != nil {
@@ -530,7 +530,7 @@ func (rc *ReplicaController) ResolveRefAndEnqueue(namespace string, ref *metav1.
 		return
 	}
 	replica, err := rc.ds.GetReplica(ref.Name)
-	if err != nil {
+	if err != nil || replica == nil {
 		return
 	}
 	if replica.UID != ref.UID {
