@@ -118,22 +118,6 @@ type ReplicaInfo struct {
 	Metadata
 }
 
-type NodeState string
-
-const (
-	NodeStateUp   = NodeState("up")
-	NodeStateDown = NodeState("down")
-)
-
-type NodeInfo struct {
-	ID          string    `json:"id"`
-	IP          string    `json:"ip"`
-	State       NodeState `json:"state"`
-	LastCheckin string    `json:"lastCheckin"`
-
-	Metadata
-}
-
 type SettingsInfo struct {
 	BackupTarget string `json:"backupTarget"`
 

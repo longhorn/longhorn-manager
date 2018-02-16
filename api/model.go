@@ -397,24 +397,24 @@ func toSnapshotCollection(ss map[string]*engineapi.Snapshot) *client.GenericColl
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshot"}}
 }
 
-func toHostCollection(hosts map[string]*longhorn.Node) *client.GenericCollection {
+func toHostCollection(nodeIPMap map[string]string) *client.GenericCollection {
 	data := []interface{}{}
-	for _, v := range hosts {
-		data = append(data, toHostResource(&v.NodeInfo))
+	for node, ip := range nodeIPMap {
+		data = append(data, toHostResource(node, ip))
 	}
 	return &client.GenericCollection{Data: data}
 }
 
-func toHostResource(h *types.NodeInfo) *Host {
+func toHostResource(node, ip string) *Host {
 	return &Host{
 		Resource: client.Resource{
-			Id:      h.ID,
+			Id:      node,
 			Type:    "host",
 			Actions: map[string]string{},
 		},
-		UUID:    h.ID,
-		Name:    h.Name,
-		Address: h.IP,
+		UUID:    node,
+		Name:    node,
+		Address: ip,
 	}
 }
 

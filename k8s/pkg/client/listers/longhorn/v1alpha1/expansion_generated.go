@@ -26,14 +26,6 @@ type ControllerListerExpansion interface{}
 // ControllerNamespaceLister.
 type ControllerNamespaceListerExpansion interface{}
 
-// NodeListerExpansion allows custom methods to be added to
-// NodeLister.
-type NodeListerExpansion interface{}
-
-// NodeNamespaceListerExpansion allows custom methods to be added to
-// NodeNamespaceLister.
-type NodeNamespaceListerExpansion interface{}
-
 // ReplicaListerExpansion allows custom methods to be added to
 // ReplicaLister.
 type ReplicaListerExpansion interface{}

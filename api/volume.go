@@ -230,21 +230,18 @@ func (s *Server) createVolume(volume *Volume) (err error) {
 }
 
 func (s *Server) getRandomOwnerID() (string, error) {
-	var node *longhorn.Node
-	nodes, err := s.ds.ListNodes()
+	var node string
+
+	nodeIPMap, err := s.ds.GetManagerNodeIPMap()
 	if err != nil {
 		return "", err
 	}
 	// map is random in Go
-	for _, n := range nodes {
-		node = n
+	for node = range nodeIPMap {
 		break
 	}
 
-	if node == nil {
-		return "", fmt.Errorf("cannot find healthy node")
-	}
-	return node.ID, nil
+	return node, nil
 }
 
 func (s *Server) attachVolume(volumeName, nodeID string) (err error) {

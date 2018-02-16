@@ -11,11 +11,11 @@ import (
 func (s *Server) NodeList(rw http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 
-	nodes, err := s.ds.ListNodes()
+	nodeIPMap, err := s.ds.GetManagerNodeIPMap()
 	if err != nil {
 		return errors.Wrap(err, "fail to list host")
 	}
-	apiContext.Write(toHostCollection(nodes))
+	apiContext.Write(toHostCollection(nodeIPMap))
 	return nil
 }
 
@@ -23,10 +23,14 @@ func (s *Server) NodeGet(rw http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 	id := mux.Vars(req)["id"]
 
-	node, err := s.ds.GetNode(id)
+	nodeIPMap, err := s.ds.GetManagerNodeIPMap()
 	if err != nil {
-		return errors.Wrap(err, "fail to get host")
+		return errors.Wrap(err, "fail to list node")
 	}
-	apiContext.Write(toHostResource(&node.NodeInfo))
+	ip, exists := nodeIPMap[id]
+	if !exists {
+		return errors.Wrapf(err, "fail to find node %v", id)
+	}
+	apiContext.Write(toHostResource(id, ip))
 	return nil
 }

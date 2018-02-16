@@ -27,8 +27,6 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&ControllerList{},
 		&Replica{},
 		&ReplicaList{},
-		&Node{},
-		&NodeList{},
 		&Setting{},
 		&SettingList{},
 	)

@@ -26,8 +26,6 @@ import (
 type Interface interface {
 	// Controllers returns a ControllerInformer.
 	Controllers() ControllerInformer
-	// Nodes returns a NodeInformer.
-	Nodes() NodeInformer
 	// Replicas returns a ReplicaInformer.
 	Replicas() ReplicaInformer
 	// Settings returns a SettingInformer.
@@ -48,11 +46,6 @@ func New(f internalinterfaces.SharedInformerFactory) Interface {
 // Controllers returns a ControllerInformer.
 func (v *version) Controllers() ControllerInformer {
 	return &controllerInformer{factory: v.SharedInformerFactory}
-}
-
-// Nodes returns a NodeInformer.
-func (v *version) Nodes() NodeInformer {
-	return &nodeInformer{factory: v.SharedInformerFactory}
 }
 
 // Replicas returns a ReplicaInformer.

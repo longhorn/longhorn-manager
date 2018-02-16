@@ -30,61 +30,6 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
-func checkNode(node *longhorn.Node) error {
-	if node.Name == "" || node.IP == "" {
-		return fmt.Errorf("BUG: missing required field %+v", node)
-	}
-	return nil
-}
-
-func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
-	if err := checkNode(node); err != nil {
-		return nil, errors.Wrap(err, "failed checking node")
-	}
-
-	return s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Create(node)
-}
-
-func (s *DataStore) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) {
-	if err := checkNode(node); err != nil {
-		return nil, errors.Wrap(err, "failed checking node")
-	}
-
-	return s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Update(node)
-}
-
-func (s *DataStore) DeleteNode(nodeName string) error {
-	return s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Delete(nodeName, &metav1.DeleteOptions{})
-}
-
-func (s *DataStore) GetNode(key string) (*longhorn.Node, error) {
-	result, err := s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Get(key,
-		metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return result, nil
-}
-
-func (s *DataStore) ListNodes() (map[string]*longhorn.Node, error) {
-	result, err := s.lhClient.LonghornV1alpha1().Nodes(s.namespace).List(metav1.ListOptions{})
-	if err != nil {
-		return nil, errors.Wrap(err, "fail to list resource")
-	}
-	if len(result.Items) == 0 {
-		return nil, nil
-	}
-
-	nodeMap := make(map[string]*longhorn.Node)
-	for _, item := range result.Items {
-		nodeMap[item.Name] = &item
-	}
-	return nodeMap, nil
-}
-
 func (s *DataStore) CreateSetting(setting *longhorn.Setting) (*longhorn.Setting, error) {
 	setting.Name = SettingName
 	return s.lhClient.LonghornV1alpha1().Settings(s.namespace).Create(setting)
