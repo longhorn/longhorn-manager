@@ -11,11 +11,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
+	"github.com/rancher/longhorn-manager/types"
 
-	"github.com/rancher/longhorn-manager/k8s"
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhclientset "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	lhinformers "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions"
@@ -27,14 +28,15 @@ var (
 )
 
 func StartControllers(controllerID, engineImage string) (*datastore.DataStore, error) {
-	namespace := os.Getenv(k8s.EnvPodNamespace)
+	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, " +
 			"using default namespace")
 		namespace = corev1.NamespaceDefault
 	}
 
-	config, err := k8s.GetClientConfig("")
+	// Only supports in-cluster config
+	config, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to get client config")
 	}

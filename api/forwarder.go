@@ -75,6 +75,10 @@ func (s *Server) GetCurrentNodeID() string {
 	return s.CurrentNodeID
 }
 
+func ipToAPIServerAddress(ip string) string {
+	return ip + ":" + strconv.Itoa(types.DefaultAPIPort)
+}
+
 func (s *Server) Node2APIAddress(nodeID string) (string, error) {
 	nodeIPMap, err := s.ds.GetManagerNodeIPMap()
 	if err != nil {
@@ -84,13 +88,9 @@ func (s *Server) Node2APIAddress(nodeID string) (string, error) {
 	if !exists {
 		return "", fmt.Errorf("cannot find longhorn manager on node %v", nodeID)
 	}
-	return ip + ":" + strconv.Itoa(types.DefaultAPIPort), nil
+	return ipToAPIServerAddress(ip), nil
 }
 
-func (s *Server) GetCurrentIP() (string, error) {
-	currentNode := s.GetCurrentNodeID()
-	if currentNode == "" {
-		return "", fmt.Errorf("cannot detect current node")
-	}
-	return s.Node2APIAddress(currentNode)
+func (s *Server) GetAPIServerAddress() string {
+	return ipToAPIServerAddress(s.CurrentIP)
 }

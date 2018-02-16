@@ -13,7 +13,7 @@ import (
 
 	"github.com/rancher/longhorn-manager/api"
 	"github.com/rancher/longhorn-manager/controller"
-	"github.com/rancher/longhorn-manager/k8s"
+	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 )
 
@@ -75,9 +75,14 @@ func RunManager(c *cli.Context) error {
 		return fmt.Errorf("Environment check failed: %v", err)
 	}
 
-	currentNodeID, err := util.GetRequiredEnv(k8s.EnvNodeName)
+	currentNodeID, err := util.GetRequiredEnv(types.EnvNodeName)
 	if err != nil {
 		return fmt.Errorf("BUG: fail to detect the node name")
+	}
+
+	currentIP, err := util.GetRequiredEnv(types.EnvPodIP)
+	if err != nil {
+		return fmt.Errorf("BUG: fail to detect the node IP")
 	}
 
 	ds, err := controller.StartControllers(currentNodeID, engineImage)
@@ -85,13 +90,10 @@ func RunManager(c *cli.Context) error {
 		return err
 	}
 
-	server := api.NewServer(currentNodeID, ds)
+	server := api.NewServer(currentNodeID, currentIP, ds)
 	router := http.Handler(api.NewRouter(server))
 
-	listen, err := server.GetCurrentIP()
-	if err != nil {
-		return err
-	}
+	listen := server.GetAPIServerAddress()
 	logrus.Infof("Listening on %s", listen)
 
 	return http.ListenAndServe(listen, router)
