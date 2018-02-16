@@ -61,6 +61,7 @@ type InstanceState string
 const (
 	InstanceStateRunning = InstanceState("running")
 	InstanceStateStopped = InstanceState("stopped")
+	InstanceStatePending = InstanceState("pending")
 	InstanceStateError   = InstanceState("error")
 )
 

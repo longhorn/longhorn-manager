@@ -50,7 +50,11 @@ func (h *InstanceHandler) SyncInstanceState(podName string, spec *types.Instance
 	} else {
 		switch pod.Status.Phase {
 		case corev1.PodPending:
-			status.State = types.InstanceStateStopped
+			status.State = types.InstanceStatePending
+			status.IP = ""
+		case corev1.PodFailed:
+			// TODO Check the reason of pod cannot gracefully shutdown
+			status.State = types.InstanceStatePending
 			status.IP = ""
 		case corev1.PodRunning:
 			for _, st := range pod.Status.ContainerStatuses {
@@ -100,18 +104,24 @@ func (h *InstanceHandler) ReconcileInstanceState(podName string, obj interface{}
 					return err
 				}
 				break
+			} else if state == types.InstanceStatePending {
+				// wait until state change to stopped or running
+				return nil
 			}
-			logrus.Errorf("unable to do replica transition: current %v, desire %v", state, desireState)
+			logrus.Errorf("unable to do instance transition: current %v, desire %v", state, desireState)
 		case types.InstanceStateStopped:
 			if state == types.InstanceStateRunning {
 				if err := h.stopInstance(podName); err != nil {
 					return err
 				}
 				break
+			} else if state == types.InstanceStatePending {
+				// wait until state change to stopped or running
+				return nil
 			}
-			logrus.Errorf("unable to do replica transition: current %v, desire %v", state, desireState)
+			logrus.Errorf("unable to do instance transition: current %v, desire %v", state, desireState)
 		default:
-			logrus.Errorf("unknown replica transition: current %v, desire %v", state, desireState)
+			logrus.Errorf("unknown instance transition: current %v, desire %v", state, desireState)
 		}
 	}
 	return nil

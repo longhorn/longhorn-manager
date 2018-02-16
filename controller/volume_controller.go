@@ -300,7 +300,7 @@ func (vc *VolumeController) RefreshVolumeState(v *longhorn.Volume) (err error) {
 			healthyCount++
 		}
 	}
-	if engine.Status.State == types.InstanceStateRunning {
+	if engine.Status.Running() {
 		// Don't worry about ">" now. Deal with it later
 		if healthyCount >= v.Spec.NumberOfReplicas {
 			v.Status.State = types.VolumeStateHealthy
@@ -374,7 +374,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume) (err
 			}
 			continue
 		}
-		if r.Status.State == types.InstanceStateRunning && engine.Spec.ReplicaAddressMap[r.Name] == "" {
+		if r.Status.Running() && engine.Spec.ReplicaAddressMap[r.Name] == "" {
 			engine.Spec.ReplicaAddressMap[r.Name] = r.Status.IP
 		}
 	}
@@ -692,7 +692,7 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 	if e == nil {
 		return fmt.Errorf("BUG: engine doesn't exist")
 	}
-	if e.Spec.DesireState == types.InstanceStateStopped || e.Status.State != types.InstanceStateRunning {
+	if e.Spec.DesireState == types.InstanceStateStopped || !e.Status.Running() {
 		vc.cleanupRecurringJobsHoldingLock(v)
 		return nil
 	}

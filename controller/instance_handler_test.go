@@ -39,7 +39,7 @@ func (s *TestSuite) TestSyncInstanceState(c *C) {
 		"pod starting for the first time": {
 			v1.PodPending, TestNode1, "",
 			types.InstanceStateError, "",
-			types.InstanceStateStopped, "", "", false,
+			types.InstanceStatePending, "", "", false,
 		},
 		"pod running for first time": {
 			v1.PodRunning, TestNode1, TestIP1,
@@ -49,7 +49,7 @@ func (s *TestSuite) TestSyncInstanceState(c *C) {
 		"pod stopped after first run": {
 			v1.PodPending, "", TestIP1,
 			types.InstanceStateRunning, TestNode1,
-			types.InstanceStateStopped, TestNode1, "", false,
+			types.InstanceStatePending, TestNode1, "", false,
 		},
 		"pod run after first run": {
 			v1.PodRunning, TestNode1, TestIP2,

@@ -237,7 +237,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return err
 	}
 
-	if engine.Status.State == types.InstanceStateRunning {
+	if engine.Status.Running() {
 		if !ec.isMonitoring(engine) {
 			ec.startMonitoring(engine)
 		} else if engine.Status.ReplicaModeMap != nil {
@@ -246,7 +246,8 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 				return err
 			}
 		}
-	} else if engine.Status.State == types.InstanceStateStopped && ec.isMonitoring(engine) {
+	} else if ec.isMonitoring(engine) {
+		// not running
 		ec.stopMonitoring(engine)
 	}
 
@@ -476,7 +477,7 @@ func (m *EngineMonitor) Refresh() error {
 	}
 
 	// Wait for stop monitoring
-	if engine.Status.State == types.InstanceStateStopped {
+	if !engine.Status.Running() {
 		return nil
 	}
 
