@@ -54,15 +54,22 @@ func (s *Server) VolumeList(rw http.ResponseWriter, req *http.Request) (err erro
 
 func (s *Server) VolumeGet(rw http.ResponseWriter, req *http.Request) error {
 	id := mux.Vars(req)["name"]
-	return s.responseWithVolume(rw, req, id)
+	return s.responseWithVolume(rw, req, id, nil)
 }
 
-func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, id string) error {
+func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, id string, v *longhorn.Volume) error {
+	var err error
 	apiContext := api.GetApiContext(req)
 
-	v, err := s.ds.GetVolume(id)
-	if err != nil {
-		return errors.Wrap(err, "unable to get volume")
+	if v == nil {
+		if id == "" {
+			rw.WriteHeader(http.StatusNotFound)
+			return nil
+		}
+		v, err = s.ds.GetVolume(id)
+		if err != nil {
+			return errors.Wrap(err, "unable to get volume")
+		}
 	}
 
 	if v == nil {
@@ -83,17 +90,18 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 }
 
 func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
-	var v Volume
+	var volume Volume
 	apiContext := api.GetApiContext(req)
 
-	if err := apiContext.Read(&v); err != nil {
+	if err := apiContext.Read(&volume); err != nil {
 		return err
 	}
 
-	if err := s.createVolume(&v); err != nil {
+	v, err := s.createVolume(&volume)
+	if err != nil {
 		return errors.Wrap(err, "unable to create volume")
 	}
-	return s.responseWithVolume(rw, req, v.Name)
+	return s.responseWithVolume(rw, req, "", v)
 }
 
 func (s *Server) VolumeDelete(rw http.ResponseWriter, req *http.Request) error {
@@ -116,21 +124,23 @@ func (s *Server) VolumeAttach(rw http.ResponseWriter, req *http.Request) error {
 
 	id := mux.Vars(req)["name"]
 
-	if err := s.attachVolume(id, input.HostID); err != nil {
+	v, err := s.attachVolume(id, input.HostID)
+	if err != nil {
 		return err
 	}
 
-	return s.responseWithVolume(rw, req, id)
+	return s.responseWithVolume(rw, req, "", v)
 }
 
 func (s *Server) VolumeDetach(rw http.ResponseWriter, req *http.Request) error {
 	id := mux.Vars(req)["name"]
 
-	if err := s.detachVolume(id); err != nil {
+	v, err := s.detachVolume(id)
+	if err != nil {
 		return err
 	}
 
-	return s.responseWithVolume(rw, req, id)
+	return s.responseWithVolume(rw, req, "", v)
 }
 
 func (s *Server) VolumeSalvage(rw http.ResponseWriter, req *http.Request) error {
@@ -143,11 +153,12 @@ func (s *Server) VolumeSalvage(rw http.ResponseWriter, req *http.Request) error 
 
 	id := mux.Vars(req)["name"]
 
-	if err := s.salvageVolume(id, input.Names); err != nil {
+	v, err := s.salvageVolume(id, input.Names)
+	if err != nil {
 		return errors.Wrap(err, "unable to remove replica")
 	}
 
-	return s.responseWithVolume(rw, req, id)
+	return s.responseWithVolume(rw, req, "", v)
 }
 
 func (s *Server) VolumeRecurringUpdate(rw http.ResponseWriter, req *http.Request) error {
@@ -165,11 +176,12 @@ func (s *Server) VolumeRecurringUpdate(rw http.ResponseWriter, req *http.Request
 		}
 	}
 
-	if err := s.updateVolumeRecurringJobs(id, input.Jobs); err != nil {
+	v, err := s.updateVolumeRecurringJobs(id, input.Jobs)
+	if err != nil {
 		return errors.Wrapf(err, "unable to update recurring jobs for volume %v", id)
 	}
 
-	return s.responseWithVolume(rw, req, id)
+	return s.responseWithVolume(rw, req, "", v)
 }
 
 func (s *Server) ReplicaRemove(rw http.ResponseWriter, req *http.Request) error {
@@ -186,10 +198,10 @@ func (s *Server) ReplicaRemove(rw http.ResponseWriter, req *http.Request) error 
 		return errors.Wrap(err, "unable to remove replica")
 	}
 
-	return s.responseWithVolume(rw, req, id)
+	return s.responseWithVolume(rw, req, id, nil)
 }
 
-func (s *Server) createVolume(volume *Volume) (err error) {
+func (s *Server) createVolume(volume *Volume) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to create volume %+v", volume)
 	}()
@@ -197,19 +209,19 @@ func (s *Server) createVolume(volume *Volume) (err error) {
 	// make it random node's responsibility
 	ownerID, err := s.getRandomOwnerID()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	size := volume.Size
 	if volume.FromBackup != "" {
 		backup, err := engineapi.GetBackup(volume.FromBackup)
 		if err != nil {
-			return fmt.Errorf("cannot get backup %v: %v", volume.FromBackup, err)
+			return nil, fmt.Errorf("cannot get backup %v: %v", volume.FromBackup, err)
 		}
 		size = backup.VolumeSize
 	}
 
-	v := &longhorn.Volume{
+	v = &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: volume.Name,
 		},
@@ -222,11 +234,12 @@ func (s *Server) createVolume(volume *Volume) (err error) {
 			DesireState:         types.VolumeStateDetached,
 		},
 	}
-	if _, err := s.ds.CreateVolume(v); err != nil {
-		return err
+	v, err = s.ds.CreateVolume(v)
+	if err != nil {
+		return nil, err
 	}
 	logrus.Debugf("Created volume %v", v.Name)
-	return nil
+	return v, nil
 }
 
 func (s *Server) getRandomOwnerID() (string, error) {
@@ -244,122 +257,126 @@ func (s *Server) getRandomOwnerID() (string, error) {
 	return node, nil
 }
 
-func (s *Server) attachVolume(volumeName, nodeID string) (err error) {
+func (s *Server) attachVolume(volumeName, nodeID string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to attach volume %v to %v", volumeName, nodeID)
 	}()
 
-	v, err := s.ds.GetVolume(volumeName)
+	v, err = s.ds.GetVolume(volumeName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if v == nil {
-		return fmt.Errorf("cannot find volume %v", volumeName)
+		return nil, fmt.Errorf("cannot find volume %v", volumeName)
 	}
 	// already desired to be attached
 	if v.Spec.DesireState == types.VolumeStateHealthy {
 		if v.Spec.NodeID != nodeID {
-			return fmt.Errorf("Node to be attached %v is different from previous spec %v", nodeID, v.Spec.NodeID)
+			return nil, fmt.Errorf("Node to be attached %v is different from previous spec %v", nodeID, v.Spec.NodeID)
 		}
-		return nil
+		return v, nil
 	}
 	if v.Status.State != types.VolumeStateDetached {
-		return fmt.Errorf("invalid state to attach %v: %v", volumeName, v.Status.State)
+		return nil, fmt.Errorf("invalid state to attach %v: %v", volumeName, v.Status.State)
 	}
 	v.Spec.NodeID = nodeID
 	// Must be owned by the manager on the same node
 	v.Spec.OwnerID = v.Spec.NodeID
 	v.Spec.DesireState = types.VolumeStateHealthy
-	if _, err := s.ds.UpdateVolume(v); err != nil {
-		return err
+	v, err = s.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
 	}
 	logrus.Debugf("Attaching volume %v to %v", v.Name, v.Spec.NodeID)
-	return err
+	return v, nil
 }
 
-func (s *Server) detachVolume(volumeName string) (err error) {
+func (s *Server) detachVolume(volumeName string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to detach volume %v", volumeName)
 	}()
 
-	v, err := s.ds.GetVolume(volumeName)
+	v, err = s.ds.GetVolume(volumeName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if v == nil {
-		return fmt.Errorf("cannot find volume %v", volumeName)
+		return nil, fmt.Errorf("cannot find volume %v", volumeName)
 	}
 	if v.Status.State != types.VolumeStateHealthy && v.Status.State != types.VolumeStateDegraded {
-		return fmt.Errorf("invalid state to detach %v: %v", v.Name, v.Status.State)
+		return nil, fmt.Errorf("invalid state to detach %v: %v", v.Name, v.Status.State)
 	}
 
 	v.Spec.DesireState = types.VolumeStateDetached
 	v.Spec.NodeID = ""
-	if _, err := s.ds.UpdateVolume(v); err != nil {
-		return err
+	v, err = s.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
 	}
 	logrus.Debugf("Detaching volume %v from %v", v.Name, v.Spec.NodeID)
-	return nil
+	return v, nil
 }
 
-func (s *Server) updateVolumeRecurringJobs(volumeName string, jobs []types.RecurringJob) (err error) {
+func (s *Server) updateVolumeRecurringJobs(volumeName string, jobs []types.RecurringJob) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to update volume recurring jobs for %v", volumeName)
 	}()
 
-	v, err := s.ds.GetVolume(volumeName)
+	v, err = s.ds.GetVolume(volumeName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if v == nil {
-		return fmt.Errorf("cannot find volume %v", volumeName)
+		return nil, fmt.Errorf("cannot find volume %v", volumeName)
 	}
 
 	v.Spec.RecurringJobs = jobs
-	if _, err := s.ds.UpdateVolume(v); err != nil {
-		return err
+	v, err = s.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
 	}
 	logrus.Debugf("Updating volume %v recurring jobs", v.Name)
-	return nil
+	return v, nil
 }
 
-func (s *Server) salvageVolume(volumeName string, salvageReplicaNames []string) (err error) {
+func (s *Server) salvageVolume(volumeName string, salvageReplicaNames []string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to salvage volume %v", volumeName)
 	}()
 
-	v, err := s.ds.GetVolume(volumeName)
+	v, err = s.ds.GetVolume(volumeName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if v == nil {
-		return fmt.Errorf("cannot find volume %v", volumeName)
+		return nil, fmt.Errorf("cannot find volume %v", volumeName)
 	}
 	if v.Status.State != types.VolumeStateFault {
-		return fmt.Errorf("invalid state to salvage: %v", v.Status.State)
+		return nil, fmt.Errorf("invalid state to salvage: %v", v.Status.State)
 	}
 
 	for _, names := range salvageReplicaNames {
 		r, err := s.ds.GetReplica(names)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if r.Spec.VolumeName != v.Name {
-			return fmt.Errorf("replica %v doesn't belong to volume %v", r.Name, v.Name)
+			return nil, fmt.Errorf("replica %v doesn't belong to volume %v", r.Name, v.Name)
 		}
 		if r.Spec.FailedAt == "" {
-			return fmt.Errorf("replica %v is not in failed state", r.Name)
+			return nil, fmt.Errorf("replica %v is not in failed state", r.Name)
 		}
 		r.Spec.FailedAt = ""
 		if _, err := s.ds.UpdateReplica(r); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	v.Spec.DesireState = types.VolumeStateDetached
-	if _, err := s.ds.UpdateVolume(v); err != nil {
-		return err
+	v, err = s.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
 	}
 	logrus.Debugf("Salvaging replica %+v for volume %v", salvageReplicaNames, v.Name)
-	return nil
+	return v, nil
 }
