@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 
 	"k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -229,6 +230,12 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		// we're going to update engine assume things changes
 		if err == nil {
 			_, err = ec.ds.UpdateEngine(engine)
+		}
+		// requeue if it's conflict
+		if apierrors.IsConflict(err) {
+			logrus.Debugf("Requeue %v due to conflict", key)
+			ec.enqueueEngine(engine)
+			err = nil
 		}
 	}()
 

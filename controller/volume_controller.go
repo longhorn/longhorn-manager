@@ -11,6 +11,7 @@ import (
 	"github.com/robfig/cron"
 
 	"k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -254,6 +255,12 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		// we're going to update volume assume things changes
 		if err == nil {
 			_, err = vc.ds.UpdateVolume(volume)
+		}
+		// requeue if it's conflict
+		if apierrors.IsConflict(err) {
+			logrus.Debugf("Requeue %v due to conflict", key)
+			vc.enqueueVolume(volume)
+			err = nil
 		}
 	}()
 

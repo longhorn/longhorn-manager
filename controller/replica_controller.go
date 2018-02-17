@@ -255,6 +255,12 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		if err == nil {
 			_, err = rc.ds.UpdateReplica(replica)
 		}
+		// requeue if it's conflict
+		if apierrors.IsConflict(err) {
+			logrus.Debugf("Requeue %v due to conflict", key)
+			rc.enqueueReplica(replica)
+			err = nil
+		}
 	}()
 
 	// we will sync up with pod status before proceed
