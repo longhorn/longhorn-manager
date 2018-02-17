@@ -355,9 +355,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume) (err
 	for rName, mode := range engine.Status.ReplicaModeMap {
 		if mode == types.ReplicaModeERR {
 			r := replicas[rName]
-			if r == nil {
-				logrus.Warnf("Engine has %v as ERR, but cannot find the replica", rName)
-			} else {
+			if r != nil {
 				r.Spec.FailedAt = util.Now()
 				if _, err := vc.ds.UpdateReplica(r); err != nil {
 					return err
