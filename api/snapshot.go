@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/go-rancher/api"
 
 	"github.com/rancher/longhorn-manager/engineapi"
+	"github.com/rancher/longhorn-manager/types"
 )
 
 func (s *Server) SnapshotCreate(w http.ResponseWriter, req *http.Request) (err error) {
@@ -258,7 +259,7 @@ func (s *Server) GetEngineClient(volumeName string) (client engineapi.EngineClie
 	if e == nil {
 		return nil, fmt.Errorf("cannot get engine for %v", volumeName)
 	}
-	if !e.Status.Running() {
+	if e.Status.CurrentState != types.InstanceStateRunning {
 		return nil, fmt.Errorf("engine is not running")
 	}
 	engineCollection := &engineapi.EngineCollection{}

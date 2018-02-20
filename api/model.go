@@ -283,7 +283,7 @@ func toVolumeResource(v *longhorn.Volume, vc *longhorn.Controller, vrs map[strin
 		replicas = append(replicas, Replica{
 			Instance: Instance{
 				Name:    r.Name,
-				Running: r.Status.Running(),
+				Running: r.Status.CurrentState == types.InstanceStateRunning,
 				Address: r.Status.IP,
 				NodeID:  r.Spec.NodeID,
 			},
@@ -296,7 +296,7 @@ func toVolumeResource(v *longhorn.Volume, vc *longhorn.Controller, vrs map[strin
 	if vc != nil {
 		controller = &Controller{Instance{
 			Name:    vc.Name,
-			Running: vc.Status.Running(),
+			Running: vc.Status.CurrentState == types.InstanceStateRunning,
 			NodeID:  vc.Spec.NodeID,
 			Address: vc.Status.IP,
 		}}

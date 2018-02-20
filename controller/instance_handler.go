@@ -42,19 +42,20 @@ func (h *InstanceHandler) SyncInstanceState(podName string, spec *types.Instance
 	pod, err := h.getPod(podName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			status.State = types.InstanceStateStopped
+			status.CurrentState = types.InstanceStateStopped
 			status.IP = ""
 		} else {
 			return err
 		}
 	} else {
+		if pod.DeletionTimestamp != nil {
+			status.CurrentState = types.InstanceStateStopping
+			status.IP = ""
+			return nil
+		}
 		switch pod.Status.Phase {
 		case corev1.PodPending:
-			status.State = types.InstanceStatePending
-			status.IP = ""
-		case corev1.PodFailed:
-			// TODO Check the reason of pod cannot gracefully shutdown
-			status.State = types.InstanceStatePending
+			status.CurrentState = types.InstanceStateStarting
 			status.IP = ""
 		case corev1.PodRunning:
 			for _, st := range pod.Status.ContainerStatuses {
@@ -63,22 +64,23 @@ func (h *InstanceHandler) SyncInstanceState(podName string, spec *types.Instance
 					return nil
 				}
 			}
-			status.State = types.InstanceStateRunning
+			status.CurrentState = types.InstanceStateRunning
 			status.IP = pod.Status.PodIP
 			// pin down to this node ID for replica
 			if spec.NodeID == "" {
 				spec.NodeID = pod.Spec.NodeName
 			} else if spec.NodeID != pod.Spec.NodeName {
-				status.State = types.InstanceStateError
+				status.CurrentState = types.InstanceStateError
 				status.IP = ""
 				err := fmt.Errorf("BUG: instance %v wasn't pin down to the host %v", podName, spec.NodeID)
 				logrus.Errorf("%v", err)
 				return err
 			}
 		default:
+			// TODO Check the reason of pod cannot gracefully shutdown
 			logrus.Warnf("instance %v state is failed/unknown, pod state %v",
 				podName, pod.Status.Phase)
-			status.State = types.InstanceStateError
+			status.CurrentState = types.InstanceStateError
 			status.IP = ""
 		}
 	}
@@ -86,7 +88,7 @@ func (h *InstanceHandler) SyncInstanceState(podName string, spec *types.Instance
 }
 
 func (h *InstanceHandler) ReconcileInstanceState(podName string, obj interface{}, spec *types.InstanceSpec, status *types.InstanceStatus) (err error) {
-	state := status.State
+	state := status.CurrentState
 	desireState := spec.DesireState
 	if state == types.InstanceStateError {
 		return h.stopInstance(podName)
@@ -104,7 +106,7 @@ func (h *InstanceHandler) ReconcileInstanceState(podName string, obj interface{}
 					return err
 				}
 				break
-			} else if state == types.InstanceStatePending {
+			} else if state == types.InstanceStateStarting || state == types.InstanceStateStopping {
 				// wait until state change to stopped or running
 				return nil
 			}
@@ -115,7 +117,7 @@ func (h *InstanceHandler) ReconcileInstanceState(podName string, obj interface{}
 					return err
 				}
 				break
-			} else if state == types.InstanceStatePending {
+			} else if state == types.InstanceStateStarting || state == types.InstanceStateStopping {
 				// wait until state change to stopped or running
 				return nil
 			}

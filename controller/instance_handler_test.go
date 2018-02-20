@@ -39,17 +39,12 @@ func (s *TestSuite) TestSyncInstanceState(c *C) {
 		"pod starting for the first time": {
 			v1.PodPending, TestNode1, "",
 			types.InstanceStateError, "",
-			types.InstanceStatePending, "", "", false,
+			types.InstanceStateStarting, "", "", false,
 		},
 		"pod running for first time": {
 			v1.PodRunning, TestNode1, TestIP1,
 			types.InstanceStateError, "",
 			types.InstanceStateRunning, TestNode1, TestIP1, false,
-		},
-		"pod stopped after first run": {
-			v1.PodPending, "", TestIP1,
-			types.InstanceStateRunning, TestNode1,
-			types.InstanceStatePending, TestNode1, "", false,
 		},
 		"pod run after first run": {
 			v1.PodRunning, TestNode1, TestIP2,
@@ -76,7 +71,7 @@ func (s *TestSuite) TestSyncInstanceState(c *C) {
 			NodeID: tc.currentNodeID,
 		}
 		status := &types.InstanceStatus{
-			State: tc.currentState,
+			CurrentState: tc.currentState,
 		}
 		pod := newPod(tc.podPhase, TestPodName, TestNamespace)
 		pod.Spec.NodeName = tc.podNodeName
@@ -89,7 +84,7 @@ func (s *TestSuite) TestSyncInstanceState(c *C) {
 		} else {
 			c.Assert(err, IsNil)
 		}
-		c.Assert(status.State, Equals, tc.expectedState)
+		c.Assert(status.CurrentState, Equals, tc.expectedState)
 		c.Assert(status.IP, Equals, tc.expectedIP)
 		c.Assert(spec.NodeID, Equals, tc.expectedNodeID)
 	}

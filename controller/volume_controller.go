@@ -307,7 +307,7 @@ func (vc *VolumeController) RefreshVolumeState(v *longhorn.Volume) (err error) {
 			healthyCount++
 		}
 	}
-	if engine.Status.Running() {
+	if engine.Status.CurrentState == types.InstanceStateRunning {
 		// Don't worry about ">" now. Deal with it later
 		if healthyCount >= v.Spec.NumberOfReplicas {
 			v.Status.State = types.VolumeStateHealthy
@@ -381,7 +381,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume) (err
 			}
 			continue
 		}
-		if r.Status.Running() && engine.Spec.ReplicaAddressMap[r.Name] == "" {
+		if r.Status.CurrentState == types.InstanceStateRunning && engine.Spec.ReplicaAddressMap[r.Name] == "" {
 			engine.Spec.ReplicaAddressMap[r.Name] = r.Status.IP
 		}
 	}
@@ -473,7 +473,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume) (err error)
 			return err
 		}
 		// must make sure engine stopped first before stopping replicas
-		if engine.Status.State != "" && engine.Status.State != types.InstanceStateStopped {
+		// otherwise we may corrupt the data
+		if engine.Status.CurrentState != types.InstanceStateStopped {
 			logrus.Infof("Waiting for engine %v to stop", engine.Name)
 			return nil
 		}
@@ -507,7 +508,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume) (err error)
 		replicaAddressMap := map[string]string{}
 		for _, r := range replicas {
 			// wait for all healthy replicas become running
-			if r.Spec.FailedAt == "" && r.Status.State != types.InstanceStateRunning {
+			if r.Spec.FailedAt == "" && r.Status.CurrentState != types.InstanceStateRunning {
 				return nil
 			}
 			replicaAddressMap[r.Name] = r.Status.IP
@@ -699,7 +700,7 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 	if e == nil {
 		return fmt.Errorf("BUG: engine doesn't exist")
 	}
-	if e.Spec.DesireState == types.InstanceStateStopped || !e.Status.Running() {
+	if e.Spec.DesireState == types.InstanceStateStopped || e.Status.CurrentState != types.InstanceStateRunning {
 		vc.cleanupRecurringJobsHoldingLock(v)
 		return nil
 	}

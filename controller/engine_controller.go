@@ -244,7 +244,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return err
 	}
 
-	if engine.Status.Running() {
+	if engine.Status.CurrentState == types.InstanceStateRunning {
 		if !ec.isMonitoring(engine) {
 			ec.startMonitoring(engine)
 		} else if engine.Status.ReplicaModeMap != nil {
@@ -484,7 +484,7 @@ func (m *EngineMonitor) Refresh() error {
 	}
 
 	// Wait for stop monitoring
-	if !engine.Status.Running() {
+	if engine.Status.CurrentState != types.InstanceStateRunning {
 		return nil
 	}
 
@@ -533,7 +533,7 @@ func (ec *EngineController) getClientForEngine(e *longhorn.Controller) (client e
 	defer func() {
 		err = errors.Wrapf(err, "cannot get client for engine %v", e.Name)
 	}()
-	if e.Status.State != types.InstanceStateRunning {
+	if e.Status.CurrentState != types.InstanceStateRunning {
 		return nil, fmt.Errorf("engine is not running")
 	}
 	client, err = ec.engines.NewEngineClient(&engineapi.EngineClientRequest{

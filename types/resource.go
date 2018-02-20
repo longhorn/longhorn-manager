@@ -59,10 +59,11 @@ type RecurringJob struct {
 type InstanceState string
 
 const (
-	InstanceStateRunning = InstanceState("running")
-	InstanceStateStopped = InstanceState("stopped")
-	InstanceStatePending = InstanceState("pending")
-	InstanceStateError   = InstanceState("error")
+	InstanceStateRunning  = InstanceState("running")
+	InstanceStateStopped  = InstanceState("stopped")
+	InstanceStateError    = InstanceState("error")
+	InstanceStateStarting = InstanceState("starting")
+	InstanceStateStopping = InstanceState("stopping")
 )
 
 type InstanceSpec struct {
@@ -74,12 +75,8 @@ type InstanceSpec struct {
 }
 
 type InstanceStatus struct {
-	State InstanceState `json:"state"`
-	IP    string        `json:"ip"`
-}
-
-func (i *InstanceStatus) Running() bool {
-	return i.State == InstanceStateRunning
+	CurrentState InstanceState `json:"currentState"`
+	IP           string        `json:"ip"`
 }
 
 type EngineSpec struct {

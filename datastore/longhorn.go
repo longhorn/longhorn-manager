@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
 
+	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
@@ -266,7 +267,7 @@ func checkReplica(r *longhorn.Replica) error {
 	if r.Name == "" || r.Spec.VolumeName == "" {
 		return fmt.Errorf("BUG: missing required field %+v", r)
 	}
-	if (r.Status.Running()) != (r.Status.IP != "") {
+	if (r.Status.CurrentState == types.InstanceStateRunning) != (r.Status.IP != "") {
 		return fmt.Errorf("BUG: instance state and IP wasn't in sync %+v", r)
 	}
 	if (r.Spec.RestoreFrom != "") != (r.Spec.RestoreName != "") {

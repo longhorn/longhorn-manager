@@ -78,8 +78,8 @@ func newReplica(desireState, currentState types.InstanceState, failedAt string) 
 		},
 		Status: types.ReplicaStatus{
 			InstanceStatus: types.InstanceStatus{
-				State: currentState,
-				IP:    ip,
+				CurrentState: currentState,
+				IP:           ip,
 			},
 		},
 	}
