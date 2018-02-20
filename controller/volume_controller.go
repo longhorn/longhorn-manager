@@ -314,6 +314,7 @@ func (vc *VolumeController) RefreshVolumeState(v *longhorn.Volume) (err error) {
 		} else {
 			v.Status.State = types.VolumeStateDegraded
 		}
+		v.Status.Endpoint = engine.Status.Endpoint
 	} else {
 		// controller has been created by this point, so it won't be
 		// in `Created` state
@@ -322,6 +323,7 @@ func (vc *VolumeController) RefreshVolumeState(v *longhorn.Volume) (err error) {
 		} else {
 			v.Status.State = types.VolumeStateFault
 		}
+		v.Status.Endpoint = ""
 	}
 	return nil
 }
