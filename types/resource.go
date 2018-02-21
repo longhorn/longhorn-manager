@@ -8,6 +8,8 @@ const (
 
 	VolumeStateFault    = VolumeState("fault")
 	VolumeStateDegraded = VolumeState("degraded")
+
+	VolumeStateDeleting = VolumeState("deleting")
 )
 
 type VolumeSpec struct {

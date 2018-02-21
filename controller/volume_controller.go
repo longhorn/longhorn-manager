@@ -231,6 +231,13 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	}
 
 	if volume.DeletionTimestamp != nil {
+		if volume.Status.State != types.VolumeStateDeleting {
+			volume.Status.State = types.VolumeStateDeleting
+			volume, err = vc.ds.UpdateVolume(volume)
+			if err != nil {
+				return err
+			}
+		}
 		vc.stopRecurringJobs(volume)
 
 		if engine != nil && engine.DeletionTimestamp == nil {
