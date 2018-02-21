@@ -263,11 +263,6 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}()
 
-	// we will sync up with pod status before proceed
-	if err := rc.instanceHandler.SyncInstanceState(replica.Name, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus); err != nil {
-		return err
-	}
-
 	// we need to stop the replica when replica failed connection with controller
 	if replica.Spec.FailedAt != "" {
 		if replica.Spec.DesireState != types.InstanceStateStopped {

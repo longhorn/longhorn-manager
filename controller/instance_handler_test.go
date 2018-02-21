@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/kubernetes/pkg/controller"
@@ -13,48 +14,36 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-func (s *TestSuite) TestSyncInstanceState(c *C) {
-	var err error
+func (s *TestSuite) TestSyncStatusWithPod(c *C) {
 	testCases := map[string]struct {
 		//pod setup
-		podPhase    v1.PodPhase
-		podNodeName string
-		podIP       string
+		podPhase v1.PodPhase
+		podIP    string
+		deleted  bool
 
-		//state setup
-		currentState  types.InstanceState
-		currentNodeID string
-
-		//replica expectation
-		expectedState  types.InstanceState
-		expectedNodeID string
-		expectedIP     string
-		expectedError  bool
+		//status expectation
+		expectedState types.InstanceState
+		expectedIP    string
 	}{
 		"all stopped": {
-			"", "", "",
+			"", "", false,
 			types.InstanceStateStopped, "",
-			types.InstanceStateError, "", "", false,
+		},
+		"all stopped with deleted": {
+			v1.PodRunning, TestIP1, true,
+			types.InstanceStateStopping, "",
 		},
 		"pod starting for the first time": {
-			v1.PodPending, TestNode1, "",
-			types.InstanceStateError, "",
-			types.InstanceStateStarting, "", "", false,
+			v1.PodPending, "", false,
+			types.InstanceStateStarting, "",
 		},
 		"pod running for first time": {
-			v1.PodRunning, TestNode1, TestIP1,
+			v1.PodRunning, TestIP1, false,
+			types.InstanceStateRunning, TestIP1,
+		},
+		"pod failed": {
+			v1.PodFailed, TestIP1, false,
 			types.InstanceStateError, "",
-			types.InstanceStateRunning, TestNode1, TestIP1, false,
-		},
-		"pod run after first run": {
-			v1.PodRunning, TestNode1, TestIP2,
-			types.InstanceStateStopped, TestNode1,
-			types.InstanceStateRunning, TestNode1, TestIP2, false,
-		},
-		"pod run at another node after first run": {
-			v1.PodRunning, TestNode2, TestIP2,
-			types.InstanceStateStopped, TestNode1,
-			types.InstanceStateError, TestNode1, "", true,
 		},
 	}
 	for name, tc := range testCases {
@@ -62,31 +51,22 @@ func (s *TestSuite) TestSyncInstanceState(c *C) {
 
 		kubeClient := fake.NewSimpleClientset()
 		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
-		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
-		defer pIndexer.Replace(make([]interface{}, 0), "0")
 
 		h := newTestInstanceHandler(kubeInformerFactory, kubeClient)
 
-		spec := &types.InstanceSpec{
-			NodeID: tc.currentNodeID,
-		}
-		status := &types.InstanceStatus{
-			CurrentState: tc.currentState,
-		}
+		status := &types.InstanceStatus{}
 		pod := newPod(tc.podPhase, TestPodName, TestNamespace)
-		pod.Spec.NodeName = tc.podNodeName
-		pod.Status.PodIP = tc.podIP
-		pIndexer.Add(pod)
-
-		err = h.SyncInstanceState(pod.Name, spec, status)
-		if tc.expectedError {
-			c.Assert(err, NotNil)
-		} else {
-			c.Assert(err, IsNil)
+		if pod != nil {
+			pod.Status.PodIP = tc.podIP
+			if tc.deleted {
+				ts := metav1.Now()
+				pod.DeletionTimestamp = &ts
+			}
 		}
+
+		h.syncStatusWithPod(pod, status)
 		c.Assert(status.CurrentState, Equals, tc.expectedState)
 		c.Assert(status.IP, Equals, tc.expectedIP)
-		c.Assert(spec.NodeID, Equals, tc.expectedNodeID)
 	}
 }
 

@@ -35,95 +35,91 @@ func NewInstanceHandler(podInformer coreinformers.PodInformer, kubeClient client
 	}
 }
 
-func (h *InstanceHandler) SyncInstanceState(podName string, spec *types.InstanceSpec, status *types.InstanceStatus) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "fail to sync instance status for %v", podName)
-	}()
-	pod, err := h.getPod(podName)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			status.CurrentState = types.InstanceStateStopped
-			status.IP = ""
-		} else {
-			return err
-		}
-	} else {
-		if pod.DeletionTimestamp != nil {
-			status.CurrentState = types.InstanceStateStopping
-			status.IP = ""
-			return nil
-		}
-		switch pod.Status.Phase {
-		case corev1.PodPending:
-			status.CurrentState = types.InstanceStateStarting
-			status.IP = ""
-		case corev1.PodRunning:
-			for _, st := range pod.Status.ContainerStatuses {
-				// wait until all containers passed readiness probe
-				if !st.Ready {
-					return nil
-				}
-			}
-			status.CurrentState = types.InstanceStateRunning
-			status.IP = pod.Status.PodIP
-			// pin down to this node ID for replica
-			if spec.NodeID == "" {
-				spec.NodeID = pod.Spec.NodeName
-			} else if spec.NodeID != pod.Spec.NodeName {
-				status.CurrentState = types.InstanceStateError
-				status.IP = ""
-				err := fmt.Errorf("BUG: instance %v wasn't pin down to the host %v", podName, spec.NodeID)
-				logrus.Errorf("%v", err)
-				return err
-			}
-		default:
-			// TODO Check the reason of pod cannot gracefully shutdown
-			logrus.Warnf("instance %v state is failed/unknown, pod state %v",
-				podName, pod.Status.Phase)
-			status.CurrentState = types.InstanceStateError
-			status.IP = ""
-		}
+func (h *InstanceHandler) syncStatusWithPod(pod *corev1.Pod, status *types.InstanceStatus) {
+	if pod == nil {
+		status.CurrentState = types.InstanceStateStopped
+		status.IP = ""
+		return
 	}
-	return nil
+
+	if pod.DeletionTimestamp != nil {
+		status.CurrentState = types.InstanceStateStopping
+		status.IP = ""
+		return
+	}
+
+	switch pod.Status.Phase {
+	case corev1.PodPending:
+		status.CurrentState = types.InstanceStateStarting
+		status.IP = ""
+	case corev1.PodRunning:
+		for _, st := range pod.Status.ContainerStatuses {
+			// wait until all containers passed readiness probe
+			if !st.Ready {
+				status.CurrentState = types.InstanceStateStarting
+				status.IP = ""
+				return
+			}
+		}
+		status.CurrentState = types.InstanceStateRunning
+		status.IP = pod.Status.PodIP
+	default:
+		// TODO Check the reason of pod cannot gracefully shutdown
+		logrus.Warnf("instance %v state is failed/unknown, pod state %v",
+			pod.Name, pod.Status.Phase)
+		status.CurrentState = types.InstanceStateError
+		status.IP = ""
+	}
 }
 
 func (h *InstanceHandler) ReconcileInstanceState(podName string, obj interface{}, spec *types.InstanceSpec, status *types.InstanceStatus) (err error) {
-	state := status.CurrentState
-	desireState := spec.DesireState
-	if state == types.InstanceStateError {
-		return h.stopInstance(podName)
+	if status.CurrentState == types.InstanceStateError {
+		return h.deletePod(podName)
 	}
 
-	if state != desireState {
-		switch desireState {
-		case types.InstanceStateRunning:
-			if state == types.InstanceStateStopped {
-				pod, err := h.podCreator.CreatePodSpec(obj)
-				if err != nil {
-					return err
-				}
-				if err := h.startInstance(pod); err != nil {
-					return err
-				}
-				break
-			} else if state == types.InstanceStateStarting || state == types.InstanceStateStopping {
-				// wait until state change to stopped or running
-				return nil
+	pod, err := h.getPod(podName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	if apierrors.IsNotFound(err) {
+		pod = nil
+	}
+
+	switch spec.DesireState {
+	case types.InstanceStateRunning:
+		if pod == nil {
+			podSpec, err := h.podCreator.CreatePodSpec(obj)
+			if err != nil {
+				return err
 			}
-			logrus.Errorf("unable to do instance transition: current %v, desire %v", state, desireState)
-		case types.InstanceStateStopped:
-			if state == types.InstanceStateRunning {
-				if err := h.stopInstance(podName); err != nil {
-					return err
-				}
-				break
-			} else if state == types.InstanceStateStarting || state == types.InstanceStateStopping {
-				// wait until state change to stopped or running
-				return nil
+			pod, err = h.createPod(podSpec)
+			if err != nil {
+				return err
 			}
-			logrus.Errorf("unable to do instance transition: current %v, desire %v", state, desireState)
-		default:
-			logrus.Errorf("unknown instance transition: current %v, desire %v", state, desireState)
+		}
+	case types.InstanceStateStopped:
+		if pod != nil && pod.DeletionTimestamp == nil {
+			if err := h.deletePod(pod.Name); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
+	}
+
+	h.syncStatusWithPod(pod, status)
+
+	if status.CurrentState == types.InstanceStateRunning {
+		// pin down to this node ID. it's needed for a replica and
+		// engine should specify nodeName as well
+		if spec.NodeID == "" {
+			spec.NodeID = pod.Spec.NodeName
+		} else if spec.NodeID != pod.Spec.NodeName {
+			status.CurrentState = types.InstanceStateError
+			status.IP = ""
+			err := fmt.Errorf("BUG: instance %v wasn't pin down to the host %v", pod.Name, spec.NodeID)
+			logrus.Errorf("%v", err)
+			return err
 		}
 	}
 	return nil
@@ -133,32 +129,23 @@ func (h *InstanceHandler) getPod(podName string) (*corev1.Pod, error) {
 	return h.pLister.Pods(h.namespace).Get(podName)
 }
 
-func (h *InstanceHandler) startInstance(pod *corev1.Pod) (err error) {
+func (h *InstanceHandler) createPod(pod *corev1.Pod) (p *corev1.Pod, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to start instance %v", pod.Name)
 	}()
-	if pod == nil {
-		return fmt.Errorf("cannot start empty pod")
-	}
-	_, err = h.getPod(pod.Name)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return err
-	}
-	// pod already started
-	if !apierrors.IsNotFound(err) {
-		return nil
-	}
-	logrus.Debugf("Starting instance %v", pod.Name)
-	if _, err := h.kubeClient.CoreV1().Pods(h.namespace).Create(pod); err != nil {
-		return err
-	}
-	return nil
+	logrus.Debugf("Start instance %v", pod.Name)
+	return h.kubeClient.CoreV1().Pods(h.namespace).Create(pod)
 }
 
-func (h *InstanceHandler) stopInstance(podName string) (err error) {
+func (h *InstanceHandler) deletePod(podName string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to stop instance %v", podName)
 	}()
+	logrus.Debugf("Stop instance %v", podName)
+	return h.kubeClient.CoreV1().Pods(h.namespace).Delete(podName, nil)
+}
+
+func (h *InstanceHandler) Delete(podName string) (err error) {
 	pod, err := h.getPod(podName)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
@@ -171,13 +158,5 @@ func (h *InstanceHandler) stopInstance(podName string) (err error) {
 	if pod.DeletionTimestamp != nil {
 		return nil
 	}
-	logrus.Debugf("Stopping instance %v", podName)
-	if err := h.kubeClient.CoreV1().Pods(h.namespace).Delete(podName, nil); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (h *InstanceHandler) Delete(podName string) (err error) {
-	return h.stopInstance(podName)
+	return h.deletePod(podName)
 }

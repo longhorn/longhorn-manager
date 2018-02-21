@@ -86,6 +86,9 @@ func newReplica(desireState, currentState types.InstanceState, failedAt string) 
 }
 
 func newPod(phase v1.PodPhase, name, namespace string) *v1.Pod {
+	if phase == "" {
+		return nil
+	}
 	ip := ""
 	if phase == v1.PodRunning {
 		ip = TestIP1

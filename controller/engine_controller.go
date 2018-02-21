@@ -239,8 +239,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	}()
 
-	// we will sync up with pod status before proceed
-	if err := ec.instanceHandler.SyncInstanceState(engine.Name, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
+	if err := ec.instanceHandler.ReconcileInstanceState(engine.Name, engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
 		return err
 	}
 
@@ -258,7 +257,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		ec.stopMonitoring(engine)
 	}
 
-	return ec.instanceHandler.ReconcileInstanceState(engine.Name, engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus)
+	return nil
 }
 
 func (ec *EngineController) enqueueEngine(e *longhorn.Controller) {
