@@ -265,7 +265,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			_, err = vc.ds.UpdateVolume(volume)
 		}
 		// requeue if it's conflict
-		if apierrors.IsConflict(err) {
+		if apierrors.IsConflict(errors.Cause(err)) {
 			logrus.Debugf("Requeue %v due to conflict", key)
 			vc.enqueueVolume(volume)
 			err = nil

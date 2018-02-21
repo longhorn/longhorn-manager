@@ -256,7 +256,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			_, err = rc.ds.UpdateReplica(replica)
 		}
 		// requeue if it's conflict
-		if apierrors.IsConflict(err) {
+		if apierrors.IsConflict(errors.Cause(err)) {
 			logrus.Debugf("Requeue %v due to conflict", key)
 			rc.enqueueReplica(replica)
 			err = nil
