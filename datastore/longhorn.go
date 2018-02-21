@@ -143,8 +143,12 @@ func (s *DataStore) RemoveFinalizerForVolume(name string) error {
 	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
 		return err
 	}
-	obj, err = s.lhClient.LonghornV1alpha1().Volumes(s.namespace).Update(obj)
+	_, err = s.lhClient.LonghornV1alpha1().Volumes(s.namespace).Update(obj)
 	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
 		return errors.Wrapf(err, "unable to remove finalizer for volume %v", name)
 	}
 	return nil
@@ -226,8 +230,12 @@ func (s *DataStore) RemoveFinalizerForEngine(name string) error {
 	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
 		return err
 	}
-	obj, err = s.lhClient.LonghornV1alpha1().Controllers(s.namespace).Update(obj)
+	_, err = s.lhClient.LonghornV1alpha1().Controllers(s.namespace).Update(obj)
 	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
 		return errors.Wrapf(err, "unable to remove finalizer for engine %v", name)
 	}
 	return nil
@@ -315,8 +323,12 @@ func (s *DataStore) RemoveFinalizerForReplica(name string) error {
 	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
 		return err
 	}
-	obj, err = s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Update(obj)
+	_, err = s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Update(obj)
 	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
 		return errors.Wrapf(err, "unable to remove finalizer for replica %v", name)
 	}
 	return nil
