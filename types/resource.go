@@ -5,25 +5,10 @@ type VolumeState string
 const (
 	VolumeStateDetached = VolumeState("detached")
 	VolumeStateHealthy  = VolumeState("healthy")
-	VolumeStateDeleted  = VolumeState("deleted")
 
-	VolumeStateCreated  = VolumeState("created")
 	VolumeStateFault    = VolumeState("fault")
 	VolumeStateDegraded = VolumeState("degraded")
 )
-
-type Metadata struct {
-	Name            string `json:"name"`
-	ResourceVersion string `json:"-"`
-	DeletionPending bool   `json:"-"`
-}
-
-type VolumeInfo struct {
-	VolumeSpec
-	VolumeStatus
-
-	Metadata
-}
 
 type VolumeSpec struct {
 	OwnerID             string         `json:"ownerID"`
@@ -90,13 +75,6 @@ type EngineStatus struct {
 	Endpoint       string                 `json:"endpoint"`
 }
 
-type ControllerInfo struct {
-	EngineSpec
-	EngineStatus
-
-	Metadata
-}
-
 type ReplicaSpec struct {
 	InstanceSpec
 	VolumeSize  string `json:"volumeSize"`
@@ -109,15 +87,6 @@ type ReplicaStatus struct {
 	InstanceStatus
 }
 
-type ReplicaInfo struct {
-	ReplicaSpec
-	ReplicaStatus
-
-	Metadata
-}
-
 type SettingsInfo struct {
 	BackupTarget string `json:"backupTarget"`
-
-	Metadata
 }

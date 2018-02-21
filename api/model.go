@@ -362,8 +362,6 @@ func toVolumeResource(v *longhorn.Volume, vc *longhorn.Controller, vrs map[strin
 		actions["replicaRemove"] = struct{}{}
 		actions["jobList"] = struct{}{}
 		//actions["bgTaskQueue"] = struct{}{}
-	case types.VolumeStateCreated:
-		actions["recurringUpdate"] = struct{}{}
 	case types.VolumeStateFault:
 		actions["salvage"] = struct{}{}
 	}
