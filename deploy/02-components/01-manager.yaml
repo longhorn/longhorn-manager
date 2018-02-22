@@ -25,7 +25,6 @@ spec:
         securityContext:
           privileged: true
         command: ["launch-manager", "-d",
-                "--orchestrator", "kubernetes",
                 "--engine-image", "rancher/longhorn-engine:8c8289f"]
         ports:
         - containerPort: 9500

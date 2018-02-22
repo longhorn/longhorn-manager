@@ -3,22 +3,18 @@ package engineapi
 import (
 	"fmt"
 	"strings"
-)
 
-type ReplicaMode string
+	"github.com/rancher/longhorn-manager/types"
+)
 
 const (
 	ControllerDefaultPort = "9501"
 	ReplicaDefaultPort    = "9502"
-
-	ReplicaModeRW  = ReplicaMode("RW")
-	ReplicaModeWO  = ReplicaMode("WO")
-	ReplicaModeERR = ReplicaMode("ERR")
 )
 
 type Replica struct {
 	URL  string
-	Mode ReplicaMode
+	Mode types.ReplicaMode
 }
 
 type Controller struct {

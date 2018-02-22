@@ -5,40 +5,25 @@ type VolumeState string
 const (
 	VolumeStateDetached = VolumeState("detached")
 	VolumeStateHealthy  = VolumeState("healthy")
-	VolumeStateDeleted  = VolumeState("deleted")
 
-	VolumeStateCreated  = VolumeState("created")
 	VolumeStateFault    = VolumeState("fault")
 	VolumeStateDegraded = VolumeState("degraded")
+
+	VolumeStateDeleting = VolumeState("deleting")
 )
 
-type Metadata struct {
-	Name            string `json:"name"`
-	ResourceVersion string `json:"-"`
-	DeletionPending bool   `json:"-"`
-}
-
-type VolumeInfo struct {
-	VolumeSpec
-	VolumeStatus
-
-	Metadata
-}
-
 type VolumeSpec struct {
+	OwnerID             string         `json:"ownerID"`
 	Size                string         `json:"size"`
-	BaseImage           string         `json:"baseImage"`
 	FromBackup          string         `json:"fromBackup"`
 	NumberOfReplicas    int            `json:"numberOfReplicas"`
 	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`
-	TargetNodeID        string         `json:"targetNodeID"`
+	NodeID              string         `json:"nodeID"`
 	RecurringJobs       []RecurringJob `json:"recurringJobs"`
-	DesireState         VolumeState    `json:"desireState"`
 }
 
 type VolumeStatus struct {
 	Created  string      `json:"created"`
-	NodeID   string      `json:"nodeID"`
 	State    VolumeState `json:"state"`
 	Endpoint string      `json:"endpoint"`
 }
@@ -57,50 +42,52 @@ type RecurringJob struct {
 	Retain int              `json:"retain"`
 }
 
+type InstanceState string
+
+const (
+	InstanceStateRunning  = InstanceState("running")
+	InstanceStateStopped  = InstanceState("stopped")
+	InstanceStateError    = InstanceState("error")
+	InstanceStateStarting = InstanceState("starting")
+	InstanceStateStopping = InstanceState("stopping")
+)
+
 type InstanceSpec struct {
-	VolumeName string `json:"volumeName"`
-	NodeID     string `json:"nodeID"`
+	OwnerID     string        `json:"ownerID"`
+	VolumeName  string        `json:"volumeName"`
+	NodeID      string        `json:"nodeID"`
+	EngineImage string        `json:"engineImage"`
+	DesireState InstanceState `json:"desireState"`
 }
 
 type InstanceStatus struct {
-	Running  bool   `json:"running"`
-	IP       string `json:"ip"`
-	FailedAt string `json:"failedAt"`
+	CurrentState InstanceState `json:"currentState"`
+	IP           string        `json:"ip"`
 }
 
-type InstanceInfo struct {
+type EngineSpec struct {
 	InstanceSpec
+	ReplicaAddressMap map[string]string `json:"replicaAddressMap"`
+}
+
+type EngineStatus struct {
 	InstanceStatus
-
-	Metadata
+	ReplicaModeMap map[string]ReplicaMode `json:"replicaModeMap"`
+	Endpoint       string                 `json:"endpoint"`
 }
 
-type ControllerInfo struct {
-	InstanceInfo
+type ReplicaSpec struct {
+	InstanceSpec
+	VolumeSize  string `json:"volumeSize"`
+	RestoreFrom string `json:"restoreFrom"`
+	RestoreName string `json:"restoreName"`
+	FailedAt    string `json:"failedAt"`
 }
 
-type ReplicaInfo struct {
-	InstanceInfo
-}
-
-type NodeState string
-
-const (
-	NodeStateUp   = NodeState("up")
-	NodeStateDown = NodeState("down")
-)
-
-type NodeInfo struct {
-	ID          string    `json:"id"`
-	IP          string    `json:"ip"`
-	State       NodeState `json:"state"`
-	LastCheckin string    `json:"lastCheckin"`
-
-	Metadata
+type ReplicaStatus struct {
+	InstanceStatus
 }
 
 type SettingsInfo struct {
 	BackupTarget string `json:"backupTarget"`
-
-	Metadata
 }

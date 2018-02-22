@@ -20,24 +20,6 @@ apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
   labels:
-    longhorn-manager: Node
-  name: nodes.longhorn.rancher.io
-spec:
-  group: longhorn.rancher.io
-  names:
-    kind: Node
-    listKind: NodeList
-    plural: nodes
-    shortNames:
-    - lhn
-    singular: node
-  scope: Namespaced
-  version: v1alpha1
----
-apiVersion: apiextensions.k8s.io/v1beta1
-kind: CustomResourceDefinition
-metadata:
-  labels:
     longhorn-manager: Replica
   name: replicas.longhorn.rancher.io
 spec:

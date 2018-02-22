@@ -4,22 +4,20 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 
 	"github.com/rancher/go-iscsi-helper/iscsi"
 	iscsi_util "github.com/rancher/go-iscsi-helper/util"
 
 	"github.com/rancher/longhorn-manager/api"
+	"github.com/rancher/longhorn-manager/controller"
 	"github.com/rancher/longhorn-manager/datastore"
-	"github.com/rancher/longhorn-manager/engineapi"
-	"github.com/rancher/longhorn-manager/manager"
-	"github.com/rancher/longhorn-manager/orchestrator"
-	"github.com/rancher/longhorn-manager/orchestrator/kubernetes"
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
+
+	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
 
 const (
@@ -48,11 +46,6 @@ func main() {
 			EnvVar: "RANCHER_DEBUG",
 		},
 		cli.StringFlag{
-			Name:  FlagOrchestrator,
-			Usage: "Choose orchestrator: kubernetes",
-			Value: "kubernetes",
-		},
-		cli.StringFlag{
 			Name:   FlagEngineImage,
 			EnvVar: EnvEngineImage,
 			Usage:  "Specify Longhorn engine image",
@@ -67,10 +60,7 @@ func main() {
 
 func RunManager(c *cli.Context) error {
 	var (
-		orch     orchestrator.Orchestrator
-		ds       datastore.DataStore
-		notifier manager.Notifier
-		err      error
+		err error
 	)
 
 	if c.Bool("debug") {
@@ -88,35 +78,29 @@ func RunManager(c *cli.Context) error {
 		return fmt.Errorf("Environment check failed: %v", err)
 	}
 
-	orchName := c.String("orchestrator")
-	if orchName != "kubernetes" {
-		return fmt.Errorf("Doesn't support orchestrator other than Kubernetes")
+	currentNodeID, err := util.GetRequiredEnv(types.EnvNodeName)
+	if err != nil {
+		return fmt.Errorf("BUG: fail to detect the node name")
 	}
 
-	cfg := &kubernetes.Config{
-		EngineImage: engineImage,
+	currentIP, err := util.GetRequiredEnv(types.EnvPodIP)
+	if err != nil {
+		return fmt.Errorf("BUG: fail to detect the node IP")
 	}
-	orch, err = kubernetes.NewOrchestrator(cfg)
+
+	ds, err := controller.StartControllers(currentNodeID, engineImage)
 	if err != nil {
 		return err
 	}
 
-	ds, err = datastore.NewCRDStore("")
-	if err != nil {
-		return errors.Wrap(err, "fail to create CRD store")
-	}
-	notifier = manager.NewTargetWatcher(orch.GetCurrentNode().ID)
-
-	engines := &engineapi.EngineCollection{}
-
-	m, err := manager.NewVolumeManager(ds, orch, engines, notifier)
-	if err != nil {
+	if err := initSettings(ds); err != nil {
 		return err
 	}
 
-	router := http.Handler(api.NewRouter(api.NewServer(m)))
+	server := api.NewServer(currentNodeID, currentIP, ds)
+	router := http.Handler(api.NewRouter(server))
 
-	listen := m.GetCurrentNode().IP + ":" + strconv.Itoa(types.DefaultAPIPort)
+	listen := server.GetAPIServerAddress()
 	logrus.Infof("Listening on %s", listen)
 
 	return http.ListenAndServe(listen, router)
@@ -128,6 +112,23 @@ func environmentCheck() error {
 		return err
 	}
 	if err := iscsi.CheckForInitiatorExistence(namespace); err != nil {
+		return err
+	}
+	return nil
+}
+
+func initSettings(ds *datastore.DataStore) error {
+	setting, err := ds.GetSetting()
+	if err != nil {
+		return err
+	}
+	// initialization has been done
+	if setting != nil {
+		return nil
+	}
+	setting = &longhorn.Setting{}
+	setting.BackupTarget = ""
+	if _, err := ds.CreateSetting(setting); err != nil {
 		return err
 	}
 	return nil

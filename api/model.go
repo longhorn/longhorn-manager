@@ -7,10 +7,12 @@ import (
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
-	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
+
+	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
 
 type Volume struct {
@@ -18,7 +20,6 @@ type Volume struct {
 
 	Name                string `json:"name"`
 	Size                string `json:"size"`
-	BaseImage           string `json:"baseImage"`
 	FromBackup          string `json:"fromBackup"`
 	NumberOfReplicas    int    `json:"numberOfReplicas"`
 	StaleReplicaTimeout int    `json:"staleReplicaTimeout"`
@@ -80,13 +81,6 @@ type Replica struct {
 	FailedAt string `json:"badTimestamp"`
 }
 
-type Job struct {
-	client.Resource
-	manager.Job
-	//because `type` cannot be used as key in response
-	JobType string `json:"jobType"`
-}
-
 type AttachInput struct {
 	HostID string `json:"hostId"`
 }
@@ -126,7 +120,6 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("recurringJob", types.RecurringJob{})
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
 	schemas.AddType("salvageInput", SalvageInput{})
-	schemas.AddType("job", Job{})
 
 	hostSchema(schemas.AddType("host", Host{}))
 	volumeSchema(schemas.AddType("volume", Volume{}))
@@ -278,7 +271,7 @@ func toSettingCollection(settings *types.SettingsInfo) *client.GenericCollection
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }
 
-func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[string]*types.ReplicaInfo, apiContext *api.ApiContext) *Volume {
+func toVolumeResource(v *longhorn.Volume, vc *longhorn.Controller, vrs map[string]*longhorn.Replica, apiContext *api.ApiContext) *Volume {
 	replicas := []Replica{}
 	for _, r := range vrs {
 		/*
@@ -290,12 +283,12 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		replicas = append(replicas, Replica{
 			Instance: Instance{
 				Name:    r.Name,
-				Running: r.Running,
-				Address: r.IP,
-				NodeID:  r.NodeID,
+				Running: r.Status.CurrentState == types.InstanceStateRunning,
+				Address: r.Status.IP,
+				NodeID:  r.Spec.NodeID,
 			},
 			//Mode:     mode,
-			FailedAt: r.FailedAt,
+			FailedAt: r.Spec.FailedAt,
 		})
 	}
 
@@ -303,15 +296,15 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 	if vc != nil {
 		controller = &Controller{Instance{
 			Name:    vc.Name,
-			Running: vc.Running,
-			NodeID:  vc.NodeID,
-			Address: vc.IP,
+			Running: vc.Status.CurrentState == types.InstanceStateRunning,
+			NodeID:  vc.Spec.NodeID,
+			Address: vc.Status.IP,
 		}}
 	}
 
-	size, err := util.ConvertSize(v.Size)
+	size, err := util.ConvertSize(v.Spec.Size)
 	if err != nil {
-		logrus.Error("BUG: invalid size %v for volume %v", v.Size, v.Name)
+		logrus.Error("BUG: invalid size %v for volume %v", v.Spec.Size, v.Name)
 	}
 
 	r := &Volume{
@@ -323,15 +316,14 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		},
 		Name:             v.Name,
 		Size:             strconv.FormatInt(size, 10),
-		BaseImage:        v.BaseImage,
-		FromBackup:       v.FromBackup,
-		NumberOfReplicas: v.NumberOfReplicas,
-		State:            string(v.State),
+		FromBackup:       v.Spec.FromBackup,
+		NumberOfReplicas: v.Spec.NumberOfReplicas,
+		State:            string(v.Status.State),
 		//EngineImage:         v.EngineImage,
-		RecurringJobs:       v.RecurringJobs,
-		StaleReplicaTimeout: v.StaleReplicaTimeout,
-		Endpoint:            v.Endpoint,
-		Created:             v.Created,
+		RecurringJobs:       v.Spec.RecurringJobs,
+		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
+		Endpoint:            v.Status.Endpoint,
+		Created:             v.ObjectMeta.CreationTimestamp.String(),
 
 		Controller: controller,
 		Replicas:   replicas,
@@ -339,7 +331,7 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 
 	actions := map[string]struct{}{}
 
-	switch v.State {
+	switch v.Status.State {
 	case types.VolumeStateDetached:
 		actions["attach"] = struct{}{}
 		actions["recurringUpdate"] = struct{}{}
@@ -370,8 +362,6 @@ func toVolumeResource(v *types.VolumeInfo, vc *types.ControllerInfo, vrs map[str
 		actions["replicaRemove"] = struct{}{}
 		actions["jobList"] = struct{}{}
 		//actions["bgTaskQueue"] = struct{}{}
-	case types.VolumeStateCreated:
-		actions["recurringUpdate"] = struct{}{}
 	case types.VolumeStateFault:
 		actions["salvage"] = struct{}{}
 	}
@@ -405,24 +395,24 @@ func toSnapshotCollection(ss map[string]*engineapi.Snapshot) *client.GenericColl
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshot"}}
 }
 
-func toHostCollection(hosts map[string]*types.NodeInfo) *client.GenericCollection {
+func toHostCollection(nodeIPMap map[string]string) *client.GenericCollection {
 	data := []interface{}{}
-	for _, v := range hosts {
-		data = append(data, toHostResource(v))
+	for node, ip := range nodeIPMap {
+		data = append(data, toHostResource(node, ip))
 	}
 	return &client.GenericCollection{Data: data}
 }
 
-func toHostResource(h *types.NodeInfo) *Host {
+func toHostResource(node, ip string) *Host {
 	return &Host{
 		Resource: client.Resource{
-			Id:      h.ID,
+			Id:      node,
 			Type:    "host",
 			Actions: map[string]string{},
 		},
-		UUID:    h.ID,
-		Name:    h.Name,
-		Address: h.IP,
+		UUID:    node,
+		Name:    node,
+		Address: ip,
 	}
 }
 
@@ -478,35 +468,20 @@ func toBackupCollection(bs []*engineapi.Backup) *client.GenericCollection {
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backup"}}
 }
 
-func toJobResource(job manager.Job) *Job {
-	return &Job{
-		Resource: client.Resource{
-			Id:    job.ID,
-			Type:  "job",
-			Links: map[string]string{},
-		},
-		Job:     job,
-		JobType: string(job.Type),
-	}
-}
-
-func toJobCollection(jobs map[string]manager.Job) *client.GenericCollection {
-	data := []interface{}{}
-	for _, v := range jobs {
-		data = append(data, toJobResource(v))
-	}
-	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "job"}}
-}
-
 type Server struct {
-	m   *manager.VolumeManager
+	CurrentNodeID string
+	CurrentIP     string
+
 	fwd *Fwd
+	ds  *datastore.DataStore
 }
 
-func NewServer(m *manager.VolumeManager) *Server {
-	fwd := NewFwd(m)
-	return &Server{
-		m:   m,
-		fwd: fwd,
+func NewServer(currentNodeID, currentIP string, ds *datastore.DataStore) *Server {
+	s := &Server{
+		CurrentNodeID: currentNodeID,
+		CurrentIP:     currentIP,
+		ds:            ds,
 	}
+	s.fwd = NewFwd(s)
+	return s
 }

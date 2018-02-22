@@ -7,6 +7,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
+	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 )
 
@@ -34,9 +35,9 @@ func parseReplica(s string) (*Replica, error) {
 		return nil, errors.Errorf("cannot parse line `%s`", s)
 	}
 	url := fields[0]
-	mode := ReplicaMode(fields[1])
-	if mode != ReplicaModeRW && mode != ReplicaModeWO {
-		mode = ReplicaModeERR
+	mode := types.ReplicaMode(fields[1])
+	if mode != types.ReplicaModeRW && mode != types.ReplicaModeWO {
+		mode = types.ReplicaModeERR
 	}
 	return &Replica{
 		URL:  url,

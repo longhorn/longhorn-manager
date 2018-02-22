@@ -30,10 +30,6 @@ func (c *FakeLonghornV1alpha1) Controllers(namespace string) v1alpha1.Controller
 	return &FakeControllers{c, namespace}
 }
 
-func (c *FakeLonghornV1alpha1) Nodes(namespace string) v1alpha1.NodeInterface {
-	return &FakeNodes{c, namespace}
-}
-
 func (c *FakeLonghornV1alpha1) Replicas(namespace string) v1alpha1.ReplicaInterface {
 	return &FakeReplicas{c, namespace}
 }

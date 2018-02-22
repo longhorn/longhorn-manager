@@ -35,8 +35,8 @@ type VolumeList struct {
 type Controller struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.InstanceSpec   `json:"spec"`
-	Status            types.InstanceStatus `json:"status"`
+	Spec              types.EngineSpec   `json:"spec"`
+	Status            types.EngineStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -56,8 +56,8 @@ type ControllerList struct {
 type Replica struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.InstanceSpec   `json:"spec"`
-	Status            types.InstanceStatus `json:"status"`
+	Spec              types.ReplicaSpec   `json:"spec"`
+	Status            types.ReplicaStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -67,25 +67,6 @@ type ReplicaList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
 	Items           []Replica `json:"items"`
-}
-
-// +genclient
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +resource:path=node
-
-type Node struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
-	types.NodeInfo
-}
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +resource:path=nodes
-
-type NodeList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
-	Items           []Node `json:"items"`
 }
 
 // +genclient

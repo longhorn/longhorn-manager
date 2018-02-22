@@ -11,11 +11,11 @@ import (
 func (s *Server) SettingsList(w http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 
-	si, err := s.m.SettingsGet()
-	if err != nil && si == nil {
+	si, err := s.ds.GetSetting()
+	if err != nil || si == nil {
 		return errors.Wrap(err, "fail to read settings")
 	}
-	apiContext.Write(toSettingCollection(si))
+	apiContext.Write(toSettingCollection(&si.SettingsInfo))
 	return nil
 }
 
@@ -23,7 +23,7 @@ func (s *Server) SettingsGet(w http.ResponseWriter, req *http.Request) error {
 	name := mux.Vars(req)["name"]
 
 	apiContext := api.GetApiContext(req)
-	si, err := s.m.SettingsGet()
+	si, err := s.ds.GetSetting()
 	if err != nil || si == nil {
 		return errors.Wrap(err, "fail to read settings")
 	}
@@ -48,7 +48,7 @@ func (s *Server) SettingsSet(w http.ResponseWriter, req *http.Request) error {
 
 	name := mux.Vars(req)["name"]
 
-	si, err := s.m.SettingsGet()
+	si, err := s.ds.GetSetting()
 	if err != nil || si == nil {
 		return errors.Wrap(err, "fail to read settings")
 	}
@@ -59,7 +59,7 @@ func (s *Server) SettingsSet(w http.ResponseWriter, req *http.Request) error {
 	default:
 		return errors.Wrapf(err, "invalid setting name %v", name)
 	}
-	if err := s.m.SettingsSet(si); err != nil {
+	if _, err := s.ds.UpdateSetting(si); err != nil {
 		return errors.Wrapf(err, "fail to set settings %v", si)
 	}
 

@@ -18,8 +18,6 @@ package v1alpha1
 
 type ControllerExpansion interface{}
 
-type NodeExpansion interface{}
-
 type ReplicaExpansion interface{}
 
 type SettingExpansion interface{}
