@@ -20,7 +20,6 @@ type VolumeSpec struct {
 	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`
 	NodeID              string         `json:"nodeID"`
 	RecurringJobs       []RecurringJob `json:"recurringJobs"`
-	DesireState         VolumeState    `json:"desireState"`
 }
 
 type VolumeStatus struct {

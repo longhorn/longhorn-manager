@@ -231,7 +231,6 @@ func (s *Server) createVolume(volume *Volume) (v *longhorn.Volume, err error) {
 			FromBackup:          volume.FromBackup,
 			NumberOfReplicas:    volume.NumberOfReplicas,
 			StaleReplicaTimeout: volume.StaleReplicaTimeout,
-			DesireState:         types.VolumeStateDetached,
 		},
 	}
 	v, err = s.ds.CreateVolume(v)
@@ -269,20 +268,19 @@ func (s *Server) attachVolume(volumeName, nodeID string) (v *longhorn.Volume, er
 	if v == nil {
 		return nil, fmt.Errorf("cannot find volume %v", volumeName)
 	}
+	if v.Status.State != types.VolumeStateDetached {
+		return nil, fmt.Errorf("invalid state to attach %v: %v", volumeName, v.Status.State)
+	}
 	// already desired to be attached
-	if v.Spec.DesireState == types.VolumeStateHealthy {
+	if v.Spec.NodeID != "" {
 		if v.Spec.NodeID != nodeID {
 			return nil, fmt.Errorf("Node to be attached %v is different from previous spec %v", nodeID, v.Spec.NodeID)
 		}
 		return v, nil
 	}
-	if v.Status.State != types.VolumeStateDetached {
-		return nil, fmt.Errorf("invalid state to attach %v: %v", volumeName, v.Status.State)
-	}
 	v.Spec.NodeID = nodeID
 	// Must be owned by the manager on the same node
 	v.Spec.OwnerID = v.Spec.NodeID
-	v.Spec.DesireState = types.VolumeStateHealthy
 	v, err = s.ds.UpdateVolume(v)
 	if err != nil {
 		return nil, err
@@ -307,13 +305,17 @@ func (s *Server) detachVolume(volumeName string) (v *longhorn.Volume, err error)
 		return nil, fmt.Errorf("invalid state to detach %v: %v", v.Name, v.Status.State)
 	}
 
-	v.Spec.DesireState = types.VolumeStateDetached
+	oldNodeID := v.Spec.NodeID
+	if oldNodeID == "" {
+		return v, nil
+	}
+
 	v.Spec.NodeID = ""
 	v, err = s.ds.UpdateVolume(v)
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Detaching volume %v from %v", v.Name, v.Spec.NodeID)
+	logrus.Debugf("Detaching volume %v from %v", v.Name, oldNodeID)
 	return v, nil
 }
 
@@ -372,10 +374,12 @@ func (s *Server) salvageVolume(volumeName string, salvageReplicaNames []string) 
 		}
 	}
 
-	v.Spec.DesireState = types.VolumeStateDetached
-	v, err = s.ds.UpdateVolume(v)
-	if err != nil {
-		return nil, err
+	if v.Spec.NodeID != "" {
+		v.Spec.NodeID = ""
+		v, err = s.ds.UpdateVolume(v)
+		if err != nil {
+			return nil, err
+		}
 	}
 	logrus.Debugf("Salvaging replica %+v for volume %v", salvageReplicaNames, v.Name)
 	return v, nil

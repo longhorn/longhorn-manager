@@ -422,7 +422,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 	}
 
-	if v.Spec.DesireState == types.VolumeStateDetached {
+	if v.Spec.NodeID == "" {
 		// stop rebuilding
 		for rName, mode := range e.Status.ReplicaModeMap {
 			if mode == types.ReplicaModeWO {
@@ -463,8 +463,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 				rs[r.Name] = r
 			}
 		}
-		return nil
-	} else if v.Spec.DesireState == types.VolumeStateHealthy {
+	} else {
 		// volume hasn't been started before
 		// we will start the engine with all healthy replicas
 		replicaUpdated := false
@@ -503,7 +502,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		e, err = vc.ds.UpdateEngine(e)
 		return err
 	}
-	return fmt.Errorf("Invalid desire state for volume %v: %v", v.Name, v.Spec.DesireState)
+	return nil
 }
 
 func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
