@@ -14,11 +14,11 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -78,6 +78,7 @@ type EngineMonitor struct {
 
 func NewEngineController(
 	ds *datastore.DataStore,
+	scheme *runtime.Scheme,
 	engineInformer lhinformers.ControllerInformer,
 	podInformer coreinformers.PodInformer,
 	kubeClient clientset.Interface,
@@ -95,7 +96,7 @@ func NewEngineController(
 
 		controllerID:  controllerID,
 		kubeClient:    kubeClient,
-		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "longhorn-engine-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-engine-controller"}),
 		eStoreSynced:  engineInformer.Informer().HasSynced,
 		pStoreSynced:  podInformer.Informer().HasSynced,
 

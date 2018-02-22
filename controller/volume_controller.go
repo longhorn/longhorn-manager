@@ -14,10 +14,10 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -71,6 +71,7 @@ type VolumeRecurringJob struct {
 
 func NewVolumeController(
 	ds *datastore.DataStore,
+	scheme *runtime.Scheme,
 	volumeInformer lhinformers.VolumeInformer,
 	engineInformer lhinformers.ControllerInformer,
 	replicaInformer lhinformers.ReplicaInformer,
@@ -89,7 +90,7 @@ func NewVolumeController(
 		EngineImage:  engineImage,
 
 		kubeClient:    kubeClient,
-		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "longhorn-volume-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-volume-controller"}),
 
 		vStoreSynced: volumeInformer.Informer().HasSynced,
 		eStoreSynced: engineInformer.Informer().HasSynced,

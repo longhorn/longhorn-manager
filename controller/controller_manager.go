@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -38,17 +39,22 @@ func StartControllers(controllerID, engineImage string) (*datastore.DataStore, e
 	// Only supports in-cluster config
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to get client config")
+		return nil, errors.Wrap(err, "unable to get client config")
 	}
 
 	kubeClient, err := clientset.NewForConfig(config)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to get k8s client")
+		return nil, errors.Wrap(err, "unable to get k8s client")
 	}
 
 	lhClient, err := lhclientset.NewForConfig(config)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to get clientset")
+		return nil, errors.Wrap(err, "unable to get clientset")
+	}
+
+	scheme := runtime.NewScheme()
+	if err := longhorn.SchemeBuilder.AddToScheme(scheme); err != nil {
+		return nil, errors.Wrap(err, "unable to create scheme")
 	}
 
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
@@ -62,11 +68,11 @@ func StartControllers(controllerID, engineImage string) (*datastore.DataStore, e
 
 	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, lhClient,
 		podInformer, kubeClient, namespace)
-	rc := NewReplicaController(ds, replicaInformer, podInformer, jobInformer, kubeClient,
+	rc := NewReplicaController(ds, scheme, replicaInformer, podInformer, jobInformer, kubeClient,
 		namespace, controllerID)
-	ec := NewEngineController(ds, engineInformer, podInformer, kubeClient,
+	ec := NewEngineController(ds, scheme, engineInformer, podInformer, kubeClient,
 		&engineapi.EngineCollection{}, namespace, controllerID)
-	vc := NewVolumeController(ds, volumeInformer, engineInformer, replicaInformer, kubeClient,
+	vc := NewVolumeController(ds, scheme, volumeInformer, engineInformer, replicaInformer, kubeClient,
 		namespace, controllerID, engineImage)
 
 	//FIXME stopch should be exposed
