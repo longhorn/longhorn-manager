@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
@@ -128,7 +129,7 @@ func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformer
 
 	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, lhClient, podInformer, kubeClient, TestNamespace)
 
-	rc := NewReplicaController(ds, replicaInformer, podInformer, jobInformer, kubeClient, TestNamespace, controllerID)
+	rc := NewReplicaController(ds, scheme.Scheme, replicaInformer, podInformer, jobInformer, kubeClient, TestNamespace, controllerID)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	rc.eventRecorder = fakeRecorder
