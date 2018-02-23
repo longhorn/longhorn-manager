@@ -308,12 +308,9 @@ func toVolumeResource(v *longhorn.Volume, vc *longhorn.Controller, vrs map[strin
 	}
 
 	state := string(v.Status.State)
-	if v.Status.State == types.VolumeStateAttached {
-		if v.Status.HealthyReplicaCount >= v.Spec.NumberOfReplicas {
-			state = "healthy"
-		} else {
-			state = "degraded"
-		}
+	if v.Status.Robustness == types.VolumeRobustnessFaulted ||
+		v.Status.State == types.VolumeStateAttached {
+		state = string(v.Status.Robustness)
 	}
 	r := &Volume{
 		Resource: client.Resource{
@@ -338,24 +335,26 @@ func toVolumeResource(v *longhorn.Volume, vc *longhorn.Controller, vrs map[strin
 
 	actions := map[string]struct{}{}
 
-	switch v.Status.State {
-	case types.VolumeStateDetached:
-		actions["attach"] = struct{}{}
-		actions["recurringUpdate"] = struct{}{}
-		actions["replicaRemove"] = struct{}{}
-	case types.VolumeStateAttached:
-		actions["detach"] = struct{}{}
-		actions["snapshotPurge"] = struct{}{}
-		actions["snapshotCreate"] = struct{}{}
-		actions["snapshotList"] = struct{}{}
-		actions["snapshotGet"] = struct{}{}
-		actions["snapshotDelete"] = struct{}{}
-		actions["snapshotRevert"] = struct{}{}
-		actions["snapshotBackup"] = struct{}{}
-		actions["recurringUpdate"] = struct{}{}
-		actions["replicaRemove"] = struct{}{}
-	case types.VolumeStateFaulted:
+	if v.Status.Robustness == types.VolumeRobustnessFaulted {
 		actions["salvage"] = struct{}{}
+	} else {
+		switch v.Status.State {
+		case types.VolumeStateDetached:
+			actions["attach"] = struct{}{}
+			actions["recurringUpdate"] = struct{}{}
+			actions["replicaRemove"] = struct{}{}
+		case types.VolumeStateAttached:
+			actions["detach"] = struct{}{}
+			actions["snapshotPurge"] = struct{}{}
+			actions["snapshotCreate"] = struct{}{}
+			actions["snapshotList"] = struct{}{}
+			actions["snapshotGet"] = struct{}{}
+			actions["snapshotDelete"] = struct{}{}
+			actions["snapshotRevert"] = struct{}{}
+			actions["snapshotBackup"] = struct{}{}
+			actions["recurringUpdate"] = struct{}{}
+			actions["replicaRemove"] = struct{}{}
+		}
 	}
 
 	for action := range actions {

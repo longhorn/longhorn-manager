@@ -3,13 +3,19 @@ package types
 type VolumeState string
 
 const (
-	VolumeStateAttached = VolumeState("attached")
-	VolumeStateDetached = VolumeState("detached")
-	VolumeStateFaulted  = VolumeState("faulted")
-
+	VolumeStateAttached  = VolumeState("attached")
+	VolumeStateDetached  = VolumeState("detached")
 	VolumeStateAttaching = VolumeState("attaching")
 	VolumeStateDetaching = VolumeState("detaching")
 	VolumeStateDeleting  = VolumeState("deleting")
+)
+
+type VolumeRobustness string
+
+const (
+	VolumeRobustnessHealthy  = VolumeRobustness("healthy")  // during attached
+	VolumeRobustnessDegraded = VolumeRobustness("degraded") // during attached
+	VolumeRobustnessFaulted  = VolumeRobustness("faulted")  // during detached
 )
 
 type VolumeSpec struct {
@@ -23,10 +29,10 @@ type VolumeSpec struct {
 }
 
 type VolumeStatus struct {
-	Created             string      `json:"created"`
-	State               VolumeState `json:"state"`
-	HealthyReplicaCount int         `json:"healthyReplicaCount"`
-	Endpoint            string      `json:"endpoint"`
+	Created    string           `json:"created"`
+	State      VolumeState      `json:"state"`
+	Robustness VolumeRobustness `json:"robustness"`
+	Endpoint   string           `json:"endpoint"`
 }
 
 type RecurringJobType string

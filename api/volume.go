@@ -353,8 +353,8 @@ func (s *Server) salvageVolume(volumeName string, salvageReplicaNames []string) 
 	if v == nil {
 		return nil, fmt.Errorf("cannot find volume %v", volumeName)
 	}
-	if v.Status.State != types.VolumeStateFaulted {
-		return nil, fmt.Errorf("invalid state to salvage: %v", v.Status.State)
+	if v.Status.Robustness != types.VolumeRobustnessFaulted {
+		return nil, fmt.Errorf("invalid robustness state to salvage: %v", v.Status.Robustness)
 	}
 
 	for _, names := range salvageReplicaNames {
