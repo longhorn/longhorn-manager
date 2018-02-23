@@ -88,6 +88,7 @@ type ReplicaSpec struct {
 	VolumeSize  string `json:"volumeSize"`
 	RestoreFrom string `json:"restoreFrom"`
 	RestoreName string `json:"restoreName"`
+	HealthyAt   string `json:"healthyAt"`
 	FailedAt    string `json:"failedAt"`
 }
 
