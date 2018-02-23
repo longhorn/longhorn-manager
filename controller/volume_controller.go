@@ -306,7 +306,14 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		return nil
 	}
 
-	// remove err replicas
+	// wait for monitoring to start
+	if e.Status.ReplicaModeMap == nil {
+		return nil
+	}
+
+	// 1. remove ERR replicas
+	// 2. count RW replicas
+	healthyCount := 0
 	for rName, mode := range e.Status.ReplicaModeMap {
 		if mode == types.ReplicaModeERR {
 			r := rs[rName]
@@ -321,24 +328,35 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 			// set replica.FailedAt first because we will lost track of it
 			// if we removed the error replica from engine first
 			delete(e.Spec.ReplicaAddressMap, rName)
+		} else if mode == types.ReplicaModeRW {
+			healthyCount++
 		}
 	}
-	// start rebuilding if necessary
-	if err = vc.replenishReplicas(v, rs); err != nil {
-		return err
-	}
-	for _, r := range rs {
-		if r.Spec.FailedAt == "" && r.Spec.DesireState == types.InstanceStateStopped {
-			r.Spec.DesireState = types.InstanceStateRunning
-			r, err := vc.ds.UpdateReplica(r)
-			if err != nil {
-				return err
+	if healthyCount == 0 { // no healthy replica exists, going to faulted
+		v.Status.Robustness = types.VolumeRobustnessFaulted
+		// detach the volume
+		v.Spec.NodeID = ""
+	} else if healthyCount >= v.Spec.NumberOfReplicas {
+		v.Status.Robustness = types.VolumeRobustnessHealthy
+	} else { // healthyCount < v.Spec.NumberOfReplicas
+		v.Status.Robustness = types.VolumeRobustnessDegraded
+		// start rebuilding if necessary
+		if err = vc.replenishReplicas(v, rs); err != nil {
+			return err
+		}
+		for _, r := range rs {
+			if r.Spec.FailedAt == "" && r.Spec.DesireState == types.InstanceStateStopped {
+				r.Spec.DesireState = types.InstanceStateRunning
+				r, err := vc.ds.UpdateReplica(r)
+				if err != nil {
+					return err
+				}
+				rs[r.Name] = r
+				continue
 			}
-			rs[r.Name] = r
-			continue
-		}
-		if r.Status.CurrentState == types.InstanceStateRunning && e.Spec.ReplicaAddressMap[r.Name] == "" {
-			e.Spec.ReplicaAddressMap[r.Name] = r.Status.IP
+			if r.Status.CurrentState == types.InstanceStateRunning && e.Spec.ReplicaAddressMap[r.Name] == "" {
+				e.Spec.ReplicaAddressMap[r.Name] = r.Status.IP
+			}
 		}
 	}
 	e, err = vc.ds.UpdateEngine(e)
@@ -381,20 +399,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		if err = vc.replenishReplicas(v, rs); err != nil {
 			return err
 		}
-	}
-
-	healthyCount := 0
-	for _, r := range rs {
-		if r.Spec.FailedAt == "" {
-			healthyCount++
-		}
-	}
-	v.Status.HealthyReplicaCount = healthyCount
-	if healthyCount == 0 {
-		// Don't reconcile from Fault state
-		// User will need to salvage a replica to continue
-		v.Status.State = types.VolumeStateFaulted
-		return nil
 	}
 
 	oldState := v.Status.State
@@ -485,6 +489,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 
 		if e.Spec.DesireState != types.InstanceStateRunning || e.Spec.NodeID != v.Spec.NodeID || !reflect.DeepEqual(e.Spec.ReplicaAddressMap, replicaAddressMap) {
+
 			e.Spec.NodeID = v.Spec.NodeID
 			e.Spec.ReplicaAddressMap = replicaAddressMap
 			e.Spec.DesireState = types.InstanceStateRunning
@@ -507,15 +512,18 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 	return nil
 }
 
+// replenishReplicas will keep replicas count to v.Spec.NumberOfReplicas
+// It will count all the potentially usable replicas, since some replicas maybe
+// blank or in rebuilding state
 func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
-	healthyCount := 0
+	usableCount := 0
 	for _, r := range rs {
 		if r.Spec.FailedAt == "" {
-			healthyCount++
+			usableCount++
 		}
 	}
 
-	for i := 0; i < v.Spec.NumberOfReplicas-healthyCount; i++ {
+	for i := 0; i < v.Spec.NumberOfReplicas-usableCount; i++ {
 		r, err := vc.createReplica(v)
 		if err != nil {
 			return err
