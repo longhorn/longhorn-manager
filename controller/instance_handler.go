@@ -4,38 +4,45 @@ import (
 	"fmt"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/pkg/errors"
 
-	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/runtime"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/record"
 
 	"github.com/rancher/longhorn-manager/types"
 )
 
+// InstanceHandler can handle the state transition of correlated instance and
+// engine/replica object. It assumed the pod it's going to operate with is using
+// the SAME NAME from the engine/replica object
 type InstanceHandler struct {
-	namespace  string
-	kubeClient clientset.Interface
-	pLister    corelisters.PodLister
-	podCreator PodCreatorInterface
+	namespace     string
+	kubeClient    clientset.Interface
+	pLister       corelisters.PodLister
+	podCreator    PodCreatorInterface
+	eventRecorder record.EventRecorder
 }
 
 type PodCreatorInterface interface {
-	CreatePodSpec(obj interface{}) (*corev1.Pod, error)
+	CreatePodSpec(obj interface{}) (*v1.Pod, error)
 }
 
-func NewInstanceHandler(podInformer coreinformers.PodInformer, kubeClient clientset.Interface, namespace string, podCreator PodCreatorInterface) *InstanceHandler {
+func NewInstanceHandler(podInformer coreinformers.PodInformer, kubeClient clientset.Interface, namespace string, podCreator PodCreatorInterface, eventRecorder record.EventRecorder) *InstanceHandler {
 	return &InstanceHandler{
-		namespace:  namespace,
-		kubeClient: kubeClient,
-		pLister:    podInformer.Lister(),
-		podCreator: podCreator,
+		namespace:     namespace,
+		kubeClient:    kubeClient,
+		pLister:       podInformer.Lister(),
+		podCreator:    podCreator,
+		eventRecorder: eventRecorder,
 	}
 }
 
-func (h *InstanceHandler) syncStatusWithPod(pod *corev1.Pod, status *types.InstanceStatus) {
+func (h *InstanceHandler) syncStatusWithPod(pod *v1.Pod, status *types.InstanceStatus) {
 	if pod == nil {
 		status.CurrentState = types.InstanceStateStopped
 		status.IP = ""
@@ -49,10 +56,10 @@ func (h *InstanceHandler) syncStatusWithPod(pod *corev1.Pod, status *types.Insta
 	}
 
 	switch pod.Status.Phase {
-	case corev1.PodPending:
+	case v1.PodPending:
 		status.CurrentState = types.InstanceStateStarting
 		status.IP = ""
-	case corev1.PodRunning:
+	case v1.PodRunning:
 		for _, st := range pod.Status.ContainerStatuses {
 			// wait until all containers passed readiness probe
 			if !st.Ready {
@@ -72,9 +79,28 @@ func (h *InstanceHandler) syncStatusWithPod(pod *corev1.Pod, status *types.Insta
 	}
 }
 
-func (h *InstanceHandler) ReconcileInstanceState(podName string, obj interface{}, spec *types.InstanceSpec, status *types.InstanceStatus) (err error) {
+// getNameFromObj will get the name from the object metadata, which will be used
+// as podName later
+func (h *InstanceHandler) getNameFromObj(obj runtime.Object) (string, error) {
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return "", err
+	}
+	return metadata.GetName(), nil
+}
+
+func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.InstanceSpec, status *types.InstanceStatus) (err error) {
+	runtimeObj, ok := obj.(runtime.Object)
+	if !ok {
+		return fmt.Errorf("obj is not a runtime.Object: %v", obj)
+	}
+	podName, err := h.getNameFromObj(runtimeObj)
+	if err != nil {
+		return err
+	}
+
 	if status.CurrentState == types.InstanceStateError {
-		return h.deletePod(podName)
+		return h.deletePodForObject(runtimeObj)
 	}
 
 	pod, err := h.getPod(podName)
@@ -92,14 +118,14 @@ func (h *InstanceHandler) ReconcileInstanceState(podName string, obj interface{}
 			if err != nil {
 				return err
 			}
-			pod, err = h.createPod(podSpec)
+			pod, err = h.createPodForObject(runtimeObj, podSpec)
 			if err != nil {
 				return err
 			}
 		}
 	case types.InstanceStateStopped:
 		if pod != nil && pod.DeletionTimestamp == nil {
-			if err := h.deletePod(pod.Name); err != nil {
+			if err := h.deletePodForObject(runtimeObj); err != nil {
 				return err
 			}
 		}
@@ -125,27 +151,40 @@ func (h *InstanceHandler) ReconcileInstanceState(podName string, obj interface{}
 	return nil
 }
 
-func (h *InstanceHandler) getPod(podName string) (*corev1.Pod, error) {
+func (h *InstanceHandler) getPod(podName string) (*v1.Pod, error) {
 	return h.pLister.Pods(h.namespace).Get(podName)
 }
 
-func (h *InstanceHandler) createPod(pod *corev1.Pod) (p *corev1.Pod, err error) {
-	defer func() {
-		err = errors.Wrapf(err, "fail to start instance %v", pod.Name)
-	}()
-	logrus.Debugf("Start instance %v", pod.Name)
-	return h.kubeClient.CoreV1().Pods(h.namespace).Create(pod)
+func (h *InstanceHandler) createPodForObject(obj runtime.Object, pod *v1.Pod) (*v1.Pod, error) {
+	p, err := h.kubeClient.CoreV1().Pods(h.namespace).Create(pod)
+	if err != nil {
+		h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStarting, "Error starting %v: %v", pod.Name, err)
+		return nil, err
+	}
+	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStart, "Starts %v", pod.Name)
+	return p, nil
 }
 
-func (h *InstanceHandler) deletePod(podName string) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "fail to stop instance %v", podName)
-	}()
-	logrus.Debugf("Stop instance %v", podName)
-	return h.kubeClient.CoreV1().Pods(h.namespace).Delete(podName, nil)
+func (h *InstanceHandler) deletePodForObject(obj runtime.Object) error {
+	podName, err := h.getNameFromObj(obj)
+	if err != nil {
+		return err
+	}
+
+	if err := h.kubeClient.CoreV1().Pods(h.namespace).Delete(podName, nil); err != nil {
+		h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping %v: %v", podName, err)
+		return nil
+	}
+	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStop, "Stops %v", podName)
+	return nil
 }
 
-func (h *InstanceHandler) Delete(podName string) (err error) {
+func (h *InstanceHandler) DeleteInstanceForObject(obj runtime.Object) (err error) {
+	podName, err := h.getNameFromObj(obj)
+	if err != nil {
+		return err
+	}
+
 	pod, err := h.getPod(podName)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
@@ -158,5 +197,5 @@ func (h *InstanceHandler) Delete(podName string) (err error) {
 	if pod.DeletionTimestamp != nil {
 		return nil
 	}
-	return h.deletePod(podName)
+	return h.deletePodForObject(obj)
 }

@@ -7,6 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/rancher/longhorn-manager/types"
@@ -72,5 +73,6 @@ func (s *TestSuite) TestSyncStatusWithPod(c *C) {
 
 func newTestInstanceHandler(kubeInformerFactory informers.SharedInformerFactory, kubeClient *fake.Clientset) *InstanceHandler {
 	podInformer := kubeInformerFactory.Core().V1().Pods()
-	return NewInstanceHandler(podInformer, kubeClient, TestNamespace, nil)
+	fakeRecorder := record.NewFakeRecorder(100)
+	return NewInstanceHandler(podInformer, kubeClient, TestNamespace, nil, fakeRecorder)
 }

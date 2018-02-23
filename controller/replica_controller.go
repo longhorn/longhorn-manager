@@ -112,7 +112,7 @@ func NewReplicaController(
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-replica"),
 	}
-	rc.instanceHandler = NewInstanceHandler(podInformer, kubeClient, namespace, rc)
+	rc.instanceHandler = NewInstanceHandler(podInformer, kubeClient, namespace, rc, rc.eventRecorder)
 
 	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -241,7 +241,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	}
 
 	if replica.DeletionTimestamp != nil {
-		if err := rc.instanceHandler.Delete(replica.Name); err != nil {
+		if err := rc.instanceHandler.DeleteInstanceForObject(replica); err != nil {
 			return err
 		}
 		// we want to make sure data was cleaned before remove the replica
@@ -273,7 +273,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}
 
-	return rc.instanceHandler.ReconcileInstanceState(replica.Name, replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
+	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
 }
 
 func (rc *ReplicaController) enqueueReplica(replica *longhorn.Replica) {

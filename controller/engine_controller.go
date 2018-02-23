@@ -106,7 +106,7 @@ func NewEngineController(
 		engineMonitorMutex: &sync.RWMutex{},
 		engineMonitorMap:   make(map[string]*EngineMonitor),
 	}
-	ec.instanceHandler = NewInstanceHandler(podInformer, kubeClient, namespace, ec)
+	ec.instanceHandler = NewInstanceHandler(podInformer, kubeClient, namespace, ec, ec.eventRecorder)
 
 	engineInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -221,7 +221,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		ec.stopMonitoring(engine)
 
 		// don't go through state transition because it can go wrong
-		if err := ec.instanceHandler.Delete(engine.Name); err != nil {
+		if err := ec.instanceHandler.DeleteInstanceForObject(engine); err != nil {
 			return err
 		}
 		return ec.ds.RemoveFinalizerForEngine(engine.Name)
@@ -240,7 +240,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	}()
 
-	if err := ec.instanceHandler.ReconcileInstanceState(engine.Name, engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
+	if err := ec.instanceHandler.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
 		return err
 	}
 
@@ -566,8 +566,9 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Controller) error {
 		go func(ip string) {
 			url := engineapi.GetReplicaDefaultURL(ip)
 			if err := client.ReplicaRemove(url); err != nil {
-				logrus.Errorf("Failed to remove unknown replica %v for %v: %v",
-					ip, e.Name, err)
+				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedEngineRemoveReplica, "Failed to remove replica IP %v from engine: %v", ip, err)
+			} else {
+				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonEngineRemoveReplica, "Removed replica %v from engine", ip)
 			}
 		}(ip)
 	}
@@ -602,8 +603,6 @@ func (ec *EngineController) startRebuilding(e *longhorn.Controller, replica, ip 
 		err = errors.Wrapf(err, "fail to start rebuild for %v of %v", replica, e.Name)
 	}()
 
-	logrus.Infof("Start rebuilding for %v of %v", replica, e.Name)
-
 	client, err := ec.getClientForEngine(e)
 	if err != nil {
 		return err
@@ -612,7 +611,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Controller, replica, ip 
 	go func() {
 		// start rebuild
 		if err := client.ReplicaAdd(replicaURL); err != nil {
-			logrus.Warnf("fail to rebuild for %v of %v", replica, e.Name)
+			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedEngineRebuild, "Failed rebuilding replica with IP %v", ip)
 		}
 	}()
 	//wait until engine confirmed that rebuild started
@@ -623,6 +622,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Controller, replica, ip 
 		}
 		for url := range replicaURLModeMap {
 			if ip == engineapi.GetIPFromURL(url) {
+				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonEngineStartRebuild, "Start rebuilding replica with IP %v", ip)
 				return true, nil
 			}
 		}
