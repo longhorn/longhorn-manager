@@ -1,19 +1,20 @@
 package controller
 
 const (
-	EventReasonCreate = "Create"
-	EventReasonDelete = "Delete"
-	EventReasonStart  = "Start"
-	EventReasonStop   = "Stop"
-
+	EventReasonCreate         = "Create"
 	EventReasonFailedCreating = "FailedCreating"
+	EventReasonDelete         = "Delete"
 	EventReasonFailedDeleting = "FailedDeleting"
+	EventReasonStart          = "Start"
 	EventReasonFailedStarting = "FailedStarting"
+	EventReasonStop           = "Stop"
 	EventReasonFailedStopping = "FailedStopping"
 
-	EventReasonEngineRemoveReplica       = "EngineRemoveReplica"
-	EventReasonFailedEngineRemoveReplica = "FailedEngineRemoveReplica"
+	EventReasonFaulted          = "Faulted"
+	EventReasonRebuilded        = "Rebuilded"
+	EventReasonRebuilding       = "Rebuilding"
+	EventReasonFailedRebuilding = "FailedRebuilding"
 
-	EventReasonEngineStartRebuild  = "EngineStartRebuild"
-	EventReasonFailedEngineRebuild = "FailedEngineRebuild"
+	EventReasonVolumeAttached = "Attached"
+	EventReasonVolumeDetached = "Detached"
 )

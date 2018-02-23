@@ -397,6 +397,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		return nil
 	}
 
+	oldState := v.Status.State
 	if v.Spec.NodeID == "" {
 		// the final state will be determined at the end of the clause
 		v.Status.State = types.VolumeStateDetaching
@@ -451,6 +452,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 
 		v.Status.State = types.VolumeStateDetached
+		if oldState != v.Status.State {
+			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonVolumeDetached, "volume %v has been detached", v.Name)
+		}
 	} else {
 		// the final state will be determined at the end of the clause
 		v.Status.State = types.VolumeStateAttaching
@@ -496,6 +500,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 
 		v.Status.Endpoint = e.Status.Endpoint
 		v.Status.State = types.VolumeStateAttached
+		if oldState != v.Status.State {
+			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonVolumeAttached, "volume %v has been attached to %v", v.Name, v.Spec.NodeID)
+		}
 	}
 	return nil
 }
