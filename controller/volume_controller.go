@@ -238,6 +238,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			if err != nil {
 				return err
 			}
+			vc.eventRecorder.Eventf(volume, v1.EventTypeNormal, EventReasonDelete, "Deleting volume %v", volume.Name)
 		}
 		vc.stopRecurringJobs(volume)
 
@@ -273,8 +274,6 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 	}()
 
-	vc.RefreshVolumeState(volume, engine, replicas)
-
 	if err := vc.updateRecurringJobs(volume, engine); err != nil {
 		return err
 	}
@@ -288,39 +287,6 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	}
 
 	return nil
-}
-
-func (vc *VolumeController) RefreshVolumeState(v *longhorn.Volume, e *longhorn.Controller, rs map[string]*longhorn.Replica) {
-	// engine wasn't created or has been deleted
-	if e == nil {
-		return
-	}
-
-	healthyCount := 0
-	for _, r := range rs {
-		if r.Spec.FailedAt == "" {
-			healthyCount++
-		}
-	}
-	if e.Status.CurrentState == types.InstanceStateRunning {
-		// Don't worry about ">" now. Deal with it later
-		if healthyCount >= v.Spec.NumberOfReplicas {
-			v.Status.State = types.VolumeStateHealthy
-		} else {
-			v.Status.State = types.VolumeStateDegraded
-		}
-		v.Status.Endpoint = e.Status.Endpoint
-	} else {
-		// controller has been created by this point, so it won't be
-		// in `Created` state
-		if healthyCount != 0 {
-			v.Status.State = types.VolumeStateDetached
-		} else {
-			v.Status.State = types.VolumeStateFault
-		}
-		v.Status.Endpoint = ""
-	}
-	return
 }
 
 func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *longhorn.Controller, rs map[string]*longhorn.Replica) (err error) {
@@ -402,12 +368,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		err = errors.Wrapf(err, "fail to reconcile volume state for %v", v.Name)
 	}()
 
-	// Don't reconcile from Fault state
-	// User will need to salvage a replica to continue
-	if v.Status.State == types.VolumeStateFault {
-		return nil
-	}
-
 	if e == nil {
 		// first time creation
 		e, err = vc.createEngine(v)
@@ -423,7 +383,25 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 	}
 
+	healthyCount := 0
+	for _, r := range rs {
+		if r.Spec.FailedAt == "" {
+			healthyCount++
+		}
+	}
+	v.Status.HealthyReplicaCount = healthyCount
+	if healthyCount == 0 {
+		// Don't reconcile from Fault state
+		// User will need to salvage a replica to continue
+		v.Status.State = types.VolumeStateFaulted
+		return nil
+	}
+
 	if v.Spec.NodeID == "" {
+		// the final state will be determined at the end of the clause
+		v.Status.State = types.VolumeStateDetaching
+		v.Status.Endpoint = ""
+
 		// stop rebuilding
 		for rName, mode := range e.Status.ReplicaModeMap {
 			if mode == types.ReplicaModeWO {
@@ -454,6 +432,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			return nil
 		}
 
+		allReplicasStopped := true
 		for _, r := range rs {
 			if r.Spec.DesireState != types.InstanceStateStopped {
 				r.Spec.DesireState = types.InstanceStateStopped
@@ -463,10 +442,19 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 				}
 				rs[r.Name] = r
 			}
+			if r.Status.CurrentState != types.InstanceStateStopped {
+				allReplicasStopped = false
+			}
 		}
+		if !allReplicasStopped {
+			return nil
+		}
+
+		v.Status.State = types.VolumeStateDetached
 	} else {
-		// volume hasn't been started before
-		// we will start the engine with all healthy replicas
+		// the final state will be determined at the end of the clause
+		v.Status.State = types.VolumeStateAttaching
+
 		replicaUpdated := false
 		for _, r := range rs {
 			if r.Spec.FailedAt == "" && r.Spec.DesireState != types.InstanceStateRunning {
@@ -492,16 +480,22 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			replicaAddressMap[r.Name] = r.Status.IP
 		}
 
-		if e.Status.CurrentState == types.InstanceStateRunning {
-			if e.Spec.NodeID != v.Spec.NodeID {
-				return fmt.Errorf("Inconsistent node ID: engine %v vs volume %v", e.Spec.NodeID, v.Spec.NodeID)
+		if e.Spec.DesireState != types.InstanceStateRunning || e.Spec.NodeID != v.Spec.NodeID || !reflect.DeepEqual(e.Spec.ReplicaAddressMap, replicaAddressMap) {
+			e.Spec.NodeID = v.Spec.NodeID
+			e.Spec.ReplicaAddressMap = replicaAddressMap
+			e.Spec.DesireState = types.InstanceStateRunning
+			e, err = vc.ds.UpdateEngine(e)
+			if err != nil {
+				return err
 			}
 		}
-		e.Spec.NodeID = v.Spec.NodeID
-		e.Spec.ReplicaAddressMap = replicaAddressMap
-		e.Spec.DesireState = types.InstanceStateRunning
-		e, err = vc.ds.UpdateEngine(e)
-		return err
+		// wait for engine to be up
+		if e.Status.CurrentState != types.InstanceStateRunning {
+			return nil
+		}
+
+		v.Status.Endpoint = e.Status.Endpoint
+		v.Status.State = types.VolumeStateAttached
 	}
 	return nil
 }

@@ -307,6 +307,14 @@ func toVolumeResource(v *longhorn.Volume, vc *longhorn.Controller, vrs map[strin
 		logrus.Error("BUG: invalid size %v for volume %v", v.Spec.Size, v.Name)
 	}
 
+	state := string(v.Status.State)
+	if v.Status.State == types.VolumeStateAttached {
+		if v.Status.HealthyReplicaCount >= v.Spec.NumberOfReplicas {
+			state = "healthy"
+		} else {
+			state = "degraded"
+		}
+	}
 	r := &Volume{
 		Resource: client.Resource{
 			Id:      v.Name,
@@ -314,12 +322,11 @@ func toVolumeResource(v *longhorn.Volume, vc *longhorn.Controller, vrs map[strin
 			Actions: map[string]string{},
 			Links:   map[string]string{},
 		},
-		Name:             v.Name,
-		Size:             strconv.FormatInt(size, 10),
-		FromBackup:       v.Spec.FromBackup,
-		NumberOfReplicas: v.Spec.NumberOfReplicas,
-		State:            string(v.Status.State),
-		//EngineImage:         v.EngineImage,
+		Name:                v.Name,
+		Size:                strconv.FormatInt(size, 10),
+		FromBackup:          v.Spec.FromBackup,
+		NumberOfReplicas:    v.Spec.NumberOfReplicas,
+		State:               state,
 		RecurringJobs:       v.Spec.RecurringJobs,
 		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
 		Endpoint:            v.Status.Endpoint,
@@ -336,7 +343,7 @@ func toVolumeResource(v *longhorn.Volume, vc *longhorn.Controller, vrs map[strin
 		actions["attach"] = struct{}{}
 		actions["recurringUpdate"] = struct{}{}
 		actions["replicaRemove"] = struct{}{}
-	case types.VolumeStateHealthy:
+	case types.VolumeStateAttached:
 		actions["detach"] = struct{}{}
 		actions["snapshotPurge"] = struct{}{}
 		actions["snapshotCreate"] = struct{}{}
@@ -347,22 +354,7 @@ func toVolumeResource(v *longhorn.Volume, vc *longhorn.Controller, vrs map[strin
 		actions["snapshotBackup"] = struct{}{}
 		actions["recurringUpdate"] = struct{}{}
 		actions["replicaRemove"] = struct{}{}
-		actions["jobList"] = struct{}{}
-		//actions["bgTaskQueue"] = struct{}{}
-	case types.VolumeStateDegraded:
-		actions["detach"] = struct{}{}
-		actions["snapshotPurge"] = struct{}{}
-		actions["snapshotCreate"] = struct{}{}
-		actions["snapshotList"] = struct{}{}
-		actions["snapshotGet"] = struct{}{}
-		actions["snapshotDelete"] = struct{}{}
-		actions["snapshotRevert"] = struct{}{}
-		actions["snapshotBackup"] = struct{}{}
-		actions["recurringUpdate"] = struct{}{}
-		actions["replicaRemove"] = struct{}{}
-		actions["jobList"] = struct{}{}
-		//actions["bgTaskQueue"] = struct{}{}
-	case types.VolumeStateFault:
+	case types.VolumeStateFaulted:
 		actions["salvage"] = struct{}{}
 	}
 
