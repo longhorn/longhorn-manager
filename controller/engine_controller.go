@@ -68,8 +68,9 @@ type EngineController struct {
 }
 
 type EngineMonitor struct {
-	namespace string
-	ds        *datastore.DataStore
+	namespace     string
+	ds            *datastore.DataStore
+	eventRecorder record.EventRecorder
 
 	Name         string
 	engineClient engineapi.EngineClient
@@ -431,11 +432,12 @@ func (ec *EngineController) startMonitoring(e *longhorn.Controller) {
 	e.Status.Endpoint = endpoint
 
 	monitor := &EngineMonitor{
-		Name:         e.Name,
-		namespace:    e.Namespace,
-		ds:           ec.ds,
-		engineClient: client,
-		stopCh:       make(chan struct{}),
+		Name:          e.Name,
+		namespace:     e.Namespace,
+		ds:            ec.ds,
+		eventRecorder: ec.eventRecorder,
+		engineClient:  client,
+		stopCh:        make(chan struct{}),
 	}
 
 	ec.engineMonitorMutex.Lock()
@@ -510,6 +512,21 @@ func (m *EngineMonitor) Refresh() error {
 			replica = unknownReplicaPrefix + ip
 		}
 		currentReplicaModeMap[replica] = r.Mode
+
+		if engine.Status.ReplicaModeMap != nil {
+			if r.Mode != engine.Status.ReplicaModeMap[replica] {
+				switch r.Mode {
+				case types.ReplicaModeERR:
+					m.eventRecorder.Eventf(engine, v1.EventTypeWarning, EventReasonFaulted, "Detected replica %v (%v) faulted", replica, ip)
+				case types.ReplicaModeWO:
+					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v (%v)", replica, ip)
+				case types.ReplicaModeRW:
+					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilded, "Replica %v (%v) has been rebuilded", replica, ip)
+				default:
+					logrus.Errorf("Invalid engine replica mode %v", r.Mode)
+				}
+			}
+		}
 	}
 	if !reflect.DeepEqual(engine.Status.ReplicaModeMap, currentReplicaModeMap) {
 		engine.Status.ReplicaModeMap = currentReplicaModeMap
@@ -566,9 +583,9 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Controller) error {
 		go func(ip string) {
 			url := engineapi.GetReplicaDefaultURL(ip)
 			if err := client.ReplicaRemove(url); err != nil {
-				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedEngineRemoveReplica, "Failed to remove replica IP %v from engine: %v", ip, err)
+				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting, "Failed to remove replica IP %v from engine: %v", ip, err)
 			} else {
-				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonEngineRemoveReplica, "Removed replica %v from engine", ip)
+				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonDelete, "Removed replica IP %v from engine", ip)
 			}
 		}(ip)
 	}
@@ -611,7 +628,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Controller, replica, ip 
 	go func() {
 		// start rebuild
 		if err := client.ReplicaAdd(replicaURL); err != nil {
-			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedEngineRebuild, "Failed rebuilding replica with IP %v", ip)
+			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedRebuilding, "Failed rebuilding replica with IP %v", ip)
 		}
 	}()
 	//wait until engine confirmed that rebuild started
@@ -622,7 +639,6 @@ func (ec *EngineController) startRebuilding(e *longhorn.Controller, replica, ip 
 		}
 		for url := range replicaURLModeMap {
 			if ip == engineapi.GetIPFromURL(url) {
-				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonEngineStartRebuild, "Start rebuilding replica with IP %v", ip)
 				return true, nil
 			}
 		}
