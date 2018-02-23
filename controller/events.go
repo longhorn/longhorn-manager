@@ -10,11 +10,13 @@ const (
 	EventReasonStop           = "Stop"
 	EventReasonFailedStopping = "FailedStopping"
 
-	EventReasonFaulted          = "Faulted"
 	EventReasonRebuilded        = "Rebuilded"
 	EventReasonRebuilding       = "Rebuilding"
 	EventReasonFailedRebuilding = "FailedRebuilding"
 
-	EventReasonVolumeAttached = "Attached"
-	EventReasonVolumeDetached = "Detached"
+	EventReasonAttached = "Attached"
+	EventReasonDetached = "Detached"
+	EventReasonHealthy  = "Healthy"
+	EventReasonFaulted  = "Faulted"
+	EventReasonDegraded = "Degraded"
 )

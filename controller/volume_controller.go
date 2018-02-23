@@ -345,14 +345,25 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 			}
 		}
 	}
+
+	oldRobustness := v.Status.Robustness
 	if healthyCount == 0 { // no healthy replica exists, going to faulted
 		v.Status.Robustness = types.VolumeRobustnessFaulted
+		if oldRobustness != types.VolumeRobustnessFaulted {
+			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFaulted, "volume %v became faulted", v.Name)
+		}
 		// detach the volume
 		v.Spec.NodeID = ""
 	} else if healthyCount >= v.Spec.NumberOfReplicas {
 		v.Status.Robustness = types.VolumeRobustnessHealthy
+		if oldRobustness == types.VolumeRobustnessDegraded {
+			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonHealthy, "volume %v became healthy", v.Name)
+		}
 	} else { // healthyCount < v.Spec.NumberOfReplicas
 		v.Status.Robustness = types.VolumeRobustnessDegraded
+		if oldRobustness != types.VolumeRobustnessDegraded {
+			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonDegraded, "volume %v became degraded", v.Name)
+		}
 		// start rebuilding if necessary
 		if err = vc.replenishReplicas(v, rs); err != nil {
 			return err
@@ -472,7 +483,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 
 		v.Status.State = types.VolumeStateDetached
 		if oldState != v.Status.State {
-			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonVolumeDetached, "volume %v has been detached", v.Name)
+			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonDetached, "volume %v has been detached", v.Name)
 		}
 	} else {
 		// the final state will be determined at the end of the clause
@@ -521,7 +532,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		v.Status.Endpoint = e.Status.Endpoint
 		v.Status.State = types.VolumeStateAttached
 		if oldState != v.Status.State {
-			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonVolumeAttached, "volume %v has been attached to %v", v.Name, v.Spec.NodeID)
+			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Spec.NodeID)
 		}
 	}
 	return nil
