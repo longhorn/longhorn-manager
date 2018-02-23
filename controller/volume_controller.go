@@ -298,7 +298,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		return nil
 	}
 
-	if err := vc.cleanupStaleReplicas(v, rs); err != nil {
+	if err := vc.cleanupCorruptedOrStaleReplicas(v, rs); err != nil {
 		return err
 	}
 
@@ -315,8 +315,8 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 	// 2. count RW replicas
 	healthyCount := 0
 	for rName, mode := range e.Status.ReplicaModeMap {
+		r := rs[rName]
 		if mode == types.ReplicaModeERR {
-			r := rs[rName]
 			if r != nil {
 				r.Spec.FailedAt = util.Now()
 				r, err = vc.ds.UpdateReplica(r)
@@ -329,7 +329,20 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 			// if we removed the error replica from engine first
 			delete(e.Spec.ReplicaAddressMap, rName)
 		} else if mode == types.ReplicaModeRW {
-			healthyCount++
+			if r != nil {
+				// record once replica became healthy, so if it
+				// failed in the future, we can tell it apart
+				// from replica failed during rebuilding
+				if r.Spec.HealthyAt == "" {
+					r.Spec.HealthyAt = util.Now()
+					r, err = vc.ds.UpdateReplica(r)
+					if err != nil {
+						return err
+					}
+					rs[rName] = r
+				}
+				healthyCount++
+			}
 		}
 	}
 	if healthyCount == 0 { // no healthy replica exists, going to faulted
@@ -366,11 +379,13 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 	return nil
 }
 
-func (vc *VolumeController) cleanupStaleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
+func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
 	for _, r := range rs {
 		if r.Spec.FailedAt != "" {
-			if util.TimestampAfterTimeout(r.Spec.FailedAt, v.Spec.StaleReplicaTimeout*60) {
-				logrus.Infof("Cleaning up stale replica %v", r.Name)
+			// 1. failed before ever became healthy (RW), mostly failed during rebuilding
+			// 2. failed too long ago, became stale and unnecessary to keep around
+			if r.Spec.HealthyAt == "" || util.TimestampAfterTimeout(r.Spec.FailedAt, v.Spec.StaleReplicaTimeout*60) {
+				logrus.Infof("Cleaning up corrupted or staled replica %v", r.Name)
 				if err := vc.ds.DeleteReplica(r.Name); err != nil {
 					return errors.Wrap(err, "cannot cleanup stale replicas")
 				}
