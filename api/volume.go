@@ -301,7 +301,7 @@ func (s *Server) detachVolume(volumeName string) (v *longhorn.Volume, err error)
 	if v == nil {
 		return nil, fmt.Errorf("cannot find volume %v", volumeName)
 	}
-	if v.Status.State != types.VolumeStateHealthy && v.Status.State != types.VolumeStateDegraded {
+	if v.Status.State != types.VolumeStateAttached {
 		return nil, fmt.Errorf("invalid state to detach %v: %v", v.Name, v.Status.State)
 	}
 
@@ -353,7 +353,7 @@ func (s *Server) salvageVolume(volumeName string, salvageReplicaNames []string) 
 	if v == nil {
 		return nil, fmt.Errorf("cannot find volume %v", volumeName)
 	}
-	if v.Status.State != types.VolumeStateFault {
+	if v.Status.State != types.VolumeStateFaulted {
 		return nil, fmt.Errorf("invalid state to salvage: %v", v.Status.State)
 	}
 
