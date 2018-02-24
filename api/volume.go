@@ -148,14 +148,14 @@ func (s *Server) VolumeSalvage(rw http.ResponseWriter, req *http.Request) error 
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error read replicaRemoveInput")
+		return errors.Wrapf(err, "error read salvageInput")
 	}
 
 	id := mux.Vars(req)["name"]
 
 	v, err := s.salvageVolume(id, input.Names)
 	if err != nil {
-		return errors.Wrap(err, "unable to remove replica")
+		return errors.Wrap(err, "unable to salvage volume")
 	}
 
 	return s.responseWithVolume(rw, req, "", v)
@@ -353,6 +353,9 @@ func (s *Server) salvageVolume(volumeName string, salvageReplicaNames []string) 
 	if v == nil {
 		return nil, fmt.Errorf("cannot find volume %v", volumeName)
 	}
+	if v.Status.State != types.VolumeStateDetached {
+		return nil, fmt.Errorf("invalid volume state to salvage: %v", v.Status.State)
+	}
 	if v.Status.Robustness != types.VolumeRobustnessFaulted {
 		return nil, fmt.Errorf("invalid robustness state to salvage: %v", v.Status.Robustness)
 	}
@@ -374,13 +377,12 @@ func (s *Server) salvageVolume(volumeName string, salvageReplicaNames []string) 
 		}
 	}
 
-	if v.Spec.NodeID != "" {
-		v.Spec.NodeID = ""
-		v, err = s.ds.UpdateVolume(v)
-		if err != nil {
-			return nil, err
-		}
+	v.Spec.NodeID = ""
+	v.Status.Robustness = types.VolumeRobustnessUnknown
+	v, err = s.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
 	}
-	logrus.Debugf("Salvaging replica %+v for volume %v", salvageReplicaNames, v.Name)
+	logrus.Debugf("Salvaged replica %+v for volume %v", salvageReplicaNames, v.Name)
 	return v, nil
 }
