@@ -16,6 +16,7 @@ const (
 	VolumeRobustnessHealthy  = VolumeRobustness("healthy")  // during attached
 	VolumeRobustnessDegraded = VolumeRobustness("degraded") // during attached
 	VolumeRobustnessFaulted  = VolumeRobustness("faulted")  // during detached
+	VolumeRobustnessUnknown  = VolumeRobustness("unknown")  // during detached
 )
 
 type VolumeSpec struct {
