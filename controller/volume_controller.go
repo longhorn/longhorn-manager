@@ -433,22 +433,25 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		v.Status.State = types.VolumeStateDetaching
 		v.Status.Endpoint = ""
 
+		// check if any replica has been RW yet
+		dataExists := false
+		for _, r := range rs {
+			if r.Spec.HealthyAt != "" {
+				dataExists = true
+				break
+			}
+		}
 		// stop rebuilding
-		for rName, mode := range e.Status.ReplicaModeMap {
-			if mode == types.ReplicaModeWO {
-				r := rs[rName]
-				if r == nil {
-					logrus.Errorf("BUG: Engine has %v as WO, but cannot find the replica", rName)
-					continue
-				}
-				if r.Spec.FailedAt != "" {
+		if dataExists {
+			for _, r := range rs {
+				if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" {
 					r.Spec.FailedAt = util.Now()
 					r, err = vc.ds.UpdateReplica(r)
 					if err != nil {
 						return err
 					}
+					rs[r.Name] = r
 				}
-				rs[rName] = r
 			}
 		}
 		if e.Spec.DesireState != types.InstanceStateStopped {
