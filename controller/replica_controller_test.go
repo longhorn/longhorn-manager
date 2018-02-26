@@ -2,7 +2,6 @@ package controller
 
 import (
 	"fmt"
-	"testing"
 
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
@@ -23,38 +22,6 @@ import (
 
 	. "gopkg.in/check.v1"
 )
-
-const (
-	TestNamespace   = "default"
-	TestThreadiness = 10
-	TestVolumeName  = "test-volume"
-	TestVolumeSize  = "1g"
-	TestRestoreFrom = "vfs://empty"
-	TestRestoreName = "empty"
-	TestIP1         = "1.2.3.4"
-	TestIP2         = "5.6.7.8"
-	TestNode1       = "test-node-name-1"
-	TestNode2       = "test-node-name-2"
-	TestOwnerID1    = TestNode1
-	TestOwnerID2    = TestNode2
-
-	TestReplica1Name = "replica-volumename-1"
-	TestPodName      = "test-pod-name"
-)
-
-var (
-	alwaysReady = func() bool { return true }
-)
-
-func Test(t *testing.T) { TestingT(t) }
-
-type TestSuite struct {
-}
-
-var _ = Suite(&TestSuite{})
-
-func (s *TestSuite) SetUpTest(c *C) {
-}
 
 func newReplica(desireState, currentState types.InstanceState, failedAt string) *longhorn.Replica {
 	ip := ""
@@ -104,12 +71,6 @@ func newPod(phase v1.PodPhase, name, namespace string) *v1.Pod {
 			PodIP: ip,
 		},
 	}
-}
-
-func getKey(obj interface{}, c *C) string {
-	key, err := controller.KeyFunc(obj)
-	c.Assert(err, IsNil)
-	return key
 }
 
 func getReplica(name string, lister lhlisters.ReplicaLister) (*longhorn.Replica, error) {

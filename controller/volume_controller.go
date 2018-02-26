@@ -60,6 +60,9 @@ type VolumeController struct {
 
 	queue workqueue.RateLimitingInterface
 
+	// for unit test
+	nowHandler func() string
+
 	recurringJobMutex *sync.Mutex
 	recurringJobMap   map[string]*VolumeRecurringJob
 }
@@ -97,6 +100,8 @@ func NewVolumeController(
 		rStoreSynced: replicaInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-volume"),
+
+		nowHandler: util.Now,
 
 		recurringJobMutex: &sync.Mutex{},
 		recurringJobMap:   make(map[string]*VolumeRecurringJob),
@@ -318,7 +323,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		r := rs[rName]
 		if mode == types.ReplicaModeERR {
 			if r != nil {
-				r.Spec.FailedAt = util.Now()
+				r.Spec.FailedAt = vc.nowHandler()
 				r, err = vc.ds.UpdateReplica(r)
 				if err != nil {
 					return err
@@ -334,7 +339,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 				// failed in the future, we can tell it apart
 				// from replica failed during rebuilding
 				if r.Spec.HealthyAt == "" {
-					r.Spec.HealthyAt = util.Now()
+					r.Spec.HealthyAt = vc.nowHandler()
 					r, err = vc.ds.UpdateReplica(r)
 					if err != nil {
 						return err
@@ -407,6 +412,7 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 	return nil
 }
 
+// ReconcileVolumeState handles the attaching and detaching of volume
 func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn.Controller, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to reconcile volume state for %v", v.Name)
@@ -445,7 +451,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		if dataExists {
 			for _, r := range rs {
 				if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" {
-					r.Spec.FailedAt = util.Now()
+					r.Spec.FailedAt = vc.nowHandler()
 					r, err = vc.ds.UpdateReplica(r)
 					if err != nil {
 						return err
@@ -462,7 +468,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		// must make sure engine stopped first before stopping replicas
 		// otherwise we may corrupt the data
 		if e.Status.CurrentState != types.InstanceStateStopped {
-			logrus.Infof("Waiting for engine %v to stop", e.Name)
+			logrus.Infof("Waiting for engine %v state change to stopped", e.Name)
 			return nil
 		}
 
@@ -518,7 +524,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 
 		if e.Spec.DesireState != types.InstanceStateRunning || e.Spec.NodeID != v.Spec.NodeID || !reflect.DeepEqual(e.Spec.ReplicaAddressMap, replicaAddressMap) {
-
 			e.Spec.NodeID = v.Spec.NodeID
 			e.Spec.ReplicaAddressMap = replicaAddressMap
 			e.Spec.DesireState = types.InstanceStateRunning
@@ -590,6 +595,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Controll
 				DesireState: types.InstanceStateStopped,
 				OwnerID:     vc.controllerID,
 			},
+			ReplicaAddressMap: map[string]string{},
 		},
 	}
 	return vc.ds.CreateEngine(engine)
