@@ -369,7 +369,8 @@ func (s *Server) salvageVolume(volumeName string, salvageReplicaNames []string) 
 			return nil, fmt.Errorf("replica %v doesn't belong to volume %v", r.Name, v.Name)
 		}
 		if r.Spec.FailedAt == "" {
-			return nil, fmt.Errorf("replica %v is not in failed state", r.Name)
+			// already updated, ignore it for idempotency
+			continue
 		}
 		r.Spec.FailedAt = ""
 		if _, err := s.ds.UpdateReplica(r); err != nil {
