@@ -16,7 +16,7 @@ limitations under the License.
 
 package v1alpha1
 
-type ControllerExpansion interface{}
+type EngineExpansion interface{}
 
 type ReplicaExpansion interface{}
 

@@ -61,7 +61,7 @@ func StartControllers(controllerID, engineImage string) (*datastore.DataStore, e
 	lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, time.Second*30)
 
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
-	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Controllers()
+	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Engines()
 	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()

@@ -18,7 +18,7 @@ type DataStore struct {
 	lhClient     lhclientset.Interface
 	vLister      lhlisters.VolumeLister
 	vStoreSynced cache.InformerSynced
-	eLister      lhlisters.ControllerLister
+	eLister      lhlisters.EngineLister
 	eStoreSynced cache.InformerSynced
 	rLister      lhlisters.ReplicaLister
 	rStoreSynced cache.InformerSynced
@@ -30,7 +30,7 @@ type DataStore struct {
 
 func NewDataStore(
 	volumeInformer lhinformers.VolumeInformer,
-	engineInformer lhinformers.ControllerInformer,
+	engineInformer lhinformers.EngineInformer,
 	replicaInformer lhinformers.ReplicaInformer,
 	lhClient lhclientset.Interface,
 

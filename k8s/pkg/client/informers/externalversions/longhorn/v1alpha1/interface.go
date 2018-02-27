@@ -24,8 +24,8 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// Controllers returns a ControllerInformer.
-	Controllers() ControllerInformer
+	// Engines returns a EngineInformer.
+	Engines() EngineInformer
 	// Replicas returns a ReplicaInformer.
 	Replicas() ReplicaInformer
 	// Settings returns a SettingInformer.
@@ -43,9 +43,9 @@ func New(f internalinterfaces.SharedInformerFactory) Interface {
 	return &version{f}
 }
 
-// Controllers returns a ControllerInformer.
-func (v *version) Controllers() ControllerInformer {
-	return &controllerInformer{factory: v.SharedInformerFactory}
+// Engines returns a EngineInformer.
+func (v *version) Engines() EngineInformer {
+	return &engineInformer{factory: v.SharedInformerFactory}
 }
 
 // Replicas returns a ReplicaInformer.

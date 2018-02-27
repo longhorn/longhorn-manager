@@ -76,7 +76,7 @@ func NewVolumeController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	volumeInformer lhinformers.VolumeInformer,
-	engineInformer lhinformers.ControllerInformer,
+	engineInformer lhinformers.EngineInformer,
 	replicaInformer lhinformers.ReplicaInformer,
 	kubeClient clientset.Interface,
 	namespace string, controllerID string, engineImage string) *VolumeController {
@@ -294,7 +294,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	return nil
 }
 
-func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *longhorn.Controller, rs map[string]*longhorn.Replica) (err error) {
+func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to reconcile engine/replica state for %v", v.Name)
 	}()
@@ -413,7 +413,7 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 }
 
 // ReconcileVolumeState handles the attaching and detaching of volume
-func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn.Controller, rs map[string]*longhorn.Replica) (err error) {
+func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to reconcile volume state for %v", v.Name)
 	}()
@@ -575,8 +575,8 @@ func (vc *VolumeController) generateReplicaNameForVolume(v *longhorn.Volume) str
 	return v.Name + replicaSuffix + "-" + util.RandomID()
 }
 
-func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Controller, error) {
-	engine := &longhorn.Controller{
+func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, error) {
+	engine := &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: vc.getEngineNameForVolume(v),
 			OwnerReferences: []metav1.OwnerReference{
@@ -697,7 +697,7 @@ func (vc *VolumeController) stopRecurringJobs(v *longhorn.Volume) {
 	vc.cleanupRecurringJobsHoldingLock(v)
 }
 
-func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume, e *longhorn.Controller) (err error) {
+func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume, e *longhorn.Engine) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to update recurring jobs for %v", v.Name)
 	}()

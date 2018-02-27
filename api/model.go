@@ -271,7 +271,7 @@ func toSettingCollection(settings *types.SettingsInfo) *client.GenericCollection
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }
 
-func toVolumeResource(v *longhorn.Volume, vc *longhorn.Controller, vrs map[string]*longhorn.Replica, apiContext *api.ApiContext) *Volume {
+func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*longhorn.Replica, apiContext *api.ApiContext) *Volume {
 	replicas := []Replica{}
 	for _, r := range vrs {
 		/*
@@ -293,12 +293,12 @@ func toVolumeResource(v *longhorn.Volume, vc *longhorn.Controller, vrs map[strin
 	}
 
 	var controller *Controller
-	if vc != nil {
+	if ve != nil {
 		controller = &Controller{Instance{
-			Name:    vc.Name,
-			Running: vc.Status.CurrentState == types.InstanceStateRunning,
-			NodeID:  vc.Spec.NodeID,
-			Address: vc.Status.IP,
+			Name:    ve.Name,
+			Running: ve.Status.CurrentState == types.InstanceStateRunning,
+			NodeID:  ve.Spec.NodeID,
+			Address: ve.Status.IP,
 		}}
 	}
 
