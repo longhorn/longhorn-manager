@@ -2,134 +2,52 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/urfave/cli"
 
-	"github.com/rancher/go-iscsi-helper/iscsi"
-	iscsi_util "github.com/rancher/go-iscsi-helper/util"
-
-	"github.com/rancher/longhorn-manager/api"
-	"github.com/rancher/longhorn-manager/controller"
-	"github.com/rancher/longhorn-manager/datastore"
-	"github.com/rancher/longhorn-manager/types"
-	"github.com/rancher/longhorn-manager/util"
-
-	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-)
-
-const (
-	sockFile = "/var/run/longhorn/volume-manager.sock"
-
-	FlagEngineImage  = "engine-image"
-	FlagOrchestrator = "orchestrator"
-
-	EnvEngineImage = "LONGHORN_ENGINE_IMAGE"
+	"github.com/rancher/longhorn-manager/app"
 )
 
 var VERSION = "0.2.0"
 
+func cmdNotFound(c *cli.Context, command string) {
+	panic(fmt.Errorf("Unrecognized command: %s", command))
+}
+
+func onUsageError(c *cli.Context, err error, isSubcommand bool) error {
+	panic(fmt.Errorf("Usage error, please check your command"))
+}
+
 func main() {
 	logrus.SetFormatter(&logrus.TextFormatter{ForceColors: true})
 
-	app := cli.NewApp()
-	app.Version = VERSION
-	app.Usage = "Longhorn Manager"
-	app.Action = RunManager
+	a := cli.NewApp()
+	a.Version = VERSION
+	a.Usage = "Longhorn Manager"
 
-	app.Flags = []cli.Flag{
+	a.Before = func(c *cli.Context) error {
+		if c.GlobalBool("debug") {
+			logrus.SetLevel(logrus.DebugLevel)
+		}
+		return nil
+	}
+
+	a.Flags = []cli.Flag{
 		cli.BoolFlag{
 			Name:   "debug, d",
 			Usage:  "enable debug logging level",
 			EnvVar: "RANCHER_DEBUG",
 		},
-		cli.StringFlag{
-			Name:   FlagEngineImage,
-			EnvVar: EnvEngineImage,
-			Usage:  "Specify Longhorn engine image",
-		},
 	}
+	a.Commands = []cli.Command{
+		app.DaemonCmd(),
+	}
+	a.CommandNotFound = cmdNotFound
+	a.OnUsageError = onUsageError
 
-	if err := app.Run(os.Args); err != nil {
+	if err := a.Run(os.Args); err != nil {
 		logrus.Fatalf("Critical error: %v", err)
 	}
-
-}
-
-func RunManager(c *cli.Context) error {
-	var (
-		err error
-	)
-
-	if c.Bool("debug") {
-		logrus.SetLevel(logrus.DebugLevel)
-	}
-
-	engineImage := c.String(FlagEngineImage)
-	if engineImage == "" {
-		return fmt.Errorf("require %v", FlagEngineImage)
-	}
-
-	if err := environmentCheck(); err != nil {
-		logrus.Errorf("Failed environment check, please make sure you " +
-			"have iscsiadm/open-iscsi installed on the host")
-		return fmt.Errorf("Environment check failed: %v", err)
-	}
-
-	currentNodeID, err := util.GetRequiredEnv(types.EnvNodeName)
-	if err != nil {
-		return fmt.Errorf("BUG: fail to detect the node name")
-	}
-
-	currentIP, err := util.GetRequiredEnv(types.EnvPodIP)
-	if err != nil {
-		return fmt.Errorf("BUG: fail to detect the node IP")
-	}
-
-	ds, err := controller.StartControllers(currentNodeID, engineImage)
-	if err != nil {
-		return err
-	}
-
-	if err := initSettings(ds); err != nil {
-		return err
-	}
-
-	server := api.NewServer(currentNodeID, currentIP, ds)
-	router := http.Handler(api.NewRouter(server))
-
-	listen := server.GetAPIServerAddress()
-	logrus.Infof("Listening on %s", listen)
-
-	return http.ListenAndServe(listen, router)
-}
-
-func environmentCheck() error {
-	namespace, err := iscsi_util.NewNamespaceExecutor("/host/proc/1/ns")
-	if err != nil {
-		return err
-	}
-	if err := iscsi.CheckForInitiatorExistence(namespace); err != nil {
-		return err
-	}
-	return nil
-}
-
-func initSettings(ds *datastore.DataStore) error {
-	setting, err := ds.GetSetting()
-	if err != nil {
-		return err
-	}
-	// initialization has been done
-	if setting != nil {
-		return nil
-	}
-	setting = &longhorn.Setting{}
-	setting.BackupTarget = ""
-	if _, err := ds.CreateSetting(setting); err != nil {
-		return err
-	}
-	return nil
 }

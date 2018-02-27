@@ -20,12 +20,12 @@ spec:
           mountPath: /data/
       containers:
       - name: longhorn-manager
-        image: rancher/longhorn-manager:a9a4fcf
+        image: rancher/longhorn-manager:e1a0903
         imagePullPolicy: Always
         securityContext:
           privileged: true
-        command: ["launch-manager", "-d",
-                "--engine-image", "rancher/longhorn-engine:8c8289f"]
+        command: ["longhorn-manager", "-d",
+                "daemon", "--engine-image", "rancher/longhorn-engine:8c8289f"]
         ports:
         - containerPort: 9500
           name: manager
