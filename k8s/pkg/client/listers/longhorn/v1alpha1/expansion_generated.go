@@ -18,13 +18,13 @@ limitations under the License.
 
 package v1alpha1
 
-// ControllerListerExpansion allows custom methods to be added to
-// ControllerLister.
-type ControllerListerExpansion interface{}
+// EngineListerExpansion allows custom methods to be added to
+// EngineLister.
+type EngineListerExpansion interface{}
 
-// ControllerNamespaceListerExpansion allows custom methods to be added to
-// ControllerNamespaceLister.
-type ControllerNamespaceListerExpansion interface{}
+// EngineNamespaceListerExpansion allows custom methods to be added to
+// EngineNamespaceLister.
+type EngineNamespaceListerExpansion interface{}
 
 // ReplicaListerExpansion allows custom methods to be added to
 // ReplicaLister.

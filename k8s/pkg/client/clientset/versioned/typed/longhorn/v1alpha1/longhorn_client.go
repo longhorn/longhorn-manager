@@ -25,7 +25,7 @@ import (
 
 type LonghornV1alpha1Interface interface {
 	RESTClient() rest.Interface
-	ControllersGetter
+	EnginesGetter
 	ReplicasGetter
 	SettingsGetter
 	VolumesGetter
@@ -36,8 +36,8 @@ type LonghornV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *LonghornV1alpha1Client) Controllers(namespace string) ControllerInterface {
-	return newControllers(c, namespace)
+func (c *LonghornV1alpha1Client) Engines(namespace string) EngineInterface {
+	return newEngines(c, namespace)
 }
 
 func (c *LonghornV1alpha1Client) Replicas(namespace string) ReplicaInterface {

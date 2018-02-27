@@ -52,8 +52,8 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=Longhorn, Version=V1alpha1
-	case v1alpha1.SchemeGroupVersion.WithResource("controllers"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1alpha1().Controllers().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("engines"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1alpha1().Engines().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("replicas"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1alpha1().Replicas().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("settings"):

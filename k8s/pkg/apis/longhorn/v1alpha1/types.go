@@ -29,10 +29,10 @@ type VolumeList struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +resource:path=controller
+// +resource:path=engine
 // +genclient:noStatus
 
-type Controller struct {
+type Engine struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
 	Spec              types.EngineSpec   `json:"spec"`
@@ -40,12 +40,12 @@ type Controller struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +resource:path=controllers
+// +resource:path=engines
 
-type ControllerList struct {
+type EngineList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
-	Items           []Controller `json:"items"`
+	Items           []Engine `json:"items"`
 }
 
 // +genclient

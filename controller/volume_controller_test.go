@@ -32,7 +32,7 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	controllerID string) *VolumeController {
 
 	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
-	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Controllers()
+	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Engines()
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
@@ -54,11 +54,11 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 
 type VolumeTestCase struct {
 	volume   *longhorn.Volume
-	engine   *longhorn.Controller
+	engine   *longhorn.Engine
 	replicas map[string]*longhorn.Replica
 
 	expectVolume   *longhorn.Volume
-	expectEngine   *longhorn.Controller
+	expectEngine   *longhorn.Engine
 	expectReplicas map[string]*longhorn.Replica
 }
 
@@ -216,8 +216,8 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 	}
 }
 
-func newEngineForVolume(v *longhorn.Volume) *longhorn.Controller {
-	return &longhorn.Controller{
+func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
+	return &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: v.Name + "-controller",
 			Labels: map[string]string{
@@ -289,7 +289,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 		vIndexer := lhInformerFactory.Longhorn().V1alpha1().Volumes().Informer().GetIndexer()
-		eIndexer := lhInformerFactory.Longhorn().V1alpha1().Controllers().Informer().GetIndexer()
+		eIndexer := lhInformerFactory.Longhorn().V1alpha1().Engines().Informer().GetIndexer()
 		rIndexer := lhInformerFactory.Longhorn().V1alpha1().Replicas().Informer().GetIndexer()
 
 		vc := newTestVolumeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestOwnerID1)
@@ -301,7 +301,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		c.Assert(err, IsNil)
 
 		if tc.engine != nil {
-			e, err := lhClient.LonghornV1alpha1().Controllers(TestNamespace).Create(tc.engine)
+			e, err := lhClient.LonghornV1alpha1().Engines(TestNamespace).Create(tc.engine)
 			c.Assert(err, IsNil)
 			err = eIndexer.Add(e)
 			c.Assert(err, IsNil)
@@ -324,7 +324,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		c.Assert(retV.Spec, DeepEquals, tc.expectVolume.Spec)
 		c.Assert(retV.Status, DeepEquals, tc.expectVolume.Status)
 
-		retE, err := lhClient.LonghornV1alpha1().Controllers(TestNamespace).Get(vc.getEngineNameForVolume(v), metav1.GetOptions{})
+		retE, err := lhClient.LonghornV1alpha1().Engines(TestNamespace).Get(vc.getEngineNameForVolume(v), metav1.GetOptions{})
 		if tc.expectEngine != nil {
 			c.Assert(err, IsNil)
 			c.Assert(retE.Spec, DeepEquals, tc.expectEngine.Spec)

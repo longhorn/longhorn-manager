@@ -80,7 +80,7 @@ type EngineMonitor struct {
 func NewEngineController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	engineInformer lhinformers.ControllerInformer,
+	engineInformer lhinformers.EngineInformer,
 	podInformer coreinformers.PodInformer,
 	kubeClient clientset.Interface,
 	engines engineapi.EngineClientCollection,
@@ -111,15 +111,15 @@ func NewEngineController(
 
 	engineInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			e := obj.(*longhorn.Controller)
+			e := obj.(*longhorn.Engine)
 			ec.enqueueEngine(e)
 		},
 		UpdateFunc: func(old, cur interface{}) {
-			curE := cur.(*longhorn.Controller)
+			curE := cur.(*longhorn.Engine)
 			ec.enqueueEngine(curE)
 		},
 		DeleteFunc: func(obj interface{}) {
-			e := obj.(*longhorn.Controller)
+			e := obj.(*longhorn.Engine)
 			ec.enqueueEngine(e)
 		},
 	})
@@ -262,7 +262,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	return nil
 }
 
-func (ec *EngineController) enqueueEngine(e *longhorn.Controller) {
+func (ec *EngineController) enqueueEngine(e *longhorn.Engine) {
 	key, err := controller.KeyFunc(e)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", e, err))
@@ -272,7 +272,7 @@ func (ec *EngineController) enqueueEngine(e *longhorn.Controller) {
 	ec.queue.AddRateLimited(key)
 }
 
-func validateEngine(e *longhorn.Controller) error {
+func validateEngine(e *longhorn.Engine) error {
 	if e.Spec.VolumeName == "" ||
 		len(e.Spec.ReplicaAddressMap) == 0 ||
 		e.Spec.NodeID == "" {
@@ -282,7 +282,7 @@ func validateEngine(e *longhorn.Controller) error {
 }
 
 func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
-	e, ok := obj.(*longhorn.Controller)
+	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for engine pod spec creation: %v", obj)
 	}
@@ -410,14 +410,14 @@ func (ec *EngineController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 	ec.enqueueEngine(engine)
 }
 
-func (ec *EngineController) isMonitoring(e *longhorn.Controller) bool {
+func (ec *EngineController) isMonitoring(e *longhorn.Engine) bool {
 	ec.engineMonitorMutex.RLock()
 	defer ec.engineMonitorMutex.RUnlock()
 
 	return ec.engineMonitorMap[e.Name] != nil
 }
 
-func (ec *EngineController) startMonitoring(e *longhorn.Controller) {
+func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
 	client, err := ec.getClientForEngine(e)
 	if err != nil {
 		logrus.Warnf("Failed to start monitoring %v, cannot create engine client", e.Name)
@@ -451,7 +451,7 @@ func (ec *EngineController) startMonitoring(e *longhorn.Controller) {
 	go monitor.Run()
 }
 
-func (ec *EngineController) stopMonitoring(e *longhorn.Controller) {
+func (ec *EngineController) stopMonitoring(e *longhorn.Engine) {
 	ec.engineMonitorMutex.Lock()
 	defer ec.engineMonitorMutex.Unlock()
 
@@ -536,7 +536,7 @@ func (m *EngineMonitor) Refresh() error {
 	return nil
 }
 
-func (ec *EngineController) ReconcileEngineState(e *longhorn.Controller) error {
+func (ec *EngineController) ReconcileEngineState(e *longhorn.Engine) error {
 	if err := ec.removeUnknownReplica(e); err != nil {
 		return err
 	}
@@ -546,7 +546,7 @@ func (ec *EngineController) ReconcileEngineState(e *longhorn.Controller) error {
 	return nil
 }
 
-func (ec *EngineController) getClientForEngine(e *longhorn.Controller) (client engineapi.EngineClient, err error) {
+func (ec *EngineController) getClientForEngine(e *longhorn.Engine) (client engineapi.EngineClient, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "cannot get client for engine %v", e.Name)
 	}()
@@ -563,7 +563,7 @@ func (ec *EngineController) getClientForEngine(e *longhorn.Controller) (client e
 	return client, nil
 }
 
-func (ec *EngineController) removeUnknownReplica(e *longhorn.Controller) error {
+func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 	unknownReplicaIPs := []string{}
 	for replica := range e.Status.ReplicaModeMap {
 		// unknown replicas have been named as `unknownReplicaPrefix-<IP>`
@@ -592,7 +592,7 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Controller) error {
 	return nil
 }
 
-func (ec *EngineController) rebuildingNewReplica(e *longhorn.Controller) error {
+func (ec *EngineController) rebuildingNewReplica(e *longhorn.Engine) error {
 	rebuildingInProgress := false
 	replicaExists := make(map[string]bool)
 	for replica, mode := range e.Status.ReplicaModeMap {
@@ -615,7 +615,7 @@ func (ec *EngineController) rebuildingNewReplica(e *longhorn.Controller) error {
 	return nil
 }
 
-func (ec *EngineController) startRebuilding(e *longhorn.Controller, replica, ip string) (err error) {
+func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to start rebuild for %v of %v", replica, e.Name)
 	}()

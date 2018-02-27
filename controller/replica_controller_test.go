@@ -82,7 +82,7 @@ func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformer
 	controllerID string) *ReplicaController {
 
 	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
-	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Controllers()
+	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Engines()
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()

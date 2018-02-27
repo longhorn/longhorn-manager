@@ -30,44 +30,44 @@ import (
 	time "time"
 )
 
-// ControllerInformer provides access to a shared informer and lister for
-// Controllers.
-type ControllerInformer interface {
+// EngineInformer provides access to a shared informer and lister for
+// Engines.
+type EngineInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1alpha1.ControllerLister
+	Lister() v1alpha1.EngineLister
 }
 
-type controllerInformer struct {
+type engineInformer struct {
 	factory internalinterfaces.SharedInformerFactory
 }
 
-// NewControllerInformer constructs a new informer for Controller type.
+// NewEngineInformer constructs a new informer for Engine type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewControllerInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+func NewEngineInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
-				return client.LonghornV1alpha1().Controllers(namespace).List(options)
+				return client.LonghornV1alpha1().Engines(namespace).List(options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
-				return client.LonghornV1alpha1().Controllers(namespace).Watch(options)
+				return client.LonghornV1alpha1().Engines(namespace).Watch(options)
 			},
 		},
-		&longhorn_v1alpha1.Controller{},
+		&longhorn_v1alpha1.Engine{},
 		resyncPeriod,
 		indexers,
 	)
 }
 
-func defaultControllerInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewControllerInformer(client, v1.NamespaceAll, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+func defaultEngineInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewEngineInformer(client, v1.NamespaceAll, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 }
 
-func (f *controllerInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&longhorn_v1alpha1.Controller{}, defaultControllerInformer)
+func (f *engineInformer) Informer() cache.SharedIndexInformer {
+	return f.factory.InformerFor(&longhorn_v1alpha1.Engine{}, defaultEngineInformer)
 }
 
-func (f *controllerInformer) Lister() v1alpha1.ControllerLister {
-	return v1alpha1.NewControllerLister(f.Informer().GetIndexer())
+func (f *engineInformer) Lister() v1alpha1.EngineLister {
+	return v1alpha1.NewEngineLister(f.Informer().GetIndexer())
 }

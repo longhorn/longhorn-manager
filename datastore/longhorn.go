@@ -179,40 +179,40 @@ func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 	return itemMap, nil
 }
 
-func checkEngine(engine *longhorn.Controller) error {
+func checkEngine(engine *longhorn.Engine) error {
 	if engine.Name == "" || engine.Spec.VolumeName == "" {
 		return fmt.Errorf("BUG: missing required field %+v", engine)
 	}
 	return nil
 }
 
-func (s *DataStore) CreateEngine(e *longhorn.Controller) (*longhorn.Controller, error) {
+func (s *DataStore) CreateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	if err := checkEngine(e); err != nil {
 		return nil, err
 	}
 	if err := fixupMetadata(e.Spec.VolumeName, e); err != nil {
 		return nil, err
 	}
-	return s.lhClient.LonghornV1alpha1().Controllers(s.namespace).Create(e)
+	return s.lhClient.LonghornV1alpha1().Engines(s.namespace).Create(e)
 }
 
-func (s *DataStore) UpdateEngine(e *longhorn.Controller) (*longhorn.Controller, error) {
+func (s *DataStore) UpdateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	if err := checkEngine(e); err != nil {
 		return nil, err
 	}
 	if err := fixupMetadata(e.Spec.VolumeName, e); err != nil {
 		return nil, err
 	}
-	return s.lhClient.LonghornV1alpha1().Controllers(s.namespace).Update(e)
+	return s.lhClient.LonghornV1alpha1().Engines(s.namespace).Update(e)
 }
 
 // DeleteEngine won't result in immediately deletion since finalizer was set by default
 func (s *DataStore) DeleteEngine(name string) error {
-	return s.lhClient.LonghornV1alpha1().Controllers(s.namespace).Delete(name, &metav1.DeleteOptions{})
+	return s.lhClient.LonghornV1alpha1().Engines(s.namespace).Delete(name, &metav1.DeleteOptions{})
 }
 
 // RemoveFinalizerForEngine will result in deletion if DeletionTimestamp was set
-func (s *DataStore) RemoveFinalizerForEngine(obj *longhorn.Controller) error {
+func (s *DataStore) RemoveFinalizerForEngine(obj *longhorn.Engine) error {
 	if !util.FinalizerExists(longhornFinalizerKey, obj) {
 		// finalizer already removed
 		return nil
@@ -220,7 +220,7 @@ func (s *DataStore) RemoveFinalizerForEngine(obj *longhorn.Controller) error {
 	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
 		return err
 	}
-	_, err := s.lhClient.LonghornV1alpha1().Controllers(s.namespace).Update(obj)
+	_, err := s.lhClient.LonghornV1alpha1().Engines(s.namespace).Update(obj)
 	if err != nil {
 		// workaround `StorageError: invalid object, Code: 4` due to empty object
 		if obj.DeletionTimestamp != nil {
@@ -231,8 +231,8 @@ func (s *DataStore) RemoveFinalizerForEngine(obj *longhorn.Controller) error {
 	return nil
 }
 
-func (s *DataStore) GetEngine(name string) (*longhorn.Controller, error) {
-	resultRO, err := s.eLister.Controllers(s.namespace).Get(name)
+func (s *DataStore) GetEngine(name string) (*longhorn.Engine, error) {
+	resultRO, err := s.eLister.Engines(s.namespace).Get(name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
@@ -243,12 +243,12 @@ func (s *DataStore) GetEngine(name string) (*longhorn.Controller, error) {
 	return resultRO.DeepCopy(), nil
 }
 
-func (s *DataStore) GetVolumeEngine(volumeName string) (*longhorn.Controller, error) {
+func (s *DataStore) GetVolumeEngine(volumeName string) (*longhorn.Engine, error) {
 	selector, err := getVolumeSelector(volumeName)
 	if err != nil {
 		return nil, err
 	}
-	list, err := s.eLister.Controllers(s.namespace).List(selector)
+	list, err := s.eLister.Engines(s.namespace).List(selector)
 	if err != nil {
 		return nil, err
 	}

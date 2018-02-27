@@ -26,8 +26,8 @@ type FakeLonghornV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeLonghornV1alpha1) Controllers(namespace string) v1alpha1.ControllerInterface {
-	return &FakeControllers{c, namespace}
+func (c *FakeLonghornV1alpha1) Engines(namespace string) v1alpha1.EngineInterface {
+	return &FakeEngines{c, namespace}
 }
 
 func (c *FakeLonghornV1alpha1) Replicas(namespace string) v1alpha1.ReplicaInterface {
