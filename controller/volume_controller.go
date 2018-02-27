@@ -263,7 +263,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 		// now replicas has been deleted or in the process
 
-		return vc.ds.RemoveFinalizerForVolume(volume.Name)
+		return vc.ds.RemoveFinalizerForVolume(volume)
 	}
 
 	defer func() {
