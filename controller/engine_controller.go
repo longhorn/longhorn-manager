@@ -225,7 +225,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		if err := ec.instanceHandler.DeleteInstanceForObject(engine); err != nil {
 			return err
 		}
-		return ec.ds.RemoveFinalizerForEngine(engine.Name)
+		return ec.ds.RemoveFinalizerForEngine(engine)
 	}
 
 	defer func() {

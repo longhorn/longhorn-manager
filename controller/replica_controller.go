@@ -248,7 +248,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		if replica.Spec.NodeID != "" {
 			return rc.cleanupReplicaInstance(replica)
 		}
-		return rc.ds.RemoveFinalizerForReplica(replica.Name)
+		return rc.ds.RemoveFinalizerForReplica(replica)
 	}
 
 	defer func() {

@@ -2,7 +2,9 @@ package controller
 
 import (
 	"fmt"
+	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
@@ -184,6 +186,16 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	testCases["volume detaching - stop replicas"] = tc
 
+	// volume deleting
+	tc = generateVolumeTestCaseTemplate()
+	now := metav1.NewTime(time.Now())
+	tc.volume.SetDeletionTimestamp(&now)
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Status.State = types.VolumeStateDeleting
+	tc.expectEngine = nil
+	tc.expectReplicas = nil
+	testCases["volume deleting"] = tc
+
 	s.runTestCases(c, testCases)
 }
 
@@ -191,6 +203,9 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 	return &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
+			Finalizers: []string{
+				longhorn.SchemeGroupVersion.Group,
+			},
 		},
 		Spec: types.VolumeSpec{
 			NumberOfReplicas:    replicaCount,
@@ -310,9 +325,13 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		c.Assert(retV.Status, DeepEquals, tc.expectVolume.Status)
 
 		retE, err := lhClient.LonghornV1alpha1().Controllers(TestNamespace).Get(vc.getEngineNameForVolume(v), metav1.GetOptions{})
-		c.Assert(err, IsNil)
-		c.Assert(retE.Spec, DeepEquals, tc.expectEngine.Spec)
-		c.Assert(retE.Status, DeepEquals, tc.expectEngine.Status)
+		if tc.expectEngine != nil {
+			c.Assert(err, IsNil)
+			c.Assert(retE.Spec, DeepEquals, tc.expectEngine.Spec)
+			c.Assert(retE.Status, DeepEquals, tc.expectEngine.Status)
+		} else {
+			c.Assert(apierrors.IsNotFound(err), Equals, true)
+		}
 
 		retRs, err := lhClient.LonghornV1alpha1().Replicas(TestNamespace).List(metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
 		c.Assert(err, IsNil)
