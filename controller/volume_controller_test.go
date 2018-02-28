@@ -324,7 +324,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		c.Assert(retV.Spec, DeepEquals, tc.expectVolume.Spec)
 		c.Assert(retV.Status, DeepEquals, tc.expectVolume.Status)
 
-		retE, err := lhClient.LonghornV1alpha1().Engines(TestNamespace).Get(vc.getEngineNameForVolume(v), metav1.GetOptions{})
+		retE, err := lhClient.LonghornV1alpha1().Engines(TestNamespace).Get(types.GetEngineNameForVolume(v.Name), metav1.GetOptions{})
 		if tc.expectEngine != nil {
 			c.Assert(err, IsNil)
 			c.Assert(retE.Spec, DeepEquals, tc.expectEngine.Spec)

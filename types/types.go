@@ -2,6 +2,8 @@ package types
 
 import (
 	"fmt"
+
+	"github.com/rancher/longhorn-manager/util"
 )
 
 const (
@@ -26,4 +28,17 @@ type NotFoundError struct {
 
 func (e *NotFoundError) Error() string {
 	return fmt.Sprintf("%v was not found", e.Name)
+}
+
+const (
+	engineSuffix  = "-controller"
+	replicaSuffix = "-replica"
+)
+
+func GetEngineNameForVolume(vName string) string {
+	return vName + engineSuffix
+}
+
+func GenerateReplicaNameForVolume(vName string) string {
+	return vName + replicaSuffix + "-" + util.RandomID()
 }

@@ -239,3 +239,23 @@ func GetRequiredEnv(key string) (string, error) {
 	}
 	return env, nil
 }
+
+func ParseLabels(labels []string) (map[string]string, error) {
+	result := map[string]string{}
+	for _, label := range labels {
+		kv := strings.Split(label, "=")
+		if len(kv) != 2 {
+			return nil, fmt.Errorf("Invalid label not in <key>=<value> format %v", label)
+		}
+		key := kv[0]
+		value := kv[1]
+		if !ValidateName(key) {
+			return nil, fmt.Errorf("Invalid key %v for label %v", key, label)
+		}
+		if !ValidateName(value) {
+			return nil, fmt.Errorf("Invalid value %v for label %v", value, label)
+		}
+		result[key] = value
+	}
+	return result, nil
+}

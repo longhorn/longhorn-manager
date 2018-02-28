@@ -37,11 +37,6 @@ var (
 	ownerKindVolume = longhorn.SchemeGroupVersion.WithKind("Volume").String()
 )
 
-const (
-	engineSuffix  = "-controller"
-	replicaSuffix = "-replica"
-)
-
 type VolumeController struct {
 	// which namespace controller is running with
 	namespace string
@@ -567,18 +562,10 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, rs map[string]
 	return nil
 }
 
-func (vc *VolumeController) getEngineNameForVolume(v *longhorn.Volume) string {
-	return v.Name + engineSuffix
-}
-
-func (vc *VolumeController) generateReplicaNameForVolume(v *longhorn.Volume) string {
-	return v.Name + replicaSuffix + "-" + util.RandomID()
-}
-
 func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, error) {
 	engine := &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: vc.getEngineNameForVolume(v),
+			Name: types.GetEngineNameForVolume(v.Name),
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: longhorn.SchemeGroupVersion.String(),
@@ -604,7 +591,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 func (vc *VolumeController) createReplica(v *longhorn.Volume) (*longhorn.Replica, error) {
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: vc.generateReplicaNameForVolume(v),
+			Name: types.GenerateReplicaNameForVolume(v.Name),
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: longhorn.SchemeGroupVersion.String(),
