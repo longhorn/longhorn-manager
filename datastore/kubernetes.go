@@ -3,7 +3,9 @@ package datastore
 import (
 	"fmt"
 
+	batchv1beta1 "k8s.io/api/batch/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 )
@@ -50,4 +52,43 @@ func (s *DataStore) GetManagerNodeIPMap() (map[string]string, error) {
 		nodeIPMap[pod.Spec.NodeName] = pod.Status.PodIP
 	}
 	return nodeIPMap, nil
+}
+
+// ListVolumeCronJobROs returns a map of read-only CronJobs for the volume
+func (s *DataStore) ListVolumeCronJobROs(volumeName string) (map[string]*batchv1beta1.CronJob, error) {
+	selector, err := getVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	itemMap := map[string]*batchv1beta1.CronJob{}
+	list, err := s.cjLister.CronJobs(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	for _, cj := range list {
+		itemMap[cj.Name] = cj
+	}
+	return itemMap, nil
+}
+
+func (s *DataStore) CreateVolumeCronJob(volumeName string, cronJob *batchv1beta1.CronJob) (*batchv1beta1.CronJob, error) {
+	if err := tagVolumeLabel(volumeName, cronJob); err != nil {
+		return nil, err
+	}
+	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Create(cronJob)
+}
+
+func (s *DataStore) UpdateVolumeCronJob(volumeName string, cronJob *batchv1beta1.CronJob) (*batchv1beta1.CronJob, error) {
+	if err := tagVolumeLabel(volumeName, cronJob); err != nil {
+		return nil, err
+	}
+	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Update(cronJob)
+}
+
+func (s *DataStore) DeleteCronJob(cronJobName string) error {
+	err := s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Delete(cronJobName, &metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	return nil
 }
