@@ -28,7 +28,7 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
-func StartControllers(controllerID, engineImage string) (*datastore.DataStore, error) {
+func StartControllers(controllerID, serviceAccount, engineImage, managerImage string) (*datastore.DataStore, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, " +
@@ -65,15 +65,16 @@ func StartControllers(controllerID, engineImage string) (*datastore.DataStore, e
 	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
+	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 
 	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, lhClient,
-		podInformer, kubeClient, namespace)
+		podInformer, cronJobInformer, kubeClient, namespace)
 	rc := NewReplicaController(ds, scheme, replicaInformer, podInformer, jobInformer, kubeClient,
 		namespace, controllerID)
 	ec := NewEngineController(ds, scheme, engineInformer, podInformer, kubeClient,
 		&engineapi.EngineCollection{}, namespace, controllerID)
 	vc := NewVolumeController(ds, scheme, volumeInformer, engineInformer, replicaInformer, kubeClient,
-		namespace, controllerID, engineImage)
+		namespace, controllerID, serviceAccount, engineImage, managerImage)
 
 	//FIXME stopch should be exposed
 	stopCh := make(chan struct{})

@@ -77,7 +77,7 @@ func checkVolume(v *longhorn.Volume) error {
 	return nil
 }
 
-func fixupMetadata(volumeName string, obj runtime.Object) error {
+func tagVolumeLabel(volumeName string, obj runtime.Object) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return err
@@ -91,7 +91,13 @@ func fixupMetadata(volumeName string, obj runtime.Object) error {
 		labels[longhornVolumeKey] = volumeName
 	}
 	metadata.SetLabels(labels)
+	return nil
+}
 
+func fixupMetadata(volumeName string, obj runtime.Object) error {
+	if err := tagVolumeLabel(volumeName, obj); err != nil {
+		return err
+	}
 	if err := util.AddFinalizer(longhornFinalizerKey, obj); err != nil {
 		return err
 	}

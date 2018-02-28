@@ -36,10 +36,12 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
+	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 
-	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, lhClient, podInformer, kubeClient, TestNamespace)
+	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, lhClient,
+		podInformer, cronJobInformer, kubeClient, TestNamespace)
 
-	vc := NewVolumeController(ds, scheme.Scheme, volumeInformer, engineInformer, replicaInformer, kubeClient, TestNamespace, controllerID, TestEngineImage)
+	vc := NewVolumeController(ds, scheme.Scheme, volumeInformer, engineInformer, replicaInformer, kubeClient, TestNamespace, controllerID, TestServiceAccount, TestEngineImage, TestManagerImage)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	vc.eventRecorder = fakeRecorder

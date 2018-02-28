@@ -19,9 +19,9 @@ import (
 )
 
 const (
-	FlagEngineImage = "engine-image"
-
-	EnvEngineImage = "LONGHORN_ENGINE_IMAGE"
+	FlagEngineImage    = "engine-image"
+	FlagManagerImage   = "manager-image"
+	FlagServiceAccount = "service-account"
 )
 
 func DaemonCmd() cli.Command {
@@ -29,9 +29,16 @@ func DaemonCmd() cli.Command {
 		Name: "daemon",
 		Flags: []cli.Flag{
 			cli.StringFlag{
-				Name:   FlagEngineImage,
-				EnvVar: EnvEngineImage,
-				Usage:  "Specify Longhorn engine image",
+				Name:  FlagEngineImage,
+				Usage: "Specify Longhorn engine image",
+			},
+			cli.StringFlag{
+				Name:  FlagManagerImage,
+				Usage: "Specify Longhorn manager image",
+			},
+			cli.StringFlag{
+				Name:  FlagServiceAccount,
+				Usage: "Specify service account for manager",
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -51,6 +58,14 @@ func startManager(c *cli.Context) error {
 	if engineImage == "" {
 		return fmt.Errorf("require %v", FlagEngineImage)
 	}
+	managerImage := c.String(FlagManagerImage)
+	if managerImage == "" {
+		return fmt.Errorf("require %v", FlagManagerImage)
+	}
+	serviceAccount := c.String(FlagServiceAccount)
+	if serviceAccount == "" {
+		return fmt.Errorf("require %v", FlagServiceAccount)
+	}
 
 	if err := environmentCheck(); err != nil {
 		logrus.Errorf("Failed environment check, please make sure you " +
@@ -68,7 +83,7 @@ func startManager(c *cli.Context) error {
 		return fmt.Errorf("BUG: fail to detect the node IP")
 	}
 
-	ds, err := controller.StartControllers(currentNodeID, engineImage)
+	ds, err := controller.StartControllers(currentNodeID, serviceAccount, engineImage, managerImage)
 	if err != nil {
 		return err
 	}

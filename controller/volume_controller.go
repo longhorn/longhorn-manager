@@ -3,13 +3,14 @@ package controller
 import (
 	"fmt"
 	"reflect"
-	"sync"
+	"strconv"
 	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
-	"github.com/robfig/cron"
 
+	batchv1 "k8s.io/api/batch/v1"
+	batchv1beta1 "k8s.io/api/batch/v1beta1"
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -25,7 +26,6 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/rancher/longhorn-manager/datastore"
-	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 
@@ -37,12 +37,20 @@ var (
 	ownerKindVolume = longhorn.SchemeGroupVersion.WithKind("Volume").String()
 )
 
+const (
+	LabelRecurringJob = "RecurringJob"
+
+	CronJobBackoffLimit = 3
+)
+
 type VolumeController struct {
 	// which namespace controller is running with
 	namespace string
 	// use as the OwnerID of the controller
-	controllerID string
-	EngineImage  string
+	controllerID   string
+	EngineImage    string
+	ManagerImage   string
+	ServiceAccount string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -57,14 +65,6 @@ type VolumeController struct {
 
 	// for unit test
 	nowHandler func() string
-
-	recurringJobMutex *sync.Mutex
-	recurringJobMap   map[string]*VolumeRecurringJob
-}
-
-type VolumeRecurringJob struct {
-	recurringJobs []types.RecurringJob
-	cron          *cron.Cron
 }
 
 func NewVolumeController(
@@ -74,7 +74,8 @@ func NewVolumeController(
 	engineInformer lhinformers.EngineInformer,
 	replicaInformer lhinformers.ReplicaInformer,
 	kubeClient clientset.Interface,
-	namespace string, controllerID string, engineImage string) *VolumeController {
+	namespace, controllerID, serviceAccount string,
+	engineImage, managerImage string) *VolumeController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -82,10 +83,12 @@ func NewVolumeController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	vc := &VolumeController{
-		ds:           ds,
-		namespace:    namespace,
-		controllerID: controllerID,
-		EngineImage:  engineImage,
+		ds:             ds,
+		namespace:      namespace,
+		controllerID:   controllerID,
+		EngineImage:    engineImage,
+		ManagerImage:   managerImage,
+		ServiceAccount: serviceAccount,
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-volume-controller"}),
@@ -97,9 +100,6 @@ func NewVolumeController(
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-volume"),
 
 		nowHandler: util.Now,
-
-		recurringJobMutex: &sync.Mutex{},
-		recurringJobMap:   make(map[string]*VolumeRecurringJob),
 	}
 
 	volumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -240,7 +240,11 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			}
 			vc.eventRecorder.Eventf(volume, v1.EventTypeNormal, EventReasonDelete, "Deleting volume %v", volume.Name)
 		}
-		vc.stopRecurringJobs(volume)
+		for _, job := range volume.Spec.RecurringJobs {
+			if err := vc.ds.DeleteCronJob(types.GetCronJobNameForVolumeAndJob(volume.Name, job.Name)); err != nil {
+				return err
+			}
+		}
 
 		if engine != nil && engine.DeletionTimestamp == nil {
 			if err := vc.ds.DeleteEngine(engine.Name); err != nil {
@@ -274,15 +278,15 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 	}()
 
-	if err := vc.updateRecurringJobs(volume, engine); err != nil {
-		return err
-	}
-
 	if err := vc.ReconcileEngineReplicaState(volume, engine, replicas); err != nil {
 		return err
 	}
 
 	if err := vc.ReconcileVolumeState(volume, engine, replicas); err != nil {
+		return err
+	}
+
+	if err := vc.updateRecurringJobs(volume); err != nil {
 		return err
 	}
 
@@ -669,84 +673,158 @@ func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 	vc.enqueueVolume(volume)
 }
 
-func (vc *VolumeController) cleanupRecurringJobsHoldingLock(v *longhorn.Volume) {
-	current := vc.recurringJobMap[v.Name]
-	if current != nil && current.recurringJobs != nil {
-		current.cron.Stop()
-		delete(vc.recurringJobMap, v.Name)
+func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.RecurringJob, suspend bool, backupTarget string) *batchv1beta1.CronJob {
+	backoffLimit := int32(CronJobBackoffLimit)
+	cmd := []string{
+		"longhorn-manager", "-d",
+		"snapshot", v.Name,
+		"--snapshot-name", job.Name,
+		"--labels", LabelRecurringJob + "=" + job.Name,
+		"--retain", strconv.Itoa(job.Retain),
 	}
+	if job.Type == types.RecurringJobTypeBackup {
+		cmd = append(cmd, "--backuptarget", backupTarget)
+	}
+	// for mounting inside container
+	privilege := true
+	cronJob := &batchv1beta1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
+			Namespace: vc.namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: longhorn.SchemeGroupVersion.String(),
+					Kind:       ownerKindVolume,
+					UID:        v.UID,
+					Name:       v.Name,
+				},
+			},
+		},
+		Spec: batchv1beta1.CronJobSpec{
+			Schedule:          job.Cron,
+			ConcurrencyPolicy: batchv1beta1.ForbidConcurrent,
+			Suspend:           &suspend,
+			JobTemplate: batchv1beta1.JobTemplateSpec{
+				Spec: batchv1.JobSpec{
+					BackoffLimit: &backoffLimit,
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
+						},
+						Spec: v1.PodSpec{
+							NodeName: v.Spec.NodeID,
+							InitContainers: []v1.Container{
+								{
+									Name:    "longhorn-engine-binary",
+									Image:   vc.EngineImage,
+									Command: []string{"sh", "-c", "cp /usr/local/bin/* /data/"},
+									VolumeMounts: []v1.VolumeMount{
+										{
+											Name:      "execbin",
+											MountPath: "/data",
+										},
+									},
+								},
+							},
+							Containers: []v1.Container{
+								{
+									Name:    types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
+									Image:   vc.ManagerImage,
+									Command: cmd,
+									SecurityContext: &v1.SecurityContext{
+										Privileged: &privilege,
+									},
+									VolumeMounts: []v1.VolumeMount{
+										{
+											Name:      "execbin",
+											MountPath: "/usr/local/bin",
+										},
+									},
+									Env: []v1.EnvVar{
+										{
+											Name: "POD_NAMESPACE",
+											ValueFrom: &v1.EnvVarSource{
+												FieldRef: &v1.ObjectFieldSelector{
+													FieldPath: "metadata.namespace",
+												},
+											},
+										},
+									},
+								},
+							},
+							Volumes: []v1.Volume{
+								{
+									Name: "execbin",
+									VolumeSource: v1.VolumeSource{
+										EmptyDir: &v1.EmptyDirVolumeSource{},
+									},
+								},
+							},
+							ServiceAccountName: vc.ServiceAccount,
+							RestartPolicy:      v1.RestartPolicyOnFailure,
+						},
+					},
+				},
+			},
+		},
+	}
+	return cronJob
 }
 
-func (vc *VolumeController) stopRecurringJobs(v *longhorn.Volume) {
-	vc.recurringJobMutex.Lock()
-	defer vc.recurringJobMutex.Unlock()
-
-	vc.cleanupRecurringJobsHoldingLock(v)
-}
-
-func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume, e *longhorn.Engine) (err error) {
+func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to update recurring jobs for %v", v.Name)
 	}()
 
-	if e == nil {
-		return nil
+	suspended := false
+	if v.Status.State != types.VolumeStateAttached {
+		suspended = true
 	}
 
-	vc.recurringJobMutex.Lock()
-	defer vc.recurringJobMutex.Unlock()
-
-	jobs := v.Spec.RecurringJobs
-	if len(jobs) == 0 {
-		vc.cleanupRecurringJobsHoldingLock(v)
-		return nil
+	backupTarget := ""
+	setting, err := vc.ds.GetSetting()
+	if err != nil {
+		return err
+	}
+	if setting != nil {
+		backupTarget = setting.BackupTarget
 	}
 
-	if e.Spec.DesireState == types.InstanceStateStopped || e.Status.CurrentState != types.InstanceStateRunning {
-		vc.cleanupRecurringJobsHoldingLock(v)
-		return nil
+	// the cronjobs are RO in the map, but not the map itself
+	appliedCronJobROs, err := vc.ds.ListVolumeCronJobROs(v.Name)
+	if err != nil {
+		return err
 	}
-
-	current := vc.recurringJobMap[v.Name]
-	if current.recurringJobs == nil || !reflect.DeepEqual(v.Spec.RecurringJobs, current.recurringJobs) {
-		engines := engineapi.EngineCollection{}
-		engineClient, err := engines.NewEngineClient(&engineapi.EngineClientRequest{
-			VolumeName:    v.Name,
-			ControllerURL: engineapi.GetControllerDefaultURL(e.Status.IP),
-		})
-		if err != nil {
-			return err
+	currentCronJobs := make(map[string]*batchv1beta1.CronJob)
+	for _, job := range v.Spec.RecurringJobs {
+		if backupTarget == "" && job.Type == types.RecurringJobTypeBackup {
+			return fmt.Errorf("cannot backup with empty backup target")
 		}
 
-		setting, err := vc.ds.GetSetting()
-		if err != nil {
-			return err
-		}
-		backupTarget := setting.BackupTarget
+		cronJob := vc.createCronJob(v, &job, suspended, backupTarget)
+		currentCronJobs[cronJob.Name] = cronJob
+	}
 
-		newCron := cron.New()
-		for _, job := range jobs {
-			cronJob := &CronJob{
-				job,
-				engineClient,
-				backupTarget,
+	for name, cronJob := range currentCronJobs {
+		if appliedCronJobROs[name] == nil {
+			_, err := vc.ds.CreateVolumeCronJob(v.Name, cronJob)
+			if err != nil {
+				return err
 			}
-			if backupTarget == "" && job.Type == types.RecurringJobTypeBackup {
-				return fmt.Errorf("cannot backup with empty backup target")
-			}
-			if err := newCron.AddJob(job.Cron, cronJob); err != nil {
+		} else if !reflect.DeepEqual(appliedCronJobROs[name].Spec, cronJob) {
+			_, err := vc.ds.UpdateVolumeCronJob(v.Name, cronJob)
+			if err != nil {
 				return err
 			}
 		}
-		if current != nil {
-			current.cron.Stop()
-		}
-
-		vc.recurringJobMap[v.Name] = &VolumeRecurringJob{
-			recurringJobs: jobs,
-			cron:          newCron,
-		}
-		newCron.Start()
 	}
+	for name := range appliedCronJobROs {
+		if currentCronJobs[name] == nil {
+			if err := vc.ds.DeleteCronJob(name); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }

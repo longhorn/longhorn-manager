@@ -31,8 +31,9 @@ func (e *NotFoundError) Error() string {
 }
 
 const (
-	engineSuffix  = "-controller"
-	replicaSuffix = "-replica"
+	engineSuffix    = "-controller"
+	replicaSuffix   = "-replica"
+	recurringSuffix = "-recurring"
 )
 
 func GetEngineNameForVolume(vName string) string {
@@ -41,4 +42,8 @@ func GetEngineNameForVolume(vName string) string {
 
 func GenerateReplicaNameForVolume(vName string) string {
 	return vName + replicaSuffix + "-" + util.RandomID()
+}
+
+func GetCronJobNameForVolumeAndJob(vName, job string) string {
+	return vName + "-" + job + recurringSuffix
 }

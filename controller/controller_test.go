@@ -15,17 +15,19 @@ import (
 )
 
 const (
-	TestNamespace   = "default"
-	TestThreadiness = 10
-	TestRestoreFrom = "vfs://empty"
-	TestRestoreName = "empty"
-	TestIP1         = "1.2.3.4"
-	TestIP2         = "5.6.7.8"
-	TestNode1       = "test-node-name-1"
-	TestNode2       = "test-node-name-2"
-	TestOwnerID1    = TestNode1
-	TestOwnerID2    = TestNode2
-	TestEngineImage = "longhorn-engine:latest"
+	TestNamespace      = "default"
+	TestThreadiness    = 10
+	TestRestoreFrom    = "vfs://empty"
+	TestRestoreName    = "empty"
+	TestIP1            = "1.2.3.4"
+	TestIP2            = "5.6.7.8"
+	TestNode1          = "test-node-name-1"
+	TestNode2          = "test-node-name-2"
+	TestOwnerID1       = TestNode1
+	TestOwnerID2       = TestNode2
+	TestEngineImage    = "longhorn-engine:latest"
+	TestManagerImage   = "longhorn-manager:latest"
+	TestServiceAccount = "longhorn-service-account"
 
 	TestReplica1Name = "replica-volumename-1"
 	TestReplica2Name = "replica-volumename-2"
