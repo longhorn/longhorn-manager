@@ -43,6 +43,7 @@ func main() {
 	}
 	a.Commands = []cli.Command{
 		app.DaemonCmd(),
+		app.SnapshotCmd(),
 	}
 	a.CommandNotFound = cmdNotFound
 	a.OnUsageError = onUsageError
