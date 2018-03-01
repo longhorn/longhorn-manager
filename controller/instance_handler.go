@@ -99,10 +99,6 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		return err
 	}
 
-	if status.CurrentState == types.InstanceStateError {
-		return h.deletePodForObject(runtimeObj)
-	}
-
 	pod, err := h.getPod(podName)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
