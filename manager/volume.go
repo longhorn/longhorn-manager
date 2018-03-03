@@ -166,7 +166,7 @@ func (m *VolumeManager) Detach(name string) (v *longhorn.Volume, err error) {
 	if v == nil {
 		return nil, fmt.Errorf("cannot find volume %v", name)
 	}
-	if v.Status.State != types.VolumeStateAttached {
+	if v.Status.State != types.VolumeStateAttached && v.Status.State != types.VolumeStateAttaching {
 		return nil, fmt.Errorf("invalid state to detach %v: %v", v.Name, v.Status.State)
 	}
 
