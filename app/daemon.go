@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/longhorn-manager/api"
 	"github.com/rancher/longhorn-manager/controller"
 	"github.com/rancher/longhorn-manager/datastore"
+	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 
@@ -92,10 +93,11 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	server := api.NewServer(currentNodeID, currentIP, ds)
+	m := manager.NewVolumeManager(currentNodeID, currentIP, ds)
+	server := api.NewServer(m)
 	router := http.Handler(api.NewRouter(server))
 
-	listen := server.GetAPIServerAddress()
+	listen := types.GetAPIServerAddressFromIP(currentIP)
 	logrus.Infof("Listening on %s", listen)
 
 	return http.ListenAndServe(listen, router)

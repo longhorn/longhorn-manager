@@ -11,7 +11,7 @@ import (
 func (s *Server) NodeList(rw http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 
-	nodeIPMap, err := s.ds.GetManagerNodeIPMap()
+	nodeIPMap, err := s.m.GetManagerNodeIPMap()
 	if err != nil {
 		return errors.Wrap(err, "fail to list host")
 	}
@@ -23,7 +23,7 @@ func (s *Server) NodeGet(rw http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 	id := mux.Vars(req)["id"]
 
-	nodeIPMap, err := s.ds.GetManagerNodeIPMap()
+	nodeIPMap, err := s.m.GetManagerNodeIPMap()
 	if err != nil {
 		return errors.Wrap(err, "fail to list node")
 	}

@@ -1,34 +1,20 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
-
-	"github.com/rancher/longhorn-manager/engineapi"
 )
 
 func (s *Server) BackupVolumeList(w http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 
-	settings, err := s.ds.GetSetting()
-	if err != nil || settings == nil {
-		return errors.New("cannot backup: unable to read settings")
-	}
-	backupTarget := settings.BackupTarget
-	if backupTarget == "" {
-		return errors.New("cannot backup: backupTarget not set")
-	}
-
-	backups := engineapi.NewBackupTarget(backupTarget)
-
-	volumes, err := backups.ListVolumes()
+	volumes, err := s.m.ListBackupVolumes()
 	if err != nil {
-		return errors.Wrapf(err, "error listing backups, backupTarget '%s'", backupTarget)
+		return errors.Wrapf(err, "error listing backups")
 	}
 	apiContext.Write(toBackupVolumeCollection(volumes, apiContext))
 	return nil
@@ -39,20 +25,9 @@ func (s *Server) BackupVolumeGet(w http.ResponseWriter, req *http.Request) error
 
 	volName := mux.Vars(req)["volName"]
 
-	settings, err := s.ds.GetSetting()
-	if err != nil || settings == nil {
-		return errors.New("cannot backup: unable to read settings")
-	}
-	backupTarget := settings.BackupTarget
-	if backupTarget == "" {
-		return errors.New("cannot backup: backupTarget not set")
-	}
-
-	backups := engineapi.NewBackupTarget(backupTarget)
-
-	bv, err := backups.GetVolume(volName)
+	bv, err := s.m.GetBackupVolume(volName)
 	if err != nil {
-		return errors.Wrapf(err, "error get backup volume, backupTarget '%s', volume '%s'", backupTarget, volName)
+		return errors.Wrapf(err, "error get backup volume '%s'", volName)
 	}
 	apiContext.Write(toBackupVolumeResource(bv, apiContext))
 	return nil
@@ -61,27 +36,12 @@ func (s *Server) BackupVolumeGet(w http.ResponseWriter, req *http.Request) error
 func (s *Server) BackupList(w http.ResponseWriter, req *http.Request) error {
 	volName := mux.Vars(req)["volName"]
 
-	settings, err := s.ds.GetSetting()
-	if err != nil || settings == nil {
-		return errors.New("cannot backup: unable to read settings")
-	}
-	backupTarget := settings.BackupTarget
-	if backupTarget == "" {
-		return errors.New("cannot backup: backupTarget not set")
-	}
-
-	backups := engineapi.NewBackupTarget(backupTarget)
-
-	bs, err := backups.List(volName)
+	bs, err := s.m.ListBackupsForVolume(volName)
 	if err != nil {
-		return errors.Wrapf(err, "error listing backups, backupTarget '%s', volume '%s'", backupTarget, volName)
+		return errors.Wrapf(err, "error listing backups for volume '%s'", volName)
 	}
 	api.GetApiContext(req).Write(toBackupCollection(bs))
 	return nil
-}
-
-func backupURL(backupTarget, backupName, volName string) string {
-	return fmt.Sprintf("%s?backup=%s&volume=%s", backupTarget, backupName, volName)
 }
 
 func (s *Server) BackupGet(w http.ResponseWriter, req *http.Request) error {
@@ -97,22 +57,12 @@ func (s *Server) BackupGet(w http.ResponseWriter, req *http.Request) error {
 	}
 	volName := mux.Vars(req)["volName"]
 
-	settings, err := s.ds.GetSetting()
-	if err != nil || settings == nil {
-		return errors.New("cannot backup: unable to read settings")
-	}
-	backupTarget := settings.BackupTarget
-	if backupTarget == "" {
-		return errors.New("cannot backup: backupTarget not set")
-	}
-
-	url := backupURL(backupTarget, input.Name, volName)
-	backup, err := engineapi.GetBackup(url)
+	backup, err := s.m.GetBackup(input.Name, volName)
 	if err != nil {
-		return errors.Wrapf(err, "error getting backup '%s'", url)
+		return errors.Wrapf(err, "error getting backup %v of volume %v", input.Name, volName)
 	}
 	if backup == nil {
-		logrus.Warnf("not found: backup '%s'", url)
+		logrus.Warnf("cannot find backup %v of volume %v", input.Name, volName)
 		w.WriteHeader(http.StatusNotFound)
 		return nil
 	}
@@ -134,19 +84,9 @@ func (s *Server) BackupDelete(w http.ResponseWriter, req *http.Request) error {
 
 	volName := mux.Vars(req)["volName"]
 
-	settings, err := s.ds.GetSetting()
-	if err != nil || settings == nil {
-		return errors.New("cannot backup: unable to read settings")
+	if err := s.m.DeleteBackup(input.Name, volName); err != nil {
+		return errors.Wrapf(err, "error deleting backup %v of volume %v", input.Name, volName)
 	}
-	backupTarget := settings.BackupTarget
-	if backupTarget == "" {
-		return errors.New("cannot backup: backupTarget not set")
-	}
-
-	url := backupURL(backupTarget, input.Name, volName)
-	if err := engineapi.DeleteBackup(url); err != nil {
-		return errors.Wrapf(err, "error deleting backup '%s'", url)
-	}
-	logrus.Debugf("success: removed backup '%s'", url)
+	logrus.Debugf("Removed backup %v of volume %v", input.Name, volName)
 	return nil
 }

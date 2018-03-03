@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/rancher/longhorn-manager/util"
 )
@@ -46,4 +47,8 @@ func GenerateReplicaNameForVolume(vName string) string {
 
 func GetCronJobNameForVolumeAndJob(vName, job string) string {
 	return vName + "-" + job + recurringSuffix
+}
+
+func GetAPIServerAddressFromIP(ip string) string {
+	return ip + ":" + strconv.Itoa(DefaultAPIPort)
 }

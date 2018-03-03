@@ -68,15 +68,15 @@ func NewRouter(s *Server) *mux.Router {
 		"salvage":         s.VolumeSalvage,
 		"recurringUpdate": s.VolumeRecurringUpdate,
 
-		"snapshotPurge":  s.fwd.Handler(OwnerIDFromVolume(s.ds), s.SnapshotPurge),
-		"snapshotCreate": s.fwd.Handler(OwnerIDFromVolume(s.ds), s.SnapshotCreate),
-		"snapshotList":   s.fwd.Handler(OwnerIDFromVolume(s.ds), s.SnapshotList),
-		"snapshotGet":    s.fwd.Handler(OwnerIDFromVolume(s.ds), s.SnapshotGet),
-		"snapshotDelete": s.fwd.Handler(OwnerIDFromVolume(s.ds), s.SnapshotDelete),
-		"snapshotRevert": s.fwd.Handler(OwnerIDFromVolume(s.ds), s.SnapshotRevert),
-		"snapshotBackup": s.fwd.Handler(OwnerIDFromVolume(s.ds), s.SnapshotBackup),
+		"snapshotPurge":  s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotPurge),
+		"snapshotCreate": s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotCreate),
+		"snapshotList":   s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotList),
+		"snapshotGet":    s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotGet),
+		"snapshotDelete": s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotDelete),
+		"snapshotRevert": s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotRevert),
+		"snapshotBackup": s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotBackup),
 
-		"replicaRemove": s.fwd.Handler(OwnerIDFromVolume(s.ds), s.ReplicaRemove),
+		"replicaRemove": s.fwd.Handler(OwnerIDFromVolume(s.m), s.ReplicaRemove),
 	}
 	for name, action := range volumeActions {
 		r.Methods("POST").Path("/v1/volumes/{name}").Queries("action", name).Handler(f(schemas, action))
