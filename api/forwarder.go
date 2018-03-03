@@ -1,25 +1,22 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httputil"
-	"strconv"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 
-	"github.com/rancher/longhorn-manager/datastore"
-	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/manager"
 )
 
 type OwnerIDFunc func(req *http.Request) (string, error)
 
-func OwnerIDFromVolume(ds *datastore.DataStore) func(req *http.Request) (string, error) {
+func OwnerIDFromVolume(m *manager.VolumeManager) func(req *http.Request) (string, error) {
 	return func(req *http.Request) (string, error) {
 		name := mux.Vars(req)["name"]
-		volume, err := ds.GetVolume(name)
+		volume, err := m.Get(name)
 		if err != nil {
 			return "", errors.Wrapf(err, "error getting volume '%s'", name)
 		}
@@ -69,28 +66,4 @@ func (f *Fwd) Handler(getNodeID OwnerIDFunc, h HandleFuncWithError) HandleFuncWi
 		}
 		return h(w, req)
 	}
-}
-
-func (s *Server) GetCurrentNodeID() string {
-	return s.CurrentNodeID
-}
-
-func ipToAPIServerAddress(ip string) string {
-	return ip + ":" + strconv.Itoa(types.DefaultAPIPort)
-}
-
-func (s *Server) Node2APIAddress(nodeID string) (string, error) {
-	nodeIPMap, err := s.ds.GetManagerNodeIPMap()
-	if err != nil {
-		return "", err
-	}
-	ip, exists := nodeIPMap[nodeID]
-	if !exists {
-		return "", fmt.Errorf("cannot find longhorn manager on node %v", nodeID)
-	}
-	return ipToAPIServerAddress(ip), nil
-}
-
-func (s *Server) GetAPIServerAddress() string {
-	return ipToAPIServerAddress(s.CurrentIP)
 }

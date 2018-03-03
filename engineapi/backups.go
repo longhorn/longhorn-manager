@@ -3,6 +3,7 @@ package engineapi
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os/exec"
 	"strings"
@@ -190,4 +191,8 @@ func DeleteBackup(url string) error {
 		return errors.Wrapf(err, "Error deleting backup: %s", errBuff)
 	}
 	return nil
+}
+
+func GetBackupURL(backupTarget, backupName, volName string) string {
+	return fmt.Sprintf("%s?backup=%s&volume=%s", backupTarget, backupName, volName)
 }

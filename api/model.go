@@ -7,8 +7,8 @@ import (
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 
-	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
+	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 
@@ -461,19 +461,14 @@ func toBackupCollection(bs []*engineapi.Backup) *client.GenericCollection {
 }
 
 type Server struct {
-	CurrentNodeID string
-	CurrentIP     string
-
+	m   *manager.VolumeManager
 	fwd *Fwd
-	ds  *datastore.DataStore
 }
 
-func NewServer(currentNodeID, currentIP string, ds *datastore.DataStore) *Server {
+func NewServer(m *manager.VolumeManager) *Server {
 	s := &Server{
-		CurrentNodeID: currentNodeID,
-		CurrentIP:     currentIP,
-		ds:            ds,
+		m:   m,
+		fwd: NewFwd(m),
 	}
-	s.fwd = NewFwd(s)
 	return s
 }

@@ -1,16 +1,11 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
-
-	"github.com/rancher/longhorn-manager/engineapi"
-	"github.com/rancher/longhorn-manager/types"
 )
 
 func (s *Server) SnapshotCreate(w http.ResponseWriter, req *http.Request) (err error) {
@@ -24,34 +19,13 @@ func (s *Server) SnapshotCreate(w http.ResponseWriter, req *http.Request) (err e
 		return err
 	}
 
-	for k, v := range input.Labels {
-		if strings.Contains(k, "=") || strings.Contains(v, "=") {
-			return fmt.Errorf("labels cannot contain '='")
-		}
-	}
-
 	volName := mux.Vars(req)["name"]
-	if volName == "" {
-		return fmt.Errorf("volume name required")
-	}
 
-	engine, err := s.GetEngineClient(volName)
+	snapshot, err := s.m.CreateSnapshot(input.Name, input.Labels, volName)
 	if err != nil {
 		return err
 	}
-	snapName, err := engine.SnapshotCreate(input.Name, input.Labels)
-	if err != nil {
-		return err
-	}
-
-	snap, err := engine.SnapshotGet(snapName)
-	if err != nil {
-		return err
-	}
-	if snap == nil {
-		return fmt.Errorf("cannot found just created snapshot '%s', for volume '%s'", snapName, volName)
-	}
-	apiContext.Write(toSnapshotResource(snap))
+	apiContext.Write(toSnapshotResource(snapshot))
 	return nil
 }
 
@@ -61,15 +35,8 @@ func (s *Server) SnapshotList(w http.ResponseWriter, req *http.Request) (err err
 	}()
 
 	volName := mux.Vars(req)["name"]
-	if volName == "" {
-		return fmt.Errorf("volume name required")
-	}
 
-	engine, err := s.GetEngineClient(volName)
-	if err != nil {
-		return err
-	}
-	snapList, err := engine.SnapshotList()
+	snapList, err := s.m.ListSnapshots(volName)
 	if err != nil {
 		return err
 	}
@@ -88,25 +55,11 @@ func (s *Server) SnapshotGet(w http.ResponseWriter, req *http.Request) (err erro
 	if err := apiContext.Read(&input); err != nil {
 		return err
 	}
-	if input.Name == "" {
-		return fmt.Errorf("empty snapshot name not allowed")
-	}
-
 	volName := mux.Vars(req)["name"]
-	if volName == "" {
-		return fmt.Errorf("volume name required")
-	}
 
-	engine, err := s.GetEngineClient(volName)
+	snap, err := s.m.GetSnapshot(input.Name, volName)
 	if err != nil {
 		return err
-	}
-	snap, err := engine.SnapshotGet(input.Name)
-	if err != nil {
-		return err
-	}
-	if snap == nil {
-		return fmt.Errorf("cannot find snapshot '%s' for volume '%s'", input.Name, volName)
 	}
 	api.GetApiContext(req).Write(toSnapshotResource(snap))
 	return nil
@@ -123,32 +76,12 @@ func (s *Server) SnapshotDelete(w http.ResponseWriter, req *http.Request) (err e
 	if err := apiContext.Read(&input); err != nil {
 		return err
 	}
-	if input.Name == "" {
-		return fmt.Errorf("empty snapshot name not allowed")
-	}
 
 	volName := mux.Vars(req)["name"]
-	if volName == "" {
-		return fmt.Errorf("volume name required")
-	}
 
-	engine, err := s.GetEngineClient(volName)
-	if err != nil {
+	if err := s.m.DeleteSnapshot(input.Name, volName); err != nil {
 		return err
 	}
-	if err := engine.SnapshotDelete(input.Name); err != nil {
-		return err
-	}
-
-	snap, err := engine.SnapshotGet(input.Name)
-	if err != nil {
-		return err
-	}
-	if snap == nil {
-		return fmt.Errorf("cannot find snapshot '%s', for volume '%s'", input.Name, volName)
-	}
-
-	api.GetApiContext(req).Write(toSnapshotResource(snap))
 	return nil
 }
 
@@ -163,32 +96,12 @@ func (s *Server) SnapshotRevert(w http.ResponseWriter, req *http.Request) (err e
 	if err := apiContext.Read(&input); err != nil {
 		return err
 	}
-	if input.Name == "" {
-		return fmt.Errorf("empty snapshot name not allowed")
-	}
-
 	volName := mux.Vars(req)["name"]
-	if volName == "" {
-		return fmt.Errorf("volume name required")
-	}
 
-	engine, err := s.GetEngineClient(volName)
-	if err != nil {
-		return err
-	}
-	if err := engine.SnapshotRevert(input.Name); err != nil {
+	if err := s.m.RevertSnapshot(input.Name, volName); err != nil {
 		return err
 	}
 
-	snap, err := engine.SnapshotGet(input.Name)
-	if err != nil {
-		return err
-	}
-	if snap == nil {
-		return fmt.Errorf("not found snapshot '%s', for volume '%s'", input.Name, volName)
-	}
-
-	api.GetApiContext(req).Write(toSnapshotResource(snap))
 	return nil
 }
 
@@ -203,31 +116,10 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 	if err := apiContext.Read(&input); err != nil {
 		return err
 	}
-	if input.Name == "" {
-		return fmt.Errorf("empty snapshot name not allowed")
-	}
-	snapName := input.Name
 
 	volName := mux.Vars(req)["name"]
-	if volName == "" {
-		return fmt.Errorf("volume name required")
-	}
 
-	settings, err := s.ds.GetSetting()
-	if err != nil || settings == nil {
-		return fmt.Errorf("cannot backup: unable to read settings")
-	}
-	backupTarget := settings.BackupTarget
-	if backupTarget == "" {
-		return fmt.Errorf("cannot backup: backupTarget not set")
-	}
-
-	//TODO move it out of API server path
-	engine, err := s.GetEngineClient(volName)
-	if err != nil {
-		return err
-	}
-	return engine.SnapshotBackup(snapName, backupTarget, nil)
+	return s.m.BackupSnapshot(input.Name, nil, volName)
 }
 
 func (s *Server) SnapshotPurge(w http.ResponseWriter, req *http.Request) (err error) {
@@ -236,35 +128,6 @@ func (s *Server) SnapshotPurge(w http.ResponseWriter, req *http.Request) (err er
 	}()
 
 	volName := mux.Vars(req)["name"]
-	if volName == "" {
-		return fmt.Errorf("volume name required")
-	}
 
-	//TODO move it out of API server path
-	engine, err := s.GetEngineClient(volName)
-	if err != nil {
-		return err
-	}
-	return engine.SnapshotPurge()
-}
-
-func (s *Server) GetEngineClient(volumeName string) (client engineapi.EngineClient, err error) {
-	defer func() {
-		err = errors.Wrapf(err, "cannot get client for volume %v", volumeName)
-	}()
-	e, err := s.ds.GetVolumeEngine(volumeName)
-	if err != nil {
-		return nil, err
-	}
-	if e == nil {
-		return nil, fmt.Errorf("cannot get engine for %v", volumeName)
-	}
-	if e.Status.CurrentState != types.InstanceStateRunning {
-		return nil, fmt.Errorf("engine is not running")
-	}
-	engineCollection := &engineapi.EngineCollection{}
-	return engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:    e.Spec.VolumeName,
-		ControllerURL: engineapi.GetControllerDefaultURL(e.Status.IP),
-	})
+	return s.m.PurgeSnapshot(volName)
 }
