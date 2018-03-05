@@ -81,6 +81,11 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		size = backup.VolumeSize
 	}
 
+	if spec.NumberOfReplicas == 0 {
+		logrus.Warnf("Invalid number of replicas %v, override it to default", spec.NumberOfReplicas)
+		spec.NumberOfReplicas = 3
+	}
+
 	v = &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,

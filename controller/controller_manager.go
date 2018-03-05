@@ -8,6 +8,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
+	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
+	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/types"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
@@ -88,4 +90,35 @@ func StartControllers(controllerID, serviceAccount, engineImage, managerImage st
 	go vc.Run(Workers, stopCh)
 
 	return ds, nil
+}
+
+func StartProvisioner(m *manager.VolumeManager) error {
+	// Only supports in-cluster config
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return errors.Wrap(err, "unable to get client config")
+	}
+
+	kubeClient, err := clientset.NewForConfig(config)
+	if err != nil {
+		return errors.Wrap(err, "unable to get k8s client")
+	}
+
+	serverVersion, err := kubeClient.Discovery().ServerVersion()
+	if err != nil {
+		return err
+	}
+
+	provisioner := NewProvisioner(m)
+	pc := pvController.NewProvisionController(
+		kubeClient,
+		LonghornProvisionerName,
+		provisioner,
+		serverVersion.GitVersion,
+	)
+
+	//FIXME stopch should be exposed
+	stopCh := make(chan struct{})
+	go pc.Run(stopCh)
+	return nil
 }
