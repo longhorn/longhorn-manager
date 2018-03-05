@@ -94,6 +94,10 @@ func startManager(c *cli.Context) error {
 	}
 
 	m := manager.NewVolumeManager(currentNodeID, ds)
+	if err := controller.StartProvisioner(m); err != nil {
+		return err
+	}
+
 	server := api.NewServer(m)
 	router := http.Handler(api.NewRouter(server))
 
