@@ -19,15 +19,13 @@ type VolumeManager struct {
 	ds *datastore.DataStore
 
 	currentNodeID string
-	currentIP     string
 }
 
-func NewVolumeManager(currentNodeID, currentIP string, ds *datastore.DataStore) *VolumeManager {
+func NewVolumeManager(currentNodeID string, ds *datastore.DataStore) *VolumeManager {
 	return &VolumeManager{
 		ds: ds,
 
 		currentNodeID: currentNodeID,
-		currentIP:     currentIP,
 	}
 }
 

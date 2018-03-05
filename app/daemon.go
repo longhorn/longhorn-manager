@@ -93,7 +93,7 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	m := manager.NewVolumeManager(currentNodeID, currentIP, ds)
+	m := manager.NewVolumeManager(currentNodeID, ds)
 	server := api.NewServer(m)
 	router := http.Handler(api.NewRouter(server))
 
