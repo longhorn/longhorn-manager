@@ -6,7 +6,7 @@ metadata:
   - longhorn.rancher.io
   labels:
     longhornvolume: example-vol
-  name: example-vol-replica-2
+  name: example-vol-r-2
   namespace: longhorn-system
 spec:
   desireOwnerID: yasker-longhorn-dev-2

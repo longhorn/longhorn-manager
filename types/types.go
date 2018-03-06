@@ -32,8 +32,8 @@ func (e *NotFoundError) Error() string {
 }
 
 const (
-	engineSuffix    = "-controller"
-	replicaSuffix   = "-replica"
+	engineSuffix    = "-e"
+	replicaSuffix   = "-r"
 	recurringSuffix = "-recurring"
 )
 

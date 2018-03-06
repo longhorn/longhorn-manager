@@ -221,7 +221,7 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 	return &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: v.Name + "-controller",
+			Name: v.Name + "-e",
 			Labels: map[string]string{
 				"longhornvolume": v.Name,
 			},
@@ -241,7 +241,7 @@ func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 func newReplicaForVolume(v *longhorn.Volume) *longhorn.Replica {
 	return &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: v.Name + "-replica-" + util.RandomID(),
+			Name: v.Name + "-r-" + util.RandomID(),
 			Labels: map[string]string{
 				"longhornvolume": v.Name,
 			},

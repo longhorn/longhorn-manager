@@ -21,7 +21,7 @@ import (
 const (
 	longhornVolumeKey = "longhornvolume"
 	// NameMaximumLength restricted the length due to Kubernetes name limitation
-	NameMaximumLength = 32
+	NameMaximumLength = 40
 
 	SettingName = "longhorn-manager-settings"
 )
