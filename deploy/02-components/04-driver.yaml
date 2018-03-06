@@ -10,18 +10,9 @@ spec:
       labels:
         app: longhorn-driver
     spec:
-      initContainers:
-      - name: init-container
-        image: rancher/longhorn-driver:61964f2
-        securityContext:
-            privileged: true
-        command: ["/checkdependency.sh"]
-        volumeMounts:
-        - name: host-proc-mount
-          mountPath: /host/proc/
       containers:
         - name: longhorn-driver-container
-          image: rancher/longhorn-driver:61964f2
+          image: rancher/longhorn-manager:c5c02b9
           imagePullPolicy: Always
           command: ["/entrypoint.sh"]
           securityContext:
@@ -31,6 +22,8 @@ spec:
               name: flexvolume-longhorn-mount
             - mountPath: /binmnt
               name: usr-local-bin-mount
+            - name: host-proc-mount
+              mountPath: /host/proc/
           env:
             - name: LONGHORN_BACKEND_SVC
               value: "longhorn-backend"

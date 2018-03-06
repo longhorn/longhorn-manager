@@ -6,6 +6,12 @@ DRIVER=longhorn
 RETRY_COUNTS=20
 RETRY_INTERVAL=1
 
+/checkdependency.sh
+if [ $? -ne 0 ]; then
+    echo Failed dependency check
+    exit -1
+fi
+
 # Assuming the single driver file is located at /$DRIVER inside the DaemonSet image.
 
 echo Detecting backend service IP for $LONGHORN_BACKEND_SVC
