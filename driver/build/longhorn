@@ -41,23 +41,18 @@ log() {
     fi
 }
 
-checkParam() {
+getExistingVolume() {
     local jsonParams=$1
-    local volumeInfo=$2
-
-    local newSize=$(echo ${jsonParams} | jq -r '.size')
-    local newSize=${newSize%"G"}
-    local newSize=$[ $newSize * 1024 * 1024 * 1024 ]
-    local newNumOfReplicas=$(echo ${jsonParams} | jq -r '.numberOfReplicas')
-    local newStaleReplicaTimeout=$(echo ${jsonParams} | jq -r '.staleReplicaTimeout')
-
-    local oldSize=$(echo ${volumeInfo} | jq -r '.size')
-    local oldNumOfReplicas=$(echo ${volumeInfo} | jq -r '.numberOfReplicas')
-    local oldStaleReplicaTimeout=$(echo ${volumeInfo} | jq -r '.staleReplicaTimeout')
-
-    [ "${newSize}" == "${oldSize}" ] && \
-    [ "${newNumOfReplicas}" == "${oldNumOfReplicas}" ] && \
-    [ "${newStaleReplicaTimeout}" == "${oldStaleReplicaTimeout}" ] && echo -ne "Success"
+    local volumeName=$2
+    local OUT=$(curl -s --connect-timeout 1 http://${LONGHORN_SVC}/v1/volumes/${volumeName})
+    if [ $? -ne 0 ]
+    then
+        debug "fail to get existing volume info: ${OUT}"
+	echo -ne "${OUT}"
+	return
+    fi
+    OUT=$(dealExistedVolume ${jsonParams} ${volumeName})
+    echo -ne "${OUT}"
 }
 
 dealExistedVolume() {
@@ -67,11 +62,7 @@ dealExistedVolume() {
     debug "acquire existed volume info: ${OUT}"
     local STATE=$(echo ${OUT} | jq -r '.state')
     if [ "${STATE}" == "detached" ]; then
-        if [ "$(checkParam ${jsonParams} ${OUT})" == "Success" ]; then
-            echo -ne "Success"
-        else
-            echo -ne "${volumeName} is existed and new volume params is different old one"
-        fi
+        echo -ne "Success"
     else
         echo -ne "${volumeName} is existed and is attached"
     fi
@@ -79,17 +70,25 @@ dealExistedVolume() {
 
 createVolume() {
     local jsonParams=$1
+    local volumeName=$(echo ${jsonParams} | jq -r '.["kubernetes.io/pvOrVolumeName"]')
+
+    local OUT=$(getExistingVolume ${jsonParams} ${volumeName})
+    if [ "${OUT}" == "Success" ]; then
+	echo -ne ${OUT}
+	return
+    fi
+    debug "getExistingVoluem returns ${OUT}"
+
     local numReplicas=$(echo ${jsonParams} | jq -r '.numberOfReplicas')
-    numReplicas=${numReplicas:-"2"}
+    numReplicas=${numReplicas:-"3"}
     local volumeSize=$(echo ${jsonParams} | jq -r '.size')
     volumeSize=${volumeSize:-"1G"}
-    local volumeName=$(echo ${jsonParams} | jq -r '.["kubernetes.io/pvOrVolumeName"]')
     local staleReplicaTimeout=$(echo ${jsonParams} | jq -r '.staleReplicaTimeout')
     staleReplicaTimeout=${staleReplicaTimeout:-"20"}
     local fromBackup=$(echo ${jsonParams} | jq -r '.fromBackup')
     fromBackup=${fromBackup:-""}
 
-    local OUT=$(curl -s -X POST --connect-timeout ${CURL_TIMEOUT} \
+    OUT=$(curl -s -X POST --connect-timeout ${CURL_TIMEOUT} \
               -d '{"name":"'${volumeName}'","size":"'${volumeSize}'","numberOfReplicas":'${numReplicas}',"staleReplicaTimeout":'${staleReplicaTimeout}',"fromBackup":"'${fromBackup}'"}' \
               http://${LONGHORN_SVC}/v1/volumes)
     debug "create volume response from http://${LONGHORN_SVC}/v1/volumes: ${OUT}"
@@ -98,12 +97,8 @@ createVolume() {
     local MESSAGE=$(echo ${OUT} | jq -r '.message')
     if [ "${OUT}" == "" ]; then
 	    echo -ne "create volume err: curl timeout"
-    elif [ "${STATE}" == "created" -a "${TYPE}" == "volume" ]; then
+    elif [ "${TYPE}" == "volume" ]; then
         echo -ne "Success"
-    elif [ "${TYPE}" == "error" -a "$(echo "${MESSAGE}" | grep -o 'already exists')" ]; then
-        debug "enter existed volume process: ${volumeName}"
-        OUT=$(dealExistedVolume ${jsonParams} ${volumeName})
-        echo -ne "${OUT}"
     else
         echo -ne "create volume fail: ${MESSAGE}"
     fi
@@ -207,6 +202,7 @@ createDevice() {
     local volumeName=$(echo ${jsonParams} | jq -r '.["kubernetes.io/pvOrVolumeName"]')
     local fullDevName=${LONGHORN_DEV_PATH}${volumeName}
     local fsType=$(echo ${jsonParams} | jq -r '.["kubernetes.io/fsType"]')
+    fsType=${fsType:-"ext4"}
 
     if [ -e ${fullDevName} ]; then
         echo -ne "Device ${fullDevName} is already existed"

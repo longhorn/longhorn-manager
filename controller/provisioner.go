@@ -34,6 +34,9 @@ func NewProvisioner(m *manager.VolumeManager) pvController.Provisioner {
 
 func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.PersistentVolume, error) {
 	pvc := opts.PVC
+	if pvc.Spec.Selector != nil {
+		return nil, fmt.Errorf("claim.Spec.Selector is not supported")
+	}
 	rwRequired := false
 	for _, accessMode := range pvc.Spec.AccessModes {
 		if accessMode == v1.ReadWriteMany {
@@ -42,7 +45,7 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 		}
 	}
 	if rwRequired {
-		return nil, fmt.Errorf("longhorn doesn't support ReadWriteMany access mode")
+		return nil, fmt.Errorf("ReadWriteMany access mode is not supported")
 	}
 	resourceStorage := opts.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	size := resourceStorage.Value()
