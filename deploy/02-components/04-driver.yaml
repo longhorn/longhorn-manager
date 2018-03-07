@@ -1,45 +1,28 @@
 apiVersion: extensions/v1beta1
-kind: DaemonSet
+kind: Deployment
 metadata:
-  name: longhorn-driver
+  name: longhorn-flexvolume-driver-deployer
   namespace: longhorn-system
 spec:
+  replicas: 1
   template:
     metadata:
-      name: longhorn-driver
       labels:
-        app: longhorn-driver
+        app: longhorn-flexvolume-driver-deployer
     spec:
       containers:
-        - name: longhorn-driver-container
-          image: rancher/longhorn-manager:c5c02b9
+        - name: longhorn-flexvolume-driver-deployer
+          image: rancher/longhorn-manager:a2c283a
           imagePullPolicy: Always
-          command: ["/entrypoint.sh"]
-          securityContext:
-              privileged: true
-          volumeMounts:
-            - mountPath: /flexmnt
-              name: flexvolume-longhorn-mount
-            - mountPath: /binmnt
-              name: usr-local-bin-mount
-            - name: host-proc-mount
-              mountPath: /host/proc/
+          command:
+          - longhorn-manager
+          - -d
+          - deploy-flexvolume-driver
+          - --manager-image
+          - rancher/longhorn-manager:a2c283a
           env:
-            - name: LONGHORN_BACKEND_SVC
-              value: "longhorn-backend"
-            - name: NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-      volumes:
-        - name: usr-local-bin-mount
-          hostPath:
-            path: /usr/local/bin/
-        - name: host-proc-mount
-          hostPath:
-            path: /proc/
-        - name: flexvolume-longhorn-mount
-          hostPath:
-            path: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/
-            #FOR GKE
-            #path: /home/kubernetes/flexvolume/
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+      serviceAccountName: longhorn-service-account
