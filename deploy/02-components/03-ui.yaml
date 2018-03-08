@@ -37,4 +37,3 @@ spec:
     port: 80
     targetPort: longhorn-ui
   type: LoadBalancer
-  sessionAffinity: ClientIP

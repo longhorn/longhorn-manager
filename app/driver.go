@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Jeffail/gabs"
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
@@ -18,10 +19,12 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 )
 
 const (
-	FlagVolumePluginDir  = "volume-plugin-dir"
+	FlagFlexvolumeDir    = "flexvolume-dir"
+	EnvFlexvolumeDir     = "FLEXVOLUME_DIR"
 	DefaultFlexvolumeDir = "/usr/libexec/kubernetes/kubelet-plugins/volume/exec/"
 
 	LonghornFlexvolumeDriver = "longhorn-flexvolume-driver"
@@ -36,8 +39,9 @@ func DeployFlexvolumeDriverCmd() cli.Command {
 				Usage: "Specify Longhorn manager image",
 			},
 			cli.StringFlag{
-				Name:  FlagVolumePluginDir,
-				Usage: "Specify the location of flexvolume plugin for Kubernetes on the host",
+				Name:   FlagFlexvolumeDir,
+				Usage:  "Specify the location of flexvolume plugin for Kubernetes on the host",
+				EnvVar: EnvFlexvolumeDir,
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -54,12 +58,29 @@ func deployFlexvolumeDriver(c *cli.Context) error {
 		return fmt.Errorf("require %v", FlagManagerImage)
 	}
 
-	volumePluginDir := c.String(FlagVolumePluginDir)
-	if volumePluginDir == "" {
-		volumePluginDir = DefaultFlexvolumeDir
+	// Only supports in-cluster config
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return errors.Wrap(err, "unable to get client config")
 	}
 
-	dsOps, err := newDaemonSetOps()
+	kubeClient, err := clientset.NewForConfig(config)
+	if err != nil {
+		return errors.Wrap(err, "unable to get k8s client")
+	}
+
+	flexvolumeDir := c.String(FlagFlexvolumeDir)
+	if flexvolumeDir == "" {
+		flexvolumeDir, err = discoverFlexvolumeDir(kubeClient)
+		if err != nil {
+			logrus.Warnf("Failed to detect flexvolume dir, fall back to default: ", err)
+		}
+		if flexvolumeDir == "" {
+			flexvolumeDir = DefaultFlexvolumeDir
+		}
+	}
+
+	dsOps, err := newDaemonSetOps(kubeClient)
 	if err != nil {
 		return err
 	}
@@ -73,8 +94,8 @@ func deployFlexvolumeDriver(c *cli.Context) error {
 			return err
 		}
 	}
-	logrus.Infof("Installing Flexvolume to Kubernetes nodes directory %v", volumePluginDir)
-	if _, err := dsOps.Create(LonghornFlexvolumeDriver, getFlexvolumeDaemonSetSpec(managerImage, volumePluginDir)); err != nil {
+	logrus.Infof("Install Flexvolume to Kubernetes nodes directory %v", flexvolumeDir)
+	if _, err := dsOps.Create(LonghornFlexvolumeDriver, getFlexvolumeDaemonSetSpec(managerImage, flexvolumeDir)); err != nil {
 		return err
 	}
 	defer func() {
@@ -97,7 +118,7 @@ func deployFlexvolumeDriver(c *cli.Context) error {
 	return nil
 }
 
-func getFlexvolumeDaemonSetSpec(image, volumePluginDir string) *extensionsv1beta1.DaemonSet {
+func getFlexvolumeDaemonSetSpec(image, flexvolumeDir string) *extensionsv1beta1.DaemonSet {
 	cmd := []string{
 		"/entrypoint.sh",
 	}
@@ -158,7 +179,7 @@ func getFlexvolumeDaemonSetSpec(image, volumePluginDir string) *extensionsv1beta
 							Name: "flexvolume-longhorn-mount",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
-									Path: volumePluginDir,
+									Path: flexvolumeDir,
 								},
 							},
 						},
@@ -186,23 +207,37 @@ func getFlexvolumeDaemonSetSpec(image, volumePluginDir string) *extensionsv1beta
 	return d
 }
 
+func discoverFlexvolumeDir(kubeClient *clientset.Clientset) (dir string, err error) {
+	defer func() {
+		err = errors.Wrap(err, "cannot discover Flexvolume Dir")
+	}()
+	nodeName, err := util.GetRequiredEnv(types.EnvNodeName)
+	if err != nil {
+		return "", fmt.Errorf("Env %v wasn't set", types.EnvNodeName)
+	}
+	uri := fmt.Sprintf("/api/v1/proxy/nodes/%s/configz", nodeName)
+	rawConfigInBytes, err := kubeClient.Core().RESTClient().Get().RequestURI(uri).DoRaw()
+	if err != nil {
+		return "", errors.Wrapf(err, "cannot reach node config URI %v", uri)
+	}
+	jsonParsed, err := gabs.ParseJSON(rawConfigInBytes)
+	if err != nil {
+		return "", errors.Wrapf(err, "cannot parse json")
+	}
+	value, ok := jsonParsed.Path("kubeletconfig.volumePluginDir").Data().(string)
+	if !ok {
+		logrus.Infof("cannot find volumePluginDir key in node config, assume it's default")
+		return DefaultFlexvolumeDir, nil
+	}
+	return value, nil
+}
+
 type DaemonSetOps struct {
 	namespace  string
 	kubeClient *clientset.Clientset
 }
 
-func newDaemonSetOps() (*DaemonSetOps, error) {
-	// Only supports in-cluster config
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to get client config")
-	}
-
-	kubeClient, err := clientset.NewForConfig(config)
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to get k8s client")
-	}
-
+func newDaemonSetOps(kubeClient *clientset.Clientset) (*DaemonSetOps, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		return nil, fmt.Errorf("Cannot detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
