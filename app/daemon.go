@@ -84,7 +84,9 @@ func startManager(c *cli.Context) error {
 		return fmt.Errorf("BUG: fail to detect the node IP")
 	}
 
-	ds, err := controller.StartControllers(currentNodeID, serviceAccount, engineImage, managerImage)
+	done := make(chan struct{})
+
+	ds, err := controller.StartControllers(done, currentNodeID, serviceAccount, engineImage, managerImage)
 	if err != nil {
 		return err
 	}
@@ -104,7 +106,11 @@ func startManager(c *cli.Context) error {
 	listen := types.GetAPIServerAddressFromIP(currentIP)
 	logrus.Infof("Listening on %s", listen)
 
-	return http.ListenAndServe(listen, router)
+	go http.ListenAndServe(listen, router)
+
+	util.RegisterShutdownChannel(done)
+	<-done
+	return nil
 }
 
 func environmentCheck() error {

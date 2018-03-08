@@ -3,8 +3,6 @@ package app
 import (
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/Jeffail/gabs"
 	"github.com/Sirupsen/logrus"
@@ -104,15 +102,8 @@ func deployFlexvolumeDriver(c *cli.Context) error {
 		}
 	}()
 
-	sigs := make(chan os.Signal, 1)
 	done := make(chan struct{})
-
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		sig := <-sigs
-		logrus.Infof("Receive %v to exit", sig)
-		done <- struct{}{}
-	}()
+	util.RegisterShutdownChannel(done)
 
 	<-done
 	return nil

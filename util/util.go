@@ -8,8 +8,10 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -258,4 +260,14 @@ func ParseLabels(labels []string) (map[string]string, error) {
 		result[key] = value
 	}
 	return result, nil
+}
+
+func RegisterShutdownChannel(done chan struct{}) {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigs
+		logrus.Infof("Receive %v to exit", sig)
+		close(done)
+	}()
 }

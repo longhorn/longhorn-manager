@@ -30,7 +30,7 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
-func StartControllers(controllerID, serviceAccount, engineImage, managerImage string) (*datastore.DataStore, error) {
+func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, engineImage, managerImage string) (*datastore.DataStore, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, " +
@@ -78,8 +78,6 @@ func StartControllers(controllerID, serviceAccount, engineImage, managerImage st
 	vc := NewVolumeController(ds, scheme, volumeInformer, engineInformer, replicaInformer, kubeClient,
 		namespace, controllerID, serviceAccount, engineImage, managerImage)
 
-	//FIXME stopch should be exposed
-	stopCh := make(chan struct{})
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
 	if !ds.Sync(stopCh) {
