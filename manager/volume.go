@@ -146,9 +146,13 @@ func (m *VolumeManager) Attach(name, nodeID string) (v *longhorn.Volume, err err
 		}
 		return v, nil
 	}
-	v.Spec.NodeID = nodeID
 	// Must be owned by the manager on the same node
-	v.Spec.OwnerID = v.Spec.NodeID
+	v, err = m.updateVolumeOwner(nodeID, v)
+	if err != nil {
+		return nil, err
+	}
+
+	v.Spec.NodeID = nodeID
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
 		return nil, err
@@ -268,4 +272,32 @@ func (m *VolumeManager) DeleteReplica(replicaName string) error {
 
 func (m *VolumeManager) GetManagerNodeIPMap() (map[string]string, error) {
 	return m.ds.GetManagerNodeIPMap()
+}
+
+func (m *VolumeManager) updateVolumeOwner(ownerID string, v *longhorn.Volume) (*longhorn.Volume, error) {
+	v.Spec.OwnerID = ownerID
+	engine, err := m.ds.GetVolumeEngine(v.Name)
+	if err != nil {
+		return nil, err
+	}
+	if engine.Spec.OwnerID != ownerID {
+		engine.Spec.OwnerID = ownerID
+		if _, err := m.ds.UpdateEngine(engine); err != nil {
+			return nil, err
+		}
+	}
+
+	replicas, err := m.ds.GetVolumeReplicas(v.Name)
+	if err != nil {
+		return nil, err
+	}
+	for _, replica := range replicas {
+		if replica.Spec.OwnerID != ownerID {
+			replica.Spec.OwnerID = ownerID
+			if _, err := m.ds.UpdateReplica(replica); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return v, nil
 }
