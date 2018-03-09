@@ -1,16 +1,15 @@
 package engineapi
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os/exec"
 	"strings"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
+
+	"github.com/rancher/longhorn-manager/util"
 )
 
 type BackupTarget struct {
@@ -40,15 +39,10 @@ func parseBackup(v interface{}) (*Backup, error) {
 	return backup, nil
 }
 
-func parseBackupsList(stdout io.Reader, volumeName string) ([]*Backup, error) {
-	buffer := new(bytes.Buffer)
-	reader := io.TeeReader(stdout, buffer)
+func parseBackupsList(output, volumeName string) ([]*Backup, error) {
 	data := map[string]*backupVolume{}
-	if err := json.NewDecoder(reader).Decode(&data); err != nil {
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(buffer.String())), "cannot find ") {
-			return nil, nil
-		}
-		return nil, errors.Wrapf(err, "error parsing BackupTarget: \n%s", buffer)
+	if err := json.Unmarshal([]byte(output), &data); err != nil {
+		return nil, errors.Wrapf(err, "error parsing BackupTarget: \n%s", output)
 	}
 	BackupTarget := []*Backup{}
 	volume := data[volumeName]
@@ -66,15 +60,10 @@ func parseBackupsList(stdout io.Reader, volumeName string) ([]*Backup, error) {
 	return BackupTarget, nil
 }
 
-func parseBackupVolumesList(stdout io.Reader) ([]*BackupVolume, error) {
-	buffer := new(bytes.Buffer)
-	reader := io.TeeReader(stdout, buffer)
+func parseBackupVolumesList(output string) ([]*BackupVolume, error) {
 	data := map[string]*backupVolume{}
-	if err := json.NewDecoder(reader).Decode(&data); err != nil {
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(buffer.String())), "cannot find ") {
-			return nil, nil
-		}
-		return nil, errors.Wrapf(err, "error parsing BackupTarget: \n%s", buffer)
+	if err := json.Unmarshal([]byte(output), &data); err != nil {
+		return nil, errors.Wrapf(err, "error parsing BackupTarget: \n%s", output)
 	}
 	volumes := []*BackupVolume{}
 
@@ -89,53 +78,38 @@ func parseBackupVolumesList(stdout io.Reader) ([]*BackupVolume, error) {
 	return volumes, nil
 }
 
-func parseOneBackup(stdout io.Reader) (*Backup, error) {
-	buffer := new(bytes.Buffer)
-	reader := io.TeeReader(stdout, buffer)
+func parseOneBackup(output string) (*Backup, error) {
 	data := map[string]interface{}{}
-	if err := json.NewDecoder(reader).Decode(&data); err != nil {
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(buffer.String())), "cannot find ") {
-			return nil, nil
-		}
-		return nil, errors.Wrapf(err, "error parsing BackupTarget: \n%s", buffer)
+	if err := json.Unmarshal([]byte(output), &data); err != nil {
+		return nil, errors.Wrapf(err, "error parsing BackupTarget: \n%s", output)
 	}
 	return parseBackup(data)
 }
 
 func (b *BackupTarget) ListVolumes() ([]*BackupVolume, error) {
-	cmd := exec.Command("longhorn", "backup", "ls", "--volume-only", b.url)
-	stdout, err := cmd.StdoutPipe()
+	args := []string{"backup", "ls", "--volume-only", b.url}
+	output, err := util.Execute(LonghornEngineBinary, args...)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error getting stdout from cmd '%v'", cmd)
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, errors.Wrapf(err, "error starting cmd '%v'", cmd)
-	}
-	defer func() {
-		if err := cmd.Wait(); err != nil {
-			logrus.Debugf("error waiting for cmd '%v' %v", cmd, err)
+		if strings.Contains(err.Error(), "msg=\"cannot find ") {
+			return nil, nil
 		}
-	}()
-	return parseBackupVolumesList(stdout)
+		return nil, errors.Wrapf(err, "error listing backup volumes")
+	}
+	return parseBackupVolumesList(output)
 }
 
 func (b *BackupTarget) GetVolume(volumeName string) (*BackupVolume, error) {
-	cmd := exec.Command("longhorn", "backup", "ls", "--volume", volumeName, "--volume-only", b.url)
-	stdout, err := cmd.StdoutPipe()
+	args := []string{"backup", "ls", "--volume", volumeName, "--volume-only", b.url}
+	output, err := util.Execute(LonghornEngineBinary, args...)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error getting stdout from cmd '%v'", cmd)
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, errors.Wrapf(err, "error starting cmd '%v'", cmd)
-	}
-	defer func() {
-		if err := cmd.Wait(); err != nil {
-			logrus.Debugf("error waiting for cmd '%v' %v", cmd, err)
+		if strings.Contains(err.Error(), "msg=\"cannot find ") {
+			return nil, nil
 		}
-	}()
-	list, err := parseBackupVolumesList(stdout)
+		return nil, errors.Wrapf(err, "error getting backup volume")
+	}
+	list, err := parseBackupVolumesList(output)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "error getting backup volume")
 	}
 	return list[0], nil
 }
@@ -144,51 +118,38 @@ func (b *BackupTarget) List(volumeName string) ([]*Backup, error) {
 	if volumeName == "" {
 		return nil, nil
 	}
-	cmd := exec.Command("longhorn", "backup", "ls", "--volume", volumeName, b.url)
-	stdout, err := cmd.StdoutPipe()
+	args := []string{"backup", "ls", "--volume", volumeName, b.url}
+	output, err := util.Execute(LonghornEngineBinary, args...)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error getting stdout from cmd '%v'", cmd)
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, errors.Wrapf(err, "error starting cmd '%v'", cmd)
-	}
-	defer func() {
-		if err := cmd.Wait(); err != nil {
-			logrus.Debugf("error waiting for cmd '%v' %v", cmd, err)
+		if strings.Contains(err.Error(), "msg=\"cannot find ") {
+			return nil, nil
 		}
-	}()
-	return parseBackupsList(stdout, volumeName)
+		return nil, errors.Wrapf(err, "error listing backups")
+	}
+	return parseBackupsList(output, volumeName)
 }
 
 func GetBackup(url string) (*Backup, error) {
-	cmd := exec.Command("longhorn", "backup", "inspect", url)
-	stdout, err := cmd.StdoutPipe()
+	args := []string{"backup", "inspect", url}
+	output, err := util.Execute(LonghornEngineBinary, args...)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error getting stdout from cmd '%v'", cmd)
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, errors.Wrapf(err, "error starting cmd '%v'", cmd)
-	}
-	defer func() {
-		if err := cmd.Wait(); err != nil {
-			logrus.Debugf("error waiting for cmd '%v' %v", cmd, err)
+		if strings.Contains(err.Error(), "msg=\"cannot find ") {
+			return nil, nil
 		}
-	}()
-	return parseOneBackup(stdout)
+		return nil, errors.Wrapf(err, "error getting backup")
+	}
+	return parseOneBackup(output)
 }
 
 func DeleteBackup(url string) error {
-	cmd := exec.Command("longhorn", "backup", "rm", url)
-	errBuff := new(bytes.Buffer)
-	cmd.Stderr = errBuff
-	out, err := cmd.Output()
+	args := []string{"backup", "rm", url}
+	_, err := util.Execute(LonghornEngineBinary, args...)
 	if err != nil {
-		s := string(out)
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(s)), "cannot find ") {
+		if strings.Contains(err.Error(), "msg=\"cannot find ") {
 			logrus.Warnf("delete: could not find the backup: '%s'", url)
 			return nil
 		}
-		return errors.Wrapf(err, "Error deleting backup: %s", errBuff)
+		return errors.Wrapf(err, "error deleting backup")
 	}
 	return nil
 }

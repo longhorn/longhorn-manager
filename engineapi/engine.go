@@ -18,6 +18,10 @@ type Engine struct {
 	cURL string
 }
 
+const (
+	LonghornEngineBinary = "longhorn"
+)
+
 func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (EngineClient, error) {
 	return &Engine{
 		name: request.VolumeName,
@@ -46,7 +50,7 @@ func parseReplica(s string) (*Replica, error) {
 }
 
 func (e *Engine) ReplicaList() (map[string]*Replica, error) {
-	output, err := util.Execute("longhorn", "--url", e.cURL, "ls")
+	output, err := util.Execute(LonghornEngineBinary, "--url", e.cURL, "ls")
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to list replicas from controller '%s'", e.name)
 	}
@@ -72,7 +76,7 @@ func (e *Engine) ReplicaAdd(url string) error {
 	if err := ValidateReplicaURL(url); err != nil {
 		return err
 	}
-	if _, err := util.Execute("longhorn", "--url", e.cURL, "add", url); err != nil {
+	if _, err := util.Execute(LonghornEngineBinary, "--url", e.cURL, "add", url); err != nil {
 		return errors.Wrapf(err, "failed to add replica address='%s' to controller '%s'", url, e.name)
 	}
 	return nil
@@ -82,7 +86,7 @@ func (e *Engine) ReplicaRemove(url string) error {
 	if err := ValidateReplicaURL(url); err != nil {
 		return err
 	}
-	if _, err := util.Execute("longhorn", "--url", e.cURL, "rm", url); err != nil {
+	if _, err := util.Execute(LonghornEngineBinary, "--url", e.cURL, "rm", url); err != nil {
 		return errors.Wrapf(err, "failed to rm replica address='%s' from controller '%s'", url, e.name)
 	}
 	return nil
@@ -99,7 +103,7 @@ func (e *Engine) Endpoint() string {
 }
 
 func (e *Engine) info() (*Volume, error) {
-	output, err := util.Execute("longhorn", "--url", e.cURL, "info")
+	output, err := util.Execute(LonghornEngineBinary, "--url", e.cURL, "info")
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot get volume info")
 	}
@@ -112,7 +116,7 @@ func (e *Engine) info() (*Volume, error) {
 }
 
 func (e *Engine) BackupRestore(backup string) error {
-	if _, err := util.Execute("longhorn", "--url", e.cURL, "backup", "restore", backup); err != nil {
+	if _, err := util.Execute(LonghornEngineBinary, "--url", e.cURL, "backup", "restore", backup); err != nil {
 		return errors.Wrapf(err, "error restoring backup '%s'", backup)
 	}
 	logrus.Debugf("Backup %v restored for volume %v", backup, e.Name())

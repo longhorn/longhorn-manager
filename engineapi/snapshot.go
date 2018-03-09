@@ -2,7 +2,6 @@ package engineapi
 
 import (
 	"encoding/json"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -25,7 +24,7 @@ func (e *Engine) SnapshotCreate(name string, labels map[string]string) (string, 
 	}
 	args = append(args, name)
 
-	output, err := util.Execute("longhorn", args...)
+	output, err := util.Execute(LonghornEngineBinary, args...)
 	if err != nil {
 		return "", errors.Wrapf(err, "error creating snapshot '%s'", name)
 	}
@@ -33,22 +32,14 @@ func (e *Engine) SnapshotCreate(name string, labels map[string]string) (string, 
 }
 
 func (e *Engine) SnapshotList() (map[string]*Snapshot, error) {
-	cmd := exec.Command("longhorn", "--url", e.cURL, "snapshot", "info")
-	stdout, err := cmd.StdoutPipe()
+	args := []string{"--url", e.cURL, "snapshot", "info"}
+	output, err := util.Execute(LonghornEngineBinary, args...)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error getting stdout from cmd '%v'", cmd)
+		return nil, errors.Wrapf(err, "error listing snapshot")
 	}
-	if err := cmd.Start(); err != nil {
-		return nil, errors.Wrapf(err, "error starting cmd '%v'", cmd)
-	}
-	defer func() {
-		if err := cmd.Wait(); err != nil {
-			logrus.Errorf("%+v", errors.Wrapf(err, "error waiting for cmd '%v'", cmd))
-		}
-	}()
 	data := map[string]*SnapshotFromEngine{}
-	if err := json.NewDecoder(stdout).Decode(&data); err != nil {
-		return nil, errors.Wrapf(err, "error parsing data from cmd '%v'", cmd)
+	if err := json.Unmarshal([]byte(output), &data); err != nil {
+		return nil, errors.Wrapf(err, "error parsing snapshot list")
 	}
 	delete(data, VolumeHeadName)
 	ret := map[string]*Snapshot{}
@@ -79,7 +70,7 @@ func (e *Engine) SnapshotGet(name string) (*Snapshot, error) {
 }
 
 func (e *Engine) SnapshotDelete(name string) error {
-	if _, err := util.Execute("longhorn", "--url", e.cURL,
+	if _, err := util.Execute(LonghornEngineBinary, "--url", e.cURL,
 		"snapshot", "rm", name); err != nil {
 		return errors.Wrapf(err, "error deleting snapshot '%s'", name)
 	}
@@ -87,7 +78,7 @@ func (e *Engine) SnapshotDelete(name string) error {
 }
 
 func (e *Engine) SnapshotRevert(name string) error {
-	if _, err := util.Execute("longhorn", "--url", e.cURL,
+	if _, err := util.Execute(LonghornEngineBinary, "--url", e.cURL,
 		"snapshot", "revert", name); err != nil {
 		return errors.Wrapf(err, "error reverting to snapshot '%s'", name)
 	}
@@ -95,7 +86,7 @@ func (e *Engine) SnapshotRevert(name string) error {
 }
 
 func (e *Engine) SnapshotPurge() error {
-	if _, err := util.ExecuteWithTimeout(purgeTimeout, "longhorn", "--url", e.cURL,
+	if _, err := util.ExecuteWithTimeout(purgeTimeout, LonghornEngineBinary, "--url", e.cURL,
 		"snapshot", "purge"); err != nil {
 		return errors.Wrapf(err, "error purging snapshots")
 	}
@@ -116,7 +107,7 @@ func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string
 		args = append(args, "--label", k+"="+v)
 	}
 	args = append(args, snapName)
-	backup, err := util.ExecuteWithTimeout(backupTimeout, "longhorn", args...)
+	backup, err := util.ExecuteWithTimeout(backupTimeout, LonghornEngineBinary, args...)
 	if err != nil {
 		return err
 	}
