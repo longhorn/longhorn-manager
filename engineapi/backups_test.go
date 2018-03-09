@@ -1,7 +1,6 @@
 package engineapi
 
 import (
-	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -54,8 +53,7 @@ const backupsListText = `
 func TestParseOneBackup(t *testing.T) {
 	assert := require.New(t)
 
-	stdout := bytes.NewBufferString(oneBackupText)
-	b, err := parseOneBackup(stdout)
+	b, err := parseOneBackup(oneBackupText)
 	assert.Nil(err)
 	assert.Equal(Backup{
 		Name:            "backup-072d7a718f854328",
@@ -70,20 +68,10 @@ func TestParseOneBackup(t *testing.T) {
 	}, *b)
 }
 
-func TestParseOneBackup2(t *testing.T) {
-	assert := require.New(t)
-
-	stdout := bytes.NewBufferString("cannot find shit")
-	b, err := parseOneBackup(stdout)
-	assert.Nil(err)
-	assert.Nil(b)
-}
-
 func TestParseBackupsList(t *testing.T) {
 	assert := require.New(t)
 
-	stdout := bytes.NewBufferString(backupsListText)
-	bs, err := parseBackupsList(stdout, "qq")
+	bs, err := parseBackupsList(backupsListText, "qq")
 	assert.Nil(err)
 	assert.Equal(2, len(bs))
 
@@ -93,13 +81,4 @@ func TestParseBackupsList(t *testing.T) {
 	}
 	assert.NotNil(snapshots["volume-snap-snap1.img"])
 	assert.NotNil(snapshots["volume-snap-snap4.img"])
-}
-
-func TestParseBackupsList2(t *testing.T) {
-	assert := require.New(t)
-
-	stdout := bytes.NewBufferString("cannot find crap")
-	bs, err := parseBackupsList(stdout, "qq")
-	assert.Nil(err)
-	assert.Nil(bs)
 }
