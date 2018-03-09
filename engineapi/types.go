@@ -54,7 +54,7 @@ type Volume struct {
 	Endpoint     string `json:"endpoint"`
 }
 
-type Snapshot struct {
+type SnapshotFromEngine struct {
 	Name        string              `json:"name"`
 	Parent      string              `json:"parent"`
 	Children    map[string]struct{} `json:"children"`
@@ -63,6 +63,17 @@ type Snapshot struct {
 	Created     string              `json:"created"`
 	Size        string              `json:"size"`
 	Labels      map[string]string   `json:"labels"`
+}
+
+type Snapshot struct {
+	Name        string            `json:"name"`
+	Parent      string            `json:"parent"`
+	Children    []string          `json:"children"`
+	Removed     bool              `json:"removed"`
+	UserCreated bool              `json:"usercreated"`
+	Created     string            `json:"created"`
+	Size        string            `json:"size"`
+	Labels      map[string]string `json:"labels"`
 }
 
 type BackupVolume struct {

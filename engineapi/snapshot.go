@@ -46,12 +46,28 @@ func (e *Engine) SnapshotList() (map[string]*Snapshot, error) {
 			logrus.Errorf("%+v", errors.Wrapf(err, "error waiting for cmd '%v'", cmd))
 		}
 	}()
-	data := map[string]*Snapshot{}
+	data := map[string]*SnapshotFromEngine{}
 	if err := json.NewDecoder(stdout).Decode(&data); err != nil {
 		return nil, errors.Wrapf(err, "error parsing data from cmd '%v'", cmd)
 	}
 	delete(data, VolumeHeadName)
-	return data, nil
+	ret := map[string]*Snapshot{}
+	for k, v := range data {
+		ret[k] = &Snapshot{
+			Name:        v.Name,
+			Parent:      v.Parent,
+			Removed:     v.Removed,
+			UserCreated: v.UserCreated,
+			Created:     v.Created,
+			Size:        v.Size,
+			Labels:      v.Labels,
+			Children:    []string{},
+		}
+		for child := range v.Children {
+			ret[k].Children = append(ret[k].Children, child)
+		}
+	}
+	return ret, nil
 }
 
 func (e *Engine) SnapshotGet(name string) (*Snapshot, error) {
