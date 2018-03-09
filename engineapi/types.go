@@ -55,14 +55,14 @@ type Volume struct {
 }
 
 type Snapshot struct {
-	Name        string            `json:"name"`
-	Parent      string            `json:"parent"`
-	Children    []string          `json:"children"`
-	Removed     bool              `json:"removed"`
-	UserCreated bool              `json:"usercreated"`
-	Created     string            `json:"created"`
-	Size        string            `json:"size"`
-	Labels      map[string]string `json:"labels"`
+	Name        string              `json:"name"`
+	Parent      string              `json:"parent"`
+	Children    map[string]struct{} `json:"children"`
+	Removed     bool                `json:"removed"`
+	UserCreated bool                `json:"usercreated"`
+	Created     string              `json:"created"`
+	Size        string              `json:"size"`
+	Labels      map[string]string   `json:"labels"`
 }
 
 type BackupVolume struct {
