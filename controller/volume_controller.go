@@ -372,20 +372,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		if err = vc.replenishReplicas(v, rs); err != nil {
 			return err
 		}
-		for _, r := range rs {
-			if r.Spec.FailedAt == "" && r.Spec.DesireState == types.InstanceStateStopped {
-				r.Spec.DesireState = types.InstanceStateRunning
-				r, err := vc.ds.UpdateReplica(r)
-				if err != nil {
-					return err
-				}
-				rs[r.Name] = r
-				continue
-			}
-			if r.Status.CurrentState == types.InstanceStateRunning && e.Spec.ReplicaAddressMap[r.Name] == "" {
-				e.Spec.ReplicaAddressMap[r.Name] = r.Status.IP
-			}
-		}
+		// replicas will be started by ReconcileVolumeState() later
 	}
 	e, err = vc.ds.UpdateEngine(e)
 	if err != nil {
@@ -494,8 +481,12 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonDetached, "volume %v has been detached", v.Name)
 		}
 	} else {
-		// the final state will be determined at the end of the clause
-		v.Status.State = types.VolumeStateAttaching
+		// if engine was running, then we are attached already
+		// (but we may still need to start rebuilding replicas)
+		if e.Status.CurrentState != types.InstanceStateRunning {
+			// the final state will be determined at the end of the clause
+			v.Status.State = types.VolumeStateAttaching
+		}
 
 		replicaUpdated := false
 		for _, r := range rs {
