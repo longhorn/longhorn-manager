@@ -21,6 +21,10 @@ const (
 	EnvNodeName     = "NODE_NAME"
 	EnvPodNamespace = "POD_NAMESPACE"
 	EnvPodIP        = "POD_IP"
+
+	OptionFromBackup          = "fromBackup"
+	OptionNumberOfReplica     = "numberOfReplicas"
+	OptionStaleReplicaTimeout = "staleReplicaTimeout"
 )
 
 type NotFoundError struct {
