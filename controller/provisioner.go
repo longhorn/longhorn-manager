@@ -49,11 +49,19 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 	}
 	resourceStorage := opts.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	size := resourceStorage.Value()
+	numberOfReplicas, err := strconv.Atoi(opts.Parameters[types.OptionNumberOfReplica])
+	if err != nil {
+		return nil, err
+	}
+	staleReplicaTimeout, err := strconv.Atoi(opts.Parameters[types.OptionStaleReplicaTimeout])
+	if err != nil {
+		return nil, err
+	}
 	spec := &types.VolumeSpec{
 		Size:                strconv.FormatInt(size, 10),
-		FromBackup:          opts.Parameters["fromBackup"],
-		NumberOfReplicas:    3,  //opts.Parameters["numberOfReplicas"],
-		StaleReplicaTimeout: 60, //opts.Parameters["StaleReplicaTimeout"],
+		FromBackup:          opts.Parameters[types.OptionFromBackup],
+		NumberOfReplicas:    numberOfReplicas,
+		StaleReplicaTimeout: staleReplicaTimeout,
 	}
 	v, err := p.m.Create(opts.PVName, spec)
 	if err != nil {
@@ -79,9 +87,9 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 					Driver: LonghornDriver,
 					FSType: opts.Parameters["fsType"],
 					Options: map[string]string{
-						"fromBackup":          v.Spec.FromBackup,
-						"numberOfReplicas":    strconv.Itoa(v.Spec.NumberOfReplicas),
-						"staleReplicaTimeout": strconv.Itoa(v.Spec.StaleReplicaTimeout),
+						types.OptionFromBackup:          v.Spec.FromBackup,
+						types.OptionNumberOfReplica:     strconv.Itoa(v.Spec.NumberOfReplicas),
+						types.OptionStaleReplicaTimeout: strconv.Itoa(v.Spec.StaleReplicaTimeout),
 					},
 				},
 			},
