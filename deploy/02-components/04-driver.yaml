@@ -31,4 +31,6 @@ spec:
                 fieldPath: spec.nodeName
           - name: FLEXVOLUME_DIR
             value: ""
+            #FOR GKE
+            #value: "/home/kubernetes/flexvolume/"
       serviceAccountName: longhorn-service-account
