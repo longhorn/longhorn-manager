@@ -305,6 +305,7 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 	size, err := util.ConvertSize(v.Spec.Size)
 	if err != nil {
 		logrus.Error("BUG: invalid size %v for volume %v", v.Spec.Size, v.Name)
+		return nil
 	}
 
 	state := string(v.Status.State)
