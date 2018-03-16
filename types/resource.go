@@ -21,7 +21,7 @@ const (
 
 type VolumeSpec struct {
 	OwnerID             string         `json:"ownerID"`
-	Size                string         `json:"size"`
+	Size                int64          `json:"size,string"`
 	FromBackup          string         `json:"fromBackup"`
 	NumberOfReplicas    int            `json:"numberOfReplicas"`
 	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`
@@ -86,7 +86,7 @@ type EngineStatus struct {
 
 type ReplicaSpec struct {
 	InstanceSpec
-	VolumeSize  string `json:"volumeSize"`
+	VolumeSize  int64  `json:"volumeSize,string"`
 	RestoreFrom string `json:"restoreFrom"`
 	RestoreName string `json:"restoreName"`
 	HealthyAt   string `json:"healthyAt"`
