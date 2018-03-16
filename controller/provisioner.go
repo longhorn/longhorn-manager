@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/pkg/errors"
 
 	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
 	"k8s.io/api/core/v1"
@@ -58,7 +57,7 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 		return nil, err
 	}
 	spec := &types.VolumeSpec{
-		Size:                strconv.FormatInt(size, 10),
+		Size:                size,
 		FromBackup:          opts.Parameters[types.OptionFromBackup],
 		NumberOfReplicas:    numberOfReplicas,
 		StaleReplicaTimeout: staleReplicaTimeout,
@@ -67,10 +66,7 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 	if err != nil {
 		return nil, err
 	}
-	quantity, err := resource.ParseQuantity(v.Spec.Size)
-	if err != nil {
-		return nil, errors.Wrapf(err, "BUG: cannot parse %v", v.Spec.Size)
-	}
+	quantity := resource.NewQuantity(v.Spec.Size, resource.BinarySI)
 	logrus.Info("provisioner: created volume %v", v.Name)
 	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
@@ -80,7 +76,7 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 			PersistentVolumeReclaimPolicy: opts.PersistentVolumeReclaimPolicy,
 			AccessModes:                   pvc.Spec.AccessModes,
 			Capacity: v1.ResourceList{
-				v1.ResourceName(v1.ResourceStorage): quantity,
+				v1.ResourceName(v1.ResourceStorage): *quantity,
 			},
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				FlexVolume: &v1.FlexVolumeSource{

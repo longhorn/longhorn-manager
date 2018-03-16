@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/docker/go-units"
 	"github.com/pkg/errors"
 	"github.com/satori/go.uuid"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 const (
@@ -73,11 +73,11 @@ func ConvertSize(size interface{}) (int64, error) {
 		if size == "" {
 			return 0, nil
 		}
-		sizeInBytes, err := units.RAMInBytes(size)
+		quantity, err := resource.ParseQuantity(size)
 		if err != nil {
 			return 0, errors.Wrapf(err, "error parsing size '%s'", size)
 		}
-		return sizeInBytes, nil
+		return quantity.Value(), nil
 	}
 	return 0, errors.Errorf("could not parse size '%v'", size)
 }

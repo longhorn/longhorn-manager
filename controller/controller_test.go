@@ -34,7 +34,7 @@ const (
 	TestPodName      = "test-pod-name"
 
 	TestVolumeName         = "test-volume"
-	TestVolumeSize         = "1g"
+	TestVolumeSize         = 1073741824
 	TestVolumeStaleTimeout = 60
 
 	TestTimeNow = "2015-01-02T00:00:00Z"
