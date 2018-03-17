@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -9,6 +10,7 @@ import (
 	"github.com/rancher/go-rancher/client"
 
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
@@ -92,8 +94,12 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		return err
 	}
 
+	size, err := util.ConvertSize(volume.Size)
+	if err != nil {
+		return fmt.Errorf("fail to parse size %v", err)
+	}
 	v, err := s.m.Create(volume.Name, &types.VolumeSpec{
-		Size:                volume.Size,
+		Size:                size,
 		FromBackup:          volume.FromBackup,
 		NumberOfReplicas:    volume.NumberOfReplicas,
 		StaleReplicaTimeout: volume.StaleReplicaTimeout,

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -27,7 +28,6 @@ import (
 
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
-	"github.com/rancher/longhorn-manager/util"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhinformers "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
@@ -295,13 +295,8 @@ func (rc *ReplicaController) getReadinessProbeFailureThreshold(r *longhorn.Repli
 		// default value if
 		return replicaReadinessProbeFailureThresholdDefault
 	}
-	size, err := util.ConvertSize(r.Spec.VolumeSize)
-	if err != nil {
-		logrus.Errorf("BUG: Detect invalid size in replica spec: %+v", r)
-		return replicaReadinessProbeFailureThresholdDefault
-	}
 	// this volume needs 2e9 * 1e7 * 10 which is 200+ Petabytes to overflow
-	return int32(size / replicaReadinessProbeMinimalRestoreRate / replicaReadinessProbePeriodSeconds)
+	return int32(r.Spec.VolumeSize / replicaReadinessProbeMinimalRestoreRate / replicaReadinessProbePeriodSeconds)
 }
 
 func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
@@ -312,7 +307,7 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 	cmd := []string{
 		"launch", "replica",
 		"--listen", "0.0.0.0:9502",
-		"--size", r.Spec.VolumeSize,
+		"--size", strconv.FormatInt(r.Spec.VolumeSize, 10),
 	}
 	if r.Spec.RestoreFrom != "" && r.Spec.RestoreName != "" {
 		cmd = append(cmd, "--restore-from", r.Spec.RestoreFrom, "--restore-name", r.Spec.RestoreName)

@@ -11,6 +11,7 @@ import (
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
@@ -78,8 +79,16 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		if err != nil {
 			return nil, fmt.Errorf("cannot get backup %v: %v", spec.FromBackup, err)
 		}
-		size = backup.VolumeSize
+		logrus.Infof("Override size of volume %v to %v because it's from backup", name, backup.VolumeSize)
+		// formalize the final size to the unit in bytes
+		size, err = util.ConvertSize(backup.VolumeSize)
+		if err != nil {
+			return nil, fmt.Errorf("get invalid size for volume %v: %v", backup.VolumeSize, err)
+		}
 	}
+
+	// make sure it's multiples of 4096
+	size = util.RoundUpSize(size)
 
 	if spec.NumberOfReplicas == 0 {
 		logrus.Warnf("Invalid number of replicas %v, override it to default", spec.NumberOfReplicas)

@@ -10,7 +10,6 @@ import (
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/types"
-	"github.com/rancher/longhorn-manager/util"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
@@ -302,12 +301,6 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 		}}
 	}
 
-	size, err := util.ConvertSize(v.Spec.Size)
-	if err != nil {
-		logrus.Error("BUG: invalid size %v for volume %v", v.Spec.Size, v.Name)
-		return nil
-	}
-
 	state := string(v.Status.State)
 	if v.Status.State == types.VolumeStateAttached ||
 		(v.Status.State == types.VolumeStateDetached &&
@@ -322,7 +315,7 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 			Links:   map[string]string{},
 		},
 		Name:                v.Name,
-		Size:                strconv.FormatInt(size, 10),
+		Size:                strconv.FormatInt(v.Spec.Size, 10),
 		FromBackup:          v.Spec.FromBackup,
 		NumberOfReplicas:    v.Spec.NumberOfReplicas,
 		State:               state,
