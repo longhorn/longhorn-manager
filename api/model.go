@@ -273,12 +273,10 @@ func toSettingCollection(settings *types.SettingsInfo) *client.GenericCollection
 func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*longhorn.Replica, apiContext *api.ApiContext) *Volume {
 	replicas := []Replica{}
 	for _, r := range vrs {
-		/*
-			mode := ""
-			if r.Running {
-				mode = string(r.Mode)
-			}
-		*/
+		mode := ""
+		if ve != nil && ve.Status.ReplicaModeMap != nil {
+			mode = string(ve.Status.ReplicaModeMap[r.Name])
+		}
 		replicas = append(replicas, Replica{
 			Instance: Instance{
 				Name:    r.Name,
@@ -286,7 +284,7 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 				Address: r.Status.IP,
 				NodeID:  r.Spec.NodeID,
 			},
-			//Mode:     mode,
+			Mode:     mode,
 			FailedAt: r.Spec.FailedAt,
 		})
 	}
