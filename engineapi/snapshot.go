@@ -37,28 +37,12 @@ func (e *Engine) SnapshotList() (map[string]*Snapshot, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "error listing snapshot")
 	}
-	data := map[string]*SnapshotFromEngine{}
+	data := map[string]*Snapshot{}
 	if err := json.Unmarshal([]byte(output), &data); err != nil {
 		return nil, errors.Wrapf(err, "error parsing snapshot list")
 	}
 	delete(data, VolumeHeadName)
-	ret := map[string]*Snapshot{}
-	for k, v := range data {
-		ret[k] = &Snapshot{
-			Name:        v.Name,
-			Parent:      v.Parent,
-			Removed:     v.Removed,
-			UserCreated: v.UserCreated,
-			Created:     v.Created,
-			Size:        v.Size,
-			Labels:      v.Labels,
-			Children:    []string{},
-		}
-		for child := range v.Children {
-			ret[k].Children = append(ret[k].Children, child)
-		}
-	}
-	return ret, nil
+	return data, nil
 }
 
 func (e *Engine) SnapshotGet(name string) (*Snapshot, error) {
