@@ -163,6 +163,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		tc.engine.Status.ReplicaModeMap[name] = types.ReplicaModeRW
 	}
 	tc.copyCurrentToExpect()
+	tc.expectEngine.Spec.NodeID = ""
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
 	tc.expectVolume.Status.Endpoint = ""
 	tc.expectEngine.Spec.DesireState = types.InstanceStateStopped
@@ -171,7 +172,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	// volume detaching - stop replicas
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = ""
-	tc.engine.Spec.NodeID = TestNode1 // it remain to last modify
+	tc.engine.Spec.NodeID = ""
 	tc.engine.Status.CurrentState = types.InstanceStateStopped
 	for name, r := range tc.replicas {
 		r.Spec.DesireState = types.InstanceStateRunning

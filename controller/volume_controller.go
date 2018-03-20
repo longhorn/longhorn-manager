@@ -446,7 +446,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 				}
 			}
 		}
-		if e.Spec.DesireState != types.InstanceStateStopped {
+		if e.Spec.DesireState != types.InstanceStateStopped || e.Spec.NodeID != "" {
+			e.Spec.NodeID = ""
 			e.Spec.DesireState = types.InstanceStateStopped
 			e, err = vc.ds.UpdateEngine(e)
 			return err
@@ -513,7 +514,12 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			replicaAddressMap[r.Name] = r.Status.IP
 		}
 
-		if e.Spec.DesireState != types.InstanceStateRunning || e.Spec.NodeID != v.Spec.NodeID || !reflect.DeepEqual(e.Spec.ReplicaAddressMap, replicaAddressMap) {
+		if e.Spec.DesireState != types.InstanceStateRunning ||
+			!reflect.DeepEqual(e.Spec.ReplicaAddressMap, replicaAddressMap) {
+			if e.Spec.NodeID != "" && e.Spec.NodeID != v.Spec.NodeID {
+				return fmt.Errorf("engine is on node %v vs volume on %v, must detach first",
+					e.Spec.NodeID, v.Spec.NodeID)
+			}
 			e.Spec.NodeID = v.Spec.NodeID
 			e.Spec.ReplicaAddressMap = replicaAddressMap
 			e.Spec.DesireState = types.InstanceStateRunning

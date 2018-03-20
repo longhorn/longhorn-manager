@@ -191,6 +191,13 @@ func (m *VolumeManager) Detach(name string) (v *longhorn.Volume, err error) {
 		return v, nil
 	}
 
+	// Ownership transfer to the one called detach in case the original
+	// owner is down (so it cannot do anything to proceed)
+	v, err = m.updateVolumeOwner(m.currentNodeID, v)
+	if err != nil {
+		return nil, err
+	}
+
 	v.Spec.NodeID = ""
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
