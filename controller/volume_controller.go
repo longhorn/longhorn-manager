@@ -520,9 +520,16 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 		replicaAddressMap := map[string]string{}
 		for _, r := range rs {
-			// wait for all healthy replicas become running
-			if r.Spec.FailedAt == "" && r.Status.CurrentState != types.InstanceStateRunning {
+			if r.Spec.FailedAt != "" {
+				continue
+			}
+			// wait for all potentially healthy replicas become running
+			if r.Status.CurrentState != types.InstanceStateRunning {
 				return nil
+			}
+			if r.Status.IP == "" {
+				logrus.Errorf("BUG: replica %v is running but IP is empty", r.Name)
+				continue
 			}
 			replicaAddressMap[r.Name] = r.Status.IP
 		}
