@@ -1,4 +1,4 @@
-Longhorn Manager [![Build Status](https://drone.rancher.io/api/badges/rancher/longhorn-manager/status.svg)](https://drone.rancher.io/rancher/longhorn-manager)
+Longhorn Manager [![Build Status](https://drone8.rancher.io/api/badges/rancher/longhorn-manager/status.svg)](https://drone8.rancher.io/rancher/longhorn-manager)
 ========
 
 Manager for Longhorn.
