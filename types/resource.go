@@ -30,7 +30,6 @@ type VolumeSpec struct {
 }
 
 type VolumeStatus struct {
-	Created    string           `json:"created"`
 	State      VolumeState      `json:"state"`
 	Robustness VolumeRobustness `json:"robustness"`
 	Endpoint   string           `json:"endpoint"`
