@@ -212,7 +212,17 @@ func ExecuteWithTimeout(timeout time.Duration, binary string, args ...string) (s
 }
 
 func TimestampAfterTimeout(ts string, timeoutInSeconds int) bool {
-	return false
+	if timeoutInSeconds <= 0 {
+		return false
+	}
+	now := time.Now()
+	t, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		logrus.Errorf("Cannot parse time %v", ts)
+		return false
+	}
+	deadline := t.Add(time.Duration(int64(timeoutInSeconds)) * time.Second)
+	return now.After(deadline)
 }
 
 func ValidateName(name string) bool {

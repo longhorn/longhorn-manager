@@ -382,17 +382,30 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 }
 
 func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
+	hasHealthyReplicas := false
 	for _, r := range rs {
-		if r.Spec.FailedAt != "" {
-			// 1. failed before ever became healthy (RW), mostly failed during rebuilding
-			// 2. failed too long ago, became stale and unnecessary to keep around
-			if r.Spec.HealthyAt == "" || util.TimestampAfterTimeout(r.Spec.FailedAt, v.Spec.StaleReplicaTimeout*60) {
-				logrus.Infof("Cleaning up corrupted or staled replica %v", r.Name)
-				if err := vc.ds.DeleteReplica(r.Name); err != nil {
-					return errors.Wrap(err, "cannot cleanup stale replicas")
-				}
-				delete(rs, r.Name)
+		if r.Spec.FailedAt == "" && r.Spec.HealthyAt != "" {
+			hasHealthyReplicas = true
+			break
+		}
+	}
+	for _, r := range rs {
+		if r.Spec.FailedAt == "" {
+			continue
+		}
+		if r.DeletionTimestamp != nil {
+			continue
+		}
+		// 1. failed before ever became healthy (RW), mostly failed during rebuilding
+		// 2. failed too long ago, became stale and unnecessary to keep
+		// around, unless we don't any healthy replicas
+		if r.Spec.HealthyAt == "" ||
+			(hasHealthyReplicas && util.TimestampAfterTimeout(r.Spec.FailedAt, v.Spec.StaleReplicaTimeout*60)) {
+			logrus.Infof("Cleaning up corrupted or staled replica %v", r.Name)
+			if err := vc.ds.DeleteReplica(r.Name); err != nil {
+				return errors.Wrap(err, "cannot cleanup stale replicas")
 			}
+			delete(rs, r.Name)
 		}
 	}
 	return nil
