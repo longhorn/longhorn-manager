@@ -77,7 +77,7 @@ type Replica struct {
 	Instance
 
 	Mode     string `json:"mode"`
-	FailedAt string `json:"badTimestamp"`
+	FailedAt string `json:"failedAt"`
 }
 
 type AttachInput struct {
