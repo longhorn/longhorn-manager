@@ -70,6 +70,7 @@ type InstanceSpec struct {
 type InstanceStatus struct {
 	CurrentState InstanceState `json:"currentState"`
 	IP           string        `json:"ip"`
+	Started      bool          `json:"started"`
 }
 
 type EngineSpec struct {
