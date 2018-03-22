@@ -44,8 +44,13 @@ func NewInstanceHandler(podInformer coreinformers.PodInformer, kubeClient client
 
 func (h *InstanceHandler) syncStatusWithPod(pod *v1.Pod, status *types.InstanceStatus) {
 	if pod == nil {
-		status.CurrentState = types.InstanceStateStopped
-		status.IP = ""
+		if status.Started {
+			status.CurrentState = types.InstanceStateError
+			status.IP = ""
+		} else {
+			status.CurrentState = types.InstanceStateStopped
+			status.IP = ""
+		}
 		return
 	}
 
@@ -109,7 +114,10 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 
 	switch spec.DesireState {
 	case types.InstanceStateRunning:
-		if pod == nil {
+		// don't try to start the instance if in Error or already
+		// started (meant the pod exit unexpected)
+		if status.CurrentState != types.InstanceStateError &&
+			!status.Started && pod == nil {
 			podSpec, err := h.podCreator.CreatePodSpec(obj)
 			if err != nil {
 				return err
@@ -118,6 +126,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 			if err != nil {
 				return err
 			}
+			status.Started = true
 		}
 	case types.InstanceStateStopped:
 		if pod != nil && pod.DeletionTimestamp == nil {
@@ -125,6 +134,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 				return err
 			}
 		}
+		status.Started = false
 	default:
 		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
 	}
