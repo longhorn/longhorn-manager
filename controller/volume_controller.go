@@ -468,7 +468,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		// must make sure engine stopped first before stopping replicas
 		// otherwise we may corrupt the data
 		if e.Status.CurrentState != types.InstanceStateStopped {
-			logrus.Infof("Waiting for engine %v state change to stopped", e.Name)
 			return nil
 		}
 
