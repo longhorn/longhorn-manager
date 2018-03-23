@@ -667,8 +667,10 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip stri
 	replicaURL := engineapi.GetReplicaDefaultURL(ip)
 	go func() {
 		// start rebuild
+		// TODO notify the caller
 		if err := client.ReplicaAdd(replicaURL); err != nil {
-			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedRebuilding, "Failed rebuilding replica with IP %v", ip)
+			logrus.Errorf("Failed rebuilding %v of %v: %v", ip, e.Spec.VolumeName, err)
+			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedRebuilding, "Failed rebuilding replica with IP %v: %v", ip, err)
 		}
 	}()
 	//wait until engine confirmed that rebuild started
