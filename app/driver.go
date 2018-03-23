@@ -76,6 +76,8 @@ func deployFlexvolumeDriver(c *cli.Context) error {
 		if flexvolumeDir == "" {
 			flexvolumeDir = DefaultFlexvolumeDir
 		}
+	} else {
+		logrus.Infof("User specified Flexvolume dir at: %v", flexvolumeDir)
 	}
 
 	dsOps, err := newDaemonSetOps(kubeClient)
@@ -220,6 +222,7 @@ func discoverFlexvolumeDir(kubeClient *clientset.Clientset) (dir string, err err
 		logrus.Infof("cannot find volumePluginDir key in node config, assume it's default")
 		return DefaultFlexvolumeDir, nil
 	}
+	logrus.Infof("Discovered Flexvolume dir at: %v", value)
 	return value, nil
 }
 
