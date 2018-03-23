@@ -195,7 +195,7 @@ func ExecuteWithTimeout(timeout time.Duration, binary string, args ...string) (s
 
 	select {
 	case <-done:
-	case <-time.After(cmdTimeout):
+	case <-time.After(timeout):
 		if cmd.Process != nil {
 			if err := cmd.Process.Kill(); err != nil {
 				logrus.Warnf("Problem killing process pid=%v: %s", cmd.Process.Pid, err)

@@ -3,6 +3,7 @@ package engineapi
 import (
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
@@ -20,6 +21,8 @@ type Engine struct {
 
 const (
 	LonghornEngineBinary = "longhorn"
+
+	rebuildTimeout = 180 * time.Minute
 )
 
 func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (EngineClient, error) {
@@ -76,7 +79,7 @@ func (e *Engine) ReplicaAdd(url string) error {
 	if err := ValidateReplicaURL(url); err != nil {
 		return err
 	}
-	if _, err := util.Execute(LonghornEngineBinary, "--url", e.cURL, "add", url); err != nil {
+	if _, err := util.ExecuteWithTimeout(rebuildTimeout, LonghornEngineBinary, "--url", e.cURL, "add", url); err != nil {
 		return errors.Wrapf(err, "failed to add replica address='%s' to controller '%s'", url, e.name)
 	}
 	return nil
