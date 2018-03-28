@@ -667,10 +667,20 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip stri
 	replicaURL := engineapi.GetReplicaDefaultURL(ip)
 	go func() {
 		// start rebuild
-		// TODO notify the caller
 		if err := client.ReplicaAdd(replicaURL); err != nil {
 			logrus.Errorf("Failed rebuilding %v of %v: %v", ip, e.Spec.VolumeName, err)
 			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedRebuilding, "Failed rebuilding replica with IP %v: %v", ip, err)
+			// we've sent out event to notify user. we don't want to
+			// automatically handle it because it may cause chain
+			// reaction to create numerous new replicas if we set
+			// the replica to failed.
+			// user can decide to delete it then we will try again
+			if err := client.ReplicaRemove(replicaURL); err != nil {
+				logrus.Errorf("Failed to remove rebuilding replica %v of %v due to rebuilding failure: %v", ip, e.Spec.VolumeName, err)
+				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting, "Failed to remove rebuilding replica %v due to rebuilding failure: %v", ip, err)
+			} else {
+				logrus.Errorf("Removed failed rebuilding replica %v of %v", ip, e.Spec.VolumeName)
+			}
 		}
 	}()
 	//wait until engine confirmed that rebuild started
