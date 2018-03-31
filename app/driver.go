@@ -137,6 +137,7 @@ func getFlexvolumeDaemonSetSpec(image, flexvolumeDir string) *extensionsv1beta1.
 							SecurityContext: &v1.SecurityContext{
 								Privileged: &privilege,
 							},
+							ImagePullPolicy: v1.PullAlways,
 							Env: []v1.EnvVar{
 								{
 									Name: "NODE_NAME",
