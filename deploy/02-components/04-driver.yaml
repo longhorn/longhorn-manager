@@ -12,14 +12,14 @@ spec:
     spec:
       containers:
         - name: longhorn-flexvolume-driver-deployer
-          image: rancher/longhorn-manager:1ebf5cb
+          image: rancher/longhorn-manager:010fe60
           imagePullPolicy: Always
           command:
           - longhorn-manager
           - -d
           - deploy-flexvolume-driver
           - --manager-image
-          - rancher/longhorn-manager:1ebf5cb
+          - rancher/longhorn-manager:010fe60
           env:
           - name: POD_NAMESPACE
             valueFrom:
