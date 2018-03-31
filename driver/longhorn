@@ -7,6 +7,8 @@ LONGHORN_NODEID="/var/lib/rancher/longhorn/.physical_host_uuid"
 WAIT_VOLUME_READY_TIMEOUT=120
 WAIT_DEVICE_READY_TIMEOUT=120
 CURL_TIMEOUT=5
+RETRY_INTERVAL=1
+RETRY_COUNTS=10
 LONGHORN_SVC="127.0.0.1:9500"
 
 usage() {
@@ -51,7 +53,16 @@ getExistingVolume() {
 	echo -ne "${OUT}"
 	return
     fi
-    OUT=$(dealExistedVolume ${jsonParams} ${volumeName})
+    # wait for volume to be detached
+    for i in `seq 1 $RETRY_COUNTS`;
+    do
+	OUT=$(dealExistedVolume ${jsonParams} ${volumeName})
+	if [ "$OUT" != "detaching" ]; then
+		break
+	fi
+	debug "${volumeName} is detaching"
+	sleep $RETRY_INTERVAL
+    done
     echo -ne "${OUT}"
 }
 
@@ -63,8 +74,10 @@ dealExistedVolume() {
     local STATE=$(echo ${OUT} | jq -r '.state')
     if [ "${STATE}" == "detached" ]; then
         echo -ne "Success"
+    elif [ "${STATE}" == "detaching" ]; then
+	echo -ne "detaching"
     else
-        echo -ne "${volumeName} is existed and is attached"
+        echo -ne "${volumeName} exists but not in a valid state to attach"
     fi
 }
 
@@ -77,16 +90,28 @@ createVolume() {
 	echo -ne ${OUT}
 	return
     fi
-    debug "getExistingVoluem returns ${OUT}"
+    debug "getExistingVolume returns ${OUT}"
+
+    local volumeSize=$(echo ${jsonParams} | jq -r '.size')
+    if [ "${volumeSize}" == "null" ]; then
+	echo -ne "cannot create volume without size"
+	return
+    fi
 
     local numReplicas=$(echo ${jsonParams} | jq -r '.numberOfReplicas')
     numReplicas=${numReplicas:-"3"}
-    local volumeSize=$(echo ${jsonParams} | jq -r '.size')
-    volumeSize=${volumeSize:-"1G"}
+    if [ "${numReplicas}" == "null" ]; then
+	numReplicas="3"
+    fi
     local staleReplicaTimeout=$(echo ${jsonParams} | jq -r '.staleReplicaTimeout')
     staleReplicaTimeout=${staleReplicaTimeout:-"20"}
+    if [ "${staleReplicaTimeout}" == "null" ]; then
+	staleReplicaTimeout="20"
+    fi
     local fromBackup=$(echo ${jsonParams} | jq -r '.fromBackup')
-    fromBackup=${fromBackup:-""}
+    if [ "${fromBackup}" == "null" ]; then
+	fromBackup=""
+    fi
 
     OUT=$(curl -s -X POST --connect-timeout ${CURL_TIMEOUT} \
               -d '{"name":"'${volumeName}'","size":"'${volumeSize}'","numberOfReplicas":'${numReplicas}',"staleReplicaTimeout":'${staleReplicaTimeout}',"fromBackup":"'${fromBackup}'"}' \
@@ -108,7 +133,13 @@ detachVolume() {
     local volumeName=$1
     local OUT=$(curl -s -X POST  --connect-timeout ${CURL_TIMEOUT} \
               http://${LONGHORN_SVC}/v1/volumes/${volumeName}?action=detach)
+    local ret=$?
     debug "detach volume: ${OUT}"
+    if [[ $OUT = *"cannot find volume"* ]];
+    then
+        debug "cannot find volume ${volumeName}, detach has been done"
+        return
+    fi
     OUT=$(waitVolumeReady ${volumeName} "detached")
     return
 }
@@ -139,7 +170,18 @@ waitVolumeReady() {
 
     local VOLUME_STATE=""
     until [ "${VOLUME_STATE}" == ${state} ]; do
-        VOLUME_STATE=$(curl -s --connect-timeout 1 http://${LONGHORN_SVC}/v1/volumes/${volumeName} | jq -r '.state')
+	v=$(curl -s --connect-timeout 1 http://${LONGHORN_SVC}/v1/volumes/${volumeName})
+	if [[ $v = *"cannot find volume"* ]];
+	then
+		debug "cannot find volume ${volumeName}"
+		if [ "${state}" == "detached" ]; then
+			# to "Success"
+			break
+		fi
+		echo -ne "volume ${volumeName} no longer exists"
+		return
+	fi
+        VOLUME_STATE=$(echo $v | jq -r '.state')
         ((timeout--))
         if [ ${timeout} -le 0 ]; then
             debug "wait volume ${volumeName} desired ${state} ready timeout:  ${VOLUME_STATE}"
@@ -331,18 +373,22 @@ unmountdevice() {
     debug "fullDevName: ${fullDevName}"
     debug "volume name: ${volumeName}"
 
-    local OUT
-    if ! OUT=$(umount "${mntPath}" 2>&1); then
-        if [ "$(echo ${OUT} | grep 'not mounted')" ]; then
-            :
-        elif [ "$(echo ${OUT} | grep 'mountpoint not found')" ]; then
-            :
+    local OUT=$(umount "${mntPath}" 2>&1)
+    local ret=$?
+    debug "umount return ${OUT}"
+    if [ $ret -ne 0 ]; then
+        if [[ ${OUT} = *"not mounted"* ]]; then
+	    debug "not mounted, return"
+        elif [[ ${OUT} = *"mountpoint not found"* ]]; then
+	    debug "mount point not found, return"
         else
             err "{ \"status\": \"Failure\", \"message\": \"Failed to unmount volume at ${mntPath}\"}"
             exit 1
         fi
     fi
-    detachVolume "${volumeName}"
+    if [ "${volumeName}" != "" ]; then
+        detachVolume "${volumeName}"
+    fi
     log "{\"status\": \"Success\"}"
     exit 0
 }
