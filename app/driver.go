@@ -21,9 +21,11 @@ import (
 )
 
 const (
-	FlagFlexvolumeDir    = "flexvolume-dir"
-	EnvFlexvolumeDir     = "FLEXVOLUME_DIR"
-	DefaultFlexvolumeDir = "/usr/libexec/kubernetes/kubelet-plugins/volume/exec/"
+	FlagFlexvolumeDir      = "flexvolume-dir"
+	EnvFlexvolumeDir       = "FLEXVOLUME_DIR"
+	FlagLonghornBackendSvc = "longhorn-backend-svc"
+	EnvLonghornBackendSvc  = "LONGHORN_BACKEND_SVC"
+	DefaultFlexvolumeDir   = "/usr/libexec/kubernetes/kubelet-plugins/volume/exec/"
 
 	LonghornFlexvolumeDriver = "longhorn-flexvolume-driver"
 )
@@ -40,6 +42,11 @@ func DeployFlexvolumeDriverCmd() cli.Command {
 				Name:   FlagFlexvolumeDir,
 				Usage:  "Specify the location of flexvolume plugin for Kubernetes on the host",
 				EnvVar: EnvFlexvolumeDir,
+			},
+			cli.StringFlag{
+				Name:   FlagLonghornBackendSvc,
+				Usage:  "Specify the Longhorn backend service for Kubernetes on the host",
+				EnvVar: EnvLonghornBackendSvc,
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -80,6 +87,11 @@ func deployFlexvolumeDriver(c *cli.Context) error {
 		logrus.Infof("User specified Flexvolume dir at: %v", flexvolumeDir)
 	}
 
+	longhornBackendSvc := c.String(FlagLonghornBackendSvc)
+	if longhornBackendSvc == "" {
+		longhornBackendSvc = "longhorn-backend"
+	}
+
 	dsOps, err := newDaemonSetOps(kubeClient)
 	if err != nil {
 		return err
@@ -95,7 +107,7 @@ func deployFlexvolumeDriver(c *cli.Context) error {
 		}
 	}
 	logrus.Infof("Install Flexvolume to Kubernetes nodes directory %v", flexvolumeDir)
-	if _, err := dsOps.Create(LonghornFlexvolumeDriver, getFlexvolumeDaemonSetSpec(managerImage, flexvolumeDir)); err != nil {
+	if _, err := dsOps.Create(LonghornFlexvolumeDriver, getFlexvolumeDaemonSetSpec(managerImage, flexvolumeDir, longhornBackendSvc)); err != nil {
 		return err
 	}
 	defer func() {
@@ -111,7 +123,7 @@ func deployFlexvolumeDriver(c *cli.Context) error {
 	return nil
 }
 
-func getFlexvolumeDaemonSetSpec(image, flexvolumeDir string) *extensionsv1beta1.DaemonSet {
+func getFlexvolumeDaemonSetSpec(image, flexvolumeDir string, longhornBackendSvc string) *extensionsv1beta1.DaemonSet {
 	cmd := []string{
 		"/entrypoint.sh",
 	}
@@ -148,7 +160,7 @@ func getFlexvolumeDaemonSetSpec(image, flexvolumeDir string) *extensionsv1beta1.
 								},
 								{
 									Name:  "LONGHORN_BACKEND_SVC",
-									Value: "longhorn-backend",
+									Value: longhornBackendSvc,
 								},
 							},
 							VolumeMounts: []v1.VolumeMount{
