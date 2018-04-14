@@ -9,7 +9,6 @@ spec:
   selector:
     app: longhorn-manager
   ports:
-  - name: manager
-    port: 9500
-    targetPort: manager
+  - port: 9500
+    targetPort: 9500
   sessionAffinity: ClientIP

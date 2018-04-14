@@ -17,7 +17,6 @@ spec:
         image: rancher/longhorn-ui:1455f4f
         ports:
         - containerPort: 8000
-          name: longhorn-ui
         env:
           - name: LONGHORN_MANAGER_IP
             value: "http://longhorn-backend:9500"
@@ -33,7 +32,6 @@ spec:
   selector:
     app: longhorn-ui
   ports:
-  - name: longhorn-ui
-    port: 80
-    targetPort: longhorn-ui
+  - port: 80
+    targetPort: 8000
   type: LoadBalancer

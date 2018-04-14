@@ -36,7 +36,6 @@ spec:
         - longhorn-service-account
         ports:
         - containerPort: 9500
-          name: manager
         volumeMounts:
         - name: dev
           mountPath: /host/dev/
