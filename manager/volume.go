@@ -263,6 +263,9 @@ func (m *VolumeManager) UpdateRecurringJobs(volumeName string, jobs []types.Recu
 		if job.Cron == "" || job.Type == "" || job.Name == "" || job.Retain == 0 {
 			return nil, fmt.Errorf("invalid job %+v", job)
 		}
+		if len(job.Name) > types.MaximumJobNameSize {
+			return nil, fmt.Errorf("job name %v is too long, must be %v characters or less", job.Name, types.MaximumJobNameSize)
+		}
 	}
 
 	v, err = m.ds.GetVolume(volumeName)
