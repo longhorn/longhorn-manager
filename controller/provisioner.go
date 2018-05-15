@@ -79,7 +79,7 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 				v1.ResourceName(v1.ResourceStorage): *quantity,
 			},
 			PersistentVolumeSource: v1.PersistentVolumeSource{
-				FlexVolume: &v1.FlexVolumeSource{
+				FlexVolume: &v1.FlexPersistentVolumeSource{
 					Driver: LonghornDriver,
 					FSType: opts.Parameters["fsType"],
 					Options: map[string]string{
