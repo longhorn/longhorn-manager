@@ -6,4 +6,4 @@ VERSION=${VERSION:-$(./scripts/version)}
 
 mkdir -p bin
 [ "$(uname)" != "Darwin" ] && LINKFLAGS="-linkmode external -extldflags -static -s"
-go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o bin/longhorn-manager
+CGO_ENABLED=0 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o bin/longhorn-manager
