@@ -231,6 +231,7 @@ func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 			InstanceSpec: types.InstanceSpec{
 				OwnerID:     v.Spec.OwnerID,
 				VolumeName:  v.Name,
+				VolumeSize:  v.Spec.Size,
 				EngineImage: TestEngineImage,
 				DesireState: types.InstanceStateStopped,
 			},
@@ -251,10 +252,10 @@ func newReplicaForVolume(v *longhorn.Volume) *longhorn.Replica {
 			InstanceSpec: types.InstanceSpec{
 				OwnerID:     v.Spec.OwnerID,
 				VolumeName:  v.Name,
+				VolumeSize:  v.Spec.Size,
 				EngineImage: TestEngineImage,
 				DesireState: types.InstanceStateStopped,
 			},
-			VolumeSize: v.Spec.Size,
 		},
 	}
 }
