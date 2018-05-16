@@ -346,6 +346,9 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				for _, expectR = range tc.expectReplicas {
 					break
 				}
+				// DataPath is randomized
+				c.Assert(retR.Spec.DataPath, Not(Equals), "")
+				retR.Spec.DataPath = ""
 				c.Assert(retR.Spec, DeepEquals, expectR.Spec)
 				c.Assert(retR.Status, DeepEquals, expectR.Status)
 			} else {
