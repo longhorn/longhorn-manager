@@ -37,10 +37,10 @@ func newReplica(desireState, currentState types.InstanceState, failedAt string) 
 		Spec: types.ReplicaSpec{
 			InstanceSpec: types.InstanceSpec{
 				VolumeName:  TestVolumeName,
+				VolumeSize:  TestVolumeSize,
 				DesireState: desireState,
 				OwnerID:     TestOwnerID1,
 			},
-			VolumeSize:  TestVolumeSize,
 			RestoreFrom: TestRestoreFrom,
 			RestoreName: TestRestoreName,
 		},

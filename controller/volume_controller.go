@@ -609,6 +609,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 		Spec: types.EngineSpec{
 			InstanceSpec: types.InstanceSpec{
 				VolumeName:  v.Name,
+				VolumeSize:  v.Spec.Size,
 				EngineImage: vc.EngineImage,
 				DesireState: types.InstanceStateStopped,
 				OwnerID:     vc.controllerID,
@@ -635,11 +636,11 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume) (*longhorn.Replica
 		Spec: types.ReplicaSpec{
 			InstanceSpec: types.InstanceSpec{
 				VolumeName:  v.Name,
+				VolumeSize:  v.Spec.Size,
 				EngineImage: vc.EngineImage,
 				DesireState: types.InstanceStateStopped,
 				OwnerID:     vc.controllerID,
 			},
-			VolumeSize: v.Spec.Size,
 		},
 	}
 	if v.Spec.FromBackup != "" {
