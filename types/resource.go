@@ -69,6 +69,7 @@ type InstanceSpec struct {
 
 type InstanceStatus struct {
 	CurrentState InstanceState `json:"currentState"`
+	CurrentImage string        `json:"currentImage"`
 	IP           string        `json:"ip"`
 	Started      bool          `json:"started"`
 }

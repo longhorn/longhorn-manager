@@ -126,6 +126,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 			if err != nil {
 				return err
 			}
+			status.CurrentImage = spec.EngineImage
 			status.Started = true
 		}
 	case types.InstanceStateStopped:
@@ -134,6 +135,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 				return err
 			}
 		}
+		status.CurrentImage = ""
 		status.Started = false
 	default:
 		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
