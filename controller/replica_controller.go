@@ -45,10 +45,6 @@ var (
 )
 
 const (
-	// longhornDirectory is the directory going to be bind mounted on the
-	// host to provide storage space to replica data
-	longhornDirectory = "/var/lib/rancher/longhorn/"
-
 	// longhornReplicaKey is the key to identify which volume the replica
 	// belongs to, for scheduling purpose
 	longhornReplicaKey = "longhorn-volume-replica"
@@ -286,10 +282,6 @@ func (rc *ReplicaController) enqueueReplica(replica *longhorn.Replica) {
 	rc.queue.AddRateLimited(key)
 }
 
-func (rc *ReplicaController) getReplicaVolumeDirectory(replicaName string) string {
-	return longhornDirectory + "/replicas/" + replicaName
-}
-
 func (rc *ReplicaController) getReadinessProbeFailureThreshold(r *longhorn.Replica) int32 {
 	if r.Spec.RestoreFrom == "" {
 		// default value if
@@ -365,7 +357,7 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 					Name: "volume",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: rc.getReplicaVolumeDirectory(r.Name),
+							Path: r.Spec.DataPath,
 						},
 					},
 				},
@@ -448,7 +440,7 @@ func (rc *ReplicaController) createCleanupJobSpec(r *longhorn.Replica) *batchv1.
 							Name: "volume",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
-									Path: rc.getReplicaVolumeDirectory(r.Name),
+									Path: r.Spec.DataPath,
 								},
 							},
 						},

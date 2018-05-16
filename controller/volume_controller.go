@@ -38,6 +38,10 @@ var (
 )
 
 const (
+	// longhornDirectory is the directory going to be bind mounted on the
+	// host to provide storage space to replica data
+	longhornDirectory = "/var/lib/rancher/longhorn/"
+
 	LabelRecurringJob = "RecurringJob"
 
 	CronJobBackoffLimit = 3
@@ -646,6 +650,8 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume) (*longhorn.Replica
 		replica.Spec.RestoreFrom = v.Spec.FromBackup
 		replica.Spec.RestoreName = backupID
 	}
+	replica.Spec.DataPath = longhornDirectory + "/replicas/" + v.Name + "-" + util.RandomID()
+
 	return vc.ds.CreateReplica(replica)
 }
 
