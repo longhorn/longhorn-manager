@@ -6,6 +6,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
+
+	"github.com/rancher/longhorn-manager/types"
 )
 
 func (s *Server) SettingsList(w http.ResponseWriter, req *http.Request) error {
@@ -29,8 +31,10 @@ func (s *Server) SettingsGet(w http.ResponseWriter, req *http.Request) error {
 	}
 	var value string
 	switch name {
-	case "backupTarget":
+	case types.SettingBackupTarget:
 		value = si.BackupTarget
+	case types.SettingEngineUpgradeImage:
+		value = si.EngineUpgradeImage
 	default:
 		return errors.Errorf("invalid setting name %v", name)
 	}
@@ -54,8 +58,10 @@ func (s *Server) SettingsSet(w http.ResponseWriter, req *http.Request) error {
 	}
 
 	switch name {
-	case "backupTarget":
+	case types.SettingBackupTarget:
 		si.BackupTarget = setting.Value
+	case types.SettingEngineUpgradeImage:
+		si.EngineUpgradeImage = setting.Value
 	default:
 		return errors.Wrapf(err, "invalid setting name %v", name)
 	}
