@@ -99,6 +99,12 @@ type ReplicaStatus struct {
 	InstanceStatus
 }
 
+const (
+	SettingBackupTarget       = "backupTarget"
+	SettingEngineUpgradeImage = "engineUpgradeImage"
+)
+
 type SettingsInfo struct {
-	BackupTarget string `json:"backupTarget"`
+	BackupTarget       string `json:"backupTarget"`
+	EngineUpgradeImage string `json:"engineUpgradeImage"`
 }
