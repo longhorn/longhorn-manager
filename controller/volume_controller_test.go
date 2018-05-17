@@ -37,9 +37,10 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
+	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
 
 	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, lhClient,
-		podInformer, cronJobInformer, kubeClient, TestNamespace)
+		podInformer, cronJobInformer, daemonSetInformer, kubeClient, TestNamespace)
 
 	vc := NewVolumeController(ds, scheme.Scheme, volumeInformer, engineInformer, replicaInformer, kubeClient, TestNamespace, controllerID, TestServiceAccount, TestEngineImage, TestManagerImage)
 

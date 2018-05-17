@@ -1,4 +1,4 @@
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1beta2
 kind: DaemonSet
 metadata:
   labels:
@@ -6,6 +6,9 @@ metadata:
   name: longhorn-manager
   namespace: longhorn-system
 spec:
+  selector:
+    matchLabels:
+      app: longhorn-manager
   template:
     metadata:
       labels:
