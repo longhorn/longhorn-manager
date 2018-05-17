@@ -65,12 +65,14 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, engine
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
 	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Engines()
 	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
+
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
+	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
 
 	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, lhClient,
-		podInformer, cronJobInformer, kubeClient, namespace)
+		podInformer, cronJobInformer, daemonSetInformer, kubeClient, namespace)
 	rc := NewReplicaController(ds, scheme, replicaInformer, podInformer, jobInformer, kubeClient,
 		namespace, controllerID)
 	ec := NewEngineController(ds, scheme, engineInformer, podInformer, kubeClient,

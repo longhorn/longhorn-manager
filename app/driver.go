@@ -9,8 +9,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 
+	appsv1beta2 "k8s.io/api/apps/v1beta2"
 	"k8s.io/api/core/v1"
-	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -111,16 +111,21 @@ func deployFlexvolumeDriver(c *cli.Context) error {
 	return nil
 }
 
-func getFlexvolumeDaemonSetSpec(image, flexvolumeDir string) *extensionsv1beta1.DaemonSet {
+func getFlexvolumeDaemonSetSpec(image, flexvolumeDir string) *appsv1beta2.DaemonSet {
 	cmd := []string{
 		"/entrypoint.sh",
 	}
 	privilege := true
-	d := &extensionsv1beta1.DaemonSet{
+	d := &appsv1beta2.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: LonghornFlexvolumeDriver,
 		},
-		Spec: extensionsv1beta1.DaemonSetSpec{
+		Spec: appsv1beta2.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": LonghornFlexvolumeDriver,
+				},
+			},
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: LonghornFlexvolumeDriver,
@@ -242,8 +247,8 @@ func newDaemonSetOps(kubeClient *clientset.Clientset) (*DaemonSetOps, error) {
 	}, nil
 }
 
-func (ops *DaemonSetOps) Get(name string) (*extensionsv1beta1.DaemonSet, error) {
-	d, err := ops.kubeClient.ExtensionsV1beta1().DaemonSets(ops.namespace).Get(name, metav1.GetOptions{})
+func (ops *DaemonSetOps) Get(name string) (*appsv1beta2.DaemonSet, error) {
+	d, err := ops.kubeClient.AppsV1beta2().DaemonSets(ops.namespace).Get(name, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
@@ -253,11 +258,11 @@ func (ops *DaemonSetOps) Get(name string) (*extensionsv1beta1.DaemonSet, error) 
 	return d, nil
 }
 
-func (ops *DaemonSetOps) Create(name string, d *extensionsv1beta1.DaemonSet) (*extensionsv1beta1.DaemonSet, error) {
-	return ops.kubeClient.ExtensionsV1beta1().DaemonSets(ops.namespace).Create(d)
+func (ops *DaemonSetOps) Create(name string, d *appsv1beta2.DaemonSet) (*appsv1beta2.DaemonSet, error) {
+	return ops.kubeClient.AppsV1beta2().DaemonSets(ops.namespace).Create(d)
 }
 
 func (ops *DaemonSetOps) Delete(name string) error {
 	propagation := metav1.DeletePropagationForeground
-	return ops.kubeClient.ExtensionsV1beta1().DaemonSets(ops.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
+	return ops.kubeClient.AppsV1beta2().DaemonSets(ops.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
 }

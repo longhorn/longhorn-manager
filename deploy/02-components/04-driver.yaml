@@ -1,10 +1,13 @@
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
   name: longhorn-flexvolume-driver-deployer
   namespace: longhorn-system
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: longhorn-flexvolume-driver-deployer
   template:
     metadata:
       labels:

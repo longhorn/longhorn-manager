@@ -2,13 +2,17 @@ package types
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/rancher/longhorn-manager/util"
 )
 
 const (
 	DefaultAPIPort = 9500
+
+	EngineUpgradeBinaryPathBase = "/var/lib/rancher/longhorn/upgrade/"
 )
 
 type ReplicaMode string
@@ -63,4 +67,25 @@ func GetCronJobNameForVolumeAndJob(vName, job string) string {
 
 func GetAPIServerAddressFromIP(ip string) string {
 	return ip + ":" + strconv.Itoa(DefaultAPIPort)
+}
+
+func GetImageCanonicalName(image string) string {
+	return strings.Replace(strings.Replace(image, ":", "-", -1), "/", "-", -1)
+}
+
+func GetEngineUpgradeBinaryPath(image string) string {
+	cname := GetImageCanonicalName(image)
+	return filepath.Join(EngineUpgradeBinaryPathBase, cname)
+}
+
+var (
+	LonghornSystemKey                    = "longhorn"
+	LonghornSystemValueManager           = "manager"
+	LonghornSystemValueUpdateEngineImage = "upgrade-engine-image"
+)
+
+func GetEngineUpgradeImageLabel() map[string]string {
+	return map[string]string{
+		LonghornSystemKey: LonghornSystemValueUpdateEngineImage,
+	}
 }
