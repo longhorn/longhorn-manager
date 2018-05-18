@@ -93,6 +93,7 @@ type ReplicaSpec struct {
 	HealthyAt   string `json:"healthyAt"`
 	FailedAt    string `json:"failedAt"`
 	DataPath    string `json:"dataPath"`
+	Cleanup     bool   `json:"cleanup"`
 }
 
 type ReplicaStatus struct {
