@@ -131,8 +131,9 @@ func NewJob(volumeName, snapshotName, backupTarget string, labels map[string]str
 
 	engines := engineapi.EngineCollection{}
 	engineClient, err := engines.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:    v.Name,
-		ControllerURL: engineapi.GetControllerDefaultURL(e.Status.IP),
+		VolumeName:        v.Name,
+		ControllerURL:     engineapi.GetControllerDefaultURL(e.Status.IP),
+		EngineLauncherURL: engineapi.GetEngineLauncherDefaultURL(e.Status.IP),
 	})
 	if err != nil {
 		return nil, err

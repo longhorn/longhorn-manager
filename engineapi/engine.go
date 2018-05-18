@@ -17,10 +17,12 @@ type EngineCollection struct{}
 type Engine struct {
 	name string
 	cURL string
+	lURL string
 }
 
 const (
-	LonghornEngineBinary = "longhorn"
+	LonghornEngineBinary         = "longhorn"
+	LonghornEngineLauncherBinary = "longhorn-engine-launcher"
 
 	rebuildTimeout = 180 * time.Minute
 )
@@ -29,6 +31,7 @@ func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (Engine
 	return &Engine{
 		name: request.VolumeName,
 		cURL: request.ControllerURL,
+		lURL: request.EngineLauncherURL,
 	}, nil
 }
 
@@ -96,13 +99,26 @@ func (e *Engine) ReplicaRemove(url string) error {
 }
 
 func (e *Engine) Endpoint() string {
-	info, err := e.info()
+	info, err := e.launcherInfo()
 	if err != nil {
 		logrus.Warn("Fail to get frontend info: ", err)
 		return ""
 	}
 
 	return info.Endpoint
+}
+
+func (e *Engine) launcherInfo() (*LauncherVolumeInfo, error) {
+	output, err := util.Execute(LonghornEngineLauncherBinary, "--url", e.lURL, "info")
+	if err != nil {
+		return nil, errors.Wrapf(err, "cannot get volume info")
+	}
+
+	info := &LauncherVolumeInfo{}
+	if err := json.Unmarshal([]byte(output), info); err != nil {
+		return nil, errors.Wrapf(err, "cannot decode volume info: %v", output)
+	}
+	return info, nil
 }
 
 func (e *Engine) info() (*Volume, error) {

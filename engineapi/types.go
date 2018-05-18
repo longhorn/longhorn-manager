@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	ControllerDefaultPort = "9501"
-	ReplicaDefaultPort    = "9502"
+	ControllerDefaultPort     = "9501"
+	EngineLauncherDefaultPort = "9510"
+	ReplicaDefaultPort        = "9502"
 )
 
 type Replica struct {
@@ -40,8 +41,9 @@ type EngineClient interface {
 }
 
 type EngineClientRequest struct {
-	VolumeName    string
-	ControllerURL string
+	VolumeName        string
+	ControllerURL     string
+	EngineLauncherURL string
 }
 
 type EngineClientCollection interface {
@@ -87,8 +89,18 @@ type Backup struct {
 	VolumeCreated   string            `json:"volumeCreated"`
 }
 
+type LauncherVolumeInfo struct {
+	Volume   string `json:"volume,omitempty"`
+	Frontend string `json:"frontend,omitempty"`
+	Endpoint string `json:"endpoint,omitempty"`
+}
+
 func GetControllerDefaultURL(ip string) string {
 	return "http://" + ip + ":" + ControllerDefaultPort
+}
+
+func GetEngineLauncherDefaultURL(ip string) string {
+	return ip + ":" + EngineLauncherDefaultPort
 }
 
 func GetReplicaDefaultURL(ip string) string {

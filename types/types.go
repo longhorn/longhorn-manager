@@ -12,6 +12,7 @@ import (
 const (
 	DefaultAPIPort = 9500
 
+	DefaultEngineBinaryPath     = "/usr/local/bin/longhorn"
 	EngineUpgradeBinaryPathBase = "/var/lib/rancher/longhorn/upgrade/"
 )
 
