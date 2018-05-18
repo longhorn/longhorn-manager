@@ -240,8 +240,9 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		if err := rc.instanceHandler.DeleteInstanceForObject(replica); err != nil {
 			return err
 		}
-		// we want to make sure data was cleaned before remove the replica
-		if replica.Spec.NodeID != "" {
+		// we want to make sure data was cleaned before remove the
+		// replica if cleanup was set
+		if replica.Spec.NodeID != "" && replica.Spec.Cleanup {
 			return rc.cleanupReplicaInstance(replica)
 		}
 		return rc.ds.RemoveFinalizerForReplica(replica)
