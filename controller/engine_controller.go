@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -299,9 +300,12 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 	}
 
 	cmd := []string{
-		"launch", "controller",
+		"engine-launcher", "start",
+		"--launcher-listen", "0.0.0.0:9510",
+		"--longhorn-binary", types.DefaultEngineBinaryPath,
 		"--listen", "0.0.0.0:9501",
-		"--frontend", "tgt",
+		"--frontend", "tgt-blockdev",
+		"--size", strconv.FormatInt(e.Spec.VolumeSize, 10),
 	}
 	for _, ip := range e.Spec.ReplicaAddressMap {
 		url := engineapi.GetReplicaDefaultURL(ip)
@@ -343,6 +347,10 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 							Name:      "proc",
 							MountPath: "/host/proc",
 						},
+						{
+							Name:      "upgrade",
+							MountPath: "/upgrade",
+						},
 					},
 					ReadinessProbe: &v1.Probe{
 						Handler: v1.Handler{
@@ -371,6 +379,14 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: "/proc",
+						},
+					},
+				},
+				{
+					Name: "upgrade",
+					VolumeSource: v1.VolumeSource{
+						HostPath: &v1.HostPathVolumeSource{
+							Path: types.EngineUpgradeBinaryPathBase,
 						},
 					},
 				},
@@ -594,8 +610,9 @@ func (ec *EngineController) getClientForEngine(e *longhorn.Engine) (client engin
 		return nil, fmt.Errorf("engine is not running")
 	}
 	client, err = ec.engines.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:    e.Spec.VolumeName,
-		ControllerURL: engineapi.GetControllerDefaultURL(e.Status.IP),
+		VolumeName:        e.Spec.VolumeName,
+		ControllerURL:     engineapi.GetControllerDefaultURL(e.Status.IP),
+		EngineLauncherURL: engineapi.GetEngineLauncherDefaultURL(e.Status.IP),
 	})
 	if err != nil {
 		return nil, err
