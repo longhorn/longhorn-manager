@@ -42,7 +42,7 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, lhClient,
 		podInformer, cronJobInformer, daemonSetInformer, kubeClient, TestNamespace)
 
-	vc := NewVolumeController(ds, scheme.Scheme, volumeInformer, engineInformer, replicaInformer, kubeClient, TestNamespace, controllerID, TestServiceAccount, TestEngineImage, TestManagerImage)
+	vc := NewVolumeController(ds, scheme.Scheme, volumeInformer, engineInformer, replicaInformer, kubeClient, TestNamespace, controllerID, TestServiceAccount, TestManagerImage)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	vc.eventRecorder = fakeRecorder
@@ -73,6 +73,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc = generateVolumeTestCaseTemplate()
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.engine = nil
 	tc.replicas = nil
 	testCases["volume create"] = tc
@@ -85,6 +86,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateDetached
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	testCases["volume detached"] = tc
 
 	// volume attaching, start replicas
@@ -92,6 +94,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.NodeID = TestNode1
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	// replicas will be started first
 	// engine will be started only after all the replicas are running
 	for _, r := range tc.expectReplicas {
@@ -110,6 +113,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectEngine.Spec.NodeID = tc.volume.Spec.NodeID
 	tc.expectEngine.Spec.DesireState = types.InstanceStateRunning
 	for name, r := range tc.expectReplicas {
@@ -138,6 +142,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.State = types.VolumeStateAttached
 	tc.expectVolume.Status.Endpoint = tc.engine.Status.Endpoint
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessHealthy
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	for _, r := range tc.expectReplicas {
 		r.Spec.HealthyAt = getTestNow()
 	}
@@ -167,6 +172,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectEngine.Spec.NodeID = ""
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
 	tc.expectVolume.Status.Endpoint = ""
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectEngine.Spec.DesireState = types.InstanceStateStopped
 	testCases["volume detaching - stop engine"] = tc
 
@@ -185,6 +191,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	for _, r := range tc.expectReplicas {
 		r.Spec.DesireState = types.InstanceStateStopped
 	}
@@ -216,6 +223,7 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			Size:                TestVolumeSize,
 			OwnerID:             TestOwnerID1,
 			StaleReplicaTimeout: TestVolumeStaleTimeout,
+			EngineImage:         TestEngineImage,
 		},
 	}
 }

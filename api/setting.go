@@ -33,6 +33,8 @@ func (s *Server) SettingsGet(w http.ResponseWriter, req *http.Request) error {
 	switch name {
 	case types.SettingBackupTarget:
 		value = si.BackupTarget
+	case types.SettingDefaultEngineImage:
+		value = si.DefaultEngineImage
 	case types.SettingEngineUpgradeImage:
 		value = si.EngineUpgradeImage
 	default:
@@ -60,6 +62,8 @@ func (s *Server) SettingsSet(w http.ResponseWriter, req *http.Request) error {
 	switch name {
 	case types.SettingBackupTarget:
 		si.BackupTarget = setting.Value
+	case types.SettingDefaultEngineImage:
+		si.DefaultEngineImage = setting.Value
 	case types.SettingEngineUpgradeImage:
 		si.EngineUpgradeImage = setting.Value
 	default:

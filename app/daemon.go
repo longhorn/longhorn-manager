@@ -86,12 +86,12 @@ func startManager(c *cli.Context) error {
 
 	done := make(chan struct{})
 
-	ds, err := controller.StartControllers(done, currentNodeID, serviceAccount, engineImage, managerImage)
+	ds, err := controller.StartControllers(done, currentNodeID, serviceAccount, managerImage)
 	if err != nil {
 		return err
 	}
 
-	if err := initSettings(ds); err != nil {
+	if err := initSettings(ds, engineImage); err != nil {
 		return err
 	}
 
@@ -124,19 +124,24 @@ func environmentCheck() error {
 	return nil
 }
 
-func initSettings(ds *datastore.DataStore) error {
+func initSettings(ds *datastore.DataStore, engineImage string) error {
 	setting, err := ds.GetSetting()
 	if err != nil {
 		return err
 	}
-	// initialization has been done
-	if setting != nil {
-		return nil
+	if setting == nil {
+		setting = &longhorn.Setting{}
+		setting.BackupTarget = ""
+		setting.DefaultEngineImage = engineImage
+		if _, err := ds.CreateSetting(setting); err != nil {
+			return err
+		}
 	}
-	setting = &longhorn.Setting{}
-	setting.BackupTarget = ""
-	if _, err := ds.CreateSetting(setting); err != nil {
-		return err
+	if setting.DefaultEngineImage != engineImage {
+		setting.DefaultEngineImage = engineImage
+		if _, err := ds.UpdateSetting(setting); err != nil {
+			return err
+		}
 	}
 	return nil
 }
