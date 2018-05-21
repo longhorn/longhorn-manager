@@ -323,6 +323,7 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
 		Endpoint:            v.Status.Endpoint,
 		Created:             v.ObjectMeta.CreationTimestamp.String(),
+		EngineImage:         v.Spec.EngineImage,
 
 		Controller: controller,
 		Replicas:   replicas,
