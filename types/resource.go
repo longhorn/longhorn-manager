@@ -26,13 +26,15 @@ type VolumeSpec struct {
 	NumberOfReplicas    int            `json:"numberOfReplicas"`
 	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`
 	NodeID              string         `json:"nodeID"`
+	EngineImage         string         `json:"engineImage"`
 	RecurringJobs       []RecurringJob `json:"recurringJobs"`
 }
 
 type VolumeStatus struct {
-	State      VolumeState      `json:"state"`
-	Robustness VolumeRobustness `json:"robustness"`
-	Endpoint   string           `json:"endpoint"`
+	State        VolumeState      `json:"state"`
+	Robustness   VolumeRobustness `json:"robustness"`
+	Endpoint     string           `json:"endpoint"`
+	CurrentImage string           `json:"currentImage"`
 }
 
 type RecurringJobType string
@@ -102,10 +104,12 @@ type ReplicaStatus struct {
 
 const (
 	SettingBackupTarget       = "backupTarget"
+	SettingDefaultEngineImage = "defaultEngineImage"
 	SettingEngineUpgradeImage = "engineUpgradeImage"
 )
 
 type SettingsInfo struct {
 	BackupTarget       string `json:"backupTarget"`
+	DefaultEngineImage string `json:"defaultEngineImage"`
 	EngineUpgradeImage string `json:"engineUpgradeImage"`
 }

@@ -52,7 +52,6 @@ type VolumeController struct {
 	namespace string
 	// use as the OwnerID of the controller
 	controllerID   string
-	EngineImage    string
 	ManagerImage   string
 	ServiceAccount string
 
@@ -79,7 +78,7 @@ func NewVolumeController(
 	replicaInformer lhinformers.ReplicaInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID, serviceAccount string,
-	engineImage, managerImage string) *VolumeController {
+	managerImage string) *VolumeController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -90,7 +89,6 @@ func NewVolumeController(
 		ds:             ds,
 		namespace:      namespace,
 		controllerID:   controllerID,
-		EngineImage:    engineImage,
 		ManagerImage:   managerImage,
 		ServiceAccount: serviceAccount,
 
@@ -421,6 +419,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		err = errors.Wrapf(err, "fail to reconcile volume state for %v", v.Name)
 	}()
 
+	if v.Status.CurrentImage == "" {
+		v.Status.CurrentImage = v.Spec.EngineImage
+	}
+
 	if e == nil {
 		// first time creation
 		e, err = vc.createEngine(v)
@@ -504,6 +506,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		if oldState != v.Status.State {
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonDetached, "volume %v has been detached", v.Name)
 		}
+
 	} else {
 		// if engine was running, then we are attached already
 		// (but we may still need to start rebuilding replicas)
@@ -610,7 +613,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 			InstanceSpec: types.InstanceSpec{
 				VolumeName:  v.Name,
 				VolumeSize:  v.Spec.Size,
-				EngineImage: vc.EngineImage,
+				EngineImage: v.Status.CurrentImage,
 				DesireState: types.InstanceStateStopped,
 				OwnerID:     vc.controllerID,
 			},
@@ -637,7 +640,7 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume) (*longhorn.Replica
 			InstanceSpec: types.InstanceSpec{
 				VolumeName:  v.Name,
 				VolumeSize:  v.Spec.Size,
-				EngineImage: vc.EngineImage,
+				EngineImage: v.Status.CurrentImage,
 				DesireState: types.InstanceStateStopped,
 				OwnerID:     vc.controllerID,
 			},
@@ -746,7 +749,7 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 							InitContainers: []v1.Container{
 								{
 									Name:    "longhorn-engine-binary",
-									Image:   vc.EngineImage,
+									Image:   v.Status.CurrentImage,
 									Command: []string{"sh", "-c", "cp /usr/local/bin/* /data/"},
 									VolumeMounts: []v1.VolumeMount{
 										{
