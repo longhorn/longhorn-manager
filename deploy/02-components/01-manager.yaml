@@ -23,7 +23,7 @@ spec:
           mountPath: /data/
       containers:
       - name: longhorn-manager
-        image: rancher/longhorn-manager:010fe60
+        image: rancher/longhorn-manager:0cad90d
         imagePullPolicy: Always
         securityContext:
           privileged: true
@@ -34,7 +34,7 @@ spec:
         - --engine-image
         - rancher/longhorn-engine:ee5062b
         - --manager-image
-        - rancher/longhorn-manager:010fe60
+        - rancher/longhorn-manager:0cad90d
         - --service-account
         - longhorn-service-account
         ports:
