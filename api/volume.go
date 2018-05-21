@@ -200,3 +200,20 @@ func (s *Server) ReplicaRemove(rw http.ResponseWriter, req *http.Request) error 
 
 	return s.responseWithVolume(rw, req, id, nil)
 }
+
+func (s *Server) EngineUpgrade(rw http.ResponseWriter, req *http.Request) error {
+	var input EngineUpgradeInput
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrapf(err, "error read engineUpgradeInput")
+	}
+
+	id := mux.Vars(req)["name"]
+
+	if err := s.m.EngineUpgrade(id, input.Name); err != nil {
+		return errors.Wrap(err, "unable to upgrade engine")
+	}
+
+	return s.responseWithVolume(rw, req, id, nil)
+}

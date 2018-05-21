@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
@@ -328,4 +329,47 @@ func (m *VolumeManager) updateVolumeOwner(ownerID string, v *longhorn.Volume) (*
 		}
 	}
 	return v, nil
+}
+
+func (m *VolumeManager) EngineUpgrade(volumeName, imageName string) error {
+	setting, err := m.ds.GetSetting()
+	if err != nil {
+		return err
+	}
+	validImages := map[string]struct{}{
+		setting.DefaultEngineImage: {},
+	}
+	images := strings.Split(setting.EngineUpgradeImage, ",")
+	for _, image := range images {
+		// images can have empty member
+		if image == "" {
+			continue
+		}
+		validImages[image] = struct{}{}
+	}
+	if _, ok := validImages[imageName]; !ok {
+		return fmt.Errorf("image %v doesn't present in the setting", imageName)
+	}
+
+	v, err := m.ds.GetVolume(volumeName)
+	if err != nil {
+		return err
+	}
+	if v == nil {
+		return fmt.Errorf("cannot find volume %v", volumeName)
+	}
+	if v.Status.State != types.VolumeStateDetached {
+		return fmt.Errorf("invalid volume state to upgrade engine: %v", v.Status.State)
+	}
+
+	oldImage := v.Spec.EngineImage
+	v.Spec.EngineImage = imageName
+
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return err
+	}
+	logrus.Debugf("Updating volume %v engine image from %v to %v", v.Name, oldImage, v.Spec.EngineImage)
+
+	return nil
 }

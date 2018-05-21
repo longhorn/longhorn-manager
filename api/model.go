@@ -105,6 +105,10 @@ type SalvageInput struct {
 	Names []string `json:"names"`
 }
 
+type EngineUpgradeInput struct {
+	Name string `json:"name"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -119,6 +123,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("recurringJob", types.RecurringJob{})
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
 	schemas.AddType("salvageInput", SalvageInput{})
+	schemas.AddType("engineUpgradeInput", EngineUpgradeInput{})
 
 	hostSchema(schemas.AddType("host", Host{}))
 	volumeSchema(schemas.AddType("volume", Volume{}))
@@ -218,6 +223,10 @@ func volumeSchema(volume *client.Schema) {
 		"replicaRemove": {
 			Input:  "replicaRemoveInput",
 			Output: "volume",
+		},
+
+		"engineUpgrade": {
+			Input: "engineUpgradeInput",
 		},
 	}
 	volume.ResourceFields["controller"] = client.Field{
@@ -333,12 +342,14 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 
 	if v.Status.Robustness == types.VolumeRobustnessFaulted {
 		actions["salvage"] = struct{}{}
+		actions["engineUpgrade"] = struct{}{}
 	} else {
 		switch v.Status.State {
 		case types.VolumeStateDetached:
 			actions["attach"] = struct{}{}
 			actions["recurringUpdate"] = struct{}{}
 			actions["replicaRemove"] = struct{}{}
+			actions["engineUpgrade"] = struct{}{}
 		case types.VolumeStateAttached:
 			actions["detach"] = struct{}{}
 			actions["snapshotPurge"] = struct{}{}
