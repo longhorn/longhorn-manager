@@ -77,6 +77,7 @@ func NewRouter(s *Server) *mux.Router {
 		"snapshotBackup": s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotBackup),
 
 		"replicaRemove": s.fwd.Handler(OwnerIDFromVolume(s.m), s.ReplicaRemove),
+		"engineUpgrade": s.fwd.Handler(OwnerIDFromVolume(s.m), s.EngineUpgrade),
 	}
 	for name, action := range volumeActions {
 		r.Methods("POST").Path("/v1/volumes/{name}").Queries("action", name).Handler(f(schemas, action))
