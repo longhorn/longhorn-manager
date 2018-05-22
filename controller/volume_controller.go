@@ -292,6 +292,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
+	if err := vc.upgradeEngineForVolume(volume, engine, replicas); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -593,6 +597,39 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, rs map[string]
 		}
 		rs[r.Name] = r
 	}
+	return nil
+}
+
+func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
+	var err error
+
+	if v.Status.CurrentImage == v.Spec.EngineImage {
+		return nil
+	}
+
+	if v.Status.State == types.VolumeStateDetached {
+		if e.Spec.EngineImage != v.Spec.EngineImage {
+			e.Spec.EngineImage = v.Spec.EngineImage
+			e, err = vc.ds.UpdateEngine(e)
+			if err != nil {
+				return err
+			}
+		}
+		for _, r := range rs {
+			if r.Spec.EngineImage != v.Spec.EngineImage {
+				r.Spec.EngineImage = v.Spec.EngineImage
+				r, err = vc.ds.UpdateReplica(r)
+				if err != nil {
+					return err
+				}
+				rs[r.Name] = r
+			}
+		}
+		v.Status.CurrentImage = v.Spec.EngineImage
+		return nil
+	}
+
+	//TODO live upgrade
 	return nil
 }
 
