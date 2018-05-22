@@ -599,15 +599,8 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, rs map[string]
 func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, error) {
 	engine := &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: types.GetEngineNameForVolume(v.Name),
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: longhorn.SchemeGroupVersion.String(),
-					Kind:       ownerKindVolume,
-					UID:        v.UID,
-					Name:       v.Name,
-				},
-			},
+			Name:            types.GetEngineNameForVolume(v.Name),
+			OwnerReferences: vc.getOwnerReferencesForVolume(v),
 		},
 		Spec: types.EngineSpec{
 			InstanceSpec: types.InstanceSpec{
@@ -626,15 +619,8 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 func (vc *VolumeController) createReplica(v *longhorn.Volume) (*longhorn.Replica, error) {
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: types.GenerateReplicaNameForVolume(v.Name),
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: longhorn.SchemeGroupVersion.String(),
-					Kind:       ownerKindVolume,
-					UID:        v.UID,
-					Name:       v.Name,
-				},
-			},
+			Name:            types.GenerateReplicaNameForVolume(v.Name),
+			OwnerReferences: vc.getOwnerReferencesForVolume(v),
 		},
 		Spec: types.ReplicaSpec{
 			InstanceSpec: types.InstanceSpec{
@@ -706,6 +692,17 @@ func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 	vc.enqueueVolume(volume)
 }
 
+func (vc *VolumeController) getOwnerReferencesForVolume(v *longhorn.Volume) []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		{
+			APIVersion: longhorn.SchemeGroupVersion.String(),
+			Kind:       ownerKindVolume,
+			UID:        v.UID,
+			Name:       v.Name,
+		},
+	}
+}
+
 func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.RecurringJob, suspend bool, backupTarget string) *batchv1beta1.CronJob {
 	backoffLimit := int32(CronJobBackoffLimit)
 	cmd := []string{
@@ -722,16 +719,9 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 	privilege := true
 	cronJob := &batchv1beta1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
-			Namespace: vc.namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: longhorn.SchemeGroupVersion.String(),
-					Kind:       ownerKindVolume,
-					UID:        v.UID,
-					Name:       v.Name,
-				},
-			},
+			Name:            types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
+			Namespace:       vc.namespace,
+			OwnerReferences: vc.getOwnerReferencesForVolume(v),
 		},
 		Spec: batchv1beta1.CronJobSpec{
 			Schedule:          job.Cron,
