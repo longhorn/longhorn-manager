@@ -335,9 +335,6 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 				}
 				rs[rName] = r
 			}
-			// set replica.FailedAt first because we will lost track of it
-			// if we removed the error replica from engine first
-			delete(e.Spec.ReplicaAddressMap, rName)
 		} else if mode == types.ReplicaModeRW {
 			if r != nil {
 				// record once replica became healthy, so if it
