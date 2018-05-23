@@ -7,6 +7,9 @@ metadata:
   namespace: longhorn-system
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: longhorn-ui
   template:
     metadata:
       labels:
