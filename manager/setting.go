@@ -92,7 +92,7 @@ func createEngineUpgradeImageDaemonSetSpec(image string) *appsv1beta2.DaemonSet 
 	}
 	args := []string{
 		"-c",
-		"cp /usr/local/bin/longhorn /upgrade/ && echo installed && trap 'rm /upgrade/longhorn && echo cleaned up' EXIT && sleep infinity",
+		"cp /usr/local/bin/longhorn /upgrade-image/ && echo installed && trap 'rm /upgrade-image/longhorn && echo cleaned up' EXIT && sleep infinity",
 	}
 	d := &appsv1beta2.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -117,18 +117,18 @@ func createEngineUpgradeImageDaemonSetSpec(image string) *appsv1beta2.DaemonSet 
 							ImagePullPolicy: v1.PullAlways,
 							VolumeMounts: []v1.VolumeMount{
 								{
-									Name:      "upgrade",
-									MountPath: "/upgrade/",
+									Name:      "upgrade-image",
+									MountPath: "/upgrade-image/",
 								},
 							},
 						},
 					},
 					Volumes: []v1.Volume{
 						{
-							Name: "upgrade",
+							Name: "upgrade-image",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
-									Path: types.GetEngineUpgradeBinaryPath(image),
+									Path: types.GetEngineUpgradeDirectoryForImageOnHost(image),
 								},
 							},
 						},

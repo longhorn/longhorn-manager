@@ -12,8 +12,9 @@ import (
 const (
 	DefaultAPIPort = 9500
 
-	DefaultEngineBinaryPath     = "/usr/local/bin/longhorn"
-	EngineUpgradeBinaryPathBase = "/var/lib/rancher/longhorn/upgrade/"
+	DefaultEngineBinaryPath           = "/usr/local/bin/longhorn"
+	EngineUpgradeDirectoryInContainer = "/upgrades/"
+	EngineUpgradeDirectoryOnHost      = "/var/lib/rancher/longhorn/upgrades/"
 )
 
 type ReplicaMode string
@@ -74,9 +75,9 @@ func GetImageCanonicalName(image string) string {
 	return strings.Replace(strings.Replace(image, ":", "-", -1), "/", "-", -1)
 }
 
-func GetEngineUpgradeBinaryPath(image string) string {
+func GetEngineUpgradeDirectoryForImageOnHost(image string) string {
 	cname := GetImageCanonicalName(image)
-	return filepath.Join(EngineUpgradeBinaryPathBase, cname)
+	return filepath.Join(EngineUpgradeDirectoryOnHost, cname)
 }
 
 var (
