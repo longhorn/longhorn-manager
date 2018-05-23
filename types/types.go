@@ -28,6 +28,9 @@ const (
 	EnvPodNamespace = "POD_NAMESPACE"
 	EnvPodIP        = "POD_IP"
 
+	AWSAccessKey = "AWS_ACCESS_KEY_ID"
+	AWSSecretKey = "AWS_SECRET_ACCESS_KEY"
+
 	OptionFromBackup          = "fromBackup"
 	OptionNumberOfReplica     = "numberOfReplicas"
 	OptionStaleReplicaTimeout = "staleReplicaTimeout"

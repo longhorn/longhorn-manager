@@ -308,6 +308,7 @@ func toSettingCollection(settings *types.SettingsInfo) *client.GenericCollection
 	data := []interface{}{
 		toSettingResource(types.SettingBackupTarget, settings.BackupTarget),
 		toSettingResource(types.SettingDefaultEngineImage, settings.DefaultEngineImage),
+		toSettingResource(types.SettingBackupTargetCredentialSecret, settings.BackupTargetCredentialSecret),
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }

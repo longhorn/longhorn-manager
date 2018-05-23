@@ -124,12 +124,16 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 	if err != nil {
 		return err
 	}
+	credential, err := m.getBackupCredentialConfig()
+	if err != nil {
+		return err
+	}
 	engine, err := m.GetEngineClient(volumeName)
 	if err != nil {
 		return err
 	}
 	//TODO time consuming operation, move it out of API server path
-	return engine.SnapshotBackup(snapshotName, backupTarget, nil)
+	return engine.SnapshotBackup(snapshotName, backupTarget, nil, credential)
 }
 
 func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.EngineClient, err error) {
@@ -164,7 +168,23 @@ func (m *VolumeManager) getBackupTarget() (*engineapi.BackupTarget, error) {
 	if err != nil {
 		return nil, err
 	}
-	return engineapi.NewBackupTarget(targetURL, engineImage), nil
+	credential, err := m.getBackupCredentialConfig()
+	if err != nil {
+		return nil, err
+	}
+	return engineapi.NewBackupTarget(targetURL, engineImage, credential), nil
+}
+
+func (m *VolumeManager) getBackupCredentialConfig() (map[string]string, error) {
+	settings, err := m.ds.GetSetting()
+	if err != nil || settings == nil {
+		return nil, errors.New("cannot backup: unable to read settings")
+	}
+	secretName := settings.BackupTargetCredentialSecret
+	if secretName == "" {
+		return nil, errors.New("Could not backup for s3 without credential secret")
+	}
+	return m.ds.GetCredentialFromSecret(secretName)
 }
 
 func (m *VolumeManager) ListBackupVolumes() ([]*engineapi.BackupVolume, error) {

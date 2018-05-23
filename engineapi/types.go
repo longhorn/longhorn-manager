@@ -39,7 +39,7 @@ type EngineClient interface {
 	SnapshotDelete(name string) error
 	SnapshotRevert(name string) error
 	SnapshotPurge() error
-	SnapshotBackup(snapName, backupTarget string, labels map[string]string) error
+	SnapshotBackup(snapName, backupTarget string, labels map[string]string, credential map[string]string) error
 }
 
 type EngineClientRequest struct {

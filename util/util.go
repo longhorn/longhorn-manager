@@ -19,6 +19,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 	"github.com/satori/go.uuid"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -26,6 +27,10 @@ const (
 	VolumeStackPrefix     = "volume-"
 	ControllerServiceName = "controller"
 	ReplicaServiceName    = "replica"
+
+	AWSAccessKey      = "AWS_ACCESS_KEY_ID"
+	AWSSecretKey      = "AWS_SECRET_ACCESS_KEY"
+	BackupStoreTypeS3 = "s3"
 )
 
 var (
@@ -305,4 +310,64 @@ func GetStringChecksum(data string) string {
 func GetChecksumSHA512(data []byte) string {
 	checksum := sha512.Sum512(data)
 	return hex.EncodeToString(checksum[:])
+}
+
+func CheckBackupType(backupTarget string) (string, error) {
+	u, err := url.Parse(backupTarget)
+	if err != nil {
+		return "", err
+	}
+
+	return u.Scheme, nil
+}
+
+func ConfigBackupCredential(backupTarget string, credential map[string]string) error {
+	backupType, err := CheckBackupType(backupTarget)
+	if err != nil {
+		return err
+	}
+	if backupType == BackupStoreTypeS3 {
+		// environment variable has been set in cronjob
+		if credential != nil && credential[AWSAccessKey] != "" && credential[AWSSecretKey] != "" {
+			os.Setenv(AWSAccessKey, credential[AWSAccessKey])
+			os.Setenv(AWSSecretKey, credential[AWSSecretKey])
+		} else if os.Getenv(AWSAccessKey) == "" || os.Getenv(AWSSecretKey) == "" {
+			return fmt.Errorf("Could not backup for %s without credential secret", backupType)
+		}
+	}
+	return nil
+}
+
+func ConfigEnvWithCredential(backupTarget string, credentialSecret string, container *v1.Container) error {
+	backupType, err := CheckBackupType(backupTarget)
+	if err != nil {
+		return err
+	}
+	if backupType == BackupStoreTypeS3 && credentialSecret != "" {
+		accessKeyEnv := v1.EnvVar{
+			Name: AWSAccessKey,
+			ValueFrom: &v1.EnvVarSource{
+				SecretKeyRef: &v1.SecretKeySelector{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: credentialSecret,
+					},
+					Key: AWSAccessKey,
+				},
+			},
+		}
+		container.Env = append(container.Env, accessKeyEnv)
+		secreKeyEnv := v1.EnvVar{
+			Name: AWSSecretKey,
+			ValueFrom: &v1.EnvVarSource{
+				SecretKeyRef: &v1.SecretKeySelector{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: credentialSecret,
+					},
+					Key: AWSSecretKey,
+				},
+			},
+		}
+		container.Env = append(container.Env, secreKeyEnv)
+	}
+	return nil
 }
