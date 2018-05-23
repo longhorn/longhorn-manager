@@ -26,6 +26,7 @@ type Controller struct {
 type EngineClient interface {
 	Name() string
 	Endpoint() string
+	Upgrade(binary string, replicaURLs []string) error
 
 	ReplicaList() (map[string]*Replica, error)
 	ReplicaAdd(url string) error

@@ -141,3 +141,21 @@ func (e *Engine) BackupRestore(backup string) error {
 	logrus.Debugf("Backup %v restored for volume %v", backup, e.Name())
 	return nil
 }
+
+func (e *Engine) Upgrade(binary string, replicaURLs []string) error {
+	args := []string{
+		"--url", e.lURL,
+		"upgrade", "--longhorn-binary", binary,
+	}
+	for _, url := range replicaURLs {
+		if err := ValidateReplicaURL(url); err != nil {
+			return err
+		}
+		args = append(args, "--replica", url)
+	}
+	_, err := util.Execute(LonghornEngineLauncherBinary, args...)
+	if err != nil {
+		return errors.Wrapf(err, "failed to upgrade Longhorn Engine")
+	}
+	return nil
+}

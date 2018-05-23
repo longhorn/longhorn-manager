@@ -79,7 +79,8 @@ type InstanceStatus struct {
 
 type EngineSpec struct {
 	InstanceSpec
-	ReplicaAddressMap map[string]string `json:"replicaAddressMap"`
+	ReplicaAddressMap         map[string]string `json:"replicaAddressMap"`
+	UpgradedReplicaAddressMap map[string]string `json:"upgradedReplicaAddressMap"`
 }
 
 type EngineStatus struct {
