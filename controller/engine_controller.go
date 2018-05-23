@@ -260,7 +260,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		// success of detaching
 		if engine.Spec.NodeID == ec.controllerID && !ec.isMonitoring(engine) {
 			ec.startMonitoring(engine)
-		} else if engine.Status.CurrentImage != engine.Spec.EngineImage {
+		} else if engine.Status.CurrentImage != engine.Spec.EngineImage && len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
 			if err := ec.Upgrade(engine); err != nil {
 				return err
 			}
