@@ -16,14 +16,14 @@ spec:
     spec:
       initContainers:
       - name: init-container
-        image: rancher/longhorn-engine:ee5062b
+        image: rancher/longhorn-engine:f065eba
         command: ['sh', '-c', 'cp /usr/local/bin/* /data/']
         volumeMounts:
         - name: execbin
           mountPath: /data/
       containers:
       - name: longhorn-manager
-        image: rancher/longhorn-manager:0cad90d
+        image: rancher/longhorn-manager:fabeb53
         imagePullPolicy: Always
         securityContext:
           privileged: true
@@ -32,9 +32,9 @@ spec:
         - -d
         - daemon
         - --engine-image
-        - rancher/longhorn-engine:ee5062b
+        - rancher/longhorn-engine:f065eba
         - --manager-image
-        - rancher/longhorn-manager:0cad90d
+        - rancher/longhorn-manager:fabeb53
         - --service-account
         - longhorn-service-account
         ports:
