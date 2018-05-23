@@ -348,8 +348,8 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 							MountPath: "/host/proc",
 						},
 						{
-							Name:      "upgrade",
-							MountPath: "/upgrade",
+							Name:      "upgrades",
+							MountPath: types.EngineUpgradeDirectoryInContainer,
 						},
 					},
 					ReadinessProbe: &v1.Probe{
@@ -383,10 +383,10 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 					},
 				},
 				{
-					Name: "upgrade",
+					Name: "upgrades",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: types.EngineUpgradeBinaryPathBase,
+							Path: types.EngineUpgradeDirectoryOnHost,
 						},
 					},
 				},
