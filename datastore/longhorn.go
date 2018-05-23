@@ -50,6 +50,19 @@ func (s *DataStore) GetSetting() (*longhorn.Setting, error) {
 	return result, err
 }
 
+func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]string, error) {
+	secret, err := s.kubeClient.CoreV1().Secrets(s.namespace).Get(secretName, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	credentialSecret := make(map[string]string)
+	if secret.Data != nil {
+		credentialSecret[types.AWSAccessKey] = string(secret.Data[types.AWSAccessKey])
+		credentialSecret[types.AWSSecretKey] = string(secret.Data[types.AWSSecretKey])
+	}
+	return credentialSecret, nil
+}
+
 func getVolumeLabels(volumeName string) map[string]string {
 	return map[string]string{
 		longhornVolumeKey: volumeName,

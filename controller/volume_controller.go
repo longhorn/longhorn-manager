@@ -888,7 +888,7 @@ func (vc *VolumeController) getOwnerReferencesForVolume(v *longhorn.Volume) []me
 	}
 }
 
-func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.RecurringJob, suspend bool, backupTarget string) *batchv1beta1.CronJob {
+func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.RecurringJob, suspend bool, backupTarget string, credentialSecret string) *batchv1beta1.CronJob {
 	backoffLimit := int32(CronJobBackoffLimit)
 	cmd := []string{
 		"longhorn-manager", "-d",
@@ -965,6 +965,9 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 			},
 		},
 	}
+	if job.Type == types.RecurringJobTypeBackup {
+		util.ConfigEnvWithCredential(backupTarget, credentialSecret, &cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers[0])
+	}
 	return cronJob
 }
 
@@ -979,24 +982,27 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 	}
 
 	backupTarget := ""
+	backupCredentialSecret := ""
 	setting, err := vc.ds.GetSetting()
 	if err != nil {
 		return err
 	}
 	backupTarget = setting.BackupTarget
+	backupCredentialSecret = setting.BackupTargetCredentialSecret
 
 	// the cronjobs are RO in the map, but not the map itself
 	appliedCronJobROs, err := vc.ds.ListVolumeCronJobROs(v.Name)
 	if err != nil {
 		return err
 	}
+
 	currentCronJobs := make(map[string]*batchv1beta1.CronJob)
 	for _, job := range v.Spec.RecurringJobs {
 		if backupTarget == "" && job.Type == types.RecurringJobTypeBackup {
 			return fmt.Errorf("cannot backup with empty backup target")
 		}
 
-		cronJob := vc.createCronJob(v, &job, suspended, backupTarget)
+		cronJob := vc.createCronJob(v, &job, suspended, backupTarget, backupCredentialSecret)
 		currentCronJobs[cronJob.Name] = cronJob
 	}
 

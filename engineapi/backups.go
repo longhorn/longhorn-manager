@@ -15,8 +15,9 @@ import (
 )
 
 type BackupTarget struct {
-	URL   string
-	Image string
+	URL        string
+	Image      string
+	Credential map[string]string
 }
 
 type backupVolume struct {
@@ -28,10 +29,11 @@ type backupVolume struct {
 	Backups        map[string]interface{}
 }
 
-func NewBackupTarget(backupTarget, engineImage string) *BackupTarget {
+func NewBackupTarget(backupTarget, engineImage string, credential map[string]string) *BackupTarget {
 	return &BackupTarget{
-		URL:   backupTarget,
-		Image: engineImage,
+		URL:        backupTarget,
+		Image:      engineImage,
+		Credential: credential,
 	}
 }
 
@@ -40,6 +42,10 @@ func (b *BackupTarget) LonghornEngineBinary() string {
 }
 
 func (b *BackupTarget) ExecuteEngineBinary(args ...string) (string, error) {
+	err := util.ConfigBackupCredential(b.URL, b.Credential)
+	if err != nil {
+		return "", err
+	}
 	return util.Execute(b.LonghornEngineBinary(), args...)
 }
 

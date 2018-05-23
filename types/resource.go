@@ -104,14 +104,16 @@ type ReplicaStatus struct {
 }
 
 const (
-	SettingBackupTarget       = "backupTarget"
-	SettingDefaultEngineImage = "defaultEngineImage"
-	SettingEngineUpgradeImage = "engineUpgradeImage"
+	SettingBackupTarget                 = "backupTarget"
+	SettingDefaultEngineImage           = "defaultEngineImage"
+	SettingEngineUpgradeImage           = "engineUpgradeImage"
+	SettingBackupTargetCredentialSecret = "backupTargetCredentialSecret"
 )
 
 type SettingsInfo struct {
-	BackupTarget       string `json:"backupTarget"`
-	DefaultEngineImage string `json:"defaultEngineImage"`
+	BackupTarget                 string `json:"backupTarget"`
+	DefaultEngineImage           string `json:"defaultEngineImage"`
+	BackupTargetCredentialSecret string `json:"backupTargetCredentialSecret"`
 }
 
 type EngineImageState string

@@ -28,6 +28,7 @@ import (
 
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhinformers "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
@@ -387,6 +388,19 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 					},
 				},
 			},
+		}
+	}
+
+	if r.Spec.RestoreName != "" && r.Spec.RestoreFrom != "" {
+		settings, err := rc.ds.GetSetting()
+		if err != nil && !apierrors.IsNotFound(err) {
+			return nil, err
+		}
+		if settings != nil && settings.BackupTargetCredentialSecret != "" {
+			err := util.ConfigEnvWithCredential(r.Spec.RestoreFrom, settings.BackupTargetCredentialSecret, &pod.Spec.Containers[0])
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	return pod, nil

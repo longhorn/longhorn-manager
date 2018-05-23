@@ -7,6 +7,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	"github.com/rancher/longhorn-manager/util"
 )
 
 const (
@@ -72,7 +73,7 @@ func (e *Engine) SnapshotPurge() error {
 	return nil
 }
 
-func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string]string) error {
+func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string]string, credential map[string]string) error {
 	snap, err := e.SnapshotGet(snapName)
 	if err != nil {
 		return errors.Wrapf(err, "error getting snapshot '%s', volume '%s'", snapName, e.name)
@@ -85,6 +86,11 @@ func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string
 		args = append(args, "--label", k+"="+v)
 	}
 	args = append(args, snapName)
+	// set credential if backup for s3
+	err = util.ConfigBackupCredential(backupTarget, credential)
+	if err != nil {
+		return err
+	}
 	backup, err := e.ExecuteEngineBinaryWithTimeout(backupTimeout, args...)
 	if err != nil {
 		return err

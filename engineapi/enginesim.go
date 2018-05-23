@@ -181,7 +181,7 @@ func (e *EngineSimulator) SnapshotPurge() error {
 	return fmt.Errorf("Not implemented")
 }
 
-func (e *EngineSimulator) SnapshotBackup(snapName, backupTarget string, labels map[string]string) error {
+func (e *EngineSimulator) SnapshotBackup(snapName, backupTarget string, labels map[string]string, credential map[string]string) error {
 	return fmt.Errorf("Not implemented")
 }
 

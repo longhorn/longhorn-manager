@@ -35,6 +35,8 @@ func (s *Server) SettingsGet(w http.ResponseWriter, req *http.Request) error {
 		value = si.BackupTarget
 	case types.SettingDefaultEngineImage:
 		value = si.DefaultEngineImage
+	case types.SettingBackupTargetCredentialSecret:
+		value = si.BackupTargetCredentialSecret
 	default:
 		return errors.Errorf("invalid setting name %v", name)
 	}
@@ -62,6 +64,8 @@ func (s *Server) SettingsSet(w http.ResponseWriter, req *http.Request) error {
 		si.BackupTarget = setting.Value
 	case types.SettingDefaultEngineImage:
 		si.DefaultEngineImage = setting.Value
+	case types.SettingBackupTargetCredentialSecret:
+		si.BackupTargetCredentialSecret = setting.Value
 	default:
 		return errors.Wrapf(err, "invalid setting name %v", name)
 	}
