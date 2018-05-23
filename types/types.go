@@ -80,6 +80,11 @@ func GetEngineUpgradeDirectoryForImageOnHost(image string) string {
 	return filepath.Join(EngineUpgradeDirectoryOnHost, cname)
 }
 
+func GetEngineUpgradeDirectoryForImageInContainer(image string) string {
+	cname := GetImageCanonicalName(image)
+	return filepath.Join(EngineUpgradeDirectoryInContainer, cname)
+}
+
 var (
 	LonghornSystemKey                    = "longhorn"
 	LonghornSystemValueManager           = "manager"

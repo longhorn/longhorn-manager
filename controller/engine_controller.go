@@ -260,6 +260,10 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		// success of detaching
 		if engine.Spec.NodeID == ec.controllerID && !ec.isMonitoring(engine) {
 			ec.startMonitoring(engine)
+		} else if engine.Status.CurrentImage != engine.Spec.EngineImage {
+			if err := ec.Upgrade(engine); err != nil {
+				return err
+			}
 		} else if engine.Status.ReplicaModeMap != nil {
 			if err := ec.ReconcileEngineState(engine); err != nil {
 				return err
@@ -526,6 +530,11 @@ func (m *EngineMonitor) Run() {
 			return
 		}
 
+		// engine is upgrading
+		if engine.Status.CurrentImage != engine.Spec.EngineImage {
+			return
+		}
+
 		if err := m.refresh(engine); err != nil {
 			utilruntime.HandleError(errors.Wrapf(err, "fail to update status for engine %v", m.Name))
 		}
@@ -715,5 +724,29 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip stri
 	}); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
+	replicaURLs := []string{}
+	for _, ip := range e.Spec.UpgradedReplicaAddressMap {
+		replicaURLs = append(replicaURLs, engineapi.GetReplicaDefaultURL(ip))
+	}
+	binary := types.GetEngineUpgradeDirectoryForImageInContainer(e.Spec.EngineImage) + "/longhorn"
+	client, err := ec.getClientForEngine(e)
+	if err != nil {
+		return err
+	}
+	logrus.Debugf("About to upgrade %v from %v to %v for %v",
+		e.Name, e.Status.CurrentImage, e.Spec.EngineImage, e.Spec.VolumeName)
+	if err := client.Upgrade(binary, replicaURLs); err != nil {
+		return err
+	}
+	logrus.Debugf("Engine %v has been upgraded", e.Name)
+	e.Status.CurrentImage = e.Spec.EngineImage
+	// reset ReplicaModeMap to reflect the new replicas
+	e.Status.ReplicaModeMap = nil
+	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
+	e.Spec.UpgradedReplicaAddressMap = map[string]string{}
 	return nil
 }

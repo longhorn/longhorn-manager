@@ -518,7 +518,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 
 		replicaUpdated := false
 		for _, r := range rs {
-			if r.Spec.FailedAt == "" && r.Spec.DesireState != types.InstanceStateRunning {
+			if r.Spec.FailedAt == "" &&
+				r.Spec.DesireState != types.InstanceStateRunning &&
+				r.Spec.EngineImage == v.Status.CurrentImage {
+
 				r.Spec.DesireState = types.InstanceStateRunning
 				replicaUpdated = true
 				r, err := vc.ds.UpdateReplica(r)
@@ -537,6 +540,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			if r.Spec.FailedAt != "" {
 				continue
 			}
+			if r.Spec.EngineImage != v.Status.CurrentImage {
+				continue
+			}
 			// wait for all potentially healthy replicas become running
 			if r.Status.CurrentState != types.InstanceStateRunning {
 				return nil
@@ -548,8 +554,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			replicaAddressMap[r.Name] = r.Status.IP
 		}
 
-		if e.Spec.DesireState != types.InstanceStateRunning ||
-			!reflect.DeepEqual(e.Spec.ReplicaAddressMap, replicaAddressMap) {
+		engineUpdated := false
+		if e.Spec.DesireState != types.InstanceStateRunning {
 			if e.Spec.NodeID != "" && e.Spec.NodeID != v.Spec.NodeID {
 				return fmt.Errorf("engine is on node %v vs volume on %v, must detach first",
 					e.Spec.NodeID, v.Spec.NodeID)
@@ -557,6 +563,15 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			e.Spec.NodeID = v.Spec.NodeID
 			e.Spec.ReplicaAddressMap = replicaAddressMap
 			e.Spec.DesireState = types.InstanceStateRunning
+			engineUpdated = true
+		}
+		if !vc.isVolumeUpgrading(v) {
+			if !reflect.DeepEqual(e.Spec.ReplicaAddressMap, replicaAddressMap) {
+				e.Spec.ReplicaAddressMap = replicaAddressMap
+				engineUpdated = true
+			}
+		}
+		if engineUpdated {
 			e, err = vc.ds.UpdateEngine(e)
 			if err != nil {
 				return err
@@ -580,6 +595,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 // It will count all the potentially usable replicas, since some replicas maybe
 // blank or in rebuilding state
 func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
+	if vc.isVolumeUpgrading(v) {
+		return nil
+	}
+
 	usableCount := 0
 	for _, r := range rs {
 		if r.Spec.FailedAt == "" {
@@ -622,11 +641,112 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 				rs[r.Name] = r
 			}
 		}
+		// TODO current replicas should be calculated by checking if there is
+		// any other image exists except for the v.Spec.EngineImage
 		v.Status.CurrentImage = v.Spec.EngineImage
 		return nil
 	}
 
-	//TODO live upgrade
+	// only start live upgrade if volume is healthy
+	if v.Status.State != types.VolumeStateAttached || v.Status.Robustness != types.VolumeRobustnessHealthy {
+		return nil
+	}
+
+	unknownReplicas := map[string]*longhorn.Replica{}
+	dataPathToOldReplica := map[string]*longhorn.Replica{}
+	dataPathToNewReplica := map[string]*longhorn.Replica{}
+	for _, r := range rs {
+		if r.Spec.EngineImage == v.Status.CurrentImage {
+			dataPathToOldReplica[r.Spec.DataPath] = r
+		} else if r.Spec.EngineImage == v.Spec.EngineImage {
+			dataPathToNewReplica[r.Spec.DataPath] = r
+		} else {
+			logrus.Warnf("Found unknown replica with image %v of volume %v",
+				r.Spec.EngineImage, v.Name)
+			unknownReplicas[r.Name] = r
+		}
+	}
+
+	if len(dataPathToNewReplica) != v.Spec.NumberOfReplicas {
+		if len(dataPathToOldReplica) != v.Spec.NumberOfReplicas {
+			logrus.Warnf("Not enough replicas (%v vs %v) to upgrade from %v for volume %v",
+				len(dataPathToOldReplica), v.Spec.NumberOfReplicas, v.Status.CurrentImage, v.Name)
+			return nil
+		}
+		for path, r := range dataPathToOldReplica {
+			if dataPathToNewReplica[path] != nil {
+				continue
+			}
+			nr := vc.duplicateReplica(r, v)
+			nr.Spec.DesireState = types.InstanceStateRunning
+			nr.Spec.EngineImage = v.Spec.EngineImage
+			nr.Spec.Cleanup = false
+			nr, err := vc.ds.CreateReplica(nr)
+			if err != nil {
+				return errors.Wrapf(err, "cannot create replica %v with new image %v for %v",
+					nr.Name, v.Spec.EngineImage, v.Name)
+			}
+			dataPathToNewReplica[path] = nr
+			rs[nr.Name] = nr
+		}
+	}
+
+	if e.Spec.EngineImage != v.Spec.EngineImage {
+		replicaAddressMap := map[string]string{}
+		for _, r := range dataPathToNewReplica {
+			// wait for all potentially healthy replicas become running
+			if r.Status.CurrentState != types.InstanceStateRunning {
+				return nil
+			}
+			if r.Status.IP == "" {
+				logrus.Errorf("BUG: replica %v is running but IP is empty", r.Name)
+				continue
+			}
+			replicaAddressMap[r.Name] = r.Status.IP
+		}
+		e.Spec.UpgradedReplicaAddressMap = replicaAddressMap
+		e.Spec.EngineImage = v.Spec.EngineImage
+		e, err = vc.ds.UpdateEngine(e)
+		if err != nil {
+			return err
+		}
+	}
+	if e.Status.CurrentImage != v.Spec.EngineImage ||
+		e.Status.CurrentState != types.InstanceStateRunning {
+		return nil
+	}
+
+	for path, r := range dataPathToOldReplica {
+		if r.Spec.Cleanup != false {
+			r.Spec.Cleanup = false
+			r, err := vc.ds.UpdateReplica(r)
+			if err != nil {
+				return err
+			}
+			rs[r.Name] = r
+			dataPathToOldReplica[path] = r
+		}
+	}
+	for path, r := range dataPathToNewReplica {
+		if r.Spec.Cleanup != true {
+			r.Spec.Cleanup = true
+			r, err := vc.ds.UpdateReplica(r)
+			if err != nil {
+				return err
+			}
+			rs[r.Name] = r
+			dataPathToNewReplica[path] = r
+		}
+	}
+	for _, r := range dataPathToOldReplica {
+		if err := vc.ds.DeleteReplica(r.Name); err != nil {
+			return err
+		}
+		delete(rs, r.Name)
+	}
+	logrus.Infof("Engine %v of volume %s has been upgraded from %v to %v", e.Name, v.Name, v.Status.CurrentImage, v.Spec.EngineImage)
+	v.Status.CurrentImage = v.Spec.EngineImage
+
 	return nil
 }
 
@@ -644,7 +764,8 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 				DesireState: types.InstanceStateStopped,
 				OwnerID:     vc.controllerID,
 			},
-			ReplicaAddressMap: map[string]string{},
+			ReplicaAddressMap:         map[string]string{},
+			UpgradedReplicaAddressMap: map[string]string{},
 		},
 	}
 	return vc.ds.CreateEngine(engine)
@@ -677,6 +798,17 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume) (*longhorn.Replica
 	replica.Spec.DataPath = longhornDirectory + "/replicas/" + v.Name + "-" + util.RandomID()
 
 	return vc.ds.CreateReplica(replica)
+}
+
+func (vc *VolumeController) duplicateReplica(r *longhorn.Replica, v *longhorn.Volume) *longhorn.Replica {
+	replica := &longhorn.Replica{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            types.GenerateReplicaNameForVolume(r.Spec.VolumeName),
+			OwnerReferences: vc.getOwnerReferencesForVolume(v),
+		},
+		Spec: r.DeepCopy().Spec,
+	}
+	return replica
 }
 
 func (vc *VolumeController) enqueueVolume(v *longhorn.Volume) {
@@ -884,4 +1016,11 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 	}
 
 	return nil
+}
+
+func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
+	if v.Status.CurrentImage != v.Spec.EngineImage {
+		return true
+	}
+	return false
 }
