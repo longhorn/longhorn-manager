@@ -74,8 +74,10 @@ func (h *InstanceHandler) syncStatusWithPod(pod *v1.Pod, status *types.InstanceS
 			}
 		}
 		status.CurrentState = types.InstanceStateRunning
-		status.IP = pod.Status.PodIP
-		logrus.Debugf("Instance %v starts running, IP %v", pod.Name, status.IP)
+		if status.IP != pod.Status.PodIP {
+			status.IP = pod.Status.PodIP
+			logrus.Debugf("Instance %v starts running, IP %v", pod.Name, status.IP)
+		}
 	default:
 		// TODO Check the reason of pod cannot gracefully shutdown
 		logrus.Warnf("instance %v state is failed/unknown, pod state %v",
