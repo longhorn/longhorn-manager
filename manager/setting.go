@@ -16,22 +16,22 @@ func (m *VolumeManager) GetSetting() (*longhorn.Setting, error) {
 }
 
 func (m *VolumeManager) UpdateSetting(s *longhorn.Setting) (*longhorn.Setting, error) {
-	if err := m.syncEngineBinaryImage(s.EngineUpgradeImage); err != nil {
+	if err := m.syncEngineBinaryImage(s.DefaultEngineImage, s.EngineUpgradeImage); err != nil {
 		return nil, err
 	}
 	return m.ds.UpdateSetting(s)
 }
 
-func (m *VolumeManager) syncEngineBinaryImage(engineUpgradeImage string) error {
+func (m *VolumeManager) syncEngineBinaryImage(defaultEngineImage, engineUpgradeImage string) error {
 	deployed, err := m.listEngineBinaryImage()
 	if err != nil {
 		return errors.Wrapf(err, "failed to get engine binary images")
 	}
 
-	toDeploy := make(map[string]struct{})
-	toDelete := make(map[string]struct{})
-
 	images := util.SplitStringToMap(engineUpgradeImage, ",")
+	images[defaultEngineImage] = struct{}{}
+
+	toDeploy := make(map[string]struct{})
 	for image := range images {
 		if deployed[image] == "" {
 			toDeploy[image] = struct{}{}
@@ -39,9 +39,8 @@ func (m *VolumeManager) syncEngineBinaryImage(engineUpgradeImage string) error {
 			delete(deployed, image)
 		}
 	}
-	for image := range deployed {
-		toDelete[image] = struct{}{}
-	}
+	// remaining ones wasn't listed in the images
+	toDelete := deployed
 
 	for image := range toDelete {
 		if err := m.deleteEngineBinaryImage(image); err != nil {

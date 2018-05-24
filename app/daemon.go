@@ -92,11 +92,12 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	if err := initSettings(ds, engineImage); err != nil {
+	m := manager.NewVolumeManager(currentNodeID, ds)
+
+	if err := initSettings(ds, m, engineImage); err != nil {
 		return err
 	}
 
-	m := manager.NewVolumeManager(currentNodeID, ds)
 	if err := controller.StartProvisioner(m); err != nil {
 		return err
 	}
@@ -125,7 +126,7 @@ func environmentCheck() error {
 	return nil
 }
 
-func initSettings(ds *datastore.DataStore, engineImage string) error {
+func initSettings(ds *datastore.DataStore, m *manager.VolumeManager, engineImage string) error {
 	setting, err := ds.GetSetting()
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
@@ -143,6 +144,10 @@ func initSettings(ds *datastore.DataStore, engineImage string) error {
 		if _, err := ds.UpdateSetting(setting); err != nil {
 			return err
 		}
+	}
+	// provision the default engine image if necessary
+	if _, err := m.UpdateSetting(setting); err != nil {
+		return err
 	}
 	return nil
 }

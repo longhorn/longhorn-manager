@@ -115,6 +115,12 @@ func (s *DataStore) ListEngineBinaryImageDaemonSet() (map[string]string, error) 
 }
 
 func (s *DataStore) CreateEngineBinaryImageDaemonSet(ds *appsv1beta2.DaemonSet) error {
+	if ds.ObjectMeta.Labels == nil {
+		ds.ObjectMeta.Labels = map[string]string{}
+	}
+	for k, v := range types.GetEngineBinaryImageLabel() {
+		ds.ObjectMeta.Labels[k] = v
+	}
 	if _, err := s.kubeClient.AppsV1beta2().DaemonSets(s.namespace).Create(ds); err != nil {
 		return err
 	}
