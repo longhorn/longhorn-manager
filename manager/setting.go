@@ -16,16 +16,16 @@ func (m *VolumeManager) GetSetting() (*longhorn.Setting, error) {
 }
 
 func (m *VolumeManager) UpdateSetting(s *longhorn.Setting) (*longhorn.Setting, error) {
-	if err := m.syncEngineUpgradeImage(s.EngineUpgradeImage); err != nil {
+	if err := m.syncEngineBinaryImage(s.EngineUpgradeImage); err != nil {
 		return nil, err
 	}
 	return m.ds.UpdateSetting(s)
 }
 
-func (m *VolumeManager) syncEngineUpgradeImage(engineUpgradeImage string) error {
-	deployed, err := m.listEngineUpgradeImage()
+func (m *VolumeManager) syncEngineBinaryImage(engineUpgradeImage string) error {
+	deployed, err := m.listEngineBinaryImage()
 	if err != nil {
-		return errors.Wrapf(err, "failed to get engine upgrade images")
+		return errors.Wrapf(err, "failed to get engine binary images")
 	}
 
 	toDeploy := make(map[string]struct{})
@@ -44,51 +44,51 @@ func (m *VolumeManager) syncEngineUpgradeImage(engineUpgradeImage string) error 
 	}
 
 	for image := range toDelete {
-		if err := m.deleteEngineUpgradeImage(image); err != nil {
-			return errors.Wrapf(err, "failed to delete engine upgrade image")
+		if err := m.deleteEngineBinaryImage(image); err != nil {
+			return errors.Wrapf(err, "failed to delete engine binary image")
 		}
 	}
 	for image := range toDeploy {
-		if err := m.createEngineUpgradeImage(image); err != nil {
-			return errors.Wrapf(err, "failed to create engine upgrade image")
+		if err := m.createEngineBinaryImage(image); err != nil {
+			return errors.Wrapf(err, "failed to create engine binary image")
 		}
 	}
 	return nil
 }
 
-func (m *VolumeManager) listEngineUpgradeImage() (map[string]string, error) {
-	return m.ds.ListEngineUpgradeImageDaemonSet()
+func (m *VolumeManager) listEngineBinaryImage() (map[string]string, error) {
+	return m.ds.ListEngineBinaryImageDaemonSet()
 }
 
-func (m *VolumeManager) deleteEngineUpgradeImage(image string) error {
-	dsName := getEngineUpgradeImageDeployerName(image)
-	if err := m.ds.DeleteEngineUpgradeImageDaemonSet(dsName); err != nil {
-		return errors.Wrapf(err, "failed to delete engine upgrade image daemonset %v", dsName)
+func (m *VolumeManager) deleteEngineBinaryImage(image string) error {
+	dsName := getEngineBinaryImageDeployerName(image)
+	if err := m.ds.DeleteEngineBinaryImageDaemonSet(dsName); err != nil {
+		return errors.Wrapf(err, "failed to delete engine binary image daemonset %v", dsName)
 	}
 	return nil
 }
 
-func (m *VolumeManager) createEngineUpgradeImage(image string) error {
-	d := createEngineUpgradeImageDaemonSetSpec(image)
-	if err := m.ds.CreateEngineUpgradeImageDaemonSet(d); err != nil {
-		return errors.Wrap(err, "failed to create engine upgrade image daemonset")
+func (m *VolumeManager) createEngineBinaryImage(image string) error {
+	d := createEngineBinaryImageDaemonSetSpec(image)
+	if err := m.ds.CreateEngineBinaryImageDaemonSet(d); err != nil {
+		return errors.Wrap(err, "failed to create engine binary image daemonset")
 	}
 	return nil
 }
 
-func getEngineUpgradeImageDeployerName(image string) string {
+func getEngineBinaryImageDeployerName(image string) string {
 	cname := types.GetImageCanonicalName(image)
 	return "engine-image-deployer-" + cname
 }
 
-func createEngineUpgradeImageDaemonSetSpec(image string) *appsv1beta2.DaemonSet {
-	dsName := getEngineUpgradeImageDeployerName(image)
+func createEngineBinaryImageDaemonSetSpec(image string) *appsv1beta2.DaemonSet {
+	dsName := getEngineBinaryImageDeployerName(image)
 	cmd := []string{
 		"/bin/bash",
 	}
 	args := []string{
 		"-c",
-		"cp /usr/local/bin/longhorn /upgrade-image/ && echo installed && trap 'rm /upgrade-image/longhorn && echo cleaned up' EXIT && sleep infinity",
+		"cp /usr/local/bin/longhorn /data/ && echo installed && trap 'rm /data/longhorn && echo cleaned up' EXIT && sleep infinity",
 	}
 	d := &appsv1beta2.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -96,12 +96,12 @@ func createEngineUpgradeImageDaemonSetSpec(image string) *appsv1beta2.DaemonSet 
 		},
 		Spec: appsv1beta2.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
-				MatchLabels: types.GetEngineUpgradeImageLabel(),
+				MatchLabels: types.GetEngineBinaryImageLabel(),
 			},
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   dsName,
-					Labels: types.GetEngineUpgradeImageLabel(),
+					Labels: types.GetEngineBinaryImageLabel(),
 				},
 				Spec: v1.PodSpec{
 					Containers: []v1.Container{
@@ -113,18 +113,18 @@ func createEngineUpgradeImageDaemonSetSpec(image string) *appsv1beta2.DaemonSet 
 							ImagePullPolicy: v1.PullAlways,
 							VolumeMounts: []v1.VolumeMount{
 								{
-									Name:      "upgrade-image",
-									MountPath: "/upgrade-image/",
+									Name:      "data",
+									MountPath: "/data/",
 								},
 							},
 						},
 					},
 					Volumes: []v1.Volume{
 						{
-							Name: "upgrade-image",
+							Name: "data",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
-									Path: types.GetEngineUpgradeDirectoryForImageOnHost(image),
+									Path: types.GetEngineBinaryDirectoryOnHostForImage(image),
 								},
 							},
 						},

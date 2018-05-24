@@ -652,7 +652,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		return nil
 	}
 
-	upgradeImages, err := vc.ds.ListEngineUpgradeImageDaemonSet()
+	upgradeImages, err := vc.ds.ListEngineBinaryImageDaemonSet()
 	if err != nil {
 		return err
 	}
