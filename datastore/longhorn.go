@@ -40,13 +40,11 @@ func (s *DataStore) UpdateSetting(setting *longhorn.Setting) (*longhorn.Setting,
 	return s.lhClient.LonghornV1alpha1().Settings(s.namespace).Update(setting)
 }
 
+// GetSetting will report NotFound error if setting is not found
 func (s *DataStore) GetSetting() (*longhorn.Setting, error) {
 	result, err := s.lhClient.LonghornV1alpha1().Settings(s.namespace).Get(SettingName,
 		metav1.GetOptions{})
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	return result, err

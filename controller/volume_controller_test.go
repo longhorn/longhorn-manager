@@ -27,6 +27,13 @@ func getVolumeLabelSelector(volumeName string) string {
 	return "longhornvolume=" + volumeName
 }
 
+func initSettings(ds *datastore.DataStore) {
+	setting := &longhorn.Setting{}
+	setting.BackupTarget = ""
+	setting.DefaultEngineImage = TestEngineImage
+	ds.CreateSetting(setting)
+}
+
 func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
 	controllerID string) *VolumeController {
@@ -41,6 +48,7 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 
 	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, lhClient,
 		podInformer, cronJobInformer, daemonSetInformer, kubeClient, TestNamespace)
+	initSettings(ds)
 
 	vc := NewVolumeController(ds, scheme.Scheme, volumeInformer, engineInformer, replicaInformer, kubeClient, TestNamespace, controllerID, TestServiceAccount, TestManagerImage)
 

@@ -2,7 +2,6 @@ package manager
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
@@ -336,18 +335,9 @@ func (m *VolumeManager) EngineUpgrade(volumeName, imageName string) error {
 	if err != nil {
 		return err
 	}
-	validImages := map[string]struct{}{
-		setting.DefaultEngineImage: {},
-	}
-	images := strings.Split(setting.EngineUpgradeImage, ",")
-	for _, image := range images {
-		// images can have empty member
-		image = strings.TrimSpace(image)
-		if image == "" {
-			continue
-		}
-		validImages[image] = struct{}{}
-	}
+	validImages := util.SplitStringToMap(setting.EngineUpgradeImage, ",")
+	validImages[setting.DefaultEngineImage] = struct{}{}
+
 	if _, ok := validImages[imageName]; !ok {
 		return fmt.Errorf("image %v doesn't present in the upgrade setting", imageName)
 	}

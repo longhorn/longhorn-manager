@@ -156,7 +156,7 @@ func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.Eng
 
 func (m *VolumeManager) getBackupTarget() (string, error) {
 	settings, err := m.ds.GetSetting()
-	if err != nil || settings == nil {
+	if err != nil {
 		return "", errors.New("cannot backup: unable to read settings")
 	}
 	backupTarget := settings.BackupTarget
