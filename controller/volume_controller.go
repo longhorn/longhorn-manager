@@ -652,6 +652,17 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		return nil
 	}
 
+	upgradeImages, err := vc.ds.ListEngineUpgradeImageDaemonSet()
+	if err != nil {
+		return err
+	}
+
+	// upgrade image hasn't been prepared, wait for next time
+	if _, ok := upgradeImages[v.Spec.EngineImage]; !ok {
+		logrus.Warnf("Volume %v engine upgrade to %v requests, but the image wasn't prepared", v.Name, v.Spec.EngineImage)
+		return nil
+	}
+
 	unknownReplicas := map[string]*longhorn.Replica{}
 	dataPathToOldReplica := map[string]*longhorn.Replica{}
 	dataPathToNewReplica := map[string]*longhorn.Replica{}

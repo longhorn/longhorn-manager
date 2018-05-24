@@ -342,13 +342,14 @@ func (m *VolumeManager) EngineUpgrade(volumeName, imageName string) error {
 	images := strings.Split(setting.EngineUpgradeImage, ",")
 	for _, image := range images {
 		// images can have empty member
+		image = strings.TrimSpace(image)
 		if image == "" {
 			continue
 		}
 		validImages[image] = struct{}{}
 	}
 	if _, ok := validImages[imageName]; !ok {
-		return fmt.Errorf("image %v doesn't present in the setting", imageName)
+		return fmt.Errorf("image %v doesn't present in the upgrade setting", imageName)
 	}
 
 	v, err := m.ds.GetVolume(volumeName)
@@ -358,9 +359,6 @@ func (m *VolumeManager) EngineUpgrade(volumeName, imageName string) error {
 	if v == nil {
 		return fmt.Errorf("cannot find volume %v", volumeName)
 	}
-	if v.Status.State != types.VolumeStateDetached {
-		return fmt.Errorf("invalid volume state to upgrade engine: %v", v.Status.State)
-	}
 
 	oldImage := v.Spec.EngineImage
 	v.Spec.EngineImage = imageName
@@ -369,7 +367,7 @@ func (m *VolumeManager) EngineUpgrade(volumeName, imageName string) error {
 	if err != nil {
 		return err
 	}
-	logrus.Debugf("Updating volume %v engine image from %v to %v", v.Name, oldImage, v.Spec.EngineImage)
+	logrus.Debugf("Upgrading volume %v engine image from %v to %v", v.Name, oldImage, v.Spec.EngineImage)
 
 	return nil
 }
