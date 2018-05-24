@@ -986,9 +986,7 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 	if err != nil {
 		return err
 	}
-	if setting != nil {
-		backupTarget = setting.BackupTarget
-	}
+	backupTarget = setting.BackupTarget
 
 	// the cronjobs are RO in the map, but not the map itself
 	appliedCronJobROs, err := vc.ds.ListVolumeCronJobROs(v.Name)

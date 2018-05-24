@@ -8,6 +8,7 @@ import (
 	"github.com/rancher/go-iscsi-helper/iscsi"
 	iscsi_util "github.com/rancher/go-iscsi-helper/util"
 	"github.com/urfave/cli"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/rancher/longhorn-manager/api"
 	"github.com/rancher/longhorn-manager/controller"
@@ -126,10 +127,10 @@ func environmentCheck() error {
 
 func initSettings(ds *datastore.DataStore, engineImage string) error {
 	setting, err := ds.GetSetting()
-	if err != nil {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
-	if setting == nil {
+	if apierrors.IsNotFound(err) {
 		setting = &longhorn.Setting{}
 		setting.BackupTarget = ""
 		setting.DefaultEngineImage = engineImage

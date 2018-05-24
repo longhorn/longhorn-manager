@@ -281,3 +281,17 @@ func RegisterShutdownChannel(done chan struct{}) {
 		close(done)
 	}()
 }
+
+func SplitStringToMap(str, separator string) map[string]struct{} {
+	ret := map[string]struct{}{}
+	splits := strings.Split(str, separator)
+	for _, str := range splits {
+		// splits can have empty member
+		str = strings.TrimSpace(str)
+		if str == "" {
+			continue
+		}
+		ret[str] = struct{}{}
+	}
+	return ret
+}

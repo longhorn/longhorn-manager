@@ -5,10 +5,10 @@ import (
 	appsv1beta2 "k8s.io/api/apps/v1beta2"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"strings"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 )
 
 func (m *VolumeManager) GetSetting() (*longhorn.Setting, error) {
@@ -22,7 +22,7 @@ func (m *VolumeManager) UpdateSetting(s *longhorn.Setting) (*longhorn.Setting, e
 	return m.ds.UpdateSetting(s)
 }
 
-func (m *VolumeManager) syncEngineUpgradeImage(image string) error {
+func (m *VolumeManager) syncEngineUpgradeImage(engineUpgradeImage string) error {
 	deployed, err := m.listEngineUpgradeImage()
 	if err != nil {
 		return errors.Wrapf(err, "failed to get engine upgrade images")
@@ -31,13 +31,8 @@ func (m *VolumeManager) syncEngineUpgradeImage(image string) error {
 	toDeploy := make(map[string]struct{})
 	toDelete := make(map[string]struct{})
 
-	images := strings.Split(image, ",")
-	for _, image := range images {
-		// images can have empty member
-		image = strings.TrimSpace(image)
-		if image == "" {
-			continue
-		}
+	images := util.SplitStringToMap(engineUpgradeImage, ",")
+	for image := range images {
 		if deployed[image] == "" {
 			toDeploy[image] = struct{}{}
 		} else {
