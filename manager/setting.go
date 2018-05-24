@@ -34,6 +34,7 @@ func (m *VolumeManager) syncEngineUpgradeImage(image string) error {
 	images := strings.Split(image, ",")
 	for _, image := range images {
 		// images can have empty member
+		image = strings.TrimSpace(image)
 		if image == "" {
 			continue
 		}
