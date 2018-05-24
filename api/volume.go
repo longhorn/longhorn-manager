@@ -211,7 +211,7 @@ func (s *Server) EngineUpgrade(rw http.ResponseWriter, req *http.Request) error 
 
 	id := mux.Vars(req)["name"]
 
-	if err := s.m.EngineUpgrade(id, input.Name); err != nil {
+	if err := s.m.EngineUpgrade(id, input.Image); err != nil {
 		return errors.Wrap(err, "unable to upgrade engine")
 	}
 
