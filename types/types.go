@@ -12,9 +12,9 @@ import (
 const (
 	DefaultAPIPort = 9500
 
-	DefaultEngineBinaryPath           = "/usr/local/bin/longhorn"
-	EngineUpgradeDirectoryInContainer = "/upgrades/"
-	EngineUpgradeDirectoryOnHost      = "/var/lib/rancher/longhorn/upgrades/"
+	DefaultEngineBinaryPath          = "/usr/local/bin/longhorn"
+	EngineBinaryDirectoryInContainer = "/engine-binaries/"
+	EngineBinaryDirectoryOnHost      = "/var/lib/rancher/longhorn/engine-binaries/"
 )
 
 type ReplicaMode string
@@ -75,24 +75,24 @@ func GetImageCanonicalName(image string) string {
 	return strings.Replace(strings.Replace(image, ":", "-", -1), "/", "-", -1)
 }
 
-func GetEngineUpgradeDirectoryForImageOnHost(image string) string {
+func GetEngineBinaryDirectoryOnHostForImage(image string) string {
 	cname := GetImageCanonicalName(image)
-	return filepath.Join(EngineUpgradeDirectoryOnHost, cname)
+	return filepath.Join(EngineBinaryDirectoryOnHost, cname)
 }
 
-func GetEngineUpgradeDirectoryForImageInContainer(image string) string {
+func GetEngineBinaryDirectoryInContainerForImage(image string) string {
 	cname := GetImageCanonicalName(image)
-	return filepath.Join(EngineUpgradeDirectoryInContainer, cname)
+	return filepath.Join(EngineBinaryDirectoryInContainer, cname)
 }
 
 var (
 	LonghornSystemKey                    = "longhorn"
 	LonghornSystemValueManager           = "manager"
-	LonghornSystemValueUpdateEngineImage = "upgrade-engine-image"
+	LonghornSystemValueEngineBinaryImage = "engine-binary-image"
 )
 
-func GetEngineUpgradeImageLabel() map[string]string {
+func GetEngineBinaryImageLabel() map[string]string {
 	return map[string]string{
-		LonghornSystemKey: LonghornSystemValueUpdateEngineImage,
+		LonghornSystemKey: LonghornSystemValueEngineBinaryImage,
 	}
 }

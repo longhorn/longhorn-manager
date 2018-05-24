@@ -352,8 +352,8 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 							MountPath: "/host/proc",
 						},
 						{
-							Name:      "upgrades",
-							MountPath: types.EngineUpgradeDirectoryInContainer,
+							Name:      "engine-binaries",
+							MountPath: types.EngineBinaryDirectoryInContainer,
 						},
 					},
 					ReadinessProbe: &v1.Probe{
@@ -387,10 +387,10 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 					},
 				},
 				{
-					Name: "upgrades",
+					Name: "engine-binaries",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: types.EngineUpgradeDirectoryOnHost,
+							Path: types.EngineBinaryDirectoryOnHost,
 						},
 					},
 				},
@@ -732,7 +732,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	for _, ip := range e.Spec.UpgradedReplicaAddressMap {
 		replicaURLs = append(replicaURLs, engineapi.GetReplicaDefaultURL(ip))
 	}
-	binary := types.GetEngineUpgradeDirectoryForImageInContainer(e.Spec.EngineImage) + "/longhorn"
+	binary := types.GetEngineBinaryDirectoryInContainerForImage(e.Spec.EngineImage) + "/longhorn"
 	client, err := ec.getClientForEngine(e)
 	if err != nil {
 		return err

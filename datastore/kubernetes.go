@@ -91,14 +91,14 @@ func (s *DataStore) DeleteCronJob(cronJobName string) error {
 	return nil
 }
 
-func getEngineUpgradeImageSelector() (labels.Selector, error) {
+func getEngineBinaryImageSelector() (labels.Selector, error) {
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: types.GetEngineUpgradeImageLabel(),
+		MatchLabels: types.GetEngineBinaryImageLabel(),
 	})
 }
 
-func (s *DataStore) ListEngineUpgradeImageDaemonSet() (map[string]string, error) {
-	selector, err := getEngineUpgradeImageSelector()
+func (s *DataStore) ListEngineBinaryImageDaemonSet() (map[string]string, error) {
+	selector, err := getEngineBinaryImageSelector()
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func (s *DataStore) ListEngineUpgradeImageDaemonSet() (map[string]string, error)
 	return imageDSMap, nil
 }
 
-func (s *DataStore) CreateEngineUpgradeImageDaemonSet(ds *appsv1beta2.DaemonSet) error {
+func (s *DataStore) CreateEngineBinaryImageDaemonSet(ds *appsv1beta2.DaemonSet) error {
 	if _, err := s.kubeClient.AppsV1beta2().DaemonSets(s.namespace).Create(ds); err != nil {
 		return err
 	}
@@ -122,7 +122,7 @@ func (s *DataStore) CreateEngineUpgradeImageDaemonSet(ds *appsv1beta2.DaemonSet)
 	return nil
 }
 
-func (s *DataStore) DeleteEngineUpgradeImageDaemonSet(name string) error {
+func (s *DataStore) DeleteEngineBinaryImageDaemonSet(name string) error {
 	propagation := metav1.DeletePropagationForeground
 	err := s.kubeClient.AppsV1beta2().DaemonSets(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
 	if err != nil && !apierrors.IsNotFound(err) {
