@@ -32,7 +32,7 @@ func NewBackupTarget(backupTarget string) *BackupTarget {
 }
 
 func ExecuteDefaultEngineBinary(args ...string) (string, error) {
-	return util.Execute(LonghornEngineBinary, args...)
+	return util.Execute("longhorn", args...)
 }
 
 func parseBackup(v interface{}) (*Backup, error) {

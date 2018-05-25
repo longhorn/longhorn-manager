@@ -620,6 +620,7 @@ func (ec *EngineController) getClientForEngine(e *longhorn.Engine) (client engin
 	}
 	client, err = ec.engines.NewEngineClient(&engineapi.EngineClientRequest{
 		VolumeName:        e.Spec.VolumeName,
+		EngineImage:       e.Status.CurrentImage,
 		ControllerURL:     engineapi.GetControllerDefaultURL(e.Status.IP),
 		EngineLauncherURL: engineapi.GetEngineLauncherDefaultURL(e.Status.IP),
 	})

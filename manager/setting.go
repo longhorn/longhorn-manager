@@ -87,7 +87,7 @@ func createEngineBinaryImageDaemonSetSpec(image string) *appsv1beta2.DaemonSet {
 	}
 	args := []string{
 		"-c",
-		"cp /usr/local/bin/longhorn /data/ && echo installed && trap 'rm /data/longhorn && echo cleaned up' EXIT && sleep infinity",
+		"cp /usr/local/bin/longhorn* /data/ && echo installed && trap 'rm /data/longhorn* && echo cleaned up' EXIT && sleep infinity",
 	}
 	d := &appsv1beta2.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{

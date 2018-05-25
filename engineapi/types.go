@@ -43,6 +43,7 @@ type EngineClient interface {
 
 type EngineClientRequest struct {
 	VolumeName        string
+	EngineImage       string
 	ControllerURL     string
 	EngineLauncherURL string
 }
