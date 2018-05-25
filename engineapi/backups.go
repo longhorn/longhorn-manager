@@ -31,6 +31,10 @@ func NewBackupTarget(backupTarget string) *BackupTarget {
 	}
 }
 
+func ExecuteDefaultEngineBinary(args ...string) (string, error) {
+	return util.Execute(LonghornEngineBinary, args...)
+}
+
 func parseBackup(v interface{}) (*Backup, error) {
 	backup := new(Backup)
 	if err := mapstructure.Decode(v, backup); err != nil {
@@ -87,8 +91,7 @@ func parseOneBackup(output string) (*Backup, error) {
 }
 
 func (b *BackupTarget) ListVolumes() ([]*BackupVolume, error) {
-	args := []string{"backup", "ls", "--volume-only", b.url}
-	output, err := util.Execute(LonghornEngineBinary, args...)
+	output, err := ExecuteDefaultEngineBinary("backup", "ls", "--volume-only", b.url)
 	if err != nil {
 		if strings.Contains(err.Error(), "msg=\"cannot find ") {
 			return nil, nil
@@ -99,8 +102,7 @@ func (b *BackupTarget) ListVolumes() ([]*BackupVolume, error) {
 }
 
 func (b *BackupTarget) GetVolume(volumeName string) (*BackupVolume, error) {
-	args := []string{"backup", "ls", "--volume", volumeName, "--volume-only", b.url}
-	output, err := util.Execute(LonghornEngineBinary, args...)
+	output, err := ExecuteDefaultEngineBinary("backup", "ls", "--volume", volumeName, "--volume-only", b.url)
 	if err != nil {
 		if strings.Contains(err.Error(), "msg=\"cannot find ") {
 			return nil, nil
@@ -118,8 +120,7 @@ func (b *BackupTarget) List(volumeName string) ([]*Backup, error) {
 	if volumeName == "" {
 		return nil, nil
 	}
-	args := []string{"backup", "ls", "--volume", volumeName, b.url}
-	output, err := util.Execute(LonghornEngineBinary, args...)
+	output, err := ExecuteDefaultEngineBinary("backup", "ls", "--volume", volumeName, b.url)
 	if err != nil {
 		if strings.Contains(err.Error(), "msg=\"cannot find ") {
 			return nil, nil
@@ -130,8 +131,7 @@ func (b *BackupTarget) List(volumeName string) ([]*Backup, error) {
 }
 
 func GetBackup(url string) (*Backup, error) {
-	args := []string{"backup", "inspect", url}
-	output, err := util.Execute(LonghornEngineBinary, args...)
+	output, err := ExecuteDefaultEngineBinary("backup", "inspect", url)
 	if err != nil {
 		if strings.Contains(err.Error(), "msg=\"cannot find ") {
 			return nil, nil
@@ -142,8 +142,7 @@ func GetBackup(url string) (*Backup, error) {
 }
 
 func DeleteBackup(url string) error {
-	args := []string{"backup", "rm", url}
-	_, err := util.Execute(LonghornEngineBinary, args...)
+	_, err := ExecuteDefaultEngineBinary("backup", "rm", url)
 	if err != nil {
 		if strings.Contains(err.Error(), "msg=\"cannot find ") {
 			logrus.Warnf("delete: could not find the backup: '%s'", url)
