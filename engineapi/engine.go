@@ -2,6 +2,8 @@ package engineapi
 
 import (
 	"encoding/json"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,23 +17,25 @@ import (
 type EngineCollection struct{}
 
 type Engine struct {
-	name string
-	cURL string
-	lURL string
+	name  string
+	image string
+	cURL  string
+	lURL  string
 }
 
 const (
-	LonghornEngineBinary         = "longhorn"
-	LonghornEngineLauncherBinary = "longhorn-engine-launcher"
-
 	rebuildTimeout = 180 * time.Minute
 )
 
 func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (EngineClient, error) {
+	if request.EngineImage == "" {
+		return nil, fmt.Errorf("Invalid empty engine image from request")
+	}
 	return &Engine{
-		name: request.VolumeName,
-		cURL: request.ControllerURL,
-		lURL: request.EngineLauncherURL,
+		name:  request.VolumeName,
+		image: request.EngineImage,
+		cURL:  request.ControllerURL,
+		lURL:  request.EngineLauncherURL,
 	}, nil
 }
 
@@ -39,19 +43,27 @@ func (e *Engine) Name() string {
 	return e.name
 }
 
+func (e *Engine) LonghornEngineBinary() string {
+	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(e.image), "longhorn")
+}
+
+func (e *Engine) LonghornEngineLauncherBinary() string {
+	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(e.image), "longhorn-engine-launcher")
+}
+
 func (e *Engine) ExecuteEngineBinary(args ...string) (string, error) {
 	args = append([]string{"--url", e.cURL}, args...)
-	return util.Execute(LonghornEngineBinary, args...)
+	return util.Execute(e.LonghornEngineBinary(), args...)
 }
 
 func (e *Engine) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...string) (string, error) {
 	args = append([]string{"--url", e.cURL}, args...)
-	return util.ExecuteWithTimeout(timeout, LonghornEngineBinary, args...)
+	return util.ExecuteWithTimeout(timeout, e.LonghornEngineBinary(), args...)
 }
 
 func (e *Engine) ExecuteEngineLauncherBinary(args ...string) (string, error) {
 	args = append([]string{"--url", e.lURL}, args...)
-	return util.Execute(LonghornEngineLauncherBinary, args...)
+	return util.Execute(e.LonghornEngineLauncherBinary(), args...)
 }
 
 func parseReplica(s string) (*Replica, error) {
