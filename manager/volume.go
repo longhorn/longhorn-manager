@@ -9,7 +9,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/rancher/longhorn-manager/datastore"
-	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 
@@ -75,7 +74,11 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 
 	size := spec.Size
 	if spec.FromBackup != "" {
-		backup, err := engineapi.GetBackup(spec.FromBackup)
+		backupTarget, err := m.getBackupTarget()
+		if err != nil {
+			return nil, err
+		}
+		backup, err := backupTarget.GetBackup(spec.FromBackup)
 		if err != nil {
 			return nil, fmt.Errorf("cannot get backup %v: %v", spec.FromBackup, err)
 		}

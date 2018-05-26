@@ -913,19 +913,6 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 						},
 						Spec: v1.PodSpec{
 							NodeName: v.Spec.NodeID,
-							InitContainers: []v1.Container{
-								{
-									Name:    "longhorn-engine-binary",
-									Image:   v.Status.CurrentImage,
-									Command: []string{"sh", "-c", "cp /usr/local/bin/* /data/"},
-									VolumeMounts: []v1.VolumeMount{
-										{
-											Name:      "execbin",
-											MountPath: "/data",
-										},
-									},
-								},
-							},
 							Containers: []v1.Container{
 								{
 									Name:    types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
@@ -933,12 +920,6 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 									Command: cmd,
 									SecurityContext: &v1.SecurityContext{
 										Privileged: &privilege,
-									},
-									VolumeMounts: []v1.VolumeMount{
-										{
-											Name:      "execbin",
-											MountPath: "/usr/local/bin",
-										},
 									},
 									Env: []v1.EnvVar{
 										{
@@ -950,13 +931,21 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 											},
 										},
 									},
+									VolumeMounts: []v1.VolumeMount{
+										{
+											Name:      "engine-binaries",
+											MountPath: types.EngineBinaryDirectoryOnHost,
+										},
+									},
 								},
 							},
 							Volumes: []v1.Volume{
 								{
-									Name: "execbin",
+									Name: "engine-binaries",
 									VolumeSource: v1.VolumeSource{
-										EmptyDir: &v1.EmptyDirVolumeSource{},
+										HostPath: &v1.HostPathVolumeSource{
+											Path: types.EngineBinaryDirectoryOnHost,
+										},
 									},
 								},
 							},
