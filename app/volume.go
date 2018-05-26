@@ -99,7 +99,8 @@ type Job struct {
 	retain       int
 	labels       map[string]string
 
-	engine engineapi.EngineClient
+	engine      engineapi.EngineClient
+	engineImage string
 }
 
 func NewJob(volumeName, snapshotName, backupTarget string, labels map[string]string, retain int) (*Job, error) {
@@ -130,9 +131,10 @@ func NewJob(volumeName, snapshotName, backupTarget string, labels map[string]str
 	}
 
 	engines := engineapi.EngineCollection{}
+	engineImage := e.Status.CurrentImage
 	engineClient, err := engines.NewEngineClient(&engineapi.EngineClientRequest{
 		VolumeName:        v.Name,
-		EngineImage:       e.Status.CurrentImage,
+		EngineImage:       engineImage,
 		ControllerURL:     engineapi.GetControllerDefaultURL(e.Status.IP),
 		EngineLauncherURL: engineapi.GetEngineLauncherDefaultURL(e.Status.IP),
 	})
@@ -151,6 +153,7 @@ func NewJob(volumeName, snapshotName, backupTarget string, labels map[string]str
 		labels:       labels,
 		retain:       retain,
 		engine:       engineClient,
+		engineImage:  engineImage,
 	}, nil
 }
 
@@ -242,14 +245,14 @@ func (job *Job) backupAndCleanup() error {
 	if err := job.engine.SnapshotBackup(job.snapshotName, job.backupTarget, job.labels); err != nil {
 		return err
 	}
-	target := engineapi.NewBackupTarget(job.backupTarget)
+	target := engineapi.NewBackupTarget(job.backupTarget, job.engineImage)
 	backups, err := target.List(job.volumeName)
 	if err != nil {
 		return err
 	}
 	cleanupBackupURLs := job.listBackupURLsForCleanup(backups)
 	for _, url := range cleanupBackupURLs {
-		if err := engineapi.DeleteBackup(url); err != nil {
+		if err := target.DeleteBackup(url); err != nil {
 			return fmt.Errorf("Cleaned up backup %v failed for %v: %v", url, job.volumeName, err)
 		}
 		logrus.Debugf("Cleaned up backup %v for %v", url, job.volumeName)

@@ -120,7 +120,7 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 		return fmt.Errorf("volume and snapshot name required")
 	}
 
-	backupTarget, err := m.getBackupTarget()
+	backupTarget, err := m.getBackupTargetURL()
 	if err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.Eng
 	})
 }
 
-func (m *VolumeManager) getBackupTarget() (string, error) {
+func (m *VolumeManager) getBackupTargetURL() (string, error) {
 	settings, err := m.ds.GetSetting()
 	if err != nil {
 		return "", errors.New("cannot backup: unable to read settings")
@@ -167,14 +167,37 @@ func (m *VolumeManager) getBackupTarget() (string, error) {
 	return backupTarget, nil
 }
 
+func (m *VolumeManager) getDefaultEngineImage() (string, error) {
+	setting, err := m.ds.GetSetting()
+	if err != nil {
+		return "", errors.New("cannot backup: unable to read settings")
+	}
+	engineImage := setting.DefaultEngineImage
+	if engineImage == "" {
+		return "", errors.New("cannot backup: default engine image not set")
+	}
+	return engineImage, nil
+}
+
+func (m *VolumeManager) getBackupTarget() (*engineapi.BackupTarget, error) {
+	targetURL, err := m.getBackupTargetURL()
+	if err != nil {
+		return nil, err
+	}
+	engineImage, err := m.getDefaultEngineImage()
+	if err != nil {
+		return nil, err
+	}
+	return engineapi.NewBackupTarget(targetURL, engineImage), nil
+}
+
 func (m *VolumeManager) ListBackupVolumes() ([]*engineapi.BackupVolume, error) {
 	backupTarget, err := m.getBackupTarget()
 	if err != nil {
 		return nil, err
 	}
 
-	backups := engineapi.NewBackupTarget(backupTarget)
-	return backups.ListVolumes()
+	return backupTarget.ListVolumes()
 }
 
 func (m *VolumeManager) GetBackupVolume(volumeName string) (*engineapi.BackupVolume, error) {
@@ -183,8 +206,7 @@ func (m *VolumeManager) GetBackupVolume(volumeName string) (*engineapi.BackupVol
 		return nil, err
 	}
 
-	backups := engineapi.NewBackupTarget(backupTarget)
-	return backups.GetVolume(volumeName)
+	return backupTarget.GetVolume(volumeName)
 }
 
 func (m *VolumeManager) ListBackupsForVolume(volumeName string) ([]*engineapi.Backup, error) {
@@ -193,8 +215,7 @@ func (m *VolumeManager) ListBackupsForVolume(volumeName string) ([]*engineapi.Ba
 		return nil, err
 	}
 
-	backups := engineapi.NewBackupTarget(backupTarget)
-	return backups.List(volumeName)
+	return backupTarget.List(volumeName)
 }
 
 func (m *VolumeManager) GetBackup(backupName, volumeName string) (*engineapi.Backup, error) {
@@ -203,8 +224,8 @@ func (m *VolumeManager) GetBackup(backupName, volumeName string) (*engineapi.Bac
 		return nil, err
 	}
 
-	url := engineapi.GetBackupURL(backupTarget, backupName, volumeName)
-	return engineapi.GetBackup(url)
+	url := engineapi.GetBackupURL(backupTarget.URL, backupName, volumeName)
+	return backupTarget.GetBackup(url)
 }
 
 func (m *VolumeManager) DeleteBackup(backupName, volumeName string) error {
@@ -213,6 +234,6 @@ func (m *VolumeManager) DeleteBackup(backupName, volumeName string) error {
 		return err
 	}
 
-	url := engineapi.GetBackupURL(backupTarget, backupName, volumeName)
-	return engineapi.DeleteBackup(url)
+	url := engineapi.GetBackupURL(backupTarget.URL, backupName, volumeName)
+	return backupTarget.DeleteBackup(url)
 }
