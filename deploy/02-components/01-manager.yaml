@@ -14,16 +14,9 @@ spec:
       labels:
         app: longhorn-manager
     spec:
-      initContainers:
-      - name: init-container
-        image: rancher/longhorn-engine:91aa784
-        command: ['sh', '-c', 'cp /usr/local/bin/* /data/']
-        volumeMounts:
-        - name: execbin
-          mountPath: /data/
       containers:
       - name: longhorn-manager
-        image: rancher/longhorn-manager:830c577
+        image: rancher/longhorn-manager:b7f1b01
         imagePullPolicy: Always
         securityContext:
           privileged: true
@@ -34,7 +27,7 @@ spec:
         - --engine-image
         - rancher/longhorn-engine:91aa784
         - --manager-image
-        - rancher/longhorn-manager:830c577
+        - rancher/longhorn-manager:b7f1b01
         - --service-account
         - longhorn-service-account
         ports:
@@ -48,8 +41,6 @@ spec:
           mountPath: /var/run/
         - name: longhorn
           mountPath: /var/lib/rancher/longhorn/
-        - name: execbin
-          mountPath: /usr/local/bin/
         env:
         - name: POD_NAMESPACE
           valueFrom:
@@ -76,6 +67,4 @@ spec:
       - name: longhorn
         hostPath:
           path: /var/lib/rancher/longhorn/
-      - name: execbin
-        emptyDir: {}
       serviceAccountName: longhorn-service-account
