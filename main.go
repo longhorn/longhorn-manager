@@ -45,6 +45,7 @@ func main() {
 		app.DaemonCmd(),
 		app.SnapshotCmd(),
 		app.DeployFlexvolumeDriverCmd(),
+		app.CSICommand(),
 	}
 	a.CommandNotFound = cmdNotFound
 	a.OnUsageError = onUsageError
