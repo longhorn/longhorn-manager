@@ -22,3 +22,9 @@ _testmain.go
 *.exe
 *.test
 *.prof
+
+# Rancher
+.dapper
+trash.lock
+.trash-conf
+bin/
