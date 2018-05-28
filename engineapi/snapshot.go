@@ -7,6 +7,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+
 	"github.com/rancher/longhorn-manager/util"
 )
 

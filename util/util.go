@@ -28,9 +28,10 @@ const (
 	ControllerServiceName = "controller"
 	ReplicaServiceName    = "replica"
 
+	BackupStoreTypeS3 = "s3"
 	AWSAccessKey      = "AWS_ACCESS_KEY_ID"
 	AWSSecretKey      = "AWS_SECRET_ACCESS_KEY"
-	BackupStoreTypeS3 = "s3"
+	AWSEndPoint       = "AWS_ENDPOINTS"
 )
 
 var (
@@ -331,6 +332,7 @@ func ConfigBackupCredential(backupTarget string, credential map[string]string) e
 		if credential != nil && credential[AWSAccessKey] != "" && credential[AWSSecretKey] != "" {
 			os.Setenv(AWSAccessKey, credential[AWSAccessKey])
 			os.Setenv(AWSSecretKey, credential[AWSSecretKey])
+			os.Setenv(AWSEndPoint, credential[AWSEndPoint])
 		} else if os.Getenv(AWSAccessKey) == "" || os.Getenv(AWSSecretKey) == "" {
 			return fmt.Errorf("Could not backup for %s without credential secret", backupType)
 		}
@@ -368,6 +370,18 @@ func ConfigEnvWithCredential(backupTarget string, credentialSecret string, conta
 			},
 		}
 		container.Env = append(container.Env, secreKeyEnv)
+		endpointEnv := v1.EnvVar{
+			Name: AWSEndPoint,
+			ValueFrom: &v1.EnvVarSource{
+				SecretKeyRef: &v1.SecretKeySelector{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: credentialSecret,
+					},
+					Key: AWSEndPoint,
+				},
+			},
+		}
+		container.Env = append(container.Env, endpointEnv)
 	}
 	return nil
 }
