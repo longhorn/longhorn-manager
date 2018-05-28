@@ -125,6 +125,8 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
 	schemas.AddType("salvageInput", SalvageInput{})
 	schemas.AddType("engineUpgradeInput", EngineUpgradeInput{})
+	schemas.AddType("replica", Replica{})
+	schemas.AddType("controller", Controller{})
 
 	hostSchema(schemas.AddType("host", Host{}))
 	volumeSchema(schemas.AddType("volume", Volume{}))
@@ -231,7 +233,7 @@ func volumeSchema(volume *client.Schema) {
 		},
 	}
 	volume.ResourceFields["controller"] = client.Field{
-		Type:     "struct",
+		Type:     "controller",
 		Nullable: true,
 	}
 	volumeName := volume.ResourceFields["name"]
@@ -260,6 +262,14 @@ func volumeSchema(volume *client.Schema) {
 	volumeStaleReplicaTimeout.Create = true
 	volumeStaleReplicaTimeout.Default = 20
 	volume.ResourceFields["staleReplicaTimeout"] = volumeStaleReplicaTimeout
+
+	replicas := volume.ResourceFields["replicas"]
+	replicas.Type = "array[replica]"
+	volume.ResourceFields["replicas"] = replicas
+
+	recurringJobs := volume.ResourceFields["recurringJobs"]
+	recurringJobs.Type = "array[recurringJob]"
+	volume.ResourceFields["recurringJobs"] = recurringJobs
 }
 
 func toSettingResource(name, value string) *Setting {
