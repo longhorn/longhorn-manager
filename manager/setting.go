@@ -16,16 +16,16 @@ func (m *VolumeManager) GetSetting() (*longhorn.Setting, error) {
 }
 
 func (m *VolumeManager) UpdateSetting(s *longhorn.Setting) (*longhorn.Setting, error) {
-	if err := m.syncEngineBinaryImage(s.DefaultEngineImage, s.EngineUpgradeImage); err != nil {
+	if err := m.syncEngineImage(s.DefaultEngineImage, s.EngineUpgradeImage); err != nil {
 		return nil, err
 	}
 	return m.ds.UpdateSetting(s)
 }
 
-func (m *VolumeManager) syncEngineBinaryImage(defaultEngineImage, engineUpgradeImage string) error {
-	deployed, err := m.listEngineBinaryImage()
+func (m *VolumeManager) syncEngineImage(defaultEngineImage, engineUpgradeImage string) error {
+	deployed, err := m.listEngineImage()
 	if err != nil {
-		return errors.Wrapf(err, "failed to get engine binary images")
+		return errors.Wrapf(err, "failed to get engine image daemonset")
 	}
 
 	images := util.SplitStringToMap(engineUpgradeImage, ",")
@@ -43,45 +43,45 @@ func (m *VolumeManager) syncEngineBinaryImage(defaultEngineImage, engineUpgradeI
 	toDelete := deployed
 
 	for image := range toDelete {
-		if err := m.deleteEngineBinaryImage(image); err != nil {
-			return errors.Wrapf(err, "failed to delete engine binary image")
+		if err := m.deleteEngineImage(image); err != nil {
+			return errors.Wrapf(err, "failed to delete engine image daemonset")
 		}
 	}
 	for image := range toDeploy {
-		if err := m.createEngineBinaryImage(image); err != nil {
-			return errors.Wrapf(err, "failed to create engine binary image")
+		if err := m.createEngineImage(image); err != nil {
+			return errors.Wrapf(err, "failed to create engine image daemonset")
 		}
 	}
 	return nil
 }
 
-func (m *VolumeManager) listEngineBinaryImage() (map[string]string, error) {
-	return m.ds.ListEngineBinaryImageDaemonSet()
+func (m *VolumeManager) listEngineImage() (map[string]string, error) {
+	return m.ds.ListEngineImageDaemonSet()
 }
 
-func (m *VolumeManager) deleteEngineBinaryImage(image string) error {
-	dsName := getEngineBinaryImageDeployerName(image)
-	if err := m.ds.DeleteEngineBinaryImageDaemonSet(dsName); err != nil {
-		return errors.Wrapf(err, "failed to delete engine binary image daemonset %v", dsName)
+func (m *VolumeManager) deleteEngineImage(image string) error {
+	dsName := getEngineImageDeployerName(image)
+	if err := m.ds.DeleteEngineImageDaemonSet(dsName); err != nil {
+		return errors.Wrapf(err, "failed to delete engine image daemonset %v", dsName)
 	}
 	return nil
 }
 
-func (m *VolumeManager) createEngineBinaryImage(image string) error {
-	d := createEngineBinaryImageDaemonSetSpec(image)
-	if err := m.ds.CreateEngineBinaryImageDaemonSet(d); err != nil {
-		return errors.Wrap(err, "failed to create engine binary image daemonset")
+func (m *VolumeManager) createEngineImage(image string) error {
+	d := createEngineImageDaemonSetSpec(image)
+	if err := m.ds.CreateEngineImageDaemonSet(d); err != nil {
+		return errors.Wrap(err, "failed to create engine image daemonset")
 	}
 	return nil
 }
 
-func getEngineBinaryImageDeployerName(image string) string {
+func getEngineImageDeployerName(image string) string {
 	cname := types.GetImageCanonicalName(image)
 	return "engine-image-deployer-" + cname
 }
 
-func createEngineBinaryImageDaemonSetSpec(image string) *appsv1beta2.DaemonSet {
-	dsName := getEngineBinaryImageDeployerName(image)
+func createEngineImageDaemonSetSpec(image string) *appsv1beta2.DaemonSet {
+	dsName := getEngineImageDeployerName(image)
 	cmd := []string{
 		"/bin/bash",
 	}
@@ -95,12 +95,12 @@ func createEngineBinaryImageDaemonSetSpec(image string) *appsv1beta2.DaemonSet {
 		},
 		Spec: appsv1beta2.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
-				MatchLabels: types.GetEngineBinaryImageLabel(),
+				MatchLabels: types.GetEngineImageLabel(),
 			},
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   dsName,
-					Labels: types.GetEngineBinaryImageLabel(),
+					Labels: types.GetEngineImageLabel(),
 				},
 				Spec: v1.PodSpec{
 					Containers: []v1.Container{

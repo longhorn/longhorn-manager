@@ -86,13 +86,13 @@ func GetEngineBinaryDirectoryInContainerForImage(image string) string {
 }
 
 var (
-	LonghornSystemKey                    = "longhorn"
-	LonghornSystemValueManager           = "manager"
-	LonghornSystemValueEngineBinaryImage = "engine-binary-image"
+	LonghornSystemKey              = "longhorn"
+	LonghornSystemValueManager     = "manager"
+	LonghornSystemValueEngineImage = "engine-image"
 )
 
-func GetEngineBinaryImageLabel() map[string]string {
+func GetEngineImageLabel() map[string]string {
 	return map[string]string{
-		LonghornSystemKey: LonghornSystemValueEngineBinaryImage,
+		LonghornSystemKey: LonghornSystemValueEngineImage,
 	}
 }
