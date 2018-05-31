@@ -363,6 +363,8 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 			actions["recurringUpdate"] = struct{}{}
 			actions["replicaRemove"] = struct{}{}
 			actions["engineUpgrade"] = struct{}{}
+		case types.VolumeStateAttaching:
+			actions["detach"] = struct{}{}
 		case types.VolumeStateAttached:
 			actions["detach"] = struct{}{}
 			actions["snapshotPurge"] = struct{}{}
