@@ -324,10 +324,12 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 	}
 
 	state := string(v.Status.State)
-	if v.Status.State == types.VolumeStateAttached ||
-		(v.Status.State == types.VolumeStateDetached &&
-			v.Status.Robustness == types.VolumeRobustnessFaulted) {
-		state = string(v.Status.Robustness)
+	if v.Status.Robustness != "" {
+		if v.Status.State == types.VolumeStateAttached ||
+			(v.Status.State == types.VolumeStateDetached &&
+				v.Status.Robustness == types.VolumeRobustnessFaulted) {
+			state = string(v.Status.Robustness)
+		}
 	}
 	r := &Volume{
 		Resource: client.Resource{
