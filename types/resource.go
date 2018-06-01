@@ -114,3 +114,30 @@ type SettingsInfo struct {
 	DefaultEngineImage string `json:"defaultEngineImage"`
 	EngineUpgradeImage string `json:"engineUpgradeImage"`
 }
+
+type EngineImageState string
+
+const (
+	EngineImageStateDeploying = "deploying"
+	EngineImageStateReady     = "ready"
+	EngineImageStateError     = "error"
+)
+
+type EngineImageSpec struct {
+	Image string `json:"image"`
+}
+
+type EngineImageStatus struct {
+	State EngineImageState `json:"state"`
+
+	Version   string `json:"version"`
+	GitCommit string `json:"gitCommit"`
+	BuildDate string `json:"buildDate"`
+
+	CLIVersion           int `json:"cliVersion"`
+	CLIMinVersion        int `json:"cliMinVersion"`
+	ControllerVersion    int `json:"controllerVersion"`
+	ControllerMinVersion int `json:"controllerMinVersion"`
+	DataFormatVersion    int `json:"dataFormatVersion"`
+	DataFormatMinVersion int `json:"dataFormatMinVersion"`
+}
