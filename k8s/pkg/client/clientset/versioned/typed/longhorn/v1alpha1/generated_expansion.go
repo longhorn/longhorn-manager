@@ -20,6 +20,8 @@ package v1alpha1
 
 type EngineExpansion interface{}
 
+type EngineImageExpansion interface{}
+
 type ReplicaExpansion interface{}
 
 type SettingExpansion interface{}

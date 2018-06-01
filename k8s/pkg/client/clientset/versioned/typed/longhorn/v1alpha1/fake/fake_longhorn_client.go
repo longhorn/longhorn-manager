@@ -32,6 +32,10 @@ func (c *FakeLonghornV1alpha1) Engines(namespace string) v1alpha1.EngineInterfac
 	return &FakeEngines{c, namespace}
 }
 
+func (c *FakeLonghornV1alpha1) EngineImages(namespace string) v1alpha1.EngineImageInterface {
+	return &FakeEngineImages{c, namespace}
+}
+
 func (c *FakeLonghornV1alpha1) Replicas(namespace string) v1alpha1.ReplicaInterface {
 	return &FakeReplicas{c, namespace}
 }

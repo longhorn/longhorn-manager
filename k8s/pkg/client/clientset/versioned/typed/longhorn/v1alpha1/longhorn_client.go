@@ -28,6 +28,7 @@ import (
 type LonghornV1alpha1Interface interface {
 	RESTClient() rest.Interface
 	EnginesGetter
+	EngineImagesGetter
 	ReplicasGetter
 	SettingsGetter
 	VolumesGetter
@@ -40,6 +41,10 @@ type LonghornV1alpha1Client struct {
 
 func (c *LonghornV1alpha1Client) Engines(namespace string) EngineInterface {
 	return newEngines(c, namespace)
+}
+
+func (c *LonghornV1alpha1Client) EngineImages(namespace string) EngineImageInterface {
+	return newEngineImages(c, namespace)
 }
 
 func (c *LonghornV1alpha1Client) Replicas(namespace string) ReplicaInterface {
