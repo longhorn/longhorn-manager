@@ -124,8 +124,19 @@ func (s *DataStore) CreateEngineImageDaemonSet(ds *appsv1beta2.DaemonSet) error 
 	if _, err := s.kubeClient.AppsV1beta2().DaemonSets(s.namespace).Create(ds); err != nil {
 		return err
 	}
-	//TODO wait until daemon set deployed successfully
 	return nil
+}
+
+func (s *DataStore) GetEngineImageDaemonSet(name string) (*appsv1beta2.DaemonSet, error) {
+	resultRO, err := s.dsLister.DaemonSets(s.namespace).Get(name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
 }
 
 func (s *DataStore) DeleteEngineImageDaemonSet(name string) error {

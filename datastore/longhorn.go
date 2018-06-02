@@ -354,3 +354,72 @@ func (s *DataStore) GetVolumeReplicas(volumeName string) (map[string]*longhorn.R
 	}
 	return replicas, nil
 }
+
+func (s *DataStore) CreateEngineImage(img *longhorn.EngineImage) (*longhorn.EngineImage, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, img); err != nil {
+		return nil, err
+	}
+	return s.lhClient.LonghornV1alpha1().EngineImages(s.namespace).Create(img)
+}
+
+func (s *DataStore) UpdateEngineImage(img *longhorn.EngineImage) (*longhorn.EngineImage, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, img); err != nil {
+		return nil, err
+	}
+	return s.lhClient.LonghornV1alpha1().EngineImages(s.namespace).Update(img)
+}
+
+// DeleteEngineImage won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteEngineImage(name string) error {
+	return s.lhClient.LonghornV1alpha1().EngineImages(s.namespace).Delete(name, &metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForEngineImage will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForEngineImage(obj *longhorn.EngineImage) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1alpha1().EngineImages(s.namespace).Update(obj)
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for engine image %v", obj.Name)
+	}
+	return nil
+}
+
+func (s *DataStore) GetEngineImage(name string) (*longhorn.EngineImage, error) {
+	resultRO, err := s.iLister.EngineImages(s.namespace).Get(name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+func (s *DataStore) ListEngineImages() (map[string]*longhorn.EngineImage, error) {
+	itemMap := map[string]*longhorn.EngineImage{}
+
+	list, err := s.iLister.EngineImages(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	if len(list) == 0 {
+		return itemMap, nil
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}

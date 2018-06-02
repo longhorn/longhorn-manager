@@ -124,7 +124,8 @@ const (
 )
 
 type EngineImageSpec struct {
-	Image string `json:"image"`
+	OwnerID string `json:"ownerID"`
+	Image   string `json:"image"`
 }
 
 type EngineImageStatus struct {
