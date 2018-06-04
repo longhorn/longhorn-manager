@@ -188,3 +188,7 @@ func (e *EngineSimulator) SnapshotBackup(snapName, backupTarget string, labels m
 func (e *EngineSimulator) Upgrade(binary string, replicaURLs []string) error {
 	return fmt.Errorf("Not implemented")
 }
+
+func (e *EngineSimulator) Version() (*EngineVersion, error) {
+	return nil, fmt.Errorf("Not implemented")
+}

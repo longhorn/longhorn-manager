@@ -25,6 +25,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/rancher/longhorn-manager/datastore"
+	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/types"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
@@ -235,6 +236,31 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 
 	engineImage.Status.State = types.EngineImageStateReady
 
+	engineCollection := &engineapi.EngineCollection{}
+	// we're getting local longhorn engine version, don't need volume etc
+	client, err := engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
+		EngineImage:       engineImage.Spec.Image,
+		VolumeName:        "",
+		ControllerURL:     "",
+		EngineLauncherURL: "",
+	})
+	if err != nil {
+		return errors.Wrapf(err, "cannot get engine client to check engine version")
+	}
+	version, err := client.Version()
+	if err != nil {
+		return errors.Wrapf(err, "cannot get engine version for %v (%v)", engineImage.Name, engineImage.Spec.Image)
+	}
+
+	engineImage.Status.Version = version.Version
+	engineImage.Status.CLIVersion = version.CLIAPIVersion
+	engineImage.Status.CLIMinVersion = version.CLIAPIMinVersion
+	engineImage.Status.ControllerVersion = version.ControllerAPIVersion
+	engineImage.Status.ControllerMinVersion = version.ControllerAPIMinVersion
+	engineImage.Status.DataFormatVersion = version.DataFormatVersion
+	engineImage.Status.DataFormatMinVersion = version.DataFormatMinVersion
+	engineImage.Status.GitCommit = version.GitCommit
+	engineImage.Status.BuildDate = version.BuildDate
 	return nil
 }
 
