@@ -192,6 +192,11 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return nil
 	}
 
+	checksumName := types.GetEngineImageChecksumName(engineImage.Spec.Image)
+	if engineImage.Name != checksumName {
+		return fmt.Errorf("Image %v checksum %v doesn't match engine image name %v", engineImage.Spec.Image, checksumName, engineImage.Name)
+	}
+
 	dsName := getEngineImageDaemonSetName(engineImage.Name)
 	if engineImage.DeletionTimestamp != nil {
 		if err := ic.ds.DeleteEngineImageDaemonSet(dsName); err != nil {

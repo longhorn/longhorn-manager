@@ -2,6 +2,8 @@ package util
 
 import (
 	"crypto/md5"
+	"crypto/sha512"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
@@ -294,4 +296,13 @@ func SplitStringToMap(str, separator string) map[string]struct{} {
 		ret[str] = struct{}{}
 	}
 	return ret
+}
+
+func GetStringChecksum(data string) string {
+	return GetChecksumSHA512([]byte(data))
+}
+
+func GetChecksumSHA512(data []byte) string {
+	checksum := sha512.Sum512(data)
+	return hex.EncodeToString(checksum[:])
 }
