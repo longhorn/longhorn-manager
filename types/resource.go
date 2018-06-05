@@ -64,6 +64,7 @@ type VolumeSpec struct {
 	MigrationNodeID     string         `json:"migrationNodeID"`
 	EngineImage         string         `json:"engineImage"`
 	RecurringJobs       []RecurringJob `json:"recurringJobs"`
+	BaseImage           string         `json:"baseImage"`
 }
 
 type VolumeStatus struct {
@@ -136,6 +137,7 @@ type ReplicaSpec struct {
 	FailedAt    string `json:"failedAt"`
 	DiskID      string `json:"diskID"`
 	DataPath    string `json:"dataPath"`
+	BaseImage   string `json:"baseImage"`
 	Active      bool   `json:"active"`
 }
 

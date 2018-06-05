@@ -897,6 +897,7 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 			},
 			EngineName: e.Name,
 			Active:     true,
+			BaseImage:  v.Spec.BaseImage,
 		},
 	}
 	if v.Spec.FromBackup != "" {

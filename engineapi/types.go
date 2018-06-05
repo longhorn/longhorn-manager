@@ -86,6 +86,7 @@ type BackupVolume struct {
 	LastBackupName string
 	SpaceUsage     string
 	Backups        map[string]*Backup
+	BaseImage      string `json:"baseImage"`
 }
 
 type Backup struct {
