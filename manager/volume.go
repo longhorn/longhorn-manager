@@ -66,12 +66,6 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		err = errors.Wrapf(err, "unable to create volume %v: %+v", name, spec)
 	}()
 
-	// make it random node's responsibility
-	ownerID, err := m.getRandomOwnerID()
-	if err != nil {
-		return nil, err
-	}
-
 	size := spec.Size
 	if spec.FromBackup != "" {
 		backupTarget, err := m.getBackupTarget()
@@ -111,7 +105,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			Name: name,
 		},
 		Spec: types.VolumeSpec{
-			OwnerID:             ownerID,
+			OwnerID:             "", // the first controller who see it will pick it up
 			Size:                size,
 			EngineImage:         defaultEngineImage,
 			FromBackup:          spec.FromBackup,

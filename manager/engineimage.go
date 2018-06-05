@@ -39,23 +39,17 @@ func (m *VolumeManager) CreateEngineImage(image string) (*longhorn.EngineImage, 
 		return nil, fmt.Errorf("cannot create engine image with empty image")
 	}
 
-	// make it random node's responsibility
-	ownerID, err := m.getRandomOwnerID()
-	if err != nil {
-		return nil, err
-	}
-
 	name := types.GetEngineImageChecksumName(image)
 	ei := &longhorn.EngineImage{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
 		Spec: types.EngineImageSpec{
-			OwnerID: ownerID,
+			OwnerID: "", // the first controller who see it will pick it up
 			Image:   image,
 		},
 	}
-	ei, err = m.ds.CreateEngineImage(ei)
+	ei, err := m.ds.CreateEngineImage(ei)
 	if err != nil {
 		return nil, err
 	}

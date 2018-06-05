@@ -187,8 +187,16 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return nil
 	}
 
-	// Not ours
-	if engineImage.Spec.OwnerID != ic.controllerID {
+	if engineImage.Spec.OwnerID == "" {
+		// Claim it
+		engineImage.Spec.OwnerID = ic.controllerID
+		engineImage, err = ic.ds.UpdateEngineImage(engineImage)
+		if err != nil {
+			return err
+		}
+		logrus.Debugf("Engine Image Controller %v picked up %v (%v)", ic.controllerID, engineImage.Name, engineImage.Spec.Image)
+	} else if engineImage.Spec.OwnerID != ic.controllerID {
+		// Not ours
 		return nil
 	}
 
