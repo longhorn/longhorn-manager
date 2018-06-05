@@ -234,7 +234,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return nil
 	}
 
-	if ds.Status.NumberAvailable != ds.Status.DesiredNumberScheduled {
+	if ds.Status.DesiredNumberScheduled == 0 || ds.Status.NumberAvailable != ds.Status.DesiredNumberScheduled {
 		engineImage.Status.State = types.EngineImageStateDeploying
 		return nil
 	}
@@ -356,6 +356,17 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 									Name:      "data",
 									MountPath: "/data/",
 								},
+							},
+							ReadinessProbe: &v1.Probe{
+								Handler: v1.Handler{
+									Exec: &v1.ExecAction{
+										Command: []string{
+											"ls", "/data/longhorn",
+										},
+									},
+								},
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       5,
 							},
 						},
 					},
