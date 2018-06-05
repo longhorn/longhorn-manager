@@ -7,6 +7,8 @@ const (
 type Volume struct {
 	Resource `yaml:"-"`
 
+	BaseImage string `json:"baseImage,omitempty" yaml:"base_image,omitempty"`
+
 	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
 	Controllers []Controller `json:"controllers,omitempty" yaml:"controllers,omitempty"`

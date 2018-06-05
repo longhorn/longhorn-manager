@@ -118,6 +118,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		FromBackup:          volume.FromBackup,
 		NumberOfReplicas:    volume.NumberOfReplicas,
 		StaleReplicaTimeout: volume.StaleReplicaTimeout,
+		BaseImage:           volume.BaseImage,
 	})
 	if err != nil {
 		return errors.Wrap(err, "unable to create volume")

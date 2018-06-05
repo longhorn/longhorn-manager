@@ -28,6 +28,7 @@ type Volume struct {
 	Robustness          types.VolumeRobustness `json:"robustness"`
 	EngineImage         string                 `json:"engineImage"`
 	CurrentImage        string                 `json:"currentImage"`
+	BaseImage           string                 `json:"baseImage"`
 	Created             string                 `json:"created"`
 	MigrationNodeID     string                 `json:"migrationNodeID"`
 
@@ -355,6 +356,10 @@ func volumeSchema(volume *client.Schema) {
 	volumeStaleReplicaTimeout.Default = 20
 	volume.ResourceFields["staleReplicaTimeout"] = volumeStaleReplicaTimeout
 
+	volumeBaseImage := volume.ResourceFields["baseImage"]
+	volumeBaseImage.Create = true
+	volume.ResourceFields["baseImage"] = volumeBaseImage
+
 	replicas := volume.ResourceFields["replicas"]
 	replicas.Type = "array[replica]"
 	volume.ResourceFields["replicas"] = replicas
@@ -451,6 +456,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		Created:             v.ObjectMeta.CreationTimestamp.String(),
 		EngineImage:         v.Spec.EngineImage,
 		CurrentImage:        v.Status.CurrentImage,
+		BaseImage:           v.Spec.BaseImage,
 		MigrationNodeID:     v.Spec.MigrationNodeID,
 
 		Conditions: v.Status.Conditions,

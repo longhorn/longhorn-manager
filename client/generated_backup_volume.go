@@ -9,6 +9,8 @@ type BackupVolume struct {
 
 	Backups map[string]string `json:"backups,omitempty" yaml:"backups,omitempty"`
 
+	BaseImage string `json:"baseImage,omitempty" yaml:"base_image,omitempty"`
+
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`
 
 	LastBackupName string `json:"lastBackupName,omitempty" yaml:"last_backup_name,omitempty"`

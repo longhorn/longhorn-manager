@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -298,10 +299,14 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for engine pod spec creation: %v", r)
 	}
+
 	cmd := []string{
-		"launch", "replica",
+		"longhorn", "replica",
 		"--listen", "0.0.0.0:9502",
 		"--size", strconv.FormatInt(r.Spec.VolumeSize, 10),
+	}
+	if r.Spec.BaseImage != "" {
+		cmd = append(cmd, "--backing-file", "/share/base_image")
 	}
 	if r.Spec.RestoreFrom != "" && r.Spec.RestoreName != "" {
 		cmd = append(cmd, "--restore-from", r.Spec.RestoreFrom, "--restore-name", r.Spec.RestoreName)
@@ -370,6 +375,59 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 	// error out if NodeID and DataPath wasn't filled in scheduler
 	if r.Spec.NodeID == "" || r.Spec.DataPath == "" {
 		return nil, fmt.Errorf("BUG: Node or datapath wasn't set for replica %v", r.Name)
+	}
+
+	if r.Spec.BaseImage != "" {
+		// Ensure base image is present before executing main containers
+		pod.Spec.InitContainers = append(pod.Spec.InitContainers, v1.Container{
+			Name:            "prime-base-image",
+			Image:           r.Spec.BaseImage,
+			ImagePullPolicy: v1.PullAlways,
+			Command:         []string{"/bin/sh", "-c", fmt.Sprintf("echo primed %s", r.Spec.BaseImage)},
+		})
+
+		// create a volume to propagate the base image bind mount
+		pod.Spec.Volumes = append(pod.Spec.Volumes, v1.Volume{
+			Name: "share",
+			VolumeSource: v1.VolumeSource{
+				EmptyDir: &v1.EmptyDirVolumeSource{},
+			},
+		})
+
+		hostToContainer := v1.MountPropagationHostToContainer
+		pod.Spec.Containers[0].VolumeMounts = append(pod.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
+			Name:             "share",
+			ReadOnly:         true,
+			MountPath:        "/share",
+			MountPropagation: &hostToContainer,
+		})
+		pod.Spec.Containers[0].Command = append([]string{"/bin/sh", "-c", fmt.Sprintf(
+			"while true; do list=$(ls /share/base_image/* 2>&1); if [ $? -eq 0 ]; then break; fi; echo waiting; sleep 1; done; echo Directory found $list; exec %s",
+			strings.Join(pod.Spec.Containers[0].Command, " "),
+		)})
+
+		bidirectional := v1.MountPropagationBidirectional
+		pod.Spec.Containers = append(pod.Spec.Containers, v1.Container{
+			Name: "base-image",
+			Command: []string{"/bin/sh", "-c", "function cleanup() { while true; do " +
+				"umount /share/base_image; if [ $? -eq 0 ]; then echo unmounted && " +
+				"kill $tpid && break; fi; echo waiting && sleep 1; done }; " +
+				"mkdir -p /share/base_image && mount --bind /base_image/ /share/base_image && " +
+				"echo base image mounted at /share/base_image && trap cleanup TERM && " +
+				"mkfifo noop && tail -f noop & tpid=$! && trap cleanup TERM && wait $tpid"},
+			Image:           r.Spec.BaseImage,
+			ImagePullPolicy: v1.PullNever,
+			SecurityContext: &v1.SecurityContext{
+				Privileged: &privilege,
+			},
+			VolumeMounts: []v1.VolumeMount{
+				v1.VolumeMount{
+					Name:             "share",
+					MountPath:        "/share",
+					MountPropagation: &bidirectional,
+				},
+			},
+		})
 	}
 
 	// set pod to node that replica scheduled on

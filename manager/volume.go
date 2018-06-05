@@ -181,6 +181,18 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		return nil, fmt.Errorf("invalid volume frontend specified: %v", spec.Frontend)
 	}
 
+	if spec.BaseImage != "" {
+		nodes, err := m.ListNodes()
+		if err != nil {
+			return nil, fmt.Errorf("couldn't list nodes")
+		}
+		for _, node := range nodes {
+			if !node.Status.MountPropagation {
+				return nil, fmt.Errorf("cannot support BaseImage, node doesn't support mount propagation: %v", node)
+			}
+		}
+	}
+
 	v = &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -193,6 +205,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			FromBackup:          spec.FromBackup,
 			NumberOfReplicas:    spec.NumberOfReplicas,
 			StaleReplicaTimeout: spec.StaleReplicaTimeout,
+			BaseImage:           spec.BaseImage,
 		},
 	}
 	v, err = m.ds.CreateVolume(v)
