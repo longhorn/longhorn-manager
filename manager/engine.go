@@ -167,7 +167,7 @@ func (m *VolumeManager) getBackupTargetURL() (string, error) {
 	return backupTarget, nil
 }
 
-func (m *VolumeManager) getDefaultEngineImage() (string, error) {
+func (m *VolumeManager) GetDefaultEngineImage() (string, error) {
 	setting, err := m.ds.GetSetting()
 	if err != nil {
 		return "", errors.New("cannot backup: unable to read settings")
@@ -184,7 +184,7 @@ func (m *VolumeManager) getBackupTarget() (*engineapi.BackupTarget, error) {
 	if err != nil {
 		return nil, err
 	}
-	engineImage, err := m.getDefaultEngineImage()
+	engineImage, err := m.GetDefaultEngineImage()
 	if err != nil {
 		return nil, err
 	}

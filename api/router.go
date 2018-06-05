@@ -97,5 +97,10 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("GET").Path("/v1/hosts").Handler(f(schemas, s.NodeList))
 	r.Methods("GET").Path("/v1/hosts/{id}").Handler(f(schemas, s.NodeGet))
 
+	r.Methods("GET").Path("/v1/engineimages").Handler(f(schemas, s.EngineImageList))
+	r.Methods("GET").Path("/v1/engineimages/{name}").Handler(f(schemas, s.EngineImageGet))
+	r.Methods("DELETE").Path("/v1/engineimages/{name}").Handler(f(schemas, s.EngineImageDelete))
+	r.Methods("POST").Path("/v1/engineimages").Handler(f(schemas, s.EngineImageCreate))
+
 	return r
 }
