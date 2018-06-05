@@ -334,15 +334,15 @@ func (m *VolumeManager) updateVolumeOwner(ownerID string, v *longhorn.Volume) (*
 }
 
 func (m *VolumeManager) EngineUpgrade(volumeName, imageName string) error {
-	setting, err := m.ds.GetSetting()
+	ei, err := m.GetEngineImage(imageName)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "unable to get engine image %v", imageName)
 	}
-	validImages := util.SplitStringToMap(setting.EngineUpgradeImage, ",")
-	validImages[setting.DefaultEngineImage] = struct{}{}
-
-	if _, ok := validImages[imageName]; !ok {
-		return fmt.Errorf("image %v doesn't present in the upgrade setting", imageName)
+	if ei == nil {
+		return fmt.Errorf("cannot find engine image %v", imageName)
+	}
+	if ei.Status.State != types.EngineImageStateReady {
+		return fmt.Errorf("engine image %v is not ready", imageName)
 	}
 
 	v, err := m.ds.GetVolume(volumeName)

@@ -98,6 +98,10 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
+	if err := m.DeployAndWaitForEngineImage(engineImage); err != nil {
+		return err
+	}
+
 	if err := controller.StartProvisioner(m); err != nil {
 		return err
 	}
@@ -144,10 +148,6 @@ func initSettings(ds *datastore.DataStore, m *manager.VolumeManager, engineImage
 		if _, err := ds.UpdateSetting(setting); err != nil {
 			return err
 		}
-	}
-	// provision the default engine image if necessary
-	if _, err := m.UpdateSetting(setting); err != nil {
-		return err
 	}
 	return nil
 }

@@ -112,7 +112,6 @@ const (
 type SettingsInfo struct {
 	BackupTarget       string `json:"backupTarget"`
 	DefaultEngineImage string `json:"defaultEngineImage"`
-	EngineUpgradeImage string `json:"engineUpgradeImage"`
 }
 
 type EngineImageState string
