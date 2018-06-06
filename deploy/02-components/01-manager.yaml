@@ -25,7 +25,7 @@ spec:
         - -d
         - daemon
         - --engine-image
-        - rancher/longhorn-engine:9fd4ddd
+        - rancher/longhorn-engine:0f24789
         - --manager-image
         - rancher/longhorn-manager:1519bae
         - --service-account
