@@ -29,6 +29,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&ReplicaList{},
 		&Setting{},
 		&SettingList{},
+		&EngineImage{},
+		&EngineImageList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

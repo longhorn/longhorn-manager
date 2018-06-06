@@ -212,15 +212,23 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 
 	volume, err := vc.ds.GetVolume(name)
 	if err != nil {
-		return err
+		return nil
 	}
 	if volume == nil {
 		logrus.Infof("Longhorn volume %v has been deleted", key)
 		return nil
 	}
 
-	// Not ours
-	if volume.Spec.OwnerID != vc.controllerID {
+	if volume.Spec.OwnerID == "" {
+		// Claim it
+		volume.Spec.OwnerID = vc.controllerID
+		volume, err = vc.ds.UpdateVolume(volume)
+		if err != nil {
+			return err
+		}
+		logrus.Debugf("Volume Controller %v picked up %v", vc.controllerID, volume.Name)
+	} else if volume.Spec.OwnerID != vc.controllerID {
+		// Not mines
 		return nil
 	}
 
@@ -652,7 +660,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		return nil
 	}
 
-	upgradeImages, err := vc.ds.ListEngineBinaryImageDaemonSet()
+	upgradeImages, err := vc.ds.ListEngineImageDaemonSet()
 	if err != nil {
 		return err
 	}

@@ -185,3 +185,16 @@ func (e *Engine) Upgrade(binary string, replicaURLs []string) error {
 	}
 	return nil
 }
+
+func (e *Engine) Version() (*EngineVersion, error) {
+	output, err := util.Execute(e.LonghornEngineBinary(), "version")
+	if err != nil {
+		return nil, errors.Wrapf(err, "cannot get volume version")
+	}
+
+	version := &EngineVersion{}
+	if err := json.Unmarshal([]byte(output), version); err != nil {
+		return nil, errors.Wrapf(err, "cannot decode volume version: %v", output)
+	}
+	return version, nil
+}

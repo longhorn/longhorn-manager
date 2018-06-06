@@ -26,6 +26,8 @@ import (
 type Interface interface {
 	// Engines returns a EngineInformer.
 	Engines() EngineInformer
+	// EngineImages returns a EngineImageInformer.
+	EngineImages() EngineImageInformer
 	// Replicas returns a ReplicaInformer.
 	Replicas() ReplicaInformer
 	// Settings returns a SettingInformer.
@@ -48,6 +50,11 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 // Engines returns a EngineInformer.
 func (v *version) Engines() EngineInformer {
 	return &engineInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// EngineImages returns a EngineImageInformer.
+func (v *version) EngineImages() EngineImageInformer {
+	return &engineImageInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Replicas returns a ReplicaInformer.

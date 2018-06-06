@@ -81,6 +81,15 @@ type Replica struct {
 	FailedAt string `json:"failedAt"`
 }
 
+type EngineImage struct {
+	client.Resource
+
+	Name    string `json:"name"`
+	Image   string `json:"image"`
+	Default bool   `json:"default"`
+	types.EngineImageStatus
+}
+
 type AttachInput struct {
 	HostID string `json:"hostId"`
 }
@@ -133,8 +142,20 @@ func NewSchema() *client.Schemas {
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
 	recurringSchema(schemas.AddType("recurringInput", RecurringInput{}))
+	engineImageSchema(schemas.AddType("engineImage", EngineImage{}))
 
 	return schemas
+}
+
+func engineImageSchema(engineImage *client.Schema) {
+	engineImage.CollectionMethods = []string{"GET", "POST"}
+	engineImage.ResourceMethods = []string{"GET", "DELETE"}
+
+	image := engineImage.ResourceFields["image"]
+	image.Create = true
+	image.Required = true
+	image.Unique = true
+	engineImage.ResourceFields["image"] = image
 }
 
 func recurringSchema(recurring *client.Schema) {
@@ -287,7 +308,6 @@ func toSettingCollection(settings *types.SettingsInfo) *client.GenericCollection
 	data := []interface{}{
 		toSettingResource(types.SettingBackupTarget, settings.BackupTarget),
 		toSettingResource(types.SettingDefaultEngineImage, settings.DefaultEngineImage),
-		toSettingResource(types.SettingEngineUpgradeImage, settings.EngineUpgradeImage),
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }
@@ -482,6 +502,29 @@ func toBackupCollection(bs []*engineapi.Backup) *client.GenericCollection {
 		data = append(data, toBackupResource(v))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backup"}}
+}
+
+func toEngineImageResource(ei *longhorn.EngineImage, isDefault bool) *EngineImage {
+	return &EngineImage{
+		Resource: client.Resource{
+			Id:    ei.Name,
+			Type:  "engineImage",
+			Links: map[string]string{},
+		},
+		Name:              ei.Name,
+		Image:             ei.Spec.Image,
+		Default:           isDefault,
+		EngineImageStatus: ei.Status,
+	}
+}
+
+func toEngineImageCollection(eis map[string]*longhorn.EngineImage, defaultImage string) *client.GenericCollection {
+	data := []interface{}{}
+	for _, ei := range eis {
+		isDefault := (ei.Spec.Image == defaultImage)
+		data = append(data, toEngineImageResource(ei, isDefault))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "engineImage"}}
 }
 
 type Server struct {

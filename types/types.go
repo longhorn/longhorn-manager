@@ -31,6 +31,8 @@ const (
 	OptionFromBackup          = "fromBackup"
 	OptionNumberOfReplica     = "numberOfReplicas"
 	OptionStaleReplicaTimeout = "staleReplicaTimeout"
+
+	EngineImageChecksumNameLength = 8
 )
 
 type NotFoundError struct {
@@ -53,6 +55,8 @@ const (
 	// 4. cronjob pod suffix is 11
 	// 5. Dash and buffer for 2
 	MaximumJobNameSize = 8
+
+	engineImagePrefix = "ei-"
 )
 
 func GetEngineNameForVolume(vName string) string {
@@ -86,13 +90,17 @@ func GetEngineBinaryDirectoryInContainerForImage(image string) string {
 }
 
 var (
-	LonghornSystemKey                    = "longhorn"
-	LonghornSystemValueManager           = "manager"
-	LonghornSystemValueEngineBinaryImage = "engine-binary-image"
+	LonghornSystemKey              = "longhorn"
+	LonghornSystemValueManager     = "manager"
+	LonghornSystemValueEngineImage = "engine-image"
 )
 
-func GetEngineBinaryImageLabel() map[string]string {
+func GetEngineImageLabel() map[string]string {
 	return map[string]string{
-		LonghornSystemKey: LonghornSystemValueEngineBinaryImage,
+		LonghornSystemKey: LonghornSystemValueEngineImage,
 	}
+}
+
+func GetEngineImageChecksumName(image string) string {
+	return engineImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:EngineImageChecksumNameLength]
 }

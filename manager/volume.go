@@ -66,12 +66,6 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		err = errors.Wrapf(err, "unable to create volume %v: %+v", name, spec)
 	}()
 
-	// make it random node's responsibility
-	ownerID, err := m.getRandomOwnerID()
-	if err != nil {
-		return nil, err
-	}
-
 	size := spec.Size
 	if spec.FromBackup != "" {
 		backupTarget, err := m.getBackupTarget()
@@ -111,7 +105,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			Name: name,
 		},
 		Spec: types.VolumeSpec{
-			OwnerID:             ownerID,
+			OwnerID:             "", // the first controller who see it will pick it up
 			Size:                size,
 			EngineImage:         defaultEngineImage,
 			FromBackup:          spec.FromBackup,
@@ -334,15 +328,15 @@ func (m *VolumeManager) updateVolumeOwner(ownerID string, v *longhorn.Volume) (*
 }
 
 func (m *VolumeManager) EngineUpgrade(volumeName, imageName string) error {
-	setting, err := m.ds.GetSetting()
+	ei, err := m.GetEngineImage(imageName)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "unable to get engine image %v", imageName)
 	}
-	validImages := util.SplitStringToMap(setting.EngineUpgradeImage, ",")
-	validImages[setting.DefaultEngineImage] = struct{}{}
-
-	if _, ok := validImages[imageName]; !ok {
-		return fmt.Errorf("image %v doesn't present in the upgrade setting", imageName)
+	if ei == nil {
+		return fmt.Errorf("cannot find engine image %v", imageName)
+	}
+	if ei.Status.State != types.EngineImageStateReady {
+		return fmt.Errorf("engine image %v is not ready", imageName)
 	}
 
 	v, err := m.ds.GetVolume(volumeName)

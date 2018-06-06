@@ -87,3 +87,24 @@ type SettingList struct {
 	metav1.ObjectMeta `json:"metadata"`
 	Items             []Setting `json:"items"`
 }
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +resource:path=replica
+// +genclient:noStatus
+
+type EngineImage struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata"`
+	Spec              types.EngineImageSpec   `json:"spec"`
+	Status            types.EngineImageStatus `json:"status"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +resource:path=replicas
+
+type EngineImageList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+	Items           []EngineImage `json:"items"`
+}
