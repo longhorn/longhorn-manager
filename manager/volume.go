@@ -100,6 +100,10 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		return nil, fmt.Errorf("BUG: Invalid empty Setting.EngineImage")
 	}
 
+	if spec.Frontend != types.VolumeFrontendBlockDev && spec.Frontend != types.VolumeFrontendISCSI {
+		return nil, fmt.Errorf("invalid volume frontend specified: %v", spec.Frontend)
+	}
+
 	v = &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -107,6 +111,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		Spec: types.VolumeSpec{
 			OwnerID:             "", // the first controller who see it will pick it up
 			Size:                size,
+			Frontend:            spec.Frontend,
 			EngineImage:         defaultEngineImage,
 			FromBackup:          spec.FromBackup,
 			NumberOfReplicas:    spec.NumberOfReplicas,

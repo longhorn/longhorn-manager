@@ -11,6 +11,9 @@ const (
 	ControllerDefaultPort     = "9501"
 	EngineLauncherDefaultPort = "9510"
 	ReplicaDefaultPort        = "9502"
+
+	DefaultISCSIPort = "3260"
+	DefaultISCSILUN  = "1"
 )
 
 type Replica struct {

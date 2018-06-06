@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -36,6 +37,9 @@ import (
 
 const (
 	unknownReplicaPrefix = "UNKNOWN-"
+
+	EngineFrontendBlockDev = "tgt-blockdev"
+	EngineFrontendISCSI    = "tgt-iscsi"
 )
 
 var (
@@ -294,6 +298,10 @@ func validateEngine(e *longhorn.Engine) error {
 }
 
 func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
+	var (
+		frontend         string
+		readinessHandler v1.Handler
+	)
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for engine pod spec creation: %v", obj)
@@ -303,12 +311,37 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 		return nil, err
 	}
 
+	if e.Spec.Frontend == types.VolumeFrontendBlockDev {
+		frontend = EngineFrontendBlockDev
+		readinessHandler = v1.Handler{
+			Exec: &v1.ExecAction{
+				Command: []string{
+					"ls", "/dev/longhorn/" + e.Spec.VolumeName,
+				},
+			},
+		}
+	} else if e.Spec.Frontend == types.VolumeFrontendISCSI {
+		frontend = EngineFrontendISCSI
+		port, err := strconv.Atoi(engineapi.ControllerDefaultPort)
+		if err != nil {
+			return nil, fmt.Errorf("BUG: Invalid controller default port %v", engineapi.ControllerDefaultPort)
+		}
+		readinessHandler = v1.Handler{
+			HTTPGet: &v1.HTTPGetAction{
+				Path: "/v1/",
+				Port: intstr.FromInt(port),
+			},
+		}
+	} else {
+		return nil, fmt.Errorf("unknown volume frontend %v", e.Spec.Frontend)
+	}
+
 	cmd := []string{
 		"engine-launcher", "start",
-		"--launcher-listen", "0.0.0.0:9510",
+		"--launcher-listen", "0.0.0.0:" + engineapi.EngineLauncherDefaultPort,
 		"--longhorn-binary", types.DefaultEngineBinaryPath,
-		"--listen", "0.0.0.0:9501",
-		"--frontend", "tgt-blockdev",
+		"--listen", "0.0.0.0:" + engineapi.ControllerDefaultPort,
+		"--frontend", frontend,
 		"--size", strconv.FormatInt(e.Spec.VolumeSize, 10),
 	}
 	for _, ip := range e.Spec.ReplicaAddressMap {
@@ -357,13 +390,7 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 						},
 					},
 					ReadinessProbe: &v1.Probe{
-						Handler: v1.Handler{
-							Exec: &v1.ExecAction{
-								Command: []string{
-									"ls", "/dev/longhorn/" + e.Spec.VolumeName,
-								},
-							},
-						},
+						Handler:             readinessHandler,
 						InitialDelaySeconds: 5,
 						PeriodSeconds:       5,
 					},

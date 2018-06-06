@@ -94,12 +94,16 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		return err
 	}
 
+	if volume.Frontend == "" {
+		volume.Frontend = types.VolumeFrontendBlockDev
+	}
 	size, err := util.ConvertSize(volume.Size)
 	if err != nil {
 		return fmt.Errorf("fail to parse size %v", err)
 	}
 	v, err := s.m.Create(volume.Name, &types.VolumeSpec{
 		Size:                size,
+		Frontend:            volume.Frontend,
 		FromBackup:          volume.FromBackup,
 		NumberOfReplicas:    volume.NumberOfReplicas,
 		StaleReplicaTimeout: volume.StaleReplicaTimeout,

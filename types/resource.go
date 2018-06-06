@@ -19,9 +19,17 @@ const (
 	VolumeRobustnessUnknown  = VolumeRobustness("unknown")  // during detached
 )
 
+type VolumeFrontend string
+
+const (
+	VolumeFrontendBlockDev = VolumeFrontend("blockdev")
+	VolumeFrontendISCSI    = VolumeFrontend("iscsi")
+)
+
 type VolumeSpec struct {
 	OwnerID             string         `json:"ownerID"`
 	Size                int64          `json:"size,string"`
+	Frontend            VolumeFrontend `json:"frontend"`
 	FromBackup          string         `json:"fromBackup"`
 	NumberOfReplicas    int            `json:"numberOfReplicas"`
 	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`
@@ -79,6 +87,7 @@ type InstanceStatus struct {
 
 type EngineSpec struct {
 	InstanceSpec
+	Frontend                  VolumeFrontend    `json:"frontend"`
 	ReplicaAddressMap         map[string]string `json:"replicaAddressMap"`
 	UpgradedReplicaAddressMap map[string]string `json:"upgradedReplicaAddressMap"`
 }
