@@ -17,6 +17,10 @@ import (
 	"github.com/rancher/longhorn-manager/types"
 )
 
+const (
+	CrashLogsTaillines = 100
+)
+
 // InstanceHandler can handle the state transition of correlated instance and
 // engine/replica object. It assumed the pod it's going to operate with is using
 // the SAME NAME from the engine/replica object
@@ -158,12 +162,36 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 			logrus.Errorf("%v", err)
 			return err
 		}
+	} else if status.CurrentState == types.InstanceStateError && pod != nil {
+		logs, err := h.getPodLogs(pod.Name, CrashLogsTaillines)
+		if err == nil {
+			logrus.Warnf("instance %v crashed, log: \n%v", pod.Name, logs)
+		} else {
+			logrus.Warnf("instance %v crashed, but cannot get log, error %v", pod.Name, err)
+		}
 	}
 	return nil
 }
 
 func (h *InstanceHandler) getPod(podName string) (*v1.Pod, error) {
 	return h.pLister.Pods(h.namespace).Get(podName)
+}
+
+func (h *InstanceHandler) getPodLogs(podName string, taillines int) (string, error) {
+	tails := int64(taillines)
+	req := h.kubeClient.CoreV1().Pods(h.namespace).GetLogs(podName, &v1.PodLogOptions{
+		Timestamps: true,
+		TailLines:  &tails,
+	})
+	if req.URL().Path == "" {
+		return "", fmt.Errorf("GetLogs for %v/%v returns empty request path, may due to unit test run: %+v", h.namespace, podName, req)
+	}
+
+	logs, err := req.DoRaw()
+	if err != nil {
+		return "", err
+	}
+	return string(logs), nil
 }
 
 func (h *InstanceHandler) createPodForObject(obj runtime.Object, pod *v1.Pod) (*v1.Pod, error) {
