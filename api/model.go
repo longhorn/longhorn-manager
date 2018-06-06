@@ -17,15 +17,16 @@ import (
 type Volume struct {
 	client.Resource
 
-	Name                string `json:"name"`
-	Size                string `json:"size"`
-	FromBackup          string `json:"fromBackup"`
-	NumberOfReplicas    int    `json:"numberOfReplicas"`
-	StaleReplicaTimeout int    `json:"staleReplicaTimeout"`
-	State               string `json:"state"`
-	EngineImage         string `json:"engineImage"`
-	Endpoint            string `json:"endpoint,omitemtpy"`
-	Created             string `json:"created,omitemtpy"`
+	Name                string               `json:"name"`
+	Size                string               `json:"size"`
+	Frontend            types.VolumeFrontend `json:"frontend"`
+	FromBackup          string               `json:"fromBackup"`
+	NumberOfReplicas    int                  `json:"numberOfReplicas"`
+	StaleReplicaTimeout int                  `json:"staleReplicaTimeout"`
+	State               string               `json:"state"`
+	EngineImage         string               `json:"engineImage"`
+	Endpoint            string               `json:"endpoint,omitemtpy"`
+	Created             string               `json:"created,omitemtpy"`
 
 	RecurringJobs []types.RecurringJob `json:"recurringJobs"`
 
@@ -269,6 +270,12 @@ func volumeSchema(volume *client.Schema) {
 	volumeSize.Default = "100G"
 	volume.ResourceFields["size"] = volumeSize
 
+	volumeFrontend := volume.ResourceFields["frontend"]
+	volumeFrontend.Create = true
+	volumeFrontend.Required = true
+	volumeFrontend.Default = "blockdev"
+	volume.ResourceFields["frontend"] = volumeFrontend
+
 	volumeFromBackup := volume.ResourceFields["fromBackup"]
 	volumeFromBackup.Create = true
 	volume.ResourceFields["fromBackup"] = volumeFromBackup
@@ -352,6 +359,19 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 			state = string(v.Status.Robustness)
 		}
 	}
+	endpoint := v.Status.Endpoint
+	// make it iscsi endpoint with the ip
+	if endpoint != "" && v.Spec.Frontend == types.VolumeFrontendISCSI {
+		if ve != nil {
+			// it will looks like this in the end
+			// iscsi://10.42.0.12:3260/iqn.2014-09.com.rancher:vol-name/1
+			endpoint = "iscsi://" + ve.Status.IP + ":" + engineapi.DefaultISCSIPort + "/" + endpoint + "/" + engineapi.DefaultISCSILUN
+		} else {
+			// engine is not ready, don't show endpoint
+			endpoint = ""
+		}
+	}
+
 	r := &Volume{
 		Resource: client.Resource{
 			Id:      v.Name,
@@ -361,12 +381,13 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 		},
 		Name:                v.Name,
 		Size:                strconv.FormatInt(v.Spec.Size, 10),
+		Frontend:            v.Spec.Frontend,
 		FromBackup:          v.Spec.FromBackup,
 		NumberOfReplicas:    v.Spec.NumberOfReplicas,
 		State:               state,
 		RecurringJobs:       v.Spec.RecurringJobs,
 		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
-		Endpoint:            v.Status.Endpoint,
+		Endpoint:            endpoint,
 		Created:             v.ObjectMeta.CreationTimestamp.String(),
 		EngineImage:         v.Status.CurrentImage,
 
