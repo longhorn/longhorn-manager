@@ -224,6 +224,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		volume.Spec.OwnerID = vc.controllerID
 		volume, err = vc.ds.UpdateVolume(volume)
 		if err != nil {
+			// we don't mind others coming first
+			if apierrors.IsConflict(errors.Cause(err)) {
+				return nil
+			}
 			return err
 		}
 		logrus.Debugf("Volume Controller %v picked up %v", vc.controllerID, volume.Name)

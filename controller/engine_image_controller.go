@@ -192,6 +192,10 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		engineImage.Spec.OwnerID = ic.controllerID
 		engineImage, err = ic.ds.UpdateEngineImage(engineImage)
 		if err != nil {
+			// we don't mind others coming first
+			if apierrors.IsConflict(errors.Cause(err)) {
+				return nil
+			}
 			return err
 		}
 		logrus.Debugf("Engine Image Controller %v picked up %v (%v)", ic.controllerID, engineImage.Name, engineImage.Spec.Image)
