@@ -121,20 +121,6 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 	return v, nil
 }
 
-func (m *VolumeManager) getRandomOwnerID() (string, error) {
-	var node string
-
-	nodeIPMap, err := m.ds.GetManagerNodeIPMap()
-	if err != nil {
-		return "", err
-	}
-	// map is random in Go
-	for node = range nodeIPMap {
-		break
-	}
-
-	return node, nil
-}
 func (m *VolumeManager) Delete(name string) error {
 	return m.ds.DeleteVolume(name)
 }
