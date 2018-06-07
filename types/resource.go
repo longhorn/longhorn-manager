@@ -139,7 +139,9 @@ type EngineImageSpec struct {
 }
 
 type EngineImageStatus struct {
-	State EngineImageState `json:"state"`
+	State      EngineImageState `json:"state"`
+	RefCount   int              `json:"refCount"`
+	NoRefSince string           `json:"noRefSince"`
 
 	Version   string `json:"version"`
 	GitCommit string `json:"gitCommit"`
