@@ -27,6 +27,7 @@ import (
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhinformers "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
@@ -34,6 +35,8 @@ import (
 
 var (
 	ownerKindEngineImage = longhorn.SchemeGroupVersion.WithKind("EngineImage").String()
+
+	ExpiredEngineImageTimeout = 60 * time.Minute
 )
 
 type EngineImageController struct {
@@ -253,10 +256,26 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 
 	engineImage.Status.State = types.EngineImageStateReady
 
+	if err := ic.updateEngineImageVersion(engineImage); err != nil {
+		return err
+	}
+
+	if err := ic.updateEngineImageRefCount(engineImage); err != nil {
+		return err
+	}
+
+	if err := ic.cleanupExpiredEngineImage(engineImage); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (ic *EngineImageController) updateEngineImageVersion(ei *longhorn.EngineImage) error {
 	engineCollection := &engineapi.EngineCollection{}
 	// we're getting local longhorn engine version, don't need volume etc
 	client, err := engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
-		EngineImage:       engineImage.Spec.Image,
+		EngineImage:       ei.Spec.Image,
 		VolumeName:        "",
 		ControllerURL:     "",
 		EngineLauncherURL: "",
@@ -266,18 +285,71 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	}
 	version, err := client.Version()
 	if err != nil {
-		return errors.Wrapf(err, "cannot get engine version for %v (%v)", engineImage.Name, engineImage.Spec.Image)
+		return errors.Wrapf(err, "cannot get engine version for %v (%v)", ei.Name, ei.Spec.Image)
 	}
 
-	engineImage.Status.Version = version.Version
-	engineImage.Status.CLIVersion = version.CLIAPIVersion
-	engineImage.Status.CLIMinVersion = version.CLIAPIMinVersion
-	engineImage.Status.ControllerVersion = version.ControllerAPIVersion
-	engineImage.Status.ControllerMinVersion = version.ControllerAPIMinVersion
-	engineImage.Status.DataFormatVersion = version.DataFormatVersion
-	engineImage.Status.DataFormatMinVersion = version.DataFormatMinVersion
-	engineImage.Status.GitCommit = version.GitCommit
-	engineImage.Status.BuildDate = version.BuildDate
+	ei.Status.Version = version.Version
+	ei.Status.CLIVersion = version.CLIAPIVersion
+	ei.Status.CLIMinVersion = version.CLIAPIMinVersion
+	ei.Status.ControllerVersion = version.ControllerAPIVersion
+	ei.Status.ControllerMinVersion = version.ControllerAPIMinVersion
+	ei.Status.DataFormatVersion = version.DataFormatVersion
+	ei.Status.DataFormatMinVersion = version.DataFormatMinVersion
+	ei.Status.GitCommit = version.GitCommit
+	ei.Status.BuildDate = version.BuildDate
+	return nil
+}
+
+func (ic *EngineImageController) updateEngineImageRefCount(ei *longhorn.EngineImage) error {
+	volumes, err := ic.ds.ListVolumes()
+	if err != nil {
+		return errors.Wrap(err, "cannot list volumes when updateEngineImageRefCount")
+	}
+	image := ei.Spec.Image
+	refCount := 0
+	for _, v := range volumes {
+		if v.Spec.EngineImage == image || v.Status.CurrentImage == image {
+			refCount++
+		}
+	}
+	ei.Status.RefCount = refCount
+	if ei.Status.RefCount == 0 {
+		if ei.Status.NoRefSince == "" {
+			ei.Status.NoRefSince = util.Now()
+		}
+	} else {
+		ei.Status.NoRefSince = ""
+	}
+	return nil
+
+}
+
+func (ic *EngineImageController) cleanupExpiredEngineImage(ei *longhorn.EngineImage) error {
+	if ei.Status.RefCount != 0 {
+		return nil
+	}
+	if ei.Status.NoRefSince == "" {
+		return nil
+	}
+	if util.TimestampAfterTimeout(ei.Status.NoRefSince, ExpiredEngineImageTimeout) {
+		setting, err := ic.ds.GetSetting()
+		if err != nil {
+			return fmt.Errorf("cannot cleanup engine image: unable to read settings")
+		}
+		if setting.DefaultEngineImage == "" {
+			return fmt.Errorf("cannot cleanup engine image: default engine image not set")
+		}
+		// Don't delete the default image
+		if ei.Spec.Image == setting.DefaultEngineImage {
+			return nil
+		}
+
+		logrus.Infof("Engine image %v (%v) expired, clean it up", ei.Name, ei.Spec.Image)
+		if err := ic.ds.DeleteEngineImage(ei.Name); err != nil {
+			return errors.Wrapf(err, "cannot cleanup expired engine image %v (%v)", ei.Name, ei.Spec.Image)
+		}
+		return nil
+	}
 	return nil
 }
 
