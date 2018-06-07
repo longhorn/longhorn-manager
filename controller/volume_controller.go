@@ -411,11 +411,18 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 		if r.DeletionTimestamp != nil {
 			continue
 		}
+		staled := false
+		if v.Spec.StaleReplicaTimeout > 0 && util.TimestampAfterTimeout(r.Spec.FailedAt,
+			time.Duration(int64(v.Spec.StaleReplicaTimeout*60))*time.Second) {
+
+			staled = true
+		}
+
 		// 1. failed before ever became healthy (RW), mostly failed during rebuilding
 		// 2. failed too long ago, became stale and unnecessary to keep
 		// around, unless we don't any healthy replicas
-		if r.Spec.HealthyAt == "" ||
-			(hasHealthyReplicas && util.TimestampAfterTimeout(r.Spec.FailedAt, v.Spec.StaleReplicaTimeout*60)) {
+		if r.Spec.HealthyAt == "" || (hasHealthyReplicas && staled) {
+
 			logrus.Infof("Cleaning up corrupted or staled replica %v", r.Name)
 			if err := vc.ds.DeleteReplica(r.Name); err != nil {
 				return errors.Wrap(err, "cannot cleanup stale replicas")
