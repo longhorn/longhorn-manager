@@ -219,17 +219,14 @@ func ExecuteWithTimeout(timeout time.Duration, binary string, args ...string) (s
 	return string(output), nil
 }
 
-func TimestampAfterTimeout(ts string, timeoutInSeconds int) bool {
-	if timeoutInSeconds <= 0 {
-		return false
-	}
+func TimestampAfterTimeout(ts string, timeout time.Duration) bool {
 	now := time.Now()
 	t, err := time.Parse(time.RFC3339, ts)
 	if err != nil {
 		logrus.Errorf("Cannot parse time %v", ts)
 		return false
 	}
-	deadline := t.Add(time.Duration(int64(timeoutInSeconds)) * time.Second)
+	deadline := t.Add(timeout)
 	return now.After(deadline)
 }
 
