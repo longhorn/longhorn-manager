@@ -72,6 +72,9 @@ func (m *VolumeManager) DeleteEngineImageByName(name string) error {
 	if ei.Spec.Image == defaultImage {
 		return fmt.Errorf("unable to delete the default engine image")
 	}
+	if ei.Status.RefCount != 0 {
+		return fmt.Errorf("unable to delete the engine image while being used")
+	}
 	return m.ds.DeleteEngineImage(name)
 }
 
