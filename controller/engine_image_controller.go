@@ -51,6 +51,7 @@ type EngineImageController struct {
 	ds *datastore.DataStore
 
 	iStoreSynced  cache.InformerSynced
+	vStoreSynced  cache.InformerSynced
 	dsStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
@@ -60,6 +61,7 @@ func NewEngineImageController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	engineImageInformer lhinformers.EngineImageInformer,
+	volumeInformer lhinformers.VolumeInformer,
 	dsInformer appsinformers_v1beta2.DaemonSetInformer,
 	kubeClient clientset.Interface,
 	namespace string, controllerID string) *EngineImageController {
@@ -79,6 +81,7 @@ func NewEngineImageController(
 		ds: ds,
 
 		iStoreSynced:  engineImageInformer.Informer().HasSynced,
+		vStoreSynced:  volumeInformer.Informer().HasSynced,
 		dsStoreSynced: dsInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-engine-image"),
@@ -96,6 +99,22 @@ func NewEngineImageController(
 		DeleteFunc: func(obj interface{}) {
 			img := obj.(*longhorn.EngineImage)
 			ic.enqueueEngineImage(img)
+		},
+	})
+
+	volumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			v := obj.(*longhorn.Volume)
+			ic.enqueueVolumes(v)
+		},
+		UpdateFunc: func(old, cur interface{}) {
+			oldV := old.(*longhorn.Volume)
+			curV := cur.(*longhorn.Volume)
+			ic.enqueueVolumes(oldV, curV)
+		},
+		DeleteFunc: func(obj interface{}) {
+			v := obj.(*longhorn.Volume)
+			ic.enqueueVolumes(v)
 		},
 	})
 
@@ -254,6 +273,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return nil
 	}
 
+	// will only become ready for the first time if all the following functions succeed
 	engineImage.Status.State = types.EngineImageStateReady
 
 	if err := ic.updateEngineImageVersion(engineImage); err != nil {
@@ -361,6 +381,32 @@ func (ic *EngineImageController) enqueueEngineImage(engineImage *longhorn.Engine
 	}
 
 	ic.queue.AddRateLimited(key)
+}
+
+func (ic *EngineImageController) enqueueVolumes(volumes ...*longhorn.Volume) {
+	images := map[string]struct{}{}
+	for _, v := range volumes {
+		if _, ok := images[v.Spec.EngineImage]; !ok {
+			images[v.Spec.EngineImage] = struct{}{}
+		}
+		if v.Status.CurrentImage != "" {
+			if _, ok := images[v.Status.CurrentImage]; !ok {
+				images[v.Status.CurrentImage] = struct{}{}
+			}
+		}
+	}
+
+	for img := range images {
+		engineImage, err := ic.ds.GetEngineImage(types.GetEngineImageChecksumName(img))
+		if err != nil || engineImage == nil {
+			continue
+		}
+		// Not ours
+		if engineImage.Spec.OwnerID != ic.controllerID {
+			continue
+		}
+		ic.enqueueEngineImage(engineImage)
+	}
 }
 
 func (ic *EngineImageController) enqueueControlleeChange(obj interface{}) {

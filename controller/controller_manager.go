@@ -80,7 +80,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 		&engineapi.EngineCollection{}, namespace, controllerID)
 	vc := NewVolumeController(ds, scheme, volumeInformer, engineInformer, replicaInformer, kubeClient,
 		namespace, controllerID, serviceAccount, managerImage)
-	ic := NewEngineImageController(ds, scheme, engineImageInformer, daemonSetInformer, kubeClient, namespace, controllerID)
+	ic := NewEngineImageController(ds, scheme, engineImageInformer, volumeInformer, daemonSetInformer, kubeClient, namespace, controllerID)
 
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
