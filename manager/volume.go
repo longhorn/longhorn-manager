@@ -99,6 +99,9 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 	if defaultEngineImage == "" {
 		return nil, fmt.Errorf("BUG: Invalid empty Setting.EngineImage")
 	}
+	if err := m.CheckEngineImageReadiness(defaultEngineImage); err != nil {
+		return nil, errors.Wrapf(err, "cannot create volume with image %v", defaultEngineImage)
+	}
 
 	if spec.Frontend != types.VolumeFrontendBlockDev && spec.Frontend != types.VolumeFrontendISCSI {
 		return nil, fmt.Errorf("invalid volume frontend specified: %v", spec.Frontend)
@@ -318,16 +321,9 @@ func (m *VolumeManager) updateVolumeOwner(ownerID string, v *longhorn.Volume) (*
 	return v, nil
 }
 
-func (m *VolumeManager) EngineUpgrade(volumeName, imageName string) error {
-	ei, err := m.GetEngineImage(imageName)
-	if err != nil {
-		return errors.Wrapf(err, "unable to get engine image %v", imageName)
-	}
-	if ei == nil {
-		return fmt.Errorf("cannot find engine image %v", imageName)
-	}
-	if ei.Status.State != types.EngineImageStateReady {
-		return fmt.Errorf("engine image %v is not ready", imageName)
+func (m *VolumeManager) EngineUpgrade(volumeName, image string) error {
+	if err := m.CheckEngineImageReadiness(image); err != nil {
+		return errors.Wrapf(err, "cannot upgrade volume with image %v", image)
 	}
 
 	v, err := m.ds.GetVolume(volumeName)
@@ -339,7 +335,7 @@ func (m *VolumeManager) EngineUpgrade(volumeName, imageName string) error {
 	}
 
 	oldImage := v.Spec.EngineImage
-	v.Spec.EngineImage = imageName
+	v.Spec.EngineImage = image
 
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
