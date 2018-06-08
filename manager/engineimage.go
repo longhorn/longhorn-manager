@@ -113,3 +113,17 @@ func (m *VolumeManager) WaitForEngineImage(image string) error {
 	}
 	return fmt.Errorf("Wait for engine image %v timed out", image)
 }
+
+func (m *VolumeManager) CheckEngineImageReadiness(image string) error {
+	ei, err := m.GetEngineImage(image)
+	if err != nil {
+		return errors.Wrapf(err, "unable to get engine image %v", image)
+	}
+	if ei == nil {
+		return fmt.Errorf("cannot find engine image %v", image)
+	}
+	if ei.Status.State != types.EngineImageStateReady {
+		return fmt.Errorf("engine image %v (%v) is not ready", ei.Name, image)
+	}
+	return nil
+}
