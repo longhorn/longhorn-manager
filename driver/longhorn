@@ -230,8 +230,9 @@ formatDevIfNeed() {
             echo -ne "Success"
         fi
     else
-        if ! OUT=$(mkfs -t ${newFsType} ${fullDevName} >/dev/null 2>&1); then
-            echo -ne "Failed to create fs ${newFsType} on device ${fullDevName}"
+        OUT=$(mkfs -t ${newFsType} ${fullDevName} 2>&1)
+        if [ $? -ne 0 ]; then
+            echo -ne "Failed to create fs ${newFsType} on device ${fullDevName} error message ${OUT}"
         else
             debug "format fs ${fullDevName} ${newFsType} successfully"
             echo -ne "Success"
