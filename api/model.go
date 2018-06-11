@@ -399,7 +399,6 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 
 	if v.Status.Robustness == types.VolumeRobustnessFaulted {
 		actions["salvage"] = struct{}{}
-		actions["engineUpgrade"] = struct{}{}
 	} else {
 		switch v.Status.State {
 		case types.VolumeStateDetached:
