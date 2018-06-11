@@ -8,6 +8,10 @@ import (
 )
 
 const (
+	// CurrentCLIVersion indicates the API version manager used to talk with the
+	// engine, including `longhorn-engine` and `longhorn-engine-launcher`
+	CurrentCLIVersion = 1
+
 	ControllerDefaultPort     = "9501"
 	EngineLauncherDefaultPort = "9510"
 	ReplicaDefaultPort        = "9502"
@@ -135,6 +139,13 @@ func GetIPFromURL(url string) string {
 func ValidateReplicaURL(url string) error {
 	if !strings.HasPrefix(url, "tcp://") {
 		return fmt.Errorf("invalid replica url %v", url)
+	}
+	return nil
+}
+
+func CheckCLICompatibilty(cliVersion, cliMinVersion int) error {
+	if CurrentCLIVersion > cliVersion || CurrentCLIVersion < cliMinVersion {
+		return fmt.Errorf("Current CLI version %v is not compatible with CLIVersion %v and CLIMinVersion %v", CurrentCLIVersion, cliVersion, cliMinVersion)
 	}
 	return nil
 }
