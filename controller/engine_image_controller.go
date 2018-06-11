@@ -240,6 +240,10 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return ic.ds.RemoveFinalizerForEngineImage(engineImage)
 	}
 
+	if engineImage.Status.State == types.EngineImageStateIncompatible {
+		return nil
+	}
+
 	savedEngineImage := engineImage.DeepCopy()
 	defer func() {
 		// we're going to update the object assume things changes
@@ -278,6 +282,12 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 
 	if err := ic.updateEngineImageVersion(engineImage); err != nil {
 		return err
+	}
+
+	if err := engineapi.CheckCLICompatibilty(engineImage.Status.CLIVersion, engineImage.Status.CLIMinVersion); err != nil {
+		logrus.Errorf("Engine image %v isn't compatible with current manager: %v", engineImage.Spec.Image, err)
+		engineImage.Status.State = types.EngineImageStateIncompatible
+		return nil
 	}
 
 	if err := ic.updateEngineImageRefCount(engineImage); err != nil {

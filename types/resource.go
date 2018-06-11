@@ -128,9 +128,10 @@ type SettingsInfo struct {
 type EngineImageState string
 
 const (
-	EngineImageStateDeploying = "deploying"
-	EngineImageStateReady     = "ready"
-	EngineImageStateError     = "error"
+	EngineImageStateDeploying    = "deploying"
+	EngineImageStateReady        = "ready"
+	EngineImageStateIncompatible = "incompatible"
+	EngineImageStateError        = "error"
 )
 
 type EngineImageSpec struct {
