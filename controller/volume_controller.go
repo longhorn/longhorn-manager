@@ -671,14 +671,31 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		return nil
 	}
 
-	upgradeImages, err := vc.ds.ListEngineImageDaemonSet()
+	oldImage, err := vc.getEngineImage(v.Status.CurrentImage)
 	if err != nil {
-		return err
+		logrus.Warnf("live upgrade: cannot get engine image %v: %v", v.Status.CurrentImage, err)
+		return nil
+	}
+	if oldImage.Status.State != types.EngineImageStateReady {
+		logrus.Warnf("live upgrade: volume %v engine upgrade from %v requests, but the image wasn't ready", v.Name, oldImage.Spec.Image)
+		return nil
+	}
+	newImage, err := vc.getEngineImage(v.Spec.EngineImage)
+	if err != nil {
+		logrus.Warnf("live upgrade: cannot get engine image %v: %v", v.Spec.EngineImage, err)
+		return nil
+	}
+	if newImage.Status.State != types.EngineImageStateReady {
+		logrus.Warnf("live upgrade: volume %v engine upgrade from %v requests, but the image wasn't ready", v.Name, newImage.Spec.Image)
+		return nil
 	}
 
-	// upgrade image hasn't been prepared, wait for next time
-	if _, ok := upgradeImages[v.Spec.EngineImage]; !ok {
-		logrus.Warnf("Volume %v engine upgrade to %v requests, but the image wasn't prepared", v.Name, v.Spec.EngineImage)
+	if oldImage.Status.ControllerVersion > newImage.Status.ControllerVersion ||
+		oldImage.Status.ControllerVersion < newImage.Status.ControllerMinVersion {
+		logrus.Warnf("live upgrade: unable to live upgrade from %v to %v: the old controller version %v "+
+			"is not compatible with the new controller version %v and the new controller minimal version %v",
+			oldImage.Spec.Image, newImage.Spec.Image,
+			oldImage.Status.ControllerVersion, newImage.Status.ControllerVersion, newImage.Status.ControllerMinVersion)
 		return nil
 	}
 
@@ -691,7 +708,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		} else if r.Spec.EngineImage == v.Spec.EngineImage {
 			dataPathToNewReplica[r.Spec.DataPath] = r
 		} else {
-			logrus.Warnf("Found unknown replica with image %v of volume %v",
+			logrus.Warnf("live upgrade: found unknown replica with image %v of volume %v",
 				r.Spec.EngineImage, v.Name)
 			unknownReplicas[r.Name] = r
 		}
@@ -699,7 +716,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 
 	if len(dataPathToNewReplica) != v.Spec.NumberOfReplicas {
 		if len(dataPathToOldReplica) != v.Spec.NumberOfReplicas {
-			logrus.Warnf("Not enough replicas (%v vs %v) to upgrade from %v for volume %v",
+			logrus.Warnf("live upgrade: Not enough replicas (%v vs %v) to upgrade from %v for volume %v",
 				len(dataPathToOldReplica), v.Spec.NumberOfReplicas, v.Status.CurrentImage, v.Name)
 			return nil
 		}
@@ -1047,4 +1064,16 @@ func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
 		return true
 	}
 	return false
+}
+
+func (vc *VolumeController) getEngineImage(image string) (*longhorn.EngineImage, error) {
+	name := types.GetEngineImageChecksumName(image)
+	img, err := vc.ds.GetEngineImage(name)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to get engine image %v", image)
+	}
+	if img == nil {
+		return nil, fmt.Errorf("cannot find engine image %v", image)
+	}
+	return img, nil
 }
