@@ -238,7 +238,7 @@ func (in *Setting) DeepCopyObject() runtime.Object {
 func (in *SettingList) DeepCopyInto(out *SettingList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
+	out.ListMeta = in.ListMeta
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]Setting, len(*in))
