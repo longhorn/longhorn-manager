@@ -83,9 +83,9 @@ type Setting struct {
 // +resource:path=settings
 
 type SettingList struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
-	Items             []Setting `json:"items"`
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+	Items           []Setting `json:"items"`
 }
 
 // +genclient
