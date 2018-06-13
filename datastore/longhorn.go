@@ -437,3 +437,50 @@ func (s *DataStore) ListEngineImages() (map[string]*longhorn.EngineImage, error)
 	}
 	return itemMap, nil
 }
+
+func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, node); err != nil {
+		return nil, err
+	}
+	return s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Create(node)
+}
+
+// CreateDefaultNode will set default directory to node replica mount path
+func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
+	node := &longhorn.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: types.NodeSpec{
+			Name:            name,
+			AllowScheduling: true,
+		},
+		Status: types.NodeStatus{
+			State: types.NodeStateUp,
+		},
+	}
+	return s.CreateNode(node)
+}
+
+func (s *DataStore) GetNode(name string) (*longhorn.Node, error) {
+	result, err := s.nLister.Nodes(s.namespace).Get(name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return result.DeepCopy(), nil
+}
+
+func (s *DataStore) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) {
+	return s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Update(node)
+}
+
+func (s *DataStore) ListNodes() ([]*longhorn.Node, error) {
+	nodeList, err := s.nLister.Nodes(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	return nodeList, nil
+}

@@ -120,6 +120,13 @@ type EngineUpgradeInput struct {
 	Image string `json:"image"`
 }
 
+type Node struct {
+	client.Resource
+	Name            string          `json:"name"`
+	AllowScheduling bool            `json:"allowScheduling"`
+	Status          types.NodeState `json:"status"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -137,6 +144,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("engineUpgradeInput", EngineUpgradeInput{})
 	schemas.AddType("replica", Replica{})
 	schemas.AddType("controller", Controller{})
+	schemas.AddType("node", Node{})
 
 	hostSchema(schemas.AddType("host", Host{}))
 	volumeSchema(schemas.AddType("volume", Volume{}))
@@ -144,8 +152,19 @@ func NewSchema() *client.Schemas {
 	settingSchema(schemas.AddType("setting", Setting{}))
 	recurringSchema(schemas.AddType("recurringInput", RecurringInput{}))
 	engineImageSchema(schemas.AddType("engineImage", EngineImage{}))
+	nodeSchema(schemas.AddType("node", Node{}))
 
 	return schemas
+}
+
+func nodeSchema(node *client.Schema) {
+	node.CollectionMethods = []string{"GET"}
+	node.ResourceMethods = []string{"GET", "PUT"}
+
+	allowScheduling := node.ResourceFields["allowScheduling"]
+	allowScheduling.Required = true
+	allowScheduling.Unique = false
+	node.ResourceFields["allowScheduling"] = allowScheduling
 }
 
 func engineImageSchema(engineImage *client.Schema) {
@@ -559,4 +578,27 @@ func NewServer(m *manager.VolumeManager) *Server {
 		fwd: NewFwd(m),
 	}
 	return s
+}
+
+func toNodeResource(node *longhorn.Node) *Node {
+	n := &Node{
+		Resource: client.Resource{
+			Id:    node.Name,
+			Type:  "node",
+			Links: map[string]string{},
+		},
+		Name:            node.Name,
+		AllowScheduling: node.Spec.AllowScheduling,
+		Status:          node.Status.State,
+	}
+
+	return n
+}
+
+func toNodeCollection(nodeList []*longhorn.Node) *client.GenericCollection {
+	data := []interface{}{}
+	for _, node := range nodeList {
+		data = append(data, toNodeResource(node))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "node"}}
 }
