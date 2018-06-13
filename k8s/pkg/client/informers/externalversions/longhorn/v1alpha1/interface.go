@@ -28,6 +28,8 @@ type Interface interface {
 	Engines() EngineInformer
 	// EngineImages returns a EngineImageInformer.
 	EngineImages() EngineImageInformer
+	// Nodes returns a NodeInformer.
+	Nodes() NodeInformer
 	// Replicas returns a ReplicaInformer.
 	Replicas() ReplicaInformer
 	// Settings returns a SettingInformer.
@@ -55,6 +57,11 @@ func (v *version) Engines() EngineInformer {
 // EngineImages returns a EngineImageInformer.
 func (v *version) EngineImages() EngineImageInformer {
 	return &engineImageInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// Nodes returns a NodeInformer.
+func (v *version) Nodes() NodeInformer {
+	return &nodeInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Replicas returns a ReplicaInformer.
