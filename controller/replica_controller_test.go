@@ -85,6 +85,7 @@ func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformer
 	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Engines()
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
 	engineImageInformer := lhInformerFactory.Longhorn().V1alpha1().EngineImages()
+	nodeInformer := lhInformerFactory.Longhorn().V1alpha1().Nodes()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
@@ -92,7 +93,7 @@ func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformer
 	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
 
 	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, engineImageInformer, lhClient,
-		podInformer, cronJobInformer, daemonSetInformer, kubeClient, TestNamespace)
+		podInformer, cronJobInformer, daemonSetInformer, kubeClient, TestNamespace, nodeInformer)
 
 	rc := NewReplicaController(ds, scheme.Scheme, replicaInformer, podInformer, jobInformer, kubeClient, TestNamespace, controllerID)
 

@@ -42,13 +42,14 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Engines()
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
 	engineImageInformer := lhInformerFactory.Longhorn().V1alpha1().EngineImages()
+	nodeInformer := lhInformerFactory.Longhorn().V1alpha1().Nodes()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
 
 	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, engineImageInformer, lhClient,
-		podInformer, cronJobInformer, daemonSetInformer, kubeClient, TestNamespace)
+		podInformer, cronJobInformer, daemonSetInformer, kubeClient, TestNamespace, nodeInformer)
 	initSettings(ds)
 
 	vc := NewVolumeController(ds, scheme.Scheme, volumeInformer, engineInformer, replicaInformer, kubeClient, TestNamespace, controllerID, TestServiceAccount, TestManagerImage)
@@ -366,8 +367,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				for _, expectR = range tc.expectReplicas {
 					break
 				}
-				// DataPath is randomized
-				c.Assert(retR.Spec.DataPath, Not(Equals), "")
+				// DataPath is "" before scheduled
 				retR.Spec.DataPath = ""
 				c.Assert(retR.Spec, DeepEquals, expectR.Spec)
 				c.Assert(retR.Status, DeepEquals, expectR.Status)
