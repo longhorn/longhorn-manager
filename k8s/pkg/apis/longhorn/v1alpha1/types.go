@@ -108,3 +108,22 @@ type EngineImageList struct {
 	metav1.ListMeta `json:"metadata"`
 	Items           []EngineImage `json:"items"`
 }
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:noStatus
+
+type Node struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata"`
+	Spec              types.NodeSpec   `json:"spec"`
+	Status            types.NodeStatus `json:"status"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type NodeList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+	Items           []Node `json:"items"`
+}
