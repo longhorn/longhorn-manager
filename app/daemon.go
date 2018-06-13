@@ -120,7 +120,15 @@ func startManager(c *cli.Context) error {
 }
 
 func environmentCheck() error {
-	namespace, err := iscsi_util.NewNamespaceExecutor("/host/proc/1/ns")
+	initiatorNSPath := "/host/proc/1/ns"
+	pf := iscsi_util.NewProcessFinder("/host/proc")
+	ps, err := pf.FindAncestorByName("dockerd")
+	if err != nil {
+		logrus.Warnf("Failed to find dockerd in the process ancestors, fall back to use pid 1: %v", err)
+	} else {
+		initiatorNSPath = fmt.Sprintf("/host/proc/%d/ns", ps.Pid)
+	}
+	namespace, err := iscsi_util.NewNamespaceExecutor(initiatorNSPath)
 	if err != nil {
 		return err
 	}
