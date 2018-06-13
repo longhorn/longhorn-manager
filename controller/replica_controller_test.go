@@ -53,7 +53,7 @@ func newReplica(desireState, currentState types.InstanceState, failedAt string) 
 	}
 }
 
-func newPod(phase v1.PodPhase, name, namespace string) *v1.Pod {
+func newPod(phase v1.PodPhase, name, namespace, nodeID string) *v1.Pod {
 	if phase == "" {
 		return nil
 	}
@@ -65,6 +65,9 @@ func newPod(phase v1.PodPhase, name, namespace string) *v1.Pod {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
+		},
+		Spec: v1.PodSpec{
+			NodeName: nodeID,
 		},
 		Status: v1.PodStatus{
 			Phase: phase,
@@ -123,26 +126,35 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 
 		//pod expection
 		expectedPods int
+
+		// replica exception
+		NodeID   string
+		DataPath string
 	}{
 		"replica keep stopped": {
 			types.InstanceStateStopped, types.InstanceStateStopped,
 			types.InstanceStateStopped, false,
-			0,
+			0, TestNode1, TestDefaultDataPath,
 		},
 		"replica start": {
 			types.InstanceStateRunning, types.InstanceStateStopped,
 			types.InstanceStateRunning, false,
-			1,
+			1, TestNode1, TestDefaultDataPath,
 		},
 		"replica keep running": {
 			types.InstanceStateRunning, types.InstanceStateRunning,
 			types.InstanceStateRunning, false,
-			1,
+			1, TestNode1, TestDefaultDataPath,
 		},
 		"replica stop": {
 			types.InstanceStateStopped, types.InstanceStateRunning,
 			types.InstanceStateStopped, false,
-			0,
+			0, TestNode1, TestDefaultDataPath,
+		},
+		"replica error": {
+			types.InstanceStateRunning, types.InstanceStateStopped,
+			types.InstanceStateRunning, true,
+			1, "", "",
 		},
 	}
 
@@ -164,13 +176,15 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 		// Need add to both indexer store and fake clientset, since they
 		// haven't connected yet
 		replica := newReplica(tc.desireState, tc.currentState, "")
+		replica.Spec.NodeID = tc.NodeID
+		replica.Spec.DataPath = tc.DataPath
 		err = rIndexer.Add(replica)
 		c.Assert(err, IsNil)
 		_, err = lhClient.LonghornV1alpha1().Replicas(replica.Namespace).Create(replica)
 		c.Assert(err, IsNil)
 
 		if tc.currentState == types.InstanceStateRunning {
-			pod := newPod(v1.PodRunning, replica.Name, replica.Namespace)
+			pod := newPod(v1.PodRunning, replica.Name, replica.Namespace, replica.Spec.NodeID)
 			err = pIndexer.Add(pod)
 			c.Assert(err, IsNil)
 			_, err = kubeClient.CoreV1().Pods(replica.Namespace).Create(pod)
@@ -182,12 +196,11 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 			c.Assert(err, NotNil)
 		} else {
 			c.Assert(err, IsNil)
+			// check fake clientset for resource update
+			podList, err := kubeClient.CoreV1().Pods(replica.Namespace).List(metav1.ListOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(podList.Items, HasLen, tc.expectedPods)
 		}
-
-		// check fake clientset for resource update
-		podList, err := kubeClient.CoreV1().Pods(replica.Namespace).List(metav1.ListOptions{})
-		c.Assert(err, IsNil)
-		c.Assert(podList.Items, HasLen, tc.expectedPods)
 
 		// TODO State change won't work for now since pod state wasn't changed
 		//updatedReplica, err := lhClient.LonghornV1alpha1().Replicas(rc.namespace).Get(replica.Name, metav1.GetOptions{})

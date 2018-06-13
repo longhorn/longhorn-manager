@@ -57,7 +57,7 @@ func (s *TestSuite) TestSyncStatusWithPod(c *C) {
 
 		status := &types.InstanceStatus{}
 		spec := &types.InstanceSpec{}
-		pod := newPod(tc.podPhase, TestPodName, TestNamespace)
+		pod := newPod(tc.podPhase, TestPodName, TestNamespace, TestNode1)
 		if pod != nil {
 			pod.Status.PodIP = tc.podIP
 			if tc.deleted {

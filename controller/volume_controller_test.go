@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -280,6 +281,40 @@ func newReplicaForVolume(v *longhorn.Volume) *longhorn.Replica {
 	}
 }
 
+func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string) *v1.Pod {
+	return &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"app": "longhorn-manager",
+			},
+		},
+		Spec: v1.PodSpec{
+			NodeName: nodeID,
+		},
+		Status: v1.PodStatus{
+			Phase: phase,
+			PodIP: podIP,
+		},
+	}
+}
+
+func newNode(name, namespace string, allowScheduling bool) *longhorn.Node {
+	return &longhorn.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: types.NodeSpec{
+			AllowScheduling: allowScheduling,
+		},
+		Status: types.NodeStatus{
+			State: types.NodeStateUp,
+		},
+	}
+}
+
 func generateVolumeTestCaseTemplate() *VolumeTestCase {
 	volume := newVolume(TestVolumeName, 2)
 	engine := newEngineForVolume(volume)
@@ -315,8 +350,34 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		vIndexer := lhInformerFactory.Longhorn().V1alpha1().Volumes().Informer().GetIndexer()
 		eIndexer := lhInformerFactory.Longhorn().V1alpha1().Engines().Informer().GetIndexer()
 		rIndexer := lhInformerFactory.Longhorn().V1alpha1().Replicas().Informer().GetIndexer()
+		nIndexer := lhInformerFactory.Longhorn().V1alpha1().Nodes().Informer().GetIndexer()
+
+		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
 		vc := newTestVolumeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestOwnerID1)
+
+		// Need to create daemon pod for node
+		daemon1 := newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+		p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(daemon1)
+		c.Assert(err, IsNil)
+		pIndexer.Add(p)
+		daemon2 := newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+		p, err = kubeClient.CoreV1().Pods(TestNamespace).Create(daemon2)
+		c.Assert(err, IsNil)
+		pIndexer.Add(p)
+
+		// need to create default node
+		node1 := newNode(TestNode1, TestNamespace, true)
+		n1, err := lhClient.Longhorn().Nodes(TestNamespace).Create(node1)
+		c.Assert(err, IsNil)
+		c.Assert(n1, NotNil)
+		nIndexer.Add(n1)
+
+		node2 := newNode(TestNode2, TestNamespace, false)
+		n2, err := lhClient.Longhorn().Nodes(TestNamespace).Create(node2)
+		c.Assert(err, IsNil)
+		c.Assert(n2, NotNil)
+		nIndexer.Add(n2)
 
 		// Need to put it into both fakeclientset and Indexer
 		v, err := lhClient.LonghornV1alpha1().Volumes(TestNamespace).Create(tc.volume)
@@ -367,9 +428,10 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				for _, expectR = range tc.expectReplicas {
 					break
 				}
-				// DataPath is "" before scheduled
-				retR.Spec.DataPath = ""
-				c.Assert(retR.Spec, DeepEquals, expectR.Spec)
+				// validate DataPath and NodeID of replica have been set in scheduler
+				c.Assert(retR.Spec.DataPath, NotNil)
+				c.Assert(retR.Spec.NodeID, NotNil)
+				c.Assert(retR.Spec.NodeID, Equals, TestNode1)
 				c.Assert(retR.Status, DeepEquals, expectR.Status)
 			} else {
 				c.Assert(retR.Spec, DeepEquals, tc.expectReplicas[retR.Name].Spec)

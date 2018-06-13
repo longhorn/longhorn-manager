@@ -38,6 +38,10 @@ const (
 	TestVolumeStaleTimeout = 60
 
 	TestTimeNow = "2015-01-02T00:00:00Z"
+
+	TestDefaultDataPath = "/var/lib/rancher/longhorn"
+	TestDaemon1         = "longhorn-manager-1"
+	TestDaemon2         = "longhorn-manager-2"
 )
 
 var (

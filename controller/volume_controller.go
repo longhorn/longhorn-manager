@@ -26,6 +26,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/rancher/longhorn-manager/datastore"
+	"github.com/rancher/longhorn-manager/scheduler"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 
@@ -38,10 +39,6 @@ var (
 )
 
 const (
-	// longhornDirectory is the directory going to be bind mounted on the
-	// host to provide storage space to replica data
-	longhornDirectory = "/var/lib/rancher/longhorn/"
-
 	LabelRecurringJob = "RecurringJob"
 
 	CronJobBackoffLimit = 3
@@ -65,6 +62,8 @@ type VolumeController struct {
 	rStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
+
+	scheduler *scheduler.ReplicaScheduler
 
 	// for unit test
 	nowHandler func() string
@@ -103,6 +102,8 @@ func NewVolumeController(
 
 		nowHandler: util.Now,
 	}
+
+	vc.scheduler = scheduler.NewReplicaScheduler(ds)
 
 	volumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -863,7 +864,12 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume) (*longhorn.Replica
 		replica.Spec.RestoreFrom = v.Spec.FromBackup
 		replica.Spec.RestoreName = backupID
 	}
-	replica.Spec.DataPath = longhornDirectory + "/replicas/" + v.Name + "-" + util.RandomID()
+
+	// check whether the replica need to be scheduled
+	replica, err := vc.scheduler.ScheduleReplica(replica)
+	if err != nil {
+		return nil, err
+	}
 
 	return vc.ds.CreateReplica(replica)
 }
