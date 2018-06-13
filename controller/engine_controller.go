@@ -78,9 +78,9 @@ type EngineMonitor struct {
 	ds            *datastore.DataStore
 	eventRecorder record.EventRecorder
 
-	Name         string
-	engineClient engineapi.EngineClient
-	stopCh       chan struct{}
+	Name    string
+	engines engineapi.EngineClientCollection
+	stopCh  chan struct{}
 
 	controllerID string
 	// used to notify the controller that monitoring has stopped
@@ -489,7 +489,7 @@ func (ec *EngineController) isMonitoring(e *longhorn.Engine) bool {
 }
 
 func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
-	client, err := ec.getClientForEngine(e)
+	client, err := GetClientForEngine(e, ec.engines)
 	if err != nil {
 		logrus.Warnf("Failed to start monitoring %v, cannot create engine client", e.Name)
 		return
@@ -507,7 +507,7 @@ func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
 		namespace:          e.Namespace,
 		ds:                 ec.ds,
 		eventRecorder:      ec.eventRecorder,
-		engineClient:       client,
+		engines:            ec.engines,
 		stopCh:             make(chan struct{}),
 		controllerID:       ec.controllerID,
 		monitoringRemoveCh: ec.engineMonitoringRemoveCh,
@@ -590,7 +590,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		addressReplicaMap[address] = replica
 	}
 
-	replicaURLModeMap, err := m.engineClient.ReplicaList()
+	client, err := GetClientForEngine(engine, m.engines)
+	if err != nil {
+		return err
+	}
+
+	replicaURLModeMap, err := client.ReplicaList()
 	if err != nil {
 		return err
 	}
@@ -638,14 +643,14 @@ func (ec *EngineController) ReconcileEngineState(e *longhorn.Engine) error {
 	return nil
 }
 
-func (ec *EngineController) getClientForEngine(e *longhorn.Engine) (client engineapi.EngineClient, err error) {
+func GetClientForEngine(e *longhorn.Engine, engines engineapi.EngineClientCollection) (client engineapi.EngineClient, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "cannot get client for engine %v", e.Name)
 	}()
 	if e.Status.CurrentState != types.InstanceStateRunning {
 		return nil, fmt.Errorf("engine is not running")
 	}
-	client, err = ec.engines.NewEngineClient(&engineapi.EngineClientRequest{
+	client, err = engines.NewEngineClient(&engineapi.EngineClientRequest{
 		VolumeName:        e.Spec.VolumeName,
 		EngineImage:       e.Status.CurrentImage,
 		ControllerURL:     engineapi.GetControllerDefaultURL(e.Status.IP),
@@ -669,7 +674,7 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 		return nil
 	}
 
-	client, err := ec.getClientForEngine(e)
+	client, err := GetClientForEngine(e, ec.engines)
 	if err != nil {
 		return err
 	}
@@ -714,7 +719,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip stri
 		err = errors.Wrapf(err, "fail to start rebuild for %v of %v", replica, e.Name)
 	}()
 
-	client, err := ec.getClientForEngine(e)
+	client, err := GetClientForEngine(e, ec.engines)
 	if err != nil {
 		return err
 	}
@@ -761,7 +766,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 		replicaURLs = append(replicaURLs, engineapi.GetReplicaDefaultURL(ip))
 	}
 	binary := types.GetEngineBinaryDirectoryInContainerForImage(e.Spec.EngineImage) + "/longhorn"
-	client, err := ec.getClientForEngine(e)
+	client, err := GetClientForEngine(e, ec.engines)
 	if err != nil {
 		return err
 	}
