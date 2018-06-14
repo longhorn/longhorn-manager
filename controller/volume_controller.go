@@ -458,7 +458,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 	}
 
-	if e.Status.CurrentState == types.InstanceStateError && e.Status.Started {
+	if e.Status.CurrentState == types.InstanceStateError {
 		// Engine dead unexpected, force detaching the volume
 		logrus.Errorf("Engine of volume %v dead unexpectedly, detach the volume", v.Name)
 		vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFaulted, "Engine of volume %v dead unexpectedly, detach the volume", v.Name)
