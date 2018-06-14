@@ -46,14 +46,16 @@ func NewInstanceHandler(podInformer coreinformers.PodInformer, kubeClient client
 	}
 }
 
-func (h *InstanceHandler) syncStatusWithPod(pod *v1.Pod, status *types.InstanceStatus) {
+func (h *InstanceHandler) syncStatusWithPod(pod *v1.Pod, spec *types.InstanceSpec, status *types.InstanceStatus) {
 	if pod == nil {
 		if status.Started {
 			status.CurrentState = types.InstanceStateError
 			status.IP = ""
+			status.CurrentImage = ""
 		} else {
 			status.CurrentState = types.InstanceStateStopped
 			status.IP = ""
+			status.CurrentImage = ""
 		}
 		return
 	}
@@ -61,6 +63,7 @@ func (h *InstanceHandler) syncStatusWithPod(pod *v1.Pod, status *types.InstanceS
 	if pod.DeletionTimestamp != nil {
 		status.CurrentState = types.InstanceStateStopping
 		status.IP = ""
+		status.CurrentImage = ""
 		return
 	}
 
@@ -68,12 +71,14 @@ func (h *InstanceHandler) syncStatusWithPod(pod *v1.Pod, status *types.InstanceS
 	case v1.PodPending:
 		status.CurrentState = types.InstanceStateStarting
 		status.IP = ""
+		status.CurrentImage = ""
 	case v1.PodRunning:
 		for _, st := range pod.Status.ContainerStatuses {
 			// wait until all containers passed readiness probe
 			if !st.Ready {
 				status.CurrentState = types.InstanceStateStarting
 				status.IP = ""
+				status.CurrentImage = ""
 				return
 			}
 		}
@@ -82,12 +87,18 @@ func (h *InstanceHandler) syncStatusWithPod(pod *v1.Pod, status *types.InstanceS
 			status.IP = pod.Status.PodIP
 			logrus.Debugf("Instance %v starts running, IP %v", pod.Name, status.IP)
 		}
+		// only set CurrentImage when first started, since later we may specify
+		// different spec.EngineImage for upgrade
+		if status.CurrentImage == "" {
+			status.CurrentImage = spec.EngineImage
+		}
 	default:
 		// TODO Check the reason of pod cannot gracefully shutdown
 		logrus.Warnf("instance %v state is failed/unknown, pod state %v",
 			pod.Name, pod.Status.Phase)
 		status.CurrentState = types.InstanceStateError
 		status.IP = ""
+		status.CurrentImage = ""
 	}
 }
 
@@ -121,20 +132,20 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 
 	switch spec.DesireState {
 	case types.InstanceStateRunning:
-		// don't try to start the instance if in Error or already
-		// started (meant the pod exit unexpected)
-		if status.CurrentState != types.InstanceStateError &&
-			!status.Started && pod == nil {
-			podSpec, err := h.podCreator.CreatePodSpec(obj)
-			if err != nil {
-				return err
-			}
-			pod, err = h.createPodForObject(runtimeObj, podSpec)
-			if err != nil {
-				return err
-			}
-			status.CurrentImage = spec.EngineImage
+		if pod != nil && pod.DeletionTimestamp == nil {
 			status.Started = true
+			break
+		}
+		if status.CurrentState != types.InstanceStateStopped {
+			break
+		}
+		podSpec, err := h.podCreator.CreatePodSpec(obj)
+		if err != nil {
+			return err
+		}
+		pod, err = h.createPodForObject(runtimeObj, podSpec)
+		if err != nil {
+			return err
 		}
 	case types.InstanceStateStopped:
 		if pod != nil && pod.DeletionTimestamp == nil {
@@ -142,13 +153,12 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 				return err
 			}
 		}
-		status.CurrentImage = ""
 		status.Started = false
 	default:
 		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
 	}
 
-	h.syncStatusWithPod(pod, status)
+	h.syncStatusWithPod(pod, spec, status)
 
 	if status.CurrentState == types.InstanceStateRunning {
 		// pin down to this node ID. it's needed for a replica and

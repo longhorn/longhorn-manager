@@ -56,6 +56,7 @@ func (s *TestSuite) TestSyncStatusWithPod(c *C) {
 		h := newTestInstanceHandler(kubeInformerFactory, kubeClient)
 
 		status := &types.InstanceStatus{}
+		spec := &types.InstanceSpec{}
 		pod := newPod(tc.podPhase, TestPodName, TestNamespace)
 		if pod != nil {
 			pod.Status.PodIP = tc.podIP
@@ -65,7 +66,7 @@ func (s *TestSuite) TestSyncStatusWithPod(c *C) {
 			}
 		}
 
-		h.syncStatusWithPod(pod, status)
+		h.syncStatusWithPod(pod, spec, status)
 		c.Assert(status.CurrentState, Equals, tc.expectedState)
 		c.Assert(status.IP, Equals, tc.expectedIP)
 	}
