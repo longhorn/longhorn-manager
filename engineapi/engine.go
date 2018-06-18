@@ -186,8 +186,12 @@ func (e *Engine) Upgrade(binary string, replicaURLs []string) error {
 	return nil
 }
 
-func (e *Engine) Version() (*EngineVersion, error) {
-	output, err := util.Execute(e.LonghornEngineBinary(), "version")
+func (e *Engine) Version(clientOnly bool) (*EngineVersion, error) {
+	cmdline := []string{"version"}
+	if clientOnly {
+		cmdline = append(cmdline, "--client-only")
+	}
+	output, err := util.Execute(e.LonghornEngineBinary(), cmdline...)
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot get volume version")
 	}

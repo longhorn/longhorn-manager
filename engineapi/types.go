@@ -33,7 +33,7 @@ type Controller struct {
 type EngineClient interface {
 	Name() string
 	Endpoint() string
-	Version() (*EngineVersion, error)
+	Version(clientOnly bool) (*EngineVersion, error)
 	Upgrade(binary string, replicaURLs []string) error
 
 	ReplicaList() (map[string]*Replica, error)
@@ -106,17 +106,8 @@ type LauncherVolumeInfo struct {
 }
 
 type EngineVersion struct {
-	Version string
-
-	CLIAPIVersion           int
-	CLIAPIMinVersion        int
-	ControllerAPIVersion    int
-	ControllerAPIMinVersion int
-	DataFormatVersion       int
-	DataFormatMinVersion    int
-
-	GitCommit string
-	BuildDate string
+	ClientVersion *types.EngineVersionDetails `json:"clientVersion"`
+	ServerVersion *types.EngineVersionDetails `json:"serverVersion"`
 }
 
 func GetControllerDefaultURL(ip string) string {

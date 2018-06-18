@@ -284,10 +284,10 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return err
 	}
 
-	if err := engineapi.CheckCLICompatibilty(engineImage.Status.CLIVersion, engineImage.Status.CLIMinVersion); err != nil {
+	if err := engineapi.CheckCLICompatibilty(engineImage.Status.CLIAPIVersion, engineImage.Status.CLIAPIMinVersion); err != nil {
 		logrus.Errorf("Engine image %v isn't compatible with current manager: %v", engineImage.Spec.Image, err)
 		engineImage.Status.State = types.EngineImageStateIncompatible
-		return nil
+		// Allow update reference count and clean up even it's incompatible since engines may have been upgraded
 	}
 
 	if err := ic.updateEngineImageRefCount(engineImage); err != nil {
@@ -313,20 +313,20 @@ func (ic *EngineImageController) updateEngineImageVersion(ei *longhorn.EngineIma
 	if err != nil {
 		return errors.Wrapf(err, "cannot get engine client to check engine version")
 	}
-	version, err := client.Version()
+	version, err := client.Version(true)
 	if err != nil {
-		return errors.Wrapf(err, "cannot get engine version for %v (%v)", ei.Name, ei.Spec.Image)
+		logrus.Warnf("cannot get engine version for %v (%v): %v", ei.Name, ei.Spec.Image, err)
+		version.ClientVersion.Version = "ei.Spec.Image"
+		version.ClientVersion.GitCommit = "unknown"
+		version.ClientVersion.BuildDate = "unknown"
+		version.ClientVersion.CLIAPIVersion = types.InvalidEngineVersion
+		version.ClientVersion.CLIAPIMinVersion = types.InvalidEngineVersion
+		version.ClientVersion.ControllerAPIVersion = types.InvalidEngineVersion
+		version.ClientVersion.DataFormatVersion = types.InvalidEngineVersion
+		version.ClientVersion.DataFormatMinVersion = types.InvalidEngineVersion
 	}
 
-	ei.Status.Version = version.Version
-	ei.Status.CLIVersion = version.CLIAPIVersion
-	ei.Status.CLIMinVersion = version.CLIAPIMinVersion
-	ei.Status.ControllerVersion = version.ControllerAPIVersion
-	ei.Status.ControllerMinVersion = version.ControllerAPIMinVersion
-	ei.Status.DataFormatVersion = version.DataFormatVersion
-	ei.Status.DataFormatMinVersion = version.DataFormatMinVersion
-	ei.Status.GitCommit = version.GitCommit
-	ei.Status.BuildDate = version.BuildDate
+	ei.Status.EngineVersionDetails = *version.ClientVersion
 	return nil
 }
 
