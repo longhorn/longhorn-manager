@@ -190,6 +190,8 @@ func (e *Engine) Version(clientOnly bool) (*EngineVersion, error) {
 	cmdline := []string{"version"}
 	if clientOnly {
 		cmdline = append(cmdline, "--client-only")
+	} else {
+		cmdline = append([]string{"--url", e.cURL}, cmdline...)
 	}
 	output, err := util.Execute(e.LonghornEngineBinary(), cmdline...)
 	if err != nil {
