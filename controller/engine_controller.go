@@ -489,7 +489,7 @@ func (ec *EngineController) isMonitoring(e *longhorn.Engine) bool {
 }
 
 func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
-	client, err := GetClientForEngine(e, ec.engines)
+	client, err := GetClientForEngine(e, ec.engines, e.Status.CurrentImage)
 	if err != nil {
 		logrus.Warnf("Failed to start monitoring %v, cannot create engine client", e.Name)
 		return
@@ -590,7 +590,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		addressReplicaMap[address] = replica
 	}
 
-	client, err := GetClientForEngine(engine, m.engines)
+	client, err := GetClientForEngine(engine, m.engines, engine.Status.CurrentImage)
 	if err != nil {
 		return err
 	}
@@ -643,16 +643,19 @@ func (ec *EngineController) ReconcileEngineState(e *longhorn.Engine) error {
 	return nil
 }
 
-func GetClientForEngine(e *longhorn.Engine, engines engineapi.EngineClientCollection) (client engineapi.EngineClient, err error) {
+func GetClientForEngine(e *longhorn.Engine, engines engineapi.EngineClientCollection, image string) (client engineapi.EngineClient, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "cannot get client for engine %v", e.Name)
 	}()
 	if e.Status.CurrentState != types.InstanceStateRunning {
 		return nil, fmt.Errorf("engine is not running")
 	}
+	if image == "" {
+		return nil, fmt.Errorf("require specify engine image")
+	}
 	client, err = engines.NewEngineClient(&engineapi.EngineClientRequest{
 		VolumeName:        e.Spec.VolumeName,
-		EngineImage:       e.Status.CurrentImage,
+		EngineImage:       image,
 		ControllerURL:     engineapi.GetControllerDefaultURL(e.Status.IP),
 		EngineLauncherURL: engineapi.GetEngineLauncherDefaultURL(e.Status.IP),
 	})
@@ -674,7 +677,7 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 		return nil
 	}
 
-	client, err := GetClientForEngine(e, ec.engines)
+	client, err := GetClientForEngine(e, ec.engines, e.Status.CurrentImage)
 	if err != nil {
 		return err
 	}
@@ -719,7 +722,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip stri
 		err = errors.Wrapf(err, "fail to start rebuild for %v of %v", replica, e.Name)
 	}()
 
-	client, err := GetClientForEngine(e, ec.engines)
+	client, err := GetClientForEngine(e, ec.engines, e.Status.CurrentImage)
 	if err != nil {
 		return err
 	}
@@ -761,21 +764,35 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip stri
 }
 
 func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
-	replicaURLs := []string{}
-	for _, ip := range e.Spec.UpgradedReplicaAddressMap {
-		replicaURLs = append(replicaURLs, engineapi.GetReplicaDefaultURL(ip))
-	}
-	binary := types.GetEngineBinaryDirectoryInContainerForImage(e.Spec.EngineImage) + "/longhorn"
-	client, err := GetClientForEngine(e, ec.engines)
+	defer func() {
+		err = errors.Wrapf(err, "cannot live upgrade image for %v", e.Name)
+	}()
+
+	client, err := GetClientForEngine(e, ec.engines, e.Spec.EngineImage)
 	if err != nil {
 		return err
 	}
-	logrus.Debugf("About to upgrade %v from %v to %v for %v",
-		e.Name, e.Status.CurrentImage, e.Spec.EngineImage, e.Spec.VolumeName)
-	if err := client.Upgrade(binary, replicaURLs); err != nil {
-		return err
+	// API maybe incompatible here, so if error happens, we think it needs
+	// upgrade
+	version, err := client.Version(false)
+	if err != nil {
+		logrus.Warnf("Failed to get version of %v for upgrade, assuming upgrade is needed: %v", e.Name, err)
 	}
-	logrus.Debugf("Engine %v has been upgraded", e.Name)
+	// Don't use image with different image name but same commit here. It
+	// will cause live replica to be removed. Volume controller should filter those.
+	if err != nil || version.ClientVersion.GitCommit != version.ServerVersion.GitCommit {
+		replicaURLs := []string{}
+		for _, ip := range e.Spec.UpgradedReplicaAddressMap {
+			replicaURLs = append(replicaURLs, engineapi.GetReplicaDefaultURL(ip))
+		}
+		binary := types.GetEngineBinaryDirectoryInContainerForImage(e.Spec.EngineImage) + "/longhorn"
+		logrus.Debugf("About to upgrade %v from %v to %v for %v",
+			e.Name, e.Status.CurrentImage, e.Spec.EngineImage, e.Spec.VolumeName)
+		if err := client.Upgrade(binary, replicaURLs); err != nil {
+			return err
+		}
+	}
+	logrus.Debugf("Engine %v has been upgraded from %v to %v", e.Name, e.Status.CurrentImage, e.Spec.EngineImage)
 	e.Status.CurrentImage = e.Spec.EngineImage
 	// reset ReplicaModeMap to reflect the new replicas
 	e.Status.ReplicaModeMap = nil

@@ -690,6 +690,11 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		return nil
 	}
 
+	if oldImage.Status.GitCommit == newImage.Status.GitCommit {
+		logrus.Infof("live upgrade: Engine image %v and %v are identical, delay upgrade until detach for %v", oldImage.Spec.Image, newImage.Spec.Image, v.Name)
+		return nil
+	}
+
 	if oldImage.Status.ControllerAPIVersion > newImage.Status.ControllerAPIVersion ||
 		oldImage.Status.ControllerAPIVersion < newImage.Status.ControllerAPIMinVersion {
 		logrus.Warnf("live upgrade: unable to live upgrade from %v to %v: the old controller version %v "+
