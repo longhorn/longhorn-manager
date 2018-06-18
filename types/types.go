@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -91,6 +92,11 @@ func GetEngineBinaryDirectoryOnHostForImage(image string) string {
 func GetEngineBinaryDirectoryInContainerForImage(image string) string {
 	cname := GetImageCanonicalName(image)
 	return filepath.Join(EngineBinaryDirectoryInContainer, cname)
+}
+
+func EngineBinaryExistOnHostForImage(image string) bool {
+	st, err := os.Stat(filepath.Join(GetEngineBinaryDirectoryOnHostForImage(image), "longhorn"))
+	return err == nil && !st.IsDir()
 }
 
 var (
