@@ -240,10 +240,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return ic.ds.RemoveFinalizerForEngineImage(engineImage)
 	}
 
-	if engineImage.Status.State == types.EngineImageStateIncompatible {
-		return nil
-	}
-
+	oldImageState := engineImage.Status.State
 	savedEngineImage := engineImage.DeepCopy()
 	defer func() {
 		// we're going to update the object assume things changes
@@ -277,6 +274,11 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return nil
 	}
 
+	if !types.EngineBinaryExistOnHostForImage(engineImage.Spec.Image) {
+		engineImage.Status.State = types.EngineImageStateDeploying
+		return nil
+	}
+
 	// will only become ready for the first time if all the following functions succeed
 	engineImage.Status.State = types.EngineImageStateReady
 
@@ -298,6 +300,11 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return err
 	}
 
+	if oldImageState != types.EngineImageStateReady && engineImage.Status.State == types.EngineImageStateReady &&
+		engineImage.DeletionTimestamp == nil {
+		logrus.Infof("Engine image %v (%v) become ready", engineImage.Name, engineImage.Spec.Image)
+	}
+
 	return nil
 }
 
@@ -316,6 +323,10 @@ func (ic *EngineImageController) updateEngineImageVersion(ei *longhorn.EngineIma
 	version, err := client.Version(true)
 	if err != nil {
 		logrus.Warnf("cannot get engine version for %v (%v): %v", ei.Name, ei.Spec.Image, err)
+		version = &engineapi.EngineVersion{
+			ClientVersion: &types.EngineVersionDetails{},
+			ServerVersion: nil,
+		}
 		version.ClientVersion.Version = "ei.Spec.Image"
 		version.ClientVersion.GitCommit = "unknown"
 		version.ClientVersion.BuildDate = "unknown"
