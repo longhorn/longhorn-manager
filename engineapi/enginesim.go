@@ -189,6 +189,6 @@ func (e *EngineSimulator) Upgrade(binary string, replicaURLs []string) error {
 	return fmt.Errorf("Not implemented")
 }
 
-func (e *EngineSimulator) Version() (*EngineVersion, error) {
+func (e *EngineSimulator) Version(clientOnly bool) (*EngineVersion, error) {
 	return nil, fmt.Errorf("Not implemented")
 }

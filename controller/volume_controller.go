@@ -690,12 +690,12 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		return nil
 	}
 
-	if oldImage.Status.ControllerVersion > newImage.Status.ControllerVersion ||
-		oldImage.Status.ControllerVersion < newImage.Status.ControllerMinVersion {
+	if oldImage.Status.ControllerAPIVersion > newImage.Status.ControllerAPIVersion ||
+		oldImage.Status.ControllerAPIVersion < newImage.Status.ControllerAPIMinVersion {
 		logrus.Warnf("live upgrade: unable to live upgrade from %v to %v: the old controller version %v "+
 			"is not compatible with the new controller version %v and the new controller minimal version %v",
 			oldImage.Spec.Image, newImage.Spec.Image,
-			oldImage.Status.ControllerVersion, newImage.Status.ControllerVersion, newImage.Status.ControllerMinVersion)
+			oldImage.Status.ControllerAPIVersion, newImage.Status.ControllerAPIVersion, newImage.Status.ControllerAPIMinVersion)
 		return nil
 	}
 

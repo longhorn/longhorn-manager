@@ -144,14 +144,22 @@ type EngineImageStatus struct {
 	RefCount   int              `json:"refCount"`
 	NoRefSince string           `json:"noRefSince"`
 
+	EngineVersionDetails
+}
+
+const (
+	InvalidEngineVersion = -1
+)
+
+type EngineVersionDetails struct {
 	Version   string `json:"version"`
 	GitCommit string `json:"gitCommit"`
 	BuildDate string `json:"buildDate"`
 
-	CLIVersion           int `json:"cliVersion"`
-	CLIMinVersion        int `json:"cliMinVersion"`
-	ControllerVersion    int `json:"controllerVersion"`
-	ControllerMinVersion int `json:"controllerMinVersion"`
-	DataFormatVersion    int `json:"dataFormatVersion"`
-	DataFormatMinVersion int `json:"dataFormatMinVersion"`
+	CLIAPIVersion           int `json:"cliAPIVersion"`
+	CLIAPIMinVersion        int `json:"cliAPIMinVersion"`
+	ControllerAPIVersion    int `json:"controllerAPIVersion"`
+	ControllerAPIMinVersion int `json:"controllerAPIMinVersion"`
+	DataFormatVersion       int `json:"dataFormatVersion"`
+	DataFormatMinVersion    int `json:"dataFormatMinVersion"`
 }
