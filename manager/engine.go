@@ -8,6 +8,7 @@ import (
 
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 )
 
 func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*engineapi.Snapshot, error) {
@@ -180,11 +181,18 @@ func (m *VolumeManager) getBackupCredentialConfig() (map[string]string, error) {
 	if err != nil || settings == nil {
 		return nil, errors.New("cannot backup: unable to read settings")
 	}
-	secretName := settings.BackupTargetCredentialSecret
-	if secretName == "" {
-		return nil, errors.New("Could not backup for s3 without credential secret")
+	backupType, err := util.CheckBackupType(settings.BackupTarget)
+	if err != nil {
+		return nil, err
 	}
-	return m.ds.GetCredentialFromSecret(secretName)
+	if backupType == util.BackupStoreTypeS3 {
+		secretName := settings.BackupTargetCredentialSecret
+		if secretName == "" {
+			return nil, errors.New("Could not backup for s3 without credential secret")
+		}
+		return m.ds.GetCredentialFromSecret(secretName)
+	}
+	return nil, nil
 }
 
 func (m *VolumeManager) ListBackupVolumes() ([]*engineapi.BackupVolume, error) {
