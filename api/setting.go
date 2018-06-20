@@ -2,6 +2,8 @@ package api
 
 import (
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
@@ -61,6 +63,13 @@ func (s *Server) SettingsSet(w http.ResponseWriter, req *http.Request) error {
 
 	switch name {
 	case types.SettingBackupTarget:
+		// additional check whether have $ or , have been set in BackupTarget
+		regStr := `[\$\,]`
+		reg := regexp.MustCompile(regStr)
+		findStr := reg.FindAllString(setting.Value, -1)
+		if len(findStr) != 0 {
+			return errors.Wrapf(err, "fail to set settings with invalid BackupTarget %s, contains %v", setting.Value, strings.Join(findStr, " or "))
+		}
 		si.BackupTarget = setting.Value
 	case types.SettingDefaultEngineImage:
 		si.DefaultEngineImage = setting.Value
