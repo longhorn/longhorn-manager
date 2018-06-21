@@ -308,6 +308,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
+	if err := vc.cleanupCorruptedOrStaleReplicas(volume, replicas); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -318,10 +322,6 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 
 	if e == nil {
 		return nil
-	}
-
-	if err := vc.cleanupCorruptedOrStaleReplicas(v, rs); err != nil {
-		return err
 	}
 
 	if e.Status.CurrentState != types.InstanceStateRunning {
@@ -404,7 +404,18 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 			break
 		}
 	}
+	cleanupUpgradeLeftoverReplicas := !vc.isVolumeUpgrading(v)
+
 	for _, r := range rs {
+		if cleanupUpgradeLeftoverReplicas && r.Spec.EngineImage != v.Spec.EngineImage {
+			// r.Spec.Cleanup should have been setup correctly
+			if err := vc.ds.DeleteReplica(r.Name); err != nil {
+				return err
+			}
+			delete(rs, r.Name)
+			continue
+		}
+
 		if r.Spec.FailedAt == "" {
 			continue
 		}
@@ -638,7 +649,16 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, rs map[string]
 func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
 	var err error
 
-	if v.Status.CurrentImage == v.Spec.EngineImage {
+	if !vc.isVolumeUpgrading(v) {
+		// it must be a rollback
+		if e != nil && e.Spec.EngineImage != v.Spec.EngineImage {
+			e.Spec.EngineImage = v.Spec.EngineImage
+			e.Spec.UpgradedReplicaAddressMap = map[string]string{}
+			e, err = vc.ds.UpdateEngine(e)
+			if err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 
@@ -790,12 +810,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 			dataPathToNewReplica[path] = r
 		}
 	}
-	for _, r := range dataPathToOldReplica {
-		if err := vc.ds.DeleteReplica(r.Name); err != nil {
-			return err
-		}
-		delete(rs, r.Name)
-	}
+	// cleanupCorruptedOrStaleReplicas() will take care of old replicas
 	logrus.Infof("Engine %v of volume %s has been upgraded from %v to %v", e.Name, v.Name, v.Status.CurrentImage, v.Spec.EngineImage)
 	v.Status.CurrentImage = v.Spec.EngineImage
 
@@ -1065,10 +1080,7 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 }
 
 func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
-	if v.Status.CurrentImage != v.Spec.EngineImage {
-		return true
-	}
-	return false
+	return v.Status.CurrentImage != v.Spec.EngineImage
 }
 
 func (vc *VolumeController) getEngineImage(image string) (*longhorn.EngineImage, error) {
