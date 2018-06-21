@@ -334,6 +334,16 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) error {
 		return fmt.Errorf("cannot find volume %v", volumeName)
 	}
 
+	if v.Spec.EngineImage == image {
+		return fmt.Errorf("Upgrading in process for volume %v engine image from %v to %v already",
+			v.Name, v.Status.CurrentImage, v.Spec.EngineImage)
+	}
+
+	if v.Spec.EngineImage != v.Status.CurrentImage && image != v.Status.CurrentImage {
+		return fmt.Errorf("Upgrading in process for volume %v engine image from %v to %v, cannot upgrade to another engine image",
+			v.Name, v.Status.CurrentImage, v.Spec.EngineImage)
+	}
+
 	oldImage := v.Spec.EngineImage
 	v.Spec.EngineImage = image
 
@@ -341,7 +351,11 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) error {
 	if err != nil {
 		return err
 	}
-	logrus.Debugf("Upgrading volume %v engine image from %v to %v", v.Name, oldImage, v.Spec.EngineImage)
+	if image != v.Status.CurrentImage {
+		logrus.Debugf("Upgrading volume %v engine image from %v to %v", v.Name, oldImage, v.Spec.EngineImage)
+	} else {
+		logrus.Debugf("Rolling back volume %v engine image to %v", v.Name, v.Status.CurrentImage)
+	}
 
 	return nil
 }
