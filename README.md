@@ -24,7 +24,27 @@ It will deploy the following components in the `longhorn-system` namespace:
 
 ## Cleanup
 
-`kubectl delete -Rf deploy`
+Longhorn CRD has finalizers in them, so user should delete the volumes and related resource first, give manager a chance to clean up after them.
+### 1. Clean up volume and related resources
+```
+kubectl -n longhorn-system delete lhv --all
+```
+Check the result using:
+```
+kubectl -n longhorn-system get lhv
+kubectl -n longhorn-system get lhe
+kubectl -n longhorn-system get lhr
+```
+Make sure all reports `No resources found.` before continuing.
+
+### 2. Clean up engine images
+```
+kubectl -n longhorn-system delete lhei --all
+```
+### 3. Clean up the manager and related pods.
+```
+kubectl delete -Rf deploy
+```
 
 ## Integration test
 
