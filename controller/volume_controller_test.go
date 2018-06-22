@@ -300,7 +300,7 @@ func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string) *v1.
 	}
 }
 
-func newNode(name, namespace string, allowScheduling bool) *longhorn.Node {
+func newNode(name, namespace string, allowScheduling bool, status types.NodeState) *longhorn.Node {
 	return &longhorn.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -310,7 +310,7 @@ func newNode(name, namespace string, allowScheduling bool) *longhorn.Node {
 			AllowScheduling: allowScheduling,
 		},
 		Status: types.NodeStatus{
-			State: types.NodeStateUp,
+			State: status,
 		},
 	}
 }
@@ -367,13 +367,13 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		pIndexer.Add(p)
 
 		// need to create default node
-		node1 := newNode(TestNode1, TestNamespace, true)
+		node1 := newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
 		n1, err := lhClient.Longhorn().Nodes(TestNamespace).Create(node1)
 		c.Assert(err, IsNil)
 		c.Assert(n1, NotNil)
 		nIndexer.Add(n1)
 
-		node2 := newNode(TestNode2, TestNamespace, false)
+		node2 := newNode(TestNode2, TestNamespace, false, types.NodeStateUp)
 		n2, err := lhClient.Longhorn().Nodes(TestNamespace).Create(node2)
 		c.Assert(err, IsNil)
 		c.Assert(n2, NotNil)

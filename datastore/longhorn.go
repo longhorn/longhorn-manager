@@ -484,3 +484,23 @@ func (s *DataStore) ListNodes() ([]*longhorn.Node, error) {
 	}
 	return nodeList, nil
 }
+
+// RemoveFinalizerForNode will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForNode(obj *longhorn.Node) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Update(obj)
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for node %v", obj.Name)
+	}
+	return nil
+}

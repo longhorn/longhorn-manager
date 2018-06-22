@@ -147,3 +147,15 @@ func (s *DataStore) DeleteEngineImageDaemonSet(name string) error {
 	}
 	return nil
 }
+
+func (s *DataStore) ListManagerPods() ([]*corev1.Pod, error) {
+	selector, err := s.getManagerSelector()
+	if err != nil {
+		return nil, err
+	}
+	podList, err := s.pLister.Pods(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	return podList, nil
+}
