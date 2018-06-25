@@ -56,8 +56,13 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 	if err != nil {
 		return nil, err
 	}
+	frontend := types.VolumeFrontend(opts.Parameters[types.OptionFrontend])
+	if frontend == "" {
+		frontend = types.VolumeFrontendBlockDev
+	}
 	spec := &types.VolumeSpec{
 		Size:                size,
+		Frontend:            frontend,
 		FromBackup:          opts.Parameters[types.OptionFromBackup],
 		NumberOfReplicas:    numberOfReplicas,
 		StaleReplicaTimeout: staleReplicaTimeout,

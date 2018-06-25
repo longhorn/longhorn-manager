@@ -36,6 +36,7 @@ const (
 	OptionFromBackup          = "fromBackup"
 	OptionNumberOfReplica     = "numberOfReplicas"
 	OptionStaleReplicaTimeout = "staleReplicaTimeout"
+	OptionFrontend            = "frontend"
 
 	EngineImageChecksumNameLength = 8
 )
