@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/rancher/go-iscsi-helper/iscsi"
@@ -98,6 +99,10 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
+	if err := initDaemonNode(ds); err != nil {
+		return err
+	}
+
 	if err := m.DeployAndWaitForEngineImage(engineImage); err != nil {
 		return err
 	}
@@ -154,6 +159,22 @@ func initSettings(ds *datastore.DataStore, m *manager.VolumeManager, engineImage
 	if setting.DefaultEngineImage != engineImage {
 		setting.DefaultEngineImage = engineImage
 		if _, err := ds.UpdateSetting(setting); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func initDaemonNode(ds *datastore.DataStore) error {
+	nodeName := os.Getenv("NODE_NAME")
+	node, err := ds.GetNode(nodeName)
+	if err != nil {
+		return err
+	}
+	// init default mount disk on node when starting longhorn-manager
+	if node == nil {
+		_, err = ds.CreateDefaultNode(nodeName)
+		if err != nil {
 			return err
 		}
 	}

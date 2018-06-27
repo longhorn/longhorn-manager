@@ -22,6 +22,8 @@ type EngineExpansion interface{}
 
 type EngineImageExpansion interface{}
 
+type NodeExpansion interface{}
+
 type ReplicaExpansion interface{}
 
 type SettingExpansion interface{}

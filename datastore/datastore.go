@@ -36,6 +36,9 @@ type DataStore struct {
 	cjStoreSynced cache.InformerSynced
 	dsLister      appslisters_v1beta2.DaemonSetLister
 	dsStoreSynced cache.InformerSynced
+
+	nLister      lhlisters.NodeLister
+	nStoreSynced cache.InformerSynced
 }
 
 func NewDataStore(
@@ -49,7 +52,7 @@ func NewDataStore(
 	cronJobInformer batchinformers_v1beta1.CronJobInformer,
 	daemonSetInformer appsinformers_v1beta2.DaemonSetInformer,
 	kubeClient clientset.Interface,
-	namespace string) *DataStore {
+	namespace string, nodeInformer lhinformers.NodeInformer) *DataStore {
 
 	return &DataStore{
 		namespace: namespace,
@@ -71,6 +74,9 @@ func NewDataStore(
 		cjStoreSynced: cronJobInformer.Informer().HasSynced,
 		dsLister:      daemonSetInformer.Lister(),
 		dsStoreSynced: daemonSetInformer.Informer().HasSynced,
+
+		nLister:      nodeInformer.Lister(),
+		nStoreSynced: nodeInformer.Informer().HasSynced,
 	}
 }
 

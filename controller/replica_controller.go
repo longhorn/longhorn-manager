@@ -367,29 +367,13 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 		},
 	}
 
-	// We will allow kubernetes to schedule it for the first time, later we
-	// will pin it down to the same host because we have data on it
-	if r.Spec.NodeID != "" {
-		pod.Spec.NodeName = r.Spec.NodeID
-	} else {
-		pod.Spec.Affinity = &v1.Affinity{
-			PodAntiAffinity: &v1.PodAntiAffinity{
-				PreferredDuringSchedulingIgnoredDuringExecution: []v1.WeightedPodAffinityTerm{
-					{
-						Weight: 100,
-						PodAffinityTerm: v1.PodAffinityTerm{
-							LabelSelector: &metav1.LabelSelector{
-								MatchLabels: map[string]string{
-									longhornReplicaKey: r.Spec.VolumeName,
-								},
-							},
-							TopologyKey: "kubernetes.io/hostname",
-						},
-					},
-				},
-			},
-		}
+	// error out if NodeID and DataPath wasn't filled in scheduler
+	if r.Spec.NodeID == "" || r.Spec.DataPath == "" {
+		return nil, fmt.Errorf("BUG: Node or datapath wasn't set for replica %v", r.Name)
 	}
+
+	// set pod to node that replica scheduled on
+	pod.Spec.NodeName = r.Spec.NodeID
 
 	if r.Spec.RestoreName != "" && r.Spec.RestoreFrom != "" {
 		settings, err := rc.ds.GetSetting()

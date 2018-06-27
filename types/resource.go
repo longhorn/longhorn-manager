@@ -163,3 +163,19 @@ type EngineVersionDetails struct {
 	DataFormatVersion       int `json:"dataFormatVersion"`
 	DataFormatMinVersion    int `json:"dataFormatMinVersion"`
 }
+
+type NodeSpec struct {
+	Name            string `json:"name"`
+	AllowScheduling bool   `json:"allowScheduling"`
+}
+
+type NodeState string
+
+const (
+	NodeStateUp   = NodeState("up")
+	NodeStateDown = NodeState("down")
+)
+
+type NodeStatus struct {
+	State NodeState
+}

@@ -66,6 +66,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Engines()
 	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
 	engineImageInformer := lhInformerFactory.Longhorn().V1alpha1().EngineImages()
+	nodeInformer := lhInformerFactory.Longhorn().V1alpha1().Nodes()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
@@ -73,7 +74,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
 
 	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, engineImageInformer, lhClient,
-		podInformer, cronJobInformer, daemonSetInformer, kubeClient, namespace)
+		podInformer, cronJobInformer, daemonSetInformer, kubeClient, namespace, nodeInformer)
 	rc := NewReplicaController(ds, scheme, replicaInformer, podInformer, jobInformer, kubeClient,
 		namespace, controllerID)
 	ec := NewEngineController(ds, scheme, engineInformer, podInformer, kubeClient,
@@ -81,6 +82,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	vc := NewVolumeController(ds, scheme, volumeInformer, engineInformer, replicaInformer, kubeClient,
 		namespace, controllerID, serviceAccount, managerImage)
 	ic := NewEngineImageController(ds, scheme, engineImageInformer, volumeInformer, daemonSetInformer, kubeClient, namespace, controllerID)
+	nc := NewNodeController(ds, scheme, nodeInformer, podInformer, kubeClient, namespace)
 
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
@@ -91,6 +93,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	go ec.Run(Workers, stopCh)
 	go vc.Run(Workers, stopCh)
 	go ic.Run(Workers, stopCh)
+	go nc.Run(Workers, stopCh)
 
 	return ds, nil
 }
