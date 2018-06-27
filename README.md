@@ -27,25 +27,29 @@ It will deploy the following components in the `longhorn-system` namespace:
 Longhorn CRD has finalizers in them, so user should delete the volumes and related resource first, give manager a chance to clean up after them.
 ### 1. Clean up volume and related resources
 ```
-kubectl -n longhorn-system delete lhv --all
+kubectl -n longhorn-system delete volumes.longhorn.rancher.io --all
 ```
 Check the result using:
 ```
-kubectl -n longhorn-system get lhv
-kubectl -n longhorn-system get lhe
-kubectl -n longhorn-system get lhr
+kubectl -n longhorn-system get volumes.longhorn.rancher.io
+kubectl -n longhorn-system get engines.longhorn.rancher.io
+kubectl -n longhorn-system get replicas.longhorn.rancher.io
 ```
 Make sure all reports `No resources found.` before continuing.
 
-### 2. Clean up engine images
+### 2. Clean up engine images and nodes
 ```
-kubectl -n longhorn-system delete lhei --all
+kubectl -n longhorn-system delete engineimages.longhorn.rancher.io --all
+kubectl -n longhorn-system delete nodes.longhorn.rancher.io --all
 ```
-### 3. Clean up nodes
+Check the result using:
 ```
-kubectl -n longhorn-system delete lhn --all
+kubectl -n longhorn-system get engineimages.longhorn.rancher.io
+kubectl -n longhorn-system get nodes.longhorn.rancher.io
 ```
-### 4. Clean up the manager and related pods.
+Make sure all reports `No resources found.` before continuing.
+
+### 3. Clean up the manager and related pods.
 ```
 kubectl delete -Rf deploy
 ```
