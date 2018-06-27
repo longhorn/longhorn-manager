@@ -41,7 +41,11 @@ Make sure all reports `No resources found.` before continuing.
 ```
 kubectl -n longhorn-system delete lhei --all
 ```
-### 3. Clean up the manager and related pods.
+### 3. Clean up nodes
+```
+kubectl -n longhorn-system delete lhn --all
+```
+### 4. Clean up the manager and related pods.
 ```
 kubectl delete -Rf deploy
 ```
