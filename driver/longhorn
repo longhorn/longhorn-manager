@@ -112,9 +112,13 @@ createVolume() {
     if [ "${fromBackup}" == "null" ]; then
 	fromBackup=""
     fi
+    local baseImage=$(echo ${jsonParams} | jq -r '.baseImage')
+    if [ "${baseImage}" == "null" ]; then
+	baseImage=""
+    fi
 
     OUT=$(curl -s -X POST --connect-timeout ${CURL_TIMEOUT} \
-              -d '{"name":"'${volumeName}'","size":"'${volumeSize}'","numberOfReplicas":'${numReplicas}',"staleReplicaTimeout":'${staleReplicaTimeout}',"fromBackup":"'${fromBackup}'"}' \
+              -d '{"name":"'${volumeName}'","size":"'${volumeSize}'","numberOfReplicas":'${numReplicas}',"staleReplicaTimeout":'${staleReplicaTimeout}',"fromBackup":"'${fromBackup}'","baseImage":"'${baseImage}'"}' \
               http://${LONGHORN_SVC}/v1/volumes)
     debug "create volume response from http://${LONGHORN_SVC}/v1/volumes: ${OUT}"
     local TYPE=$(echo ${OUT} | jq -r '.type')
@@ -245,8 +249,13 @@ createDevice() {
     local volumeName=$(echo ${jsonParams} | jq -r '.["kubernetes.io/pvOrVolumeName"]')
     local fullDevName=${LONGHORN_DEV_PATH}${volumeName}
     local fsType=$(echo ${jsonParams} | jq -r '.["kubernetes.io/fsType"]')
-    fsType=${fsType:-"ext4"}
+    local baseImage=$(echo ${jsonParams} | jq -r '.baseImage')
+    baseImage=${baseImage:-"null"}
 
+    if [ "${baseImage}" == "null" ]; then
+        fsType=${fsType:-"ext4"}
+    fi
+    
     if [ -e ${fullDevName} ]; then
         echo -ne "Device ${fullDevName} is already existed"
         return
