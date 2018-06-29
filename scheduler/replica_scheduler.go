@@ -27,18 +27,10 @@ func NewReplicaScheduler(ds *datastore.DataStore) *ReplicaScheduler {
 	return rcScheduler
 }
 
-func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica) (*longhorn.Replica, error) {
+func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas map[string]*longhorn.Replica) (*longhorn.Replica, error) {
 	// only called when replica is starting for the first time
 	if replica.Spec.NodeID != "" {
 		return nil, fmt.Errorf("BUG: Replica %v has been scheduled to node %v", replica.Name, replica.Spec.NodeID)
-	}
-	// get replica list without current replica
-	replicas, err := rcs.ds.GetVolumeReplicas(replica.Spec.VolumeName)
-	if err != nil {
-		return nil, err
-	}
-	if _, ok := replicas[replica.Name]; ok {
-		delete(replicas, replica.Name)
 	}
 
 	// get all hosts

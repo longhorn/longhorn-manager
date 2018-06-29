@@ -272,13 +272,14 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			c.Assert(r, NotNil)
 			rIndexer.Add(r)
 
-			sr, err := s.ScheduleReplica(r)
+			sr, err := s.ScheduleReplica(r, tc.replicas)
 			if tc.err {
 				c.Assert(err, NotNil)
 			} else {
 				c.Assert(err, IsNil)
 				c.Assert(sr, NotNil)
 				c.Assert(sr.Spec.DataPath, Matches, TestDefaultDataPath+"/.*")
+				tc.replicas[sr.Name] = sr
 				// check expected node
 				for nname := range tc.expectedNodes {
 					if sr.Spec.NodeID == nname {

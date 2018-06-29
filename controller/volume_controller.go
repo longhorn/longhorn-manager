@@ -638,7 +638,7 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, rs map[string]
 	}
 
 	for i := 0; i < v.Spec.NumberOfReplicas-usableCount; i++ {
-		r, err := vc.createReplica(v)
+		r, err := vc.createReplica(v, rs)
 		if err != nil {
 			return err
 		}
@@ -840,7 +840,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 	return vc.ds.CreateEngine(engine)
 }
 
-func (vc *VolumeController) createReplica(v *longhorn.Volume) (*longhorn.Replica, error) {
+func (vc *VolumeController) createReplica(v *longhorn.Volume, rs map[string]*longhorn.Replica) (*longhorn.Replica, error) {
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            types.GenerateReplicaNameForVolume(v.Name),
@@ -866,7 +866,7 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume) (*longhorn.Replica
 	}
 
 	// check whether the replica need to be scheduled
-	replica, err := vc.scheduler.ScheduleReplica(replica)
+	replica, err := vc.scheduler.ScheduleReplica(replica, rs)
 	if err != nil {
 		return nil, err
 	}
