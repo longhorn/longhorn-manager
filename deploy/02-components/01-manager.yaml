@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: longhorn-manager
-        image: rancher/longhorn-manager:885b53a
+        image: rancher/longhorn-manager:58cbdda
         imagePullPolicy: Always
         securityContext:
           privileged: true
@@ -25,9 +25,9 @@ spec:
         - -d
         - daemon
         - --engine-image
-        - rancher/longhorn-engine:99441d1
+        - rancher/longhorn-engine:31c42f0
         - --manager-image
-        - rancher/longhorn-manager:885b53a
+        - rancher/longhorn-manager:58cbdda
         - --service-account
         - longhorn-service-account
         ports:
