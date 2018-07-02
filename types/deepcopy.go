@@ -47,3 +47,25 @@ func (e *EngineStatus) DeepCopyInto(to *EngineStatus) {
 		to.ReplicaModeMap[key] = value
 	}
 }
+
+func (n *NodeSpec) DeepCopyInto(to *NodeSpec) {
+	*to = *n
+	if n.Disks == nil {
+		return
+	}
+	to.Disks = make(map[string]DiskSpec)
+	for key, value := range n.Disks {
+		to.Disks[key] = value
+	}
+}
+
+func (n *NodeStatus) DeepCopyInto(to *NodeStatus) {
+	*to = *n
+	if n.DiskStatus == nil {
+		return
+	}
+	to.DiskStatus = make(map[string]DiskStatus)
+	for key, value := range n.DiskStatus {
+		to.DiskStatus[key] = value
+	}
+}
