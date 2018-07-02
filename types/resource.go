@@ -181,8 +181,9 @@ type EngineVersionDetails struct {
 }
 
 type NodeSpec struct {
-	Name            string `json:"name"`
-	AllowScheduling bool   `json:"allowScheduling"`
+	Name            string              `json:"name"`
+	Disks           map[string]DiskSpec `json:"disks"`
+	AllowScheduling bool                `json:"allowScheduling"`
 }
 
 type NodeState string
@@ -193,5 +194,18 @@ const (
 )
 
 type NodeStatus struct {
-	State NodeState
+	State      NodeState             `json:"state"`
+	DiskStatus map[string]DiskStatus `json:"diskStatus"`
+}
+
+type DiskSpec struct {
+	Path            string `json:"path"`
+	AllowScheduling bool   `json:"allowScheduling"`
+	StorageMaximum  int64  `json:"storageMaximum"`
+	StorageReserved int64  `json:"storageReserved"`
+}
+
+type DiskStatus struct {
+	StorageAvailable int64 `json:"storageAvailable"`
+	StorageScheduled int64 `json:"storageScheduled"`
 }
