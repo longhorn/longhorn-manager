@@ -97,23 +97,6 @@ func getEngineImageSelector() (labels.Selector, error) {
 	})
 }
 
-func (s *DataStore) ListEngineImageDaemonSet() (map[string]string, error) {
-	selector, err := getEngineImageSelector()
-	if err != nil {
-		return nil, err
-	}
-	imageDSMap := map[string]string{}
-	list, err := s.dsLister.DaemonSets(s.namespace).List(selector)
-	if err != nil {
-		return nil, err
-	}
-	for _, ds := range list {
-		name := ds.Spec.Template.Spec.Containers[0].Image
-		imageDSMap[name] = ds.Name
-	}
-	return imageDSMap, nil
-}
-
 func (s *DataStore) CreateEngineImageDaemonSet(ds *appsv1beta2.DaemonSet) error {
 	if ds.ObjectMeta.Labels == nil {
 		ds.ObjectMeta.Labels = map[string]string{}

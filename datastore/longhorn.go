@@ -276,7 +276,7 @@ func (s *DataStore) GetVolumeEngine(volumeName string) (*longhorn.Engine, error)
 	if len(list) > 1 {
 		return nil, fmt.Errorf("find more than one engine for volume %v: %+v", volumeName, list)
 	}
-	return list[0], nil
+	return list[0].DeepCopy(), nil
 }
 
 func checkReplica(r *longhorn.Replica) error {
