@@ -15,14 +15,14 @@ spec:
     spec:
       containers:
         - name: longhorn-flexvolume-driver-deployer
-          image: rancher/longhorn-manager:885b53a
+          image: rancher/longhorn-manager:58cbdda
           imagePullPolicy: Always
           command:
           - longhorn-manager
           - -d
           - deploy-flexvolume-driver
           - --manager-image
-          - rancher/longhorn-manager:885b53a
+          - rancher/longhorn-manager:58cbdda
           env:
           - name: POD_NAMESPACE
             valueFrom:
@@ -33,7 +33,10 @@ spec:
               fieldRef:
                 fieldPath: spec.nodeName
           - name: FLEXVOLUME_DIR
-            value: ""
-            #FOR GKE
+            # FOR RKE
+            value: "/var/lib/kubelet/volumeplugins"
+            # FOR GKE
             #value: "/home/kubernetes/flexvolume/"
+            # For default or auto detection with Kubernetes <= v1.9
+            #value: ""
       serviceAccountName: longhorn-service-account
