@@ -25,6 +25,7 @@ type Volume struct {
 	StaleReplicaTimeout int                  `json:"staleReplicaTimeout"`
 	State               string               `json:"state"`
 	EngineImage         string               `json:"engineImage"`
+	CurrentImage        string               `json:"currentImage"`
 	Endpoint            string               `json:"endpoint,omitemtpy"`
 	Created             string               `json:"created,omitemtpy"`
 
@@ -64,11 +65,12 @@ type Setting struct {
 }
 
 type Instance struct {
-	Name        string `json:"name"`
-	NodeID      string `json:"hostId"`
-	Address     string `json:"address"`
-	Running     bool   `json:"running"`
-	EngineImage string `json:"engineImage"`
+	Name         string `json:"name"`
+	NodeID       string `json:"hostId"`
+	Address      string `json:"address"`
+	Running      bool   `json:"running"`
+	EngineImage  string `json:"engineImage"`
+	CurrentImage string `json:"currentImage"`
 }
 
 type Controller struct {
@@ -348,11 +350,12 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 		}
 		replicas = append(replicas, Replica{
 			Instance: Instance{
-				Name:        r.Name,
-				Running:     r.Status.CurrentState == types.InstanceStateRunning,
-				Address:     r.Status.IP,
-				NodeID:      r.Spec.NodeID,
-				EngineImage: r.Status.CurrentImage,
+				Name:         r.Name,
+				Running:      r.Status.CurrentState == types.InstanceStateRunning,
+				Address:      r.Status.IP,
+				NodeID:       r.Spec.NodeID,
+				EngineImage:  r.Spec.EngineImage,
+				CurrentImage: r.Status.CurrentImage,
 			},
 			Mode:     mode,
 			FailedAt: r.Spec.FailedAt,
@@ -362,11 +365,12 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 	var controller *Controller
 	if ve != nil {
 		controller = &Controller{Instance{
-			Name:        ve.Name,
-			Running:     ve.Status.CurrentState == types.InstanceStateRunning,
-			NodeID:      ve.Spec.NodeID,
-			Address:     ve.Status.IP,
-			EngineImage: ve.Status.CurrentImage,
+			Name:         ve.Name,
+			Running:      ve.Status.CurrentState == types.InstanceStateRunning,
+			NodeID:       ve.Spec.NodeID,
+			Address:      ve.Status.IP,
+			EngineImage:  ve.Spec.EngineImage,
+			CurrentImage: ve.Status.CurrentImage,
 		}}
 	}
 
@@ -408,7 +412,8 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
 		Endpoint:            endpoint,
 		Created:             v.ObjectMeta.CreationTimestamp.String(),
-		EngineImage:         v.Status.CurrentImage,
+		EngineImage:         v.Spec.EngineImage,
+		CurrentImage:        v.Status.CurrentImage,
 
 		Controller: controller,
 		Replicas:   replicas,
