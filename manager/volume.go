@@ -66,6 +66,10 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		err = errors.Wrapf(err, "unable to create volume %v: %+v", name, spec)
 	}()
 
+	if !util.ValidateName(name) {
+		return nil, fmt.Errorf("invalid name %v", name)
+	}
+
 	size := spec.Size
 	if spec.FromBackup != "" {
 		backupTarget, err := m.getBackupTarget()
