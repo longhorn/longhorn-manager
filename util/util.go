@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"crypto/sha512"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	iscsi_util "github.com/rancher/go-iscsi-helper/util"
 	"github.com/satori/go.uuid"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -43,6 +45,17 @@ type MetadataConfig struct {
 	Image               string
 	OrcImage            string
 	DriverContainerName string
+}
+
+type DiskInfo struct {
+	Fsid             string
+	Path             string
+	Type             string
+	FreeBlock        int64
+	TotalBlock       int64
+	BlockSize        int64
+	StorageMaximum   int64
+	StorageAvailable int64
 }
 
 func VolumeStackName(volumeName string) string {
@@ -381,4 +394,37 @@ func ConfigEnvWithCredential(backupTarget string, credentialSecret string, conta
 		container.Env = append(container.Env, endpointEnv)
 	}
 	return nil
+}
+
+func GetInitiatorNSPath() string {
+	initiatorNSPath := "/host/proc/1/ns"
+	pf := iscsi_util.NewProcessFinder("/host/proc")
+	ps, err := pf.FindAncestorByName("dockerd")
+	if err != nil {
+		logrus.Warnf("Failed to find dockerd in the process ancestors, fall back to use pid 1: %v", err)
+	} else {
+		initiatorNSPath = fmt.Sprintf("/host/proc/%d/ns", ps.Pid)
+	}
+	return initiatorNSPath
+}
+
+func GetDiskInfo(directory string) (*DiskInfo, error) {
+	initiatorNSPath := GetInitiatorNSPath()
+	mountPath := fmt.Sprintf("--mount=%s/mnt", initiatorNSPath)
+	output, err := Execute("nsenter", mountPath, "stat", "-fc", "{\"path\":\"%n\",\"fsid\":\"%i\",\"type\":\"%T\",\"freeBlock\":%f,\"totalBlock\":%b,\"blockSize\":%S}", directory)
+	if err != nil {
+		return nil, err
+	}
+	output = strings.Replace(output, "\n", "", -1)
+
+	diskInfo := &DiskInfo{}
+	err = json.Unmarshal([]byte(output), diskInfo)
+	if err != nil {
+		return nil, err
+	}
+
+	diskInfo.StorageMaximum = diskInfo.TotalBlock * diskInfo.BlockSize
+	diskInfo.StorageAvailable = diskInfo.FreeBlock * diskInfo.BlockSize
+
+	return diskInfo, nil
 }

@@ -95,8 +95,14 @@ func NewRouter(s *Server) *mux.Router {
 	}
 
 	r.Methods("GET").Path("/v1/nodes").Handler(f(schemas, s.NodeList))
-	r.Methods("GET").Path("/v1/nodes/{id}").Handler(f(schemas, s.NodeGet))
-	r.Methods("PUT").Path("/v1/nodes/{id}").Handler(f(schemas, s.NodeUpdate))
+	r.Methods("GET").Path("/v1/nodes/{name}").Handler(f(schemas, s.NodeGet))
+	r.Methods("PUT").Path("/v1/nodes/{name}").Handler(f(schemas, s.NodeUpdate))
+	nodeActions := map[string]func(http.ResponseWriter, *http.Request) error{
+		"diskUpdate": s.fwd.Handler(OwnerIDFromNode(s.m), s.DiskUpdate),
+	}
+	for name, action := range nodeActions {
+		r.Methods("POST").Path("/v1/nodes/{name}").Queries("action", name).Handler(f(schemas, action))
+	}
 
 	r.Methods("GET").Path("/v1/engineimages").Handler(f(schemas, s.EngineImageList))
 	r.Methods("GET").Path("/v1/engineimages/{name}").Handler(f(schemas, s.EngineImageGet))

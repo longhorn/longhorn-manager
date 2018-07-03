@@ -120,10 +120,20 @@ type EngineUpgradeInput struct {
 
 type Node struct {
 	client.Resource
-	Name            string          `json:"name"`
-	Address         string          `json:"address"`
-	AllowScheduling bool            `json:"allowScheduling"`
-	State           types.NodeState `json:"state"`
+	Name            string              `json:"name"`
+	Address         string              `json:"address"`
+	AllowScheduling bool                `json:"allowScheduling"`
+	Disks           map[string]DiskInfo `json:"disks"`
+	State           types.NodeState     `json:"state"`
+}
+
+type DiskInfo struct {
+	types.DiskSpec
+	types.DiskStatus
+}
+
+type DiskUpdateInput struct {
+	Disks []types.DiskSpec `json:"disks"`
 }
 
 func NewSchema() *client.Schemas {
@@ -143,6 +153,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("engineUpgradeInput", EngineUpgradeInput{})
 	schemas.AddType("replica", Replica{})
 	schemas.AddType("controller", Controller{})
+	schemas.AddType("diskUpdate", types.DiskSpec{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
@@ -150,6 +161,7 @@ func NewSchema() *client.Schemas {
 	recurringSchema(schemas.AddType("recurringInput", RecurringInput{}))
 	engineImageSchema(schemas.AddType("engineImage", EngineImage{}))
 	nodeSchema(schemas.AddType("node", Node{}))
+	diskSchema(schemas.AddType("diskUpdateInput", DiskUpdateInput{}))
 
 	return schemas
 }
@@ -158,10 +170,23 @@ func nodeSchema(node *client.Schema) {
 	node.CollectionMethods = []string{"GET"}
 	node.ResourceMethods = []string{"GET", "PUT"}
 
+	node.ResourceActions = map[string]client.Action{
+		"diskUpdate": {
+			Input:  "diskUpdateInput",
+			Output: "node",
+		},
+	}
+
 	allowScheduling := node.ResourceFields["allowScheduling"]
 	allowScheduling.Required = true
 	allowScheduling.Unique = false
 	node.ResourceFields["allowScheduling"] = allowScheduling
+}
+
+func diskSchema(diskUpdateInput *client.Schema) {
+	disks := diskUpdateInput.ResourceFields["disks"]
+	disks.Type = "array[diskUpdate]"
+	diskUpdateInput.ResourceFields["disks"] = disks
 }
 
 func engineImageSchema(engineImage *client.Schema) {
@@ -555,12 +580,13 @@ func NewServer(m *manager.VolumeManager, wsc *controller.WebsocketController) *S
 	return s
 }
 
-func toNodeResource(node *longhorn.Node, address string) *Node {
+func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiContext) *Node {
 	n := &Node{
 		Resource: client.Resource{
-			Id:    node.Name,
-			Type:  "node",
-			Links: map[string]string{},
+			Id:      node.Name,
+			Type:    "node",
+			Actions: map[string]string{},
+			Links:   map[string]string{},
 		},
 		Name:            node.Name,
 		Address:         address,
@@ -568,13 +594,27 @@ func toNodeResource(node *longhorn.Node, address string) *Node {
 		State:           node.Status.State,
 	}
 
+	disks := map[string]DiskInfo{}
+	for name, disk := range node.Spec.Disks {
+		di := DiskInfo{
+			disk,
+			node.Status.DiskStatus[name],
+		}
+		disks[name] = di
+	}
+	n.Disks = disks
+
+	n.Actions = map[string]string{
+		"diskUpdate": apiContext.UrlBuilder.ActionLink(n.Resource, "diskUpdate"),
+	}
+
 	return n
 }
 
-func toNodeCollection(nodeList []*longhorn.Node, nodeIPMap map[string]string) *client.GenericCollection {
+func toNodeCollection(nodeList []*longhorn.Node, nodeIPMap map[string]string, apiContext *api.ApiContext) *client.GenericCollection {
 	data := []interface{}{}
 	for _, node := range nodeList {
-		data = append(data, toNodeResource(node, nodeIPMap[node.Name]))
+		data = append(data, toNodeResource(node, nodeIPMap[node.Name], apiContext))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "node"}}
 }
