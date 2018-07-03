@@ -10,12 +10,6 @@ import (
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
 
-const (
-	// longhornDirectory is the directory going to be bind mounted on the
-	// host to provide storage space to replica data by default
-	longhornDirectory = "/var/lib/rancher/longhorn/"
-)
-
 type ReplicaScheduler struct {
 	ds *datastore.DataStore
 }
@@ -57,7 +51,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 
 	replica.Spec.NodeID = preferredNode.Name
 	// TODO just set default directory for now
-	replica.Spec.DataPath = longhornDirectory + "/replicas/" + replica.Spec.VolumeName + "-" + util.RandomID()
+	replica.Spec.DataPath = types.DefaultLonghornDirectory + "/replicas/" + replica.Spec.VolumeName + "-" + util.RandomID()
 
 	return replica, nil
 }
