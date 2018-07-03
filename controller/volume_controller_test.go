@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"k8s.io/api/core/v1"
@@ -230,6 +231,7 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			},
 		},
 		Spec: types.VolumeSpec{
+			Frontend:            types.VolumeFrontendBlockDev,
 			NumberOfReplicas:    replicaCount,
 			Size:                TestVolumeSize,
 			OwnerID:             TestOwnerID1,
@@ -255,6 +257,7 @@ func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 				EngineImage: TestEngineImage,
 				DesireState: types.InstanceStateStopped,
 			},
+			Frontend:                  types.VolumeFrontendBlockDev,
 			ReplicaAddressMap:         map[string]string{},
 			UpgradedReplicaAddressMap: map[string]string{},
 		},
@@ -262,9 +265,10 @@ func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 }
 
 func newReplicaForVolume(v *longhorn.Volume) *longhorn.Replica {
+	replicaName := v.Name + "-r-" + util.RandomID()
 	return &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: v.Name + "-r-" + util.RandomID(),
+			Name: replicaName,
 			Labels: map[string]string{
 				"longhornvolume": v.Name,
 			},
@@ -277,6 +281,8 @@ func newReplicaForVolume(v *longhorn.Volume) *longhorn.Replica {
 				EngineImage: TestEngineImage,
 				DesireState: types.InstanceStateStopped,
 			},
+			DataPath: filepath.Join(types.DefaultLonghornDirectory, "/replicas", replicaName),
+			Cleanup:  true,
 		},
 	}
 }

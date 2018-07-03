@@ -2,6 +2,7 @@ package datastore
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/pkg/errors"
 
@@ -168,6 +169,15 @@ func (s *DataStore) RemoveFinalizerForVolume(obj *longhorn.Volume) error {
 }
 
 func (s *DataStore) GetVolume(name string) (*longhorn.Volume, error) {
+	resultRO, err := s.getVolumeRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return s.fixupVolume(resultRO.DeepCopy())
+}
+
+func (s *DataStore) getVolumeRO(name string) (*longhorn.Volume, error) {
 	resultRO, err := s.vLister.Volumes(s.namespace).Get(name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -175,8 +185,7 @@ func (s *DataStore) GetVolume(name string) (*longhorn.Volume, error) {
 		}
 		return nil, err
 	}
-	// Cannot use cached object from lister
-	return resultRO.DeepCopy(), nil
+	return resultRO, nil
 }
 
 func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
@@ -192,9 +201,31 @@ func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 
 	for _, itemRO := range list {
 		// Cannot use cached object from lister
-		itemMap[itemRO.Name] = itemRO.DeepCopy()
+		itemMap[itemRO.Name], err = s.fixupVolume(itemRO.DeepCopy())
+		if err != nil {
+			return nil, err
+		}
 	}
 	return itemMap, nil
+}
+
+func (s *DataStore) fixupVolume(volume *longhorn.Volume) (*longhorn.Volume, error) {
+	if volume == nil {
+		return nil, nil
+	}
+	// v0.3
+	if volume.Spec.Frontend == "" {
+		volume.Spec.Frontend = types.VolumeFrontendBlockDev
+	}
+	// v0.3
+	if volume.Spec.EngineImage == "" {
+		engine, err := s.getVolumeEngineRO(volume.Name)
+		if err != nil || engine == nil {
+			return nil, fmt.Errorf("cannot fix up volume object, engine of %v cannot be found: %v", volume.Name, err)
+		}
+		volume.Spec.EngineImage = engine.Spec.EngineImage
+	}
+	return volume, nil
 }
 
 func checkEngine(engine *longhorn.Engine) error {
@@ -258,10 +289,19 @@ func (s *DataStore) GetEngine(name string) (*longhorn.Engine, error) {
 		return nil, err
 	}
 	// Cannot use cached object from lister
-	return resultRO.DeepCopy(), nil
+	return s.fixupEngine(resultRO.DeepCopy())
 }
 
 func (s *DataStore) GetVolumeEngine(volumeName string) (*longhorn.Engine, error) {
+	resultRO, err := s.getVolumeEngineRO(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return s.fixupEngine(resultRO.DeepCopy())
+}
+
+func (s *DataStore) getVolumeEngineRO(volumeName string) (*longhorn.Engine, error) {
 	selector, err := getVolumeSelector(volumeName)
 	if err != nil {
 		return nil, err
@@ -276,7 +316,23 @@ func (s *DataStore) GetVolumeEngine(volumeName string) (*longhorn.Engine, error)
 	if len(list) > 1 {
 		return nil, fmt.Errorf("find more than one engine for volume %v: %+v", volumeName, list)
 	}
-	return list[0].DeepCopy(), nil
+	return list[0], nil
+}
+
+func (s *DataStore) fixupEngine(engine *longhorn.Engine) (*longhorn.Engine, error) {
+	if engine == nil {
+		return nil, nil
+	}
+	// v0.3
+	if engine.Spec.VolumeSize == 0 || engine.Spec.Frontend == "" {
+		volume, err := s.getVolumeRO(engine.Spec.VolumeName)
+		if err != nil {
+			return nil, fmt.Errorf("BUG: cannot fix up engine object, volume %v cannot be found", engine.Spec.VolumeName)
+		}
+		engine.Spec.VolumeSize = volume.Spec.Size
+		engine.Spec.Frontend = volume.Spec.Frontend
+	}
+	return engine, nil
 }
 
 func checkReplica(r *longhorn.Replica) error {
@@ -338,6 +394,15 @@ func (s *DataStore) RemoveFinalizerForReplica(obj *longhorn.Replica) error {
 }
 
 func (s *DataStore) GetReplica(name string) (*longhorn.Replica, error) {
+	resultRO, err := s.getReplicaRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return s.fixupReplica(resultRO.DeepCopy())
+}
+
+func (s *DataStore) getReplicaRO(name string) (*longhorn.Replica, error) {
 	resultRO, err := s.rLister.Replicas(s.namespace).Get(name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -345,8 +410,7 @@ func (s *DataStore) GetReplica(name string) (*longhorn.Replica, error) {
 		}
 		return nil, err
 	}
-	// Cannot use cached object from lister
-	return resultRO.DeepCopy(), nil
+	return resultRO, nil
 }
 
 func (s *DataStore) GetVolumeReplicas(volumeName string) (map[string]*longhorn.Replica, error) {
@@ -364,9 +428,26 @@ func (s *DataStore) GetVolumeReplicas(volumeName string) (map[string]*longhorn.R
 	replicas := map[string]*longhorn.Replica{}
 	for _, r := range list {
 		// Cannot use cached object from lister
-		replicas[r.Name] = r.DeepCopy()
+		replicas[r.Name], err = s.fixupReplica(r.DeepCopy())
+		if err != nil {
+			return nil, err
+		}
 	}
 	return replicas, nil
+}
+
+func (s *DataStore) fixupReplica(replica *longhorn.Replica) (*longhorn.Replica, error) {
+	if replica == nil {
+		return nil, nil
+	}
+	// v0.3
+	if replica.Spec.DataPath == "" {
+		replica.Spec.DataPath = filepath.Join(types.DefaultLonghornDirectory, "/replicas/", replica.Name)
+		// We cannot judge if the field `Cleanup` exists separately, but
+		// if it's old version, we will clean up
+		replica.Spec.Cleanup = true
+	}
+	return replica, nil
 }
 
 func (s *DataStore) CreateEngineImage(img *longhorn.EngineImage) (*longhorn.EngineImage, error) {
