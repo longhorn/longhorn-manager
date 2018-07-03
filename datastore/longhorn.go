@@ -589,6 +589,21 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 			State: types.NodeStateUp,
 		},
 	}
+	diskInfo, err := util.GetDiskInfo(types.DefaultLonghornDirectory)
+	if err != nil {
+		return nil, err
+	}
+
+	defaultDisk := map[string]types.DiskSpec{
+		diskInfo.Fsid: {
+			Path:            diskInfo.Path,
+			StorageMaximum:  diskInfo.StorageMaximum,
+			AllowScheduling: true,
+			StorageReserved: 0,
+		},
+	}
+	node.Spec.Disks = defaultDisk
+
 	return s.CreateNode(node)
 }
 

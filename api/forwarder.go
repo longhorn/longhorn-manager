@@ -27,6 +27,13 @@ func OwnerIDFromVolume(m *manager.VolumeManager) func(req *http.Request) (string
 	}
 }
 
+func OwnerIDFromNode(m *manager.VolumeManager) func(req *http.Request) (string, error) {
+	return func(req *http.Request) (string, error) {
+		id := mux.Vars(req)["name"]
+		return id, nil
+	}
+}
+
 type NodeLocator interface {
 	GetCurrentNodeID() string
 	Node2APIAddress(nodeID string) (string, error)
