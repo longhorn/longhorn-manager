@@ -14,7 +14,11 @@ func (s *Server) NodeList(rw http.ResponseWriter, req *http.Request) error {
 	if err != nil {
 		return errors.Wrap(err, "fail to list nodes")
 	}
-	apiContext.Write(toNodeCollection(nodeList))
+	nodeIPMap, err := s.m.GetManagerNodeIPMap()
+	if err != nil {
+		return errors.Wrap(err, "fail to get node ip")
+	}
+	apiContext.Write(toNodeCollection(nodeList, nodeIPMap))
 	return nil
 }
 
@@ -26,7 +30,11 @@ func (s *Server) NodeGet(rw http.ResponseWriter, req *http.Request) error {
 	if err != nil {
 		return errors.Wrap(err, "fail to get node")
 	}
-	apiContext.Write(toNodeResource(node))
+	nodeIPMap, err := s.m.GetManagerNodeIPMap()
+	if err != nil {
+		return errors.Wrap(err, "fail to get node ip")
+	}
+	apiContext.Write(toNodeResource(node, nodeIPMap[node.Name]))
 	return nil
 }
 
@@ -44,7 +52,12 @@ func (s *Server) NodeUpdate(rw http.ResponseWriter, req *http.Request) error {
 	}
 	node.Spec.AllowScheduling = n.AllowScheduling
 
+	nodeIPMap, err := s.m.GetManagerNodeIPMap()
+	if err != nil {
+		return errors.Wrap(err, "fail to get node ip")
+	}
+
 	unode, err := s.m.UpdateNode(node)
-	apiContext.Write(toNodeResource(unode))
+	apiContext.Write(toNodeResource(unode, nodeIPMap[node.Name]))
 	return nil
 }

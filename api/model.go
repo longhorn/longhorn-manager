@@ -117,6 +117,7 @@ type EngineUpgradeInput struct {
 type Node struct {
 	client.Resource
 	Name            string          `json:"name"`
+	Address         string          `json:"address"`
 	AllowScheduling bool            `json:"allowScheduling"`
 	Status          types.NodeState `json:"status"`
 }
@@ -550,7 +551,7 @@ func NewServer(m *manager.VolumeManager) *Server {
 	return s
 }
 
-func toNodeResource(node *longhorn.Node) *Node {
+func toNodeResource(node *longhorn.Node, address string) *Node {
 	n := &Node{
 		Resource: client.Resource{
 			Id:    node.Name,
@@ -558,6 +559,7 @@ func toNodeResource(node *longhorn.Node) *Node {
 			Links: map[string]string{},
 		},
 		Name:            node.Name,
+		Address:         address,
 		AllowScheduling: node.Spec.AllowScheduling,
 		Status:          node.Status.State,
 	}
@@ -565,10 +567,10 @@ func toNodeResource(node *longhorn.Node) *Node {
 	return n
 }
 
-func toNodeCollection(nodeList []*longhorn.Node) *client.GenericCollection {
+func toNodeCollection(nodeList []*longhorn.Node, nodeIPMap map[string]string) *client.GenericCollection {
 	data := []interface{}{}
 	for _, node := range nodeList {
-		data = append(data, toNodeResource(node))
+		data = append(data, toNodeResource(node, nodeIPMap[node.Name]))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "node"}}
 }

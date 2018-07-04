@@ -294,7 +294,19 @@ func (m *VolumeManager) DeleteReplica(replicaName string) error {
 }
 
 func (m *VolumeManager) GetManagerNodeIPMap() (map[string]string, error) {
-	return m.ds.GetManagerNodeIPMap()
+	podList, err := m.ds.ListManagerPods()
+	if err != nil {
+		return nil, err
+	}
+
+	nodeIPMap := map[string]string{}
+	for _, pod := range podList {
+		if nodeIPMap[pod.Spec.NodeName] != "" {
+			return nil, fmt.Errorf("multiple managers on the node %v", pod.Spec.NodeName)
+		}
+		nodeIPMap[pod.Spec.NodeName] = pod.Status.PodIP
+	}
+	return nodeIPMap, nil
 }
 
 func (m *VolumeManager) updateVolumeOwner(ownerID string, v *longhorn.Volume) (*longhorn.Volume, error) {
