@@ -563,7 +563,12 @@ func (s *DataStore) ListNodes() ([]*longhorn.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	return nodeList, nil
+	nList := []*longhorn.Node{}
+	for _, item := range nodeList {
+		nList = append(nList, item.DeepCopy())
+	}
+
+	return nList, nil
 }
 
 // RemoveFinalizerForNode will result in deletion if DeletionTimestamp was set

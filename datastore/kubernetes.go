@@ -140,5 +140,11 @@ func (s *DataStore) ListManagerPods() ([]*corev1.Pod, error) {
 	if err != nil {
 		return nil, err
 	}
-	return podList, nil
+
+	pList := []*corev1.Pod{}
+	for _, item := range podList {
+		pList = append(pList, item.DeepCopy())
+	}
+
+	return pList, nil
 }
