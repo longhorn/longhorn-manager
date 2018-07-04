@@ -40,14 +40,6 @@ type Snapshot struct {
 	engineapi.Snapshot
 }
 
-type Host struct {
-	client.Resource
-
-	UUID    string `json:"uuid"`
-	Name    string `json:"name"`
-	Address string `json:"address"`
-}
-
 type BackupVolume struct {
 	client.Resource
 	engineapi.BackupVolume
@@ -148,7 +140,6 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("controller", Controller{})
 	schemas.AddType("node", Node{})
 
-	hostSchema(schemas.AddType("host", Host{}))
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
@@ -215,11 +206,6 @@ func settingSchema(setting *client.Schema) {
 	settingValue.Required = true
 	settingValue.Update = true
 	setting.ResourceFields["value"] = settingValue
-}
-
-func hostSchema(host *client.Schema) {
-	host.CollectionMethods = []string{"GET"}
-	host.ResourceMethods = []string{"GET"}
 }
 
 func volumeSchema(volume *client.Schema) {
@@ -474,27 +460,6 @@ func toSnapshotCollection(ss map[string]*engineapi.Snapshot) *client.GenericColl
 		data = append(data, toSnapshotResource(v))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshot"}}
-}
-
-func toHostCollection(nodeIPMap map[string]string) *client.GenericCollection {
-	data := []interface{}{}
-	for node, ip := range nodeIPMap {
-		data = append(data, toHostResource(node, ip))
-	}
-	return &client.GenericCollection{Data: data}
-}
-
-func toHostResource(node, ip string) *Host {
-	return &Host{
-		Resource: client.Resource{
-			Id:      node,
-			Type:    "host",
-			Actions: map[string]string{},
-		},
-		UUID:    node,
-		Name:    node,
-		Address: ip,
-	}
 }
 
 func toBackupVolumeResource(bv *engineapi.BackupVolume, apiContext *api.ApiContext) *BackupVolume {
