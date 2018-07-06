@@ -854,6 +854,7 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, rs map[string]*lon
 				DesireState: types.InstanceStateStopped,
 				OwnerID:     vc.controllerID,
 			},
+			Active: true,
 		},
 	}
 	if v.Spec.FromBackup != "" {
