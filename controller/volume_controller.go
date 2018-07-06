@@ -409,7 +409,7 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 
 	for _, r := range rs {
 		if cleanupUpgradeLeftoverReplicas && r.Spec.EngineImage != v.Spec.EngineImage {
-			// r.Spec.Cleanup should have been setup correctly
+			// r.Spec.Active should have been setup correctly
 			if err := vc.ds.DeleteReplica(r.Name); err != nil {
 				return err
 			}
@@ -753,7 +753,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 			nr := vc.duplicateReplica(r, v)
 			nr.Spec.DesireState = types.InstanceStateRunning
 			nr.Spec.EngineImage = v.Spec.EngineImage
-			nr.Spec.Cleanup = false
+			nr.Spec.Active = false
 			nr, err := vc.ds.CreateReplica(nr)
 			if err != nil {
 				return errors.Wrapf(err, "cannot create replica %v with new image %v for %v",
@@ -790,8 +790,8 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 	}
 
 	for path, r := range dataPathToOldReplica {
-		if r.Spec.Cleanup != false {
-			r.Spec.Cleanup = false
+		if r.Spec.Active != false {
+			r.Spec.Active = false
 			r, err := vc.ds.UpdateReplica(r)
 			if err != nil {
 				return err
@@ -801,8 +801,8 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		}
 	}
 	for path, r := range dataPathToNewReplica {
-		if r.Spec.Cleanup != true {
-			r.Spec.Cleanup = true
+		if r.Spec.Active != true {
+			r.Spec.Active = true
 			r, err := vc.ds.UpdateReplica(r)
 			if err != nil {
 				return err
