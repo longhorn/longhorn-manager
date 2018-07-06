@@ -408,13 +408,20 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 	cleanupUpgradeLeftoverReplicas := !vc.isVolumeUpgrading(v)
 
 	for _, r := range rs {
-		if cleanupUpgradeLeftoverReplicas && r.Spec.EngineImage != v.Spec.EngineImage {
-			// r.Spec.Active should have been setup correctly
-			if err := vc.ds.DeleteReplica(r.Name); err != nil {
-				return err
+		if cleanupUpgradeLeftoverReplicas {
+			if !r.Spec.Active {
+				// Leftover by live upgrade. Successful or not, there are replicas left to clean up
+				if err := vc.ds.DeleteReplica(r.Name); err != nil {
+					return err
+				}
+				delete(rs, r.Name)
+				continue
+			} else if r.Spec.EngineImage != v.Spec.EngineImage {
+				// r.Spec.Active shouldn't be set for the leftover replicas, something must wrong
+				logrus.Errorf("BUG: replica %v engine image %v is different from volume %v engine image %v, "+
+					"but replica spec.Active has been set",
+					r.Name, r.Spec.EngineImage, v.Name, v.Spec.EngineImage)
 			}
-			delete(rs, r.Name)
-			continue
 		}
 
 		if r.Spec.FailedAt == "" {
