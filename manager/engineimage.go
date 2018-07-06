@@ -123,7 +123,7 @@ func (m *VolumeManager) CheckEngineImageReadiness(image string) error {
 		return fmt.Errorf("cannot find engine image %v", image)
 	}
 	if ei.Status.State != types.EngineImageStateReady {
-		return fmt.Errorf("engine image %v (%v) is not ready", ei.Name, image)
+		return fmt.Errorf("engine image %v (%v) is not ready, it's %v", ei.Name, image, ei.Status.State)
 	}
 	return nil
 }

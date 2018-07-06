@@ -152,6 +152,10 @@ func (m *VolumeManager) Attach(name, nodeID string) (v *longhorn.Volume, err err
 	if v.Status.State != types.VolumeStateDetached {
 		return nil, fmt.Errorf("invalid state to attach %v: %v", name, v.Status.State)
 	}
+	if err := m.CheckEngineImageReadiness(v.Spec.EngineImage); err != nil {
+		return nil, errors.Wrapf(err, "cannot attach volume %v with image %v", v.Name, v.Spec.EngineImage)
+	}
+
 	// already desired to be attached
 	if v.Spec.NodeID != "" {
 		if v.Spec.NodeID != nodeID {
