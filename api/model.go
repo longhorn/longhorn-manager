@@ -119,7 +119,7 @@ type Node struct {
 	Name            string          `json:"name"`
 	Address         string          `json:"address"`
 	AllowScheduling bool            `json:"allowScheduling"`
-	Status          types.NodeState `json:"status"`
+	State           types.NodeState `json:"state"`
 }
 
 func NewSchema() *client.Schemas {
@@ -561,7 +561,7 @@ func toNodeResource(node *longhorn.Node, address string) *Node {
 		Name:            node.Name,
 		Address:         address,
 		AllowScheduling: node.Spec.AllowScheduling,
-		Status:          node.Status.State,
+		State:           node.Status.State,
 	}
 
 	return n
