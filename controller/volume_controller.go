@@ -547,6 +547,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 
 	} else {
+		// wait for offline engine upgrade to finish
+		if v.Status.State == types.VolumeStateDetached && v.Status.CurrentImage != v.Spec.EngineImage {
+			logrus.Debugf("Wait for offline upgrade of volume %v to finish", v.Name)
+			return nil
+		}
 		// if engine was running, then we are attached already
 		// (but we may still need to start rebuilding replicas)
 		if e.Status.CurrentState != types.InstanceStateRunning {
