@@ -16,7 +16,7 @@ const (
 	VolumeRobustnessHealthy  = VolumeRobustness("healthy")  // during attached
 	VolumeRobustnessDegraded = VolumeRobustness("degraded") // during attached
 	VolumeRobustnessFaulted  = VolumeRobustness("faulted")  // during detached
-	VolumeRobustnessUnknown  = VolumeRobustness("unknown")  // during detached
+	VolumeRobustnessUnknown  = VolumeRobustness("unknown")
 )
 
 type VolumeFrontend string
