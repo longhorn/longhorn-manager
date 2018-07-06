@@ -443,9 +443,9 @@ func (s *DataStore) fixupReplica(replica *longhorn.Replica) (*longhorn.Replica, 
 	// v0.3
 	if replica.Spec.DataPath == "" {
 		replica.Spec.DataPath = filepath.Join(types.DefaultLonghornDirectory, "/replicas/", replica.Name)
-		// We cannot judge if the field `Cleanup` exists separately, but
-		// if it's old version, we will clean up
-		replica.Spec.Cleanup = true
+		// We cannot judge if the field `Active` exists separately, but
+		// if it's old version, we will set it
+		replica.Spec.Active = true
 	}
 	return replica, nil
 }

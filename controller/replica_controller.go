@@ -243,7 +243,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 		// we want to make sure data was cleaned before remove the
 		// replica if cleanup was set
-		if replica.Spec.NodeID != "" && replica.Spec.Cleanup {
+		if replica.Spec.NodeID != "" && replica.Spec.Active {
 			return rc.cleanupReplicaInstance(replica)
 		}
 		return rc.ds.RemoveFinalizerForReplica(replica)

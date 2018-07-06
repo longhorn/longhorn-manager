@@ -282,7 +282,7 @@ func newReplicaForVolume(v *longhorn.Volume) *longhorn.Replica {
 				DesireState: types.InstanceStateStopped,
 			},
 			DataPath: filepath.Join(types.DefaultLonghornDirectory, "/replicas", replicaName),
-			Cleanup:  true,
+			Active:   true,
 		},
 	}
 }
