@@ -17,17 +17,18 @@ import (
 type Volume struct {
 	client.Resource
 
-	Name                string               `json:"name"`
-	Size                string               `json:"size"`
-	Frontend            types.VolumeFrontend `json:"frontend"`
-	FromBackup          string               `json:"fromBackup"`
-	NumberOfReplicas    int                  `json:"numberOfReplicas"`
-	StaleReplicaTimeout int                  `json:"staleReplicaTimeout"`
-	State               string               `json:"state"`
-	EngineImage         string               `json:"engineImage"`
-	CurrentImage        string               `json:"currentImage"`
-	Endpoint            string               `json:"endpoint,omitemtpy"`
-	Created             string               `json:"created,omitemtpy"`
+	Name                string                 `json:"name"`
+	Size                string                 `json:"size"`
+	Frontend            types.VolumeFrontend   `json:"frontend"`
+	FromBackup          string                 `json:"fromBackup"`
+	NumberOfReplicas    int                    `json:"numberOfReplicas"`
+	StaleReplicaTimeout int                    `json:"staleReplicaTimeout"`
+	State               types.VolumeState      `json:"state"`
+	Robustness          types.VolumeRobustness `json:"robustness"`
+	EngineImage         string                 `json:"engineImage"`
+	CurrentImage        string                 `json:"currentImage"`
+	Endpoint            string                 `json:"endpoint,omitemtpy"`
+	Created             string                 `json:"created,omitemtpy"`
 
 	RecurringJobs []types.RecurringJob `json:"recurringJobs"`
 
@@ -361,14 +362,6 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 		}}
 	}
 
-	state := string(v.Status.State)
-	if v.Status.Robustness != "" {
-		if v.Status.State == types.VolumeStateAttached ||
-			(v.Status.State == types.VolumeStateDetached &&
-				v.Status.Robustness == types.VolumeRobustnessFaulted) {
-			state = string(v.Status.Robustness)
-		}
-	}
 	endpoint := v.Status.Endpoint
 	// make it iscsi endpoint with the ip
 	if endpoint != "" && v.Spec.Frontend == types.VolumeFrontendISCSI {
@@ -394,7 +387,8 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*l
 		Frontend:            v.Spec.Frontend,
 		FromBackup:          v.Spec.FromBackup,
 		NumberOfReplicas:    v.Spec.NumberOfReplicas,
-		State:               state,
+		State:               v.Status.State,
+		Robustness:          v.Status.Robustness,
 		RecurringJobs:       v.Spec.RecurringJobs,
 		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
 		Endpoint:            endpoint,

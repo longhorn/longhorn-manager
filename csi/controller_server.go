@@ -197,8 +197,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 	}
 
 	needToDetach := false
-	//TODO Seems we should separate the healthiness of volume from it's attached or detached in the manager API.
-	if existVol.State == string(types.VolumeRobustnessHealthy) || existVol.State == string(types.VolumeRobustnessDegraded) {
+	if existVol.State == string(types.VolumeStateAttached) {
 		needToDetach = true
 	}
 
@@ -241,7 +240,7 @@ func (cs *ControllerServer) waitForAttach(volumeID string) (attached bool) {
 				logrus.Warnf("waitForAttach: volume %s not exist", volumeID)
 				return false
 			}
-			if existVol.State == string(types.VolumeRobustnessHealthy) {
+			if existVol.State == string(types.VolumeStateAttached) {
 				return true
 			}
 		}

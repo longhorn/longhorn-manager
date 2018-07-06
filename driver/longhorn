@@ -270,7 +270,7 @@ createDevice() {
         return
     fi
 
-    OUT=$(waitVolumeReady ${volumeName} "healthy")
+    OUT=$(waitVolumeReady ${volumeName} "attached")
     if [ "${OUT}" != "Success" ]; then
         detachVolume "${volumeName}"
         echo -ne ${OUT}
