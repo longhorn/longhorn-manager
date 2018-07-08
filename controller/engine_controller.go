@@ -772,11 +772,9 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	if err != nil {
 		return err
 	}
-	// API maybe incompatible here, so if error happens, we think it needs
-	// upgrade
 	version, err := client.Version(false)
 	if err != nil {
-		logrus.Warnf("Failed to get version of %v for upgrade, assuming upgrade is needed: %v", e.Name, err)
+		return err
 	}
 	// Don't use image with different image name but same commit here. It
 	// will cause live replica to be removed. Volume controller should filter those.
