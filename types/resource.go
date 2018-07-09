@@ -133,6 +133,7 @@ type ReplicaSpec struct {
 	RestoreName string `json:"restoreName"`
 	HealthyAt   string `json:"healthyAt"`
 	FailedAt    string `json:"failedAt"`
+	DiskID      string `json:"diskID"`
 	DataPath    string `json:"dataPath"`
 	Active      bool   `json:"active"`
 }
