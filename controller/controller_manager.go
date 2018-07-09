@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/kubernetes/pkg/util/version"
 
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
@@ -113,6 +114,15 @@ func StartProvisioner(m *manager.VolumeManager) error {
 	serverVersion, err := kubeClient.Discovery().ServerVersion()
 	if err != nil {
 		return err
+	}
+
+	// If CSI driver has been chosen, the built-in Longhorn provisioner must be disabled.
+	// It means that this provisioner should be disabled when k8s version >= 1.10
+	currentVersion := version.MustParseSemantic(serverVersion.GitVersion)
+	minVersion := version.MustParseSemantic(types.CSIKubernetesMinVersion)
+	if currentVersion.AtLeast(minVersion) {
+		logrus.Info("The built-in Longhorn provisioner has beed disabled")
+		return nil
 	}
 
 	provisioner := NewProvisioner(m)
