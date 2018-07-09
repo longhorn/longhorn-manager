@@ -15,7 +15,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/kubernetes/pkg/util/version"
 
+	"github.com/rancher/longhorn-manager/csi"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 )
@@ -26,12 +28,29 @@ const (
 	DefaultFlexvolumeDir = "/usr/libexec/kubernetes/kubelet-plugins/volume/exec/"
 
 	LonghornFlexvolumeDriver = "longhorn-flexvolume-driver"
+
+	FlagDriver           = "driver"
+	FlagDriverCSI        = "csi"
+	FlagDriverFlexvolume = "flexvolume"
+
+	FlagCSIAttacherImage        = "csi-attacher-image"
+	FlagCSIProvisionerImage     = "csi-provisioner-image"
+	FlagCSIDriverRegistrarImage = "csi-driver-registrar-image"
+	FlagCSIProvisionerName      = "csi-provisioner-name"
+	EnvCSIAttacherImage         = "CSI_ATTACHER_IMAGE"
+	EnvCSIProvisionerImage      = "CSI_PROVISIONER_IMAGE"
+	EnvCSIDriverRegistrarImage  = "CSI_DRIVER_REGISTRAR_IMAGE"
+	EnvCSIProvisionerName       = "CSI_PROVISIONER_NAME"
 )
 
-func DeployFlexvolumeDriverCmd() cli.Command {
+func DeployDriverCmd() cli.Command {
 	return cli.Command{
-		Name: "deploy-flexvolume-driver",
+		Name: "deploy-driver",
 		Flags: []cli.Flag{
+			cli.StringFlag{
+				Name:  FlagDriver,
+				Usage: "Specify the driver, choices are: flexvolume, csi. default option will deploy CSI for Kubernetes v1.10+, Flexvolume for Kubernetes v1.8 and v1.9.",
+			},
 			cli.StringFlag{
 				Name:  FlagManagerImage,
 				Usage: "Specify Longhorn manager image",
@@ -41,22 +60,45 @@ func DeployFlexvolumeDriverCmd() cli.Command {
 				Usage:  "Specify the location of flexvolume plugin for Kubernetes on the host",
 				EnvVar: EnvFlexvolumeDir,
 			},
+			cli.StringFlag{
+				Name:   FlagCSIAttacherImage,
+				Usage:  "Specify CSI attacher image",
+				EnvVar: EnvCSIAttacherImage,
+				Value:  csi.DefaultCSIAttacherImage,
+			},
+			cli.StringFlag{
+				Name:   FlagCSIProvisionerImage,
+				Usage:  "Specify CSI provisioner image",
+				EnvVar: EnvCSIProvisionerImage,
+				Value:  csi.DefaultCSIProvisionerImage,
+			},
+			cli.StringFlag{
+				Name:   FlagCSIDriverRegistrarImage,
+				Usage:  "Specify CSI driver-registrar image",
+				EnvVar: EnvCSIDriverRegistrarImage,
+				Value:  csi.DefaultCSIDriverRegistrarImage,
+			},
+			cli.StringFlag{
+				Name:   FlagCSIProvisionerName,
+				Usage:  "Specify CSI provisioner name",
+				EnvVar: EnvCSIProvisionerName,
+				Value:  csi.DefaultCSIProvisionerName,
+			},
 		},
 		Action: func(c *cli.Context) {
-			if err := deployFlexvolumeDriver(c); err != nil {
-				logrus.Fatalf("Error deploying Flexvolume driver: %v", err)
+			if err := deployDriver(c); err != nil {
+				logrus.Fatalf("Error deploying driver: %v", err)
 			}
 		},
 	}
 }
 
-func deployFlexvolumeDriver(c *cli.Context) error {
+func deployDriver(c *cli.Context) error {
 	managerImage := c.String(FlagManagerImage)
 	if managerImage == "" {
 		return fmt.Errorf("require %v", FlagManagerImage)
 	}
 
-	// Only supports in-cluster config
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		return errors.Wrap(err, "unable to get client config")
@@ -67,8 +109,85 @@ func deployFlexvolumeDriver(c *cli.Context) error {
 		return errors.Wrap(err, "unable to get k8s client")
 	}
 
+	driver := c.String(FlagDriver)
+	if driver == "" {
+		driver, err = chooseDriver(kubeClient)
+		if err != nil {
+			return err
+		}
+	}
+
+	switch driver {
+	case FlagDriverCSI:
+		logrus.Debug("Deploying CSI driver")
+		err = deployCSIDriver(kubeClient, c, managerImage)
+	case FlagDriverFlexvolume:
+		logrus.Debug("Deploying Flexvolume driver")
+		err = deployFlexvolumeDriver(kubeClient, c, managerImage)
+	default:
+		return fmt.Errorf("Unsupported driver %s", driver)
+	}
+
+	return err
+}
+
+// chooseDriver can chose the right driver by k8s server version
+// 1.10+ csi
+// v1.8/1.9 flexvolume
+func chooseDriver(kubeClient *clientset.Clientset) (string, error) {
+	serverVersion, err := kubeClient.Discovery().ServerVersion()
+	if err != nil {
+		return "", errors.Wrap(err, "Cannot choose driver automatically: failed to get Kubernetes server version")
+	}
+	currentVersion := version.MustParseSemantic(serverVersion.GitVersion)
+	minVersion := version.MustParseSemantic(types.CSIKubernetesMinVersion)
+	if currentVersion.AtLeast(minVersion) {
+		return FlagDriverCSI, nil
+	}
+	return FlagDriverFlexvolume, nil
+}
+
+func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerImage string) error {
+	csiAttacherImage := c.String(FlagCSIAttacherImage)
+	csiProvisionerImage := c.String(FlagCSIProvisionerImage)
+	csiDriverRegistrarImage := c.String(FlagCSIDriverRegistrarImage)
+	csiProvisionerName := c.String(FlagCSIProvisionerName)
+	namespace := os.Getenv(types.EnvPodNamespace)
+	serviceAccountName := os.Getenv(types.EnvServiceAccount)
+
+	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage)
+	if err := attacherDeployment.Deploy(kubeClient); err != nil {
+		return err
+	}
+
+	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, csiProvisionerName)
+	if err := provisionerDeployment.Deploy(kubeClient); err != nil {
+		return err
+	}
+
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiDriverRegistrarImage, managerImage)
+	if err := pluginDeployment.Deploy(kubeClient); err != nil {
+		return err
+	}
+
+	defer func() {
+		attacherDeployment.Cleanup(kubeClient)
+		provisionerDeployment.Cleanup(kubeClient)
+		pluginDeployment.Cleanup(kubeClient)
+	}()
+
+	done := make(chan struct{})
+	util.RegisterShutdownChannel(done)
+
+	<-done
+
+	return nil
+}
+
+func deployFlexvolumeDriver(kubeClient *clientset.Clientset, c *cli.Context, managerImage string) error {
 	flexvolumeDir := c.String(FlagFlexvolumeDir)
 	if flexvolumeDir == "" {
+		var err error
 		flexvolumeDir, err = discoverFlexvolumeDir(kubeClient)
 		if err != nil {
 			logrus.Warnf("Failed to detect flexvolume dir, fall back to default: ", err)

@@ -44,7 +44,7 @@ func main() {
 	a.Commands = []cli.Command{
 		app.DaemonCmd(),
 		app.SnapshotCmd(),
-		app.DeployFlexvolumeDriverCmd(),
+		app.DeployDriverCmd(),
 		app.CSICommand(),
 	}
 	a.CommandNotFound = cmdNotFound

@@ -22,6 +22,10 @@ const (
 	DefaultLonghornDirectory = "/var/lib/rancher/longhorn/"
 )
 
+const (
+	CSIKubernetesMinVersion = "v1.10.0"
+)
+
 type ReplicaMode string
 
 const (
@@ -29,9 +33,10 @@ const (
 	ReplicaModeWO  = ReplicaMode("WO")
 	ReplicaModeERR = ReplicaMode("ERR")
 
-	EnvNodeName     = "NODE_NAME"
-	EnvPodNamespace = "POD_NAMESPACE"
-	EnvPodIP        = "POD_IP"
+	EnvNodeName       = "NODE_NAME"
+	EnvPodNamespace   = "POD_NAMESPACE"
+	EnvPodIP          = "POD_IP"
+	EnvServiceAccount = "SERVICE_ACCOUNT"
 
 	AWSAccessKey = "AWS_ACCESS_KEY_ID"
 	AWSSecretKey = "AWS_SECRET_ACCESS_KEY"
