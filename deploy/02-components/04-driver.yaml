@@ -1,28 +1,28 @@
 apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
-  name: longhorn-flexvolume-driver-deployer
+  name: longhorn-driver-deployer
   namespace: longhorn-system
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: longhorn-flexvolume-driver-deployer
+      app: longhorn-driver-deployer
   template:
     metadata:
       labels:
-        app: longhorn-flexvolume-driver-deployer
+        app: longhorn-driver-deployer
     spec:
       containers:
-        - name: longhorn-flexvolume-driver-deployer
-          image: rancher/longhorn-manager:d5227ec
+        - name: longhorn-driver-deployer
+          image: rancher/longhorn-manager:cc732c2
           imagePullPolicy: Always
           command:
           - longhorn-manager
           - -d
-          - deploy-flexvolume-driver
+          - deploy-driver
           - --manager-image
-          - rancher/longhorn-manager:d5227ec
+          - rancher/longhorn-manager:cc732c2
           env:
           - name: POD_NAMESPACE
             valueFrom:
@@ -32,11 +32,15 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: spec.nodeName
+          - name: SERVICE_ACCOUNT
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.serviceAccountName
           - name: FLEXVOLUME_DIR
             # FOR RKE
             value: "/var/lib/kubelet/volumeplugins"
             # FOR GKE
             #value: "/home/kubernetes/flexvolume/"
-            # For default or auto detection with Kubernetes <= v1.9
+            # For default or auto detection with Kubernetes <= v1.8
             #value: ""
       serviceAccountName: longhorn-service-account
