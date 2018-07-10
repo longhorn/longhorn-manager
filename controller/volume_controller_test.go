@@ -357,6 +357,14 @@ func newNode(name, namespace string, allowScheduling bool, status types.NodeStat
 		},
 		Spec: types.NodeSpec{
 			AllowScheduling: allowScheduling,
+			Disks: map[string]types.DiskSpec{
+				TestDiskID1: {
+					Path:            TestDefaultDataPath,
+					AllowScheduling: true,
+					StorageMaximum:  0,
+					StorageReserved: 0,
+				},
+			},
 		},
 		Status: types.NodeStatus{
 			State: status,

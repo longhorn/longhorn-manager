@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/rancher/longhorn-manager/datastore"
@@ -52,9 +53,11 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 		preferredNode = rcs.getRandomNode(preferredNodes)
 	}
 
-	replica.Spec.NodeID = preferredNode.Name
-	// TODO just set default directory for now
-	replica.Spec.DataPath = types.DefaultLonghornDirectory + "/replicas/" + replica.Spec.VolumeName + "-" + util.RandomID()
+	// regenerate replica resource
+	err = rcs.generateReplica(replica, preferredNode)
+	if err != nil {
+		return nil, err
+	}
 
 	return replica, nil
 }
@@ -99,4 +102,20 @@ func (rcs *ReplicaScheduler) getNodeInfo() (map[string]*longhorn.Node, error) {
 		}
 	}
 	return scheduledNode, nil
+}
+
+func (rcs *ReplicaScheduler) generateReplica(replica *longhorn.Replica, node *longhorn.Node) error {
+	replica.Spec.NodeID = node.Name
+	node, err := rcs.ds.GetNode(node.Name)
+	if err != nil {
+		return err
+	}
+	// TODO just set random directory for now
+	for diskID, disk := range node.Spec.Disks {
+		replica.Spec.DiskID = diskID
+		replica.Spec.DataPath = filepath.Join(disk.Path, "replicas", replica.Spec.VolumeName+"-"+util.RandomID())
+		break
+	}
+
+	return nil
 }
