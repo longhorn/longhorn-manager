@@ -115,7 +115,6 @@ type ReplicaStatus struct {
 const (
 	SettingBackupTarget                 = "backupTarget"
 	SettingDefaultEngineImage           = "defaultEngineImage"
-	SettingEngineUpgradeImage           = "engineUpgradeImage"
 	SettingBackupTargetCredentialSecret = "backupTargetCredentialSecret"
 )
 
