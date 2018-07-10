@@ -27,8 +27,8 @@ type Volume struct {
 	Robustness          types.VolumeRobustness `json:"robustness"`
 	EngineImage         string                 `json:"engineImage"`
 	CurrentImage        string                 `json:"currentImage"`
-	Endpoint            string                 `json:"endpoint,omitemtpy"`
-	Created             string                 `json:"created,omitemtpy"`
+	Endpoint            string                 `json:"endpoint"`
+	Created             string                 `json:"created"`
 
 	RecurringJobs []types.RecurringJob `json:"recurringJobs"`
 
