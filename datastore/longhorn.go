@@ -404,6 +404,9 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err := fixupMetadata(r.Spec.VolumeName, r); err != nil {
 		return nil, err
 	}
+	if err := tagNodeLabel(r); err != nil {
+		return nil, err
+	}
 	return s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Create(r)
 }
 
@@ -657,5 +660,48 @@ func (s *DataStore) RemoveFinalizerForNode(obj *longhorn.Node) error {
 		}
 		return errors.Wrapf(err, "unable to remove finalizer for node %v", obj.Name)
 	}
+	return nil
+}
+
+func getNodeSelector(nodeName string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			types.LonghornNodeKey: nodeName,
+		},
+	})
+}
+
+func (s *DataStore) ListReplicasByNode(name string) (map[string][]*longhorn.Replica, error) {
+	nodeSelector, err := getNodeSelector(name)
+	replicaList, err := s.rLister.Replicas(s.namespace).List(nodeSelector)
+	if err != nil {
+		return nil, err
+	}
+
+	replicaDiskMap := map[string][]*longhorn.Replica{}
+	for _, replica := range replicaList {
+		if _, ok := replicaDiskMap[replica.Spec.DiskID]; !ok {
+			replicaDiskMap[replica.Spec.DiskID] = []*longhorn.Replica{}
+		}
+		replicaDiskMap[replica.Spec.DiskID] = append(replicaDiskMap[replica.Spec.DiskID], replica.DeepCopy())
+	}
+	return replicaDiskMap, nil
+}
+
+func tagNodeLabel(replica *longhorn.Replica) error {
+	// fix longhornnode label for replica
+	metadata, err := meta.Accessor(replica)
+	if err != nil {
+		return err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	if labels[types.LonghornNodeKey] == "" {
+		labels[types.LonghornNodeKey] = replica.Spec.NodeID
+	}
+	metadata.SetLabels(labels)
 	return nil
 }

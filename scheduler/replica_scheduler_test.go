@@ -42,6 +42,7 @@ const (
 	TestDaemon1 = "longhorn-manager-1"
 	TestDaemon2 = "longhorn-manager-2"
 	TestDaemon3 = "longhorn-manager-3"
+	TestDiskID1 = "diskID1"
 )
 
 func newReplicaScheduler(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
@@ -89,6 +90,12 @@ func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string) *v1.
 }
 
 func newNode(name, namespace string, allowScheduling bool, nodeState types.NodeState) *longhorn.Node {
+	disks := map[string]types.DiskSpec{
+		TestDiskID1: {
+			Path:            TestDefaultDataPath,
+			AllowScheduling: true,
+		},
+	}
 	return &longhorn.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -96,6 +103,7 @@ func newNode(name, namespace string, allowScheduling bool, nodeState types.NodeS
 		},
 		Spec: types.NodeSpec{
 			AllowScheduling: allowScheduling,
+			Disks:           disks,
 		},
 		Status: types.NodeStatus{
 			State: nodeState,

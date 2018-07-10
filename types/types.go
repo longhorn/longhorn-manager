@@ -20,6 +20,8 @@ const (
 	// DefaultLonghornDirectory is the directory going to be bind mounted on the
 	// host to provide storage space to replica data by default
 	DefaultLonghornDirectory = "/var/lib/rancher/longhorn/"
+
+	LonghornNodeKey = "longhornnode"
 )
 
 const (

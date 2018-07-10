@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhinformers "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
@@ -33,7 +35,8 @@ var (
 
 type NodeController struct {
 	// which namespace controller is running with
-	namespace string
+	namespace    string
+	controllerID string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -52,7 +55,7 @@ func NewNodeController(
 	nodeInformer lhinformers.NodeInformer,
 	podInformer coreinformers.PodInformer,
 	kubeClient clientset.Interface,
-	namespace string) *NodeController {
+	namespace, controllerID string) *NodeController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -60,7 +63,8 @@ func NewNodeController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	nc := &NodeController{
-		namespace: namespace,
+		namespace:    namespace,
+		controllerID: controllerID,
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-node-controller"}),
@@ -172,16 +176,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return nc.ds.RemoveFinalizerForNode(node)
 	}
 
-	defer func() {
-		if err == nil {
-			_, err = nc.ds.UpdateNode(node)
-		}
-		// ignore if it's conflict
-		if apierrors.IsConflict(errors.Cause(err)) {
-			err = nil
-		}
-	}()
-
 	// sync node state by manager pod
 	managerPods, err := nc.ds.ListManagerPods()
 	if err != nil {
@@ -189,6 +183,13 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 	for _, pod := range managerPods {
 		err = nc.syncStatusWithPod(pod, node)
+		if err != nil {
+			return err
+		}
+	}
+	// sync disks status on current node
+	if nc.controllerID == node.Name {
+		err = nc.syncDiskStatus(node)
 		if err != nil {
 			return err
 		}
@@ -216,6 +217,78 @@ func (nc *NodeController) syncStatusWithPod(pod *v1.Pod, node *longhorn.Node) er
 		default:
 			node.Status.State = types.NodeStateDown
 		}
+		_, err := nc.ds.UpdateNode(node)
+		// ignore if it's conflict, maybe other controller is updating it
+		if apierrors.IsConflict(errors.Cause(err)) {
+			err = nil
+		}
+	}
+
+	return nil
+}
+
+func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
+	diskMap := node.Spec.Disks
+	diskStatusMap := node.Status.DiskStatus
+	if diskStatusMap == nil {
+		diskStatusMap = map[string]types.DiskStatus{}
+	}
+
+	// get all replicas which have been assigned to current node
+	replicaDiskMap, err := nc.ds.ListReplicasByNode(node.Name)
+	if err != nil {
+		return err
+	}
+
+	for diskID, disk := range diskMap {
+		diskStatus, ok := diskStatusMap[diskID]
+		if !ok {
+			diskStatus = types.DiskStatus{}
+		}
+		// if there's no replica assigned to this disk
+		if _, ok := replicaDiskMap[diskID]; !ok {
+			diskStatus.StorageScheduled = 0
+		} else {
+			// calculate storage scheduled
+			replicaArray := replicaDiskMap[diskID]
+			var storageScheduled int64
+			for _, replica := range replicaArray {
+				storageScheduled += replica.Spec.VolumeSize
+			}
+			diskStatus.StorageScheduled = storageScheduled
+			delete(replicaDiskMap, diskID)
+		}
+		// get disk available size
+		diskInfo, err := util.GetDiskInfo(disk.Path)
+		if err != nil {
+			logrus.Errorf("Get disk information on node %v error: %v", node.Name, err)
+		} else {
+			diskStatus.StorageAvailable = diskInfo.StorageAvailable
+		}
+
+		diskStatusMap[diskID] = diskStatus
+	}
+
+	// if there's some replicas scheduled to wrong disks, write them to error log
+	if len(replicaDiskMap) > 0 {
+		eReplicas := []string{}
+		for _, replicas := range replicaDiskMap {
+			for _, replica := range replicas {
+				eReplicas = append(eReplicas, replica.Name)
+			}
+		}
+		logrus.Errorf("Warning: These replicas have been assigned to a disk no longer exist: %v", strings.Join(eReplicas, ", "))
+	}
+
+	node.Status.DiskStatus = diskStatusMap
+
+	n, err := nc.ds.UpdateNode(node)
+	// retry save current node status if there's a conflict
+	// because only current controller will update current disk status
+	if apierrors.IsConflict(errors.Cause(err)) {
+		logrus.Debugf("Requeue %v due to conflict", node.Name)
+		nc.enqueueNode(n)
+		err = nil
 	}
 
 	return nil

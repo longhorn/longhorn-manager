@@ -29,7 +29,7 @@ type NodeTestCase struct {
 }
 
 func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
-	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *NodeController {
+	lhClient *lhfake.Clientset, kubeClient *fake.Clientset, controllerID string) *NodeController {
 	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
 	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Engines()
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
@@ -48,7 +48,7 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 		podInformer, cronJobInformer, daemonSetInformer,
 		kubeClient, TestNamespace)
 
-	nc := NewNodeController(ds, scheme.Scheme, nodeInformer, podInformer, kubeClient, TestNamespace)
+	nc := NewNodeController(ds, scheme.Scheme, nodeInformer, podInformer, kubeClient, TestNamespace, controllerID)
 	fakeRecorder := record.NewFakeRecorder(100)
 	nc.eventRecorder = fakeRecorder
 
@@ -138,7 +138,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		nIndexer := lhInformerFactory.Longhorn().V1alpha1().Nodes().Informer().GetIndexer()
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
-		nc := newTestNodeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
+		nc := newTestNodeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestNode1)
 		// create manager pod
 		for _, pod := range tc.pods {
 			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(pod)

@@ -42,6 +42,7 @@ const (
 	TestDefaultDataPath = "/var/lib/rancher/longhorn"
 	TestDaemon1         = "longhorn-manager-1"
 	TestDaemon2         = "longhorn-manager-2"
+	TestDiskID1         = "diskID1"
 )
 
 var (
