@@ -307,13 +307,14 @@ func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 	}
 }
 
-func newReplicaForVolume(v *longhorn.Volume) *longhorn.Replica {
+func newReplicaForVolume(v *longhorn.Volume, nodeID, diskID string) *longhorn.Replica {
 	replicaName := v.Name + "-r-" + util.RandomID()
 	return &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: replicaName,
 			Labels: map[string]string{
-				"longhornvolume": v.Name,
+				"longhornvolume":      v.Name,
+				types.LonghornNodeKey: nodeID,
 			},
 		},
 		Spec: types.ReplicaSpec{
@@ -324,6 +325,7 @@ func newReplicaForVolume(v *longhorn.Volume) *longhorn.Replica {
 				EngineImage: TestEngineImage,
 				DesireState: types.InstanceStateStopped,
 			},
+			DiskID:   diskID,
 			DataPath: filepath.Join(types.DefaultLonghornDirectory, "/replicas", replicaName),
 			Active:   true,
 		},
@@ -375,10 +377,12 @@ func newNode(name, namespace string, allowScheduling bool, status types.NodeStat
 func generateVolumeTestCaseTemplate() *VolumeTestCase {
 	volume := newVolume(TestVolumeName, 2)
 	engine := newEngineForVolume(volume)
-	replica1 := newReplicaForVolume(volume)
-	replica2 := newReplicaForVolume(volume)
+
+	replica1 := newReplicaForVolume(volume, "", "")
+	replica2 := newReplicaForVolume(volume, "", "")
 	node1 := newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
 	node2 := newNode(TestNode2, TestNamespace, false, types.NodeStateUp)
+
 	return &VolumeTestCase{
 		volume: volume,
 		engine: engine,

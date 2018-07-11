@@ -22,10 +22,11 @@ import (
 )
 
 type NodeTestCase struct {
-	nodes map[string]*longhorn.Node
-	pods  map[string]*v1.Pod
+	nodes    map[string]*longhorn.Node
+	pods     map[string]*v1.Pod
+	replicas []*longhorn.Replica
 
-	expectNodeStatus map[string]types.NodeState
+	expectNodeStatus map[string]types.NodeStatus
 }
 
 func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
@@ -76,9 +77,13 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestNode2: node2,
 	}
 	tc.nodes = nodes
-	expectNodeStatus := map[string]types.NodeState{
-		TestNode1: types.NodeStateUp,
-		TestNode2: types.NodeStateUp,
+	expectNodeStatus := map[string]types.NodeStatus{
+		TestNode1: {
+			State: types.NodeStateUp,
+		},
+		TestNode2: {
+			State: types.NodeStateUp,
+		},
 	}
 	tc.expectNodeStatus = expectNodeStatus
 	testCases["all nodes up"] = tc
@@ -98,9 +103,13 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestNode2: node2,
 	}
 	tc.nodes = nodes
-	expectNodeStatus = map[string]types.NodeState{
-		TestNode1: types.NodeStateDown,
-		TestNode2: types.NodeStateUp,
+	expectNodeStatus = map[string]types.NodeStatus{
+		TestNode1: {
+			State: types.NodeStateDown,
+		},
+		TestNode2: {
+			State: types.NodeStateUp,
+		},
 	}
 	tc.expectNodeStatus = expectNodeStatus
 	testCases["manager pod down"] = tc
@@ -120,12 +129,84 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestNode2: node2,
 	}
 	tc.nodes = nodes
-	expectNodeStatus = map[string]types.NodeState{
-		TestNode1: types.NodeStateUp,
-		TestNode2: types.NodeStateUp,
+	expectNodeStatus = map[string]types.NodeStatus{
+		TestNode1: {
+			State: types.NodeStateUp,
+		},
+		TestNode2: {
+			State: types.NodeStateUp,
+		},
 	}
 	tc.expectNodeStatus = expectNodeStatus
 	testCases["set node status up"] = tc
+
+	tc = &NodeTestCase{}
+	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	pods = map[string]*v1.Pod{
+		TestDaemon1: daemon1,
+		TestDaemon2: daemon2,
+	}
+	tc.pods = pods
+	node1 = newNode(TestNode1, TestNamespace, true, "up")
+	node1.Spec.Disks = map[string]types.DiskSpec{
+		TestDiskID1: {
+			Path:            TestDefaultDataPath,
+			AllowScheduling: true,
+		},
+	}
+	node1.Status.DiskStatus = map[string]types.DiskStatus{
+		TestDiskID1: {
+			StorageScheduled: 0,
+			StorageAvailable: 0,
+		},
+	}
+	node2 = newNode(TestNode2, TestNamespace, true, "up")
+	node2.Spec.Disks = map[string]types.DiskSpec{
+		TestDiskID1: {
+			Path:            TestDefaultDataPath,
+			AllowScheduling: true,
+		},
+	}
+	node2.Status.DiskStatus = map[string]types.DiskStatus{
+		TestDiskID1: {
+			StorageScheduled: 0,
+			StorageAvailable: 0,
+		},
+	}
+	nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+		TestNode2: node2,
+	}
+	tc.nodes = nodes
+	tc.expectNodeStatus = expectNodeStatus
+	volume := newVolume(TestVolumeName, 2)
+	replica1 := newReplicaForVolume(volume, TestNode1, TestDiskID1)
+	replica2 := newReplicaForVolume(volume, TestNode2, TestDiskID1)
+	replicas := []*longhorn.Replica{replica1, replica2}
+	tc.replicas = replicas
+
+	expectNodeStatus = map[string]types.NodeStatus{
+		TestNode1: {
+			State: types.NodeStateUp,
+			DiskStatus: map[string]types.DiskStatus{
+				TestDiskID1: {
+					StorageScheduled: TestVolumeSize,
+				},
+			},
+		},
+		TestNode2: {
+			State: types.NodeStateUp,
+			DiskStatus: map[string]types.DiskStatus{
+				TestDiskID1: {
+					StorageScheduled: 0,
+					StorageAvailable: 0,
+				},
+			},
+		},
+	}
+	tc.expectNodeStatus = expectNodeStatus
+	testCases["only disk on node1 should be updated status"] = tc
 
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
@@ -137,6 +218,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 
 		nIndexer := lhInformerFactory.Longhorn().V1alpha1().Nodes().Informer().GetIndexer()
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+		rIndexer := lhInformerFactory.Longhorn().V1alpha1().Replicas().Informer().GetIndexer()
 
 		nc := newTestNodeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestNode1)
 		// create manager pod
@@ -152,6 +235,13 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			c.Assert(n, NotNil)
 			nIndexer.Add(n)
 		}
+		// create replicas
+		for _, replica := range tc.replicas {
+			r, err := lhClient.Longhorn().Replicas(TestNamespace).Create(replica)
+			c.Assert(err, IsNil)
+			c.Assert(r, NotNil)
+			rIndexer.Add(r)
+		}
 		// sync node status
 		for nodeName, node := range tc.nodes {
 			err := nc.syncNode(getKey(node, c))
@@ -159,7 +249,10 @@ func (s *TestSuite) TestSyncNode(c *C) {
 
 			n, err := lhClient.LonghornV1alpha1().Nodes(TestNamespace).Get(node.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
-			c.Assert(n.Status.State, Equals, tc.expectNodeStatus[nodeName])
+			c.Assert(n.Status.State, Equals, tc.expectNodeStatus[nodeName].State)
+			if len(tc.expectNodeStatus[nodeName].DiskStatus) > 0 {
+				c.Assert(n.Status.DiskStatus, DeepEquals, tc.expectNodeStatus[nodeName].DiskStatus)
+			}
 		}
 
 	}
