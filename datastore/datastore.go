@@ -28,6 +28,8 @@ type DataStore struct {
 	rStoreSynced cache.InformerSynced
 	iLister      lhlisters.EngineImageLister
 	iStoreSynced cache.InformerSynced
+	nLister      lhlisters.NodeLister
+	nStoreSynced cache.InformerSynced
 
 	kubeClient    clientset.Interface
 	pLister       corelisters.PodLister
@@ -36,9 +38,6 @@ type DataStore struct {
 	cjStoreSynced cache.InformerSynced
 	dsLister      appslisters_v1beta2.DaemonSetLister
 	dsStoreSynced cache.InformerSynced
-
-	nLister      lhlisters.NodeLister
-	nStoreSynced cache.InformerSynced
 }
 
 func NewDataStore(
@@ -46,13 +45,14 @@ func NewDataStore(
 	engineInformer lhinformers.EngineInformer,
 	replicaInformer lhinformers.ReplicaInformer,
 	engineImageInformer lhinformers.EngineImageInformer,
+	nodeInformer lhinformers.NodeInformer,
 	lhClient lhclientset.Interface,
 
 	podInformer coreinformers.PodInformer,
 	cronJobInformer batchinformers_v1beta1.CronJobInformer,
 	daemonSetInformer appsinformers_v1beta2.DaemonSetInformer,
 	kubeClient clientset.Interface,
-	namespace string, nodeInformer lhinformers.NodeInformer) *DataStore {
+	namespace string) *DataStore {
 
 	return &DataStore{
 		namespace: namespace,
@@ -66,6 +66,8 @@ func NewDataStore(
 		rStoreSynced: replicaInformer.Informer().HasSynced,
 		iLister:      engineImageInformer.Lister(),
 		iStoreSynced: engineImageInformer.Informer().HasSynced,
+		nLister:      nodeInformer.Lister(),
+		nStoreSynced: nodeInformer.Informer().HasSynced,
 
 		kubeClient:    kubeClient,
 		pLister:       podInformer.Lister(),
@@ -74,14 +76,12 @@ func NewDataStore(
 		cjStoreSynced: cronJobInformer.Informer().HasSynced,
 		dsLister:      daemonSetInformer.Lister(),
 		dsStoreSynced: daemonSetInformer.Informer().HasSynced,
-
-		nLister:      nodeInformer.Lister(),
-		nStoreSynced: nodeInformer.Informer().HasSynced,
 	}
 }
 
 func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 	return controller.WaitForCacheSync("longhorn datastore", stopCh,
-		s.vStoreSynced, s.eStoreSynced, s.rStoreSynced, s.iStoreSynced,
+		s.vStoreSynced, s.eStoreSynced, s.rStoreSynced,
+		s.iStoreSynced, s.nStoreSynced,
 		s.pStoreSynced, s.cjStoreSynced, s.dsStoreSynced)
 }
