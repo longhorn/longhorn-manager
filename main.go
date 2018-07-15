@@ -21,7 +21,7 @@ func onUsageError(c *cli.Context, err error, isSubcommand bool) error {
 }
 
 func main() {
-	logrus.SetFormatter(&logrus.TextFormatter{ForceColors: true})
+	logrus.SetFormatter(&logrus.TextFormatter{ForceColors: true, FullTimestamp: true})
 
 	a := cli.NewApp()
 	a.Version = VERSION
