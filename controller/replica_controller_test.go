@@ -95,8 +95,12 @@ func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformer
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
 
-	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, engineImageInformer, lhClient,
-		podInformer, cronJobInformer, daemonSetInformer, kubeClient, TestNamespace, nodeInformer)
+	ds := datastore.NewDataStore(
+		volumeInformer, engineInformer, replicaInformer,
+		engineImageInformer, nodeInformer,
+		lhClient,
+		podInformer, cronJobInformer, daemonSetInformer,
+		kubeClient, TestNamespace)
 
 	rc := NewReplicaController(ds, scheme.Scheme, replicaInformer, podInformer, jobInformer, kubeClient, TestNamespace, controllerID)
 

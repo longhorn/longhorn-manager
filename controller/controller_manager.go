@@ -74,16 +74,28 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
 
-	ds := datastore.NewDataStore(volumeInformer, engineInformer, replicaInformer, engineImageInformer, lhClient,
-		podInformer, cronJobInformer, daemonSetInformer, kubeClient, namespace, nodeInformer)
-	rc := NewReplicaController(ds, scheme, replicaInformer, podInformer, jobInformer, kubeClient,
-		namespace, controllerID)
-	ec := NewEngineController(ds, scheme, engineInformer, podInformer, kubeClient,
-		&engineapi.EngineCollection{}, namespace, controllerID)
-	vc := NewVolumeController(ds, scheme, volumeInformer, engineInformer, replicaInformer, kubeClient,
-		namespace, controllerID, serviceAccount, managerImage)
-	ic := NewEngineImageController(ds, scheme, engineImageInformer, volumeInformer, daemonSetInformer, kubeClient, namespace, controllerID)
-	nc := NewNodeController(ds, scheme, nodeInformer, podInformer, kubeClient, namespace)
+	ds := datastore.NewDataStore(
+		volumeInformer, engineInformer, replicaInformer,
+		engineImageInformer, nodeInformer,
+		lhClient,
+		podInformer, cronJobInformer, daemonSetInformer,
+		kubeClient, namespace)
+	rc := NewReplicaController(ds, scheme,
+		replicaInformer, podInformer, jobInformer,
+		kubeClient, namespace, controllerID)
+	ec := NewEngineController(ds, scheme,
+		engineInformer, podInformer,
+		kubeClient, &engineapi.EngineCollection{}, namespace, controllerID)
+	vc := NewVolumeController(ds, scheme,
+		volumeInformer, engineInformer, replicaInformer,
+		kubeClient, namespace, controllerID,
+		serviceAccount, managerImage)
+	ic := NewEngineImageController(ds, scheme,
+		engineImageInformer, volumeInformer, daemonSetInformer,
+		kubeClient, namespace, controllerID)
+	nc := NewNodeController(ds, scheme,
+		nodeInformer, podInformer,
+		kubeClient, namespace)
 
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
