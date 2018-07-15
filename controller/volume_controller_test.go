@@ -30,10 +30,15 @@ func getVolumeLabelSelector(volumeName string) string {
 }
 
 func initSettings(ds *datastore.DataStore) {
-	setting := &longhorn.Setting{}
-	setting.BackupTarget = ""
-	setting.DefaultEngineImage = TestEngineImage
-	ds.CreateSetting(setting)
+	settingDefaultEngineImage := &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNameDefaultEngineImage),
+		},
+		Setting: types.Setting{
+			Value: TestEngineImage,
+		},
+	}
+	ds.CreateSetting(settingDefaultEngineImage)
 }
 
 func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
@@ -45,6 +50,7 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
 	engineImageInformer := lhInformerFactory.Longhorn().V1alpha1().EngineImages()
 	nodeInformer := lhInformerFactory.Longhorn().V1alpha1().Nodes()
+	settingInformer := lhInformerFactory.Longhorn().V1alpha1().Settings()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
@@ -52,7 +58,7 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
-		engineImageInformer, nodeInformer,
+		engineImageInformer, nodeInformer, settingInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		kubeClient, TestNamespace)

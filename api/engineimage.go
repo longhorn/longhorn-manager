@@ -6,6 +6,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
+
+	"github.com/rancher/longhorn-manager/types"
 )
 
 func (s *Server) EngineImageList(rw http.ResponseWriter, req *http.Request) (err error) {
@@ -15,7 +17,7 @@ func (s *Server) EngineImageList(rw http.ResponseWriter, req *http.Request) (err
 	if err != nil {
 		return errors.Wrap(err, "error listing engine image")
 	}
-	defaultImage, err := s.m.GetDefaultEngineImage()
+	defaultImage, err := s.m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if err != nil {
 		return errors.Wrap(err, "error listing engine image")
 	}
@@ -35,7 +37,7 @@ func (s *Server) EngineImageGet(rw http.ResponseWriter, req *http.Request) error
 	if ei == nil {
 		return errors.Wrapf(err, "cannot find engine image '%s'", id)
 	}
-	defaultImage, err := s.m.GetDefaultEngineImage()
+	defaultImage, err := s.m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if err != nil {
 		return errors.Wrapf(err, "error get engine image '%s'", id)
 	}
@@ -55,7 +57,7 @@ func (s *Server) EngineImageCreate(rw http.ResponseWriter, req *http.Request) er
 	if err != nil {
 		return errors.Wrapf(err, "unable to create engine image %v", img.Image)
 	}
-	defaultImage, err := s.m.GetDefaultEngineImage()
+	defaultImage, err := s.m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if err != nil {
 		return errors.Wrap(err, "unable to create engine image")
 	}

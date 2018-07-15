@@ -23,8 +23,6 @@ const (
 	longhornVolumeKey = "longhornvolume"
 	// NameMaximumLength restricted the length due to Kubernetes name limitation
 	NameMaximumLength = 40
-
-	SettingName = "longhorn-manager-settings"
 )
 
 var (
@@ -32,23 +30,71 @@ var (
 )
 
 func (s *DataStore) CreateSetting(setting *longhorn.Setting) (*longhorn.Setting, error) {
-	setting.Name = SettingName
 	return s.lhClient.LonghornV1alpha1().Settings(s.namespace).Create(setting)
 }
 
 func (s *DataStore) UpdateSetting(setting *longhorn.Setting) (*longhorn.Setting, error) {
-	setting.Name = SettingName
 	return s.lhClient.LonghornV1alpha1().Settings(s.namespace).Update(setting)
 }
 
-// GetSetting will report NotFound error if setting is not found
-func (s *DataStore) GetSetting() (*longhorn.Setting, error) {
-	result, err := s.lhClient.LonghornV1alpha1().Settings(s.namespace).Get(SettingName,
-		metav1.GetOptions{})
+// GetSetting will automatically fill the non-existing setting if it's a valid
+// setting name.
+// The function will not return nil for *longhorn.Setting when error is nil
+func (s *DataStore) GetSetting(sName types.SettingName) (*longhorn.Setting, error) {
+	definition, ok := types.SettingDefinitions[sName]
+	if !ok {
+		return nil, fmt.Errorf("setting %v is not supported", sName)
+	}
+	resultRO, err := s.sLister.Settings(s.namespace).Get(string(sName))
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return nil, err
+		}
+		resultRO = &longhorn.Setting{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: string(sName),
+			},
+			Setting: types.Setting{
+				Value: definition.Default,
+			},
+		}
+	}
+	return resultRO.DeepCopy(), nil
+}
+
+func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, error) {
+	itemMap := make(map[types.SettingName]*longhorn.Setting)
+
+	list, err := s.sLister.Settings(s.namespace).List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
-	return result, err
+	if len(list) == 0 {
+		return map[types.SettingName]*longhorn.Setting{}, nil
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		settingField := types.SettingName(itemRO.Name)
+		// Ignore the items that we don't recongize
+		if _, ok := types.SettingDefinitions[settingField]; ok {
+			itemMap[settingField] = itemRO.DeepCopy()
+		}
+	}
+	// fill up the missing entries
+	for sName, definition := range types.SettingDefinitions {
+		if _, ok := itemMap[sName]; !ok {
+			itemMap[sName] = &longhorn.Setting{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: string(sName),
+				},
+				Setting: types.Setting{
+					Value: definition.Default,
+				},
+			}
+		}
+	}
+	return itemMap, nil
 }
 
 func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]string, error) {

@@ -1,39 +1,41 @@
 package manager
 
 import (
-	"github.com/pkg/errors"
+	"fmt"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
+	"github.com/rancher/longhorn-manager/types"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
 
-func (m *VolumeManager) GetSetting() (*longhorn.Setting, error) {
-	return m.ds.GetSetting()
-}
-
-func (m *VolumeManager) getBackupTargetURL() (string, error) {
-	settings, err := m.ds.GetSetting()
+func (m *VolumeManager) GetSettingValueExisted(sName types.SettingName) (string, error) {
+	setting, err := m.GetSetting(sName)
 	if err != nil {
-		return "", errors.New("cannot backup: unable to read settings")
+		return "", err
 	}
-	backupTarget := settings.BackupTarget
-	if backupTarget == "" {
-		return "", errors.New("cannot backup: backupTarget not set")
+	if setting.Value == "" {
+		return "", fmt.Errorf("setting %v is empty", sName)
 	}
-	return backupTarget, nil
+	return setting.Value, nil
 }
 
-func (m *VolumeManager) GetDefaultEngineImage() (string, error) {
-	setting, err := m.ds.GetSetting()
+func (m *VolumeManager) GetSetting(sName types.SettingName) (*longhorn.Setting, error) {
+	return m.ds.GetSetting(sName)
+}
+
+func (m *VolumeManager) ListSettings() (map[types.SettingName]*longhorn.Setting, error) {
+	return m.ds.ListSettings()
+}
+
+func (m *VolumeManager) CreateOrUpdateSetting(s *longhorn.Setting) (*longhorn.Setting, error) {
+	setting, err := m.ds.UpdateSetting(s)
 	if err != nil {
-		return "", errors.New("cannot backup: unable to read settings")
+		if apierrors.IsNotFound(err) {
+			return m.ds.CreateSetting(s)
+		}
+		return nil, err
 	}
-	engineImage := setting.DefaultEngineImage
-	if engineImage == "" {
-		return "", errors.New("cannot backup: default engine image not set")
-	}
-	return engineImage, nil
-}
-
-func (m *VolumeManager) UpdateSetting(s *longhorn.Setting) (*longhorn.Setting, error) {
-	return m.ds.UpdateSetting(s)
+	return setting, nil
 }

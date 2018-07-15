@@ -365,7 +365,11 @@ func (ic *EngineImageController) updateEngineImageRefCount(ei *longhorn.EngineIm
 
 }
 
-func (ic *EngineImageController) cleanupExpiredEngineImage(ei *longhorn.EngineImage) error {
+func (ic *EngineImageController) cleanupExpiredEngineImage(ei *longhorn.EngineImage) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "cannot cleanup engine image %v (%v)", ei.Name, ei.Spec.Image)
+	}()
+
 	if ei.Status.RefCount != 0 {
 		return nil
 	}
@@ -373,21 +377,21 @@ func (ic *EngineImageController) cleanupExpiredEngineImage(ei *longhorn.EngineIm
 		return nil
 	}
 	if util.TimestampAfterTimeout(ei.Status.NoRefSince, ExpiredEngineImageTimeout) {
-		setting, err := ic.ds.GetSetting()
+		defaultEngineImage, err := ic.ds.GetSetting(types.SettingNameDefaultEngineImage)
 		if err != nil {
-			return fmt.Errorf("cannot cleanup engine image: unable to read settings")
+			return err
 		}
-		if setting.DefaultEngineImage == "" {
-			return fmt.Errorf("cannot cleanup engine image: default engine image not set")
+		if defaultEngineImage.Value == "" {
+			return fmt.Errorf("default engine image not set")
 		}
 		// Don't delete the default image
-		if ei.Spec.Image == setting.DefaultEngineImage {
+		if ei.Spec.Image == defaultEngineImage.Value {
 			return nil
 		}
 
 		logrus.Infof("Engine image %v (%v) expired, clean it up", ei.Name, ei.Spec.Image)
 		if err := ic.ds.DeleteEngineImage(ei.Name); err != nil {
-			return errors.Wrapf(err, "cannot cleanup expired engine image %v (%v)", ei.Name, ei.Spec.Image)
+			return err
 		}
 		return nil
 	}

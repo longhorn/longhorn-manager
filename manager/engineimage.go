@@ -65,7 +65,7 @@ func (m *VolumeManager) DeleteEngineImageByName(name string) error {
 	if ei == nil {
 		return nil
 	}
-	defaultImage, err := m.GetDefaultEngineImage()
+	defaultImage, err := m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if err != nil {
 		return errors.Wrap(err, "unable to delete engine image")
 	}

@@ -55,6 +55,7 @@ type Setting struct {
 	client.Resource
 	Name  string `json:"name"`
 	Value string `json:"value"`
+	types.SettingDefinition
 }
 
 type Instance struct {
@@ -309,22 +310,23 @@ func volumeSchema(volume *client.Schema) {
 	volume.ResourceFields["recurringJobs"] = recurringJobs
 }
 
-func toSettingResource(name, value string) *Setting {
+func toSettingResource(setting *longhorn.Setting) *Setting {
 	return &Setting{
 		Resource: client.Resource{
-			Id:   name,
+			Id:   setting.Name,
 			Type: "setting",
 		},
-		Name:  name,
-		Value: value,
+		Name:  setting.Name,
+		Value: setting.Value,
+
+		SettingDefinition: types.SettingDefinitions[types.SettingName(setting.Name)],
 	}
 }
 
-func toSettingCollection(settings *types.SettingsInfo) *client.GenericCollection {
-	data := []interface{}{
-		toSettingResource(types.SettingBackupTarget, settings.BackupTarget),
-		toSettingResource(types.SettingDefaultEngineImage, settings.DefaultEngineImage),
-		toSettingResource(types.SettingBackupTargetCredentialSecret, settings.BackupTargetCredentialSecret),
+func toSettingCollection(settings map[types.SettingName]*longhorn.Setting) *client.GenericCollection {
+	data := []interface{}{}
+	for _, setting := range settings {
+		data = append(data, toSettingResource(setting))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }

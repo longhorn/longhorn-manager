@@ -121,7 +121,7 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 		return fmt.Errorf("volume and snapshot name required")
 	}
 
-	backupTarget, err := m.getBackupTargetURL()
+	backupTarget, err := m.GetSettingValueExisted(types.SettingNameBackupTarget)
 	if err != nil {
 		return err
 	}
@@ -165,11 +165,11 @@ func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.Eng
 }
 
 func (m *VolumeManager) getBackupTarget() (*engineapi.BackupTarget, error) {
-	targetURL, err := m.getBackupTargetURL()
+	targetURL, err := m.GetSettingValueExisted(types.SettingNameBackupTarget)
 	if err != nil {
 		return nil, err
 	}
-	engineImage, err := m.GetDefaultEngineImage()
+	engineImage, err := m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if err != nil {
 		return nil, err
 	}
@@ -181,16 +181,21 @@ func (m *VolumeManager) getBackupTarget() (*engineapi.BackupTarget, error) {
 }
 
 func (m *VolumeManager) getBackupCredentialConfig() (map[string]string, error) {
-	settings, err := m.ds.GetSetting()
-	if err != nil || settings == nil {
-		return nil, errors.New("cannot backup: unable to read settings")
+	backupTarget, err := m.GetSettingValueExisted(types.SettingNameBackupTarget)
+	if err != nil {
+		return nil, fmt.Errorf("cannot backup: unable to get settings %v",
+			types.SettingNameBackupTarget)
 	}
-	backupType, err := util.CheckBackupType(settings.BackupTarget)
+	backupType, err := util.CheckBackupType(backupTarget)
 	if err != nil {
 		return nil, err
 	}
 	if backupType == util.BackupStoreTypeS3 {
-		secretName := settings.BackupTargetCredentialSecret
+		secretName, err := m.GetSettingValueExisted(types.SettingNameBackupTargetCredentialSecret)
+		if err != nil {
+			return nil, fmt.Errorf("cannot backup: unable to get settings %v",
+				types.SettingNameBackupTargetCredentialSecret)
+		}
 		if secretName == "" {
 			return nil, errors.New("Could not backup for s3 without credential secret")
 		}
