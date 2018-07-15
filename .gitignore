@@ -28,3 +28,6 @@ _testmain.go
 trash.lock
 .trash-conf
 bin/
+
+# hidden files, e.g. vim temporary files
+.*
