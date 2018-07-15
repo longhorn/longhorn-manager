@@ -1049,14 +1049,17 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 		suspended = true
 	}
 
-	backupTarget := ""
-	backupCredentialSecret := ""
-	setting, err := vc.ds.GetSetting()
+	settingBackupTarget, err := vc.ds.GetSetting(types.SettingNameBackupTarget)
 	if err != nil {
 		return err
 	}
-	backupTarget = setting.BackupTarget
-	backupCredentialSecret = setting.BackupTargetCredentialSecret
+	backupTarget := settingBackupTarget.Value
+
+	settingBackupCredentialSecret, err := vc.ds.GetSetting(types.SettingNameBackupTargetCredentialSecret)
+	if err != nil {
+		return err
+	}
+	backupCredentialSecret := settingBackupCredentialSecret.Value
 
 	// the cronjobs are RO in the map, but not the map itself
 	appliedCronJobROs, err := vc.ds.ListVolumeCronJobROs(v.Name)

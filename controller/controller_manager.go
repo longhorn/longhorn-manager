@@ -68,6 +68,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
 	engineImageInformer := lhInformerFactory.Longhorn().V1alpha1().EngineImages()
 	nodeInformer := lhInformerFactory.Longhorn().V1alpha1().Nodes()
+	settingInformer := lhInformerFactory.Longhorn().V1alpha1().Settings()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
@@ -76,7 +77,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
-		engineImageInformer, nodeInformer,
+		engineImageInformer, nodeInformer, settingInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		kubeClient, namespace)

@@ -376,12 +376,12 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 	pod.Spec.NodeName = r.Spec.NodeID
 
 	if r.Spec.RestoreName != "" && r.Spec.RestoreFrom != "" {
-		settings, err := rc.ds.GetSetting()
-		if err != nil && !apierrors.IsNotFound(err) {
+		secret, err := rc.ds.GetSetting(types.SettingNameBackupTargetCredentialSecret)
+		if err != nil {
 			return nil, err
 		}
-		if settings != nil && settings.BackupTargetCredentialSecret != "" {
-			err := util.ConfigEnvWithCredential(r.Spec.RestoreFrom, settings.BackupTargetCredentialSecret, &pod.Spec.Containers[0])
+		if secret.Value != "" {
+			err := util.ConfigEnvWithCredential(r.Spec.RestoreFrom, secret.Value, &pod.Spec.Containers[0])
 			if err != nil {
 				return nil, err
 			}

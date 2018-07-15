@@ -9,7 +9,6 @@ import (
 	"github.com/rancher/go-iscsi-helper/iscsi"
 	iscsi_util "github.com/rancher/go-iscsi-helper/util"
 	"github.com/urfave/cli"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/rancher/longhorn-manager/api"
 	"github.com/rancher/longhorn-manager/controller"
@@ -17,8 +16,6 @@ import (
 	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
-
-	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
 
 const (
@@ -95,7 +92,7 @@ func startManager(c *cli.Context) error {
 
 	m := manager.NewVolumeManager(currentNodeID, ds)
 
-	if err := initSettings(ds, m, engineImage); err != nil {
+	if err := updateSettingDefaultEngineImage(m, engineImage); err != nil {
 		return err
 	}
 
@@ -143,22 +140,14 @@ func environmentCheck() error {
 	return nil
 }
 
-func initSettings(ds *datastore.DataStore, m *manager.VolumeManager, engineImage string) error {
-	setting, err := ds.GetSetting()
-	if err != nil && !apierrors.IsNotFound(err) {
+func updateSettingDefaultEngineImage(m *manager.VolumeManager, engineImage string) error {
+	settingDefaultEngineImage, err := m.GetSetting(types.SettingNameDefaultEngineImage)
+	if err != nil {
 		return err
 	}
-	if apierrors.IsNotFound(err) {
-		setting = &longhorn.Setting{}
-		setting.BackupTarget = ""
-		setting.DefaultEngineImage = engineImage
-		if _, err := ds.CreateSetting(setting); err != nil {
-			return err
-		}
-	}
-	if setting.DefaultEngineImage != engineImage {
-		setting.DefaultEngineImage = engineImage
-		if _, err := ds.UpdateSetting(setting); err != nil {
+	if settingDefaultEngineImage.Value != engineImage {
+		settingDefaultEngineImage.Value = engineImage
+		if _, err := m.CreateOrUpdateSetting(settingDefaultEngineImage); err != nil {
 			return err
 		}
 	}

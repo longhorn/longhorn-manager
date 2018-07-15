@@ -95,11 +95,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		logrus.Warnf("Invalid number of replicas %v, override it to default", spec.NumberOfReplicas)
 		spec.NumberOfReplicas = 3
 	}
-	setting, err := m.GetSetting()
-	if err != nil {
-		return nil, errors.Wrap(err, "cannot get setting")
-	}
-	defaultEngineImage := setting.DefaultEngineImage
+	defaultEngineImage, err := m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if defaultEngineImage == "" {
 		return nil, fmt.Errorf("BUG: Invalid empty Setting.EngineImage")
 	}

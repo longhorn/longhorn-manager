@@ -273,7 +273,7 @@ func (in *Setting) DeepCopyInto(out *Setting) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
-	out.SettingsInfo = in.SettingsInfo
+	out.Setting = in.Setting
 	return
 }
 
