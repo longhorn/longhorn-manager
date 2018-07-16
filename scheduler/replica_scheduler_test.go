@@ -44,6 +44,7 @@ const (
 	TestDaemon3 = "longhorn-manager-3"
 
 	TestDiskID1           = "diskID1"
+	TestDiskID2           = "diskID2"
 	TestDiskSize          = 5000000000
 	TestDiskAvailableSize = 3000000000
 )
@@ -93,14 +94,6 @@ func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string) *v1.
 }
 
 func newNode(name, namespace string, allowScheduling bool, nodeState types.NodeState) *longhorn.Node {
-	disks := map[string]types.DiskSpec{
-		TestDiskID1: {
-			Path:            TestDefaultDataPath,
-			AllowScheduling: true,
-			StorageMaximum:  TestDiskSize,
-			StorageReserved: 0,
-		},
-	}
 	return &longhorn.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -108,11 +101,19 @@ func newNode(name, namespace string, allowScheduling bool, nodeState types.NodeS
 		},
 		Spec: types.NodeSpec{
 			AllowScheduling: allowScheduling,
-			Disks:           disks,
 		},
 		Status: types.NodeStatus{
 			State: nodeState,
 		},
+	}
+}
+
+func newDisk(path string, allowScheduling bool, storageMaximum, storageReserved int64) types.DiskSpec {
+	return types.DiskSpec{
+		Path:            path,
+		AllowScheduling: allowScheduling,
+		StorageMaximum:  storageMaximum,
+		StorageReserved: storageReserved,
 	}
 }
 
@@ -174,6 +175,8 @@ type ReplicaSchedulerTestCase struct {
 	expectedNodes map[string]*longhorn.Node
 	// scheduler exception
 	err bool
+	// couldn't schedule replica
+	isNilReplica bool
 }
 
 func generateSchedulerTestCase() *ReplicaSchedulerTestCase {
@@ -203,6 +206,10 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon3,
 	}
 	node1 := newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
+	disk := newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
+	node1.Spec.Disks = map[string]types.DiskSpec{
+		TestDiskID1: disk,
+	}
 	node1.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
@@ -210,6 +217,10 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		},
 	}
 	node2 := newNode(TestNode2, TestNamespace, false, types.NodeStateUp)
+	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
+	node2.Spec.Disks = map[string]types.DiskSpec{
+		TestDiskID1: disk,
+	}
 	node2.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
@@ -217,6 +228,10 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		},
 	}
 	node3 := newNode(TestNode3, TestNamespace, true, types.NodeStateDown)
+	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
+	node3.Spec.Disks = map[string]types.DiskSpec{
+		TestDiskID1: disk,
+	}
 	node3.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
@@ -234,7 +249,29 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	}
 	tc.expectedNodes = expectedNodes
 	tc.err = false
+	tc.isNilReplica = false
 	testCases["nodes could not schedule"] = tc
+
+	// Test no disks on each nodes, volume should not schedule to any node
+	tc = generateSchedulerTestCase()
+	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	tc.daemons = []*v1.Pod{
+		daemon1,
+		daemon2,
+	}
+	node1 = newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
+	node2 = newNode(TestNode2, TestNamespace, true, types.NodeStateUp)
+	nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+		TestNode2: node2,
+	}
+	tc.nodes = nodes
+	expectedNodes = map[string]*longhorn.Node{}
+	tc.expectedNodes = expectedNodes
+	tc.err = false
+	tc.isNilReplica = true
+	testCases["there's no disk for replica"] = tc
 
 	// Test anti affinity nodes, replica should schedule to both node1 and node2
 	tc = generateSchedulerTestCase()
@@ -245,9 +282,74 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon2,
 	}
 	node1 = newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
+	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
+	disk2 := newDisk(TestDefaultDataPath, true, TestDiskSize, TestDiskSize)
+	node1.Spec.Disks = map[string]types.DiskSpec{
+		TestDiskID1: disk,
+		TestDiskID2: disk2,
+	}
+
 	node1.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+		},
+		TestDiskID2: {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+		},
+	}
+	expectNode1 := newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
+	expectNode1.Spec.Disks = map[string]types.DiskSpec{
+		TestDiskID1: disk,
+	}
+	node2 = newNode(TestNode2, TestNamespace, true, types.NodeStateUp)
+	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
+	node2.Spec.Disks = map[string]types.DiskSpec{
+		TestDiskID1: disk,
+	}
+	node2.Status.DiskStatus = map[string]types.DiskStatus{
+		TestDiskID1: {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+		},
+	}
+	nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+		TestNode2: node2,
+	}
+	tc.nodes = nodes
+	expectedNodes = map[string]*longhorn.Node{
+		TestNode1: expectNode1,
+		TestNode2: node2,
+	}
+	tc.expectedNodes = expectedNodes
+	tc.err = false
+	tc.isNilReplica = false
+	testCases["anti-affinity nodes"] = tc
+
+	// Test scheduler error when replica.NodeID is not ""
+	tc = generateSchedulerTestCase()
+	replicas := tc.replicas
+	for _, replica := range replicas {
+		replica.Spec.NodeID = TestNode1
+	}
+	tc.err = true
+	tc.isNilReplica = true
+	testCases["scheduler error when replica has NodeID"] = tc
+
+	// Test no available disks
+	tc = generateSchedulerTestCase()
+	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	tc.daemons = []*v1.Pod{
+		daemon1,
+		daemon2,
+	}
+	node1 = newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
+	node1.Status.DiskStatus = map[string]types.DiskStatus{
+		TestDiskID1: {
+			StorageAvailable: 0,
 			StorageScheduled: 0,
 		},
 	}
@@ -263,22 +365,11 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestNode2: node2,
 	}
 	tc.nodes = nodes
-	expectedNodes = map[string]*longhorn.Node{
-		TestNode1: node1,
-		TestNode2: node2,
-	}
+	expectedNodes = map[string]*longhorn.Node{}
 	tc.expectedNodes = expectedNodes
 	tc.err = false
-	testCases["anti-affinity nodes"] = tc
-
-	// Test scheduler error when replica.NodeID is not ""
-	tc = generateSchedulerTestCase()
-	replicas := tc.replicas
-	for _, replica := range replicas {
-		replica.Spec.NodeID = TestNode1
-	}
-	tc.err = true
-	testCases["scheduler error when replica has NodeID"] = tc
+	tc.isNilReplica = true
+	testCases["there's no available disks for scheduling"] = tc
 
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
@@ -324,14 +415,21 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			if tc.err {
 				c.Assert(err, NotNil)
 			} else {
-				c.Assert(err, IsNil)
-				c.Assert(sr, NotNil)
-				c.Assert(sr.Spec.DataPath, Matches, TestDefaultDataPath+"/.*")
-				tc.replicas[sr.Name] = sr
-				// check expected node
-				for nname := range tc.expectedNodes {
-					if sr.Spec.NodeID == nname {
-						delete(tc.expectedNodes, nname)
+				if tc.isNilReplica {
+					c.Assert(sr, IsNil)
+				} else {
+					c.Assert(err, IsNil)
+					c.Assert(sr, NotNil)
+					c.Assert(sr.Spec.NodeID, Not(Equals), "")
+					c.Assert(sr.Spec.DataPath, Not(Equals), "")
+					c.Assert(sr.Spec.DiskID, Not(Equals), "")
+					tc.replicas[sr.Name] = sr
+					// check expected node
+					for nname, node := range tc.expectedNodes {
+						if sr.Spec.NodeID == nname {
+							c.Assert(sr.Spec.DataPath, Matches, node.Spec.Disks[sr.Spec.DiskID].Path+"/.*")
+							delete(tc.expectedNodes, nname)
+						}
 					}
 				}
 			}
