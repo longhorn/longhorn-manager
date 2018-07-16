@@ -15,14 +15,14 @@ spec:
     spec:
       containers:
         - name: longhorn-driver-deployer
-          image: rancher/longhorn-manager:cc732c2
+          image: rancher/longhorn-manager:ca05cce
           imagePullPolicy: Always
           command:
           - longhorn-manager
           - -d
           - deploy-driver
           - --manager-image
-          - rancher/longhorn-manager:cc732c2
+          - rancher/longhorn-manager:ca05cce
           env:
           - name: POD_NAMESPACE
             valueFrom:
