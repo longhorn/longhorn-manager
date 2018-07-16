@@ -24,7 +24,7 @@ type SettingDefinition struct {
 	DisplayName string      `json:"displayName"`
 	Description string      `json:"description"`
 	Type        SettingType `json:"type"`
-	Nullable    bool        `json:"nullable"`
+	Required    bool        `json:"required"`
 	ReadOnly    bool        `json:"readOnly"`
 	Default     string      `json:"default"`
 }
@@ -40,7 +40,7 @@ var (
 		DisplayName: "Backup Target",
 		Description: "The target used for backup. Support NFS or S3.",
 		Type:        SettingTypeString,
-		Nullable:    true,
+		Required:    false,
 		ReadOnly:    false,
 	}
 
@@ -48,7 +48,7 @@ var (
 		DisplayName: "Backup Target Credential Secret",
 		Description: "The Kubernetes secret associated with the backup target.",
 		Type:        SettingTypeString,
-		Nullable:    true,
+		Required:    false,
 		ReadOnly:    false,
 	}
 
@@ -56,7 +56,7 @@ var (
 		DisplayName: "Default Engine Image",
 		Description: "The default engine image used by the manager. Can be changed on the manager starting command line only",
 		Type:        SettingTypeString,
-		Nullable:    false,
+		Required:    true,
 		ReadOnly:    true,
 	}
 )
