@@ -39,10 +39,12 @@ const (
 
 	TestTimeNow = "2015-01-02T00:00:00Z"
 
-	TestDefaultDataPath = "/var/lib/rancher/longhorn"
-	TestDaemon1         = "longhorn-manager-1"
-	TestDaemon2         = "longhorn-manager-2"
-	TestDiskID1         = "diskID1"
+	TestDefaultDataPath   = "/var/lib/rancher/longhorn"
+	TestDaemon1           = "longhorn-manager-1"
+	TestDaemon2           = "longhorn-manager-2"
+	TestDiskID1           = "diskID1"
+	TestDiskSize          = 5000000000
+	TestDiskAvailableSize = 3000000000
 )
 
 var (

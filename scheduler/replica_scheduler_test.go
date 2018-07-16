@@ -42,7 +42,10 @@ const (
 	TestDaemon1 = "longhorn-manager-1"
 	TestDaemon2 = "longhorn-manager-2"
 	TestDaemon3 = "longhorn-manager-3"
-	TestDiskID1 = "diskID1"
+
+	TestDiskID1           = "diskID1"
+	TestDiskSize          = 5000000000
+	TestDiskAvailableSize = 3000000000
 )
 
 func newReplicaScheduler(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
@@ -94,6 +97,8 @@ func newNode(name, namespace string, allowScheduling bool, nodeState types.NodeS
 		TestDiskID1: {
 			Path:            TestDefaultDataPath,
 			AllowScheduling: true,
+			StorageMaximum:  TestDiskSize,
+			StorageReserved: 0,
 		},
 	}
 	return &longhorn.Node{
@@ -198,8 +203,26 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon3,
 	}
 	node1 := newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
+	node1.Status.DiskStatus = map[string]types.DiskStatus{
+		TestDiskID1: {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+		},
+	}
 	node2 := newNode(TestNode2, TestNamespace, false, types.NodeStateUp)
+	node2.Status.DiskStatus = map[string]types.DiskStatus{
+		TestDiskID1: {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+		},
+	}
 	node3 := newNode(TestNode3, TestNamespace, true, types.NodeStateDown)
+	node3.Status.DiskStatus = map[string]types.DiskStatus{
+		TestDiskID1: {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+		},
+	}
 	nodes := map[string]*longhorn.Node{
 		TestNode1: node1,
 		TestNode2: node2,
@@ -222,7 +245,19 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon2,
 	}
 	node1 = newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
+	node1.Status.DiskStatus = map[string]types.DiskStatus{
+		TestDiskID1: {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+		},
+	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.NodeStateUp)
+	node2.Status.DiskStatus = map[string]types.DiskStatus{
+		TestDiskID1: {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+		},
+	}
 	nodes = map[string]*longhorn.Node{
 		TestNode1: node1,
 		TestNode2: node2,
