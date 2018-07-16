@@ -363,7 +363,7 @@ func newNode(name, namespace string, allowScheduling bool, status types.NodeStat
 				TestDiskID1: {
 					Path:            TestDefaultDataPath,
 					AllowScheduling: true,
-					StorageMaximum:  0,
+					StorageMaximum:  TestDiskSize,
 					StorageReserved: 0,
 				},
 			},
@@ -440,6 +440,12 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 		// need to create default node
 		for _, node := range tc.nodes {
+			node.Status.DiskStatus = map[string]types.DiskStatus{
+				TestDiskID1: {
+					StorageAvailable: TestDiskAvailableSize,
+					StorageScheduled: 0,
+				},
+			}
 			n, err := lhClient.Longhorn().Nodes(TestNamespace).Create(node)
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)

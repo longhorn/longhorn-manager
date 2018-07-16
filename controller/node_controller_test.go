@@ -149,12 +149,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	}
 	tc.pods = pods
 	node1 = newNode(TestNode1, TestNamespace, true, "up")
-	node1.Spec.Disks = map[string]types.DiskSpec{
-		TestDiskID1: {
-			Path:            TestDefaultDataPath,
-			AllowScheduling: true,
-		},
-	}
 	node1.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
@@ -162,12 +156,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, "up")
-	node2.Spec.Disks = map[string]types.DiskSpec{
-		TestDiskID1: {
-			Path:            TestDefaultDataPath,
-			AllowScheduling: true,
-		},
-	}
 	node2.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,

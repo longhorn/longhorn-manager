@@ -16,6 +16,11 @@ type ReplicaScheduler struct {
 	ds *datastore.DataStore
 }
 
+type Disk struct {
+	types.DiskSpec
+	NodeID string
+}
+
 func NewReplicaScheduler(ds *datastore.DataStore) *ReplicaScheduler {
 	rcScheduler := &ReplicaScheduler{
 		ds: ds,
@@ -39,55 +44,70 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 		logrus.Errorf("There's no available node for replica %+v", replica)
 		return nil, nil
 	}
-	// TODO Need to add capacity.
-	// Just make sure replica of the same volume be scheduled to different nodes for now.
-	preferredNodes, err := rcs.preferredNodes(nodeInfo, replicas)
-	if err != nil {
-		return nil, err
-	}
-	// if other replica has allocated to different nodes, then choose a random one
-	var preferredNode *longhorn.Node
-	if len(preferredNodes) == 0 {
-		preferredNode = rcs.getRandomNode(nodeInfo)
-	} else {
-		preferredNode = rcs.getRandomNode(preferredNodes)
+
+	// find proper node and disk
+	diskCandidates := rcs.chooseDiskCandidates(nodeInfo, replicas, replica)
+
+	// there's no disk that fit for current replica
+	if len(diskCandidates) == 0 {
+		logrus.Errorf("There's no available disk for replica %+v", replica)
+		return nil, nil
 	}
 
-	// regenerate replica resource
-	err = rcs.generateReplica(replica, preferredNode)
-	if err != nil {
-		return nil, err
-	}
+	// schedule replica to disk
+	rcs.scheduleReplicaToDisk(replica, diskCandidates)
 
 	return replica, nil
 }
 
-func (rcs *ReplicaScheduler) getRandomNode(nodeMap map[string]*longhorn.Node) *longhorn.Node {
-	var node *longhorn.Node
-
-	// map is random in Go
-	for _, node = range nodeMap {
-		break
-	}
-
-	return node
-}
-
-func (rcs *ReplicaScheduler) preferredNodes(nodeInfo map[string]*longhorn.Node, replicas map[string]*longhorn.Replica) (map[string]*longhorn.Node, error) {
-	preferredNode := map[string]*longhorn.Node{}
+func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.Node, replicas map[string]*longhorn.Replica, replica *longhorn.Replica) map[string]*Disk {
+	diskCandidates := map[string]*Disk{}
+	filterdNode := []*longhorn.Node{}
 	for nodeName, node := range nodeInfo {
 		isFilterd := false
 		for _, r := range replicas {
-			if r.Spec.NodeID != "" && r.Spec.NodeID == nodeName {
+			// filter replica in deleting process
+			if r.Spec.NodeID != "" && r.Spec.NodeID == nodeName && r.DeletionTimestamp == nil {
+				filterdNode = append(filterdNode, node)
 				isFilterd = true
 				break
 			}
 		}
 		if !isFilterd {
-			preferredNode[nodeName] = node
+			diskCandidates = filterNodeDisksForReplica(node, replica)
+			if len(diskCandidates) > 0 {
+				return diskCandidates
+			}
 		}
 	}
-	return preferredNode, nil
+	// If there's no disk fit for replica on other nodes,
+	// try to schedule to node that has been scheduled replicas.
+	for _, node := range filterdNode {
+		diskCandidates = filterNodeDisksForReplica(node, replica)
+	}
+
+	return diskCandidates
+}
+
+func filterNodeDisksForReplica(node *longhorn.Node, replica *longhorn.Replica) map[string]*Disk {
+	preferredDisk := map[string]*Disk{}
+	// find disk that fit for current replica
+	disks := node.Spec.Disks
+	diskStatus := node.Status.DiskStatus
+	for fsid, disk := range disks {
+		status := diskStatus[fsid]
+		if !disk.AllowScheduling || (replica.Spec.VolumeSize+status.StorageScheduled) > (disk.StorageMaximum-disk.StorageReserved)*(types.StorageOverProvisioningPercentage/100) ||
+			replica.Spec.VolumeSize > (status.StorageAvailable-disk.StorageMaximum*types.StorageMinimalAvailablePercentage/100)*types.StorageOverProvisioningPercentage/100 {
+			continue
+		}
+		suggestDisk := &Disk{
+			DiskSpec: disk,
+			NodeID:   node.Name,
+		}
+		preferredDisk[fsid] = suggestDisk
+	}
+
+	return preferredDisk
 }
 
 func (rcs *ReplicaScheduler) getNodeInfo() (map[string]*longhorn.Node, error) {
@@ -104,18 +124,14 @@ func (rcs *ReplicaScheduler) getNodeInfo() (map[string]*longhorn.Node, error) {
 	return scheduledNode, nil
 }
 
-func (rcs *ReplicaScheduler) generateReplica(replica *longhorn.Replica, node *longhorn.Node) error {
-	replica.Spec.NodeID = node.Name
-	node, err := rcs.ds.GetNode(node.Name)
-	if err != nil {
-		return err
-	}
-	// TODO just set random directory for now
-	for diskID, disk := range node.Spec.Disks {
-		replica.Spec.DiskID = diskID
-		replica.Spec.DataPath = filepath.Join(disk.Path, "replicas", replica.Spec.VolumeName+"-"+util.RandomID())
+func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, diskCandidates map[string]*Disk) {
+	// get a random disk from diskCandidates
+	var fsid string
+	var disk *Disk
+	for fsid, disk = range diskCandidates {
 		break
 	}
-
-	return nil
+	replica.Spec.NodeID = disk.NodeID
+	replica.Spec.DiskID = fsid
+	replica.Spec.DataPath = filepath.Join(disk.Path, "replicas", replica.Spec.VolumeName+"-"+util.RandomID())
 }
