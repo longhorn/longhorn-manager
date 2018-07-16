@@ -514,6 +514,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				// validate DataPath and NodeID of replica have been set in scheduler
 				c.Assert(retR.Spec.DataPath, Not(Equals), "")
 				c.Assert(retR.Spec.NodeID, Not(Equals), "")
+				c.Assert(retR.Spec.DiskID, Not(Equals), "")
 				c.Assert(retR.Spec.NodeID, Equals, TestNode1)
 				c.Assert(retR.Status, DeepEquals, expectR.Status)
 			} else {
