@@ -604,17 +604,22 @@ func (s *DataStore) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	return s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Update(node)
 }
 
-func (s *DataStore) ListNodes() ([]*longhorn.Node, error) {
+func (s *DataStore) ListNodes() (map[string]*longhorn.Node, error) {
+	itemMap := make(map[string]*longhorn.Node)
+
 	nodeList, err := s.nLister.Nodes(s.namespace).List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
-	nList := []*longhorn.Node{}
-	for _, item := range nodeList {
-		nList = append(nList, item.DeepCopy())
+	if len(nodeList) == 0 {
+		return map[string]*longhorn.Node{}, nil
 	}
 
-	return nList, nil
+	for _, node := range nodeList {
+		// Cannot use cached object from lister
+		itemMap[node.Name] = node.DeepCopy()
+	}
+	return itemMap, nil
 }
 
 // RemoveFinalizerForNode will result in deletion if DeletionTimestamp was set

@@ -13,7 +13,7 @@ import (
 func (s *Server) EngineImageList(rw http.ResponseWriter, req *http.Request) (err error) {
 	apiContext := api.GetApiContext(req)
 
-	eis, err := s.m.ListEngineImagesByName()
+	eis, err := s.m.ListEngineImagesSorted()
 	if err != nil {
 		return errors.Wrap(err, "error listing engine image")
 	}

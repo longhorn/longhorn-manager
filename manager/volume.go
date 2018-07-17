@@ -2,6 +2,8 @@ package manager
 
 import (
 	"fmt"
+	"reflect"
+	"sort"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
@@ -49,6 +51,44 @@ func (m *VolumeManager) List() (map[string]*longhorn.Volume, error) {
 	return m.ds.ListVolumes()
 }
 
+// sortKeys accepts a map with string keys and returns a sorted slice of keys
+func sortKeys(mapObj interface{}) ([]string, error) {
+	if mapObj == nil {
+		return []string{}, fmt.Errorf("BUG: mapObj was nil")
+	}
+	m := reflect.ValueOf(mapObj)
+	if m.Kind() != reflect.Map {
+		return []string{}, fmt.Errorf("BUG: expected map, got %v", m.Kind())
+	}
+
+	keys := make([]string, m.Len())
+	for i, key := range m.MapKeys() {
+		if key.Kind() != reflect.String {
+			return []string{}, fmt.Errorf("BUG: expect map[string]interface{}, got map[%v]interface{}", key.Kind())
+		}
+		keys[i] = key.String()
+	}
+	sort.Strings(keys)
+	return keys, nil
+}
+
+func (m *VolumeManager) ListSorted() ([]*longhorn.Volume, error) {
+	volumeMap, err := m.List()
+	if err != nil {
+		return []*longhorn.Volume{}, err
+	}
+
+	volumes := make([]*longhorn.Volume, len(volumeMap))
+	volumeNames, err := sortKeys(volumeMap)
+	if err != nil {
+		return []*longhorn.Volume{}, err
+	}
+	for i, volumeName := range volumeNames {
+		volumes[i] = volumeMap[volumeName]
+	}
+	return volumes, nil
+}
+
 func (m *VolumeManager) Get(vName string) (*longhorn.Volume, error) {
 	return m.ds.GetVolume(vName)
 }
@@ -59,6 +99,23 @@ func (m *VolumeManager) GetEngine(vName string) (*longhorn.Engine, error) {
 
 func (m *VolumeManager) GetReplicas(vName string) (map[string]*longhorn.Replica, error) {
 	return m.ds.GetVolumeReplicas(vName)
+}
+
+func (m *VolumeManager) GetReplicasSorted(vName string) ([]*longhorn.Replica, error) {
+	replicaMap, err := m.ds.GetVolumeReplicas(vName)
+	if err != nil {
+		return []*longhorn.Replica{}, err
+	}
+
+	replicas := make([]*longhorn.Replica, len(replicaMap))
+	replicaNames, err := sortKeys(replicaMap)
+	if err != nil {
+		return []*longhorn.Replica{}, err
+	}
+	for i, replicaName := range replicaNames {
+		replicas[i] = replicaMap[replicaName]
+	}
+	return replicas, nil
 }
 
 func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn.Volume, err error) {
@@ -384,10 +441,27 @@ func (m *VolumeManager) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) 
 	return m.ds.UpdateNode(node)
 }
 
-func (m *VolumeManager) GetManagerNode() ([]*longhorn.Node, error) {
+func (m *VolumeManager) ListNodes() (map[string]*longhorn.Node, error) {
 	nodeList, err := m.ds.ListNodes()
 	if err != nil {
 		return nil, err
 	}
 	return nodeList, nil
+}
+
+func (m *VolumeManager) ListNodesSorted() ([]*longhorn.Node, error) {
+	nodeMap, err := m.ListNodes()
+	if err != nil {
+		return []*longhorn.Node{}, err
+	}
+
+	nodes := make([]*longhorn.Node, len(nodeMap))
+	nodeNames, err := sortKeys(nodeMap)
+	if err != nil {
+		return []*longhorn.Node{}, err
+	}
+	for i, nodeName := range nodeNames {
+		nodes[i] = nodeMap[nodeName]
+	}
+	return nodes, nil
 }
