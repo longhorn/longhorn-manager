@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
@@ -122,10 +123,16 @@ func NewJob(volumeName, snapshotName, backupTarget string, labels map[string]str
 	if err != nil {
 		return nil, err
 	}
-	e, err := lhClient.LonghornV1alpha1().Engines(namespace).Get(types.GetEngineNameForVolume(v.Name), metav1.GetOptions{})
+	eList, err := lhClient.LonghornV1alpha1().Engines(namespace).List(metav1.ListOptions{
+		LabelSelector: datastore.LonghornVolumeKey + "=" + volumeName,
+	})
 	if err != nil {
 		return nil, err
 	}
+	if len(eList.Items) != 1 {
+		return nil, fmt.Errorf("cannot find suitable engine: %+v", eList)
+	}
+	e := eList.Items[0]
 	if e.Status.IP == "" {
 		return nil, fmt.Errorf("engine %v is not running, no IP available", e.Name)
 	}

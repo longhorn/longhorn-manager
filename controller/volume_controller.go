@@ -850,7 +850,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, error) {
 	engine := &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            types.GetEngineNameForVolume(v.Name),
+			Name:            types.GenerateEngineNameForVolume(v.Name),
 			OwnerReferences: vc.getOwnerReferencesForVolume(v),
 		},
 		Spec: types.EngineSpec{

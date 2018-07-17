@@ -76,8 +76,8 @@ const (
 	engineImagePrefix = "ei-"
 )
 
-func GetEngineNameForVolume(vName string) string {
-	return vName + engineSuffix
+func GenerateEngineNameForVolume(vName string) string {
+	return vName + engineSuffix + "-" + util.RandomID()
 }
 
 func GenerateReplicaNameForVolume(vName string) string {

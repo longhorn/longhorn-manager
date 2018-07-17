@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
@@ -79,12 +78,12 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 
 type VolumeTestCase struct {
 	volume   *longhorn.Volume
-	engine   *longhorn.Engine
+	engines  map[string]*longhorn.Engine
 	replicas map[string]*longhorn.Replica
 	nodes    []*longhorn.Node
 
 	expectVolume   *longhorn.Volume
-	expectEngine   *longhorn.Engine
+	expectEngines  map[string]*longhorn.Engine
 	expectReplicas map[string]*longhorn.Replica
 }
 
@@ -104,7 +103,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 			Status: types.ConditionStatusTrue,
 		},
 	}
-	tc.engine = nil
+	tc.engines = nil
 	tc.replicas = nil
 	testCases["volume create"] = tc
 
@@ -117,7 +116,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.replicas = nil
 	tc.copyCurrentToExpect()
 	// engine object will still be created
-	tc.engine = nil
+	tc.engines = nil
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectVolume.Status.Conditions = map[types.VolumeConditionType]types.Condition{
@@ -131,7 +130,9 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 
 	// after creation, volume in detached state
 	tc = generateVolumeTestCaseTemplate()
-	tc.engine.Status.CurrentState = types.InstanceStateStopped
+	for _, e := range tc.engines {
+		e.Status.CurrentState = types.InstanceStateStopped
+	}
 	for _, r := range tc.replicas {
 		r.Status.CurrentState = types.InstanceStateStopped
 	}
@@ -165,29 +166,40 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
-	tc.expectEngine.Spec.NodeID = tc.volume.Spec.NodeID
-	tc.expectEngine.Spec.DesireState = types.InstanceStateRunning
+	for _, e := range tc.expectEngines {
+		e.Spec.NodeID = tc.volume.Spec.NodeID
+		e.Spec.DesireState = types.InstanceStateRunning
+	}
 	for name, r := range tc.expectReplicas {
-		tc.expectEngine.Spec.ReplicaAddressMap[name] = r.Status.IP
+		//TODO update to r.Spec.AssociatedEngine
+		for _, e := range tc.expectEngines {
+			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+		}
 	}
 	testCases["volume attaching - start controller"] = tc
 
 	// volume attached
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = TestNode1
-	tc.engine.Spec.NodeID = tc.volume.Spec.NodeID
-	tc.engine.Spec.DesireState = types.InstanceStateRunning
-	tc.engine.Status.CurrentState = types.InstanceStateRunning
-	tc.engine.Status.IP = randomIP()
-	tc.engine.Status.Endpoint = "/dev/" + tc.volume.Name
-	tc.engine.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
+
+	for _, e := range tc.engines {
+		e.Spec.NodeID = tc.volume.Spec.NodeID
+		e.Spec.DesireState = types.InstanceStateRunning
+		e.Status.CurrentState = types.InstanceStateRunning
+		e.Status.IP = randomIP()
+		e.Status.Endpoint = "/dev/" + tc.volume.Name
+		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
+	}
 	for name, r := range tc.replicas {
 		r.Spec.DesireState = types.InstanceStateRunning
 		r.Spec.NodeID = util.RandomID()
 		r.Status.CurrentState = types.InstanceStateRunning
 		r.Status.IP = randomIP()
-		tc.engine.Spec.ReplicaAddressMap[name] = r.Status.IP
-		tc.engine.Status.ReplicaModeMap[name] = types.ReplicaModeRW
+		//TODO update to r.Spec.AssociatedEngine
+		for _, e := range tc.engines {
+			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+			e.Status.ReplicaModeMap[name] = types.ReplicaModeRW
+		}
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttached
@@ -202,40 +214,52 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = ""
 	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
-	tc.engine.Spec.NodeID = TestNode1
-	tc.engine.Spec.DesireState = types.InstanceStateRunning
-	tc.engine.Status.CurrentState = types.InstanceStateRunning
-	tc.engine.Status.IP = randomIP()
-	tc.engine.Status.Endpoint = "/dev/" + tc.volume.Name
-	tc.engine.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
+	for _, e := range tc.engines {
+		e.Spec.NodeID = TestNode1
+		e.Spec.DesireState = types.InstanceStateRunning
+		e.Status.CurrentState = types.InstanceStateRunning
+		e.Status.IP = randomIP()
+		e.Status.Endpoint = "/dev/" + tc.volume.Name
+		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
+	}
 	for name, r := range tc.replicas {
 		r.Spec.DesireState = types.InstanceStateRunning
 		r.Spec.NodeID = util.RandomID()
 		r.Spec.HealthyAt = getTestNow()
 		r.Status.CurrentState = types.InstanceStateRunning
 		r.Status.IP = randomIP()
-		tc.engine.Spec.ReplicaAddressMap[name] = r.Status.IP
-		tc.engine.Status.ReplicaModeMap[name] = types.ReplicaModeRW
+		//TODO update to r.Spec.AssociatedEngine
+		for _, e := range tc.engines {
+			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+			e.Status.ReplicaModeMap[name] = types.ReplicaModeRW
+		}
 	}
 	tc.copyCurrentToExpect()
-	tc.expectEngine.Spec.NodeID = ""
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
-	tc.expectEngine.Spec.DesireState = types.InstanceStateStopped
+	for _, e := range tc.expectEngines {
+		e.Spec.NodeID = ""
+		e.Spec.DesireState = types.InstanceStateStopped
+	}
 	testCases["volume detaching - stop engine"] = tc
 
 	// volume detaching - stop replicas
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = ""
-	tc.engine.Spec.NodeID = ""
-	tc.engine.Status.CurrentState = types.InstanceStateStopped
+	for _, e := range tc.engines {
+		e.Spec.NodeID = ""
+		e.Status.CurrentState = types.InstanceStateStopped
+	}
 	for name, r := range tc.replicas {
 		r.Spec.DesireState = types.InstanceStateRunning
 		r.Spec.NodeID = util.RandomID()
 		r.Spec.HealthyAt = getTestNow()
 		r.Status.CurrentState = types.InstanceStateRunning
 		r.Status.IP = randomIP()
-		tc.engine.Spec.ReplicaAddressMap[name] = r.Status.IP
+		//TODO update to r.Spec.AssociatedEngine
+		for _, e := range tc.engines {
+			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+		}
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
@@ -251,7 +275,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.SetDeletionTimestamp(&now)
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateDeleting
-	tc.expectEngine = nil
+	tc.expectEngines = nil
 	tc.expectReplicas = nil
 	testCases["volume deleting"] = tc
 
@@ -284,7 +308,7 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 	return &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: v.Name + "-e",
+			Name: v.Name + "-e-" + util.RandomID(),
 			Labels: map[string]string{
 				"longhornvolume": v.Name,
 			},
@@ -382,7 +406,9 @@ func generateVolumeTestCaseTemplate() *VolumeTestCase {
 
 	return &VolumeTestCase{
 		volume: volume,
-		engine: engine,
+		engines: map[string]*longhorn.Engine{
+			engine.Name: engine,
+		},
 		replicas: map[string]*longhorn.Replica{
 			replica1.Name: replica1,
 			replica2.Name: replica2,
@@ -393,14 +419,16 @@ func generateVolumeTestCaseTemplate() *VolumeTestCase {
 		},
 
 		expectVolume:   nil,
-		expectEngine:   nil,
+		expectEngines:  map[string]*longhorn.Engine{},
 		expectReplicas: map[string]*longhorn.Replica{},
 	}
 }
 
 func (tc *VolumeTestCase) copyCurrentToExpect() {
 	tc.expectVolume = tc.volume.DeepCopy()
-	tc.expectEngine = tc.engine.DeepCopy()
+	for n, e := range tc.engines {
+		tc.expectEngines[n] = e.DeepCopy()
+	}
 	for n, r := range tc.replicas {
 		tc.expectReplicas[n] = r.DeepCopy()
 	}
@@ -455,11 +483,13 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		err = vIndexer.Add(v)
 		c.Assert(err, IsNil)
 
-		if tc.engine != nil {
-			e, err := lhClient.LonghornV1alpha1().Engines(TestNamespace).Create(tc.engine)
-			c.Assert(err, IsNil)
-			err = eIndexer.Add(e)
-			c.Assert(err, IsNil)
+		if tc.engines != nil {
+			for _, e := range tc.engines {
+				e, err := lhClient.LonghornV1alpha1().Engines(TestNamespace).Create(e)
+				c.Assert(err, IsNil)
+				err = eIndexer.Add(e)
+				c.Assert(err, IsNil)
+			}
 		}
 
 		if tc.replicas != nil {
@@ -489,13 +519,21 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		}
 		c.Assert(retV.Status, DeepEquals, tc.expectVolume.Status)
 
-		retE, err := lhClient.LonghornV1alpha1().Engines(TestNamespace).Get(types.GetEngineNameForVolume(v.Name), metav1.GetOptions{})
-		if tc.expectEngine != nil {
-			c.Assert(err, IsNil)
-			c.Assert(retE.Spec, DeepEquals, tc.expectEngine.Spec)
-			c.Assert(retE.Status, DeepEquals, tc.expectEngine.Status)
-		} else {
-			c.Assert(apierrors.IsNotFound(err), Equals, true)
+		retEs, err := lhClient.LonghornV1alpha1().Engines(TestNamespace).List(metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
+		c.Assert(err, IsNil)
+		c.Assert(retEs.Items, HasLen, len(tc.expectEngines))
+		for _, retE := range retEs.Items {
+			if tc.engines == nil {
+				// test creation, name would be different
+				var expectE *longhorn.Engine
+				for _, expectE = range tc.expectEngines {
+					break
+				}
+				c.Assert(retE.Status, DeepEquals, expectE.Status)
+			} else {
+				c.Assert(retE.Spec, DeepEquals, tc.expectEngines[retE.Name].Spec)
+				c.Assert(retE.Status, DeepEquals, tc.expectEngines[retE.Name].Status)
+			}
 		}
 
 		retRs, err := lhClient.LonghornV1alpha1().Replicas(TestNamespace).List(metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
@@ -503,7 +541,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		c.Assert(retRs.Items, HasLen, len(tc.expectReplicas))
 		for _, retR := range retRs.Items {
 			if tc.replicas == nil {
-				// test creation
+				// test creation, name would be different
 				var expectR *longhorn.Replica
 				for _, expectR = range tc.expectReplicas {
 					break
