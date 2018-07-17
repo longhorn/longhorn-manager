@@ -7,6 +7,7 @@ import (
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 
+	"github.com/rancher/longhorn-manager/controller"
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/types"
@@ -536,12 +537,14 @@ func toEngineImageCollection(eis []*longhorn.EngineImage, defaultImage string) *
 
 type Server struct {
 	m   *manager.VolumeManager
+	wsc *controller.WebsocketController
 	fwd *Fwd
 }
 
-func NewServer(m *manager.VolumeManager) *Server {
+func NewServer(m *manager.VolumeManager, wsc *controller.WebsocketController) *Server {
 	s := &Server{
 		m:   m,
+		wsc: wsc,
 		fwd: NewFwd(m),
 	}
 	return s
