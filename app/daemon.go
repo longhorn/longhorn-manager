@@ -91,7 +91,7 @@ func startManager(c *cli.Context) error {
 
 	done := make(chan struct{})
 
-	ds, err := controller.StartControllers(done, currentNodeID, serviceAccount, managerImage, kubeconfigPath)
+	ds, wsc, err := controller.StartControllers(done, currentNodeID, serviceAccount, managerImage, kubeconfigPath)
 	if err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	server := api.NewServer(m)
+	server := api.NewServer(m, wsc)
 	router := http.Handler(api.NewRouter(server))
 
 	listen := types.GetAPIServerAddressFromIP(currentIP)

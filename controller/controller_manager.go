@@ -31,7 +31,7 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
-func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, managerImage, kubeconfigPath string) (*datastore.DataStore, error) {
+func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, managerImage, kubeconfigPath string) (*datastore.DataStore, *WebsocketController, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, "+
@@ -41,22 +41,22 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to get client config")
+		return nil, nil, errors.Wrap(err, "unable to get client config")
 	}
 
 	kubeClient, err := clientset.NewForConfig(config)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to get k8s client")
+		return nil, nil, errors.Wrap(err, "unable to get k8s client")
 	}
 
 	lhClient, err := lhclientset.NewForConfig(config)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to get clientset")
+		return nil, nil, errors.Wrap(err, "unable to get clientset")
 	}
 
 	scheme := runtime.NewScheme()
 	if err := longhorn.SchemeBuilder.AddToScheme(scheme); err != nil {
-		return nil, errors.Wrap(err, "unable to create scheme")
+		return nil, nil, errors.Wrap(err, "unable to create scheme")
 	}
 
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
@@ -96,19 +96,22 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	nc := NewNodeController(ds, scheme,
 		nodeInformer, podInformer,
 		kubeClient, namespace)
+	ws := NewWebsocketController(volumeInformer, engineInformer, replicaInformer,
+		settingInformer, engineImageInformer, nodeInformer)
 
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
 	if !ds.Sync(stopCh) {
-		return nil, fmt.Errorf("datastore cache sync up failed")
+		return nil, nil, fmt.Errorf("datastore cache sync up failed")
 	}
 	go rc.Run(Workers, stopCh)
 	go ec.Run(Workers, stopCh)
 	go vc.Run(Workers, stopCh)
 	go ic.Run(Workers, stopCh)
 	go nc.Run(Workers, stopCh)
+	go ws.Run(stopCh)
 
-	return ds, nil
+	return ds, ws, nil
 }
 
 func StartProvisioner(m *manager.VolumeManager, kubeconfigPath string) error {
