@@ -6,20 +6,30 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
+	"github.com/rancher/go-rancher/client"
 )
 
 func (s *Server) NodeList(rw http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
+
+	nodeList, err := s.nodeList(apiContext)
+	if err != nil {
+		return err
+	}
+	apiContext.Write(nodeList)
+	return nil
+}
+
+func (s *Server) nodeList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
 	nodeList, err := s.m.ListNodesSorted()
 	if err != nil {
-		return errors.Wrap(err, "fail to list nodes")
+		return nil, errors.Wrap(err, "fail to list nodes")
 	}
 	nodeIPMap, err := s.m.GetManagerNodeIPMap()
 	if err != nil {
-		return errors.Wrap(err, "fail to get node ip")
+		return nil, errors.Wrap(err, "fail to get node ip")
 	}
-	apiContext.Write(toNodeCollection(nodeList, nodeIPMap))
-	return nil
+	return toNodeCollection(nodeList, nodeIPMap), nil
 }
 
 func (s *Server) NodeGet(rw http.ResponseWriter, req *http.Request) error {

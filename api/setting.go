@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
+	"github.com/rancher/go-rancher/client"
 
 	"github.com/rancher/longhorn-manager/types"
 )
@@ -16,12 +17,20 @@ import (
 func (s *Server) SettingList(w http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 
-	sList, err := s.m.ListSettingsSorted()
+	sl, err := s.settingList(apiContext)
 	if err != nil {
-		return errors.Wrap(err, "fail to list settings")
+		return err
 	}
-	apiContext.Write(toSettingCollection(sList))
+	apiContext.Write(sl)
 	return nil
+}
+
+func (s *Server) settingList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
+	sList, err := s.m.ListSettingsSorted()
+	if err != nil || sList == nil {
+		return nil, errors.Wrap(err, "fail to list settings")
+	}
+	return toSettingCollection(sList), nil
 }
 
 func (s *Server) SettingGet(w http.ResponseWriter, req *http.Request) error {

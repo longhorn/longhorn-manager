@@ -22,31 +22,42 @@ func (s *Server) VolumeList(rw http.ResponseWriter, req *http.Request) (err erro
 
 	apiContext := api.GetApiContext(req)
 
+	resp, err := s.volumeList(apiContext)
+	if err != nil {
+		return err
+	}
+
+	apiContext.Write(resp)
+
+	return nil
+}
+
+func (s *Server) volumeList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
 	resp := &client.GenericCollection{}
 
 	volumes, err := s.m.ListSorted()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	for _, v := range volumes {
 		controller, err := s.m.GetEngine(v.Name)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		replicas, err := s.m.GetReplicasSorted(v.Name)
 		if err != nil {
-			return err
+			return nil, err
 		}
+
 		resp.Data = append(resp.Data, toVolumeResource(v, controller, replicas, apiContext))
 	}
 	resp.ResourceType = "volume"
 	resp.CreateTypes = map[string]string{
 		"volume": apiContext.UrlBuilder.Collection("volume"),
 	}
-	apiContext.Write(resp)
 
-	return nil
+	return resp, nil
 }
 
 func (s *Server) VolumeGet(rw http.ResponseWriter, req *http.Request) error {
