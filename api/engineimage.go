@@ -7,22 +7,31 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
 
+	"github.com/rancher/go-rancher/client"
 	"github.com/rancher/longhorn-manager/types"
 )
 
-func (s *Server) EngineImageList(rw http.ResponseWriter, req *http.Request) (err error) {
+func (s *Server) EngineImageList(rw http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 
+	eil, err := s.engineImageList(apiContext)
+	if err != nil {
+		return err
+	}
+	apiContext.Write(eil)
+	return nil
+}
+
+func (s *Server) engineImageList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
 	eis, err := s.m.ListEngineImagesSorted()
 	if err != nil {
-		return errors.Wrap(err, "error listing engine image")
+		return nil, errors.Wrap(err, "error listing engine image")
 	}
 	defaultImage, err := s.m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if err != nil {
-		return errors.Wrap(err, "error listing engine image")
+		return nil, errors.Wrap(err, "error listing engine image")
 	}
-	apiContext.Write(toEngineImageCollection(eis, defaultImage))
-	return nil
+	return toEngineImageCollection(eis, defaultImage), nil
 }
 
 func (s *Server) EngineImageGet(rw http.ResponseWriter, req *http.Request) error {
