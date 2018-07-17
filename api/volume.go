@@ -24,7 +24,7 @@ func (s *Server) VolumeList(rw http.ResponseWriter, req *http.Request) (err erro
 
 	resp := &client.GenericCollection{}
 
-	volumes, err := s.m.List()
+	volumes, err := s.m.ListSorted()
 	if err != nil {
 		return err
 	}
@@ -34,7 +34,7 @@ func (s *Server) VolumeList(rw http.ResponseWriter, req *http.Request) (err erro
 		if err != nil {
 			return err
 		}
-		replicas, err := s.m.GetReplicas(v.Name)
+		replicas, err := s.m.GetReplicasSorted(v.Name)
 		if err != nil {
 			return err
 		}
@@ -77,7 +77,7 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 	if err != nil {
 		return err
 	}
-	replicas, err := s.m.GetReplicas(id)
+	replicas, err := s.m.GetReplicasSorted(id)
 	if err != nil {
 		return err
 	}

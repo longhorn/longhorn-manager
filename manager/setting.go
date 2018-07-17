@@ -29,6 +29,23 @@ func (m *VolumeManager) ListSettings() (map[types.SettingName]*longhorn.Setting,
 	return m.ds.ListSettings()
 }
 
+func (m *VolumeManager) ListSettingsSorted() ([]*longhorn.Setting, error) {
+	settingMap, err := m.ListSettings()
+	if err != nil {
+		return []*longhorn.Setting{}, err
+	}
+
+	settings := make([]*longhorn.Setting, len(settingMap))
+	settingNames, err := sortKeys(settingMap)
+	if err != nil {
+		return []*longhorn.Setting{}, err
+	}
+	for i, settingName := range settingNames {
+		settings[i] = settingMap[types.SettingName(settingName)]
+	}
+	return settings, nil
+}
+
 func (m *VolumeManager) CreateOrUpdateSetting(s *longhorn.Setting) (*longhorn.Setting, error) {
 	setting, err := m.ds.UpdateSetting(s)
 	if err != nil {

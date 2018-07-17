@@ -323,7 +323,7 @@ func toSettingResource(setting *longhorn.Setting) *Setting {
 	}
 }
 
-func toSettingCollection(settings map[types.SettingName]*longhorn.Setting) *client.GenericCollection {
+func toSettingCollection(settings []*longhorn.Setting) *client.GenericCollection {
 	data := []interface{}{}
 	for _, setting := range settings {
 		data = append(data, toSettingResource(setting))
@@ -331,7 +331,7 @@ func toSettingCollection(settings map[types.SettingName]*longhorn.Setting) *clie
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }
 
-func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs map[string]*longhorn.Replica, apiContext *api.ApiContext) *Volume {
+func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs []*longhorn.Replica, apiContext *api.ApiContext) *Volume {
 	replicas := []Replica{}
 	for _, r := range vrs {
 		mode := ""
@@ -525,7 +525,7 @@ func toEngineImageResource(ei *longhorn.EngineImage, isDefault bool) *EngineImag
 	}
 }
 
-func toEngineImageCollection(eis map[string]*longhorn.EngineImage, defaultImage string) *client.GenericCollection {
+func toEngineImageCollection(eis []*longhorn.EngineImage, defaultImage string) *client.GenericCollection {
 	data := []interface{}{}
 	for _, ei := range eis {
 		isDefault := (ei.Spec.Image == defaultImage)

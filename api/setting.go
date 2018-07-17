@@ -16,7 +16,7 @@ import (
 func (s *Server) SettingList(w http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 
-	sList, err := s.m.ListSettings()
+	sList, err := s.m.ListSettingsSorted()
 	if err != nil {
 		return errors.Wrap(err, "fail to list settings")
 	}

@@ -10,7 +10,7 @@ import (
 
 func (s *Server) NodeList(rw http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
-	nodeList, err := s.m.GetManagerNode()
+	nodeList, err := s.m.ListNodesSorted()
 	if err != nil {
 		return errors.Wrap(err, "fail to list nodes")
 	}

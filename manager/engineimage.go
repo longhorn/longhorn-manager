@@ -24,6 +24,24 @@ func (m *VolumeManager) ListEngineImagesByName() (map[string]*longhorn.EngineIma
 	return m.ds.ListEngineImages()
 }
 
+func (m *VolumeManager) ListEngineImagesSorted() ([]*longhorn.EngineImage, error) {
+	engineImageMap, err := m.ListEngineImagesByName()
+	if err != nil {
+		return []*longhorn.EngineImage{}, err
+	}
+
+	engineImages := make([]*longhorn.EngineImage, len(engineImageMap))
+	engineImageNames, err := sortKeys(engineImageMap)
+	if err != nil {
+		return []*longhorn.EngineImage{}, err
+	}
+	for i, engineImageName := range engineImageNames {
+		engineImages[i] = engineImageMap[engineImageName]
+	}
+	return engineImages, nil
+
+}
+
 func (m *VolumeManager) GetEngineImageByName(name string) (*longhorn.EngineImage, error) {
 	return m.ds.GetEngineImage(name)
 }
