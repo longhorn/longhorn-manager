@@ -22,6 +22,7 @@ const (
 	FlagEngineImage    = "engine-image"
 	FlagManagerImage   = "manager-image"
 	FlagServiceAccount = "service-account"
+	FlagKubeConfig     = "kube-config"
 )
 
 func DaemonCmd() cli.Command {
@@ -39,6 +40,10 @@ func DaemonCmd() cli.Command {
 			cli.StringFlag{
 				Name:  FlagServiceAccount,
 				Usage: "Specify service account for manager",
+			},
+			cli.StringFlag{
+				Name:  FlagKubeConfig,
+				Usage: "Specify path to kube config (optional)",
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -66,6 +71,7 @@ func startManager(c *cli.Context) error {
 	if serviceAccount == "" {
 		return fmt.Errorf("require %v", FlagServiceAccount)
 	}
+	kubeconfigPath := c.String(FlagKubeConfig)
 
 	if err := environmentCheck(); err != nil {
 		logrus.Errorf("Failed environment check, please make sure you " +
@@ -85,7 +91,7 @@ func startManager(c *cli.Context) error {
 
 	done := make(chan struct{})
 
-	ds, err := controller.StartControllers(done, currentNodeID, serviceAccount, managerImage)
+	ds, err := controller.StartControllers(done, currentNodeID, serviceAccount, managerImage, kubeconfigPath)
 	if err != nil {
 		return err
 	}
@@ -104,7 +110,7 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	if err := controller.StartProvisioner(m); err != nil {
+	if err := controller.StartProvisioner(m, kubeconfigPath); err != nil {
 		return err
 	}
 

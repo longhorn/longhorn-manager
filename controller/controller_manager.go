@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/util/version"
 
 	"github.com/rancher/longhorn-manager/datastore"
@@ -31,16 +31,15 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
-func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, managerImage string) (*datastore.DataStore, error) {
+func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, managerImage, kubeconfigPath string) (*datastore.DataStore, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
-		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, " +
-			"using default namespace")
+		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, "+
+			"using default namespace", types.EnvPodNamespace)
 		namespace = corev1.NamespaceDefault
 	}
 
-	// Only supports in-cluster config
-	config, err := rest.InClusterConfig()
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to get client config")
 	}
@@ -112,9 +111,8 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	return ds, nil
 }
 
-func StartProvisioner(m *manager.VolumeManager) error {
-	// Only supports in-cluster config
-	config, err := rest.InClusterConfig()
+func StartProvisioner(m *manager.VolumeManager, kubeconfigPath string) error {
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
 		return errors.Wrap(err, "unable to get client config")
 	}
