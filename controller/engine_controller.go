@@ -718,6 +718,20 @@ func (ec *EngineController) rebuildingNewReplica(e *longhorn.Engine) error {
 	return nil
 }
 
+func doesIPExistInEngine(ip string, client engineapi.EngineClient) (bool, error) {
+	replicaURLModeMap, err := client.ReplicaList()
+	if err != nil {
+		return false, err
+	}
+	for url := range replicaURLModeMap {
+		// the replica has been rebuilt or in the process already
+		if ip == engineapi.GetIPFromURL(url) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to start rebuild for %v of %v", replica, e.Name)
@@ -727,6 +741,19 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip stri
 	if err != nil {
 		return err
 	}
+
+	// we need to know the current status, since ReplicaAddressMap may
+	// haven't been updated since last rebuild
+	alreadyExists, err := doesIPExistInEngine(ip, client)
+	if err != nil {
+		return err
+	}
+	// replica has already been added to the engine
+	if alreadyExists {
+		logrus.Debugf("replica %v ip %v has been added to the engine already", replica, ip)
+		return nil
+	}
+
 	replicaURL := engineapi.GetReplicaDefaultURL(ip)
 	go func() {
 		// start rebuild
@@ -753,16 +780,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip stri
 	}()
 	//wait until engine confirmed that rebuild started
 	if err := wait.PollImmediate(EnginePollInterval, EnginePollTimeout, func() (bool, error) {
-		replicaURLModeMap, err := client.ReplicaList()
-		if err != nil {
-			return false, err
-		}
-		for url := range replicaURLModeMap {
-			if ip == engineapi.GetIPFromURL(url) {
-				return true, nil
-			}
-		}
-		return false, nil
+		return doesIPExistInEngine(ip, client)
 	}); err != nil {
 		return err
 	}
