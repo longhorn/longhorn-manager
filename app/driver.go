@@ -109,11 +109,31 @@ func deployDriver(c *cli.Context) error {
 		return errors.Wrap(err, "unable to get k8s client")
 	}
 
+	driverDetected := false
 	driver := c.String(FlagDriver)
 	if driver == "" {
+		driverDetected = true
 		driver, err = chooseDriver(kubeClient)
+		logrus.Debugf("Driver %s will be used after automatic detection", driver)
 		if err != nil {
 			return err
+		}
+	} else {
+		logrus.Debugf("User specified the driver %s", driver)
+	}
+
+	if driver == FlagDriverCSI {
+		err := csi.CheckMountPropagationWithPodSpec(kubeClient, managerImage, os.Getenv(types.EnvPodNamespace))
+		if err != nil {
+			logrus.Warnf("Got an error when checking MountPropagation with pod spec, %v", err)
+			if driverDetected {
+				logrus.Infof("MountPropagation check failed, fall back to use the Flexvolume")
+				driver = FlagDriverFlexvolume
+			} else {
+				// if user explicitly choose CSI but we cannot deploy.
+				// In this case we should error out instead.
+				return fmt.Errorf("CSI cannot be deployed because MountPropagation is not set on kubelet and api-server")
+			}
 		}
 	}
 
