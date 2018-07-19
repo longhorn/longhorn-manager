@@ -634,7 +634,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 // It will count all the potentially usable replicas, since some replicas maybe
 // blank or in rebuilding state
 func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
-	if vc.isVolumeUpgrading(v) {
+	if vc.isVolumeUpgrading(v) || vc.isVolumeMigrating(v) {
 		return nil
 	}
 
@@ -1130,6 +1130,10 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 
 func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
 	return v.Status.CurrentImage != v.Spec.EngineImage
+}
+
+func (vc *VolumeController) isVolumeMigrating(v *longhorn.Volume) bool {
+	return v.Spec.MigrationNodeID != ""
 }
 
 func (vc *VolumeController) getEngineImage(image string) (*longhorn.EngineImage, error) {
