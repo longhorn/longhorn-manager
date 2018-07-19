@@ -649,14 +649,51 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, rs map[string]
 		}
 	}
 
+	condition := vc.getVolumeCondition(v, types.VolumeConditionTypeScheduled)
 	for i := 0; i < v.Spec.NumberOfReplicas-usableCount; i++ {
 		r, err := vc.createReplica(v, rs)
 		if err != nil {
 			return err
 		}
+		if r == nil {
+			if condition.Status != types.ConditionStatusFalse {
+				condition.Status = types.ConditionStatusFalse
+				condition.LastTransitionTime = util.Now()
+			}
+			condition.LastProbeTime = util.Now()
+			condition.Reason = types.VolumeConditionReasonReplicaSchedulingFailure
+			vc.updateVolumeCondition(v, types.VolumeConditionTypeScheduled, condition)
+			// no need to continue, since we won't able to schedule
+			// more replicas if we failed this one
+			return nil
+		}
 		rs[r.Name] = r
 	}
+	if condition.Status != types.ConditionStatusTrue {
+		condition.Status = types.ConditionStatusTrue
+		condition.Reason = ""
+		condition.Message = ""
+		condition.LastTransitionTime = util.Now()
+	}
+	condition.LastProbeTime = util.Now()
+	vc.updateVolumeCondition(v, types.VolumeConditionTypeScheduled, condition)
 	return nil
+}
+
+// getVolumeCondition returns a copy of v.Status.Condition[conditionType]
+func (vc *VolumeController) getVolumeCondition(v *longhorn.Volume, conditionType types.VolumeConditionType) types.Condition {
+	condition, exists := v.Status.Conditions[conditionType]
+	if !exists {
+		condition = types.Condition{
+			Type:   string(conditionType),
+			Status: types.ConditionStatusUnknown,
+		}
+	}
+	return condition
+}
+
+func (vc *VolumeController) updateVolumeCondition(v *longhorn.Volume, conditionType types.VolumeConditionType, condition types.Condition) {
+	v.Status.Conditions[conditionType] = condition
 }
 
 func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
@@ -852,6 +889,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 	return vc.ds.CreateEngine(engine)
 }
 
+// createReplica returns (nil, nil) for unschedulable replica
 func (vc *VolumeController) createReplica(v *longhorn.Volume, rs map[string]*longhorn.Replica) (*longhorn.Replica, error) {
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
@@ -882,6 +920,10 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, rs map[string]*lon
 	replica, err := vc.scheduler.ScheduleReplica(replica, rs)
 	if err != nil {
 		return nil, err
+	}
+	if replica == nil {
+		logrus.Errorf("unable to schedule replica of volume %v", v.Name)
+		return nil, nil
 	}
 
 	return vc.ds.CreateReplica(replica)
