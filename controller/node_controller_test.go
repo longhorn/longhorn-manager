@@ -170,8 +170,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.nodes = nodes
 	tc.expectNodeStatus = expectNodeStatus
 	volume := newVolume(TestVolumeName, 2)
-	replica1 := newReplicaForVolume(volume, TestNode1, TestDiskID1)
-	replica2 := newReplicaForVolume(volume, TestNode2, TestDiskID1)
+	engine := newEngineForVolume(volume)
+	replica1 := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1)
+	replica2 := newReplicaForVolume(volume, engine, TestNode2, TestDiskID1)
 	replicas := []*longhorn.Replica{replica1, replica2}
 	tc.replicas = replicas
 

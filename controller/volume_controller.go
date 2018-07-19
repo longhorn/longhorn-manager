@@ -387,7 +387,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonDegraded, "volume %v became degraded", v.Name)
 		}
 		// start rebuilding if necessary
-		if err = vc.replenishReplicas(v, rs); err != nil {
+		if err = vc.replenishReplicas(v, e, rs); err != nil {
 			return err
 		}
 		// replicas will be started by ReconcileVolumeState() later
@@ -470,7 +470,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 
 	if len(rs) == 0 {
 		// first time creation
-		if err = vc.replenishReplicas(v, rs); err != nil {
+		if err = vc.replenishReplicas(v, e, rs); err != nil {
 			return err
 		}
 	}
@@ -633,9 +633,13 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 // replenishReplicas will keep replicas count to v.Spec.NumberOfReplicas
 // It will count all the potentially usable replicas, since some replicas maybe
 // blank or in rebuilding state
-func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
+func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
 	if vc.isVolumeUpgrading(v) {
 		return nil
+	}
+
+	if e == nil {
+		return fmt.Errorf("BUG: replenishReplica needs a valid engine")
 	}
 
 	usableCount := 0
@@ -647,7 +651,7 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, rs map[string]
 
 	condition := types.GetVolumeConditionFromStatus(v.Status, types.VolumeConditionTypeScheduled)
 	for i := 0; i < v.Spec.NumberOfReplicas-usableCount; i++ {
-		r, err := vc.createReplica(v, rs)
+		r, err := vc.createReplica(v, e, rs)
 		if err != nil {
 			return err
 		}
@@ -870,7 +874,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 }
 
 // createReplica returns (nil, nil) for unschedulable replica
-func (vc *VolumeController) createReplica(v *longhorn.Volume, rs map[string]*longhorn.Replica) (*longhorn.Replica, error) {
+func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (*longhorn.Replica, error) {
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            types.GenerateReplicaNameForVolume(v.Name),
@@ -884,7 +888,8 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, rs map[string]*lon
 				DesireState: types.InstanceStateStopped,
 				OwnerID:     vc.controllerID,
 			},
-			Active: true,
+			EngineName: e.Name,
+			Active:     true,
 		},
 	}
 	if v.Spec.FromBackup != "" {

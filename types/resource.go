@@ -128,6 +128,7 @@ type EngineStatus struct {
 
 type ReplicaSpec struct {
 	InstanceSpec
+	EngineName  string `json:"engineName"`
 	RestoreFrom string `json:"restoreFrom"`
 	RestoreName string `json:"restoreName"`
 	HealthyAt   string `json:"healthyAt"`
