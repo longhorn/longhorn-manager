@@ -13,12 +13,17 @@ func (v *VolumeSpec) DeepCopyInto(to *VolumeSpec) {
 
 func (e *EngineSpec) DeepCopyInto(to *EngineSpec) {
 	*to = *e
-	if e.ReplicaAddressMap == nil {
-		return
+	if e.ReplicaAddressMap != nil {
+		to.ReplicaAddressMap = make(map[string]string)
+		for key, value := range e.ReplicaAddressMap {
+			to.ReplicaAddressMap[key] = value
+		}
 	}
-	to.ReplicaAddressMap = make(map[string]string)
-	for key, value := range e.ReplicaAddressMap {
-		to.ReplicaAddressMap[key] = value
+	if e.UpgradedReplicaAddressMap != nil {
+		to.UpgradedReplicaAddressMap = make(map[string]string)
+		for key, value := range e.UpgradedReplicaAddressMap {
+			to.UpgradedReplicaAddressMap[key] = value
+		}
 	}
 }
 
