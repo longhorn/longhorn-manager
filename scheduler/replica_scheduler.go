@@ -3,6 +3,7 @@ package scheduler
 import (
 	"fmt"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
@@ -21,6 +22,7 @@ func NewReplicaScheduler(ds *datastore.DataStore) *ReplicaScheduler {
 	return rcScheduler
 }
 
+// ScheduleReplica will return (nil, nil) for unschedulable replica
 func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas map[string]*longhorn.Replica) (*longhorn.Replica, error) {
 	// only called when replica is starting for the first time
 	if replica.Spec.NodeID != "" {
@@ -33,7 +35,8 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 		return nil, err
 	}
 	if len(nodeInfo) == 0 {
-		return nil, fmt.Errorf("There's no available node for replica %v", replica)
+		logrus.Errorf("There's no available node for replica %+v", replica)
+		return nil, nil
 	}
 	// TODO Need to add capacity.
 	// Just make sure replica of the same volume be scheduled to different nodes for now.

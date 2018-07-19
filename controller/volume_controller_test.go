@@ -96,6 +96,12 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.Conditions = map[types.VolumeConditionType]types.Condition{
+		types.VolumeConditionTypeScheduled: {
+			Type:   string(types.VolumeConditionTypeScheduled),
+			Status: types.ConditionStatusTrue,
+		},
+	}
 	tc.engine = nil
 	tc.replicas = nil
 	testCases["volume create"] = tc
@@ -427,6 +433,16 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		retV, err := lhClient.LonghornV1alpha1().Volumes(TestNamespace).Get(v.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(retV.Spec, DeepEquals, tc.expectVolume.Spec)
+		// mask timestamps
+		for ctype, condition := range retV.Status.Conditions {
+			if ctype == types.VolumeConditionTypeScheduled {
+				c.Assert(condition.LastProbeTime, Not(Equals), "")
+				c.Assert(condition.LastTransitionTime, Not(Equals), "")
+			}
+			condition.LastProbeTime = ""
+			condition.LastTransitionTime = ""
+			retV.Status.Conditions[ctype] = condition
+		}
 		c.Assert(retV.Status, DeepEquals, tc.expectVolume.Status)
 
 		retE, err := lhClient.LonghornV1alpha1().Engines(TestNamespace).Get(types.GetEngineNameForVolume(v.Name), metav1.GetOptions{})
