@@ -26,6 +26,33 @@ const (
 	VolumeFrontendISCSI    = VolumeFrontend("iscsi")
 )
 
+type ConditionStatus string
+
+const (
+	ConditionStatusTrue    ConditionStatus = "True"
+	ConditionStatusFalse   ConditionStatus = "False"
+	ConditionStatusUnknown ConditionStatus = "Unknown"
+)
+
+type Condition struct {
+	Type               string          `json:"type"`
+	Status             ConditionStatus `json:"status"`
+	LastProbeTime      string          `json:"lastProbeTime"`
+	LastTransitionTime string          `json:"lastTransitionTime"`
+	Reason             string          `json:"reason"`
+	Message            string          `json:"message"`
+}
+
+type VolumeConditionType string
+
+const (
+	VolumeConditionTypeScheduled = "scheduled"
+)
+
+const (
+	VolumeConditionReasonReplicaSchedulingFailure = "ReplicaSchedulingFailure"
+)
+
 type VolumeSpec struct {
 	OwnerID             string         `json:"ownerID"`
 	Size                int64          `json:"size,string"`
@@ -43,6 +70,8 @@ type VolumeStatus struct {
 	Robustness   VolumeRobustness `json:"robustness"`
 	Endpoint     string           `json:"endpoint"`
 	CurrentImage string           `json:"currentImage"`
+
+	Conditions map[VolumeConditionType]Condition `json:"conditions"`
 }
 
 type RecurringJobType string

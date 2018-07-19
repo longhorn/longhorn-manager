@@ -259,6 +259,9 @@ func (s *DataStore) fixupVolume(volume *longhorn.Volume) (*longhorn.Volume, erro
 	if volume == nil {
 		return nil, nil
 	}
+	if volume.Status.Conditions == nil {
+		volume.Status.Conditions = map[types.VolumeConditionType]types.Condition{}
+	}
 	// v0.3
 	if volume.Spec.Frontend == "" {
 		volume.Spec.Frontend = types.VolumeFrontendBlockDev

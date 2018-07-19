@@ -11,6 +11,16 @@ func (v *VolumeSpec) DeepCopyInto(to *VolumeSpec) {
 	}
 }
 
+func (v *VolumeStatus) DeepCopyInto(to *VolumeStatus) {
+	*to = *v
+	if v.Conditions != nil {
+		to.Conditions = make(map[VolumeConditionType]Condition)
+		for key, value := range v.Conditions {
+			to.Conditions[key] = value
+		}
+	}
+}
+
 func (e *EngineSpec) DeepCopyInto(to *EngineSpec) {
 	*to = *e
 	if e.ReplicaAddressMap != nil {

@@ -248,6 +248,10 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			StaleReplicaTimeout: TestVolumeStaleTimeout,
 			EngineImage:         TestEngineImage,
 		},
+		// datastore will return empty (not nil) by default
+		Status: types.VolumeStatus{
+			Conditions: map[types.VolumeConditionType]types.Condition{},
+		},
 	}
 }
 

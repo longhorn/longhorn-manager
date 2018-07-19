@@ -31,7 +31,8 @@ type Volume struct {
 	Endpoint            string                 `json:"endpoint"`
 	Created             string                 `json:"created"`
 
-	RecurringJobs []types.RecurringJob `json:"recurringJobs"`
+	RecurringJobs []types.RecurringJob                          `json:"recurringJobs"`
+	Conditions    map[types.VolumeConditionType]types.Condition `json:"conditions"`
 
 	Replicas   []Replica   `json:"replicas"`
 	Controller *Controller `json:"controller"`
@@ -398,6 +399,7 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs []*longhorn.R
 		Created:             v.ObjectMeta.CreationTimestamp.String(),
 		EngineImage:         v.Spec.EngineImage,
 		CurrentImage:        v.Status.CurrentImage,
+		Conditions:          v.Status.Conditions,
 
 		Controller: controller,
 		Replicas:   replicas,
