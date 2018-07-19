@@ -470,3 +470,14 @@ func (m *VolumeManager) ListNodesSorted() ([]*longhorn.Node, error) {
 	}
 	return nodes, nil
 }
+
+func (m *VolumeManager) checkVolumeNotInMigration(volumeName string) error {
+	v, err := m.Get(volumeName)
+	if err != nil {
+		return err
+	}
+	if v.Spec.MigrationNodeID != "" {
+		return fmt.Errorf("cannot take snapshot during migration")
+	}
+	return nil
+}

@@ -123,6 +123,9 @@ func NewJob(volumeName, snapshotName, backupTarget string, labels map[string]str
 	if err != nil {
 		return nil, err
 	}
+	if v.Spec.MigrationNodeID != "" {
+		return nil, fmt.Errorf("cannot take snapshot for volume %v during migration", v.Name)
+	}
 	eList, err := lhClient.LonghornV1alpha1().Engines(namespace).List(metav1.ListOptions{
 		LabelSelector: datastore.LonghornVolumeKey + "=" + volumeName,
 	})
