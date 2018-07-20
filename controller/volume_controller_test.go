@@ -81,6 +81,7 @@ type VolumeTestCase struct {
 	volume   *longhorn.Volume
 	engine   *longhorn.Engine
 	replicas map[string]*longhorn.Replica
+	nodes    []*longhorn.Node
 
 	expectVolume   *longhorn.Volume
 	expectEngine   *longhorn.Engine
@@ -93,6 +94,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 
 	// normal volume creation
 	tc = generateVolumeTestCaseTemplate()
+	// default replica and engine objects will be copied by copyCurrentToExpect
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
@@ -105,6 +107,27 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.engine = nil
 	tc.replicas = nil
 	testCases["volume create"] = tc
+
+	// unable to create volume because no node to schedule
+	tc = generateVolumeTestCaseTemplate()
+	for i := range tc.nodes {
+		tc.nodes[i].Spec.AllowScheduling = false
+	}
+	// replicas object won't be created so skip it in the copyCurrentToExpect
+	tc.replicas = nil
+	tc.copyCurrentToExpect()
+	// engine object will still be created
+	tc.engine = nil
+	tc.expectVolume.Status.State = types.VolumeStateDetaching
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.Conditions = map[types.VolumeConditionType]types.Condition{
+		types.VolumeConditionTypeScheduled: {
+			Type:   string(types.VolumeConditionTypeScheduled),
+			Status: types.ConditionStatusFalse,
+			Reason: types.VolumeConditionReasonReplicaSchedulingFailure,
+		},
+	}
+	testCases["volume create - replica scheduling failure"] = tc
 
 	// after creation, volume in detached state
 	tc = generateVolumeTestCaseTemplate()
@@ -346,12 +369,23 @@ func generateVolumeTestCaseTemplate() *VolumeTestCase {
 	engine := newEngineForVolume(volume)
 	replica1 := newReplicaForVolume(volume)
 	replica2 := newReplicaForVolume(volume)
+	node1 := newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
+	node2 := newNode(TestNode2, TestNamespace, false, types.NodeStateUp)
 	return &VolumeTestCase{
-		volume, engine, map[string]*longhorn.Replica{
+		volume: volume,
+		engine: engine,
+		replicas: map[string]*longhorn.Replica{
 			replica1.Name: replica1,
 			replica2.Name: replica2,
 		},
-		nil, nil, map[string]*longhorn.Replica{},
+		nodes: []*longhorn.Node{
+			node1,
+			node2,
+		},
+
+		expectVolume:   nil,
+		expectEngine:   nil,
+		expectReplicas: map[string]*longhorn.Replica{},
 	}
 }
 
@@ -393,17 +427,12 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		pIndexer.Add(p)
 
 		// need to create default node
-		node1 := newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
-		n1, err := lhClient.Longhorn().Nodes(TestNamespace).Create(node1)
-		c.Assert(err, IsNil)
-		c.Assert(n1, NotNil)
-		nIndexer.Add(n1)
-
-		node2 := newNode(TestNode2, TestNamespace, false, types.NodeStateUp)
-		n2, err := lhClient.Longhorn().Nodes(TestNamespace).Create(node2)
-		c.Assert(err, IsNil)
-		c.Assert(n2, NotNil)
-		nIndexer.Add(n2)
+		for _, node := range tc.nodes {
+			n, err := lhClient.Longhorn().Nodes(TestNamespace).Create(node)
+			c.Assert(err, IsNil)
+			c.Assert(n, NotNil)
+			nIndexer.Add(n)
+		}
 
 		// Need to put it into both fakeclientset and Indexer
 		v, err := lhClient.LonghornV1alpha1().Volumes(TestNamespace).Create(tc.volume)
