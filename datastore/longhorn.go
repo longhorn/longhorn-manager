@@ -460,9 +460,8 @@ func (s *DataStore) getReplicaRO(name string) (*longhorn.Replica, error) {
 	return resultRO, nil
 }
 
-func (s *DataStore) GetVolumeReplicas(volumeName string) (map[string]*longhorn.Replica, error) {
+func (s *DataStore) ListVolumeReplicas(volumeName string) (map[string]*longhorn.Replica, error) {
 	itemMap := map[string]*longhorn.Replica{}
-
 	selector, err := getVolumeSelector(volumeName)
 	if err != nil {
 		return nil, err
