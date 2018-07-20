@@ -69,9 +69,6 @@ func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, err
 	if err != nil {
 		return nil, err
 	}
-	if len(list) == 0 {
-		return map[types.SettingName]*longhorn.Setting{}, nil
-	}
 
 	for _, itemRO := range list {
 		// Cannot use cached object from lister
@@ -240,9 +237,6 @@ func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 	list, err := s.vLister.Volumes(s.namespace).List(labels.Everything())
 	if err != nil {
 		return nil, err
-	}
-	if len(list) == 0 {
-		return map[string]*longhorn.Volume{}, nil
 	}
 
 	for _, itemRO := range list {
@@ -466,6 +460,8 @@ func (s *DataStore) getReplicaRO(name string) (*longhorn.Replica, error) {
 }
 
 func (s *DataStore) GetVolumeReplicas(volumeName string) (map[string]*longhorn.Replica, error) {
+	itemMap := map[string]*longhorn.Replica{}
+
 	selector, err := getVolumeSelector(volumeName)
 	if err != nil {
 		return nil, err
@@ -474,18 +470,15 @@ func (s *DataStore) GetVolumeReplicas(volumeName string) (map[string]*longhorn.R
 	if err != nil {
 		return nil, err
 	}
-	if len(list) == 0 {
-		return map[string]*longhorn.Replica{}, nil
-	}
-	replicas := map[string]*longhorn.Replica{}
-	for _, r := range list {
+
+	for _, itemRO := range list {
 		// Cannot use cached object from lister
-		replicas[r.Name], err = s.fixupReplica(r.DeepCopy())
+		itemMap[itemRO.Name], err = s.fixupReplica(itemRO.DeepCopy())
 		if err != nil {
 			return nil, err
 		}
 	}
-	return replicas, nil
+	return itemMap, nil
 }
 
 func (s *DataStore) fixupReplica(replica *longhorn.Replica) (*longhorn.Replica, error) {
@@ -560,9 +553,6 @@ func (s *DataStore) ListEngineImages() (map[string]*longhorn.EngineImage, error)
 	if err != nil {
 		return nil, err
 	}
-	if len(list) == 0 {
-		return itemMap, nil
-	}
 
 	for _, itemRO := range list {
 		// Cannot use cached object from lister
@@ -631,9 +621,6 @@ func (s *DataStore) ListNodes() (map[string]*longhorn.Node, error) {
 	nodeList, err := s.nLister.Nodes(s.namespace).List(labels.Everything())
 	if err != nil {
 		return nil, err
-	}
-	if len(nodeList) == 0 {
-		return map[string]*longhorn.Node{}, nil
 	}
 
 	for _, node := range nodeList {
