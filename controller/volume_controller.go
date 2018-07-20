@@ -241,7 +241,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	if err != nil {
 		return err
 	}
-	replicas, err := vc.ds.GetVolumeReplicas(volume.Name)
+	replicas, err := vc.ds.ListVolumeReplicas(volume.Name)
 	if err != nil {
 		return err
 	}

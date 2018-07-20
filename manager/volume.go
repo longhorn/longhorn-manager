@@ -98,11 +98,11 @@ func (m *VolumeManager) GetEngine(vName string) (*longhorn.Engine, error) {
 }
 
 func (m *VolumeManager) GetReplicas(vName string) (map[string]*longhorn.Replica, error) {
-	return m.ds.GetVolumeReplicas(vName)
+	return m.ds.ListVolumeReplicas(vName)
 }
 
 func (m *VolumeManager) GetReplicasSorted(vName string) ([]*longhorn.Replica, error) {
-	replicaMap, err := m.ds.GetVolumeReplicas(vName)
+	replicaMap, err := m.ds.ListVolumeReplicas(vName)
 	if err != nil {
 		return []*longhorn.Replica{}, err
 	}
@@ -384,7 +384,7 @@ func (m *VolumeManager) updateVolumeOwner(ownerID string, v *longhorn.Volume) (*
 		}
 	}
 
-	replicas, err := m.ds.GetVolumeReplicas(v.Name)
+	replicas, err := m.ds.ListVolumeReplicas(v.Name)
 	if err != nil {
 		return nil, err
 	}
