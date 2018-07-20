@@ -31,3 +31,7 @@ bin/
 
 # hidden files, e.g. vim temporary files
 .*
+
+# patch tmp files
+*.orig
+*.rej
