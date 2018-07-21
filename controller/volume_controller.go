@@ -316,6 +316,8 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	return nil
 }
 
+// ReconcileEngineReplicaState will get the e.Status.ReplicaModeMap, then update
+// v and rs accordingly.
 func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to reconcile engine/replica state for %v", v.Name)
@@ -389,10 +391,6 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 			return err
 		}
 		// replicas will be started by ReconcileVolumeState() later
-	}
-	e, err = vc.ds.UpdateEngine(e)
-	if err != nil {
-		return err
 	}
 	return nil
 }
