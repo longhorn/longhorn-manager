@@ -9,6 +9,8 @@ import (
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
+
+	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
 
 func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*engineapi.Snapshot, error) {
@@ -153,15 +155,23 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 }
 
 func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.EngineClient, err error) {
+	var e *longhorn.Engine
+
 	defer func() {
 		err = errors.Wrapf(err, "cannot get client for volume %v", volumeName)
 	}()
-	e, err := m.ds.GetVolumeEngine(volumeName)
+	es, err := m.ds.ListVolumeEngines(volumeName)
 	if err != nil {
 		return nil, err
 	}
-	if e == nil {
-		return nil, fmt.Errorf("cannot get engine for %v", volumeName)
+	if len(es) == 0 {
+		return nil, fmt.Errorf("cannot fine engine")
+	}
+	if len(es) != 1 {
+		return nil, fmt.Errorf("more than one engine exists")
+	}
+	for _, e = range es {
+		break
 	}
 	if e.Status.CurrentState != types.InstanceStateRunning {
 		return nil, fmt.Errorf("engine is not running")

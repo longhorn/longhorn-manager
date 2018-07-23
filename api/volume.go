@@ -41,7 +41,7 @@ func (s *Server) volumeList(apiContext *api.ApiContext) (*client.GenericCollecti
 	}
 
 	for _, v := range volumes {
-		controller, err := s.m.GetEngine(v.Name)
+		controllers, err := s.m.GetEnginesSorted(v.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -50,7 +50,7 @@ func (s *Server) volumeList(apiContext *api.ApiContext) (*client.GenericCollecti
 			return nil, err
 		}
 
-		resp.Data = append(resp.Data, toVolumeResource(v, controller, replicas, apiContext))
+		resp.Data = append(resp.Data, toVolumeResource(v, controllers, replicas, apiContext))
 	}
 	resp.ResourceType = "volume"
 	resp.CreateTypes = map[string]string{
@@ -84,7 +84,7 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 		rw.WriteHeader(http.StatusNotFound)
 		return nil
 	}
-	controller, err := s.m.GetEngine(id)
+	controllers, err := s.m.GetEnginesSorted(id)
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 		return err
 	}
 
-	apiContext.Write(toVolumeResource(v, controller, replicas, apiContext))
+	apiContext.Write(toVolumeResource(v, controllers, replicas, apiContext))
 	return nil
 }
 

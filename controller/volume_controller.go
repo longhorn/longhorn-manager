@@ -237,7 +237,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		return nil
 	}
 
-	engine, err := vc.ds.GetVolumeEngine(volume.Name)
+	engines, err := vc.ds.ListVolumeEngines(volume.Name)
 	if err != nil {
 		return err
 	}
@@ -261,12 +261,14 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			}
 		}
 
-		if engine != nil && engine.DeletionTimestamp == nil {
-			if err := vc.ds.DeleteEngine(engine.Name); err != nil {
-				return err
+		for _, e := range engines {
+			if e.DeletionTimestamp == nil {
+				if err := vc.ds.DeleteEngine(e.Name); err != nil {
+					return err
+				}
 			}
 		}
-		// now engine has been deleted or in the process
+		// now engines have been deleted or in the process
 
 		for _, r := range replicas {
 			if r.DeletionTimestamp == nil {
@@ -275,7 +277,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 				}
 			}
 		}
-		// now replicas has been deleted or in the process
+		// now replicas have been deleted or in the process
 
 		return vc.ds.RemoveFinalizerForVolume(volume)
 	}
@@ -292,6 +294,18 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			err = nil
 		}
 	}()
+
+	engine := vc.getNodeAttachedEngine(volume.Spec.NodeID, engines)
+	if engine == nil {
+		if len(engines) == 1 {
+			for _, e := range engines {
+				engine = e
+				break
+			}
+		} else if len(engines) > 1 {
+			return fmt.Errorf("BUG: multiple engines when volume is detached")
+		}
+	}
 
 	if err := vc.ReconcileEngineReplicaState(volume, engine, replicas); err != nil {
 		return err
@@ -316,8 +330,22 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	return nil
 }
 
-// ReconcileEngineReplicaState will get the e.Status.ReplicaModeMap, then update
+func (vc *VolumeController) getNodeAttachedEngine(node string, es map[string]*longhorn.Engine) *longhorn.Engine {
+	if node == "" {
+		return nil
+	}
+	for _, e := range es {
+		if e.Spec.NodeID == node {
+			return e
+		}
+	}
+	return nil
+}
+
+// ReconcileEngineReplicaState will get the current main engine e.Status.ReplicaModeMap, then update
 // v and rs accordingly.
+// We will only update the replica status and won't start rebuilding if
+// MigrationNodeID was set. The logic in replenishReplicas() prevents that.
 func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to reconcile engine/replica state for %v", v.Name)

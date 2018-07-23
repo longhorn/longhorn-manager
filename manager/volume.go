@@ -93,8 +93,25 @@ func (m *VolumeManager) Get(vName string) (*longhorn.Volume, error) {
 	return m.ds.GetVolume(vName)
 }
 
-func (m *VolumeManager) GetEngine(vName string) (*longhorn.Engine, error) {
-	return m.ds.GetVolumeEngine(vName)
+func (m *VolumeManager) GetEngines(vName string) (map[string]*longhorn.Engine, error) {
+	return m.ds.ListVolumeEngines(vName)
+}
+
+func (m *VolumeManager) GetEnginesSorted(vName string) ([]*longhorn.Engine, error) {
+	engineMap, err := m.ds.ListVolumeEngines(vName)
+	if err != nil {
+		return []*longhorn.Engine{}, err
+	}
+
+	engines := make([]*longhorn.Engine, len(engineMap))
+	engineNames, err := sortKeys(engineMap)
+	if err != nil {
+		return []*longhorn.Engine{}, err
+	}
+	for i, engineName := range engineNames {
+		engines[i] = engineMap[engineName]
+	}
+	return engines, nil
 }
 
 func (m *VolumeManager) GetReplicas(vName string) (map[string]*longhorn.Replica, error) {
@@ -373,14 +390,16 @@ func (m *VolumeManager) GetManagerNodeIPMap() (map[string]string, error) {
 
 func (m *VolumeManager) updateVolumeOwner(ownerID string, v *longhorn.Volume) (*longhorn.Volume, error) {
 	v.Spec.OwnerID = ownerID
-	engine, err := m.ds.GetVolumeEngine(v.Name)
+	engines, err := m.ds.ListVolumeEngines(v.Name)
 	if err != nil {
 		return nil, err
 	}
-	if engine.Spec.OwnerID != ownerID {
-		engine.Spec.OwnerID = ownerID
-		if _, err := m.ds.UpdateEngine(engine); err != nil {
-			return nil, err
+	for _, engine := range engines {
+		if engine.Spec.OwnerID != ownerID {
+			engine.Spec.OwnerID = ownerID
+			if _, err := m.ds.UpdateEngine(engine); err != nil {
+				return nil, err
+			}
 		}
 	}
 
