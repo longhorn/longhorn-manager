@@ -143,7 +143,6 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("engineUpgradeInput", EngineUpgradeInput{})
 	schemas.AddType("replica", Replica{})
 	schemas.AddType("controller", Controller{})
-	schemas.AddType("node", Node{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
@@ -310,6 +309,10 @@ func volumeSchema(volume *client.Schema) {
 	recurringJobs := volume.ResourceFields["recurringJobs"]
 	recurringJobs.Type = "array[recurringJob]"
 	volume.ResourceFields["recurringJobs"] = recurringJobs
+
+	conditions := volume.ResourceFields["conditions"]
+	conditions.Type = "map"
+	volume.ResourceFields["conditions"] = conditions
 }
 
 func toSettingResource(setting *longhorn.Setting) *Setting {

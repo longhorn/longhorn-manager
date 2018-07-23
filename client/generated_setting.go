@@ -7,7 +7,17 @@ const (
 type Setting struct {
 	Resource `yaml:"-"`
 
+	Default string `json:"default,omitempty" yaml:"default,omitempty"`
+
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	DisplayName string `json:"displayName,omitempty" yaml:"display_name,omitempty"`
+
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	ReadOnly bool `json:"readOnly,omitempty" yaml:"read_only,omitempty"`
+
+	Required bool `json:"required,omitempty" yaml:"required,omitempty"`
 
 	Value string `json:"value,omitempty" yaml:"value,omitempty"`
 }
