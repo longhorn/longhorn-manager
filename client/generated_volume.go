@@ -7,15 +7,21 @@ const (
 type Volume struct {
 	Resource `yaml:"-"`
 
+	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+
 	Controller *Controller `json:"controller,omitempty" yaml:"controller,omitempty"`
 
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`
+
+	CurrentImage string `json:"currentImage,omitempty" yaml:"current_image,omitempty"`
 
 	Endpoint string `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
 
 	EngineImage string `json:"engineImage,omitempty" yaml:"engine_image,omitempty"`
 
 	FromBackup string `json:"fromBackup,omitempty" yaml:"from_backup,omitempty"`
+
+	Frontend string `json:"frontend,omitempty" yaml:"frontend,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
@@ -24,6 +30,8 @@ type Volume struct {
 	RecurringJobs []RecurringJob `json:"recurringJobs,omitempty" yaml:"recurring_jobs,omitempty"`
 
 	Replicas []Replica `json:"replicas,omitempty" yaml:"replicas,omitempty"`
+
+	Robustness string `json:"robustness,omitempty" yaml:"robustness,omitempty"`
 
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
 

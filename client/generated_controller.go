@@ -9,6 +9,8 @@ type Controller struct {
 
 	Address string `json:"address,omitempty" yaml:"address,omitempty"`
 
+	CurrentImage string `json:"currentImage,omitempty" yaml:"current_image,omitempty"`
+
 	EngineImage string `json:"engineImage,omitempty" yaml:"engine_image,omitempty"`
 
 	HostId string `json:"hostId,omitempty" yaml:"host_id,omitempty"`

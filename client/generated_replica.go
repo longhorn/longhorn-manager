@@ -9,6 +9,8 @@ type Replica struct {
 
 	Address string `json:"address,omitempty" yaml:"address,omitempty"`
 
+	CurrentImage string `json:"currentImage,omitempty" yaml:"current_image,omitempty"`
+
 	EngineImage string `json:"engineImage,omitempty" yaml:"engine_image,omitempty"`
 
 	FailedAt string `json:"failedAt,omitempty" yaml:"failed_at,omitempty"`
