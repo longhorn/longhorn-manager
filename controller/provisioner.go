@@ -5,13 +5,13 @@ import (
 	"strconv"
 
 	"github.com/Sirupsen/logrus"
-
 	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 
-	"github.com/rancher/longhorn-manager/manager"
+	longhornclient "github.com/rancher/longhorn-manager/client"
 	"github.com/rancher/longhorn-manager/types"
 )
 
@@ -22,13 +22,11 @@ const (
 )
 
 type Provisioner struct {
-	m *manager.VolumeManager
+	apiClient *longhornclient.RancherClient
 }
 
-func NewProvisioner(m *manager.VolumeManager) pvController.Provisioner {
-	return &Provisioner{
-		m: m,
-	}
+func NewProvisioner(apiClient *longhornclient.RancherClient) pvController.Provisioner {
+	return &Provisioner{apiClient}
 }
 
 func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.PersistentVolume, error) {
@@ -46,8 +44,7 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 	if rwRequired {
 		return nil, fmt.Errorf("ReadWriteMany access mode is not supported")
 	}
-	resourceStorage := opts.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
-	size := resourceStorage.Value()
+	resourceStorage := pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	numberOfReplicas, err := strconv.Atoi(opts.Parameters[types.OptionNumberOfReplica])
 	if err != nil {
 		return nil, err
@@ -60,19 +57,22 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 	if frontend == "" {
 		frontend = types.VolumeFrontendBlockDev
 	}
-	spec := &types.VolumeSpec{
-		Size:                size,
-		Frontend:            frontend,
+	sizeGiB := volumeutil.RoundUpToGiB(resourceStorage)
+	volReq := &longhornclient.Volume{
+		Name:                opts.PVName,
+		Size:                fmt.Sprintf("%dGi", sizeGiB),
+		Frontend:            string(frontend),
 		FromBackup:          opts.Parameters[types.OptionFromBackup],
-		NumberOfReplicas:    numberOfReplicas,
-		StaleReplicaTimeout: staleReplicaTimeout,
+		NumberOfReplicas:    int64(numberOfReplicas),
+		StaleReplicaTimeout: int64(staleReplicaTimeout),
 	}
-	v, err := p.m.Create(opts.PVName, spec)
+	v, err := p.apiClient.Volume.Create(volReq)
 	if err != nil {
 		return nil, err
 	}
-	quantity := resource.NewQuantity(v.Spec.Size, resource.BinarySI)
-	logrus.Info("provisioner: created volume %v", v.Name)
+	logrus.Infof("provisioner: created volume %v, size: %dGi", v.Name, sizeGiB)
+	quantity := resource.NewQuantity(sizeGiB*volumeutil.GIB, resource.BinarySI)
+
 	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: v.Name,
@@ -88,9 +88,9 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 					Driver: LonghornDriver,
 					FSType: opts.Parameters["fsType"],
 					Options: map[string]string{
-						types.OptionFromBackup:          v.Spec.FromBackup,
-						types.OptionNumberOfReplica:     strconv.Itoa(v.Spec.NumberOfReplicas),
-						types.OptionStaleReplicaTimeout: strconv.Itoa(v.Spec.StaleReplicaTimeout),
+						types.OptionFromBackup:          v.FromBackup,
+						types.OptionNumberOfReplica:     strconv.FormatInt(v.NumberOfReplicas, 10),
+						types.OptionStaleReplicaTimeout: strconv.FormatInt(v.StaleReplicaTimeout, 10),
 					},
 				},
 			},
@@ -99,19 +99,19 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 }
 
 func (p *Provisioner) Delete(pv *v1.PersistentVolume) error {
-	volume, err := p.m.Get(pv.Name)
+	volume, err := p.apiClient.Volume.ById(pv.Name)
 	if err != nil {
 		return err
 	}
 	if volume == nil {
 		return nil
 	}
-	if volume.Spec.OwnerID != p.m.GetCurrentNodeID() {
-		return &pvController.IgnoredError{"Not owned by current node"}
-	}
+
 	if pv.Spec.PersistentVolumeReclaimPolicy != v1.PersistentVolumeReclaimRetain {
-		return p.m.Delete(pv.Name)
+		logrus.Infof("provisioner: delete volume %v", volume.Name)
+		return p.apiClient.Volume.Delete(volume)
 	}
-	_, err = p.m.Detach(pv.Name)
+	logrus.Infof("provisioner: detach volume %v", volume.Name)
+	_, err = p.apiClient.Volume.ActionDetach(volume)
 	return err
 }

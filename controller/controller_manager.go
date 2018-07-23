@@ -8,17 +8,14 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
-	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/kubernetes/pkg/util/version"
 
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
-	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/types"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
@@ -112,43 +109,4 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	go ws.Run(stopCh)
 
 	return ds, ws, nil
-}
-
-func StartProvisioner(m *manager.VolumeManager, kubeconfigPath string) error {
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
-	if err != nil {
-		return errors.Wrap(err, "unable to get client config")
-	}
-
-	kubeClient, err := clientset.NewForConfig(config)
-	if err != nil {
-		return errors.Wrap(err, "unable to get k8s client")
-	}
-
-	serverVersion, err := kubeClient.Discovery().ServerVersion()
-	if err != nil {
-		return err
-	}
-
-	// If CSI driver has been chosen, the built-in Longhorn provisioner must be disabled.
-	// It means that this provisioner should be disabled when k8s version >= 1.10
-	currentVersion := version.MustParseSemantic(serverVersion.GitVersion)
-	minVersion := version.MustParseSemantic(types.CSIKubernetesMinVersion)
-	if currentVersion.AtLeast(minVersion) {
-		logrus.Info("The built-in Longhorn provisioner has beed disabled")
-		return nil
-	}
-
-	provisioner := NewProvisioner(m)
-	pc := pvController.NewProvisionController(
-		kubeClient,
-		LonghornProvisionerName,
-		provisioner,
-		serverVersion.GitVersion,
-	)
-
-	//FIXME stopch should be exposed
-	stopCh := make(chan struct{})
-	go pc.Run(stopCh)
-	return nil
 }

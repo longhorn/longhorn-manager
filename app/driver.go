@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 
+	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
 	appsv1beta2 "k8s.io/api/apps/v1beta2"
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,6 +18,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/kubernetes/pkg/util/version"
 
+	longhornclient "github.com/rancher/longhorn-manager/client"
+	"github.com/rancher/longhorn-manager/controller"
 	"github.com/rancher/longhorn-manager/csi"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
@@ -28,6 +31,8 @@ const (
 	DefaultFlexvolumeDir = "/usr/libexec/kubernetes/kubelet-plugins/volume/exec/"
 
 	LonghornFlexvolumeDriver = "longhorn-flexvolume-driver"
+
+	FlagManagerURL = "manager-url"
 
 	FlagDriver           = "driver"
 	FlagDriverCSI        = "csi"
@@ -54,6 +59,10 @@ func DeployDriverCmd() cli.Command {
 			cli.StringFlag{
 				Name:  FlagManagerImage,
 				Usage: "Specify Longhorn manager image",
+			},
+			cli.StringFlag{
+				Name:  FlagManagerURL,
+				Usage: "Longhorn manager API URL",
 			},
 			cli.StringFlag{
 				Name:   FlagFlexvolumeDir,
@@ -98,6 +107,10 @@ func deployDriver(c *cli.Context) error {
 	if managerImage == "" {
 		return fmt.Errorf("require %v", FlagManagerImage)
 	}
+	managerURL := c.String(FlagManagerURL)
+	if managerURL == "" {
+		return fmt.Errorf("require %v", FlagManagerURL)
+	}
 
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -140,10 +153,10 @@ func deployDriver(c *cli.Context) error {
 	switch driver {
 	case FlagDriverCSI:
 		logrus.Debug("Deploying CSI driver")
-		err = deployCSIDriver(kubeClient, c, managerImage)
+		err = deployCSIDriver(kubeClient, c, managerImage, managerURL)
 	case FlagDriverFlexvolume:
 		logrus.Debug("Deploying Flexvolume driver")
-		err = deployFlexvolumeDriver(kubeClient, c, managerImage)
+		err = deployFlexvolumeDriver(kubeClient, c, managerImage, managerURL)
 	default:
 		return fmt.Errorf("Unsupported driver %s", driver)
 	}
@@ -167,7 +180,7 @@ func chooseDriver(kubeClient *clientset.Clientset) (string, error) {
 	return FlagDriverFlexvolume, nil
 }
 
-func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerImage string) error {
+func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerImage, managerURL string) error {
 	csiAttacherImage := c.String(FlagCSIAttacherImage)
 	csiProvisionerImage := c.String(FlagCSIProvisionerImage)
 	csiDriverRegistrarImage := c.String(FlagCSIDriverRegistrarImage)
@@ -185,7 +198,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 		return err
 	}
 
-	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiDriverRegistrarImage, managerImage)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiDriverRegistrarImage, managerImage, managerURL)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
@@ -204,7 +217,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 	return nil
 }
 
-func deployFlexvolumeDriver(kubeClient *clientset.Clientset, c *cli.Context, managerImage string) error {
+func deployFlexvolumeDriver(kubeClient *clientset.Clientset, c *cli.Context, managerImage, managerURL string) error {
 	flexvolumeDir := c.String(FlagFlexvolumeDir)
 	if flexvolumeDir == "" {
 		var err error
@@ -246,7 +259,10 @@ func deployFlexvolumeDriver(kubeClient *clientset.Clientset, c *cli.Context, man
 	done := make(chan struct{})
 	util.RegisterShutdownChannel(done)
 
-	<-done
+	if err = startProvisioner(kubeClient, managerURL, done); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -369,6 +385,32 @@ func discoverFlexvolumeDir(kubeClient *clientset.Clientset) (dir string, err err
 	}
 	logrus.Infof("Discovered Flexvolume dir at: %v", value)
 	return value, nil
+}
+
+func startProvisioner(kubeClient *clientset.Clientset, managerURL string, stopCh <-chan struct{}) error {
+	logrus.Debug("Enable the built-in Longhorn provisioner only for FlexVolume")
+
+	clientOpts := &longhornclient.ClientOpts{Url: managerURL}
+	apiClient, err := longhornclient.NewRancherClient(clientOpts)
+	if err != nil {
+		return errors.Wrap(err, "Cannot start Provisioner: failed to initialize Longhorn API client")
+	}
+
+	serverVersion, err := kubeClient.Discovery().ServerVersion()
+	if err != nil {
+		return errors.Wrap(err, "Cannot start Provisioner: failed to get Kubernetes server version")
+	}
+	provisioner := controller.NewProvisioner(apiClient)
+	pc := pvController.NewProvisionController(
+		kubeClient,
+		controller.LonghornProvisionerName,
+		provisioner,
+		serverVersion.GitVersion,
+	)
+
+	pc.Run(stopCh)
+	logrus.Debug("Stop the built-in Longhorn provisioner")
+	return nil
 }
 
 type DaemonSetOps struct {
