@@ -113,7 +113,7 @@ type PluginDeployment struct {
 	daemonSet *appsv1beta2.DaemonSet
 }
 
-func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, managerImage string) *PluginDeployment {
+func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, managerImage, managerURL string) *PluginDeployment {
 	daemonSet := &appsv1beta2.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "longhorn-csi-plugin",
@@ -183,7 +183,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 								"--nodeid=$(NODE_ID)",
 								"--endpoint=$(CSI_ENDPOINT)",
 								"--drivername=io.rancher.longhorn",
-								"--manager-url=http://longhorn-backend:9500/v1",
+								"--manager-url=" + managerURL,
 							},
 							Env: []v1.EnvVar{
 								v1.EnvVar{

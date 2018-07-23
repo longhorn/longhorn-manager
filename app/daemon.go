@@ -110,10 +110,6 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	if err := controller.StartProvisioner(m, kubeconfigPath); err != nil {
-		return err
-	}
-
 	server := api.NewServer(m, wsc)
 	router := http.Handler(api.NewRouter(server))
 
