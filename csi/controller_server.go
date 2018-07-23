@@ -10,6 +10,7 @@ import (
 	csicommon "github.com/kubernetes-csi/drivers/pkg/csi-common"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 
 	longhornclient "github.com/rancher/longhorn-manager/client"
 	"github.com/rancher/longhorn-manager/types"
@@ -17,7 +18,6 @@ import (
 )
 
 const (
-	oneGB               = 1073741824
 	timeoutAttachDetach = 120 * time.Second
 	tickAttachDetach    = 2 * time.Second
 )
@@ -80,12 +80,12 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	vol.Name = req.Name
 
-	volSizeBytes := int64(oneGB)
+	volSizeBytes := int64(volumeutil.GIB)
 	if req.GetCapacityRange() != nil {
 		volSizeBytes = int64(req.GetCapacityRange().GetRequiredBytes())
 	}
-	volSizeGB := int(volSizeBytes / 1024 / 1024 / 1024)
-	vol.Size = fmt.Sprintf("%dGi", volSizeGB)
+	volSizeGiB := volumeutil.RoundUpSize(volSizeBytes, volumeutil.GIB)
+	vol.Size = fmt.Sprintf("%dGi", volSizeGiB)
 
 	logrus.Infof("CreateVolume: creating a volume by API client, name: %s, size: %s", vol.Name, vol.Size)
 	resVol, err := cs.apiClient.Volume.Create(vol)
@@ -96,7 +96,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			Id:            resVol.Id,
-			CapacityBytes: int64(volSizeBytes),
+			CapacityBytes: int64(volSizeGiB * volumeutil.GIB),
 			Attributes:    req.GetParameters(),
 		},
 	}, nil
