@@ -263,11 +263,17 @@ func (s *DataStore) fixupVolume(volume *longhorn.Volume) (*longhorn.Volume, erro
 	}
 	// v0.3
 	if volume.Spec.EngineImage == "" {
-		engine, err := s.getVolumeEngineRO(volume.Name)
-		if err != nil || engine == nil {
+		engines, err := s.ListVolumeEngines(volume.Name)
+		if err != nil || len(engines) == 0 {
 			return nil, fmt.Errorf("cannot fix up volume object, engine of %v cannot be found: %v", volume.Name, err)
 		}
-		volume.Spec.EngineImage = engine.Spec.EngineImage
+		if len(engines) != 1 {
+			return nil, fmt.Errorf("cannot fix up volume object, detected multiple engines")
+		}
+		for _, e := range engines {
+			volume.Spec.EngineImage = e.Spec.EngineImage
+			break
+		}
 	}
 	return volume, nil
 }
@@ -336,16 +342,7 @@ func (s *DataStore) GetEngine(name string) (*longhorn.Engine, error) {
 	return s.fixupEngine(resultRO.DeepCopy())
 }
 
-func (s *DataStore) GetVolumeEngine(volumeName string) (*longhorn.Engine, error) {
-	resultRO, err := s.getVolumeEngineRO(volumeName)
-	if err != nil {
-		return nil, err
-	}
-	// Cannot use cached object from lister
-	return s.fixupEngine(resultRO.DeepCopy())
-}
-
-func (s *DataStore) getVolumeEngineRO(volumeName string) (*longhorn.Engine, error) {
+func (s *DataStore) ListVolumeEngines(volumeName string) (map[string]*longhorn.Engine, error) {
 	selector, err := getVolumeSelector(volumeName)
 	if err != nil {
 		return nil, err
@@ -354,13 +351,15 @@ func (s *DataStore) getVolumeEngineRO(volumeName string) (*longhorn.Engine, erro
 	if err != nil {
 		return nil, err
 	}
-	if len(list) == 0 {
-		return nil, nil
+	engines := map[string]*longhorn.Engine{}
+	for _, e := range list {
+		// Cannot use cached object from lister
+		engines[e.Name], err = s.fixupEngine(e.DeepCopy())
+		if err != nil {
+			return nil, err
+		}
 	}
-	if len(list) > 1 {
-		return nil, fmt.Errorf("find more than one engine for volume %v: %+v", volumeName, list)
-	}
-	return list[0], nil
+	return engines, nil
 }
 
 func (s *DataStore) fixupEngine(engine *longhorn.Engine) (*longhorn.Engine, error) {

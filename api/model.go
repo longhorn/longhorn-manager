@@ -33,8 +33,8 @@ type Volume struct {
 	RecurringJobs []types.RecurringJob                          `json:"recurringJobs"`
 	Conditions    map[types.VolumeConditionType]types.Condition `json:"conditions"`
 
-	Replicas   []Replica   `json:"replicas"`
-	Controller *Controller `json:"controller"`
+	Replicas    []Replica    `json:"replicas"`
+	Controllers []Controller `json:"controllers"`
 }
 
 type Snapshot struct {
@@ -364,7 +364,26 @@ func toSettingCollection(settings []*longhorn.Setting) *client.GenericCollection
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }
 
-func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs []*longhorn.Replica, apiContext *api.ApiContext) *Volume {
+func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, apiContext *api.ApiContext) *Volume {
+	var ve *longhorn.Engine
+	controllers := []Controller{}
+	for _, e := range ves {
+		controllers = append(controllers, Controller{
+			Instance: Instance{
+				Name:         e.Name,
+				Running:      e.Status.CurrentState == types.InstanceStateRunning,
+				NodeID:       e.Spec.NodeID,
+				Address:      e.Status.IP,
+				EngineImage:  e.Spec.EngineImage,
+				CurrentImage: e.Status.CurrentImage,
+			},
+			Endpoint: e.Status.Endpoint,
+		})
+		if e.Spec.NodeID == v.Spec.NodeID {
+			ve = e
+		}
+	}
+
 	replicas := []Replica{}
 	for _, r := range vrs {
 		mode := ""
@@ -385,21 +404,6 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs []*longhorn.R
 			Mode:     mode,
 			FailedAt: r.Spec.FailedAt,
 		})
-	}
-
-	var controller *Controller
-	if ve != nil {
-		controller = &Controller{
-			Instance: Instance{
-				Name:         ve.Name,
-				Running:      ve.Status.CurrentState == types.InstanceStateRunning,
-				NodeID:       ve.Spec.NodeID,
-				Address:      ve.Status.IP,
-				EngineImage:  ve.Spec.EngineImage,
-				CurrentImage: ve.Status.CurrentImage,
-			},
-			Endpoint: ve.Status.Endpoint,
-		}
 	}
 
 	r := &Volume{
@@ -423,8 +427,8 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs []*longhorn.R
 		CurrentImage:        v.Status.CurrentImage,
 		Conditions:          v.Status.Conditions,
 
-		Controller: controller,
-		Replicas:   replicas,
+		Controllers: controllers,
+		Replicas:    replicas,
 	}
 
 	actions := map[string]struct{}{}
