@@ -3,6 +3,7 @@ package datastore
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 
 	"github.com/pkg/errors"
 
@@ -691,4 +692,26 @@ func tagNodeLabel(replica *longhorn.Replica) error {
 	}
 	metadata.SetLabels(labels)
 	return nil
+}
+
+func (s *DataStore) GetSettingAsInt(settingName types.SettingName) (int64, error) {
+	definition, ok := types.SettingDefinitions[settingName]
+	if !ok {
+		return 0, fmt.Errorf("setting %v is not supported", settingName)
+	}
+	settings, err := s.GetSetting(settingName)
+	if err != nil {
+		return 0, err
+	}
+	value := settings.Value
+
+	if definition.Type == types.SettingTypeInt {
+		result, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		return result, nil
+	}
+
+	return 0, fmt.Errorf("The %v setting value couldn't change to integer, value is %v ", string(settingName), value)
 }

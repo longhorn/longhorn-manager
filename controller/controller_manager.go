@@ -91,7 +91,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 		engineImageInformer, volumeInformer, daemonSetInformer,
 		kubeClient, namespace, controllerID)
 	nc := NewNodeController(ds, scheme,
-		nodeInformer, podInformer,
+		nodeInformer, settingInformer, podInformer,
 		kubeClient, namespace, controllerID)
 	ws := NewWebsocketController(volumeInformer, engineInformer, replicaInformer,
 		settingInformer, engineImageInformer, nodeInformer)
