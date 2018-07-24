@@ -191,7 +191,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttached
-	tc.expectVolume.Status.Endpoint = tc.engine.Status.Endpoint
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessHealthy
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	for _, r := range tc.expectReplicas {
@@ -202,7 +201,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	// volume detaching - stop engine
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = ""
-	tc.volume.Status.Endpoint = "/dev/" + tc.volume.Name
 	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
 	tc.engine.Spec.NodeID = TestNode1
 	tc.engine.Spec.DesireState = types.InstanceStateRunning
@@ -222,7 +220,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.copyCurrentToExpect()
 	tc.expectEngine.Spec.NodeID = ""
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
-	tc.expectVolume.Status.Endpoint = ""
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectEngine.Spec.DesireState = types.InstanceStateStopped
 	testCases["volume detaching - stop engine"] = tc

@@ -18,6 +18,9 @@ const (
 
 	DefaultISCSIPort = "3260"
 	DefaultISCSILUN  = "1"
+
+	FrontendISCSI    = "tgt-iscsi"
+	FrontendBlockDev = "tgt-blockdev"
 )
 
 type Replica struct {

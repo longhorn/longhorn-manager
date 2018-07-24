@@ -134,7 +134,16 @@ func (e *Engine) Endpoint() string {
 		return ""
 	}
 
-	return info.Endpoint
+	switch info.Frontend {
+	case string(FrontendISCSI):
+		// it will looks like this in the end
+		// iscsi://10.42.0.12:3260/iqn.2014-09.com.rancher:vol-name/1
+		return "iscsi://" + e.ip + ":" + DefaultISCSIPort + "/" + info.Endpoint + "/" + DefaultISCSILUN
+	case string(FrontendBlockDev):
+		return info.Endpoint
+	}
+	logrus.Errorf("Unknown frontend %v", info.Frontend)
+	return ""
 }
 
 func (e *Engine) launcherInfo() (*LauncherVolumeInfo, error) {
