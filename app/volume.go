@@ -133,10 +133,9 @@ func NewJob(volumeName, snapshotName, backupTarget string, labels map[string]str
 	engines := engineapi.EngineCollection{}
 	engineImage := e.Status.CurrentImage
 	engineClient, err := engines.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:        v.Name,
-		EngineImage:       engineImage,
-		ControllerURL:     engineapi.GetControllerDefaultURL(e.Status.IP),
-		EngineLauncherURL: engineapi.GetEngineLauncherDefaultURL(e.Status.IP),
+		VolumeName:  v.Name,
+		EngineImage: engineImage,
+		IP:          e.Status.IP,
 	})
 	if err != nil {
 		return nil, err

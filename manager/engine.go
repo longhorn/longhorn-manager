@@ -157,10 +157,9 @@ func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.Eng
 
 	engineCollection := &engineapi.EngineCollection{}
 	return engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:        e.Spec.VolumeName,
-		EngineImage:       e.Status.CurrentImage,
-		ControllerURL:     engineapi.GetControllerDefaultURL(e.Status.IP),
-		EngineLauncherURL: engineapi.GetEngineLauncherDefaultURL(e.Status.IP),
+		VolumeName:  e.Spec.VolumeName,
+		EngineImage: e.Status.CurrentImage,
+		IP:          e.Status.IP,
 	})
 }
 

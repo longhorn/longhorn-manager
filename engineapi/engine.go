@@ -19,6 +19,7 @@ type EngineCollection struct{}
 type Engine struct {
 	name  string
 	image string
+	ip    string
 	cURL  string
 	lURL  string
 }
@@ -34,8 +35,9 @@ func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (Engine
 	return &Engine{
 		name:  request.VolumeName,
 		image: request.EngineImage,
-		cURL:  request.ControllerURL,
-		lURL:  request.EngineLauncherURL,
+		ip:    request.IP,
+		cURL:  GetControllerDefaultURL(request.IP),
+		lURL:  GetEngineLauncherDefaultURL(request.IP),
 	}, nil
 }
 
