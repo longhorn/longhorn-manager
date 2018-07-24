@@ -312,10 +312,9 @@ func (ic *EngineImageController) updateEngineImageVersion(ei *longhorn.EngineIma
 	engineCollection := &engineapi.EngineCollection{}
 	// we're getting local longhorn engine version, don't need volume etc
 	client, err := engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
-		EngineImage:       ei.Spec.Image,
-		VolumeName:        "",
-		ControllerURL:     "",
-		EngineLauncherURL: "",
+		EngineImage: ei.Spec.Image,
+		VolumeName:  "",
+		IP:          "",
 	})
 	if err != nil {
 		return errors.Wrapf(err, "cannot get engine client to check engine version")

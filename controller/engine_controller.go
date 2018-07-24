@@ -654,10 +654,9 @@ func GetClientForEngine(e *longhorn.Engine, engines engineapi.EngineClientCollec
 		return nil, fmt.Errorf("require specify engine image")
 	}
 	client, err = engines.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:        e.Spec.VolumeName,
-		EngineImage:       image,
-		ControllerURL:     engineapi.GetControllerDefaultURL(e.Status.IP),
-		EngineLauncherURL: engineapi.GetEngineLauncherDefaultURL(e.Status.IP),
+		VolumeName:  e.Spec.VolumeName,
+		EngineImage: image,
+		IP:          e.Status.IP,
 	})
 	if err != nil {
 		return nil, err

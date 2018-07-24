@@ -50,10 +50,9 @@ type EngineClient interface {
 }
 
 type EngineClientRequest struct {
-	VolumeName        string
-	EngineImage       string
-	ControllerURL     string
-	EngineLauncherURL string
+	VolumeName  string
+	EngineImage string
+	IP          string
 }
 
 type EngineClientCollection interface {
@@ -111,10 +110,16 @@ type EngineVersion struct {
 }
 
 func GetControllerDefaultURL(ip string) string {
+	if ip == "" {
+		return ""
+	}
 	return "http://" + ip + ":" + ControllerDefaultPort
 }
 
 func GetEngineLauncherDefaultURL(ip string) string {
+	if ip == "" {
+		return ""
+	}
 	return ip + ":" + EngineLauncherDefaultPort
 }
 
