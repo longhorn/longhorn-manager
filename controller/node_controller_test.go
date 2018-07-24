@@ -49,7 +49,7 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 		podInformer, cronJobInformer, daemonSetInformer,
 		kubeClient, TestNamespace)
 
-	nc := NewNodeController(ds, scheme.Scheme, nodeInformer, podInformer, kubeClient, TestNamespace, controllerID)
+	nc := NewNodeController(ds, scheme.Scheme, nodeInformer, settingInformer, podInformer, kubeClient, TestNamespace, controllerID)
 	fakeRecorder := record.NewFakeRecorder(100)
 	nc.eventRecorder = fakeRecorder
 
@@ -153,6 +153,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
+			State:            types.DiskStateSchedulable,
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, "up")
@@ -180,6 +181,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			DiskStatus: map[string]types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: TestVolumeSize,
+					State:            types.DiskStateUnschedulable,
 				},
 			},
 		},

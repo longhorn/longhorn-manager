@@ -45,6 +45,7 @@ type NodeController struct {
 
 	nStoreSynced cache.InformerSynced
 	pStoreSynced cache.InformerSynced
+	sStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
 }
@@ -53,6 +54,7 @@ func NewNodeController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	nodeInformer lhinformers.NodeInformer,
+	settingInformer lhinformers.SettingInformer,
 	podInformer coreinformers.PodInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID string) *NodeController {
@@ -73,6 +75,7 @@ func NewNodeController(
 
 		nStoreSynced: nodeInformer.Informer().HasSynced,
 		pStoreSynced: podInformer.Informer().HasSynced,
+		sStoreSynced: settingInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-node"),
 	}
@@ -92,7 +95,39 @@ func NewNodeController(
 		},
 	})
 
+	settingInformer.Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch t := obj.(type) {
+				case *longhorn.Setting:
+					return filterSettings(t)
+				default:
+					utilruntime.HandleError(fmt.Errorf("unable to handle object in %T: %T", nc, obj))
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc: func(obj interface{}) {
+					s := obj.(*longhorn.Setting)
+					nc.enqueueSetting(s)
+				},
+				UpdateFunc: func(oldObj, newObj interface{}) {
+					cur := newObj.(*longhorn.Setting)
+					nc.enqueueSetting(cur)
+				},
+			},
+		},
+	)
+
 	return nc
+}
+
+func filterSettings(s *longhorn.Setting) bool {
+	// filter that only StorageMinimalAvailablePercentage will impact disk status
+	if types.SettingName(s.Name) == types.SettingNameStorageMinimalAvailablePercentage {
+		return true
+	}
+	return false
 }
 
 func (nc *NodeController) Run(workers int, stopCh <-chan struct{}) {
@@ -208,6 +243,18 @@ func (nc *NodeController) enqueueNode(node *longhorn.Node) {
 	nc.queue.AddRateLimited(key)
 }
 
+func (nc *NodeController) enqueueSetting(setting *longhorn.Setting) {
+	nodeList, err := nc.ds.ListNodes()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("Couldn't get all nodes: %v ", err))
+		return
+	}
+
+	for _, node := range nodeList {
+		nc.enqueueNode(node)
+	}
+}
+
 func (nc *NodeController) syncStatusWithPod(pod *v1.Pod, node *longhorn.Node) error {
 	// sync node status with pod status
 	if pod.Spec.NodeName == node.Name {
@@ -240,6 +287,12 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		return err
 	}
 
+	// get settings of StorageMinimalAvailablePercentage
+	minimalAvailablePercentage, err := nc.ds.GetSettingAsInt(types.SettingNameStorageMinimalAvailablePercentage)
+	if err != nil {
+		return err
+	}
+
 	for diskID, disk := range diskMap {
 		diskStatus, ok := diskStatusMap[diskID]
 		if !ok {
@@ -264,6 +317,14 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			logrus.Errorf("Get disk information on node %v error: %v", node.Name, err)
 		} else {
 			diskStatus.StorageAvailable = diskInfo.StorageAvailable
+		}
+
+		// check disk pressure
+		if diskInfo == nil ||
+			diskInfo.StorageAvailable <= disk.StorageMaximum*minimalAvailablePercentage/100 {
+			diskStatus.State = types.DiskStateUnschedulable
+		} else {
+			diskStatus.State = types.DiskStateSchedulable
 		}
 
 		diskStatusMap[diskID] = diskStatus
