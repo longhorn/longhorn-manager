@@ -68,7 +68,6 @@ type VolumeSpec struct {
 type VolumeStatus struct {
 	State        VolumeState      `json:"state"`
 	Robustness   VolumeRobustness `json:"robustness"`
-	Endpoint     string           `json:"endpoint"`
 	CurrentImage string           `json:"currentImage"`
 
 	Conditions map[VolumeConditionType]Condition `json:"conditions"`

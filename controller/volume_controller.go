@@ -486,7 +486,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 	if v.Spec.NodeID == "" {
 		// the final state will be determined at the end of the clause
 		v.Status.State = types.VolumeStateDetaching
-		v.Status.Endpoint = ""
 
 		// check if any replica has been RW yet
 		dataExists := false
@@ -623,7 +622,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			return nil
 		}
 
-		v.Status.Endpoint = e.Status.Endpoint
 		v.Status.State = types.VolumeStateAttached
 		if oldState != v.Status.State {
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Spec.NodeID)

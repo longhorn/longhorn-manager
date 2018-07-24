@@ -28,7 +28,6 @@ type Volume struct {
 	Robustness          types.VolumeRobustness `json:"robustness"`
 	EngineImage         string                 `json:"engineImage"`
 	CurrentImage        string                 `json:"currentImage"`
-	Endpoint            string                 `json:"endpoint"`
 	Created             string                 `json:"created"`
 
 	RecurringJobs []types.RecurringJob                          `json:"recurringJobs"`
@@ -71,6 +70,7 @@ type Instance struct {
 
 type Controller struct {
 	Instance
+	Endpoint string `json:"endpoint"`
 }
 
 type Replica struct {
@@ -389,26 +389,16 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs []*longhorn.R
 
 	var controller *Controller
 	if ve != nil {
-		controller = &Controller{Instance{
-			Name:         ve.Name,
-			Running:      ve.Status.CurrentState == types.InstanceStateRunning,
-			NodeID:       ve.Spec.NodeID,
-			Address:      ve.Status.IP,
-			EngineImage:  ve.Spec.EngineImage,
-			CurrentImage: ve.Status.CurrentImage,
-		}}
-	}
-
-	endpoint := v.Status.Endpoint
-	// make it iscsi endpoint with the ip
-	if endpoint != "" && v.Spec.Frontend == types.VolumeFrontendISCSI {
-		if ve != nil {
-			// it will looks like this in the end
-			// iscsi://10.42.0.12:3260/iqn.2014-09.com.rancher:vol-name/1
-			endpoint = "iscsi://" + ve.Status.IP + ":" + engineapi.DefaultISCSIPort + "/" + endpoint + "/" + engineapi.DefaultISCSILUN
-		} else {
-			// engine is not ready, don't show endpoint
-			endpoint = ""
+		controller = &Controller{
+			Instance: Instance{
+				Name:         ve.Name,
+				Running:      ve.Status.CurrentState == types.InstanceStateRunning,
+				NodeID:       ve.Spec.NodeID,
+				Address:      ve.Status.IP,
+				EngineImage:  ve.Spec.EngineImage,
+				CurrentImage: ve.Status.CurrentImage,
+			},
+			Endpoint: ve.Status.Endpoint,
 		}
 	}
 
@@ -428,7 +418,6 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs []*longhorn.R
 		Robustness:          v.Status.Robustness,
 		RecurringJobs:       v.Spec.RecurringJobs,
 		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
-		Endpoint:            endpoint,
 		Created:             v.ObjectMeta.CreationTimestamp.String(),
 		EngineImage:         v.Spec.EngineImage,
 		CurrentImage:        v.Status.CurrentImage,
