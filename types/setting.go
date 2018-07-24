@@ -15,9 +15,11 @@ const (
 type SettingName string
 
 const (
-	SettingNameBackupTarget                 = SettingName("backup-target")
-	SettingNameBackupTargetCredentialSecret = SettingName("backup-target-credential-secret")
-	SettingNameDefaultEngineImage           = SettingName("default-engine-image")
+	SettingNameBackupTarget                      = SettingName("backup-target")
+	SettingNameBackupTargetCredentialSecret      = SettingName("backup-target-credential-secret")
+	SettingNameDefaultEngineImage                = SettingName("default-engine-image")
+	SettingNameStorageOverProvisioningPercentage = SettingName("storage-over-provisioning-percentage")
+	SettingNameStorageMinimalAvailablePercentage = SettingName("storage-minimal-available-percentage")
 )
 
 type SettingCategory string
@@ -40,9 +42,11 @@ type SettingDefinition struct {
 
 var (
 	SettingDefinitions = map[SettingName]SettingDefinition{
-		SettingNameBackupTarget:                 SettingDefinitionBackupTarget,
-		SettingNameBackupTargetCredentialSecret: SettingDefinitionBackupTargetCredentialSecret,
-		SettingNameDefaultEngineImage:           SettingDefinitionDefaultEngineImage,
+		SettingNameBackupTarget:                      SettingDefinitionBackupTarget,
+		SettingNameBackupTargetCredentialSecret:      SettingDefinitionBackupTargetCredentialSecret,
+		SettingNameDefaultEngineImage:                SettingDefinitionDefaultEngineImage,
+		SettingNameStorageOverProvisioningPercentage: SettingDefinitionStorageOverProvisioningPercentage,
+		SettingNameStorageMinimalAvailablePercentage: SettingDefinitionStorageMinimalAvailablePercentage,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -70,5 +74,25 @@ var (
 		Type:        SettingTypeString,
 		Required:    true,
 		ReadOnly:    true,
+	}
+
+	SettingDefinitionStorageOverProvisioningPercentage = SettingDefinition{
+		DisplayName: "Storage Over Provisioning Percentage",
+		Description: "The over-provisioning percentage defines how much storage can be allocated relative to the hard drive's capacity",
+		Category:    SettingCategoryScheduling,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "500",
+	}
+
+	SettingDefinitionStorageMinimalAvailablePercentage = SettingDefinition{
+		DisplayName: "Storage Minimal Available Percentage",
+		Description: "If one disk's available capacity to it's maximum capacity in % is less than the minimal available percentage, the disk would become unschedulable until more space freed up.",
+		Category:    SettingCategoryScheduling,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "10",
 	}
 )
