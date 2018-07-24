@@ -206,7 +206,15 @@ type DiskSpec struct {
 	StorageReserved int64  `json:"storageReserved"`
 }
 
+type DiskState string
+
+const (
+	DiskStateSchedulable   = DiskState("schedulable")
+	DiskStateUnschedulable = DiskState("unschedulable")
+)
+
 type DiskStatus struct {
+	State            DiskState
 	StorageAvailable int64 `json:"storageAvailable"`
 	StorageScheduled int64 `json:"storageScheduled"`
 }
