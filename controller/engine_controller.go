@@ -257,12 +257,8 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}
 
 	if engine.Status.CurrentState == types.InstanceStateRunning {
-		// only manager running in the same node as engine can start
-		// monitoring.
-		// the other possible case here is when detaching we will
-		// change the owner to another manager to ensure the
-		// success of detaching
-		if engine.Spec.NodeID == ec.controllerID && !ec.isMonitoring(engine) {
+		// we allow across monitoring temporaily due to migration case
+		if !ec.isMonitoring(engine) {
 			ec.startMonitoring(engine)
 		} else if engine.Status.CurrentImage != engine.Spec.EngineImage && len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
 			if err := ec.Upgrade(engine); err != nil {
@@ -545,7 +541,7 @@ func (m *EngineMonitor) Run() {
 		}
 
 		// when engine stopped, nodeID will be empty as well
-		if engine.Spec.NodeID != m.controllerID {
+		if engine.Spec.OwnerID != m.controllerID {
 			logrus.Infof("stop engine %v monitoring because the engine is no longer running on node %v",
 				m.Name, m.controllerID)
 			m.stop(engine)
