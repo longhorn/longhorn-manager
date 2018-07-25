@@ -13,6 +13,10 @@ spec:
       labels:
         app: longhorn-driver-deployer
     spec:
+      initContainers:
+        - name: wait-longhorn-manager
+          image: rancher/longhorn-manager:9b29b88
+          command: ['sh', '-c', 'while [ $(curl -m 1 -s -o /dev/null -w "%{http_code}" http://longhorn-backend:9500/v1) != "200" ]; do echo waiting; sleep 2; done']
       containers:
         - name: longhorn-driver-deployer
           image: rancher/longhorn-manager:9b29b88
