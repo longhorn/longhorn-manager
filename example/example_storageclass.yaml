@@ -6,7 +6,7 @@ provisioner: rancher.io/longhorn
 parameters:
   numberOfReplicas: '3'
   staleReplicaTimeout: '30'
-reclaimPolicy: delete
+reclaimPolicy: Delete
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
