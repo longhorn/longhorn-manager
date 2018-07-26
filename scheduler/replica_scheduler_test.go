@@ -293,10 +293,12 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
+			State:            types.DiskStateSchedulable,
 		},
 		TestDiskID2: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
+			State:            types.DiskStateSchedulable,
 		},
 	}
 	expectNode1 := newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
@@ -312,6 +314,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
+			State:            types.DiskStateSchedulable,
 		},
 	}
 	nodes = map[string]*longhorn.Node{
