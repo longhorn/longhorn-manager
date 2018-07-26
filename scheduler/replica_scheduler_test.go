@@ -155,6 +155,18 @@ func newReplicaForVolume(v *longhorn.Volume) *longhorn.Replica {
 	}
 }
 
+func initSettings(name, value string) *longhorn.Setting {
+	setting := &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Setting: types.Setting{
+			Value: value,
+		},
+	}
+	return setting
+}
+
 func Test(t *testing.T) { TestingT(t) }
 
 type TestSuite struct {
@@ -166,10 +178,12 @@ func (s *TestSuite) SetUpTest(c *C) {
 }
 
 type ReplicaSchedulerTestCase struct {
-	volume   *longhorn.Volume
-	replicas map[string]*longhorn.Replica
-	daemons  []*v1.Pod
-	nodes    map[string]*longhorn.Node
+	volume                            *longhorn.Volume
+	replicas                          map[string]*longhorn.Replica
+	daemons                           []*v1.Pod
+	nodes                             map[string]*longhorn.Node
+	storageOverProvisioningPercentage string
+	storageMinimalAvailablePercentage string
 
 	// schedule state
 	expectedNodes map[string]*longhorn.Node
@@ -307,8 +321,10 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.NodeStateUp)
 	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
+	disk2 = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
 	node2.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
+		TestDiskID2: disk2,
 	}
 	node2.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
@@ -316,6 +332,15 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageScheduled: 0,
 			State:            types.DiskStateSchedulable,
 		},
+		TestDiskID2: {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			State:            types.DiskStateUnschedulable,
+		},
+	}
+	expectNode2 := newNode(TestNode2, TestNamespace, true, types.NodeStateUp)
+	expectNode2.Spec.Disks = map[string]types.DiskSpec{
+		TestDiskID1: disk,
 	}
 	nodes = map[string]*longhorn.Node{
 		TestNode1: node1,
@@ -324,7 +349,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.nodes = nodes
 	expectedNodes = map[string]*longhorn.Node{
 		TestNode1: expectNode1,
-		TestNode2: node2,
+		TestNode2: expectNode2,
 	}
 	tc.expectedNodes = expectedNodes
 	tc.err = false
@@ -350,17 +375,34 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon2,
 	}
 	node1 = newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
+	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, TestDiskSize)
+	node1.Spec.Disks = map[string]types.DiskSpec{
+		TestDiskID1: disk,
+	}
 	node1.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
 			StorageAvailable: 0,
 			StorageScheduled: 0,
+			State:            types.DiskStateSchedulable,
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.NodeStateUp)
+	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
+	disk2 = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
+	node2.Spec.Disks = map[string]types.DiskSpec{
+		TestDiskID1: disk,
+		TestDiskID2: disk2,
+	}
 	node2.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
+			StorageAvailable: 0,
+			StorageScheduled: TestDiskAvailableSize,
+			State:            types.DiskStateSchedulable,
+		},
+		TestDiskID2: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
+			State:            types.DiskStateUnschedulable,
 		},
 	}
 	nodes = map[string]*longhorn.Node{
@@ -372,6 +414,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.expectedNodes = expectedNodes
 	tc.err = false
 	tc.isNilReplica = true
+	tc.storageOverProvisioningPercentage = "0"
+	tc.storageMinimalAvailablePercentage = "100"
 	testCases["there's no available disks for scheduling"] = tc
 
 	for name, tc := range testCases {
@@ -386,6 +430,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		vIndexer := lhInformerFactory.Longhorn().V1alpha1().Volumes().Informer().GetIndexer()
 		rIndexer := lhInformerFactory.Longhorn().V1alpha1().Replicas().Informer().GetIndexer()
 		nIndexer := lhInformerFactory.Longhorn().V1alpha1().Nodes().Informer().GetIndexer()
+		sIndexer := lhInformerFactory.Longhorn().V1alpha1().Settings().Informer().GetIndexer()
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
 		s := newReplicaScheduler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
@@ -407,6 +452,18 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		c.Assert(err, IsNil)
 		c.Assert(volume, NotNil)
 		vIndexer.Add(volume)
+		// set settings
+		if tc.storageOverProvisioningPercentage != "" && tc.storageMinimalAvailablePercentage != "" {
+			s := initSettings(string(types.SettingNameStorageOverProvisioningPercentage), tc.storageOverProvisioningPercentage)
+			setting, err := lhClient.Longhorn().Settings(TestNamespace).Create(s)
+			c.Assert(err, IsNil)
+			sIndexer.Add(setting)
+
+			s = initSettings(string(types.SettingNameStorageMinimalAvailablePercentage), tc.storageMinimalAvailablePercentage)
+			setting, err = lhClient.Longhorn().Settings(TestNamespace).Create(s)
+			c.Assert(err, IsNil)
+			sIndexer.Add(setting)
+		}
 		// validate scheduler
 		for _, replica := range tc.replicas {
 			r, err := lhClient.LonghornV1alpha1().Replicas(TestNamespace).Create(replica)
