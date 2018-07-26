@@ -50,10 +50,6 @@ const (
 	OptionFrontend            = "frontend"
 
 	EngineImageChecksumNameLength = 8
-
-	// StorageOverProvisioningPercentage and StorageMinimalAvailablePercentage will be set in next phase
-	StorageOverProvisioningPercentage = 100
-	StorageMinimalAvailablePercentage = 0
 )
 
 type NotFoundError struct {
