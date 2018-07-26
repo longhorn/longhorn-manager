@@ -28,18 +28,7 @@ func (w *Watcher) Events() <-chan struct{} {
 }
 
 func (w *Watcher) Close() {
-	wc := w.controller
-	wc.watcherLock.Lock()
-	defer wc.watcherLock.Unlock()
-
 	close(w.eventChan)
-	for i, watcher := range wc.watchers {
-		if watcher == w {
-			wc.watchers = append(wc.watchers[:i], wc.watchers[i+1:]...)
-			return
-		}
-	}
-	logrus.Warningf("failed to remove watcher for resources: %+v", w.resources)
 }
 
 type WebsocketController struct {
@@ -111,9 +100,13 @@ func (wc *WebsocketController) Run(stopCh <-chan struct{}) {
 }
 
 func (wc *WebsocketController) Close() {
+	wc.watcherLock.Lock()
+	defer wc.watcherLock.Unlock()
+
 	for _, w := range wc.watchers {
 		w.Close()
 	}
+	wc.watchers = wc.watchers[:0]
 }
 
 func (wc *WebsocketController) notifyWatchersHandler(resource string) cache.ResourceEventHandler {
