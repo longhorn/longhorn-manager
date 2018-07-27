@@ -55,9 +55,9 @@ type Backup struct {
 
 type Setting struct {
 	client.Resource
-	Name  string `json:"name"`
-	Value string `json:"value"`
-	types.SettingDefinition
+	Name       string                  `json:"name"`
+	Value      string                  `json:"value"`
+	Definition types.SettingDefinition `json:"definition"`
 }
 
 type Instance struct {
@@ -345,13 +345,14 @@ func volumeSchema(volume *client.Schema) {
 func toSettingResource(setting *longhorn.Setting) *Setting {
 	return &Setting{
 		Resource: client.Resource{
-			Id:   setting.Name,
-			Type: "setting",
+			Id:    setting.Name,
+			Type:  "setting",
+			Links: map[string]string{},
 		},
 		Name:  setting.Name,
 		Value: setting.Value,
 
-		SettingDefinition: types.SettingDefinitions[types.SettingName(setting.Name)],
+		Definition: types.SettingDefinitions[types.SettingName(setting.Name)],
 	}
 }
 
