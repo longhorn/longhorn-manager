@@ -29,6 +29,7 @@ type Volume struct {
 	EngineImage         string                 `json:"engineImage"`
 	CurrentImage        string                 `json:"currentImage"`
 	Created             string                 `json:"created"`
+	MigrationNodeID     string                 `json:"migrationNodeID"`
 
 	RecurringJobs []types.RecurringJob                          `json:"recurringJobs"`
 	Conditions    map[types.VolumeConditionType]types.Condition `json:"conditions"`
@@ -120,6 +121,10 @@ type EngineUpgradeInput struct {
 	Image string `json:"image"`
 }
 
+type NodeInput struct {
+	NodeID string `json:"nodeId"`
+}
+
 type Node struct {
 	client.Resource
 	Name            string              `json:"name"`
@@ -156,6 +161,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("replica", Replica{})
 	schemas.AddType("controller", Controller{})
 	schemas.AddType("diskUpdate", types.DiskSpec{})
+	schemas.AddType("nodeInput", NodeInput{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
@@ -291,6 +297,12 @@ func volumeSchema(volume *client.Schema) {
 		"engineUpgrade": {
 			Input: "engineUpgradeInput",
 		},
+
+		"migrationStart": {
+			Input: "nodeInput",
+		},
+		"migrationConfirm":  {},
+		"migrationRollback": {},
 	}
 	volume.ResourceFields["controller"] = client.Field{
 		Type:     "controller",
@@ -425,7 +437,9 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		Created:             v.ObjectMeta.CreationTimestamp.String(),
 		EngineImage:         v.Spec.EngineImage,
 		CurrentImage:        v.Status.CurrentImage,
-		Conditions:          v.Status.Conditions,
+		MigrationNodeID:     v.Spec.MigrationNodeID,
+
+		Conditions: v.Status.Conditions,
 
 		Controllers: controllers,
 		Replicas:    replicas,
@@ -456,6 +470,9 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["recurringUpdate"] = struct{}{}
 			actions["replicaRemove"] = struct{}{}
 			actions["engineUpgrade"] = struct{}{}
+			actions["migrationStart"] = struct{}{}
+			actions["migrationConfirm"] = struct{}{}
+			actions["migrationRollback"] = struct{}{}
 		}
 	}
 

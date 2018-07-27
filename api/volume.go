@@ -232,3 +232,39 @@ func (s *Server) EngineUpgrade(rw http.ResponseWriter, req *http.Request) error 
 
 	return s.responseWithVolume(rw, req, id, nil)
 }
+
+func (s *Server) MigrationStart(rw http.ResponseWriter, req *http.Request) error {
+	var input NodeInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrapf(err, "error read nodeInput")
+	}
+
+	v, err := s.m.MigrationStart(id, input.NodeID)
+	if err != nil {
+		return errors.Wrapf(err, "unable to start migration")
+	}
+	return s.responseWithVolume(rw, req, id, v)
+}
+
+func (s *Server) MigrationConfirm(rw http.ResponseWriter, req *http.Request) error {
+	id := mux.Vars(req)["name"]
+
+	v, err := s.m.MigrationConfirm(id)
+	if err != nil {
+		return errors.Wrapf(err, "unable to confirm migration")
+	}
+	return s.responseWithVolume(rw, req, id, v)
+}
+
+func (s *Server) MigrationRollback(rw http.ResponseWriter, req *http.Request) error {
+	id := mux.Vars(req)["name"]
+
+	v, err := s.m.MigrationRollback(id)
+	if err != nil {
+		return errors.Wrapf(err, "unable to rollback migration")
+	}
+	return s.responseWithVolume(rw, req, id, v)
+}
