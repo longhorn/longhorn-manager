@@ -406,6 +406,9 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) error {
 		return fmt.Errorf("Upgrading in process for volume %v engine image from %v to %v, cannot upgrade to another engine image",
 			v.Name, v.Status.CurrentImage, v.Spec.EngineImage)
 	}
+	if v.Spec.MigrationNodeID != "" {
+		return fmt.Errorf("cannot upgrade during migration")
+	}
 
 	oldImage := v.Spec.EngineImage
 	v.Spec.EngineImage = image
@@ -462,7 +465,119 @@ func (m *VolumeManager) checkVolumeNotInMigration(volumeName string) error {
 		return err
 	}
 	if v.Spec.MigrationNodeID != "" {
-		return fmt.Errorf("cannot take snapshot during migration")
+		return fmt.Errorf("cannot operate during migration")
 	}
 	return nil
+}
+
+func (m *VolumeManager) MigrationStart(name, nodeID string) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to start migration for volume %v to %v", name, nodeID)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+	if v == nil {
+		return nil, fmt.Errorf("cannot find volume %v", name)
+	}
+	if v.Spec.NodeID == "" || v.Status.State != types.VolumeStateAttached {
+		return nil, fmt.Errorf("invalid volume state to start migration %v", v.Status.State)
+	}
+	if v.Status.Robustness != types.VolumeRobustnessHealthy {
+		return nil, fmt.Errorf("volume must be healthy to start migration")
+	}
+	if v.Spec.EngineImage != v.Status.CurrentImage {
+		return nil, fmt.Errorf("upgrading in process for volume, cannot start migration")
+	}
+	if v.Spec.MigrationNodeID != "" {
+		return nil, fmt.Errorf("migration already started")
+	}
+	if v.Spec.NodeID == nodeID {
+		return nil, fmt.Errorf("cannot migrate to the same node as volume currently attached to")
+	}
+
+	if nodeID == "" {
+		return nil, fmt.Errorf("empty migration destination")
+	}
+	if _, err := m.Node2APIAddress(nodeID); err != nil {
+		return nil, err
+	}
+
+	v.Spec.MigrationNodeID = nodeID
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+	logrus.Debugf("Migration started for volume %v from %v to %v", v.Name, v.Spec.NodeID, nodeID)
+	return v, nil
+}
+
+func (m *VolumeManager) MigrationConfirm(name string) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to confirm migration for volume %v", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+	if v == nil {
+		return nil, fmt.Errorf("cannot find volume %v", name)
+	}
+	if v.Spec.NodeID == "" || v.Status.State != types.VolumeStateAttached {
+		return nil, fmt.Errorf("invalid volume state to confirm migration %v", v.Status.State)
+	}
+	if v.Spec.MigrationNodeID == "" {
+		return nil, fmt.Errorf("no migration in process to be confirm")
+	}
+
+	// the engine must be running in order to be confirmed
+	es, err := m.ds.ListVolumeEngines(name)
+	attached := false
+	for _, e := range es {
+		if e.Spec.NodeID == v.Spec.MigrationNodeID &&
+			e.Status.CurrentState == types.InstanceStateRunning {
+			attached = true
+			break
+		}
+	}
+	if !attached {
+		return nil, fmt.Errorf("migration is not ready yet")
+	}
+
+	oldNodeID := v.Spec.NodeID
+	v.Spec.NodeID = v.Spec.MigrationNodeID
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+	logrus.Debugf("Start migration confirming for volume %v from %v to %v", v.Name, oldNodeID, v.Spec.NodeID)
+	return v, nil
+}
+
+func (m *VolumeManager) MigrationRollback(name string) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to rollback migration for volume %v", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+	if v == nil {
+		return nil, fmt.Errorf("cannot find volume %v", name)
+	}
+	if v.Spec.MigrationNodeID == "" {
+		return nil, fmt.Errorf("no migration in process to be rollback")
+	}
+
+	v.Spec.MigrationNodeID = ""
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+	logrus.Debugf("Start rolling back migration for volume %v", v.Name)
+	return v, nil
 }
