@@ -1295,9 +1295,14 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 			return err
 		}
 
+		v.Spec.OwnerID = v.Spec.NodeID
+		v.Spec.MigrationNodeID = ""
+		if _, err := vc.ds.UpdateVolumeAndOwner(v); err != nil {
+			return err
+		}
+
 		// cleanupCorruptedOrStaleReplicas() will take care of old replicas
 		logrus.Infof("volume %v: confirmMigration: migration to node %v has been confirmed", v.Name, v.Spec.NodeID)
-		v.Spec.MigrationNodeID = ""
 		return nil
 	}
 
