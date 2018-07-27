@@ -50,6 +50,9 @@ func NewRouter(s *Server) *mux.Router {
 		"salvage":         s.VolumeSalvage,
 		"recurringUpdate": s.VolumeRecurringUpdate,
 
+		"replicaRemove": s.ReplicaRemove,
+		"engineUpgrade": s.EngineUpgrade,
+
 		"snapshotPurge":  s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotPurge),
 		"snapshotCreate": s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotCreate),
 		"snapshotList":   s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotList),
@@ -57,9 +60,6 @@ func NewRouter(s *Server) *mux.Router {
 		"snapshotDelete": s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotDelete),
 		"snapshotRevert": s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotRevert),
 		"snapshotBackup": s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotBackup),
-
-		"replicaRemove": s.fwd.Handler(OwnerIDFromVolume(s.m), s.ReplicaRemove),
-		"engineUpgrade": s.fwd.Handler(OwnerIDFromVolume(s.m), s.EngineUpgrade),
 	}
 	for name, action := range volumeActions {
 		r.Methods("POST").Path("/v1/volumes/{name}").Queries("action", name).Handler(f(schemas, action))
