@@ -238,17 +238,15 @@ func (m *VolumeManager) Attach(name, nodeID string) (v *longhorn.Volume, err err
 		}
 		return v, nil
 	}
+	v.Spec.NodeID = nodeID
+	v.Spec.OwnerID = v.Spec.NodeID
+
 	// Must be owned by the manager on the same node
-	v, err = m.updateVolumeOwner(nodeID, v)
+	v, err = m.ds.UpdateVolumeAndOwner(v)
 	if err != nil {
 		return nil, err
 	}
 
-	v.Spec.NodeID = nodeID
-	v, err = m.ds.UpdateVolume(v)
-	if err != nil {
-		return nil, err
-	}
 	logrus.Debugf("Attaching volume %v to %v", v.Name, v.Spec.NodeID)
 	return v, nil
 }
@@ -274,18 +272,16 @@ func (m *VolumeManager) Detach(name string) (v *longhorn.Volume, err error) {
 		return v, nil
 	}
 
+	v.Spec.OwnerID = m.currentNodeID
+	v.Spec.NodeID = ""
+
 	// Ownership transfer to the one called detach in case the original
 	// owner is down (so it cannot do anything to proceed)
-	v, err = m.updateVolumeOwner(m.currentNodeID, v)
+	v, err = m.ds.UpdateVolumeAndOwner(v)
 	if err != nil {
 		return nil, err
 	}
 
-	v.Spec.NodeID = ""
-	v, err = m.ds.UpdateVolume(v)
-	if err != nil {
-		return nil, err
-	}
 	logrus.Debugf("Detaching volume %v from %v", v.Name, oldNodeID)
 	return v, nil
 }
@@ -386,36 +382,6 @@ func (m *VolumeManager) GetManagerNodeIPMap() (map[string]string, error) {
 		nodeIPMap[pod.Spec.NodeName] = pod.Status.PodIP
 	}
 	return nodeIPMap, nil
-}
-
-func (m *VolumeManager) updateVolumeOwner(ownerID string, v *longhorn.Volume) (*longhorn.Volume, error) {
-	v.Spec.OwnerID = ownerID
-	engines, err := m.ds.ListVolumeEngines(v.Name)
-	if err != nil {
-		return nil, err
-	}
-	for _, engine := range engines {
-		if engine.Spec.OwnerID != ownerID {
-			engine.Spec.OwnerID = ownerID
-			if _, err := m.ds.UpdateEngine(engine); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	replicas, err := m.ds.ListVolumeReplicas(v.Name)
-	if err != nil {
-		return nil, err
-	}
-	for _, replica := range replicas {
-		if replica.Spec.OwnerID != ownerID {
-			replica.Spec.OwnerID = ownerID
-			if _, err := m.ds.UpdateReplica(replica); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return v, nil
 }
 
 func (m *VolumeManager) EngineUpgrade(volumeName, image string) error {

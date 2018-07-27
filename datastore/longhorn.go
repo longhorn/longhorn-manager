@@ -713,3 +713,37 @@ func (s *DataStore) GetSettingAsInt(settingName types.SettingName) (int64, error
 
 	return 0, fmt.Errorf("The %v setting value couldn't change to integer, value is %v ", string(settingName), value)
 }
+
+func (s *DataStore) UpdateVolumeAndOwner(v *longhorn.Volume) (*longhorn.Volume, error) {
+	engines, err := s.ListVolumeEngines(v.Name)
+	if err != nil {
+		return nil, err
+	}
+	for _, engine := range engines {
+		if engine.Spec.OwnerID != v.Spec.OwnerID {
+			engine.Spec.OwnerID = v.Spec.OwnerID
+			if _, err := s.UpdateEngine(engine); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	replicas, err := s.ListVolumeReplicas(v.Name)
+	if err != nil {
+		return nil, err
+	}
+	for _, replica := range replicas {
+		if replica.Spec.OwnerID != v.Spec.OwnerID {
+			replica.Spec.OwnerID = v.Spec.OwnerID
+			if _, err := s.UpdateReplica(replica); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	v, err = s.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
