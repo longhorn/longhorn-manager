@@ -130,3 +130,15 @@ func GetEngineImageLabel() map[string]string {
 func GetEngineImageChecksumName(image string) string {
 	return engineImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:EngineImageChecksumNameLength]
 }
+
+// GetVolumeConditionFromStatus returns a copy of v.Status.Condition[conditionType]
+func GetVolumeConditionFromStatus(status VolumeStatus, conditionType VolumeConditionType) Condition {
+	condition, exists := status.Conditions[conditionType]
+	if !exists {
+		condition = Condition{
+			Type:   string(conditionType),
+			Status: ConditionStatusUnknown,
+		}
+	}
+	return condition
+}
