@@ -228,7 +228,7 @@ func (m *VolumeManager) Attach(name, nodeID string) (v *longhorn.Volume, err err
 
 	condition := types.GetVolumeConditionFromStatus(v.Status, types.VolumeConditionTypeScheduled)
 	if condition.Status != types.ConditionStatusTrue {
-		return nil, errors.Wrapf(err, "volume hasn't been scheduled")
+		return nil, fmt.Errorf("volume %v hasn't been scheduled", name)
 	}
 
 	// already desired to be attached
