@@ -67,8 +67,6 @@ type Instance struct {
 	Running      bool   `json:"running"`
 	EngineImage  string `json:"engineImage"`
 	CurrentImage string `json:"currentImage"`
-	DiskID       string `json:"diskID"`
-	DataPath     string `json:"dataPath"`
 }
 
 type Controller struct {
@@ -78,6 +76,8 @@ type Controller struct {
 type Replica struct {
 	Instance
 
+	DiskID   string `json:"diskID"`
+	DataPath string `json:"dataPath"`
 	Mode     string `json:"mode"`
 	FailedAt string `json:"failedAt"`
 }
@@ -379,9 +379,9 @@ func toVolumeResource(v *longhorn.Volume, ve *longhorn.Engine, vrs []*longhorn.R
 				NodeID:       r.Spec.NodeID,
 				EngineImage:  r.Spec.EngineImage,
 				CurrentImage: r.Status.CurrentImage,
-				DiskID:       r.Spec.DiskID,
-				DataPath:     r.Spec.DataPath,
 			},
+			DiskID:   r.Spec.DiskID,
+			DataPath: r.Spec.DataPath,
 			Mode:     mode,
 			FailedAt: r.Spec.FailedAt,
 		})
