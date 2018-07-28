@@ -209,6 +209,11 @@ func (m *VolumeManager) Attach(name, nodeID string) (v *longhorn.Volume, err err
 		return nil, errors.Wrapf(err, "cannot attach volume %v with image %v", v.Name, v.Spec.EngineImage)
 	}
 
+	condition := types.GetVolumeConditionFromStatus(v.Status, types.VolumeConditionTypeScheduled)
+	if condition.Status != types.ConditionStatusTrue {
+		return nil, errors.Wrapf(err, "volume hasn't been scheduled")
+	}
+
 	// already desired to be attached
 	if v.Spec.NodeID != "" {
 		if v.Spec.NodeID != nodeID {

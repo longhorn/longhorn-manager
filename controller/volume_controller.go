@@ -647,7 +647,7 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, rs map[string]
 		}
 	}
 
-	condition := vc.getVolumeCondition(v, types.VolumeConditionTypeScheduled)
+	condition := types.GetVolumeConditionFromStatus(v.Status, types.VolumeConditionTypeScheduled)
 	for i := 0; i < v.Spec.NumberOfReplicas-usableCount; i++ {
 		r, err := vc.createReplica(v, rs)
 		if err != nil {
@@ -660,7 +660,7 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, rs map[string]
 			}
 			condition.LastProbeTime = util.Now()
 			condition.Reason = types.VolumeConditionReasonReplicaSchedulingFailure
-			vc.updateVolumeCondition(v, types.VolumeConditionTypeScheduled, condition)
+			v.Status.Conditions[types.VolumeConditionTypeScheduled] = condition
 			// no need to continue, since we won't able to schedule
 			// more replicas if we failed this one
 			return nil
@@ -674,24 +674,8 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, rs map[string]
 		condition.LastTransitionTime = util.Now()
 	}
 	condition.LastProbeTime = util.Now()
-	vc.updateVolumeCondition(v, types.VolumeConditionTypeScheduled, condition)
+	v.Status.Conditions[types.VolumeConditionTypeScheduled] = condition
 	return nil
-}
-
-// getVolumeCondition returns a copy of v.Status.Condition[conditionType]
-func (vc *VolumeController) getVolumeCondition(v *longhorn.Volume, conditionType types.VolumeConditionType) types.Condition {
-	condition, exists := v.Status.Conditions[conditionType]
-	if !exists {
-		condition = types.Condition{
-			Type:   string(conditionType),
-			Status: types.ConditionStatusUnknown,
-		}
-	}
-	return condition
-}
-
-func (vc *VolumeController) updateVolumeCondition(v *longhorn.Volume, conditionType types.VolumeConditionType, condition types.Condition) {
-	v.Status.Conditions[conditionType] = condition
 }
 
 func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
