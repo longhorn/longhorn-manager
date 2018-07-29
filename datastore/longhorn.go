@@ -747,3 +747,13 @@ func (s *DataStore) UpdateVolumeAndOwner(v *longhorn.Volume) (*longhorn.Volume, 
 	}
 	return v, nil
 }
+
+func (s *DataStore) ResetEngineMonitoringStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
+	e.Status.Endpoint = ""
+	e.Status.ReplicaModeMap = nil
+	e, err := s.UpdateEngine(e)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to reste engine status for %v", e.Name)
+	}
+	return e, nil
+}
