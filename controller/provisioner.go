@@ -45,11 +45,20 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 		return nil, fmt.Errorf("ReadWriteMany access mode is not supported")
 	}
 	resourceStorage := pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
-	numberOfReplicas, err := strconv.Atoi(opts.Parameters[types.OptionNumberOfReplica])
+	numberOfReplicasParam := types.DefaultNumberOfReplicas
+	if _, ok := opts.Parameters[types.OptionNumberOfReplicas]; ok {
+		numberOfReplicasParam = opts.Parameters[types.OptionNumberOfReplicas]
+	}
+	numberOfReplicas, err := strconv.Atoi(numberOfReplicasParam)
 	if err != nil {
 		return nil, err
 	}
-	staleReplicaTimeout, err := strconv.Atoi(opts.Parameters[types.OptionStaleReplicaTimeout])
+
+	optionStaleReplicaTimeoutParam := types.DefaultStaleReplicaTimeout
+	if _, ok := opts.Parameters[types.OptionStaleReplicaTimeout]; ok {
+		optionStaleReplicaTimeoutParam = opts.Parameters[types.OptionStaleReplicaTimeout]
+	}
+	staleReplicaTimeout, err := strconv.Atoi(optionStaleReplicaTimeoutParam)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +98,7 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 					FSType: opts.Parameters["fsType"],
 					Options: map[string]string{
 						types.OptionFromBackup:          v.FromBackup,
-						types.OptionNumberOfReplica:     strconv.FormatInt(v.NumberOfReplicas, 10),
+						types.OptionNumberOfReplicas:    strconv.FormatInt(v.NumberOfReplicas, 10),
 						types.OptionStaleReplicaTimeout: strconv.FormatInt(v.StaleReplicaTimeout, 10),
 					},
 				},

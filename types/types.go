@@ -45,9 +45,12 @@ const (
 	AWSEndPoint  = "AWS_ENDPOINTS"
 
 	OptionFromBackup          = "fromBackup"
-	OptionNumberOfReplica     = "numberOfReplicas"
+	OptionNumberOfReplicas    = "numberOfReplicas"
 	OptionStaleReplicaTimeout = "staleReplicaTimeout"
 	OptionFrontend            = "frontend"
+
+	DefaultNumberOfReplicas    = "3"
+	DefaultStaleReplicaTimeout = "30"
 
 	EngineImageChecksumNameLength = 8
 )
