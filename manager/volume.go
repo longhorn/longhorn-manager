@@ -384,30 +384,33 @@ func (m *VolumeManager) GetManagerNodeIPMap() (map[string]string, error) {
 	return nodeIPMap, nil
 }
 
-func (m *VolumeManager) EngineUpgrade(volumeName, image string) error {
+func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "cannot upgrade engine for volume %v using image %v", volumeName, image)
+	}()
 	if err := m.CheckEngineImageReadiness(image); err != nil {
-		return errors.Wrapf(err, "cannot upgrade volume with image %v", image)
+		return nil, err
 	}
 
-	v, err := m.ds.GetVolume(volumeName)
+	v, err = m.ds.GetVolume(volumeName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if v == nil {
-		return fmt.Errorf("cannot find volume %v", volumeName)
+		return nil, fmt.Errorf("cannot find volume %v", volumeName)
 	}
 
 	if v.Spec.EngineImage == image {
-		return fmt.Errorf("Upgrading in process for volume %v engine image from %v to %v already",
+		return nil, fmt.Errorf("upgrading in process for volume %v engine image from %v to %v already",
 			v.Name, v.Status.CurrentImage, v.Spec.EngineImage)
 	}
 
 	if v.Spec.EngineImage != v.Status.CurrentImage && image != v.Status.CurrentImage {
-		return fmt.Errorf("Upgrading in process for volume %v engine image from %v to %v, cannot upgrade to another engine image",
+		return nil, fmt.Errorf("upgrading in process for volume %v engine image from %v to %v, cannot upgrade to another engine image",
 			v.Name, v.Status.CurrentImage, v.Spec.EngineImage)
 	}
 	if v.Spec.MigrationNodeID != "" {
-		return fmt.Errorf("cannot upgrade during migration")
+		return nil, fmt.Errorf("cannot upgrade during migration")
 	}
 
 	oldImage := v.Spec.EngineImage
@@ -415,7 +418,7 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) error {
 
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if image != v.Status.CurrentImage {
 		logrus.Debugf("Upgrading volume %v engine image from %v to %v", v.Name, oldImage, v.Spec.EngineImage)
@@ -423,7 +426,7 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) error {
 		logrus.Debugf("Rolling back volume %v engine image to %v", v.Name, v.Status.CurrentImage)
 	}
 
-	return nil
+	return v, nil
 }
 
 func (m *VolumeManager) GetNode(name string) (*longhorn.Node, error) {
