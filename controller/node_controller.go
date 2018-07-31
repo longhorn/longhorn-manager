@@ -222,11 +222,18 @@ func (nc *NodeController) syncNode(key string) (err error) {
 			return err
 		}
 	}
-	// sync disks status on current node
+
 	if nc.controllerID == node.Name {
+		// sync disks status on current node
 		err = nc.syncDiskStatus(node)
 		if err != nil {
 			return err
+		}
+		// sync mount propagation status on current node
+		for _, pod := range managerPods {
+			if pod.Spec.NodeName == node.Name {
+				return nc.syncNodeStatus(pod, node)
+			}
 		}
 	}
 
@@ -350,6 +357,48 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		logrus.Debugf("Requeue %v due to conflict", node.Name)
 		nc.enqueueNode(n)
 		err = nil
+	}
+
+	return nil
+}
+
+func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error {
+	// sync bidirectional mount propagation for node status to check whether the node could deploy CSI driver
+	isChanged := false
+	for _, mount := range pod.Spec.Containers[0].VolumeMounts {
+		if mount.Name == types.LonghornSystemKey {
+			mountPropagationStr := ""
+			if mount.MountPropagation == nil {
+				mountPropagationStr = "nil"
+			} else {
+				mountPropagationStr = string(*mount.MountPropagation)
+			}
+			if mount.MountPropagation == nil || *mount.MountPropagation != v1.MountPropagationBidirectional {
+				if node.Status.MountPropagation {
+					isChanged = true
+					logrus.Debugf("The MountPropagation value %s is not expected from pod %s, node %s", mountPropagationStr, pod.ObjectMeta.Name, pod.Spec.NodeName)
+				}
+				node.Status.MountPropagation = false
+			} else {
+				if !node.Status.MountPropagation {
+					isChanged = true
+				}
+				node.Status.MountPropagation = true
+			}
+			break
+		}
+	}
+
+	// only update MountPropagation status when it need to change
+	if isChanged {
+		n, err := nc.ds.UpdateNode(node)
+		// retry save current node status if there's a conflict
+		// because only current controller will update mount propagation status
+		if apierrors.IsConflict(errors.Cause(err)) {
+			logrus.Debugf("Requeue %v due to conflict", node.Name)
+			nc.enqueueNode(n)
+			err = nil
+		}
 	}
 
 	return nil

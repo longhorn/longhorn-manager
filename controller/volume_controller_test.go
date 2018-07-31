@@ -365,6 +365,18 @@ func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string) *v1.
 		},
 		Spec: v1.PodSpec{
 			NodeName: nodeID,
+			Containers: []v1.Container{
+				{
+					Name:  "test-container",
+					Image: TestEngineImage,
+					VolumeMounts: []v1.VolumeMount{
+						{
+							Name:      "longhorn",
+							MountPath: TestDefaultDataPath,
+						},
+					},
+				},
+			},
 		},
 		Status: v1.PodStatus{
 			Phase: phase,
