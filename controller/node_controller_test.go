@@ -79,10 +79,12 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.nodes = nodes
 	expectNodeStatus := map[string]types.NodeStatus{
 		TestNode1: {
-			State: types.NodeStateUp,
+			State:            types.NodeStateUp,
+			MountPropagation: false,
 		},
 		TestNode2: {
-			State: types.NodeStateUp,
+			State:            types.NodeStateUp,
+			MountPropagation: false,
 		},
 	}
 	tc.expectNodeStatus = expectNodeStatus
@@ -105,10 +107,12 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.nodes = nodes
 	expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
-			State: types.NodeStateDown,
+			State:            types.NodeStateDown,
+			MountPropagation: false,
 		},
 		TestNode2: {
-			State: types.NodeStateUp,
+			State:            types.NodeStateUp,
+			MountPropagation: false,
 		},
 	}
 	tc.expectNodeStatus = expectNodeStatus
@@ -131,10 +135,12 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.nodes = nodes
 	expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
-			State: types.NodeStateUp,
+			State:            types.NodeStateUp,
+			MountPropagation: false,
 		},
 		TestNode2: {
-			State: types.NodeStateUp,
+			State:            types.NodeStateUp,
+			MountPropagation: false,
 		},
 	}
 	tc.expectNodeStatus = expectNodeStatus
@@ -168,7 +174,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestNode2: node2,
 	}
 	tc.nodes = nodes
-	tc.expectNodeStatus = expectNodeStatus
 	volume := newVolume(TestVolumeName, 2)
 	engine := newEngineForVolume(volume)
 	replica1 := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1)
@@ -178,7 +183,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 
 	expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
-			State: types.NodeStateUp,
+			State:            types.NodeStateUp,
+			MountPropagation: false,
 			DiskStatus: map[string]types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: TestVolumeSize,
@@ -187,7 +193,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 		TestNode2: {
-			State: types.NodeStateUp,
+			State:            types.NodeStateUp,
+			MountPropagation: false,
 			DiskStatus: map[string]types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
@@ -241,6 +248,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			n, err := lhClient.LonghornV1alpha1().Nodes(TestNamespace).Get(node.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(n.Status.State, Equals, tc.expectNodeStatus[nodeName].State)
+			c.Assert(n.Status.MountPropagation, Equals, tc.expectNodeStatus[nodeName].MountPropagation)
 			if len(tc.expectNodeStatus[nodeName].DiskStatus) > 0 {
 				c.Assert(n.Status.DiskStatus, DeepEquals, tc.expectNodeStatus[nodeName].DiskStatus)
 			}
