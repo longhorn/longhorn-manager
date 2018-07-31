@@ -226,11 +226,12 @@ func (s *Server) EngineUpgrade(rw http.ResponseWriter, req *http.Request) error 
 
 	id := mux.Vars(req)["name"]
 
-	if err := s.m.EngineUpgrade(id, input.Image); err != nil {
+	v, err := s.m.EngineUpgrade(id, input.Image)
+	if err != nil {
 		return errors.Wrap(err, "unable to upgrade engine")
 	}
 
-	return s.responseWithVolume(rw, req, id, nil)
+	return s.responseWithVolume(rw, req, id, v)
 }
 
 func (s *Server) MigrationStart(rw http.ResponseWriter, req *http.Request) error {
