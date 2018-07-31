@@ -354,7 +354,7 @@ func newReplicaForVolume(v *longhorn.Volume, e *longhorn.Engine, nodeID, diskID 
 	}
 }
 
-func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string) *v1.Pod {
+func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string, mountpropagation *v1.MountPropagationMode) *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -371,8 +371,9 @@ func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string) *v1.
 					Image: TestEngineImage,
 					VolumeMounts: []v1.VolumeMount{
 						{
-							Name:      "longhorn",
-							MountPath: TestDefaultDataPath,
+							Name:             "longhorn",
+							MountPath:        TestDefaultDataPath,
+							MountPropagation: mountpropagation,
 						},
 					},
 				},
@@ -466,11 +467,11 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		vc := newTestVolumeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestOwnerID1)
 
 		// Need to create daemon pod for node
-		daemon1 := newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+		daemon1 := newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
 		p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(daemon1)
 		c.Assert(err, IsNil)
 		pIndexer.Add(p)
-		daemon2 := newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+		daemon2 := newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, nil)
 		p, err = kubeClient.CoreV1().Pods(TestNamespace).Create(daemon2)
 		c.Assert(err, IsNil)
 		pIndexer.Add(p)

@@ -61,10 +61,11 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 
 func (s *TestSuite) TestSyncNode(c *C) {
 	testCases := map[string]*NodeTestCase{}
+	MountPropagationBidirectional := v1.MountPropagationBidirectional
 
 	tc := &NodeTestCase{}
-	daemon1 := newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
-	daemon2 := newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	daemon1 := newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
+	daemon2 := newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, nil)
 	pods := map[string]*v1.Pod{
 		TestDaemon1: daemon1,
 		TestDaemon2: daemon2,
@@ -91,8 +92,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	testCases["all nodes up"] = tc
 
 	tc = &NodeTestCase{}
-	daemon1 = newDaemonPod(v1.PodFailed, TestDaemon1, TestNamespace, TestNode1, TestIP1)
-	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	daemon1 = newDaemonPod(v1.PodFailed, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
+	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, nil)
 	pods = map[string]*v1.Pod{
 		TestDaemon1: daemon1,
 		TestDaemon2: daemon2,
@@ -119,8 +120,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	testCases["manager pod down"] = tc
 
 	tc = &NodeTestCase{}
-	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
-	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
+	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, nil)
 	pods = map[string]*v1.Pod{
 		TestDaemon1: daemon1,
 		TestDaemon2: daemon2,
@@ -147,8 +148,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	testCases["set node status up"] = tc
 
 	tc = &NodeTestCase{}
-	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
-	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional)
+	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, &MountPropagationBidirectional)
 	pods = map[string]*v1.Pod{
 		TestDaemon1: daemon1,
 		TestDaemon2: daemon2,
@@ -184,7 +185,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			State:            types.NodeStateUp,
-			MountPropagation: false,
+			MountPropagation: true,
 			DiskStatus: map[string]types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: TestVolumeSize,
