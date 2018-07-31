@@ -196,8 +196,9 @@ const (
 )
 
 type NodeStatus struct {
-	State      NodeState             `json:"state"`
-	DiskStatus map[string]DiskStatus `json:"diskStatus"`
+	State            NodeState             `json:"state"`
+	DiskStatus       map[string]DiskStatus `json:"diskStatus"`
+	MountPropagation bool                  `json:"mountPropagation"`
 }
 
 type DiskSpec struct {
