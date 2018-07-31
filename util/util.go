@@ -21,7 +21,9 @@ import (
 	"github.com/pkg/errors"
 	iscsi_util "github.com/rancher/go-iscsi-helper/util"
 	"github.com/satori/go.uuid"
+
 	"k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -38,6 +40,9 @@ const (
 
 var (
 	cmdTimeout = time.Minute // one minute by default
+
+	ConflictRetryInterval = 20 * time.Millisecond
+	ConflictRetryCounts   = 100
 )
 
 type MetadataConfig struct {
@@ -427,4 +432,18 @@ func GetDiskInfo(directory string) (*DiskInfo, error) {
 	diskInfo.StorageAvailable = diskInfo.FreeBlock * diskInfo.BlockSize
 
 	return diskInfo, nil
+}
+
+func RetryOnConflictCause(fn func() (interface{}, error)) (obj interface{}, err error) {
+	for i := 0; i < ConflictRetryCounts; i++ {
+		obj, err = fn()
+		if err == nil {
+			return obj, nil
+		}
+		if !apierrors.IsConflict(errors.Cause(err)) {
+			return nil, err
+		}
+		time.Sleep(ConflictRetryInterval)
+	}
+	return nil, err
 }
