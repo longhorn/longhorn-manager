@@ -1,7 +1,5 @@
 package client
 
-import "github.com/rancher/longhorn-manager/types"
-
 const (
 	SETTING_TYPE = "setting"
 )
@@ -9,7 +7,7 @@ const (
 type Setting struct {
 	Resource `yaml:"-"`
 
-	Definition types.SettingDefinition `json:"definition,omitempty" yaml:"definition,omitempty"`
+	Definition SettingDefinition `json:"definition,omitempty" yaml:"definition,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
