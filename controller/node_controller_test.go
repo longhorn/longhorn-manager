@@ -207,6 +207,65 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.expectNodeStatus = expectNodeStatus
 	testCases["only disk on node1 should be updated status"] = tc
 
+	tc = &NodeTestCase{}
+	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional)
+	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, &MountPropagationBidirectional)
+	pods = map[string]*v1.Pod{
+		TestDaemon1: daemon1,
+		TestDaemon2: daemon2,
+	}
+	tc.pods = pods
+	node1 = newNode(TestNode1, TestNamespace, true, "up")
+	node1.Status.DiskStatus = map[string]types.DiskStatus{
+		TestDiskID1: {
+			StorageScheduled: 0,
+			StorageAvailable: 0,
+			State:            types.DiskStateSchedulable,
+		},
+		"unavailable-disk": {
+			StorageScheduled: 0,
+			StorageAvailable: 0,
+			State:            types.DiskStateSchedulable,
+		},
+	}
+	node2 = newNode(TestNode2, TestNamespace, true, "up")
+	node2.Status.DiskStatus = map[string]types.DiskStatus{
+		TestDiskID1: {
+			StorageScheduled: 0,
+			StorageAvailable: 0,
+		},
+	}
+	nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+		TestNode2: node2,
+	}
+	tc.nodes = nodes
+	expectNodeStatus = map[string]types.NodeStatus{
+		TestNode1: {
+			State:            types.NodeStateUp,
+			MountPropagation: true,
+			DiskStatus: map[string]types.DiskStatus{
+				TestDiskID1: {
+					StorageScheduled: 0,
+					StorageAvailable: 0,
+					State:            types.DiskStateUnschedulable,
+				},
+			},
+		},
+		TestNode2: {
+			State:            types.NodeStateUp,
+			MountPropagation: false,
+			DiskStatus: map[string]types.DiskStatus{
+				TestDiskID1: {
+					StorageScheduled: 0,
+					StorageAvailable: 0,
+				},
+			},
+		},
+	}
+	tc.expectNodeStatus = expectNodeStatus
+	testCases["test clean disk status when disk removed from the node spec"] = tc
+
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
 		kubeClient := fake.NewSimpleClientset()
