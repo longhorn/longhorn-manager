@@ -136,9 +136,9 @@ func deployDriver(c *cli.Context) error {
 	}
 
 	if driver == FlagDriverCSI {
-		err := csi.CheckMountPropagationWithPodSpec(kubeClient, managerImage, os.Getenv(types.EnvPodNamespace))
+		err := csi.CheckMountPropagationWithNode(managerURL)
 		if err != nil {
-			logrus.Warnf("Got an error when checking MountPropagation with pod spec, %v", err)
+			logrus.Warnf("Got an error when checking MountPropagation with node status, %v", err)
 			if driverDetected {
 				logrus.Infof("MountPropagation check failed, fall back to use the Flexvolume")
 				driver = FlagDriverFlexvolume

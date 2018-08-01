@@ -2,7 +2,6 @@ package csi
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/Sirupsen/logrus"
 	appsv1beta1 "k8s.io/api/apps/v1beta1"
@@ -11,144 +10,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/kubernetes/pkg/util/pointer"
+
+	longhornclient "github.com/rancher/longhorn-manager/client"
 )
-
-const (
-	maxRetryCountForMountPropagationCheck = 10
-	durationSleepForMountPropagationCheck = 10 * time.Second
-)
-
-// CheckMountPropagationWithPodSpec https://github.com/kubernetes/kubernetes/issues/66086#issuecomment-404346854
-func CheckMountPropagationWithPodSpec(kubeClient *clientset.Clientset, image, namespace string) error {
-	commonName := "longhorn-mount-propagation-tester"
-	mountName := "mountpoint"
-	mountPath := "/mnt/tmp"
-	podSpec := v1.PodSpec{
-		Containers: []v1.Container{
-			v1.Container{
-				Name:  commonName,
-				Image: image,
-				Args: []string{
-					"/bin/sh",
-					"-c",
-					"sleep infinity",
-				},
-				ImagePullPolicy: v1.PullIfNotPresent,
-				VolumeMounts: []v1.VolumeMount{
-					v1.VolumeMount{
-						Name:             mountName,
-						MountPath:        mountPath,
-						MountPropagation: &MountPropagationBidirectional,
-					},
-				},
-				SecurityContext: &v1.SecurityContext{
-					Privileged: pointer.BoolPtr(true),
-				},
-			},
-		},
-		Volumes: []v1.Volume{
-			v1.Volume{
-				Name: mountName,
-				VolumeSource: v1.VolumeSource{
-					HostPath: &v1.HostPathVolumeSource{
-						Path: mountPath,
-					},
-				},
-			},
-		},
-	}
-
-	daemonSet := &appsv1beta2.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      commonName,
-			Namespace: namespace,
-		},
-
-		Spec: appsv1beta2.DaemonSetSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": commonName,
-				},
-			},
-			Template: v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app": commonName,
-					},
-				},
-				Spec: podSpec,
-			},
-		},
-	}
-
-	daemonSetClient := kubeClient.AppsV1beta2().DaemonSets(namespace)
-	podClient := kubeClient.CoreV1().Pods(namespace)
-
-	logrus.Debugf("Trying to create the daemonset %s for MountPropagation check", commonName)
-	_, err := daemonSetClient.Create(daemonSet)
-	if err != nil {
-		return err
-	}
-	logrus.Debugf("Created the daemonset %s for MountPropagation check", commonName)
-
-	defer func() {
-		propagation := metav1.DeletePropagationForeground
-		if err := daemonSetClient.Delete(commonName,
-			&metav1.DeleteOptions{PropagationPolicy: &propagation}); err != nil {
-			logrus.Warnf("Failed to delete the daemonset %s for MountPropagation check", commonName)
-		}
-	}()
-
-	retryCount := 0
-	for {
-		if retryCount >= maxRetryCountForMountPropagationCheck {
-			return fmt.Errorf("Has been retried %d times, but daemonset is still unavailable", retryCount)
-		}
-		time.Sleep(durationSleepForMountPropagationCheck)
-		retryCount++
-		ds, err := daemonSetClient.Get(commonName, metav1.GetOptions{})
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				logrus.Warnf("Not found daemonset %s, will try again later", commonName)
-				continue
-			}
-			return err
-		}
-		logrus.Debugf("The status of daemonset %s, NumberReady: %d, DesiredNumberScheduled: %d",
-			commonName, ds.Status.NumberReady, ds.Status.DesiredNumberScheduled)
-		if ds.Status.NumberReady == ds.Status.DesiredNumberScheduled {
-			break
-		}
-	}
-
-	pods, err := podClient.List(metav1.ListOptions{LabelSelector: fmt.Sprintf("app=%s", commonName)})
-	if err != nil {
-		return err
-	}
-
-	for _, pod := range pods.Items {
-		for _, mount := range pod.Spec.Containers[0].VolumeMounts {
-			if mount.Name == mountName {
-				mountPropagationStr := ""
-				if mount.MountPropagation == nil {
-					mountPropagationStr = "nil"
-				} else {
-					mountPropagationStr = string(*mount.MountPropagation)
-				}
-
-				logrus.Debugf("Got MountPropagation %s from pod %s, node %s",
-					mountPropagationStr, pod.ObjectMeta.Name, pod.Spec.NodeName)
-
-				if mount.MountPropagation == nil || *mount.MountPropagation != MountPropagationBidirectional {
-					return fmt.Errorf("The MountPropagation value %s is not expected", mountPropagationStr)
-				}
-			}
-		}
-	}
-
-	return nil
-}
 
 func getCommonService(commonName, namespace string) *v1.Service {
 	return &v1.Service{
@@ -328,5 +192,22 @@ func deployDaemonSet(kubeClient *clientset.Clientset, daemonSet *appsv1beta2.Dae
 		return err
 	}
 	logrus.Debugf("Created the daemonset %s", daemonSet.ObjectMeta.Name)
+	return nil
+}
+
+// CheckMountPropagationWithNode https://github.com/kubernetes/kubernetes/issues/66086#issuecomment-404346854
+func CheckMountPropagationWithNode(managerURL string) error {
+	clientOpts := &longhornclient.ClientOpts{Url: managerURL}
+	apiClient, err := longhornclient.NewRancherClient(clientOpts)
+	if err != nil {
+		return err
+	}
+	nodeCollection, err := apiClient.Node.List(&longhornclient.ListOpts{})
+	for _, node := range nodeCollection.Data {
+		if !node.MountPropagation {
+			return fmt.Errorf("Node %s is not support mount propagation", node.Name)
+		}
+	}
+
 	return nil
 }
