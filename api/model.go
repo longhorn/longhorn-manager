@@ -163,6 +163,10 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("controller", Controller{})
 	schemas.AddType("diskUpdate", types.DiskSpec{})
 	schemas.AddType("nodeInput", NodeInput{})
+	schemas.AddType("settingDefinition", types.SettingDefinition{})
+	schemas.AddType("diskInfo", DiskInfo{})
+	// to avoid duplicate name with built-in type condition
+	schemas.AddType("volumeCondition", types.Condition{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
@@ -190,6 +194,10 @@ func nodeSchema(node *client.Schema) {
 	allowScheduling.Required = true
 	allowScheduling.Unique = false
 	node.ResourceFields["allowScheduling"] = allowScheduling
+	node.ResourceFields["disks"] = client.Field{
+		Type:     "map[diskInfo]",
+		Nullable: true,
+	}
 }
 
 func diskSchema(diskUpdateInput *client.Schema) {
@@ -244,6 +252,11 @@ func settingSchema(setting *client.Schema) {
 	settingValue.Required = true
 	settingValue.Update = true
 	setting.ResourceFields["value"] = settingValue
+
+	setting.ResourceFields["definition"] = client.Field{
+		Type:     "settingDefinition",
+		Nullable: false,
+	}
 }
 
 func volumeSchema(volume *client.Schema) {
@@ -305,8 +318,8 @@ func volumeSchema(volume *client.Schema) {
 		"migrationConfirm":  {},
 		"migrationRollback": {},
 	}
-	volume.ResourceFields["controller"] = client.Field{
-		Type:     "controller",
+	volume.ResourceFields["controllers"] = client.Field{
+		Type:     "array[controller]",
 		Nullable: true,
 	}
 	volumeName := volume.ResourceFields["name"]
@@ -351,7 +364,7 @@ func volumeSchema(volume *client.Schema) {
 	volume.ResourceFields["recurringJobs"] = recurringJobs
 
 	conditions := volume.ResourceFields["conditions"]
-	conditions.Type = "map"
+	conditions.Type = "map[volumeCondition]"
 	volume.ResourceFields["conditions"] = conditions
 }
 
