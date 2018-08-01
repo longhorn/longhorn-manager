@@ -11,6 +11,10 @@ type Replica struct {
 
 	CurrentImage string `json:"currentImage,omitempty" yaml:"current_image,omitempty"`
 
+	DataPath string `json:"dataPath,omitempty" yaml:"data_path,omitempty"`
+
+	DiskID string `json:"diskID,omitempty" yaml:"disk_id,omitempty"`
+
 	EngineImage string `json:"engineImage,omitempty" yaml:"engine_image,omitempty"`
 
 	FailedAt string `json:"failedAt,omitempty" yaml:"failed_at,omitempty"`

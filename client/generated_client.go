@@ -16,12 +16,15 @@ type RancherClient struct {
 	EngineUpgradeInput EngineUpgradeInputOperations
 	Replica            ReplicaOperations
 	Controller         ControllerOperations
+	DiskUpdate         DiskUpdateOperations
+	NodeInput          NodeInputOperations
 	Volume             VolumeOperations
 	BackupVolume       BackupVolumeOperations
 	Setting            SettingOperations
 	RecurringInput     RecurringInputOperations
 	EngineImage        EngineImageOperations
 	Node               NodeOperations
+	DiskUpdateInput    DiskUpdateInputOperations
 }
 
 func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
@@ -42,12 +45,15 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.EngineUpgradeInput = newEngineUpgradeInputClient(client)
 	client.Replica = newReplicaClient(client)
 	client.Controller = newControllerClient(client)
+	client.DiskUpdate = newDiskUpdateClient(client)
+	client.NodeInput = newNodeInputClient(client)
 	client.Volume = newVolumeClient(client)
 	client.BackupVolume = newBackupVolumeClient(client)
 	client.Setting = newSettingClient(client)
 	client.RecurringInput = newRecurringInputClient(client)
 	client.EngineImage = newEngineImageClient(client)
 	client.Node = newNodeClient(client)
+	client.DiskUpdateInput = newDiskUpdateInputClient(client)
 
 	return client
 }

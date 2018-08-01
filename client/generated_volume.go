@@ -11,17 +11,19 @@ type Volume struct {
 
 	Controller *Controller `json:"controller,omitempty" yaml:"controller,omitempty"`
 
+	Controllers []string `json:"controllers,omitempty" yaml:"controllers,omitempty"`
+
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`
 
 	CurrentImage string `json:"currentImage,omitempty" yaml:"current_image,omitempty"`
-
-	Endpoint string `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
 
 	EngineImage string `json:"engineImage,omitempty" yaml:"engine_image,omitempty"`
 
 	FromBackup string `json:"fromBackup,omitempty" yaml:"from_backup,omitempty"`
 
 	Frontend string `json:"frontend,omitempty" yaml:"frontend,omitempty"`
+
+	MigrationNodeID string `json:"migrationNodeID,omitempty" yaml:"migration_node_id,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
