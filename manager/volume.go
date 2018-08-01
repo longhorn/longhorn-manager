@@ -429,39 +429,6 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 	return v, nil
 }
 
-func (m *VolumeManager) GetNode(name string) (*longhorn.Node, error) {
-	return m.ds.GetNode(name)
-}
-
-func (m *VolumeManager) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) {
-	return m.ds.UpdateNode(node)
-}
-
-func (m *VolumeManager) ListNodes() (map[string]*longhorn.Node, error) {
-	nodeList, err := m.ds.ListNodes()
-	if err != nil {
-		return nil, err
-	}
-	return nodeList, nil
-}
-
-func (m *VolumeManager) ListNodesSorted() ([]*longhorn.Node, error) {
-	nodeMap, err := m.ListNodes()
-	if err != nil {
-		return []*longhorn.Node{}, err
-	}
-
-	nodes := make([]*longhorn.Node, len(nodeMap))
-	nodeNames, err := sortKeys(nodeMap)
-	if err != nil {
-		return []*longhorn.Node{}, err
-	}
-	for i, nodeName := range nodeNames {
-		nodes[i] = nodeMap[nodeName]
-	}
-	return nodes, nil
-}
-
 func (m *VolumeManager) checkVolumeNotInMigration(volumeName string) error {
 	v, err := m.Get(volumeName)
 	if err != nil {
