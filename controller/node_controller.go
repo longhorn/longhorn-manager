@@ -283,10 +283,7 @@ func (nc *NodeController) syncStatusWithPod(pod *v1.Pod, node *longhorn.Node) er
 
 func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 	diskMap := node.Spec.Disks
-	diskStatusMap := node.Status.DiskStatus
-	if diskStatusMap == nil {
-		diskStatusMap = map[string]types.DiskStatus{}
-	}
+	diskStatusMap := map[string]types.DiskStatus{}
 
 	// get all replicas which have been assigned to current node
 	replicaDiskMap, err := nc.ds.ListReplicasByNode(node.Name)
@@ -301,10 +298,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 	}
 
 	for diskID, disk := range diskMap {
-		diskStatus, ok := diskStatusMap[diskID]
-		if !ok {
-			diskStatus = types.DiskStatus{}
-		}
+		diskStatus := types.DiskStatus{}
 		// if there's no replica assigned to this disk
 		if _, ok := replicaDiskMap[diskID]; !ok {
 			diskStatus.StorageScheduled = 0
