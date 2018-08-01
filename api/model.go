@@ -127,11 +127,12 @@ type NodeInput struct {
 
 type Node struct {
 	client.Resource
-	Name            string              `json:"name"`
-	Address         string              `json:"address"`
-	AllowScheduling bool                `json:"allowScheduling"`
-	Disks           map[string]DiskInfo `json:"disks"`
-	State           types.NodeState     `json:"state"`
+	Name             string              `json:"name"`
+	Address          string              `json:"address"`
+	AllowScheduling  bool                `json:"allowScheduling"`
+	Disks            map[string]DiskInfo `json:"disks"`
+	State            types.NodeState     `json:"state"`
+	MountPropagation bool                `json:"mountPropagation"`
 }
 
 type DiskInfo struct {
@@ -603,10 +604,11 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 			Actions: map[string]string{},
 			Links:   map[string]string{},
 		},
-		Name:            node.Name,
-		Address:         address,
-		AllowScheduling: node.Spec.AllowScheduling,
-		State:           node.Status.State,
+		Name:             node.Name,
+		Address:          address,
+		AllowScheduling:  node.Spec.AllowScheduling,
+		State:            node.Status.State,
+		MountPropagation: node.Status.MountPropagation,
 	}
 
 	disks := map[string]DiskInfo{}
