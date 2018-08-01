@@ -9,9 +9,7 @@ type Volume struct {
 
 	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
-	Controller *Controller `json:"controller,omitempty" yaml:"controller,omitempty"`
-
-	Controllers []string `json:"controllers,omitempty" yaml:"controllers,omitempty"`
+	Controllers []Controller `json:"controllers,omitempty" yaml:"controllers,omitempty"`
 
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`
 
