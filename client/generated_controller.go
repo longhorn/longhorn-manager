@@ -11,6 +11,8 @@ type Controller struct {
 
 	CurrentImage string `json:"currentImage,omitempty" yaml:"current_image,omitempty"`
 
+	Endpoint string `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+
 	EngineImage string `json:"engineImage,omitempty" yaml:"engine_image,omitempty"`
 
 	HostId string `json:"hostId,omitempty" yaml:"host_id,omitempty"`
