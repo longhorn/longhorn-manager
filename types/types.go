@@ -47,6 +47,7 @@ const (
 	OptionFromBackup          = "fromBackup"
 	OptionNumberOfReplicas    = "numberOfReplicas"
 	OptionStaleReplicaTimeout = "staleReplicaTimeout"
+	OptionBaseImage           = "baseImage"
 	OptionFrontend            = "frontend"
 
 	DefaultNumberOfReplicas    = "3"

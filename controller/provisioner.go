@@ -62,6 +62,10 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 	if err != nil {
 		return nil, err
 	}
+	baseImage := ""
+	if _, ok := opts.Parameters[types.OptionBaseImage]; ok {
+		baseImage = opts.Parameters[types.OptionBaseImage]
+	}
 	frontend := types.VolumeFrontend(opts.Parameters[types.OptionFrontend])
 	if frontend == "" {
 		frontend = types.VolumeFrontendBlockDev
@@ -74,6 +78,7 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 		FromBackup:          opts.Parameters[types.OptionFromBackup],
 		NumberOfReplicas:    int64(numberOfReplicas),
 		StaleReplicaTimeout: int64(staleReplicaTimeout),
+		BaseImage:           baseImage,
 	}
 	v, err := p.apiClient.Volume.Create(volReq)
 	if err != nil {
@@ -100,6 +105,7 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 						types.OptionFromBackup:          v.FromBackup,
 						types.OptionNumberOfReplicas:    strconv.FormatInt(v.NumberOfReplicas, 10),
 						types.OptionStaleReplicaTimeout: strconv.FormatInt(v.StaleReplicaTimeout, 10),
+						types.OptionBaseImage:           v.BaseImage,
 					},
 				},
 			},
