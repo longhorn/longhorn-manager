@@ -96,6 +96,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	// default replica and engine objects will be copied by copyCurrentToExpect
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
+	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectVolume.Status.Conditions = map[types.VolumeConditionType]types.Condition{
 		types.VolumeConditionTypeScheduled: {
@@ -119,6 +120,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.engines = nil
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
 	tc.expectVolume.Status.Conditions = map[types.VolumeConditionType]types.Condition{
 		types.VolumeConditionTypeScheduled: {
 			Type:   string(types.VolumeConditionTypeScheduled),
@@ -138,6 +140,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateDetached
+	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	testCases["volume detached"] = tc
 
@@ -213,7 +216,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	// volume detaching - stop engine
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = ""
-	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
 	for _, e := range tc.engines {
 		e.Spec.NodeID = TestNode1
 		e.Spec.DesireState = types.InstanceStateRunning
@@ -236,6 +238,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
+	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	for _, e := range tc.expectEngines {
 		e.Spec.NodeID = ""
@@ -263,6 +266,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
+	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	for _, r := range tc.expectReplicas {
 		r.Spec.DesireState = types.InstanceStateStopped
