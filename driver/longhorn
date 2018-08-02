@@ -223,9 +223,11 @@ formatDevIfNeed() {
     fi
 
     if OUT=$(blkid ${fullDevName}); then
-        oldFsType=$(echo ${OUT} | grep -E -o 'TYPE=\"[[:alnum:]]{1,}\"' | awk -F"\"" '{print $2}')
+        debug "blkid ${OUT}"
+
+        oldFsType=$(echo ${OUT} | grep -E -o ' TYPE=\"[[:alnum:]]{1,}\"' | awk -F"\"" '{print $2}')
         debug "dev ${fullDevName} have already fstype ${oldFsType}"
-        if [ "${oldFsType}" != "${newFsType}" ]; then
+        if [ "${newFsType}" != "" ] && [ "${oldFsType}" != "${newFsType}" ]; then
             echo -ne "Failed to create device ${fullDevName} newfs ${newFsType} oldfs ${oldFsType}"
         else
             echo -ne "Success"
