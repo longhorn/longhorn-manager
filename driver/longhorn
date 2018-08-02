@@ -68,6 +68,10 @@ dealExistedVolume() {
     local jsonParams=$1
     local volumeName=$2
     local OUT=$(curl -s --connect-timeout 1 http://${LONGHORN_SVC}/v1/volumes/${volumeName})
+    if [ "$OUT" == "" ]; then
+        echo -ne "${volumeName} doesn't exist"
+        return
+    fi
     debug "acquire existed volume info: ${OUT}"
     local STATE=$(echo ${OUT} | jq -r '.state')
     if [ "${STATE}" == "detached" ]; then
