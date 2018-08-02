@@ -15,18 +15,18 @@ spec:
     spec:
       initContainers:
         - name: wait-longhorn-manager
-          image: rancher/longhorn-manager:9b29b88
+          image: rancher/longhorn-manager:1ed970c
           command: ['sh', '-c', 'while [ $(curl -m 1 -s -o /dev/null -w "%{http_code}" http://longhorn-backend:9500/v1) != "200" ]; do echo waiting; sleep 2; done']
       containers:
         - name: longhorn-driver-deployer
-          image: rancher/longhorn-manager:9b29b88
+          image: rancher/longhorn-manager:1ed970c
           imagePullPolicy: Always
           command:
           - longhorn-manager
           - -d
           - deploy-driver
           - --manager-image
-          - rancher/longhorn-manager:9b29b88
+          - rancher/longhorn-manager:1ed970c
           - --manager-url
           - http://longhorn-backend:9500/v1
           # manually choose "flexvolume" or "csi"
@@ -46,8 +46,9 @@ spec:
               fieldRef:
                 fieldPath: spec.serviceAccountName
           - name: FLEXVOLUME_DIR
-            # FOR RKE
             value: "/var/lib/kubelet/volumeplugins"
+            # FOR RKE
+            #value: "/var/lib/kubelet/volumeplugins"
             # FOR GKE
             #value: "/home/kubernetes/flexvolume/"
             # For default or auto detection with Kubernetes <= v1.8
