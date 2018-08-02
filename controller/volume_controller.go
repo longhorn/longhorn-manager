@@ -524,6 +524,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 	if v.Spec.NodeID == "" {
 		// the final state will be determined at the end of the clause
 		v.Status.State = types.VolumeStateDetaching
+		if v.Status.Robustness != types.VolumeRobustnessFaulted {
+			v.Status.Robustness = types.VolumeRobustnessUnknown
+		}
 
 		// check if any replica has been RW yet
 		dataExists := false
