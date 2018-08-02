@@ -218,7 +218,7 @@ const (
 )
 
 type DiskStatus struct {
-	State            DiskState
-	StorageAvailable int64 `json:"storageAvailable"`
-	StorageScheduled int64 `json:"storageScheduled"`
+	State            DiskState `json:"state"`
+	StorageAvailable int64     `json:"storageAvailable"`
+	StorageScheduled int64     `json:"storageScheduled"`
 }
