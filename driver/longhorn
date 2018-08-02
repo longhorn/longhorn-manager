@@ -225,6 +225,12 @@ formatDevIfNeed() {
     if OUT=$(blkid ${fullDevName}); then
         debug "blkid ${OUT}"
 
+        ptType=$(echo ${OUT} | grep -E -o ' PTTYPE=\"[[:alnum:]]{1,}\"' | awk -F"\"" '{print $2}')
+        if [ "${ptType}" != "" ]; then
+            echo -ne "Device \"${fullDevName}\" with partition table \"${ptType}\" is not supported"
+            return
+        fi
+
         oldFsType=$(echo ${OUT} | grep -E -o ' TYPE=\"[[:alnum:]]{1,}\"' | awk -F"\"" '{print $2}')
         debug "dev ${fullDevName} have already fstype ${oldFsType}"
         if [ "${newFsType}" != "" ] && [ "${oldFsType}" != "${newFsType}" ]; then
