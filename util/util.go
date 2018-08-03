@@ -445,5 +445,5 @@ func RetryOnConflictCause(fn func() (interface{}, error)) (obj interface{}, err 
 		}
 		time.Sleep(ConflictRetryInterval)
 	}
-	return nil, err
+	return nil, errors.Wrapf(err, "cannot finish API request due to too many conflicts")
 }
