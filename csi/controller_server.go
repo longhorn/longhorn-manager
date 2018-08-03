@@ -153,9 +153,9 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Errorf(codes.Aborted, "The volume %s is %s", req.GetVolumeId(), existVol.State)
 	}
 
-	needToAttach := false
-	if existVol.State == string(types.VolumeStateDetached) {
-		needToAttach = true
+	needToAttach := true
+	if existVol.State == string(types.VolumeStateAttached) || existVol.State == string(types.VolumeStateAttaching) {
+		needToAttach = false
 	}
 
 	logrus.Debugf("ControllerPublishVolume: current nodeID %s", req.GetNodeId())
@@ -167,9 +167,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 	} else {
-		// return Aborted let CSI retry ControllerPublishVolume
 		logrus.Infof("ControllerPublishVolume: no need to attach volume %s", req.GetVolumeId())
-		return nil, status.Errorf(codes.Aborted, "The volume %s is %s", req.GetVolumeId(), existVol.State)
 	}
 
 	if !cs.waitForAttach(req.GetVolumeId()) {
