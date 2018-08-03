@@ -6,6 +6,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
+
+	"github.com/rancher/longhorn-manager/types"
 )
 
 func (s *Server) SnapshotCreate(w http.ResponseWriter, req *http.Request) (err error) {
@@ -119,7 +121,17 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 
 	volName := mux.Vars(req)["name"]
 
-	return s.m.BackupSnapshot(input.Name, nil, volName)
+	vol, err := s.m.Get(volName)
+	if err != nil {
+		return errors.Wrap(err, "unable to get volume")
+	}
+
+	labels := make(map[string]string)
+	if vol.Spec.BaseImage != "" {
+		labels[types.BaseImageLabel] = vol.Spec.BaseImage
+	}
+
+	return s.m.BackupSnapshot(input.Name, labels, volName)
 }
 
 func (s *Server) SnapshotPurge(w http.ResponseWriter, req *http.Request) (err error) {

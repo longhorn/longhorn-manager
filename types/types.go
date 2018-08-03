@@ -22,6 +22,8 @@ const (
 	DefaultLonghornDirectory = "/var/lib/rancher/longhorn/"
 
 	LonghornNodeKey = "longhornnode"
+
+	BaseImageLabel = "ranchervm-base-image"
 )
 
 const (
