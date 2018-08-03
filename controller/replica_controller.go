@@ -294,6 +294,10 @@ func (rc *ReplicaController) getReadinessProbeFailureThreshold(r *longhorn.Repli
 	return int32(r.Spec.VolumeSize / replicaReadinessProbeMinimalRestoreRate / replicaReadinessProbePeriodSeconds)
 }
 
+func singleQuotes(static string) string {
+	return fmt.Sprintf("'%s'", static)
+}
+
 func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
@@ -309,7 +313,8 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 		cmd = append(cmd, "--backing-file", "/share/base_image")
 	}
 	if r.Spec.RestoreFrom != "" && r.Spec.RestoreName != "" {
-		cmd = append(cmd, "--restore-from", r.Spec.RestoreFrom, "--restore-name", r.Spec.RestoreName)
+		cmd = append(cmd, "--restore-from", singleQuotes(r.Spec.RestoreFrom))
+		cmd = append(cmd, "--restore-name", singleQuotes(r.Spec.RestoreName))
 	}
 	cmd = append(cmd, "/volume")
 
