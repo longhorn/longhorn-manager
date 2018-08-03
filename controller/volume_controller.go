@@ -522,6 +522,18 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		v.Spec.NodeID = ""
 	}
 
+	if vc.getReplenishReplicasCount(v, rs) == 0 {
+		condition := types.GetVolumeConditionFromStatus(v.Status, types.VolumeConditionTypeScheduled)
+		if condition.Status != types.ConditionStatusTrue {
+			condition.Status = types.ConditionStatusTrue
+			condition.Reason = ""
+			condition.Message = ""
+			condition.LastTransitionTime = util.Now()
+		}
+		condition.LastProbeTime = util.Now()
+		v.Status.Conditions[types.VolumeConditionTypeScheduled] = condition
+	}
+
 	oldState := v.Status.State
 	if v.Spec.NodeID == "" {
 		// the final state will be determined at the end of the clause
@@ -692,20 +704,14 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		return fmt.Errorf("BUG: replenishReplica needs a valid engine")
 	}
 
-	usableCount := 0
-	for _, r := range rs {
-		if r.Spec.FailedAt == "" {
-			usableCount++
-		}
-	}
-
-	condition := types.GetVolumeConditionFromStatus(v.Status, types.VolumeConditionTypeScheduled)
-	for i := 0; i < v.Spec.NumberOfReplicas-usableCount; i++ {
+	replenishCount := vc.getReplenishReplicasCount(v, rs)
+	for i := 0; i < replenishCount; i++ {
 		r, err := vc.createReplica(v, e, rs)
 		if err != nil {
 			return err
 		}
 		if r == nil {
+			condition := types.GetVolumeConditionFromStatus(v.Status, types.VolumeConditionTypeScheduled)
 			if condition.Status != types.ConditionStatusFalse {
 				condition.Status = types.ConditionStatusFalse
 				condition.LastTransitionTime = util.Now()
@@ -719,15 +725,18 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		}
 		rs[r.Name] = r
 	}
-	if condition.Status != types.ConditionStatusTrue {
-		condition.Status = types.ConditionStatusTrue
-		condition.Reason = ""
-		condition.Message = ""
-		condition.LastTransitionTime = util.Now()
-	}
-	condition.LastProbeTime = util.Now()
-	v.Status.Conditions[types.VolumeConditionTypeScheduled] = condition
 	return nil
+}
+
+func (vc *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[string]*longhorn.Replica) int {
+	usableCount := 0
+	for _, r := range rs {
+		if r.Spec.FailedAt == "" {
+			usableCount++
+		}
+	}
+
+	return v.Spec.NumberOfReplicas - usableCount
 }
 
 func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {

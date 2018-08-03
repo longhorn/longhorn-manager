@@ -98,12 +98,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.State = types.VolumeStateCreating
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
-	tc.expectVolume.Status.Conditions = map[types.VolumeConditionType]types.Condition{
-		types.VolumeConditionTypeScheduled: {
-			Type:   string(types.VolumeConditionTypeScheduled),
-			Status: types.ConditionStatusTrue,
-		},
-	}
 	tc.engines = nil
 	tc.replicas = nil
 	testCases["volume create"] = tc
@@ -277,6 +271,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc = generateVolumeTestCaseTemplate()
 	now := metav1.NewTime(time.Now())
 	tc.volume.SetDeletionTimestamp(&now)
+	tc.volume.Status.Conditions = map[types.VolumeConditionType]types.Condition{}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateDeleting
 	tc.expectEngines = nil
@@ -302,9 +297,13 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			StaleReplicaTimeout: TestVolumeStaleTimeout,
 			EngineImage:         TestEngineImage,
 		},
-		// datastore will return empty (not nil) by default
 		Status: types.VolumeStatus{
-			Conditions: map[types.VolumeConditionType]types.Condition{},
+			Conditions: map[types.VolumeConditionType]types.Condition{
+				types.VolumeConditionTypeScheduled: {
+					Type:   string(types.VolumeConditionTypeScheduled),
+					Status: types.ConditionStatusTrue,
+				},
+			},
 		},
 	}
 }
@@ -528,7 +527,6 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		for ctype, condition := range retV.Status.Conditions {
 			if ctype == types.VolumeConditionTypeScheduled {
 				c.Assert(condition.LastProbeTime, Not(Equals), "")
-				c.Assert(condition.LastTransitionTime, Not(Equals), "")
 			}
 			condition.LastProbeTime = ""
 			condition.LastTransitionTime = ""
