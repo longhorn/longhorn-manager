@@ -151,7 +151,7 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 		return err
 	}
 	//TODO time consuming operation, move it out of API server path
-	return engine.SnapshotBackup(snapshotName, backupTarget, nil, credential)
+	return engine.SnapshotBackup(snapshotName, backupTarget, labels, credential)
 }
 
 func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.EngineClient, err error) {

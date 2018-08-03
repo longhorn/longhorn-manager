@@ -160,6 +160,9 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		if err != nil {
 			return nil, fmt.Errorf("get invalid size for volume %v: %v", backup.VolumeSize, err)
 		}
+		if baseImage, ok := backup.Labels[types.BaseImageLabel]; ok {
+			spec.BaseImage = baseImage
+		}
 	}
 
 	// make sure it's multiples of 4096
