@@ -52,13 +52,13 @@ const (
 	longhornReplicaKey = "longhorn-volume-replica"
 
 	// Empty replica will response fast
-	replicaReadinessProbeInitialDelay = 3
+	replicaReadinessProbeInitialDelay = 1
 	// Otherwise we will need to wait for a restore
-	replicaReadinessProbePeriodSeconds = 10
+	replicaReadinessProbePeriodSeconds = 1
 	// assuming the restore will be done at least this per second
 	replicaReadinessProbeMinimalRestoreRate = 10 * 1024 * 1024
 	// if replica won't start restoring, this will be the default
-	replicaReadinessProbeFailureThresholdDefault = 3
+	replicaReadinessProbeFailureThresholdDefault = 10
 )
 
 type ReplicaController struct {
@@ -290,7 +290,7 @@ func (rc *ReplicaController) getReadinessProbeFailureThreshold(r *longhorn.Repli
 		// default value if
 		return replicaReadinessProbeFailureThresholdDefault
 	}
-	// this volume needs 2e9 * 1e7 * 10 which is 200+ Petabytes to overflow
+	// this volume needs 2e9 * 1e7 which is 2+ Exabytes to overflow
 	return int32(r.Spec.VolumeSize / replicaReadinessProbeMinimalRestoreRate / replicaReadinessProbePeriodSeconds)
 }
 
@@ -421,7 +421,7 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 				Privileged: &privilege,
 			},
 			VolumeMounts: []v1.VolumeMount{
-				v1.VolumeMount{
+				{
 					Name:             "share",
 					MountPath:        "/share",
 					MountPropagation: &bidirectional,

@@ -40,6 +40,10 @@ const (
 
 	EngineFrontendBlockDev = "tgt-blockdev"
 	EngineFrontendISCSI    = "tgt-iscsi"
+
+	engineReadinessProbeInitialDelay     = 1
+	engineReadinessProbePeriodSeconds    = 1
+	engineReadinessProbeFailureThreshold = 15
 )
 
 var (
@@ -390,8 +394,9 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 					},
 					ReadinessProbe: &v1.Probe{
 						Handler:             readinessHandler,
-						InitialDelaySeconds: 5,
-						PeriodSeconds:       5,
+						InitialDelaySeconds: engineReadinessProbeInitialDelay,
+						PeriodSeconds:       engineReadinessProbePeriodSeconds,
+						FailureThreshold:    engineReadinessProbeFailureThreshold,
 					},
 				},
 			},
