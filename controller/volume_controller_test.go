@@ -95,7 +95,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc = generateVolumeTestCaseTemplate()
 	// default replica and engine objects will be copied by copyCurrentToExpect
 	tc.copyCurrentToExpect()
-	tc.expectVolume.Status.State = types.VolumeStateDetaching
+	tc.expectVolume.Status.State = types.VolumeStateCreating
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectVolume.Status.Conditions = map[types.VolumeConditionType]types.Condition{
@@ -118,7 +118,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.copyCurrentToExpect()
 	// engine object will still be created
 	tc.engines = nil
-	tc.expectVolume.Status.State = types.VolumeStateDetaching
+	tc.expectVolume.Status.State = types.VolumeStateCreating
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
 	tc.expectVolume.Status.Conditions = map[types.VolumeConditionType]types.Condition{

@@ -3,6 +3,7 @@ package types
 type VolumeState string
 
 const (
+	VolumeStateCreating  = VolumeState("creating")
 	VolumeStateAttached  = VolumeState("attached")
 	VolumeStateDetached  = VolumeState("detached")
 	VolumeStateAttaching = VolumeState("attaching")

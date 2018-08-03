@@ -492,6 +492,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		err = errors.Wrapf(err, "fail to reconcile volume state for %v", v.Name)
 	}()
 
+	newVolume := false
 	if v.Status.CurrentImage == "" {
 		v.Status.CurrentImage = v.Spec.EngineImage
 	}
@@ -504,6 +505,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		if err != nil {
 			return err
 		}
+		newVolume = true
 	}
 
 	if len(rs) == 0 {
@@ -523,7 +525,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 	oldState := v.Status.State
 	if v.Spec.NodeID == "" {
 		// the final state will be determined at the end of the clause
-		v.Status.State = types.VolumeStateDetaching
+		if newVolume {
+			v.Status.State = types.VolumeStateCreating
+		} else {
+			v.Status.State = types.VolumeStateDetaching
+		}
 		if v.Status.Robustness != types.VolumeRobustnessFaulted {
 			v.Status.Robustness = types.VolumeRobustnessUnknown
 		}
