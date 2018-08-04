@@ -13,6 +13,7 @@ import (
 
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhfake "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
@@ -52,11 +53,26 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 	nc := NewNodeController(ds, scheme.Scheme, nodeInformer, settingInformer, podInformer, kubeClient, TestNamespace, controllerID)
 	fakeRecorder := record.NewFakeRecorder(100)
 	nc.eventRecorder = fakeRecorder
+	nc.getDiskInfoHandler = fakeGetDiskInfo
 
 	nc.nStoreSynced = alwaysReady
 	nc.pStoreSynced = alwaysReady
 
 	return nc
+}
+
+func fakeGetDiskInfo(directory string) (*util.DiskInfo, error) {
+	return &util.DiskInfo{
+		Fsid:       "fsid",
+		Path:       directory,
+		Type:       "ext4",
+		FreeBlock:  0,
+		TotalBlock: 0,
+		BlockSize:  0,
+
+		StorageMaximum:   0,
+		StorageAvailable: 0,
+	}, nil
 }
 
 func (s *TestSuite) TestSyncNode(c *C) {
