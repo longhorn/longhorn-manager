@@ -306,7 +306,9 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		return err
 	}
 
+	updateDiskMap := map[string]types.DiskSpec{}
 	for diskID, disk := range diskMap {
+		updateDisk := disk
 		diskStatus := types.DiskStatus{}
 		// if there's no replica assigned to this disk
 		if _, ok := replicaDiskMap[diskID]; !ok {
@@ -323,21 +325,37 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		}
 		// get disk available size
 		diskInfo, err := nc.getDiskInfoHandler(disk.Path)
+		// if the file system has changed
 		if err != nil {
 			logrus.Errorf("Get disk information on node %v error: %v", node.Name, err)
+			// disable invalid disk
+			updateDisk.AllowScheduling = false
+			updateDisk.StorageMaximum = 0
+			updateDisk.StorageReserved = 0
+			diskStatus.StorageAvailable = 0
+		} else if diskInfo == nil || diskInfo.Fsid != diskID {
+			logrus.Errorf("disk %v on node %v has changed file system", disk.Path, node.Name)
+			// disable invalid disk
+			updateDisk.AllowScheduling = false
+			updateDisk.StorageMaximum = 0
+			updateDisk.StorageReserved = 0
+			diskStatus.StorageAvailable = 0
 		} else {
+			if updateDisk.StorageMaximum == 0 {
+				updateDisk.StorageMaximum = diskInfo.StorageMaximum
+			}
 			diskStatus.StorageAvailable = diskInfo.StorageAvailable
 		}
 
 		// check disk pressure
-		if diskInfo == nil ||
-			diskInfo.StorageAvailable <= disk.StorageMaximum*minimalAvailablePercentage/100 {
+		if diskInfo.StorageAvailable <= disk.StorageMaximum*minimalAvailablePercentage/100 {
 			diskStatus.State = types.DiskStateUnschedulable
 		} else {
 			diskStatus.State = types.DiskStateSchedulable
 		}
 
 		diskStatusMap[diskID] = diskStatus
+		updateDiskMap[diskID] = updateDisk
 	}
 
 	// if there's some replicas scheduled to wrong disks, write them to error log
@@ -352,6 +370,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 	}
 
 	node.Status.DiskStatus = diskStatusMap
+	node.Spec.Disks = updateDiskMap
 
 	return nil
 }
