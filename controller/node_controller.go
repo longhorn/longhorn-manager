@@ -49,7 +49,11 @@ type NodeController struct {
 	sStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
+
+	getDiskInfoHandler GetDiskInfoHandler
 }
+
+type GetDiskInfoHandler func(string) (*util.DiskInfo, error)
 
 func NewNodeController(
 	ds *datastore.DataStore,
@@ -79,6 +83,8 @@ func NewNodeController(
 		sStoreSynced: settingInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-node"),
+
+		getDiskInfoHandler: util.GetDiskInfo,
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -316,7 +322,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			delete(replicaDiskMap, diskID)
 		}
 		// get disk available size
-		diskInfo, err := util.GetDiskInfo(disk.Path)
+		diskInfo, err := nc.getDiskInfoHandler(disk.Path)
 		if err != nil {
 			logrus.Errorf("Get disk information on node %v error: %v", node.Name, err)
 		} else {
