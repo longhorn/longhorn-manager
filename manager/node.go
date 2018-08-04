@@ -56,28 +56,41 @@ func (m *VolumeManager) DiskUpdate(name string, updateDisks []types.DiskSpec) (*
 
 	originDisks := node.Spec.Disks
 	diskUpdateMap := map[string]types.DiskSpec{}
+
 	for _, uDisk := range updateDisks {
 		diskInfo, err := util.GetDiskInfo(uDisk.Path)
 		if err != nil {
 			return nil, err
 		}
-		// update disks
-		if oDisk, ok := originDisks[diskInfo.Fsid]; ok {
-			if oDisk.Path != uDisk.Path {
-				// current disk is the same file system with exist disk
-				return nil, fmt.Errorf("Add Disk on node %v error: The disk %v is the same file system with %v ", name, uDisk.Path, oDisk.Path)
-			} else if oDisk.StorageMaximum != uDisk.StorageMaximum && uDisk.StorageMaximum != diskInfo.StorageMaximum {
-				logrus.Warnf("StorageMaximum has been changed for disk %v of node %v. Detected maximum storage %v, current setting %v", diskInfo.Path, name, diskInfo.StorageMaximum, uDisk.StorageMaximum)
-			}
-		} else {
-			// add disks
-			if uDisk.StorageMaximum != 0 && uDisk.StorageMaximum != diskInfo.StorageMaximum {
-				logrus.Warnf("StorageMaximum has been changed for disk %v of node %v. Detected maximum storage %v, current setting %v", diskInfo.Path, name, diskInfo.StorageMaximum, uDisk.StorageMaximum)
-			} else {
-				uDisk.StorageMaximum = diskInfo.StorageMaximum
+		isInvalid := false
+		for fsid, oDisk := range originDisks {
+			if oDisk.Path == uDisk.Path && fsid != diskInfo.Fsid {
+				isInvalid = true
+				logrus.Warnf("Update disk on node %v warning: The disk %v has changed file system, please mount it back or remove it", name, oDisk.Path)
+				diskUpdateMap[fsid] = oDisk
+				break
 			}
 		}
-		diskUpdateMap[diskInfo.Fsid] = uDisk
+		if !isInvalid {
+			// update disks
+			if oDisk, ok := originDisks[diskInfo.Fsid]; ok {
+				if oDisk.Path != uDisk.Path {
+					// current disk is the same file system with exist disk
+					return nil, fmt.Errorf("Add Disk on node %v error: The disk %v is the same file system with %v ", name, uDisk.Path, oDisk.Path)
+				} else if oDisk.StorageMaximum != uDisk.StorageMaximum && uDisk.StorageMaximum != diskInfo.StorageMaximum {
+					logrus.Warnf("StorageMaximum has been changed for disk %v of node %v. Detected maximum storage %v, current setting %v", diskInfo.Path, name, diskInfo.StorageMaximum, uDisk.StorageMaximum)
+				}
+				diskUpdateMap[diskInfo.Fsid] = uDisk
+			} else {
+				// add disks
+				if uDisk.StorageMaximum != 0 && uDisk.StorageMaximum != diskInfo.StorageMaximum {
+					logrus.Warnf("StorageMaximum has been changed for disk %v of node %v. Detected maximum storage %v, current setting %v", diskInfo.Path, name, diskInfo.StorageMaximum, uDisk.StorageMaximum)
+				} else {
+					uDisk.StorageMaximum = diskInfo.StorageMaximum
+				}
+				diskUpdateMap[diskInfo.Fsid] = uDisk
+			}
+		}
 	}
 
 	// delete disks
