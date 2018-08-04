@@ -241,13 +241,11 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	}
 
 	oldImageState := engineImage.Status.State
-	savedEngineImage := engineImage.DeepCopy()
+	existingEngineImage := engineImage.DeepCopy()
 	defer func() {
-		// we're going to update the object assume things changes
-		if err == nil && !reflect.DeepEqual(engineImage, savedEngineImage) {
+		if err == nil && !reflect.DeepEqual(existingEngineImage, engineImage) {
 			_, err = ic.ds.UpdateEngineImage(engineImage)
 		}
-		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
 			logrus.Debugf("Requeue %v due to conflict", key)
 			ic.enqueueEngineImage(engineImage)

@@ -243,9 +243,10 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return ec.ds.RemoveFinalizerForEngine(engine)
 	}
 
+	existingEngine := engine.DeepCopy()
 	defer func() {
 		// we're going to update engine assume things changes
-		if err == nil {
+		if err == nil && !reflect.DeepEqual(existingEngine, engine) {
 			_, err = ec.ds.UpdateEngine(engine)
 		}
 		// requeue if it's conflict

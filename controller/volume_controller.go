@@ -282,9 +282,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		return vc.ds.RemoveFinalizerForVolume(volume)
 	}
 
+	existingVolume := volume.DeepCopy()
 	defer func() {
 		// we're going to update volume assume things changes
-		if err == nil {
+		if err == nil && !reflect.DeepEqual(existingVolume, volume) {
 			_, err = vc.ds.UpdateVolume(volume)
 		}
 		// requeue if it's conflict

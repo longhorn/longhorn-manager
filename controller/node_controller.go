@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -211,9 +212,10 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return nc.ds.RemoveFinalizerForNode(node)
 	}
 
+	existingNode := node.DeepCopy()
 	defer func() {
 		// we're going to update volume assume things changes
-		if err == nil {
+		if err == nil && !reflect.DeepEqual(existingNode, node) {
 			_, err = nc.ds.UpdateNode(node)
 		}
 		// requeue if it's conflict
