@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -250,9 +251,10 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		return rc.ds.RemoveFinalizerForReplica(replica)
 	}
 
+	existingReplica := replica.DeepCopy()
 	defer func() {
 		// we're going to update replica assume things changes
-		if err == nil {
+		if err == nil && !reflect.DeepEqual(existingReplica, replica) {
 			_, err = rc.ds.UpdateReplica(replica)
 		}
 		// requeue if it's conflict
