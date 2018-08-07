@@ -414,9 +414,9 @@ func newNode(name, namespace string, allowScheduling bool, status types.Conditio
 	}
 }
 
-func newNodeCondition(conditionType types.NodeConditionType, status types.ConditionStatus, reason string) types.Condition {
+func newNodeCondition(conditionType string, status types.ConditionStatus, reason string) types.Condition {
 	return types.Condition{
-		Type:    string(conditionType),
+		Type:    conditionType,
 		Status:  status,
 		Reason:  reason,
 		Message: "",
@@ -496,6 +496,9 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				TestDiskID1: {
 					StorageAvailable: TestDiskAvailableSize,
 					StorageScheduled: 0,
+					Conditions: map[types.DiskConditionType]types.Condition{
+						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+					},
 				},
 			}
 			n, err := lhClient.Longhorn().Nodes(TestNamespace).Create(node)

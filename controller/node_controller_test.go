@@ -185,7 +185,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
-			State:            types.DiskStateSchedulable,
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
@@ -193,6 +192,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
+			Conditions: map[types.DiskConditionType]types.Condition{
+				types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusUnknown, ""),
+			},
 		},
 	}
 	nodes = map[string]*longhorn.Node{
@@ -216,7 +218,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			DiskStatus: map[string]types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: TestVolumeSize,
-					State:            types.DiskStateUnschedulable,
+					Conditions: map[types.DiskConditionType]types.Condition{
+						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse, string(types.DiskConditionReasonDiskPressure)),
+					},
 				},
 			},
 		},
@@ -228,6 +232,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
+					Conditions: map[types.DiskConditionType]types.Condition{
+						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusUnknown, ""),
+					},
 				},
 			},
 		},
@@ -248,12 +255,16 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
-			State:            types.DiskStateSchedulable,
+			Conditions: map[types.DiskConditionType]types.Condition{
+				types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+			},
 		},
 		"unavailable-disk": {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
-			State:            types.DiskStateSchedulable,
+			Conditions: map[types.DiskConditionType]types.Condition{
+				types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+			},
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
@@ -278,7 +289,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
-					State:            types.DiskStateUnschedulable,
+					Conditions: map[types.DiskConditionType]types.Condition{
+						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse, string(types.DiskConditionReasonDiskPressure)),
+					},
 				},
 			},
 		},
@@ -318,7 +331,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		"changedId": {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
-			State:            types.DiskStateSchedulable,
+			Conditions: map[types.DiskConditionType]types.Condition{
+				types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+			},
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
@@ -343,7 +358,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				"changedId": {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
-					State:            types.DiskStateUnschedulable,
+					Conditions: map[types.DiskConditionType]types.Condition{
+						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse, string(types.DiskConditionReasonDiskPressure)),
+					},
 				},
 			},
 		},
@@ -414,6 +431,20 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			}
 			c.Assert(n.Status.Conditions, DeepEquals, tc.expectNodeStatus[nodeName].Conditions)
 			if len(tc.expectNodeStatus[nodeName].DiskStatus) > 0 {
+				diskConditions := n.Status.DiskStatus
+				for fsid, diskStatus := range diskConditions {
+					for ctype, condition := range diskStatus.Conditions {
+						if condition.Status != types.ConditionStatusUnknown {
+							c.Assert(condition.LastProbeTime, Not(Equals), "")
+							c.Assert(condition.LastTransitionTime, Not(Equals), "")
+						}
+						condition.LastProbeTime = ""
+						condition.LastTransitionTime = ""
+						condition.Message = ""
+						diskStatus.Conditions[ctype] = condition
+					}
+					n.Status.DiskStatus[fsid] = diskStatus
+				}
 				c.Assert(n.Status.DiskStatus, DeepEquals, tc.expectNodeStatus[nodeName].DiskStatus)
 			}
 		}

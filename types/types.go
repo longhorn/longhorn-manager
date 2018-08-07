@@ -157,3 +157,11 @@ func GetNodeConditionFromStatus(status NodeStatus, conditionType NodeConditionTy
 	}
 	return condition
 }
+
+func GetDiskConditionFromStatus(status DiskStatus, conditionType DiskConditionType) Condition {
+	condition, exists := status.Conditions[conditionType]
+	if !exists {
+		condition = getUnknownCondition(string(conditionType))
+	}
+	return condition
+}

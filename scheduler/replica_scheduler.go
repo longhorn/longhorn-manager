@@ -106,7 +106,8 @@ func filterNodeDisksForReplica(node *longhorn.Node, replica *longhorn.Replica, o
 	diskStatus := node.Status.DiskStatus
 	for fsid, disk := range disks {
 		status := diskStatus[fsid]
-		if !disk.AllowScheduling || status.State == types.DiskStateUnschedulable ||
+		diskCondition := types.GetDiskConditionFromStatus(status, types.DiskConditionTypeSchedulable)
+		if !disk.AllowScheduling || diskCondition.Status != types.ConditionStatusTrue ||
 			(replica.Spec.VolumeSize+status.StorageScheduled) > (disk.StorageMaximum-disk.StorageReserved)*(overProvisioningPercentage/100) ||
 			replica.Spec.VolumeSize > (status.StorageAvailable-disk.StorageMaximum*minimalAvailablePercentage/100)*overProvisioningPercentage/100 {
 			continue
