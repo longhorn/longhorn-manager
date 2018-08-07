@@ -9,9 +9,9 @@ type DiskInfo struct {
 
 	AllowScheduling bool `json:"allowScheduling,omitempty" yaml:"allow_scheduling,omitempty"`
 
-	Path string `json:"path,omitempty" yaml:"path,omitempty"`
+	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
-	State string `json:"state,omitempty" yaml:"state,omitempty"`
+	Path string `json:"path,omitempty" yaml:"path,omitempty"`
 
 	StorageAvailable int64 `json:"storageAvailable,omitempty" yaml:"storage_available,omitempty"`
 

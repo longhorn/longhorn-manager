@@ -164,10 +164,10 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("diskUpdate", types.DiskSpec{})
 	schemas.AddType("nodeInput", NodeInput{})
 	schemas.AddType("settingDefinition", types.SettingDefinition{})
-	schemas.AddType("diskInfo", DiskInfo{})
 	// to avoid duplicate name with built-in type condition
 	schemas.AddType("volumeCondition", types.Condition{})
 	schemas.AddType("nodeCondition", types.Condition{})
+	schemas.AddType("diskCondition", types.Condition{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
@@ -176,6 +176,7 @@ func NewSchema() *client.Schemas {
 	engineImageSchema(schemas.AddType("engineImage", EngineImage{}))
 	nodeSchema(schemas.AddType("node", Node{}))
 	diskSchema(schemas.AddType("diskUpdateInput", DiskUpdateInput{}))
+	diskInfoSchema(schemas.AddType("diskInfo", DiskInfo{}))
 
 	return schemas
 }
@@ -208,6 +209,12 @@ func diskSchema(diskUpdateInput *client.Schema) {
 	disks := diskUpdateInput.ResourceFields["disks"]
 	disks.Type = "array[diskUpdate]"
 	diskUpdateInput.ResourceFields["disks"] = disks
+}
+
+func diskInfoSchema(diskInfo *client.Schema) {
+	conditions := diskInfo.ResourceFields["conditions"]
+	conditions.Type = "map[diskCondition]"
+	diskInfo.ResourceFields["conditions"] = conditions
 }
 
 func engineImageSchema(engineImage *client.Schema) {
