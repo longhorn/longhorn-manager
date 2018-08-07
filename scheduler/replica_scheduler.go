@@ -128,7 +128,8 @@ func (rcs *ReplicaScheduler) getNodeInfo() (map[string]*longhorn.Node, error) {
 	}
 	scheduledNode := map[string]*longhorn.Node{}
 	for _, node := range nodeInfo {
-		if node != nil && node.DeletionTimestamp == nil && node.Status.State == types.NodeStateUp && node.Spec.AllowScheduling {
+		nodeReadyCondition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+		if node != nil && node.DeletionTimestamp == nil && nodeReadyCondition.Status == types.ConditionStatusTrue && node.Spec.AllowScheduling {
 			scheduledNode[node.Name] = node
 		}
 	}

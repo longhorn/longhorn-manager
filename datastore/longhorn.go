@@ -577,9 +577,6 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 			Name:            name,
 			AllowScheduling: true,
 		},
-		Status: types.NodeStatus{
-			State: types.NodeStateUp,
-		},
 	}
 	diskInfo, err := util.GetDiskInfo(types.DefaultLonghornDirectory)
 	if err != nil {
@@ -607,7 +604,11 @@ func (s *DataStore) GetNode(name string) (*longhorn.Node, error) {
 		}
 		return nil, err
 	}
-	return result.DeepCopy(), nil
+	node := result.DeepCopy()
+	if node.Status.Conditions == nil {
+		node.Status.Conditions = map[types.NodeConditionType]types.Condition{}
+	}
+	return node, nil
 }
 
 func (s *DataStore) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) {
@@ -624,7 +625,11 @@ func (s *DataStore) ListNodes() (map[string]*longhorn.Node, error) {
 
 	for _, node := range nodeList {
 		// Cannot use cached object from lister
-		itemMap[node.Name] = node.DeepCopy()
+		result := node.DeepCopy()
+		if result.Status.Conditions == nil {
+			result.Status.Conditions = map[types.NodeConditionType]types.Condition{}
+		}
+		itemMap[node.Name] = result
 	}
 	return itemMap, nil
 }

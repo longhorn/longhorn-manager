@@ -239,12 +239,25 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 	for _, pod := range managerPods {
 		if pod.Spec.NodeName == node.Name {
+			condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+			condition.LastProbeTime = util.Now()
 			switch pod.Status.Phase {
 			case v1.PodRunning:
-				node.Status.State = types.NodeStateUp
+				if condition.Status != types.ConditionStatusTrue {
+					condition.LastTransitionTime = util.Now()
+				}
+				condition.Status = types.ConditionStatusTrue
+				condition.Reason = ""
+				condition.Message = ""
 			default:
-				node.Status.State = types.NodeStateDown
+				if condition.Status != types.ConditionStatusFalse {
+					condition.LastTransitionTime = util.Now()
+				}
+				condition.Status = types.ConditionStatusFalse
+				condition.Reason = string(types.NodeConditionReasonNodeDown)
+				condition.Message = fmt.Sprintf("the manager pod %v is not running", pod.Name)
 			}
+			node.Status.Conditions[types.NodeConditionTypeReady] = condition
 		}
 	}
 

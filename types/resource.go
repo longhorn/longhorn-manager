@@ -191,17 +191,20 @@ type NodeSpec struct {
 	AllowScheduling bool                `json:"allowScheduling"`
 }
 
-type NodeState string
+type NodeConditionType string
 
 const (
-	NodeStateUp   = NodeState("up")
-	NodeStateDown = NodeState("down")
+	NodeConditionTypeReady = "Ready"
+)
+
+const (
+	NodeConditionReasonNodeDown = "NodeDown"
 )
 
 type NodeStatus struct {
-	State            NodeState             `json:"state"`
-	DiskStatus       map[string]DiskStatus `json:"diskStatus"`
-	MountPropagation bool                  `json:"mountPropagation"`
+	Conditions       map[NodeConditionType]Condition `json:"conditions"`
+	DiskStatus       map[string]DiskStatus           `json:"diskStatus"`
+	MountPropagation bool                            `json:"mountPropagation"`
 }
 
 type DiskSpec struct {

@@ -128,12 +128,12 @@ type NodeInput struct {
 
 type Node struct {
 	client.Resource
-	Name             string              `json:"name"`
-	Address          string              `json:"address"`
-	AllowScheduling  bool                `json:"allowScheduling"`
-	Disks            map[string]DiskInfo `json:"disks"`
-	State            types.NodeState     `json:"state"`
-	MountPropagation bool                `json:"mountPropagation"`
+	Name             string                                      `json:"name"`
+	Address          string                                      `json:"address"`
+	AllowScheduling  bool                                        `json:"allowScheduling"`
+	Disks            map[string]DiskInfo                         `json:"disks"`
+	Conditions       map[types.NodeConditionType]types.Condition `json:"conditions"`
+	MountPropagation bool                                        `json:"mountPropagation"`
 }
 
 type DiskInfo struct {
@@ -168,6 +168,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("diskInfo", DiskInfo{})
 	// to avoid duplicate name with built-in type condition
 	schemas.AddType("volumeCondition", types.Condition{})
+	schemas.AddType("nodeCondition", types.Condition{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
@@ -199,6 +200,9 @@ func nodeSchema(node *client.Schema) {
 		Type:     "map[diskInfo]",
 		Nullable: true,
 	}
+	conditions := node.ResourceFields["conditions"]
+	conditions.Type = "map[nodeCondition]"
+	node.ResourceFields["conditions"] = conditions
 }
 
 func diskSchema(diskUpdateInput *client.Schema) {
@@ -626,7 +630,7 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 		Name:             node.Name,
 		Address:          address,
 		AllowScheduling:  node.Spec.AllowScheduling,
-		State:            node.Status.State,
+		Conditions:       node.Status.Conditions,
 		MountPropagation: node.Status.MountPropagation,
 	}
 
