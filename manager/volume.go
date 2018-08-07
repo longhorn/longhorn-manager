@@ -190,7 +190,8 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			return nil, fmt.Errorf("couldn't list nodes")
 		}
 		for _, node := range nodes {
-			if !node.Status.MountPropagation {
+			conditions := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeMountPropagation)
+			if conditions.Status != types.ConditionStatusTrue {
 				return nil, fmt.Errorf("cannot support BaseImage, node doesn't support mount propagation: %v", node)
 			}
 		}
