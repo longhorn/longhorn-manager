@@ -411,6 +411,9 @@ func (s *DataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err := fixupMetadata(r.Spec.VolumeName, r); err != nil {
 		return nil, err
 	}
+	if err := tagNodeLabel(r); err != nil {
+		return nil, err
+	}
 	return s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Update(r)
 }
 
@@ -690,9 +693,7 @@ func tagNodeLabel(replica *longhorn.Replica) error {
 	if labels == nil {
 		labels = map[string]string{}
 	}
-	if labels[types.LonghornNodeKey] == "" {
-		labels[types.LonghornNodeKey] = replica.Spec.NodeID
-	}
+	labels[types.LonghornNodeKey] = replica.Spec.NodeID
 	metadata.SetLabels(labels)
 	return nil
 }

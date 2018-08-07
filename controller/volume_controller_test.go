@@ -107,11 +107,15 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for i := range tc.nodes {
 		tc.nodes[i].Spec.AllowScheduling = false
 	}
-	// replicas object won't be created so skip it in the copyCurrentToExpect
-	tc.replicas = nil
 	tc.copyCurrentToExpect()
-	// engine object will still be created
+	// replicas and engine object would still be created
+	tc.replicas = nil
 	tc.engines = nil
+	for _, r := range tc.expectReplicas {
+		r.Spec.NodeID = ""
+		r.Spec.DiskID = ""
+		r.Spec.DataPath = ""
+	}
 	tc.expectVolume.Status.State = types.VolumeStateCreating
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
@@ -344,6 +348,7 @@ func newReplicaForVolume(v *longhorn.Volume, e *longhorn.Engine, nodeID, diskID 
 		Spec: types.ReplicaSpec{
 			InstanceSpec: types.InstanceSpec{
 				OwnerID:     v.Spec.OwnerID,
+				NodeID:      nodeID,
 				VolumeName:  v.Name,
 				VolumeSize:  v.Spec.Size,
 				EngineImage: TestEngineImage,
@@ -426,8 +431,8 @@ func newNodeCondition(conditionType string, status types.ConditionStatus, reason
 func generateVolumeTestCaseTemplate() *VolumeTestCase {
 	volume := newVolume(TestVolumeName, 2)
 	engine := newEngineForVolume(volume)
-	replica1 := newReplicaForVolume(volume, engine, "", "")
-	replica2 := newReplicaForVolume(volume, engine, "", "")
+	replica1 := newReplicaForVolume(volume, engine, TestNode1, "fsid")
+	replica2 := newReplicaForVolume(volume, engine, TestNode2, "fsid")
 	node1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
 	node2 := newNode(TestNode2, TestNamespace, false, types.ConditionStatusTrue, "")
 
@@ -575,11 +580,18 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				for _, expectR = range tc.expectReplicas {
 					break
 				}
-				// validate DataPath and NodeID of replica have been set in scheduler
-				c.Assert(retR.Spec.DataPath, Not(Equals), "")
-				c.Assert(retR.Spec.NodeID, Not(Equals), "")
-				c.Assert(retR.Spec.DiskID, Not(Equals), "")
-				c.Assert(retR.Spec.NodeID, Equals, TestNode1)
+				if expectR.Spec.NodeID != "" {
+					// validate DataPath and NodeID of replica have been set in scheduler
+					c.Assert(retR.Spec.DataPath, Not(Equals), "")
+					c.Assert(retR.Spec.NodeID, Not(Equals), "")
+					c.Assert(retR.Spec.DiskID, Not(Equals), "")
+					c.Assert(retR.Spec.NodeID, Equals, TestNode1)
+				} else {
+					// not schedulable
+					c.Assert(retR.Spec.DataPath, Equals, "")
+					c.Assert(retR.Spec.NodeID, Equals, "")
+					c.Assert(retR.Spec.DiskID, Equals, "")
+				}
 				c.Assert(retR.Status, DeepEquals, expectR.Status)
 			} else {
 				c.Assert(retR.Spec, DeepEquals, tc.expectReplicas[retR.Name].Spec)
