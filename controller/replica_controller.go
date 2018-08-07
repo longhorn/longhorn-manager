@@ -380,8 +380,8 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 	}
 
 	// error out if NodeID and DataPath wasn't filled in scheduler
-	if r.Spec.NodeID == "" || r.Spec.DataPath == "" {
-		return nil, fmt.Errorf("BUG: Node or datapath wasn't set for replica %v", r.Name)
+	if r.Spec.NodeID == "" || r.Spec.DataPath == "" || r.Spec.DiskID == "" {
+		return nil, fmt.Errorf("BUG: nodeID or datapath or diskID wasn't set for replica %v", r.Name)
 	}
 
 	if r.Spec.BaseImage != "" {
