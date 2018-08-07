@@ -182,6 +182,7 @@ func (s *TestSuite) TestSyncReplica(c *C) {
 		// Need add to both indexer store and fake clientset, since they
 		// haven't connected yet
 		replica := newReplica(tc.desireState, tc.currentState, "")
+		replica.Spec.EngineName = "engine-e"
 		replica.Spec.NodeID = tc.NodeID
 		replica.Spec.DataPath = tc.DataPath
 		err = rIndexer.Add(replica)
