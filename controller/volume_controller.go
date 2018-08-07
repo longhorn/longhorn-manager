@@ -523,7 +523,39 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		v.Spec.NodeID = ""
 	}
 
-	if vc.getReplenishReplicasCount(v, rs) == 0 {
+	allScheduled := true
+	for _, r := range rs {
+		// check whether the replica need to be scheduled
+		if r.Spec.NodeID != "" {
+			continue
+		}
+		scheduledReplica, err := vc.scheduler.ScheduleReplica(r, rs)
+		if err != nil {
+			return err
+		}
+		if scheduledReplica == nil {
+			logrus.Errorf("unable to schedule replica %v of volume %v", r.Name, v.Name)
+			condition := types.GetVolumeConditionFromStatus(v.Status, types.VolumeConditionTypeScheduled)
+			if condition.Status != types.ConditionStatusFalse {
+				condition.Status = types.ConditionStatusFalse
+				condition.LastTransitionTime = util.Now()
+			}
+			condition.LastProbeTime = util.Now()
+			condition.Reason = types.VolumeConditionReasonReplicaSchedulingFailure
+			v.Status.Conditions[types.VolumeConditionTypeScheduled] = condition
+			allScheduled = false
+			// no need to continue, since we won't able to schedule
+			// more replicas if we failed this one
+			break
+		} else {
+			scheduledReplica, err = vc.ds.UpdateReplica(scheduledReplica)
+			if err != nil {
+				return err
+			}
+			rs[r.Name] = scheduledReplica
+		}
+	}
+	if allScheduled {
 		condition := types.GetVolumeConditionFromStatus(v.Status, types.VolumeConditionTypeScheduled)
 		if condition.Status != types.ConditionStatusTrue {
 			condition.Status = types.ConditionStatusTrue
@@ -710,19 +742,6 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		r, err := vc.createReplica(v, e, rs)
 		if err != nil {
 			return err
-		}
-		if r == nil {
-			condition := types.GetVolumeConditionFromStatus(v.Status, types.VolumeConditionTypeScheduled)
-			if condition.Status != types.ConditionStatusFalse {
-				condition.Status = types.ConditionStatusFalse
-				condition.LastTransitionTime = util.Now()
-			}
-			condition.LastProbeTime = util.Now()
-			condition.Reason = types.VolumeConditionReasonReplicaSchedulingFailure
-			v.Status.Conditions[types.VolumeConditionTypeScheduled] = condition
-			// no need to continue, since we won't able to schedule
-			// more replicas if we failed this one
-			return nil
 		}
 		rs[r.Name] = r
 	}
@@ -926,16 +945,6 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 		}
 		replica.Spec.RestoreFrom = v.Spec.FromBackup
 		replica.Spec.RestoreName = backupID
-	}
-
-	// check whether the replica need to be scheduled
-	replica, err := vc.scheduler.ScheduleReplica(replica, rs)
-	if err != nil {
-		return nil, err
-	}
-	if replica == nil {
-		logrus.Errorf("unable to schedule replica of volume %v", v.Name)
-		return nil, nil
 	}
 
 	return vc.ds.CreateReplica(replica)
