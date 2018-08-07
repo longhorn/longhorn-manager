@@ -254,7 +254,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 					condition.LastTransitionTime = util.Now()
 				}
 				condition.Status = types.ConditionStatusFalse
-				condition.Reason = string(types.NodeConditionReasonNodeDown)
+				condition.Reason = string(types.NodeConditionReasonManagerPodDown)
 				condition.Message = fmt.Sprintf("the manager pod %v is not running", pod.Name)
 			}
 			node.Status.Conditions[types.NodeConditionTypeReady] = condition

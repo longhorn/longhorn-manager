@@ -198,7 +198,7 @@ const (
 )
 
 const (
-	NodeConditionReasonNodeDown = "NodeDown"
+	NodeConditionReasonManagerPodDown = "ManagerPodDown"
 )
 
 type NodeStatus struct {

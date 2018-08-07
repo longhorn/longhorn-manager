@@ -129,7 +129,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonNodeDown),
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonManagerPodDown),
 			},
 			MountPropagation: false,
 		},
