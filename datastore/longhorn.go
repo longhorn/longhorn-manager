@@ -488,10 +488,46 @@ func (s *DataStore) fixupReplica(replica *longhorn.Replica) (*longhorn.Replica, 
 		return nil, nil
 	}
 	// v0.3
+	if replica.Spec.EngineName == "" {
+		engines, err := s.ListVolumeEngines(replica.Spec.VolumeName)
+		if err != nil {
+			return nil, err
+		}
+		if len(engines) != 1 {
+			return nil, fmt.Errorf("cannot find the default engine the replica %v belong to", replica.Name)
+		}
+		for name := range engines {
+			replica.Spec.EngineName = name
+			break
+		}
+	}
+	if replica.Spec.NodeID == "" {
+		// allow scheduler to continue
+		return replica, nil
+	}
+	if replica.Spec.DiskID == "" {
+		// replica needs to be scheduled before assign diskID and dataPath
+		node, err := s.GetNode(replica.Spec.NodeID)
+		if err != nil {
+			return nil, err
+		}
+		if node == nil {
+			return nil, fmt.Errorf("cannot find node %v for replica %v", replica.Spec.NodeID, replica.Name)
+		}
+		for fsid, disk := range node.Spec.Disks {
+			if disk.Path == types.DefaultLonghornDirectory {
+				replica.Spec.DiskID = fsid
+				break
+			}
+		}
+		if replica.Spec.DiskID == "" {
+			return nil, fmt.Errorf("cannot find default disk on node %v for replica %v", replica.Spec.NodeID, replica.Name)
+		}
+	}
 	if replica.Spec.DataPath == "" {
 		replica.Spec.DataPath = filepath.Join(types.DefaultLonghornDirectory, "/replicas/", replica.Name)
-		// We cannot judge if the field `Active` exists separately, but
-		// if it's old version, we will set it
+		// We cannot tell if the field `Active` exists in the object since it's a bool
+		// so if it's old version, we will set it
 		replica.Spec.Active = true
 	}
 	return replica, nil
