@@ -203,6 +203,16 @@ const (
 	NodeConditionReasonNoMountPropagationSupport = "NoMountPropagationSupport"
 )
 
+type DiskConditionType string
+
+const (
+	DiskConditionTypeSchedulable = "Schedulable"
+)
+
+const (
+	DiskConditionReasonDiskPressure = "DiskPressure"
+)
+
 type NodeStatus struct {
 	Conditions map[NodeConditionType]Condition `json:"conditions"`
 	DiskStatus map[string]DiskStatus           `json:"diskStatus"`
@@ -215,15 +225,8 @@ type DiskSpec struct {
 	StorageReserved int64  `json:"storageReserved"`
 }
 
-type DiskState string
-
-const (
-	DiskStateSchedulable   = DiskState("schedulable")
-	DiskStateUnschedulable = DiskState("unschedulable")
-)
-
 type DiskStatus struct {
-	State            DiskState `json:"state"`
-	StorageAvailable int64     `json:"storageAvailable"`
-	StorageScheduled int64     `json:"storageScheduled"`
+	Conditions       map[DiskConditionType]Condition `json:"conditions"`
+	StorageAvailable int64                           `json:"storageAvailable"`
+	StorageScheduled int64                           `json:"storageScheduled"`
 }

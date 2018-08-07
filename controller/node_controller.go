@@ -320,6 +320,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 	}
 
 	updateDiskMap := map[string]types.DiskSpec{}
+	diskConditions := map[types.DiskConditionType]types.Condition{}
 	for diskID, disk := range diskMap {
 		updateDisk := disk
 		diskStatus := types.DiskStatus{}
@@ -360,13 +361,27 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			diskStatus.StorageAvailable = diskInfo.StorageAvailable
 		}
 
+		condition := types.GetDiskConditionFromStatus(diskStatus, types.DiskConditionTypeSchedulable)
+		condition.LastProbeTime = util.Now()
 		// check disk pressure
-		if diskInfo.StorageAvailable <= disk.StorageMaximum*minimalAvailablePercentage/100 {
-			diskStatus.State = types.DiskStateUnschedulable
+		if diskStatus.StorageAvailable <= disk.StorageMaximum*minimalAvailablePercentage/100 {
+			if condition.Status != types.ConditionStatusFalse {
+				condition.LastTransitionTime = util.Now()
+			}
+			condition.Status = types.ConditionStatusFalse
+			condition.Reason = string(types.DiskConditionReasonDiskPressure)
+			condition.Message = fmt.Sprintf("the disk %v on the node %v has %v available, but requires minimal %v to schedule more replicas", disk.Path, node.Name, diskInfo.StorageAvailable, minimalAvailablePercentage)
 		} else {
-			diskStatus.State = types.DiskStateSchedulable
+			if condition.Status != types.ConditionStatusTrue {
+				condition.LastTransitionTime = util.Now()
+			}
+			condition.Status = types.ConditionStatusTrue
+			condition.Reason = ""
+			condition.Message = ""
 		}
+		diskConditions[types.DiskConditionTypeSchedulable] = condition
 
+		diskStatus.Conditions = diskConditions
 		diskStatusMap[diskID] = diskStatus
 		updateDiskMap[diskID] = updateDisk
 	}

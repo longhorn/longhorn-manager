@@ -104,15 +104,15 @@ func newNode(name, namespace string, allowScheduling bool, status types.Conditio
 		},
 		Status: types.NodeStatus{
 			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, status),
+				types.NodeConditionTypeReady: newCondition(types.NodeConditionTypeReady, status),
 			},
 		},
 	}
 }
 
-func newNodeCondition(conditionType types.NodeConditionType, status types.ConditionStatus) types.Condition {
+func newCondition(conditionType string, status types.ConditionStatus) types.Condition {
 	return types.Condition{
-		Type:    string(conditionType),
+		Type:    conditionType,
 		Status:  status,
 		Reason:  "",
 		Message: "",
@@ -239,6 +239,9 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
+			Conditions: map[types.DiskConditionType]types.Condition{
+				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			},
 		},
 	}
 	node2 := newNode(TestNode2, TestNamespace, false, types.ConditionStatusTrue)
@@ -318,12 +321,16 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
-			State:            types.DiskStateSchedulable,
+			Conditions: map[types.DiskConditionType]types.Condition{
+				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			},
 		},
 		TestDiskID2: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
-			State:            types.DiskStateSchedulable,
+			Conditions: map[types.DiskConditionType]types.Condition{
+				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			},
 		},
 	}
 	expectNode1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
@@ -341,12 +348,16 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
-			State:            types.DiskStateSchedulable,
+			Conditions: map[types.DiskConditionType]types.Condition{
+				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			},
 		},
 		TestDiskID2: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
-			State:            types.DiskStateUnschedulable,
+			Conditions: map[types.DiskConditionType]types.Condition{
+				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse),
+			},
 		},
 	}
 	expectNode2 := newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
@@ -394,7 +405,9 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: {
 			StorageAvailable: 0,
 			StorageScheduled: 0,
-			State:            types.DiskStateSchedulable,
+			Conditions: map[types.DiskConditionType]types.Condition{
+				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			},
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
@@ -408,12 +421,16 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: {
 			StorageAvailable: 0,
 			StorageScheduled: TestDiskAvailableSize,
-			State:            types.DiskStateSchedulable,
+			Conditions: map[types.DiskConditionType]types.Condition{
+				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			},
 		},
 		TestDiskID2: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
-			State:            types.DiskStateUnschedulable,
+			Conditions: map[types.DiskConditionType]types.Condition{
+				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse),
+			},
 		},
 	}
 	nodes = map[string]*longhorn.Node{
