@@ -19,9 +19,9 @@ type RancherClient struct {
 	DiskUpdate         DiskUpdateOperations
 	NodeInput          NodeInputOperations
 	SettingDefinition  SettingDefinitionOperations
-	DiskInfo           DiskInfoOperations
 	VolumeCondition    VolumeConditionOperations
 	NodeCondition      NodeConditionOperations
+	DiskCondition      DiskConditionOperations
 	Volume             VolumeOperations
 	BackupVolume       BackupVolumeOperations
 	Setting            SettingOperations
@@ -29,6 +29,7 @@ type RancherClient struct {
 	EngineImage        EngineImageOperations
 	Node               NodeOperations
 	DiskUpdateInput    DiskUpdateInputOperations
+	DiskInfo           DiskInfoOperations
 }
 
 func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
@@ -52,9 +53,9 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.DiskUpdate = newDiskUpdateClient(client)
 	client.NodeInput = newNodeInputClient(client)
 	client.SettingDefinition = newSettingDefinitionClient(client)
-	client.DiskInfo = newDiskInfoClient(client)
 	client.VolumeCondition = newVolumeConditionClient(client)
 	client.NodeCondition = newNodeConditionClient(client)
+	client.DiskCondition = newDiskConditionClient(client)
 	client.Volume = newVolumeClient(client)
 	client.BackupVolume = newBackupVolumeClient(client)
 	client.Setting = newSettingClient(client)
@@ -62,6 +63,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.EngineImage = newEngineImageClient(client)
 	client.Node = newNodeClient(client)
 	client.DiskUpdateInput = newDiskUpdateInputClient(client)
+	client.DiskInfo = newDiskInfoClient(client)
 
 	return client
 }
