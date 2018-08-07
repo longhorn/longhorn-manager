@@ -11,13 +11,13 @@ type Node struct {
 
 	AllowScheduling bool `json:"allowScheduling,omitempty" yaml:"allow_scheduling,omitempty"`
 
+	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+
 	Disks map[string]interface{} `json:"disks,omitempty" yaml:"disks,omitempty"`
 
 	MountPropagation bool `json:"mountPropagation,omitempty" yaml:"mount_propagation,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
-
-	State string `json:"state,omitempty" yaml:"state,omitempty"`
 }
 
 type NodeCollection struct {
