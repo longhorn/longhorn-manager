@@ -68,4 +68,10 @@ func (n *NodeStatus) DeepCopyInto(to *NodeStatus) {
 	for key, value := range n.DiskStatus {
 		to.DiskStatus[key] = value
 	}
+	if n.Conditions != nil {
+		to.Conditions = make(map[NodeConditionType]Condition)
+		for key, value := range n.Conditions {
+			to.Conditions[key] = value
+		}
+	}
 }

@@ -137,10 +137,23 @@ func GetEngineImageChecksumName(image string) string {
 func GetVolumeConditionFromStatus(status VolumeStatus, conditionType VolumeConditionType) Condition {
 	condition, exists := status.Conditions[conditionType]
 	if !exists {
-		condition = Condition{
-			Type:   string(conditionType),
-			Status: ConditionStatusUnknown,
-		}
+		condition = getUnknownCondition(string(conditionType))
+	}
+	return condition
+}
+
+func getUnknownCondition(conditionType string) Condition {
+	condition := Condition{
+		Type:   string(conditionType),
+		Status: ConditionStatusUnknown,
+	}
+	return condition
+}
+
+func GetNodeConditionFromStatus(status NodeStatus, conditionType NodeConditionType) Condition {
+	condition, exists := status.Conditions[conditionType]
+	if !exists {
+		condition = getUnknownCondition(string(conditionType))
 	}
 	return condition
 }

@@ -389,7 +389,7 @@ func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string, moun
 	}
 }
 
-func newNode(name, namespace string, allowScheduling bool, status types.NodeState) *longhorn.Node {
+func newNode(name, namespace string, allowScheduling bool, status types.ConditionStatus, reason string) *longhorn.Node {
 	return &longhorn.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -407,8 +407,19 @@ func newNode(name, namespace string, allowScheduling bool, status types.NodeStat
 			},
 		},
 		Status: types.NodeStatus{
-			State: status,
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, status, reason),
+			},
 		},
+	}
+}
+
+func newNodeCondition(conditionType types.NodeConditionType, status types.ConditionStatus, reason string) types.Condition {
+	return types.Condition{
+		Type:    string(conditionType),
+		Status:  status,
+		Reason:  reason,
+		Message: "",
 	}
 }
 
@@ -417,8 +428,8 @@ func generateVolumeTestCaseTemplate() *VolumeTestCase {
 	engine := newEngineForVolume(volume)
 	replica1 := newReplicaForVolume(volume, engine, "", "")
 	replica2 := newReplicaForVolume(volume, engine, "", "")
-	node1 := newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
-	node2 := newNode(TestNode2, TestNamespace, false, types.NodeStateUp)
+	node1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
+	node2 := newNode(TestNode2, TestNamespace, false, types.ConditionStatusTrue, "")
 
 	return &VolumeTestCase{
 		volume: volume,

@@ -93,7 +93,7 @@ func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string) *v1.
 	}
 }
 
-func newNode(name, namespace string, allowScheduling bool, nodeState types.NodeState) *longhorn.Node {
+func newNode(name, namespace string, allowScheduling bool, status types.ConditionStatus) *longhorn.Node {
 	return &longhorn.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -103,8 +103,19 @@ func newNode(name, namespace string, allowScheduling bool, nodeState types.NodeS
 			AllowScheduling: allowScheduling,
 		},
 		Status: types.NodeStatus{
-			State: nodeState,
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, status),
+			},
 		},
+	}
+}
+
+func newNodeCondition(conditionType types.NodeConditionType, status types.ConditionStatus) types.Condition {
+	return types.Condition{
+		Type:    string(conditionType),
+		Status:  status,
+		Reason:  "",
+		Message: "",
 	}
 }
 
@@ -219,7 +230,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon2,
 		daemon3,
 	}
-	node1 := newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
+	node1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
 	disk := newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
 	node1.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
@@ -230,7 +241,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageScheduled: 0,
 		},
 	}
-	node2 := newNode(TestNode2, TestNamespace, false, types.NodeStateUp)
+	node2 := newNode(TestNode2, TestNamespace, false, types.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
 	node2.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
@@ -241,7 +252,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageScheduled: 0,
 		},
 	}
-	node3 := newNode(TestNode3, TestNamespace, true, types.NodeStateDown)
+	node3 := newNode(TestNode3, TestNamespace, true, types.ConditionStatusFalse)
 	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
 	node3.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
@@ -274,8 +285,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon1,
 		daemon2,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
-	node2 = newNode(TestNode2, TestNamespace, true, types.NodeStateUp)
+	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
+	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
 	nodes = map[string]*longhorn.Node{
 		TestNode1: node1,
 		TestNode2: node2,
@@ -295,7 +306,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon1,
 		daemon2,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
+	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
 	disk2 := newDisk(TestDefaultDataPath, true, TestDiskSize, TestDiskSize)
 	node1.Spec.Disks = map[string]types.DiskSpec{
@@ -315,11 +326,11 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			State:            types.DiskStateSchedulable,
 		},
 	}
-	expectNode1 := newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
+	expectNode1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
 	expectNode1.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
 	}
-	node2 = newNode(TestNode2, TestNamespace, true, types.NodeStateUp)
+	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
 	node2.Spec.Disks = map[string]types.DiskSpec{
@@ -338,7 +349,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			State:            types.DiskStateUnschedulable,
 		},
 	}
-	expectNode2 := newNode(TestNode2, TestNamespace, true, types.NodeStateUp)
+	expectNode2 := newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
 	expectNode2.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
 	}
@@ -374,7 +385,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon1,
 		daemon2,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
+	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, TestDiskSize)
 	node1.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
@@ -386,7 +397,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			State:            types.DiskStateSchedulable,
 		},
 	}
-	node2 = newNode(TestNode2, TestNamespace, true, types.NodeStateUp)
+	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
 	node2.Spec.Disks = map[string]types.DiskSpec{

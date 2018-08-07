@@ -87,8 +87,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDaemon2: daemon2,
 	}
 	tc.pods = pods
-	node1 := newNode(TestNode1, TestNamespace, true, "")
-	node2 := newNode(TestNode2, TestNamespace, true, "")
+	node1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusUnknown, "")
+	node2 := newNode(TestNode2, TestNamespace, true, types.ConditionStatusUnknown, "")
 	nodes := map[string]*longhorn.Node{
 		TestNode1: node1,
 		TestNode2: node2,
@@ -96,11 +96,15 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.nodes = nodes
 	expectNodeStatus := map[string]types.NodeStatus{
 		TestNode1: {
-			State:            types.NodeStateUp,
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+			},
 			MountPropagation: false,
 		},
 		TestNode2: {
-			State:            types.NodeStateUp,
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+			},
 			MountPropagation: false,
 		},
 	}
@@ -115,8 +119,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDaemon2: daemon2,
 	}
 	tc.pods = pods
-	node1 = newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
-	node2 = newNode(TestNode2, TestNamespace, true, types.NodeStateUp)
+	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
+	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
 	nodes = map[string]*longhorn.Node{
 		TestNode1: node1,
 		TestNode2: node2,
@@ -124,11 +128,15 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.nodes = nodes
 	expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
-			State:            types.NodeStateDown,
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonNodeDown),
+			},
 			MountPropagation: false,
 		},
 		TestNode2: {
-			State:            types.NodeStateUp,
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+			},
 			MountPropagation: false,
 		},
 	}
@@ -143,8 +151,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDaemon2: daemon2,
 	}
 	tc.pods = pods
-	node1 = newNode(TestNode1, TestNamespace, true, types.NodeStateUp)
-	node2 = newNode(TestNode2, TestNamespace, true, types.NodeStateDown)
+	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
+	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusFalse, "")
 	nodes = map[string]*longhorn.Node{
 		TestNode1: node1,
 		TestNode2: node2,
@@ -152,11 +160,15 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.nodes = nodes
 	expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
-			State:            types.NodeStateUp,
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+			},
 			MountPropagation: false,
 		},
 		TestNode2: {
-			State:            types.NodeStateUp,
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+			},
 			MountPropagation: false,
 		},
 	}
@@ -171,7 +183,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDaemon2: daemon2,
 	}
 	tc.pods = pods
-	node1 = newNode(TestNode1, TestNamespace, true, "up")
+	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
 	node1.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
@@ -179,7 +191,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			State:            types.DiskStateSchedulable,
 		},
 	}
-	node2 = newNode(TestNode2, TestNamespace, true, "up")
+	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
 	node2.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
@@ -200,7 +212,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 
 	expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
-			State:            types.NodeStateUp,
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+			},
 			MountPropagation: true,
 			DiskStatus: map[string]types.DiskStatus{
 				TestDiskID1: {
@@ -210,7 +224,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 		TestNode2: {
-			State:            types.NodeStateUp,
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+			},
 			MountPropagation: false,
 			DiskStatus: map[string]types.DiskStatus{
 				TestDiskID1: {
@@ -231,7 +247,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDaemon2: daemon2,
 	}
 	tc.pods = pods
-	node1 = newNode(TestNode1, TestNamespace, true, "up")
+	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
 	node1.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
@@ -244,7 +260,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			State:            types.DiskStateSchedulable,
 		},
 	}
-	node2 = newNode(TestNode2, TestNamespace, true, "up")
+	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
 	node2.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
@@ -258,7 +274,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.nodes = nodes
 	expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
-			State:            types.NodeStateUp,
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+			},
 			MountPropagation: true,
 			DiskStatus: map[string]types.DiskStatus{
 				TestDiskID1: {
@@ -269,7 +287,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 		TestNode2: {
-			State:            types.NodeStateUp,
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+			},
 			MountPropagation: false,
 			DiskStatus: map[string]types.DiskStatus{
 				TestDiskID1: {
@@ -290,7 +310,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDaemon2: daemon2,
 	}
 	tc.pods = pods
-	node1 = newNode(TestNode1, TestNamespace, true, "up")
+	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
 	node1.Spec.Disks = map[string]types.DiskSpec{
 		"changedId": {
 			Path:            TestDefaultDataPath,
@@ -306,7 +326,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			State:            types.DiskStateSchedulable,
 		},
 	}
-	node2 = newNode(TestNode2, TestNamespace, true, "up")
+	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
 	node2.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
@@ -320,7 +340,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.nodes = nodes
 	expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
-			State:            types.NodeStateUp,
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+			},
 			MountPropagation: true,
 			DiskStatus: map[string]types.DiskStatus{
 				"changedId": {
@@ -331,7 +353,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 		TestNode2: {
-			State:            types.NodeStateUp,
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+			},
 			MountPropagation: false,
 			DiskStatus: map[string]types.DiskStatus{
 				TestDiskID1: {
@@ -385,7 +409,16 @@ func (s *TestSuite) TestSyncNode(c *C) {
 
 			n, err := lhClient.LonghornV1alpha1().Nodes(TestNamespace).Get(node.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
-			c.Assert(n.Status.State, Equals, tc.expectNodeStatus[nodeName].State)
+			for ctype, condition := range n.Status.Conditions {
+				if condition.Status != types.ConditionStatusUnknown {
+					c.Assert(condition.LastProbeTime, Not(Equals), "")
+				}
+				condition.LastProbeTime = ""
+				condition.LastTransitionTime = ""
+				condition.Message = ""
+				n.Status.Conditions[ctype] = condition
+			}
+			c.Assert(n.Status.Conditions, DeepEquals, tc.expectNodeStatus[nodeName].Conditions)
 			c.Assert(n.Status.MountPropagation, Equals, tc.expectNodeStatus[nodeName].MountPropagation)
 			if len(tc.expectNodeStatus[nodeName].DiskStatus) > 0 {
 				c.Assert(n.Status.DiskStatus, DeepEquals, tc.expectNodeStatus[nodeName].DiskStatus)
