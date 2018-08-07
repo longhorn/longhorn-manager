@@ -390,6 +390,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 
 func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error {
 	// sync bidirectional mount propagation for node status to check whether the node could deploy CSI driver
+	condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeMountPropagation)
 	for _, mount := range pod.Spec.Containers[0].VolumeMounts {
 		if mount.Name == types.LonghornSystemKey {
 			mountPropagationStr := ""
@@ -399,16 +400,25 @@ func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error
 				mountPropagationStr = string(*mount.MountPropagation)
 			}
 			if mount.MountPropagation == nil || *mount.MountPropagation != v1.MountPropagationBidirectional {
-				if node.Status.MountPropagation {
-					logrus.Debugf("The MountPropagation value %s is not expected from pod %s, node %s", mountPropagationStr, pod.ObjectMeta.Name, pod.Spec.NodeName)
+				if condition.Status != types.ConditionStatusFalse {
+					condition.LastTransitionTime = util.Now()
 				}
-				node.Status.MountPropagation = false
+				condition.Status = types.ConditionStatusFalse
+				condition.Reason = types.NodeConditionReasonNoMountPropagationSupport
+				condition.Message = fmt.Sprintf("The MountPropagation value %s is not detected from pod %s, node %s", mountPropagationStr, pod.ObjectMeta.Name, pod.Spec.NodeName)
 			} else {
-				node.Status.MountPropagation = true
+				if condition.Status != types.ConditionStatusTrue {
+					condition.LastTransitionTime = util.Now()
+				}
+				condition.Status = types.ConditionStatusTrue
+				condition.Reason = ""
+				condition.Message = ""
 			}
+			condition.LastProbeTime = util.Now()
 			break
 		}
 	}
+	node.Status.Conditions[types.NodeConditionTypeMountPropagation] = condition
 
 	return nil
 }

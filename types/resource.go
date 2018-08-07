@@ -194,17 +194,18 @@ type NodeSpec struct {
 type NodeConditionType string
 
 const (
-	NodeConditionTypeReady = "Ready"
+	NodeConditionTypeReady            = "Ready"
+	NodeConditionTypeMountPropagation = "MountPropagation"
 )
 
 const (
-	NodeConditionReasonManagerPodDown = "ManagerPodDown"
+	NodeConditionReasonManagerPodDown            = "ManagerPodDown"
+	NodeConditionReasonNoMountPropagationSupport = "NoMountPropagationSupport"
 )
 
 type NodeStatus struct {
-	Conditions       map[NodeConditionType]Condition `json:"conditions"`
-	DiskStatus       map[string]DiskStatus           `json:"diskStatus"`
-	MountPropagation bool                            `json:"mountPropagation"`
+	Conditions map[NodeConditionType]Condition `json:"conditions"`
+	DiskStatus map[string]DiskStatus           `json:"diskStatus"`
 }
 
 type DiskSpec struct {

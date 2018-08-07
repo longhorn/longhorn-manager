@@ -97,15 +97,14 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	expectNodeStatus := map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusFalse, types.NodeConditionReasonNoMountPropagationSupport),
 			},
-			MountPropagation: false,
 		},
 		TestNode2: {
 			Conditions: map[types.NodeConditionType]types.Condition{
 				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 			},
-			MountPropagation: false,
 		},
 	}
 	tc.expectNodeStatus = expectNodeStatus
@@ -129,15 +128,14 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonManagerPodDown),
+				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonManagerPodDown),
+				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusFalse, types.NodeConditionReasonNoMountPropagationSupport),
 			},
-			MountPropagation: false,
 		},
 		TestNode2: {
 			Conditions: map[types.NodeConditionType]types.Condition{
 				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 			},
-			MountPropagation: false,
 		},
 	}
 	tc.expectNodeStatus = expectNodeStatus
@@ -161,15 +159,14 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusFalse, types.NodeConditionReasonNoMountPropagationSupport),
 			},
-			MountPropagation: false,
 		},
 		TestNode2: {
 			Conditions: map[types.NodeConditionType]types.Condition{
 				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 			},
-			MountPropagation: false,
 		},
 	}
 	tc.expectNodeStatus = expectNodeStatus
@@ -213,9 +210,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			MountPropagation: true,
 			DiskStatus: map[string]types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: TestVolumeSize,
@@ -227,7 +224,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			Conditions: map[types.NodeConditionType]types.Condition{
 				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 			},
-			MountPropagation: false,
 			DiskStatus: map[string]types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
@@ -275,9 +271,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			MountPropagation: true,
 			DiskStatus: map[string]types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
@@ -290,7 +286,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			Conditions: map[types.NodeConditionType]types.Condition{
 				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 			},
-			MountPropagation: false,
 			DiskStatus: map[string]types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
@@ -341,9 +336,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			MountPropagation: true,
 			DiskStatus: map[string]types.DiskStatus{
 				"changedId": {
 					StorageScheduled: 0,
@@ -356,7 +351,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			Conditions: map[types.NodeConditionType]types.Condition{
 				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 			},
-			MountPropagation: false,
 			DiskStatus: map[string]types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
@@ -419,7 +413,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				n.Status.Conditions[ctype] = condition
 			}
 			c.Assert(n.Status.Conditions, DeepEquals, tc.expectNodeStatus[nodeName].Conditions)
-			c.Assert(n.Status.MountPropagation, Equals, tc.expectNodeStatus[nodeName].MountPropagation)
 			if len(tc.expectNodeStatus[nodeName].DiskStatus) > 0 {
 				c.Assert(n.Status.DiskStatus, DeepEquals, tc.expectNodeStatus[nodeName].DiskStatus)
 			}
