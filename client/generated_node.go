@@ -15,8 +15,6 @@ type Node struct {
 
 	Disks map[string]interface{} `json:"disks,omitempty" yaml:"disks,omitempty"`
 
-	MountPropagation bool `json:"mountPropagation,omitempty" yaml:"mount_propagation,omitempty"`
-
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 }
 

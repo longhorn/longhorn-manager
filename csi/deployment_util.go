@@ -2,6 +2,7 @@ package csi
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	appsv1beta1 "k8s.io/api/apps/v1beta1"
@@ -11,7 +12,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
+	"github.com/rancher/longhorn-manager/types"
+
 	longhornclient "github.com/rancher/longhorn-manager/client"
+)
+
+const (
+	maxRetryCountForMountPropagationCheck = 10
+	durationSleepForMountPropagationCheck = 5 * time.Second
 )
 
 func getCommonService(commonName, namespace string) *v1.Service {
@@ -204,7 +212,25 @@ func CheckMountPropagationWithNode(managerURL string) error {
 	}
 	nodeCollection, err := apiClient.Node.List(&longhornclient.ListOpts{})
 	for _, node := range nodeCollection.Data {
-		if !node.MountPropagation {
+		con := node.Conditions[string(types.NodeConditionTypeMountPropagation)]
+		var condition map[string]interface{}
+		if con != nil {
+			condition = con.(map[string]interface{})
+		}
+		for i := 0; i < maxRetryCountForMountPropagationCheck; i++ {
+			if condition != nil && condition["status"] != nil && condition["status"].(string) != string(types.ConditionStatusUnknown) {
+				break
+			}
+			time.Sleep(durationSleepForMountPropagationCheck)
+			retryNode, err := apiClient.Node.ById(node.Name)
+			if err != nil {
+				return err
+			}
+			if retryNode.Conditions[string(types.NodeConditionTypeMountPropagation)] != nil {
+				condition = retryNode.Conditions[string(types.NodeConditionTypeMountPropagation)].(map[string]interface{})
+			}
+		}
+		if condition == nil || condition["status"] == nil || condition["status"].(string) != string(types.ConditionStatusTrue) {
 			return fmt.Errorf("Node %s is not support mount propagation", node.Name)
 		}
 	}
