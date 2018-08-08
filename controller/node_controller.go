@@ -320,10 +320,18 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 	}
 
 	updateDiskMap := map[string]types.DiskSpec{}
+	originDiskStatus := node.Status.DiskStatus
+	if originDiskStatus == nil {
+		originDiskStatus = map[string]types.DiskStatus{}
+	}
 	diskConditions := map[types.DiskConditionType]types.Condition{}
 	for diskID, disk := range diskMap {
 		updateDisk := disk
 		diskStatus := types.DiskStatus{}
+		_, ok := originDiskStatus[diskID]
+		if ok {
+			diskStatus = originDiskStatus[diskID]
+		}
 		// if there's no replica assigned to this disk
 		if _, ok := replicaDiskMap[diskID]; !ok {
 			diskStatus.StorageScheduled = 0
