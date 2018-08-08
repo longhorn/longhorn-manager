@@ -23,6 +23,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/rancher/longhorn-manager/datastore"
+	"github.com/rancher/longhorn-manager/scheduler"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 
@@ -51,6 +52,8 @@ type NodeController struct {
 	queue workqueue.RateLimitingInterface
 
 	getDiskInfoHandler GetDiskInfoHandler
+
+	scheduler *scheduler.ReplicaScheduler
 }
 
 type GetDiskInfoHandler func(string) (*util.DiskInfo, error)
@@ -86,6 +89,8 @@ func NewNodeController(
 
 		getDiskInfoHandler: util.GetDiskInfo,
 	}
+
+	nc.scheduler = scheduler.NewReplicaScheduler(ds)
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -372,13 +377,18 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		condition := types.GetDiskConditionFromStatus(diskStatus, types.DiskConditionTypeSchedulable)
 		//condition.LastProbeTime = util.Now()
 		// check disk pressure
-		if diskStatus.StorageAvailable <= disk.StorageMaximum*minimalAvailablePercentage/100 {
+		info, err := nc.scheduler.GetDiskSchedulingInfo(disk, diskStatus)
+		if err != nil {
+			return err
+		}
+		if !nc.scheduler.IsSchedulableToDisk(0, info) {
+			logrus.Errorf("unable to schedule any replica on node %v", node.Name)
 			if condition.Status != types.ConditionStatusFalse {
 				condition.LastTransitionTime = util.Now()
 			}
 			condition.Status = types.ConditionStatusFalse
 			condition.Reason = string(types.DiskConditionReasonDiskPressure)
-			condition.Message = fmt.Sprintf("the disk %v on the node %v has %v available, but requires minimal %v to schedule more replicas", disk.Path, node.Name, diskInfo.StorageAvailable, minimalAvailablePercentage)
+			condition.Message = fmt.Sprintf("the disk %v on the node %v has %v available, but requires reserved %v, minimal %v to schedule more replicas", disk.Path, node.Name, diskInfo.StorageAvailable, disk.StorageReserved, minimalAvailablePercentage)
 		} else {
 			if condition.Status != types.ConditionStatusTrue {
 				condition.LastTransitionTime = util.Now()
