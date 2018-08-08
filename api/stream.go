@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	keepAlivePeriod = 60 * time.Second
+	keepAlivePeriod = 15 * time.Second
 
 	writeWait = 10 * time.Second
 )
@@ -63,6 +63,7 @@ func NewStreamHandlerFunc(streamType string, watcher *controller.Watcher, listFu
 
 		rateLimitTicker := maybeNewTicker(getPeriod(r))
 		keepAliveTicker := time.NewTicker(keepAlivePeriod)
+		recentWrite := false
 		for {
 			if rateLimitTicker != nil {
 				<-rateLimitTicker.C
@@ -72,8 +73,13 @@ func NewStreamHandlerFunc(streamType string, watcher *controller.Watcher, listFu
 				return nil
 			case <-watcher.Events():
 				resp, err = writeList(conn, resp, listFunc, apiContext)
+				recentWrite = true
 			case <-keepAliveTicker.C:
 				err = conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(writeWait))
+				if !recentWrite {
+					resp, err = writeList(conn, nil, listFunc, apiContext)
+				}
+				recentWrite = !recentWrite
 			}
 			if err != nil {
 				return err
