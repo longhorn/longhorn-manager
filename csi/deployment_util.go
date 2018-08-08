@@ -20,6 +20,7 @@ import (
 const (
 	maxRetryCountForMountPropagationCheck = 10
 	durationSleepForMountPropagationCheck = 5 * time.Second
+	maxRetryForDeletion                   = 120
 )
 
 func getCommonService(commonName, namespace string) *v1.Service {
@@ -98,14 +99,31 @@ func getCommondStatefulSet(commonName, namespace, serviceAccount, image string, 
 	}
 }
 
+func waitForDeletion(getFunc func() error, name string, resource string) error {
+	logrus.Debugf("Waiting for foreground deletion of %s %s", resource, name)
+	for i := 0; i < maxRetryForDeletion; i++ {
+		err := getFunc()
+		if err != nil && apierrors.IsNotFound(err) {
+			logrus.Debugf("Deleted the %s %s in foreground", resource, name)
+			return nil
+		}
+		time.Sleep(time.Duration(1) * time.Second)
+	}
+	return fmt.Errorf("Foreground deletion of %s %s timed out", resource, name)
+}
+
 func cleanupService(kubeClient *clientset.Clientset, service *v1.Service) error {
 	logrus.Debugf("Trying to get the service %s", service.ObjectMeta.Name)
 	svc, err := kubeClient.CoreV1().Services(service.ObjectMeta.Namespace).Get(service.ObjectMeta.Name, metav1.GetOptions{})
 	if err != nil && apierrors.IsNotFound(err) {
 		return nil
 	}
+	getFunc := func() error {
+		_, err := kubeClient.CoreV1().Services(service.ObjectMeta.Namespace).Get(service.ObjectMeta.Name, metav1.GetOptions{})
+		return err
+	}
 	if svc != nil && svc.DeletionTimestamp != nil {
-		return fmt.Errorf("Object is being deleted: service %s", service.ObjectMeta.Name)
+		return waitForDeletion(getFunc, service.ObjectMeta.Name, "service")
 	}
 
 	if svc != nil {
@@ -117,6 +135,7 @@ func cleanupService(kubeClient *clientset.Clientset, service *v1.Service) error 
 			return err
 		}
 		logrus.Debugf("Deleted the service %s", service.ObjectMeta.Name)
+		return waitForDeletion(getFunc, service.ObjectMeta.Name, "service")
 	}
 	return nil
 }
@@ -136,11 +155,12 @@ func deployService(kubeClient *clientset.Clientset, service *v1.Service) error {
 func cleanupStatefulSet(kubeClient *clientset.Clientset, statefulSet *appsv1beta1.StatefulSet) error {
 	logrus.Debugf("Trying to get the statefulset %s", statefulSet.ObjectMeta.Name)
 	sfs, err := kubeClient.AppsV1beta1().StatefulSets(statefulSet.ObjectMeta.Namespace).Get(statefulSet.ObjectMeta.Name, metav1.GetOptions{})
-	if err != nil && apierrors.IsNotFound(err) {
-		return nil
+	getFunc := func() error {
+		_, err := kubeClient.AppsV1beta1().StatefulSets(statefulSet.ObjectMeta.Namespace).Get(statefulSet.ObjectMeta.Name, metav1.GetOptions{})
+		return err
 	}
-	if sfs != nil && sfs.DeletionTimestamp != nil {
-		return fmt.Errorf("Object is being deleted: statefulset %s", statefulSet.ObjectMeta.Name)
+	if err != nil && apierrors.IsNotFound(err) {
+		return waitForDeletion(getFunc, statefulSet.ObjectMeta.Name, "statefulset")
 	}
 
 	if sfs != nil {
@@ -152,6 +172,7 @@ func cleanupStatefulSet(kubeClient *clientset.Clientset, statefulSet *appsv1beta
 			return err
 		}
 		logrus.Debugf("Deleted the statefulset %s", statefulSet.ObjectMeta.Name)
+		return waitForDeletion(getFunc, statefulSet.ObjectMeta.Name, "statefulset")
 	}
 	return nil
 }
@@ -174,8 +195,12 @@ func cleanupDaemonSet(kubeClient *clientset.Clientset, daemonSet *appsv1beta2.Da
 	if err != nil && apierrors.IsNotFound(err) {
 		return nil
 	}
+	getFunc := func() error {
+		_, err := kubeClient.AppsV1beta2().DaemonSets(daemonSet.ObjectMeta.Namespace).Get(daemonSet.ObjectMeta.Name, metav1.GetOptions{})
+		return err
+	}
 	if ds != nil && ds.DeletionTimestamp != nil {
-		return fmt.Errorf("Object is being deleted: DaemonSet %s", daemonSet.ObjectMeta.Name)
+		return waitForDeletion(getFunc, daemonSet.ObjectMeta.Name, "daemonset")
 	}
 
 	if ds != nil {
@@ -187,6 +212,7 @@ func cleanupDaemonSet(kubeClient *clientset.Clientset, daemonSet *appsv1beta2.Da
 			return err
 		}
 		logrus.Debugf("Deleted the daemonset %s", daemonSet.ObjectMeta.Name)
+		return waitForDeletion(getFunc, daemonSet.ObjectMeta.Name, "daemonset")
 	}
 	return nil
 }
