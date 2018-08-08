@@ -240,7 +240,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	for _, pod := range managerPods {
 		if pod.Spec.NodeName == node.Name {
 			condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
-			condition.LastProbeTime = util.Now()
+			//condition.LastProbeTime = util.Now()
 			switch pod.Status.Phase {
 			case v1.PodRunning:
 				if condition.Status != types.ConditionStatusTrue {
@@ -362,7 +362,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		}
 
 		condition := types.GetDiskConditionFromStatus(diskStatus, types.DiskConditionTypeSchedulable)
-		condition.LastProbeTime = util.Now()
+		//condition.LastProbeTime = util.Now()
 		// check disk pressure
 		if diskStatus.StorageAvailable <= disk.StorageMaximum*minimalAvailablePercentage/100 {
 			if condition.Status != types.ConditionStatusFalse {
@@ -429,7 +429,7 @@ func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error
 				condition.Reason = ""
 				condition.Message = ""
 			}
-			condition.LastProbeTime = util.Now()
+			//condition.LastProbeTime = util.Now()
 			break
 		}
 	}

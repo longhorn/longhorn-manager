@@ -540,7 +540,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 				condition.Status = types.ConditionStatusFalse
 				condition.LastTransitionTime = util.Now()
 			}
-			condition.LastProbeTime = util.Now()
+			//condition.LastProbeTime = util.Now()
 			condition.Reason = types.VolumeConditionReasonReplicaSchedulingFailure
 			v.Status.Conditions[types.VolumeConditionTypeScheduled] = condition
 			allScheduled = false
@@ -563,7 +563,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			condition.Message = ""
 			condition.LastTransitionTime = util.Now()
 		}
-		condition.LastProbeTime = util.Now()
+		//condition.LastProbeTime = util.Now()
 		v.Status.Conditions[types.VolumeConditionTypeScheduled] = condition
 	}
 
