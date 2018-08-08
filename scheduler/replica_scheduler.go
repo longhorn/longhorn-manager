@@ -21,6 +21,15 @@ type Disk struct {
 	NodeID string
 }
 
+type DiskSchedulingInfo struct {
+	StorageAvailable           int64
+	StorageMaximum             int64
+	StorageReserved            int64
+	StorageScheduled           int64
+	OverProvisioningPercentage int64
+	MinimalAvailablePercentage int64
+}
+
 func NewReplicaScheduler(ds *datastore.DataStore) *ReplicaScheduler {
 	rcScheduler := &ReplicaScheduler{
 		ds: ds,
@@ -45,18 +54,8 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 		return nil, nil
 	}
 
-	// get StorageOverProvisioningPercentage and StorageMinimalAvailablePercentage settings
-	overProvisioningPercentage, err := rcs.ds.GetSettingAsInt(types.SettingNameStorageOverProvisioningPercentage)
-	if err != nil {
-		return nil, err
-	}
-	minimalAvailablePercentage, err := rcs.ds.GetSettingAsInt(types.SettingNameStorageMinimalAvailablePercentage)
-	if err != nil {
-		return nil, err
-	}
-
 	// find proper node and disk
-	diskCandidates := rcs.chooseDiskCandidates(nodeInfo, replicas, replica, overProvisioningPercentage, minimalAvailablePercentage)
+	diskCandidates := rcs.chooseDiskCandidates(nodeInfo, replicas, replica)
 
 	// there's no disk that fit for current replica
 	if len(diskCandidates) == 0 {
@@ -70,7 +69,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	return replica, nil
 }
 
-func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.Node, replicas map[string]*longhorn.Replica, replica *longhorn.Replica, overProvisioningPercentage, minimalAvailablePercentage int64) map[string]*Disk {
+func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.Node, replicas map[string]*longhorn.Replica, replica *longhorn.Replica) map[string]*Disk {
 	diskCandidates := map[string]*Disk{}
 	filterdNode := []*longhorn.Node{}
 	for nodeName, node := range nodeInfo {
@@ -84,7 +83,7 @@ func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.
 			}
 		}
 		if !isFilterd {
-			diskCandidates = filterNodeDisksForReplica(node, replica, overProvisioningPercentage, minimalAvailablePercentage)
+			diskCandidates = rcs.filterNodeDisksForReplica(node, replica)
 			if len(diskCandidates) > 0 {
 				return diskCandidates
 			}
@@ -93,23 +92,26 @@ func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.
 	// If there's no disk fit for replica on other nodes,
 	// try to schedule to node that has been scheduled replicas.
 	for _, node := range filterdNode {
-		diskCandidates = filterNodeDisksForReplica(node, replica, overProvisioningPercentage, minimalAvailablePercentage)
+		diskCandidates = rcs.filterNodeDisksForReplica(node, replica)
 	}
 
 	return diskCandidates
 }
 
-func filterNodeDisksForReplica(node *longhorn.Node, replica *longhorn.Replica, overProvisioningPercentage, minimalAvailablePercentage int64) map[string]*Disk {
+func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, replica *longhorn.Replica) map[string]*Disk {
 	preferredDisk := map[string]*Disk{}
 	// find disk that fit for current replica
 	disks := node.Spec.Disks
 	diskStatus := node.Status.DiskStatus
 	for fsid, disk := range disks {
 		status := diskStatus[fsid]
-		diskCondition := types.GetDiskConditionFromStatus(status, types.DiskConditionTypeSchedulable)
-		if !disk.AllowScheduling || diskCondition.Status != types.ConditionStatusTrue ||
-			(replica.Spec.VolumeSize+status.StorageScheduled) > (disk.StorageMaximum-disk.StorageReserved)*(overProvisioningPercentage/100) ||
-			replica.Spec.VolumeSize > (status.StorageAvailable-disk.StorageMaximum*minimalAvailablePercentage/100)*overProvisioningPercentage/100 {
+		info, err := rcs.GetDiskSchedulingInfo(disk, status)
+		if err != nil {
+			logrus.Errorf("Fail to get settings when scheduling replica: %v", err)
+			return preferredDisk
+		}
+		if !disk.AllowScheduling ||
+			!rcs.IsSchedulableToDisk(replica.Spec.VolumeSize, info) {
 			continue
 		}
 		suggestDisk := &Disk{
@@ -147,4 +149,30 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, di
 	replica.Spec.NodeID = disk.NodeID
 	replica.Spec.DiskID = fsid
 	replica.Spec.DataPath = filepath.Join(disk.Path, "replicas", replica.Spec.VolumeName+"-"+util.RandomID())
+}
+
+func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, info *DiskSchedulingInfo) bool {
+	return (size+info.StorageScheduled) <= (info.StorageMaximum-info.StorageReserved)*(info.OverProvisioningPercentage/100) &&
+		size <= (info.StorageAvailable-info.StorageMaximum*info.MinimalAvailablePercentage/100)*info.OverProvisioningPercentage/100
+}
+
+func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk types.DiskSpec, diskStatus types.DiskStatus) (*DiskSchedulingInfo, error) {
+	// get StorageOverProvisioningPercentage and StorageMinimalAvailablePercentage settings
+	overProvisioningPercentage, err := rcs.ds.GetSettingAsInt(types.SettingNameStorageOverProvisioningPercentage)
+	if err != nil {
+		return nil, err
+	}
+	minimalAvailablePercentage, err := rcs.ds.GetSettingAsInt(types.SettingNameStorageMinimalAvailablePercentage)
+	if err != nil {
+		return nil, err
+	}
+	info := &DiskSchedulingInfo{
+		StorageAvailable:           diskStatus.StorageAvailable,
+		StorageScheduled:           diskStatus.StorageScheduled,
+		StorageReserved:            disk.StorageReserved,
+		StorageMaximum:             disk.StorageMaximum,
+		OverProvisioningPercentage: overProvisioningPercentage,
+		MinimalAvailablePercentage: minimalAvailablePercentage,
+	}
+	return info, nil
 }
