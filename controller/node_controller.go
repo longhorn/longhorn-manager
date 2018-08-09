@@ -246,21 +246,26 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		if pod.Spec.NodeName == node.Name {
 			condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
 			//condition.LastProbeTime = util.Now()
-			switch pod.Status.Phase {
-			case v1.PodRunning:
-				if condition.Status != types.ConditionStatusTrue {
-					condition.LastTransitionTime = util.Now()
+			podConditions := pod.Status.Conditions
+			for _, podCondition := range podConditions {
+				if podCondition.Type == v1.PodReady {
+					if podCondition.Status == v1.ConditionTrue && pod.Status.Phase == v1.PodRunning {
+						if condition.Status != types.ConditionStatusTrue {
+							condition.LastTransitionTime = util.Now()
+						}
+						condition.Status = types.ConditionStatusTrue
+						condition.Reason = ""
+						condition.Message = ""
+					} else {
+						if condition.Status != types.ConditionStatusFalse {
+							condition.LastTransitionTime = util.Now()
+						}
+						condition.Status = types.ConditionStatusFalse
+						condition.Reason = string(types.NodeConditionReasonManagerPodDown)
+						condition.Message = fmt.Sprintf("the manager pod %v is not running", pod.Name)
+					}
+					break
 				}
-				condition.Status = types.ConditionStatusTrue
-				condition.Reason = ""
-				condition.Message = ""
-			default:
-				if condition.Status != types.ConditionStatusFalse {
-					condition.LastTransitionTime = util.Now()
-				}
-				condition.Status = types.ConditionStatusFalse
-				condition.Reason = string(types.NodeConditionReasonManagerPodDown)
-				condition.Message = fmt.Sprintf("the manager pod %v is not running", pod.Name)
 			}
 			node.Status.Conditions[types.NodeConditionTypeReady] = condition
 		}
