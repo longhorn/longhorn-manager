@@ -334,8 +334,8 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 	if originDiskStatus == nil {
 		originDiskStatus = map[string]types.DiskStatus{}
 	}
-	diskConditions := map[types.DiskConditionType]types.Condition{}
 	for diskID, disk := range diskMap {
+		diskConditions := map[types.DiskConditionType]types.Condition{}
 		updateDisk := disk
 		diskStatus := types.DiskStatus{}
 		_, ok := originDiskStatus[diskID]
@@ -357,27 +357,43 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		}
 		// get disk available size
 		diskInfo, err := nc.getDiskInfoHandler(disk.Path)
-		// if the file system has changed
+		readyCondition := types.GetDiskConditionFromStatus(diskStatus, types.DiskConditionTypeReady)
 		if err != nil {
-			logrus.Errorf("Get disk information on node %v error: %v", node.Name, err)
+			if readyCondition.Status != types.ConditionStatusFalse {
+				readyCondition.LastTransitionTime = util.Now()
+			}
+			readyCondition.Status = types.ConditionStatusFalse
+			readyCondition.Reason = types.DiskConditionReasonNoDiskInfo
+			readyCondition.Message = fmt.Sprintf("Get disk information on node %v error: %v", node.Name, err)
 			// disable invalid disk
 			updateDisk.AllowScheduling = false
 			updateDisk.StorageMaximum = 0
-			updateDisk.StorageReserved = 0
 			diskStatus.StorageAvailable = 0
 		} else if diskInfo == nil || diskInfo.Fsid != diskID {
-			logrus.Errorf("disk %v on node %v has changed file system", disk.Path, node.Name)
+			// if the file system has changed
+			if readyCondition.Status != types.ConditionStatusFalse {
+				readyCondition.LastTransitionTime = util.Now()
+			}
+			readyCondition.Status = types.ConditionStatusFalse
+			readyCondition.Reason = types.DiskConditionReasonDiskFilesystemChanged
+			readyCondition.Message = fmt.Sprintf("disk %v on node %v has changed file system", disk.Path, node.Name)
 			// disable invalid disk
 			updateDisk.AllowScheduling = false
 			updateDisk.StorageMaximum = 0
-			updateDisk.StorageReserved = 0
 			diskStatus.StorageAvailable = 0
 		} else {
+			if readyCondition.Status != types.ConditionStatusTrue {
+				readyCondition.LastTransitionTime = util.Now()
+			}
+			readyCondition.Status = types.ConditionStatusTrue
+			readyCondition.Reason = ""
+			readyCondition.Message = ""
 			if updateDisk.StorageMaximum == 0 {
 				updateDisk.StorageMaximum = diskInfo.StorageMaximum
 			}
 			diskStatus.StorageAvailable = diskInfo.StorageAvailable
 		}
+		diskConditions[types.DiskConditionTypeReady] = readyCondition
 
 		condition := types.GetDiskConditionFromStatus(diskStatus, types.DiskConditionTypeSchedulable)
 		//condition.LastProbeTime = util.Now()
@@ -387,7 +403,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			return err
 		}
 		if !nc.scheduler.IsSchedulableToDisk(0, info) {
-			logrus.Errorf("unable to schedule any replica on node %v", node.Name)
+			logrus.Errorf("unable to schedule any replica to disk %v on node %v", disk.Path, node.Name)
 			if condition.Status != types.ConditionStatusFalse {
 				condition.LastTransitionTime = util.Now()
 			}

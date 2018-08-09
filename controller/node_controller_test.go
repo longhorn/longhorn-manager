@@ -220,6 +220,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					StorageScheduled: TestVolumeSize,
 					Conditions: map[types.DiskConditionType]types.Condition{
 						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse, string(types.DiskConditionReasonDiskPressure)),
+						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
 					},
 				},
 			},
@@ -291,6 +292,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					StorageAvailable: 0,
 					Conditions: map[types.DiskConditionType]types.Condition{
 						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse, string(types.DiskConditionReasonDiskPressure)),
+						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
 					},
 				},
 			},
@@ -333,6 +335,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			StorageAvailable: 0,
 			Conditions: map[types.DiskConditionType]types.Condition{
 				types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+				types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
 			},
 		},
 	}
@@ -360,6 +363,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					StorageAvailable: 0,
 					Conditions: map[types.DiskConditionType]types.Condition{
 						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse, string(types.DiskConditionReasonDiskPressure)),
+						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusFalse, string(types.DiskConditionReasonDiskFilesystemChanged)),
 					},
 				},
 			},

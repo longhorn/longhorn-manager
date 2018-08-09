@@ -207,10 +207,13 @@ type DiskConditionType string
 
 const (
 	DiskConditionTypeSchedulable = "Schedulable"
+	DiskConditionTypeReady       = "Ready"
 )
 
 const (
-	DiskConditionReasonDiskPressure = "DiskPressure"
+	DiskConditionReasonDiskPressure          = "DiskPressure"
+	DiskConditionReasonDiskFilesystemChanged = "DiskFilesystemChanged"
+	DiskConditionReasonNoDiskInfo            = "NoDiskInfo"
 )
 
 type NodeStatus struct {
