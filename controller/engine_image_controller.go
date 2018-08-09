@@ -267,7 +267,23 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return nil
 	}
 
-	if ds.Status.DesiredNumberScheduled == 0 || ds.Status.NumberAvailable != ds.Status.DesiredNumberScheduled {
+	if ds.Status.DesiredNumberScheduled == 0 {
+		engineImage.Status.State = types.EngineImageStateDeploying
+		return nil
+	}
+
+	nodes, err := ic.ds.ListNodes()
+	if err != nil {
+		return err
+	}
+	readyNodeCount := int32(0)
+	for _, node := range nodes {
+		condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+		if condition.Status == types.ConditionStatusTrue {
+			readyNodeCount++
+		}
+	}
+	if ds.Status.NumberAvailable < readyNodeCount {
 		engineImage.Status.State = types.EngineImageStateDeploying
 		return nil
 	}
