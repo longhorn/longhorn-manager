@@ -363,6 +363,10 @@ func newReplicaForVolume(v *longhorn.Volume, e *longhorn.Engine, nodeID, diskID 
 }
 
 func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string, mountpropagation *v1.MountPropagationMode) *v1.Pod {
+	podStatus := v1.ConditionFalse
+	if phase == v1.PodRunning {
+		podStatus = v1.ConditionTrue
+	}
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -388,6 +392,12 @@ func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string, moun
 			},
 		},
 		Status: v1.PodStatus{
+			Conditions: []v1.PodCondition{
+				{
+					Type:   v1.PodReady,
+					Status: podStatus,
+				},
+			},
 			Phase: phase,
 			PodIP: podIP,
 		},
