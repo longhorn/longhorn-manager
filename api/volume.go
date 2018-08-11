@@ -145,6 +145,15 @@ func (s *Server) VolumeAttach(rw http.ResponseWriter, req *http.Request) error {
 	}
 
 	id := mux.Vars(req)["name"]
+	// check attach node state
+	node, err := s.m.GetNode(input.HostID)
+	if err != nil {
+		return err
+	}
+	readyCondition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+	if readyCondition.Status != types.ConditionStatusTrue {
+		return fmt.Errorf("Node %v is not ready, couldn't attach volume %v to it", node.Name, id)
+	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.Attach(id, input.HostID)
