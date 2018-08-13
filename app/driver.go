@@ -42,6 +42,7 @@ const (
 	FlagCSIProvisionerImage     = "csi-provisioner-image"
 	FlagCSIDriverRegistrarImage = "csi-driver-registrar-image"
 	FlagCSIProvisionerName      = "csi-provisioner-name"
+	FlagCSIPodsMountDir         = "csi-pods-mount-dir"
 	EnvCSIAttacherImage         = "CSI_ATTACHER_IMAGE"
 	EnvCSIProvisionerImage      = "CSI_PROVISIONER_IMAGE"
 	EnvCSIDriverRegistrarImage  = "CSI_DRIVER_REGISTRAR_IMAGE"
@@ -92,6 +93,11 @@ func DeployDriverCmd() cli.Command {
 				Usage:  "Specify CSI provisioner name",
 				EnvVar: EnvCSIProvisionerName,
 				Value:  csi.DefaultCSIProvisionerName,
+			},
+			cli.StringFlag{
+				Name:  FlagCSIPodsMountDir,
+				Usage: "Specify CSI pods mount dir",
+				Value: csi.DefaultCSIPodsMountDir,
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -185,6 +191,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 	csiProvisionerImage := c.String(FlagCSIProvisionerImage)
 	csiDriverRegistrarImage := c.String(FlagCSIDriverRegistrarImage)
 	csiProvisionerName := c.String(FlagCSIProvisionerName)
+	csiPodsMountDir := c.String(FlagCSIPodsMountDir)
 	namespace := os.Getenv(types.EnvPodNamespace)
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
 
@@ -198,7 +205,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 		return err
 	}
 
-	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiDriverRegistrarImage, managerImage, managerURL)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiDriverRegistrarImage, managerImage, managerURL, csiPodsMountDir)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}

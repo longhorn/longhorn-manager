@@ -15,6 +15,7 @@ const (
 	DefaultCSIProvisionerImage     = "quay.io/k8scsi/csi-provisioner:v0.2.0"
 	DefaultCSIDriverRegistrarImage = "quay.io/k8scsi/driver-registrar:v0.2.0"
 	DefaultCSIProvisionerName      = "rancher.io/longhorn"
+	DefaultCSIPodsMountDir         = "/var/lib/kubelet/pods"
 )
 
 var (
@@ -113,7 +114,7 @@ type PluginDeployment struct {
 	daemonSet *appsv1beta2.DaemonSet
 }
 
-func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, managerImage, managerURL string) *PluginDeployment {
+func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, managerImage, managerURL, podsMountDir string) *PluginDeployment {
 	daemonSet := &appsv1beta2.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "longhorn-csi-plugin",
@@ -206,7 +207,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 								},
 								v1.VolumeMount{
 									Name:             "pods-mount-dir",
-									MountPath:        "/var/lib/kubelet/pods",
+									MountPath:        podsMountDir,
 									MountPropagation: &MountPropagationBidirectional,
 								},
 								v1.VolumeMount{
@@ -239,7 +240,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 							Name: "pods-mount-dir",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
-									Path: "/var/lib/kubelet/pods",
+									Path: podsMountDir,
 									Type: &HostPathDirectoryOrCreate,
 								},
 							},
