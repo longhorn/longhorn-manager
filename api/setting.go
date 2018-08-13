@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"regexp"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -58,16 +57,6 @@ func (s *Server) SettingSet(w http.ResponseWriter, req *http.Request) error {
 
 	name := mux.Vars(req)["name"]
 	sName := types.SettingName(name)
-
-	if sName == types.SettingNameBackupTarget {
-		// additional check whether have $ or , have been set in BackupTarget
-		regStr := `[\$\,]`
-		reg := regexp.MustCompile(regStr)
-		findStr := reg.FindAllString(setting.Value, -1)
-		if len(findStr) != 0 {
-			return fmt.Errorf("fail to set settings with invalid BackupTarget %s, contains %v", setting.Value, strings.Join(findStr, " or "))
-		}
-	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		si, err := s.m.GetSetting(sName)

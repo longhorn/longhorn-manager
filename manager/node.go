@@ -72,23 +72,31 @@ func (m *VolumeManager) DiskUpdate(name string, updateDisks []types.DiskSpec) (*
 			}
 		}
 		if !isInvalid {
+			validReserved := true
 			// update disks
 			if oDisk, ok := originDisks[diskInfo.Fsid]; ok {
 				if oDisk.Path != uDisk.Path {
 					// current disk is the same file system with exist disk
 					return nil, fmt.Errorf("Add Disk on node %v error: The disk %v is the same file system with %v ", name, uDisk.Path, oDisk.Path)
-				} else if oDisk.StorageMaximum != uDisk.StorageMaximum && uDisk.StorageMaximum != diskInfo.StorageMaximum {
+				} else if oDisk.StorageMaximum != uDisk.StorageMaximum || uDisk.StorageMaximum != diskInfo.StorageMaximum {
+					validReserved = false
 					logrus.Warnf("StorageMaximum has been changed for disk %v of node %v. Detected maximum storage %v, current setting %v", diskInfo.Path, name, diskInfo.StorageMaximum, uDisk.StorageMaximum)
 				}
 				diskUpdateMap[diskInfo.Fsid] = uDisk
 			} else {
 				// add disks
 				if uDisk.StorageMaximum != 0 && uDisk.StorageMaximum != diskInfo.StorageMaximum {
+					validReserved = false
 					logrus.Warnf("StorageMaximum has been changed for disk %v of node %v. Detected maximum storage %v, current setting %v", diskInfo.Path, name, diskInfo.StorageMaximum, uDisk.StorageMaximum)
 				} else {
 					uDisk.StorageMaximum = diskInfo.StorageMaximum
 				}
 				diskUpdateMap[diskInfo.Fsid] = uDisk
+			}
+			if validReserved {
+				if uDisk.StorageReserved < 0 || uDisk.StorageReserved > diskInfo.StorageMaximum {
+					return nil, fmt.Errorf("Update disk on node %v error: The storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum", name, uDisk.Path)
+				}
 			}
 		}
 	}
