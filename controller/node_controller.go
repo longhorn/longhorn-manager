@@ -409,7 +409,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			}
 			condition.Status = types.ConditionStatusFalse
 			condition.Reason = string(types.DiskConditionReasonDiskPressure)
-			condition.Message = fmt.Sprintf("the disk %v on the node %v has %v available, but requires reserved %v, minimal %v to schedule more replicas", disk.Path, node.Name, diskInfo.StorageAvailable, disk.StorageReserved, minimalAvailablePercentage)
+			condition.Message = fmt.Sprintf("the disk %v on the node %v has %v available, but requires reserved %v, minimal %v%s to schedule more replicas", disk.Path, node.Name, diskStatus.StorageAvailable, disk.StorageReserved, minimalAvailablePercentage, "%")
 		} else {
 			if condition.Status != types.ConditionStatusTrue {
 				condition.LastTransitionTime = util.Now()
