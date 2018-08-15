@@ -48,6 +48,7 @@ type NodeController struct {
 	nStoreSynced cache.InformerSynced
 	pStoreSynced cache.InformerSynced
 	sStoreSynced cache.InformerSynced
+	rStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
 
@@ -64,6 +65,7 @@ func NewNodeController(
 	nodeInformer lhinformers.NodeInformer,
 	settingInformer lhinformers.SettingInformer,
 	podInformer coreinformers.PodInformer,
+	replicaInformer lhinformers.ReplicaInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID string) *NodeController {
 
@@ -84,6 +86,7 @@ func NewNodeController(
 		nStoreSynced: nodeInformer.Informer().HasSynced,
 		pStoreSynced: podInformer.Informer().HasSynced,
 		sStoreSynced: settingInformer.Informer().HasSynced,
+		rStoreSynced: replicaInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-node"),
 
@@ -131,12 +134,48 @@ func NewNodeController(
 		},
 	)
 
+	replicaInformer.Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch t := obj.(type) {
+				case *longhorn.Replica:
+					return nc.filterReplica(t)
+				default:
+					utilruntime.HandleError(fmt.Errorf("unable to handle object in %T: %T", nc, obj))
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc: func(obj interface{}) {
+					r := obj.(*longhorn.Replica)
+					nc.enqueueReplica(r)
+				},
+				UpdateFunc: func(oldObj, newObj interface{}) {
+					cur := newObj.(*longhorn.Replica)
+					nc.enqueueReplica(cur)
+				},
+				DeleteFunc: func(obj interface{}) {
+					r := obj.(*longhorn.Replica)
+					nc.enqueueReplica(r)
+				},
+			},
+		},
+	)
+
 	return nc
 }
 
 func filterSettings(s *longhorn.Setting) bool {
 	// filter that only StorageMinimalAvailablePercentage will impact disk status
 	if types.SettingName(s.Name) == types.SettingNameStorageMinimalAvailablePercentage {
+		return true
+	}
+	return false
+}
+
+func (nc *NodeController) filterReplica(r *longhorn.Replica) bool {
+	// only sync replica running on current node
+	if r.Spec.NodeID == nc.controllerID {
 		return true
 	}
 	return false
@@ -313,6 +352,15 @@ func (nc *NodeController) enqueueSetting(setting *longhorn.Setting) {
 	for _, node := range nodeList {
 		nc.enqueueNode(node)
 	}
+}
+
+func (nc *NodeController) enqueueReplica(replica *longhorn.Replica) {
+	node, err := nc.ds.GetNode(replica.Spec.NodeID)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("Couldn't get node: %v ", err))
+		return
+	}
+	nc.enqueueNode(node)
 }
 
 func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
