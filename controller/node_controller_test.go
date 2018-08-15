@@ -50,7 +50,7 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 		podInformer, cronJobInformer, daemonSetInformer,
 		kubeClient, TestNamespace)
 
-	nc := NewNodeController(ds, scheme.Scheme, nodeInformer, settingInformer, podInformer, kubeClient, TestNamespace, controllerID)
+	nc := NewNodeController(ds, scheme.Scheme, nodeInformer, settingInformer, podInformer, replicaInformer, kubeClient, TestNamespace, controllerID)
 	fakeRecorder := record.NewFakeRecorder(100)
 	nc.eventRecorder = fakeRecorder
 	nc.getDiskInfoHandler = fakeGetDiskInfo
