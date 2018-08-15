@@ -171,7 +171,7 @@ func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk types.DiskSpec, diskStat
 		StorageAvailable:           diskStatus.StorageAvailable,
 		StorageScheduled:           diskStatus.StorageScheduled,
 		StorageReserved:            disk.StorageReserved,
-		StorageMaximum:             disk.StorageMaximum,
+		StorageMaximum:             diskStatus.StorageMaximum,
 		OverProvisioningPercentage: overProvisioningPercentage,
 		MinimalAvailablePercentage: minimalAvailablePercentage,
 	}

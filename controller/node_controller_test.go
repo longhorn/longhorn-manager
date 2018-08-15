@@ -325,7 +325,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		"changedId": {
 			Path:            TestDefaultDataPath,
 			AllowScheduling: true,
-			StorageMaximum:  TestDiskSize,
 			StorageReserved: 0,
 		},
 	}
@@ -333,6 +332,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		"changedId": {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
+			StorageMaximum:   TestDiskSize,
 			Conditions: map[types.DiskConditionType]types.Condition{
 				types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
 				types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
