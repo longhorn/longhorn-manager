@@ -392,19 +392,26 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		if ok {
 			diskStatus = originDiskStatus[diskID]
 		}
+		scheduledReplica := diskStatus.ScheduledReplica
+		if scheduledReplica == nil {
+			scheduledReplica = map[string]int64{}
+		}
 		// if there's no replica assigned to this disk
 		if _, ok := replicaDiskMap[diskID]; !ok {
 			diskStatus.StorageScheduled = 0
+			scheduledReplica = map[string]int64{}
 		} else {
 			// calculate storage scheduled
 			replicaArray := replicaDiskMap[diskID]
 			var storageScheduled int64
 			for _, replica := range replicaArray {
 				storageScheduled += replica.Spec.VolumeSize
+				scheduledReplica[replica.Name] = replica.Spec.VolumeSize
 			}
 			diskStatus.StorageScheduled = storageScheduled
 			delete(replicaDiskMap, diskID)
 		}
+		diskStatus.ScheduledReplica = scheduledReplica
 		// get disk available size
 		diskInfo, err := nc.getDiskInfoHandler(disk.Path)
 		readyCondition := types.GetDiskConditionFromStatus(diskStatus, types.DiskConditionTypeReady)
