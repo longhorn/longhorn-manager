@@ -224,7 +224,6 @@ type NodeStatus struct {
 type DiskSpec struct {
 	Path            string `json:"path"`
 	AllowScheduling bool   `json:"allowScheduling"`
-	StorageMaximum  int64  `json:"storageMaximum"`
 	StorageReserved int64  `json:"storageReserved"`
 }
 
@@ -232,4 +231,5 @@ type DiskStatus struct {
 	Conditions       map[DiskConditionType]Condition `json:"conditions"`
 	StorageAvailable int64                           `json:"storageAvailable"`
 	StorageScheduled int64                           `json:"storageScheduled"`
+	StorageMaximum   int64                           `json:"storageMaximum"`
 }

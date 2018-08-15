@@ -367,7 +367,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			readyCondition.Message = fmt.Sprintf("Get disk information on node %v error: %v", node.Name, err)
 			// disable invalid disk
 			updateDisk.AllowScheduling = false
-			updateDisk.StorageMaximum = 0
+			diskStatus.StorageMaximum = 0
 			diskStatus.StorageAvailable = 0
 		} else if diskInfo == nil || diskInfo.Fsid != diskID {
 			// if the file system has changed
@@ -379,7 +379,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			readyCondition.Message = fmt.Sprintf("disk %v on node %v has changed file system", disk.Path, node.Name)
 			// disable invalid disk
 			updateDisk.AllowScheduling = false
-			updateDisk.StorageMaximum = 0
+			diskStatus.StorageMaximum = 0
 			diskStatus.StorageAvailable = 0
 		} else {
 			if readyCondition.Status != types.ConditionStatusTrue {
@@ -388,9 +388,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			readyCondition.Status = types.ConditionStatusTrue
 			readyCondition.Reason = ""
 			readyCondition.Message = ""
-			if updateDisk.StorageMaximum == 0 {
-				updateDisk.StorageMaximum = diskInfo.StorageMaximum
-			}
+			diskStatus.StorageMaximum = diskInfo.StorageMaximum
 			diskStatus.StorageAvailable = diskInfo.StorageAvailable
 		}
 		diskConditions[types.DiskConditionTypeReady] = readyCondition

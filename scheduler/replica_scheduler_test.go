@@ -119,11 +119,10 @@ func newCondition(conditionType string, status types.ConditionStatus) types.Cond
 	}
 }
 
-func newDisk(path string, allowScheduling bool, storageMaximum, storageReserved int64) types.DiskSpec {
+func newDisk(path string, allowScheduling bool, storageReserved int64) types.DiskSpec {
 	return types.DiskSpec{
 		Path:            path,
 		AllowScheduling: allowScheduling,
-		StorageMaximum:  storageMaximum,
 		StorageReserved: storageReserved,
 	}
 }
@@ -231,7 +230,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon3,
 	}
 	node1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
-	disk := newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
+	disk := newDisk(TestDefaultDataPath, true, 0)
 	node1.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
 	}
@@ -239,13 +238,14 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
 			Conditions: map[types.DiskConditionType]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
 			},
 		},
 	}
 	node2 := newNode(TestNode2, TestNamespace, false, types.ConditionStatusTrue)
-	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
+	disk = newDisk(TestDefaultDataPath, true, 0)
 	node2.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
 	}
@@ -253,10 +253,11 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
 		},
 	}
 	node3 := newNode(TestNode3, TestNamespace, true, types.ConditionStatusFalse)
-	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
+	disk = newDisk(TestDefaultDataPath, true, 0)
 	node3.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
 	}
@@ -264,6 +265,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
 		},
 	}
 	nodes := map[string]*longhorn.Node{
@@ -310,8 +312,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon2,
 	}
 	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
-	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
-	disk2 := newDisk(TestDefaultDataPath, true, TestDiskSize, TestDiskSize)
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	disk2 := newDisk(TestDefaultDataPath, true, TestDiskSize)
 	node1.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
 		TestDiskID2: disk2,
@@ -321,6 +323,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
 			Conditions: map[types.DiskConditionType]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
 			},
@@ -328,6 +331,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID2: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
 			Conditions: map[types.DiskConditionType]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
 			},
@@ -338,8 +342,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: disk,
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
-	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
-	disk2 = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	disk2 = newDisk(TestDefaultDataPath, true, 0)
 	node2.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
 		TestDiskID2: disk2,
@@ -348,6 +352,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
 			Conditions: map[types.DiskConditionType]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
 			},
@@ -355,6 +360,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID2: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
 			Conditions: map[types.DiskConditionType]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse),
 			},
@@ -397,7 +403,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon2,
 	}
 	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
-	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, TestDiskSize)
+	disk = newDisk(TestDefaultDataPath, true, TestDiskSize)
 	node1.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
 	}
@@ -405,14 +411,15 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: {
 			StorageAvailable: 0,
 			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
 			Conditions: map[types.DiskConditionType]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
 			},
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
-	disk = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
-	disk2 = newDisk(TestDefaultDataPath, true, TestDiskSize, 0)
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	disk2 = newDisk(TestDefaultDataPath, true, 0)
 	node2.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
 		TestDiskID2: disk2,
@@ -421,6 +428,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: {
 			StorageAvailable: 0,
 			StorageScheduled: TestDiskAvailableSize,
+			StorageMaximum:   TestDiskSize,
 			Conditions: map[types.DiskConditionType]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
 			},
@@ -428,6 +436,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID2: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
 			Conditions: map[types.DiskConditionType]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse),
 			},

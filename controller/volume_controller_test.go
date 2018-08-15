@@ -416,7 +416,6 @@ func newNode(name, namespace string, allowScheduling bool, status types.Conditio
 				TestDiskID1: {
 					Path:            TestDefaultDataPath,
 					AllowScheduling: true,
-					StorageMaximum:  TestDiskSize,
 					StorageReserved: 0,
 				},
 			},
@@ -511,6 +510,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				TestDiskID1: {
 					StorageAvailable: TestDiskAvailableSize,
 					StorageScheduled: 0,
+					StorageMaximum:   TestDiskSize,
 					Conditions: map[types.DiskConditionType]types.Condition{
 						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
 					},
