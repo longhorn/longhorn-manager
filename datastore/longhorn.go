@@ -627,7 +627,7 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 			Path:            diskInfo.Path,
 			StorageMaximum:  diskInfo.StorageMaximum,
 			AllowScheduling: true,
-			StorageReserved: 0,
+			StorageReserved: diskInfo.StorageMaximum * 30 / 100,
 		},
 	}
 	node.Spec.Disks = defaultDisk
