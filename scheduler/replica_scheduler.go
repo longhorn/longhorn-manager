@@ -83,7 +83,7 @@ func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.
 			}
 		}
 		if !isFilterd {
-			diskCandidates = rcs.filterNodeDisksForReplica(node, replica)
+			diskCandidates = rcs.filterNodeDisksForReplica(node, replica, replicas)
 			if len(diskCandidates) > 0 {
 				return diskCandidates
 			}
@@ -92,13 +92,13 @@ func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.
 	// If there's no disk fit for replica on other nodes,
 	// try to schedule to node that has been scheduled replicas.
 	for _, node := range filterdNode {
-		diskCandidates = rcs.filterNodeDisksForReplica(node, replica)
+		diskCandidates = rcs.filterNodeDisksForReplica(node, replica, replicas)
 	}
 
 	return diskCandidates
 }
 
-func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, replica *longhorn.Replica) map[string]*Disk {
+func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, replica *longhorn.Replica, replicas map[string]*longhorn.Replica) map[string]*Disk {
 	preferredDisk := map[string]*Disk{}
 	// find disk that fit for current replica
 	disks := node.Spec.Disks
@@ -109,6 +109,17 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, repl
 		if err != nil {
 			logrus.Errorf("Fail to get settings when scheduling replica: %v", err)
 			return preferredDisk
+		}
+		scheduledReplica := status.ScheduledReplica
+		// check other replicas for the same volume has been accounted on current node
+		var storageScheduled int64
+		for rName, r := range replicas {
+			if _, ok := scheduledReplica[rName]; !ok && r.Spec.NodeID != "" && r.Spec.NodeID == node.Name {
+				storageScheduled += r.Spec.VolumeSize
+			}
+		}
+		if storageScheduled > 0 {
+			info.StorageScheduled += storageScheduled
 		}
 		if !disk.AllowScheduling ||
 			!rcs.IsSchedulableToDisk(replica.Spec.VolumeSize, info) {
