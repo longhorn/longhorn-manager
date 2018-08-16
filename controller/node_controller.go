@@ -219,7 +219,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 
 	if node.DeletionTimestamp != nil {
-		logrus.Errorf("BUG: Deleting Node %v", node.Name)
+		nc.eventRecorder.Eventf(node, v1.EventTypeWarning, EventReasonDelete, "BUG: Deleting node %v", node.Name)
 		return nc.ds.RemoveFinalizerForNode(node)
 	}
 
@@ -252,6 +252,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 					if podCondition.Status == v1.ConditionTrue && pod.Status.Phase == v1.PodRunning {
 						if condition.Status != types.ConditionStatusTrue {
 							condition.LastTransitionTime = util.Now()
+							nc.eventRecorder.Eventf(node, v1.EventTypeNormal, types.NodeConditionTypeReady, "Node %v is ready", node.Name)
 						}
 						condition.Status = types.ConditionStatusTrue
 						condition.Reason = ""
@@ -259,6 +260,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 					} else {
 						if condition.Status != types.ConditionStatusFalse {
 							condition.LastTransitionTime = util.Now()
+							nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonManagerPodDown, "Node %v is down: the manager pod %v is not running", node.Name, pod.Name)
 						}
 						condition.Status = types.ConditionStatusFalse
 						condition.Reason = string(types.NodeConditionReasonManagerPodDown)
@@ -361,6 +363,8 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		if err != nil {
 			if readyCondition.Status != types.ConditionStatusFalse {
 				readyCondition.LastTransitionTime = util.Now()
+				nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.DiskConditionReasonNoDiskInfo,
+					"Disk %v on node %v is not ready: Get disk information error: %v", disk.Path, node.Name, err)
 			}
 			readyCondition.Status = types.ConditionStatusFalse
 			readyCondition.Reason = types.DiskConditionReasonNoDiskInfo
@@ -373,6 +377,8 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			// if the file system has changed
 			if readyCondition.Status != types.ConditionStatusFalse {
 				readyCondition.LastTransitionTime = util.Now()
+				nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.DiskConditionReasonDiskFilesystemChanged,
+					"Disk %v on node %v is not ready: disk has changed file system", disk.Path, node.Name)
 			}
 			readyCondition.Status = types.ConditionStatusFalse
 			readyCondition.Reason = types.DiskConditionReasonDiskFilesystemChanged
@@ -384,6 +390,8 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		} else {
 			if readyCondition.Status != types.ConditionStatusTrue {
 				readyCondition.LastTransitionTime = util.Now()
+				nc.eventRecorder.Eventf(node, v1.EventTypeNormal, types.DiskConditionTypeReady,
+					"Disk %v on node %v is ready", disk.Path, node.Name)
 			}
 			readyCondition.Status = types.ConditionStatusTrue
 			readyCondition.Reason = ""
@@ -403,9 +411,10 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			return err
 		}
 		if !nc.scheduler.IsSchedulableToDisk(0, info) {
-			logrus.Errorf("unable to schedule any replica to disk %v on node %v", disk.Path, node.Name)
 			if condition.Status != types.ConditionStatusFalse {
 				condition.LastTransitionTime = util.Now()
+				nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.DiskConditionReasonDiskPressure,
+					"unable to schedule any replica to disk %v on node %v", disk.Path, node.Name)
 			}
 			condition.Status = types.ConditionStatusFalse
 			condition.Reason = string(types.DiskConditionReasonDiskPressure)
@@ -413,6 +422,8 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		} else {
 			if condition.Status != types.ConditionStatusTrue {
 				condition.LastTransitionTime = util.Now()
+				nc.eventRecorder.Eventf(node, v1.EventTypeNormal, types.DiskConditionTypeSchedulable,
+					"Disk %v on node %v is schedulable", disk.Path, node.Name)
 			}
 			condition.Status = types.ConditionStatusTrue
 			condition.Reason = ""
