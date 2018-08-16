@@ -113,6 +113,8 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("DELETE").Path("/v1/engineimages/{name}").Handler(f(schemas, s.EngineImageDelete))
 	r.Methods("POST").Path("/v1/engineimages").Handler(f(schemas, s.EngineImageCreate))
 
+	r.Methods("Get").Path("/v1/events").Handler(f(schemas, s.EventList))
+
 	settingListStream := NewStreamHandlerFunc("settings", s.wsc.NewWatcher("setting"), s.settingList)
 	r.Path("/v1/ws/settings").Handler(f(schemas, settingListStream))
 	r.Path("/v1/ws/{period}/settings").Handler(f(schemas, settingListStream))
@@ -128,6 +130,10 @@ func NewRouter(s *Server) *mux.Router {
 	engineImageStream := NewStreamHandlerFunc("engineimages", s.wsc.NewWatcher("engineImage"), s.engineImageList)
 	r.Path("/v1/ws/engineimages").Handler(f(schemas, engineImageStream))
 	r.Path("/v1/ws/{period}/engineimages").Handler(f(schemas, engineImageStream))
+
+	eventListStream := NewStreamHandlerFunc("events", s.wsc.NewWatcher("event"), s.eventList)
+	r.Path("/v1/ws/events").Handler(f(schemas, eventListStream))
+	r.Path("/v1/ws/{period}/events").Handler(f(schemas, eventListStream))
 
 	return r
 }

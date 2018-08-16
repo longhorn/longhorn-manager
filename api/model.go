@@ -7,6 +7,8 @@ import (
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 
+	"k8s.io/api/core/v1"
+
 	"github.com/rancher/longhorn-manager/controller"
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/manager"
@@ -144,6 +146,12 @@ type DiskUpdateInput struct {
 	Disks []types.DiskSpec `json:"disks"`
 }
 
+type Event struct {
+	client.Resource
+	v1.Event
+	EventType string `json:"eventType"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -168,6 +176,8 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("volumeCondition", types.Condition{})
 	schemas.AddType("nodeCondition", types.Condition{})
 	schemas.AddType("diskCondition", types.Condition{})
+
+	schemas.AddType("event", Event{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
@@ -662,4 +672,25 @@ func toNodeCollection(nodeList []*longhorn.Node, nodeIPMap map[string]string, ap
 		data = append(data, toNodeResource(node, nodeIPMap[node.Name], apiContext))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "node"}}
+}
+
+func toEventResource(event *v1.Event) *Event {
+	e := &Event{
+		Resource: client.Resource{
+			Id:    event.Name,
+			Type:  "event",
+			Links: map[string]string{},
+		},
+		Event:     *event,
+		EventType: event.Type,
+	}
+	return e
+}
+
+func toEventCollection(eventList []*v1.Event) *client.GenericCollection {
+	data := []interface{}{}
+	for _, event := range eventList {
+		data = append(data, toEventResource(event))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "event"}}
 }
