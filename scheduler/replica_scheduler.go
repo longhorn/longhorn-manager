@@ -165,7 +165,8 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, di
 func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, info *DiskSchedulingInfo) bool {
 	return info.StorageMaximum > 0 && info.StorageAvailable > 0 &&
 		(size+info.StorageScheduled) <= (info.StorageMaximum-info.StorageReserved)*(info.OverProvisioningPercentage/100) &&
-		size <= (info.StorageAvailable-info.StorageMaximum*info.MinimalAvailablePercentage/100)*info.OverProvisioningPercentage/100
+		info.StorageAvailable > info.StorageMaximum*info.MinimalAvailablePercentage/100 &&
+		info.StorageAvailable > info.StorageReserved
 }
 
 func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk types.DiskSpec, diskStatus types.DiskStatus) (*DiskSchedulingInfo, error) {
