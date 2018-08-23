@@ -392,10 +392,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		if ok {
 			diskStatus = originDiskStatus[diskID]
 		}
-		scheduledReplica := diskStatus.ScheduledReplica
-		if scheduledReplica == nil {
-			scheduledReplica = map[string]int64{}
-		}
+		scheduledReplica := map[string]int64{}
 		// if there's no replica assigned to this disk
 		if _, ok := replicaDiskMap[diskID]; !ok {
 			diskStatus.StorageScheduled = 0
