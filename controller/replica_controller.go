@@ -542,8 +542,11 @@ func (rc *ReplicaController) cleanupReplicaInstance(r *longhorn.Replica) (err er
 
 	if job.Status.CompletionTime != nil {
 		defer func() {
-			err := rc.kubeClient.BatchV1().Jobs(rc.namespace).Delete(r.Name, nil)
-			if err != nil {
+			propagation := metav1.DeletePropagationBackground
+			if err := rc.kubeClient.BatchV1().Jobs(rc.namespace).Delete(r.Name,
+				&metav1.DeleteOptions{
+					PropagationPolicy: &propagation,
+				}); err != nil {
 				logrus.Warnf("Failed to delete the cleanup job for %v: %v", r.Name, err)
 			}
 			rc.enqueueReplica(r)
