@@ -84,7 +84,11 @@ func (s *DataStore) UpdateVolumeCronJob(volumeName string, cronJob *batchv1beta1
 }
 
 func (s *DataStore) DeleteCronJob(cronJobName string) error {
-	err := s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Delete(cronJobName, &metav1.DeleteOptions{})
+	propagation := metav1.DeletePropagationBackground
+	err := s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Delete(cronJobName,
+		&metav1.DeleteOptions{
+			PropagationPolicy: &propagation,
+		})
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
