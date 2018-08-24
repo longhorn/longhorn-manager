@@ -356,8 +356,8 @@ func (nc *NodeController) enqueueSetting(setting *longhorn.Setting) {
 
 func (nc *NodeController) enqueueReplica(replica *longhorn.Replica) {
 	node, err := nc.ds.GetNode(replica.Spec.NodeID)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get node: %v ", err))
+	if err != nil || node == nil {
+		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v: %v ", replica.Spec.NodeID, err))
 		return
 	}
 	nc.enqueueNode(node)

@@ -43,7 +43,10 @@ func (s *Server) NodeGet(rw http.ResponseWriter, req *http.Request) error {
 
 	node, err := s.m.GetNode(id)
 	if err != nil {
-		return errors.Wrap(err, "fail to get node")
+		return errors.Wrapf(err, "fail to get node %v", id)
+	}
+	if node == nil {
+		return errors.Wrapf(err, "fail to get node %v", id)
 	}
 	nodeIPMap, err := s.m.GetManagerNodeIPMap()
 	if err != nil {
