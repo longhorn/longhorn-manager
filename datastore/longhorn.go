@@ -48,7 +48,7 @@ func (s *DataStore) GetSetting(sName types.SettingName) (*longhorn.Setting, erro
 	}
 	resultRO, err := s.sLister.Settings(s.namespace).Get(string(sName))
 	if err != nil {
-		if !apierrors.IsNotFound(err) {
+		if !ErrorIsNotFound(err) {
 			return nil, err
 		}
 		resultRO = &longhorn.Setting{
@@ -224,9 +224,6 @@ func (s *DataStore) GetVolume(name string) (*longhorn.Volume, error) {
 func (s *DataStore) getVolumeRO(name string) (*longhorn.Volume, error) {
 	resultRO, err := s.vLister.Volumes(s.namespace).Get(name)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	return resultRO, nil
@@ -251,9 +248,6 @@ func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 }
 
 func (s *DataStore) fixupVolume(volume *longhorn.Volume) (*longhorn.Volume, error) {
-	if volume == nil {
-		return nil, nil
-	}
 	if volume.Status.Conditions == nil {
 		volume.Status.Conditions = map[types.VolumeConditionType]types.Condition{}
 	}

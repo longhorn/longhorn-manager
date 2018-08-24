@@ -213,10 +213,9 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 
 	volume, err := vc.ds.GetVolume(name)
 	if err != nil {
-		return nil
-	}
-	if volume == nil {
-		logrus.Infof("Longhorn volume %v has been deleted", key)
+		if datastore.ErrorIsNotFound(err) {
+			logrus.Infof("Longhorn volume %v has been deleted", key)
+		}
 		return nil
 	}
 
@@ -993,7 +992,7 @@ func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 		return
 	}
 	volume, err := vc.ds.GetVolume(ref.Name)
-	if err != nil || volume == nil {
+	if err != nil {
 		return
 	}
 	if volume.UID != ref.UID {
