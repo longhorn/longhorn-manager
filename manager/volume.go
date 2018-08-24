@@ -233,9 +233,6 @@ func (m *VolumeManager) Attach(name, nodeID string) (v *longhorn.Volume, err err
 	if err != nil {
 		return nil, err
 	}
-	if v == nil {
-		return nil, fmt.Errorf("cannot find volume %v", name)
-	}
 	if v.Status.State != types.VolumeStateDetached {
 		return nil, fmt.Errorf("invalid state to attach %v: %v", name, v.Status.State)
 	}
@@ -277,9 +274,6 @@ func (m *VolumeManager) Detach(name string) (v *longhorn.Volume, err error) {
 	if err != nil {
 		return nil, err
 	}
-	if v == nil {
-		return nil, fmt.Errorf("cannot find volume %v", name)
-	}
 	if v.Status.State != types.VolumeStateAttached && v.Status.State != types.VolumeStateAttaching {
 		return nil, fmt.Errorf("invalid state to detach %v: %v", v.Name, v.Status.State)
 	}
@@ -311,9 +305,6 @@ func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *lo
 	v, err = m.ds.GetVolume(volumeName)
 	if err != nil {
 		return nil, err
-	}
-	if v == nil {
-		return nil, fmt.Errorf("cannot find volume %v", volumeName)
 	}
 	if v.Status.State != types.VolumeStateDetached {
 		return nil, fmt.Errorf("invalid volume state to salvage: %v", v.Status.State)
@@ -371,9 +362,6 @@ func (m *VolumeManager) UpdateRecurringJobs(volumeName string, jobs []types.Recu
 	if err != nil {
 		return nil, err
 	}
-	if v == nil {
-		return nil, fmt.Errorf("cannot find volume %v", volumeName)
-	}
 
 	v.Spec.RecurringJobs = jobs
 	v, err = m.ds.UpdateVolume(v)
@@ -415,9 +403,6 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 	v, err = m.ds.GetVolume(volumeName)
 	if err != nil {
 		return nil, err
-	}
-	if v == nil {
-		return nil, fmt.Errorf("cannot find volume %v", volumeName)
 	}
 
 	if v.Spec.EngineImage == image {
@@ -469,9 +454,6 @@ func (m *VolumeManager) MigrationStart(name, nodeID string) (v *longhorn.Volume,
 	if err != nil {
 		return nil, err
 	}
-	if v == nil {
-		return nil, fmt.Errorf("cannot find volume %v", name)
-	}
 	if v.Spec.NodeID == "" || v.Status.State != types.VolumeStateAttached {
 		return nil, fmt.Errorf("invalid volume state to start migration %v", v.Status.State)
 	}
@@ -513,9 +495,6 @@ func (m *VolumeManager) MigrationConfirm(name string) (v *longhorn.Volume, err e
 	if err != nil {
 		return nil, err
 	}
-	if v == nil {
-		return nil, fmt.Errorf("cannot find volume %v", name)
-	}
 	if v.Spec.NodeID == "" || v.Status.State != types.VolumeStateAttached {
 		return nil, fmt.Errorf("invalid volume state to confirm migration %v", v.Status.State)
 	}
@@ -555,9 +534,6 @@ func (m *VolumeManager) MigrationRollback(name string) (v *longhorn.Volume, err 
 	v, err = m.ds.GetVolume(name)
 	if err != nil {
 		return nil, err
-	}
-	if v == nil {
-		return nil, fmt.Errorf("cannot find volume %v", name)
 	}
 	if v.Spec.MigrationNodeID == "" {
 		return nil, fmt.Errorf("no migration in process to be rollback")

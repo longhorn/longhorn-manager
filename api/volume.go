@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 
@@ -76,14 +77,14 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 		}
 		v, err = s.m.Get(id)
 		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				rw.WriteHeader(http.StatusNotFound)
+				return nil
+			}
 			return errors.Wrap(err, "unable to get volume")
 		}
 	}
 
-	if v == nil {
-		rw.WriteHeader(http.StatusNotFound)
-		return nil
-	}
 	controllers, err := s.m.GetEnginesSorted(id)
 	if err != nil {
 		return err

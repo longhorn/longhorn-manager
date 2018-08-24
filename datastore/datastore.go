@@ -1,6 +1,7 @@
 package datastore
 
 import (
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	appsinformers_v1beta2 "k8s.io/client-go/informers/apps/v1beta2"
 	batchinformers_v1beta1 "k8s.io/client-go/informers/batch/v1beta1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -89,4 +90,8 @@ func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 		s.vStoreSynced, s.eStoreSynced, s.rStoreSynced,
 		s.iStoreSynced, s.nStoreSynced, s.sStoreSynced,
 		s.pStoreSynced, s.cjStoreSynced, s.dsStoreSynced)
+}
+
+func ErrorIsNotFound(err error) bool {
+	return apierrors.IsNotFound(err)
 }
