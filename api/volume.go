@@ -151,9 +151,6 @@ func (s *Server) VolumeAttach(rw http.ResponseWriter, req *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if node == nil {
-		return fmt.Errorf("fail to get node %v", input.HostID)
-	}
 	readyCondition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
 	if readyCondition.Status != types.ConditionStatusTrue {
 		return fmt.Errorf("Node %v is not ready, couldn't attach volume %v to it", node.Name, id)

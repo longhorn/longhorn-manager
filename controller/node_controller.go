@@ -250,11 +250,11 @@ func (nc *NodeController) syncNode(key string) (err error) {
 
 	node, err := nc.ds.GetNode(name)
 	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			logrus.Errorf("BUG: Longhorn node %v has been deleted", key)
+			return nil
+		}
 		return err
-	}
-	if node == nil {
-		logrus.Errorf("BUG: Longhorn node %v has been deleted", key)
-		return nil
 	}
 
 	if node.DeletionTimestamp != nil {
@@ -356,7 +356,7 @@ func (nc *NodeController) enqueueSetting(setting *longhorn.Setting) {
 
 func (nc *NodeController) enqueueReplica(replica *longhorn.Replica) {
 	node, err := nc.ds.GetNode(replica.Spec.NodeID)
-	if err != nil || node == nil {
+	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v: %v ", replica.Spec.NodeID, err))
 		return
 	}
