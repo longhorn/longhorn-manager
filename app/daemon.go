@@ -151,16 +151,14 @@ func updateSettingDefaultEngineImage(m *manager.VolumeManager, engineImage strin
 
 func initDaemonNode(ds *datastore.DataStore) error {
 	nodeName := os.Getenv("NODE_NAME")
-	node, err := ds.GetNode(nodeName)
-	if err != nil {
-		return err
-	}
-	// init default mount disk on node when starting longhorn-manager
-	if node == nil {
-		_, err = ds.CreateDefaultNode(nodeName)
-		if err != nil {
-			return err
+	if _, err := ds.GetNode(nodeName); err != nil {
+		// init default disk on node when starting longhorn-manager
+		if datastore.ErrorIsNotFound(err) {
+			if _, err = ds.CreateDefaultNode(nodeName); err != nil {
+				return err
+			}
 		}
+		return err
 	}
 	return nil
 }

@@ -7,7 +7,6 @@ import (
 
 	"github.com/pkg/errors"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -491,10 +490,10 @@ func (s *DataStore) fixupReplica(replica *longhorn.Replica) (*longhorn.Replica, 
 		// replica needs to be scheduled before assign diskID and dataPath
 		node, err := s.GetNode(replica.Spec.NodeID)
 		if err != nil {
+			if ErrorIsNotFound(err) {
+				return nil, fmt.Errorf("cannot find node %v for replica %v", replica.Spec.NodeID, replica.Name)
+			}
 			return nil, err
-		}
-		if node == nil {
-			return nil, fmt.Errorf("cannot find node %v for replica %v", replica.Spec.NodeID, replica.Name)
 		}
 		for fsid, disk := range node.Spec.Disks {
 			if disk.Path == types.DefaultLonghornDirectory {
@@ -616,9 +615,6 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 func (s *DataStore) GetNode(name string) (*longhorn.Node, error) {
 	result, err := s.nLister.Nodes(s.namespace).Get(name)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	node := result.DeepCopy()
