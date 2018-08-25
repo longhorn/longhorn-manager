@@ -223,11 +223,11 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 
 	engine, err := ec.ds.GetEngine(name)
 	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			logrus.Infof("Longhorn engine %v has been deleted", key)
+			return nil
+		}
 		return err
-	}
-	if engine == nil {
-		logrus.Infof("Longhorn engine %v has been deleted", key)
-		return nil
 	}
 
 	// Not ours
@@ -454,7 +454,7 @@ func (ec *EngineController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 		return
 	}
 	engine, err := ec.ds.GetEngine(ref.Name)
-	if err != nil || engine == nil {
+	if err != nil {
 		return
 	}
 	if engine.UID != ref.UID {
@@ -566,12 +566,12 @@ func (m *EngineMonitor) Run() {
 	wait.Until(func() {
 		engine, err := m.ds.GetEngine(m.Name)
 		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				logrus.Infof("stop engine %v monitoring because the engine no longer exists", m.Name)
+				m.stop(engine)
+				return
+			}
 			utilruntime.HandleError(errors.Wrapf(err, "fail to get engine %v for monitoring", m.Name))
-			return
-		}
-		if engine == nil {
-			logrus.Infof("stop engine %v monitoring because the engine no longer exists", m.Name)
-			m.stop(engine)
 			return
 		}
 

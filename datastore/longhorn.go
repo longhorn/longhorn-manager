@@ -327,9 +327,6 @@ func (s *DataStore) RemoveFinalizerForEngine(obj *longhorn.Engine) error {
 func (s *DataStore) GetEngine(name string) (*longhorn.Engine, error) {
 	resultRO, err := s.eLister.Engines(s.namespace).Get(name)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	// Cannot use cached object from lister
@@ -357,9 +354,6 @@ func (s *DataStore) ListVolumeEngines(volumeName string) (map[string]*longhorn.E
 }
 
 func (s *DataStore) fixupEngine(engine *longhorn.Engine) (*longhorn.Engine, error) {
-	if engine == nil {
-		return nil, nil
-	}
 	// v0.3
 	if engine.Spec.VolumeSize == 0 || engine.Spec.Frontend == "" {
 		volume, err := s.getVolumeRO(engine.Spec.VolumeName)
