@@ -318,9 +318,6 @@ func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *lo
 		if err != nil {
 			return nil, err
 		}
-		if r == nil {
-			return nil, fmt.Errorf("cannot find replica %v", name)
-		}
 		if r.Spec.VolumeName != v.Name {
 			return nil, fmt.Errorf("replica %v doesn't belong to volume %v", r.Name, v.Name)
 		}

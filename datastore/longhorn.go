@@ -442,9 +442,6 @@ func (s *DataStore) GetReplica(name string) (*longhorn.Replica, error) {
 func (s *DataStore) getReplicaRO(name string) (*longhorn.Replica, error) {
 	resultRO, err := s.rLister.Replicas(s.namespace).Get(name)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	return resultRO, nil
@@ -472,9 +469,6 @@ func (s *DataStore) ListVolumeReplicas(volumeName string) (map[string]*longhorn.
 }
 
 func (s *DataStore) fixupReplica(replica *longhorn.Replica) (*longhorn.Replica, error) {
-	if replica == nil {
-		return nil, nil
-	}
 	// v0.3
 	if replica.Spec.EngineName == "" {
 		engines, err := s.ListVolumeEngines(replica.Spec.VolumeName)
