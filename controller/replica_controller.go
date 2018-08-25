@@ -227,11 +227,11 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 
 	replica, err := rc.ds.GetReplica(name)
 	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			logrus.Infof("Longhorn replica %v has been deleted", key)
+			return nil
+		}
 		return err
-	}
-	if replica == nil {
-		logrus.Infof("Longhorn replica %v has been deleted", key)
-		return nil
 	}
 
 	// Not ours
@@ -588,7 +588,7 @@ func (rc *ReplicaController) ResolveRefAndEnqueue(namespace string, ref *metav1.
 		return
 	}
 	replica, err := rc.ds.GetReplica(ref.Name)
-	if err != nil || replica == nil {
+	if err != nil {
 		return
 	}
 	if replica.UID != ref.UID {
