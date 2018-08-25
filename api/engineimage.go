@@ -43,9 +43,6 @@ func (s *Server) EngineImageGet(rw http.ResponseWriter, req *http.Request) error
 	if err != nil {
 		return errors.Wrapf(err, "error get engine image '%s'", id)
 	}
-	if ei == nil {
-		return errors.Wrapf(err, "cannot find engine image '%s'", id)
-	}
 	defaultImage, err := s.m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if err != nil {
 		return errors.Wrapf(err, "error get engine image '%s'", id)

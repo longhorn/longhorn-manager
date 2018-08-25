@@ -10,6 +10,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
@@ -78,10 +79,10 @@ func (m *VolumeManager) CreateEngineImage(image string) (*longhorn.EngineImage, 
 func (m *VolumeManager) DeleteEngineImageByName(name string) error {
 	ei, err := m.GetEngineImageByName(name)
 	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return nil
+		}
 		return errors.Wrapf(err, "unable to get engine image '%s'", name)
-	}
-	if ei == nil {
-		return nil
 	}
 	defaultImage, err := m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if err != nil {
@@ -97,14 +98,13 @@ func (m *VolumeManager) DeleteEngineImageByName(name string) error {
 }
 
 func (m *VolumeManager) DeployAndWaitForEngineImage(image string) error {
-	ei, err := m.GetEngineImage(image)
-	if err != nil {
-		return errors.Wrapf(err, "cannot get engine image %v", image)
-	}
-	if ei == nil {
-		ei, err = m.CreateEngineImage(image)
-		if err != nil {
-			return errors.Wrapf(err, "cannot create engine image for %v", image)
+	if _, err := m.GetEngineImage(image); err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			if _, err = m.CreateEngineImage(image); err != nil {
+				return errors.Wrapf(err, "cannot create engine image for %v", image)
+			}
+		} else {
+			return errors.Wrapf(err, "cannot get engine image %v", image)
 		}
 	}
 	if err := m.WaitForEngineImage(image); err != nil {
@@ -118,9 +118,6 @@ func (m *VolumeManager) WaitForEngineImage(image string) error {
 		ei, err := m.GetEngineImage(image)
 		if err != nil {
 			return errors.Wrapf(err, "cannot get engine image %v", image)
-		}
-		if ei == nil {
-			return errors.Wrapf(err, "cannot wait for non-exist engine image %v", image)
 		}
 		if ei.Status.State == types.EngineImageStateReady {
 			logrus.Debugf("Engine image %v is ready", image)
@@ -136,9 +133,6 @@ func (m *VolumeManager) CheckEngineImageReadiness(image string) error {
 	ei, err := m.GetEngineImage(image)
 	if err != nil {
 		return errors.Wrapf(err, "unable to get engine image %v", image)
-	}
-	if ei == nil {
-		return fmt.Errorf("cannot find engine image %v", image)
 	}
 	if ei.Status.State != types.EngineImageStateReady {
 		return fmt.Errorf("engine image %v (%v) is not ready, it's %v", ei.Name, image, ei.Status.State)

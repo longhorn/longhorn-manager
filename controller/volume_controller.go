@@ -1177,9 +1177,6 @@ func (vc *VolumeController) getEngineImage(image string) (*longhorn.EngineImage,
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to get engine image %v", image)
 	}
-	if img == nil {
-		return nil, fmt.Errorf("cannot find engine image %v", image)
-	}
 	return img, nil
 }
 

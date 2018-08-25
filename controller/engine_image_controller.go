@@ -202,11 +202,11 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 
 	engineImage, err := ic.ds.GetEngineImage(name)
 	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			logrus.Infof("Longhorn engine image %v has been deleted", key)
+			return nil
+		}
 		return err
-	}
-	if engineImage == nil {
-		logrus.Infof("Longhorn engine image %v has been deleted", key)
-		return nil
 	}
 
 	if engineImage.Spec.OwnerID == "" {
@@ -436,7 +436,7 @@ func (ic *EngineImageController) enqueueVolumes(volumes ...*longhorn.Volume) {
 
 	for img := range images {
 		engineImage, err := ic.ds.GetEngineImage(types.GetEngineImageChecksumName(img))
-		if err != nil || engineImage == nil {
+		if err != nil {
 			continue
 		}
 		// Not ours
@@ -469,7 +469,7 @@ func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *met
 		return
 	}
 	engineImage, err := ic.ds.GetEngineImage(ref.Name)
-	if err != nil || engineImage == nil {
+	if err != nil {
 		return
 	}
 	if engineImage.UID != ref.UID {
