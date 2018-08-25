@@ -557,9 +557,6 @@ func (s *DataStore) RemoveFinalizerForEngineImage(obj *longhorn.EngineImage) err
 func (s *DataStore) GetEngineImage(name string) (*longhorn.EngineImage, error) {
 	resultRO, err := s.iLister.EngineImages(s.namespace).Get(name)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	// Cannot use cached object from lister
