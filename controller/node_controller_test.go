@@ -388,6 +388,35 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.expectNodeStatus = expectNodeStatus
 	testCases["test disable disk when file system changed"] = tc
 
+	tc = &NodeTestCase{}
+	daemon1 = newDaemonPod(v1.PodFailed, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
+	pods = map[string]*v1.Pod{
+		TestDaemon1: daemon1,
+	}
+	tc.pods = pods
+	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
+	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
+	nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+		TestNode2: node2,
+	}
+	tc.nodes = nodes
+	expectNodeStatus = map[string]types.NodeStatus{
+		TestNode1: {
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonManagerPodDown),
+				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusFalse, types.NodeConditionReasonNoMountPropagationSupport),
+			},
+		},
+		TestNode2: {
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeDown),
+			},
+		},
+	}
+	tc.expectNodeStatus = expectNodeStatus
+	testCases["physical node removed"] = tc
+
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
 		kubeClient := fake.NewSimpleClientset()
