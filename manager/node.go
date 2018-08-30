@@ -101,3 +101,49 @@ func (m *VolumeManager) DiskUpdate(name string, updateDisks []types.DiskSpec) (*
 
 	return m.ds.UpdateNode(node)
 }
+
+func (m *VolumeManager) DeleteNode(name string) error {
+	node, err := m.ds.GetNode(name)
+	if err != nil {
+		return err
+	}
+	// only remove node from longhorn without any volumes on it
+	replicas, err := m.ds.ListReplicasByNode(name)
+	if err != nil {
+		return err
+	}
+	engines, err := m.ds.ListEnginesByNode(name)
+	if err != nil {
+		return err
+	}
+	condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+	// Only could delete node from longhorn if kubernetes node missing
+	if condition.Status == types.ConditionStatusTrue || condition.Reason != types.NodeConditionReasonKubernetesNodeDown ||
+		node.Spec.AllowScheduling || len(replicas) > 0 || len(engines) > 0 {
+		return fmt.Errorf("Could not delete node %v with node ready condition is %v, reason is %v, node schedulable %v, and %v replica, %v engine running on it", name,
+			condition.Status, condition.Reason, node.Spec.AllowScheduling, len(replicas), len(engines))
+	}
+	// before delete, clear ownerID of volumes and engine images handle by removed node
+	eiList, err := m.ds.ListEngineImages()
+	if err != nil {
+		return err
+	}
+	for _, ei := range eiList {
+		if ei.Spec.OwnerID == name {
+			ei.Spec.OwnerID = ""
+			if _, err := m.ds.UpdateEngineImage(ei); err != nil {
+				return err
+			}
+		}
+	}
+	volumeList, err := m.ds.ListVolumes()
+	for _, volume := range volumeList {
+		if volume.Spec.OwnerID == name {
+			volume.Spec.OwnerID = ""
+			if _, err := m.ds.UpdateVolume(volume); err != nil {
+				return err
+			}
+		}
+	}
+	return m.ds.DeleteNode(name)
+}

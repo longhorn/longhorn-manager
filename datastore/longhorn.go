@@ -285,6 +285,9 @@ func (s *DataStore) CreateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	if err := fixupMetadata(e.Spec.VolumeName, e); err != nil {
 		return nil, err
 	}
+	if err := tagNodeLabel(e.Spec.NodeID, e); err != nil {
+		return nil, err
+	}
 	return s.lhClient.LonghornV1alpha1().Engines(s.namespace).Create(e)
 }
 
@@ -293,6 +296,9 @@ func (s *DataStore) UpdateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 		return nil, err
 	}
 	if err := fixupMetadata(e.Spec.VolumeName, e); err != nil {
+		return nil, err
+	}
+	if err := tagNodeLabel(e.Spec.NodeID, e); err != nil {
 		return nil, err
 	}
 	return s.lhClient.LonghornV1alpha1().Engines(s.namespace).Update(e)
@@ -385,7 +391,7 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err := fixupMetadata(r.Spec.VolumeName, r); err != nil {
 		return nil, err
 	}
-	if err := tagNodeLabel(r); err != nil {
+	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {
 		return nil, err
 	}
 	return s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Create(r)
@@ -398,7 +404,7 @@ func (s *DataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err := fixupMetadata(r.Spec.VolumeName, r); err != nil {
 		return nil, err
 	}
-	if err := tagNodeLabel(r); err != nil {
+	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {
 		return nil, err
 	}
 	return s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Update(r)
@@ -692,9 +698,9 @@ func (s *DataStore) ListReplicasByNode(name string) (map[string][]*longhorn.Repl
 	return replicaDiskMap, nil
 }
 
-func tagNodeLabel(replica *longhorn.Replica) error {
-	// fix longhornnode label for replica
-	metadata, err := meta.Accessor(replica)
+func tagNodeLabel(nodeID string, obj runtime.Object) error {
+	// fix longhornnode label for object
+	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return err
 	}
@@ -703,7 +709,7 @@ func tagNodeLabel(replica *longhorn.Replica) error {
 	if labels == nil {
 		labels = map[string]string{}
 	}
-	labels[types.LonghornNodeKey] = replica.Spec.NodeID
+	labels[types.LonghornNodeKey] = nodeID
 	metadata.SetLabels(labels)
 	return nil
 }
@@ -772,4 +778,17 @@ func (s *DataStore) ResetEngineMonitoringStatus(e *longhorn.Engine) (*longhorn.E
 		return nil, errors.Wrapf(err, "failed to reste engine status for %v", e.Name)
 	}
 	return e, nil
+}
+
+func (s *DataStore) DeleteNode(name string) error {
+	return s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Delete(name, &metav1.DeleteOptions{})
+}
+
+func (s *DataStore) ListEnginesByNode(name string) ([]*longhorn.Engine, error) {
+	nodeSelector, err := getNodeSelector(name)
+	engineList, err := s.eLister.Engines(s.namespace).List(nodeSelector)
+	if err != nil {
+		return nil, err
+	}
+	return engineList, nil
 }
