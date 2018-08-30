@@ -162,6 +162,34 @@ func NewNodeController(
 		},
 	)
 
+	podInformer.Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch t := obj.(type) {
+				case *v1.Pod:
+					return nc.filterManagerPod(t)
+				default:
+					utilruntime.HandleError(fmt.Errorf("unable to handle object in %T: %T", nc, obj))
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc: func(obj interface{}) {
+					pod := obj.(*v1.Pod)
+					nc.enqueueManagerPod(pod)
+				},
+				UpdateFunc: func(oldObj, newObj interface{}) {
+					cur := newObj.(*v1.Pod)
+					nc.enqueueManagerPod(cur)
+				},
+				DeleteFunc: func(obj interface{}) {
+					pod := obj.(*v1.Pod)
+					nc.enqueueManagerPod(pod)
+				},
+			},
+		},
+	)
+
 	return nc
 }
 
@@ -179,6 +207,20 @@ func (nc *NodeController) filterReplica(r *longhorn.Replica) bool {
 		return true
 	}
 	return false
+}
+
+func (nc *NodeController) filterManagerPod(obj *v1.Pod) bool {
+	// only filter pod that control by manager
+	controlByManager := false
+	podContainers := obj.Spec.Containers
+	for _, con := range podContainers {
+		if con.Name == "longhorn-manager" {
+			controlByManager = true
+			break
+		}
+	}
+
+	return controlByManager
 }
 
 func (nc *NodeController) Run(workers int, stopCh <-chan struct{}) {
@@ -281,8 +323,10 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	if err != nil {
 		return err
 	}
+	nodeManagerFound := false
 	for _, pod := range managerPods {
 		if pod.Spec.NodeName == node.Name {
+			nodeManagerFound = true
 			condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
 			//condition.LastProbeTime = util.Now()
 			podConditions := pod.Status.Conditions
@@ -309,7 +353,22 @@ func (nc *NodeController) syncNode(key string) (err error) {
 				}
 			}
 			node.Status.Conditions[types.NodeConditionTypeReady] = condition
+			break
 		}
+	}
+	// check kubernetes node down
+	if !nodeManagerFound {
+		condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+		if condition.Status != types.ConditionStatusFalse {
+			condition.LastTransitionTime = util.Now()
+			nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonKubernetesNodeDown, "Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name)
+		}
+		condition.Status = types.ConditionStatusFalse
+		condition.Reason = string(types.NodeConditionReasonKubernetesNodeDown)
+		condition.Message = fmt.Sprintf("Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name)
+		node.Status.Conditions[types.NodeConditionTypeReady] = condition
+		// set node unschedulable
+		node.Spec.AllowScheduling = false
 	}
 
 	if nc.controllerID != node.Name {
@@ -361,6 +420,17 @@ func (nc *NodeController) enqueueReplica(replica *longhorn.Replica) {
 		return
 	}
 	nc.enqueueNode(node)
+}
+
+func (nc *NodeController) enqueueManagerPod(pod *v1.Pod) {
+	nodeList, err := nc.ds.ListNodes()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("Couldn't get all nodes: %v ", err))
+		return
+	}
+	for _, node := range nodeList {
+		nc.enqueueNode(node)
+	}
 }
 
 func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
