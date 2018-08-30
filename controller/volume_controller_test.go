@@ -437,6 +437,46 @@ func newNodeCondition(conditionType string, status types.ConditionStatus, reason
 	}
 }
 
+func newKubernetesNode(name string, readyStatus, diskPressureStatus, memoryStatus, outOfDiskStatus, pidStatus, networkStatus, kubeletStatus v1.ConditionStatus) *v1.Node {
+	return &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Status: v1.NodeStatus{
+			Conditions: []v1.NodeCondition{
+				{
+					Type:   v1.NodeReady,
+					Status: readyStatus,
+				},
+				{
+					Type:   v1.NodeDiskPressure,
+					Status: diskPressureStatus,
+				},
+				{
+					Type:   v1.NodeMemoryPressure,
+					Status: memoryStatus,
+				},
+				{
+					Type:   v1.NodeOutOfDisk,
+					Status: outOfDiskStatus,
+				},
+				{
+					Type:   v1.NodePIDPressure,
+					Status: pidStatus,
+				},
+				{
+					Type:   v1.NodeNetworkUnavailable,
+					Status: networkStatus,
+				},
+				{
+					Type:   v1.NodeKubeletConfigOk,
+					Status: kubeletStatus,
+				},
+			},
+		},
+	}
+}
+
 func generateVolumeTestCaseTemplate() *VolumeTestCase {
 	volume := newVolume(TestVolumeName, 2)
 	engine := newEngineForVolume(volume)
@@ -491,8 +531,19 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		nIndexer := lhInformerFactory.Longhorn().V1alpha1().Nodes().Informer().GetIndexer()
 
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+		knIndexer := kubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
 
 		vc := newTestVolumeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestOwnerID1)
+
+		// create kuberentes node
+		node1 := newKubernetesNode(TestNode1, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+		n1, err := kubeClient.CoreV1().Nodes().Create(node1)
+		c.Assert(err, IsNil)
+		knIndexer.Add(n1)
+		node2 := newKubernetesNode(TestNode2, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+		n2, err := kubeClient.CoreV1().Nodes().Create(node2)
+		c.Assert(err, IsNil)
+		knIndexer.Add(n2)
 
 		// Need to create daemon pod for node
 		daemon1 := newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)

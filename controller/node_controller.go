@@ -45,10 +45,11 @@ type NodeController struct {
 
 	ds *datastore.DataStore
 
-	nStoreSynced cache.InformerSynced
-	pStoreSynced cache.InformerSynced
-	sStoreSynced cache.InformerSynced
-	rStoreSynced cache.InformerSynced
+	nStoreSynced  cache.InformerSynced
+	pStoreSynced  cache.InformerSynced
+	sStoreSynced  cache.InformerSynced
+	rStoreSynced  cache.InformerSynced
+	knStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
 
@@ -66,6 +67,7 @@ func NewNodeController(
 	settingInformer lhinformers.SettingInformer,
 	podInformer coreinformers.PodInformer,
 	replicaInformer lhinformers.ReplicaInformer,
+	kubeNodeInformer coreinformers.NodeInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID string) *NodeController {
 
@@ -83,10 +85,11 @@ func NewNodeController(
 
 		ds: ds,
 
-		nStoreSynced: nodeInformer.Informer().HasSynced,
-		pStoreSynced: podInformer.Informer().HasSynced,
-		sStoreSynced: settingInformer.Informer().HasSynced,
-		rStoreSynced: replicaInformer.Informer().HasSynced,
+		nStoreSynced:  nodeInformer.Informer().HasSynced,
+		pStoreSynced:  podInformer.Informer().HasSynced,
+		sStoreSynced:  settingInformer.Informer().HasSynced,
+		rStoreSynced:  replicaInformer.Informer().HasSynced,
+		knStoreSynced: kubeNodeInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-node"),
 
@@ -189,6 +192,17 @@ func NewNodeController(
 			},
 		},
 	)
+
+	kubeNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			cur := newObj.(*v1.Node)
+			nc.enqueueKubernetesNode(cur)
+		},
+		DeleteFunc: func(obj interface{}) {
+			n := obj.(*v1.Node)
+			nc.enqueueKubernetesNode(n)
+		},
+	})
 
 	return nc
 }
@@ -356,19 +370,76 @@ func (nc *NodeController) syncNode(key string) (err error) {
 			break
 		}
 	}
-	// check kubernetes node down
+
 	if !nodeManagerFound {
 		condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
 		if condition.Status != types.ConditionStatusFalse {
 			condition.LastTransitionTime = util.Now()
-			nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonKubernetesNodeDown, "Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name)
+			nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonManagerPodMissing, "manager pod missing: node %v has no manager pod running on it", node.Name)
 		}
 		condition.Status = types.ConditionStatusFalse
-		condition.Reason = string(types.NodeConditionReasonKubernetesNodeDown)
-		condition.Message = fmt.Sprintf("Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name)
+		condition.Reason = string(types.NodeConditionReasonManagerPodMissing)
+		condition.Message = fmt.Sprintf("manager pod missing: node %v has no manager pod running on it", node.Name)
 		node.Status.Conditions[types.NodeConditionTypeReady] = condition
-		// set node unschedulable
-		node.Spec.AllowScheduling = false
+	}
+
+	// sync node state with kuberentes node status
+	kubeNode, err := nc.ds.GetKubernetesNode(name)
+	if err != nil {
+		// if kubernetes node has been removed from cluster
+		if apierrors.IsNotFound(err) {
+			condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+			if condition.Status != types.ConditionStatusFalse {
+				condition.LastTransitionTime = util.Now()
+				nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonKubernetesNodeDown, "Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name)
+			}
+			condition.Status = types.ConditionStatusFalse
+			condition.Reason = string(types.NodeConditionReasonKubernetesNodeDown)
+			condition.Message = fmt.Sprintf("Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name)
+			node.Status.Conditions[types.NodeConditionTypeReady] = condition
+			// set node unschedulable
+			node.Spec.AllowScheduling = false
+		} else {
+			return err
+		}
+	} else {
+		kubeConditions := kubeNode.Status.Conditions
+		condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+		for _, con := range kubeConditions {
+			switch con.Type {
+			case v1.NodeReady, v1.NodeKubeletConfigOk:
+				if con.Status != v1.ConditionTrue {
+					if condition.Status != types.ConditionStatusFalse {
+						condition.LastTransitionTime = util.Now()
+						nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonKubernetesNodeNotReady, "Kubernetes node %v not ready: %v", node.Name, con.Reason)
+					}
+					condition.Status = types.ConditionStatusFalse
+					condition.Reason = string(types.NodeConditionReasonKubernetesNodeNotReady)
+					condition.Message = fmt.Sprintf("Kubernetes node %v not ready: %v", node.Name, con.Reason)
+					node.Status.Conditions[types.NodeConditionTypeReady] = condition
+					break
+				}
+			case v1.NodeOutOfDisk,
+				v1.NodeDiskPressure,
+				v1.NodePIDPressure,
+				v1.NodeMemoryPressure,
+				v1.NodeNetworkUnavailable:
+				if con.Status == v1.ConditionTrue {
+					if condition.Status != types.ConditionStatusFalse {
+						condition.LastTransitionTime = util.Now()
+						nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonKubernetesNodePressure, "Kubernetes node %v has pressure: %v, %v", node.Name, con.Reason, con.Message)
+					}
+					condition.Status = types.ConditionStatusFalse
+					condition.Reason = string(types.NodeConditionReasonKubernetesNodePressure)
+					condition.Message = fmt.Sprintf("Kubernetes node %v has pressure: %v, %v", node.Name, con.Reason, con.Message)
+					node.Status.Conditions[types.NodeConditionTypeReady] = condition
+					break
+				}
+			default:
+				logrus.Errorf("Unknown condition of kubernetes node %v: condition type is %v, reason is %v, message is %v", node.Name, con.Type, con.Reason, con.Message)
+				break
+			}
+		}
 	}
 
 	if nc.controllerID != node.Name {
@@ -431,6 +502,15 @@ func (nc *NodeController) enqueueManagerPod(pod *v1.Pod) {
 	for _, node := range nodeList {
 		nc.enqueueNode(node)
 	}
+}
+
+func (nc *NodeController) enqueueKubernetesNode(n *v1.Node) {
+	node, err := nc.ds.GetNode(n.Name)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v: %v ", n.Name, err))
+		return
+	}
+	nc.enqueueNode(node)
 }
 
 func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
