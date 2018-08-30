@@ -108,3 +108,12 @@ func (s *Server) DiskUpdate(rw http.ResponseWriter, req *http.Request) error {
 	apiContext.Write(toNodeResource(unode, nodeIPMap[id], apiContext))
 	return nil
 }
+
+func (s *Server) NodeDelete(rw http.ResponseWriter, req *http.Request) error {
+	id := mux.Vars(req)["name"]
+	if err := s.m.DeleteNode(id); err != nil {
+		return errors.Wrap(err, "unable to delete node")
+	}
+
+	return nil
+}
