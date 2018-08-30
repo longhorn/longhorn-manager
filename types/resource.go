@@ -200,6 +200,7 @@ const (
 
 const (
 	NodeConditionReasonManagerPodDown            = "ManagerPodDown"
+	NodeConditionReasonKubernetesNodeDown        = "KubernetesNodeDown"
 	NodeConditionReasonNoMountPropagationSupport = "NoMountPropagationSupport"
 )
 
