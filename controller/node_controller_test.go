@@ -40,6 +40,7 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 	settingInformer := lhInformerFactory.Longhorn().V1alpha1().Settings()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
+	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
 
@@ -50,7 +51,7 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 		podInformer, cronJobInformer, daemonSetInformer,
 		kubeClient, TestNamespace)
 
-	nc := NewNodeController(ds, scheme.Scheme, nodeInformer, settingInformer, podInformer, replicaInformer, kubeClient, TestNamespace, controllerID)
+	nc := NewNodeController(ds, scheme.Scheme, nodeInformer, settingInformer, podInformer, replicaInformer, kubeNodeInformer, kubeClient, TestNamespace, controllerID)
 	fakeRecorder := record.NewFakeRecorder(100)
 	nc.eventRecorder = fakeRecorder
 	nc.getDiskInfoHandler = fakeGetDiskInfo
@@ -388,35 +389,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.expectNodeStatus = expectNodeStatus
 	testCases["test disable disk when file system changed"] = tc
 
-	tc = &NodeTestCase{}
-	daemon1 = newDaemonPod(v1.PodFailed, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
-	pods = map[string]*v1.Pod{
-		TestDaemon1: daemon1,
-	}
-	tc.pods = pods
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
-	nodes = map[string]*longhorn.Node{
-		TestNode1: node1,
-		TestNode2: node2,
-	}
-	tc.nodes = nodes
-	expectNodeStatus = map[string]types.NodeStatus{
-		TestNode1: {
-			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonManagerPodDown),
-				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusFalse, types.NodeConditionReasonNoMountPropagationSupport),
-			},
-		},
-		TestNode2: {
-			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeDown),
-			},
-		},
-	}
-	tc.expectNodeStatus = expectNodeStatus
-	testCases["physical node removed"] = tc
-
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
 		kubeClient := fake.NewSimpleClientset()
@@ -429,6 +401,17 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
 		rIndexer := lhInformerFactory.Longhorn().V1alpha1().Replicas().Informer().GetIndexer()
+		knIndexer := kubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+
+		// create kuberentes node
+		node1 := newKubernetesNode(TestNode1, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+		n1, err := kubeClient.CoreV1().Nodes().Create(node1)
+		c.Assert(err, IsNil)
+		knIndexer.Add(n1)
+		node2 := newKubernetesNode(TestNode2, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+		n2, err := kubeClient.CoreV1().Nodes().Create(node2)
+		c.Assert(err, IsNil)
+		knIndexer.Add(n2)
 
 		nc := newTestNodeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestNode1)
 		// create manager pod

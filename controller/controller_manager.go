@@ -67,6 +67,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	settingInformer := lhInformerFactory.Longhorn().V1alpha1().Settings()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
+	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
@@ -91,7 +92,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 		engineImageInformer, volumeInformer, daemonSetInformer,
 		kubeClient, namespace, controllerID)
 	nc := NewNodeController(ds, scheme,
-		nodeInformer, settingInformer, podInformer, replicaInformer,
+		nodeInformer, settingInformer, podInformer, replicaInformer, kubeNodeInformer,
 		kubeClient, namespace, controllerID)
 	ws := NewWebsocketController(volumeInformer, engineInformer, replicaInformer,
 		settingInformer, engineImageInformer, nodeInformer)
