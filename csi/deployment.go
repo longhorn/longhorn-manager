@@ -1,6 +1,8 @@
 package csi
 
 import (
+	"sync"
+
 	"github.com/Sirupsen/logrus"
 	appsv1beta1 "k8s.io/api/apps/v1beta1"
 	appsv1beta2 "k8s.io/api/apps/v1beta2"
@@ -56,13 +58,23 @@ func (a *AttacherDeployment) Deploy(kubeClient *clientset.Clientset) error {
 }
 
 func (a *AttacherDeployment) Cleanup(kubeClient *clientset.Clientset) {
-	if err := cleanupService(kubeClient, a.service); err != nil {
-		logrus.Warnf("Failed to cleanup Service in attacher deployment: %v", err)
-	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	defer wg.Wait()
 
-	if err := cleanupStatefulSet(kubeClient, a.statefulSet); err != nil {
-		logrus.Warnf("Failed to cleanup StatefulSet in attacher deployment: %v", err)
-	}
+	go func() {
+		if err := cleanupService(kubeClient, a.service); err != nil {
+			logrus.Warnf("Failed to cleanup Service in attacher deployment: %v", err)
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		if err := cleanupStatefulSet(kubeClient, a.statefulSet); err != nil {
+			logrus.Warnf("Failed to cleanup StatefulSet in attacher deployment: %v", err)
+		}
+		wg.Done()
+	}()
 }
 
 type ProvisionerDeployment struct {
@@ -100,13 +112,21 @@ func (p *ProvisionerDeployment) Deploy(kubeClient *clientset.Clientset) error {
 }
 
 func (p *ProvisionerDeployment) Cleanup(kubeClient *clientset.Clientset) {
-	if err := cleanupService(kubeClient, p.service); err != nil {
-		logrus.Warnf("Failed to cleanup Service in provisioner deployment: %v", err)
-	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	defer wg.Wait()
 
-	if err := cleanupStatefulSet(kubeClient, p.statefulSet); err != nil {
-		logrus.Warnf("Failed to cleanup StatefulSet in provisioner deployment: %v", err)
-	}
+	go func() {
+		if err := cleanupService(kubeClient, p.service); err != nil {
+			logrus.Warnf("Failed to cleanup Service in provisioner deployment: %v", err)
+		}
+	}()
+
+	go func() {
+		if err := cleanupStatefulSet(kubeClient, p.statefulSet); err != nil {
+			logrus.Warnf("Failed to cleanup StatefulSet in provisioner deployment: %v", err)
+		}
+	}()
 }
 
 type PluginDeployment struct {

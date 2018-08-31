@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/Jeffail/gabs"
 	"github.com/Sirupsen/logrus"
@@ -204,9 +205,17 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 	}
 
 	defer func() {
-		attacherDeployment.Cleanup(kubeClient)
-		provisionerDeployment.Cleanup(kubeClient)
-		pluginDeployment.Cleanup(kubeClient)
+		var wg sync.WaitGroup
+		notify := func(kubeClient *clientset.Clientset, f func(*clientset.Clientset)) {
+			f(kubeClient)
+			wg.Done()
+		}
+
+		wg.Add(3)
+		go notify(kubeClient, attacherDeployment.Cleanup)
+		go notify(kubeClient, provisionerDeployment.Cleanup)
+		go notify(kubeClient, pluginDeployment.Cleanup)
+		wg.Wait()
 	}()
 
 	done := make(chan struct{})
