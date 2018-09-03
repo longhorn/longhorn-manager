@@ -22,10 +22,20 @@ import (
 	. "gopkg.in/check.v1"
 )
 
+const (
+	ManagerPodUp     = "managerPodUp"
+	ManagerPodDown   = "managerPodDown"
+	KubeNodeDown     = "kubeNodeDown"
+	KubeNodePressure = "kubeNodePressure"
+)
+
+var MountPropagationBidirectional = v1.MountPropagationBidirectional
+
 type NodeTestCase struct {
-	nodes    map[string]*longhorn.Node
-	pods     map[string]*v1.Pod
-	replicas []*longhorn.Replica
+	nodes     map[string]*longhorn.Node
+	pods      map[string]*v1.Pod
+	replicas  []*longhorn.Replica
+	kubeNodes map[string]*v1.Node
 
 	expectNodeStatus map[string]types.NodeStatus
 }
@@ -76,18 +86,44 @@ func fakeGetDiskInfo(directory string) (*util.DiskInfo, error) {
 	}, nil
 }
 
-func (s *TestSuite) TestSyncNode(c *C) {
-	testCases := map[string]*NodeTestCase{}
-	MountPropagationBidirectional := v1.MountPropagationBidirectional
+func generateKubeNodes(testType string) map[string]*v1.Node {
+	var kubeNode1, kubeNode2 *v1.Node
+	switch testType {
+	case KubeNodeDown:
+		kubeNode1 = newKubernetesNode(TestNode1, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+		kubeNode2 = newKubernetesNode(TestNode2, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+	case KubeNodePressure:
+		kubeNode1 = newKubernetesNode(TestNode1, v1.ConditionTrue, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+		kubeNode2 = newKubernetesNode(TestNode2, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+	default:
+		kubeNode1 = newKubernetesNode(TestNode1, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+		kubeNode2 = newKubernetesNode(TestNode2, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+	}
+	return map[string]*v1.Node{
+		TestNode1: kubeNode1,
+		TestNode2: kubeNode2,
+	}
+}
 
-	tc := &NodeTestCase{}
-	daemon1 := newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
-	daemon2 := newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, nil)
-	pods := map[string]*v1.Pod{
+func generateManagerPod(testType string) map[string]*v1.Pod {
+	var daemon1, daemon2 *v1.Pod
+	switch testType {
+	case ManagerPodDown:
+		daemon1 = newDaemonPod(v1.PodFailed, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
+		daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, nil)
+	default:
+		daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional)
+		daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, &MountPropagationBidirectional)
+	}
+	return map[string]*v1.Pod{
 		TestDaemon1: daemon1,
 		TestDaemon2: daemon2,
 	}
-	tc.pods = pods
+}
+
+func kubeObjStatusSyncTest(testType string) *NodeTestCase {
+	tc := &NodeTestCase{}
+	tc.kubeNodes = generateKubeNodes(testType)
 	node1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusUnknown, "")
 	node2 := newNode(TestNode2, TestNamespace, true, types.ConditionStatusUnknown, "")
 	nodes := map[string]*longhorn.Node{
@@ -95,100 +131,90 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestNode2: node2,
 	}
 	tc.nodes = nodes
-	expectNodeStatus := map[string]types.NodeStatus{
-		TestNode1: {
-			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
-				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusFalse, types.NodeConditionReasonNoMountPropagationSupport),
+	nodeStatus := map[string]types.NodeStatus{}
+	switch testType {
+	case ManagerPodUp:
+		nodeStatus = map[string]types.NodeStatus{
+			TestNode1: {
+				Conditions: map[types.NodeConditionType]types.Condition{
+					types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+					types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
+				},
 			},
-		},
-		TestNode2: {
-			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+			TestNode2: {
+				Conditions: map[types.NodeConditionType]types.Condition{
+					types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				},
 			},
-		},
+		}
+	case ManagerPodDown:
+		nodeStatus = map[string]types.NodeStatus{
+			TestNode1: {
+				Conditions: map[types.NodeConditionType]types.Condition{
+					types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonManagerPodDown),
+					types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusFalse, types.NodeConditionReasonNoMountPropagationSupport),
+				},
+			},
+			TestNode2: {
+				Conditions: map[types.NodeConditionType]types.Condition{
+					types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				},
+			},
+		}
+	case KubeNodeDown:
+		nodeStatus = map[string]types.NodeStatus{
+			TestNode1: {
+				Conditions: map[types.NodeConditionType]types.Condition{
+					types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeNotReady),
+					types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
+				},
+			},
+			TestNode2: {
+				Conditions: map[types.NodeConditionType]types.Condition{
+					types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				},
+			},
+		}
+	case KubeNodePressure:
+		nodeStatus = map[string]types.NodeStatus{
+			TestNode1: {
+				Conditions: map[types.NodeConditionType]types.Condition{
+					types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodePressure),
+					types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
+				},
+			},
+			TestNode2: {
+				Conditions: map[types.NodeConditionType]types.Condition{
+					types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				},
+			},
+		}
 	}
-	tc.expectNodeStatus = expectNodeStatus
-	testCases["all nodes up"] = tc
+	tc.pods = generateManagerPod(testType)
 
-	tc = &NodeTestCase{}
-	daemon1 = newDaemonPod(v1.PodFailed, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
-	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, nil)
-	pods = map[string]*v1.Pod{
-		TestDaemon1: daemon1,
-		TestDaemon2: daemon2,
-	}
-	tc.pods = pods
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
-	nodes = map[string]*longhorn.Node{
-		TestNode1: node1,
-		TestNode2: node2,
-	}
-	tc.nodes = nodes
-	expectNodeStatus = map[string]types.NodeStatus{
-		TestNode1: {
-			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonManagerPodDown),
-				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusFalse, types.NodeConditionReasonNoMountPropagationSupport),
-			},
-		},
-		TestNode2: {
-			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
-			},
-		},
-	}
-	tc.expectNodeStatus = expectNodeStatus
-	testCases["manager pod down"] = tc
+	tc.expectNodeStatus = nodeStatus
 
-	tc = &NodeTestCase{}
-	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
-	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, nil)
-	pods = map[string]*v1.Pod{
-		TestDaemon1: daemon1,
-		TestDaemon2: daemon2,
-	}
-	tc.pods = pods
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusFalse, "")
-	nodes = map[string]*longhorn.Node{
-		TestNode1: node1,
-		TestNode2: node2,
-	}
-	tc.nodes = nodes
-	expectNodeStatus = map[string]types.NodeStatus{
-		TestNode1: {
-			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
-				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusFalse, types.NodeConditionReasonNoMountPropagationSupport),
-			},
-		},
-		TestNode2: {
-			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
-			},
-		},
-	}
-	tc.expectNodeStatus = expectNodeStatus
-	testCases["set node status up"] = tc
+	return tc
+}
 
-	tc = &NodeTestCase{}
-	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional)
-	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, &MountPropagationBidirectional)
-	pods = map[string]*v1.Pod{
-		TestDaemon1: daemon1,
-		TestDaemon2: daemon2,
-	}
-	tc.pods = pods
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
+func (s *TestSuite) TestSyncNode(c *C) {
+	testCases := map[string]*NodeTestCase{}
+	testCases["manager pod up"] = kubeObjStatusSyncTest(ManagerPodUp)
+	testCases["manager pod down"] = kubeObjStatusSyncTest(ManagerPodDown)
+	testCases["kubernetes node down"] = kubeObjStatusSyncTest(KubeNodeDown)
+	testCases["kubernetes node pressure"] = kubeObjStatusSyncTest(KubeNodePressure)
+
+	tc := &NodeTestCase{}
+	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
+	tc.pods = generateManagerPod(ManagerPodUp)
+	node1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
 	node1.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
 		},
 	}
-	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
+	node2 := newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
 	node2.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
@@ -198,11 +224,10 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 	}
-	nodes = map[string]*longhorn.Node{
+	tc.nodes = map[string]*longhorn.Node{
 		TestNode1: node1,
 		TestNode2: node2,
 	}
-	tc.nodes = nodes
 	volume := newVolume(TestVolumeName, 2)
 	engine := newEngineForVolume(volume)
 	replica1 := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1)
@@ -210,7 +235,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	replicas := []*longhorn.Replica{replica1, replica2}
 	tc.replicas = replicas
 
-	expectNodeStatus = map[string]types.NodeStatus{
+	tc.expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[types.NodeConditionType]types.Condition{
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
@@ -244,17 +269,11 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 	}
-	tc.expectNodeStatus = expectNodeStatus
 	testCases["only disk on node1 should be updated status"] = tc
 
 	tc = &NodeTestCase{}
-	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional)
-	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, &MountPropagationBidirectional)
-	pods = map[string]*v1.Pod{
-		TestDaemon1: daemon1,
-		TestDaemon2: daemon2,
-	}
-	tc.pods = pods
+	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
+	tc.pods = generateManagerPod(ManagerPodUp)
 	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
 	node1.Status.DiskStatus = map[string]types.DiskStatus{
 		TestDiskID1: {
@@ -279,12 +298,11 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			StorageAvailable: 0,
 		},
 	}
-	nodes = map[string]*longhorn.Node{
+	tc.nodes = map[string]*longhorn.Node{
 		TestNode1: node1,
 		TestNode2: node2,
 	}
-	tc.nodes = nodes
-	expectNodeStatus = map[string]types.NodeStatus{
+	tc.expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[types.NodeConditionType]types.Condition{
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
@@ -314,17 +332,11 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 	}
-	tc.expectNodeStatus = expectNodeStatus
-	testCases["test clean disk status when disk removed from the node spec"] = tc
+	testCases["clean disk status when disk removed from the node spec"] = tc
 
 	tc = &NodeTestCase{}
-	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional)
-	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, &MountPropagationBidirectional)
-	pods = map[string]*v1.Pod{
-		TestDaemon1: daemon1,
-		TestDaemon2: daemon2,
-	}
-	tc.pods = pods
+	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
+	tc.pods = generateManagerPod(ManagerPodUp)
 	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
 	node1.Spec.Disks = map[string]types.DiskSpec{
 		"changedId": {
@@ -351,12 +363,11 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			StorageAvailable: 0,
 		},
 	}
-	nodes = map[string]*longhorn.Node{
+	tc.nodes = map[string]*longhorn.Node{
 		TestNode1: node1,
 		TestNode2: node2,
 	}
-	tc.nodes = nodes
-	expectNodeStatus = map[string]types.NodeStatus{
+	tc.expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[types.NodeConditionType]types.Condition{
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
@@ -386,7 +397,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 	}
-	tc.expectNodeStatus = expectNodeStatus
 	testCases["test disable disk when file system changed"] = tc
 
 	for name, tc := range testCases {
@@ -404,14 +414,11 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		knIndexer := kubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
 
 		// create kuberentes node
-		node1 := newKubernetesNode(TestNode1, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
-		n1, err := kubeClient.CoreV1().Nodes().Create(node1)
-		c.Assert(err, IsNil)
-		knIndexer.Add(n1)
-		node2 := newKubernetesNode(TestNode2, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
-		n2, err := kubeClient.CoreV1().Nodes().Create(node2)
-		c.Assert(err, IsNil)
-		knIndexer.Add(n2)
+		for _, kubeNode := range tc.kubeNodes {
+			n, err := kubeClient.CoreV1().Nodes().Create(kubeNode)
+			c.Assert(err, IsNil)
+			knIndexer.Add(n)
+		}
 
 		nc := newTestNodeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestNode1)
 		// create manager pod
