@@ -515,7 +515,19 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 	}
 
-	if e.Status.CurrentState == types.InstanceStateError {
+	if e.Status.CurrentState == types.InstanceStateError && v.Spec.NodeID != "" {
+		if e.Spec.NodeID != v.Spec.NodeID {
+			return fmt.Errorf("BUG: engine %v nodeID %v doesn't match volume %v nodeID %v",
+				e.Name, e.Spec.NodeID, v.Name, v.Spec.NodeID)
+		}
+		node, err := vc.ds.GetKubernetesNode(v.Spec.NodeID)
+		if err != nil {
+			return err
+		}
+		// If it's due to reboot, we're going to reattach the volume later
+		if e.Status.NodeBootID != node.Status.NodeInfo.BootID {
+			v.Spec.PendingNodeID = v.Spec.NodeID
+		}
 		// Engine dead unexpected, force detaching the volume
 		logrus.Errorf("Engine of volume %v dead unexpectedly, detach the volume", v.Name)
 		vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFaulted, "Engine of volume %v dead unexpectedly, detach the volume", v.Name)
@@ -632,6 +644,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		v.Status.State = types.VolumeStateDetached
 		if oldState != v.Status.State {
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonDetached, "volume %v has been detached", v.Name)
+		}
+		// Automatic reattach the volume if PendingNodeID was set, it's for reboot
+		if v.Spec.PendingNodeID != "" {
+			v.Spec.NodeID = v.Spec.PendingNodeID
+			v.Spec.PendingNodeID = ""
 		}
 
 	} else {
