@@ -8,6 +8,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -92,13 +93,19 @@ func (h *InstanceHandler) syncStatusWithPod(pod *v1.Pod, spec *types.InstanceSpe
 		if status.CurrentImage == "" {
 			status.CurrentImage = spec.EngineImage
 		}
+		nodeBootID, err := h.GetNodeBootIDForPod(pod)
+		if err != nil {
+			logrus.Warnf("cannot get node BootID for instance %v", pod.Name)
+		} else {
+			status.NodeBootID = nodeBootID
+		}
 	default:
-		// TODO Check the reason of pod cannot gracefully shutdown
 		logrus.Warnf("instance %v state is failed/unknown, pod state %v",
 			pod.Name, pod.Status.Phase)
 		status.CurrentState = types.InstanceStateError
 		status.IP = ""
 		status.CurrentImage = ""
+		// Don't reset status.NodeBootID, we need it to identify a node reboot
 	}
 }
 
@@ -154,6 +161,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 			}
 		}
 		status.Started = false
+		status.NodeBootID = ""
 	default:
 		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
 	}
@@ -168,6 +176,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		} else if spec.NodeID != pod.Spec.NodeName {
 			status.CurrentState = types.InstanceStateError
 			status.IP = ""
+			status.NodeBootID = ""
 			err := fmt.Errorf("BUG: instance %v wasn't pin down to the host %v", pod.Name, spec.NodeID)
 			logrus.Errorf("%v", err)
 			return err
@@ -247,4 +256,13 @@ func (h *InstanceHandler) DeleteInstanceForObject(obj runtime.Object) (err error
 		return nil
 	}
 	return h.deletePodForObject(obj)
+}
+
+func (h *InstanceHandler) GetNodeBootIDForPod(pod *v1.Pod) (string, error) {
+	nodeName := pod.Spec.NodeName
+	node, err := h.kubeClient.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	return node.Status.NodeInfo.BootID, nil
 }

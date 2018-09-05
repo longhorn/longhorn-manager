@@ -114,6 +114,7 @@ type InstanceStatus struct {
 	CurrentImage string        `json:"currentImage"`
 	IP           string        `json:"ip"`
 	Started      bool          `json:"started"`
+	NodeBootID   string        `json:"nodeBootID"`
 }
 
 type EngineSpec struct {
