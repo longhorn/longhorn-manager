@@ -63,6 +63,7 @@ type VolumeSpec struct {
 	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`
 	NodeID              string         `json:"nodeID"`
 	MigrationNodeID     string         `json:"migrationNodeID"`
+	PendingNodeID       string         `json:"pendingNodeID"`
 	EngineImage         string         `json:"engineImage"`
 	RecurringJobs       []RecurringJob `json:"recurringJobs"`
 	BaseImage           string         `json:"baseImage"`
