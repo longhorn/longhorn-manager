@@ -516,7 +516,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 	}
 
 	if e.Status.CurrentState == types.InstanceStateError && v.Spec.NodeID != "" {
-		if e.Spec.NodeID != v.Spec.NodeID {
+		if e.Spec.NodeID != "" && e.Spec.NodeID != v.Spec.NodeID {
 			return fmt.Errorf("BUG: engine %v nodeID %v doesn't match volume %v nodeID %v",
 				e.Name, e.Spec.NodeID, v.Name, v.Spec.NodeID)
 		}
@@ -525,12 +525,18 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			return err
 		}
 		// If it's due to reboot, we're going to reattach the volume later
-		if e.Status.NodeBootID != node.Status.NodeInfo.BootID {
+		// e.Status.NodeBootID would only reset when the instance stopped
+		if e.Status.NodeBootID != "" && e.Status.NodeBootID != node.Status.NodeInfo.BootID {
 			v.Spec.PendingNodeID = v.Spec.NodeID
+			msg := fmt.Sprintf("Reboot of volume %v attached node %v detected, reattach the volume", v.Name, v.Spec.NodeID)
+			logrus.Errorf(msg)
+			vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonRebooted, msg)
+		} else {
+			// Engine dead unexpected, force detaching the volume
+			msg := fmt.Sprintf("Engine of volume %v dead unexpectedly, detach the volume", v.Name)
+			logrus.Errorf(msg)
+			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFaulted, msg)
 		}
-		// Engine dead unexpected, force detaching the volume
-		logrus.Errorf("Engine of volume %v dead unexpectedly, detach the volume", v.Name)
-		vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFaulted, "Engine of volume %v dead unexpectedly, detach the volume", v.Name)
 		v.Spec.NodeID = ""
 	}
 
