@@ -5,7 +5,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/Jeffail/gabs"
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
@@ -230,9 +229,9 @@ func deployFlexvolumeDriver(kubeClient *clientset.Clientset, c *cli.Context, man
 	flexvolumeDir := c.String(FlagFlexvolumeDir)
 	if flexvolumeDir == "" {
 		var err error
-		flexvolumeDir, err = discoverFlexvolumeDir(kubeClient)
+		flexvolumeDir, err = discoverFlexvolumeDir(kubeClient, managerImage)
 		if err != nil {
-			logrus.Warnf("Failed to detect flexvolume dir, fall back to default: ", err)
+			logrus.Warnf("Failed to detect flexvolume dir, fall back to default: %v", err)
 		}
 		if flexvolumeDir == "" {
 			flexvolumeDir = DefaultFlexvolumeDir
@@ -368,32 +367,6 @@ func getFlexvolumeDaemonSetSpec(image, flexvolumeDir string) *appsv1beta2.Daemon
 		},
 	}
 	return d
-}
-
-func discoverFlexvolumeDir(kubeClient *clientset.Clientset) (dir string, err error) {
-	defer func() {
-		err = errors.Wrap(err, "cannot discover Flexvolume Dir")
-	}()
-	nodeName, err := util.GetRequiredEnv(types.EnvNodeName)
-	if err != nil {
-		return "", fmt.Errorf("Env %v wasn't set", types.EnvNodeName)
-	}
-	uri := fmt.Sprintf("/api/v1/proxy/nodes/%s/configz", nodeName)
-	rawConfigInBytes, err := kubeClient.Core().RESTClient().Get().RequestURI(uri).DoRaw()
-	if err != nil {
-		return "", errors.Wrapf(err, "cannot reach node config URI %v", uri)
-	}
-	jsonParsed, err := gabs.ParseJSON(rawConfigInBytes)
-	if err != nil {
-		return "", errors.Wrapf(err, "cannot parse json")
-	}
-	value, ok := jsonParsed.Path("kubeletconfig.volumePluginDir").Data().(string)
-	if !ok {
-		logrus.Infof("cannot find volumePluginDir key in node config, assume it's default")
-		return DefaultFlexvolumeDir, nil
-	}
-	logrus.Infof("Discovered Flexvolume dir at: %v", value)
-	return value, nil
 }
 
 func startProvisioner(kubeClient *clientset.Clientset, managerURL string, stopCh <-chan struct{}) error {
