@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -446,4 +447,12 @@ func RetryOnConflictCause(fn func() (interface{}, error)) (obj interface{}, err 
 		time.Sleep(ConflictRetryInterval)
 	}
 	return nil, errors.Wrapf(err, "cannot finish API request due to too many conflicts")
+}
+
+func RunAsync(wg *sync.WaitGroup, f func()) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		f()
+	}()
 }

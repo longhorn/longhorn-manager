@@ -10,6 +10,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/pkg/util/pointer"
+
+	"github.com/rancher/longhorn-manager/util"
 )
 
 const (
@@ -59,22 +61,18 @@ func (a *AttacherDeployment) Deploy(kubeClient *clientset.Clientset) error {
 
 func (a *AttacherDeployment) Cleanup(kubeClient *clientset.Clientset) {
 	var wg sync.WaitGroup
-	wg.Add(2)
 	defer wg.Wait()
 
-	go func() {
+	util.RunAsync(&wg, func() {
 		if err := cleanupService(kubeClient, a.service); err != nil {
 			logrus.Warnf("Failed to cleanup Service in attacher deployment: %v", err)
 		}
-		wg.Done()
-	}()
-
-	go func() {
+	})
+	util.RunAsync(&wg, func() {
 		if err := cleanupStatefulSet(kubeClient, a.statefulSet); err != nil {
 			logrus.Warnf("Failed to cleanup StatefulSet in attacher deployment: %v", err)
 		}
-		wg.Done()
-	}()
+	})
 }
 
 type ProvisionerDeployment struct {
@@ -113,20 +111,18 @@ func (p *ProvisionerDeployment) Deploy(kubeClient *clientset.Clientset) error {
 
 func (p *ProvisionerDeployment) Cleanup(kubeClient *clientset.Clientset) {
 	var wg sync.WaitGroup
-	wg.Add(2)
 	defer wg.Wait()
 
-	go func() {
+	util.RunAsync(&wg, func() {
 		if err := cleanupService(kubeClient, p.service); err != nil {
 			logrus.Warnf("Failed to cleanup Service in provisioner deployment: %v", err)
 		}
-	}()
-
-	go func() {
+	})
+	util.RunAsync(&wg, func() {
 		if err := cleanupStatefulSet(kubeClient, p.statefulSet); err != nil {
 			logrus.Warnf("Failed to cleanup StatefulSet in provisioner deployment: %v", err)
 		}
-	}()
+	})
 }
 
 type PluginDeployment struct {

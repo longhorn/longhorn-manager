@@ -206,15 +206,15 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 
 	defer func() {
 		var wg sync.WaitGroup
-		notify := func(kubeClient *clientset.Clientset, f func(*clientset.Clientset)) {
-			f(kubeClient)
-			wg.Done()
-		}
-
-		wg.Add(3)
-		go notify(kubeClient, attacherDeployment.Cleanup)
-		go notify(kubeClient, provisionerDeployment.Cleanup)
-		go notify(kubeClient, pluginDeployment.Cleanup)
+		util.RunAsync(&wg, func() {
+			attacherDeployment.Cleanup(kubeClient)
+		})
+		util.RunAsync(&wg, func() {
+			provisionerDeployment.Cleanup(kubeClient)
+		})
+		util.RunAsync(&wg, func() {
+			pluginDeployment.Cleanup(kubeClient)
+		})
 		wg.Wait()
 	}()
 
