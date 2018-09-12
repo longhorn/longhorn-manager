@@ -436,7 +436,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 					break
 				}
 			default:
-				logrus.Errorf("Unknown condition of kubernetes node %v: condition type is %v, reason is %v, message is %v", node.Name, con.Type, con.Reason, con.Message)
+				logrus.Debugf("Unknown condition of kubernetes node %v: condition type is %v, reason is %v, message is %v", node.Name, con.Type, con.Reason, con.Message)
 				break
 			}
 		}
