@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -10,7 +11,6 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
-	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -19,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	batchinformers "k8s.io/client-go/informers/batch/v1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -75,7 +74,6 @@ type ReplicaController struct {
 
 	rStoreSynced cache.InformerSynced
 	pStoreSynced cache.InformerSynced
-	jStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
 
@@ -87,7 +85,6 @@ func NewReplicaController(
 	scheme *runtime.Scheme,
 	replicaInformer lhinformers.ReplicaInformer,
 	podInformer coreinformers.PodInformer,
-	jobInformer batchinformers.JobInformer,
 	kubeClient clientset.Interface,
 	namespace string, controllerID string) *ReplicaController {
 
@@ -107,7 +104,6 @@ func NewReplicaController(
 
 		rStoreSynced: replicaInformer.Informer().HasSynced,
 		pStoreSynced: podInformer.Informer().HasSynced,
-		jStoreSynced: jobInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-replica"),
 	}
@@ -139,18 +135,6 @@ func NewReplicaController(
 			rc.enqueueControlleeChange(obj)
 		},
 	})
-
-	jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			rc.enqueueControlleeChange(obj)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			rc.enqueueControlleeChange(cur)
-		},
-		DeleteFunc: func(obj interface{}) {
-			rc.enqueueControlleeChange(obj)
-		},
-	})
 	return rc
 }
 
@@ -161,7 +145,7 @@ func (rc *ReplicaController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start Longhorn replica controller")
 	defer logrus.Infof("Shutting down Longhorn replica controller")
 
-	if !controller.WaitForCacheSync("longhorn replicas", stopCh, rc.rStoreSynced, rc.pStoreSynced, rc.jStoreSynced) {
+	if !controller.WaitForCacheSync("longhorn replicas", stopCh, rc.rStoreSynced, rc.pStoreSynced) {
 		return
 	}
 
@@ -208,10 +192,6 @@ func (rc *ReplicaController) handleErr(err error, key interface{}) {
 	rc.queue.Forget(key)
 }
 
-func (rc *ReplicaController) getJobForReplica(r *longhorn.Replica) (*batchv1.Job, error) {
-	return rc.kubeClient.BatchV1().Jobs(rc.namespace).Get(r.Name, metav1.GetOptions{})
-}
-
 func (rc *ReplicaController) syncReplica(key string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to sync replica for %v", key)
@@ -234,21 +214,22 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		return err
 	}
 
+	if replica.DeletionTimestamp != nil {
+		// delete instance, remove node storage and finally remove finalizer
+		if replica.Spec.NodeID == rc.controllerID {
+			if err := rc.instanceHandler.DeleteInstanceForObject(replica); err != nil {
+				return err
+			}
+			if err := os.RemoveAll(replica.Spec.DataPath); err != nil {
+				return err
+			}
+			return rc.ds.RemoveFinalizerForReplica(replica)
+		}
+	}
+
 	// Not ours
 	if replica.Spec.OwnerID != rc.controllerID {
 		return nil
-	}
-
-	if replica.DeletionTimestamp != nil {
-		if err := rc.instanceHandler.DeleteInstanceForObject(replica); err != nil {
-			return err
-		}
-		// we want to make sure data was cleaned before remove the
-		// replica if cleanup was set
-		if replica.Spec.NodeID != "" && replica.Spec.Active {
-			return rc.cleanupReplicaInstance(replica)
-		}
-		return rc.ds.RemoveFinalizerForReplica(replica)
 	}
 
 	existingReplica := replica.DeepCopy()
@@ -453,117 +434,6 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 		}
 	}
 	return pod, nil
-}
-
-func (rc *ReplicaController) createCleanupJobSpec(r *longhorn.Replica) *batchv1.Job {
-	cmd := []string{"/bin/bash", "-c"}
-	// There is a delay between starting pod and mount the volume, so
-	// workaround it for now
-	args := []string{"sleep 1 && rm -f /volume/*"}
-
-	jobName := r.Name
-	backoffLimit := int32(1)
-	job := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobName,
-			Namespace: r.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: longhorn.SchemeGroupVersion.String(),
-					Kind:       ownerKindReplica,
-					UID:        r.UID,
-					Name:       r.Name,
-				},
-			},
-		},
-		Spec: batchv1.JobSpec{
-			BackoffLimit: &backoffLimit,
-			Template: v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "cleanup-" + r.Name,
-				},
-				Spec: v1.PodSpec{
-					NodeName:      r.Spec.NodeID,
-					RestartPolicy: v1.RestartPolicyNever,
-					Containers: []v1.Container{
-						{
-							Name:    "cleanup-" + r.Name,
-							Image:   r.Spec.EngineImage,
-							Command: cmd,
-							Args:    args,
-							VolumeMounts: []v1.VolumeMount{
-								{
-									Name:      "volume",
-									MountPath: "/volume",
-								},
-							},
-						},
-					},
-					Volumes: []v1.Volume{
-						{
-							Name: "volume",
-							VolumeSource: v1.VolumeSource{
-								HostPath: &v1.HostPathVolumeSource{
-									Path: r.Spec.DataPath,
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-	return job
-}
-
-func (rc *ReplicaController) cleanupReplicaInstance(r *longhorn.Replica) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "fail to cleanup replica instance for %v", r.Name)
-	}()
-	// replica wasn't created once or has been cleaned up
-	if r.Spec.NodeID == "" {
-		return nil
-	}
-	job, err := rc.getJobForReplica(r)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return err
-	}
-
-	if apierrors.IsNotFound(err) {
-		job := rc.createCleanupJobSpec(r)
-
-		_, err = rc.kubeClient.BatchV1().Jobs(rc.namespace).Create(job)
-		if err != nil {
-			return errors.Wrap(err, "failed to create cleanup job")
-		}
-		logrus.Infof("Replica cleanup job created for %v", r.Name)
-		return nil
-	}
-
-	if job.Status.CompletionTime != nil {
-		defer func() {
-			propagation := metav1.DeletePropagationBackground
-			if err := rc.kubeClient.BatchV1().Jobs(rc.namespace).Delete(r.Name,
-				&metav1.DeleteOptions{
-					PropagationPolicy: &propagation,
-				}); err != nil {
-				logrus.Warnf("Failed to delete the cleanup job for %v: %v", r.Name, err)
-			}
-			rc.enqueueReplica(r)
-		}()
-
-		if job.Status.Succeeded != 0 {
-			logrus.Infof("Cleanup for volume %v replica %v succeed", r.Spec.VolumeName, r.Name)
-			r.Spec.NodeID = ""
-			if _, err := rc.ds.UpdateReplica(r); err != nil {
-				return err
-			}
-		} else {
-			logrus.Warnf("Cleanup for volume %v replica %v failed", r.Spec.VolumeName, r.Name)
-		}
-	}
-
-	return nil
 }
 
 func (rc *ReplicaController) enqueueControlleeChange(obj interface{}) {
