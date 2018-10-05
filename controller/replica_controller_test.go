@@ -93,6 +93,7 @@ func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformer
 	settingInformer := lhInformerFactory.Longhorn().V1alpha1().Settings()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
+	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
 
@@ -103,13 +104,14 @@ func newTestReplicaController(lhInformerFactory lhinformerfactory.SharedInformer
 		podInformer, cronJobInformer, daemonSetInformer,
 		kubeClient, TestNamespace)
 
-	rc := NewReplicaController(ds, scheme.Scheme, replicaInformer, podInformer, kubeClient, TestNamespace, controllerID)
+	rc := NewReplicaController(ds, scheme.Scheme, replicaInformer, podInformer, jobInformer, kubeClient, TestNamespace, controllerID)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	rc.eventRecorder = fakeRecorder
 
 	rc.rStoreSynced = alwaysReady
 	rc.pStoreSynced = alwaysReady
+	rc.jStoreSynced = alwaysReady
 
 	return rc
 }

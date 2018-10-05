@@ -68,6 +68,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
+	jobInformer := kubeInformerFactory.Batch().V1().Jobs()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
 
@@ -78,7 +79,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 		podInformer, cronJobInformer, daemonSetInformer,
 		kubeClient, namespace)
 	rc := NewReplicaController(ds, scheme,
-		replicaInformer, podInformer,
+		replicaInformer, podInformer, jobInformer,
 		kubeClient, namespace, controllerID)
 	ec := NewEngineController(ds, scheme,
 		engineInformer, podInformer,
