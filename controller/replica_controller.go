@@ -215,19 +215,14 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	}
 
 	if replica.DeletionTimestamp != nil {
+		// delete instance, remove node storage and finally remove finalizer
 		if replica.Spec.NodeID == rc.controllerID {
 			if err := rc.instanceHandler.DeleteInstanceForObject(replica); err != nil {
 				return err
 			}
-			if replica.Spec.Active {
-				if err := os.RemoveAll(replica.Spec.DataPath); err != nil {
-					return err
-				}
+			if err := os.RemoveAll(replica.Spec.DataPath); err != nil {
+				return err
 			}
-			return rc.ds.RemoveFinalizerForReplica(replica)
-		}
-
-		if replica.Spec.NodeID == "" && replica.Spec.OwnerID == rc.controllerID {
 			return rc.ds.RemoveFinalizerForReplica(replica)
 		}
 	}
