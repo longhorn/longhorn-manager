@@ -267,6 +267,8 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 				}
 			}
 		}
+		// now engines have been deleted or in the process
+
 		for _, r := range replicas {
 			if r.DeletionTimestamp == nil {
 				if err := vc.ds.DeleteReplica(r.Name); err != nil {
@@ -274,19 +276,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 				}
 			}
 		}
-		// now replicas and engines have been marked for deletion
-
-		if engines, err := vc.ds.ListVolumeEngines(volume.Name); err != nil {
-			return err
-		} else if len(engines) > 0 {
-			return nil
-		}
-		if replicas, err := vc.ds.ListVolumeReplicas(volume.Name); err != nil {
-			return err
-		} else if len(replicas) > 0 {
-			return nil
-		}
-		// now replicas and engines are deleted
+		// now replicas have been deleted or in the process
 
 		return vc.ds.RemoveFinalizerForVolume(volume)
 	}
