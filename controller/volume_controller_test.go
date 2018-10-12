@@ -468,10 +468,6 @@ func newKubernetesNode(name string, readyStatus, diskPressureStatus, memoryStatu
 					Type:   v1.NodeNetworkUnavailable,
 					Status: networkStatus,
 				},
-				{
-					Type:   v1.NodeKubeletConfigOk,
-					Status: kubeletStatus,
-				},
 			},
 		},
 	}

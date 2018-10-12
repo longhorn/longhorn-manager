@@ -9,7 +9,7 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/kubernetes/pkg/util/pointer"
+	"k8s.io/utils/pointer"
 
 	"github.com/rancher/longhorn-manager/util"
 )
@@ -151,7 +151,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 				Spec: v1.PodSpec{
 					ServiceAccountName: serviceAccount,
 					Containers: []v1.Container{
-						v1.Container{
+						{
 							Name:  "driver-registrar",
 							Image: driverRegistrarImage,
 							Args: []string{
@@ -159,11 +159,11 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 								"--csi-address=$(ADDRESS)",
 							},
 							Env: []v1.EnvVar{
-								v1.EnvVar{
+								{
 									Name:  "ADDRESS",
 									Value: "/var/lib/kubelet/plugins/io.rancher.longhorn/csi.sock",
 								},
-								v1.EnvVar{
+								{
 									Name: "KUBE_NODE_NAME",
 									ValueFrom: &v1.EnvVarSource{
 										FieldRef: &v1.ObjectFieldSelector{
@@ -174,13 +174,13 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 							},
 							//ImagePullPolicy: v1.PullAlways,
 							VolumeMounts: []v1.VolumeMount{
-								v1.VolumeMount{
+								{
 									Name:      "socket-dir",
 									MountPath: "/var/lib/kubelet/plugins/io.rancher.longhorn",
 								},
 							},
 						},
-						v1.Container{
+						{
 							Name: "longhorn-csi-plugin",
 							SecurityContext: &v1.SecurityContext{
 								Privileged: pointer.BoolPtr(true),
@@ -202,7 +202,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 								"--manager-url=" + managerURL,
 							},
 							Env: []v1.EnvVar{
-								v1.EnvVar{
+								{
 									Name: "NODE_ID",
 									ValueFrom: &v1.EnvVarSource{
 										FieldRef: &v1.ObjectFieldSelector{
@@ -210,30 +210,30 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 										},
 									},
 								},
-								v1.EnvVar{
+								{
 									Name:  "CSI_ENDPOINT",
 									Value: "unix://var/lib/kubelet/plugins/io.rancher.longhorn/csi.sock",
 								},
 							},
 							VolumeMounts: []v1.VolumeMount{
-								v1.VolumeMount{
+								{
 									Name:      "plugin-dir",
 									MountPath: "/var/lib/kubelet/plugins/io.rancher.longhorn",
 								},
-								v1.VolumeMount{
+								{
 									Name:             "pods-mount-dir",
 									MountPath:        "/var/lib/kubelet/pods",
 									MountPropagation: &MountPropagationBidirectional,
 								},
-								v1.VolumeMount{
+								{
 									Name:      "host-dev",
 									MountPath: "/dev",
 								},
-								v1.VolumeMount{
+								{
 									Name:      "host-sys",
 									MountPath: "/sys",
 								},
-								v1.VolumeMount{
+								{
 									Name:      "lib-modules",
 									MountPath: "/lib/modules",
 									ReadOnly:  true,
@@ -242,7 +242,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 						},
 					},
 					Volumes: []v1.Volume{
-						v1.Volume{
+						{
 							Name: "plugin-dir",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
@@ -251,7 +251,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 								},
 							},
 						},
-						v1.Volume{
+						{
 							Name: "pods-mount-dir",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
@@ -260,7 +260,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 								},
 							},
 						},
-						v1.Volume{
+						{
 							Name: "socket-dir",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
@@ -269,7 +269,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 								},
 							},
 						},
-						v1.Volume{
+						{
 							Name: "host-dev",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
@@ -277,7 +277,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 								},
 							},
 						},
-						v1.Volume{
+						{
 							Name: "host-sys",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
@@ -285,7 +285,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 								},
 							},
 						},
-						v1.Volume{
+						{
 							Name: "lib-modules",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
