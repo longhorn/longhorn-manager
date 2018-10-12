@@ -27,7 +27,8 @@ const (
 )
 
 const (
-	CSIKubernetesMinVersion = "v1.10.0"
+	CSIMinVersion                  = "v1.10.0"
+	KubeletPluginWatcherMinVersion = "v1.12.0"
 )
 
 type ReplicaMode string
