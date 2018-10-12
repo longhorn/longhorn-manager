@@ -407,7 +407,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
 		for _, con := range kubeConditions {
 			switch con.Type {
-			case v1.NodeReady, v1.NodeKubeletConfigOk:
+			case v1.NodeReady:
 				if con.Status != v1.ConditionTrue {
 					if condition.Status != types.ConditionStatusFalse {
 						condition.LastTransitionTime = util.Now()
