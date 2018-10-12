@@ -168,16 +168,24 @@ func deployDriver(c *cli.Context) error {
 // 1.10+ csi
 // v1.8/1.9 flexvolume
 func chooseDriver(kubeClient *clientset.Clientset) (string, error) {
-	serverVersion, err := kubeClient.Discovery().ServerVersion()
+	csiVersionMet, err := isKubernetesVersionAtLeast(kubeClient, types.CSIMinVersion)
 	if err != nil {
-		return "", errors.Wrap(err, "Cannot choose driver automatically: failed to get Kubernetes server version")
+		return "", errors.Wrap(err, "cannot choose driver automatically")
 	}
-	currentVersion := version.MustParseSemantic(serverVersion.GitVersion)
-	minVersion := version.MustParseSemantic(types.CSIKubernetesMinVersion)
-	if currentVersion.AtLeast(minVersion) {
+	if csiVersionMet {
 		return FlagDriverCSI, nil
 	}
 	return FlagDriverFlexvolume, nil
+}
+
+func isKubernetesVersionAtLeast(kubeClient *clientset.Clientset, vers string) (bool, error) {
+	serverVersion, err := kubeClient.Discovery().ServerVersion()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to get Kubernetes server version")
+	}
+	currentVersion := version.MustParseSemantic(serverVersion.GitVersion)
+	minVersion := version.MustParseSemantic(vers)
+	return currentVersion.AtLeast(minVersion), nil
 }
 
 func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerImage, managerURL string) error {
@@ -187,6 +195,11 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 	csiProvisionerName := c.String(FlagCSIProvisionerName)
 	namespace := os.Getenv(types.EnvPodNamespace)
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
+
+	kubeletPluginWatcherEnabled, err := isKubernetesVersionAtLeast(kubeClient, types.KubeletPluginWatcherMinVersion)
+	if err != nil {
+		return err
+	}
 
 	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage)
 	if err := attacherDeployment.Deploy(kubeClient); err != nil {
@@ -198,7 +211,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 		return err
 	}
 
-	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiDriverRegistrarImage, managerImage, managerURL)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiDriverRegistrarImage, managerImage, managerURL, kubeletPluginWatcherEnabled)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
