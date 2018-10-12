@@ -17,13 +17,17 @@ limitations under the License.
 package resourcelock
 
 import (
+	"fmt"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
 )
 
 const (
-	// LeaderElectionRecordAnnotationKey is the annotation key for records
 	LeaderElectionRecordAnnotationKey = "control-plane.alpha.kubernetes.io/leader"
+	EndpointsResourceLock             = "endpoints"
+	ConfigMapsResourceLock            = "configmaps"
 )
 
 // LeaderElectionRecord is the record that is stored in the leader election annotation.
@@ -38,9 +42,9 @@ type LeaderElectionRecord struct {
 	LeaderTransitions    int         `json:"leaderTransitions"`
 }
 
-// Config common data that exists across different
+// ResourceLockConfig common data that exists across different
 // resource locks
-type Config struct {
+type ResourceLockConfig struct {
 	Identity      string
 	EventRecorder record.EventRecorder
 }
@@ -69,4 +73,30 @@ type Interface interface {
 	// Describe is used to convert details on current resource lock
 	// into a string
 	Describe() string
+}
+
+// Manufacture will create a lock of a given type according to the input parameters
+func New(lockType string, ns string, name string, client corev1.CoreV1Interface, rlc ResourceLockConfig) (Interface, error) {
+	switch lockType {
+	case EndpointsResourceLock:
+		return &EndpointsLock{
+			EndpointsMeta: metav1.ObjectMeta{
+				Namespace: ns,
+				Name:      name,
+			},
+			Client:     client,
+			LockConfig: rlc,
+		}, nil
+	case ConfigMapsResourceLock:
+		return &ConfigMapLock{
+			ConfigMapMeta: metav1.ObjectMeta{
+				Namespace: ns,
+				Name:      name,
+			},
+			Client:     client,
+			LockConfig: rlc,
+		}, nil
+	default:
+		return nil, fmt.Errorf("Invalid lock-type %s", lockType)
+	}
 }
