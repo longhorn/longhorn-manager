@@ -32,6 +32,9 @@ spec:
           # manually choose "flexvolume" or "csi"
           #- --driver
           #- flexvolume
+          # specify CSI pods mount dir in RancherOS
+          #- --csi-pods-mount-dir
+          #- /opt/rke/var/lib/kubelet/pods
           env:
           - name: POD_NAMESPACE
             valueFrom:
