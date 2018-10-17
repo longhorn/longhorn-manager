@@ -42,7 +42,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	logrus.Infof("ControllerServer create volume req: %v", req)
 	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
 		logrus.Errorf("CreateVolume: invalid create volume req: %v", req)
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	// Check sanity of request Name, Volume Capabilities
 	if len(req.GetName()) == 0 {
@@ -106,7 +106,7 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	logrus.Infof("ControllerServer delete volume req: %v", req)
 	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
 		logrus.Errorf("DeleteVolume: invalid delete volume req: %v", req)
-		return nil, err
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	existVol, err := cs.apiClient.Volume.ById(req.GetVolumeId())
@@ -154,7 +154,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 	}
 
 	needToAttach := true
-	if existVol.State == string(types.VolumeStateAttached) || existVol.State == string(types.VolumeStateAttaching) {
+	if existVol.State == string(types.VolumeStateAttached) {
 		needToAttach = false
 	}
 
@@ -187,15 +187,16 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	if existVol == nil {
-		logrus.Warnf("ControllerUnpublishVolume: the volume %s not exists", req.GetVolumeId())
-		return &csi.ControllerUnpublishVolumeResponse{}, nil
+		msg := fmt.Sprintf("ControllerPublishVolume: the volume %s not exists", req.GetVolumeId())
+		logrus.Warn(msg)
+		return nil, status.Error(codes.NotFound, msg)
 	}
 	if existVol.State == string(types.VolumeStateDetaching) {
 		return nil, status.Errorf(codes.Aborted, "The volume %s is detaching", req.GetVolumeId())
 	}
 
 	needToDetach := false
-	if existVol.State == string(types.VolumeStateAttached) {
+	if existVol.State == string(types.VolumeStateAttached) || existVol.State == string(types.VolumeStateAttaching) {
 		needToDetach = true
 	}
 
@@ -206,9 +207,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 	} else {
-		// return Aborted let CSI retry ControllerUnpublishVolume
-		logrus.Infof("ControllerUnpublishVolume: no need to detach volume %s", req.GetVolumeId())
-		return nil, status.Errorf(codes.Aborted, "The volume %s is %s", req.GetVolumeId(), existVol.State)
+		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
 	if !cs.waitForDetach(req.GetVolumeId()) {
