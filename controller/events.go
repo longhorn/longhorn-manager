@@ -19,6 +19,7 @@ const (
 	EventReasonHealthy  = "Healthy"
 	EventReasonFaulted  = "Faulted"
 	EventReasonDegraded = "Degraded"
+	EventReasonOrphaned = "Orphaned"
 
 	EventReasonRebooted = "Rebooted"
 )
