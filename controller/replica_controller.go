@@ -215,6 +215,36 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	}
 
 	if replica.DeletionTimestamp != nil {
+		if replica.Spec.OwnerID != "" {
+			// Check if replica's managing node died
+			if down, err := rc.ds.IsNodeDownOrDeleted(replica.Spec.OwnerID); err != nil {
+				return err
+			} else if down {
+				replica.Spec.OwnerID = rc.controllerID
+				_, err = rc.ds.UpdateReplica(replica)
+				return err
+			}
+		}
+
+		if replica.Spec.NodeID != "" {
+			// Check if replica's executing node died
+			if down, err := rc.ds.IsNodeDownOrDeleted(replica.Spec.NodeID); err != nil {
+				return err
+			} else if down {
+				dataPath := replica.Spec.DataPath
+				nodeID := replica.Spec.NodeID
+				replica.Spec.DataPath = ""
+				replica.Spec.NodeID = ""
+				_, err = rc.ds.UpdateReplica(replica)
+				if err == nil {
+					rc.eventRecorder.Eventf(replica, v1.EventTypeWarning, EventReasonOrphaned,
+						"Node %v down or deleted, can't cleanup replica %v data at %v",
+						nodeID, replica.Name, dataPath)
+				}
+				return err
+			}
+		}
+
 		if replica.Spec.NodeID == rc.controllerID {
 			if err := rc.instanceHandler.DeleteInstanceForObject(replica); err != nil {
 				return err
