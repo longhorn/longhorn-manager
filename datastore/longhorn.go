@@ -228,10 +228,14 @@ func (s *DataStore) getVolumeRO(name string) (*longhorn.Volume, error) {
 	return resultRO, nil
 }
 
+func (s *DataStore) ListVolumesRO() ([]*longhorn.Volume, error) {
+	return s.vLister.Volumes(s.namespace).List(labels.Everything())
+}
+
 func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 	itemMap := make(map[string]*longhorn.Volume)
 
-	list, err := s.vLister.Volumes(s.namespace).List(labels.Everything())
+	list, err := s.ListVolumesRO()
 	if err != nil {
 		return nil, err
 	}
@@ -338,11 +342,7 @@ func (s *DataStore) GetEngine(name string) (*longhorn.Engine, error) {
 	return s.fixupEngine(resultRO.DeepCopy())
 }
 
-func (s *DataStore) ListVolumeEngines(volumeName string) (map[string]*longhorn.Engine, error) {
-	selector, err := getVolumeSelector(volumeName)
-	if err != nil {
-		return nil, err
-	}
+func (s *DataStore) listEngines(selector labels.Selector) (map[string]*longhorn.Engine, error) {
 	list, err := s.eLister.Engines(s.namespace).List(selector)
 	if err != nil {
 		return nil, err
@@ -356,6 +356,18 @@ func (s *DataStore) ListVolumeEngines(volumeName string) (map[string]*longhorn.E
 		}
 	}
 	return engines, nil
+}
+
+func (s *DataStore) ListEngines() (map[string]*longhorn.Engine, error) {
+	return s.listEngines(labels.Everything())
+}
+
+func (s *DataStore) ListVolumeEngines(volumeName string) (map[string]*longhorn.Engine, error) {
+	selector, err := getVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	return s.listEngines(selector)
 }
 
 func (s *DataStore) fixupEngine(engine *longhorn.Engine) (*longhorn.Engine, error) {
@@ -452,17 +464,13 @@ func (s *DataStore) getReplicaRO(name string) (*longhorn.Replica, error) {
 	return resultRO, nil
 }
 
-func (s *DataStore) ListVolumeReplicas(volumeName string) (map[string]*longhorn.Replica, error) {
-	itemMap := map[string]*longhorn.Replica{}
-	selector, err := getVolumeSelector(volumeName)
-	if err != nil {
-		return nil, err
-	}
+func (s *DataStore) listReplicas(selector labels.Selector) (map[string]*longhorn.Replica, error) {
 	list, err := s.rLister.Replicas(s.namespace).List(selector)
 	if err != nil {
 		return nil, err
 	}
 
+	itemMap := map[string]*longhorn.Replica{}
 	for _, itemRO := range list {
 		// Cannot use cached object from lister
 		itemMap[itemRO.Name], err = s.fixupReplica(itemRO.DeepCopy())
@@ -471,6 +479,18 @@ func (s *DataStore) ListVolumeReplicas(volumeName string) (map[string]*longhorn.
 		}
 	}
 	return itemMap, nil
+}
+
+func (s *DataStore) ListReplicas() (map[string]*longhorn.Replica, error) {
+	return s.listReplicas(labels.Everything())
+}
+
+func (s *DataStore) ListVolumeReplicas(volumeName string) (map[string]*longhorn.Replica, error) {
+	selector, err := getVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	return s.listReplicas(selector)
 }
 
 func (s *DataStore) fixupReplica(replica *longhorn.Replica) (*longhorn.Replica, error) {
@@ -683,6 +703,9 @@ func getNodeSelector(nodeName string) (labels.Selector, error) {
 
 func (s *DataStore) ListReplicasByNode(name string) (map[string][]*longhorn.Replica, error) {
 	nodeSelector, err := getNodeSelector(name)
+	if err != nil {
+		return nil, err
+	}
 	replicaList, err := s.rLister.Replicas(s.namespace).List(nodeSelector)
 	if err != nil {
 		return nil, err

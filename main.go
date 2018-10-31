@@ -46,6 +46,7 @@ func main() {
 		app.SnapshotCmd(),
 		app.DeployDriverCmd(),
 		app.CSICommand(),
+		app.UninstallCmd(),
 	}
 	a.CommandNotFound = cmdNotFound
 	a.OnUsageError = onUsageError
