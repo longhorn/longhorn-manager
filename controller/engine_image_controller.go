@@ -233,7 +233,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 
 	dsName := getEngineImageDaemonSetName(engineImage.Name)
 	if engineImage.DeletionTimestamp != nil {
-		if err := ic.ds.DeleteEngineImageDaemonSet(dsName); err != nil {
+		if err := ic.ds.DeleteDaemonSet(dsName); err != nil {
 			return errors.Wrapf(err, "cannot cleanup daemonset of engine image %v", engineImage.Name)
 		}
 		logrus.Infof("Removed daemon set %v for engine image %v (%v)", dsName, engineImage.Name, engineImage.Spec.Image)
