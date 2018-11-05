@@ -10,7 +10,7 @@ import (
 	"github.com/rancher/longhorn-manager/app"
 )
 
-var VERSION = "v0.3.0"
+var VERSION = "dev"
 
 func cmdNotFound(c *cli.Context, command string) {
 	panic(fmt.Errorf("Unrecognized command: %s", command))
@@ -46,6 +46,7 @@ func main() {
 		app.SnapshotCmd(),
 		app.DeployDriverCmd(),
 		app.CSICommand(),
+		app.PostUpgradeCmd(),
 		app.UninstallCmd(),
 	}
 	a.CommandNotFound = cmdNotFound
