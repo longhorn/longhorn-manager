@@ -18,6 +18,8 @@ import (
 	"github.com/rancher/longhorn-manager/util"
 )
 
+var VERSION = "v0.3.0"
+
 const (
 	FlagEngineImage    = "engine-image"
 	FlagManagerImage   = "manager-image"
@@ -91,7 +93,7 @@ func startManager(c *cli.Context) error {
 
 	done := make(chan struct{})
 
-	ds, wsc, err := controller.StartControllers(done, currentNodeID, serviceAccount, managerImage, kubeconfigPath)
+	ds, wsc, err := controller.StartControllers(done, currentNodeID, serviceAccount, managerImage, kubeconfigPath, VERSION)
 	if err != nil {
 		return err
 	}
