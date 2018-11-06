@@ -98,6 +98,10 @@ func startManager(c *cli.Context) error {
 
 	m := manager.NewVolumeManager(currentNodeID, ds)
 
+	if err := ds.InitSettings(); err != nil {
+		return err
+	}
+
 	if err := updateSettingDefaultEngineImage(m, engineImage); err != nil {
 		return err
 	}

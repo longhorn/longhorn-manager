@@ -29,6 +29,33 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
+func (s *DataStore) InitSettings() error {
+	for _, sName := range types.SettingNameList {
+		definition, ok := types.SettingDefinitions[sName]
+		if !ok {
+			return fmt.Errorf("BUG: setting %v is not defined", sName)
+		}
+		if _, err := s.sLister.Settings(s.namespace).Get(string(sName)); err != nil {
+			if ErrorIsNotFound(err) {
+				setting := &longhorn.Setting{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: string(sName),
+					},
+					Setting: types.Setting{
+						Value: definition.Default,
+					},
+				}
+				if _, err := s.CreateSetting(setting); err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (s *DataStore) CreateSetting(setting *longhorn.Setting) (*longhorn.Setting, error) {
 	return s.lhClient.LonghornV1alpha1().Settings(s.namespace).Create(setting)
 }

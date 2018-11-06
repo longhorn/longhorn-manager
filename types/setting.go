@@ -22,6 +22,16 @@ const (
 	SettingNameStorageMinimalAvailablePercentage = SettingName("storage-minimal-available-percentage")
 )
 
+var (
+	SettingNameList = []SettingName{
+		SettingNameBackupTarget,
+		SettingNameBackupTargetCredentialSecret,
+		SettingNameDefaultEngineImage,
+		SettingNameStorageOverProvisioningPercentage,
+		SettingNameStorageMinimalAvailablePercentage,
+	}
+)
+
 type SettingCategory string
 
 const (
