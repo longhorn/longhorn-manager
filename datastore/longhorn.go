@@ -786,6 +786,28 @@ func (s *DataStore) GetSettingAsInt(settingName types.SettingName) (int64, error
 	return 0, fmt.Errorf("The %v setting value couldn't change to integer, value is %v ", string(settingName), value)
 }
 
+func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error) {
+	definition, ok := types.SettingDefinitions[settingName]
+	if !ok {
+		return false, fmt.Errorf("setting %v is not supported", settingName)
+	}
+	settings, err := s.GetSetting(settingName)
+	if err != nil {
+		return false, err
+	}
+	value := settings.Value
+
+	if definition.Type == types.SettingTypeBool {
+		result, err := strconv.ParseBool(value)
+		if err != nil {
+			return false, err
+		}
+		return result, nil
+	}
+
+	return false, fmt.Errorf("The %v setting value couldn't be converted to bool, value is %v ", string(settingName), value)
+}
+
 func (s *DataStore) UpdateVolumeAndOwner(v *longhorn.Volume) (*longhorn.Volume, error) {
 	engines, err := s.ListVolumeEngines(v.Name)
 	if err != nil {

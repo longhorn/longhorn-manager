@@ -10,7 +10,7 @@ import (
 	"github.com/rancher/longhorn-manager/app"
 )
 
-var VERSION = "0.2.0"
+var VERSION = "v0.3.0"
 
 func cmdNotFound(c *cli.Context, command string) {
 	panic(fmt.Errorf("Unrecognized command: %s", command))
@@ -50,6 +50,8 @@ func main() {
 	}
 	a.CommandNotFound = cmdNotFound
 	a.OnUsageError = onUsageError
+
+	app.VERSION = VERSION
 
 	if err := a.Run(os.Args); err != nil {
 		logrus.Fatalf("Critical error: %v", err)

@@ -28,7 +28,7 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
-func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, managerImage, kubeconfigPath string) (*datastore.DataStore, *WebsocketController, error) {
+func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, managerImage, kubeconfigPath, version string) (*datastore.DataStore, *WebsocketController, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, "+
@@ -95,6 +95,9 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 		kubeClient, namespace, controllerID)
 	ws := NewWebsocketController(volumeInformer, engineInformer, replicaInformer,
 		settingInformer, engineImageInformer, nodeInformer)
+	sc := NewSettingController(ds, scheme,
+		settingInformer,
+		kubeClient, version)
 
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
@@ -107,6 +110,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	go ic.Run(Workers, stopCh)
 	go nc.Run(Workers, stopCh)
 	go ws.Run(stopCh)
+	go sc.Run(stopCh)
 
 	return ds, ws, nil
 }

@@ -20,6 +20,8 @@ const (
 	SettingNameDefaultEngineImage                = SettingName("default-engine-image")
 	SettingNameStorageOverProvisioningPercentage = SettingName("storage-over-provisioning-percentage")
 	SettingNameStorageMinimalAvailablePercentage = SettingName("storage-minimal-available-percentage")
+	SettingNameUpgradeChecker                    = SettingName("upgrade-checker")
+	SettingNameLatestLonghornVersion             = SettingName("latest-longhorn-version")
 )
 
 var (
@@ -29,6 +31,8 @@ var (
 		SettingNameDefaultEngineImage,
 		SettingNameStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage,
+		SettingNameUpgradeChecker,
+		SettingNameLatestLonghornVersion,
 	}
 )
 
@@ -57,6 +61,8 @@ var (
 		SettingNameDefaultEngineImage:                SettingDefinitionDefaultEngineImage,
 		SettingNameStorageOverProvisioningPercentage: SettingDefinitionStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage: SettingDefinitionStorageMinimalAvailablePercentage,
+		SettingNameUpgradeChecker:                    SettingDefinitionUpgradeChecker,
+		SettingNameLatestLonghornVersion:             SettingDefinitionLatestLonghornVersion,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -104,5 +110,24 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "10",
+	}
+
+	SettingDefinitionUpgradeChecker = SettingDefinition{
+		DisplayName: "Enable Upgrade Checker",
+		Description: "Upgrade Checker will check for new Longhorn version periodically. When there is a new version available, it will notify the user using UI",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "true",
+	}
+
+	SettingDefinitionLatestLonghornVersion = SettingDefinition{
+		DisplayName: "Latest Longhorn Version",
+		Description: "The latest version of Longhorn available. Update by Upgrade Checker automatically",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    false,
+		ReadOnly:    true,
 	}
 )
