@@ -15,7 +15,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/util/version"
 
 	longhornclient "github.com/rancher/longhorn-manager/client"
@@ -93,6 +93,10 @@ func DeployDriverCmd() cli.Command {
 				EnvVar: EnvCSIProvisionerName,
 				Value:  csi.DefaultCSIProvisionerName,
 			},
+			cli.StringFlag{
+				Name:  FlagKubeConfig,
+				Usage: "Specify path to kube config (optional)",
+			},
 		},
 		Action: func(c *cli.Context) {
 			if err := deployDriver(c); err != nil {
@@ -112,7 +116,7 @@ func deployDriver(c *cli.Context) error {
 		return fmt.Errorf("require %v", FlagManagerURL)
 	}
 
-	config, err := rest.InClusterConfig()
+	config, err := clientcmd.BuildConfigFromFlags("", c.String(FlagKubeConfig))
 	if err != nil {
 		return errors.Wrap(err, "unable to get client config")
 	}
@@ -280,9 +284,11 @@ func deployFlexvolumeDriver(kubeClient *clientset.Clientset, c *cli.Context, man
 	done := make(chan struct{})
 	util.RegisterShutdownChannel(done)
 
-	if err = startProvisioner(kubeClient, managerURL, done); err != nil {
+	if err = startProvisioner(kubeClient, managerURL); err != nil {
 		return err
 	}
+	<-done
+	logrus.Debug("Stop the built-in Longhorn provisioner")
 
 	return nil
 }
@@ -382,7 +388,7 @@ func getFlexvolumeDaemonSetSpec(image, flexvolumeDir string) *appsv1beta2.Daemon
 	return d
 }
 
-func startProvisioner(kubeClient *clientset.Clientset, managerURL string, stopCh <-chan struct{}) error {
+func startProvisioner(kubeClient *clientset.Clientset, managerURL string) error {
 	logrus.Debug("Enable the built-in Longhorn provisioner only for FlexVolume")
 
 	clientOpts := &longhornclient.ClientOpts{Url: managerURL}
@@ -396,15 +402,13 @@ func startProvisioner(kubeClient *clientset.Clientset, managerURL string, stopCh
 		return errors.Wrap(err, "Cannot start Provisioner: failed to get Kubernetes server version")
 	}
 	provisioner := controller.NewProvisioner(apiClient)
-	pc := pvController.NewProvisionController(
+	go pvController.NewProvisionController(
 		kubeClient,
 		controller.LonghornProvisionerName,
 		provisioner,
 		serverVersion.GitVersion,
-	)
+	).Run(nil)
 
-	pc.Run(stopCh)
-	logrus.Debug("Stop the built-in Longhorn provisioner")
 	return nil
 }
 
