@@ -37,7 +37,7 @@ var (
 
 	upgradeCheckInterval          = time.Duration(24) * time.Hour
 	settingControllerResyncPeriod = time.Hour
-	checkUpgradeURL               = "http://upgrade-responder.longhorn.rancher.io/v1/checkupgrade"
+	checkUpgradeURL               = "https://longhorn-upgrade-responder.rancher.io/v1/checkupgrade"
 )
 
 type SettingController struct {
