@@ -407,7 +407,7 @@ func GetInitiatorNSPath() string {
 	pf := iscsi_util.NewProcessFinder("/host/proc")
 	ps, err := pf.FindAncestorByName("dockerd")
 	if err != nil {
-		logrus.Warnf("Failed to find dockerd in the process ancestors, fall back to use pid 1: %v", err)
+		logrus.Debugf("Use pid 1 namespace for initiator: %v", err)
 	} else {
 		initiatorNSPath = fmt.Sprintf("/host/proc/%d/ns", ps.Pid)
 	}
