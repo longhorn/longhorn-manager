@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -237,6 +238,16 @@ func (sc *SettingController) CheckLatestLonghornVersion() (string, error) {
 		return "", err
 	}
 	defer r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		message := ""
+		messageBytes, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			message = err.Error()
+		} else {
+			message = string(messageBytes)
+		}
+		return "", fmt.Errorf("query return status code %v, message %v", r.StatusCode, message)
+	}
 	if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
 		return "", err
 	}
