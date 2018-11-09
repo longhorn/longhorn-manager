@@ -35,7 +35,7 @@ const (
 var (
 	ownerKindSetting = longhorn.SchemeGroupVersion.WithKind("Setting").String()
 
-	upgradeCheckInterval          = time.Duration(24) * time.Hour
+	upgradeCheckInterval          = time.Hour
 	settingControllerResyncPeriod = time.Hour
 	checkUpgradeURL               = "https://longhorn-upgrade-responder.rancher.io/v1/checkupgrade"
 )
@@ -206,7 +206,8 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 	oldVersion := latestLonghornVersion.Value
 	latestLonghornVersion.Value, err = sc.CheckLatestLonghornVersion()
 	if err != nil {
-		return err
+		logrus.Debugf("Failed to check for the latest upgrade: %v", err)
+		return nil
 	}
 
 	sc.lastUpgradeCheckedTimestamp = now
