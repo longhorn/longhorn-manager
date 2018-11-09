@@ -207,6 +207,7 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 	oldVersion := latestLonghornVersion.Value
 	latestLonghornVersion.Value, err = sc.CheckLatestLonghornVersion()
 	if err != nil {
+		// non-critical error, don't retry
 		logrus.Debugf("Failed to check for the latest upgrade: %v", err)
 		return nil
 	}
@@ -214,9 +215,11 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 	sc.lastUpgradeCheckedTimestamp = now
 
 	if latestLonghornVersion.Value != oldVersion {
-		logrus.Infof("New Longhorn version %v is available", latestLonghornVersion.Value)
+		logrus.Infof("Latest Longhorn version is %v", latestLonghornVersion.Value)
 		if _, err := sc.ds.UpdateSetting(latestLonghornVersion); err != nil {
-			return err
+			// non-critical error, don't retry
+			logrus.Debugf("Cannot update latest Longhorn version: %v", err)
+			return nil
 		}
 	}
 	return nil
