@@ -49,6 +49,10 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.BaseImage = baseImage
 	}
 
+	if frontend, ok := volOptions["frontend"]; ok {
+		vol.Frontend = frontend
+	}
+
 	return vol, nil
 }
 

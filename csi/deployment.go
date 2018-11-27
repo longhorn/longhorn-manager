@@ -286,6 +286,14 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 									},
 								},
 								{
+									Name: "POD_NAMESPACE",
+									ValueFrom: &v1.EnvVarSource{
+										FieldRef: &v1.ObjectFieldSelector{
+											FieldPath: "metadata.namespace",
+										},
+									},
+								},
+								{
 									Name:  "CSI_ENDPOINT",
 									Value: "unix://var/lib/kubelet/plugins/io.rancher.longhorn/csi.sock",
 								},
