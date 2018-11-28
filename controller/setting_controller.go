@@ -62,7 +62,8 @@ type Version struct {
 }
 
 type CheckUpgradeRequest struct {
-	LonghornVersion string `json:"longhornVersion"`
+	LonghornVersion   string `json:"longhornVersion"`
+	KubernetesVersion string `json:"kubernetesVersion"`
 }
 
 type CheckUpgradeResponse struct {
@@ -230,8 +231,14 @@ func (sc *SettingController) CheckLatestLonghornVersion() (string, error) {
 		resp    CheckUpgradeResponse
 		content bytes.Buffer
 	)
+	kubeVersion, err := sc.kubeClient.Discovery().ServerVersion()
+	if err != nil {
+		return "", errors.Wrap(err, "failed to get Kubernetes server version")
+	}
+
 	req := &CheckUpgradeRequest{
-		LonghornVersion: sc.version,
+		LonghornVersion:   sc.version,
+		KubernetesVersion: kubeVersion.GitVersion,
 	}
 	if err := json.NewEncoder(&content).Encode(req); err != nil {
 		return "", err
