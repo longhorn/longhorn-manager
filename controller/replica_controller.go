@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -250,6 +251,10 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 				return err
 			}
 			if replica.Spec.Active {
+				// prevent accidentally deletion
+				if !strings.Contains(filepath.Base(filepath.Clean(replica.Spec.DataPath)), "-") {
+					return fmt.Errorf("%v doesn't look like a replica data path", replica.Spec.DataPath)
+				}
 				if err := os.RemoveAll(replica.Spec.DataPath); err != nil {
 					return err
 				}
