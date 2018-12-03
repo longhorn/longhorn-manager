@@ -36,6 +36,9 @@ import (
 
 var (
 	ownerKindVolume = longhorn.SchemeGroupVersion.WithKind("Volume").String()
+
+	RetryInterval = 100 * time.Millisecond
+	RetryCounts   = 20
 )
 
 const (
@@ -1277,6 +1280,30 @@ func (vc *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 		pathToNewRs[path] = nr
 		rs[nr.Name] = nr
 	}
+
+	// WORKAROUND: The immedidate read after multiple object's write seems
+	// can fail. See https://github.com/rancher/longhorn/issues/133
+	found := false
+	for i := 0; i < RetryCounts; i++ {
+		tmprs, err := vc.ds.ListVolumeReplicas(v.Name)
+		if err != nil {
+			return errors.Wrapf(err, "volume %v: cannot check matching replicas", v.Name)
+		}
+		if len(tmprs) == len(rs) {
+			found = true
+			break
+		}
+		if len(tmprs) > len(rs) {
+			logrus.Errorf("BUG: volume %v: new Replicas are more than expected!", v.Name)
+			break
+		}
+		logrus.Debugf("volume %v: New replicas wasn't showing up, retrying", v.Name)
+		time.Sleep(RetryInterval)
+	}
+	if !found {
+		return fmt.Errorf("volume %v: cannot verify the existance of newly created replicas", v.Name)
+	}
+
 	return nil
 }
 
