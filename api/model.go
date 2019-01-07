@@ -128,6 +128,10 @@ type NodeInput struct {
 	NodeID string `json:"nodeId"`
 }
 
+type UpdateReplicaCountInput struct {
+	ReplicaCount int `json:"replicaCount"`
+}
+
 type Node struct {
 	client.Resource
 	Name            string                                      `json:"name"`
@@ -171,6 +175,8 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("controller", Controller{})
 	schemas.AddType("diskUpdate", types.DiskSpec{})
 	schemas.AddType("nodeInput", NodeInput{})
+	schemas.AddType("UpdateReplicaCountInput", UpdateReplicaCountInput{})
+
 	schemas.AddType("settingDefinition", types.SettingDefinition{})
 	// to avoid duplicate name with built-in type condition
 	schemas.AddType("volumeCondition", types.Condition{})
@@ -320,6 +326,10 @@ func volumeSchema(volume *client.Schema) {
 
 		"recurringUpdate": {
 			Input: "recurringInput",
+		},
+
+		"updateReplicaCount": {
+			Input: "UpdateReplicaCountInput",
 		},
 
 		"jobList": {},
@@ -513,6 +523,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["migrationStart"] = struct{}{}
 			actions["migrationConfirm"] = struct{}{}
 			actions["migrationRollback"] = struct{}{}
+			actions["updateReplicaCount"] = struct{}{}
 		}
 	}
 

@@ -94,9 +94,9 @@ func (m *VolumeManager) SettingValidation(name, value string) error {
 		if err != nil {
 			return fmt.Errorf("fail to set setting with invalid %s: %v", types.SettingDefinitions[types.SettingNameDefaultEngineImage].DisplayName, err)
 		}
-		if c < 1 || c > 20 {
-			return fmt.Errorf("fail to set setting with invalid %s: valid value must between 1 to 20",
-				types.SettingDefinitions[types.SettingNameDefaultEngineImage].DisplayName)
+		if err := m.validateReplicaCount(c); err != nil {
+			return fmt.Errorf("fail to set setting with invalid %s: %v",
+				types.SettingDefinitions[types.SettingNameDefaultEngineImage].DisplayName, err)
 		}
 	}
 	return nil
