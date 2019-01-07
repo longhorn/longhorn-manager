@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pkg/errors"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/rancher/longhorn-manager/types"
@@ -65,7 +67,10 @@ func (m *VolumeManager) CreateOrUpdateSetting(s *longhorn.Setting) (*longhorn.Se
 	return setting, nil
 }
 
-func (m *VolumeManager) SettingValidation(name, value string) error {
+func (m *VolumeManager) SettingValidation(name, value string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "fail to set settings with invalid %v", name)
+	}()
 	sName := types.SettingName(name)
 
 	switch sName {
@@ -75,28 +80,27 @@ func (m *VolumeManager) SettingValidation(name, value string) error {
 		reg := regexp.MustCompile(regStr)
 		findStr := reg.FindAllString(value, -1)
 		if len(findStr) != 0 {
-			return fmt.Errorf("fail to set settings with invalid BackupTarget %s, contains %v", value, strings.Join(findStr, " or "))
+			return fmt.Errorf("value %s, contains %v", value, strings.Join(findStr, " or "))
 		}
 	case types.SettingNameStorageOverProvisioningPercentage:
 		// additional check whether over provisioning percentage is positive
 		value, err := util.ConvertSize(value)
 		if err != nil || value < 0 {
-			return fmt.Errorf("fail to set settings with invalid StorageOverProvisioningPercentag %v, value should be positive", value)
+			return fmt.Errorf("value %v should be positive", value)
 		}
 	case types.SettingNameStorageMinimalAvailablePercentage:
 		// additional check whether minimal available percentage is between 0 to 100
 		value, err := util.ConvertSize(value)
 		if err != nil || value < 0 || value > 100 {
-			return fmt.Errorf("fail to set settings with invalid StorageMinimalAvailablePercentage %v, value should between 0 to 100", value)
+			return fmt.Errorf("value %v should between 0 to 100", value)
 		}
 	case types.SettingNameDefaultReplicaCount:
 		c, err := strconv.Atoi(value)
 		if err != nil {
-			return fmt.Errorf("fail to set setting with invalid %s: %v", types.SettingDefinitions[types.SettingNameDefaultEngineImage].DisplayName, err)
+			return fmt.Errorf("value %v is not int: %v", types.SettingNameDefaultReplicaCount, err)
 		}
 		if err := m.validateReplicaCount(c); err != nil {
-			return fmt.Errorf("fail to set setting with invalid %s: %v",
-				types.SettingDefinitions[types.SettingNameDefaultEngineImage].DisplayName, err)
+			return fmt.Errorf("value %v: %v", c, err)
 		}
 	}
 	return nil
