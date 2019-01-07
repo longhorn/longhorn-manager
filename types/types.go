@@ -53,7 +53,6 @@ const (
 	OptionBaseImage           = "baseImage"
 	OptionFrontend            = "frontend"
 
-	DefaultNumberOfReplicas    = "3"
 	DefaultStaleReplicaTimeout = "30"
 
 	EngineImageChecksumNameLength = 8

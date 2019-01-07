@@ -45,7 +45,8 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 		return nil, fmt.Errorf("ReadWriteMany access mode is not supported")
 	}
 	resourceStorage := pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
-	numberOfReplicasParam := types.DefaultNumberOfReplicas
+	// Invoke DefaultReplicaCount
+	numberOfReplicasParam := "0"
 	if _, ok := opts.Parameters[types.OptionNumberOfReplicas]; ok {
 		numberOfReplicasParam = opts.Parameters[types.OptionNumberOfReplicas]
 	}

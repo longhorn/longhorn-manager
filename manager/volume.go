@@ -135,6 +135,14 @@ func (m *VolumeManager) GetReplicasSorted(vName string) ([]*longhorn.Replica, er
 	return replicas, nil
 }
 
+func (m *VolumeManager) getDefaultReplicaCount() (int, error) {
+	c, err := m.ds.GetSettingAsInt(types.SettingNameDefaultReplicaCount)
+	if err != nil {
+		return 0, err
+	}
+	return int(c), nil
+}
+
 func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to create volume %v: %+v", name, spec)
@@ -169,8 +177,11 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 	size = util.RoundUpSize(size)
 
 	if spec.NumberOfReplicas == 0 {
-		logrus.Warnf("Invalid number of replicas %v, override it to default", spec.NumberOfReplicas)
-		spec.NumberOfReplicas = 3
+		spec.NumberOfReplicas, err = m.getDefaultReplicaCount()
+		if err != nil {
+			return nil, errors.Wrap(err, "BUG: cannot get valid number for setting default replica count")
+		}
+		logrus.Infof("Use the default number of replicas %v", spec.NumberOfReplicas)
 	}
 	defaultEngineImage, err := m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if defaultEngineImage == "" {

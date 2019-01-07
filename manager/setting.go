@@ -3,6 +3,7 @@ package manager
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -87,6 +88,15 @@ func (m *VolumeManager) SettingValidation(name, value string) error {
 		value, err := util.ConvertSize(value)
 		if err != nil || value < 0 || value > 100 {
 			return fmt.Errorf("fail to set settings with invalid StorageMinimalAvailablePercentage %v, value should between 0 to 100", value)
+		}
+	case types.SettingNameDefaultReplicaCount:
+		c, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("fail to set setting with invalid %s: %v", types.SettingDefinitions[types.SettingNameDefaultEngineImage].DisplayName, err)
+		}
+		if c < 1 || c > 20 {
+			return fmt.Errorf("fail to set setting with invalid %s: valid value must between 1 to 20",
+				types.SettingDefinitions[types.SettingNameDefaultEngineImage].DisplayName)
 		}
 	}
 	return nil

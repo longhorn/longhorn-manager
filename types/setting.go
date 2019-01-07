@@ -22,6 +22,7 @@ const (
 	SettingNameStorageMinimalAvailablePercentage = SettingName("storage-minimal-available-percentage")
 	SettingNameUpgradeChecker                    = SettingName("upgrade-checker")
 	SettingNameLatestLonghornVersion             = SettingName("latest-longhorn-version")
+	SettingNameDefaultReplicaCount               = SettingName("default-replica-count")
 )
 
 var (
@@ -33,6 +34,7 @@ var (
 		SettingNameStorageMinimalAvailablePercentage,
 		SettingNameUpgradeChecker,
 		SettingNameLatestLonghornVersion,
+		SettingNameDefaultReplicaCount,
 	}
 )
 
@@ -63,6 +65,7 @@ var (
 		SettingNameStorageMinimalAvailablePercentage: SettingDefinitionStorageMinimalAvailablePercentage,
 		SettingNameUpgradeChecker:                    SettingDefinitionUpgradeChecker,
 		SettingNameLatestLonghornVersion:             SettingDefinitionLatestLonghornVersion,
+		SettingNameDefaultReplicaCount:               SettingDefinitionDefaultReplicaCount,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -129,5 +132,15 @@ var (
 		Type:        SettingTypeString,
 		Required:    false,
 		ReadOnly:    true,
+	}
+
+	SettingDefinitionDefaultReplicaCount = SettingDefinition{
+		DisplayName: "Default Replica Count",
+		Description: "The default number of replicas",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "3",
 	}
 )
