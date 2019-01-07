@@ -63,10 +63,11 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("POST").Path("/v1/volumes").Handler(f(schemas, s.VolumeCreate))
 
 	volumeActions := map[string]func(http.ResponseWriter, *http.Request) error{
-		"attach":          s.VolumeAttach,
-		"detach":          s.VolumeDetach,
-		"salvage":         s.VolumeSalvage,
-		"recurringUpdate": s.VolumeRecurringUpdate,
+		"attach":             s.VolumeAttach,
+		"detach":             s.VolumeDetach,
+		"salvage":            s.VolumeSalvage,
+		"recurringUpdate":    s.VolumeRecurringUpdate,
+		"updateReplicaCount": s.VolumeUpdateReplicaCount,
 
 		"replicaRemove": s.ReplicaRemove,
 		"engineUpgrade": s.EngineUpgrade,

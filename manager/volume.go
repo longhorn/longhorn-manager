@@ -555,3 +555,34 @@ func (m *VolumeManager) MigrationRollback(name string) (v *longhorn.Volume, err 
 	logrus.Debugf("Start rolling back migration for volume %v", v.Name)
 	return v, nil
 }
+
+func (m *VolumeManager) validateReplicaCount(count int) error {
+	if count < 1 || count > 20 {
+		return fmt.Errorf("replica count value must between 1 to 20")
+	}
+	return nil
+}
+
+func (m *VolumeManager) UpdateReplicaCount(name string, count int) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update replica count for volume %v", name)
+	}()
+
+	if err := m.validateReplicaCount(count); err != nil {
+		return nil, err
+	}
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	v.Spec.NumberOfReplicas = count
+
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+	logrus.Debugf("Updated volume %v replica count to %v", v.Name, count)
+	return v, nil
+}
