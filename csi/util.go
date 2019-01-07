@@ -13,7 +13,6 @@ import (
 
 const (
 	defaultStaleReplicaTimeout = 20
-	defaultNumberOfReplicas    = 2
 )
 
 func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, error) {
@@ -32,13 +31,10 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 
 	if numberOfReplicas, ok := volOptions["numberOfReplicas"]; ok {
 		nor, err := strconv.Atoi(numberOfReplicas)
-		if err != nil {
+		if err != nil || nor < 0 {
 			return nil, errors.Wrap(err, "Invalid parameter numberOfReplicas")
 		}
 		vol.NumberOfReplicas = int64(nor)
-	}
-	if vol.NumberOfReplicas <= 0 {
-		vol.NumberOfReplicas = defaultNumberOfReplicas
 	}
 
 	if fromBackup, ok := volOptions["fromBackup"]; ok {
