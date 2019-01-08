@@ -356,7 +356,7 @@ func ConfigBackupCredential(backupTarget string, credential map[string]string) e
 	return nil
 }
 
-func ConfigEnvWithCredential(backupTarget string, credentialSecret string, container *v1.Container) error {
+func ConfigEnvWithCredential(backupTarget string, credentialSecret string, hasEndpoint bool, container *v1.Container) error {
 	backupType, err := CheckBackupType(backupTarget)
 	if err != nil {
 		return err
@@ -374,7 +374,7 @@ func ConfigEnvWithCredential(backupTarget string, credentialSecret string, conta
 			},
 		}
 		container.Env = append(container.Env, accessKeyEnv)
-		secreKeyEnv := v1.EnvVar{
+		secretKeyEnv := v1.EnvVar{
 			Name: AWSSecretKey,
 			ValueFrom: &v1.EnvVarSource{
 				SecretKeyRef: &v1.SecretKeySelector{
@@ -385,19 +385,21 @@ func ConfigEnvWithCredential(backupTarget string, credentialSecret string, conta
 				},
 			},
 		}
-		container.Env = append(container.Env, secreKeyEnv)
-		endpointEnv := v1.EnvVar{
-			Name: AWSEndPoint,
-			ValueFrom: &v1.EnvVarSource{
-				SecretKeyRef: &v1.SecretKeySelector{
-					LocalObjectReference: v1.LocalObjectReference{
-						Name: credentialSecret,
+		container.Env = append(container.Env, secretKeyEnv)
+		if hasEndpoint {
+			endpointEnv := v1.EnvVar{
+				Name: AWSEndPoint,
+				ValueFrom: &v1.EnvVarSource{
+					SecretKeyRef: &v1.SecretKeySelector{
+						LocalObjectReference: v1.LocalObjectReference{
+							Name: credentialSecret,
+						},
+						Key: AWSEndPoint,
 					},
-					Key: AWSEndPoint,
 				},
-			},
+			}
+			container.Env = append(container.Env, endpointEnv)
 		}
-		container.Env = append(container.Env, endpointEnv)
 	}
 	return nil
 }
