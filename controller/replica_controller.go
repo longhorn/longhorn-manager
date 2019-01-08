@@ -467,8 +467,12 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 			return nil, err
 		}
 		if secret.Value != "" {
-			err := util.ConfigEnvWithCredential(r.Spec.RestoreFrom, secret.Value, &pod.Spec.Containers[0])
+			credentials, err := rc.ds.GetCredentialFromSecret(secret.Value)
 			if err != nil {
+				return nil, err
+			}
+			hasEndpoint := (credentials[types.AWSEndPoint] != "")
+			if err := util.ConfigEnvWithCredential(r.Spec.RestoreFrom, secret.Value, hasEndpoint, &pod.Spec.Containers[0]); err != nil {
 				return nil, err
 			}
 		}
