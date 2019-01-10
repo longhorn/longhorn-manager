@@ -160,6 +160,8 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, di
 	replica.Spec.NodeID = disk.NodeID
 	replica.Spec.DiskID = fsid
 	replica.Spec.DataPath = filepath.Join(disk.Path, "replicas", replica.Spec.VolumeName+"-"+util.RandomID())
+	logrus.Debugf("Schedule replica %v to node %v, disk %v, datapath %v",
+		replica.Name, replica.Spec.NodeID, replica.Spec.DiskID, replica.Spec.DataPath)
 }
 
 func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, info *DiskSchedulingInfo) bool {

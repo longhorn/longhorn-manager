@@ -256,8 +256,10 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 					return fmt.Errorf("%v doesn't look like a replica data path", replica.Spec.DataPath)
 				}
 				if err := os.RemoveAll(replica.Spec.DataPath); err != nil {
-					return err
+					return errors.Wrapf(err, "cannot cleanup after replica %v at %v", replica.Name, replica.Spec.DataPath)
 				}
+			} else {
+				logrus.Debugf("Didn't cleanup replica %v since it's not the active one for the path %v", replica.Name, replica.Spec.DataPath)
 			}
 			return rc.ds.RemoveFinalizerForReplica(replica)
 		}
