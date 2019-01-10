@@ -321,6 +321,27 @@ func singleQuotes(static string) string {
 	return fmt.Sprintf("'%s'", static)
 }
 
+func (rc *ReplicaController) restoreNeedForReplica(r *longhorn.Replica) (bool, error) {
+	if (r.Spec.RestoreFrom == "") != (r.Spec.RestoreName == "") {
+		return false, fmt.Errorf("BUG: r.Spec.RestoreFrom and r.Spec.RestoreName must both filled")
+	}
+	if r.Spec.RestoreFrom == "" {
+		return false, nil
+	}
+	rs, err := rc.ds.ListVolumeReplicas(r.Spec.VolumeName)
+	if err != nil {
+		return false, errors.Wrapf(err, "fail to check restore necessarity")
+	}
+	for _, r := range rs {
+		if r.Spec.HealthyAt != "" {
+			//volume was healthy, no need to restore the replica
+			//rebuild process will take care of it
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
@@ -335,7 +356,11 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 	if r.Spec.BaseImage != "" {
 		cmd = append(cmd, "--backing-file", "/share/base_image")
 	}
-	if r.Spec.RestoreFrom != "" && r.Spec.RestoreName != "" {
+	toRestore, err := rc.restoreNeedForReplica(r)
+	if err != nil {
+		return nil, err
+	}
+	if toRestore {
 		cmd = append(cmd, "--restore-from", singleQuotes(r.Spec.RestoreFrom))
 		cmd = append(cmd, "--restore-name", singleQuotes(r.Spec.RestoreName))
 	}
@@ -461,7 +486,7 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 	// set pod to node that replica scheduled on
 	pod.Spec.NodeName = r.Spec.NodeID
 
-	if r.Spec.RestoreName != "" && r.Spec.RestoreFrom != "" {
+	if toRestore {
 		secret, err := rc.ds.GetSetting(types.SettingNameBackupTargetCredentialSecret)
 		if err != nil {
 			return nil, err
