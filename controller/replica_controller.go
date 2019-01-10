@@ -2,7 +2,6 @@ package controller
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -255,7 +254,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 				if !strings.Contains(filepath.Base(filepath.Clean(replica.Spec.DataPath)), "-") {
 					return fmt.Errorf("%v doesn't look like a replica data path", replica.Spec.DataPath)
 				}
-				if err := os.RemoveAll(replica.Spec.DataPath); err != nil {
+				if err := util.RemoveHostDirectoryContent(replica.Spec.DataPath); err != nil {
 					return errors.Wrapf(err, "cannot cleanup after replica %v at %v", replica.Name, replica.Spec.DataPath)
 				}
 			} else {

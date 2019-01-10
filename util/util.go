@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -457,4 +458,32 @@ func RunAsync(wg *sync.WaitGroup, f func()) {
 		defer wg.Done()
 		f()
 	}()
+}
+
+func RemoveHostDirectoryContent(directory string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to remove host directory %v", directory)
+	}()
+
+	dir, err := filepath.Abs(filepath.Clean(directory))
+	if err != nil {
+		return err
+	}
+	if strings.Count(dir, "/") < 2 {
+		return fmt.Errorf("prohibit removing the top level of directory %v", dir)
+	}
+	initiatorNSPath := GetInitiatorNSPath()
+	nsExec, err := iscsi_util.NewNamespaceExecutor(initiatorNSPath)
+	if err != nil {
+		return err
+	}
+	// check if the directory already deleted
+	if _, err := nsExec.Execute("ls", []string{dir}); err != nil {
+		logrus.Warnf("cannot find host directory %v for removal", dir)
+		return nil
+	}
+	if _, err := nsExec.Execute("rm", []string{"-rf", dir}); err != nil {
+		return err
+	}
+	return nil
 }
