@@ -1054,7 +1054,7 @@ func (vc *VolumeController) getOwnerReferencesForVolume(v *longhorn.Volume) []me
 	}
 }
 
-func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.RecurringJob, suspend bool, backupTarget string, credentialSecret string, hasEndpoint bool) *batchv1beta1.CronJob {
+func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.RecurringJob, suspend bool, backupTarget string, credentialSecret string) (*batchv1beta1.CronJob, error) {
 	backoffLimit := int32(CronJobBackoffLimit)
 	cmd := []string{
 		"longhorn-manager", "-d",
@@ -1132,9 +1132,17 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 		},
 	}
 	if job.Type == types.RecurringJobTypeBackup {
-		util.ConfigEnvWithCredential(backupTarget, credentialSecret, hasEndpoint, &cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers[0])
+		if credentialSecret != "" {
+			credentials, err := vc.ds.GetCredentialFromSecret(credentialSecret)
+			if err != nil {
+				return nil, errors.Wrapf(err, "cannot get credential secret %v", credentialSecret)
+			}
+			hasEndpoint := (credentials[types.AWSEndPoint] != "")
+
+			util.ConfigEnvWithCredential(backupTarget, credentialSecret, hasEndpoint, &cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers[0])
+		}
 	}
-	return cronJob
+	return cronJob, nil
 }
 
 func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) {
@@ -1171,12 +1179,10 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 			return fmt.Errorf("cannot backup with empty backup target")
 		}
 
-		credentials, err := vc.ds.GetCredentialFromSecret(backupCredentialSecret)
+		cronJob, err := vc.createCronJob(v, &job, suspended, backupTarget, backupCredentialSecret)
 		if err != nil {
 			return err
 		}
-		hasEndpoint := (credentials[types.AWSEndPoint] != "")
-		cronJob := vc.createCronJob(v, &job, suspended, backupTarget, backupCredentialSecret, hasEndpoint)
 		currentCronJobs[cronJob.Name] = cronJob
 	}
 
