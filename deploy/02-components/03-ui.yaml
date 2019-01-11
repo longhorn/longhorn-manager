@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: longhorn-ui
-        image: rancher/longhorn-ui:v0.3.2
+        image: rancher/longhorn-ui:335d769
         ports:
         - containerPort: 8000
         env:
