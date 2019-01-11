@@ -149,12 +149,12 @@ func (e *Engine) Endpoint() string {
 func (e *Engine) launcherInfo() (*LauncherVolumeInfo, error) {
 	output, err := e.ExecuteEngineLauncherBinary("info")
 	if err != nil {
-		return nil, errors.Wrapf(err, "cannot get volume info")
+		return nil, errors.Wrapf(err, "cannot get launcher info")
 	}
 
 	info := &LauncherVolumeInfo{}
 	if err := json.Unmarshal([]byte(output), info); err != nil {
-		return nil, errors.Wrapf(err, "cannot decode volume info: %v", output)
+		return nil, errors.Wrapf(err, "cannot decode launcher info: %v", output)
 	}
 	return info, nil
 }
