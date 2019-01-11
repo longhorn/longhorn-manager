@@ -2,6 +2,7 @@ package engineapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -40,7 +41,6 @@ func (e *Engine) SnapshotList() (map[string]*Snapshot, error) {
 	if err := json.Unmarshal([]byte(output), &data); err != nil {
 		return nil, errors.Wrapf(err, "error parsing snapshot list")
 	}
-	delete(data, VolumeHeadName)
 	return data, nil
 }
 
@@ -53,6 +53,9 @@ func (e *Engine) SnapshotGet(name string) (*Snapshot, error) {
 }
 
 func (e *Engine) SnapshotDelete(name string) error {
+	if name == VolumeHeadName {
+		return fmt.Errorf("invalid operation: cannot remove %v", VolumeHeadName)
+	}
 	if _, err := e.ExecuteEngineBinary("snapshot", "rm", name); err != nil {
 		return errors.Wrapf(err, "error deleting snapshot '%s'", name)
 	}
@@ -60,6 +63,9 @@ func (e *Engine) SnapshotDelete(name string) error {
 }
 
 func (e *Engine) SnapshotRevert(name string) error {
+	if name == VolumeHeadName {
+		return fmt.Errorf("invalid operation: cannot revert to %v", VolumeHeadName)
+	}
 	if _, err := e.ExecuteEngineBinary("snapshot", "revert", name); err != nil {
 		return errors.Wrapf(err, "error reverting to snapshot '%s'", name)
 	}
@@ -75,6 +81,9 @@ func (e *Engine) SnapshotPurge() error {
 }
 
 func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string]string, credential map[string]string) error {
+	if snapName == VolumeHeadName {
+		return fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)
+	}
 	snap, err := e.SnapshotGet(snapName)
 	if err != nil {
 		return errors.Wrapf(err, "error getting snapshot '%s', volume '%s'", snapName, e.name)
