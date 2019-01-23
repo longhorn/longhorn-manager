@@ -487,7 +487,11 @@ func (nc *NodeController) enqueueSetting(setting *longhorn.Setting) {
 func (nc *NodeController) enqueueReplica(replica *longhorn.Replica) {
 	node, err := nc.ds.GetNode(replica.Spec.NodeID)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v: %v ", replica.Spec.NodeID, err))
+		// no replica would be scheduled to the node if the node is not
+		// available. If the node was removed after being scheduled to,
+		// the replica should be removed before that.
+		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v for replica %v: %v ",
+			replica.Spec.NodeID, replica.Name, err))
 		return
 	}
 	nc.enqueueNode(node)
@@ -507,6 +511,11 @@ func (nc *NodeController) enqueueManagerPod(pod *v1.Pod) {
 func (nc *NodeController) enqueueKubernetesNode(n *v1.Node) {
 	node, err := nc.ds.GetNode(n.Name)
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// there is no Longhorn node created for the Kubernetes
+			// node (e.g. controller/etcd node). Skip it
+			return
+		}
 		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v: %v ", n.Name, err))
 		return
 	}
