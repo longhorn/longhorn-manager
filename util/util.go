@@ -406,18 +406,20 @@ func ConfigEnvWithCredential(backupTarget string, credentialSecret string, hasEn
 }
 
 func GetInitiatorNSPath() string {
+	// if no dockerd was found, use pid 1 as default
 	initiatorNSPath := "/host/proc/1/ns"
 	pf := iscsi_util.NewProcessFinder("/host/proc")
 	ps, err := pf.FindAncestorByName("dockerd")
-	if err != nil {
-		logrus.Debugf("Use pid 1 namespace for initiator: %v", err)
-	} else {
+	if err == nil {
 		initiatorNSPath = fmt.Sprintf("/host/proc/%d/ns", ps.Pid)
 	}
 	return initiatorNSPath
 }
 
-func GetDiskInfo(directory string) (*DiskInfo, error) {
+func GetDiskInfo(directory string) (info *DiskInfo, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "cannot get disk info of directory %v", directory)
+	}()
 	initiatorNSPath := GetInitiatorNSPath()
 	mountPath := fmt.Sprintf("--mount=%s/mnt", initiatorNSPath)
 	output, err := Execute("nsenter", mountPath, "stat", "-fc", "{\"path\":\"%n\",\"fsid\":\"%i\",\"type\":\"%T\",\"freeBlock\":%f,\"totalBlock\":%b,\"blockSize\":%S}", directory)
