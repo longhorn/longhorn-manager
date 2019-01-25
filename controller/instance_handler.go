@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 
@@ -65,6 +66,20 @@ func (h *InstanceHandler) syncStatusWithPod(pod *v1.Pod, spec *types.InstanceSpe
 		status.CurrentState = types.InstanceStateStopping
 		status.IP = ""
 		status.CurrentImage = ""
+		if pod.DeletionGracePeriodSeconds != nil && *pod.DeletionGracePeriodSeconds != 0 {
+			// force deletion in the case of node lost
+			deletionDeadline := pod.DeletionTimestamp.Add(time.Duration(*pod.DeletionGracePeriodSeconds) * time.Second)
+			now := time.Now().UTC()
+			if now.After(deletionDeadline) {
+				logrus.Debugf("pod %v still exists after grace period %v passed, force deletion: now %v, deadline %v",
+					pod.Name, pod.DeletionGracePeriodSeconds, now, deletionDeadline)
+				gracePeriod := int64(0)
+				if err := h.kubeClient.CoreV1().Pods(h.namespace).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod}); err != nil {
+					logrus.Debugf("failed to force deletion pod %v: %v ", pod.Name, err)
+					return
+				}
+			}
+		}
 		return
 	}
 

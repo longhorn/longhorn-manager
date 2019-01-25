@@ -62,7 +62,9 @@ func (s *TestSuite) TestSyncStatusWithPod(c *C) {
 			pod.Status.PodIP = tc.podIP
 			if tc.deleted {
 				ts := metav1.Now()
+				gracePeriod := int64(30)
 				pod.DeletionTimestamp = &ts
+				pod.DeletionGracePeriodSeconds = &gracePeriod
 			}
 		}
 
