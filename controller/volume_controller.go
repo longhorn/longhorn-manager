@@ -685,6 +685,18 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 
 		replicaUpdated := false
 		for _, r := range rs {
+			nodeDown, err := vc.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
+			if err != nil {
+				return errors.Wrapf(err, "cannot find node %v", r.Spec.NodeID)
+			}
+			if nodeDown {
+				r.Spec.FailedAt = vc.nowHandler()
+				r, err = vc.ds.UpdateReplica(r)
+				if err != nil {
+					return err
+				}
+				rs[r.Name] = r
+			}
 			if r.Spec.FailedAt == "" &&
 				r.Spec.DesireState != types.InstanceStateRunning &&
 				r.Spec.EngineImage == v.Status.CurrentImage {
@@ -722,6 +734,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 				continue
 			}
 			replicaAddressMap[r.Name] = r.Status.IP
+		}
+		if len(replicaAddressMap) == 0 {
+			return fmt.Errorf("no healthy replica for starting")
 		}
 
 		engineUpdated := false
