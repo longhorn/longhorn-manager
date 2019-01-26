@@ -160,7 +160,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.NodeID = TestNode1
 	for _, r := range tc.replicas {
 		r.Spec.DesireState = types.InstanceStateRunning
-		r.Spec.NodeID = util.RandomID()
 		r.Status.CurrentState = types.InstanceStateRunning
 		r.Status.IP = randomIP()
 	}
@@ -193,7 +192,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	for name, r := range tc.replicas {
 		r.Spec.DesireState = types.InstanceStateRunning
-		r.Spec.NodeID = util.RandomID()
 		r.Status.CurrentState = types.InstanceStateRunning
 		r.Status.IP = randomIP()
 		//TODO update to r.Spec.AssociatedEngine
@@ -224,7 +222,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	for name, r := range tc.replicas {
 		r.Spec.DesireState = types.InstanceStateRunning
-		r.Spec.NodeID = util.RandomID()
 		r.Spec.HealthyAt = getTestNow()
 		r.Status.CurrentState = types.InstanceStateRunning
 		r.Status.IP = randomIP()
@@ -253,7 +250,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	for name, r := range tc.replicas {
 		r.Spec.DesireState = types.InstanceStateRunning
-		r.Spec.NodeID = util.RandomID()
 		r.Spec.HealthyAt = getTestNow()
 		r.Status.CurrentState = types.InstanceStateRunning
 		r.Status.IP = randomIP()
@@ -282,6 +278,22 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectReplicas = nil
 	testCases["volume deleting"] = tc
 
+	// volume attaching, start replicas, one node down
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.NodeID = TestNode1
+	tc.nodes[1] = newNode(TestNode2, TestNamespace, false, types.ConditionStatusFalse, "NodeDown")
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Status.State = types.VolumeStateAttaching
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	expectRs := map[string]*longhorn.Replica{}
+	for _, r := range tc.expectReplicas {
+		if r.Spec.NodeID != TestNode2 {
+			r.Spec.DesireState = types.InstanceStateRunning
+			expectRs[r.Name] = r
+		}
+	}
+	tc.expectReplicas = expectRs
+	testCases["volume attaching - start replicas - node failed"] = tc
 	s.runTestCases(c, testCases)
 }
 
@@ -531,16 +543,6 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 		vc := newTestVolumeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestOwnerID1)
 
-		// create kuberentes node
-		node1 := newKubernetesNode(TestNode1, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
-		n1, err := kubeClient.CoreV1().Nodes().Create(node1)
-		c.Assert(err, IsNil)
-		knIndexer.Add(n1)
-		node2 := newKubernetesNode(TestNode2, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
-		n2, err := kubeClient.CoreV1().Nodes().Create(node2)
-		c.Assert(err, IsNil)
-		knIndexer.Add(n2)
-
 		// Need to create daemon pod for node
 		daemon1 := newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
 		p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(daemon1)
@@ -567,6 +569,15 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
 			nIndexer.Add(n)
+
+			knodeCondition := v1.ConditionTrue
+			if node.Status.Conditions[types.NodeConditionTypeReady].Status != types.ConditionStatusTrue {
+				knodeCondition = v1.ConditionFalse
+			}
+			knode := newKubernetesNode(node.Name, knodeCondition, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+			kn, err := kubeClient.CoreV1().Nodes().Create(knode)
+			c.Assert(err, IsNil)
+			knIndexer.Add(kn)
 		}
 
 		// Need to put it into both fakeclientset and Indexer
