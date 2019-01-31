@@ -483,7 +483,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		Robustness:          v.Status.Robustness,
 		RecurringJobs:       v.Spec.RecurringJobs,
 		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
-		Created:             v.ObjectMeta.CreationTimestamp.String(),
+		Created:             v.CreationTimestamp.String(),
 		EngineImage:         v.Spec.EngineImage,
 		CurrentImage:        v.Status.CurrentImage,
 		BaseImage:           v.Spec.BaseImage,
