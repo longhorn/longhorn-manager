@@ -62,11 +62,13 @@ func NewAttacherDeployment(version, namespace, serviceAccount, attacherImage str
 }
 
 func (a *AttacherDeployment) Deploy(kubeClient *clientset.Clientset) error {
-	if err := deployService(kubeClient, a.service); err != nil {
+	if err := deploy(kubeClient, a.service, "service",
+		serviceCreateFunc, serviceDeleteFunc, serviceGetFunc); err != nil {
 		return err
 	}
 
-	return deployDeployment(kubeClient, a.deployment)
+	return deploy(kubeClient, a.deployment, "deployment",
+		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc)
 }
 
 func (a *AttacherDeployment) Cleanup(kubeClient *clientset.Clientset) {
@@ -74,13 +76,15 @@ func (a *AttacherDeployment) Cleanup(kubeClient *clientset.Clientset) {
 	defer wg.Wait()
 
 	util.RunAsync(&wg, func() {
-		if err := cleanupService(kubeClient, a.service); err != nil {
-			logrus.Warnf("Failed to cleanup Service in attacher deployment: %v", err)
+		if err := cleanup(kubeClient, a.service, "service",
+			serviceDeleteFunc, serviceGetFunc); err != nil {
+			logrus.Warnf("Failed to cleanup service in attacher deployment: %v", err)
 		}
 	})
 	util.RunAsync(&wg, func() {
-		if err := cleanupDeployment(kubeClient, a.deployment); err != nil {
-			logrus.Warnf("Failed to cleanup StatefulSet in attacher deployment: %v", err)
+		if err := cleanup(kubeClient, a.deployment, "deployment",
+			deploymentDeleteFunc, deploymentGetFunc); err != nil {
+			logrus.Warnf("Failed to cleanup deployment in attacher deployment: %v", err)
 		}
 	})
 }
@@ -115,11 +119,13 @@ func NewProvisionerDeployment(version, namespace, serviceAccount, provisionerIma
 }
 
 func (p *ProvisionerDeployment) Deploy(kubeClient *clientset.Clientset) error {
-	if err := deployService(kubeClient, p.service); err != nil {
+	if err := deploy(kubeClient, p.service, "service",
+		serviceCreateFunc, serviceDeleteFunc, serviceGetFunc); err != nil {
 		return err
 	}
 
-	return deployDeployment(kubeClient, p.deployment)
+	return deploy(kubeClient, p.deployment, "deployment",
+		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc)
 }
 
 func (p *ProvisionerDeployment) Cleanup(kubeClient *clientset.Clientset) {
@@ -127,13 +133,15 @@ func (p *ProvisionerDeployment) Cleanup(kubeClient *clientset.Clientset) {
 	defer wg.Wait()
 
 	util.RunAsync(&wg, func() {
-		if err := cleanupService(kubeClient, p.service); err != nil {
-			logrus.Warnf("Failed to cleanup Service in provisioner deployment: %v", err)
+		if err := cleanup(kubeClient, p.service, "service",
+			serviceDeleteFunc, serviceGetFunc); err != nil {
+			logrus.Warnf("Failed to cleanup service in provisioner deployment: %v", err)
 		}
 	})
 	util.RunAsync(&wg, func() {
-		if err := cleanupDeployment(kubeClient, p.deployment); err != nil {
-			logrus.Warnf("Failed to cleanup StatefulSet in provisioner deployment: %v", err)
+		if err := cleanup(kubeClient, p.deployment, "deployment",
+			deploymentDeleteFunc, deploymentGetFunc); err != nil {
+			logrus.Warnf("Failed to cleanup deployment in provisioner deployment: %v", err)
 		}
 	})
 }
@@ -343,11 +351,13 @@ func NewPluginDeployment(version, namespace, serviceAccount, driverRegistrarImag
 }
 
 func (p *PluginDeployment) Deploy(kubeClient *clientset.Clientset) error {
-	return deployDaemonSet(kubeClient, p.daemonSet)
+	return deploy(kubeClient, p.daemonSet, "daemon set",
+		daemonSetCreateFunc, daemonSetDeleteFunc, daemonSetGetFunc)
 }
 
 func (p *PluginDeployment) Cleanup(kubeClient *clientset.Clientset) {
-	if err := cleanupDaemonSet(kubeClient, p.daemonSet); err != nil {
+	if err := cleanup(kubeClient, p.daemonSet, "daemon set",
+		daemonSetDeleteFunc, daemonSetGetFunc); err != nil {
 		logrus.Warnf("Failed to cleanup DaemonSet in plugin deployment: %v", err)
 	}
 }

@@ -5,11 +5,15 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
+
 	appsv1beta1 "k8s.io/api/apps/v1beta1"
 	appsv1beta2 "k8s.io/api/apps/v1beta2"
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/rancher/longhorn-manager/types"
@@ -121,12 +125,16 @@ func getCommonDeployment(version, commonName, namespace, serviceAccount, image s
 	}
 }
 
-func waitForDeletion(getFunc func() error, name string, resource string) error {
+type resourceCreateFunc func(kubeClient *clientset.Clientset, obj runtime.Object) error
+type resourceDeleteFunc func(kubeClient *clientset.Clientset, name, namespace string) error
+type resourceGetFunc func(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error)
+
+func waitForDeletion(kubeClient *clientset.Clientset, name, namespace, resource string, getFunc resourceGetFunc) error {
 	logrus.Debugf("Waiting for foreground deletion of %s %s", resource, name)
 	for i := 0; i < maxRetryForDeletion; i++ {
-		err := getFunc()
+		_, err := getFunc(kubeClient, name, namespace)
 		if err != nil && apierrors.IsNotFound(err) {
-			logrus.Debugf("Deleted the %s %s in foreground", resource, name)
+			logrus.Debugf("Deleted %s %s in foreground", resource, name)
 			return nil
 		}
 		time.Sleep(time.Duration(1) * time.Second)
@@ -134,121 +142,145 @@ func waitForDeletion(getFunc func() error, name string, resource string) error {
 	return fmt.Errorf("Foreground deletion of %s %s timed out", resource, name)
 }
 
-func cleanupService(kubeClient *clientset.Clientset, service *v1.Service) error {
-	logrus.Debugf("Trying to get the service %s", service.Name)
-	svc, err := kubeClient.CoreV1().Services(service.Namespace).Get(service.Name, metav1.GetOptions{})
-	if err != nil && apierrors.IsNotFound(err) {
-		return nil
-	}
-	getFunc := func() error {
-		_, err := kubeClient.CoreV1().Services(service.Namespace).Get(service.Name, metav1.GetOptions{})
-		return err
-	}
-	if svc != nil && svc.DeletionTimestamp != nil {
-		return waitForDeletion(getFunc, service.Name, "service")
-	}
+func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
+	createFunc resourceCreateFunc, deleteFunc resourceDeleteFunc, getFunc resourceGetFunc) (err error) {
 
-	if svc != nil {
-		logrus.Debugf("Got the service %s", service.Name)
-		logrus.Debugf("Trying to delete the service %s", service.Name)
-		propagation := metav1.DeletePropagationForeground
-		if err = kubeClient.CoreV1().Services(service.Namespace).Delete(service.Name,
-			&metav1.DeleteOptions{PropagationPolicy: &propagation}); err != nil {
+	objMeta, err := meta.Accessor(obj)
+	if err != nil {
+		return fmt.Errorf("BUG: invalid object for deploy %v: %v", obj, err)
+	}
+	name := objMeta.GetName()
+	namespace := objMeta.GetNamespace()
+
+	defer func() {
+		err = errors.Wrapf(err, "failed to deploy %v %v", resource, name)
+	}()
+
+	existing, err := getFunc(kubeClient, name, namespace)
+	if err == nil {
+		existingMeta, err := meta.Accessor(existing)
+		if err != nil {
 			return err
 		}
-		logrus.Debugf("Deleted the service %s", service.Name)
-		return waitForDeletion(getFunc, service.Name, "service")
-	}
-	return nil
-}
-
-func deployService(kubeClient *clientset.Clientset, service *v1.Service) error {
-	if err := cleanupService(kubeClient, service); err != nil {
-		return err
-	}
-	logrus.Debugf("Trying to create the service %s", service.Name)
-	if _, err := kubeClient.CoreV1().Services(service.Namespace).Create(service); err != nil {
-		return err
-	}
-	logrus.Debugf("Created the service %s", service.Name)
-	return nil
-}
-
-func cleanupDeployment(kubeClient *clientset.Clientset, d *appsv1beta1.Deployment) error {
-	logrus.Debugf("Trying to get the statefulset %s", d.Name)
-	sfs, err := kubeClient.AppsV1beta1().Deployments(d.Namespace).Get(d.Name, metav1.GetOptions{})
-	getFunc := func() error {
-		_, err := kubeClient.AppsV1beta1().Deployments(d.Namespace).Get(d.Name, metav1.GetOptions{})
-		return err
-	}
-	if err != nil && apierrors.IsNotFound(err) {
-		return waitForDeletion(getFunc, d.Name, "deployment")
-	}
-
-	if sfs != nil {
-		logrus.Debugf("Got the deployment %s", d.Name)
-		logrus.Debugf("Trying to delete the deployment %s", d.Name)
-		propagation := metav1.DeletePropagationForeground
-		if err = kubeClient.AppsV1beta1().Deployments(d.Namespace).Delete(d.Name,
-			&metav1.DeleteOptions{PropagationPolicy: &propagation}); err != nil {
-			return err
+		annos := objMeta.GetAnnotations()
+		existingAnnos := existingMeta.GetAnnotations()
+		if annos[AnnotationCSIVersion] == existingAnnos[AnnotationCSIVersion] &&
+			existingMeta.GetDeletionTimestamp() == nil {
+			// deployment of correct version already deployed
+			logrus.Debugf("Detected %v %v version %v has already been deployed",
+				resource, name, annos[AnnotationCSIVersion])
+			return nil
 		}
-		logrus.Debugf("Deleted the deployment %s", d.Name)
-		return waitForDeletion(getFunc, d.Name, "deployment")
 	}
+	// otherwise clean up the old deployment
+	if err := cleanup(kubeClient, obj, resource, deleteFunc, getFunc); err != nil {
+		return err
+	}
+	logrus.Debugf("Creating %s %s", resource, name)
+	if err := createFunc(kubeClient, obj); err != nil {
+		return err
+	}
+	logrus.Debugf("Created %s %s", resource, name)
 	return nil
 }
 
-func deployDeployment(kubeClient *clientset.Clientset, d *appsv1beta1.Deployment) error {
-	if err := cleanupDeployment(kubeClient, d); err != nil {
-		return err
-	}
-	logrus.Debugf("Trying to create the deployment %s", d.Name)
-	if _, err := kubeClient.AppsV1beta1().Deployments(d.Namespace).Create(d); err != nil {
-		return err
-	}
-	logrus.Debugf("Created the deployment %s", d.Name)
-	return nil
-}
+func cleanup(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
+	deleteFunc resourceDeleteFunc, getFunc resourceGetFunc) (err error) {
 
-func cleanupDaemonSet(kubeClient *clientset.Clientset, daemonSet *appsv1beta2.DaemonSet) error {
-	logrus.Debugf("Trying to get the daemonset %s", daemonSet.Name)
-	ds, err := kubeClient.AppsV1beta2().DaemonSets(daemonSet.Namespace).Get(daemonSet.Name, metav1.GetOptions{})
-	if err != nil && apierrors.IsNotFound(err) {
-		return nil
+	objMeta, err := meta.Accessor(obj)
+	if err != nil {
+		return fmt.Errorf("BUG: invalid object for cleanup %v: %v", obj, err)
 	}
-	getFunc := func() error {
-		_, err := kubeClient.AppsV1beta2().DaemonSets(daemonSet.Namespace).Get(daemonSet.Name, metav1.GetOptions{})
-		return err
-	}
-	if ds != nil && ds.DeletionTimestamp != nil {
-		return waitForDeletion(getFunc, daemonSet.Name, "daemonset")
-	}
+	name := objMeta.GetName()
+	namespace := objMeta.GetNamespace()
 
-	if ds != nil {
-		logrus.Debugf("Got the daemonset %s", daemonSet.Name)
-		logrus.Debugf("Trying to delete the daemonset %s", daemonSet.Name)
-		propagation := metav1.DeletePropagationForeground
-		if err = kubeClient.AppsV1beta2().DaemonSets(daemonSet.Namespace).Delete(daemonSet.Name,
-			&metav1.DeleteOptions{PropagationPolicy: &propagation}); err != nil {
-			return err
+	defer func() {
+		err = errors.Wrapf(err, "failed to cleanup %v %v", resource, name)
+	}()
+
+	existing, err := getFunc(kubeClient, name, namespace)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
 		}
-		logrus.Debugf("Deleted the daemonset %s", daemonSet.Name)
-		return waitForDeletion(getFunc, daemonSet.Name, "daemonset")
+		return err
 	}
-	return nil
+	existingMeta, err := meta.Accessor(existing)
+	if err != nil {
+		return err
+	}
+	if existingMeta.GetDeletionTimestamp() != nil {
+		return waitForDeletion(kubeClient, name, namespace, resource, getFunc)
+	}
+	logrus.Debugf("Deleting existing %s %s", resource, name)
+	if err := deleteFunc(kubeClient, name, namespace); err != nil {
+		return err
+	}
+	logrus.Debugf("Deleted %s %s", resource, name)
+	return waitForDeletion(kubeClient, name, namespace, resource, getFunc)
 }
 
-func deployDaemonSet(kubeClient *clientset.Clientset, daemonSet *appsv1beta2.DaemonSet) error {
-	if err := cleanupDaemonSet(kubeClient, daemonSet); err != nil {
-		return err
+func serviceCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
+	o, ok := obj.(*v1.Service)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert back the object")
 	}
-	logrus.Debugf("Trying to create the daemonset %s", daemonSet.Name)
-	if _, err := kubeClient.AppsV1beta2().DaemonSets(daemonSet.Namespace).Create(daemonSet); err != nil {
-		return err
+	_, err := kubeClient.CoreV1().Services(o.Namespace).Create(o)
+	return err
+}
+
+func serviceDeleteFunc(kubeClient *clientset.Clientset, name, namespace string) error {
+	propagation := metav1.DeletePropagationForeground
+	return kubeClient.CoreV1().Services(namespace).Delete(
+		name,
+		&metav1.DeleteOptions{PropagationPolicy: &propagation},
+	)
+}
+
+func serviceGetFunc(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error) {
+	return kubeClient.CoreV1().Services(namespace).Get(name, metav1.GetOptions{})
+}
+
+func deploymentCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
+	o, ok := obj.(*appsv1beta1.Deployment)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert back the object")
 	}
-	logrus.Debugf("Created the daemonset %s", daemonSet.Name)
-	return nil
+	_, err := kubeClient.AppsV1beta1().Deployments(o.Namespace).Create(o)
+	return err
+}
+
+func deploymentDeleteFunc(kubeClient *clientset.Clientset, name, namespace string) error {
+	propagation := metav1.DeletePropagationForeground
+	return kubeClient.AppsV1beta1().Deployments(namespace).Delete(
+		name,
+		&metav1.DeleteOptions{PropagationPolicy: &propagation},
+	)
+}
+
+func deploymentGetFunc(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error) {
+	return kubeClient.AppsV1beta1().Deployments(namespace).Get(name, metav1.GetOptions{})
+}
+
+func daemonSetCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
+	o, ok := obj.(*appsv1beta2.DaemonSet)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert back the object")
+	}
+	_, err := kubeClient.AppsV1beta2().DaemonSets(o.Namespace).Create(o)
+	return err
+}
+
+func daemonSetDeleteFunc(kubeClient *clientset.Clientset, name, namespace string) error {
+	propagation := metav1.DeletePropagationForeground
+	return kubeClient.AppsV1beta2().DaemonSets(namespace).Delete(
+		name,
+		&metav1.DeleteOptions{PropagationPolicy: &propagation},
+	)
+}
+
+func daemonSetGetFunc(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error) {
+	return kubeClient.AppsV1beta2().DaemonSets(namespace).Get(name, metav1.GetOptions{})
 }
 
 // CheckMountPropagationWithNode https://github.com/kubernetes/kubernetes/issues/66086#issuecomment-404346854
