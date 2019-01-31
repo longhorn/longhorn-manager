@@ -3,7 +3,6 @@ package app
 import (
 	"fmt"
 	"os"
-	"sync"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
@@ -221,20 +220,6 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 	}
 
 	logrus.Debug("CSI deployment done")
-
-	defer func() {
-		var wg sync.WaitGroup
-		util.RunAsync(&wg, func() {
-			attacherDeployment.Cleanup(kubeClient)
-		})
-		util.RunAsync(&wg, func() {
-			provisionerDeployment.Cleanup(kubeClient)
-		})
-		util.RunAsync(&wg, func() {
-			pluginDeployment.Cleanup(kubeClient)
-		})
-		wg.Wait()
-	}()
 
 	done := make(chan struct{})
 	util.RegisterShutdownChannel(done)
