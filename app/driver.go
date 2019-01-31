@@ -220,6 +220,8 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 		return err
 	}
 
+	logrus.Debug("CSI deployment done")
+
 	defer func() {
 		var wg sync.WaitGroup
 		util.RunAsync(&wg, func() {
