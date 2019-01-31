@@ -37,7 +37,7 @@ func getCommonService(commonName, namespace string) *v1.Service {
 				"app": commonName,
 			},
 			Ports: []v1.ServicePort{
-				v1.ServicePort{
+				{
 					Name: "dummy",
 					Port: 12345,
 				},
@@ -46,14 +46,14 @@ func getCommonService(commonName, namespace string) *v1.Service {
 	}
 }
 
-func getCommondStatefulSet(commonName, namespace, serviceAccount, image string, args []string) *appsv1beta1.StatefulSet {
-	return &appsv1beta1.StatefulSet{
+func getCommonDeployment(commonName, namespace, serviceAccount, image string, args []string, replicaCount int32) *appsv1beta1.Deployment {
+	return &appsv1beta1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      commonName,
 			Namespace: namespace,
 		},
-		Spec: appsv1beta1.StatefulSetSpec{
-			ServiceName: commonName,
+		Spec: appsv1beta1.DeploymentSpec{
+			Replicas: &replicaCount,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
@@ -63,19 +63,35 @@ func getCommondStatefulSet(commonName, namespace, serviceAccount, image string, 
 				Spec: v1.PodSpec{
 					ServiceAccountName: serviceAccount,
 					Containers: []v1.Container{
-						v1.Container{
+						{
 							Name:  commonName,
 							Image: image,
 							Args:  args,
+							//ImagePullPolicy: v1.PullAlways,
 							Env: []v1.EnvVar{
-								v1.EnvVar{
+								{
 									Name:  "ADDRESS",
 									Value: "/var/lib/kubelet/plugins/io.rancher.longhorn/csi.sock",
 								},
+								{
+									Name: "POD_NAME",
+									ValueFrom: &v1.EnvVarSource{
+										FieldRef: &v1.ObjectFieldSelector{
+											FieldPath: "metadata.name",
+										},
+									},
+								},
+								{
+									Name: "POD_NAMESPACE",
+									ValueFrom: &v1.EnvVarSource{
+										FieldRef: &v1.ObjectFieldSelector{
+											FieldPath: "metadata.namespace",
+										},
+									},
+								},
 							},
-							//ImagePullPolicy: v1.PullAlways,
 							VolumeMounts: []v1.VolumeMount{
-								v1.VolumeMount{
+								{
 									Name:      "socket-dir",
 									MountPath: "/var/lib/kubelet/plugins/io.rancher.longhorn",
 								},
@@ -83,7 +99,7 @@ func getCommondStatefulSet(commonName, namespace, serviceAccount, image string, 
 						},
 					},
 					Volumes: []v1.Volume{
-						v1.Volume{
+						{
 							Name: "socket-dir",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
@@ -152,40 +168,40 @@ func deployService(kubeClient *clientset.Clientset, service *v1.Service) error {
 	return nil
 }
 
-func cleanupStatefulSet(kubeClient *clientset.Clientset, statefulSet *appsv1beta1.StatefulSet) error {
-	logrus.Debugf("Trying to get the statefulset %s", statefulSet.ObjectMeta.Name)
-	sfs, err := kubeClient.AppsV1beta1().StatefulSets(statefulSet.ObjectMeta.Namespace).Get(statefulSet.ObjectMeta.Name, metav1.GetOptions{})
+func cleanupDeployment(kubeClient *clientset.Clientset, d *appsv1beta1.Deployment) error {
+	logrus.Debugf("Trying to get the statefulset %s", d.ObjectMeta.Name)
+	sfs, err := kubeClient.AppsV1beta1().Deployments(d.ObjectMeta.Namespace).Get(d.ObjectMeta.Name, metav1.GetOptions{})
 	getFunc := func() error {
-		_, err := kubeClient.AppsV1beta1().StatefulSets(statefulSet.ObjectMeta.Namespace).Get(statefulSet.ObjectMeta.Name, metav1.GetOptions{})
+		_, err := kubeClient.AppsV1beta1().Deployments(d.ObjectMeta.Namespace).Get(d.ObjectMeta.Name, metav1.GetOptions{})
 		return err
 	}
 	if err != nil && apierrors.IsNotFound(err) {
-		return waitForDeletion(getFunc, statefulSet.ObjectMeta.Name, "statefulset")
+		return waitForDeletion(getFunc, d.ObjectMeta.Name, "deployment")
 	}
 
 	if sfs != nil {
-		logrus.Debugf("Got the statefulset %s", statefulSet.ObjectMeta.Name)
-		logrus.Debugf("Trying to delete the statefulset %s", statefulSet.ObjectMeta.Name)
+		logrus.Debugf("Got the deployment %s", d.ObjectMeta.Name)
+		logrus.Debugf("Trying to delete the deployment %s", d.ObjectMeta.Name)
 		propagation := metav1.DeletePropagationForeground
-		if err = kubeClient.AppsV1beta1().StatefulSets(statefulSet.ObjectMeta.Namespace).Delete(statefulSet.ObjectMeta.Name,
+		if err = kubeClient.AppsV1beta1().Deployments(d.ObjectMeta.Namespace).Delete(d.ObjectMeta.Name,
 			&metav1.DeleteOptions{PropagationPolicy: &propagation}); err != nil {
 			return err
 		}
-		logrus.Debugf("Deleted the statefulset %s", statefulSet.ObjectMeta.Name)
-		return waitForDeletion(getFunc, statefulSet.ObjectMeta.Name, "statefulset")
+		logrus.Debugf("Deleted the deployment %s", d.ObjectMeta.Name)
+		return waitForDeletion(getFunc, d.ObjectMeta.Name, "deployment")
 	}
 	return nil
 }
 
-func deployStatefulSet(kubeClient *clientset.Clientset, statefulSet *appsv1beta1.StatefulSet) error {
-	if err := cleanupStatefulSet(kubeClient, statefulSet); err != nil {
+func deployDeployment(kubeClient *clientset.Clientset, d *appsv1beta1.Deployment) error {
+	if err := cleanupDeployment(kubeClient, d); err != nil {
 		return err
 	}
-	logrus.Debugf("Trying to create the statefulset %s", statefulSet.ObjectMeta.Name)
-	if _, err := kubeClient.AppsV1beta1().StatefulSets(statefulSet.ObjectMeta.Namespace).Create(statefulSet); err != nil {
+	logrus.Debugf("Trying to create the deployment %s", d.ObjectMeta.Name)
+	if _, err := kubeClient.AppsV1beta1().Deployments(d.ObjectMeta.Namespace).Create(d); err != nil {
 		return err
 	}
-	logrus.Debugf("Created the statefulset %s", statefulSet.ObjectMeta.Name)
+	logrus.Debugf("Created the deployment %s", d.ObjectMeta.Name)
 	return nil
 }
 

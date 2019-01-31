@@ -15,10 +15,12 @@ import (
 )
 
 const (
-	DefaultCSIAttacherImage        = "quay.io/k8scsi/csi-attacher:v0.4.0"
-	DefaultCSIProvisionerImage     = "quay.io/k8scsi/csi-provisioner:v0.3.1"
+	DefaultCSIAttacherImage        = "quay.io/k8scsi/csi-attacher:v0.4.2"
+	DefaultCSIProvisionerImage     = "quay.io/k8scsi/csi-provisioner:v0.4.2"
 	DefaultCSIDriverRegistrarImage = "quay.io/k8scsi/driver-registrar:v0.4.1"
 	DefaultCSIProvisionerName      = "rancher.io/longhorn"
+
+	DefaultCSIDeploymentReplicaCount = 3
 )
 
 var (
@@ -28,14 +30,14 @@ var (
 )
 
 type AttacherDeployment struct {
-	service     *v1.Service
-	statefulSet *appsv1beta1.StatefulSet
+	service    *v1.Service
+	deployment *appsv1beta1.Deployment
 }
 
 func NewAttacherDeployment(namespace, serviceAccount, attacherImage string) *AttacherDeployment {
 	service := getCommonService("csi-attacher", namespace)
 
-	statefulSet := getCommondStatefulSet(
+	deployment := getCommonDeployment(
 		"csi-attacher",
 		namespace,
 		serviceAccount,
@@ -43,12 +45,16 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage string) *Att
 		[]string{
 			"--v=5",
 			"--csi-address=$(ADDRESS)",
+			"--leader-election",
+			"--leader-election-namespace=$(POD_NAMESPACE)",
+			"--leader-election-identity=$(POD_NAME)",
 		},
+		DefaultCSIDeploymentReplicaCount,
 	)
 
 	return &AttacherDeployment{
-		service:     service,
-		statefulSet: statefulSet,
+		service:    service,
+		deployment: deployment,
 	}
 }
 
@@ -57,7 +63,7 @@ func (a *AttacherDeployment) Deploy(kubeClient *clientset.Clientset) error {
 		return err
 	}
 
-	return deployStatefulSet(kubeClient, a.statefulSet)
+	return deployDeployment(kubeClient, a.deployment)
 }
 
 func (a *AttacherDeployment) Cleanup(kubeClient *clientset.Clientset) {
@@ -70,35 +76,37 @@ func (a *AttacherDeployment) Cleanup(kubeClient *clientset.Clientset) {
 		}
 	})
 	util.RunAsync(&wg, func() {
-		if err := cleanupStatefulSet(kubeClient, a.statefulSet); err != nil {
+		if err := cleanupDeployment(kubeClient, a.deployment); err != nil {
 			logrus.Warnf("Failed to cleanup StatefulSet in attacher deployment: %v", err)
 		}
 	})
 }
 
 type ProvisionerDeployment struct {
-	service     *v1.Service
-	statefulSet *appsv1beta1.StatefulSet
+	service    *v1.Service
+	deployment *appsv1beta1.Deployment
 }
 
 func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, provisionerName string) *ProvisionerDeployment {
 	service := getCommonService("csi-provisioner", namespace)
 
-	statefulSet := getCommondStatefulSet(
+	deployment := getCommonDeployment(
 		"csi-provisioner",
 		namespace,
 		serviceAccount,
 		provisionerImage,
 		[]string{
+			"--v=5",
 			"--provisioner=" + provisionerName,
 			"--csi-address=$(ADDRESS)",
-			"--v=5",
+			"--enable-leader-election",
 		},
+		DefaultCSIDeploymentReplicaCount,
 	)
 
 	return &ProvisionerDeployment{
-		service:     service,
-		statefulSet: statefulSet,
+		service:    service,
+		deployment: deployment,
 	}
 }
 
@@ -107,7 +115,7 @@ func (p *ProvisionerDeployment) Deploy(kubeClient *clientset.Clientset) error {
 		return err
 	}
 
-	return deployStatefulSet(kubeClient, p.statefulSet)
+	return deployDeployment(kubeClient, p.deployment)
 }
 
 func (p *ProvisionerDeployment) Cleanup(kubeClient *clientset.Clientset) {
@@ -120,7 +128,7 @@ func (p *ProvisionerDeployment) Cleanup(kubeClient *clientset.Clientset) {
 		}
 	})
 	util.RunAsync(&wg, func() {
-		if err := cleanupStatefulSet(kubeClient, p.statefulSet); err != nil {
+		if err := cleanupDeployment(kubeClient, p.deployment); err != nil {
 			logrus.Warnf("Failed to cleanup StatefulSet in provisioner deployment: %v", err)
 		}
 	})
