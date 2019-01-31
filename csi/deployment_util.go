@@ -23,13 +23,16 @@ const (
 	maxRetryForDeletion                   = 120
 )
 
-func getCommonService(commonName, namespace string) *v1.Service {
+func getCommonService(version, commonName, namespace string) *v1.Service {
 	return &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      commonName,
 			Namespace: namespace,
 			Labels: map[string]string{
 				"app": commonName,
+			},
+			Annotations: map[string]string{
+				AnnotationCSIVersion: version,
 			},
 		},
 		Spec: v1.ServiceSpec{
@@ -46,11 +49,14 @@ func getCommonService(commonName, namespace string) *v1.Service {
 	}
 }
 
-func getCommonDeployment(commonName, namespace, serviceAccount, image string, args []string, replicaCount int32) *appsv1beta1.Deployment {
+func getCommonDeployment(version, commonName, namespace, serviceAccount, image string, args []string, replicaCount int32) *appsv1beta1.Deployment {
 	return &appsv1beta1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      commonName,
 			Namespace: namespace,
+			Annotations: map[string]string{
+				AnnotationCSIVersion: version,
+			},
 		},
 		Spec: appsv1beta1.DeploymentSpec{
 			Replicas: &replicaCount,

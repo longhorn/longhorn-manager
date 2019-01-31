@@ -21,6 +21,8 @@ const (
 	DefaultCSIProvisionerName      = "rancher.io/longhorn"
 
 	DefaultCSIDeploymentReplicaCount = 3
+
+	AnnotationCSIVersion = "longhorn.rancher.io/version"
 )
 
 var (
@@ -34,10 +36,11 @@ type AttacherDeployment struct {
 	deployment *appsv1beta1.Deployment
 }
 
-func NewAttacherDeployment(namespace, serviceAccount, attacherImage string) *AttacherDeployment {
-	service := getCommonService("csi-attacher", namespace)
+func NewAttacherDeployment(version, namespace, serviceAccount, attacherImage string) *AttacherDeployment {
+	service := getCommonService(version, "csi-attacher", namespace)
 
 	deployment := getCommonDeployment(
+		version,
 		"csi-attacher",
 		namespace,
 		serviceAccount,
@@ -87,10 +90,11 @@ type ProvisionerDeployment struct {
 	deployment *appsv1beta1.Deployment
 }
 
-func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, provisionerName string) *ProvisionerDeployment {
-	service := getCommonService("csi-provisioner", namespace)
+func NewProvisionerDeployment(version, namespace, serviceAccount, provisionerImage, provisionerName string) *ProvisionerDeployment {
+	service := getCommonService(version, "csi-provisioner", namespace)
 
 	deployment := getCommonDeployment(
+		version,
 		"csi-provisioner",
 		namespace,
 		serviceAccount,
@@ -138,7 +142,7 @@ type PluginDeployment struct {
 	daemonSet *appsv1beta2.DaemonSet
 }
 
-func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, managerImage, managerURL string, kubeletPluginWatcherEnabled bool) *PluginDeployment {
+func NewPluginDeployment(version, namespace, serviceAccount, driverRegistrarImage, managerImage, managerURL string, kubeletPluginWatcherEnabled bool) *PluginDeployment {
 	args := []string{
 		"--v=5",
 		"--csi-address=$(ADDRESS)",
@@ -225,6 +229,9 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "longhorn-csi-plugin",
 			Namespace: namespace,
+			Annotations: map[string]string{
+				AnnotationCSIVersion: version,
+			},
 		},
 
 		Spec: appsv1beta2.DaemonSetSpec{
