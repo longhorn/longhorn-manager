@@ -106,11 +106,11 @@ func getEngineImageSelector() (labels.Selector, error) {
 }
 
 func (s *DataStore) CreateEngineImageDaemonSet(ds *appsv1beta2.DaemonSet) error {
-	if ds.ObjectMeta.Labels == nil {
-		ds.ObjectMeta.Labels = map[string]string{}
+	if ds.Labels == nil {
+		ds.Labels = map[string]string{}
 	}
 	for k, v := range types.GetEngineImageLabel() {
-		ds.ObjectMeta.Labels[k] = v
+		ds.Labels[k] = v
 	}
 	if _, err := s.kubeClient.AppsV1beta2().DaemonSets(s.namespace).Create(ds); err != nil {
 		return err

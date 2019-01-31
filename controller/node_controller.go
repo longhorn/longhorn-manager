@@ -679,7 +679,7 @@ func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error
 				}
 				condition.Status = types.ConditionStatusFalse
 				condition.Reason = types.NodeConditionReasonNoMountPropagationSupport
-				condition.Message = fmt.Sprintf("The MountPropagation value %s is not detected from pod %s, node %s", mountPropagationStr, pod.ObjectMeta.Name, pod.Spec.NodeName)
+				condition.Message = fmt.Sprintf("The MountPropagation value %s is not detected from pod %s, node %s", mountPropagationStr, pod.Name, pod.Spec.NodeName)
 			} else {
 				if condition.Status != types.ConditionStatusTrue {
 					condition.LastTransitionTime = util.Now()
