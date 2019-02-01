@@ -93,6 +93,10 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	if !cs.waitForVolumeState(resVol.Id, types.VolumeStateDetached, true, false) {
+		return nil, status.Error(codes.Internal, "cannot wait for volume creation to complete")
+	}
+
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			Id:            resVol.Id,
@@ -170,7 +174,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		logrus.Infof("ControllerPublishVolume: no need to attach volume %s", req.GetVolumeId())
 	}
 
-	if !cs.waitForAttach(req.GetVolumeId()) {
+	if !cs.waitForVolumeState(req.GetVolumeId(), types.VolumeStateAttached, false, false) {
 		return nil, status.Errorf(codes.Aborted, "Attaching volume %s failed", req.GetVolumeId())
 	}
 	logrus.Debugf("Volume %s attached on %s", req.GetVolumeId(), req.GetNodeId())
@@ -210,7 +214,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
-	if !cs.waitForDetach(req.GetVolumeId()) {
+	if !cs.waitForVolumeState(req.GetVolumeId(), types.VolumeStateDetached, false, true) {
 		return nil, status.Errorf(codes.Aborted, "Detaching volume %s failed", req.GetVolumeId())
 	}
 	logrus.Debugf("Volume %s detached on %s", req.GetVolumeId(), req.GetNodeId())
@@ -218,53 +222,29 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 
-func (cs *ControllerServer) waitForAttach(volumeID string) (attached bool) {
+func (cs *ControllerServer) waitForVolumeState(volumeID string, state types.VolumeState, notFoundRetry, notFoundReturn bool) bool {
 	timeout := time.After(timeoutAttachDetach)
 	tick := time.Tick(tickAttachDetach)
 	for {
 		select {
 		case <-timeout:
-			logrus.Warnf("waitForAttach: timeout to attach volume %s", volumeID)
+			logrus.Warnf("waitForVolumeState: timeout to wait for volume %s become %s", volumeID, state)
 			return false
 		case <-tick:
-			logrus.Debugf("Trying to get %s attach status at %s", volumeID, time.Now().String())
+			logrus.Debugf("Polling %s state for %s at %s", volumeID, state, time.Now().String())
 			existVol, err := cs.apiClient.Volume.ById(volumeID)
 			if err != nil {
-				logrus.Warnf("waitForAttach: %s", err)
+				logrus.Warnf("waitForVolumeState: wait for %s state %s: %s", volumeID, state, err)
 				continue
 			}
 			if existVol == nil {
-				logrus.Warnf("waitForAttach: volume %s not exist", volumeID)
-				return false
+				logrus.Warnf("waitForVolumeState: volume %s not exist", volumeID)
+				if notFoundRetry {
+					continue
+				}
+				return notFoundReturn
 			}
-			if existVol.State == string(types.VolumeStateAttached) {
-				return true
-			}
-		}
-	}
-}
-
-func (cs *ControllerServer) waitForDetach(volumeID string) (attached bool) {
-	timeout := time.After(timeoutAttachDetach)
-	tick := time.Tick(tickAttachDetach)
-	for {
-		select {
-		case <-timeout:
-			logrus.Warnf("waitForDetach: timeout to dettach volume %s", volumeID)
-			return false
-		case <-tick:
-			logrus.Debugf("Trying to get %s dettach status at %s", volumeID, time.Now().String())
-			existVol, err := cs.apiClient.Volume.ById(volumeID)
-			if err != nil {
-				logrus.Warnf("waitForDetach: %s", err)
-				continue
-			}
-			if existVol == nil {
-				// volume is not exist so I mark it as detached
-				logrus.Warnf("waitForDetach: volume %s not exist", volumeID)
-				return true
-			}
-			if existVol.State == string(types.VolumeStateDetached) {
+			if existVol.State == string(state) {
 				return true
 			}
 		}
