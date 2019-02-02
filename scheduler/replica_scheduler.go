@@ -76,7 +76,7 @@ func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.
 		isFilterd := false
 		for _, r := range replicas {
 			// filter replica in deleting process
-			if r.Spec.NodeID != "" && r.Spec.NodeID == nodeName && r.DeletionTimestamp == nil {
+			if r.Spec.NodeID != "" && r.Spec.NodeID == nodeName && r.DeletionTimestamp == nil && r.Spec.FailedAt == "" {
 				filterdNode = append(filterdNode, node)
 				isFilterd = true
 				break
