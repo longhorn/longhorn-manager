@@ -199,9 +199,9 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 	} else if status.CurrentState == types.InstanceStateError && pod != nil {
 		logs, err := h.getPodLogs(pod.Name, CrashLogsTaillines)
 		if err == nil {
-			logrus.Warnf("instance %v crashed, log: \n%v", pod.Name, logs)
+			logrus.Warnf("instance %v crashed on node %v, log: \n%v", pod.Name, pod.Spec.NodeName, logs)
 		} else {
-			logrus.Warnf("instance %v crashed, but cannot get log, error %v", pod.Name, err)
+			logrus.Warnf("instance %v crashed on node %v, but cannot get log, error %v", pod.Name, pod.Spec.NodeName, err)
 		}
 	}
 	return nil
