@@ -112,7 +112,12 @@ func (h *InstanceHandler) syncStatusWithPod(pod *v1.Pod, spec *types.InstanceSpe
 		if err != nil {
 			logrus.Warnf("cannot get node BootID for instance %v", pod.Name)
 		} else {
-			status.NodeBootID = nodeBootID
+			if status.NodeBootID == "" {
+				status.NodeBootID = nodeBootID
+			} else if status.NodeBootID != nodeBootID {
+				logrus.Warnf("Pod %v's node %v has been rebooted. Original boot ID is %v, current node boot ID is %v",
+					pod.Name, pod.Spec.NodeName, status.NodeBootID, nodeBootID)
+			}
 		}
 	default:
 		logrus.Warnf("instance %v state is failed/unknown, pod state %v",
