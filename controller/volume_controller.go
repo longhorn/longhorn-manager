@@ -538,10 +538,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			return err
 		}
 		// If it's due to reboot, we're going to reattach the volume later
-		// e.Status.NodeBootID would only reset when the instance stopped
+		// e.Status.NodeBootID would only reset when the instance stopped by request
 		if e.Status.NodeBootID != "" && e.Status.NodeBootID != node.Status.NodeInfo.BootID {
 			v.Spec.PendingNodeID = v.Spec.NodeID
-			msg := fmt.Sprintf("Reboot of volume %v attached node %v detected, reattach the volume", v.Name, v.Spec.NodeID)
+			msg := fmt.Sprintf("Detect the reboot of volume %v attached node %v, reattach the volume", v.Name, v.Spec.NodeID)
 			logrus.Errorf(msg)
 			vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonRebooted, msg)
 		} else {
