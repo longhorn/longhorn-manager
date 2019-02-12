@@ -734,7 +734,9 @@ func (s *DataStore) IsNodeDownOrDeleted(name string) (bool, error) {
 		return false, err
 	}
 	cond := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
-	if cond.Status == types.ConditionStatusFalse {
+	if cond.Status == types.ConditionStatusFalse &&
+		(cond.Reason == string(types.NodeConditionReasonKubernetesNodeDown) ||
+			cond.Reason == string(types.NodeConditionReasonKubernetesNodeNotReady)) {
 		return true, nil
 	}
 	return false, nil
