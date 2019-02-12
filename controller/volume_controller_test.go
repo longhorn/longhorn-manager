@@ -281,7 +281,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	// volume attaching, start replicas, one node down
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = TestNode1
-	tc.nodes[1] = newNode(TestNode2, TestNamespace, false, types.ConditionStatusFalse, "NodeDown")
+	tc.nodes[1] = newNode(TestNode2, TestNamespace, false, types.ConditionStatusFalse, string(types.NodeConditionReasonKubernetesNodeDown))
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
@@ -294,6 +294,22 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	tc.expectReplicas = expectRs
 	testCases["volume attaching - start replicas - node failed"] = tc
+	s.runTestCases(c, testCases)
+
+	// volume attaching, start replicas, manager restart
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.NodeID = TestNode1
+	tc.nodes[1] = newNode(TestNode2, TestNamespace, false, types.ConditionStatusFalse, string(types.NodeConditionReasonManagerPodDown))
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Status.State = types.VolumeStateAttaching
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	expectRs = map[string]*longhorn.Replica{}
+	for _, r := range tc.expectReplicas {
+		r.Spec.DesireState = types.InstanceStateRunning
+		expectRs[r.Name] = r
+	}
+	tc.expectReplicas = expectRs
+	testCases["volume attaching - start replicas - manager down"] = tc
 	s.runTestCases(c, testCases)
 }
 
