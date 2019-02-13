@@ -16,7 +16,7 @@ Manager for Longhorn.
 
 ## Deployment
 
-`kubectl create -Rf deploy`
+`kubectl create -Rf deploy/install`
 
 It will deploy the following components in the `longhorn-system` namespace:
 1. Longhorn Manager
@@ -26,34 +26,30 @@ It will deploy the following components in the `longhorn-system` namespace:
 ## Cleanup
 
 Longhorn CRD has finalizers in them, so user should delete the volumes and related resource first, give manager a chance to clean up after them.
-### 1. Clean up volume and related resources
-```
-kubectl -n longhorn-system delete volumes.longhorn.rancher.io --all
-```
-Check the result using:
-```
-kubectl -n longhorn-system get volumes.longhorn.rancher.io
-kubectl -n longhorn-system get engines.longhorn.rancher.io
-kubectl -n longhorn-system get replicas.longhorn.rancher.io
-```
-Make sure all reports `No resources found.` before continuing.
 
-### 2. Clean up engine images and nodes
-```
-kubectl -n longhorn-system delete engineimages.longhorn.rancher.io --all
-kubectl -n longhorn-system delete nodes.longhorn.rancher.io --all
-```
-Check the result using:
-```
-kubectl -n longhorn-system get engineimages.longhorn.rancher.io
-kubectl -n longhorn-system get nodes.longhorn.rancher.io
-```
-Make sure all reports `No resources found.` before continuing.
+To prevent damage to the Kubernetes cluster, we recommend deleting all Kubernetes workloads using Longhorn volumes (PersistentVolume, PersistentVolumeClaim, StorageClass, Deployment, StatefulSet, DaemonSet, etc).
 
-### 3. Clean up the manager and related pods.
+1. Create the uninstallation job to cleanly purge CRDs from the system and wait for success:
+  ```
+  kubectl create -f deploy/uninstall/uninstall.yaml
+  kubectl -n longhorn-system get job/longhorn-uninstall -w
+  ```
+
+Example output:
 ```
-kubectl delete -Rf deploy
+$ kubectl create -f deploy/uninstall/uninstall.yaml
+job.batch/longhorn-uninstall created
+$ kubectl -n longhorn-system get job/longhorn-uninstall -w
+NAME                 DESIRED   SUCCESSFUL   AGE
+longhorn-uninstall   1         0            3s
+longhorn-uninstall   1         1            45s
+^C
 ```
+
+2. Remove remaining components:
+  ```
+  kubectl delete -Rf deploy/install
+  ```
 
 ## Integration test
 
