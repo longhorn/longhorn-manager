@@ -117,6 +117,8 @@ func NewRouter(s *Server) *mux.Router {
 
 	r.Methods("Get").Path("/v1/events").Handler(f(schemas, s.EventList))
 
+	r.Methods("Get").Path("/v1/supportbundle").Handler(f(schemas, s.GenerateSupportBundle))
+
 	settingListStream := NewStreamHandlerFunc("settings", s.wsc.NewWatcher("setting"), s.settingList)
 	r.Path("/v1/ws/settings").Handler(f(schemas, settingListStream))
 	r.Path("/v1/ws/{period}/settings").Handler(f(schemas, settingListStream))
