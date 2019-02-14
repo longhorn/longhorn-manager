@@ -13,12 +13,8 @@ import (
 	"k8s.io/api/core/v1"
 )
 
-func (m *VolumeManager) ListEvent() ([]*v1.Event, error) {
-	eventList, err := m.ds.ListEvents()
-	if err != nil {
-		return nil, err
-	}
-	return eventList, nil
+func (m *VolumeManager) GetLonghornEventList() (*v1.EventList, error) {
+	return m.ds.GetLonghornEventList()
 }
 
 // GenerateSupportBundle covers:
@@ -86,11 +82,11 @@ func (m *VolumeManager) generateSupportBundle(bundleDir string) {
 func (m *VolumeManager) generateSupportBundleYAMLs(bundleRootDir string, errLog io.Writer) {
 	yamlsDir := filepath.Join(bundleRootDir, "yamls")
 
-	events, err := m.ds.ListEvents()
+	eventList, err := m.ds.GetAllEventsList()
 	if err != nil {
 		fmt.Fprintf(errLog, "Support Bundle: failed to get events: %v", err)
 	}
-	encodeToYAMLFile(events, filepath.Join(yamlsDir, "events.yaml"), errLog)
+	encodeToYAMLFile(eventList, filepath.Join(yamlsDir, "events.yaml"), errLog)
 }
 
 func encodeToYAMLFile(obj interface{}, path string, errLog io.Writer) {
