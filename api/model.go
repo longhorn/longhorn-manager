@@ -685,22 +685,22 @@ func toNodeCollection(nodeList []*longhorn.Node, nodeIPMap map[string]string, ap
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "node"}}
 }
 
-func toEventResource(event *v1.Event) *Event {
+func toEventResource(event v1.Event) *Event {
 	e := &Event{
 		Resource: client.Resource{
 			Id:    event.Name,
 			Type:  "event",
 			Links: map[string]string{},
 		},
-		Event:     *event,
+		Event:     event,
 		EventType: event.Type,
 	}
 	return e
 }
 
-func toEventCollection(eventList []*v1.Event) *client.GenericCollection {
+func toEventCollection(eventList *v1.EventList) *client.GenericCollection {
 	data := []interface{}{}
-	for _, event := range eventList {
+	for _, event := range eventList.Items {
 		data = append(data, toEventResource(event))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "event"}}

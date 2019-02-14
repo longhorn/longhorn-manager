@@ -22,7 +22,7 @@ func (s *Server) EventList(rw http.ResponseWriter, req *http.Request) error {
 }
 
 func (s *Server) eventList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
-	eventList, err := s.m.ListEvent()
+	eventList, err := s.m.GetLonghornEventList()
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to list events")
 	}
