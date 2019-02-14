@@ -1,7 +1,9 @@
 package api
 
 import (
+	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
@@ -25,4 +27,20 @@ func (s *Server) eventList(apiContext *api.ApiContext) (*client.GenericCollectio
 		return nil, errors.Wrap(err, "fail to list events")
 	}
 	return toEventCollection(eventList), nil
+}
+
+func (s *Server) GenerateSupportBundle(w http.ResponseWriter, req *http.Request) error {
+	bundleFile, size, err := s.m.GenerateSupportBundle()
+	if err != nil {
+		return err
+	}
+	defer bundleFile.Close()
+
+	w.Header().Set("Content-Disposition", "attachment; filename=longhorn-support-bundle.zip")
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	if _, err = io.Copy(w, bundleFile); err != nil {
+		return err
+	}
+	return nil
 }
