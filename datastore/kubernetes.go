@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/rest"
 
 	"github.com/rancher/longhorn-manager/types"
@@ -217,4 +218,8 @@ func (s *DataStore) GetPodContainerLogRequest(podName, containerName string) *re
 		Container:  containerName,
 		Timestamps: true,
 	})
+}
+
+func (s *DataStore) GetKubernetesVersion() (*version.Info, error) {
+	return s.kubeClient.Discovery().ServerVersion()
 }

@@ -61,6 +61,7 @@ func startManager(c *cli.Context) error {
 		err error
 	)
 
+	manager.VERSION = VERSION
 	engineImage := c.String(FlagEngineImage)
 	if engineImage == "" {
 		return fmt.Errorf("require %v", FlagEngineImage)
