@@ -19,13 +19,17 @@ import (
 	"github.com/rancher/longhorn-manager/util"
 )
 
+var VERSION = "v0.3.0"
+
 func (m *VolumeManager) GetLonghornEventList() (*v1.EventList, error) {
 	return m.ds.GetLonghornEventList()
 }
 
 type BundleMeta struct {
+	LonghornVersion       string `json:"longhornVersion"`
+	KubernetesVersion     string `json:"kubernetesVersion"`
 	LonghornNamespaceUUID string `json:"longhornNamspaceUUID"`
-	CreatedAt             string `json:"createdAt"`
+	BundleCreatedAt       string `json:"bundleCreatedAt"`
 }
 
 // GenerateSupportBundle covers:
@@ -55,12 +59,19 @@ func (m *VolumeManager) GenerateSupportBundle() (io.ReadCloser, string, int64, e
 	if err != nil {
 		return nil, "", 0, errors.Wrapf(err, "cannot get longhorn namespace %v", err)
 	}
-	bundleMeta := &BundleMeta{
-		LonghornNamespaceUUID: string(namespace.UID),
-		CreatedAt:             util.Now(),
+	kubeVersion, err := m.ds.GetKubernetesVersion()
+	if err != nil {
+		return nil, "", 0, errors.Wrapf(err, "cannot get kubernetes version %v", err)
 	}
 
-	bundleName := "longhorn-support-bundle_" + bundleMeta.LonghornNamespaceUUID + "_" + bundleMeta.CreatedAt
+	bundleMeta := &BundleMeta{
+		LonghornVersion:       VERSION,
+		KubernetesVersion:     kubeVersion.GitVersion,
+		LonghornNamespaceUUID: string(namespace.UID),
+		BundleCreatedAt:       util.Now(),
+	}
+
+	bundleName := "longhorn-support-bundle_" + bundleMeta.LonghornNamespaceUUID + "_" + bundleMeta.BundleCreatedAt
 	bundleFileName := bundleName + ".zip"
 	bundleDir := filepath.Join("/tmp", bundleName)
 	bundleFile := filepath.Join("/tmp", bundleFileName)
