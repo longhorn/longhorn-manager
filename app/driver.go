@@ -25,6 +25,9 @@ import (
 )
 
 const (
+	CSIAttacherName    = "csi-attacher"
+	CSIProvisionerName = "csi-provisioner"
+
 	FlagFlexvolumeDir    = "flexvolume-dir"
 	EnvFlexvolumeDir     = "FLEXVOLUME_DIR"
 	DefaultFlexvolumeDir = "/usr/libexec/kubernetes/kubelet-plugins/volume/exec/"
@@ -204,6 +207,10 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 		return err
 	}
 
+	if err := handleCSIUpgrade(kubeClient, namespace); err != nil {
+		return err
+	}
+
 	attacherDeployment := csi.NewAttacherDeployment(VERSION, namespace, serviceAccountName, csiAttacherImage)
 	if err := attacherDeployment.Deploy(kubeClient); err != nil {
 		return err
@@ -226,6 +233,29 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 
 	<-done
 
+	return nil
+}
+
+func handleCSIUpgrade(kubeClient *clientset.Clientset, namespace string) error {
+	// Upgrade from v0.3.x to v0.4.0, remove the existing attacher/provisioner statefulsets
+	statefulSets, err := kubeClient.AppsV1beta2().StatefulSets(namespace).List(metav1.ListOptions{})
+	if err != nil {
+		// no existing statefulset needs to be cleaned up
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	for _, s := range statefulSets.Items {
+		if (s.Name == CSIAttacherName || s.Name == CSIProvisionerName) && s.DeletionTimestamp == nil {
+			propagation := metav1.DeletePropagationForeground
+			if err := kubeClient.AppsV1beta2().StatefulSets(namespace).Delete(
+				s.Name, &metav1.DeleteOptions{PropagationPolicy: &propagation}); err != nil {
+				return err
+			}
+			logrus.Warnf("Statefulset %v from previous version wasn't cleaned up. Clean it up", s.Name)
+		}
+	}
 	return nil
 }
 
