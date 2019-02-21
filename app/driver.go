@@ -25,9 +25,6 @@ import (
 )
 
 const (
-	CSIAttacherName    = "csi-attacher"
-	CSIProvisionerName = "csi-provisioner"
-
 	FlagFlexvolumeDir    = "flexvolume-dir"
 	EnvFlexvolumeDir     = "FLEXVOLUME_DIR"
 	DefaultFlexvolumeDir = "/usr/libexec/kubernetes/kubelet-plugins/volume/exec/"
@@ -247,7 +244,7 @@ func handleCSIUpgrade(kubeClient *clientset.Clientset, namespace string) error {
 		return err
 	}
 	for _, s := range statefulSets.Items {
-		if (s.Name == CSIAttacherName || s.Name == CSIProvisionerName) && s.DeletionTimestamp == nil {
+		if (s.Name == types.CSIAttacherName || s.Name == types.CSIProvisionerName) && s.DeletionTimestamp == nil {
 			propagation := metav1.DeletePropagationForeground
 			if err := kubeClient.AppsV1beta2().StatefulSets(namespace).Delete(
 				s.Name, &metav1.DeleteOptions{PropagationPolicy: &propagation}); err != nil {
