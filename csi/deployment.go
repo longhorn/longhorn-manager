@@ -11,6 +11,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
 
+	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 )
 
@@ -37,11 +38,11 @@ type AttacherDeployment struct {
 }
 
 func NewAttacherDeployment(version, namespace, serviceAccount, attacherImage string) *AttacherDeployment {
-	service := getCommonService(version, "csi-attacher", namespace)
+	service := getCommonService(version, types.CSIAttacherName, namespace)
 
 	deployment := getCommonDeployment(
 		version,
-		"csi-attacher",
+		types.CSIAttacherName,
 		namespace,
 		serviceAccount,
 		attacherImage,
@@ -95,11 +96,11 @@ type ProvisionerDeployment struct {
 }
 
 func NewProvisionerDeployment(version, namespace, serviceAccount, provisionerImage, provisionerName string) *ProvisionerDeployment {
-	service := getCommonService(version, "csi-provisioner", namespace)
+	service := getCommonService(version, types.CSIProvisionerName, namespace)
 
 	deployment := getCommonDeployment(
 		version,
-		"csi-provisioner",
+		types.CSIProvisionerName,
 		namespace,
 		serviceAccount,
 		provisionerImage,
@@ -235,7 +236,7 @@ func NewPluginDeployment(version, namespace, serviceAccount, driverRegistrarImag
 
 	daemonSet := &appsv1beta2.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "longhorn-csi-plugin",
+			Name:      types.CSIPluginName,
 			Namespace: namespace,
 			Annotations: map[string]string{
 				AnnotationCSIVersion: version,
@@ -245,13 +246,13 @@ func NewPluginDeployment(version, namespace, serviceAccount, driverRegistrarImag
 		Spec: appsv1beta2.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"app": "longhorn-csi-plugin",
+					"app": types.CSIPluginName,
 				},
 			},
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						"app": "longhorn-csi-plugin",
+						"app": types.CSIPluginName,
 					},
 				},
 				Spec: v1.PodSpec{

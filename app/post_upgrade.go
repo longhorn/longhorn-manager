@@ -12,7 +12,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/util/version"
 
-	"github.com/rancher/longhorn-manager/datastore"
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	"github.com/rancher/longhorn-manager/types"
 )
@@ -123,7 +122,7 @@ func (u *postUpgrader) waitManagerUpgradeComplete() {
 	defer t.Stop()
 	for range t.C {
 		ds, err := u.kubeClient.AppsV1().DaemonSets(u.namespace).Get(
-			datastore.LonghornManagerDaemonSetName, metav1.GetOptions{})
+			types.LonghornManagerDaemonSetName, metav1.GetOptions{})
 		if err != nil {
 			logrus.Warningf("couldn't get daemonset: %v", err)
 			continue
@@ -140,7 +139,7 @@ func (u *postUpgrader) waitManagerUpgradeComplete() {
 		}
 		complete := true
 		for _, pod := range podList.Items {
-			if app, ok := pod.Labels["app"]; !ok || app != datastore.LonghornManagerDaemonSetName {
+			if app, ok := pod.Labels["app"]; !ok || app != types.LonghornManagerDaemonSetName {
 				continue
 			}
 			if len(pod.Spec.Containers) != 1 || pod.Spec.Containers[0].Image != ds.Spec.Template.Spec.Containers[0].Image {

@@ -16,15 +16,11 @@ import (
 	"github.com/rancher/longhorn-manager/types"
 )
 
-const (
-	LonghornManagerDaemonSetName = "longhorn-manager"
-)
-
 func (s *DataStore) getManagerLabel() map[string]string {
 	return map[string]string{
 		//TODO standardize key
 		//longhornSystemKey: longhornSystemManager,
-		"app": LonghornManagerDaemonSetName,
+		"app": types.LonghornManagerDaemonSetName,
 	}
 }
 
@@ -142,12 +138,13 @@ func (s *DataStore) DeleteDaemonSet(name string) error {
 	return s.kubeClient.AppsV1beta2().DaemonSets(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
 }
 
-func (s *DataStore) GetManagerDaemonSet() (*appsv1beta2.DaemonSet, error) {
-	return s.GetDaemonSet(LonghornManagerDaemonSetName)
+func (s *DataStore) GetDeployment(name string) (*appsv1beta2.Deployment, error) {
+	return s.kubeClient.AppsV1beta2().Deployments(s.namespace).Get(name, metav1.GetOptions{})
 }
 
-func (s *DataStore) DeleteManagerDaemonSet() error {
-	return s.DeleteDaemonSet(LonghornManagerDaemonSetName)
+func (s *DataStore) DeleteDeployment(name string) error {
+	propagation := metav1.DeletePropagationForeground
+	return s.kubeClient.AppsV1beta2().Deployments(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
 }
 
 func (s *DataStore) ListManagerPods() ([]*corev1.Pod, error) {

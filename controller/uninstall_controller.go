@@ -4,6 +4,11 @@ import (
 	"fmt"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers/apps/v1beta2"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
@@ -11,15 +16,11 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 	"golang.org/x/time/rate"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/informers/apps/v1beta2"
 
-	"github.com/rancher/longhorn-manager/datastore"
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhinformers "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
+
+	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
 )
 
@@ -163,6 +164,10 @@ func (c *UninstallController) uninstall() error {
 	// CRDs after their deletion. We must delete manager and do a final check
 	// for CRDs, just in case.
 	if waitForUpdate, err := c.deleteManager(); err != nil || waitForUpdate {
+		return err
+	}
+
+	if waitForUpdate, err := c.deleteDriver(); err != nil || waitForUpdate {
 		return err
 	}
 
@@ -399,13 +404,13 @@ func (c *UninstallController) deleteNodes(nodes map[string]*longhorn.Node) (err 
 }
 
 func (c *UninstallController) deleteManager() (bool, error) {
-	if ds, err := c.ds.GetManagerDaemonSet(); err != nil {
+	if ds, err := c.ds.GetDaemonSet(types.LonghornManagerDaemonSetName); err != nil {
 		if apierrors.IsNotFound(err) {
 			return false, nil
 		}
 		return true, err
 	} else if ds.DeletionTimestamp == nil {
-		if err := c.ds.DeleteManagerDaemonSet(); err != nil {
+		if err := c.ds.DeleteDaemonSet(types.LonghornManagerDaemonSetName); err != nil {
 			logrus.Warn("failed to mark manager for deletion")
 			return true, err
 		}
@@ -417,7 +422,7 @@ func (c *UninstallController) deleteManager() (bool, error) {
 }
 
 func (c *UninstallController) managerReady() (bool, error) {
-	if ds, err := c.ds.GetManagerDaemonSet(); err != nil {
+	if ds, err := c.ds.GetDaemonSet(types.LonghornManagerDaemonSetName); err != nil {
 		if apierrors.IsNotFound(err) {
 			return false, nil
 		}
@@ -433,4 +438,59 @@ func (c *UninstallController) managerReady() (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+func (c *UninstallController) deleteDriver() (bool, error) {
+	deploymentsToClean := []string{
+		types.DriverDeployerName,
+		types.CSIAttacherName,
+		types.CSIProvisionerName,
+	}
+	wait := false
+	for _, name := range deploymentsToClean {
+		if driver, err := c.ds.GetDeployment(name); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			logrus.Warnf("failed to get %v for deletion: %v", name, err)
+			wait = true
+			continue
+		} else if driver.DeletionTimestamp == nil {
+			if err := c.ds.DeleteDeployment(name); err != nil {
+				logrus.Warnf("failed to mark %v for deletion: %v", name, err)
+				wait = true
+				continue
+			}
+			logrus.Infof("marked %v for deletion", name)
+			wait = true
+			continue
+		}
+		logrus.Infof("%v already marked for deletion", name)
+		wait = true
+	}
+	daemonSetsToClean := []string{
+		types.CSIPluginName,
+	}
+	for _, name := range daemonSetsToClean {
+		if driver, err := c.ds.GetDaemonSet(name); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			logrus.Warnf("failed to get %v for deletion: %v", name, err)
+			wait = true
+			continue
+		} else if driver.DeletionTimestamp == nil {
+			if err := c.ds.DeleteDaemonSet(name); err != nil {
+				logrus.Warnf("failed to mark %v for deletion: %v", name, err)
+				wait = true
+				continue
+			}
+			logrus.Infof("marked %v for deletion", name)
+			wait = true
+			continue
+		}
+		logrus.Infof("%v already marked for deletion", name)
+		wait = true
+	}
+	return wait, nil
 }
