@@ -140,7 +140,7 @@ func (m *VolumeManager) generateSupportBundleYAMLsForKubernetes(dir string, errL
 func getListAndEncodeToYAML(name string, getListFunc GetRuntimeObjectListFunc, yamlsDir string, errLog io.Writer) {
 	obj, err := getListFunc()
 	if err != nil {
-		fmt.Fprintf(errLog, "Support Bundle: failed to get %v: %v", name, err)
+		fmt.Fprintf(errLog, "Support Bundle: failed to get %v: %v\n", name, err)
 	}
 	encodeToYAMLFile(obj, filepath.Join(yamlsDir, name+".yaml"), errLog)
 }
@@ -169,7 +169,7 @@ func (m *VolumeManager) generateSupportBundleYAMLsForLonghorn(dir string, errLog
 func getObjectMapAndEncodeToYAML(name string, getMapFunc GetObjectMapFunc, yamlsDir string, errLog io.Writer) {
 	objMap, err := getMapFunc()
 	if err != nil {
-		fmt.Fprintf(errLog, "Support Bundle: failed to get %v: %v", name, err)
+		fmt.Fprintf(errLog, "Support Bundle: failed to get %v: %v\n", name, err)
 	}
 	encodeMapToYAMLFile(objMap, filepath.Join(yamlsDir, name+".yaml"), errLog)
 }
@@ -177,7 +177,7 @@ func getObjectMapAndEncodeToYAML(name string, getMapFunc GetObjectMapFunc, yamls
 func encodeMapToYAMLFile(objMap interface{}, path string, errLog io.Writer) {
 	objV := reflect.ValueOf(objMap)
 	if objV.Kind() != reflect.Map {
-		fmt.Fprintf(errLog, "Support Bundle: obj %v is not a map", objMap)
+		fmt.Fprintf(errLog, "Support Bundle: obj %v is not a map\n", objMap)
 		return
 	}
 	keys := objV.MapKeys()
@@ -192,7 +192,7 @@ func encodeToYAMLFile(obj interface{}, path string, errLog io.Writer) {
 	var err error
 	defer func() {
 		if err != nil {
-			fmt.Fprintf(errLog, "Support Bundle: failed to generate %v: %v", path, err)
+			fmt.Fprintf(errLog, "Support Bundle: failed to generate %v: %v\n", path, err)
 		}
 	}()
 	err = os.MkdirAll(filepath.Dir(path), os.FileMode(0755))
@@ -216,12 +216,12 @@ func encodeToYAMLFile(obj interface{}, path string, errLog io.Writer) {
 func (m *VolumeManager) generateSupportBundleLogs(logsDir string, errLog io.Writer) {
 	list, err := m.ds.GetAllPodsList()
 	if err != nil {
-		fmt.Fprintf(errLog, "Support bundle: cannot get pod list: %v", err)
+		fmt.Fprintf(errLog, "Support bundle: cannot get pod list: %v\n", err)
 		return
 	}
 	podList, ok := list.(*v1.PodList)
 	if !ok {
-		fmt.Fprintf(errLog, "BUG: Support bundle: didn't get pod list")
+		fmt.Fprintf(errLog, "BUG: Support bundle: didn't get pod list\n")
 		return
 	}
 	for _, pod := range podList.Items {
@@ -232,7 +232,7 @@ func (m *VolumeManager) generateSupportBundleLogs(logsDir string, errLog io.Writ
 			logFileName := filepath.Join(podDir, container.Name+".log")
 			stream, err := req.Context(context.Background()).Stream()
 			if err != nil {
-				fmt.Fprintf(errLog, "BUG: Support bundle: cannot get log for pod %v container %v: %v",
+				fmt.Fprintf(errLog, "BUG: Support bundle: cannot get log for pod %v container %v: %v\n",
 					podName, container.Name, err)
 				continue
 			}
@@ -246,7 +246,7 @@ func streamLogToFile(logStream io.ReadCloser, path string, errLog io.Writer) {
 	var err error
 	defer func() {
 		if err != nil {
-			fmt.Fprintf(errLog, "Support Bundle: failed to generate %v: %v", path, err)
+			fmt.Fprintf(errLog, "Support Bundle: failed to generate %v: %v\n", path, err)
 		}
 	}()
 	err = os.MkdirAll(filepath.Dir(path), os.FileMode(0755))
