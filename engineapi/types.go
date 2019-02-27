@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/rancher/backupstore"
 	"github.com/rancher/longhorn-manager/types"
 )
 
@@ -85,6 +86,7 @@ type BackupVolume struct {
 	Created        string `json:"created"`
 	LastBackupName string
 	SpaceUsage     string
+	Messages       map[backupstore.MessageType]string `json:"messages"`
 	Backups        map[string]*Backup
 	BaseImage      string `json:"baseImage"`
 }
