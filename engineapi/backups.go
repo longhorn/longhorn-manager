@@ -10,6 +10,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 
+	"github.com/rancher/backupstore"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 )
@@ -26,6 +27,7 @@ type backupVolume struct {
 	Created        string
 	LastBackupName string
 	SpaceUsage     string
+	Messages       map[backupstore.MessageType]string
 	Backups        map[string]interface{}
 }
 
@@ -86,10 +88,22 @@ func parseBackupVolumesList(output string) ([]*BackupVolume, error) {
 	volumes := []*BackupVolume{}
 
 	for name, v := range data {
+		if v.Messages != nil {
+			for mType, mContent := range v.Messages {
+				if mType == backupstore.MessageTypeError {
+					logrus.Errorf("message from backupVolume[%v], type[%v], content[%v]",
+						name, mType, mContent)
+				} else {
+					logrus.Warnf("message from backupVolume[%v], type[%v], content[%v]",
+						name, mType, mContent)
+				}
+			}
+		}
 		volumes = append(volumes, &BackupVolume{
-			Name:    name,
-			Size:    v.Size,
-			Created: v.Created,
+			Name:     name,
+			Size:     v.Size,
+			Created:  v.Created,
+			Messages: v.Messages,
 		})
 	}
 
