@@ -1,8 +1,8 @@
 package csi
 
 import (
-	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	csicommon "github.com/kubernetes-csi/drivers/pkg/csi-common"

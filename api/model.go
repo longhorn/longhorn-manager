@@ -3,9 +3,9 @@ package api
 import (
 	"strconv"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
+	"github.com/sirupsen/logrus"
 
 	"k8s.io/api/core/v1"
 

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
 	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"

@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
+	"github.com/sirupsen/logrus"
 
 	"github.com/rancher/longhorn-manager/controller"
 )

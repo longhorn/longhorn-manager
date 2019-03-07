@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
+	"github.com/sirupsen/logrus"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )

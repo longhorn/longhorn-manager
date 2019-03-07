@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Sirupsen/logrus"
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	csicommon "github.com/kubernetes-csi/drivers/pkg/csi-common"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/kubernetes/pkg/util/mount"

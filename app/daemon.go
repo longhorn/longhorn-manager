@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/rancher/go-iscsi-helper/iscsi"
 	iscsi_util "github.com/rancher/go-iscsi-helper/util"
+	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
 	"github.com/rancher/longhorn-manager/api"
