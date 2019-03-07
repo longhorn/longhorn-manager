@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	"github.com/rancher/backupstore"
 	"github.com/rancher/longhorn-manager/types"

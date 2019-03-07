@@ -1,9 +1,9 @@
 package server
 
 import (
-	"github.com/Sirupsen/logrus"
 	"github.com/docker/go-connections/sockets"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"net/http"
 	"os"
 	"path/filepath"

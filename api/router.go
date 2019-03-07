@@ -4,11 +4,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
+	"github.com/sirupsen/logrus"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )

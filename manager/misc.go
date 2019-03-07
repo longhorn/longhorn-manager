@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 
 	"k8s.io/api/core/v1"

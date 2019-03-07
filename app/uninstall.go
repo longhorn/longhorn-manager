@@ -3,8 +3,8 @@ package app
 import (
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"

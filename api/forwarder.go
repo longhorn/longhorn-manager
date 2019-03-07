@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"net/http/httputil"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	"github.com/rancher/longhorn-manager/manager"
 )

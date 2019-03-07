@@ -19,10 +19,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 	iscsi_util "github.com/rancher/go-iscsi-helper/util"
 	"github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"

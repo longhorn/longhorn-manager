@@ -3,7 +3,7 @@ package controller
 import (
 	"sync"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/controller"
