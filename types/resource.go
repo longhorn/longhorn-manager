@@ -102,12 +102,13 @@ const (
 )
 
 type InstanceSpec struct {
-	OwnerID     string        `json:"ownerID"`
-	VolumeName  string        `json:"volumeName"`
-	VolumeSize  int64         `json:"volumeSize,string"`
-	NodeID      string        `json:"nodeID"`
-	EngineImage string        `json:"engineImage"`
-	DesireState InstanceState `json:"desireState"`
+	OwnerID      string        `json:"ownerID"`
+	VolumeName   string        `json:"volumeName"`
+	VolumeSize   int64         `json:"volumeSize,string"`
+	NodeID       string        `json:"nodeID"`
+	EngineImage  string        `json:"engineImage"`
+	DesireState  InstanceState `json:"desireState"`
+	LogRequested bool          `json:"logRequested"`
 }
 
 type InstanceStatus struct {
