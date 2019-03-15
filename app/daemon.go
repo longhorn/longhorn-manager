@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/gorilla/handlers"
 	"github.com/rancher/go-iscsi-helper/iscsi"
 	iscsi_util "github.com/rancher/go-iscsi-helper/util"
 	"github.com/sirupsen/logrus"
@@ -119,6 +120,17 @@ func startManager(c *cli.Context) error {
 
 	server := api.NewServer(m, wsc)
 	router := http.Handler(api.NewRouter(server))
+
+	router = util.FilteredLoggingHandler(map[string]struct{}{
+		"/v1/apiversions":  {},
+		"/v1/schemas":      {},
+		"/v1/settings":     {},
+		"/v1/volumes":      {},
+		"/v1/nodes":        {},
+		"/v1/engineimages": {},
+		"/v1/events":       {},
+	}, os.Stdout, router)
+	router = handlers.ProxyHeaders(router)
 
 	listen := types.GetAPIServerAddressFromIP(currentIP)
 	logrus.Infof("Listening on %s", listen)

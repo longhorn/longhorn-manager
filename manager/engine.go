@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/types"
@@ -71,6 +72,7 @@ func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]st
 	if snap == nil {
 		return nil, fmt.Errorf("cannot found just created snapshot '%s', for volume '%s'", snapshotName, volumeName)
 	}
+	logrus.Debugf("Created snapshot %v with labels %+v for volume %v", snapshotName, labels, volumeName)
 	return snap, nil
 }
 
@@ -86,7 +88,11 @@ func (m *VolumeManager) DeleteSnapshot(snapshotName, volumeName string) error {
 	if err != nil {
 		return err
 	}
-	return engine.SnapshotDelete(snapshotName)
+	if err := engine.SnapshotDelete(snapshotName); err != nil {
+		return err
+	}
+	logrus.Debugf("Deleted snapshot %v for volume %v", snapshotName, volumeName)
+	return nil
 }
 
 func (m *VolumeManager) RevertSnapshot(snapshotName, volumeName string) error {
@@ -111,6 +117,7 @@ func (m *VolumeManager) RevertSnapshot(snapshotName, volumeName string) error {
 	if snapshot == nil {
 		return fmt.Errorf("not found snapshot '%s', for volume '%s'", snapshotName, volumeName)
 	}
+	logrus.Debugf("Revert to snapshot %v for volume %v", snapshotName, volumeName)
 	return nil
 }
 
@@ -127,7 +134,11 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 		return err
 	}
 	//TODO time consuming operation, move it out of API server path
-	return engine.SnapshotPurge()
+	if err := engine.SnapshotPurge(); err != nil {
+		return err
+	}
+	logrus.Debugf("Purged snapshots for volume %v", volumeName)
+	return nil
 }
 
 func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]string, volumeName string) error {
@@ -151,7 +162,11 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 		return err
 	}
 	//TODO time consuming operation, move it out of API server path
-	return engine.SnapshotBackup(snapshotName, backupTarget, labels, credential)
+	if err := engine.SnapshotBackup(snapshotName, backupTarget, labels, credential); err != nil {
+		return err
+	}
+	logrus.Debugf("Backup snapshot %v with label %v for volume %v", snapshotName, labels, volumeName)
+	return nil
 }
 
 func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.EngineClient, err error) {
@@ -272,5 +287,9 @@ func (m *VolumeManager) DeleteBackup(backupName, volumeName string) error {
 	}
 
 	url := engineapi.GetBackupURL(backupTarget.URL, backupName, volumeName)
-	return backupTarget.DeleteBackup(url)
+	if err := backupTarget.DeleteBackup(url); err != nil {
+		return err
+	}
+	logrus.Debugf("Deleted backup %v for volume %v", backupName, volumeName)
+	return nil
 }

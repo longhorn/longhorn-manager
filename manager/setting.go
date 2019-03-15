@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
@@ -64,6 +65,7 @@ func (m *VolumeManager) CreateOrUpdateSetting(s *longhorn.Setting) (*longhorn.Se
 		}
 		return nil, err
 	}
+	logrus.Debugf("Updated setting %v to %v", s.Name, setting.Value)
 	return setting, nil
 }
 

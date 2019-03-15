@@ -227,12 +227,16 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Created volume %v", v.Name)
+	logrus.Debugf("Created volume %v: %+v", v.Name, v.Spec)
 	return v, nil
 }
 
 func (m *VolumeManager) Delete(name string) error {
-	return m.ds.DeleteVolume(name)
+	if err := m.ds.DeleteVolume(name); err != nil {
+		return err
+	}
+	logrus.Debugf("Deleted volume %v", name)
+	return nil
 }
 
 func (m *VolumeManager) Attach(name, nodeID string) (v *longhorn.Volume, err error) {
@@ -376,12 +380,16 @@ func (m *VolumeManager) UpdateRecurringJobs(volumeName string, jobs []types.Recu
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Updating volume %v recurring jobs", v.Name)
+	logrus.Debugf("Updated volume %v recurring jobs to %+v", v.Name, v.Spec.RecurringJobs)
 	return v, nil
 }
 
 func (m *VolumeManager) DeleteReplica(replicaName string) error {
-	return m.ds.DeleteReplica(replicaName)
+	if err := m.ds.DeleteReplica(replicaName); err != nil {
+		return err
+	}
+	logrus.Debugf("Deleted volume replica %v", replicaName)
+	return nil
 }
 
 func (m *VolumeManager) GetManagerNodeIPMap() (map[string]string, error) {
@@ -589,12 +597,13 @@ func (m *VolumeManager) UpdateReplicaCount(name string, count int) (v *longhorn.
 	if v.Spec.MigrationNodeID != "" {
 		return nil, fmt.Errorf("migration in process, cannot update replica count")
 	}
+	oldCount := v.Spec.NumberOfReplicas
 	v.Spec.NumberOfReplicas = count
 
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Updated volume %v replica count to %v", v.Name, count)
+	logrus.Debugf("Updated volume %v replica count from %v to %v", v.Name, oldCount, v.Spec.NumberOfReplicas)
 	return v, nil
 }

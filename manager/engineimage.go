@@ -94,7 +94,11 @@ func (m *VolumeManager) DeleteEngineImageByName(name string) error {
 	if ei.Status.RefCount != 0 {
 		return fmt.Errorf("unable to delete the engine image while being used")
 	}
-	return m.ds.DeleteEngineImage(name)
+	if err := m.ds.DeleteEngineImage(name); err != nil {
+		return err
+	}
+	logrus.Debugf("Deleted engine image %v (%v)", ei.Name, ei.Spec.Image)
+	return nil
 }
 
 func (m *VolumeManager) DeployAndWaitForEngineImage(image string) error {

@@ -20,7 +20,12 @@ func (m *VolumeManager) UpdateNode(name string, allowScheduling bool) (*longhorn
 		return nil, err
 	}
 	node.Spec.AllowScheduling = allowScheduling
-	return m.ds.UpdateNode(node)
+	node, err = m.ds.UpdateNode(node)
+	if err != nil {
+		return nil, err
+	}
+	logrus.Debugf("Updated node %v scheduling to %v", name, node.Spec.AllowScheduling)
+	return node, nil
 }
 
 func (m *VolumeManager) ListNodes() (map[string]*longhorn.Node, error) {
@@ -99,7 +104,12 @@ func (m *VolumeManager) DiskUpdate(name string, updateDisks []types.DiskSpec) (*
 	}
 	node.Spec.Disks = diskUpdateMap
 
-	return m.ds.UpdateNode(node)
+	node, err = m.ds.UpdateNode(node)
+	if err != nil {
+		return nil, err
+	}
+	logrus.Debugf("Updated node disks of %v to %+v", name, node.Spec.Disks)
+	return node, nil
 }
 
 func (m *VolumeManager) DeleteNode(name string) error {
@@ -145,5 +155,9 @@ func (m *VolumeManager) DeleteNode(name string) error {
 			}
 		}
 	}
-	return m.ds.DeleteNode(name)
+	if err := m.ds.DeleteNode(name); err != nil {
+		return err
+	}
+	logrus.Debugf("Deleted node %v", name)
+	return nil
 }
