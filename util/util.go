@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -19,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gorilla/handlers"
 	"github.com/pkg/errors"
 	iscsi_util "github.com/rancher/go-iscsi-helper/util"
 	"github.com/satori/go.uuid"
@@ -488,4 +490,30 @@ func RemoveHostDirectoryContent(directory string) (err error) {
 		return err
 	}
 	return nil
+}
+
+type filteredLoggingHandler struct {
+	filteredPaths  map[string]struct{}
+	handler        http.Handler
+	loggingHandler http.Handler
+}
+
+func FilteredLoggingHandler(filteredPaths map[string]struct{}, writer io.Writer, router http.Handler) http.Handler {
+
+	return filteredLoggingHandler{
+		filteredPaths:  filteredPaths,
+		handler:        router,
+		loggingHandler: handlers.CombinedLoggingHandler(writer, router),
+	}
+}
+
+func (h filteredLoggingHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	switch req.Method {
+	case "GET":
+		if _, exists := h.filteredPaths[req.URL.Path]; exists {
+			h.handler.ServeHTTP(w, req)
+			return
+		}
+	}
+	h.loggingHandler.ServeHTTP(w, req)
 }

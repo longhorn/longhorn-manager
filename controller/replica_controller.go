@@ -257,6 +257,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 				if err := util.RemoveHostDirectoryContent(replica.Spec.DataPath); err != nil {
 					return errors.Wrapf(err, "cannot cleanup after replica %v at %v", replica.Name, replica.Spec.DataPath)
 				}
+				logrus.Debugf("Cleanup replica %v at %v:%v completed", replica.Name, replica.Spec.NodeID, replica.Spec.DataPath)
 			} else {
 				logrus.Debugf("Didn't cleanup replica %v since it's not the active one for the path %v", replica.Name, replica.Spec.DataPath)
 			}
@@ -264,6 +265,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 
 		if replica.Spec.NodeID == "" && replica.Spec.OwnerID == rc.controllerID {
+			logrus.Debugf("Deleted replica %v without cleanup due to no node ID", replica.Name)
 			return rc.ds.RemoveFinalizerForReplica(replica)
 		}
 	}
