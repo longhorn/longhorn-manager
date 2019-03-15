@@ -392,6 +392,8 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		r := rs[rName]
 		if mode == types.ReplicaModeERR {
 			if r != nil {
+				e.Spec.LogRequested = true
+				r.Spec.LogRequested = true
 				r.Spec.FailedAt = vc.nowHandler()
 				r, err = vc.ds.UpdateReplica(r)
 				if err != nil {
@@ -549,6 +551,17 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			msg := fmt.Sprintf("Engine of volume %v dead unexpectedly, detach the volume", v.Name)
 			logrus.Errorf(msg)
 			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFaulted, msg)
+			e.Spec.LogRequested = true
+			for _, r := range rs {
+				if r.Status.CurrentState == types.InstanceStateRunning {
+					r.Spec.LogRequested = true
+					r, err = vc.ds.UpdateReplica(r)
+					if err != nil {
+						return err
+					}
+					rs[r.Name] = r
+				}
+			}
 		}
 		v.Spec.NodeID = ""
 	}
@@ -631,6 +644,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			}
 		}
 		if e.Spec.DesireState != types.InstanceStateStopped || e.Spec.NodeID != "" {
+			if v.Status.Robustness == types.VolumeRobustnessFaulted {
+				e.Spec.LogRequested = true
+			}
 			e.Spec.NodeID = ""
 			e.Spec.DesireState = types.InstanceStateStopped
 			e, err = vc.ds.UpdateEngine(e)
@@ -645,6 +661,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		allReplicasStopped := true
 		for _, r := range rs {
 			if r.Spec.DesireState != types.InstanceStateStopped {
+				if v.Status.Robustness == types.VolumeRobustnessFaulted {
+					r.Spec.LogRequested = true
+				}
 				r.Spec.DesireState = types.InstanceStateStopped
 				r, err := vc.ds.UpdateReplica(r)
 				if err != nil {

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bufio"
 	"fmt"
 	"time"
 
@@ -157,6 +158,18 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		pod = nil
 	}
 
+	if spec.LogRequested {
+		if pod == nil {
+			logrus.Warnf("Cannot get the log for %v due to pod is already gone", podName)
+		} else {
+			logrus.Warnf("Try to get requested log for %v on node %v", pod.Name, pod.Spec.NodeName)
+			if err := h.printPodLogs(pod.Name, CrashLogsTaillines); err != nil {
+				logrus.Warnf("cannot get requested log for instance %v on node %v, error %v", pod.Name, pod.Spec.NodeName, err)
+			}
+		}
+		spec.LogRequested = false
+	}
+
 	switch spec.DesireState {
 	case types.InstanceStateRunning:
 		if pod != nil && pod.DeletionTimestamp == nil {
@@ -202,11 +215,9 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 			return err
 		}
 	} else if status.CurrentState == types.InstanceStateError && pod != nil {
-		logs, err := h.getPodLogs(pod.Name, CrashLogsTaillines)
-		if err == nil {
-			logrus.Warnf("instance %v crashed on node %v, log: \n%v", pod.Name, pod.Spec.NodeName, logs)
-		} else {
-			logrus.Warnf("instance %v crashed on node %v, but cannot get log, error %v", pod.Name, pod.Spec.NodeName, err)
+		logrus.Warnf("Instance %v crashed on node %v, try to get log", pod.Name, pod.Spec.NodeName)
+		if err := h.printPodLogs(pod.Name, CrashLogsTaillines); err != nil {
+			logrus.Warnf("cannot get crash log for instance %v on node %v, error %v", pod.Name, pod.Spec.NodeName, err)
 		}
 	}
 	return nil
@@ -216,21 +227,26 @@ func (h *InstanceHandler) getPod(podName string) (*v1.Pod, error) {
 	return h.pLister.Pods(h.namespace).Get(podName)
 }
 
-func (h *InstanceHandler) getPodLogs(podName string, taillines int) (string, error) {
+func (h *InstanceHandler) printPodLogs(podName string, taillines int) error {
 	tails := int64(taillines)
 	req := h.kubeClient.CoreV1().Pods(h.namespace).GetLogs(podName, &v1.PodLogOptions{
 		Timestamps: true,
 		TailLines:  &tails,
 	})
 	if req.URL().Path == "" {
-		return "", fmt.Errorf("GetLogs for %v/%v returns empty request path, may due to unit test run: %+v", h.namespace, podName, req)
+		return fmt.Errorf("GetLogs for %v/%v returns empty request path, may due to unit test run: %+v", h.namespace, podName, req)
 	}
 
-	logs, err := req.DoRaw()
+	logReader, err := req.Stream()
 	if err != nil {
-		return "", err
+		return err
 	}
-	return string(logs), nil
+	defer logReader.Close()
+	scanner := bufio.NewScanner(logReader)
+	for scanner.Scan() {
+		logrus.Warnf("%s: %s", podName, scanner.Text())
+	}
+	return nil
 }
 
 func (h *InstanceHandler) createPodForObject(obj runtime.Object, pod *v1.Pod) (*v1.Pod, error) {
