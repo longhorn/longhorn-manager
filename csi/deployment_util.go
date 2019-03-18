@@ -2,6 +2,7 @@ package csi
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/pkg/errors"
@@ -52,7 +53,7 @@ func getCommonService(commonName, namespace string) *v1.Service {
 	}
 }
 
-func getCommonDeployment(commonName, namespace, serviceAccount, image string, args []string, replicaCount int32) *appsv1beta1.Deployment {
+func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32) *appsv1beta1.Deployment {
 	return &appsv1beta1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      commonName,
@@ -109,7 +110,7 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image string, ar
 							Name: "socket-dir",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
-									Path: "/var/lib/kubelet/plugins/io.rancher.longhorn",
+									Path: filepath.Join(rootDir, "/plugins/io.rancher.longhorn"),
 									Type: &HostPathDirectoryOrCreate,
 								},
 							},

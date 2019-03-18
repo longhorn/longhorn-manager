@@ -25,17 +25,19 @@ import (
 )
 
 const (
-	FlagFlexvolumeDir    = "flexvolume-dir"
-	EnvFlexvolumeDir     = "FLEXVOLUME_DIR"
-	DefaultFlexvolumeDir = "/usr/libexec/kubernetes/kubelet-plugins/volume/exec/"
-
 	LonghornFlexvolumeDriver = "longhorn-flexvolume-driver"
+
+	EnvFlexvolumeDir   = "FLEXVOLUME_DIR"
+	EnvKubetletRootDir = "KUBELET_ROOT_DIR"
 
 	FlagManagerURL = "manager-url"
 
 	FlagDriver           = "driver"
 	FlagDriverCSI        = "csi"
 	FlagDriverFlexvolume = "flexvolume"
+
+	FlagFlexvolumeDir   = "flexvolume-dir"
+	FlagKubetletRootDir = "kubelet-root-dir"
 
 	FlagCSIAttacherImage        = "csi-attacher-image"
 	FlagCSIProvisionerImage     = "csi-provisioner-image"
@@ -67,6 +69,11 @@ func DeployDriverCmd() cli.Command {
 				Name:   FlagFlexvolumeDir,
 				Usage:  "Specify the location of flexvolume plugin for Kubernetes on the host",
 				EnvVar: EnvFlexvolumeDir,
+			},
+			cli.StringFlag{
+				Name:   FlagKubetletRootDir,
+				Usage:  "Specify the root directory of kubelet for csi components (optional)",
+				EnvVar: EnvKubetletRootDir,
 			},
 			cli.StringFlag{
 				Name:   FlagCSIAttacherImage,
@@ -201,6 +208,19 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 	namespace := os.Getenv(types.EnvPodNamespace)
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
 
+	rootDir := c.String(FlagKubetletRootDir)
+	if rootDir == "" {
+		var err error
+		rootDir, err = getProcArg(kubeClient, managerImage, ArgKubeletRootDir)
+		if err != nil {
+			logrus.Error(err)
+			return err
+		}
+		logrus.Infof("Detected root dir path: %v", rootDir)
+	} else {
+		logrus.Infof("User specified root dir: %v", rootDir)
+	}
+
 	kubeletPluginWatcherEnabled, err := isKubernetesVersionAtLeast(kubeClient, types.KubeletPluginWatcherMinVersion)
 	if err != nil {
 		return err
@@ -210,17 +230,17 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 		return err
 	}
 
-	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage)
+	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir)
 	if err := attacherDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, csiProvisionerName)
+	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, csiProvisionerName, rootDir)
 	if err := provisionerDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiDriverRegistrarImage, managerImage, managerURL, kubeletPluginWatcherEnabled)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiDriverRegistrarImage, managerImage, managerURL, rootDir, kubeletPluginWatcherEnabled)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
@@ -262,15 +282,14 @@ func deployFlexvolumeDriver(kubeClient *clientset.Clientset, c *cli.Context, man
 	flexvolumeDir := c.String(FlagFlexvolumeDir)
 	if flexvolumeDir == "" {
 		var err error
-		flexvolumeDir, err = discoverFlexvolumeDir(kubeClient, managerImage)
+		flexvolumeDir, err = getProcArg(kubeClient, managerImage, ArgFlexvolumePluginDir)
 		if err != nil {
-			logrus.Warnf("Failed to detect flexvolume dir, fall back to default: %v", err)
+			logrus.Error(err)
+			return err
 		}
-		if flexvolumeDir == "" {
-			flexvolumeDir = DefaultFlexvolumeDir
-		}
+		logrus.Infof("Detected flexvolume dir path: %v", flexvolumeDir)
 	} else {
-		logrus.Infof("User specified Flexvolume dir at: %v", flexvolumeDir)
+		logrus.Infof("User specified Flexvolume dir path: %v", flexvolumeDir)
 	}
 
 	dsOps, err := newDaemonSetOps(kubeClient)
