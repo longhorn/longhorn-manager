@@ -1,6 +1,8 @@
 package csi
 
 import (
+	"fmt"
+	"path/filepath"
 	"sync"
 
 	"github.com/sirupsen/logrus"
@@ -38,7 +40,7 @@ type AttacherDeployment struct {
 	deployment *appsv1beta1.Deployment
 }
 
-func NewAttacherDeployment(namespace, serviceAccount, attacherImage string) *AttacherDeployment {
+func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string) *AttacherDeployment {
 	service := getCommonService(types.CSIAttacherName, namespace)
 
 	deployment := getCommonDeployment(
@@ -46,6 +48,7 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage string) *Att
 		namespace,
 		serviceAccount,
 		attacherImage,
+		rootDir,
 		[]string{
 			"--v=5",
 			"--csi-address=$(ADDRESS)",
@@ -95,7 +98,7 @@ type ProvisionerDeployment struct {
 	deployment *appsv1beta1.Deployment
 }
 
-func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, provisionerName string) *ProvisionerDeployment {
+func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, provisionerName, rootDir string) *ProvisionerDeployment {
 	service := getCommonService(types.CSIProvisionerName, namespace)
 
 	deployment := getCommonDeployment(
@@ -103,6 +106,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, provi
 		namespace,
 		serviceAccount,
 		provisionerImage,
+		rootDir,
 		[]string{
 			"--v=5",
 			"--provisioner=" + provisionerName,
@@ -150,7 +154,7 @@ type PluginDeployment struct {
 	daemonSet *appsv1beta2.DaemonSet
 }
 
-func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, managerImage, managerURL string, kubeletPluginWatcherEnabled bool) *PluginDeployment {
+func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, managerImage, managerURL, rootDir string, kubeletPluginWatcherEnabled bool) *PluginDeployment {
 	args := []string{
 		"--v=5",
 		"--csi-address=$(ADDRESS)",
@@ -166,7 +170,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 			Name: "plugin-dir",
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
-					Path: "/var/lib/kubelet/plugins/io.rancher.longhorn",
+					Path: filepath.Join(rootDir, "/plugins/io.rancher.longhorn"),
 					Type: &HostPathDirectoryOrCreate,
 				},
 			},
@@ -175,7 +179,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 			Name: "pods-mount-dir",
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
-					Path: "/var/lib/kubelet/pods",
+					Path: filepath.Join(rootDir, "/pods"),
 					Type: &HostPathDirectoryOrCreate,
 				},
 			},
@@ -184,7 +188,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 			Name: "socket-dir",
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
-					Path: "/var/lib/kubelet/plugins/io.rancher.longhorn",
+					Path: filepath.Join(rootDir, "/plugins/io.rancher.longhorn"),
 					Type: &HostPathDirectoryOrCreate,
 				},
 			},
@@ -217,7 +221,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 
 	// for Kubernetes v1.12+
 	if kubeletPluginWatcherEnabled {
-		args = append(args, "--kubelet-registration-path=/var/lib/kubelet/plugins/io.rancher.longhorn/csi.sock")
+		args = append(args, fmt.Sprintf("--kubelet-registration-path=%s", filepath.Join(rootDir, "/plugins/io.rancher.longhorn/csi.sock")))
 		volumeMounts = append(volumeMounts, v1.VolumeMount{
 			Name:      "registration-dir",
 			MountPath: "/registration",
@@ -226,7 +230,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 			Name: "registration-dir",
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
-					Path: "/var/lib/kubelet/plugins/",
+					Path: filepath.Join(rootDir, "/plugins/"),
 					Type: &HostPathDirectory,
 				},
 			},
@@ -317,7 +321,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 								},
 								{
 									Name:             "pods-mount-dir",
-									MountPath:        "/var/lib/kubelet/pods",
+									MountPath:        filepath.Join(rootDir, "/pods"),
 									MountPropagation: &MountPropagationBidirectional,
 								},
 								{
