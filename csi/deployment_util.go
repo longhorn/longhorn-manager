@@ -141,6 +141,11 @@ func waitForDeletion(kubeClient *clientset.Clientset, name, namespace, resource 
 func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
 	createFunc resourceCreateFunc, deleteFunc resourceDeleteFunc, getFunc resourceGetFunc) (err error) {
 
+	kubeVersion, err := kubeClient.Discovery().ServerVersion()
+	if err != nil {
+		return errors.Wrap(err, "failed to get Kubernetes server version")
+	}
+
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {
 		return fmt.Errorf("BUG: invalid object for deploy %v: %v", obj, err)
@@ -150,6 +155,7 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 		annos = map[string]string{}
 	}
 	annos[AnnotationCSIVersion] = VERSION
+	annos[AnnotationKubernetesVersion] = kubeVersion.GitVersion
 	objMeta.SetAnnotations(annos)
 	name := objMeta.GetName()
 	namespace := objMeta.GetNamespace()
@@ -167,10 +173,11 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 		annos := objMeta.GetAnnotations()
 		existingAnnos := existingMeta.GetAnnotations()
 		if annos[AnnotationCSIVersion] == existingAnnos[AnnotationCSIVersion] &&
+			annos[AnnotationKubernetesVersion] == existingAnnos[AnnotationKubernetesVersion] &&
 			existingMeta.GetDeletionTimestamp() == nil {
 			// deployment of correct version already deployed
-			logrus.Debugf("Detected %v %v version %v has already been deployed",
-				resource, name, annos[AnnotationCSIVersion])
+			logrus.Debugf("Detected %v %v CSI version %v Kubernetes version %v has already been deployed",
+				resource, name, annos[AnnotationCSIVersion], annos[AnnotationKubernetesVersion])
 			return nil
 		}
 	}

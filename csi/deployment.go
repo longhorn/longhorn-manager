@@ -23,7 +23,8 @@ const (
 
 	DefaultCSIDeploymentReplicaCount = 3
 
-	AnnotationCSIVersion = "longhorn.rancher.io/version"
+	AnnotationCSIVersion        = "longhorn.rancher.io/version"
+	AnnotationKubernetesVersion = "longhorn.rancher.io/kubernetes-version"
 )
 
 var (
