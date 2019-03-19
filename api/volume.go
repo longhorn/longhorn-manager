@@ -267,7 +267,7 @@ func (s *Server) ReplicaRemove(rw http.ResponseWriter, req *http.Request) error 
 
 	id := mux.Vars(req)["name"]
 
-	if err := s.m.DeleteReplica(input.Name); err != nil {
+	if err := s.m.DeleteReplica(id, input.Name); err != nil {
 		return errors.Wrap(err, "unable to remove replica")
 	}
 
