@@ -106,6 +106,8 @@ func DeployDriverCmd() cli.Command {
 }
 
 func deployDriver(c *cli.Context) error {
+	csi.VERSION = VERSION
+
 	managerImage := c.String(FlagManagerImage)
 	if managerImage == "" {
 		return fmt.Errorf("require %v", FlagManagerImage)
@@ -208,17 +210,17 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 		return err
 	}
 
-	attacherDeployment := csi.NewAttacherDeployment(VERSION, namespace, serviceAccountName, csiAttacherImage)
+	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage)
 	if err := attacherDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	provisionerDeployment := csi.NewProvisionerDeployment(VERSION, namespace, serviceAccountName, csiProvisionerImage, csiProvisionerName)
+	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, csiProvisionerName)
 	if err := provisionerDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	pluginDeployment := csi.NewPluginDeployment(VERSION, namespace, serviceAccountName, csiDriverRegistrarImage, managerImage, managerURL, kubeletPluginWatcherEnabled)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiDriverRegistrarImage, managerImage, managerURL, kubeletPluginWatcherEnabled)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}

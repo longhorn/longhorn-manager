@@ -37,11 +37,10 @@ type AttacherDeployment struct {
 	deployment *appsv1beta1.Deployment
 }
 
-func NewAttacherDeployment(version, namespace, serviceAccount, attacherImage string) *AttacherDeployment {
-	service := getCommonService(version, types.CSIAttacherName, namespace)
+func NewAttacherDeployment(namespace, serviceAccount, attacherImage string) *AttacherDeployment {
+	service := getCommonService(types.CSIAttacherName, namespace)
 
 	deployment := getCommonDeployment(
-		version,
 		types.CSIAttacherName,
 		namespace,
 		serviceAccount,
@@ -95,11 +94,10 @@ type ProvisionerDeployment struct {
 	deployment *appsv1beta1.Deployment
 }
 
-func NewProvisionerDeployment(version, namespace, serviceAccount, provisionerImage, provisionerName string) *ProvisionerDeployment {
-	service := getCommonService(version, types.CSIProvisionerName, namespace)
+func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, provisionerName string) *ProvisionerDeployment {
+	service := getCommonService(types.CSIProvisionerName, namespace)
 
 	deployment := getCommonDeployment(
-		version,
 		types.CSIProvisionerName,
 		namespace,
 		serviceAccount,
@@ -151,7 +149,7 @@ type PluginDeployment struct {
 	daemonSet *appsv1beta2.DaemonSet
 }
 
-func NewPluginDeployment(version, namespace, serviceAccount, driverRegistrarImage, managerImage, managerURL string, kubeletPluginWatcherEnabled bool) *PluginDeployment {
+func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, managerImage, managerURL string, kubeletPluginWatcherEnabled bool) *PluginDeployment {
 	args := []string{
 		"--v=5",
 		"--csi-address=$(ADDRESS)",
@@ -238,9 +236,6 @@ func NewPluginDeployment(version, namespace, serviceAccount, driverRegistrarImag
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      types.CSIPluginName,
 			Namespace: namespace,
-			Annotations: map[string]string{
-				AnnotationCSIVersion: version,
-			},
 		},
 
 		Spec: appsv1beta2.DaemonSetSpec{
