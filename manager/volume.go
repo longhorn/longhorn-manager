@@ -384,11 +384,31 @@ func (m *VolumeManager) UpdateRecurringJobs(volumeName string, jobs []types.Recu
 	return v, nil
 }
 
-func (m *VolumeManager) DeleteReplica(replicaName string) error {
+func (m *VolumeManager) DeleteReplica(volumeName, replicaName string) error {
+	hasHealthyReplicas := false
+	rs, err := m.ds.ListVolumeReplicas(volumeName)
+	if err != nil {
+		return err
+	}
+	if _, exists := rs[replicaName]; !exists {
+		return fmt.Errorf("cannot find replica %v of volume %v", replicaName, volumeName)
+	}
+	for _, r := range rs {
+		if r.Name == replicaName {
+			continue
+		}
+		if r.Spec.FailedAt == "" && r.Spec.HealthyAt != "" {
+			hasHealthyReplicas = true
+			break
+		}
+	}
+	if !hasHealthyReplicas {
+		return fmt.Errorf("No other healthy replica available, cannot delete replica %v since it may still contain data for recovery", replicaName)
+	}
 	if err := m.ds.DeleteReplica(replicaName); err != nil {
 		return err
 	}
-	logrus.Debugf("Deleted volume replica %v", replicaName)
+	logrus.Debugf("Deleted replica %v of volume %v", replicaName, volumeName)
 	return nil
 }
 
