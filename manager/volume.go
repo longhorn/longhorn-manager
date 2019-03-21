@@ -403,7 +403,7 @@ func (m *VolumeManager) DeleteReplica(volumeName, replicaName string) error {
 		}
 	}
 	if !hasHealthyReplicas {
-		return fmt.Errorf("No other healthy replica available, cannot delete replica %v since it may still contain data for recovery", replicaName)
+		return fmt.Errorf("no other healthy replica available, cannot delete replica %v since it may still contain data for recovery", replicaName)
 	}
 	if err := m.ds.DeleteReplica(replicaName); err != nil {
 		return err
