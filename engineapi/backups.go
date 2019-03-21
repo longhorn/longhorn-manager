@@ -62,7 +62,7 @@ func parseBackup(v interface{}) (*Backup, error) {
 func parseBackupsList(output, volumeName string) ([]*Backup, error) {
 	data := map[string]*backupVolume{}
 	if err := json.Unmarshal([]byte(output), &data); err != nil {
-		return nil, errors.Wrapf(err, "error parsing BackupTarget: \n%s", output)
+		return nil, errors.Wrapf(err, "error parsing BackupsList: \n%s", output)
 	}
 	BackupTarget := []*Backup{}
 	volume := data[volumeName]
@@ -83,7 +83,7 @@ func parseBackupsList(output, volumeName string) ([]*Backup, error) {
 func parseBackupVolumesList(output string) ([]*BackupVolume, error) {
 	data := map[string]*backupVolume{}
 	if err := json.Unmarshal([]byte(output), &data); err != nil {
-		return nil, errors.Wrapf(err, "error parsing BackupTarget: \n%s", output)
+		return nil, errors.Wrapf(err, "error parsing BackupVolumesList: \n%s", output)
 	}
 	volumes := []*BackupVolume{}
 
@@ -113,7 +113,7 @@ func parseBackupVolumesList(output string) ([]*BackupVolume, error) {
 func parseOneBackup(output string) (*Backup, error) {
 	data := map[string]interface{}{}
 	if err := json.Unmarshal([]byte(output), &data); err != nil {
-		return nil, errors.Wrapf(err, "error parsing BackupTarget: \n%s", output)
+		return nil, errors.Wrapf(err, "error parsing one backup: \n%s", output)
 	}
 	return parseBackup(data)
 }
