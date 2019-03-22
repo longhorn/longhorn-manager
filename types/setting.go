@@ -136,7 +136,7 @@ var (
 
 	SettingDefinitionDefaultReplicaCount = SettingDefinition{
 		DisplayName: "Default Replica Count",
-		Description: "The default number of replicas",
+		Description: "The default number of replicas when creating the volume from Longhorn UI. For Kubernetes, update the `numberOfReplicas` in the StorageClass",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeInt,
 		Required:    true,
