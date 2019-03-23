@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: longhorn-restore-to-file-with-backing-file
+  name: restore-to-file
   namespace: longhorn-system
 spec:
   nodeName: <NODE_NAME>
