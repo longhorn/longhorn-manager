@@ -27,8 +27,8 @@ import (
 const (
 	LonghornFlexvolumeDriver = "longhorn-flexvolume-driver"
 
-	EnvFlexvolumeDir   = "FLEXVOLUME_DIR"
-	EnvKubetletRootDir = "KUBELET_ROOT_DIR"
+	EnvFlexvolumeDir  = "FLEXVOLUME_DIR"
+	EnvKubeletRootDir = "KUBELET_ROOT_DIR"
 
 	FlagManagerURL = "manager-url"
 
@@ -36,8 +36,8 @@ const (
 	FlagDriverCSI        = "csi"
 	FlagDriverFlexvolume = "flexvolume"
 
-	FlagFlexvolumeDir   = "flexvolume-dir"
-	FlagKubetletRootDir = "kubelet-root-dir"
+	FlagFlexvolumeDir  = "flexvolume-dir"
+	FlagKubeletRootDir = "kubelet-root-dir"
 
 	FlagCSIAttacherImage        = "csi-attacher-image"
 	FlagCSIProvisionerImage     = "csi-provisioner-image"
@@ -71,9 +71,9 @@ func DeployDriverCmd() cli.Command {
 				EnvVar: EnvFlexvolumeDir,
 			},
 			cli.StringFlag{
-				Name:   FlagKubetletRootDir,
+				Name:   FlagKubeletRootDir,
 				Usage:  "Specify the root directory of kubelet for csi components (optional)",
-				EnvVar: EnvKubetletRootDir,
+				EnvVar: EnvKubeletRootDir,
 			},
 			cli.StringFlag{
 				Name:   FlagCSIAttacherImage,
@@ -208,7 +208,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 	namespace := os.Getenv(types.EnvPodNamespace)
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
 
-	rootDir := c.String(FlagKubetletRootDir)
+	rootDir := c.String(FlagKubeletRootDir)
 	if rootDir == "" {
 		var err error
 		rootDir, err = getProcArg(kubeClient, managerImage, ArgKubeletRootDir)
