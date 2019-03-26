@@ -92,13 +92,13 @@ func getProcArg(kubeClient *clientset.Clientset, managerImage, name string) (str
 	case ArgFlexvolumePluginDir:
 		dir, err := discoverFlexvolumeDir(kubeClient, managerImage)
 		if err != nil {
-			return "", errors.Wrap(err, "Failed to get arg volume-plugin-dir")
+			return "", errors.Wrap(err, `failed to get arg volume-plugin-dir. Need to specify "--flexvolume-dir" in your Longhorn deployment yaml.`)
 		}
 		return dir, nil
 	case ArgKubeletRootDir:
 		dir, err := discoverKubeletRootDir(kubeClient, managerImage)
 		if err != nil {
-			return "", errors.Wrap(err, "Failed to get arg root-dir")
+			return "", errors.Wrap(err, `failed to get arg root-dir. Need to specify "--kubelet-root-dir" in your Longhorn deployment yaml.`)
 		}
 		return dir, nil
 	}
@@ -137,7 +137,7 @@ func discoverKubeletRootDir(kubeClient *clientset.Clientset, managerImage string
 	}
 	// nothing found. error out
 	if rootDir == "" {
-		return "", fmt.Errorf("Cannot get kubelet root dir, no related proc for root-fir detection, error out")
+		return "", fmt.Errorf("Cannot get kubelet root dir, no related proc for root-dir detection, error out")
 	}
 	return rootDir, nil
 }
