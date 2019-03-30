@@ -69,12 +69,29 @@ type VolumeSpec struct {
 	BaseImage           string         `json:"baseImage"`
 }
 
-type VolumeStatus struct {
-	State        VolumeState      `json:"state"`
-	Robustness   VolumeRobustness `json:"robustness"`
-	CurrentImage string           `json:"currentImage"`
+type KubernetesStatus struct {
+	PVName   string
+	PVStatus string
 
-	Conditions map[VolumeConditionType]Condition `json:"conditions"`
+	// determine if PVC/Namespace is history or not
+	Namespace    string
+	PVCName      string
+	LastPVCRefAt string
+
+	// determine if Pod/Workload is history or not
+	PodName      string
+	PodStatus    string
+	WorkloadName string
+	WorkloadType string
+	LastPodRefAt string
+}
+
+type VolumeStatus struct {
+	State            VolumeState                       `json:"state"`
+	Robustness       VolumeRobustness                  `json:"robustness"`
+	CurrentImage     string                            `json:"currentImage"`
+	KubernetesStatus KubernetesStatus                  `json:"kubernetesStatus"`
+	Conditions       map[VolumeConditionType]Condition `json:"conditions"`
 }
 
 type RecurringJobType string

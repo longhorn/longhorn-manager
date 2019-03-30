@@ -68,6 +68,8 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
+	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
+	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
 
@@ -98,6 +100,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	sc := NewSettingController(ds, scheme,
 		settingInformer,
 		kubeClient, version)
+	kc := NewKubernetesController(ds, scheme, persistentVolumeInformer, persistentVolumeClaimInformer, podInformer, kubeClient)
 
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
@@ -111,6 +114,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	go nc.Run(Workers, stopCh)
 	go ws.Run(stopCh)
 	go sc.Run(stopCh)
+	go kc.Run(Workers, stopCh)
 
 	return ds, ws, nil
 }
