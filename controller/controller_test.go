@@ -37,6 +37,9 @@ const (
 	TestVolumeSize         = 1073741824
 	TestVolumeStaleTimeout = 60
 
+	TestPVName  = "test-pv"
+	TestPVCName = "test-pvc"
+
 	TestTimeNow = "2015-01-02T00:00:00Z"
 
 	TestDefaultDataPath   = "/var/lib/rancher/longhorn"
