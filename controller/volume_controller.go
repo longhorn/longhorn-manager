@@ -218,8 +218,9 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
 			logrus.Infof("Longhorn volume %v has been deleted", key)
+			return nil
 		}
-		return nil
+		return err
 	}
 
 	if volume.Spec.OwnerID == "" {
