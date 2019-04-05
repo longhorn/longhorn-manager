@@ -257,6 +257,42 @@ func (s *Server) VolumeUpdateReplicaCount(rw http.ResponseWriter, req *http.Requ
 	return s.responseWithVolume(rw, req, "", v)
 }
 
+func (s *Server) PVCreate(rw http.ResponseWriter, req *http.Request) error {
+	var input PVCreateInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrapf(err, "error reading recurringInput")
+	}
+
+	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.PVCreate(id, input.PVName)
+	})
+	if err != nil {
+		return err
+	}
+	return s.responseWithVolume(rw, req, id, nil)
+}
+
+func (s *Server) PVCCreate(rw http.ResponseWriter, req *http.Request) error {
+	var input PVCCreateInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrapf(err, "error reading recurringInput")
+	}
+
+	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.PVCCreate(id, input.Namespace, input.PVCName)
+	})
+	if err != nil {
+		return err
+	}
+	return s.responseWithVolume(rw, req, id, nil)
+}
+
 func (s *Server) ReplicaRemove(rw http.ResponseWriter, req *http.Request) error {
 	var input ReplicaRemoveInput
 

@@ -133,6 +133,15 @@ type UpdateReplicaCountInput struct {
 	ReplicaCount int `json:"replicaCount"`
 }
 
+type PVCreateInput struct {
+	PVName string `json:"pvName"`
+}
+
+type PVCCreateInput struct {
+	Namespace string `json:"namespace"`
+	PVCName   string `json:"pvcName"`
+}
+
 type Node struct {
 	client.Resource
 	Name            string                                      `json:"name"`
@@ -177,6 +186,9 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("diskUpdate", types.DiskSpec{})
 	schemas.AddType("nodeInput", NodeInput{})
 	schemas.AddType("UpdateReplicaCountInput", UpdateReplicaCountInput{})
+
+	schemas.AddType("PVCreateInput", PVCreateInput{})
+	schemas.AddType("PVCCreateInput", PVCCreateInput{})
 
 	schemas.AddType("settingDefinition", types.SettingDefinition{})
 	// to avoid duplicate name with built-in type condition
@@ -331,6 +343,13 @@ func volumeSchema(volume *client.Schema) {
 
 		"updateReplicaCount": {
 			Input: "UpdateReplicaCountInput",
+		},
+
+		"pvCreate": {
+			Input: "PVCreateInput",
+		},
+		"pvcCreate": {
+			Input: "PVCCreateInput",
 		},
 
 		"jobList": {},
@@ -508,6 +527,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["recurringUpdate"] = struct{}{}
 			actions["replicaRemove"] = struct{}{}
 			actions["engineUpgrade"] = struct{}{}
+			actions["pvCreate"] = struct{}{}
+			actions["pvcCreate"] = struct{}{}
 		case types.VolumeStateAttaching:
 			actions["detach"] = struct{}{}
 		case types.VolumeStateAttached:
@@ -526,6 +547,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["migrationConfirm"] = struct{}{}
 			actions["migrationRollback"] = struct{}{}
 			actions["updateReplicaCount"] = struct{}{}
+			actions["pvCreate"] = struct{}{}
+			actions["pvcCreate"] = struct{}{}
 		}
 	}
 
