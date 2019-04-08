@@ -53,12 +53,15 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
+	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
+	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
 		engineImageInformer, nodeInformer, settingInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
+		persistentVolumeInformer, persistentVolumeClaimInformer,
 		kubeClient, TestNamespace)
 
 	nc := NewNodeController(ds, scheme.Scheme, nodeInformer, settingInformer, podInformer, replicaInformer, kubeNodeInformer, kubeClient, TestNamespace, controllerID)

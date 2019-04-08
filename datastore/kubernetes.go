@@ -183,6 +183,22 @@ func (s *DataStore) GetAllEventsList() (runtime.Object, error) {
 	return s.kubeClient.CoreV1().Events(s.namespace).List(metav1.ListOptions{})
 }
 
+func (s *DataStore) CreatePersisentVolume(pv *corev1.PersistentVolume) (*corev1.PersistentVolume, error) {
+	return s.kubeClient.CoreV1().PersistentVolumes().Create(pv)
+}
+
+func (s *DataStore) GetPersisentVolume(pvName string) (*corev1.PersistentVolume, error) {
+	return s.pvLister.Get(pvName)
+}
+
+func (s *DataStore) CreatePersisentVolumeClaim(ns string, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
+	return s.kubeClient.CoreV1().PersistentVolumeClaims(ns).Create(pvc)
+}
+
+func (s *DataStore) GetPersisentVolumeClaim(namespace, pvcName string) (*corev1.PersistentVolumeClaim, error) {
+	return s.pvcLister.PersistentVolumeClaims(namespace).Get(pvcName)
+}
+
 func (s *DataStore) GetAllPodsList() (runtime.Object, error) {
 	return s.kubeClient.CoreV1().Pods(s.namespace).List(metav1.ListOptions{})
 }

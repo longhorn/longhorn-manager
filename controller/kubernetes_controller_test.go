@@ -178,6 +178,7 @@ func newTestKubernetesController(lhInformerFactory lhinformerfactory.SharedInfor
 		engineImageInformer, nodeInformer, settingInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
+		persistentVolumeInformer, persistentVolumeClaimInformer,
 		kubeClient, TestNamespace)
 
 	kc := NewKubernetesController(ds, scheme.Scheme, persistentVolumeInformer, persistentVolumeClaimInformer, podInformer, kubeClient)

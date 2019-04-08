@@ -54,12 +54,15 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
+	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
+	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
 		engineImageInformer, nodeInformer, settingInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
+		persistentVolumeInformer, persistentVolumeClaimInformer,
 		kubeClient, TestNamespace)
 	initSettings(ds)
 
