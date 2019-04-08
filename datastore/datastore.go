@@ -34,13 +34,17 @@ type DataStore struct {
 	sLister      lhlisters.SettingLister
 	sStoreSynced cache.InformerSynced
 
-	kubeClient    clientset.Interface
-	pLister       corelisters.PodLister
-	pStoreSynced  cache.InformerSynced
-	cjLister      batchlisters_v1beta1.CronJobLister
-	cjStoreSynced cache.InformerSynced
-	dsLister      appslisters_v1beta2.DaemonSetLister
-	dsStoreSynced cache.InformerSynced
+	kubeClient     clientset.Interface
+	pLister        corelisters.PodLister
+	pStoreSynced   cache.InformerSynced
+	cjLister       batchlisters_v1beta1.CronJobLister
+	cjStoreSynced  cache.InformerSynced
+	dsLister       appslisters_v1beta2.DaemonSetLister
+	dsStoreSynced  cache.InformerSynced
+	pvLister       corelisters.PersistentVolumeLister
+	pvStoreSynced  cache.InformerSynced
+	pvcLister      corelisters.PersistentVolumeClaimLister
+	pvcStoreSynced cache.InformerSynced
 }
 
 func NewDataStore(
@@ -55,6 +59,9 @@ func NewDataStore(
 	podInformer coreinformers.PodInformer,
 	cronJobInformer batchinformers_v1beta1.CronJobInformer,
 	daemonSetInformer appsinformers_v1beta2.DaemonSetInformer,
+	persistentVolumeInformer coreinformers.PersistentVolumeInformer,
+	persistentVolumeClaimInformer coreinformers.PersistentVolumeClaimInformer,
+
 	kubeClient clientset.Interface,
 	namespace string) *DataStore {
 
@@ -75,13 +82,17 @@ func NewDataStore(
 		sLister:      settingInformer.Lister(),
 		sStoreSynced: settingInformer.Informer().HasSynced,
 
-		kubeClient:    kubeClient,
-		pLister:       podInformer.Lister(),
-		pStoreSynced:  podInformer.Informer().HasSynced,
-		cjLister:      cronJobInformer.Lister(),
-		cjStoreSynced: cronJobInformer.Informer().HasSynced,
-		dsLister:      daemonSetInformer.Lister(),
-		dsStoreSynced: daemonSetInformer.Informer().HasSynced,
+		kubeClient:     kubeClient,
+		pLister:        podInformer.Lister(),
+		pStoreSynced:   podInformer.Informer().HasSynced,
+		cjLister:       cronJobInformer.Lister(),
+		cjStoreSynced:  cronJobInformer.Informer().HasSynced,
+		dsLister:       daemonSetInformer.Lister(),
+		dsStoreSynced:  daemonSetInformer.Informer().HasSynced,
+		pvLister:       persistentVolumeInformer.Lister(),
+		pvStoreSynced:  persistentVolumeInformer.Informer().HasSynced,
+		pvcLister:      persistentVolumeClaimInformer.Lister(),
+		pvcStoreSynced: persistentVolumeClaimInformer.Informer().HasSynced,
 	}
 }
 
@@ -89,7 +100,8 @@ func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 	return controller.WaitForCacheSync("longhorn datastore", stopCh,
 		s.vStoreSynced, s.eStoreSynced, s.rStoreSynced,
 		s.iStoreSynced, s.nStoreSynced, s.sStoreSynced,
-		s.pStoreSynced, s.cjStoreSynced, s.dsStoreSynced)
+		s.pStoreSynced, s.cjStoreSynced, s.dsStoreSynced,
+		s.pvStoreSynced, s.pvcStoreSynced)
 }
 
 func ErrorIsNotFound(err error) bool {
