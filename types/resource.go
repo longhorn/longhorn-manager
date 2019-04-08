@@ -70,20 +70,20 @@ type VolumeSpec struct {
 }
 
 type KubernetesStatus struct {
-	PVName   string
-	PVStatus string
+	PVName   string `json:"pvName"`
+	PVStatus string `json:"pvStatus"`
 
 	// determine if PVC/Namespace is history or not
-	Namespace    string
-	PVCName      string
-	LastPVCRefAt string
+	Namespace    string `json:"namespace"`
+	PVCName      string `json:"pvcName"`
+	LastPVCRefAt string `json:"lastPVCRefAt"`
 
 	// determine if Pod/Workload is history or not
-	PodName      string
-	PodStatus    string
-	WorkloadName string
-	WorkloadType string
-	LastPodRefAt string
+	PodName      string `json:"podName"`
+	PodStatus    string `json:"podStatus"`
+	WorkloadName string `json:"workloadName"`
+	WorkloadType string `json:"workloadType"`
+	LastPodRefAt string `json:"lastPodRefAt"`
 }
 
 type VolumeStatus struct {
