@@ -9,20 +9,26 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
+	"k8s.io/client-go/informers/storage/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	listerv1 "k8s.io/client-go/listers/core/v1"
+	listerstorage "k8s.io/client-go/listers/storage/v1beta1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/rancher/longhorn-manager/datastore"
+	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	lhinformers "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
 )
@@ -36,10 +42,13 @@ type KubernetesController struct {
 	pvLister  listerv1.PersistentVolumeLister
 	pvcLister listerv1.PersistentVolumeClaimLister
 	pLister   listerv1.PodLister
+	vaLister  listerstorage.VolumeAttachmentLister
 
+	vStoreSynced   cache.InformerSynced
 	pvStoreSynced  cache.InformerSynced
 	pvcStoreSynced cache.InformerSynced
 	pStoreSynced   cache.InformerSynced
+	vaStoreSynced  cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
 
@@ -53,9 +62,11 @@ type KubernetesController struct {
 func NewKubernetesController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
+	volumeInformer lhinformers.VolumeInformer,
 	persistentVolumeInformer coreinformers.PersistentVolumeInformer,
 	persistentVolumeClaimInformer coreinformers.PersistentVolumeClaimInformer,
 	podInformer coreinformers.PodInformer,
+	volumeAttachmentInformer v1beta1.VolumeAttachmentInformer,
 	kubeClient clientset.Interface) *KubernetesController {
 
 	eventBroadcaster := record.NewBroadcaster()
@@ -72,10 +83,13 @@ func NewKubernetesController(
 		pvLister:  persistentVolumeInformer.Lister(),
 		pvcLister: persistentVolumeClaimInformer.Lister(),
 		pLister:   podInformer.Lister(),
+		vaLister:  volumeAttachmentInformer.Lister(),
 
+		vStoreSynced:   volumeInformer.Informer().HasSynced,
 		pvStoreSynced:  persistentVolumeInformer.Informer().HasSynced,
 		pvcStoreSynced: persistentVolumeClaimInformer.Informer().HasSynced,
 		pStoreSynced:   podInformer.Informer().HasSynced,
+		vaStoreSynced:  volumeAttachmentInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Longhorn-Kubernetes"),
 
@@ -115,6 +129,14 @@ func NewKubernetesController(
 		},
 	})
 
+	// after volume becomes detached, try to delete the VA of lost node
+	volumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old, cur interface{}) {
+			curVolume := cur.(*longhorn.Volume)
+			kc.enqueueVolumeChange(curVolume)
+		},
+	})
+
 	return kc
 }
 
@@ -125,7 +147,8 @@ func (kc *KubernetesController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start kubernetes controller")
 	defer logrus.Infof("Shutting down kubernetes controller")
 
-	if !controller.WaitForCacheSync("kubernetes", stopCh, kc.pvStoreSynced, kc.pvcStoreSynced, kc.pStoreSynced) {
+	if !controller.WaitForCacheSync("kubernetes", stopCh,
+		kc.vStoreSynced, kc.pvStoreSynced, kc.pvcStoreSynced, kc.pStoreSynced, kc.vaStoreSynced) {
 		return
 	}
 
@@ -261,6 +284,8 @@ func (kc *KubernetesController) syncKubernetesStatus(key string) (err error) {
 		}
 	}
 
+	defer kc.cleanupVolumeAttachment(volume, ks)
+
 	volume, err = kc.ds.UpdateVolume(volume)
 	if err != nil {
 		return err
@@ -311,6 +336,21 @@ func (kc *KubernetesController) enqueuePodChange(pod *v1.Pod) {
 				kc.queue.AddRateLimited(pvName)
 			}
 		}
+	}
+	return
+}
+
+func (kc *KubernetesController) enqueueVolumeChange(volume *longhorn.Volume) {
+	if _, err := controller.KeyFunc(volume); err != nil {
+		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", volume, err))
+		return
+	}
+	if volume.Status.State != types.VolumeStateDetached {
+		return
+	}
+	ks := volume.Status.KubernetesStatus
+	if ks.PVName != "" && ks.PVStatus == string(v1.VolumeBound) && ks.PodName != "" && ks.PodStatus == string(v1.PodPending) && ks.LastPodRefAt == "" {
+		kc.queue.AddRateLimited(volume.Status.KubernetesStatus.PVName)
 	}
 	return
 }
@@ -386,4 +426,54 @@ func (kc *KubernetesController) detectWorkload(p *v1.Pod, ks *types.KubernetesSt
 		}
 	}
 	return "", ""
+}
+
+func (kc *KubernetesController) cleanupVolumeAttachment(volume *longhorn.Volume, ks *types.KubernetesStatus) {
+	// PV and PVC should exist. Pod should be Pending
+	if !(ks.PVStatus == string(v1.VolumeBound) && ks.PVCName != "" && ks.LastPVCRefAt == "") {
+		return
+	}
+	if !(ks.PodName != "" && ks.PodStatus == string(v1.PodPending) && ks.LastPodRefAt == "") {
+		return
+	}
+
+	va, err := kc.getVolumeAttachment(ks)
+	if err != nil {
+		logrus.Errorf("failed to get VolumeAttachment in cleanupVolumeAttachment: %v", err)
+		return
+	}
+	if va == nil {
+		return
+	}
+
+	cleanupFlag, err := kc.ds.IsNodeDownOrDeleted(va.Spec.NodeName)
+	if err != nil {
+		logrus.Errorf("failed to detect node %v in cleanupVolumeAttachment: %v", va.Spec.NodeName, err)
+		return
+	}
+	// the node VolumeAttachment on is declared `NotReady` or doesn't exist.
+	if !cleanupFlag {
+		return
+	}
+
+	err = kc.kubeClient.StorageV1beta1().VolumeAttachments().Delete(va.Name, &metav1.DeleteOptions{})
+	if err != nil {
+		logrus.Errorf("failed to delete VolumeAttachment %v in cleanupVolumeAttachment: %v", va.Name, err)
+		return
+	}
+	kc.eventRecorder.Eventf(volume, v1.EventTypeNormal, EventReasonDelete, "Cleanup Volume Attachment on 'NotReady' Node: %v", va.Name)
+	return
+}
+
+func (kc *KubernetesController) getVolumeAttachment(ks *types.KubernetesStatus) (*storagev1.VolumeAttachment, error) {
+	vas, err := kc.vaLister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	for _, va := range vas {
+		if *va.Spec.Source.PersistentVolumeName == ks.PVName {
+			return va, nil
+		}
+	}
+	return nil, nil
 }
