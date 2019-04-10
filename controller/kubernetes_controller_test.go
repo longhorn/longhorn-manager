@@ -6,6 +6,7 @@ import (
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
 	apiv1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -41,6 +42,17 @@ type KubernetesTestCase struct {
 	expectVolume *longhorn.Volume
 }
 
+type DisasterRecoveryTestCase struct {
+	volume *longhorn.Volume
+	pv     *apiv1.PersistentVolume
+	pvc    *apiv1.PersistentVolumeClaim
+	pod    *apiv1.Pod
+	node   *longhorn.Node
+	va     *storagev1.VolumeAttachment
+
+	vaShouldExist bool
+}
+
 func generateKubernetesTestCaseTemplate() *KubernetesTestCase {
 	volume := newVolume(TestVolumeName, 2)
 	pv := newPV()
@@ -54,6 +66,23 @@ func generateKubernetesTestCaseTemplate() *KubernetesTestCase {
 		pod:    pod,
 
 		expectVolume: nil,
+	}
+}
+
+func generateDisasterRecoveryTestCaseTemplate() *DisasterRecoveryTestCase {
+	volume := newVolume(TestVolumeName, 2)
+	pv := newPV()
+	pvc := newPVC()
+	pod := newPodWithPVC()
+	va := newVA(TestVAName, TestNode1, TestPVName)
+
+	return &DisasterRecoveryTestCase{
+		volume: volume,
+		pv:     pv,
+		pvc:    pvc,
+		pod:    pod,
+		node:   nil,
+		va:     va,
 	}
 }
 
@@ -157,6 +186,25 @@ func newPodWithPVC() *apiv1.Pod {
 	}
 }
 
+func newVA(vaName, nodeName, pvName string) *storagev1.VolumeAttachment {
+	return &storagev1.VolumeAttachment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              vaName,
+			CreationTimestamp: metav1.Now(),
+		},
+		Spec: storagev1.VolumeAttachmentSpec{
+			Attacher: "io.rancher.longhorn",
+			NodeName: nodeName,
+			Source: storagev1.VolumeAttachmentSource{
+				PersistentVolumeName: &pvName,
+			},
+		},
+		Status: storagev1.VolumeAttachmentStatus{
+			Attached: true,
+		},
+	}
+}
+
 func newTestKubernetesController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *KubernetesController {
 
@@ -172,6 +220,7 @@ func newTestKubernetesController(lhInformerFactory lhinformerfactory.SharedInfor
 	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
+	volumeAttachmentInformer := kubeInformerFactory.Storage().V1beta1().VolumeAttachments()
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
@@ -181,7 +230,8 @@ func newTestKubernetesController(lhInformerFactory lhinformerfactory.SharedInfor
 		persistentVolumeInformer, persistentVolumeClaimInformer,
 		kubeClient, TestNamespace)
 
-	kc := NewKubernetesController(ds, scheme.Scheme, persistentVolumeInformer, persistentVolumeClaimInformer, podInformer, kubeClient)
+	kc := NewKubernetesController(ds, scheme.Scheme, volumeInformer, persistentVolumeInformer,
+		persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer, kubeClient)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	kc.eventRecorder = fakeRecorder
@@ -416,5 +466,130 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 			c.Assert(retV.Status.KubernetesStatus, DeepEquals, tc.expectVolume.Status.KubernetesStatus)
 		}
 
+	}
+}
+
+func (s *TestSuite) TestDisasterRecovery(c *C) {
+	var tc *DisasterRecoveryTestCase
+	testCases := map[string]*DisasterRecoveryTestCase{}
+
+	tc = generateDisasterRecoveryTestCaseTemplate()
+	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeDown)
+	tc.pod.Status.Phase = apiv1.PodPending
+	tc.pvc.Status.Phase = apiv1.ClaimBound
+	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
+		PVName:       TestPVName,
+		PVStatus:     string(apiv1.VolumeBound),
+		Namespace:    TestNamespace,
+		PVCName:      TestPVCName,
+		PodName:      TestPodName,
+		PodStatus:    string(apiv1.PodRunning),
+		WorkloadName: TestWorkloadName,
+		WorkloadType: TestWorkloadKind,
+		LastPodRefAt: getTestNow(),
+	}
+	tc.vaShouldExist = false
+	testCases["va deleted when node is NotReady"] = tc
+
+	tc = generateDisasterRecoveryTestCaseTemplate()
+	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
+	tc.pod.Status.Phase = apiv1.PodPending
+	tc.pvc.Status.Phase = apiv1.ClaimBound
+	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
+		PVName:       TestPVName,
+		PVStatus:     string(apiv1.VolumeBound),
+		Namespace:    TestNamespace,
+		PVCName:      TestPVCName,
+		PodName:      TestPodName,
+		PodStatus:    string(apiv1.PodRunning),
+		WorkloadName: TestWorkloadName,
+		WorkloadType: TestWorkloadKind,
+		LastPodRefAt: getTestNow(),
+	}
+	tc.vaShouldExist = true
+	testCases["va unchanged when node is Ready"] = tc
+
+	s.runDisasterRecoveryTestCases(c, testCases)
+}
+
+func (s *TestSuite) runDisasterRecoveryTestCases(c *C, testCases map[string]*DisasterRecoveryTestCase) {
+	for name, tc := range testCases {
+		var err error
+		fmt.Printf("testing %v\n", name)
+
+		kubeClient := fake.NewSimpleClientset()
+		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
+
+		lhClient := lhfake.NewSimpleClientset()
+		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
+		vIndexer := lhInformerFactory.Longhorn().V1alpha1().Volumes().Informer().GetIndexer()
+		nodeIndexer := lhInformerFactory.Longhorn().V1alpha1().Nodes().Informer().GetIndexer()
+
+		pvIndexer := kubeInformerFactory.Core().V1().PersistentVolumes().Informer().GetIndexer()
+		pvcIndexer := kubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
+		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+		vaIndexer := kubeInformerFactory.Storage().V1beta1().VolumeAttachments().Informer().GetIndexer()
+
+		kc := newTestKubernetesController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
+
+		if tc.node != nil {
+			node, err := lhClient.LonghornV1alpha1().Nodes(TestNamespace).Create(tc.node)
+			c.Assert(err, IsNil)
+			nodeIndexer.Add(node)
+		}
+
+		var v *longhorn.Volume
+		if tc.volume != nil {
+			v, err = lhClient.LonghornV1alpha1().Volumes(TestNamespace).Create(tc.volume)
+			c.Assert(err, IsNil)
+			err = vIndexer.Add(v)
+			c.Assert(err, IsNil)
+		}
+
+		var pv *apiv1.PersistentVolume
+		if tc.pv != nil {
+			pv, err = kubeClient.CoreV1().PersistentVolumes().Create(tc.pv)
+			c.Assert(err, IsNil)
+			pvIndexer.Add(pv)
+			c.Assert(err, IsNil)
+			if pv.DeletionTimestamp != nil {
+				kc.enqueuePVDeletion(pv)
+			}
+		}
+
+		if tc.pvc != nil {
+			pvc, err := kubeClient.CoreV1().PersistentVolumeClaims(TestNamespace).Create(tc.pvc)
+			c.Assert(err, IsNil)
+			pvcIndexer.Add(pvc)
+		}
+
+		if tc.va != nil {
+			va, err := kubeClient.StorageV1beta1().VolumeAttachments().Create(tc.va)
+			c.Assert(err, IsNil)
+			vaIndexer.Add(va)
+		}
+
+		if tc.pod != nil {
+			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(tc.pod)
+			c.Assert(err, IsNil)
+			pIndexer.Add(p)
+		}
+
+		if pv != nil {
+			err = kc.syncKubernetesStatus(getKey(pv, c))
+			c.Assert(err, IsNil)
+		}
+
+		va, err := kubeClient.StorageV1beta1().VolumeAttachments().Get(TestVAName, metav1.GetOptions{})
+		if tc.vaShouldExist {
+			c.Assert(err, IsNil)
+			c.Assert(va, DeepEquals, tc.va)
+		} else {
+			if err != nil {
+				c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
+			} else {
+				c.Assert(va.DeletionTimestamp, NotNil)
+			}
+		}
 	}
 }

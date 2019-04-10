@@ -40,6 +40,8 @@ const (
 	TestPVName  = "test-pv"
 	TestPVCName = "test-pvc"
 
+	TestVAName = "test-volume-attachment"
+
 	TestTimeNow = "2015-01-02T00:00:00Z"
 
 	TestDefaultDataPath   = "/var/lib/rancher/longhorn"
