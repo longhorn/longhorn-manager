@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	CrashLogsTaillines = 100
+	CrashLogsTaillines = 500
 )
 
 // InstanceHandler can handle the state transition of correlated instance and
