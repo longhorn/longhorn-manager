@@ -226,6 +226,10 @@ func (s *DataStore) GetAllCronJobsList() (runtime.Object, error) {
 	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).List(metav1.ListOptions{})
 }
 
+func (s *DataStore) GetAllNodesList() (runtime.Object, error) {
+	return s.kubeClient.CoreV1().Nodes().List(metav1.ListOptions{})
+}
+
 func (s *DataStore) GetPodContainerLogRequest(podName, containerName string) *rest.Request {
 	return s.kubeClient.CoreV1().Pods(s.namespace).GetLogs(podName, &corev1.PodLogOptions{
 		Container:  containerName,

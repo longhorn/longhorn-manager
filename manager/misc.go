@@ -135,6 +135,7 @@ func (m *VolumeManager) generateSupportBundleYAMLsForKubernetes(dir string, errL
 	getListAndEncodeToYAML("statefulsets", m.ds.GetAllStatefulSetsList, dir, errLog)
 	getListAndEncodeToYAML("jobs", m.ds.GetAllJobsList, dir, errLog)
 	getListAndEncodeToYAML("cronjobs", m.ds.GetAllCronJobsList, dir, errLog)
+	getListAndEncodeToYAML("nodes", m.ds.GetAllNodesList, dir, errLog)
 }
 
 func getListAndEncodeToYAML(name string, getListFunc GetRuntimeObjectListFunc, yamlsDir string, errLog io.Writer) {
