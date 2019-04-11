@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -71,7 +72,8 @@ func (m *VolumeManager) GenerateSupportBundle() (io.ReadCloser, string, int64, e
 		BundleCreatedAt:       util.Now(),
 	}
 
-	bundleName := "longhorn-support-bundle_" + bundleMeta.LonghornNamespaceUUID + "_" + bundleMeta.BundleCreatedAt
+	bundleName := "longhorn-support-bundle_" + bundleMeta.LonghornNamespaceUUID + "_" +
+		strings.Replace(bundleMeta.BundleCreatedAt, ":", "-", -1)
 	bundleFileName := bundleName + ".zip"
 	bundleDir := filepath.Join("/tmp", bundleName)
 	bundleFile := filepath.Join("/tmp", bundleFileName)
