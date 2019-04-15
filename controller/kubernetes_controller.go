@@ -252,8 +252,13 @@ func (kc *KubernetesController) syncKubernetesStatus(key string) (err error) {
 			ks.LastPVCRefAt = ""
 		} else {
 			// PVC is no longer bound with PV. indicating history data by setting <LastPVCRefAt>
-			if lastPVStatus == string(v1.VolumeBound) && ks.LastPVCRefAt == "" {
-				ks.LastPVCRefAt = kc.nowHandler()
+			if lastPVStatus == string(v1.VolumeBound) {
+				if ks.LastPVCRefAt == "" {
+					ks.LastPVCRefAt = kc.nowHandler()
+					if len(ks.WorkloadsStatus) != 0 && ks.LastPodRefAt == "" {
+						ks.LastPodRefAt = kc.nowHandler()
+					}
+				}
 			}
 		}
 	} else {
@@ -264,27 +269,22 @@ func (kc *KubernetesController) syncKubernetesStatus(key string) (err error) {
 			// The associated PVC is removed from the PV ClaimRef
 			if ks.PVCName != "" {
 				ks.LastPVCRefAt = kc.nowHandler()
+				if len(ks.WorkloadsStatus) != 0 && ks.LastPodRefAt == "" {
+					ks.LastPodRefAt = kc.nowHandler()
+				}
 			}
 		}
 	}
 
-	pod, err := kc.getAssociatedPod(ks.Namespace, ks.PVCName)
+	// podNum includes terminating pods
+	pods, terminatingPodCount, err := kc.getAssociatedPods(ks)
 	if err != nil {
 		return err
 	}
 
-	if pod != nil && pod.DeletionTimestamp == nil {
-		ks.PodName = pod.Name
-		ks.PodStatus = string(pod.Status.Phase)
-		ks.WorkloadName, ks.WorkloadType = kc.detectWorkload(pod, ks)
-		ks.LastPodRefAt = ""
-	} else {
-		if ks.PodName != "" && ks.LastPodRefAt == "" {
-			ks.LastPodRefAt = kc.nowHandler()
-		}
-	}
+	kc.setWorkloads(ks, pods)
 
-	defer kc.cleanupVolumeAttachment(volume, ks)
+	defer kc.cleanupVolumeAttachment(terminatingPodCount, volume, ks)
 
 	volume, err = kc.ds.UpdateVolume(volume)
 	if err != nil {
@@ -349,7 +349,8 @@ func (kc *KubernetesController) enqueueVolumeChange(volume *longhorn.Volume) {
 		return
 	}
 	ks := volume.Status.KubernetesStatus
-	if ks.PVName != "" && ks.PVStatus == string(v1.VolumeBound) && ks.PodName != "" && ks.PodStatus == string(v1.PodPending) && ks.LastPodRefAt == "" {
+	if ks.PVName != "" && ks.PVStatus == string(v1.VolumeBound) &&
+		ks.LastPodRefAt == "" {
 		kc.queue.AddRateLimited(volume.Status.KubernetesStatus.PVName)
 	}
 	return
@@ -388,7 +389,7 @@ func (kc *KubernetesController) cleanupForPVDeletion(pvName string) (bool, error
 		if ks.PVCName != "" && ks.LastPVCRefAt == "" {
 			volume.Status.KubernetesStatus.LastPVCRefAt = kc.nowHandler()
 		}
-		if ks.PodName != "" && ks.LastPodRefAt == "" {
+		if len(ks.WorkloadsStatus) != 0 && ks.LastPodRefAt == "" {
 			volume.Status.KubernetesStatus.LastPodRefAt = kc.nowHandler()
 		}
 		volume.Status.KubernetesStatus.PVName = ""
@@ -403,22 +404,53 @@ func (kc *KubernetesController) cleanupForPVDeletion(pvName string) (bool, error
 	return true, nil
 }
 
-func (kc *KubernetesController) getAssociatedPod(namespace, pvcName string) (*v1.Pod, error) {
-	pods, err := kc.pLister.Pods(namespace).List(labels.Everything())
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list pods in getAssociatedPod")
+func (kc *KubernetesController) getAssociatedPods(ks *types.KubernetesStatus) ([]*v1.Pod, int, error) {
+	var pods []*v1.Pod
+	terminatingPodCount := 0
+	if ks.PVStatus != string(v1.VolumeBound) {
+		return pods, terminatingPodCount, nil
 	}
-	for _, p := range pods {
+	ps, err := kc.pLister.Pods(ks.Namespace).List(labels.Everything())
+	if err != nil {
+		return nil, 0, errors.Wrapf(err, "failed to list pods in getAssociatedPod")
+	}
+	for _, p := range ps {
 		for _, v := range p.Spec.Volumes {
-			if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == pvcName {
-				return p, nil
+			if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == ks.PVCName {
+				if p.DeletionTimestamp == nil {
+					pods = append(pods, p)
+				} else {
+					terminatingPodCount++
+				}
 			}
 		}
 	}
-	return nil, nil
+	return pods, terminatingPodCount, nil
 }
 
-func (kc *KubernetesController) detectWorkload(p *v1.Pod, ks *types.KubernetesStatus) (string, string) {
+func (kc *KubernetesController) setWorkloads(ks *types.KubernetesStatus, pods []*v1.Pod) {
+	if len(pods) == 0 {
+		if len(ks.WorkloadsStatus) == 0 || ks.LastPodRefAt != "" {
+			return
+		}
+		ks.LastPodRefAt = kc.nowHandler()
+		return
+	}
+
+	ks.WorkloadsStatus = []types.WorkloadStatus{}
+	ks.LastPodRefAt = ""
+	for _, p := range pods {
+		ws := types.WorkloadStatus{
+			PodName:   p.Name,
+			PodStatus: string(p.Status.Phase),
+		}
+		ws.WorkloadName, ws.WorkloadType = kc.detectWorkload(p)
+		ks.WorkloadsStatus = append(ks.WorkloadsStatus, ws)
+	}
+	return
+}
+
+func (kc *KubernetesController) detectWorkload(p *v1.Pod) (string, string) {
 	refs := p.GetObjectMeta().GetOwnerReferences()
 	for _, ref := range refs {
 		if ref.Name != "" && ref.Kind != "" {
@@ -428,13 +460,18 @@ func (kc *KubernetesController) detectWorkload(p *v1.Pod, ks *types.KubernetesSt
 	return "", ""
 }
 
-func (kc *KubernetesController) cleanupVolumeAttachment(volume *longhorn.Volume, ks *types.KubernetesStatus) {
-	// PV and PVC should exist. Pod should be Pending
+func (kc *KubernetesController) cleanupVolumeAttachment(terminatingPodCount int, volume *longhorn.Volume, ks *types.KubernetesStatus) {
+	// PV and PVC should exist. No terminating Pod. All live Pods should be Pending.
 	if !(ks.PVStatus == string(v1.VolumeBound) && ks.PVCName != "" && ks.LastPVCRefAt == "") {
 		return
 	}
-	if !(ks.PodName != "" && ks.PodStatus == string(v1.PodPending) && ks.LastPodRefAt == "") {
+	if !(terminatingPodCount == 0 && len(ks.WorkloadsStatus) != 0 && ks.LastPodRefAt == "") {
 		return
+	}
+	for _, ws := range ks.WorkloadsStatus {
+		if ws.PodStatus != string(v1.PodPending) {
+			return
+		}
 	}
 
 	va, err := kc.getVolumeAttachment(ks)
