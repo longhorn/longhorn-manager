@@ -31,7 +31,9 @@ const (
 
 	TestReplica1Name = "replica-volumename-1"
 	TestReplica2Name = "replica-volumename-2"
-	TestPodName      = "test-pod-name"
+
+	TestPod1 = "test-pod-name-1"
+	TestPod2 = "test-pod-name-2"
 
 	TestVolumeName         = "test-volume"
 	TestVolumeSize         = 1073741824

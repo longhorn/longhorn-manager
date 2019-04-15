@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/types"
@@ -37,7 +38,7 @@ type KubernetesTestCase struct {
 	volume *longhorn.Volume
 	pv     *apiv1.PersistentVolume
 	pvc    *apiv1.PersistentVolumeClaim
-	pod    *apiv1.Pod
+	pods   []*apiv1.Pod
 
 	expectVolume *longhorn.Volume
 }
@@ -46,7 +47,7 @@ type DisasterRecoveryTestCase struct {
 	volume *longhorn.Volume
 	pv     *apiv1.PersistentVolume
 	pvc    *apiv1.PersistentVolumeClaim
-	pod    *apiv1.Pod
+	pods   []*apiv1.Pod
 	node   *longhorn.Node
 	va     *storagev1.VolumeAttachment
 
@@ -57,13 +58,13 @@ func generateKubernetesTestCaseTemplate() *KubernetesTestCase {
 	volume := newVolume(TestVolumeName, 2)
 	pv := newPV()
 	pvc := newPVC()
-	pod := newPodWithPVC()
+	pods := []*apiv1.Pod{newPodWithPVC(TestPod1)}
 
 	return &KubernetesTestCase{
 		volume: volume,
 		pv:     pv,
 		pvc:    pvc,
-		pod:    pod,
+		pods:   pods,
 
 		expectVolume: nil,
 	}
@@ -73,14 +74,14 @@ func generateDisasterRecoveryTestCaseTemplate() *DisasterRecoveryTestCase {
 	volume := newVolume(TestVolumeName, 2)
 	pv := newPV()
 	pvc := newPVC()
-	pod := newPodWithPVC()
+	pods := []*apiv1.Pod{newPodWithPVC(TestPod1)}
 	va := newVA(TestVAName, TestNode1, TestPVName)
 
 	return &DisasterRecoveryTestCase{
 		volume: volume,
 		pv:     pv,
 		pvc:    pvc,
-		pod:    pod,
+		pods:   pods,
 		node:   nil,
 		va:     va,
 	}
@@ -141,10 +142,10 @@ func newPVC() *apiv1.PersistentVolumeClaim {
 	}
 }
 
-func newPodWithPVC() *apiv1.Pod {
+func newPodWithPVC(podName string) *apiv1.Pod {
 	return &apiv1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      TestPodName,
+			Name:      podName,
 			Namespace: TestNamespace,
 			OwnerReferences: []metav1.OwnerReference{
 				metav1.OwnerReference{
@@ -156,7 +157,7 @@ func newPodWithPVC() *apiv1.Pod {
 		Spec: apiv1.PodSpec{
 			Containers: []apiv1.Container{
 				apiv1.Container{
-					Name:            TestPodName,
+					Name:            podName,
 					Image:           "nginx:stable-alpine",
 					ImagePullPolicy: apiv1.PullIfNotPresent,
 					VolumeMounts: []apiv1.VolumeMount{
@@ -182,6 +183,9 @@ func newPodWithPVC() *apiv1.Pod {
 					},
 				},
 			},
+		},
+		Status: apiv1.PodStatus{
+			Phase: apiv1.PodRunning,
 		},
 	}
 }
@@ -247,6 +251,7 @@ func newTestKubernetesController(lhInformerFactory lhinformerfactory.SharedInfor
 
 func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	deleteTime := metav1.Now()
+	var workloads []types.WorkloadStatus
 	var tc *KubernetesTestCase
 	testCases := map[string]*KubernetesTestCase{}
 
@@ -254,16 +259,23 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	tc = generateKubernetesTestCaseTemplate()
 	tc.copyCurrentToExpect()
 	tc.pv.Status.Phase = apiv1.VolumeBound
-	tc.pod.Status.Phase = apiv1.PodRunning
+	tc.pods = append(tc.pods, newPodWithPVC(TestPod2))
+	workloads = []types.WorkloadStatus{}
+	for _, p := range tc.pods {
+		ws := types.WorkloadStatus{
+			PodName:      p.Name,
+			PodStatus:    string(p.Status.Phase),
+			WorkloadName: TestWorkloadName,
+			WorkloadType: TestWorkloadKind,
+		}
+		workloads = append(workloads, ws)
+	}
 	tc.expectVolume.Status.KubernetesStatus = types.KubernetesStatus{
-		PVName:       TestPVName,
-		PVStatus:     string(apiv1.VolumeBound),
-		Namespace:    TestNamespace,
-		PVCName:      TestPVCName,
-		PodName:      TestPodName,
-		PodStatus:    string(apiv1.PodRunning),
-		WorkloadName: TestWorkloadName,
-		WorkloadType: TestWorkloadKind,
+		PVName:          TestPVName,
+		PVStatus:        string(apiv1.VolumeBound),
+		Namespace:       TestNamespace,
+		PVCName:         TestPVCName,
+		WorkloadsStatus: workloads,
 	}
 	testCases["all set"] = tc
 
@@ -272,7 +284,16 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	tc.copyCurrentToExpect()
 	tc.volume = nil
 	tc.pv.Status.Phase = apiv1.VolumeBound
-	tc.pod.Status.Phase = apiv1.PodRunning
+	workloads = []types.WorkloadStatus{}
+	for _, p := range tc.pods {
+		ws := types.WorkloadStatus{
+			PodName:      p.Name,
+			PodStatus:    string(p.Status.Phase),
+			WorkloadName: TestWorkloadName,
+			WorkloadType: TestWorkloadKind,
+		}
+		workloads = append(workloads, ws)
+	}
 	tc.expectVolume.Status.KubernetesStatus = types.KubernetesStatus{}
 	testCases["volume unset"] = tc
 
@@ -280,7 +301,16 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	tc = generateKubernetesTestCaseTemplate()
 	tc.copyCurrentToExpect()
 	tc.pv = nil
-	tc.pod.Status.Phase = apiv1.PodRunning
+	workloads = []types.WorkloadStatus{}
+	for _, p := range tc.pods {
+		ws := types.WorkloadStatus{
+			PodName:      p.Name,
+			PodStatus:    string(p.Status.Phase),
+			WorkloadName: TestWorkloadName,
+			WorkloadType: TestWorkloadKind,
+		}
+		workloads = append(workloads, ws)
+	}
 	tc.expectVolume.Status.KubernetesStatus = types.KubernetesStatus{}
 	testCases["pv unset"] = tc
 
@@ -300,7 +330,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	tc = generateKubernetesTestCaseTemplate()
 	tc.copyCurrentToExpect()
 	tc.pv.Status.Phase = apiv1.VolumeBound
-	tc.pod = nil
+	tc.pods = nil
 	tc.expectVolume.Status.KubernetesStatus = types.KubernetesStatus{
 		PVName:    TestPVName,
 		PVStatus:  string(apiv1.VolumeBound),
@@ -313,50 +343,80 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	tc = generateKubernetesTestCaseTemplate()
 	tc.copyCurrentToExpect()
 	tc.pv.Status.Phase = apiv1.VolumeBound
-	tc.pod.Status.Phase = apiv1.PodRunning
-	tc.pod.ObjectMeta.OwnerReferences = nil
+	tc.pods = append(tc.pods, newPodWithPVC(TestPod2))
+	workloads = []types.WorkloadStatus{}
+	for _, p := range tc.pods {
+		p.ObjectMeta.OwnerReferences = nil
+		ws := types.WorkloadStatus{
+			PodName:   p.Name,
+			PodStatus: string(p.Status.Phase),
+		}
+		workloads = append(workloads, ws)
+	}
 	tc.expectVolume.Status.KubernetesStatus = types.KubernetesStatus{
-		PVName:    TestPVName,
-		PVStatus:  string(apiv1.VolumeBound),
-		Namespace: TestNamespace,
-		PVCName:   TestPVCName,
-		PodName:   TestPodName,
-		PodStatus: string(apiv1.PodRunning),
+		PVName:          TestPVName,
+		PVStatus:        string(apiv1.VolumeBound),
+		Namespace:       TestNamespace,
+		PVCName:         TestPVCName,
+		WorkloadsStatus: workloads,
 	}
 	testCases["workload unset"] = tc
 
 	// pod phase updated: running -> failed
 	tc = generateKubernetesTestCaseTemplate()
 	tc.pv.Status.Phase = apiv1.VolumeBound
-	tc.pod.Status.Phase = apiv1.PodFailed
+	workloads = []types.WorkloadStatus{}
+	for _, p := range tc.pods {
+		ws := types.WorkloadStatus{
+			PodName:      p.Name,
+			PodStatus:    string(p.Status.Phase),
+			WorkloadName: TestWorkloadName,
+			WorkloadType: TestWorkloadKind,
+		}
+		workloads = append(workloads, ws)
+	}
 	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
-		PVName:       TestPVName,
-		PVStatus:     string(apiv1.VolumeBound),
-		Namespace:    TestNamespace,
-		PVCName:      TestPVCName,
-		PodName:      TestPodName,
-		PodStatus:    string(apiv1.PodRunning),
-		WorkloadName: TestWorkloadName,
-		WorkloadType: TestWorkloadKind,
+		PVName:          TestPVName,
+		PVStatus:        string(apiv1.VolumeBound),
+		Namespace:       TestNamespace,
+		PVCName:         TestPVCName,
+		WorkloadsStatus: workloads,
 	}
 	tc.copyCurrentToExpect()
-	tc.expectVolume.Status.KubernetesStatus.PodStatus = string(apiv1.PodFailed)
+	workloads = []types.WorkloadStatus{}
+	for _, p := range tc.pods {
+		p.Status.Phase = apiv1.PodFailed
+		ws := types.WorkloadStatus{
+			PodName:      p.Name,
+			PodStatus:    string(p.Status.Phase),
+			WorkloadName: TestWorkloadName,
+			WorkloadType: TestWorkloadKind,
+		}
+		workloads = append(workloads, ws)
+	}
+	tc.expectVolume.Status.KubernetesStatus.WorkloadsStatus = workloads
 	testCases["pod phase updated to 'failed'"] = tc
 
 	// pod deleted
 	tc = generateKubernetesTestCaseTemplate()
 	tc.pv.Status.Phase = apiv1.VolumeBound
-	tc.pod.Status.Phase = apiv1.PodRunning
-	tc.pod.DeletionTimestamp = &deleteTime
+	workloads = []types.WorkloadStatus{}
+	for _, p := range tc.pods {
+		p.DeletionTimestamp = &deleteTime
+		ws := types.WorkloadStatus{
+			PodName:      p.Name,
+			PodStatus:    string(p.Status.Phase),
+			WorkloadName: TestWorkloadName,
+			WorkloadType: TestWorkloadKind,
+		}
+		workloads = append(workloads, ws)
+	}
 	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
-		PVName:       TestPVName,
-		PVStatus:     string(apiv1.VolumeBound),
-		Namespace:    TestNamespace,
-		PVCName:      TestPVCName,
-		PodName:      TestPodName,
-		PodStatus:    string(apiv1.PodRunning),
-		WorkloadName: TestWorkloadName,
-		WorkloadType: TestWorkloadKind,
+		PVName:          TestPVName,
+		PVStatus:        string(apiv1.VolumeBound),
+		Namespace:       TestNamespace,
+		PVCName:         TestPVCName,
+		WorkloadsStatus: workloads,
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.KubernetesStatus.LastPodRefAt = getTestNow()
@@ -365,35 +425,48 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	// pv phase updated: bound -> failed
 	tc = generateKubernetesTestCaseTemplate()
 	tc.pv.Status.Phase = apiv1.VolumeFailed
-	tc.pod.Status.Phase = apiv1.PodRunning
+	workloads = []types.WorkloadStatus{}
+	for _, p := range tc.pods {
+		ws := types.WorkloadStatus{
+			PodName:      p.Name,
+			PodStatus:    string(p.Status.Phase),
+			WorkloadName: TestWorkloadName,
+			WorkloadType: TestWorkloadKind,
+		}
+		workloads = append(workloads, ws)
+	}
 	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
-		PVName:       TestPVName,
-		PVStatus:     string(apiv1.VolumeBound),
-		Namespace:    TestNamespace,
-		PVCName:      TestPVCName,
-		PodName:      TestPodName,
-		PodStatus:    string(apiv1.PodRunning),
-		WorkloadName: TestWorkloadName,
-		WorkloadType: TestWorkloadKind,
+		PVName:          TestPVName,
+		PVStatus:        string(apiv1.VolumeBound),
+		Namespace:       TestNamespace,
+		PVCName:         TestPVCName,
+		WorkloadsStatus: workloads,
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.KubernetesStatus.PVStatus = string(apiv1.VolumeFailed)
 	tc.expectVolume.Status.KubernetesStatus.LastPVCRefAt = getTestNow()
+	tc.expectVolume.Status.KubernetesStatus.LastPodRefAt = getTestNow()
 	testCases["pv phase updated to 'failed'"] = tc
 
 	// pv deleted
 	tc = generateKubernetesTestCaseTemplate()
 	tc.pv.Status.Phase = apiv1.VolumeBound
 	tc.pv.DeletionTimestamp = &deleteTime
-	tc.pod.Status.Phase = apiv1.PodRunning
+	workloads = []types.WorkloadStatus{}
+	for _, p := range tc.pods {
+		ws := types.WorkloadStatus{
+			PodName:      p.Name,
+			PodStatus:    string(p.Status.Phase),
+			WorkloadName: TestWorkloadName,
+			WorkloadType: TestWorkloadKind,
+		}
+		workloads = append(workloads, ws)
+	}
 	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
-		Namespace:    TestNamespace,
-		PVCName:      TestPVCName,
-		PodName:      TestPodName,
-		PodStatus:    string(apiv1.PodRunning),
-		WorkloadName: TestWorkloadName,
-		WorkloadType: TestWorkloadKind,
-		LastPodRefAt: "",
+		Namespace:       TestNamespace,
+		PVCName:         TestPVCName,
+		WorkloadsStatus: workloads,
+		LastPodRefAt:    "",
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.KubernetesStatus.LastPVCRefAt = getTestNow()
@@ -447,11 +520,12 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 			pvcIndexer.Add(pvc)
 		}
 
-		var p *apiv1.Pod
-		if tc.pod != nil {
-			p, err = kubeClient.CoreV1().Pods(TestNamespace).Create(tc.pod)
-			c.Assert(err, IsNil)
-			pIndexer.Add(p)
+		if len(tc.pods) != 0 {
+			for _, p := range tc.pods {
+				p, err = kubeClient.CoreV1().Pods(TestNamespace).Create(p)
+				c.Assert(err, IsNil)
+				pIndexer.Add(p)
+			}
 		}
 
 		if pv != nil {
@@ -463,6 +537,12 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 			retV, err := lhClient.LonghornV1alpha1().Volumes(TestNamespace).Get(v.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(retV.Spec, DeepEquals, tc.expectVolume.Spec)
+			sort.Slice(retV.Status.KubernetesStatus.WorkloadsStatus, func(i, j int) bool {
+				return retV.Status.KubernetesStatus.WorkloadsStatus[i].PodName < retV.Status.KubernetesStatus.WorkloadsStatus[j].PodName
+			})
+			sort.Slice(tc.expectVolume.Status.KubernetesStatus.WorkloadsStatus, func(i, j int) bool {
+				return tc.expectVolume.Status.KubernetesStatus.WorkloadsStatus[i].PodName < tc.expectVolume.Status.KubernetesStatus.WorkloadsStatus[j].PodName
+			})
 			c.Assert(retV.Status.KubernetesStatus, DeepEquals, tc.expectVolume.Status.KubernetesStatus)
 		}
 
@@ -470,44 +550,124 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 }
 
 func (s *TestSuite) TestDisasterRecovery(c *C) {
+	deleteTime := metav1.Now()
+	var workloads []types.WorkloadStatus
 	var tc *DisasterRecoveryTestCase
 	testCases := map[string]*DisasterRecoveryTestCase{}
 
 	tc = generateDisasterRecoveryTestCaseTemplate()
-	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeDown)
-	tc.pod.Status.Phase = apiv1.PodPending
+	tc.volume.Status.State = types.VolumeStateDetached
 	tc.pvc.Status.Phase = apiv1.ClaimBound
+	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeDown)
+	workloads = []types.WorkloadStatus{}
+	for _, p := range tc.pods {
+		p.Status.Phase = apiv1.PodPending
+		ws := types.WorkloadStatus{
+			PodName:      p.Name,
+			PodStatus:    string(p.Status.Phase),
+			WorkloadName: TestWorkloadName,
+			WorkloadType: TestWorkloadKind,
+		}
+		workloads = append(workloads, ws)
+	}
 	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
-		PVName:       TestPVName,
-		PVStatus:     string(apiv1.VolumeBound),
-		Namespace:    TestNamespace,
-		PVCName:      TestPVCName,
-		PodName:      TestPodName,
-		PodStatus:    string(apiv1.PodRunning),
-		WorkloadName: TestWorkloadName,
-		WorkloadType: TestWorkloadKind,
-		LastPodRefAt: getTestNow(),
+		PVName:          TestPVName,
+		PVStatus:        string(apiv1.VolumeBound),
+		Namespace:       TestNamespace,
+		PVCName:         TestPVCName,
+		WorkloadsStatus: workloads,
+		LastPodRefAt:    getTestNow(),
 	}
 	tc.vaShouldExist = false
-	testCases["va deleted when node is NotReady"] = tc
+	testCases["va deleted"] = tc
 
 	tc = generateDisasterRecoveryTestCaseTemplate()
 	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	tc.pod.Status.Phase = apiv1.PodPending
 	tc.pvc.Status.Phase = apiv1.ClaimBound
+	workloads = []types.WorkloadStatus{}
+	for _, p := range tc.pods {
+		p.Status.Phase = apiv1.PodPending
+		ws := types.WorkloadStatus{
+			PodName:      p.Name,
+			PodStatus:    string(p.Status.Phase),
+			WorkloadName: TestWorkloadName,
+			WorkloadType: TestWorkloadKind,
+		}
+		workloads = append(workloads, ws)
+	}
 	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
-		PVName:       TestPVName,
-		PVStatus:     string(apiv1.VolumeBound),
-		Namespace:    TestNamespace,
-		PVCName:      TestPVCName,
-		PodName:      TestPodName,
-		PodStatus:    string(apiv1.PodRunning),
-		WorkloadName: TestWorkloadName,
-		WorkloadType: TestWorkloadKind,
-		LastPodRefAt: getTestNow(),
+		PVName:          TestPVName,
+		PVStatus:        string(apiv1.VolumeBound),
+		Namespace:       TestNamespace,
+		PVCName:         TestPVCName,
+		WorkloadsStatus: workloads,
+		LastPodRefAt:    getTestNow(),
 	}
 	tc.vaShouldExist = true
 	testCases["va unchanged when node is Ready"] = tc
+
+	// the associated 2 pods become Terminating. And user forces deleting one pod.
+	tc = generateDisasterRecoveryTestCaseTemplate()
+	tc.volume.Status.State = types.VolumeStateDetached
+	tc.pvc.Status.Phase = apiv1.ClaimBound
+	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeDown)
+	workloads = []types.WorkloadStatus{}
+	for _, p := range tc.pods {
+		p.DeletionTimestamp = &deleteTime
+
+	}
+	pod2 := newPodWithPVC(TestPod2)
+	pod2.Status.Phase = apiv1.PodPending
+	tc.pods = append(tc.pods, pod2)
+	for _, p := range tc.pods {
+		if p.DeletionTimestamp == nil {
+			ws := types.WorkloadStatus{
+				PodName:      p.Name,
+				PodStatus:    string(p.Status.Phase),
+				WorkloadName: TestWorkloadName,
+				WorkloadType: TestWorkloadKind,
+			}
+			workloads = append(workloads, ws)
+		}
+	}
+	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
+		PVName:          TestPVName,
+		PVStatus:        string(apiv1.VolumeBound),
+		Namespace:       TestNamespace,
+		PVCName:         TestPVCName,
+		WorkloadsStatus: workloads,
+	}
+	tc.vaShouldExist = true
+	testCases["va retained when one terminating pod is not cleared"] = tc
+
+	// the associated 2 pods become Terminating. And user forces deleting all pods.
+	tc = generateDisasterRecoveryTestCaseTemplate()
+	tc.volume.Status.State = types.VolumeStateDetached
+	tc.pvc.Status.Phase = apiv1.ClaimBound
+	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeDown)
+	workloads = []types.WorkloadStatus{}
+	tc.pods = append(tc.pods, newPodWithPVC(TestPod2))
+	for _, p := range tc.pods {
+		p.Status.Phase = apiv1.PodPending
+	}
+	for _, p := range tc.pods {
+		ws := types.WorkloadStatus{
+			PodName:      p.Name,
+			PodStatus:    string(p.Status.Phase),
+			WorkloadName: TestWorkloadName,
+			WorkloadType: TestWorkloadKind,
+		}
+		workloads = append(workloads, ws)
+	}
+	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
+		PVName:          TestPVName,
+		PVStatus:        string(apiv1.VolumeBound),
+		Namespace:       TestNamespace,
+		PVCName:         TestPVCName,
+		WorkloadsStatus: workloads,
+	}
+	tc.vaShouldExist = false
+	testCases["va deleted when all termiating pods are cleared"] = tc
 
 	s.runDisasterRecoveryTestCases(c, testCases)
 }
@@ -569,10 +729,12 @@ func (s *TestSuite) runDisasterRecoveryTestCases(c *C, testCases map[string]*Dis
 			vaIndexer.Add(va)
 		}
 
-		if tc.pod != nil {
-			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(tc.pod)
-			c.Assert(err, IsNil)
-			pIndexer.Add(p)
+		if len(tc.pods) != 0 {
+			for _, p := range tc.pods {
+				p, err = kubeClient.CoreV1().Pods(TestNamespace).Create(p)
+				c.Assert(err, IsNil)
+				pIndexer.Add(p)
+			}
 		}
 
 		if pv != nil {
