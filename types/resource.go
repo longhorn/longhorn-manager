@@ -231,6 +231,7 @@ const (
 	NodeConditionReasonKubernetesNodeDown        = "KubernetesNodeDown"
 	NodeConditionReasonKubernetesNodeNotReady    = "KubernetesNodeNotReady"
 	NodeConditionReasonKubernetesNodePressure    = "KubernetesNodePressure"
+	NodeConditionReasonUnknownNodeConditionTrue  = "UnknownNodeConditionTrue"
 	NodeConditionReasonNoMountPropagationSupport = "NoMountPropagationSupport"
 )
 
