@@ -27,7 +27,8 @@ const backupsListText = `
 		"Size": "10737418240",
 		"Created": "2017-03-25T02:25:53Z",
 		"LastBackupName": "backup-072d7a718f854328",
-		"SpaceUsage": "41943040",
+		"LastBackupAt": "2017-03-25T02:26:59Z",
+		"DataStored": "41943040",
 		"Backups": {
 			"vfs:///var/lib/longhorn/backups/default?backup=backup-072d7a718f854328\u0026volume=qq": {
 				"Name": "backup-072d7a718f854328",

@@ -81,14 +81,15 @@ type Snapshot struct {
 }
 
 type BackupVolume struct {
-	Name           string `json:"name"`
-	Size           string `json:"size"`
-	Created        string `json:"created"`
-	LastBackupName string
-	SpaceUsage     string
+	Name           string                             `json:"name"`
+	Size           string                             `json:"size"`
+	Created        string                             `json:"created"`
+	LastBackupName string                             `json:"lastBackupName"`
+	LastBackupAt   string                             `json:"lastBackupAt"`
+	DataStored     string                             `json:"dataStored"`
 	Messages       map[backupstore.MessageType]string `json:"messages"`
-	Backups        map[string]*Backup
-	BaseImage      string `json:"baseImage"`
+	Backups        map[string]*Backup                 `json:"backups"`
+	BaseImage      string                             `json:"baseImage"`
 }
 
 type Backup struct {

@@ -166,6 +166,14 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 		return err
 	}
 	logrus.Debugf("Backup snapshot %v with label %v for volume %v", snapshotName, labels, volumeName)
+
+	target, err := m.getBackupTarget()
+	if err != nil {
+		logrus.Warnf("Failed to update volume LastBackup for %v due to cannot get backup target: %v", volumeName, err)
+	}
+	if err := UpdateVolumeLastBackup(volumeName, target, m.ds.GetVolume, m.ds.UpdateVolume); err != nil {
+		logrus.Warnf("Failed to update volume LastBackup for %v: %v", volumeName, err)
+	}
 	return nil
 }
 
@@ -291,5 +299,8 @@ func (m *VolumeManager) DeleteBackup(backupName, volumeName string) error {
 		return err
 	}
 	logrus.Debugf("Deleted backup %v for volume %v", backupName, volumeName)
+	if err := UpdateVolumeLastBackup(volumeName, backupTarget, m.ds.GetVolume, m.ds.UpdateVolume); err != nil {
+		logrus.Warnf("Failed to update volume LastBackup for %v for backup deletion: %v", volumeName, err)
+	}
 	return nil
 }
