@@ -55,18 +55,19 @@ const (
 )
 
 type VolumeSpec struct {
-	OwnerID             string         `json:"ownerID"`
-	Size                int64          `json:"size,string"`
-	Frontend            VolumeFrontend `json:"frontend"`
-	FromBackup          string         `json:"fromBackup"`
-	NumberOfReplicas    int            `json:"numberOfReplicas"`
-	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`
-	NodeID              string         `json:"nodeID"`
-	MigrationNodeID     string         `json:"migrationNodeID"`
-	PendingNodeID       string         `json:"pendingNodeID"`
-	EngineImage         string         `json:"engineImage"`
-	RecurringJobs       []RecurringJob `json:"recurringJobs"`
-	BaseImage           string         `json:"baseImage"`
+	OwnerID                string         `json:"ownerID"`
+	Size                   int64          `json:"size,string"`
+	Frontend               VolumeFrontend `json:"frontend"`
+	FromBackup             string         `json:"fromBackup"`
+	NumberOfReplicas       int            `json:"numberOfReplicas"`
+	StaleReplicaTimeout    int            `json:"staleReplicaTimeout"`
+	NodeID                 string         `json:"nodeID"`
+	MigrationNodeID        string         `json:"migrationNodeID"`
+	PendingNodeID          string         `json:"pendingNodeID"`
+	EngineImage            string         `json:"engineImage"`
+	RecurringJobs          []RecurringJob `json:"recurringJobs"`
+	BaseImage              string         `json:"baseImage"`
+	BackupRefreshRequested bool           `json:"backupRefreshRequested"`
 }
 
 type KubernetesStatus struct {
@@ -96,6 +97,8 @@ type VolumeStatus struct {
 	CurrentImage     string                            `json:"currentImage"`
 	KubernetesStatus KubernetesStatus                  `json:"kubernetesStatus"`
 	Conditions       map[VolumeConditionType]Condition `json:"conditions"`
+	LastBackup       string                            `json:"lastBackup"`
+	LastBackupAt     string                            `json:"lastBackupAt"`
 }
 
 type RecurringJobType string

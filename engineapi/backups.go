@@ -26,7 +26,8 @@ type backupVolume struct {
 	Size           string
 	Created        string
 	LastBackupName string
-	SpaceUsage     string
+	LastBackupAt   string
+	DataStored     string
 	Messages       map[backupstore.MessageType]string
 	Backups        map[string]interface{}
 }
@@ -100,10 +101,13 @@ func parseBackupVolumesList(output string) ([]*BackupVolume, error) {
 			}
 		}
 		volumes = append(volumes, &BackupVolume{
-			Name:     name,
-			Size:     v.Size,
-			Created:  v.Created,
-			Messages: v.Messages,
+			Name:           name,
+			Size:           v.Size,
+			Created:        v.Created,
+			LastBackupName: v.LastBackupName,
+			LastBackupAt:   v.LastBackupAt,
+			DataStored:     v.DataStored,
+			Messages:       v.Messages,
 		})
 	}
 
