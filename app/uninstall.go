@@ -14,12 +14,13 @@ import (
 	"github.com/rancher/longhorn-manager/datastore"
 	lhclientset "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	lhinformers "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions"
-	"github.com/rancher/longhorn-manager/types"
 )
 
 const (
 	FlagForce     = "force"
 	FlagNamespace = "namespace"
+
+	EnvLonghornNamespace = "LONGHORN_NAMESPACE"
 )
 
 func UninstallCmd() cli.Command {
@@ -36,7 +37,7 @@ func UninstallCmd() cli.Command {
 			},
 			cli.StringFlag{
 				Name:   FlagNamespace,
-				EnvVar: types.EnvPodNamespace,
+				EnvVar: EnvLonghornNamespace,
 			},
 		},
 		Action: func(c *cli.Context) {
