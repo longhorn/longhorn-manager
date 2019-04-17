@@ -257,7 +257,13 @@ func (m *VolumeManager) ListBackupVolumes() ([]*engineapi.BackupVolume, error) {
 		return nil, err
 	}
 
-	return backupTarget.ListVolumes()
+	backupVolumes, err := backupTarget.ListVolumes()
+	if err != nil {
+		return nil, err
+	}
+	// side effect, update known volumes
+	SyncVolumesLastBackupWithBackupVolumes(backupVolumes, m.ds.GetVolume, m.ds.UpdateVolume)
+	return backupVolumes, nil
 }
 
 func (m *VolumeManager) GetBackupVolume(volumeName string) (*engineapi.BackupVolume, error) {
@@ -265,8 +271,13 @@ func (m *VolumeManager) GetBackupVolume(volumeName string) (*engineapi.BackupVol
 	if err != nil {
 		return nil, err
 	}
-
-	return backupTarget.GetVolume(volumeName)
+	bv, err := backupTarget.GetVolume(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	// side effect, update known volumes
+	SyncVolumeLastBackupWithBackupVolume(volumeName, bv, m.ds.GetVolume, m.ds.UpdateVolume)
+	return bv, nil
 }
 
 func (m *VolumeManager) ListBackupsForVolume(volumeName string) ([]*engineapi.Backup, error) {

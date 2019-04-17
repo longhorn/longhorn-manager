@@ -107,3 +107,7 @@ func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 func ErrorIsNotFound(err error) bool {
 	return apierrors.IsNotFound(err)
 }
+
+func ErrorIsConflict(err error) bool {
+	return apierrors.IsConflict(err)
+}
