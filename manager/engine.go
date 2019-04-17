@@ -221,7 +221,7 @@ func (m *VolumeManager) ListBackupVolumes() (map[string]*engineapi.BackupVolume,
 		return nil, err
 	}
 	// side effect, update known volumes
-	SyncVolumesLastBackupWithBackupVolumes(backupVolumes, m.ds.GetVolume, m.ds.UpdateVolume)
+	SyncVolumesLastBackupWithBackupVolumes(backupVolumes, m.ds.ListVolumes, m.ds.GetVolume, m.ds.UpdateVolume)
 	return backupVolumes, nil
 }
 
