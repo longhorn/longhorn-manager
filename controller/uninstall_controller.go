@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	apiextension "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -24,6 +25,14 @@ import (
 	"github.com/rancher/longhorn-manager/types"
 )
 
+const (
+	CRDEngineName      = "engines.longhorn.rancher.io"
+	CRDReplicaName     = "replicas.longhorn.rancher.io"
+	CRDVolumeName      = "volumes.longhorn.rancher.io"
+	CRDEngineImageName = "engineimages.longhorn.rancher.io"
+	CRDNodeName        = "nodes.longhorn.rancher.io"
+)
+
 var (
 	gracePeriod = 90 * time.Second
 )
@@ -34,12 +43,7 @@ type UninstallController struct {
 	ds        *datastore.DataStore
 	stopCh    chan struct{}
 
-	volumeInformerSynced      cache.InformerSynced
-	engineInformerSynced      cache.InformerSynced
-	replicaInformerSynced     cache.InformerSynced
-	engineImageInformerSynced cache.InformerSynced
-	nodeInformerSynced        cache.InformerSynced
-	daemonSetInformerSynced   cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
 }
@@ -49,6 +53,7 @@ func NewUninstallController(
 	force bool,
 	ds *datastore.DataStore,
 	stopCh chan struct{},
+	extensionsClient apiextension.Interface,
 	volumeInformer lhinformers.VolumeInformer,
 	engineInformer lhinformers.EngineInformer,
 	replicaInformer lhinformers.ReplicaInformer,
@@ -57,28 +62,44 @@ func NewUninstallController(
 	daemonSetInformer v1beta2.DaemonSetInformer,
 ) *UninstallController {
 	c := &UninstallController{
-		namespace:                 namespace,
-		force:                     force,
-		ds:                        ds,
-		stopCh:                    stopCh,
-		volumeInformerSynced:      volumeInformer.Informer().HasSynced,
-		engineInformerSynced:      engineInformer.Informer().HasSynced,
-		replicaInformerSynced:     replicaInformer.Informer().HasSynced,
-		engineImageInformerSynced: engineImageInformer.Informer().HasSynced,
-		nodeInformerSynced:        nodeInformer.Informer().HasSynced,
-		daemonSetInformerSynced:   daemonSetInformer.Informer().HasSynced,
+		namespace: namespace,
+		force:     force,
+		ds:        ds,
+		stopCh:    stopCh,
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
 			workqueue.NewItemExponentialFailureRateLimiter(500*time.Millisecond, 5*time.Second),
 			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 		), "longhorn-uninstall"),
 	}
 
-	volumeInformer.Informer().AddEventHandler(c.controlleeHandler())
-	engineInformer.Informer().AddEventHandler(c.controlleeHandler())
-	replicaInformer.Informer().AddEventHandler(c.controlleeHandler())
-	engineImageInformer.Informer().AddEventHandler(c.controlleeHandler())
-	nodeInformer.Informer().AddEventHandler(c.controlleeHandler())
+	cacheSyncs := []cache.InformerSynced{}
+	cacheSyncs = append(cacheSyncs, daemonSetInformer.Informer().HasSynced)
+
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDEngineName, metav1.GetOptions{}); err == nil {
+		engineInformer.Informer().AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, engineInformer.Informer().HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDReplicaName, metav1.GetOptions{}); err == nil {
+		replicaInformer.Informer().AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, replicaInformer.Informer().HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDVolumeName, metav1.GetOptions{}); err == nil {
+		volumeInformer.Informer().AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, volumeInformer.Informer().HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDEngineImageName, metav1.GetOptions{}); err == nil {
+		engineImageInformer.Informer().AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, engineImageInformer.Informer().HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDNodeName, metav1.GetOptions{}); err == nil {
+		nodeInformer.Informer().AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, nodeInformer.Informer().HasSynced)
+	}
+
 	daemonSetInformer.Informer().AddEventHandler(c.controlleeHandler())
+
+	c.cacheSyncs = cacheSyncs
+
 	return c
 }
 
@@ -98,10 +119,7 @@ func (c *UninstallController) Run() error {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
-	if !controller.WaitForCacheSync("longhorn uninstall", c.stopCh,
-		c.volumeInformerSynced, c.engineImageInformerSynced,
-		c.nodeInformerSynced, c.daemonSetInformerSynced) {
-
+	if !controller.WaitForCacheSync("longhorn uninstall", c.stopCh, c.cacheSyncs...) {
 		return fmt.Errorf("Failed to sync informers")
 	}
 

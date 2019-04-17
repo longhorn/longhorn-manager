@@ -6,6 +6,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+	apiextension "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -64,6 +65,11 @@ func uninstall(c *cli.Context) error {
 		return errors.Wrap(err, "unable to get k8s client")
 	}
 
+	extensionsClient, err := apiextension.NewForConfig(config)
+	if err != nil {
+		return errors.Wrap(err, "unable to get k8s extension client")
+	}
+
 	lhClient, err := lhclientset.NewForConfig(config)
 	if err != nil {
 		return errors.Wrap(err, "unable to get lh client")
@@ -99,6 +105,7 @@ func uninstall(c *cli.Context) error {
 		c.Bool(FlagForce),
 		ds,
 		doneCh,
+		extensionsClient,
 		volumeInformer,
 		engineInformer,
 		replicaInformer,
