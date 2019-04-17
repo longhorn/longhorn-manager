@@ -18,14 +18,7 @@ import (
 )
 
 func (m *VolumeManager) GetSettingValueExisted(sName types.SettingName) (string, error) {
-	setting, err := m.GetSetting(sName)
-	if err != nil {
-		return "", err
-	}
-	if setting.Value == "" {
-		return "", fmt.Errorf("setting %v is empty", sName)
-	}
-	return setting.Value, nil
+	return m.ds.GetSettingValueExisted(sName)
 }
 
 func (m *VolumeManager) GetSetting(sName types.SettingName) (*longhorn.Setting, error) {

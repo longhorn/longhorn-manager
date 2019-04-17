@@ -90,6 +90,17 @@ func (s *DataStore) GetSetting(sName types.SettingName) (*longhorn.Setting, erro
 	return resultRO.DeepCopy(), nil
 }
 
+func (s *DataStore) GetSettingValueExisted(sName types.SettingName) (string, error) {
+	setting, err := s.GetSetting(sName)
+	if err != nil {
+		return "", err
+	}
+	if setting.Value == "" {
+		return "", fmt.Errorf("setting %v is empty", sName)
+	}
+	return setting.Value, nil
+}
+
 func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, error) {
 	itemMap := make(map[types.SettingName]*longhorn.Setting)
 

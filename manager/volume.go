@@ -154,7 +154,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 
 	size := spec.Size
 	if spec.FromBackup != "" {
-		backupTarget, err := m.getBackupTarget()
+		backupTarget, err := GenerateBackupTarget(m.ds)
 		if err != nil {
 			return nil, err
 		}

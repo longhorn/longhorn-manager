@@ -9,7 +9,6 @@ import (
 
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/types"
-	"github.com/rancher/longhorn-manager/util"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
@@ -153,7 +152,7 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 	if err != nil {
 		return err
 	}
-	credential, err := m.getBackupCredentialConfig()
+	credential, err := GetBackupCredentialConfig(m.ds)
 	if err != nil {
 		return err
 	}
@@ -167,7 +166,7 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 	}
 	logrus.Debugf("Backup snapshot %v with label %v for volume %v", snapshotName, labels, volumeName)
 
-	target, err := m.getBackupTarget()
+	target, err := GenerateBackupTarget(m.ds)
 	if err != nil {
 		logrus.Warnf("Failed to update volume LastBackup for %v due to cannot get backup target: %v", volumeName, err)
 	}
@@ -211,48 +210,8 @@ func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.Eng
 	})
 }
 
-func (m *VolumeManager) getBackupTarget() (*engineapi.BackupTarget, error) {
-	targetURL, err := m.GetSettingValueExisted(types.SettingNameBackupTarget)
-	if err != nil {
-		return nil, err
-	}
-	engineImage, err := m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
-	if err != nil {
-		return nil, err
-	}
-	credential, err := m.getBackupCredentialConfig()
-	if err != nil {
-		return nil, err
-	}
-	return engineapi.NewBackupTarget(targetURL, engineImage, credential), nil
-}
-
-func (m *VolumeManager) getBackupCredentialConfig() (map[string]string, error) {
-	backupTarget, err := m.GetSettingValueExisted(types.SettingNameBackupTarget)
-	if err != nil {
-		return nil, fmt.Errorf("cannot backup: unable to get settings %v",
-			types.SettingNameBackupTarget)
-	}
-	backupType, err := util.CheckBackupType(backupTarget)
-	if err != nil {
-		return nil, err
-	}
-	if backupType == util.BackupStoreTypeS3 {
-		secretName, err := m.GetSettingValueExisted(types.SettingNameBackupTargetCredentialSecret)
-		if err != nil {
-			return nil, fmt.Errorf("cannot backup: unable to get settings %v",
-				types.SettingNameBackupTargetCredentialSecret)
-		}
-		if secretName == "" {
-			return nil, errors.New("Could not backup for s3 without credential secret")
-		}
-		return m.ds.GetCredentialFromSecret(secretName)
-	}
-	return nil, nil
-}
-
 func (m *VolumeManager) ListBackupVolumes() ([]*engineapi.BackupVolume, error) {
-	backupTarget, err := m.getBackupTarget()
+	backupTarget, err := GenerateBackupTarget(m.ds)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +226,7 @@ func (m *VolumeManager) ListBackupVolumes() ([]*engineapi.BackupVolume, error) {
 }
 
 func (m *VolumeManager) GetBackupVolume(volumeName string) (*engineapi.BackupVolume, error) {
-	backupTarget, err := m.getBackupTarget()
+	backupTarget, err := GenerateBackupTarget(m.ds)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +240,7 @@ func (m *VolumeManager) GetBackupVolume(volumeName string) (*engineapi.BackupVol
 }
 
 func (m *VolumeManager) ListBackupsForVolume(volumeName string) ([]*engineapi.Backup, error) {
-	backupTarget, err := m.getBackupTarget()
+	backupTarget, err := GenerateBackupTarget(m.ds)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +249,7 @@ func (m *VolumeManager) ListBackupsForVolume(volumeName string) ([]*engineapi.Ba
 }
 
 func (m *VolumeManager) GetBackup(backupName, volumeName string) (*engineapi.Backup, error) {
-	backupTarget, err := m.getBackupTarget()
+	backupTarget, err := GenerateBackupTarget(m.ds)
 	if err != nil {
 		return nil, err
 	}
@@ -300,7 +259,7 @@ func (m *VolumeManager) GetBackup(backupName, volumeName string) (*engineapi.Bac
 }
 
 func (m *VolumeManager) DeleteBackup(backupName, volumeName string) error {
-	backupTarget, err := m.getBackupTarget()
+	backupTarget, err := GenerateBackupTarget(m.ds)
 	if err != nil {
 		return err
 	}

@@ -8,6 +8,8 @@ import (
 
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
+	"github.com/rancher/longhorn-manager/types"
+	"github.com/rancher/longhorn-manager/util"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
@@ -80,4 +82,44 @@ func SyncVolumesLastBackupWithBackupVolumes(backupVolumes []*engineapi.BackupVol
 			logrus.Errorf("backup store monitor: failed to update last backup for %+v: %v", bv, err)
 		}
 	}
+}
+
+func GenerateBackupTarget(ds *datastore.DataStore) (*engineapi.BackupTarget, error) {
+	targetURL, err := ds.GetSettingValueExisted(types.SettingNameBackupTarget)
+	if err != nil {
+		return nil, err
+	}
+	engineImage, err := ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+	if err != nil {
+		return nil, err
+	}
+	credential, err := GetBackupCredentialConfig(ds)
+	if err != nil {
+		return nil, err
+	}
+	return engineapi.NewBackupTarget(targetURL, engineImage, credential), nil
+}
+
+func GetBackupCredentialConfig(ds *datastore.DataStore) (map[string]string, error) {
+	backupTarget, err := ds.GetSettingValueExisted(types.SettingNameBackupTarget)
+	if err != nil {
+		return nil, fmt.Errorf("cannot backup: unable to get settings %v",
+			types.SettingNameBackupTarget)
+	}
+	backupType, err := util.CheckBackupType(backupTarget)
+	if err != nil {
+		return nil, err
+	}
+	if backupType == util.BackupStoreTypeS3 {
+		secretName, err := ds.GetSettingValueExisted(types.SettingNameBackupTargetCredentialSecret)
+		if err != nil {
+			return nil, fmt.Errorf("cannot backup: unable to get settings %v",
+				types.SettingNameBackupTargetCredentialSecret)
+		}
+		if secretName == "" {
+			return nil, errors.New("Could not backup for s3 without credential secret")
+		}
+		return ds.GetCredentialFromSecret(secretName)
+	}
+	return nil, nil
 }
