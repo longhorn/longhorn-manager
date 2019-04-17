@@ -606,7 +606,7 @@ func toBackupVolumeResource(bv *engineapi.BackupVolume, apiContext *api.ApiConte
 	return b
 }
 
-func toBackupVolumeCollection(bv []*engineapi.BackupVolume, apiContext *api.ApiContext) *client.GenericCollection {
+func toBackupVolumeCollection(bv map[string]*engineapi.BackupVolume, apiContext *api.ApiContext) *client.GenericCollection {
 	data := []interface{}{}
 	for _, v := range bv {
 		data = append(data, toBackupVolumeResource(v, apiContext))

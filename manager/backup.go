@@ -74,7 +74,7 @@ func SyncVolumeLastBackupWithBackupVolume(volumeName string, backupVolume *engin
 	return fmt.Errorf("Cannot update LastBackup for volume %v due to too many conflicts", volumeName)
 }
 
-func SyncVolumesLastBackupWithBackupVolumes(backupVolumes []*engineapi.BackupVolume,
+func SyncVolumesLastBackupWithBackupVolumes(backupVolumes map[string]*engineapi.BackupVolume,
 	getVolume func(name string) (*longhorn.Volume, error),
 	updateVolume func(v *longhorn.Volume) (*longhorn.Volume, error)) {
 	for _, bv := range backupVolumes {
