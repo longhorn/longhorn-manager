@@ -55,19 +55,18 @@ const (
 )
 
 type VolumeSpec struct {
-	OwnerID                string         `json:"ownerID"`
-	Size                   int64          `json:"size,string"`
-	Frontend               VolumeFrontend `json:"frontend"`
-	FromBackup             string         `json:"fromBackup"`
-	NumberOfReplicas       int            `json:"numberOfReplicas"`
-	StaleReplicaTimeout    int            `json:"staleReplicaTimeout"`
-	NodeID                 string         `json:"nodeID"`
-	MigrationNodeID        string         `json:"migrationNodeID"`
-	PendingNodeID          string         `json:"pendingNodeID"`
-	EngineImage            string         `json:"engineImage"`
-	RecurringJobs          []RecurringJob `json:"recurringJobs"`
-	BaseImage              string         `json:"baseImage"`
-	BackupRefreshRequested bool           `json:"backupRefreshRequested"`
+	OwnerID             string         `json:"ownerID"`
+	Size                int64          `json:"size,string"`
+	Frontend            VolumeFrontend `json:"frontend"`
+	FromBackup          string         `json:"fromBackup"`
+	NumberOfReplicas    int            `json:"numberOfReplicas"`
+	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`
+	NodeID              string         `json:"nodeID"`
+	MigrationNodeID     string         `json:"migrationNodeID"`
+	PendingNodeID       string         `json:"pendingNodeID"`
+	EngineImage         string         `json:"engineImage"`
+	RecurringJobs       []RecurringJob `json:"recurringJobs"`
+	BaseImage           string         `json:"baseImage"`
 }
 
 type KubernetesStatus struct {
