@@ -62,24 +62,39 @@ func SyncVolumeLastBackupWithBackupVolume(volumeName string, backupVolume *engin
 		v.Status.LastBackupAt = lastBackupAt
 		v, err = updateVolume(v)
 		if err == nil {
-			logrus.Debugf("Volume %v LastBackup updated to %v at %v",
-				v.Name, v.Status.LastBackup, v.Status.LastBackupAt)
+			if v.Status.LastBackup != "" {
+				logrus.Debugf("Volume %v LastBackup updated to %v at %v",
+					v.Name, v.Status.LastBackup, v.Status.LastBackupAt)
+			} else {
+				logrus.Debugf("Volume %v LastBackup has been unset", v.Name)
+			}
 			return nil
 		}
 		if !datastore.ErrorIsConflict(err) {
 			return err
 		}
-		logrus.Debugf("Retrying updating LastBackup for volume %v due to conflict", v.Name)
+		logrus.Debugf("Retrying updating LastBackup for volume %v due to conflict", volumeName)
 	}
 	return fmt.Errorf("Cannot update LastBackup for volume %v due to too many conflicts", volumeName)
 }
 
 func SyncVolumesLastBackupWithBackupVolumes(backupVolumes map[string]*engineapi.BackupVolume,
+	listVolumes func() (map[string]*longhorn.Volume, error),
 	getVolume func(name string) (*longhorn.Volume, error),
 	updateVolume func(v *longhorn.Volume) (*longhorn.Volume, error)) {
-	for _, bv := range backupVolumes {
-		if err := SyncVolumeLastBackupWithBackupVolume(bv.Name, bv, getVolume, updateVolume); err != nil {
-			logrus.Errorf("backup store monitor: failed to update last backup for %+v: %v", bv, err)
+	volumes, err := listVolumes()
+	if err != nil {
+		logrus.Errorf("manager: failed to list volumes in SyncVolumesLastBackupWithBackupVolumes")
+		return
+	}
+	for _, v := range volumes {
+		var bv *engineapi.BackupVolume
+		if backupVolumes != nil {
+			bv = backupVolumes[v.Name]
+		}
+		// bv can be nil
+		if err := SyncVolumeLastBackupWithBackupVolume(v.Name, bv, getVolume, updateVolume); err != nil {
+			logrus.Errorf("failed to update last backup for %+v: %v", bv, err)
 		}
 	}
 }
