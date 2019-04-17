@@ -23,6 +23,8 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/rancher/longhorn-manager/datastore"
+	"github.com/rancher/longhorn-manager/engineapi"
+	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/types"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
@@ -39,6 +41,8 @@ var (
 	upgradeCheckInterval          = time.Hour
 	settingControllerResyncPeriod = time.Hour
 	checkUpgradeURL               = "https://longhorn-upgrade-responder.rancher.io/v1/checkupgrade"
+
+	backupStorePollInterval = 5 * time.Minute
 )
 
 type SettingController struct {
@@ -51,8 +55,21 @@ type SettingController struct {
 
 	queue workqueue.RateLimitingInterface
 
+	// upgrade checker
 	lastUpgradeCheckedTimestamp time.Time
 	version                     string
+
+	// backup store monitor
+	bsMonitor *BackupStoreMonitor
+}
+
+type BackupStoreMonitor struct {
+	backupTarget                 string
+	backupTargetCredentialSecret string
+
+	target *engineapi.BackupTarget
+	ds     *datastore.DataStore
+	stopCh chan struct{}
 }
 
 type Version struct {
@@ -122,6 +139,7 @@ func (sc *SettingController) Run(stopCh <-chan struct{}) {
 		return
 	}
 
+	// must remain single threaded since backup store monitor is not thread-safe now
 	go wait.Until(sc.worker, time.Second, stopCh)
 
 	<-stopCh
@@ -177,10 +195,80 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.syncUpgradeChecker(); err != nil {
 			return err
 		}
+	case string(types.SettingNameBackupTargetCredentialSecret):
+		fallthrough
+	case string(types.SettingNameBackupTarget):
+		if err := sc.syncBackupTarget(); err != nil {
+			return err
+		}
 	default:
 	}
 
 	return nil
+}
+
+func (sc *SettingController) syncBackupTarget() (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to sync backup target")
+	}()
+
+	targetSetting, err := sc.ds.GetSetting(types.SettingNameBackupTarget)
+	if err != nil {
+		return err
+	}
+
+	secretSetting, err := sc.ds.GetSetting(types.SettingNameBackupTargetCredentialSecret)
+	if err != nil {
+		return err
+	}
+
+	if sc.bsMonitor != nil {
+		if sc.bsMonitor.backupTarget == targetSetting.Value &&
+			sc.bsMonitor.backupTargetCredentialSecret == secretSetting.Value {
+			// already monitoring
+			return nil
+		}
+		sc.bsMonitor.Stop()
+		sc.bsMonitor = nil
+	}
+
+	if targetSetting.Value == "" {
+		return nil
+	}
+
+	target, err := manager.GenerateBackupTarget(sc.ds)
+	if err != nil {
+		return err
+	}
+	sc.bsMonitor = &BackupStoreMonitor{
+		backupTarget:                 targetSetting.Value,
+		backupTargetCredentialSecret: secretSetting.Value,
+
+		target: target,
+		ds:     sc.ds,
+		stopCh: make(chan struct{}),
+	}
+	go sc.bsMonitor.Start()
+	return nil
+}
+
+func (bm *BackupStoreMonitor) Start() {
+	logrus.Debugf("Start backup store monitoring for %v", bm.target.URL)
+	defer func() {
+		logrus.Debugf("Stop backup store monitoring %v", bm.target.URL)
+	}()
+
+	wait.Until(func() {
+		backupVolumes, err := bm.target.ListVolumes()
+		if err != nil {
+			logrus.Warnf("backup store monitor: failed to list backup volumes in %v: %v", bm.target.URL, err)
+		}
+		manager.SyncVolumesLastBackupWithBackupVolumes(backupVolumes, bm.ds.GetVolume, bm.ds.UpdateVolume)
+	}, backupStorePollInterval, bm.stopCh)
+}
+
+func (bm *BackupStoreMonitor) Stop() {
+	bm.stopCh <- struct{}{}
 }
 
 func (sc *SettingController) syncUpgradeChecker() error {
