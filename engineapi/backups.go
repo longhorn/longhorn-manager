@@ -81,12 +81,12 @@ func parseBackupsList(output, volumeName string) ([]*Backup, error) {
 	return BackupTarget, nil
 }
 
-func parseBackupVolumesList(output string) ([]*BackupVolume, error) {
+func parseBackupVolumesList(output string) (map[string]*BackupVolume, error) {
 	data := map[string]*backupVolume{}
 	if err := json.Unmarshal([]byte(output), &data); err != nil {
 		return nil, errors.Wrapf(err, "error parsing BackupVolumesList: \n%s", output)
 	}
-	volumes := []*BackupVolume{}
+	volumes := map[string]*BackupVolume{}
 
 	for name, v := range data {
 		if v.Messages != nil {
@@ -100,7 +100,7 @@ func parseBackupVolumesList(output string) ([]*BackupVolume, error) {
 				}
 			}
 		}
-		volumes = append(volumes, &BackupVolume{
+		volumes[name] = &BackupVolume{
 			Name:           name,
 			Size:           v.Size,
 			Created:        v.Created,
@@ -108,7 +108,7 @@ func parseBackupVolumesList(output string) ([]*BackupVolume, error) {
 			LastBackupAt:   v.LastBackupAt,
 			DataStored:     v.DataStored,
 			Messages:       v.Messages,
-		})
+		}
 	}
 
 	return volumes, nil
@@ -122,7 +122,7 @@ func parseOneBackup(output string) (*Backup, error) {
 	return parseBackup(data)
 }
 
-func (b *BackupTarget) ListVolumes() ([]*BackupVolume, error) {
+func (b *BackupTarget) ListVolumes() (map[string]*BackupVolume, error) {
 	output, err := b.ExecuteEngineBinary("backup", "ls", "--volume-only", b.URL)
 	if err != nil {
 		if strings.Contains(err.Error(), "msg=\"cannot find ") {
@@ -145,7 +145,7 @@ func (b *BackupTarget) GetVolume(volumeName string) (*BackupVolume, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "error getting backup volume")
 	}
-	return list[0], nil
+	return list[volumeName], nil
 }
 
 func (b *BackupTarget) List(volumeName string) ([]*Backup, error) {

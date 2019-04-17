@@ -210,7 +210,7 @@ func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.Eng
 	})
 }
 
-func (m *VolumeManager) ListBackupVolumes() ([]*engineapi.BackupVolume, error) {
+func (m *VolumeManager) ListBackupVolumes() (map[string]*engineapi.BackupVolume, error) {
 	backupTarget, err := GenerateBackupTarget(m.ds)
 	if err != nil {
 		return nil, err
