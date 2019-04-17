@@ -2,7 +2,6 @@ package util
 
 import (
 	"bytes"
-	"crypto/md5"
 	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
@@ -66,32 +65,6 @@ type DiskInfo struct {
 	BlockSize        int64
 	StorageMaximum   int64
 	StorageAvailable int64
-}
-
-func VolumeStackName(volumeName string) string {
-	nameNoUnderscores := strings.Replace(volumeName, "_", "-", -1)
-	stackName := VolumeStackPrefix + nameNoUnderscores
-	if len(stackName) > 63 {
-		hash := fmt.Sprintf("%x", md5.Sum([]byte(nameNoUnderscores)))
-		leftover := 63 - (len(VolumeStackPrefix) + len(hash) + 1)
-		partialName := nameNoUnderscores[0:leftover]
-		stackName = VolumeStackPrefix + partialName + "-" + hash
-	}
-	return stackName
-}
-
-func ControllerAddress(volumeName string) string {
-	return fmt.Sprintf("%s.%s.rancher.internal", ControllerServiceName, VolumeStackName(volumeName))
-}
-
-func ReplicaAddress(name, volumeName string) string {
-	return fmt.Sprintf("%s.rancher.internal", name)
-}
-
-func ReplicaName(address, volumeName string) string {
-	s := strings.TrimSuffix(strings.TrimPrefix(address, "tcp://"), ":9502")
-	s = strings.TrimSuffix(s, ".rancher.internal")
-	return strings.TrimSuffix(s, "."+VolumeStackName(volumeName))
 }
 
 func ConvertSize(size interface{}) (int64, error) {
