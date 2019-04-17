@@ -172,11 +172,18 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 	if err != nil {
 		return err
 	}
-	// We only process upgrade checker for now
-	if name != string(types.SettingNameUpgradeChecker) {
-		return nil
+	switch name {
+	case string(types.SettingNameUpgradeChecker):
+		if err := sc.syncUpgradeChecker(); err != nil {
+			return err
+		}
+	default:
 	}
 
+	return nil
+}
+
+func (sc *SettingController) syncUpgradeChecker() error {
 	upgradeCheckerEnabled, err := sc.ds.GetSettingAsBool(types.SettingNameUpgradeChecker)
 	if err != nil {
 		return err
