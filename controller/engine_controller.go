@@ -429,6 +429,13 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 			},
 		},
 	}
+	resourceReq, err := GetGuaranteedResourceRequirement(ec.ds)
+	if err != nil {
+		return nil, err
+	}
+	if resourceReq != nil {
+		pod.Spec.Containers[0].Resources = *resourceReq
+	}
 	return pod, nil
 }
 

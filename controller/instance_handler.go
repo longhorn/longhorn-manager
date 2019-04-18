@@ -121,8 +121,8 @@ func (h *InstanceHandler) syncStatusWithPod(pod *v1.Pod, spec *types.InstanceSpe
 			}
 		}
 	default:
-		logrus.Warnf("instance %v state is failed/unknown, pod state %v",
-			pod.Name, pod.Status.Phase)
+		logrus.Warnf("instance %v state is failed/unknown, pod state %v, reason %v, message %v",
+			pod.Name, pod.Status.Phase, pod.Status.Reason, pod.Status.Message)
 		status.CurrentState = types.InstanceStateError
 		status.IP = ""
 		status.CurrentImage = ""
