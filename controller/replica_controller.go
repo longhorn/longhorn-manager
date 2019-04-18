@@ -505,6 +505,15 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 			}
 		}
 	}
+
+	resourceReq, err := GetGuaranteedResourceRequirement(rc.ds)
+	if err != nil {
+		return nil, err
+	}
+	if resourceReq != nil {
+		// engine container is always index 0
+		pod.Spec.Containers[0].Resources = *resourceReq
+	}
 	return pod, nil
 }
 

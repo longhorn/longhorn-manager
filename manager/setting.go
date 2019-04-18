@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/rancher/longhorn-manager/types"
 	"github.com/rancher/longhorn-manager/util"
@@ -96,6 +97,10 @@ func (m *VolumeManager) SettingValidation(name, value string) (err error) {
 		}
 		if err := m.validateReplicaCount(c); err != nil {
 			return fmt.Errorf("value %v: %v", c, err)
+		}
+	case types.SettingNameGuaranteedEngineCPU:
+		if _, err := resource.ParseQuantity(value); err != nil {
+			return errors.Wrapf(err, "invalid value %v as CPU resource", value)
 		}
 	}
 	return nil

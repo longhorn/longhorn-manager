@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
@@ -120,4 +121,23 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	go kc.Run(Workers, stopCh)
 
 	return ds, ws, nil
+}
+
+func GetGuaranteedResourceRequirement(ds *datastore.DataStore) (*corev1.ResourceRequirements, error) {
+	guaranteedCPU, err := ds.GetSetting(types.SettingNameGuaranteedEngineCPU)
+	if err != nil {
+		return nil, err
+	}
+	quantity, err := resource.ParseQuantity(guaranteedCPU.Value)
+	if err != nil {
+		return nil, err
+	}
+	if quantity.IsZero() {
+		return nil, nil
+	}
+	return &corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU: quantity,
+		},
+	}, nil
 }
