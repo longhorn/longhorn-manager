@@ -38,6 +38,12 @@ spec:
           # manually set root directory for csi
           #- --kubelet-root-dir
           #- /var/lib/rancher/k3s/agent/kubelet
+          # manually specify number of CSI attacher replicas
+          #- --csi-attacher-replica-count
+          #- "3"
+          # manually specify number of CSI provisioner replicas
+          #- --csi-provisioner-replica-count
+          #- "3"
           env:
           - name: POD_NAMESPACE
             valueFrom:
