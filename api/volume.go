@@ -120,6 +120,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		NumberOfReplicas:    volume.NumberOfReplicas,
 		StaleReplicaTimeout: volume.StaleReplicaTimeout,
 		BaseImage:           volume.BaseImage,
+		RecurringJobs:       volume.RecurringJobs,
 	})
 	if err != nil {
 		return errors.Wrap(err, "unable to create volume")
