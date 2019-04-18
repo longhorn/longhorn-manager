@@ -23,7 +23,8 @@ const (
 	DefaultCSIDriverRegistrarImage = "quay.io/k8scsi/driver-registrar:v0.4.1"
 	DefaultCSIProvisionerName      = "rancher.io/longhorn"
 
-	DefaultCSIDeploymentReplicaCount = 3
+	DefaultCSIAttacherReplicaCount    = 3
+	DefaultCSIProvisionerReplicaCount = 3
 
 	AnnotationCSIVersion        = "longhorn.rancher.io/version"
 	AnnotationKubernetesVersion = "longhorn.rancher.io/kubernetes-version"
@@ -40,7 +41,7 @@ type AttacherDeployment struct {
 	deployment *appsv1beta1.Deployment
 }
 
-func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string) *AttacherDeployment {
+func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string, replicaCount int) *AttacherDeployment {
 	service := getCommonService(types.CSIAttacherName, namespace)
 
 	deployment := getCommonDeployment(
@@ -56,7 +57,7 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 			"--leader-election-identity=$(POD_NAME)",
 		},
-		DefaultCSIDeploymentReplicaCount,
+		int32(replicaCount),
 	)
 
 	return &AttacherDeployment{
@@ -98,7 +99,7 @@ type ProvisionerDeployment struct {
 	deployment *appsv1beta1.Deployment
 }
 
-func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, provisionerName, rootDir string) *ProvisionerDeployment {
+func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, provisionerName, rootDir string, replicaCount int) *ProvisionerDeployment {
 	service := getCommonService(types.CSIProvisionerName, namespace)
 
 	deployment := getCommonDeployment(
@@ -113,7 +114,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, provi
 			"--csi-address=$(ADDRESS)",
 			"--enable-leader-election",
 		},
-		DefaultCSIDeploymentReplicaCount,
+		int32(replicaCount),
 	)
 
 	return &ProvisionerDeployment{

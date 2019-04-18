@@ -47,6 +47,11 @@ const (
 	EnvCSIProvisionerImage      = "CSI_PROVISIONER_IMAGE"
 	EnvCSIDriverRegistrarImage  = "CSI_DRIVER_REGISTRAR_IMAGE"
 	EnvCSIProvisionerName       = "CSI_PROVISIONER_NAME"
+
+	FlagCSIAttacherReplicaCount    = "csi-attacher-replica-count"
+	FlagCSIProvisionerReplicaCount = "csi-provisioner-replica-count"
+	EnvCSIAttacherReplicaCount     = "CSI_ATTACHER_REPLICA_COUNT"
+	EnvCSIProvisionerReplicaCount  = "CSI_PROVISIONER_REPLICA_COUNT"
 )
 
 func DeployDriverCmd() cli.Command {
@@ -81,11 +86,23 @@ func DeployDriverCmd() cli.Command {
 				EnvVar: EnvCSIAttacherImage,
 				Value:  csi.DefaultCSIAttacherImage,
 			},
+			cli.IntFlag{
+				Name:   FlagCSIAttacherReplicaCount,
+				Usage:  "Specify number of CSI attacher replicas",
+				EnvVar: EnvCSIAttacherReplicaCount,
+				Value:  csi.DefaultCSIAttacherReplicaCount,
+			},
 			cli.StringFlag{
 				Name:   FlagCSIProvisionerImage,
 				Usage:  "Specify CSI provisioner image",
 				EnvVar: EnvCSIProvisionerImage,
 				Value:  csi.DefaultCSIProvisionerImage,
+			},
+			cli.IntFlag{
+				Name:   FlagCSIProvisionerReplicaCount,
+				Usage:  "Specify number of CSI provisioner replicas",
+				EnvVar: EnvCSIProvisionerReplicaCount,
+				Value:  csi.DefaultCSIProvisionerReplicaCount,
 			},
 			cli.StringFlag{
 				Name:   FlagCSIDriverRegistrarImage,
@@ -205,6 +222,8 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 	csiProvisionerImage := c.String(FlagCSIProvisionerImage)
 	csiDriverRegistrarImage := c.String(FlagCSIDriverRegistrarImage)
 	csiProvisionerName := c.String(FlagCSIProvisionerName)
+	csiAttacherReplicaCount := c.Int(FlagCSIAttacherReplicaCount)
+	csiProvisionerReplicaCount := c.Int(FlagCSIProvisionerReplicaCount)
 	namespace := os.Getenv(types.EnvPodNamespace)
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
 
@@ -230,12 +249,12 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 		return err
 	}
 
-	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir)
+	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount)
 	if err := attacherDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, csiProvisionerName, rootDir)
+	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, csiProvisionerName, rootDir, csiProvisionerReplicaCount)
 	if err := provisionerDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
