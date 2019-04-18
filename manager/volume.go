@@ -208,6 +208,10 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		}
 	}
 
+	if err := m.validateRecurringJobs(spec.RecurringJobs); err != nil {
+		return nil, err
+	}
+
 	v = &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -221,6 +225,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			NumberOfReplicas:    spec.NumberOfReplicas,
 			StaleReplicaTimeout: spec.StaleReplicaTimeout,
 			BaseImage:           spec.BaseImage,
+			RecurringJobs:       spec.RecurringJobs,
 		},
 	}
 	v, err = m.ds.CreateVolume(v)
@@ -361,13 +366,8 @@ func (m *VolumeManager) UpdateRecurringJobs(volumeName string, jobs []types.Recu
 		err = errors.Wrapf(err, "unable to update volume recurring jobs for %v", volumeName)
 	}()
 
-	for _, job := range jobs {
-		if job.Cron == "" || job.Type == "" || job.Name == "" || job.Retain == 0 {
-			return nil, fmt.Errorf("invalid job %+v", job)
-		}
-		if len(job.Name) > types.MaximumJobNameSize {
-			return nil, fmt.Errorf("job name %v is too long, must be %v characters or less", job.Name, types.MaximumJobNameSize)
-		}
+	if err = m.validateRecurringJobs(jobs); err != nil {
+		return nil, err
 	}
 
 	v, err = m.ds.GetVolume(volumeName)
@@ -382,6 +382,35 @@ func (m *VolumeManager) UpdateRecurringJobs(volumeName string, jobs []types.Recu
 	}
 	logrus.Debugf("Updated volume %v recurring jobs to %+v", v.Name, v.Spec.RecurringJobs)
 	return v, nil
+}
+
+func (m *VolumeManager) checkDuplicateJobs(recurringJobs []types.RecurringJob) error {
+	exist := map[string]bool{}
+	for _, job := range recurringJobs {
+		if _, ok := exist[job.Name]; ok {
+			return fmt.Errorf("duplicate job %v in recurringJobs %v", job.Name, recurringJobs)
+		}
+		exist[job.Name] = true
+	}
+	return nil
+}
+
+func (m *VolumeManager) validateRecurringJobs(jobs []types.RecurringJob) error {
+	if jobs == nil {
+		return nil
+	}
+	for _, job := range jobs {
+		if job.Cron == "" || job.Task == "" || job.Name == "" || job.Retain == 0 {
+			return fmt.Errorf("invalid job %+v", job)
+		}
+		if len(job.Name) > types.MaximumJobNameSize {
+			return fmt.Errorf("job name %v is too long, must be %v characters or less", job.Name, types.MaximumJobNameSize)
+		}
+	}
+	if err := m.checkDuplicateJobs(jobs); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (m *VolumeManager) DeleteReplica(volumeName, replicaName string) error {
