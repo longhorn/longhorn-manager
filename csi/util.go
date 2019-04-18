@@ -1,11 +1,13 @@
 package csi
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
 
 	"github.com/pkg/errors"
+
 	"k8s.io/kubernetes/pkg/util/mount"
 
 	longhornclient "github.com/rancher/longhorn-manager/client"
@@ -45,7 +47,24 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.BaseImage = baseImage
 	}
 
+	if jsonRecurringJobs, ok := volOptions["recurringJobs"]; ok {
+		recurringJobs, err := parseJSONRecurringJobs(jsonRecurringJobs)
+		if err != nil {
+			return nil, errors.Wrap(err, "Invalid parameter recurringJobs")
+		}
+		vol.RecurringJobs = recurringJobs
+	}
+
 	return vol, nil
+}
+
+func parseJSONRecurringJobs(jsonRecurringJobs string) ([]longhornclient.RecurringJob, error) {
+	recurringJobs := []longhornclient.RecurringJob{}
+	err := json.Unmarshal([]byte(jsonRecurringJobs), &recurringJobs)
+	if err != nil {
+		return nil, fmt.Errorf("invalid json format of recurringJobs: %v  %v", jsonRecurringJobs, err)
+	}
+	return recurringJobs, nil
 }
 
 func isLikelyNotMountPointAttach(targetpath string) (bool, error) {
