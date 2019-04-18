@@ -32,24 +32,33 @@ To prevent damage to the Kubernetes cluster, we recommend deleting all Kubernete
 1. Create the uninstallation job to cleanly purge CRDs from the system and wait for success:
   ```
   kubectl create -f deploy/uninstall/uninstall.yaml
-  kubectl -n longhorn-system get job/longhorn-uninstall -w
+  kubectl get job/longhorn-uninstall -w
   ```
 
 Example output:
 ```
-$ kubectl create -f deploy/uninstall/uninstall.yaml
+$ kubectl create -f https://raw.githubusercontent.com/rancher/longhorn/master/uninstall/uninstall.yaml
+serviceaccount/longhorn-uninstall-service-account created
+clusterrole.rbac.authorization.k8s.io/longhorn-uninstall-role created
+clusterrolebinding.rbac.authorization.k8s.io/longhorn-uninstall-bind created
 job.batch/longhorn-uninstall created
-$ kubectl -n longhorn-system get job/longhorn-uninstall -w
-NAME                 DESIRED   SUCCESSFUL   AGE
-longhorn-uninstall   1         0            3s
-longhorn-uninstall   1         1            45s
+
+$ kubectl get job/longhorn-uninstall -w
+NAME                 COMPLETIONS   DURATION   AGE
+longhorn-uninstall   0/1           3s         3s
+longhorn-uninstall   1/1           20s        20s
 ^C
 ```
 
 2. Remove remaining components:
   ```
   kubectl delete -Rf deploy/install
+  kubectl delete -f deploy/uninstall/uninstall.yaml
   ```
+
+Tip: If you try `kubectl delete -Rf deploy/install` first and get stuck there, 
+pressing `Ctrl C` then running `kubectl create -f deploy/uninstall/uninstall.yaml` can also help you remove Longhorn. Finally, don't forget to cleanup remaining components by running `kubectl delete -f deploy/uninstall/uninstall.yaml`.
+
 
 ## Integration test
 
