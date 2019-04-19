@@ -149,7 +149,7 @@ var (
 
 	SettingDefinitionGuaranteedEngineCPU = SettingDefinition{
 		DisplayName: "Guaranteed Engine CPU",
-		Description: "(EXPERIMENTAL FEATURE) Allow Longhorn Engine to have guaranteed CPU allocation. The value is how many CPUs should be reserved for one Longhorn engine or replica. For example, 0.1 means one tenth of a CPU. This will help the engine stability during the high node workload. It only applies to the volumes attached after the setting took effect. WARNING: Attaching of the volume may fail or stuck while using this feature due to the resource constrain. Disabled (\"0\") by default.",
+		Description: "(EXPERIMENTAL FEATURE) Allow Longhorn Engine to have guaranteed CPU allocation. The value is how many CPUs should be reserved for one Longhorn engine or replica. For example, 0.1 means one-tenth of a CPU. This will help the engine stability during the high node workload. It only applies to the volumes attached after the setting took effect. WARNING: Attaching of the volume may fail or stuck while using this feature due to the resource constraint. Disabled (\"0\") by default.",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeInt,
 		Required:    true,
