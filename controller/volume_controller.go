@@ -1098,7 +1098,7 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 		"--labels", LabelRecurringJob + "=" + job.Name,
 		"--retain", strconv.Itoa(job.Retain),
 	}
-	if job.Type == types.RecurringJobTypeBackup {
+	if job.Task == types.RecurringJobTypeBackup {
 		cmd = append(cmd, "--backuptarget", backupTarget)
 	}
 	// for mounting inside container
@@ -1166,7 +1166,7 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 			},
 		},
 	}
-	if job.Type == types.RecurringJobTypeBackup {
+	if job.Task == types.RecurringJobTypeBackup {
 		if credentialSecret != "" {
 			credentials, err := vc.ds.GetCredentialFromSecret(credentialSecret)
 			if err != nil {
@@ -1210,7 +1210,7 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 
 	currentCronJobs := make(map[string]*batchv1beta1.CronJob)
 	for _, job := range v.Spec.RecurringJobs {
-		if backupTarget == "" && job.Type == types.RecurringJobTypeBackup {
+		if backupTarget == "" && job.Task == types.RecurringJobTypeBackup {
 			return fmt.Errorf("cannot backup with empty backup target")
 		}
 

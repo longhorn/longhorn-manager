@@ -109,7 +109,7 @@ const (
 
 type RecurringJob struct {
 	Name   string           `json:"name"`
-	Type   RecurringJobType `json:"task"`
+	Task   RecurringJobType `json:"task"`
 	Cron   string           `json:"cron"`
 	Retain int              `json:"retain"`
 }
