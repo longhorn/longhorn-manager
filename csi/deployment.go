@@ -213,7 +213,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 			Name: "lib-modules",
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
-					Path: "/lib-modules",
+					Path: "/lib/modules",
 				},
 			},
 		},
