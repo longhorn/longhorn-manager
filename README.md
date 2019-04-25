@@ -81,7 +81,7 @@ For GKE 1.8+, it should be at: `/home/kubernetes/flexvolume`.
 You may need to change `deploy/deploy.yaml` volume `flexvolume-longhorn-mount` location according to your own environment.
 
 ## License
-Copyright (c) 2014-2018 [Rancher Labs, Inc.](http://rancher.com)
+Copyright (c) 2014-2019 [Rancher Labs, Inc.](http://rancher.com)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
