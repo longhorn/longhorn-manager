@@ -65,6 +65,10 @@ func (s *DataStore) UpdateSetting(setting *longhorn.Setting) (*longhorn.Setting,
 	return s.lhClient.LonghornV1alpha1().Settings(s.namespace).Update(setting)
 }
 
+func (s *DataStore) getSettingRO(name string) (*longhorn.Setting, error) {
+	return s.sLister.Settings(s.namespace).Get(name)
+}
+
 // GetSetting will automatically fill the non-existing setting if it's a valid
 // setting name.
 // The function will not return nil for *longhorn.Setting when error is nil
@@ -73,7 +77,7 @@ func (s *DataStore) GetSetting(sName types.SettingName) (*longhorn.Setting, erro
 	if !ok {
 		return nil, fmt.Errorf("setting %v is not supported", sName)
 	}
-	resultRO, err := s.sLister.Settings(s.namespace).Get(string(sName))
+	resultRO, err := s.getSettingRO(string(sName))
 	if err != nil {
 		if !ErrorIsNotFound(err) {
 			return nil, err
@@ -251,20 +255,24 @@ func (s *DataStore) RemoveFinalizerForVolume(obj *longhorn.Volume) error {
 }
 
 func (s *DataStore) GetVolume(name string) (*longhorn.Volume, error) {
-	resultRO, err := s.getVolumeRO(name)
+	result, err := s.getVolume(name)
 	if err != nil {
 		return nil, err
 	}
-	// Cannot use cached object from lister
-	return s.fixupVolume(resultRO.DeepCopy())
+	return s.fixupVolume(result)
 }
 
 func (s *DataStore) getVolumeRO(name string) (*longhorn.Volume, error) {
+	return s.vLister.Volumes(s.namespace).Get(name)
+}
+
+func (s *DataStore) getVolume(name string) (*longhorn.Volume, error) {
 	resultRO, err := s.vLister.Volumes(s.namespace).Get(name)
 	if err != nil {
 		return nil, err
 	}
-	return resultRO, nil
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
 }
 
 func (s *DataStore) ListVolumesRO() ([]*longhorn.Volume, error) {
@@ -372,13 +380,25 @@ func (s *DataStore) RemoveFinalizerForEngine(obj *longhorn.Engine) error {
 	return nil
 }
 
-func (s *DataStore) GetEngine(name string) (*longhorn.Engine, error) {
-	resultRO, err := s.eLister.Engines(s.namespace).Get(name)
+func (s *DataStore) getEngineRO(name string) (*longhorn.Engine, error) {
+	return s.eLister.Engines(s.namespace).Get(name)
+}
+
+func (s *DataStore) getEngine(name string) (*longhorn.Engine, error) {
+	resultRO, err := s.getEngineRO(name)
 	if err != nil {
 		return nil, err
 	}
 	// Cannot use cached object from lister
-	return s.fixupEngine(resultRO.DeepCopy())
+	return resultRO.DeepCopy(), nil
+}
+
+func (s *DataStore) GetEngine(name string) (*longhorn.Engine, error) {
+	result, err := s.eLister.Engines(s.namespace).Get(name)
+	if err != nil {
+		return nil, err
+	}
+	return s.fixupEngine(result)
 }
 
 func (s *DataStore) listEngines(selector labels.Selector) (map[string]*longhorn.Engine, error) {
@@ -487,20 +507,24 @@ func (s *DataStore) RemoveFinalizerForReplica(obj *longhorn.Replica) error {
 }
 
 func (s *DataStore) GetReplica(name string) (*longhorn.Replica, error) {
-	resultRO, err := s.getReplicaRO(name)
+	result, err := s.getReplica(name)
 	if err != nil {
 		return nil, err
 	}
-	// Cannot use cached object from lister
-	return s.fixupReplica(resultRO.DeepCopy())
+	return s.fixupReplica(result)
 }
 
 func (s *DataStore) getReplicaRO(name string) (*longhorn.Replica, error) {
+	return s.rLister.Replicas(s.namespace).Get(name)
+}
+
+func (s *DataStore) getReplica(name string) (*longhorn.Replica, error) {
 	resultRO, err := s.rLister.Replicas(s.namespace).Get(name)
 	if err != nil {
 		return nil, err
 	}
-	return resultRO, nil
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
 }
 
 func (s *DataStore) listReplicas(selector labels.Selector) (map[string]*longhorn.Replica, error) {
@@ -618,13 +642,25 @@ func (s *DataStore) RemoveFinalizerForEngineImage(obj *longhorn.EngineImage) err
 	return nil
 }
 
-func (s *DataStore) GetEngineImage(name string) (*longhorn.EngineImage, error) {
-	resultRO, err := s.iLister.EngineImages(s.namespace).Get(name)
+func (s *DataStore) getEngineImageRO(name string) (*longhorn.EngineImage, error) {
+	return s.iLister.EngineImages(s.namespace).Get(name)
+}
+
+func (s *DataStore) getEngineImage(name string) (*longhorn.EngineImage, error) {
+	resultRO, err := s.getEngineImageRO(name)
 	if err != nil {
 		return nil, err
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
+}
+
+func (s *DataStore) GetEngineImage(name string) (*longhorn.EngineImage, error) {
+	result, err := s.getEngineImage(name)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (s *DataStore) ListEngineImages() (map[string]*longhorn.EngineImage, error) {
@@ -677,16 +713,24 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 	return s.CreateNode(node)
 }
 
-func (s *DataStore) GetNodeRO(name string) (*longhorn.Node, error) {
+func (s *DataStore) getNodeRO(name string) (*longhorn.Node, error) {
 	return s.nLister.Nodes(s.namespace).Get(name)
 }
 
-func (s *DataStore) GetNode(name string) (*longhorn.Node, error) {
-	result, err := s.GetNodeRO(name)
+func (s *DataStore) getNode(name string) (*longhorn.Node, error) {
+	resultRO, err := s.getNodeRO(name)
 	if err != nil {
 		return nil, err
 	}
-	node := result.DeepCopy()
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+func (s *DataStore) GetNode(name string) (*longhorn.Node, error) {
+	node, err := s.getNode(name)
+	if err != nil {
+		return nil, err
+	}
 	if node.Status.Conditions == nil {
 		node.Status.Conditions = map[types.NodeConditionType]types.Condition{}
 	}
@@ -737,7 +781,7 @@ func (s *DataStore) RemoveFinalizerForNode(obj *longhorn.Node) error {
 }
 
 func (s *DataStore) IsNodeDownOrDeleted(name string) (bool, error) {
-	node, err := s.GetNodeRO(name)
+	node, err := s.getNodeRO(name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return true, nil
