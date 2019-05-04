@@ -4,12 +4,14 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"testing"
+
+	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/kubernetes/pkg/controller"
-	"testing"
 
 	. "gopkg.in/check.v1"
 )
@@ -66,6 +68,7 @@ type TestSuite struct {
 var _ = Suite(&TestSuite{})
 
 func (s *TestSuite) SetUpTest(c *C) {
+	logrus.SetLevel(logrus.DebugLevel)
 }
 
 func getKey(obj interface{}, c *C) string {

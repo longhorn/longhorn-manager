@@ -94,6 +94,10 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	var tc *VolumeTestCase
 	testCases := map[string]*VolumeTestCase{}
 
+	// We have to skip lister check for unit tests
+	// Because the changes written through the API won't be reflected in the listers
+	datastore.SkipListerCheck = true
+
 	// normal volume creation
 	tc = generateVolumeTestCaseTemplate()
 	// default replica and engine objects will be copied by copyCurrentToExpect
