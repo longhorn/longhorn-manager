@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -28,6 +30,9 @@ const (
 
 var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
+
+	VerificationRetryInterval = 100 * time.Millisecond
+	VerificationRetryCounts   = 20
 )
 
 func (s *DataStore) InitSettings() error {
@@ -58,6 +63,7 @@ func (s *DataStore) InitSettings() error {
 }
 
 func (s *DataStore) CreateSetting(setting *longhorn.Setting) (*longhorn.Setting, error) {
+	// GetSetting automatically create default entry, so no need to double check
 	return s.lhClient.LonghornV1alpha1().Settings(s.namespace).Create(setting)
 }
 
@@ -216,7 +222,25 @@ func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	if err := fixupMetadata(v.Name, v); err != nil {
 		return nil, err
 	}
-	return s.lhClient.LonghornV1alpha1().Volumes(s.namespace).Create(v)
+	ret, err := s.lhClient.LonghornV1alpha1().Volumes(s.namespace).Create(v)
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(v.Name, "volume", func(name string) (runtime.Object, error) {
+		return s.getVolumeRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for volume")
+	}
+	return ret, nil
 }
 
 func (s *DataStore) UpdateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
@@ -339,7 +363,26 @@ func (s *DataStore) CreateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	if err := tagNodeLabel(e.Spec.NodeID, e); err != nil {
 		return nil, err
 	}
-	return s.lhClient.LonghornV1alpha1().Engines(s.namespace).Create(e)
+	ret, err := s.lhClient.LonghornV1alpha1().Engines(s.namespace).Create(e)
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(e.Name, "engine", func(name string) (runtime.Object, error) {
+		return s.getEngineRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for engine")
+	}
+
+	return ret, nil
 }
 
 func (s *DataStore) UpdateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
@@ -465,7 +508,26 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {
 		return nil, err
 	}
-	return s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Create(r)
+	ret, err := s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Create(r)
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(r.Name, "replica", func(name string) (runtime.Object, error) {
+		return s.getReplicaRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.Replica)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for replica")
+	}
+
+	return ret, nil
 }
 
 func (s *DataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error) {
@@ -607,7 +669,26 @@ func (s *DataStore) CreateEngineImage(img *longhorn.EngineImage) (*longhorn.Engi
 	if err := util.AddFinalizer(longhornFinalizerKey, img); err != nil {
 		return nil, err
 	}
-	return s.lhClient.LonghornV1alpha1().EngineImages(s.namespace).Create(img)
+	ret, err := s.lhClient.LonghornV1alpha1().EngineImages(s.namespace).Create(img)
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(img.Name, "engine image", func(name string) (runtime.Object, error) {
+		return s.getEngineImageRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.EngineImage)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for engine image")
+	}
+
+	return ret, nil
 }
 
 func (s *DataStore) UpdateEngineImage(img *longhorn.EngineImage) (*longhorn.EngineImage, error) {
@@ -682,7 +763,26 @@ func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	if err := util.AddFinalizer(longhornFinalizerKey, node); err != nil {
 		return nil, err
 	}
-	return s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Create(node)
+	ret, err := s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Create(node)
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(node.Name, "node", func(name string) (runtime.Object, error) {
+		return s.getNodeRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.Node)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for node")
+	}
+
+	return ret, nil
 }
 
 // CreateDefaultNode will set default directory to node replica mount path
@@ -940,4 +1040,26 @@ func (s *DataStore) ListEnginesByNode(name string) ([]*longhorn.Engine, error) {
 		return nil, err
 	}
 	return engineList, nil
+}
+
+func verifyCreation(name, kind string, getMethod func(name string) (runtime.Object, error)) (runtime.Object, error) {
+	// WORKAROUND: The immedidate read after object's creation can fail.
+	// See https://github.com/rancher/longhorn/issues/133
+	var (
+		ret runtime.Object
+		err error
+	)
+	for i := 0; i < VerificationRetryCounts; i++ {
+		if ret, err = getMethod(name); err == nil {
+			break
+		}
+		if !ErrorIsNotFound(err) {
+			break
+		}
+		time.Sleep(VerificationRetryInterval)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("Unable to verify the existance of newly created %s %s: %v", kind, name, err)
+	}
+	return ret, nil
 }

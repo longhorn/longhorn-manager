@@ -17,6 +17,10 @@ import (
 	lhlisters "github.com/rancher/longhorn-manager/k8s/pkg/client/listers/longhorn/v1alpha1"
 )
 
+var (
+	SkipListerCheck = false
+)
+
 type DataStore struct {
 	namespace string
 
