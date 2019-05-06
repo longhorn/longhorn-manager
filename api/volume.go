@@ -106,13 +106,24 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		return err
 	}
 
-	if volume.Frontend == "" {
-		volume.Frontend = types.VolumeFrontendBlockDev
+	if volume.Standby {
+		if volume.Frontend != "" {
+			return fmt.Errorf("cannot set frontend for standby volume: %v", volume.Name)
+		}
+		if volume.FromBackup == "" {
+			return fmt.Errorf("cannot create standby volume %v without field FromBackup", volume.Name)
+		}
+	} else {
+		if volume.Frontend == "" {
+			volume.Frontend = types.VolumeFrontendBlockDev
+		}
 	}
+
 	size, err := util.ConvertSize(volume.Size)
 	if err != nil {
 		return fmt.Errorf("fail to parse size %v", err)
 	}
+
 	v, err := s.m.Create(volume.Name, &types.VolumeSpec{
 		Size:                size,
 		Frontend:            volume.Frontend,
@@ -121,6 +132,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		StaleReplicaTimeout: volume.StaleReplicaTimeout,
 		BaseImage:           volume.BaseImage,
 		RecurringJobs:       volume.RecurringJobs,
+		Standby:             volume.Standby,
 	})
 	if err != nil {
 		return errors.Wrap(err, "unable to create volume")
@@ -258,6 +270,30 @@ func (s *Server) VolumeUpdateReplicaCount(rw http.ResponseWriter, req *http.Requ
 	return s.responseWithVolume(rw, req, "", v)
 }
 
+func (s *Server) VolumeActivate(rw http.ResponseWriter, req *http.Request) error {
+	var input ActivateInput
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	id := mux.Vars(req)["name"]
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.Activate(id, input.Frontend)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	}
+
+	return s.responseWithVolume(rw, req, "", v)
+}
+
 func (s *Server) PVCreate(rw http.ResponseWriter, req *http.Request) error {
 	var input PVCreateInput
 	id := mux.Vars(req)["name"]
@@ -267,7 +303,16 @@ func (s *Server) PVCreate(rw http.ResponseWriter, req *http.Request) error {
 		return errors.Wrapf(err, "error reading pvCreateInput")
 	}
 
-	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
+	vol, err := s.m.Get(id)
+	if err != nil {
+		return errors.Wrap(err, "unable to get volume")
+	}
+
+	if vol.Spec.Standby {
+		return fmt.Errorf("cannot create PV for standby volume %v", vol.Name)
+	}
+
+	_, err = util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.PVCreate(id, input.PVName)
 	})
 	if err != nil {
@@ -285,7 +330,16 @@ func (s *Server) PVCCreate(rw http.ResponseWriter, req *http.Request) error {
 		return errors.Wrapf(err, "error reading pvcCreateInput")
 	}
 
-	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
+	vol, err := s.m.Get(id)
+	if err != nil {
+		return errors.Wrap(err, "unable to get volume")
+	}
+
+	if vol.Spec.Standby {
+		return fmt.Errorf("cannot create PVC for standby volume %v", vol.Name)
+	}
+
+	_, err = util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.PVCCreate(id, input.Namespace, input.PVCName)
 	})
 	if err != nil {

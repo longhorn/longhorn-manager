@@ -71,6 +71,13 @@ func (m *VolumeManager) SettingValidation(name, value string) (err error) {
 
 	switch sName {
 	case types.SettingNameBackupTarget:
+		vs, err := m.ds.ListStandbyVolumesRO()
+		if err != nil {
+			return errors.Wrapf(err, "failed to list standby volume when modifying BackupTarget")
+		}
+		if len(vs) != 0 {
+			return fmt.Errorf("cannot modify BackupTarget since there are existing standby volumes: %v", vs)
+		}
 		// additional check whether have $ or , have been set in BackupTarget
 		regStr := `[\$\,]`
 		reg := regexp.MustCompile(regStr)

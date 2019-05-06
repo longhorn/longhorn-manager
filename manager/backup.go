@@ -6,6 +6,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	"github.com/rancher/backupstore"
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
 	"github.com/rancher/longhorn-manager/types"
@@ -55,7 +56,8 @@ func SyncVolumeLastBackupWithBackupVolume(volumeName string, backupVolume *engin
 			}
 			return err
 		}
-		if v.Status.LastBackup == lastBackup {
+		// for standby volume just restored from a backup, field LastBackupAt will be empty.
+		if v.Status.LastBackup == lastBackup && v.Status.LastBackupAt == lastBackupAt {
 			return nil
 		}
 		v.Status.LastBackup = lastBackup
@@ -90,7 +92,16 @@ func SyncVolumesLastBackupWithBackupVolumes(backupVolumes map[string]*engineapi.
 	for _, v := range volumes {
 		var bv *engineapi.BackupVolume
 		if backupVolumes != nil {
-			bv = backupVolumes[v.Name]
+			if v.Spec.Standby {
+				vName, err := backupstore.GetVolumeFromBackupURL(v.Spec.FromBackup)
+				if err != nil {
+					logrus.Errorf("cannot parse field FromBackup of standby volume %v: %v", v.Name, err)
+					return
+				}
+				bv = backupVolumes[vName]
+			} else {
+				bv = backupVolumes[v.Name]
+			}
 		}
 		// bv can be nil
 		if err := SyncVolumeLastBackupWithBackupVolume(v.Name, bv, getVolume, updateVolume); err != nil {

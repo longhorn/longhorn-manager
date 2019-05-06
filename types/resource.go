@@ -67,6 +67,7 @@ type VolumeSpec struct {
 	EngineImage         string         `json:"engineImage"`
 	RecurringJobs       []RecurringJob `json:"recurringJobs"`
 	BaseImage           string         `json:"baseImage"`
+	Standby             bool           `json:"Standby"`
 }
 
 type KubernetesStatus struct {
@@ -147,12 +148,15 @@ type EngineSpec struct {
 	Frontend                  VolumeFrontend    `json:"frontend"`
 	ReplicaAddressMap         map[string]string `json:"replicaAddressMap"`
 	UpgradedReplicaAddressMap map[string]string `json:"upgradedReplicaAddressMap"`
+	BackupVolume              string            `json:"backupVolume"`
+	RequestedBackupRestore    string            `json:"requestedBackupRestore"`
 }
 
 type EngineStatus struct {
 	InstanceStatus
-	ReplicaModeMap map[string]ReplicaMode `json:"replicaModeMap"`
-	Endpoint       string                 `json:"endpoint"`
+	ReplicaModeMap     map[string]ReplicaMode `json:"replicaModeMap"`
+	Endpoint           string                 `json:"endpoint"`
+	LastRestoredBackup string                 `json:"lastRestoredBackup"`
 }
 
 type ReplicaSpec struct {

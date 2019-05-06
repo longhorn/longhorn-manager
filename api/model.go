@@ -35,6 +35,7 @@ type Volume struct {
 	MigrationNodeID     string                 `json:"migrationNodeID"`
 	LastBackup          string                 `json:"lastBackup"`
 	LastBackupAt        string                 `json:"lastBackupAt"`
+	Standby             bool                   `json:"standby"`
 
 	RecurringJobs    []types.RecurringJob                          `json:"recurringJobs"`
 	Conditions       map[types.VolumeConditionType]types.Condition `json:"conditions"`
@@ -77,7 +78,8 @@ type Instance struct {
 
 type Controller struct {
 	Instance
-	Endpoint string `json:"endpoint"`
+	Endpoint           string `json:"endpoint"`
+	LastRestoredBackup string `json:"lastRestoredBackup"`
 }
 
 type Replica struct {
@@ -144,6 +146,10 @@ type PVCCreateInput struct {
 	PVCName   string `json:"pvcName"`
 }
 
+type ActivateInput struct {
+	Frontend string `json:"frontend"`
+}
+
 type Node struct {
 	client.Resource
 	Name            string                                      `json:"name"`
@@ -199,6 +205,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("recurringJob", types.RecurringJob{})
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
 	schemas.AddType("salvageInput", SalvageInput{})
+	schemas.AddType("activateInput", ActivateInput{})
 	schemas.AddType("engineUpgradeInput", EngineUpgradeInput{})
 	schemas.AddType("replica", Replica{})
 	schemas.AddType("controller", Controller{})
@@ -336,6 +343,9 @@ func volumeSchema(volume *client.Schema) {
 			Input:  "salvageInput",
 			Output: "volume",
 		},
+		"activate": {
+			Input: "activateInput",
+		},
 
 		"snapshotPurge": {},
 		"snapshotCreate": {
@@ -409,8 +419,6 @@ func volumeSchema(volume *client.Schema) {
 
 	volumeFrontend := volume.ResourceFields["frontend"]
 	volumeFrontend.Create = true
-	volumeFrontend.Required = true
-	volumeFrontend.Default = "blockdev"
 	volume.ResourceFields["frontend"] = volumeFrontend
 
 	volumeFromBackup := volume.ResourceFields["fromBackup"]
@@ -441,6 +449,11 @@ func volumeSchema(volume *client.Schema) {
 	recurringJobs.Default = nil
 	recurringJobs.Type = "array[recurringJob]"
 	volume.ResourceFields["recurringJobs"] = recurringJobs
+
+	standby := volume.ResourceFields["standby"]
+	standby.Create = true
+	standby.Default = false
+	volume.ResourceFields["standby"] = standby
 
 	conditions := volume.ResourceFields["conditions"]
 	conditions.Type = "map[volumeCondition]"
@@ -482,7 +495,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 				EngineImage:  e.Spec.EngineImage,
 				CurrentImage: e.Status.CurrentImage,
 			},
-			Endpoint: e.Status.Endpoint,
+			Endpoint:           e.Status.Endpoint,
+			LastRestoredBackup: e.Status.LastRestoredBackup,
 		})
 		if e.Spec.NodeID == v.Spec.NodeID {
 			ve = e
@@ -534,6 +548,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		MigrationNodeID:     v.Spec.MigrationNodeID,
 		LastBackup:          v.Status.LastBackup,
 		LastBackupAt:        v.Status.LastBackupAt,
+		Standby:             v.Spec.Standby,
 
 		Conditions:       v.Status.Conditions,
 		KubernetesStatus: v.Status.KubernetesStatus,
@@ -551,6 +566,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		case types.VolumeStateDetached:
 			actions["attach"] = struct{}{}
 			actions["recurringUpdate"] = struct{}{}
+			actions["activate"] = struct{}{}
 			actions["replicaRemove"] = struct{}{}
 			actions["engineUpgrade"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
@@ -559,6 +575,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["detach"] = struct{}{}
 		case types.VolumeStateAttached:
 			actions["detach"] = struct{}{}
+			actions["activate"] = struct{}{}
 			actions["snapshotPurge"] = struct{}{}
 			actions["snapshotCreate"] = struct{}{}
 			actions["snapshotList"] = struct{}{}

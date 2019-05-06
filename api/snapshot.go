@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -22,6 +23,15 @@ func (s *Server) SnapshotCreate(w http.ResponseWriter, req *http.Request) (err e
 	}
 
 	volName := mux.Vars(req)["name"]
+
+	vol, err := s.m.Get(volName)
+	if err != nil {
+		return errors.Wrap(err, "unable to get volume")
+	}
+
+	if vol.Spec.Standby {
+		return fmt.Errorf("cannot create snapshot for standby volume %v", vol.Name)
+	}
 
 	snapshot, err := s.m.CreateSnapshot(input.Name, input.Labels, volName)
 	if err != nil {
@@ -81,6 +91,15 @@ func (s *Server) SnapshotDelete(w http.ResponseWriter, req *http.Request) (err e
 
 	volName := mux.Vars(req)["name"]
 
+	vol, err := s.m.Get(volName)
+	if err != nil {
+		return errors.Wrap(err, "unable to get volume")
+	}
+
+	if vol.Spec.Standby {
+		return fmt.Errorf("cannot delete snapshot for standby volume %v", vol.Name)
+	}
+
 	if err := s.m.DeleteSnapshot(input.Name, volName); err != nil {
 		return err
 	}
@@ -99,6 +118,15 @@ func (s *Server) SnapshotRevert(w http.ResponseWriter, req *http.Request) (err e
 		return err
 	}
 	volName := mux.Vars(req)["name"]
+
+	vol, err := s.m.Get(volName)
+	if err != nil {
+		return errors.Wrap(err, "unable to get volume")
+	}
+
+	if vol.Spec.Standby {
+		return fmt.Errorf("cannot revert snapshot for standby volume %v", vol.Name)
+	}
 
 	if err := s.m.RevertSnapshot(input.Name, volName); err != nil {
 		return err
@@ -124,6 +152,10 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 	vol, err := s.m.Get(volName)
 	if err != nil {
 		return errors.Wrap(err, "unable to get volume")
+	}
+
+	if vol.Spec.Standby {
+		return fmt.Errorf("cannot create backup for standby volume %v", vol.Name)
 	}
 
 	labels := make(map[string]string)

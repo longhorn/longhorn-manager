@@ -25,6 +25,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
+	"github.com/rancher/backupstore"
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/scheduler"
 	"github.com/rancher/longhorn-manager/types"
@@ -337,6 +338,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 
 	if len(engines) <= 1 {
 		if err := vc.updateRecurringJobs(volume); err != nil {
+			return err
+		}
+
+		if err := vc.updateEngineForStandbyVolume(volume, engine); err != nil {
 			return err
 		}
 
@@ -966,6 +971,22 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 	return nil
 }
 
+func (vc *VolumeController) updateEngineForStandbyVolume(v *longhorn.Volume, e *longhorn.Engine) (err error) {
+	if !v.Spec.Standby || e == nil {
+		return nil
+	}
+
+	if v.Status.LastBackup != e.Spec.RequestedBackupRestore {
+		e.Spec.RequestedBackupRestore = v.Status.LastBackup
+		e, err = vc.ds.UpdateEngine(e)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, error) {
 	engine := &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
@@ -985,6 +1006,22 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 			UpgradedReplicaAddressMap: map[string]string{},
 		},
 	}
+
+	if v.Spec.Standby {
+		backupVolume, err := backupstore.GetVolumeFromBackupURL(v.Spec.FromBackup)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get backup volume when creating engine for standby volume %v", v.Name)
+		}
+		engine.Spec.BackupVolume = backupVolume
+
+		backupName, err := backupstore.GetBackupFromBackupURL(v.Spec.FromBackup)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get backup name when creating engine for standby volume %v", v.Name)
+		}
+		engine.Spec.RequestedBackupRestore = backupName
+		engine.Status.LastRestoredBackup = backupName
+	}
+
 	return vc.ds.CreateEngine(engine)
 }
 

@@ -127,23 +127,24 @@ func (e *Engine) ReplicaRemove(url string) error {
 	return nil
 }
 
-func (e *Engine) Endpoint() string {
+func (e *Engine) Endpoint() (string, error) {
 	info, err := e.launcherInfo()
 	if err != nil {
 		logrus.Warn("Fail to get frontend info: ", err)
-		return ""
+		return "", err
 	}
 
 	switch info.Frontend {
 	case string(FrontendISCSI):
 		// it will looks like this in the end
 		// iscsi://10.42.0.12:3260/iqn.2014-09.com.rancher:vol-name/1
-		return "iscsi://" + e.ip + ":" + DefaultISCSIPort + "/" + info.Endpoint + "/" + DefaultISCSILUN
+		return "iscsi://" + e.ip + ":" + DefaultISCSIPort + "/" + info.Endpoint + "/" + DefaultISCSILUN, nil
 	case string(FrontendBlockDev):
-		return info.Endpoint
+		return info.Endpoint, nil
+	case "":
+		return "", nil
 	}
-	logrus.Errorf("Unknown frontend %v", info.Frontend)
-	return ""
+	return "", fmt.Errorf("Unknown frontend %v", info.Frontend)
 }
 
 func (e *Engine) launcherInfo() (*LauncherVolumeInfo, error) {
@@ -159,7 +160,7 @@ func (e *Engine) launcherInfo() (*LauncherVolumeInfo, error) {
 	return info, nil
 }
 
-func (e *Engine) info() (*Volume, error) {
+func (e *Engine) Info() (*Volume, error) {
 	output, err := e.ExecuteEngineBinary("info")
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot get volume info")
@@ -214,4 +215,16 @@ func (e *Engine) Version(clientOnly bool) (*EngineVersion, error) {
 		return nil, errors.Wrapf(err, "cannot decode volume version: %v", output)
 	}
 	return version, nil
+}
+
+func (e *Engine) BackupRestoreIncrementally(backupTarget, backupName, backupVolume, lastRestored string) error {
+	backup := GetBackupURL(backupTarget, backupName, backupVolume)
+
+	_, err := e.ExecuteEngineBinaryWithTimeout(backupTimeout, "backup", "restore", backup,
+		"--incrementally", "--last-restored", lastRestored)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

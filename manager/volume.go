@@ -214,6 +214,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 	}
 
 	size := spec.Size
+	lastBackup := ""
 	if spec.FromBackup != "" {
 		backupTarget, err := GenerateBackupTarget(m.ds)
 		if err != nil {
@@ -224,6 +225,10 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			return nil, fmt.Errorf("cannot get backup %v: %v", spec.FromBackup, err)
 		}
 		logrus.Infof("Override size of volume %v to %v because it's from backup", name, backup.VolumeSize)
+		// set LastBackup for standby volumes only
+		if spec.Standby {
+			lastBackup = backup.Name
+		}
 		// formalize the final size to the unit in bytes
 		size, err = util.ConvertSize(backup.VolumeSize)
 		if err != nil {
@@ -252,8 +257,10 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		return nil, errors.Wrapf(err, "cannot create volume with image %v", defaultEngineImage)
 	}
 
-	if spec.Frontend != types.VolumeFrontendBlockDev && spec.Frontend != types.VolumeFrontendISCSI {
-		return nil, fmt.Errorf("invalid volume frontend specified: %v", spec.Frontend)
+	if !spec.Standby {
+		if spec.Frontend != types.VolumeFrontendBlockDev && spec.Frontend != types.VolumeFrontendISCSI {
+			return nil, fmt.Errorf("invalid volume frontend specified: %v", spec.Frontend)
+		}
 	}
 
 	if spec.BaseImage != "" {
@@ -287,6 +294,10 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			StaleReplicaTimeout: spec.StaleReplicaTimeout,
 			BaseImage:           spec.BaseImage,
 			RecurringJobs:       spec.RecurringJobs,
+			Standby:             spec.Standby,
+		},
+		Status: types.VolumeStatus{
+			LastBackup: lastBackup,
 		},
 	}
 	v, err = m.ds.CreateVolume(v)
@@ -419,6 +430,58 @@ func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *lo
 		return nil, err
 	}
 	logrus.Debugf("Salvaged replica %+v for volume %v", replicaNames, v.Name)
+	return v, nil
+}
+
+func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to activate volume %v", volumeName)
+	}()
+
+	v, err = m.ds.GetVolume(volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	if !v.Spec.Standby {
+		return nil, fmt.Errorf("volume %v is already in active mode", v.Name)
+	}
+
+	if frontend != string(types.VolumeFrontendBlockDev) && frontend != string(types.VolumeFrontendISCSI) {
+		return nil, fmt.Errorf("invalid frontend %v", frontend)
+	}
+
+	var engine *longhorn.Engine
+	es, err := m.ds.ListVolumeEngines(v.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list engines for volume %v: %v", v.Name, err)
+	}
+	if len(es) != 1 {
+		return nil, fmt.Errorf("found more than 1 engines for volume %v", v.Name)
+	}
+	for _, e := range es {
+		engine = e
+	}
+	if engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
+		return nil, fmt.Errorf("standby volume %v hasn't finished incremental restored, requested backup restore: %v, last restored backup: %v",
+			v.Name, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
+	}
+
+	if v.Status.State != types.VolumeStateDetached && v.Status.State != types.VolumeStateDetaching {
+		v, err = m.Detach(volumeName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to detach standby volume before activating it")
+		}
+	}
+
+	v.Spec.Frontend = types.VolumeFrontend(frontend)
+	v.Spec.Standby = false
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Debugf("Activated volume %v with frontend %v", v.Name, frontend)
 	return v, nil
 }
 
