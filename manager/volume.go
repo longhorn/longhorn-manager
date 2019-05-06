@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"io"
 	"reflect"
 	"sort"
 
@@ -17,10 +18,37 @@ import (
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
 
+type BundleState int
+
+const (
+	NotFound   BundleState = 0
+	InProgress BundleState = 1
+	Ready      BundleState = 2
+)
+
+type ErrorString string
+
+const (
+	MkdirFailed ErrorString = "Failed to create bundle file directory"
+	ZipFailed   ErrorString = "Failed to compress the support bundle files"
+	OpenFailed  ErrorString = "Failed to open the compressed bundle file"
+	StatFailed  ErrorString = "Failed to compute the size of the compressed bundle file"
+	None        ErrorString = "none"
+)
+
+type SupportBundle struct {
+	state    BundleState
+	Bsize    int64
+	File     io.ReadCloser
+	errorStr ErrorString
+	fName    string
+}
+
 type VolumeManager struct {
 	ds *datastore.DataStore
 
 	currentNodeID string
+	sb            SupportBundle
 }
 
 func NewVolumeManager(currentNodeID string, ds *datastore.DataStore) *VolumeManager {
@@ -33,6 +61,44 @@ func NewVolumeManager(currentNodeID string, ds *datastore.DataStore) *VolumeMana
 
 func (m *VolumeManager) GetCurrentNodeID() string {
 	return m.currentNodeID
+}
+
+func (m *VolumeManager) GetSupportBundleSize() int64 {
+	return m.sb.Bsize
+}
+
+func (m *VolumeManager) GetSupportBundleState() BundleState {
+	return m.sb.state
+}
+
+func (m *VolumeManager) SBDownloadInProgress() bool {
+	return m.GetSupportBundleState() == InProgress || m.GetSupportBundleState() == Ready
+}
+
+func (m *VolumeManager) SBDownloadComplete() error {
+	if m.GetSupportBundleState() == Ready {
+		return nil
+	}
+	return fmt.Errorf("support bundle download is still going on")
+}
+
+func (m *VolumeManager) CheckSBError() error {
+	if m.sb.errorStr != None {
+		return fmt.Errorf(string(m.sb.errorStr))
+	}
+	return nil
+}
+
+func (m *VolumeManager) GetBundleFile() io.ReadCloser {
+	return m.sb.File
+}
+
+func (m *VolumeManager) SetBundleStateToReady() {
+	m.sb.state = NotFound
+}
+
+func (m *VolumeManager) GetSBFileName() string {
+	return m.sb.fName
 }
 
 func (m *VolumeManager) Node2APIAddress(nodeID string) (string, error) {

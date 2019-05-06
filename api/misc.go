@@ -29,17 +29,41 @@ func (s *Server) eventList(apiContext *api.ApiContext) (*client.GenericCollectio
 	return toEventCollection(eventList), nil
 }
 
-func (s *Server) GenerateSupportBundle(w http.ResponseWriter, req *http.Request) error {
-	bundleFile, fileName, size, err := s.m.GenerateSupportBundle()
+func (s *Server) InitiateSupportBundle(w http.ResponseWriter, req *http.Request) error {
+	apiContext := api.GetApiContext(req)
+	nodeID, fileName, err := s.m.InitSupportBundle()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "Unable to initiate Support Bundle Download")
 	}
-	defer bundleFile.Close()
+	apiContext.Write(toSBResource(nodeID, fileName))
+	return nil
+}
 
+func (s *Server) CheckSupportBundle(w http.ResponseWriter, req *http.Request) error {
+	apiContext := api.GetApiContext(req)
+	if err := s.m.CheckSBError(); err != nil {
+		s.m.SetBundleStateToReady()
+		return errors.Wrap(err, "Download failed. Please try again")
+	}
+	if err := s.m.SBDownloadComplete(); err != nil {
+		return errors.Wrap(err, "Please wait for download to complete")
+	}
+	apiContext.Write(toSBResource(s.m.GetCurrentNodeID(), s.m.GetSBFileName()))
+	return nil
+}
+
+func (s *Server) GetSupportBundle(w http.ResponseWriter, req *http.Request) error {
+	if err := s.m.SBDownloadComplete(); err != nil {
+		return errors.Wrap(err, "Please wait for download to complete")
+	}
+	bundleFile := s.m.GetBundleFile()
+	defer bundleFile.Close()
+	s.m.SetBundleStateToReady()
+	fileName := s.m.GetSBFileName()
 	w.Header().Set("Content-Disposition", "attachment; filename="+fileName)
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-	if _, err = io.Copy(w, bundleFile); err != nil {
+	w.Header().Set("Content-Length", strconv.FormatInt(s.m.GetSupportBundleSize(), 10))
+	if _, err := io.Copy(w, bundleFile); err != nil {
 		return err
 	}
 	return nil
