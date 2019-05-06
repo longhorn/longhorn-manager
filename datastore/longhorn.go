@@ -289,12 +289,28 @@ func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 	return itemMap, nil
 }
 
+func (s *DataStore) ListStandbyVolumesRO() (map[string]*longhorn.Volume, error) {
+	itemMap := make(map[string]*longhorn.Volume)
+
+	list, err := s.ListVolumesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		if itemRO.Spec.Standby {
+			itemMap[itemRO.Name] = itemRO
+		}
+	}
+	return itemMap, nil
+}
+
 func (s *DataStore) fixupVolume(volume *longhorn.Volume) (*longhorn.Volume, error) {
 	if volume.Status.Conditions == nil {
 		volume.Status.Conditions = map[types.VolumeConditionType]types.Condition{}
 	}
 	// v0.3
-	if volume.Spec.Frontend == "" {
+	if !volume.Spec.Standby && volume.Spec.Frontend == "" {
 		volume.Spec.Frontend = types.VolumeFrontendBlockDev
 	}
 	// v0.3

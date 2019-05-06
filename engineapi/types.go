@@ -36,9 +36,11 @@ type Controller struct {
 
 type EngineClient interface {
 	Name() string
-	Endpoint() string
+	Endpoint() (string, error)
 	Version(clientOnly bool) (*EngineVersion, error)
 	Upgrade(binary string, replicaURLs []string) error
+
+	Info() (*Volume, error)
 
 	ReplicaList() (map[string]*Replica, error)
 	ReplicaAdd(url string) error
@@ -51,6 +53,8 @@ type EngineClient interface {
 	SnapshotRevert(name string) error
 	SnapshotPurge() error
 	SnapshotBackup(snapName, backupTarget string, labels map[string]string, credential map[string]string) error
+
+	BackupRestoreIncrementally(backupTarget, backupName, backupVolume, lastBackup string) error
 }
 
 type EngineClientRequest struct {
@@ -67,6 +71,9 @@ type Volume struct {
 	Name         string `json:"name"`
 	ReplicaCount int    `json:"replicaCount"`
 	Endpoint     string `json:"endpoint"`
+	Frontend     string `json:"frontend"`
+	IsRestoring  bool   `json:"isRestoring"`
+	LastRestored string `json:"lastRestored"`
 }
 
 type Snapshot struct {

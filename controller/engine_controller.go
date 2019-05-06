@@ -29,6 +29,7 @@ import (
 
 	"github.com/rancher/longhorn-manager/datastore"
 	"github.com/rancher/longhorn-manager/engineapi"
+	"github.com/rancher/longhorn-manager/manager"
 	"github.com/rancher/longhorn-manager/types"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
@@ -305,6 +306,7 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 	var (
 		frontend         string
 		readinessHandler v1.Handler
+		err              error
 	)
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
@@ -326,15 +328,15 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 		}
 	} else if e.Spec.Frontend == types.VolumeFrontendISCSI {
 		frontend = EngineFrontendISCSI
-		port, err := strconv.Atoi(engineapi.ControllerDefaultPort)
+		readinessHandler, err = ec.getDefaultReadinessHandler()
 		if err != nil {
-			return nil, fmt.Errorf("BUG: Invalid controller default port %v", engineapi.ControllerDefaultPort)
+			return nil, err
 		}
-		readinessHandler = v1.Handler{
-			HTTPGet: &v1.HTTPGetAction{
-				Path: "/v1/",
-				Port: intstr.FromInt(port),
-			},
+	} else if e.Spec.Frontend == "" {
+		frontend = ""
+		readinessHandler, err = ec.getDefaultReadinessHandler()
+		if err != nil {
+			return nil, err
 		}
 	} else {
 		return nil, fmt.Errorf("unknown volume frontend %v", e.Spec.Frontend)
@@ -345,9 +347,12 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 		"--launcher-listen", "0.0.0.0:" + engineapi.EngineLauncherDefaultPort,
 		"--longhorn-binary", types.DefaultEngineBinaryPath,
 		"--listen", "0.0.0.0:" + engineapi.ControllerDefaultPort,
-		"--frontend", frontend,
 		"--size", strconv.FormatInt(e.Spec.VolumeSize, 10),
 	}
+	if frontend != "" {
+		cmd = append(cmd, "--frontend", frontend)
+	}
+
 	for _, ip := range e.Spec.ReplicaAddressMap {
 		url := engineapi.GetReplicaDefaultURL(ip)
 		cmd = append(cmd, "--replica", url)
@@ -505,19 +510,6 @@ func (ec *EngineController) isMonitoring(e *longhorn.Engine) bool {
 }
 
 func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
-	client, err := GetClientForEngine(e, ec.engines, e.Status.CurrentImage)
-	if err != nil {
-		logrus.Warnf("Failed to start monitoring %v, cannot create engine client", e.Name)
-		return
-	}
-	endpoint := client.Endpoint()
-	if endpoint == "" {
-		logrus.Warnf("Failed to start monitoring %v, cannot connect", e.Name)
-		return
-	}
-
-	e.Status.Endpoint = endpoint
-
 	//it's possible for monitor and engineController to send stop signal at
 	//the same time, don't make it block
 	stopCh := make(chan struct{}, 1)
@@ -631,6 +623,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
+	endpoint, err := client.Endpoint()
+	if err != nil {
+		return err
+	}
+	engine.Status.Endpoint = endpoint
+
 	replicaURLModeMap, err := client.ReplicaList()
 	if err != nil {
 		return err
@@ -663,9 +661,50 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 	if !reflect.DeepEqual(engine.Status.ReplicaModeMap, currentReplicaModeMap) {
 		engine.Status.ReplicaModeMap = currentReplicaModeMap
-		_, err = m.ds.UpdateEngine(engine)
+	}
+
+	if engine.Status.LastRestoredBackup != "" {
+		info, err := client.Info()
+		if err != nil {
+			return err
+		}
+		// for those engine just restored from backup, info.LastRestored is empty
+		if info.LastRestored != "" {
+			engine.Status.LastRestoredBackup = info.LastRestored
+		}
+	}
+
+	engine, err = m.ds.UpdateEngine(engine)
+	if err != nil {
 		return err
 	}
+
+	go func(client engineapi.EngineClient, engine *longhorn.Engine) {
+		if engine.Spec.RequestedBackupRestore != "" && engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
+			backupTarget, err := manager.GenerateBackupTarget(m.ds)
+			if err != nil {
+				logrus.Errorf("cannot generate BackupTarget for engine %v: %v", engine.Name, err)
+				return
+			}
+
+			logrus.Infof("engine %v prepared to do incremental restore, backup target %v, backup volume %v, backup name %v",
+				engine.Name, backupTarget.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
+
+			err = client.BackupRestoreIncrementally(backupTarget.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup)
+			if err != nil {
+				logrus.Errorf("failed to do incremental restoration in engine monitor: %v", err)
+				return
+			}
+
+			engine.Status.LastRestoredBackup = engine.Spec.RequestedBackupRestore
+			engine, err = m.ds.UpdateEngine(engine)
+			if err != nil {
+				logrus.Errorf("failed to do update engine %v after incremental restoration: %v", engine.Name, err)
+				return
+			}
+		}
+	}(client, engine)
+
 	return nil
 }
 
@@ -856,4 +895,18 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	e.Spec.UpgradedReplicaAddressMap = map[string]string{}
 	return nil
+}
+
+func (ec *EngineController) getDefaultReadinessHandler() (readinessHandler v1.Handler, err error) {
+	port, err := strconv.Atoi(engineapi.ControllerDefaultPort)
+	if err != nil {
+		return readinessHandler, fmt.Errorf("BUG: Invalid controller default port %v", engineapi.ControllerDefaultPort)
+	}
+	readinessHandler = v1.Handler{
+		HTTPGet: &v1.HTTPGetAction{
+			Path: "/v1/",
+			Port: intstr.FromInt(port),
+		},
+	}
+	return readinessHandler, err
 }

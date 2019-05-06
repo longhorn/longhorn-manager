@@ -50,7 +50,9 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(err, IsNil)
 
 	c.Assert(sim.Name(), Equals, VolumeName)
-	c.Assert(sim.Endpoint(), Equals, "/dev/longhorn/"+VolumeName)
+	endpoint, err := sim.Endpoint()
+	c.Assert(err, IsNil)
+	c.Assert(endpoint, Equals, "/dev/longhorn/"+VolumeName)
 
 	replicas, err := sim.ReplicaList()
 	c.Assert(err, IsNil)

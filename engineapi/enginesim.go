@@ -94,14 +94,14 @@ func (e *EngineSimulator) Name() string {
 	return e.volumeName
 }
 
-func (e *EngineSimulator) Endpoint() string {
+func (e *EngineSimulator) Endpoint() (string, error) {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
 
 	if e.running {
-		return "/dev/longhorn/" + e.volumeName
+		return "/dev/longhorn/" + e.volumeName, nil
 	}
-	return ""
+	return "", nil
 }
 
 func (e *EngineSimulator) ReplicaList() (map[string]*Replica, error) {
@@ -191,4 +191,12 @@ func (e *EngineSimulator) Upgrade(binary string, replicaURLs []string) error {
 
 func (e *EngineSimulator) Version(clientOnly bool) (*EngineVersion, error) {
 	return nil, fmt.Errorf("Not implemented")
+}
+
+func (e *EngineSimulator) Info() (*Volume, error) {
+	return nil, fmt.Errorf("Not implemented")
+}
+
+func (e *EngineSimulator) BackupRestoreIncrementally(backupTarget, backupName, backupVolume, lastBackup string) error {
+	return fmt.Errorf("Not implemented")
 }
