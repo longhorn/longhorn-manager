@@ -264,7 +264,7 @@ func (s *Server) PVCreate(rw http.ResponseWriter, req *http.Request) error {
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error reading recurringInput")
+		return errors.Wrapf(err, "error reading pvCreateInput")
 	}
 
 	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
@@ -282,7 +282,7 @@ func (s *Server) PVCCreate(rw http.ResponseWriter, req *http.Request) error {
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error reading recurringInput")
+		return errors.Wrapf(err, "error reading pvcCreateInput")
 	}
 
 	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
