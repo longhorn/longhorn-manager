@@ -1068,11 +1068,11 @@ func (s *DataStore) UpdateVolumeAndOwner(v *longhorn.Volume) (*longhorn.Volume, 
 func (s *DataStore) ResetEngineMonitoringStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
 	e.Status.Endpoint = ""
 	e.Status.ReplicaModeMap = nil
-	e, err := s.UpdateEngine(e)
+	ret, err := s.UpdateEngine(e)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to reste engine status for %v", e.Name)
+		return nil, errors.Wrapf(err, "failed to reset engine status for %v", e.Name)
 	}
-	return e, nil
+	return ret, nil
 }
 
 func (s *DataStore) DeleteNode(name string) error {
