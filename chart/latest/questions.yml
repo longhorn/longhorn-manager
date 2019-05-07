@@ -22,6 +22,11 @@ questions:
     label: Longhorn Flexvolume Path
   show_subquestion_if: csi
   subquestions:
+  - variable: csi.kubeletRootDir
+    default:
+    description: "Specify kubelet root-dir. Leave blank to autodetect."
+    type: string
+    label: Kubelet Root Directory
   - variable: csi.attacherImage
     default:
     description: "Specify CSI attacher image. Leave blank to autodetect."
