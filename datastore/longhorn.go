@@ -68,7 +68,14 @@ func (s *DataStore) CreateSetting(setting *longhorn.Setting) (*longhorn.Setting,
 }
 
 func (s *DataStore) UpdateSetting(setting *longhorn.Setting) (*longhorn.Setting, error) {
-	return s.lhClient.LonghornV1alpha1().Settings(s.namespace).Update(setting)
+	obj, err := s.lhClient.LonghornV1alpha1().Settings(s.namespace).Update(setting)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(setting.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getSettingRO(name)
+	})
+	return obj, nil
 }
 
 func (s *DataStore) getSettingRO(name string) (*longhorn.Setting, error) {
@@ -250,7 +257,15 @@ func (s *DataStore) UpdateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	if err := fixupMetadata(v.Name, v); err != nil {
 		return nil, err
 	}
-	return s.lhClient.LonghornV1alpha1().Volumes(s.namespace).Update(v)
+
+	obj, err := s.lhClient.LonghornV1alpha1().Volumes(s.namespace).Update(v)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(v.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getVolumeRO(name)
+	})
+	return obj, nil
 }
 
 // DeleteVolume won't result in immediately deletion since finalizer was set by default
@@ -395,7 +410,15 @@ func (s *DataStore) UpdateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	if err := tagNodeLabel(e.Spec.NodeID, e); err != nil {
 		return nil, err
 	}
-	return s.lhClient.LonghornV1alpha1().Engines(s.namespace).Update(e)
+
+	obj, err := s.lhClient.LonghornV1alpha1().Engines(s.namespace).Update(e)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(e.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getEngineRO(name)
+	})
+	return obj, nil
 }
 
 // DeleteEngine won't result in immediately deletion since finalizer was set by default
@@ -540,7 +563,15 @@ func (s *DataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {
 		return nil, err
 	}
-	return s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Update(r)
+
+	obj, err := s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Update(r)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(r.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getReplicaRO(name)
+	})
+	return obj, nil
 }
 
 // DeleteReplica won't result in immediately deletion since finalizer was set by default
@@ -695,7 +726,15 @@ func (s *DataStore) UpdateEngineImage(img *longhorn.EngineImage) (*longhorn.Engi
 	if err := util.AddFinalizer(longhornFinalizerKey, img); err != nil {
 		return nil, err
 	}
-	return s.lhClient.LonghornV1alpha1().EngineImages(s.namespace).Update(img)
+
+	obj, err := s.lhClient.LonghornV1alpha1().EngineImages(s.namespace).Update(img)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(img.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getEngineImageRO(name)
+	})
+	return obj, nil
 }
 
 // DeleteEngineImage won't result in immediately deletion since finalizer was set by default
@@ -838,7 +877,14 @@ func (s *DataStore) GetNode(name string) (*longhorn.Node, error) {
 }
 
 func (s *DataStore) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) {
-	return s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Update(node)
+	obj, err := s.lhClient.LonghornV1alpha1().Nodes(s.namespace).Update(node)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(node.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getNodeRO(name)
+	})
+	return obj, nil
 }
 
 func (s *DataStore) ListNodes() (map[string]*longhorn.Node, error) {
@@ -1062,4 +1108,54 @@ func verifyCreation(name, kind string, getMethod func(name string) (runtime.Obje
 		return nil, fmt.Errorf("Unable to verify the existance of newly created %s %s: %v", kind, name, err)
 	}
 	return ret, nil
+}
+
+func verifyUpdate(name string, obj runtime.Object, getMethod func(name string) (runtime.Object, error)) {
+	accessor, err := meta.Accessor(obj)
+	if err != nil {
+		logrus.Errorf("BUG: datastore: cannot verify update for %v (%+v) because cannot get accessor: %v", name, obj, err)
+		return
+	}
+	minimalResourceVersion := accessor.GetResourceVersion()
+	verified := false
+	for i := 0; i < VerificationRetryCounts; i++ {
+		ret, err := getMethod(name)
+		if err != nil {
+			logrus.Errorf("datastore: failed to get updated object %v", name)
+			return
+		}
+		accessor, err := meta.Accessor(ret)
+		if err != nil {
+			logrus.Errorf("BUG: datastore: cannot verify update for %v because cannot get accessor for updated object: %v", name, err)
+			return
+		}
+		if resourceVersionAtLeast(accessor.GetResourceVersion(), minimalResourceVersion) {
+			verified = true
+			break
+		}
+		time.Sleep(VerificationRetryInterval)
+	}
+	if !verified {
+		logrus.Errorf("Unable to verify the update of %s", name)
+	}
+}
+
+// resourceVersionAtLeast depends on the Kubernetes internal resource version implmentation
+// See https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
+func resourceVersionAtLeast(curr, min string) bool {
+	// skip unit testing code
+	if curr == "" || min == "" {
+		return true
+	}
+	currVersion, err := strconv.ParseInt(curr, 10, 64)
+	if err != nil {
+		logrus.Errorf("datastore: failed to parse current resource version %v: %v", curr, err)
+		return false
+	}
+	minVersion, err := strconv.ParseInt(min, 10, 64)
+	if err != nil {
+		logrus.Errorf("datastore: failed to parse minimal resource version %v: %v", min, err)
+		return false
+	}
+	return currVersion >= minVersion
 }
