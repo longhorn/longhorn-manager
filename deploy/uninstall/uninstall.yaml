@@ -53,7 +53,7 @@ spec:
     spec:
       containers:
       - name: longhorn-uninstall
-        image: rancher/longhorn-manager:50c16a3
+        image: rancher/longhorn-manager:043c3af
         imagePullPolicy: Always
         command:
         - longhorn-manager
