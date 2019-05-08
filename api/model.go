@@ -168,6 +168,18 @@ type Event struct {
 	EventType string `json:"eventType"`
 }
 
+type SupportBundle struct {
+	client.Resource
+	NodeID       string                     `json:"nodeID"`
+	State        manager.BundleState        `json:"state"`
+	Name         string                     `json:"name"`
+	ErrorMessage manager.BundleErrorMessage `json:"errorMessage"`
+}
+
+type SupportBundleQueryInput struct {
+	Name string `json:"name"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -199,6 +211,8 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("diskCondition", types.Condition{})
 
 	schemas.AddType("event", Event{})
+	schemas.AddType("supportBundle", SupportBundle{})
+	schemas.AddType("supportBundleQueryInput", SupportBundleQueryInput{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
@@ -735,4 +749,18 @@ func toEventCollection(eventList *v1.EventList) *client.GenericCollection {
 		data = append(data, toEventResource(event))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "event"}}
+}
+
+//Support Bundle Resource
+func toSupportBundleResource(nodeID string, sb *manager.SupportBundle) *SupportBundle {
+	return &SupportBundle{
+		Resource: client.Resource{
+			Id:   nodeID,
+			Type: "supportbundle",
+		},
+		NodeID:       nodeID,
+		State:        sb.State,
+		Name:         sb.Filename,
+		ErrorMessage: sb.Error,
+	}
 }

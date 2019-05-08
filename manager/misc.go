@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -55,14 +56,14 @@ type BundleMeta struct {
 //     |- <container1>.log
 //     |- ...
 // The bundle would be compressed to a zip file for download.
-func (m *VolumeManager) GenerateSupportBundle() (io.ReadCloser, string, int64, error) {
+func (m *VolumeManager) GenerateSupportBundle() (*SupportBundle, error) {
 	namespace, err := m.ds.GetLonghornNamespace()
 	if err != nil {
-		return nil, "", 0, errors.Wrapf(err, "cannot get longhorn namespace %v", err)
+		return nil, errors.Wrap(err, "cannot get longhorn namespace")
 	}
 	kubeVersion, err := m.ds.GetKubernetesVersion()
 	if err != nil {
-		return nil, "", 0, errors.Wrapf(err, "cannot get kubernetes version %v", err)
+		return nil, errors.Wrap(err, "cannot get kubernetes version")
 	}
 
 	bundleMeta := &BundleMeta{
@@ -75,30 +76,36 @@ func (m *VolumeManager) GenerateSupportBundle() (io.ReadCloser, string, int64, e
 	bundleName := "longhorn-support-bundle_" + bundleMeta.LonghornNamespaceUUID + "_" +
 		strings.Replace(bundleMeta.BundleCreatedAt, ":", "-", -1)
 	bundleFileName := bundleName + ".zip"
-	bundleDir := filepath.Join("/tmp", bundleName)
-	bundleFile := filepath.Join("/tmp", bundleFileName)
 
-	if err := os.MkdirAll(bundleDir, os.FileMode(0755)); err != nil {
-		return nil, "", 0, err
-	}
-	m.generateSupportBundle(bundleDir, bundleMeta)
+	go func() {
+		bundleDir := filepath.Join("/tmp", bundleName)
+		bundleFile := filepath.Join("/tmp", bundleFileName)
+		if err := os.MkdirAll(bundleDir, os.FileMode(0755)); err != nil {
+			m.sb.Error = BundleMkdirFailed
+			m.sb.State = BundleStateError
+			return
+		}
+		m.generateSupportBundle(bundleDir, bundleMeta)
+		cmd := exec.Command("zip", "-r", bundleFileName, bundleName)
+		cmd.Dir = "/tmp"
+		if err := cmd.Run(); err != nil {
+			m.sb.Error = BundleZipFailed
+			m.sb.State = BundleStateError
+			return
+		}
+		f, err := os.Stat(bundleFile)
+		if err != nil {
+			m.sb.Error = BundleStatFailed
+			m.sb.State = BundleStateError
+			return
+		}
 
-	cmd := exec.Command("zip", "-r", bundleFileName, bundleName)
-	cmd.Dir = "/tmp"
-	if err := cmd.Run(); err != nil {
-		return nil, "", 0, err
-	}
-	f, err := os.Open(bundleFile)
-	if err != nil {
-		return nil, "", 0, err
-	}
+		m.sb.Size = f.Size()
+		m.sb.createTime = time.Now()
+		m.sb.State = BundleReadyForDownload
+	}()
 
-	info, err := f.Stat()
-	if err != nil {
-		return nil, "", 0, err
-	}
-	size := info.Size()
-	return f, bundleFileName, size, nil
+	return NewSupportBundle(BundleStateInProgress, bundleFileName), nil
 }
 
 func (m *VolumeManager) generateSupportBundle(bundleDir string, bundleMeta *BundleMeta) {
@@ -265,4 +272,24 @@ func streamLogToFile(logStream io.ReadCloser, path string, errLog io.Writer) {
 	if err != nil {
 		return
 	}
+}
+
+func (m *VolumeManager) InitSupportBundle() (*SupportBundle, error) {
+	if m.sb != nil {
+		if m.sb.State == BundleStateInProgress {
+			return nil, errors.Errorf("longhorn-manager is busy processing another support bundle request")
+		}
+		if m.isPreviousSupportBundleExpired() == false {
+			return nil, errors.Errorf("current support bundle has not expired.")
+		}
+		// Clear the object and references as previous support bundle got expired
+		m.DeleteSupportBundle()
+	}
+
+	sb, err := m.GenerateSupportBundle()
+	if err != nil {
+		return nil, err
+	}
+	m.sb = sb
+	return m.sb, nil
 }
