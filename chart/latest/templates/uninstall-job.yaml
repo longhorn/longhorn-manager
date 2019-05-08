@@ -5,7 +5,6 @@ metadata:
     "helm.sh/hook": pre-delete
     "helm.sh/hook-delete-policy": hook-succeeded
   name: longhorn-uninstall
-  namespace: {{ .Release.Namespace }}
 spec:
   activeDeadlineSeconds: 900
   backoffLimit: 1
@@ -22,9 +21,7 @@ spec:
         - uninstall
         - --force
         env:
-        - name: POD_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
+        - name: LONGHORN_NAMESPACE
+          value: "{{ .Release.Namespace }}"
       restartPolicy: OnFailure
       serviceAccountName: longhorn-service-account
