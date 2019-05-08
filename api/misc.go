@@ -8,6 +8,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
+
+	"github.com/rancher/longhorn-manager/manager"
 )
 
 func (s *Server) EventList(rw http.ResponseWriter, req *http.Request) error {
@@ -29,18 +31,77 @@ func (s *Server) eventList(apiContext *api.ApiContext) (*client.GenericCollectio
 	return toEventCollection(eventList), nil
 }
 
-func (s *Server) GenerateSupportBundle(w http.ResponseWriter, req *http.Request) error {
-	bundleFile, fileName, size, err := s.m.GenerateSupportBundle()
+func (s *Server) InitiateSupportBundle(w http.ResponseWriter, req *http.Request) error {
+	var sb *manager.SupportBundle
+	apiContext := api.GetApiContext(req)
+	sb, err := s.m.InitSupportBundle()
+	if err != nil {
+		return errors.Errorf("unable to initiate Support Bundle Download:%v", err)
+	}
+	if sb != nil {
+		apiContext.Write(toSupportBundleResource(s.m.GetCurrentNodeID(), sb))
+	}
+	return nil
+}
+
+func (s *Server) QuerySupportBundle(w http.ResponseWriter, req *http.Request) error {
+	var query SupportBundleQueryInput
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&query); err != nil {
+		return err
+	}
+	sb, err := s.m.GetSupportBundle(query.Name)
 	if err != nil {
 		return err
 	}
-	defer bundleFile.Close()
+	apiContext.Write(toSupportBundleResource(s.m.GetCurrentNodeID(), sb))
 
-	w.Header().Set("Content-Disposition", "attachment; filename="+fileName)
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-	if _, err = io.Copy(w, bundleFile); err != nil {
+	// we reset the bundle as a side affect of query
+	// since we don't have a separate API to do it
+	if sb.State == manager.BundleStateError {
+		s.m.DeleteSupportBundle()
+	}
+	return nil
+}
+
+func (s *Server) DownloadSupportBundle(w http.ResponseWriter, req *http.Request) error {
+	var query SupportBundleQueryInput
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&query); err != nil {
 		return err
 	}
+
+	sb, err := s.m.GetSupportBundle(query.Name)
+	if err != nil {
+		return err
+	}
+
+	// we reset the bundle as a side affect of query
+	// since we don't have a separate API to do it
+	if sb.State == manager.BundleStateError {
+		err := errors.Errorf("support bundle creation failed:%s", sb.Error)
+		s.m.DeleteSupportBundle()
+		return err
+	}
+	if sb.State == manager.BundleStateInProgress {
+		return errors.Errorf("support bundle creation is still in progress")
+	}
+
+	file, err := s.m.GetBundleFileHandler()
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	w.Header().Set("Content-Disposition", "attachment; filename="+sb.Filename)
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Length", strconv.FormatInt(sb.Size, 10))
+	if _, err := io.Copy(w, file); err != nil {
+		return err
+	}
+	// we reset the bundle as a side affect after the download
+	// since we don't have a separate API to do it
+	s.m.DeleteSupportBundle()
 	return nil
 }
