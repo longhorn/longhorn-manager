@@ -2,12 +2,15 @@ package manager
 
 import (
 	"fmt"
+
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/rancher/longhorn-manager/types"
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
@@ -34,7 +37,12 @@ func (m *VolumeManager) PVCreate(name, pvName string) (v *longhorn.Volume, err e
 		pvName = v.Name
 	}
 
-	pv := NewPVManifest(v, pvName)
+	storageClassName, err := m.ds.GetSettingValueExisted(types.SettingNameDefaultLonghornStaticStorageClass)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get longhorn static storage class name for PV %v creation: %v", pvName, err)
+	}
+
+	pv := NewPVManifest(v, pvName, storageClassName)
 	pv, err = m.ds.CreatePersisentVolume(pv)
 	if err != nil {
 		return nil, err
@@ -44,7 +52,7 @@ func (m *VolumeManager) PVCreate(name, pvName string) (v *longhorn.Volume, err e
 	return v, nil
 }
 
-func NewPVManifest(v *longhorn.Volume, pvName string) *apiv1.PersistentVolume {
+func NewPVManifest(v *longhorn.Volume, pvName, storageClassName string) *apiv1.PersistentVolume {
 	return &apiv1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: pvName,
@@ -60,6 +68,8 @@ func NewPVManifest(v *longhorn.Volume, pvName string) *apiv1.PersistentVolume {
 			PersistentVolumeReclaimPolicy: apiv1.PersistentVolumeReclaimDelete,
 
 			VolumeMode: &pvVolumeMode,
+
+			StorageClassName: storageClassName,
 
 			PersistentVolumeSource: apiv1.PersistentVolumeSource{
 				CSI: &apiv1.CSIPersistentVolumeSource{
@@ -104,7 +114,12 @@ func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.
 		return nil, fmt.Errorf("cannot create PVC for PV %v since the PV status is %v", ks.PVName, ks.PVStatus)
 	}
 
-	pvc := NewPVCManifest(v, ks.PVName, namespace, pvcName)
+	storageClassName, err := m.ds.GetSettingValueExisted(types.SettingNameDefaultLonghornStaticStorageClass)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get longhorn static storage class name for PVC %v creation: %v", pvcName, err)
+	}
+
+	pvc := NewPVCManifest(v, ks.PVName, namespace, pvcName, storageClassName)
 	pvc, err = m.ds.CreatePersisentVolumeClaim(namespace, pvc)
 	if err != nil {
 		return nil, err
@@ -114,7 +129,7 @@ func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.
 	return v, nil
 }
 
-func NewPVCManifest(v *longhorn.Volume, pvName, ns, pvcName string) *apiv1.PersistentVolumeClaim {
+func NewPVCManifest(v *longhorn.Volume, pvName, ns, pvcName, storageClassName string) *apiv1.PersistentVolumeClaim {
 	return &apiv1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pvcName,
@@ -129,7 +144,8 @@ func NewPVCManifest(v *longhorn.Volume, pvName, ns, pvcName string) *apiv1.Persi
 					apiv1.ResourceStorage: *resource.NewQuantity(v.Spec.Size, resource.BinarySI),
 				},
 			},
-			VolumeName: pvName,
+			StorageClassName: &storageClassName,
+			VolumeName:       pvName,
 		},
 	}
 }
