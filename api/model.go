@@ -180,6 +180,11 @@ type SupportBundleQueryInput struct {
 	Name string `json:"name"`
 }
 
+type SupportBundleInitateInput struct {
+	IssueURL    string `json:"issueURL"`
+	Description string `json:"description"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -213,6 +218,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("event", Event{})
 	schemas.AddType("supportBundle", SupportBundle{})
 	schemas.AddType("supportBundleQueryInput", SupportBundleQueryInput{})
+	schemas.AddType("supportBundleInitateInput", SupportBundleInitateInput{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))

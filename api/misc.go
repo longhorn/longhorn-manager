@@ -33,8 +33,13 @@ func (s *Server) eventList(apiContext *api.ApiContext) (*client.GenericCollectio
 
 func (s *Server) InitiateSupportBundle(w http.ResponseWriter, req *http.Request) error {
 	var sb *manager.SupportBundle
+	var supportBundleInput SupportBundleInitateInput
+
 	apiContext := api.GetApiContext(req)
-	sb, err := s.m.InitSupportBundle()
+	if err := apiContext.Read(&supportBundleInput); err != nil {
+		return err
+	}
+	sb, err := s.m.InitSupportBundle(supportBundleInput.IssueURL, supportBundleInput.Description)
 	if err != nil {
 		return errors.Errorf("unable to initiate Support Bundle Download:%v", err)
 	}

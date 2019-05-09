@@ -32,6 +32,8 @@ type BundleMeta struct {
 	KubernetesVersion     string `json:"kubernetesVersion"`
 	LonghornNamespaceUUID string `json:"longhornNamspaceUUID"`
 	BundleCreatedAt       string `json:"bundleCreatedAt"`
+	IssueURL              string `json:"issueURL"`
+	IssueDescription      string `json:"issueDescription"`
 }
 
 // GenerateSupportBundle covers:
@@ -56,7 +58,7 @@ type BundleMeta struct {
 //     |- <container1>.log
 //     |- ...
 // The bundle would be compressed to a zip file for download.
-func (m *VolumeManager) GenerateSupportBundle() (*SupportBundle, error) {
+func (m *VolumeManager) GenerateSupportBundle(issueURL string, description string) (*SupportBundle, error) {
 	namespace, err := m.ds.GetLonghornNamespace()
 	if err != nil {
 		return nil, errors.Wrap(err, "cannot get longhorn namespace")
@@ -71,6 +73,8 @@ func (m *VolumeManager) GenerateSupportBundle() (*SupportBundle, error) {
 		KubernetesVersion:     kubeVersion.GitVersion,
 		LonghornNamespaceUUID: string(namespace.UID),
 		BundleCreatedAt:       util.Now(),
+		IssueURL:              issueURL,
+		IssueDescription:      description,
 	}
 
 	bundleName := "longhorn-support-bundle_" + bundleMeta.LonghornNamespaceUUID + "_" +
@@ -274,7 +278,7 @@ func streamLogToFile(logStream io.ReadCloser, path string, errLog io.Writer) {
 	}
 }
 
-func (m *VolumeManager) InitSupportBundle() (*SupportBundle, error) {
+func (m *VolumeManager) InitSupportBundle(issueURL string, description string) (*SupportBundle, error) {
 	if m.sb != nil {
 		if m.sb.State == BundleStateInProgress {
 			return nil, errors.Errorf("longhorn-manager is busy processing another support bundle request")
@@ -286,7 +290,7 @@ func (m *VolumeManager) InitSupportBundle() (*SupportBundle, error) {
 		m.DeleteSupportBundle()
 	}
 
-	sb, err := m.GenerateSupportBundle()
+	sb, err := m.GenerateSupportBundle(issueURL, description)
 	if err != nil {
 		return nil, err
 	}
