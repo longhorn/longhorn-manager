@@ -24,6 +24,7 @@ const (
 	SettingNameLatestLonghornVersion             = SettingName("latest-longhorn-version")
 	SettingNameDefaultReplicaCount               = SettingName("default-replica-count")
 	SettingNameGuaranteedEngineCPU               = SettingName("guaranteed-engine-cpu")
+	SettingNameDefaultLonghornStaticStorageClass = SettingName("default-longhorn-static-storage-class")
 )
 
 var (
@@ -69,6 +70,7 @@ var (
 		SettingNameLatestLonghornVersion:             SettingDefinitionLatestLonghornVersion,
 		SettingNameDefaultReplicaCount:               SettingDefinitionDefaultReplicaCount,
 		SettingNameGuaranteedEngineCPU:               SettingDefinitionGuaranteedEngineCPU,
+		SettingNameDefaultLonghornStaticStorageClass: SettingDefinitionDefaultLonghornStaticStorageClass,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -155,5 +157,15 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "0",
+	}
+
+	SettingDefinitionDefaultLonghornStaticStorageClass = SettingDefinition{
+		DisplayName: "Default Longhorn Static StorageClass Name",
+		Description: "The 'storageClassName' is for PV/PVC when creating PV/PVC for an existing Longhorn volume. Notice that it's unnecessary for users create the related StorageClass object in Kubernetes since the StorageClass would only be used as matching labels for PVC bounding purpose. By default 'longhorn-static'.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    false,
+		ReadOnly:    false,
+		Default:     "longhorn-static",
 	}
 )
