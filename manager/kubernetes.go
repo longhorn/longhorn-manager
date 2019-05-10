@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -17,6 +18,11 @@ import (
 
 var (
 	pvVolumeMode = apiv1.PersistentVolumeFilesystem
+)
+
+const (
+	KubeStatusPollConut    = 5
+	KubeStatusPollInterval = 1 * time.Second
 )
 
 func (m *VolumeManager) PVCreate(name, pvName string) (v *longhorn.Volume, err error) {
@@ -46,6 +52,23 @@ func (m *VolumeManager) PVCreate(name, pvName string) (v *longhorn.Volume, err e
 	pv, err = m.ds.CreatePersisentVolume(pv)
 	if err != nil {
 		return nil, err
+	}
+	created := false
+	for i := 0; i < KubeStatusPollConut; i++ {
+		v, err = m.ds.GetVolume(name)
+		if err != nil {
+			return nil, err
+		}
+		pvStatus := v.Status.KubernetesStatus.PVStatus
+		if pvStatus != "" && pvStatus != string(apiv1.VolumePending) {
+			created = true
+			break
+		}
+		time.Sleep(KubeStatusPollInterval)
+	}
+
+	if !created {
+		return v, fmt.Errorf("created PV %v is not in 'Available' status", pvName)
 	}
 
 	logrus.Debugf("Created PV for volume %v: %+v", v.Name, v.Spec)
@@ -123,6 +146,24 @@ func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.
 	pvc, err = m.ds.CreatePersisentVolumeClaim(namespace, pvc)
 	if err != nil {
 		return nil, err
+	}
+
+	created := false
+	for i := 0; i < KubeStatusPollConut; i++ {
+		v, err = m.ds.GetVolume(name)
+		if err != nil {
+			return nil, err
+		}
+		pvStatus := v.Status.KubernetesStatus.PVStatus
+		if pvStatus == string(apiv1.VolumeBound) {
+			created = true
+			break
+		}
+		time.Sleep(KubeStatusPollInterval)
+	}
+
+	if !created {
+		return v, fmt.Errorf("created PVC %v doesn't bound PV, PV status is %v", pvcName, v.Status.KubernetesStatus.PVStatus)
 	}
 
 	logrus.Debugf("Created PVC for volume %v: %+v", v.Name, v.Spec)
