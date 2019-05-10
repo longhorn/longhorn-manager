@@ -182,10 +182,6 @@ type SupportBundle struct {
 	ErrorMessage manager.BundleErrorMessage `json:"errorMessage"`
 }
 
-type SupportBundleQueryInput struct {
-	Name string `json:"name"`
-}
-
 type SupportBundleInitateInput struct {
 	IssueURL    string `json:"issueURL"`
 	Description string `json:"description"`
@@ -224,7 +220,6 @@ func NewSchema() *client.Schemas {
 
 	schemas.AddType("event", Event{})
 	schemas.AddType("supportBundle", SupportBundle{})
-	schemas.AddType("supportBundleQueryInput", SupportBundleQueryInput{})
 	schemas.AddType("supportBundleInitateInput", SupportBundleInitateInput{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
@@ -783,7 +778,7 @@ func toSupportBundleResource(nodeID string, sb *manager.SupportBundle) *SupportB
 		},
 		NodeID:       nodeID,
 		State:        sb.State,
-		Name:         sb.Filename,
+		Name:         sb.Name,
 		ErrorMessage: sb.Error,
 	}
 }

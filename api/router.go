@@ -122,9 +122,9 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("Get").Path("/v1/events").Handler(f(schemas, s.EventList))
 
 	r.Methods("POST").Path("/v1/supportbundles").Handler(f(schemas, s.InitiateSupportBundle))
-	r.Methods("GET").Path("/v1/supportbundles/{name}").Handler(f(schemas,
+	r.Methods("GET").Path("/v1/supportbundles/{name}/{bundleName}").Handler(f(schemas,
 		s.fwd.Handler(OwnerIDFromNode(s.m), s.QuerySupportBundle)))
-	r.Methods("POST").Path("/v1/supportbundles/{name}").Queries("action", "download").Handler(f(schemas,
+	r.Methods("GET").Path("/v1/supportbundles/{name}/{bundleName}/download").Handler(f(schemas,
 		s.fwd.Handler(OwnerIDFromNode(s.m), s.DownloadSupportBundle)))
 
 	settingListStream := NewStreamHandlerFunc("settings", s.wsc.NewWatcher("setting"), s.settingList)
