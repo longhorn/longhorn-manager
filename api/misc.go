@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
@@ -49,13 +50,9 @@ func (s *Server) InitiateSupportBundle(w http.ResponseWriter, req *http.Request)
 }
 
 func (s *Server) QuerySupportBundle(w http.ResponseWriter, req *http.Request) error {
-	var query SupportBundleQueryInput
-
+	bundleName := mux.Vars(req)["bundleName"]
 	apiContext := api.GetApiContext(req)
-	if err := apiContext.Read(&query); err != nil {
-		return err
-	}
-	sb, err := s.m.GetSupportBundle(query.Name)
+	sb, err := s.m.GetSupportBundle(bundleName)
 	if err != nil {
 		return errors.Wrap(err, "failed to get support bundle")
 	}
@@ -64,13 +61,8 @@ func (s *Server) QuerySupportBundle(w http.ResponseWriter, req *http.Request) er
 }
 
 func (s *Server) DownloadSupportBundle(w http.ResponseWriter, req *http.Request) error {
-	var query SupportBundleQueryInput
-	apiContext := api.GetApiContext(req)
-	if err := apiContext.Read(&query); err != nil {
-		return err
-	}
-
-	sb, err := s.m.GetSupportBundle(query.Name)
+	bundleName := mux.Vars(req)["bundleName"]
+	sb, err := s.m.GetSupportBundle(bundleName)
 	if err != nil {
 		return err
 	}

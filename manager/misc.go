@@ -40,19 +40,16 @@ const (
 )
 
 type SupportBundle struct {
+	Name     string
 	State    BundleState
 	Size     int64
 	Error    BundleErrorMessage
 	Filename string
 }
 
-func NewSupportBundle(state BundleState, filename string) *SupportBundle {
-	return &SupportBundle{State: state, Filename: filename}
-}
-
-func (m *VolumeManager) GetSupportBundle(filename string) (*SupportBundle, error) {
-	if m.sb.Filename != filename {
-		return nil, errors.Errorf("cannot find the bundle file - %s", filename)
+func (m *VolumeManager) GetSupportBundle(name string) (*SupportBundle, error) {
+	if m.sb.Name != name {
+		return nil, errors.Errorf("cannot find bundle %s", name)
 	}
 
 	return m.sb, nil
@@ -157,7 +154,11 @@ func (m *VolumeManager) GenerateSupportBundle(issueURL string, description strin
 		m.sb.State = BundleReadyForDownload
 	}()
 
-	return NewSupportBundle(BundleStateInProgress, bundleFileName), nil
+	return &SupportBundle{
+		Name:     bundleName,
+		Filename: bundleFileName,
+		State:    BundleStateInProgress,
+	}, nil
 }
 
 func (m *VolumeManager) generateSupportBundle(bundleDir string, bundleMeta *BundleMeta) {
