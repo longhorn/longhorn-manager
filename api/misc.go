@@ -43,9 +43,7 @@ func (s *Server) InitiateSupportBundle(w http.ResponseWriter, req *http.Request)
 	if err != nil {
 		return errors.Errorf("unable to initiate Support Bundle Download:%v", err)
 	}
-	if sb != nil {
-		apiContext.Write(toSupportBundleResource(s.m.GetCurrentNodeID(), sb))
-	}
+	apiContext.Write(toSupportBundleResource(s.m.GetCurrentNodeID(), sb))
 	return nil
 }
 
