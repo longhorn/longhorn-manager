@@ -137,6 +137,8 @@ func (m *VolumeManager) generateSupportBundleYAMLs(yamlsDir string, errLog io.Wr
 	m.generateSupportBundleYAMLsForKubernetes(kubernetesDir, errLog)
 	longhornDir := filepath.Join(yamlsDir, "longhorn")
 	m.generateSupportBundleYAMLsForLonghorn(longhornDir, errLog)
+	volumeDir := filepath.Join(yamlsDir, "volumes")
+	m.generateSupportBundleYamlsForVolumes(volumeDir, errLog)
 }
 
 func (m *VolumeManager) generateSupportBundleYAMLsForKubernetes(dir string, errLog io.Writer) {
@@ -178,6 +180,39 @@ func (m *VolumeManager) generateSupportBundleYAMLsForLonghorn(dir string, errLog
 	getObjectMapAndEncodeToYAML("replicas", func() (interface{}, error) {
 		return m.ds.ListReplicas()
 	}, dir, errLog)
+}
+
+func writeErrorToFile(path string, errorMessage error) error {
+	if err := os.MkdirAll(filepath.Dir(path), os.FileMode(0755)); err != nil {
+		return err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err = f.WriteString(errorMessage.Error()); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *VolumeManager) generateSupportBundleYamlsForVolumes(dir string, errLog io.Writer) {
+	volumesMap, err := m.ds.ListVolumes()
+	if err != nil {
+		fmt.Fprintf(errLog, "Support Bundle: failed to get volumes: %v\n", err)
+		return
+	}
+	for volumeName := range volumesMap {
+		snapshotsMap, snapshotError := m.ListSnapshots(volumeName)
+		if snapshotError != nil {
+			if err = writeErrorToFile(filepath.Join(dir, volumeName, "generationError.log"), snapshotError); err != nil {
+				fmt.Fprintf(errLog, "Support Bundle: failed to write error: %v\n", err)
+			}
+			continue
+		}
+		encodeToYAMLFile(snapshotsMap, filepath.Join(dir, volumeName, "snapshots.yaml"), errLog)
+	}
 }
 
 func getObjectMapAndEncodeToYAML(name string, getMapFunc GetObjectMapFunc, yamlsDir string, errLog io.Writer) {
