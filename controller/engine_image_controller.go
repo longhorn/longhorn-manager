@@ -209,7 +209,15 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return err
 	}
 
-	if engineImage.Spec.OwnerID == "" {
+	nodeStatusDown := false
+	if engineImage.Spec.OwnerID != "" {
+		nodeStatusDown, err = ic.ds.IsNodeDownOrDeleted(engineImage.Spec.OwnerID)
+		if err != nil {
+			logrus.Warnf("Found error while checking ownerID is down or deleted:%v", err)
+		}
+	}
+
+	if engineImage.Spec.OwnerID == "" || nodeStatusDown {
 		// Claim it
 		engineImage.Spec.OwnerID = ic.controllerID
 		engineImage, err = ic.ds.UpdateEngineImage(engineImage)
