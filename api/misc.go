@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -41,7 +42,7 @@ func (s *Server) InitiateSupportBundle(w http.ResponseWriter, req *http.Request)
 	}
 	sb, err := s.m.InitSupportBundle(supportBundleInput.IssueURL, supportBundleInput.Description)
 	if err != nil {
-		return errors.Errorf("unable to initiate Support Bundle Download:%v", err)
+		return fmt.Errorf("unable to initiate Support Bundle Download:%v", err)
 	}
 	apiContext.Write(toSupportBundleResource(s.m.GetCurrentNodeID(), sb))
 	return nil
@@ -56,15 +57,9 @@ func (s *Server) QuerySupportBundle(w http.ResponseWriter, req *http.Request) er
 	}
 	sb, err := s.m.GetSupportBundle(query.Name)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to get support bundle")
 	}
 	apiContext.Write(toSupportBundleResource(s.m.GetCurrentNodeID(), sb))
-
-	// we reset the bundle as a side affect of query
-	// since we don't have a separate API to do it
-	if sb.State == manager.BundleStateError {
-		s.m.DeleteSupportBundle()
-	}
 	return nil
 }
 
@@ -80,15 +75,11 @@ func (s *Server) DownloadSupportBundle(w http.ResponseWriter, req *http.Request)
 		return err
 	}
 
-	// we reset the bundle as a side affect of query
-	// since we don't have a separate API to do it
 	if sb.State == manager.BundleStateError {
-		err := errors.Errorf("support bundle creation failed:%s", sb.Error)
-		s.m.DeleteSupportBundle()
-		return err
+		return errors.Wrap(err, "support bundle creation failed")
 	}
 	if sb.State == manager.BundleStateInProgress {
-		return errors.Errorf("support bundle creation is still in progress")
+		return fmt.Errorf("support bundle creation is still in progress")
 	}
 
 	file, err := s.m.GetBundleFileHandler()
@@ -103,8 +94,5 @@ func (s *Server) DownloadSupportBundle(w http.ResponseWriter, req *http.Request)
 	if _, err := io.Copy(w, file); err != nil {
 		return err
 	}
-	// we reset the bundle as a side affect after the download
-	// since we don't have a separate API to do it
-	s.m.DeleteSupportBundle()
 	return nil
 }
