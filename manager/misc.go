@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -22,6 +21,56 @@ import (
 )
 
 var VERSION = "v0.3.0"
+
+type BundleState string
+
+const (
+	BundleStateInProgress  = BundleState("InProgress")
+	BundleReadyForDownload = BundleState("ReadyForDownload")
+	BundleStateError       = BundleState("Error")
+)
+
+type BundleErrorMessage string
+
+const (
+	BundleMkdirFailed = BundleErrorMessage("Failed to create bundle file directory")
+	BundleZipFailed   = BundleErrorMessage("Failed to compress the support bundle files")
+	BundleOpenFailed  = BundleErrorMessage("Failed to open the compressed bundle file")
+	BundleStatFailed  = BundleErrorMessage("Failed to compute the size of the compressed bundle file")
+)
+
+type SupportBundle struct {
+	State    BundleState
+	Size     int64
+	Error    BundleErrorMessage
+	Filename string
+}
+
+func NewSupportBundle(state BundleState, filename string) *SupportBundle {
+	return &SupportBundle{State: state, Filename: filename}
+}
+
+func (m *VolumeManager) GetSupportBundle(filename string) (*SupportBundle, error) {
+	if m.sb.Filename != filename {
+		return nil, errors.Errorf("cannot find the bundle file - %s", filename)
+	}
+
+	return m.sb, nil
+}
+
+func (m *VolumeManager) DeleteSupportBundle() {
+	os.Remove(filepath.Join("/tmp", m.sb.Filename))
+	m.sb = nil
+}
+
+func (m *VolumeManager) GetBundleFileHandler() (io.ReadCloser, error) {
+	f, err := os.Open(filepath.Join("/tmp", m.sb.Filename))
+	if err != nil {
+		m.sb.Error = BundleOpenFailed
+		return nil, errors.Wrapf(err, "unable to open the bundle file")
+	}
+	return f, nil
+}
 
 func (m *VolumeManager) GetLonghornEventList() (*v1.EventList, error) {
 	return m.ds.GetLonghornEventList()
@@ -105,7 +154,6 @@ func (m *VolumeManager) GenerateSupportBundle(issueURL string, description strin
 		}
 
 		m.sb.Size = f.Size()
-		m.sb.createTime = time.Now()
 		m.sb.State = BundleReadyForDownload
 	}()
 
@@ -315,12 +363,6 @@ func streamLogToFile(logStream io.ReadCloser, path string, errLog io.Writer) {
 
 func (m *VolumeManager) InitSupportBundle(issueURL string, description string) (*SupportBundle, error) {
 	if m.sb != nil {
-		if m.sb.State == BundleStateInProgress {
-			return nil, errors.Errorf("longhorn-manager is busy processing another support bundle request")
-		}
-		if m.isPreviousSupportBundleExpired() == false {
-			return nil, errors.Errorf("current support bundle has not expired.")
-		}
 		// Clear the object and references as previous support bundle got expired
 		m.DeleteSupportBundle()
 	}

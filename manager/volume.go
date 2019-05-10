@@ -2,12 +2,8 @@ package manager
 
 import (
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"reflect"
 	"sort"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -20,35 +16,6 @@ import (
 
 	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
-
-type BundleState string
-
-const (
-	BundleStateInProgress  = BundleState("InProgress")
-	BundleReadyForDownload = BundleState("ReadyForDownload")
-	BundleStateError       = BundleState("Error")
-)
-
-type BundleErrorMessage string
-
-const (
-	BundleMkdirFailed = BundleErrorMessage("Failed to create bundle file directory")
-	BundleZipFailed   = BundleErrorMessage("Failed to compress the support bundle files")
-	BundleOpenFailed  = BundleErrorMessage("Failed to open the compressed bundle file")
-	BundleStatFailed  = BundleErrorMessage("Failed to compute the size of the compressed bundle file")
-)
-
-type SupportBundle struct {
-	State      BundleState
-	Size       int64
-	Error      BundleErrorMessage
-	Filename   string
-	createTime time.Time
-}
-
-func NewSupportBundle(state BundleState, filename string) *SupportBundle {
-	return &SupportBundle{State: state, Filename: filename}
-}
 
 type VolumeManager struct {
 	ds *datastore.DataStore
@@ -67,33 +34,6 @@ func NewVolumeManager(currentNodeID string, ds *datastore.DataStore) *VolumeMana
 
 func (m *VolumeManager) GetCurrentNodeID() string {
 	return m.currentNodeID
-}
-
-func (m *VolumeManager) GetSupportBundle(filename string) (*SupportBundle, error) {
-	if m.sb.Filename != filename {
-		return nil, errors.Errorf("cannot find the bundle file - %s", filename)
-	}
-
-	return m.sb, nil
-}
-
-func (m *VolumeManager) DeleteSupportBundle() {
-	os.Remove(filepath.Join("/tmp", m.sb.Filename))
-	m.sb = nil
-}
-
-func (m *VolumeManager) GetBundleFileHandler() (io.ReadCloser, error) {
-	f, err := os.Open(filepath.Join("/tmp", m.sb.Filename))
-	if err != nil {
-		m.sb.Error = BundleOpenFailed
-		return nil, errors.Wrapf(err, "unable to open the bundle file")
-	}
-	return f, nil
-}
-
-func (m *VolumeManager) isPreviousSupportBundleExpired() bool {
-	t := time.Now()
-	return t.Sub(m.sb.createTime).Hours() >= 1
 }
 
 func (m *VolumeManager) Node2APIAddress(nodeID string) (string, error) {
