@@ -387,14 +387,12 @@ func ConfigEnvWithCredential(backupTarget string, credentialSecret string, hasEn
 }
 
 func GetInitiatorNSPath() string {
-	// if no dockerd was found, use pid 1 as default
-	initiatorNSPath := "/host/proc/1/ns"
-	pf := iscsi_util.NewProcessFinder("/host/proc")
-	ps, err := pf.FindAncestorByName("dockerd")
+	path, err := iscsi_util.GetHostNamespacePath("/host/proc")
+	// if no proc dockerd or containerd was found, use pid 1 as default
 	if err == nil {
-		initiatorNSPath = fmt.Sprintf("/host/proc/%d/ns", ps.Pid)
+		logrus.Warnf("GetHostNamespacePath error, will use default path %v: %v", path, err)
 	}
-	return initiatorNSPath
+	return path
 }
 
 func GetDiskInfo(directory string) (info *DiskInfo, err error) {
