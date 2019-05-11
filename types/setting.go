@@ -25,6 +25,7 @@ const (
 	SettingNameDefaultReplicaCount               = SettingName("default-replica-count")
 	SettingNameGuaranteedEngineCPU               = SettingName("guaranteed-engine-cpu")
 	SettingNameDefaultLonghornStaticStorageClass = SettingName("default-longhorn-static-storage-class")
+	SettingNameBackupstorePollInterval           = SettingName("backupstore-poll-interval")
 )
 
 var (
@@ -38,6 +39,7 @@ var (
 		SettingNameLatestLonghornVersion,
 		SettingNameDefaultReplicaCount,
 		SettingNameGuaranteedEngineCPU,
+		SettingNameBackupstorePollInterval,
 	}
 )
 
@@ -71,6 +73,7 @@ var (
 		SettingNameDefaultReplicaCount:               SettingDefinitionDefaultReplicaCount,
 		SettingNameGuaranteedEngineCPU:               SettingDefinitionGuaranteedEngineCPU,
 		SettingNameDefaultLonghornStaticStorageClass: SettingDefinitionDefaultLonghornStaticStorageClass,
+		SettingNameBackupstorePollInterval:           SettingDefinitionBackupstorePollInterval,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -89,6 +92,16 @@ var (
 		Type:        SettingTypeString,
 		Required:    false,
 		ReadOnly:    false,
+	}
+
+	SettingDefinitionBackupstorePollInterval = SettingDefinition{
+		DisplayName: "Backupstore Poll Interval",
+		Description: "In seconds. The interval to poll the backup store for updating volumes' Last Backup field.",
+		Category:    SettingCategoryBackup,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "300",
 	}
 
 	SettingDefinitionDefaultEngineImage = SettingDefinition{

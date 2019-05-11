@@ -41,8 +41,6 @@ var (
 	upgradeCheckInterval          = time.Hour
 	settingControllerResyncPeriod = time.Hour
 	checkUpgradeURL               = "https://longhorn-upgrade-responder.rancher.io/v1/checkupgrade"
-
-	backupStorePollInterval = 5 * time.Minute
 )
 
 type SettingController struct {
@@ -66,6 +64,8 @@ type SettingController struct {
 type BackupStoreMonitor struct {
 	backupTarget                 string
 	backupTargetCredentialSecret string
+
+	pollInterval time.Duration
 
 	target *engineapi.BackupTarget
 	ds     *datastore.DataStore
@@ -201,6 +201,10 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.syncBackupTarget(); err != nil {
 			return err
 		}
+	case string(types.SettingNameBackupstorePollInterval):
+		if err := sc.updateBackupstorePollInterval(); err != nil {
+			return err
+		}
 	default:
 	}
 
@@ -218,6 +222,11 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 	}
 
 	secretSetting, err := sc.ds.GetSetting(types.SettingNameBackupTargetCredentialSecret)
+	if err != nil {
+		return err
+	}
+
+	interval, err := sc.ds.GetSettingAsInt(types.SettingNameBackupstorePollInterval)
 	if err != nil {
 		return err
 	}
@@ -246,10 +255,39 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 		backupTarget:                 targetSetting.Value,
 		backupTargetCredentialSecret: secretSetting.Value,
 
+		pollInterval: time.Duration(interval) * time.Second,
+
 		target: target,
 		ds:     sc.ds,
 		stopCh: make(chan struct{}),
 	}
+	go sc.bsMonitor.Start()
+	return nil
+}
+
+func (sc *SettingController) updateBackupstorePollInterval() (err error) {
+	if sc.bsMonitor == nil {
+		return nil
+	}
+
+	defer func() {
+		err = errors.Wrapf(err, "failed to sync backup target")
+	}()
+
+	interval, err := sc.ds.GetSettingAsInt(types.SettingNameBackupstorePollInterval)
+	if err != nil {
+		return err
+	}
+
+	if sc.bsMonitor.pollInterval == time.Duration(interval)*time.Second {
+		return nil
+	}
+
+	sc.bsMonitor.Stop()
+
+	sc.bsMonitor.pollInterval = time.Duration(interval) * time.Second
+	sc.bsMonitor.stopCh = make(chan struct{})
+
 	go sc.bsMonitor.Start()
 	return nil
 }
@@ -267,7 +305,7 @@ func (bm *BackupStoreMonitor) Start() {
 		}
 		manager.SyncVolumesLastBackupWithBackupVolumes(backupVolumes,
 			bm.ds.ListVolumes, bm.ds.GetVolume, bm.ds.UpdateVolume)
-	}, backupStorePollInterval, bm.stopCh)
+	}, bm.pollInterval, bm.stopCh)
 }
 
 func (bm *BackupStoreMonitor) Stop() {
