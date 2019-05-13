@@ -143,7 +143,7 @@ func startManager(c *cli.Context) error {
 }
 
 func environmentCheck() error {
-	initiatorNSPath := util.GetInitiatorNSPath()
+	initiatorNSPath := iscsi_util.GetHostNamespacePath(util.HostProcPath)
 	namespace, err := iscsi_util.NewNamespaceExecutor(initiatorNSPath)
 	if err != nil {
 		return err
