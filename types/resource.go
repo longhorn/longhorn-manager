@@ -231,7 +231,7 @@ const (
 const (
 	NodeConditionReasonManagerPodDown            = "ManagerPodDown"
 	NodeConditionReasonManagerPodMissing         = "ManagerPodMissing"
-	NodeConditionReasonKubernetesNodeDown        = "KubernetesNodeDown"
+	NodeConditionReasonKubernetesNodeGone        = "KubernetesNodeGone"
 	NodeConditionReasonKubernetesNodeNotReady    = "KubernetesNodeNotReady"
 	NodeConditionReasonKubernetesNodePressure    = "KubernetesNodePressure"
 	NodeConditionReasonUnknownNodeConditionTrue  = "UnknownNodeConditionTrue"

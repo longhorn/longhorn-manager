@@ -288,7 +288,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	// volume attaching, start replicas, one node down
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = TestNode1
-	tc.nodes[1] = newNode(TestNode2, TestNamespace, false, types.ConditionStatusFalse, string(types.NodeConditionReasonKubernetesNodeDown))
+	tc.nodes[1] = newNode(TestNode2, TestNamespace, false, types.ConditionStatusFalse, string(types.NodeConditionReasonKubernetesNodeGone))
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
