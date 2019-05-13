@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +34,10 @@ import (
 
 var (
 	ownerKindNode = longhorn.SchemeGroupVersion.WithKind("Node").String()
+)
+
+const (
+	nodeRoleWorkerLabel = "node-role.kubernetes.io/worker"
 )
 
 type NodeController struct {
@@ -403,6 +408,34 @@ func (nc *NodeController) syncNode(key string) (err error) {
 			return err
 		}
 	} else {
+		// check if the role of the node got changed to non-worker
+		kubeNodeLabels := kubeNode.GetLabels()
+		if len(kubeNodeLabels) != 0 {
+			value, labelPresent := kubeNodeLabels[nodeRoleWorkerLabel]
+			labelValue := false
+			if labelValue, err = strconv.ParseBool(value); err != nil {
+				logrus.Errorf("Error while parsing the value of the label %v in node %v:%v", nodeRoleWorkerLabel,
+					node.Name, err)
+			} else if labelValue == false || labelPresent == false {
+				// role of the node got changed to non-worker
+				condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+				if condition.Status != types.ConditionStatusFalse {
+					condition.LastTransitionTime = util.Now()
+					nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonKubernetesNodeGone,
+						"Kubernetes node role changed: node %v is no longer a worker", node.Name)
+				}
+				condition.Status = types.ConditionStatusFalse
+				condition.Reason = string(types.NodeConditionReasonKubernetesNodeGone)
+				condition.Message = fmt.Sprintf("Kubernetes node role changed: node %v is no longer a worker", node.Name)
+				node.Status.Conditions[types.NodeConditionTypeReady] = condition
+				// set node unschedulable
+				node.Spec.AllowScheduling = false
+			}
+
+		} else {
+			logrus.Errorf("Error: Kubernetes node %v does not have any labels", node.Name)
+		}
+
 		kubeConditions := kubeNode.Status.Conditions
 		condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
 		for _, con := range kubeConditions {
