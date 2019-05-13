@@ -40,6 +40,8 @@ const (
 	AWSAccessKey      = "AWS_ACCESS_KEY_ID"
 	AWSSecretKey      = "AWS_SECRET_ACCESS_KEY"
 	AWSEndPoint       = "AWS_ENDPOINTS"
+
+	HostProcPath = "/host/proc"
 )
 
 var (
@@ -386,20 +388,11 @@ func ConfigEnvWithCredential(backupTarget string, credentialSecret string, hasEn
 	return nil
 }
 
-func GetInitiatorNSPath() string {
-	path, err := iscsi_util.GetHostNamespacePath("/host/proc")
-	// if no proc dockerd or containerd was found, use pid 1 as default
-	if err == nil {
-		logrus.Warnf("GetHostNamespacePath error, will use default path %v: %v", path, err)
-	}
-	return path
-}
-
 func GetDiskInfo(directory string) (info *DiskInfo, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "cannot get disk info of directory %v", directory)
 	}()
-	initiatorNSPath := GetInitiatorNSPath()
+	initiatorNSPath := iscsi_util.GetHostNamespacePath(HostProcPath)
 	mountPath := fmt.Sprintf("--mount=%s/mnt", initiatorNSPath)
 	output, err := Execute("nsenter", mountPath, "stat", "-fc", "{\"path\":\"%n\",\"fsid\":\"%i\",\"type\":\"%T\",\"freeBlock\":%f,\"totalBlock\":%b,\"blockSize\":%S}", directory)
 	if err != nil {
@@ -453,7 +446,7 @@ func RemoveHostDirectoryContent(directory string) (err error) {
 	if strings.Count(dir, "/") < 2 {
 		return fmt.Errorf("prohibit removing the top level of directory %v", dir)
 	}
-	initiatorNSPath := GetInitiatorNSPath()
+	initiatorNSPath := iscsi_util.GetHostNamespacePath(HostProcPath)
 	nsExec, err := iscsi_util.NewNamespaceExecutor(initiatorNSPath)
 	if err != nil {
 		return err
