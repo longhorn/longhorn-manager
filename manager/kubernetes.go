@@ -130,19 +130,28 @@ func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.
 	}
 
 	if ks.PVName == "" {
-		return nil, fmt.Errorf("connot find existing PV for volume %v in PVCCreate", name)
+		return nil, fmt.Errorf("no PVName set in volume %v kubernetes status %v", name, ks)
 	}
 
 	if ks.PVStatus != string(apiv1.VolumeAvailable) && ks.PVStatus != string(apiv1.VolumeReleased) {
 		return nil, fmt.Errorf("cannot create PVC for PV %v since the PV status is %v", ks.PVName, ks.PVStatus)
 	}
 
-	storageClassName, err := m.ds.GetSettingValueExisted(types.SettingNameDefaultLonghornStaticStorageClass)
+	pv, err := m.ds.GetPersisentVolume(ks.PVName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get longhorn static storage class name for PVC %v creation: %v", pvcName, err)
+		return nil, err
 	}
 
-	pvc := NewPVCManifest(v, ks.PVName, namespace, pvcName, storageClassName)
+	// cleanup ClaimRef of PV. Otherwise the existing PV cannot be reused.
+	if pv.Spec.ClaimRef != nil {
+		pv.Spec.ClaimRef = nil
+		pv, err = m.ds.UpdatePersisentVolume(pv)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	pvc := NewPVCManifest(v, ks.PVName, namespace, pvcName, pv.Spec.StorageClassName)
 	pvc, err = m.ds.CreatePersisentVolumeClaim(namespace, pvc)
 	if err != nil {
 		return nil, err
