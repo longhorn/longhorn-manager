@@ -187,6 +187,10 @@ func (s *DataStore) CreatePersisentVolume(pv *corev1.PersistentVolume) (*corev1.
 	return s.kubeClient.CoreV1().PersistentVolumes().Create(pv)
 }
 
+func (s *DataStore) UpdatePersisentVolume(pv *corev1.PersistentVolume) (*corev1.PersistentVolume, error) {
+	return s.kubeClient.CoreV1().PersistentVolumes().Update(pv)
+}
+
 func (s *DataStore) GetPersisentVolume(pvName string) (*corev1.PersistentVolume, error) {
 	return s.pvLister.Get(pvName)
 }
