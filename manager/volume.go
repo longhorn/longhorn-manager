@@ -391,6 +391,17 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 		return nil, fmt.Errorf("invalid frontend %v", frontend)
 	}
 
+	// ListBackupVolumes() will trigger the update for LastBackup
+	_, err = m.ListBackupVolumes()
+	if err != nil {
+		logrus.Warnf("failed to update LastBackup and backup volume list before activating standby volume %v: %v", volumeName, err)
+	}
+
+	v, err = m.ds.GetVolume(volumeName)
+	if err != nil {
+		return nil, err
+	}
+
 	var engine *longhorn.Engine
 	es, err := m.ds.ListVolumeEngines(v.Name)
 	if err != nil {
@@ -402,9 +413,17 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 	for _, e := range es {
 		engine = e
 	}
-	if engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
-		return nil, fmt.Errorf("standby volume %v hasn't finished incremental restored, requested backup restore: %v, last restored backup: %v",
-			v.Name, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
+
+	if v.Status.LastBackup == "" {
+		if engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
+			return nil, fmt.Errorf("standby volume %v hasn't finished incremental restored, requested backup restore: %v, last restored backup: %v",
+				v.Name, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
+		}
+	} else {
+		if v.Status.LastBackup != engine.Status.LastRestoredBackup {
+			return nil, fmt.Errorf("standby volume %v hasn't finished incremental restored, backup volume last backup: %v, standby volume last restored backup: %v",
+				v.Name, v.Status.LastBackup, engine.Status.LastRestoredBackup)
+		}
 	}
 
 	if v.Status.State != types.VolumeStateDetached && v.Status.State != types.VolumeStateDetaching {
