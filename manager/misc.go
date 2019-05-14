@@ -38,7 +38,7 @@ const (
 	BundleErrorOpenFailed         = BundleError("Failed to open the compressed bundle file")
 	BundleErrorStatFailed         = BundleError("Failed to compute the size of the compressed bundle file")
 	BundleProgressPercentageYaml  = 20
-	BundleProgressPercentageLogs  = 80
+	BundleProgressPercentageLogs  = 75
 	BundleProgressPercentageTotal = 100
 )
 
@@ -161,6 +161,7 @@ func (m *VolumeManager) GenerateSupportBundle(issueURL string, description strin
 		}
 
 		sb.Size = f.Size()
+		sb.ProgressPercentage = BundleProgressPercentageTotal
 		sb.State = BundleStateReadyForDownload
 	}()
 
@@ -184,7 +185,7 @@ func (m *VolumeManager) generateSupportBundle(bundleDir string, bundleMeta *Bund
 
 	logsDir := filepath.Join(bundleDir, "logs")
 	m.generateSupportBundleLogs(logsDir, errLog, sb)
-	sb.ProgressPercentage = BundleProgressPercentageTotal
+	sb.ProgressPercentage = BundleProgressPercentageYaml + BundleProgressPercentageLogs
 }
 
 type GetObjectMapFunc func() (interface{}, error)
