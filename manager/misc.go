@@ -33,18 +33,22 @@ const (
 type BundleErrorMessage string
 
 const (
-	BundleMkdirFailed = BundleErrorMessage("Failed to create bundle file directory")
-	BundleZipFailed   = BundleErrorMessage("Failed to compress the support bundle files")
-	BundleOpenFailed  = BundleErrorMessage("Failed to open the compressed bundle file")
-	BundleStatFailed  = BundleErrorMessage("Failed to compute the size of the compressed bundle file")
+	BundleMkdirFailed             = BundleErrorMessage("Failed to create bundle file directory")
+	BundleZipFailed               = BundleErrorMessage("Failed to compress the support bundle files")
+	BundleOpenFailed              = BundleErrorMessage("Failed to open the compressed bundle file")
+	BundleStatFailed              = BundleErrorMessage("Failed to compute the size of the compressed bundle file")
+	BundleProgressPercentageYaml  = 20
+	BundleProgressPercentageLogs  = 80
+	BundleProgressPercentageTotal = 100
 )
 
 type SupportBundle struct {
-	Name     string
-	State    BundleState
-	Size     int64
-	Error    BundleErrorMessage
-	Filename string
+	Name               string
+	State              BundleState
+	Size               int64
+	Error              BundleErrorMessage
+	Filename           string
+	ProgressPercentage int
 }
 
 func (m *VolumeManager) GetSupportBundle(name string) (*SupportBundle, error) {
@@ -127,41 +131,43 @@ func (m *VolumeManager) GenerateSupportBundle(issueURL string, description strin
 		strings.Replace(bundleMeta.BundleCreatedAt, ":", "-", -1)
 	bundleFileName := bundleName + ".zip"
 
+	sb := &SupportBundle{
+		Name:     bundleName,
+		Filename: bundleFileName,
+		State:    BundleStateInProgress,
+	}
+
 	go func() {
 		bundleDir := filepath.Join("/tmp", bundleName)
 		bundleFile := filepath.Join("/tmp", bundleFileName)
 		if err := os.MkdirAll(bundleDir, os.FileMode(0755)); err != nil {
-			m.sb.Error = BundleMkdirFailed
-			m.sb.State = BundleStateError
+			sb.Error = BundleMkdirFailed
+			sb.State = BundleStateError
 			return
 		}
-		m.generateSupportBundle(bundleDir, bundleMeta)
+		m.generateSupportBundle(bundleDir, bundleMeta, sb)
 		cmd := exec.Command("zip", "-r", bundleFileName, bundleName)
 		cmd.Dir = "/tmp"
 		if err := cmd.Run(); err != nil {
-			m.sb.Error = BundleZipFailed
-			m.sb.State = BundleStateError
+			sb.Error = BundleZipFailed
+			sb.State = BundleStateError
 			return
 		}
 		f, err := os.Stat(bundleFile)
 		if err != nil {
-			m.sb.Error = BundleStatFailed
-			m.sb.State = BundleStateError
+			sb.Error = BundleStatFailed
+			sb.State = BundleStateError
 			return
 		}
 
-		m.sb.Size = f.Size()
-		m.sb.State = BundleReadyForDownload
+		sb.Size = f.Size()
+		sb.State = BundleReadyForDownload
 	}()
 
-	return &SupportBundle{
-		Name:     bundleName,
-		Filename: bundleFileName,
-		State:    BundleStateInProgress,
-	}, nil
+	return sb, nil
 }
 
-func (m *VolumeManager) generateSupportBundle(bundleDir string, bundleMeta *BundleMeta) {
+func (m *VolumeManager) generateSupportBundle(bundleDir string, bundleMeta *BundleMeta, sb *SupportBundle) {
 	errLog, err := os.Create(filepath.Join(bundleDir, "bundleGenerationError.log"))
 	if err != nil {
 		logrus.Errorf("Failed to create bundle generation log")
@@ -174,8 +180,11 @@ func (m *VolumeManager) generateSupportBundle(bundleDir string, bundleMeta *Bund
 
 	yamlsDir := filepath.Join(bundleDir, "yamls")
 	m.generateSupportBundleYAMLs(yamlsDir, errLog)
+	sb.ProgressPercentage = BundleProgressPercentageYaml
+
 	logsDir := filepath.Join(bundleDir, "logs")
-	m.generateSupportBundleLogs(logsDir, errLog)
+	m.generateSupportBundleLogs(logsDir, errLog, sb)
+	sb.ProgressPercentage = BundleProgressPercentageTotal
 }
 
 type GetObjectMapFunc func() (interface{}, error)
@@ -311,7 +320,7 @@ func encodeToYAMLFile(obj interface{}, path string, errLog io.Writer) {
 	}
 }
 
-func (m *VolumeManager) generateSupportBundleLogs(logsDir string, errLog io.Writer) {
+func (m *VolumeManager) generateSupportBundleLogs(logsDir string, errLog io.Writer, sb *SupportBundle) {
 	list, err := m.ds.GetAllPodsList()
 	if err != nil {
 		fmt.Fprintf(errLog, "Support bundle: cannot get pod list: %v\n", err)
@@ -322,7 +331,7 @@ func (m *VolumeManager) generateSupportBundleLogs(logsDir string, errLog io.Writ
 		fmt.Fprintf(errLog, "BUG: Support bundle: didn't get pod list\n")
 		return
 	}
-	for _, pod := range podList.Items {
+	for index, pod := range podList.Items {
 		podName := pod.Name
 		podDir := filepath.Join(logsDir, podName)
 		for _, container := range pod.Spec.Containers {
@@ -337,6 +346,9 @@ func (m *VolumeManager) generateSupportBundleLogs(logsDir string, errLog io.Writ
 			streamLogToFile(stream, logFileName, errLog)
 			stream.Close()
 		}
+
+		percentage := float64(index) / float64(len(podList.Items)) * BundleProgressPercentageLogs
+		sb.ProgressPercentage = BundleProgressPercentageYaml + int(percentage)
 	}
 }
 
