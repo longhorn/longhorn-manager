@@ -180,6 +180,7 @@ type SupportBundle struct {
 	State        manager.BundleState        `json:"state"`
 	Name         string                     `json:"name"`
 	ErrorMessage manager.BundleErrorMessage `json:"errorMessage"`
+	Progress     int                        `json:"progress"`
 }
 
 type SupportBundleInitateInput struct {
@@ -780,5 +781,6 @@ func toSupportBundleResource(nodeID string, sb *manager.SupportBundle) *SupportB
 		State:        sb.State,
 		Name:         sb.Name,
 		ErrorMessage: sb.Error,
+		Progress:     sb.ProgressPercentage,
 	}
 }
