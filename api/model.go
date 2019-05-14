@@ -176,11 +176,11 @@ type Event struct {
 
 type SupportBundle struct {
 	client.Resource
-	NodeID       string                     `json:"nodeID"`
-	State        manager.BundleState        `json:"state"`
-	Name         string                     `json:"name"`
-	ErrorMessage manager.BundleErrorMessage `json:"errorMessage"`
-	Progress     int                        `json:"progress"`
+	NodeID             string              `json:"nodeID"`
+	State              manager.BundleState `json:"state"`
+	Name               string              `json:"name"`
+	ErrorMessage       manager.BundleError `json:"errorMessage"`
+	ProgressPercentage int                 `json:"progressPercentage"`
 }
 
 type SupportBundleInitateInput struct {
@@ -777,10 +777,10 @@ func toSupportBundleResource(nodeID string, sb *manager.SupportBundle) *SupportB
 			Id:   nodeID,
 			Type: "supportbundle",
 		},
-		NodeID:       nodeID,
-		State:        sb.State,
-		Name:         sb.Name,
-		ErrorMessage: sb.Error,
-		Progress:     sb.ProgressPercentage,
+		NodeID:             nodeID,
+		State:              sb.State,
+		Name:               sb.Name,
+		ErrorMessage:       sb.Error,
+		ProgressPercentage: sb.ProgressPercentage,
 	}
 }
