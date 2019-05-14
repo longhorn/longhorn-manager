@@ -25,18 +25,18 @@ var VERSION = "v0.3.0"
 type BundleState string
 
 const (
-	BundleStateInProgress  = BundleState("InProgress")
-	BundleReadyForDownload = BundleState("ReadyForDownload")
-	BundleStateError       = BundleState("Error")
+	BundleStateInProgress       = BundleState("InProgress")
+	BundleStateReadyForDownload = BundleState("ReadyForDownload")
+	BundleStateError            = BundleState("Error")
 )
 
-type BundleErrorMessage string
+type BundleError string
 
 const (
-	BundleMkdirFailed             = BundleErrorMessage("Failed to create bundle file directory")
-	BundleZipFailed               = BundleErrorMessage("Failed to compress the support bundle files")
-	BundleOpenFailed              = BundleErrorMessage("Failed to open the compressed bundle file")
-	BundleStatFailed              = BundleErrorMessage("Failed to compute the size of the compressed bundle file")
+	BundleErrorMkdirFailed        = BundleError("Failed to create bundle file directory")
+	BundleErrorZipFailed          = BundleError("Failed to compress the support bundle files")
+	BundleErrorOpenFailed         = BundleError("Failed to open the compressed bundle file")
+	BundleErrorStatFailed         = BundleError("Failed to compute the size of the compressed bundle file")
 	BundleProgressPercentageYaml  = 20
 	BundleProgressPercentageLogs  = 80
 	BundleProgressPercentageTotal = 100
@@ -46,7 +46,7 @@ type SupportBundle struct {
 	Name               string
 	State              BundleState
 	Size               int64
-	Error              BundleErrorMessage
+	Error              BundleError
 	Filename           string
 	ProgressPercentage int
 }
@@ -67,7 +67,7 @@ func (m *VolumeManager) DeleteSupportBundle() {
 func (m *VolumeManager) GetBundleFileHandler() (io.ReadCloser, error) {
 	f, err := os.Open(filepath.Join("/tmp", m.sb.Filename))
 	if err != nil {
-		m.sb.Error = BundleOpenFailed
+		m.sb.Error = BundleErrorOpenFailed
 		return nil, errors.Wrapf(err, "unable to open the bundle file")
 	}
 	return f, nil
@@ -141,7 +141,7 @@ func (m *VolumeManager) GenerateSupportBundle(issueURL string, description strin
 		bundleDir := filepath.Join("/tmp", bundleName)
 		bundleFile := filepath.Join("/tmp", bundleFileName)
 		if err := os.MkdirAll(bundleDir, os.FileMode(0755)); err != nil {
-			sb.Error = BundleMkdirFailed
+			sb.Error = BundleErrorMkdirFailed
 			sb.State = BundleStateError
 			return
 		}
@@ -149,19 +149,19 @@ func (m *VolumeManager) GenerateSupportBundle(issueURL string, description strin
 		cmd := exec.Command("zip", "-r", bundleFileName, bundleName)
 		cmd.Dir = "/tmp"
 		if err := cmd.Run(); err != nil {
-			sb.Error = BundleZipFailed
+			sb.Error = BundleErrorZipFailed
 			sb.State = BundleStateError
 			return
 		}
 		f, err := os.Stat(bundleFile)
 		if err != nil {
-			sb.Error = BundleStatFailed
+			sb.Error = BundleErrorStatFailed
 			sb.State = BundleStateError
 			return
 		}
 
 		sb.Size = f.Size()
-		sb.State = BundleReadyForDownload
+		sb.State = BundleStateReadyForDownload
 	}()
 
 	return sb, nil
