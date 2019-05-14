@@ -109,6 +109,15 @@ func (m *VolumeManager) SettingValidation(name, value string) (err error) {
 		if _, err := resource.ParseQuantity(value); err != nil {
 			return errors.Wrapf(err, "invalid value %v as CPU resource", value)
 		}
+	case types.SettingNameBackupstorePollInterval:
+		interval, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("value of %v is not int: %v", types.SettingNameBackupstorePollInterval, err)
+		}
+		if interval <= 0 {
+			return fmt.Errorf("backupstore poll interval %v should be greater than 0", value)
+		}
+
 	}
 	return nil
 }
