@@ -78,8 +78,9 @@ type Instance struct {
 
 type Controller struct {
 	Instance
-	Endpoint           string `json:"endpoint"`
-	LastRestoredBackup string `json:"lastRestoredBackup"`
+	Endpoint               string `json:"endpoint"`
+	LastRestoredBackup     string `json:"lastRestoredBackup"`
+	RequestedBackupRestore string `json:"requestedBackupRestore"`
 }
 
 type Replica struct {
@@ -491,8 +492,9 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 				EngineImage:  e.Spec.EngineImage,
 				CurrentImage: e.Status.CurrentImage,
 			},
-			Endpoint:           e.Status.Endpoint,
-			LastRestoredBackup: e.Status.LastRestoredBackup,
+			Endpoint:               e.Status.Endpoint,
+			LastRestoredBackup:     e.Status.LastRestoredBackup,
+			RequestedBackupRestore: e.Spec.RequestedBackupRestore,
 		})
 		if e.Spec.NodeID == v.Spec.NodeID {
 			ve = e
