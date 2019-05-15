@@ -976,7 +976,7 @@ func (vc *VolumeController) updateEngineForStandbyVolume(v *longhorn.Volume, e *
 		return nil
 	}
 
-	if v.Status.LastBackup != e.Spec.RequestedBackupRestore {
+	if v.Status.LastBackup != "" && v.Status.LastBackup != e.Spec.RequestedBackupRestore {
 		e.Spec.RequestedBackupRestore = v.Status.LastBackup
 		e, err = vc.ds.UpdateEngine(e)
 		if err != nil {
