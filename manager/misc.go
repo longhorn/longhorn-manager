@@ -61,6 +61,7 @@ func (m *VolumeManager) GetSupportBundle(name string) (*SupportBundle, error) {
 
 func (m *VolumeManager) DeleteSupportBundle() {
 	os.Remove(filepath.Join("/tmp", m.sb.Filename))
+	os.RemoveAll(filepath.Join("/tmp", m.sb.Name))
 	m.sb = nil
 }
 
