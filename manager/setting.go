@@ -76,7 +76,11 @@ func (m *VolumeManager) SettingValidation(name, value string) (err error) {
 			return errors.Wrapf(err, "failed to list standby volume when modifying BackupTarget")
 		}
 		if len(vs) != 0 {
-			return fmt.Errorf("cannot modify BackupTarget since there are existing standby volumes: %v", vs)
+			standbyVolumeNames := make([]string, len(vs))
+			for k := range vs {
+				standbyVolumeNames = append(standbyVolumeNames, k)
+			}
+			return fmt.Errorf("cannot modify BackupTarget since there are existing standby volumes: %v", standbyVolumeNames)
 		}
 		// additional check whether have $ or , have been set in BackupTarget
 		regStr := `[\$\,]`
