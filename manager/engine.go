@@ -160,19 +160,20 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 	if err != nil {
 		return err
 	}
-	//TODO time consuming operation, move it out of API server path
-	if err := engine.SnapshotBackup(snapshotName, backupTarget, labels, credential); err != nil {
-		return err
-	}
-	logrus.Debugf("Backup snapshot %v with label %v for volume %v", snapshotName, labels, volumeName)
+	go func() {
+		if err := engine.SnapshotBackup(snapshotName, backupTarget, labels, credential); err != nil {
+			logrus.Errorf("Failed to backup snapshot %v with label %v for volume %v: %v", snapshotName, labels, volumeName, err)
+		}
+		logrus.Debugf("Backup snapshot %v with label %v for volume %v", snapshotName, labels, volumeName)
 
-	target, err := GenerateBackupTarget(m.ds)
-	if err != nil {
-		logrus.Warnf("Failed to update volume LastBackup for %v due to cannot get backup target: %v", volumeName, err)
-	}
-	if err := UpdateVolumeLastBackup(volumeName, target, m.ds.GetVolume, m.ds.UpdateVolume); err != nil {
-		logrus.Warnf("Failed to update volume LastBackup for %v: %v", volumeName, err)
-	}
+		target, err := GenerateBackupTarget(m.ds)
+		if err != nil {
+			logrus.Warnf("Failed to update volume LastBackup for %v due to cannot get backup target: %v", volumeName, err)
+		}
+		if err := UpdateVolumeLastBackup(volumeName, target, m.ds.GetVolume, m.ds.UpdateVolume); err != nil {
+			logrus.Warnf("Failed to update volume LastBackup for %v: %v", volumeName, err)
+		}
+	}()
 	return nil
 }
 
