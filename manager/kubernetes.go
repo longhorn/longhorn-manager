@@ -88,7 +88,7 @@ func NewPVManifest(v *longhorn.Volume, pvName, storageClassName string) *apiv1.P
 				apiv1.ReadWriteOnce,
 			},
 
-			PersistentVolumeReclaimPolicy: apiv1.PersistentVolumeReclaimDelete,
+			PersistentVolumeReclaimPolicy: apiv1.PersistentVolumeReclaimRetain,
 
 			VolumeMode: &pvVolumeMode,
 
