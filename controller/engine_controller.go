@@ -663,6 +663,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.ReplicaModeMap = currentReplicaModeMap
 	}
 
+	needRestore := false
 	if engine.Status.LastRestoredBackup != "" {
 		info, err := client.Info()
 		if err != nil {
@@ -672,6 +673,9 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		if info.LastRestored != "" {
 			engine.Status.LastRestoredBackup = info.LastRestored
 		}
+		if !info.IsRestoring && engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
+			needRestore = true
+		}
 	}
 
 	engine, err = m.ds.UpdateEngine(engine)
@@ -679,29 +683,35 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
+	if !needRestore {
+		return nil
+	}
+
 	go func(client engineapi.EngineClient, engine *longhorn.Engine) {
-		if engine.Spec.RequestedBackupRestore != "" && engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
-			backupTarget, err := manager.GenerateBackupTarget(m.ds)
-			if err != nil {
-				logrus.Errorf("cannot generate BackupTarget for engine %v: %v", engine.Name, err)
-				return
-			}
+		if engine.Spec.RequestedBackupRestore == "" || engine.Spec.RequestedBackupRestore == engine.Status.LastRestoredBackup {
+			return
+		}
 
-			logrus.Infof("engine %v prepared to do incremental restore, backup target %v, backup volume %v, backup name %v",
-				engine.Name, backupTarget.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
+		backupTarget, err := manager.GenerateBackupTarget(m.ds)
+		if err != nil {
+			logrus.Errorf("cannot generate BackupTarget for engine %v: %v", engine.Name, err)
+			return
+		}
 
-			err = client.BackupRestoreIncrementally(backupTarget.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup)
-			if err != nil {
-				logrus.Errorf("failed to do incremental restoration in engine monitor: %v", err)
-				return
-			}
+		logrus.Infof("engine %v prepared to do incremental restore, backup target %v, backup volume %v, backup name %v",
+			engine.Name, backupTarget.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
 
-			engine.Status.LastRestoredBackup = engine.Spec.RequestedBackupRestore
-			engine, err = m.ds.UpdateEngine(engine)
-			if err != nil {
-				logrus.Errorf("failed to do update engine %v after incremental restoration: %v", engine.Name, err)
-				return
-			}
+		err = client.BackupRestoreIncrementally(backupTarget.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup)
+		if err != nil {
+			logrus.Errorf("failed to do incremental restoration in engine monitor: %v", err)
+			return
+		}
+
+		engine.Status.LastRestoredBackup = engine.Spec.RequestedBackupRestore
+		engine, err = m.ds.UpdateEngine(engine)
+		if err != nil {
+			logrus.Errorf("failed to do update engine %v after incremental restoration: %v", engine.Name, err)
+			return
 		}
 	}(client, engine)
 
