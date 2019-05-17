@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/pkg/errors"
+	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -485,6 +486,9 @@ func (m *VolumeManager) validateRecurringJobs(jobs []types.RecurringJob) error {
 	for _, job := range jobs {
 		if job.Cron == "" || job.Task == "" || job.Name == "" || job.Retain == 0 {
 			return fmt.Errorf("invalid job %+v", job)
+		}
+		if _, err := cron.ParseStandard(job.Cron); err != nil {
+			return fmt.Errorf("invalid cron format(%v): %v", job.Cron, err)
 		}
 		if len(job.Name) > types.MaximumJobNameSize {
 			return fmt.Errorf("job name %v is too long, must be %v characters or less", job.Name, types.MaximumJobNameSize)

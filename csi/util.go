@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/pkg/errors"
+	"github.com/robfig/cron"
 
 	"k8s.io/kubernetes/pkg/util/mount"
 
@@ -63,6 +64,11 @@ func parseJSONRecurringJobs(jsonRecurringJobs string) ([]longhornclient.Recurrin
 	err := json.Unmarshal([]byte(jsonRecurringJobs), &recurringJobs)
 	if err != nil {
 		return nil, fmt.Errorf("invalid json format of recurringJobs: %v  %v", jsonRecurringJobs, err)
+	}
+	for _, recurringJob := range recurringJobs {
+		if _, err := cron.ParseStandard(recurringJob.Cron); err != nil {
+			return nil, fmt.Errorf("invalid cron format(%v): %v", recurringJob.Cron, err)
+		}
 	}
 	return recurringJobs, nil
 }
