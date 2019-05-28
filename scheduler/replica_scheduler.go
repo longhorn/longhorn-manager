@@ -165,10 +165,12 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, di
 }
 
 func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, info *DiskSchedulingInfo) bool {
+	// StorageReserved = the space is already used by 3rd party + the space will be used by 3rd party.
+	// StorageAvailable = the space can be used by 3rd party or Longhorn system.
+	// There is no (direct) relationship between StorageReserved and StorageAvailable.
 	return info.StorageMaximum > 0 && info.StorageAvailable > 0 &&
 		(size+info.StorageScheduled) <= (info.StorageMaximum-info.StorageReserved)*(info.OverProvisioningPercentage/100) &&
-		info.StorageAvailable > info.StorageMaximum*info.MinimalAvailablePercentage/100 &&
-		info.StorageAvailable > info.StorageReserved
+		info.StorageAvailable > info.StorageMaximum*info.MinimalAvailablePercentage/100
 }
 
 func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk types.DiskSpec, diskStatus types.DiskStatus) (*DiskSchedulingInfo, error) {
