@@ -20,6 +20,7 @@ steps:
 - name: docker-publish-master
   pull: default
   image: plugins/docker
+  context: package
   settings:
     custom_dns: 1.1.1.1
     dockerfile: package/Dockerfile
