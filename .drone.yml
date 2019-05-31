@@ -21,7 +21,7 @@ steps:
   pull: default
   image: plugins/docker
   settings:
-    context: package/
+#    context: package/
     custom_dns: 1.1.1.1
     dockerfile: package/Dockerfile
     password:
@@ -35,6 +35,7 @@ steps:
     - master
     event:
     - push
+    - pull_request
 
 
 volumes:
