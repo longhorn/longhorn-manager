@@ -16,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -404,9 +403,8 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 					},
 					ReadinessProbe: &v1.Probe{
 						Handler: v1.Handler{
-							HTTPGet: &v1.HTTPGetAction{
-								Path: "/v1",
-								Port: intstr.FromInt(9502),
+							Exec: &v1.ExecAction{
+								Command: []string{"/usr/bin/grpc_health_probe", "-addr=:9502"},
 							},
 						},
 						InitialDelaySeconds: replicaReadinessProbeInitialDelay,
