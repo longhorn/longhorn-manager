@@ -667,6 +667,10 @@ func (s *DataStore) ListVolumeReplicas(volumeName string) (map[string]*longhorn.
 
 func (s *DataStore) fixupReplica(replica *longhorn.Replica) (*longhorn.Replica, error) {
 	// v0.3
+	pathSetting, err := s.GetSetting(types.SettingNameDefaultDataPath)
+	if err != nil {
+		return nil, err
+	}
 	if replica.Spec.EngineName == "" {
 		engines, err := s.ListVolumeEngines(replica.Spec.VolumeName)
 		if err != nil {
@@ -694,7 +698,7 @@ func (s *DataStore) fixupReplica(replica *longhorn.Replica) (*longhorn.Replica, 
 			return nil, err
 		}
 		for fsid, disk := range node.Spec.Disks {
-			if disk.Path == types.DefaultLonghornDirectory {
+			if disk.Path == pathSetting.Value {
 				replica.Spec.DiskID = fsid
 				break
 			}
@@ -704,7 +708,7 @@ func (s *DataStore) fixupReplica(replica *longhorn.Replica) (*longhorn.Replica, 
 		}
 	}
 	if replica.Spec.DataPath == "" {
-		replica.Spec.DataPath = filepath.Join(types.DefaultLonghornDirectory, "/replicas/", replica.Name)
+		replica.Spec.DataPath = filepath.Join(pathSetting.Value, "/replicas/", replica.Name)
 		// We cannot tell if the field `Active` exists in the object since it's a bool
 		// so if it's old version, we will set it
 		replica.Spec.Active = true
@@ -842,6 +846,10 @@ func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 
 // CreateDefaultNode will set default directory to node replica mount path
 func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
+	pathSetting, err := s.GetSetting(types.SettingNameDefaultDataPath)
+	if err != nil {
+		return nil, err
+	}
 	node := &longhorn.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -851,7 +859,7 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 			AllowScheduling: true,
 		},
 	}
-	diskInfo, err := util.GetDiskInfo(types.DefaultLonghornDirectory)
+	diskInfo, err := util.GetDiskInfo(pathSetting.Value)
 	if err != nil {
 		return nil, err
 	}
