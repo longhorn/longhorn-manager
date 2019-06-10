@@ -17,10 +17,6 @@ const (
 	EngineBinaryDirectoryInContainer = "/engine-binaries/"
 	EngineBinaryDirectoryOnHost      = "/var/lib/rancher/longhorn/engine-binaries/"
 
-	// DefaultLonghornDirectory is the directory going to be bind mounted on the
-	// host to provide storage space to replica data by default
-	DefaultLonghornDirectory = "/var/lib/rancher/longhorn/"
-
 	LonghornNodeKey = "longhornnode"
 
 	BaseImageLabel = "ranchervm-base-image"

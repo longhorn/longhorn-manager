@@ -391,7 +391,7 @@ func newReplicaForVolume(v *longhorn.Volume, e *longhorn.Engine, nodeID, diskID 
 			},
 			EngineName: e.Name,
 			DiskID:     diskID,
-			DataPath:   filepath.Join(types.DefaultLonghornDirectory, "/replicas", replicaName),
+			DataPath:   filepath.Join(TestDefaultDataPath, "/replicas", replicaName),
 			Active:     true,
 		},
 	}
