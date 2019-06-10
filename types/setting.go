@@ -17,6 +17,7 @@ type SettingName string
 const (
 	SettingNameBackupTarget                      = SettingName("backup-target")
 	SettingNameBackupTargetCredentialSecret      = SettingName("backup-target-credential-secret")
+	SettingNameDefaultDataPath                   = SettingName("default-data-path")
 	SettingNameDefaultEngineImage                = SettingName("default-engine-image")
 	SettingNameStorageOverProvisioningPercentage = SettingName("storage-over-provisioning-percentage")
 	SettingNameStorageMinimalAvailablePercentage = SettingName("storage-minimal-available-percentage")
@@ -32,6 +33,7 @@ var (
 	SettingNameList = []SettingName{
 		SettingNameBackupTarget,
 		SettingNameBackupTargetCredentialSecret,
+		SettingNameDefaultDataPath,
 		SettingNameDefaultEngineImage,
 		SettingNameStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage,
@@ -65,6 +67,7 @@ var (
 	SettingDefinitions = map[SettingName]SettingDefinition{
 		SettingNameBackupTarget:                      SettingDefinitionBackupTarget,
 		SettingNameBackupTargetCredentialSecret:      SettingDefinitionBackupTargetCredentialSecret,
+		SettingNameDefaultDataPath:                   SettingDefinitionDefaultDataPath,
 		SettingNameDefaultEngineImage:                SettingDefinitionDefaultEngineImage,
 		SettingNameStorageOverProvisioningPercentage: SettingDefinitionStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage: SettingDefinitionStorageMinimalAvailablePercentage,
@@ -102,6 +105,16 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "300",
+	}
+
+	SettingDefinitionDefaultDataPath = SettingDefinition{
+		DisplayName: "Default Data Path",
+		Description: "Default path to use for mounting data on a host",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "/var/lib/rancher/longhorn/",
 	}
 
 	SettingDefinitionDefaultEngineImage = SettingDefinition{
