@@ -18,6 +18,7 @@ const (
 	SettingNameBackupTarget                      = SettingName("backup-target")
 	SettingNameBackupTargetCredentialSecret      = SettingName("backup-target-credential-secret")
 	SettingNameDefaultEngineImage                = SettingName("default-engine-image")
+	SettingNameReplicaHardAntiAffinity           = SettingName("replica-hard-anti-affinity")
 	SettingNameStorageOverProvisioningPercentage = SettingName("storage-over-provisioning-percentage")
 	SettingNameStorageMinimalAvailablePercentage = SettingName("storage-minimal-available-percentage")
 	SettingNameUpgradeChecker                    = SettingName("upgrade-checker")
@@ -33,6 +34,7 @@ var (
 		SettingNameBackupTarget,
 		SettingNameBackupTargetCredentialSecret,
 		SettingNameDefaultEngineImage,
+		SettingNameReplicaHardAntiAffinity,
 		SettingNameStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage,
 		SettingNameUpgradeChecker,
@@ -66,6 +68,7 @@ var (
 		SettingNameBackupTarget:                      SettingDefinitionBackupTarget,
 		SettingNameBackupTargetCredentialSecret:      SettingDefinitionBackupTargetCredentialSecret,
 		SettingNameDefaultEngineImage:                SettingDefinitionDefaultEngineImage,
+		SettingNameReplicaHardAntiAffinity:           SettingDefinitionReplicaHardAntiAffinity,
 		SettingNameStorageOverProvisioningPercentage: SettingDefinitionStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage: SettingDefinitionStorageMinimalAvailablePercentage,
 		SettingNameUpgradeChecker:                    SettingDefinitionUpgradeChecker,
@@ -111,6 +114,16 @@ var (
 		Type:        SettingTypeString,
 		Required:    true,
 		ReadOnly:    true,
+	}
+
+	SettingDefinitionReplicaHardAntiAffinity = SettingDefinition{
+		DisplayName: "Replica Hard Anti Affinity",
+		Description: "Prevent scheduling on nodes with existing healthy replicas of the same volume",
+		Category:    SettingCategoryScheduling,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "false",
 	}
 
 	SettingDefinitionStorageOverProvisioningPercentage = SettingDefinition{
