@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/rancher/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 type EngineSimulatorRequest struct {

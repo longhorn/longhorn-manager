@@ -11,10 +11,10 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/rancher/longhorn-manager/controller"
-	"github.com/rancher/longhorn-manager/datastore"
-	lhclientset "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	lhinformers "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions"
+	"github.com/longhorn/longhorn-manager/controller"
+	"github.com/longhorn/longhorn-manager/datastore"
+	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
+	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 )
 
 const (

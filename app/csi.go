@@ -4,7 +4,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
-	"github.com/rancher/longhorn-manager/csi"
+	"github.com/longhorn/longhorn-manager/csi"
 )
 
 func CSICommand() cli.Command {

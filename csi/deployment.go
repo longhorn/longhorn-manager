@@ -13,8 +13,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
 
-	"github.com/rancher/longhorn-manager/types"
-	"github.com/rancher/longhorn-manager/util"
+	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 const (

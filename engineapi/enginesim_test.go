@@ -3,7 +3,7 @@ package engineapi
 import (
 	"testing"
 
-	"github.com/rancher/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/types"
 
 	. "gopkg.in/check.v1"
 )

@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
 
-	"github.com/rancher/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 func (s *Server) SnapshotCreate(w http.ResponseWriter, req *http.Request) (err error) {

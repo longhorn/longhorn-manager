@@ -15,13 +15,13 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/rancher/longhorn-manager/datastore"
-	"github.com/rancher/longhorn-manager/engineapi"
-	"github.com/rancher/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/types"
 
-	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-	lhclientset "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	lhinformers "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
+	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 )
 
 var (

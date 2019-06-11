@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"github.com/rancher/longhorn-manager/util"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 const (

@@ -12,9 +12,9 @@ import (
 	"google.golang.org/grpc/status"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 
-	longhornclient "github.com/rancher/longhorn-manager/client"
-	"github.com/rancher/longhorn-manager/types"
-	"github.com/rancher/longhorn-manager/util"
+	longhornclient "github.com/longhorn/longhorn-manager/client"
+	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 const (

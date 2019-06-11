@@ -11,8 +11,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 
-	longhornclient "github.com/rancher/longhorn-manager/client"
-	"github.com/rancher/longhorn-manager/types"
+	longhornclient "github.com/longhorn/longhorn-manager/client"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (

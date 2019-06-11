@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/rancher/longhorn-manager/util"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 const (

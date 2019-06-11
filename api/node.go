@@ -9,9 +9,9 @@ import (
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 
-	"github.com/rancher/longhorn-manager/util"
+	"github.com/longhorn/longhorn-manager/util"
 
-	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
 
 func (s *Server) NodeList(rw http.ResponseWriter, req *http.Request) error {

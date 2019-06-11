@@ -6,9 +6,9 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
-
 	"github.com/rancher/go-rancher/client"
-	"github.com/rancher/longhorn-manager/types"
+
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 func (s *Server) EngineImageList(rw http.ResponseWriter, req *http.Request) error {
