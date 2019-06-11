@@ -1,6 +1,6 @@
 Longhorn Manager
 ========
-[![Build Status](https://drone-pr.rancher.io/api/badges/longhorn/longhorn-manager/status.svg)](https://drone-pr.rancher.io/rancher/longhorn-manager)[![Go Report Card](https://goreportcard.com/badge/github.com/rancher/longhorn-manager)](https://goreportcard.com/report/github.com/rancher/longhorn-manager)
+[![Build Status](https://drone-pr.rancher.io/api/badges/longhorn/longhorn-manager/status.svg)](https://drone-pr.rancher.io/longhorn/longhorn-manager)[![Go Report Card](https://goreportcard.com/badge/github.com/rancher/longhorn-manager)](https://goreportcard.com/report/github.com/rancher/longhorn-manager)
 
 Manager for Longhorn.
 
