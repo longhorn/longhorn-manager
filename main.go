@@ -7,7 +7,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
-	"github.com/rancher/longhorn-manager/app"
+	"github.com/longhorn/longhorn-manager/app"
 )
 
 var VERSION = "dev"

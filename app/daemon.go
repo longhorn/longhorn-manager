@@ -6,17 +6,18 @@ import (
 	"os"
 
 	"github.com/gorilla/handlers"
-	"github.com/rancher/go-iscsi-helper/iscsi"
-	iscsi_util "github.com/rancher/go-iscsi-helper/util"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
-	"github.com/rancher/longhorn-manager/api"
-	"github.com/rancher/longhorn-manager/controller"
-	"github.com/rancher/longhorn-manager/datastore"
-	"github.com/rancher/longhorn-manager/manager"
-	"github.com/rancher/longhorn-manager/types"
-	"github.com/rancher/longhorn-manager/util"
+	"github.com/longhorn/go-iscsi-helper/iscsi"
+	iscsi_util "github.com/longhorn/go-iscsi-helper/util"
+
+	"github.com/longhorn/longhorn-manager/api"
+	"github.com/longhorn/longhorn-manager/controller"
+	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/manager"
+	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 var VERSION = "v0.3.0"

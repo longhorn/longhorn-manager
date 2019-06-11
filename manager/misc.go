@@ -17,7 +17,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	"github.com/rancher/longhorn-manager/util"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 var VERSION = "v0.3.0"

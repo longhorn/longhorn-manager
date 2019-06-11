@@ -7,7 +7,7 @@ import (
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	csicommon "github.com/kubernetes-csi/drivers/pkg/csi-common"
 
-	longhornclient "github.com/rancher/longhorn-manager/client"
+	longhornclient "github.com/longhorn/longhorn-manager/client"
 )
 
 type Manager struct {

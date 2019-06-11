@@ -12,9 +12,9 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/controller"
 
-	lhclientset "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	lhinformers "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
-	lhlisters "github.com/rancher/longhorn-manager/k8s/pkg/client/listers/longhorn/v1alpha1"
+	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
+	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
+	lhlisters "github.com/longhorn/longhorn-manager/k8s/pkg/client/listers/longhorn/v1alpha1"
 )
 
 var (

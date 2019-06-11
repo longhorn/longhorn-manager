@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/rest"
 
-	"github.com/rancher/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 func (s *DataStore) getManagerLabel() map[string]string {

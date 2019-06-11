@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/rancher/backupstore"
-	"github.com/rancher/longhorn-manager/types"
+	"github.com/longhorn/backupstore"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (

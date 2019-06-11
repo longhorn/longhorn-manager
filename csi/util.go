@@ -11,7 +11,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/util/mount"
 
-	longhornclient "github.com/rancher/longhorn-manager/client"
+	longhornclient "github.com/longhorn/longhorn-manager/client"
 )
 
 const (

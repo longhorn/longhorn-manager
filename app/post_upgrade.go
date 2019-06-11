@@ -12,8 +12,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/util/version"
 
-	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-	"github.com/rancher/longhorn-manager/types"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (

@@ -9,11 +9,11 @@ import (
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 
-	"github.com/rancher/longhorn-manager/datastore"
-	"github.com/rancher/longhorn-manager/types"
-	"github.com/rancher/longhorn-manager/util"
+	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
-	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
 
 func (s *Server) VolumeList(rw http.ResponseWriter, req *http.Request) (err error) {

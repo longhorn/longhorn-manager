@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ limitations under the License.
 package fake
 
 import (
-	v1alpha1 "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	v1alpha1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -62,7 +62,7 @@ func (c *FakeReplicas) List(opts v1.ListOptions) (result *v1alpha1.ReplicaList, 
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &v1alpha1.ReplicaList{}
+	list := &v1alpha1.ReplicaList{ListMeta: obj.(*v1alpha1.ReplicaList).ListMeta}
 	for _, item := range obj.(*v1alpha1.ReplicaList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)

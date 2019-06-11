@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,10 +21,10 @@ package v1alpha1
 import (
 	time "time"
 
-	longhorn_v1alpha1 "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-	versioned "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	internalinterfaces "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/rancher/longhorn-manager/k8s/pkg/client/listers/longhorn/v1alpha1"
+	longhornv1alpha1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	versioned "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
+	internalinterfaces "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/listers/longhorn/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -70,7 +70,7 @@ func NewFilteredEngineInformer(client versioned.Interface, namespace string, res
 				return client.LonghornV1alpha1().Engines(namespace).Watch(options)
 			},
 		},
-		&longhorn_v1alpha1.Engine{},
+		&longhornv1alpha1.Engine{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,7 +81,7 @@ func (f *engineInformer) defaultInformer(client versioned.Interface, resyncPerio
 }
 
 func (f *engineInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&longhorn_v1alpha1.Engine{}, f.defaultInformer)
+	return f.factory.InformerFor(&longhornv1alpha1.Engine{}, f.defaultInformer)
 }
 
 func (f *engineInformer) Lister() v1alpha1.EngineLister {

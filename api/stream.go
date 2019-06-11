@@ -13,7 +13,7 @@ import (
 	"github.com/rancher/go-rancher/client"
 	"github.com/sirupsen/logrus"
 
-	"github.com/rancher/longhorn-manager/controller"
+	"github.com/longhorn/longhorn-manager/controller"
 )
 
 const (

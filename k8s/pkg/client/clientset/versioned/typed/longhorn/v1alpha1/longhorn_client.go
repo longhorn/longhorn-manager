@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-	"github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned/scheme"
+	v1alpha1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	"github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/scheme"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	rest "k8s.io/client-go/rest"
 )

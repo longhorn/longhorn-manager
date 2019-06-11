@@ -11,7 +11,7 @@ import (
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 
-	"github.com/rancher/longhorn-manager/manager"
+	"github.com/longhorn/longhorn-manager/manager"
 )
 
 func (s *Server) EventList(rw http.ResponseWriter, req *http.Request) error {

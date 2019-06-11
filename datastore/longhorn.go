@@ -16,10 +16,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
 
-	"github.com/rancher/longhorn-manager/types"
-	"github.com/rancher/longhorn-manager/util"
+	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
-	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
 
 const (
@@ -1106,7 +1106,7 @@ func (s *DataStore) ListEnginesByNode(name string) ([]*longhorn.Engine, error) {
 
 func verifyCreation(name, kind string, getMethod func(name string) (runtime.Object, error)) (runtime.Object, error) {
 	// WORKAROUND: The immedidate read after object's creation can fail.
-	// See https://github.com/rancher/longhorn/issues/133
+	// See https://github.com/longhorn/longhorn/issues/133
 	var (
 		ret runtime.Object
 		err error

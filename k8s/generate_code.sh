@@ -1,9 +1,9 @@
 #!/bin/bash
 
-APIS_DIR="github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn"
+APIS_DIR="github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn"
 VERSION="v1alpha1"
 APIS_VERSION_DIR="${APIS_DIR}/${VERSION}"
-OUTPUT_DIR="github.com/rancher/longhorn-manager/k8s/pkg/client"
+OUTPUT_DIR="github.com/longhorn/longhorn-manager/k8s/pkg/client"
 CLIENTSET_DIR="${OUTPUT_DIR}/clientset"
 LISTERS_DIR="${OUTPUT_DIR}/listers"
 INFORMERS_DIR="${OUTPUT_DIR}/informers"

@@ -17,9 +17,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 
-	"github.com/rancher/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/types"
 
-	longhornclient "github.com/rancher/longhorn-manager/client"
+	longhornclient "github.com/longhorn/longhorn-manager/client"
 )
 
 var VERSION = "v0.3.0"

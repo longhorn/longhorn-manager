@@ -7,10 +7,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"github.com/rancher/longhorn-manager/engineapi"
-	"github.com/rancher/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/types"
 
-	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
 
 func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*engineapi.Snapshot, error) {

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/rancher/longhorn-manager/datastore"
-	"github.com/rancher/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 	apiv1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -16,9 +16,9 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
-	longhorn "github.com/rancher/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-	lhfake "github.com/rancher/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-	lhinformerfactory "github.com/rancher/longhorn-manager/k8s/pkg/client/informers/externalversions"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
+	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 
 	. "gopkg.in/check.v1"
 )

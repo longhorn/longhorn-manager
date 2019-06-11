@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"github.com/rancher/longhorn-manager/manager"
+	"github.com/longhorn/longhorn-manager/manager"
 )
 
 type OwnerIDFunc func(req *http.Request) (string, error)
