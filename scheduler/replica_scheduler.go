@@ -50,7 +50,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 		return nil, err
 	}
 	if len(nodeInfo) == 0 {
-		logrus.Errorf("There's no available node for replica %+v", replica)
+		logrus.Errorf("There's no available node for replica %v, size %v", replica.ObjectMeta.Name, replica.Spec.VolumeSize)
 		return nil, nil
 	}
 
@@ -59,7 +59,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 
 	// there's no disk that fit for current replica
 	if len(diskCandidates) == 0 {
-		logrus.Errorf("There's no available disk for replica %+v", replica)
+		logrus.Errorf("There's no available disk for replica %v, size %v", replica.ObjectMeta.Name, replica.Spec.VolumeSize)
 		return nil, nil
 	}
 
