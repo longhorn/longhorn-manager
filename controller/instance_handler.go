@@ -109,7 +109,7 @@ func (h *InstanceHandler) syncStatusWithPod(pod *v1.Pod, spec *types.InstanceSpe
 		if status.CurrentImage == "" {
 			status.CurrentImage = spec.EngineImage
 		}
-		nodeBootID, err := h.GetNodeBootIDForPod(pod)
+		nodeBootID, err := h.getNodeBootIDForPod(pod)
 		if err != nil {
 			logrus.Warnf("cannot get node BootID for instance %v", pod.Name)
 		} else {
@@ -294,7 +294,7 @@ func (h *InstanceHandler) DeleteInstanceForObject(obj runtime.Object) (err error
 	return h.deletePodForObject(obj)
 }
 
-func (h *InstanceHandler) GetNodeBootIDForPod(pod *v1.Pod) (string, error) {
+func (h *InstanceHandler) getNodeBootIDForPod(pod *v1.Pod) (string, error) {
 	nodeName := pod.Spec.NodeName
 	node, err := h.kubeClient.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
 	if err != nil {
