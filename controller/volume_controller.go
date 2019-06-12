@@ -536,6 +536,23 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 	}
 
+	neverAttached := true
+	for _, r := range rs {
+		if r.Spec.HealthyAt != "" {
+			neverAttached = false
+			break
+		}
+	}
+
+	if neverAttached && v.Spec.FromBackup != "" && v.Spec.Standby == false {
+		v.Spec.RestorationRequired = true
+		usableNode, err := vc.ds.GetRandomReadyNode()
+		if err != nil {
+			return err
+		}
+		v.Spec.NodeID = usableNode.Name
+	}
+
 	if e.Status.CurrentState == types.InstanceStateError && v.Spec.NodeID != "" {
 		if e.Spec.NodeID != "" && e.Spec.NodeID != v.Spec.NodeID {
 			return fmt.Errorf("BUG: engine %v nodeID %v doesn't match volume %v nodeID %v",
@@ -795,6 +812,12 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		v.Status.State = types.VolumeStateAttached
 		if oldState != v.Status.State {
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Spec.NodeID)
+		}
+
+		//Automatically detach the new restored volume
+		if v.Spec.RestorationRequired == true && v.Spec.FromBackup != "" && v.Spec.Standby == false && v.Status.State == types.VolumeStateAttached {
+			v.Spec.NodeID = ""
+			v.Spec.RestorationRequired = false
 		}
 	}
 	return nil

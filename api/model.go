@@ -36,6 +36,7 @@ type Volume struct {
 	LastBackup          string                 `json:"lastBackup"`
 	LastBackupAt        string                 `json:"lastBackupAt"`
 	Standby             bool                   `json:"standby"`
+	RestorationRequired bool                   `json:"restorationRequired"`
 
 	RecurringJobs    []types.RecurringJob                          `json:"recurringJobs"`
 	Conditions       map[types.VolumeConditionType]types.Condition `json:"conditions"`
@@ -547,6 +548,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		LastBackup:          v.Status.LastBackup,
 		LastBackupAt:        v.Status.LastBackupAt,
 		Standby:             v.Spec.Standby,
+		RestorationRequired: v.Spec.RestorationRequired,
 
 		Conditions:       v.Status.Conditions,
 		KubernetesStatus: v.Status.KubernetesStatus,
