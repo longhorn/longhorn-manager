@@ -68,6 +68,7 @@ type VolumeSpec struct {
 	RecurringJobs       []RecurringJob `json:"recurringJobs"`
 	BaseImage           string         `json:"baseImage"`
 	Standby             bool           `json:"Standby"`
+	RestorationRequired bool           `json:"restorationRequired"`
 }
 
 type KubernetesStatus struct {

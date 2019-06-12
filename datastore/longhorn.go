@@ -930,6 +930,28 @@ func (s *DataStore) ListNodes() (map[string]*longhorn.Node, error) {
 	return itemMap, nil
 }
 
+func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
+	nodeList, err := s.ListNodes()
+	msg := fmt.Sprintf("nodelist %v", nodeList)
+	logrus.Errorf(msg)
+	if err != nil {
+		return nil, err
+	}
+	var usableNode *longhorn.Node
+	for name := range nodeList {
+		node := nodeList[name]
+		readyCondition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+		if readyCondition.Status == types.ConditionStatusTrue && node.Spec.AllowScheduling == true {
+			usableNode = node
+			break
+		}
+	}
+	if usableNode == nil {
+		return nil, fmt.Errorf("unable to get a ready node")
+	}
+	return usableNode, nil
+}
+
 // RemoveFinalizerForNode will result in deletion if DeletionTimestamp was set
 func (s *DataStore) RemoveFinalizerForNode(obj *longhorn.Node) error {
 	if !util.FinalizerExists(longhornFinalizerKey, obj) {
