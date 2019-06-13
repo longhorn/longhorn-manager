@@ -44,8 +44,9 @@ type Volume struct {
 	Conditions       map[types.VolumeConditionType]types.Condition `json:"conditions"`
 	KubernetesStatus types.KubernetesStatus                        `json:"kubernetesStatus"`
 
-	Replicas    []Replica    `json:"replicas"`
-	Controllers []Controller `json:"controllers"`
+	Replicas     []Replica      `json:"replicas"`
+	Controllers  []Controller   `json:"controllers"`
+	BackupStatus []BackupStatus `json:"backupStatus"`
 }
 
 type Snapshot struct {
@@ -199,6 +200,15 @@ type Tag struct {
 	TagType string `json:"tagType"`
 }
 
+type BackupStatus struct {
+	client.Resource
+	Name        string `json:"id"`
+	Snapshot    string `json:"snapshot"`
+	Progress    int    `json:"progress"`
+	BackupURL   string `json:"backupURL"`
+	BackupError string `json:"backupError"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -210,6 +220,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("snapshotInput", SnapshotInput{})
 	schemas.AddType("backup", Backup{})
 	schemas.AddType("backupInput", BackupInput{})
+	schemas.AddType("backupStatus", BackupStatus{})
 	schemas.AddType("recurringJob", types.RecurringJob{})
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
 	schemas.AddType("salvageInput", SalvageInput{})
@@ -506,6 +517,7 @@ func toSettingCollection(settings []*longhorn.Setting) *client.GenericCollection
 func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, apiContext *api.ApiContext) *Volume {
 	var ve *longhorn.Engine
 	controllers := []Controller{}
+	backups := []BackupStatus{}
 	for _, e := range ves {
 		controllers = append(controllers, Controller{
 			Instance: Instance{
@@ -522,6 +534,19 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		})
 		if e.Spec.NodeID == v.Spec.NodeID {
 			ve = e
+		}
+		backupStatus := e.Status.BackupStatus
+		if backupStatus != nil {
+			for id, status := range backupStatus {
+				backups = append(backups, BackupStatus{
+					Resource:    client.Resource{},
+					Name:        id,
+					Snapshot:    status.SnapshotName,
+					Progress:    status.Progress,
+					BackupURL:   status.BackupURL,
+					BackupError: status.BackupError,
+				})
+			}
 		}
 	}
 
@@ -578,8 +603,9 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		Conditions:       v.Status.Conditions,
 		KubernetesStatus: v.Status.KubernetesStatus,
 
-		Controllers: controllers,
-		Replicas:    replicas,
+		Controllers:  controllers,
+		Replicas:     replicas,
+		BackupStatus: backups,
 	}
 
 	actions := map[string]struct{}{}
