@@ -53,6 +53,7 @@ type EngineClient interface {
 	SnapshotRevert(name string) error
 	SnapshotPurge() error
 	SnapshotBackup(snapName, backupTarget string, labels map[string]string, credential map[string]string) error
+	SnapshotBackupStatus() (map[string]*types.BackupStatus, error)
 
 	BackupRestoreIncrementally(backupTarget, backupName, backupVolume, lastBackup string) error
 }

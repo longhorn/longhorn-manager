@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 )
 
@@ -107,4 +108,17 @@ func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string
 	}
 	logrus.Debugf("Backup %v created for volume %v snapshot %v", backup, e.Name(), snapName)
 	return nil
+}
+
+func (e *Engine) SnapshotBackupStatus() (map[string]*types.BackupStatus, error) {
+	args := []string{"backup", "status"}
+	output, err := e.ExecuteEngineBinary(args...)
+	if err != nil {
+		return nil, err
+	}
+	backups := make(map[string]*types.BackupStatus, 0)
+	if err := json.Unmarshal([]byte(output), &backups); err != nil {
+		return nil, err
+	}
+	return backups, nil
 }

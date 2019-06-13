@@ -622,6 +622,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
+	backupStatusList, err := client.SnapshotBackupStatus()
+	if err != nil {
+		return err
+	}
+	engine.Status.BackupStatus = backupStatusList
+
 	endpoint, err := client.Endpoint()
 	if err != nil {
 		return err

@@ -185,6 +185,10 @@ func (e *EngineSimulator) SnapshotBackup(snapName, backupTarget string, labels m
 	return fmt.Errorf("Not implemented")
 }
 
+func (e *EngineSimulator) SnapshotBackupStatus() (map[string]*types.BackupStatus, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
 func (e *EngineSimulator) Upgrade(binary string, replicaURLs []string) error {
 	return fmt.Errorf("Not implemented")
 }
