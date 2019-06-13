@@ -157,9 +157,10 @@ type EngineSpec struct {
 
 type EngineStatus struct {
 	InstanceStatus
-	ReplicaModeMap     map[string]ReplicaMode `json:"replicaModeMap"`
-	Endpoint           string                 `json:"endpoint"`
-	LastRestoredBackup string                 `json:"lastRestoredBackup"`
+	ReplicaModeMap     map[string]ReplicaMode   `json:"replicaModeMap"`
+	Endpoint           string                   `json:"endpoint"`
+	LastRestoredBackup string                   `json:"lastRestoredBackup"`
+	BackupStatus       map[string]*BackupStatus `json:"backupStatus"`
 }
 
 type ReplicaSpec struct {
@@ -273,4 +274,11 @@ type DiskStatus struct {
 	StorageScheduled int64                           `json:"storageScheduled"`
 	StorageMaximum   int64                           `json:"storageMaximum"`
 	ScheduledReplica map[string]int64                `json:"scheduledReplica"`
+}
+
+type BackupStatus struct {
+	Progress     int    `json:"progress"`
+	BackupURL    string `json:"backupURL,omitempty"`
+	BackupError  string `json:"backupError,omitempty"`
+	SnapshotName string `json:"snapshotName"`
 }
