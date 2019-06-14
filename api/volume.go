@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"sort"
 
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
@@ -122,6 +123,30 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 	size, err := util.ConvertSize(volume.Size)
 	if err != nil {
 		return fmt.Errorf("fail to parse size %v", err)
+	}
+
+	// Check DiskSelector.
+	diskTags, err := s.m.GetDiskTags()
+	if err != nil {
+		return errors.Wrapf(err, "failed to get all disk tags")
+	}
+	sort.Strings(diskTags)
+	for _, selector := range volume.DiskSelector {
+		if index := sort.SearchStrings(diskTags, selector); index >= len(diskTags) || diskTags[index] != selector {
+			return fmt.Errorf("specified disk tag %v does not exist", selector)
+		}
+	}
+
+	// Check NodeSelector.
+	nodeTags, err := s.m.GetNodeTags()
+	if err != nil {
+		return errors.Wrapf(err, "failed to get all node tags")
+	}
+	sort.Strings(nodeTags)
+	for _, selector := range volume.NodeSelector {
+		if index := sort.SearchStrings(nodeTags, selector); index >= len(nodeTags) || nodeTags[index] != selector {
+			return fmt.Errorf("specified node tag %v does not exist", selector)
+		}
 	}
 
 	v, err := s.m.Create(volume.Name, &types.VolumeSpec{
