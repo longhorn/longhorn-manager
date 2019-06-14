@@ -5,6 +5,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
@@ -12,6 +13,46 @@ import (
 
 func (m *VolumeManager) GetNode(name string) (*longhorn.Node, error) {
 	return m.ds.GetNode(name)
+}
+
+func (m *VolumeManager) GetDiskTags() ([]string, error) {
+	foundTags := make(map[string]struct{})
+	var tags []string
+
+	nodeList, err := m.ListNodesSorted()
+	if err != nil {
+		return nil, errors.Wrapf(err, "fail to list nodes")
+	}
+	for _, node := range nodeList {
+		for _, disk := range node.Spec.Disks {
+			for _, tag := range disk.Tags {
+				if _, ok := foundTags[tag]; !ok {
+					foundTags[tag] = struct{}{}
+					tags = append(tags, tag)
+				}
+			}
+		}
+	}
+	return tags, nil
+}
+
+func (m *VolumeManager) GetNodeTags() ([]string, error) {
+	foundTags := make(map[string]struct{})
+	var tags []string
+
+	nodeList, err := m.ListNodesSorted()
+	if err != nil {
+		return nil, errors.Wrapf(err, "fail to list nodes")
+	}
+	for _, node := range nodeList {
+		for _, tag := range node.Spec.Tags {
+			if _, ok := foundTags[tag]; !ok {
+				foundTags[tag] = struct{}{}
+				tags = append(tags, tag)
+			}
+		}
+	}
+	return tags, nil
 }
 
 func (m *VolumeManager) UpdateNode(n *longhorn.Node) (*longhorn.Node, error) {
