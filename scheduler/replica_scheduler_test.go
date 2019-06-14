@@ -511,7 +511,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			c.Assert(r, NotNil)
 			rIndexer.Add(r)
 
-			sr, err := s.ScheduleReplica(r, tc.replicas)
+			sr, err := s.ScheduleReplica(r, tc.replicas, volume)
 			if tc.err {
 				c.Assert(err, NotNil)
 			} else {

@@ -595,7 +595,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		if r.Spec.NodeID != "" {
 			continue
 		}
-		scheduledReplica, err := vc.scheduler.ScheduleReplica(r, rs)
+		scheduledReplica, err := vc.scheduler.ScheduleReplica(r, rs, v)
 		if err != nil {
 			return err
 		}

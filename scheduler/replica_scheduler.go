@@ -3,6 +3,7 @@ package scheduler
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -38,7 +39,7 @@ func NewReplicaScheduler(ds *datastore.DataStore) *ReplicaScheduler {
 }
 
 // ScheduleReplica will return (nil, nil) for unschedulable replica
-func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas map[string]*longhorn.Replica) (*longhorn.Replica, error) {
+func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) (*longhorn.Replica, error) {
 	// only called when replica is starting for the first time
 	if replica.Spec.NodeID != "" {
 		return nil, fmt.Errorf("BUG: Replica %v has been scheduled to node %v", replica.Name, replica.Spec.NodeID)
@@ -55,7 +56,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	}
 
 	// find proper node and disk
-	diskCandidates := rcs.chooseDiskCandidates(nodeInfo, replicas, replica)
+	diskCandidates := rcs.chooseDiskCandidates(nodeInfo, replicas, replica, volume)
 
 	// there's no disk that fit for current replica
 	if len(diskCandidates) == 0 {
@@ -69,11 +70,15 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	return replica, nil
 }
 
-func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.Node, replicas map[string]*longhorn.Replica, replica *longhorn.Replica) map[string]*Disk {
+func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.Node, replicas map[string]*longhorn.Replica, replica *longhorn.Replica, volume *longhorn.Volume) map[string]*Disk {
 	diskCandidates := map[string]*Disk{}
 	filterdNode := []*longhorn.Node{}
 	for nodeName, node := range nodeInfo {
+		// Filter Nodes first. If the Nodes don't match the tags, don't bother checking their Disks as candidates.
 		isFilterd := false
+		if !rcs.checkTagsAreFulfilled(node.Spec.Tags, volume.Spec.NodeSelector) {
+			isFilterd = true
+		}
 		for _, r := range replicas {
 			// filter replica in deleting process
 			if r.Spec.NodeID != "" && r.Spec.NodeID == nodeName && r.DeletionTimestamp == nil && r.Spec.FailedAt == "" {
@@ -83,7 +88,7 @@ func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.
 			}
 		}
 		if !isFilterd {
-			diskCandidates = rcs.filterNodeDisksForReplica(node, replica, replicas)
+			diskCandidates = rcs.filterNodeDisksForReplica(node, replica, replicas, volume)
 			if len(diskCandidates) > 0 {
 				return diskCandidates
 			}
@@ -99,14 +104,14 @@ func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.
 	// Defaulting to soft anti-affinity if we can't get the hard anti-affinity setting.
 	if err != nil || !hardAntiAffinity {
 		for _, node := range filterdNode {
-			diskCandidates = rcs.filterNodeDisksForReplica(node, replica, replicas)
+			diskCandidates = rcs.filterNodeDisksForReplica(node, replica, replicas, volume)
 		}
 	}
 
 	return diskCandidates
 }
 
-func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, replica *longhorn.Replica, replicas map[string]*longhorn.Replica) map[string]*Disk {
+func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) map[string]*Disk {
 	preferredDisk := map[string]*Disk{}
 	// find disk that fit for current replica
 	disks := node.Spec.Disks
@@ -133,6 +138,10 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, repl
 			!rcs.IsSchedulableToDisk(replica.Spec.VolumeSize, info) {
 			continue
 		}
+		// Check if the Disk's Tags are valid.
+		if !rcs.checkTagsAreFulfilled(disk.Tags, volume.Spec.DiskSelector) {
+			continue
+		}
 		suggestDisk := &Disk{
 			DiskSpec: disk,
 			NodeID:   node.Name,
@@ -141,6 +150,21 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, repl
 	}
 
 	return preferredDisk
+}
+
+func (rcs *ReplicaScheduler) checkTagsAreFulfilled(itemTags, volumeTags []string) bool {
+	if !sort.StringsAreSorted(itemTags) {
+		logrus.Warnf("BUG: Tags are not sorted, sort now")
+		sort.Strings(itemTags)
+	}
+
+	for _, tag := range volumeTags {
+		if index := sort.SearchStrings(itemTags, tag); index >= len(itemTags) || itemTags[index] != tag {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (rcs *ReplicaScheduler) getNodeInfo() (map[string]*longhorn.Node, error) {
