@@ -193,6 +193,12 @@ type SupportBundleInitateInput struct {
 	Description string `json:"description"`
 }
 
+type Tag struct {
+	client.Resource
+	Name    string `json:"name"`
+	TagType string `json:"tagType"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -227,6 +233,8 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("event", Event{})
 	schemas.AddType("supportBundle", SupportBundle{})
 	schemas.AddType("supportBundleInitateInput", SupportBundleInitateInput{})
+
+	schemas.AddType("tag", Tag{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
@@ -805,4 +813,26 @@ func toSupportBundleResource(nodeID string, sb *manager.SupportBundle) *SupportB
 		ErrorMessage:       sb.Error,
 		ProgressPercentage: sb.ProgressPercentage,
 	}
+}
+
+func toTagResource(tag string, tagType string, apiContext *api.ApiContext) *Tag {
+	t := &Tag{
+		Resource: client.Resource{
+			Id:    tag,
+			Links: map[string]string{},
+			Type:  "tag",
+		},
+		Name:    tag,
+		TagType: tagType,
+	}
+	t.Links["self"] = apiContext.UrlBuilder.Current()
+	return t
+}
+
+func toTagCollection(tags []string, tagType string, apiContext *api.ApiContext) *client.GenericCollection {
+	var data []interface{}
+	for _, tag := range tags {
+		data = append(data, toTagResource(tag, tagType, apiContext))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "tag"}}
 }

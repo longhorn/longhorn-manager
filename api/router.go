@@ -121,6 +121,9 @@ func NewRouter(s *Server) *mux.Router {
 
 	r.Methods("Get").Path("/v1/events").Handler(f(schemas, s.EventList))
 
+	r.Methods("GET").Path("/v1/disktags").Handler(f(schemas, s.DiskTagList))
+	r.Methods("GET").Path("/v1/nodetags").Handler(f(schemas, s.NodeTagList))
+
 	r.Methods("POST").Path("/v1/supportbundles").Handler(f(schemas, s.InitiateSupportBundle))
 	r.Methods("GET").Path("/v1/supportbundles/{name}/{bundleName}").Handler(f(schemas,
 		s.fwd.Handler(OwnerIDFromNode(s.m), s.QuerySupportBundle)))
