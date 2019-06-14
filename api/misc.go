@@ -88,3 +88,27 @@ func (s *Server) DownloadSupportBundle(w http.ResponseWriter, req *http.Request)
 	}
 	return nil
 }
+
+func (s *Server) DiskTagList(rw http.ResponseWriter, req *http.Request) error {
+	apiContext := api.GetApiContext(req)
+
+	tags, err := s.m.GetDiskTags()
+	if err != nil {
+		return errors.Wrap(err, "failed to get all tags")
+	}
+
+	apiContext.Write(toTagCollection(tags, "disk", apiContext))
+	return nil
+}
+
+func (s *Server) NodeTagList(rw http.ResponseWriter, req *http.Request) error {
+	apiContext := api.GetApiContext(req)
+
+	tags, err := s.m.GetNodeTags()
+	if err != nil {
+		return errors.Wrap(err, "failed to get all tags")
+	}
+
+	apiContext.Write(toTagCollection(tags, "node", apiContext))
+	return nil
+}
