@@ -69,6 +69,8 @@ type VolumeSpec struct {
 	BaseImage           string         `json:"baseImage"`
 	Standby             bool           `json:"Standby"`
 	RestorationRequired bool           `json:"restorationRequired"`
+	DiskSelector        []string       `json:"diskSelector"`
+	NodeSelector        []string       `json:"nodeSelector"`
 }
 
 type KubernetesStatus struct {
@@ -220,6 +222,7 @@ type NodeSpec struct {
 	Name            string              `json:"name"`
 	Disks           map[string]DiskSpec `json:"disks"`
 	AllowScheduling bool                `json:"allowScheduling"`
+	Tags            []string            `json:"tags"`
 }
 
 type NodeConditionType string
@@ -258,9 +261,10 @@ type NodeStatus struct {
 }
 
 type DiskSpec struct {
-	Path            string `json:"path"`
-	AllowScheduling bool   `json:"allowScheduling"`
-	StorageReserved int64  `json:"storageReserved"`
+	Path            string   `json:"path"`
+	AllowScheduling bool     `json:"allowScheduling"`
+	StorageReserved int64    `json:"storageReserved"`
+	Tags            []string `json:"tags"`
 }
 
 type DiskStatus struct {

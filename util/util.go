@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -28,6 +29,7 @@ import (
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	iscsi_util "github.com/longhorn/go-iscsi-helper/util"
 )
@@ -487,4 +489,24 @@ func (h filteredLoggingHandler) ServeHTTP(w http.ResponseWriter, req *http.Reque
 		}
 	}
 	h.loggingHandler.ServeHTTP(w, req)
+}
+
+func ValidateTags(inputTags []string) ([]string, error) {
+	foundTags := make(map[string]struct{})
+	var tags []string
+	for _, tag := range inputTags {
+		if _, ok := foundTags[tag]; ok {
+			continue
+		}
+		errList := validation.IsQualifiedName(tag)
+		if len(errList) > 0 {
+			return nil, fmt.Errorf("at least one error encountered while validating tags: %v", errList[0])
+		}
+		foundTags[tag] = struct{}{}
+		tags = append(tags, tag)
+	}
+
+	sort.Strings(tags)
+
+	return tags, nil
 }

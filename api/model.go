@@ -37,6 +37,8 @@ type Volume struct {
 	LastBackupAt        string                 `json:"lastBackupAt"`
 	Standby             bool                   `json:"standby"`
 	RestorationRequired bool                   `json:"restorationRequired"`
+	DiskSelector        []string               `json:"diskSelector"`
+	NodeSelector        []string               `json:"nodeSelector"`
 
 	RecurringJobs    []types.RecurringJob                          `json:"recurringJobs"`
 	Conditions       map[types.VolumeConditionType]types.Condition `json:"conditions"`
@@ -159,6 +161,7 @@ type Node struct {
 	AllowScheduling bool                                        `json:"allowScheduling"`
 	Disks           map[string]DiskInfo                         `json:"disks"`
 	Conditions      map[types.NodeConditionType]types.Condition `json:"conditions"`
+	Tags            []string                                    `json:"tags"`
 }
 
 type DiskInfo struct {
@@ -259,6 +262,10 @@ func nodeSchema(node *client.Schema) {
 	conditions := node.ResourceFields["conditions"]
 	conditions.Type = "map[nodeCondition]"
 	node.ResourceFields["conditions"] = conditions
+
+	tags := node.ResourceFields["tags"]
+	tags.Create = true
+	node.ResourceFields["tags"] = tags
 }
 
 func diskSchema(diskUpdateInput *client.Schema) {
@@ -456,6 +463,14 @@ func volumeSchema(volume *client.Schema) {
 	conditions := volume.ResourceFields["conditions"]
 	conditions.Type = "map[volumeCondition]"
 	volume.ResourceFields["conditions"] = conditions
+
+	diskSelector := volume.ResourceFields["diskSelector"]
+	diskSelector.Create = true
+	volume.ResourceFields["diskSelector"] = diskSelector
+
+	nodeSelector := volume.ResourceFields["nodeSelector"]
+	nodeSelector.Create = true
+	volume.ResourceFields["nodeSelector"] = nodeSelector
 }
 
 func toSettingResource(setting *longhorn.Setting) *Setting {
@@ -549,6 +564,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		LastBackupAt:        v.Status.LastBackupAt,
 		Standby:             v.Spec.Standby,
 		RestorationRequired: v.Spec.RestorationRequired,
+		DiskSelector:        v.Spec.DiskSelector,
+		NodeSelector:        v.Spec.NodeSelector,
 
 		Conditions:       v.Status.Conditions,
 		KubernetesStatus: v.Status.KubernetesStatus,
@@ -726,6 +743,7 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 		Address:         address,
 		AllowScheduling: node.Spec.AllowScheduling,
 		Conditions:      node.Status.Conditions,
+		Tags:            node.Spec.Tags,
 	}
 
 	disks := map[string]DiskInfo{}
