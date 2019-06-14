@@ -34,6 +34,7 @@ steps:
     - master
     event:
     - push
+    - pull-request
 
 volumes:
 - name: socket
