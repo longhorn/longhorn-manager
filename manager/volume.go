@@ -237,6 +237,8 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			RecurringJobs:       spec.RecurringJobs,
 			Standby:             spec.Standby,
 			RestorationRequired: spec.RestorationRequired,
+			DiskSelector:        spec.DiskSelector,
+			NodeSelector:        spec.NodeSelector,
 		},
 		Status: types.VolumeStatus{
 			LastBackup: lastBackup,

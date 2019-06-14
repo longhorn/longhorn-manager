@@ -67,7 +67,14 @@ func (s *Server) NodeUpdate(rw http.ResponseWriter, req *http.Request) error {
 		return errors.Wrap(err, "fail to get node ip")
 	}
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.UpdateNode(id, n.AllowScheduling)
+		node, err := s.m.GetNode(id)
+		if err != nil {
+			return nil, err
+		}
+		node.Spec.AllowScheduling = n.AllowScheduling
+		node.Spec.Tags = n.Tags
+
+		return s.m.UpdateNode(node)
 	})
 	if err != nil {
 		return err

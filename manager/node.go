@@ -14,17 +14,19 @@ func (m *VolumeManager) GetNode(name string) (*longhorn.Node, error) {
 	return m.ds.GetNode(name)
 }
 
-func (m *VolumeManager) UpdateNode(name string, allowScheduling bool) (*longhorn.Node, error) {
-	node, err := m.ds.GetNode(name)
+func (m *VolumeManager) UpdateNode(n *longhorn.Node) (*longhorn.Node, error) {
+	// We need to make sure the tags passed in are valid before updating the node.
+	tags, err := util.ValidateTags(n.Spec.Tags)
 	if err != nil {
 		return nil, err
 	}
-	node.Spec.AllowScheduling = allowScheduling
-	node, err = m.ds.UpdateNode(node)
+	n.Spec.Tags = tags
+
+	node, err := m.ds.UpdateNode(n)
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Updated node %v scheduling to %v", name, node.Spec.AllowScheduling)
+	logrus.Debugf("Updated node %v to %+v", node.Spec.Name, node.Spec)
 	return node, nil
 }
 
@@ -77,9 +79,17 @@ func (m *VolumeManager) DiskUpdate(name string, updateDisks []types.DiskSpec) (*
 			}
 		}
 		if !isInvalid {
+
 			if uDisk.StorageReserved < 0 || uDisk.StorageReserved > diskInfo.StorageMaximum {
 				return nil, fmt.Errorf("Update disk on node %v error: The storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", name, uDisk.Path)
 			}
+			// Validate Tags first before the updated Disk gets assigned.
+			tags, err := util.ValidateTags(uDisk.Tags)
+			if err != nil {
+				return nil, err
+			}
+			// Make sure we assign to pointer of DiskSpec or it won't update the Tags correctly.
+			(&uDisk).Tags = tags
 			// update disks
 			if oDisk, ok := originDisks[diskInfo.Fsid]; ok {
 				if oDisk.Path != uDisk.Path {
@@ -91,6 +101,7 @@ func (m *VolumeManager) DiskUpdate(name string, updateDisks []types.DiskSpec) (*
 				// add disks
 				diskUpdateMap[diskInfo.Fsid] = uDisk
 			}
+
 		}
 	}
 
