@@ -68,12 +68,13 @@ type EngineClientCollection interface {
 }
 
 type Volume struct {
-	Name         string `json:"name"`
-	ReplicaCount int    `json:"replicaCount"`
-	Endpoint     string `json:"endpoint"`
-	Frontend     string `json:"frontend"`
-	IsRestoring  bool   `json:"isRestoring"`
-	LastRestored string `json:"lastRestored"`
+	Name          string `json:"name"`
+	ReplicaCount  int    `json:"replicaCount"`
+	Endpoint      string `json:"endpoint"`
+	Frontend      string `json:"frontend"`
+	FrontendState string `json:"frontendState"`
+	IsRestoring   bool   `json:"isRestoring"`
+	LastRestored  string `json:"lastRestored"`
 }
 
 type Snapshot struct {
