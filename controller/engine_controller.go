@@ -16,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -908,14 +907,9 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 }
 
 func (ec *EngineController) getDefaultReadinessHandler() (readinessHandler v1.Handler, err error) {
-	port, err := strconv.Atoi(engineapi.ControllerDefaultPort)
-	if err != nil {
-		return readinessHandler, fmt.Errorf("BUG: Invalid controller default port %v", engineapi.ControllerDefaultPort)
-	}
 	readinessHandler = v1.Handler{
-		HTTPGet: &v1.HTTPGetAction{
-			Path: "/v1/",
-			Port: intstr.FromInt(port),
+		Exec: &v1.ExecAction{
+			Command: []string{"/usr/bin/grpc_health_probe", fmt.Sprintf("-addr=:%s", engineapi.ControllerDefaultPort)},
 		},
 	}
 	return readinessHandler, err
