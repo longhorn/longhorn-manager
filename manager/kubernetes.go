@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -76,6 +77,9 @@ func (m *VolumeManager) PVCreate(name, pvName string) (v *longhorn.Volume, err e
 }
 
 func NewPVManifest(v *longhorn.Volume, pvName, storageClassName string) *apiv1.PersistentVolume {
+	diskSelector := strings.Join(v.Spec.DiskSelector, ",")
+	nodeSelector := strings.Join(v.Spec.NodeSelector, ",")
+
 	return &apiv1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: pvName,
@@ -99,6 +103,8 @@ func NewPVManifest(v *longhorn.Volume, pvName, storageClassName string) *apiv1.P
 					Driver: "io.rancher.longhorn",
 					FSType: "ext4",
 					VolumeAttributes: map[string]string{
+						"diskSelector":        diskSelector,
+						"nodeSelector":        nodeSelector,
 						"numberOfReplicas":    string(v.Spec.NumberOfReplicas),
 						"staleReplicaTimeout": string(v.Spec.StaleReplicaTimeout),
 					},
