@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/robfig/cron"
@@ -54,6 +55,14 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 			return nil, errors.Wrap(err, "Invalid parameter recurringJobs")
 		}
 		vol.RecurringJobs = recurringJobs
+	}
+
+	if diskSelector, ok := volOptions["diskSelector"]; ok {
+		vol.DiskSelector = strings.Split(diskSelector, ",")
+	}
+
+	if nodeSelector, ok := volOptions["nodeSelector"]; ok {
+		vol.NodeSelector = strings.Split(nodeSelector, ",")
 	}
 
 	return vol, nil
