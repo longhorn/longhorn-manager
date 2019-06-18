@@ -10,7 +10,7 @@ SUFFIX=""
 export VERSION=${VERSION:-$(./scripts/version)}
 
 TAG=${TAG:-${VERSION}${SUFFIX}}
-REPO=${REPO:-rancher}
+REPO=${REPO:-longhornio}
 IMAGE=${IMAGE:-${REPO}/longhorn-manager:${TAG}}
 
 if [ ! -e ./bin/longhorn-manager ]; then
