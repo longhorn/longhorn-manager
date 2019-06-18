@@ -22,7 +22,7 @@ steps:
   settings:
     context: package/
     custom_dns: 1.1.1.1
-    dockerfile: package/Dockerfile
+    dockerfile: Dockerfile.dapper
     password:
       from_secret: docker_password
     repo: longhornio/longhorn-manager
