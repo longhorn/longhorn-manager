@@ -17,10 +17,9 @@ if [ ! -e ./bin/longhorn-manager ]; then
     ./scripts/build
 fi
 
-cp -a ./bin ./package/
-cp -a ./driver ./package/
 trap 'rm -rf ./package/bin' exit
-docker build -t ${IMAGE} ./package
+
+docker build -t ${IMAGE} -f package/Dockerfile .
 
 echo Built ${IMAGE}
 
