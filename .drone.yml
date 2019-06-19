@@ -17,10 +17,9 @@ steps:
   - name: socket
     path: /var/run/docker.sock
 
-- name: docker-publish-master
+- name: publish-master-image
   image: plugins/docker
   settings:
-    context: package/
     custom_dns: 1.1.1.1
     dockerfile: package/Dockerfile
     password:
