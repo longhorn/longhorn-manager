@@ -118,8 +118,8 @@ func (m *VolumeManager) SettingValidation(name, value string) (err error) {
 		if err != nil {
 			return fmt.Errorf("value of %v is not int: %v", types.SettingNameBackupstorePollInterval, err)
 		}
-		if interval <= 0 {
-			return fmt.Errorf("backupstore poll interval %v should be greater than 0", value)
+		if interval < 0 {
+			return fmt.Errorf("backupstore poll interval %v shouldn't be less than 0", value)
 		}
 
 	}

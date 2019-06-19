@@ -293,6 +293,10 @@ func (sc *SettingController) updateBackupstorePollInterval() (err error) {
 }
 
 func (bm *BackupStoreMonitor) Start() {
+	if bm.pollInterval == time.Duration(0) {
+		logrus.Infof("Backup store polling has been disabled for %v", bm.target.URL)
+		return
+	}
 	logrus.Debugf("Start backup store monitoring for %v", bm.target.URL)
 	defer func() {
 		logrus.Debugf("Stop backup store monitoring %v", bm.target.URL)
@@ -309,7 +313,9 @@ func (bm *BackupStoreMonitor) Start() {
 }
 
 func (bm *BackupStoreMonitor) Stop() {
-	bm.stopCh <- struct{}{}
+	if bm.pollInterval != time.Duration(0) {
+		bm.stopCh <- struct{}{}
+	}
 }
 
 func (sc *SettingController) syncUpgradeChecker() error {
