@@ -17,6 +17,8 @@ type Volume struct {
 
 	CurrentImage string `json:"currentImage,omitempty" yaml:"current_image,omitempty"`
 
+	DiskSelector []string `json:"diskSelector,omitempty" yaml:"disk_selector,omitempty"`
+
 	EngineImage string `json:"engineImage,omitempty" yaml:"engine_image,omitempty"`
 
 	FromBackup string `json:"fromBackup,omitempty" yaml:"from_backup,omitempty"`
@@ -26,6 +28,8 @@ type Volume struct {
 	MigrationNodeID string `json:"migrationNodeID,omitempty" yaml:"migration_node_id,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	NodeSelector []string `json:"nodeSelector,omitempty" yaml:"node_selector,omitempty"`
 
 	NumberOfReplicas int64 `json:"numberOfReplicas,omitempty" yaml:"number_of_replicas,omitempty"`
 
