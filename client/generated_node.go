@@ -16,6 +16,8 @@ type Node struct {
 	Disks map[string]interface{} `json:"disks,omitempty" yaml:"disks,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	Tags []string `json:"tags,omitempty" yaml:"tags,omitempty"`
 }
 
 type NodeCollection struct {

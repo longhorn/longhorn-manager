@@ -20,6 +20,8 @@ type DiskInfo struct {
 	StorageReserved int64 `json:"storageReserved,omitempty" yaml:"storage_reserved,omitempty"`
 
 	StorageScheduled int64 `json:"storageScheduled,omitempty" yaml:"storage_scheduled,omitempty"`
+
+	Tags []string `json:"tags,omitempty" yaml:"tags,omitempty"`
 }
 
 type DiskInfoCollection struct {
