@@ -48,6 +48,8 @@ const (
 	OptionStaleReplicaTimeout = "staleReplicaTimeout"
 	OptionBaseImage           = "baseImage"
 	OptionFrontend            = "frontend"
+	OptionDiskSelector        = "diskSelector"
+	OptionNodeSelector        = "nodeSelector"
 
 	DefaultStaleReplicaTimeout = "30"
 
