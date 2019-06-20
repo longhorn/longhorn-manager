@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
 	"github.com/sirupsen/logrus"
@@ -45,6 +46,17 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 		return nil, fmt.Errorf("ReadWriteMany access mode is not supported")
 	}
 	resourceStorage := pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+
+	var diskSelector []string
+	if selector, ok := opts.Parameters[types.OptionDiskSelector]; ok {
+		diskSelector = strings.Split(selector, ",")
+	}
+
+	var nodeSelector []string
+	if _, ok := opts.Parameters[types.OptionNodeSelector]; ok {
+		nodeSelector = strings.Split(opts.Parameters[types.OptionNodeSelector], ",")
+	}
+
 	// Invoke DefaultReplicaCount
 	numberOfReplicasParam := "0"
 	if _, ok := opts.Parameters[types.OptionNumberOfReplicas]; ok {
@@ -80,6 +92,8 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 		NumberOfReplicas:    int64(numberOfReplicas),
 		StaleReplicaTimeout: int64(staleReplicaTimeout),
 		BaseImage:           baseImage,
+		DiskSelector:        diskSelector,
+		NodeSelector:        nodeSelector,
 	}
 	v, err := p.apiClient.Volume.Create(volReq)
 	if err != nil {
@@ -107,6 +121,8 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 						types.OptionNumberOfReplicas:    strconv.FormatInt(v.NumberOfReplicas, 10),
 						types.OptionStaleReplicaTimeout: strconv.FormatInt(v.StaleReplicaTimeout, 10),
 						types.OptionBaseImage:           v.BaseImage,
+						types.OptionDiskSelector:        strings.Join(v.DiskSelector, ","),
+						types.OptionNodeSelector:        strings.Join(v.NodeSelector, ","),
 					},
 				},
 			},

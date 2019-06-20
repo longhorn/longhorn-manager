@@ -119,8 +119,18 @@ createVolume() {
         baseImage=""
     fi
 
+    local diskSelector=$(echo ${jsonParams} | jq -r '.diskSelector')
+    if [ "${diskSelector}" == "null" ]; then
+        diskSelector="[]"
+    fi
+
+    local nodeSelector=$(echo ${jsonParams} | jq -r '.nodeSelector')
+    if [ "${nodeSelector}" == "null" ]; then
+        nodeSelector="[]"
+    fi
+
     OUT=$(curl -s -X POST --connect-timeout ${CURL_TIMEOUT} \
-            -d '{"name":"'${volumeName}'","size":"'${volumeSize}'","numberOfReplicas":'${numReplicas}',"staleReplicaTimeout":'${staleReplicaTimeout}',"fromBackup":"'${fromBackup}'","baseImage":"'${baseImage}'"}' \
+            -d '{"name":"'${volumeName}'","size":"'${volumeSize}'","numberOfReplicas":'${numReplicas}',"staleReplicaTimeout":'${staleReplicaTimeout}',"fromBackup":"'${fromBackup}'","baseImage":"'${baseImage}'","diskSelector":'${diskSelector}',"nodeSelector":'${nodeSelector}'}' \
             http://${LONGHORN_SVC}/v1/volumes)
     debug "create volume response from http://${LONGHORN_SVC}/v1/volumes: ${OUT}"
     local TYPE=$(echo ${OUT} | jq -r '.type')
