@@ -282,3 +282,9 @@ type BackupStatus struct {
 	BackupError  string `json:"backupError,omitempty"`
 	SnapshotName string `json:"snapshotName"`
 }
+
+type RestoreStatus struct {
+	Progress     int    `json:"progress"`
+	RestoreError string `json:"restoreError,omitempty"`
+	SnapshotName string `json:"snapshotName"`
+}
