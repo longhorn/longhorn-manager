@@ -153,6 +153,7 @@ type EngineSpec struct {
 	UpgradedReplicaAddressMap map[string]string `json:"upgradedReplicaAddressMap"`
 	BackupVolume              string            `json:"backupVolume"`
 	RequestedBackupRestore    string            `json:"requestedBackupRestore"`
+	RestoredFromURL           string            `json:"restoredFromURL"`
 }
 
 type EngineStatus struct {

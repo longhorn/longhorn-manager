@@ -204,3 +204,11 @@ func (e *EngineSimulator) Info() (*Volume, error) {
 func (e *EngineSimulator) BackupRestoreIncrementally(backupTarget, backupName, backupVolume, lastBackup string) error {
 	return fmt.Errorf("Not implemented")
 }
+
+func (e *EngineSimulator) BackupRestore(url string) error {
+	return fmt.Errorf("Not implemented")
+}
+
+func (e *EngineSimulator) BackupRestoreStatus() ([]*types.RestoreStatus, error) {
+	return nil, fmt.Errorf("Not implemented")
+}
