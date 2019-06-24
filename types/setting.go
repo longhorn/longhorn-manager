@@ -17,6 +17,7 @@ type SettingName string
 const (
 	SettingNameBackupTarget                      = SettingName("backup-target")
 	SettingNameBackupTargetCredentialSecret      = SettingName("backup-target-credential-secret")
+	SettingNameCreateDefaultDisk                 = SettingName("create-default-disk")
 	SettingNameDefaultDataPath                   = SettingName("default-data-path")
 	SettingNameDefaultEngineImage                = SettingName("default-engine-image")
 	SettingNameReplicaSoftAntiAffinity           = SettingName("replica-soft-anti-affinity")
@@ -34,6 +35,7 @@ var (
 	SettingNameList = []SettingName{
 		SettingNameBackupTarget,
 		SettingNameBackupTargetCredentialSecret,
+		SettingNameCreateDefaultDisk,
 		SettingNameDefaultDataPath,
 		SettingNameDefaultEngineImage,
 		SettingNameReplicaSoftAntiAffinity,
@@ -69,6 +71,7 @@ var (
 	SettingDefinitions = map[SettingName]SettingDefinition{
 		SettingNameBackupTarget:                      SettingDefinitionBackupTarget,
 		SettingNameBackupTargetCredentialSecret:      SettingDefinitionBackupTargetCredentialSecret,
+		SettingNameCreateDefaultDisk:                 SettingDefinitionCreateDefaultDisk,
 		SettingNameDefaultDataPath:                   SettingDefinitionDefaultDataPath,
 		SettingNameDefaultEngineImage:                SettingDefinitionDefaultEngineImage,
 		SettingNameReplicaSoftAntiAffinity:           SettingDefinitionReplicaSoftAntiAffinity,
@@ -108,6 +111,16 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "300",
+	}
+
+	SettingDefinitionCreateDefaultDisk = SettingDefinition{
+		DisplayName: "Create Default Disk",
+		Description: "Create default disk automatically on newly added Nodes. Configure path with Default Data Path",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "true",
 	}
 
 	SettingDefinitionDefaultDataPath = SettingDefinition{

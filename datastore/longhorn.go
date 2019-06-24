@@ -844,9 +844,11 @@ func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	return ret, nil
 }
 
-// CreateDefaultNode will set default directory to node replica mount path
+// CreateDefaultNode will set the default directory to the value of the DefaultDataPath setting, which is initially
+// the Node Replica mount path. However, if the CreateDefaultDisk setting is set to false, the creation of the default
+// disk will be skipped.
 func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
-	pathSetting, err := s.GetSetting(types.SettingNameDefaultDataPath)
+	createDisk, err := s.GetSettingAsBool(types.SettingNameCreateDefaultDisk)
 	if err != nil {
 		return nil, err
 	}
@@ -859,19 +861,26 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 			AllowScheduling: true,
 		},
 	}
-	diskInfo, err := util.GetDiskInfo(pathSetting.Value)
-	if err != nil {
-		return nil, err
-	}
+	if createDisk {
+		pathSetting, err := s.GetSetting(types.SettingNameDefaultDataPath)
+		if err != nil {
+			return nil, err
+		}
 
-	defaultDisk := map[string]types.DiskSpec{
-		diskInfo.Fsid: {
-			Path:            diskInfo.Path,
-			AllowScheduling: true,
-			StorageReserved: diskInfo.StorageMaximum * 30 / 100,
-		},
+		diskInfo, err := util.GetDiskInfo(pathSetting.Value)
+		if err != nil {
+			return nil, err
+		}
+
+		defaultDisk := map[string]types.DiskSpec{
+			diskInfo.Fsid: {
+				Path:            diskInfo.Path,
+				AllowScheduling: true,
+				StorageReserved: diskInfo.StorageMaximum * 30 / 100,
+			},
+		}
+		node.Spec.Disks = defaultDisk
 	}
-	node.Spec.Disks = defaultDisk
 
 	return s.CreateNode(node)
 }
