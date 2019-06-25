@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/pkg/errors"
 )
 
 func (s *DataStore) getManagerLabel() map[string]string {
@@ -127,6 +128,33 @@ func (s *DataStore) GetEngineImageDaemonSet(name string) (*appsv1beta2.DaemonSet
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
+}
+
+func (s *DataStore) GetNodeEnginePod(nodeName string, image string, managerType string) (*corev1.Pod, error) {
+	resultRO, err := s.kubeClient.CoreV1().Pods(s.namespace).List(metav1.ListOptions{
+		FieldSelector: "spec.nodeName=" + nodeName,
+		LabelSelector: "engine-image=" + image + ",manager-type=" + managerType,
+	})
+	if err != nil {
+		return nil, err
+	}
+	switch len(resultRO.Items) {
+	case 0:
+		return nil, nil
+	case 1:
+		return resultRO.Items[0].DeepCopy(), nil
+	default:
+		// There shouldn't be more than one Pod that matches that selector.
+		return nil, errors.Errorf("found more than one node engine pod matching node %v, image %v, type %v", nodeName, image, managerType)
+	}
+}
+
+func (s *DataStore) CreatePod(pod *corev1.Pod) (*corev1.Pod, error) {
+	return s.kubeClient.CoreV1().Pods(s.namespace).Create(pod)
+}
+
+func (s *DataStore) DeletePod(name string) error {
+	return s.kubeClient.CoreV1().Pods(s.namespace).Delete(name, nil)
 }
 
 func (s *DataStore) GetDaemonSet(name string) (*appsv1beta2.DaemonSet, error) {

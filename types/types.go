@@ -78,6 +78,15 @@ const (
 	MaximumJobNameSize = 8
 
 	engineImagePrefix = "ei-"
+
+	EngineManagerPrefix  = "longhorn-engine-manager-"
+	ReplicaManagerPrefix = "longhorn-replica-manager-"
+
+	EngineManagerType  = "engine"
+	ReplicaManagerType = "replica"
+
+	EngineImageLabel = "engine-image"
+	ManagerTypeLabel = "manager-type"
 )
 
 func GenerateEngineNameForVolume(vName string) string {

@@ -12,6 +12,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -38,6 +39,10 @@ var (
 
 const (
 	nodeRoleWorkerLabel = "node-role.kubernetes.io/worker"
+
+	managerReadinessProbeInitialDelay     = 1
+	managerReadinessProbePeriodSeconds    = 1
+	managerReadinessProbeFailureThreshold = 15
 )
 
 type NodeController struct {
@@ -68,6 +73,7 @@ type GetDiskInfoHandler func(string) (*util.DiskInfo, error)
 func NewNodeController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
+	engineImageInformer lhinformers.EngineImageInformer,
 	nodeInformer lhinformers.NodeInformer,
 	settingInformer lhinformers.SettingInformer,
 	podInformer coreinformers.PodInformer,
@@ -102,6 +108,21 @@ func NewNodeController(
 	}
 
 	nc.scheduler = scheduler.NewReplicaScheduler(ds)
+
+	engineImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			ei := obj.(*longhorn.EngineImage)
+			nc.enqueueEngineImage(ei)
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			cur := newObj.(*longhorn.EngineImage)
+			nc.enqueueEngineImage(cur)
+		},
+		DeleteFunc: func(obj interface{}) {
+			ei := obj.(*longhorn.EngineImage)
+			nc.enqueueEngineImage(ei)
+		},
+	})
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -494,7 +515,24 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		}
 	}
 
+	// Sync Engine Pod and Replica Pod for current node
+	if err := nc.syncEnginePods(node); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func (nc *NodeController) enqueueEngineImage(ei *longhorn.EngineImage) {
+	nodeList, err := nc.ds.ListNodes()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("Couldn't get all nodes: %v ", err))
+		return
+	}
+
+	for _, node := range nodeList {
+		nc.enqueueNode(node)
+	}
 }
 
 func (nc *NodeController) enqueueNode(node *longhorn.Node) {
@@ -730,4 +768,161 @@ func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error
 	node.Status.Conditions[types.NodeConditionTypeMountPropagation] = condition
 
 	return nil
+}
+
+func (nc *NodeController) syncEnginePods(node *longhorn.Node) error {
+	engineImages, err := nc.ds.ListEngineImages()
+	if err != nil {
+		return err
+	}
+	for id, image := range engineImages {
+		enginePod, err := nc.ds.GetNodeEnginePod(nc.controllerID, image.Name, types.EngineManagerType)
+		if err != nil {
+			return errors.Wrapf(err, "cannot get engine manager pod for engine image %v", id)
+		}
+		if enginePod == nil {
+			enginePodSpec := nc.createEngineManagerPodSpec(image)
+			if _, err = nc.ds.CreatePod(enginePodSpec); err != nil {
+				return errors.Wrapf(err, "failed to create engine manager pod for engine image %v", id)
+			}
+			logrus.Infof("Created engine manager pod on node %v for engine image %v (%v)", nc.controllerID, id, image.Spec.Image)
+		}
+
+		replicaPod, err := nc.ds.GetNodeEnginePod(nc.controllerID, image.Name, types.ReplicaManagerType)
+		if err != nil {
+			return errors.Wrapf(err, "cannot get replica launcher pod for engine image %v", id)
+		}
+		if replicaPod == nil && len(node.Spec.Disks) > 0 {
+			replicaPodSpec := nc.createReplicaManagerPodSpec(image)
+			if _, err = nc.ds.CreatePod(replicaPodSpec); err != nil {
+				return errors.Wrapf(err, "failed to create replica launcher pod for engine image %v", id)
+			}
+			logrus.Infof("Created replica manager pod on node %v for engine image %v (%v)", nc.controllerID, id, image.Spec.Image)
+		}
+		// If the Node no longer has any Disks on it, it's safe to delete the Replica Pod since its no longer needed.
+		if replicaPod != nil && len(node.Spec.Disks) == 0 {
+			if err := nc.ds.DeletePod(replicaPod.Name); err != nil {
+				return errors.Wrapf(err, "cannot cleanup replica manager pod of engine image %v", image.Name)
+			}
+		}
+	}
+
+	return nil
+}
+
+func (nc *NodeController) createGenericManagerPodSpec(image *longhorn.EngineImage) *v1.Pod {
+	privileged := true
+	podSpec := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				types.EngineImageLabel: image.Name,
+			},
+			Namespace: nc.namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: longhorn.SchemeGroupVersion.String(),
+					Kind:       longhorn.SchemeGroupVersion.WithKind("EngineImage").String(),
+					Name:       image.Name,
+					UID:        image.UID,
+				},
+			},
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{
+					Command: []string{
+						"longhorn-engine-launcher", "daemon",
+					},
+					Image: image.Spec.Image,
+					ReadinessProbe: &v1.Probe{
+						Handler: v1.Handler{
+							Exec: &v1.ExecAction{
+								Command: []string{"/usr/bin/grpc_health_probe", "-addr=:9502"},
+							},
+						},
+						InitialDelaySeconds: managerReadinessProbeInitialDelay,
+						PeriodSeconds:       managerReadinessProbePeriodSeconds,
+						FailureThreshold:    managerReadinessProbeFailureThreshold,
+					},
+					SecurityContext: &v1.SecurityContext{
+						Privileged: &privileged,
+					},
+				},
+			},
+			NodeName: nc.controllerID,
+		},
+	}
+	return podSpec
+}
+
+func (nc *NodeController) createEngineManagerPodSpec(image *longhorn.EngineImage) *v1.Pod {
+	podSpec := nc.createGenericManagerPodSpec(image)
+	podSpec.ObjectMeta.Labels[types.ManagerTypeLabel] = types.EngineManagerType
+	podSpec.ObjectMeta.GenerateName = types.EngineManagerPrefix
+	podSpec.Spec.Containers[0].Name = "engine-manager"
+	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
+		{
+			MountPath: "/host/dev",
+			Name:      "dev",
+		},
+		{
+			MountPath: "/host/proc",
+			Name:      "proc",
+		},
+		{
+			MountPath: types.EngineBinaryDirectoryInContainer,
+			Name:      "engine-binaries",
+		},
+	}
+	podSpec.Spec.Volumes = []v1.Volume{
+		{
+			Name: "dev",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/dev",
+				},
+			},
+		},
+		{
+			Name: "proc",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/proc",
+				},
+			},
+		},
+		{
+			Name: "engine-binaries",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: types.EngineBinaryDirectoryOnHost,
+				},
+			},
+		},
+	}
+	return podSpec
+}
+
+func (nc *NodeController) createReplicaManagerPodSpec(image *longhorn.EngineImage) *v1.Pod {
+	podSpec := nc.createGenericManagerPodSpec(image)
+	podSpec.ObjectMeta.Labels[types.ManagerTypeLabel] = types.ReplicaManagerType
+	podSpec.ObjectMeta.GenerateName = types.ReplicaManagerPrefix
+	podSpec.Spec.Containers[0].Name = "replica-manager"
+	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
+		{
+			MountPath: "/host",
+			Name:      "host",
+		},
+	}
+	podSpec.Spec.Volumes = []v1.Volume{
+		{
+			Name: "host",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/",
+				},
+			},
+		},
+	}
+	return podSpec
 }
