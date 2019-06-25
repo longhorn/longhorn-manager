@@ -285,30 +285,33 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for _, r := range tc.expectReplicas {
 		r.Spec.HealthyAt = getTestNow()
 	}
-	testCases["Newly restored volume automatically detaching"] = tc
+	testCases["newly restored volume automatically detaching"] = tc
 
-	// standby volume is not automatically attaching after creation
+	// after creation, standby volume should automatically be in attaching state
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.FromBackup = "random"
 	tc.volume.Spec.Standby = true
-	for _, e := range tc.engines {
-		e.Status.CurrentState = types.InstanceStateStopped
-	}
+	tc.volume.Spec.RestorationRequired = true
 	for _, r := range tc.replicas {
-		r.Status.CurrentState = types.InstanceStateStopped
+		r.Spec.HealthyAt = ""
 	}
 	tc.copyCurrentToExpect()
-	tc.expectVolume.Spec.RestorationRequired = false
-	tc.expectVolume.Status.State = types.VolumeStateDetached
-	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
+	tc.expectVolume.Status.State = types.VolumeStateAttaching
+	tc.expectVolume.Spec.RestorationRequired = true
+	tc.expectVolume.Spec.NodeID = TestNode1
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
-	testCases["standby volume is not automatically attaching after creation"] = tc
+	for _, r := range tc.expectReplicas {
+		r.Spec.DesireState = types.InstanceStateRunning
+	}
+	testCases["new standby volume automatically attaching"] = tc
 
-	// standby volume is not automatically detached
+	// New standby volume changed from attaching to attached, and it's not automatically detached
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = TestNode1
 	tc.volume.Spec.FromBackup = "random"
 	tc.volume.Spec.Standby = true
+	tc.volume.Status.State = types.VolumeStateAttaching
+	tc.volume.Spec.RestorationRequired = true
 	for _, e := range tc.engines {
 		e.Spec.NodeID = tc.volume.Spec.NodeID
 		e.Spec.DesireState = types.InstanceStateRunning
@@ -334,6 +337,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		r.Spec.HealthyAt = getTestNow()
 	}
 	tc.expectVolume.Spec.NodeID = tc.volume.Spec.NodeID
+	tc.expectVolume.Spec.RestorationRequired = false
 	testCases["standby volume is not automatically detached"] = tc
 
 	// volume detaching - stop engine
