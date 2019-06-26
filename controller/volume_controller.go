@@ -727,6 +727,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 
 		replicaUpdated := false
 		for _, r := range rs {
+			// Don't attempt to start the replica or do anything else if it hasn't been scheduled.
+			if r.Spec.NodeID == "" {
+				continue
+			}
 			nodeDown, err := vc.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
 			if err != nil {
 				return errors.Wrapf(err, "cannot find node %v", r.Spec.NodeID)
