@@ -973,6 +973,9 @@ func (s *DataStore) RemoveFinalizerForNode(obj *longhorn.Node) error {
 }
 
 func (s *DataStore) IsNodeDownOrDeleted(name string) (bool, error) {
+	if name == "" {
+		return false, errors.New("no node name provided to check node down or deleted")
+	}
 	node, err := s.getNodeRO(name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
