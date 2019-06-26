@@ -551,6 +551,12 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			return err
 		}
 		v.Spec.NodeID = usableNode.Name
+		//User should not access the front end by accident
+		e.Spec.Frontend = ""
+		if v.Spec.Standby == false {
+			//Store restoration URL in Restoration Volume for engine controller to restore
+			e.Spec.RestoredFromURL = v.Spec.FromBackup
+		}
 	}
 
 	if e.Status.CurrentState == types.InstanceStateError && v.Spec.NodeID != "" {
@@ -816,6 +822,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 
 		//Automatically detach the new restored volume, but not the standby volume
 		if v.Spec.RestorationRequired == true && v.Spec.FromBackup != "" && v.Status.State == types.VolumeStateAttached {
+			if e.Spec.RestoredFromURL != "" {
+				// Still Restoring
+				return nil
+			}
 			if v.Spec.Standby == false {
 				v.Spec.NodeID = ""
 			}
@@ -1069,14 +1079,6 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 			Active:     true,
 			BaseImage:  v.Spec.BaseImage,
 		},
-	}
-	if v.Spec.FromBackup != "" {
-		backupID, err := util.GetBackupID(v.Spec.FromBackup)
-		if err != nil {
-			return nil, err
-		}
-		replica.Spec.RestoreFrom = v.Spec.FromBackup
-		replica.Spec.RestoreName = backupID
 	}
 
 	return vc.ds.CreateReplica(replica)

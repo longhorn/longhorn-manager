@@ -608,6 +608,36 @@ func (m *EngineMonitor) stop(e *longhorn.Engine) {
 	m.stopCh <- struct{}{}
 }
 
+func getBackupRestoreStatus(client engineapi.EngineClient, engine *longhorn.Engine) (bool, error) {
+	restoreStatusList, err := client.BackupRestoreStatus()
+	if err != nil {
+		logrus.Errorf("failed to get backup restore status: %v", err)
+		return false, err
+	}
+
+	if restoreStatusList == nil {
+		//No active restore going on
+		return false, nil
+	}
+	completed := 0
+	for _, restore := range restoreStatusList {
+		if restore.Progress == 100 {
+			completed++
+		}
+		if restore.RestoreError != "" {
+			logrus.Errorf("Restore Error: %v", restore.RestoreError)
+			return false, fmt.Errorf("failed to restore: %v", restore.RestoreError)
+		}
+	}
+	if completed != len(engine.Spec.ReplicaAddressMap) {
+		logrus.Infof("%v/%v replica restore completed", completed, len(engine.Spec.ReplicaAddressMap))
+		return false, nil
+	}
+
+	logrus.Infof("Successfully finished restoring on all replicas for volume: %v", engine.Spec.VolumeName)
+	return true, nil
+}
+
 func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	addressReplicaMap := map[string]string{}
 	for replica, address := range engine.Spec.ReplicaAddressMap {
@@ -668,12 +698,81 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.ReplicaModeMap = currentReplicaModeMap
 	}
 
+	info, err := client.Info()
+	if err != nil {
+		return err
+	}
+	// Restoration Volume
+	if engine.Spec.RestoredFromURL != "" {
+		if info.IsRestoring == false {
+			isComplete, err := getBackupRestoreStatus(client, engine)
+			if err != nil {
+				return err
+			}
+			if isComplete {
+				//Restoration completed
+				engine.Spec.RestoredFromURL = ""
+
+				//Restoration complete, Update Engine
+				engine, err = m.ds.UpdateEngine(engine)
+				if err != nil {
+					return err
+				}
+			} else {
+				// Restore Not initiated. Initiating Restore now
+				if err := client.BackupRestore(engine.Spec.RestoredFromURL); err != nil {
+					logrus.Errorf("Failed to initiate Backup Restore for restoration volume[%v]: %v",
+						engine.Spec.VolumeName, err)
+					return err
+				}
+				logrus.Infof("Successfully initiated Backup Restore for restoration volume: [%v]",
+					engine.Spec.RestoredFromURL)
+				return nil
+			}
+		} else {
+			// Restoration is in progress
+			isComplete, err := getBackupRestoreStatus(client, engine)
+			if err != nil {
+				return err
+			}
+			if isComplete {
+				//Restoration completed
+				engine.Spec.RestoredFromURL = ""
+
+				//Restoration complete, Update Engine
+				engine, err = m.ds.UpdateEngine(engine)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+	// Standby volume
+	if engine.Status.LastRestoredBackup != "" {
+		if info.IsRestoring == false {
+			if engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
+				// Incremental Restore is completed
+				engine.Status.LastRestoredBackup = engine.Spec.RequestedBackupRestore
+				logrus.Infof("Successfully finished incremental restore for volume %v with backup %v",
+					engine.Spec.VolumeName, engine.Status.LastRestoredBackup)
+
+				engine, err = m.ds.UpdateEngine(engine)
+				if err != nil {
+					logrus.Errorf("failed to do update engine %v after incremental restoration: %v", engine.Name, err)
+					return err
+				}
+			}
+		} else {
+			//Incremental Restore in progress
+			if _, err := getBackupRestoreStatus(client, engine); err != nil {
+				logrus.Errorf("failed to get incremental backup restore status: %v", err)
+				return err
+			}
+		}
+	}
+
 	needRestore := false
 	if engine.Status.LastRestoredBackup != "" {
-		info, err := client.Info()
-		if err != nil {
-			return err
-		}
 		// for those engine just restored from backup, info.LastRestored is empty
 		if info.LastRestored != "" {
 			engine.Status.LastRestoredBackup = info.LastRestored
@@ -709,13 +808,6 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		err = client.BackupRestoreIncrementally(backupTarget.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup)
 		if err != nil {
 			logrus.Errorf("failed to do incremental restoration in engine monitor: %v", err)
-			return
-		}
-
-		engine.Status.LastRestoredBackup = engine.Spec.RequestedBackupRestore
-		engine, err = m.ds.UpdateEngine(engine)
-		if err != nil {
-			logrus.Errorf("failed to do update engine %v after incremental restoration: %v", engine.Name, err)
 			return
 		}
 	}(client, engine)
