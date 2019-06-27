@@ -282,3 +282,38 @@ type BackupStatus struct {
 	BackupError  string `json:"backupError,omitempty"`
 	SnapshotName string `json:"snapshotName"`
 }
+
+type InstanceManagerState string
+
+const (
+	InstanceManagerStateError    = InstanceManagerState("error")
+	InstanceManagerStateRunning  = InstanceManagerState("running")
+	InstanceManagerStateStopped  = InstanceManagerState("stopped")
+	InstanceManagerStateStarting = InstanceManagerState("starting")
+)
+
+type InstanceManagerDesiredState string
+
+const (
+	InstanceManagerDesiredStateRunning = InstanceManagerDesiredState("running")
+	InstanceManagerDesiredStateStopped = InstanceManagerDesiredState("stopped")
+)
+
+type InstanceManagerType string
+
+const (
+	InstanceManagerTypeEngine  = InstanceManagerType("engine")
+	InstanceManagerTypeReplica = InstanceManagerType("replica")
+)
+
+type InstanceManagerSpec struct {
+	EngineImage  string `json:"engineImage"`
+	NodeBootID   string `json:"nodeBootID"`
+	NodeID       string `json:"nodeID"`
+	Type         InstanceManagerType
+	DesiredState InstanceManagerDesiredState
+}
+
+type InstanceManagerStatus struct {
+	CurrentState InstanceManagerState `json:"currentState"`
+}

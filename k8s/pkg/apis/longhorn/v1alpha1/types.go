@@ -127,3 +127,22 @@ type NodeList struct {
 	metav1.ListMeta `json:"metadata"`
 	Items           []Node `json:"items"`
 }
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient:noStatus
+
+type InstanceManager struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata"`
+	Spec              types.InstanceManagerSpec   `json:"spec"`
+	Status            types.InstanceManagerStatus `json:"status"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type InstanceManagerList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+	Items           []InstanceManager `json:"items"`
+}
