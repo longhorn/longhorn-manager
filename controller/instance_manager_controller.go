@@ -25,11 +25,15 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
+	"github.com/longhorn/longhorn-engine-launcher/client"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
 )
 
 const (
+	defaultManagerPort = ":8500"
+
 	// Use a custom resync period so we can poll Instance Manager processes.
 	imcResyncPeriod = time.Second * 5
 
@@ -331,7 +335,9 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		}
 		switch im.Status.CurrentState {
 		case types.InstanceManagerStateRunning:
-			imc.pollProcesses()
+			if err := imc.pollProcesses(im); err != nil {
+				return err
+			}
 		case types.InstanceManagerStateStarting:
 			fallthrough
 		case types.InstanceManagerStateUnknown:
@@ -352,7 +358,63 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	return nil
 }
 
-func (imc *InstanceManagerController) pollProcesses() {}
+func (imc *InstanceManagerController) pollProcesses(im *longhorn.InstanceManager) error {
+	if im.Status.IP == "" {
+		// IP should be set
+		return errors.New("Instance Manager IP was not set before polling")
+	}
+
+	engineClient := client.NewEngineManagerClient(im.Status.IP + defaultManagerPort)
+	engines, err := engineClient.EngineList()
+	if err != nil {
+		return err
+	}
+
+	processClient := client.NewProcessLauncherClient(im.Status.IP + defaultManagerPort)
+	processes, err := processClient.ProcessList()
+	if err != nil {
+		return err
+	}
+
+	updatedInstanceMap := make(map[string]types.InstanceProcessStatus)
+
+	for name, p := range im.Status.Instances {
+		switch p.Type {
+		case types.InstanceTypeEngine:
+			updatedEngine, engineOK := engines[name]
+			if !engineOK {
+				// something's wrong
+			}
+			updatedInstanceMap[name] = types.InstanceProcessStatus{
+				Endpoint:  updatedEngine.Endpoint,
+				ErrorMsg:  updatedEngine.ProcessStatus.ErrorMsg,
+				Listen:    updatedEngine.Listen,
+				Name:      updatedEngine.Name,
+				PortEnd:   updatedEngine.ProcessStatus.PortEnd,
+				PortStart: updatedEngine.ProcessStatus.PortStart,
+				State:     types.InstanceState(updatedEngine.ProcessStatus.State),
+				Type:      types.InstanceTypeEngine,
+			}
+		case types.InstanceTypeReplica:
+			updatedProcess, processOK := processes[name]
+			if !processOK {
+				// something's wrong
+			}
+			updatedInstanceMap[name] = types.InstanceProcessStatus{
+				ErrorMsg:  updatedProcess.ProcessStatus.ErrorMsg,
+				Name:      updatedProcess.Name,
+				PortEnd:   updatedProcess.ProcessStatus.PortEnd,
+				PortStart: updatedProcess.ProcessStatus.PortStart,
+				State:     types.InstanceState(updatedProcess.ProcessStatus.State),
+				Type:      types.InstanceTypeEngine,
+			}
+		}
+	}
+
+	im.Status.Instances = updatedInstanceMap
+
+	return nil
+}
 
 func (imc *InstanceManagerController) enqueueInstanceManager(instanceManager *longhorn.InstanceManager) {
 	key, err := controller.KeyFunc(instanceManager)
