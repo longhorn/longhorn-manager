@@ -129,6 +129,10 @@ func (s *DataStore) GetEngineImageDaemonSet(name string) (*appsv1beta2.DaemonSet
 	return resultRO.DeepCopy(), nil
 }
 
+func (s *DataStore) CreatePod(pod *corev1.Pod) (*corev1.Pod, error) {
+	return s.kubeClient.CoreV1().Pods(s.namespace).Create(pod)
+}
+
 func (s *DataStore) DeletePod(name string) error {
 	return s.kubeClient.CoreV1().Pods(s.namespace).Delete(name, nil)
 }

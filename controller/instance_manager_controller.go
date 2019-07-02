@@ -2,14 +2,15 @@ package controller
 
 import (
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/api/core/v1"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -31,6 +32,10 @@ import (
 const (
 	// Use a custom resync period so we can poll Instance Manager processes.
 	imcResyncPeriod = time.Second * 5
+
+	managerReadinessProbeInitialDelay     = 1
+	managerReadinessProbePeriodSeconds    = 1
+	managerReadinessProbeFailureThreshold = 15
 )
 
 type InstanceManagerController struct {
@@ -253,8 +258,101 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		return imc.ds.RemoveFinalizerForInstanceManager(im)
 	}
 
+	existingIM := im.DeepCopy()
+	defer func() {
+		if err == nil && !reflect.DeepEqual(existingIM, im) {
+			_, err = imc.ds.UpdateInstanceManager(im)
+		}
+		if apierrors.IsConflict(errors.Cause(err)) {
+			logrus.Debugf("Requeue %v due to conflict", key)
+			imc.enqueueInstanceManager(im)
+			err = nil
+		}
+	}()
+
+	image, err := imc.ds.GetEngineImage(im.Spec.EngineImage)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			logrus.Infof("Engine image %v for instance manager %v has been deleted", im.Spec.EngineImage, key)
+			return nil
+		}
+		return err
+	}
+
+	pod, err := imc.ds.GetInstanceManagerPod(im.Name)
+	if err != nil {
+		return errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)
+	}
+
+	// We're handling the Instance Manager from a Node that isn't supposed to be responsible for it. This could mean
+	// that the Node it belongs to went down, or its newly scheduled.
+	if im.Spec.NodeID != imc.controllerID {
+		im.Status.CurrentState = types.InstanceManagerStateUnknown
+		return nil
+	}
+
+	if im.Status.CurrentState == types.InstanceManagerStateError {
+		if err := imc.cleanupInstanceManager(im); err != nil {
+			return err
+		}
+		if err := imc.createInstanceManagerPod(im, image); err != nil {
+			return err
+		}
+		im.Status.CurrentState = types.InstanceManagerStateStarting
+		return nil
+	}
+
+	if pod == nil {
+		if im.Status.CurrentState != types.InstanceManagerStateStopped {
+			im.Status.CurrentState = types.InstanceManagerStateError
+			return nil
+		}
+		if err := imc.createInstanceManagerPod(im, image); err != nil {
+			return err
+		}
+		im.Status.CurrentState = types.InstanceManagerStateStarting
+		return nil
+	}
+
+	switch pod.Status.Phase {
+	case v1.PodPending:
+		if im.Status.CurrentState == types.InstanceManagerStateUnknown {
+			im.Status.CurrentState = types.InstanceManagerStateStarting
+		} else if im.Status.CurrentState != types.InstanceManagerStateStarting {
+			im.Status.CurrentState = types.InstanceManagerStateError
+			logrus.Errorf("BUG: Instance Manager Pod is pending but doesn't match Instance Manager state")
+		}
+	case v1.PodRunning:
+		// Make sure readiness probe has passed.
+		for _, st := range pod.Status.ContainerStatuses {
+			if !st.Ready {
+				return nil
+			}
+		}
+		switch im.Status.CurrentState {
+		case types.InstanceManagerStateRunning:
+			imc.pollProcesses()
+		case types.InstanceManagerStateStarting:
+			fallthrough
+		case types.InstanceManagerStateUnknown:
+			nodeName := pod.Spec.NodeName
+			node, err := imc.kubeClient.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+
+			im.Status.CurrentState = types.InstanceManagerStateRunning
+			im.Status.IP = pod.Status.PodIP
+			im.Status.NodeBootID = node.Status.NodeInfo.BootID
+		}
+	default:
+		im.Status.CurrentState = types.InstanceManagerStateError
+	}
+
 	return nil
 }
+
+func (imc *InstanceManagerController) pollProcesses() {}
 
 func (imc *InstanceManagerController) enqueueInstanceManager(instanceManager *longhorn.InstanceManager) {
 	key, err := controller.KeyFunc(instanceManager)
@@ -302,4 +400,133 @@ func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.Instan
 		}
 	}
 	return nil
+}
+
+func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.InstanceManager, image *longhorn.EngineImage) error {
+	var podSpec *v1.Pod
+	switch im.Spec.Type {
+	case types.InstanceManagerTypeEngine:
+		podSpec = imc.createEngineManagerPodSpec(im, image)
+	case types.InstanceManagerTypeReplica:
+		podSpec = imc.createReplicaManagerPodSpec(im, image)
+	}
+	pod, err := imc.ds.CreatePod(podSpec)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create pod for instance manager %v", im.Name)
+	}
+	logrus.Infof("Created instance manager pod %v for instance manager %v", pod.Name, im.Name)
+
+	return nil
+}
+
+func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, image *longhorn.EngineImage) *v1.Pod {
+	privileged := true
+	podSpec := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      im.Name,
+			Namespace: imc.namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: longhorn.SchemeGroupVersion.String(),
+					Kind:       longhorn.SchemeGroupVersion.WithKind("InstanceManager").String(),
+					Name:       im.Name,
+					UID:        im.UID,
+				},
+			},
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{
+					Command: []string{
+						"longhorn-engine-launcher", "daemon", "--listen", "0.0.0.0:8500",
+					},
+					Image: image.Spec.Image,
+					ReadinessProbe: &v1.Probe{
+						Handler: v1.Handler{
+							Exec: &v1.ExecAction{
+								Command: []string{"/usr/bin/grpc_health_probe", "-addr=:8500"},
+							},
+						},
+						InitialDelaySeconds: managerReadinessProbeInitialDelay,
+						PeriodSeconds:       managerReadinessProbePeriodSeconds,
+						FailureThreshold:    managerReadinessProbeFailureThreshold,
+					},
+					SecurityContext: &v1.SecurityContext{
+						Privileged: &privileged,
+					},
+				},
+			},
+			NodeName:      imc.controllerID,
+			RestartPolicy: v1.RestartPolicyNever,
+		},
+	}
+	return podSpec
+}
+
+func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.InstanceManager, image *longhorn.EngineImage) *v1.Pod {
+	podSpec := imc.createGenericManagerPodSpec(im, image)
+	podSpec.Spec.Containers[0].Name = "engine-manager"
+	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
+		{
+			MountPath: "/host/dev",
+			Name:      "dev",
+		},
+		{
+			MountPath: "/host/proc",
+			Name:      "proc",
+		},
+		{
+			MountPath: types.EngineBinaryDirectoryInContainer,
+			Name:      "engine-binaries",
+		},
+	}
+	podSpec.Spec.Volumes = []v1.Volume{
+		{
+			Name: "dev",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/dev",
+				},
+			},
+		},
+		{
+			Name: "proc",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/proc",
+				},
+			},
+		},
+		{
+			Name: "engine-binaries",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: types.EngineBinaryDirectoryOnHost,
+				},
+			},
+		},
+	}
+	return podSpec
+}
+
+func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.InstanceManager, image *longhorn.EngineImage) *v1.Pod {
+	podSpec := imc.createGenericManagerPodSpec(im, image)
+	podSpec.Spec.Containers[0].Name = "replica-manager"
+	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
+		{
+			MountPath: "/host",
+			Name:      "host",
+		},
+	}
+	podSpec.Spec.Volumes = []v1.Volume{
+		{
+			Name: "host",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/",
+				},
+			},
+		},
+	}
+	return podSpec
 }
