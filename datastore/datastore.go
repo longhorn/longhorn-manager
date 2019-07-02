@@ -24,19 +24,21 @@ var (
 type DataStore struct {
 	namespace string
 
-	lhClient     lhclientset.Interface
-	vLister      lhlisters.VolumeLister
-	vStoreSynced cache.InformerSynced
-	eLister      lhlisters.EngineLister
-	eStoreSynced cache.InformerSynced
-	rLister      lhlisters.ReplicaLister
-	rStoreSynced cache.InformerSynced
-	iLister      lhlisters.EngineImageLister
-	iStoreSynced cache.InformerSynced
-	nLister      lhlisters.NodeLister
-	nStoreSynced cache.InformerSynced
-	sLister      lhlisters.SettingLister
-	sStoreSynced cache.InformerSynced
+	lhClient      lhclientset.Interface
+	vLister       lhlisters.VolumeLister
+	vStoreSynced  cache.InformerSynced
+	eLister       lhlisters.EngineLister
+	eStoreSynced  cache.InformerSynced
+	rLister       lhlisters.ReplicaLister
+	rStoreSynced  cache.InformerSynced
+	iLister       lhlisters.EngineImageLister
+	iStoreSynced  cache.InformerSynced
+	nLister       lhlisters.NodeLister
+	nStoreSynced  cache.InformerSynced
+	sLister       lhlisters.SettingLister
+	sStoreSynced  cache.InformerSynced
+	imLister      lhlisters.InstanceManagerLister
+	imStoreSynced cache.InformerSynced
 
 	kubeClient     clientset.Interface
 	pLister        corelisters.PodLister
@@ -58,6 +60,7 @@ func NewDataStore(
 	engineImageInformer lhinformers.EngineImageInformer,
 	nodeInformer lhinformers.NodeInformer,
 	settingInformer lhinformers.SettingInformer,
+	imInformer lhinformers.InstanceManagerInformer,
 	lhClient lhclientset.Interface,
 
 	podInformer coreinformers.PodInformer,
@@ -72,19 +75,21 @@ func NewDataStore(
 	return &DataStore{
 		namespace: namespace,
 
-		lhClient:     lhClient,
-		vLister:      volumeInformer.Lister(),
-		vStoreSynced: volumeInformer.Informer().HasSynced,
-		eLister:      engineInformer.Lister(),
-		eStoreSynced: engineInformer.Informer().HasSynced,
-		rLister:      replicaInformer.Lister(),
-		rStoreSynced: replicaInformer.Informer().HasSynced,
-		iLister:      engineImageInformer.Lister(),
-		iStoreSynced: engineImageInformer.Informer().HasSynced,
-		nLister:      nodeInformer.Lister(),
-		nStoreSynced: nodeInformer.Informer().HasSynced,
-		sLister:      settingInformer.Lister(),
-		sStoreSynced: settingInformer.Informer().HasSynced,
+		lhClient:      lhClient,
+		vLister:       volumeInformer.Lister(),
+		vStoreSynced:  volumeInformer.Informer().HasSynced,
+		eLister:       engineInformer.Lister(),
+		eStoreSynced:  engineInformer.Informer().HasSynced,
+		rLister:       replicaInformer.Lister(),
+		rStoreSynced:  replicaInformer.Informer().HasSynced,
+		iLister:       engineImageInformer.Lister(),
+		iStoreSynced:  engineImageInformer.Informer().HasSynced,
+		nLister:       nodeInformer.Lister(),
+		nStoreSynced:  nodeInformer.Informer().HasSynced,
+		sLister:       settingInformer.Lister(),
+		sStoreSynced:  settingInformer.Informer().HasSynced,
+		imLister:      imInformer.Lister(),
+		imStoreSynced: imInformer.Informer().HasSynced,
 
 		kubeClient:     kubeClient,
 		pLister:        podInformer.Lister(),

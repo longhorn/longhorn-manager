@@ -1134,6 +1134,139 @@ func (s *DataStore) ListEnginesByNode(name string) ([]*longhorn.Engine, error) {
 	return engineList, nil
 }
 
+func (s *DataStore) CreateInstanceManager(im *longhorn.InstanceManager) (*longhorn.InstanceManager, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, im); err != nil {
+		return nil, err
+	}
+	ret, err := s.lhClient.LonghornV1alpha1().InstanceManagers(s.namespace).Create(im)
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(im.Name, "instance manager", func(name string) (runtime.Object, error) {
+		return s.getInstanceManagerRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.InstanceManager)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for instance manager")
+	}
+
+	return ret, nil
+}
+
+// DeleteInstanceManager won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteInstanceManager(name string) error {
+	return s.lhClient.LonghornV1alpha1().InstanceManagers(s.namespace).Delete(name, &metav1.DeleteOptions{})
+}
+
+func (s *DataStore) getInstanceManagerRO(name string) (*longhorn.InstanceManager, error) {
+	return s.imLister.InstanceManagers(s.namespace).Get(name)
+}
+
+func (s *DataStore) getInstanceManager(name string) (*longhorn.InstanceManager, error) {
+	resultRO, err := s.getInstanceManagerRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, error) {
+	result, err := s.getInstanceManager(name)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// GetInstanceManagerBySelector gets the Instance Managers matching the selector using Labels. Even though the labels
+// duplicate information already in the spec, spec cannot be used for Field Selectors in CustomResourceDefinitions:
+// https://github.com/kubernetes/kubernetes/issues/53459
+func (s *DataStore) GetInstanceManagerBySelector(node, image, managerType string) (*longhorn.InstanceManager, error) {
+	resultRO, err := s.lhClient.LonghornV1alpha1().InstanceManagers(s.namespace).List(metav1.ListOptions{
+		LabelSelector: "engineImage=" + image + ",nodeID=" + node + ",type=" + managerType,
+	})
+	if err != nil {
+		return nil, err
+	}
+	switch len(resultRO.Items) {
+	case 0:
+		return nil, nil
+	case 1:
+		return resultRO.Items[0].DeepCopy(), nil
+	default:
+		// There shouldn't be more than one Instance Manager that matches the selector.
+		return nil, errors.Errorf("found more than one instance manager matching node %v, image %v, type %v", node, image, managerType)
+	}
+}
+
+func (s *DataStore) ListInstanceManagers() (map[string]*longhorn.InstanceManager, error) {
+	itemMap := map[string]*longhorn.InstanceManager{}
+
+	list, err := s.imLister.InstanceManagers(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+func (s *DataStore) ListInstanceManagersByNode(name string) (*longhorn.InstanceManagerList, error) {
+	resultRO, err := s.lhClient.LonghornV1alpha1().InstanceManagers(s.namespace).List(metav1.ListOptions{
+		LabelSelector: "nodeID=" + name,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resultRO.DeepCopy(), nil
+}
+
+// RemoveFinalizerForInstanceManager will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForInstanceManager(obj *longhorn.InstanceManager) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1alpha1().InstanceManagers(s.namespace).Update(obj)
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for instance manager %v", obj.Name)
+	}
+	return nil
+}
+
+func (s *DataStore) UpdateInstanceManager(im *longhorn.InstanceManager) (*longhorn.InstanceManager, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, im); err != nil {
+		return nil, err
+	}
+
+	obj, err := s.lhClient.LonghornV1alpha1().InstanceManagers(s.namespace).Update(im)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(im.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getInstanceManagerRO(name)
+	})
+	return obj, nil
+}
+
 func verifyCreation(name, kind string, getMethod func(name string) (runtime.Object, error)) (runtime.Object, error) {
 	// WORKAROUND: The immedidate read after object's creation can fail.
 	// See https://github.com/longhorn/longhorn/issues/133
