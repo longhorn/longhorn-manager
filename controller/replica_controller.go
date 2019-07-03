@@ -13,12 +13,9 @@ import (
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -46,8 +43,6 @@ var (
 	//
 	// 5ms, 10ms, 20ms
 	maxRetries = 3
-
-	ownerKindReplica = longhorn.SchemeGroupVersion.WithKind("Replica").String()
 )
 
 type ReplicaController struct {
@@ -61,8 +56,8 @@ type ReplicaController struct {
 
 	ds *datastore.DataStore
 
-	rStoreSynced cache.InformerSynced
-	pStoreSynced cache.InformerSynced
+	rStoreSynced  cache.InformerSynced
+	imStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
 
@@ -73,7 +68,7 @@ func NewReplicaController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	replicaInformer lhinformers.ReplicaInformer,
-	podInformer coreinformers.PodInformer,
+	instanceManagerInformer lhinformers.InstanceManagerInformer,
 	kubeClient clientset.Interface,
 	namespace string, controllerID string) *ReplicaController {
 
@@ -91,8 +86,8 @@ func NewReplicaController(
 
 		ds: ds,
 
-		rStoreSynced: replicaInformer.Informer().HasSynced,
-		pStoreSynced: podInformer.Informer().HasSynced,
+		rStoreSynced:  replicaInformer.Informer().HasSynced,
+		imStoreSynced: instanceManagerInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-replica"),
 	}
@@ -113,15 +108,18 @@ func NewReplicaController(
 		},
 	})
 
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	instanceManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			rc.enqueueControlleeChange(obj)
+			im := obj.(*longhorn.InstanceManager)
+			rc.enqueueInstanceManagerChange(im)
 		},
 		UpdateFunc: func(old, cur interface{}) {
-			rc.enqueueControlleeChange(cur)
+			curIM := cur.(*longhorn.InstanceManager)
+			rc.enqueueInstanceManagerChange(curIM)
 		},
 		DeleteFunc: func(obj interface{}) {
-			rc.enqueueControlleeChange(obj)
+			im := obj.(*longhorn.InstanceManager)
+			rc.enqueueInstanceManagerChange(im)
 		},
 	})
 	return rc
@@ -134,7 +132,7 @@ func (rc *ReplicaController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start Longhorn replica controller")
 	defer logrus.Infof("Shutting down Longhorn replica controller")
 
-	if !controller.WaitForCacheSync("longhorn replicas", stopCh, rc.rStoreSynced, rc.pStoreSynced) {
+	if !controller.WaitForCacheSync("longhorn replicas", stopCh, rc.rStoreSynced, rc.imStoreSynced) {
 		return
 	}
 
@@ -394,39 +392,23 @@ func (rc *ReplicaController) LogInstance(obj interface{}) (*imapi.LogStream, err
 	return stream, nil
 }
 
-func (rc *ReplicaController) enqueueControlleeChange(obj interface{}) {
-	metaObj, err := meta.Accessor(obj)
-	if err != nil {
-		logrus.Warnf("BUG: %v cannot be convert to metav1.Object: %v", obj, err)
+func (rc *ReplicaController) enqueueInstanceManagerChange(im *longhorn.InstanceManager) {
+	if im.Spec.OwnerID != rc.controllerID {
 		return
 	}
-	ownerRefs := metaObj.GetOwnerReferences()
-	for _, ref := range ownerRefs {
-		if ref.Kind != ownerKindReplica {
-			continue
-		}
-		namespace := metaObj.GetNamespace()
-		rc.ResolveRefAndEnqueue(namespace, &ref)
+	imType, ok := im.Labels["type"]
+	if !ok || imType != string(types.InstanceManagerTypeReplica) {
 		return
 	}
-}
 
-func (rc *ReplicaController) ResolveRefAndEnqueue(namespace string, ref *metav1.OwnerReference) {
-	if ref.Kind != ownerKindReplica {
-		return
-	}
-	replica, err := rc.ds.GetReplica(ref.Name)
+	rs, err := rc.ds.ListReplicasByNode(im.Spec.NodeID)
 	if err != nil {
-		return
+		logrus.Warnf("Failed to list replicas on node %v", im.Spec.NodeID)
 	}
-	if replica.UID != ref.UID {
-		// The controller we found with this Name is not the same one that the
-		// OwnerRef points to.
-		return
+	for _, rList := range rs {
+		for _, r := range rList {
+			rc.enqueueReplica(r)
+		}
 	}
-	// Not ours
-	if replica.Spec.OwnerID != rc.controllerID {
-		return
-	}
-	rc.enqueueReplica(replica)
+	return
 }
