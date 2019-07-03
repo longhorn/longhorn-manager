@@ -26,6 +26,8 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/backupstore"
+	imutil "github.com/longhorn/longhorn-instance-manager/util"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
@@ -801,7 +803,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 				logrus.Errorf("BUG: replica %v is running but IP is empty", r.Name)
 				continue
 			}
-			replicaAddressMap[r.Name] = r.Status.IP
+			if r.Status.Port == 0 {
+				logrus.Errorf("BUG: replica %v is running but Port is empty", r.Name)
+				continue
+			}
+			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 		}
 		if len(replicaAddressMap) == 0 {
 			return fmt.Errorf("no healthy replica for starting")
@@ -1005,7 +1011,11 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 				logrus.Errorf("BUG: replica %v is running but IP is empty", r.Name)
 				continue
 			}
-			replicaAddressMap[r.Name] = r.Status.IP
+			if r.Status.Port == 0 {
+				logrus.Errorf("BUG: replica %v is running but IP is empty", r.Name)
+				continue
+			}
+			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 		}
 		e.Spec.UpgradedReplicaAddressMap = replicaAddressMap
 		e.Spec.EngineImage = v.Spec.EngineImage
@@ -1574,7 +1584,11 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 				logrus.Errorf("BUG: replica %v is running but IP is empty", r.Name)
 				continue
 			}
-			replicaAddressMap[r.Name] = r.Status.IP
+			if r.Status.Port == 0 {
+				logrus.Errorf("BUG: replica %v is running but Port is empty", r.Name)
+				continue
+			}
+			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 		}
 		if migrationEngine.Spec.NodeID != "" && migrationEngine.Spec.NodeID != v.Spec.MigrationNodeID {
 			return fmt.Errorf("volume %v: engine is on node %v vs volume migration on %v",

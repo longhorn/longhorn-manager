@@ -68,6 +68,7 @@ type EngineClientRequest struct {
 	VolumeName  string
 	EngineImage string
 	IP          string
+	Port        int
 }
 
 type EngineClientCollection interface {
@@ -131,13 +132,6 @@ type EngineVersion struct {
 	ServerVersion *types.EngineVersionDetails `json:"serverVersion"`
 }
 
-func GetControllerDefaultURL(ip string) string {
-	if ip == "" {
-		return ""
-	}
-	return "http://" + ip + ":" + ControllerDefaultPort
-}
-
 func GetEngineLauncherDefaultURL(ip string) string {
 	if ip == "" {
 		return ""
@@ -149,13 +143,9 @@ func GetBackendReplicaURL(address string) string {
 	return "tcp://" + address
 }
 
-func GetReplicaDefaultURL(ip string) string {
-	return "tcp://" + ip + ":" + ReplicaDefaultPort
-}
-
-func GetIPFromURL(url string) string {
-	// tcp, \/\/<address>, 9502
-	return strings.TrimPrefix(strings.Split(url, ":")[1], "//")
+func GetAddressFromBackendReplicaURL(url string) string {
+	// tcp://<address>:<Port>
+	return strings.TrimPrefix(url, "tcp://")
 }
 
 func ValidateReplicaURL(url string) error {

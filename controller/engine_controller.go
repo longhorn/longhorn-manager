@@ -573,7 +573,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	addressReplicaMap := map[string]string{}
 	for replica, address := range engine.Spec.ReplicaAddressMap {
 		if addressReplicaMap[address] != "" {
-			return fmt.Errorf("invalid ReplicaAddressMap: duplicate IPs")
+			return fmt.Errorf("invalid ReplicaAddressMap: duplicate addresses")
 		}
 		addressReplicaMap[address] = replica
 	}
@@ -602,11 +602,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	currentReplicaModeMap := map[string]types.ReplicaMode{}
 	for url, r := range replicaURLModeMap {
-		ip := engineapi.GetIPFromURL(url)
-		replica, exists := addressReplicaMap[ip]
+		addr := engineapi.GetAddressFromBackendReplicaURL(url)
+		replica, exists := addressReplicaMap[addr]
 		if !exists {
 			// we have a entry doesn't exist in our spec
-			replica = unknownReplicaPrefix + ip
+			replica = unknownReplicaPrefix + addr
 		}
 		currentReplicaModeMap[replica] = r.Mode
 
@@ -614,11 +614,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			if r.Mode != engine.Status.ReplicaModeMap[replica] {
 				switch r.Mode {
 				case types.ReplicaModeERR:
-					m.eventRecorder.Eventf(engine, v1.EventTypeWarning, EventReasonFaulted, "Detected replica %v (%v) in error", replica, ip)
+					m.eventRecorder.Eventf(engine, v1.EventTypeWarning, EventReasonFaulted, "Detected replica %v (%v) in error", replica, addr)
 				case types.ReplicaModeWO:
-					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilding, "Detected rebuilding replica %v (%v)", replica, ip)
+					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilding, "Detected rebuilding replica %v (%v)", replica, addr)
 				case types.ReplicaModeRW:
-					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilded, "Detected replica %v (%v) has been rebuilded", replica, ip)
+					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilded, "Detected replica %v (%v) has been rebuilded", replica, addr)
 				default:
 					logrus.Errorf("Invalid engine replica mode %v", r.Mode)
 				}
@@ -729,10 +729,15 @@ func GetClientForEngine(e *longhorn.Engine, engines engineapi.EngineClientCollec
 	if image == "" {
 		return nil, fmt.Errorf("require specify engine image")
 	}
+	if e.Status.IP == "" || e.Status.Port == 0 {
+		return nil, fmt.Errorf("require IP and Port")
+	}
+
 	client, err = engines.NewEngineClient(&engineapi.EngineClientRequest{
 		VolumeName:  e.Spec.VolumeName,
 		EngineImage: image,
 		IP:          e.Status.IP,
+		Port:        e.Status.Port,
 	})
 	if err != nil {
 		return nil, err
@@ -741,14 +746,14 @@ func GetClientForEngine(e *longhorn.Engine, engines engineapi.EngineClientCollec
 }
 
 func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
-	unknownReplicaIPs := []string{}
+	unknownReplicaAddrs := []string{}
 	for replica := range e.Status.ReplicaModeMap {
-		// unknown replicas have been named as `unknownReplicaPrefix-<IP>`
+		// unknown replicas have been named as `unknownReplicaPrefix-<IP:Port>`
 		if strings.HasPrefix(replica, unknownReplicaPrefix) {
-			unknownReplicaIPs = append(unknownReplicaIPs, strings.TrimPrefix(replica, unknownReplicaPrefix))
+			unknownReplicaAddrs = append(unknownReplicaAddrs, strings.TrimPrefix(replica, unknownReplicaPrefix))
 		}
 	}
-	if len(unknownReplicaIPs) == 0 {
+	if len(unknownReplicaAddrs) == 0 {
 		return nil
 	}
 
@@ -756,15 +761,15 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 	if err != nil {
 		return err
 	}
-	for _, ip := range unknownReplicaIPs {
-		go func(ip string) {
-			url := engineapi.GetReplicaDefaultURL(ip)
+	for _, addr := range unknownReplicaAddrs {
+		go func(addr string) {
+			url := engineapi.GetBackendReplicaURL(addr)
 			if err := client.ReplicaRemove(url); err != nil {
-				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting, "Failed to remove unknown replica IP %v from engine: %v", ip, err)
+				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting, "Failed to remove unknown replica address %v from engine: %v", addr, err)
 			} else {
-				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonDelete, "Removed unknown replica IP %v from engine", ip)
+				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonDelete, "Removed unknown replica address %v from engine", addr)
 			}
-		}(ip)
+		}(addr)
 	}
 	return nil
 }
@@ -784,30 +789,30 @@ func (ec *EngineController) rebuildingNewReplica(e *longhorn.Engine) error {
 		logrus.Debugf("Skip rebuilding for volume %v because there is rebuilding in process", e.Spec.VolumeName)
 		return nil
 	}
-	for replica, ip := range e.Spec.ReplicaAddressMap {
+	for replica, addr := range e.Spec.ReplicaAddressMap {
 		// one is enough
 		if !replicaExists[replica] {
-			return ec.startRebuilding(e, replica, ip)
+			return ec.startRebuilding(e, replica, addr)
 		}
 	}
 	return nil
 }
 
-func doesIPExistInEngine(ip string, client engineapi.EngineClient) (bool, error) {
+func doesAddressExistInEngine(addr string, client engineapi.EngineClient) (bool, error) {
 	replicaURLModeMap, err := client.ReplicaList()
 	if err != nil {
 		return false, err
 	}
 	for url := range replicaURLModeMap {
 		// the replica has been rebuilt or in the process already
-		if ip == engineapi.GetIPFromURL(url) {
+		if addr == engineapi.GetAddressFromBackendReplicaURL(url) {
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip string) (err error) {
+func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to start rebuild for %v of %v", replica, e.Name)
 	}()
@@ -819,29 +824,34 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip stri
 
 	// we need to know the current status, since ReplicaAddressMap may
 	// haven't been updated since last rebuild
-	alreadyExists, err := doesIPExistInEngine(ip, client)
+	alreadyExists, err := doesAddressExistInEngine(addr, client)
 	if err != nil {
 		return err
 	}
 	// replica has already been added to the engine
 	if alreadyExists {
-		logrus.Debugf("replica %v ip %v has been added to the engine already", replica, ip)
+		logrus.Debugf("replica %v address %v has been added to the engine already", replica, addr)
 		return nil
 	}
 
-	replicaURL := engineapi.GetReplicaDefaultURL(ip)
+	replicaURL := engineapi.GetBackendReplicaURL(addr)
 	go func() {
 		// start rebuild
-		ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v with IP %v for %v", replica, ip, e.Spec.VolumeName)
+		ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v with Address %v for %v", replica, addr, e.Spec.VolumeName)
 		if err := client.ReplicaAdd(replicaURL); err != nil {
-			logrus.Errorf("Failed rebuilding %v of %v: %v", ip, e.Spec.VolumeName, err)
-			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedRebuilding, "Failed rebuilding replica with IP %v: %v", ip, err)
+			logrus.Errorf("Failed rebuilding %v of %v: %v", addr, e.Spec.VolumeName, err)
+			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedRebuilding, "Failed rebuilding replica with Address %v: %v", addr, err)
+			// we've sent out event to notify user. we don't want to
+			// automatically handle it because it may cause chain
+			// reaction to create numerous new replicas if we set
+			// the replica to failed.
+			// user can decide to delete it then we will try again
 			if err := client.ReplicaRemove(replicaURL); err != nil {
-				logrus.Errorf("Failed to remove rebuilding replica %v of %v due to rebuilding failure: %v", ip, e.Spec.VolumeName, err)
+				logrus.Errorf("Failed to remove rebuilding replica %v of %v due to rebuilding failure: %v", addr, e.Spec.VolumeName, err)
 				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting,
-					"Failed to remove rebuilding replica %v with ip %v for %v due to rebuilding failure: %v", replica, ip, e.Spec.VolumeName, err)
+					"Failed to remove rebuilding replica %v with address %v for %v due to rebuilding failure: %v", replica, addr, e.Spec.VolumeName, err)
 			} else {
-				logrus.Errorf("Removed failed rebuilding replica %v of %v", ip, e.Spec.VolumeName)
+				logrus.Errorf("Removed failed rebuilding replica %v of %v", addr, e.Spec.VolumeName)
 			}
 			// Before we mark the Replica as Failed automatically, we want to check the Backoff to avoid recreating new
 			// Replicas too quickly. If the Replica is still in the Backoff period, we will leave the Replica alone. If
@@ -870,11 +880,11 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip stri
 		// Replica rebuild succeeded, clear Backoff.
 		ec.backoff.DeleteEntry(e.Name)
 		ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilded,
-			"Replica %v with IP %v has been rebuilded for volume %v", replica, ip, e.Spec.VolumeName)
+			"Replica %v with Address %v has been rebuilded for volume %v", replica, addr, e.Spec.VolumeName)
 	}()
 	//wait until engine confirmed that rebuild started
 	if err := wait.PollImmediate(EnginePollInterval, EnginePollTimeout, func() (bool, error) {
-		return doesIPExistInEngine(ip, client)
+		return doesAddressExistInEngine(addr, client)
 	}); err != nil {
 		return err
 	}
@@ -898,8 +908,8 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	// will cause live replica to be removed. Volume controller should filter those.
 	if err != nil || version.ClientVersion.GitCommit != version.ServerVersion.GitCommit {
 		replicaURLs := []string{}
-		for _, ip := range e.Spec.UpgradedReplicaAddressMap {
-			replicaURLs = append(replicaURLs, engineapi.GetReplicaDefaultURL(ip))
+		for _, addr := range e.Spec.UpgradedReplicaAddressMap {
+			replicaURLs = append(replicaURLs, engineapi.GetBackendReplicaURL(addr))
 		}
 		binary := types.GetEngineBinaryDirectoryInContainerForImage(e.Spec.EngineImage) + "/longhorn"
 		logrus.Debugf("About to upgrade %v from %v to %v for %v",
