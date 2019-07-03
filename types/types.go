@@ -13,9 +13,13 @@ import (
 const (
 	DefaultAPIPort = 9500
 
+	DefaultReplicaPortCount = 15
+
 	DefaultEngineBinaryPath          = "/usr/local/bin/longhorn"
 	EngineBinaryDirectoryInContainer = "/engine-binaries/"
 	EngineBinaryDirectoryOnHost      = "/var/lib/rancher/longhorn/engine-binaries/"
+
+	ReplicaMountedDataPathPrefix = "/host"
 
 	LonghornNodeKey = "longhornnode"
 
@@ -162,4 +166,11 @@ func GetDiskConditionFromStatus(status DiskStatus, conditionType DiskConditionTy
 		condition = getUnknownCondition(string(conditionType))
 	}
 	return condition
+}
+
+func GetReplicaMountedDataPath(dataPath string) string {
+	if !strings.HasPrefix(dataPath, ReplicaMountedDataPathPrefix) {
+		return filepath.Join(ReplicaMountedDataPathPrefix, dataPath)
+	}
+	return dataPath
 }

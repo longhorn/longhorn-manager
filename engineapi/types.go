@@ -17,6 +17,8 @@ const (
 	EngineLauncherDefaultPort = "9510"
 	ReplicaDefaultPort        = "9502"
 
+	InstanceManagerDefaultPort = 8500
+
 	DefaultISCSIPort = "3260"
 	DefaultISCSILUN  = "1"
 
@@ -137,6 +139,10 @@ func GetEngineLauncherDefaultURL(ip string) string {
 		return ""
 	}
 	return ip + ":" + EngineLauncherDefaultPort
+}
+
+func GetBackendReplicaURL(address string) string {
+	return "tcp://" + address
 }
 
 func GetReplicaDefaultURL(ip string) string {

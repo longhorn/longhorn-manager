@@ -3,7 +3,6 @@ package controller
 import (
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +25,10 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
+	imapi "github.com/longhorn/longhorn-instance-manager/api"
+	imclient "github.com/longhorn/longhorn-instance-manager/client"
+	imutil "github.com/longhorn/longhorn-instance-manager/util"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/manager"
@@ -40,10 +43,6 @@ const (
 
 	EngineFrontendBlockDev = "tgt-blockdev"
 	EngineFrontendISCSI    = "tgt-iscsi"
-
-	engineReadinessProbeInitialDelay     = 1
-	engineReadinessProbePeriodSeconds    = 1
-	engineReadinessProbeFailureThreshold = 15
 )
 
 var (
@@ -122,7 +121,7 @@ func NewEngineController(
 		engineMonitorMap:         map[string]chan struct{}{},
 		engineMonitoringRemoveCh: make(chan string, 1),
 	}
-	ec.instanceHandler = NewInstanceHandler(podInformer, kubeClient, namespace, ec, ec.eventRecorder)
+	ec.instanceHandler = NewInstanceHandler(ds, ec, ec.eventRecorder)
 
 	engineInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -237,7 +236,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 
 	if engine.DeletionTimestamp != nil {
 		// don't go through state transition because it can go wrong
-		if err := ec.instanceHandler.DeleteInstanceForObject(engine); err != nil {
+		if _, err := ec.DeleteInstance(engine); err != nil {
 			return err
 		}
 		return ec.ds.RemoveFinalizerForEngine(engine)
@@ -257,7 +256,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	}()
 
-	if err := ec.instanceHandler.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
+	if err := ec.instanceHandler.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus, types.InstanceManagerTypeEngine); err != nil {
 		return err
 	}
 
@@ -290,157 +289,6 @@ func (ec *EngineController) enqueueEngine(e *longhorn.Engine) {
 	}
 
 	ec.queue.AddRateLimited(key)
-}
-
-func validateEngine(e *longhorn.Engine) error {
-	if e.Spec.VolumeName == "" ||
-		len(e.Spec.ReplicaAddressMap) == 0 ||
-		e.Spec.NodeID == "" {
-		return fmt.Errorf("missing required field %+v", e)
-	}
-	return nil
-}
-
-func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
-	var (
-		frontend         string
-		readinessHandler v1.Handler
-		err              error
-	)
-	e, ok := obj.(*longhorn.Engine)
-	if !ok {
-		return nil, fmt.Errorf("BUG: invalid object for engine pod spec creation: %v", obj)
-	}
-	if err := validateEngine(e); err != nil {
-		logrus.Errorf("Invalid spec for create controller: %v", e)
-		return nil, err
-	}
-
-	if e.Spec.Frontend == types.VolumeFrontendBlockDev {
-		frontend = EngineFrontendBlockDev
-		readinessHandler = v1.Handler{
-			Exec: &v1.ExecAction{
-				Command: []string{
-					"ls", "/dev/longhorn/" + e.Spec.VolumeName,
-				},
-			},
-		}
-	} else if e.Spec.Frontend == types.VolumeFrontendISCSI {
-		frontend = EngineFrontendISCSI
-		readinessHandler, err = ec.getDefaultReadinessHandler()
-		if err != nil {
-			return nil, err
-		}
-	} else if e.Spec.Frontend == "" {
-		frontend = ""
-		readinessHandler, err = ec.getDefaultReadinessHandler()
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		return nil, fmt.Errorf("unknown volume frontend %v", e.Spec.Frontend)
-	}
-
-	cmd := []string{
-		"engine-launcher", "start",
-		"--launcher-listen", "0.0.0.0:" + engineapi.EngineLauncherDefaultPort,
-		"--longhorn-binary", types.DefaultEngineBinaryPath,
-		"--listen", "0.0.0.0:" + engineapi.ControllerDefaultPort,
-		"--size", strconv.FormatInt(e.Spec.VolumeSize, 10),
-	}
-	if frontend != "" {
-		cmd = append(cmd, "--frontend", frontend)
-	}
-
-	for _, ip := range e.Spec.ReplicaAddressMap {
-		url := engineapi.GetReplicaDefaultURL(ip)
-		cmd = append(cmd, "--replica", url)
-	}
-	cmd = append(cmd, e.Spec.VolumeName)
-
-	privilege := true
-	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      e.Name,
-			Namespace: e.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: longhorn.SchemeGroupVersion.String(),
-					Kind:       ownerKindEngine,
-					UID:        e.UID,
-					Name:       e.Name,
-				},
-			},
-		},
-		Spec: v1.PodSpec{
-			NodeName:      e.Spec.NodeID,
-			RestartPolicy: v1.RestartPolicyNever,
-			Containers: []v1.Container{
-				{
-					Name:    e.Name,
-					Image:   e.Spec.EngineImage,
-					Command: cmd,
-					SecurityContext: &v1.SecurityContext{
-						Privileged: &privilege,
-					},
-					VolumeMounts: []v1.VolumeMount{
-						{
-							Name:      "dev",
-							MountPath: "/host/dev",
-						},
-						{
-							Name:      "proc",
-							MountPath: "/host/proc",
-						},
-						{
-							Name:      "engine-binaries",
-							MountPath: types.EngineBinaryDirectoryInContainer,
-						},
-					},
-					ReadinessProbe: &v1.Probe{
-						Handler:             readinessHandler,
-						InitialDelaySeconds: engineReadinessProbeInitialDelay,
-						PeriodSeconds:       engineReadinessProbePeriodSeconds,
-						FailureThreshold:    engineReadinessProbeFailureThreshold,
-					},
-				},
-			},
-			Volumes: []v1.Volume{
-				{
-					Name: "dev",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: "/dev",
-						},
-					},
-				},
-				{
-					Name: "proc",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: "/proc",
-						},
-					},
-				},
-				{
-					Name: "engine-binaries",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: types.EngineBinaryDirectoryOnHost,
-						},
-					},
-				},
-			},
-		},
-	}
-	resourceReq, err := GetGuaranteedResourceRequirement(ec.ds)
-	if err != nil {
-		return nil, err
-	}
-	if resourceReq != nil {
-		pod.Spec.Containers[0].Resources = *resourceReq
-	}
-	return pod, nil
 }
 
 func (ec *EngineController) enqueueControlleeChange(obj interface{}) {
@@ -478,6 +326,114 @@ func (ec *EngineController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 		return
 	}
 	ec.enqueueEngine(engine)
+}
+
+func (ec *EngineController) getEngineManagerClient(instanceManagerName string) (*imclient.EngineManagerClient, error) {
+	im, err := ec.ds.GetInstanceManager(instanceManagerName)
+	if err != nil {
+		return nil, fmt.Errorf("cannot find Instance Manager %v", instanceManagerName)
+	}
+	if im.Status.CurrentState != types.InstanceManagerStateRunning || im.Status.IP == "" {
+		return nil, fmt.Errorf("invalid Instance Manager %v", instanceManagerName)
+	}
+
+	return imclient.NewEngineManagerClient(imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)), nil
+}
+
+func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProcessStatus, error) {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return nil, fmt.Errorf("BUG: invalid object for engine process creation: %v", obj)
+	}
+	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
+		return nil, fmt.Errorf("missing parameters for engine process creation: %v", e)
+	}
+
+	frontend := ""
+	if e.Spec.Frontend == types.VolumeFrontendBlockDev {
+		frontend = EngineFrontendBlockDev
+	} else if e.Spec.Frontend == types.VolumeFrontendISCSI {
+		frontend = EngineFrontendISCSI
+	} else if e.Spec.Frontend == "" {
+		frontend = ""
+	} else {
+		return nil, fmt.Errorf("unknown volume frontend %v", e.Spec.Frontend)
+	}
+
+	replicas := []string{}
+	for _, addr := range e.Spec.ReplicaAddressMap {
+		replicas = append(replicas, engineapi.GetBackendReplicaURL(addr))
+	}
+
+	c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
+	if err != nil {
+		return nil, err
+	}
+
+	engineProcess, err := c.EngineCreate(
+		e.Spec.VolumeSize, e.Name, e.Spec.VolumeName,
+		types.DefaultEngineBinaryPath, "", "0.0.0.0", frontend, []string{}, replicas)
+	if err != nil {
+		return nil, err
+	}
+
+	return engineapi.EngineProcessToInstanceStatus(engineProcess), nil
+}
+
+func (ec *EngineController) DeleteInstance(obj interface{}) (*types.InstanceProcessStatus, error) {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return nil, fmt.Errorf("BUG: invalid object for engine process deletion: %v", obj)
+	}
+
+	c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
+	if err != nil {
+		return nil, err
+	}
+
+	engineProcess, err := c.EngineDelete(e.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return engineapi.EngineProcessToInstanceStatus(engineProcess), nil
+}
+
+func (ec *EngineController) GetInstance(obj interface{}) (*types.InstanceProcessStatus, error) {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return nil, fmt.Errorf("BUG: invalid object for engine process get: %v", obj)
+	}
+
+	c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
+	if err != nil {
+		return nil, err
+	}
+
+	engineProcess, err := c.EngineGet(e.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return engineapi.EngineProcessToInstanceStatus(engineProcess), nil
+}
+
+func (ec *EngineController) LogInstance(obj interface{}) (*imapi.LogStream, error) {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return nil, fmt.Errorf("BUG: invalid object for engine process log: %v", obj)
+	}
+
+	c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
+	if err != nil {
+		return nil, err
+	}
+	stream, err := c.EngineLog(e.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return stream, nil
 }
 
 // monitoringUpdater will listen to the event from engineMonitoringRemoveCh and
@@ -910,13 +866,4 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	e.Spec.UpgradedReplicaAddressMap = map[string]string{}
 	return nil
-}
-
-func (ec *EngineController) getDefaultReadinessHandler() (readinessHandler v1.Handler, err error) {
-	readinessHandler = v1.Handler{
-		Exec: &v1.ExecAction{
-			Command: []string{"/usr/bin/grpc_health_probe", fmt.Sprintf("-addr=:%s", engineapi.ControllerDefaultPort)},
-		},
-	}
-	return readinessHandler, err
 }
