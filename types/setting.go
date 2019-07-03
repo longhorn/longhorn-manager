@@ -19,7 +19,7 @@ const (
 	SettingNameBackupTargetCredentialSecret      = SettingName("backup-target-credential-secret")
 	SettingNameDefaultDataPath                   = SettingName("default-data-path")
 	SettingNameDefaultEngineImage                = SettingName("default-engine-image")
-	SettingNameReplicaHardAntiAffinity           = SettingName("replica-hard-anti-affinity")
+	SettingNameReplicaSoftAntiAffinity           = SettingName("replica-soft-anti-affinity")
 	SettingNameStorageOverProvisioningPercentage = SettingName("storage-over-provisioning-percentage")
 	SettingNameStorageMinimalAvailablePercentage = SettingName("storage-minimal-available-percentage")
 	SettingNameUpgradeChecker                    = SettingName("upgrade-checker")
@@ -36,7 +36,7 @@ var (
 		SettingNameBackupTargetCredentialSecret,
 		SettingNameDefaultDataPath,
 		SettingNameDefaultEngineImage,
-		SettingNameReplicaHardAntiAffinity,
+		SettingNameReplicaSoftAntiAffinity,
 		SettingNameStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage,
 		SettingNameUpgradeChecker,
@@ -71,7 +71,7 @@ var (
 		SettingNameBackupTargetCredentialSecret:      SettingDefinitionBackupTargetCredentialSecret,
 		SettingNameDefaultDataPath:                   SettingDefinitionDefaultDataPath,
 		SettingNameDefaultEngineImage:                SettingDefinitionDefaultEngineImage,
-		SettingNameReplicaHardAntiAffinity:           SettingDefinitionReplicaHardAntiAffinity,
+		SettingNameReplicaSoftAntiAffinity:           SettingDefinitionReplicaSoftAntiAffinity,
 		SettingNameStorageOverProvisioningPercentage: SettingDefinitionStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage: SettingDefinitionStorageMinimalAvailablePercentage,
 		SettingNameUpgradeChecker:                    SettingDefinitionUpgradeChecker,
@@ -129,14 +129,14 @@ var (
 		ReadOnly:    true,
 	}
 
-	SettingDefinitionReplicaHardAntiAffinity = SettingDefinition{
-		DisplayName: "Replica Hard Anti Affinity",
-		Description: "Prevent scheduling on nodes with existing healthy replicas of the same volume",
+	SettingDefinitionReplicaSoftAntiAffinity = SettingDefinition{
+		DisplayName: "Replica Soft Anti-Affinity",
+		Description: "Allow scheduling on nodes with existing healthy replicas of the same volume",
 		Category:    SettingCategoryScheduling,
 		Type:        SettingTypeBool,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "false",
+		Default:     "true",
 	}
 
 	SettingDefinitionStorageOverProvisioningPercentage = SettingDefinition{
