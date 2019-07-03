@@ -94,16 +94,6 @@ func (e *EngineSimulator) Name() string {
 	return e.volumeName
 }
 
-func (e *EngineSimulator) Endpoint() (string, error) {
-	e.mutex.RLock()
-	defer e.mutex.RUnlock()
-
-	if e.running {
-		return "/dev/longhorn/" + e.volumeName, nil
-	}
-	return "", nil
-}
-
 func (e *EngineSimulator) ReplicaList() (map[string]*Replica, error) {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
@@ -187,10 +177,6 @@ func (e *EngineSimulator) SnapshotBackup(snapName, backupTarget string, labels m
 
 func (e *EngineSimulator) SnapshotBackupStatus() (map[string]*types.BackupStatus, error) {
 	return nil, fmt.Errorf("not implemented")
-}
-
-func (e *EngineSimulator) Upgrade(binary string, replicaURLs []string) error {
-	return fmt.Errorf("Not implemented")
 }
 
 func (e *EngineSimulator) Version(clientOnly bool) (*EngineVersion, error) {

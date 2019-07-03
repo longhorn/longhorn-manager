@@ -1,7 +1,13 @@
 package engineapi
 
 import (
+	"fmt"
+
+	"github.com/sirupsen/logrus"
+
 	imapi "github.com/longhorn/longhorn-instance-manager/api"
+	imclient "github.com/longhorn/longhorn-instance-manager/client"
+	imutil "github.com/longhorn/longhorn-instance-manager/util"
 
 	"github.com/longhorn/longhorn-manager/types"
 )
@@ -40,4 +46,25 @@ func ReplicaProcessToInstanceStatus(replicaProcess *imapi.Process) *types.Instan
 		Listen:   "",
 		Endpoint: "",
 	}
+}
+
+func Endpoint(ip, engineName string) (string, error) {
+	c := imclient.NewEngineManagerClient(imutil.GetURL(ip, InstanceManagerDefaultPort))
+	engineProcess, err := c.EngineGet(engineName)
+	if err != nil {
+		logrus.Warn("Fail to get engine process info: ", err)
+		return "", err
+	}
+
+	switch engineProcess.Frontend {
+	case string(FrontendISCSI):
+		// it will looks like this in the end
+		// iscsi://10.42.0.12:3260/iqn.2014-09.com.rancher:vol-name/1
+		return "iscsi://" + ip + ":" + DefaultISCSIPort + "/" + engineProcess.Endpoint + "/" + DefaultISCSILUN, nil
+	case string(FrontendBlockDev):
+		return engineProcess.Endpoint, nil
+	case "":
+		return "", nil
+	}
+	return "", fmt.Errorf("Unknown frontend %v", engineProcess.Frontend)
 }
