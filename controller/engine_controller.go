@@ -3,7 +3,6 @@ package controller
 import (
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -589,7 +588,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 	engine.Status.BackupStatus = backupStatusList
 
-	endpoint, err := client.Endpoint()
+	endpoint, err := engineapi.Endpoint(engine.Status.IP, engine.Name)
 	if err != nil {
 		return err
 	}
@@ -914,9 +913,16 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 		binary := types.GetEngineBinaryDirectoryInContainerForImage(e.Spec.EngineImage) + "/longhorn"
 		logrus.Debugf("About to upgrade %v from %v to %v for %v",
 			e.Name, e.Status.CurrentImage, e.Spec.EngineImage, e.Spec.VolumeName)
-		if err := client.Upgrade(binary, replicaURLs); err != nil {
+
+		c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
+		if err != nil {
 			return err
 		}
+		engineProcess, err := c.EngineUpgrade(e.Spec.VolumeSize, e.Name, binary, replicaURLs)
+		if err != nil {
+			return err
+		}
+		e.Status.Port = int(engineProcess.ProcessStatus.PortStart)
 	}
 	logrus.Debugf("Engine %v has been upgraded from %v to %v", e.Name, e.Status.CurrentImage, e.Spec.EngineImage)
 	e.Status.CurrentImage = e.Spec.EngineImage

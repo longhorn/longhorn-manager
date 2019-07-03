@@ -49,11 +49,6 @@ func (s *TestSuite) TestBasic(c *C) {
 	sim, err = coll.GetEngineSimulator(VolumeName)
 	c.Assert(err, IsNil)
 
-	c.Assert(sim.Name(), Equals, VolumeName)
-	endpoint, err := sim.Endpoint()
-	c.Assert(err, IsNil)
-	c.Assert(endpoint, Equals, "/dev/longhorn/"+VolumeName)
-
 	replicas, err := sim.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)

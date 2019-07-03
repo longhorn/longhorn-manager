@@ -24,7 +24,6 @@ type Engine struct {
 	ip    string
 	port  int
 	cURL  string
-	lURL  string
 }
 
 const (
@@ -41,7 +40,6 @@ func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (Engine
 		ip:    request.IP,
 		port:  request.Port,
 		cURL:  imutil.GetURL(request.IP, request.Port),
-		lURL:  GetEngineLauncherDefaultURL(request.IP),
 	}, nil
 }
 
@@ -53,10 +51,6 @@ func (e *Engine) LonghornEngineBinary() string {
 	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(e.image), "longhorn")
 }
 
-func (e *Engine) LonghornEngineLauncherBinary() string {
-	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(e.image), "longhorn-engine-launcher")
-}
-
 func (e *Engine) ExecuteEngineBinary(args ...string) (string, error) {
 	args = append([]string{"--url", e.cURL}, args...)
 	return util.Execute(e.LonghornEngineBinary(), args...)
@@ -65,11 +59,6 @@ func (e *Engine) ExecuteEngineBinary(args ...string) (string, error) {
 func (e *Engine) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...string) (string, error) {
 	args = append([]string{"--url", e.cURL}, args...)
 	return util.ExecuteWithTimeout(timeout, e.LonghornEngineBinary(), args...)
-}
-
-func (e *Engine) ExecuteEngineLauncherBinary(args ...string) (string, error) {
-	args = append([]string{"--url", e.lURL}, args...)
-	return util.Execute(e.LonghornEngineLauncherBinary(), args...)
 }
 
 func parseReplica(s string) (*Replica, error) {
@@ -131,39 +120,6 @@ func (e *Engine) ReplicaRemove(url string) error {
 	return nil
 }
 
-func (e *Engine) Endpoint() (string, error) {
-	info, err := e.launcherInfo()
-	if err != nil {
-		logrus.Warn("Fail to get frontend info: ", err)
-		return "", err
-	}
-
-	switch info.Frontend {
-	case string(FrontendISCSI):
-		// it will looks like this in the end
-		// iscsi://10.42.0.12:3260/iqn.2014-09.com.rancher:vol-name/1
-		return "iscsi://" + e.ip + ":" + DefaultISCSIPort + "/" + info.Endpoint + "/" + DefaultISCSILUN, nil
-	case string(FrontendBlockDev):
-		return info.Endpoint, nil
-	case "":
-		return "", nil
-	}
-	return "", fmt.Errorf("Unknown frontend %v", info.Frontend)
-}
-
-func (e *Engine) launcherInfo() (*LauncherVolumeInfo, error) {
-	output, err := e.ExecuteEngineLauncherBinary("info")
-	if err != nil {
-		return nil, errors.Wrapf(err, "cannot get launcher info")
-	}
-
-	info := &LauncherVolumeInfo{}
-	if err := json.Unmarshal([]byte(output), info); err != nil {
-		return nil, errors.Wrapf(err, "cannot decode launcher info: %v", output)
-	}
-	return info, nil
-}
-
 func (e *Engine) Info() (*Volume, error) {
 	output, err := e.ExecuteEngineBinary("info")
 	if err != nil {
@@ -175,23 +131,6 @@ func (e *Engine) Info() (*Volume, error) {
 		return nil, errors.Wrapf(err, "cannot decode volume info: %v", output)
 	}
 	return info, nil
-}
-
-func (e *Engine) Upgrade(binary string, replicaURLs []string) error {
-	args := []string{
-		"upgrade", "--longhorn-binary", binary,
-	}
-	for _, url := range replicaURLs {
-		if err := ValidateReplicaURL(url); err != nil {
-			return err
-		}
-		args = append(args, "--replica", url)
-	}
-	_, err := e.ExecuteEngineLauncherBinary(args...)
-	if err != nil {
-		return errors.Wrapf(err, "failed to upgrade Longhorn Engine")
-	}
-	return nil
 }
 
 func (e *Engine) Version(clientOnly bool) (*EngineVersion, error) {

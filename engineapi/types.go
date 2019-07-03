@@ -14,10 +14,6 @@ const (
 	// engine, including `longhorn-engine` and `longhorn-engine-launcher`
 	CurrentCLIVersion = 1
 
-	ControllerDefaultPort     = "9501"
-	EngineLauncherDefaultPort = "9510"
-	ReplicaDefaultPort        = "9502"
-
 	InstanceManagerDefaultPort = 8500
 
 	DefaultISCSIPort = "3260"
@@ -41,9 +37,7 @@ type Controller struct {
 
 type EngineClient interface {
 	Name() string
-	Endpoint() (string, error)
 	Version(clientOnly bool) (*EngineVersion, error)
-	Upgrade(binary string, replicaURLs []string) error
 
 	Info() (*Volume, error)
 
@@ -130,13 +124,6 @@ type LauncherVolumeInfo struct {
 type EngineVersion struct {
 	ClientVersion *types.EngineVersionDetails `json:"clientVersion"`
 	ServerVersion *types.EngineVersionDetails `json:"serverVersion"`
-}
-
-func GetEngineLauncherDefaultURL(ip string) string {
-	if ip == "" {
-		return ""
-	}
-	return ip + ":" + EngineLauncherDefaultPort
 }
 
 func GetBackendReplicaURL(address string) string {
