@@ -69,6 +69,14 @@ func (m *VolumeManager) SettingValidation(name, value string) (err error) {
 	}()
 	sName := types.SettingName(name)
 
+	definition, ok := types.SettingDefinitions[sName]
+	if !ok {
+		return fmt.Errorf("setting %v is not supported", sName)
+	}
+	if definition.Required == true && value == "" {
+		return fmt.Errorf("required setting %v shouldn't be empty", sName)
+	}
+
 	switch sName {
 	case types.SettingNameBackupTarget:
 		vs, err := m.ds.ListStandbyVolumesRO()
