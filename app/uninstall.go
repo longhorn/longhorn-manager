@@ -112,6 +112,7 @@ func uninstall(c *cli.Context) error {
 		replicaInformer,
 		engineImageInformer,
 		nodeInformer,
+		imInformer,
 		daemonSetInformer,
 	)
 	go lhInformerFactory.Start(doneCh)
