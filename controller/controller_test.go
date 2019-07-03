@@ -22,6 +22,7 @@ const (
 	TestNamespace      = "default"
 	TestIP1            = "1.2.3.4"
 	TestIP2            = "5.6.7.8"
+	TestPort1          = 9501
 	TestNode1          = "test-node-name-1"
 	TestNode2          = "test-node-name-2"
 	TestOwnerID1       = TestNode1
