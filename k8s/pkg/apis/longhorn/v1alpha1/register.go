@@ -33,6 +33,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&EngineImageList{},
 		&Node{},
 		&NodeList{},
+		&InstanceManager{},
+		&InstanceManagerList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil
