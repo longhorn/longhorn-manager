@@ -10,6 +10,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	imutil "github.com/longhorn/longhorn-instance-manager/util"
+
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 )
@@ -20,6 +22,7 @@ type Engine struct {
 	name  string
 	image string
 	ip    string
+	port  int
 	cURL  string
 	lURL  string
 }
@@ -36,7 +39,8 @@ func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (Engine
 		name:  request.VolumeName,
 		image: request.EngineImage,
 		ip:    request.IP,
-		cURL:  GetControllerDefaultURL(request.IP),
+		port:  request.Port,
+		cURL:  imutil.GetURL(request.IP, request.Port),
 		lURL:  GetEngineLauncherDefaultURL(request.IP),
 	}, nil
 }
