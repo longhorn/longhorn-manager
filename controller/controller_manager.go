@@ -84,10 +84,10 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 		persistentVolumeInformer, persistentVolumeClaimInformer,
 		kubeClient, namespace)
 	rc := NewReplicaController(ds, scheme,
-		replicaInformer, podInformer,
+		replicaInformer, imInformer,
 		kubeClient, namespace, controllerID)
 	ec := NewEngineController(ds, scheme,
-		engineInformer, podInformer,
+		engineInformer, imInformer,
 		kubeClient, &engineapi.EngineCollection{}, namespace, controllerID)
 	vc := NewVolumeController(ds, scheme,
 		volumeInformer, engineInformer, replicaInformer,
