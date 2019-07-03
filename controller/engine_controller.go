@@ -13,12 +13,9 @@ import (
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -49,8 +46,6 @@ const (
 )
 
 var (
-	ownerKindEngine = longhorn.SchemeGroupVersion.WithKind("Engine").String()
-
 	EnginePollInterval = 5 * time.Second
 	EnginePollTimeout  = 30 * time.Second
 )
@@ -66,8 +61,8 @@ type EngineController struct {
 
 	ds *datastore.DataStore
 
-	eStoreSynced cache.InformerSynced
-	pStoreSynced cache.InformerSynced
+	eStoreSynced  cache.InformerSynced
+	imStoreSynced cache.InformerSynced
 
 	backoff *flowcontrol.Backoff
 	queue   workqueue.RateLimitingInterface
@@ -98,7 +93,7 @@ func NewEngineController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	engineInformer lhinformers.EngineInformer,
-	podInformer coreinformers.PodInformer,
+	instanceManagerInformer lhinformers.InstanceManagerInformer,
 	kubeClient clientset.Interface,
 	engines engineapi.EngineClientCollection,
 	namespace string, controllerID string) *EngineController {
@@ -116,7 +111,7 @@ func NewEngineController(
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-engine-controller"}),
 		eStoreSynced:  engineInformer.Informer().HasSynced,
-		pStoreSynced:  podInformer.Informer().HasSynced,
+		imStoreSynced: instanceManagerInformer.Informer().HasSynced,
 
 		backoff: flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
 		queue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-engine"),
@@ -142,15 +137,18 @@ func NewEngineController(
 			ec.enqueueEngine(e)
 		},
 	})
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	instanceManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			ec.enqueueControlleeChange(obj)
+			im := obj.(*longhorn.InstanceManager)
+			ec.enqueueInstanceManagerChange(im)
 		},
 		UpdateFunc: func(old, cur interface{}) {
-			ec.enqueueControlleeChange(cur)
+			curIM := cur.(*longhorn.InstanceManager)
+			ec.enqueueInstanceManagerChange(curIM)
 		},
 		DeleteFunc: func(obj interface{}) {
-			ec.enqueueControlleeChange(obj)
+			im := obj.(*longhorn.InstanceManager)
+			ec.enqueueInstanceManagerChange(im)
 		},
 	})
 
@@ -165,7 +163,7 @@ func (ec *EngineController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start Longhorn engine controller")
 	defer logrus.Infof("Shutting down Longhorn engine controller")
 
-	if !controller.WaitForCacheSync("longhorn engines", stopCh, ec.eStoreSynced, ec.pStoreSynced) {
+	if !controller.WaitForCacheSync("longhorn engines", stopCh, ec.eStoreSynced, ec.imStoreSynced) {
 		return
 	}
 
@@ -234,6 +232,19 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return err
 	}
 
+	// Check if engine's managing node died
+	if engine.Spec.OwnerID != "" {
+		isDown, err := ec.ds.IsNodeDownOrDeleted(engine.Spec.OwnerID)
+		if err != nil {
+			return err
+		}
+		if isDown {
+			engine.Spec.OwnerID = ec.controllerID
+			if engine, err = ec.ds.UpdateEngine(engine); err != nil {
+				return err
+			}
+		}
+	}
 	// Not ours
 	if engine.Spec.OwnerID != ec.controllerID {
 		return nil
@@ -296,41 +307,26 @@ func (ec *EngineController) enqueueEngine(e *longhorn.Engine) {
 	ec.queue.AddRateLimited(key)
 }
 
-func (ec *EngineController) enqueueControlleeChange(obj interface{}) {
-	metaObj, err := meta.Accessor(obj)
-	if err != nil {
-		logrus.Warnf("BUG: %v cannot be convert to metav1.Object: %v", obj, err)
+func (ec *EngineController) enqueueInstanceManagerChange(im *longhorn.InstanceManager) {
+	if im.Spec.OwnerID != ec.controllerID {
 		return
 	}
-	ownerRefs := metaObj.GetOwnerReferences()
-	for _, ref := range ownerRefs {
-		if ref.Kind != ownerKindEngine {
-			continue
-		}
-		namespace := metaObj.GetNamespace()
-		ec.ResolveRefAndEnqueue(namespace, &ref)
+	imType, ok := im.Labels["type"]
+	if !ok || imType != string(types.InstanceManagerTypeEngine) {
 		return
 	}
-}
 
-func (ec *EngineController) ResolveRefAndEnqueue(namespace string, ref *metav1.OwnerReference) {
-	if ref.Kind != ownerKindEngine {
-		return
-	}
-	engine, err := ec.ds.GetEngine(ref.Name)
+	// When node is down, im.Spec.OwnerID is different from im.Spec.NodeID (updated
+	// by instance manager controller),
+	// but the OwnerID and NodeID of all related engines are still im.Spec.NodeID.
+	es, err := ec.ds.ListEnginesByNode(im.Spec.NodeID)
 	if err != nil {
-		return
+		logrus.Warnf("Failed to list engines on node %v", im.Spec.NodeID)
 	}
-	if engine.UID != ref.UID {
-		// The controller we found with this Name is not the same one that the
-		// OwnerRef points to.
-		return
+	for _, e := range es {
+		ec.enqueueEngine(e)
 	}
-	// Not ours
-	if engine.Spec.OwnerID != ec.controllerID {
-		return
-	}
-	ec.enqueueEngine(engine)
+	return
 }
 
 func (ec *EngineController) getEngineManagerClient(instanceManagerName string) (*imclient.EngineManagerClient, error) {
