@@ -97,12 +97,12 @@ func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.
 	// If there's no disk fit for replica on other nodes,
 	// try to schedule to node that has been scheduled replicas.
 	// Avoid this if Replica Hard Anti-Affinity is enabled.
-	hardAntiAffinity, err := rcs.ds.GetSettingAsBool(types.SettingNameReplicaHardAntiAffinity)
+	softAntiAffinity, err := rcs.ds.GetSettingAsBool(types.SettingNameReplicaSoftAntiAffinity)
 	if err != nil {
 		logrus.Errorf("error getting replica hard anti-affinity setting: %v", err)
 	}
 	// Defaulting to soft anti-affinity if we can't get the hard anti-affinity setting.
-	if err != nil || !hardAntiAffinity {
+	if err != nil || softAntiAffinity {
 		for _, node := range filterdNode {
 			diskCandidates = rcs.filterNodeDisksForReplica(node, replica, replicas, volume)
 		}
