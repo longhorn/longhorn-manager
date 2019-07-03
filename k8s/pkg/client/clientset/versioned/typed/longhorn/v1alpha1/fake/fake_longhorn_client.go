@@ -36,6 +36,10 @@ func (c *FakeLonghornV1alpha1) EngineImages(namespace string) v1alpha1.EngineIma
 	return &FakeEngineImages{c, namespace}
 }
 
+func (c *FakeLonghornV1alpha1) InstanceManagers(namespace string) v1alpha1.InstanceManagerInterface {
+	return &FakeInstanceManagers{c, namespace}
+}
+
 func (c *FakeLonghornV1alpha1) Nodes(namespace string) v1alpha1.NodeInterface {
 	return &FakeNodes{c, namespace}
 }
