@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"k8s.io/api/core/v1"
 	apiextension "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,11 +27,12 @@ import (
 )
 
 const (
-	CRDEngineName      = "engines.longhorn.rancher.io"
-	CRDReplicaName     = "replicas.longhorn.rancher.io"
-	CRDVolumeName      = "volumes.longhorn.rancher.io"
-	CRDEngineImageName = "engineimages.longhorn.rancher.io"
-	CRDNodeName        = "nodes.longhorn.rancher.io"
+	CRDEngineName          = "engines.longhorn.rancher.io"
+	CRDReplicaName         = "replicas.longhorn.rancher.io"
+	CRDVolumeName          = "volumes.longhorn.rancher.io"
+	CRDEngineImageName     = "engineimages.longhorn.rancher.io"
+	CRDNodeName            = "nodes.longhorn.rancher.io"
+	CRDInstanceManagerName = "instancemanagers.longhorn.rancher.io"
 )
 
 var (
@@ -59,6 +61,7 @@ func NewUninstallController(
 	replicaInformer lhinformers.ReplicaInformer,
 	engineImageInformer lhinformers.EngineImageInformer,
 	nodeInformer lhinformers.NodeInformer,
+	imInformer lhinformers.InstanceManagerInformer,
 	daemonSetInformer v1beta2.DaemonSetInformer,
 ) *UninstallController {
 	c := &UninstallController{
@@ -94,6 +97,11 @@ func NewUninstallController(
 	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDNodeName, metav1.GetOptions{}); err == nil {
 		nodeInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, nodeInformer.Informer().HasSynced)
+	}
+
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDInstanceManagerName, metav1.GetOptions{}); err == nil {
+		imInformer.Informer().AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, imInformer.Informer().HasSynced)
 	}
 
 	daemonSetInformer.Informer().AddEventHandler(c.controlleeHandler())
@@ -274,6 +282,13 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 		return true, c.deleteNodes(nodes)
 	}
 
+	if instanceManagers, err := c.ds.ListInstanceManagers(); err != nil {
+		return true, err
+	} else if len(instanceManagers) > 0 {
+		logrus.Infof("%d instance managers remaining", len(instanceManagers))
+		return true, c.deleteInstanceManagers(instanceManagers)
+	}
+
 	return false, nil
 }
 
@@ -412,6 +427,45 @@ func (c *UninstallController) deleteNodes(nodes map[string]*longhorn.Node) (err 
 			logrus.WithFields(logFields).Infof("Marked for deletion")
 		} else {
 			if err = c.ds.RemoveFinalizerForNode(node); err != nil {
+				err = errors.Wrapf(err, "Failed to remove finalizer")
+				return
+			}
+			logrus.WithFields(logFields).Infof("Removed finalizer")
+		}
+	}
+	return
+}
+
+func (c *UninstallController) deleteInstanceManagers(instanceManagers map[string]*longhorn.InstanceManager) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "Failed to delete instance managers")
+	}()
+	for _, im := range instanceManagers {
+		logFields := logrus.Fields{
+			"type": "instanceManager",
+			"name": im.Name,
+		}
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if im.DeletionTimestamp == nil {
+			if err = c.ds.DeleteInstanceManager(im.Name); err != nil {
+				err = errors.Wrapf(err, "Failed to mark for deletion")
+				return
+			}
+			logrus.WithFields(logFields).Infof("Marked for deletion")
+		} else if im.DeletionTimestamp.Before(&timeout) {
+			var pod *v1.Pod
+			pod, err = c.ds.GetInstanceManagerPod(im.Name)
+			if err != nil {
+				err = errors.Wrapf(err, "Could not get pod for instance manager")
+			}
+			if pod != nil {
+				if err = c.ds.DeletePod(pod.Name); err != nil {
+					return
+				}
+				logrus.WithFields(logFields).Infof("Removed instance manager")
+			}
+
+			if err = c.ds.RemoveFinalizerForInstanceManager(im); err != nil {
 				err = errors.Wrapf(err, "Failed to remove finalizer")
 				return
 			}
