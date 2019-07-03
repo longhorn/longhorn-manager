@@ -1,131 +1,146 @@
 package controller
 
 import (
-	"bufio"
 	"fmt"
-	"time"
+	"io"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
-	v1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	coreinformers "k8s.io/client-go/informers/core/v1"
-	clientset "k8s.io/client-go/kubernetes"
-	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/record"
 
-	"github.com/longhorn/longhorn-manager/types"
-)
+	imapi "github.com/longhorn/longhorn-instance-manager/api"
 
-const (
-	CrashLogsTaillines = 500
+	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
 
 // InstanceHandler can handle the state transition of correlated instance and
-// engine/replica object. It assumed the pod it's going to operate with is using
+// engine/replica object. It assumed the instance it's going to operate with is using
 // the SAME NAME from the engine/replica object
 type InstanceHandler struct {
-	namespace     string
-	kubeClient    clientset.Interface
-	pLister       corelisters.PodLister
-	podCreator    PodCreatorInterface
-	eventRecorder record.EventRecorder
+	ds                     *datastore.DataStore
+	instanceManagerHandler InstanceManagerHandler
+	eventRecorder          record.EventRecorder
 }
 
-type PodCreatorInterface interface {
-	CreatePodSpec(obj interface{}) (*v1.Pod, error)
+type InstanceManagerHandler interface {
+	GetInstance(obj interface{}) (*types.InstanceProcessStatus, error)
+	CreateInstance(obj interface{}) (*types.InstanceProcessStatus, error)
+	DeleteInstance(obj interface{}) (*types.InstanceProcessStatus, error)
+	LogInstance(obj interface{}) (*imapi.LogStream, error)
 }
 
-func NewInstanceHandler(podInformer coreinformers.PodInformer, kubeClient clientset.Interface, namespace string, podCreator PodCreatorInterface, eventRecorder record.EventRecorder) *InstanceHandler {
+func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler InstanceManagerHandler, eventRecorder record.EventRecorder) *InstanceHandler {
 	return &InstanceHandler{
-		namespace:     namespace,
-		kubeClient:    kubeClient,
-		pLister:       podInformer.Lister(),
-		podCreator:    podCreator,
-		eventRecorder: eventRecorder,
+		ds:                     ds,
+		instanceManagerHandler: instanceManagerHandler,
+		eventRecorder:          eventRecorder,
 	}
 }
 
-func (h *InstanceHandler) syncStatusWithPod(pod *v1.Pod, spec *types.InstanceSpec, status *types.InstanceStatus) {
-	if pod == nil {
+func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceManager, instanceName string, spec *types.InstanceSpec, status *types.InstanceStatus) {
+	if im == nil || im.Status.CurrentState == types.InstanceManagerStateUnknown || im.Status.CurrentState == types.InstanceManagerStateStopped || im.Status.CurrentState == types.InstanceManagerStateError || im.DeletionTimestamp != nil {
 		if status.Started {
 			status.CurrentState = types.InstanceStateError
-			status.IP = ""
-			status.CurrentImage = ""
 		} else {
 			status.CurrentState = types.InstanceStateStopped
-			status.IP = ""
+		}
+		status.CurrentImage = ""
+		status.InstanceManagerName = ""
+		status.IP = ""
+		status.Port = 0
+		return
+	}
+
+	if im.Status.CurrentState == types.InstanceManagerStateStarting {
+		if status.Started {
+			status.CurrentState = types.InstanceStateError
 			status.CurrentImage = ""
+			status.InstanceManagerName = ""
+			status.IP = ""
+			status.Port = 0
 		}
 		return
 	}
 
-	if pod.DeletionTimestamp != nil {
-		status.CurrentState = types.InstanceStateStopping
-		status.IP = ""
+	pStatus, exists := im.Status.Instances[instanceName]
+	if !exists {
+		// need to consider case: instance is just created but haven't been present in instance manager
+		if status.CurrentState != types.InstanceStateStopped {
+			status.InstanceManagerName = ""
+		}
+
+		if status.Started {
+			status.CurrentState = types.InstanceStateError
+		} else {
+			status.CurrentState = types.InstanceStateStopped
+		}
 		status.CurrentImage = ""
-		if pod.DeletionGracePeriodSeconds != nil && *pod.DeletionGracePeriodSeconds != 0 {
-			// force deletion in the case of node lost
-			deletionDeadline := pod.DeletionTimestamp.Add(time.Duration(*pod.DeletionGracePeriodSeconds) * time.Second)
-			now := time.Now().UTC()
-			if now.After(deletionDeadline) {
-				logrus.Debugf("pod %v still exists after grace period %v passed, force deletion: now %v, deadline %v",
-					pod.Name, pod.DeletionGracePeriodSeconds, now, deletionDeadline)
-				gracePeriod := int64(0)
-				if err := h.kubeClient.CoreV1().Pods(h.namespace).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod}); err != nil {
-					logrus.Debugf("failed to force deletion pod %v: %v ", pod.Name, err)
-					return
-				}
-			}
-		}
+		status.IP = ""
+		status.Port = 0
 		return
 	}
 
-	switch pod.Status.Phase {
-	case v1.PodPending:
+	switch pStatus.State {
+	case types.InstanceStateStarting:
 		status.CurrentState = types.InstanceStateStarting
-		status.IP = ""
 		status.CurrentImage = ""
-	case v1.PodRunning:
-		for _, st := range pod.Status.ContainerStatuses {
-			// wait until all containers passed readiness probe
-			if !st.Ready {
-				status.CurrentState = types.InstanceStateStarting
-				status.IP = ""
-				status.CurrentImage = ""
-				return
-			}
-		}
+		status.IP = ""
+		status.Port = 0
+	case types.InstanceStateRunning:
 		status.CurrentState = types.InstanceStateRunning
-		if status.IP != pod.Status.PodIP {
-			status.IP = pod.Status.PodIP
-			logrus.Debugf("Instance %v starts running, IP %v", pod.Name, status.IP)
+		if status.IP != im.Status.IP {
+			status.IP = im.Status.IP
+			logrus.Debugf("Instance %v starts running, IP %v", instanceName, status.IP)
+		}
+		if status.Port != int(pStatus.PortStart) {
+			status.Port = int(pStatus.PortStart)
+			logrus.Debugf("Instance %v starts running, Port %d", instanceName, status.Port)
 		}
 		// only set CurrentImage when first started, since later we may specify
 		// different spec.EngineImage for upgrade
 		if status.CurrentImage == "" {
 			status.CurrentImage = spec.EngineImage
 		}
-		nodeBootID, err := h.getNodeBootIDForPod(pod)
-		if err != nil {
-			logrus.Warnf("cannot get node BootID for instance %v", pod.Name)
-		} else {
-			if status.NodeBootID == "" {
-				status.NodeBootID = nodeBootID
-			} else if status.NodeBootID != nodeBootID {
-				logrus.Warnf("Pod %v's node %v has been rebooted. Original boot ID is %v, current node boot ID is %v",
-					pod.Name, pod.Spec.NodeName, status.NodeBootID, nodeBootID)
-			}
+		nodeBootID := im.Status.NodeBootID
+		if status.NodeBootID == "" {
+			status.NodeBootID = nodeBootID
+		} else if status.NodeBootID != nodeBootID {
+			logrus.Warnf("Instance %v's node %v has been rebooted. Original boot ID is %v, current node boot ID is %v",
+				instanceName, im.Spec.NodeID, status.NodeBootID, nodeBootID)
 		}
-	default:
-		logrus.Warnf("instance %v state is failed/unknown, pod state %v, reason %v, message %v",
-			pod.Name, pod.Status.Phase, pod.Status.Reason, pod.Status.Message)
-		status.CurrentState = types.InstanceStateError
-		status.IP = ""
+	case types.InstanceStateStopping:
+		if status.Started {
+			status.CurrentState = types.InstanceStateError
+		} else {
+			status.CurrentState = types.InstanceStateStopping
+		}
 		status.CurrentImage = ""
+		status.IP = ""
+		status.Port = 0
+	case types.InstanceStateStopped:
+		if status.Started {
+			status.CurrentState = types.InstanceStateError
+		} else {
+			status.CurrentState = types.InstanceStateStopped
+		}
+		status.CurrentImage = ""
+		status.InstanceManagerName = ""
+		status.IP = ""
+		status.Port = 0
+	default:
+		logrus.Warnf("instance %v state is %v, error message %v", instanceName, pStatus.State, pStatus.ErrorMsg)
+		status.CurrentState = types.InstanceStateError
+		status.CurrentImage = ""
+		status.InstanceManagerName = ""
+		status.IP = ""
+		status.Port = 0
 		// Don't reset status.NodeBootID, we need it to identify a node reboot
 	}
 }
@@ -140,31 +155,33 @@ func (h *InstanceHandler) getNameFromObj(obj runtime.Object) (string, error) {
 	return metadata.GetName(), nil
 }
 
-func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.InstanceSpec, status *types.InstanceStatus) (err error) {
+func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.InstanceSpec, status *types.InstanceStatus, imType types.InstanceManagerType) (err error) {
 	runtimeObj, ok := obj.(runtime.Object)
 	if !ok {
 		return fmt.Errorf("obj is not a runtime.Object: %v", obj)
 	}
-	podName, err := h.getNameFromObj(runtimeObj)
+	instanceName, err := h.getNameFromObj(runtimeObj)
 	if err != nil {
 		return err
 	}
 
-	pod, err := h.getPod(podName)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return err
-	}
-	if apierrors.IsNotFound(err) {
-		pod = nil
+	im, err := h.ds.GetInstanceManager(status.InstanceManagerName)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			logrus.Debugf("cannot find instance manager %v", status.InstanceManagerName)
+			im = nil
+		} else {
+			return err
+		}
 	}
 
 	if spec.LogRequested {
-		if pod == nil {
-			logrus.Warnf("Cannot get the log for %v due to pod is already gone", podName)
+		if im == nil {
+			logrus.Warnf("Cannot get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
 		} else {
-			logrus.Warnf("Try to get requested log for %v on node %v", pod.Name, pod.Spec.NodeName)
-			if err := h.printPodLogs(pod.Name, CrashLogsTaillines); err != nil {
-				logrus.Warnf("cannot get requested log for instance %v on node %v, error %v", pod.Name, pod.Spec.NodeName, err)
+			logrus.Warnf("Try to get requested log for %v on node %v", instanceName, im.Spec.NodeID)
+			if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
+				logrus.Warnf("cannot get requested log for instance %v on node %v, error %v", instanceName, im.Spec.NodeID, err)
 			}
 		}
 		spec.LogRequested = false
@@ -172,25 +189,35 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 
 	switch spec.DesireState {
 	case types.InstanceStateRunning:
-		if pod != nil && pod.DeletionTimestamp == nil {
-			status.Started = true
+		if im != nil && im.DeletionTimestamp == nil {
+			if i, exists := im.Status.Instances[instanceName]; exists && i.State == types.InstanceStateRunning {
+				status.Started = true
+				break
+			}
+		}
+		// there is a delay between createInstance() invocation and state/InstanceManager update,
+		// hence instance `currentState` can be `stopped` but with `instanceManagerName` set.
+		// createInstance() may be called multiple times.
+		if status.CurrentState != types.InstanceStateStopped || status.InstanceManagerName != "" {
 			break
 		}
-		if status.CurrentState != types.InstanceStateStopped {
-			break
-		}
-		podSpec, err := h.podCreator.CreatePodSpec(obj)
+		im, err = h.prepareToCreateInstance(spec, status, imType)
 		if err != nil {
 			return err
 		}
-		pod, err = h.createPodForObject(runtimeObj, podSpec)
+		err = h.createInstance(instanceName, runtimeObj)
 		if err != nil {
 			return err
 		}
 	case types.InstanceStateStopped:
-		if pod != nil && pod.DeletionTimestamp == nil {
-			if err := h.deletePodForObject(runtimeObj); err != nil {
-				return err
+		if im != nil && im.DeletionTimestamp == nil {
+			// there is a delay between deleteInstance() invocation and state/InstanceManager update,
+			// hence instance `currentState` can be `running` but with false `Started` flag.
+			// deleteInstance() may be called multiple times.
+			if i, exists := im.Status.Instances[instanceName]; exists && status.Started && (i.State == types.InstanceStateRunning || i.State == types.InstanceStateStarting) {
+				if err := h.deleteInstance(instanceName, runtimeObj); err != nil {
+					return err
+				}
 			}
 		}
 		status.Started = false
@@ -199,106 +226,100 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
 	}
 
-	h.syncStatusWithPod(pod, spec, status)
+	h.syncStatusWithInstanceManager(im, instanceName, spec, status)
 
 	if status.CurrentState == types.InstanceStateRunning {
-		// pin down to this node ID. it's needed for a replica and
-		// engine should specify nodeName as well
-		if spec.NodeID == "" {
-			spec.NodeID = pod.Spec.NodeName
-		} else if spec.NodeID != pod.Spec.NodeName {
+		if spec.NodeID != im.Spec.NodeID {
 			status.CurrentState = types.InstanceStateError
+			status.InstanceManagerName = ""
 			status.IP = ""
 			status.NodeBootID = ""
-			err := fmt.Errorf("BUG: instance %v wasn't pin down to the host %v", pod.Name, spec.NodeID)
+			err := fmt.Errorf("BUG: instance %v wasn't pin down to the instance manager at %v", instanceName, im.Spec.NodeID)
 			logrus.Errorf("%v", err)
 			return err
 		}
-	} else if status.CurrentState == types.InstanceStateError && pod != nil {
-		logrus.Warnf("Instance %v crashed on node %v, try to get log", pod.Name, pod.Spec.NodeName)
-		if err := h.printPodLogs(pod.Name, CrashLogsTaillines); err != nil {
-			logrus.Warnf("cannot get crash log for instance %v on node %v, error %v", pod.Name, pod.Spec.NodeName, err)
+	} else if status.CurrentState == types.InstanceStateError && im != nil {
+		if _, exists := im.Status.Instances[instanceName]; exists {
+			logrus.Warnf("Instance %v crashed on Instance Manager %v at %v, try to get log", instanceName, im.Name, im.Spec.NodeID)
+			if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
+				logrus.Warnf("cannot get crash log for instance %v on Instance Manager %v at %v, error %v", instanceName, im.Name, im.Spec.NodeID, err)
+			}
 		}
 	}
 	return nil
 }
 
-func (h *InstanceHandler) getPod(podName string) (*v1.Pod, error) {
-	return h.pLister.Pods(h.namespace).Get(podName)
-}
-
-func (h *InstanceHandler) printPodLogs(podName string, taillines int) error {
-	tails := int64(taillines)
-	req := h.kubeClient.CoreV1().Pods(h.namespace).GetLogs(podName, &v1.PodLogOptions{
-		Timestamps: true,
-		TailLines:  &tails,
-	})
-	if req.URL().Path == "" {
-		return fmt.Errorf("GetLogs for %v/%v returns empty request path, may due to unit test run: %+v", h.namespace, podName, req)
-	}
-
-	logReader, err := req.Stream()
+func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Object) error {
+	stream, err := h.instanceManagerHandler.LogInstance(obj)
 	if err != nil {
 		return err
 	}
-	defer logReader.Close()
-	scanner := bufio.NewScanner(logReader)
-	for scanner.Scan() {
-		logrus.Warnf("%s: %s", podName, scanner.Text())
+
+	for {
+		line, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			logrus.Errorf("failed to receive log for instance %v: %v", instanceName, err)
+			return err
+		}
+		logrus.Warnf("%s: %s", instanceName, line)
 	}
 	return nil
 }
 
-func (h *InstanceHandler) createPodForObject(obj runtime.Object, pod *v1.Pod) (*v1.Pod, error) {
-	p, err := h.kubeClient.CoreV1().Pods(h.namespace).Create(pod)
+func (h *InstanceHandler) prepareToCreateInstance(spec *types.InstanceSpec, status *types.InstanceStatus, managerType types.InstanceManagerType) (*longhorn.InstanceManager, error) {
+	// use engine image object name rather than image
+	engineImageName := types.GetEngineImageChecksumName(spec.EngineImage)
+	im, err := h.ds.GetInstanceManagerBySelector(spec.NodeID, engineImageName, string(managerType))
 	if err != nil {
-		h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStarting, "Error starting %v: %v", pod.Name, err)
 		return nil, err
 	}
-	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStart, "Starts %v", pod.Name)
-	return p, nil
+	if im == nil {
+		return nil, fmt.Errorf("cannot find instance manager by Labels: engineImage=%v,nodeID=%v,type=%v", spec.EngineImage, spec.NodeID, managerType)
+	}
+
+	status.InstanceManagerName = im.Name
+	return im, nil
 }
 
-func (h *InstanceHandler) deletePodForObject(obj runtime.Object) error {
-	podName, err := h.getNameFromObj(obj)
+func (h *InstanceHandler) createInstance(instanceName string, obj runtime.Object) error {
+	_, err := h.instanceManagerHandler.GetInstance(obj)
 	if err != nil {
-		return err
-	}
+		if strings.Contains(err.Error(), "cannot find") {
+			if _, err := h.instanceManagerHandler.CreateInstance(obj); err != nil {
+				if !strings.Contains(err.Error(), "already exists") {
+					h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
+					return err
+				}
+			}
+			h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStart, "Starts %v", instanceName)
+		} else {
+			return err
 
-	if err := h.kubeClient.CoreV1().Pods(h.namespace).Delete(podName, nil); err != nil {
-		h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping %v: %v", podName, err)
-		return nil
+		}
 	}
-	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStop, "Stops %v", podName)
 	return nil
 }
 
-func (h *InstanceHandler) DeleteInstanceForObject(obj runtime.Object) (err error) {
-	podName, err := h.getNameFromObj(obj)
+func (h *InstanceHandler) deleteInstance(instanceName string, obj runtime.Object) error {
+	pStatus, err := h.instanceManagerHandler.GetInstance(obj)
 	if err != nil {
+		if strings.Contains(err.Error(), "cannot find") {
+			return nil
+		}
 		return err
 	}
+	if pStatus.State == types.InstanceStateStarting || pStatus.State == types.InstanceStateRunning {
+		if _, err := h.instanceManagerHandler.DeleteInstance(obj); err != nil {
+			if !strings.Contains(err.Error(), "cannot find") {
+				h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping %v: %v", instanceName, err)
+				return err
+			}
+		}
+		h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStop, "Stops %v", instanceName)
+	}
 
-	pod, err := h.getPod(podName)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return err
-	}
-	// pod already stopped
-	if apierrors.IsNotFound(err) {
-		return nil
-	}
-	// pod has been already asked to stop
-	if pod.DeletionTimestamp != nil {
-		return nil
-	}
-	return h.deletePodForObject(obj)
-}
-
-func (h *InstanceHandler) getNodeBootIDForPod(pod *v1.Pod) (string, error) {
-	nodeName := pod.Spec.NodeName
-	node, err := h.kubeClient.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
-	if err != nil {
-		return "", err
-	}
-	return node.Status.NodeInfo.BootID, nil
+	return nil
 }
