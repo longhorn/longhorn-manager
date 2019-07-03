@@ -337,6 +337,7 @@ func (ic *EngineImageController) updateEngineImageVersion(ei *longhorn.EngineIma
 		EngineImage: ei.Spec.Image,
 		VolumeName:  "",
 		IP:          "",
+		Port:        0,
 	})
 	if err != nil {
 		return errors.Wrapf(err, "cannot get engine client to check engine version")

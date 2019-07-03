@@ -208,6 +208,7 @@ func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.Eng
 		VolumeName:  e.Spec.VolumeName,
 		EngineImage: e.Status.CurrentImage,
 		IP:          e.Status.IP,
+		Port:        e.Status.Port,
 	})
 }
 
