@@ -125,7 +125,7 @@ var (
 
 	SettingDefinitionDefaultDataPath = SettingDefinition{
 		DisplayName: "Default Data Path",
-		Description: "Default path to use for mounting data on a host",
+		Description: "Default path to use for storing data on a host",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
 		Required:    true,
