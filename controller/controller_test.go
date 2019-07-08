@@ -29,6 +29,10 @@ const (
 	TestManagerImage   = "longhorn-manager:latest"
 	TestServiceAccount = "longhorn-service-account"
 
+	TestEngineImageName = "ei-test"
+
+	TestInstanceManagerName = "instance-manager-engine-image-name"
+
 	TestReplica1Name = "replica-volumename-1"
 	TestReplica2Name = "replica-volumename-2"
 
