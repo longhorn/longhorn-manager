@@ -13,6 +13,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+	imutil "github.com/longhorn/longhorn-instance-manager/util"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -173,6 +175,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		r.Spec.DesireState = types.InstanceStateRunning
 		r.Status.CurrentState = types.InstanceStateRunning
 		r.Status.IP = randomIP()
+		r.Status.Port = randomPort()
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
@@ -184,7 +187,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for name, r := range tc.expectReplicas {
 		//TODO update to r.Spec.AssociatedEngine
 		for _, e := range tc.expectEngines {
-			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+			e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 		}
 	}
 	testCases["volume attaching - start controller"] = tc
@@ -198,6 +201,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Spec.DesireState = types.InstanceStateRunning
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
+		e.Status.Port = randomPort()
 		e.Status.Endpoint = "/dev/" + tc.volume.Name
 		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
 	}
@@ -205,9 +209,10 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		r.Spec.DesireState = types.InstanceStateRunning
 		r.Status.CurrentState = types.InstanceStateRunning
 		r.Status.IP = randomIP()
+		r.Status.Port = randomPort()
 		//TODO update to r.Spec.AssociatedEngine
 		for _, e := range tc.engines {
-			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+			e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 			e.Status.ReplicaModeMap[name] = types.ReplicaModeRW
 		}
 	}
@@ -260,6 +265,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Spec.RequestedBackupRestore = TestBackupName
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
+		e.Status.Port = randomPort()
 		e.Status.Endpoint = "/dev/" + tc.volume.Name
 		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
 	}
@@ -267,8 +273,9 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		r.Spec.DesireState = types.InstanceStateRunning
 		r.Status.CurrentState = types.InstanceStateRunning
 		r.Status.IP = randomIP()
+		r.Status.Port = randomPort()
 		for _, e := range tc.engines {
-			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+			e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 			e.Status.ReplicaModeMap[name] = types.ReplicaModeRW
 		}
 	}
@@ -300,6 +307,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Spec.RequestedBackupRestore = TestBackupName
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
+		e.Status.Port = randomPort()
 		e.Status.Endpoint = "/dev/" + tc.volume.Name
 		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
 		e.Status.LastRestoredBackup = ""
@@ -307,10 +315,11 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for name, r := range tc.replicas {
 		r.Spec.HealthyAt = getTestNow()
 		r.Status.IP = randomIP()
+		r.Status.Port = randomPort()
 		r.Spec.DesireState = types.InstanceStateRunning
 		r.Status.CurrentState = types.InstanceStateRunning
 		for _, e := range tc.engines {
-			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+			e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 			e.Status.ReplicaModeMap[name] = types.ReplicaModeRW
 		}
 	}
@@ -335,6 +344,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Spec.RequestedBackupRestore = TestBackupName
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
+		e.Status.Port = randomPort()
 		e.Status.Endpoint = "/dev/" + tc.volume.Name
 		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
 		e.Status.LastRestoredBackup = TestBackupName
@@ -342,10 +352,11 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for name, r := range tc.replicas {
 		r.Spec.HealthyAt = getTestNow()
 		r.Status.IP = randomIP()
+		r.Status.Port = randomPort()
 		r.Spec.DesireState = types.InstanceStateRunning
 		r.Status.CurrentState = types.InstanceStateRunning
 		for _, e := range tc.engines {
-			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+			e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 			e.Status.ReplicaModeMap[name] = types.ReplicaModeRW
 		}
 	}
@@ -376,6 +387,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Spec.RequestedBackupRestore = TestBackupName
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
+		e.Status.Port = randomPort()
 		e.Status.Endpoint = "/dev/" + tc.volume.Name
 		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
 		e.Status.LastRestoredBackup = TestBackupName
@@ -383,10 +395,11 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for name, r := range tc.replicas {
 		r.Spec.HealthyAt = getTestNow()
 		r.Status.IP = randomIP()
+		r.Status.Port = randomPort()
 		r.Spec.DesireState = types.InstanceStateRunning
 		r.Status.CurrentState = types.InstanceStateRunning
 		for _, e := range tc.engines {
-			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+			e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 			e.Status.ReplicaModeMap[name] = types.ReplicaModeRW
 		}
 	}
@@ -442,6 +455,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Spec.RequestedBackupRestore = TestBackupName
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
+		e.Status.Port = randomPort()
 		e.Status.Endpoint = "/dev/" + tc.volume.Name
 		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
 		e.Status.LastRestoredBackup = TestBackupName
@@ -450,8 +464,9 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		r.Spec.DesireState = types.InstanceStateRunning
 		r.Status.CurrentState = types.InstanceStateRunning
 		r.Status.IP = randomIP()
+		r.Status.Port = randomPort()
 		for _, e := range tc.engines {
-			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+			e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 			e.Status.ReplicaModeMap[name] = types.ReplicaModeRW
 		}
 	}
@@ -474,6 +489,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Spec.DesireState = types.InstanceStateRunning
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
+		e.Status.Port = randomPort()
 		e.Status.Endpoint = "/dev/" + tc.volume.Name
 		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
 	}
@@ -482,9 +498,10 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		r.Spec.HealthyAt = getTestNow()
 		r.Status.CurrentState = types.InstanceStateRunning
 		r.Status.IP = randomIP()
+		r.Status.Port = randomPort()
 		//TODO update to r.Spec.AssociatedEngine
 		for _, e := range tc.engines {
-			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+			e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 			e.Status.ReplicaModeMap[name] = types.ReplicaModeRW
 		}
 	}
@@ -510,9 +527,10 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		r.Spec.HealthyAt = getTestNow()
 		r.Status.CurrentState = types.InstanceStateRunning
 		r.Status.IP = randomIP()
+		r.Status.Port = randomPort()
 		//TODO update to r.Spec.AssociatedEngine
 		for _, e := range tc.engines {
-			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+			e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 		}
 	}
 	tc.copyCurrentToExpect()
