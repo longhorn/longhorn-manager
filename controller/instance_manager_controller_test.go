@@ -92,6 +92,29 @@ func newInstanceManager(
 	return im
 }
 
+func newPod(phase v1.PodPhase, name, namespace, nodeID string) *v1.Pod {
+	if phase == "" {
+		return nil
+	}
+	ip := ""
+	if phase == v1.PodRunning {
+		ip = TestIP1
+	}
+	return &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: v1.PodSpec{
+			NodeName: nodeID,
+		},
+		Status: v1.PodStatus{
+			Phase: phase,
+			PodIP: ip,
+		},
+	}
+}
+
 func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.SharedInformerFactory,
 	kubeInformerFactory informers.SharedInformerFactory, lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
 	controllerID string) *InstanceManagerController {

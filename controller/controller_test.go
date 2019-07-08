@@ -20,9 +20,6 @@ import (
 
 const (
 	TestNamespace      = "default"
-	TestThreadiness    = 10
-	TestRestoreFrom    = "vfs://empty"
-	TestRestoreName    = "empty"
 	TestIP1            = "1.2.3.4"
 	TestIP2            = "5.6.7.8"
 	TestNode1          = "test-node-name-1"
@@ -34,9 +31,6 @@ const (
 	TestServiceAccount = "longhorn-service-account"
 
 	TestInstanceManagerName = "instance-manager-engine-image-name"
-
-	TestReplica1Name = "replica-volumename-1"
-	TestReplica2Name = "replica-volumename-2"
 
 	TestPod1 = "test-pod-name-1"
 	TestPod2 = "test-pod-name-2"
@@ -99,4 +93,8 @@ func randomIP() string {
 
 func getTestEngineImageName() string {
 	return types.GetEngineImageChecksumName(TestEngineImage)
+}
+
+func randomPort() int {
+	return rand.Int() % 30000
 }
