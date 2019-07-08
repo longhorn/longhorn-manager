@@ -110,7 +110,7 @@ func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 		s.vStoreSynced, s.eStoreSynced, s.rStoreSynced,
 		s.iStoreSynced, s.nStoreSynced, s.sStoreSynced,
 		s.pStoreSynced, s.cjStoreSynced, s.dsStoreSynced,
-		s.pvStoreSynced, s.pvcStoreSynced)
+		s.pvStoreSynced, s.pvcStoreSynced, s.imStoreSynced)
 }
 
 func ErrorIsNotFound(err error) bool {
