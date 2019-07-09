@@ -23,10 +23,10 @@ do
 	esac
 done
 
-base="${GOPATH}/src/github.com/rancher/longhorn-manager"
+base="${GOPATH}/src/github.com/longhorn/longhorn-manager"
 files=`find ${base}/deploy/ |grep yaml |sort`
 
-project="rancher\/longhorn-manager"
+project="longhornio\/longhorn-manager"
 latest=`cat ${base}/bin/latest_image`
 echo latest manager image ${latest}
 
@@ -39,7 +39,7 @@ do
 done
 
 if [ -n "$engine" ]; then
-	project="rancher\/longhorn-engine"
+	project="longhornio\/longhorn-engine"
 	echo engine image $engine
 	escaped_image=${engine//\//\\\/}
 
@@ -50,7 +50,7 @@ if [ -n "$engine" ]; then
 fi
 
 if [ -n "$ui" ]; then
-	project="rancher\/longhorn-ui"
+	project="longhornio\/longhorn-ui"
 	echo ui image $ui
 	escaped_image=${ui//\//\\\/}
 
