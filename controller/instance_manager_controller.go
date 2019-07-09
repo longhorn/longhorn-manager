@@ -466,11 +466,15 @@ func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.Instan
 
 func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.InstanceManager, image *longhorn.EngineImage) error {
 	var podSpec *v1.Pod
+	var err error
 	switch im.Spec.Type {
 	case types.InstanceManagerTypeEngine:
-		podSpec = imc.createEngineManagerPodSpec(im, image)
+		podSpec, err = imc.createEngineManagerPodSpec(im, image)
 	case types.InstanceManagerTypeReplica:
-		podSpec = imc.createReplicaManagerPodSpec(im, image)
+		podSpec, err = imc.createReplicaManagerPodSpec(im, image)
+	}
+	if err != nil {
+		return err
 	}
 	pod, err := imc.ds.CreatePod(podSpec)
 	if err != nil {
@@ -481,7 +485,9 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	return nil
 }
 
-func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, image *longhorn.EngineImage) *v1.Pod {
+func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager,
+	image *longhorn.EngineImage) (*v1.Pod, error) {
+
 	privileged := true
 	podSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -522,11 +528,27 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 			RestartPolicy: v1.RestartPolicyNever,
 		},
 	}
-	return podSpec
+
+	// Apply resource requirements to newly created Instance Manager Pods.
+	resourceReq, err := GetGuaranteedResourceRequirement(imc.ds)
+	if err != nil {
+		return nil, err
+	}
+	if resourceReq != nil {
+		podSpec.Spec.Containers[0].Resources = *resourceReq
+	}
+
+	return podSpec, nil
 }
 
-func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.InstanceManager, image *longhorn.EngineImage) *v1.Pod {
-	podSpec := imc.createGenericManagerPodSpec(im, image)
+func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.InstanceManager,
+	image *longhorn.EngineImage) (*v1.Pod, error) {
+
+	podSpec, err := imc.createGenericManagerPodSpec(im, image)
+	if err != nil {
+		return nil, err
+	}
+
 	podSpec.Spec.Containers[0].Name = "engine-manager"
 	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
 		{
@@ -568,11 +590,17 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 			},
 		},
 	}
-	return podSpec
+	return podSpec, nil
 }
 
-func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.InstanceManager, image *longhorn.EngineImage) *v1.Pod {
-	podSpec := imc.createGenericManagerPodSpec(im, image)
+func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.InstanceManager,
+	image *longhorn.EngineImage) (*v1.Pod, error) {
+
+	podSpec, err := imc.createGenericManagerPodSpec(im, image)
+	if err != nil {
+		return nil, err
+	}
+
 	podSpec.Spec.Containers[0].Name = "replica-manager"
 	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
 		{
@@ -590,5 +618,5 @@ func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.I
 			},
 		},
 	}
-	return podSpec
+	return podSpec, nil
 }
