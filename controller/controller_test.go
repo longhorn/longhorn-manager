@@ -13,6 +13,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/kubernetes/pkg/controller"
 
+	"github.com/longhorn/longhorn-manager/types"
+
 	. "gopkg.in/check.v1"
 )
 
@@ -30,8 +32,6 @@ const (
 	TestEngineImage    = "longhorn-engine:latest"
 	TestManagerImage   = "longhorn-manager:latest"
 	TestServiceAccount = "longhorn-service-account"
-
-	TestEngineImageName = "ei-test"
 
 	TestInstanceManagerName = "instance-manager-engine-image-name"
 
@@ -95,4 +95,8 @@ func randomIP() string {
 		b = append(b, strconv.Itoa(int(rand.Uint32()%255)))
 	}
 	return strings.Join(b, ".")
+}
+
+func getTestEngineImageName() string {
+	return types.GetEngineImageChecksumName(TestEngineImage)
 }
