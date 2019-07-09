@@ -846,6 +846,40 @@ func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	return ret, nil
 }
 
+// CreateDefaultDisk creates a default DiskSpec based on DefaultDataPath and applies it to the provided Node.
+func (s *DataStore) CreateDefaultDisk(node *longhorn.Node) error {
+	pathSetting, err := s.GetSetting(types.SettingNameDefaultDataPath)
+	if err != nil {
+		return err
+	}
+
+	// Attempt to create the specified Default Data Path on the disk, in case it doesn't exist.
+	nsPath := iscsi_util.GetHostNamespacePath(util.HostProcPath)
+	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
+	if err != nil {
+		return err
+	}
+	if _, err := nsExec.Execute("mkdir", []string{"-p", pathSetting.Value}); err != nil {
+		return errors.Wrapf(err, "error creating data path %v on host", pathSetting.Value)
+	}
+
+	diskInfo, err := util.GetDiskInfo(pathSetting.Value)
+	if err != nil {
+		return err
+	}
+
+	defaultDisk := map[string]types.DiskSpec{
+		diskInfo.Fsid: {
+			Path:            diskInfo.Path,
+			AllowScheduling: true,
+			StorageReserved: diskInfo.StorageMaximum * 30 / 100,
+		},
+	}
+	node.Spec.Disks = defaultDisk
+
+	return nil
+}
+
 // CreateDefaultNode will create the default Disk at the value of the DefaultDataPath Setting only if Create Default
 // Disk on Labeled Nodes has been disabled.
 func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
@@ -863,34 +897,9 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 		},
 	}
 	if !requireLabel {
-		pathSetting, err := s.GetSetting(types.SettingNameDefaultDataPath)
-		if err != nil {
+		if err := s.CreateDefaultDisk(node); err != nil {
 			return nil, err
 		}
-
-		// Attempt to create the specified Default Data Path on the disk, in case it doesn't exist.
-		nsPath := iscsi_util.GetHostNamespacePath(util.HostProcPath)
-		nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := nsExec.Execute("mkdir", []string{"-p", pathSetting.Value}); err != nil {
-			return nil, errors.Wrapf(err, "error creating data path %v on host", pathSetting.Value)
-		}
-
-		diskInfo, err := util.GetDiskInfo(pathSetting.Value)
-		if err != nil {
-			return nil, err
-		}
-
-		defaultDisk := map[string]types.DiskSpec{
-			diskInfo.Fsid: {
-				Path:            diskInfo.Path,
-				AllowScheduling: true,
-				StorageReserved: diskInfo.StorageMaximum * 30 / 100,
-			},
-		}
-		node.Spec.Disks = defaultDisk
 	}
 
 	return s.CreateNode(node)
