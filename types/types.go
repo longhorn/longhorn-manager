@@ -19,6 +19,8 @@ const (
 
 	LonghornNodeKey = "longhornnode"
 
+	NodeCreateDefaultDiskLabel = "node.longhorn.io/create-default-disk"
+
 	BaseImageLabel = "ranchervm-base-image"
 )
 
