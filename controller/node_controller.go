@@ -30,6 +30,8 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
+
+	iscsi_util "github.com/longhorn/go-iscsi-helper/util"
 )
 
 var (
@@ -481,6 +483,11 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return nil
 	}
 
+	// sync default Disk on labeled Nodes
+	if err := nc.syncDefaultDisk(node); err != nil {
+		return err
+	}
+
 	// sync disks status on current node
 	if err := nc.syncDiskStatus(node); err != nil {
 		return err
@@ -555,6 +562,59 @@ func (nc *NodeController) enqueueKubernetesNode(n *v1.Node) {
 		return
 	}
 	nc.enqueueNode(node)
+}
+
+// syncDefaultDisk handles creation of the default Disk if Create Default Disk on Labeled Nodes is enabled. This allows
+// for the default Disk to be created even if the Node has been labeled after initial registration with Longhorn,
+// provided that there are no existing Disks remaining on the Node.
+func (nc *NodeController) syncDefaultDisk(node *longhorn.Node) error {
+	requireLabel, err := nc.ds.GetSettingAsBool(types.SettingNameCreateDefaultDiskLabeledNodes)
+	if err != nil {
+		return err
+	}
+	if requireLabel && len(node.Spec.Disks) == 0 {
+		kubeNode, err := nc.ds.GetKubernetesNode(node.Name)
+		if err != nil {
+			return err
+		}
+		if val, ok := kubeNode.Labels[types.NodeCreateDefaultDiskLabel]; ok {
+			createDisk, err := strconv.ParseBool(val)
+			if err != nil {
+				logrus.Errorf("unable to parse label %v, value %v as bool: %v",
+					types.NodeCreateDefaultDiskLabel, val, err)
+			} else if createDisk {
+				pathSetting, err := nc.ds.GetSetting(types.SettingNameDefaultDataPath)
+				if err != nil {
+					return err
+				}
+
+				// Attempt to create the specified Default Data Path on the disk, in case it doesn't exist.
+				nsPath := iscsi_util.GetHostNamespacePath(util.HostProcPath)
+				nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
+				if err != nil {
+					return err
+				}
+				if _, err := nsExec.Execute("mkdir", []string{"-p", pathSetting.Value}); err != nil {
+					return errors.Wrapf(err, "error creating data path %v on host", pathSetting.Value)
+				}
+
+				diskInfo, err := util.GetDiskInfo(pathSetting.Value)
+				if err != nil {
+					return err
+				}
+
+				defaultDisk := map[string]types.DiskSpec{
+					diskInfo.Fsid: {
+						Path:            diskInfo.Path,
+						AllowScheduling: true,
+						StorageReserved: diskInfo.StorageMaximum * 30 / 100,
+					},
+				}
+				node.Spec.Disks = defaultDisk
+			}
+		}
+	}
+	return nil
 }
 
 func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
