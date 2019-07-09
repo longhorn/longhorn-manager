@@ -2,11 +2,9 @@ package controller
 
 import (
 	"fmt"
-	v1 "k8s.io/api/core/v1"
+	"time"
 
-	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/types"
-
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
@@ -14,6 +12,9 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
+
+	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
@@ -40,7 +41,7 @@ type InstanceManagerTestCase struct {
 func newEngineImage() *longhorn.EngineImage {
 	return &longhorn.EngineImage{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      TestEngineImageName,
+			Name:      getTestEngineImageName(),
 			Namespace: TestNamespace,
 			UID:       uuid.NewUUID(),
 		},
@@ -53,25 +54,42 @@ func newEngineImage() *longhorn.EngineImage {
 	}
 }
 
-func newInstanceManager(imType types.InstanceManagerType,
-	currentState types.InstanceManagerState, currentOwnerID, nodeID string) *longhorn.InstanceManager {
+func newInstanceManager(
+	imType types.InstanceManagerType,
+	currentState types.InstanceManagerState,
+	currentOwnerID, nodeID, ip string,
+	instances map[string]types.InstanceProcessStatus,
+	isDeleting bool) *longhorn.InstanceManager {
 
-	return &longhorn.InstanceManager{
+	im := &longhorn.InstanceManager{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      TestInstanceManagerName,
 			Namespace: TestNamespace,
 			UID:       uuid.NewUUID(),
+			Labels: map[string]string{
+				"engineImage": getTestEngineImageName(),
+				"nodeID":      TestNode1,
+				"type":        string(imType),
+			},
 		},
 		Spec: types.InstanceManagerSpec{
-			EngineImage: TestEngineImageName,
+			EngineImage: getTestEngineImageName(),
 			NodeID:      nodeID,
 			OwnerID:     currentOwnerID,
 			Type:        imType,
 		},
 		Status: types.InstanceManagerStatus{
 			CurrentState: currentState,
+			IP:           ip,
+			Instances:    instances,
 		},
 	}
+
+	if isDeleting {
+		now := metav1.NewTime(time.Now())
+		im.DeletionTimestamp = &now
+	}
+	return im
 }
 
 func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.SharedInformerFactory,
@@ -229,7 +247,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		_, err = lhClient.LonghornV1alpha1().Nodes(lhNode2.Namespace).Create(lhNode2)
 		c.Assert(err, IsNil)
 
-		im := newInstanceManager(tc.expectedType, tc.currentState, tc.currentOwnerID, tc.nodeID)
+		im := newInstanceManager(tc.expectedType, tc.currentState, tc.currentOwnerID, tc.nodeID, "", nil, false)
 		err = imIndexer.Add(im)
 		c.Assert(err, IsNil)
 		_, err = lhClient.LonghornV1alpha1().InstanceManagers(im.Namespace).Create(im)
