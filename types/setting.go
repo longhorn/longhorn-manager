@@ -17,7 +17,7 @@ type SettingName string
 const (
 	SettingNameBackupTarget                      = SettingName("backup-target")
 	SettingNameBackupTargetCredentialSecret      = SettingName("backup-target-credential-secret")
-	SettingNameCreateDefaultDisk                 = SettingName("create-default-disk")
+	SettingNameCreateDefaultDiskLabeledNodes     = SettingName("create-default-disk-labeled-nodes")
 	SettingNameDefaultDataPath                   = SettingName("default-data-path")
 	SettingNameDefaultEngineImage                = SettingName("default-engine-image")
 	SettingNameReplicaSoftAntiAffinity           = SettingName("replica-soft-anti-affinity")
@@ -35,7 +35,7 @@ var (
 	SettingNameList = []SettingName{
 		SettingNameBackupTarget,
 		SettingNameBackupTargetCredentialSecret,
-		SettingNameCreateDefaultDisk,
+		SettingNameCreateDefaultDiskLabeledNodes,
 		SettingNameDefaultDataPath,
 		SettingNameDefaultEngineImage,
 		SettingNameReplicaSoftAntiAffinity,
@@ -71,7 +71,7 @@ var (
 	SettingDefinitions = map[SettingName]SettingDefinition{
 		SettingNameBackupTarget:                      SettingDefinitionBackupTarget,
 		SettingNameBackupTargetCredentialSecret:      SettingDefinitionBackupTargetCredentialSecret,
-		SettingNameCreateDefaultDisk:                 SettingDefinitionCreateDefaultDisk,
+		SettingNameCreateDefaultDiskLabeledNodes:     SettingDefinitionCreateDefaultDiskLabeledNodes,
 		SettingNameDefaultDataPath:                   SettingDefinitionDefaultDataPath,
 		SettingNameDefaultEngineImage:                SettingDefinitionDefaultEngineImage,
 		SettingNameReplicaSoftAntiAffinity:           SettingDefinitionReplicaSoftAntiAffinity,
@@ -113,14 +113,16 @@ var (
 		Default:     "300",
 	}
 
-	SettingDefinitionCreateDefaultDisk = SettingDefinition{
-		DisplayName: "Create Default Disk",
-		Description: "Create default disk automatically on newly added Nodes. Configure path with Default Data Path",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "true",
+	SettingDefinitionCreateDefaultDiskLabeledNodes = SettingDefinition{
+		DisplayName: "Create Default Disk on Labeled Nodes",
+		Description: "Create default Disk automatically only on Nodes with the label " +
+			"\"node.longhorn.io/role: storage\" if no other Disks exist. If disabled, default Disk will be created on " +
+			"all new Nodes (only on first add).",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
 	}
 
 	SettingDefinitionDefaultDataPath = SettingDefinition{
