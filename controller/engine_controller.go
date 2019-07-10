@@ -23,6 +23,7 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
@@ -67,7 +69,8 @@ type EngineController struct {
 	eStoreSynced cache.InformerSynced
 	pStoreSynced cache.InformerSynced
 
-	queue workqueue.RateLimitingInterface
+	backoff *flowcontrol.Backoff
+	queue   workqueue.RateLimitingInterface
 
 	instanceHandler *InstanceHandler
 
@@ -115,7 +118,8 @@ func NewEngineController(
 		eStoreSynced:  engineInformer.Informer().HasSynced,
 		pStoreSynced:  podInformer.Informer().HasSynced,
 
-		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-engine"),
+		backoff: flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
+		queue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-engine"),
 
 		engines:                  engines,
 		engineMonitorMutex:       &sync.RWMutex{},
@@ -850,11 +854,6 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip stri
 		if err := client.ReplicaAdd(replicaURL); err != nil {
 			logrus.Errorf("Failed rebuilding %v of %v: %v", ip, e.Spec.VolumeName, err)
 			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedRebuilding, "Failed rebuilding replica with IP %v: %v", ip, err)
-			// we've sent out event to notify user. we don't want to
-			// automatically handle it because it may cause chain
-			// reaction to create numerous new replicas if we set
-			// the replica to failed.
-			// user can decide to delete it then we will try again
 			if err := client.ReplicaRemove(replicaURL); err != nil {
 				logrus.Errorf("Failed to remove rebuilding replica %v of %v due to rebuilding failure: %v", ip, e.Spec.VolumeName, err)
 				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting,
@@ -862,8 +861,32 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip stri
 			} else {
 				logrus.Errorf("Removed failed rebuilding replica %v of %v", ip, e.Spec.VolumeName)
 			}
+			// Before we mark the Replica as Failed automatically, we want to check the Backoff to avoid recreating new
+			// Replicas too quickly. If the Replica is still in the Backoff period, we will leave the Replica alone. If
+			// it is past the Backoff period, we'll try to mark the Replica as Failed and increase the Backoff period
+			// for the next failure.
+			if !ec.backoff.IsInBackOffSinceUpdate(e.Name, time.Now()) {
+				rep, err := ec.ds.GetReplica(replica)
+				if err != nil {
+					logrus.Errorf("Could not get replica %v to mark failed rebuild: %v", replica, err)
+					return
+				}
+				rep.Spec.FailedAt = util.Now()
+				if _, err := ec.ds.UpdateReplica(rep); err != nil {
+					logrus.Errorf("Could not mark failed rebuild on replica %v: %v", replica, err)
+					return
+				}
+				// Now that the Replica can actually be recreated, we can move up the Backoff.
+				ec.backoff.Next(e.Name, time.Now())
+				backoffTime := ec.backoff.Get(e.Name).Seconds()
+				logrus.Infof("Marked failed rebuild on replica %v, backoff period is now %v seconds", replica, backoffTime)
+				return
+			}
+			logrus.Infof("Engine %v is still in backoff for replica %v rebuild failure", e.Name, replica)
 			return
 		}
+		// Replica rebuild succeeded, clear Backoff.
+		ec.backoff.DeleteEntry(e.Name)
 		ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilded,
 			"Replica %v with IP %v has been rebuilded for volume %v", replica, ip, e.Spec.VolumeName)
 	}()
