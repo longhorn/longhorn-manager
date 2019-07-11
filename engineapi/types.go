@@ -10,8 +10,8 @@ import (
 
 const (
 	// CurrentCLIVersion indicates the API version manager used to talk with the
-	// engine, including `longhorn-engine` and `longhorn-engine-launcher`
-	CurrentCLIVersion = 1
+	// engine, including `longhorn-engine` and `longhorn-instance-manager`
+	CurrentCLIVersion = 2
 
 	InstanceManagerDefaultPort = 8500
 
