@@ -2,12 +2,23 @@ package types
 
 func (v *VolumeSpec) DeepCopyInto(to *VolumeSpec) {
 	*to = *v
-	if v.RecurringJobs == nil {
-		return
+	if v.DiskSelector != nil {
+		to.DiskSelector = make([]string, len(v.DiskSelector))
+		for i := 0; i < len(v.DiskSelector); i++ {
+			to.DiskSelector[i] = v.DiskSelector[i]
+		}
 	}
-	to.RecurringJobs = make([]RecurringJob, len(v.RecurringJobs))
-	for i := 0; i < len(v.RecurringJobs); i++ {
-		to.RecurringJobs[i] = v.RecurringJobs[i]
+	if v.NodeSelector != nil {
+		to.NodeSelector = make([]string, len(v.NodeSelector))
+		for i := 0; i < len(v.NodeSelector); i++ {
+			to.NodeSelector[i] = v.NodeSelector[i]
+		}
+	}
+	if v.RecurringJobs != nil {
+		to.RecurringJobs = make([]RecurringJob, len(v.RecurringJobs))
+		for i := 0; i < len(v.RecurringJobs); i++ {
+			to.RecurringJobs[i] = v.RecurringJobs[i]
+		}
 	}
 }
 
@@ -50,12 +61,24 @@ func (e *EngineStatus) DeepCopyInto(to *EngineStatus) {
 
 func (n *NodeSpec) DeepCopyInto(to *NodeSpec) {
 	*to = *n
-	if n.Disks == nil {
-		return
+	if n.Disks != nil {
+		to.Disks = make(map[string]DiskSpec)
+		for key, value := range n.Disks {
+			toDisk := value
+			if value.Tags != nil {
+				toDisk.Tags = make([]string, len(value.Tags))
+				for i := 0; i < len(value.Tags); i++ {
+					toDisk.Tags[i] = value.Tags[i]
+				}
+			}
+			to.Disks[key] = toDisk
+		}
 	}
-	to.Disks = make(map[string]DiskSpec)
-	for key, value := range n.Disks {
-		to.Disks[key] = value
+	if n.Tags != nil {
+		to.Tags = make([]string, len(n.Tags))
+		for i := 0; i < len(n.Tags); i++ {
+			to.Tags[i] = n.Tags[i]
+		}
 	}
 }
 
