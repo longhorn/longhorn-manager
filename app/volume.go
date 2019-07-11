@@ -1,8 +1,10 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"sort"
 	"time"
 
@@ -259,6 +261,22 @@ func (job *Job) backupAndCleanup() (err error) {
 	if err := job.snapshotAndCleanup(); err != nil {
 		return err
 	}
+
+	// Save current KubernetesStatus of Volume as a Label on the Backup. Run here because this should NOT be set on
+	// Snapshots.
+	v, err := job.GetVolume(job.volumeName)
+	if err != nil {
+		return err
+	}
+	// Cannot directly compare the structs since KubernetesStatus contains a slice which cannot be compared.
+	if !reflect.DeepEqual(v.Status.KubernetesStatus, types.KubernetesStatus{}) {
+		kubeStatus, err := json.Marshal(v.Status.KubernetesStatus)
+		if err != nil {
+			return errors.Wrapf(err, "BUG: could not convert volume %v's KubernetesStatus to json", job.volumeName)
+		}
+		job.labels[types.KubernetesStatusLabel] = string(kubeStatus)
+	}
+
 	// CronJob template has covered the credential already, so we don't need to get the credential secret.
 	if err := job.engine.SnapshotBackup(job.snapshotName, job.backupTarget, job.labels, nil); err != nil {
 		return err

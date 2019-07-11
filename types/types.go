@@ -21,7 +21,8 @@ const (
 
 	NodeCreateDefaultDiskLabel = "node.longhorn.io/create-default-disk"
 
-	BaseImageLabel = "ranchervm-base-image"
+	BaseImageLabel        = "ranchervm-base-image"
+	KubernetesStatusLabel = "KubernetesStatus"
 )
 
 const (
