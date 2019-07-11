@@ -17,7 +17,14 @@ func (v *VolumeSpec) DeepCopyInto(to *VolumeSpec) {
 	if v.RecurringJobs != nil {
 		to.RecurringJobs = make([]RecurringJob, len(v.RecurringJobs))
 		for i := 0; i < len(v.RecurringJobs); i++ {
-			to.RecurringJobs[i] = v.RecurringJobs[i]
+			toRecurringJob := v.RecurringJobs[i]
+			if v.RecurringJobs[i].Labels != nil {
+				toRecurringJob.Labels = make(map[string]string)
+				for key, value := range v.RecurringJobs[i].Labels {
+					toRecurringJob.Labels[key] = value
+				}
+			}
+			to.RecurringJobs[i] = toRecurringJob
 		}
 	}
 }
