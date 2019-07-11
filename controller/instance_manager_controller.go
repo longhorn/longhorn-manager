@@ -505,14 +505,11 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		Spec: v1.PodSpec{
 			Containers: []v1.Container{
 				{
-					Command: []string{
-						"longhorn-engine-launcher", "daemon", "--listen", "0.0.0.0:8500",
-					},
 					Image: image.Spec.Image,
 					ReadinessProbe: &v1.Probe{
 						Handler: v1.Handler{
 							Exec: &v1.ExecAction{
-								Command: []string{"/usr/bin/grpc_health_probe", "-addr=:8500"},
+								Command: []string{"/usr/local/bin/grpc_health_probe", "-addr=:8500"},
 							},
 						},
 						InitialDelaySeconds: managerReadinessProbeInitialDelay,
@@ -550,6 +547,9 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 	}
 
 	podSpec.Spec.Containers[0].Name = "engine-manager"
+	podSpec.Spec.Containers[0].Command = []string{
+		"engine-manager", "daemon", "--listen", "0.0.0.0:8500",
+	}
 	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
 		{
 			MountPath: "/host/dev",
@@ -602,6 +602,9 @@ func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.I
 	}
 
 	podSpec.Spec.Containers[0].Name = "replica-manager"
+	podSpec.Spec.Containers[0].Command = []string{
+		"longhorn-instance-manager", "daemon", "--listen", "0.0.0.0:8500",
+	}
 	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
 		{
 			MountPath: "/host",
