@@ -1182,6 +1182,9 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 		"--labels", LabelRecurringJob + "=" + job.Name,
 		"--retain", strconv.Itoa(job.Retain),
 	}
+	for key, val := range job.Labels {
+		cmd = append(cmd, "--labels", key+"="+val)
+	}
 	if job.Task == types.RecurringJobTypeBackup {
 		cmd = append(cmd, "--backuptarget", backupTarget)
 	}

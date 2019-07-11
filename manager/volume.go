@@ -496,6 +496,11 @@ func (m *VolumeManager) validateRecurringJobs(jobs []types.RecurringJob) error {
 		if len(job.Name) > types.MaximumJobNameSize {
 			return fmt.Errorf("job name %v is too long, must be %v characters or less", job.Name, types.MaximumJobNameSize)
 		}
+		if job.Labels != nil {
+			if _, err := util.ValidateSnapshotLabels(job.Labels); err != nil {
+				return err
+			}
+		}
 	}
 	if err := m.checkDuplicateJobs(jobs); err != nil {
 		return err
