@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/go-rancher/api"
 
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 func (s *Server) SnapshotCreate(w http.ResponseWriter, req *http.Request) (err error) {
@@ -158,7 +159,11 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 		return fmt.Errorf("cannot create backup for standby volume %v", vol.Name)
 	}
 
-	labels := make(map[string]string)
+	labels, err := util.ValidateSnapshotLabels(input.Labels)
+	if err != nil {
+		return err
+	}
+
 	if vol.Spec.BaseImage != "" {
 		labels[types.BaseImageLabel] = vol.Spec.BaseImage
 	}

@@ -48,7 +48,8 @@ const (
 )
 
 var (
-	cmdTimeout = time.Minute // one minute by default
+	cmdTimeout     = time.Minute // one minute by default
+	reservedLabels = []string{"RecurringJob", "ranchervm-base-image"}
 
 	ConflictRetryInterval = 20 * time.Millisecond
 	ConflictRetryCounts   = 100
@@ -489,6 +490,28 @@ func (h filteredLoggingHandler) ServeHTTP(w http.ResponseWriter, req *http.Reque
 		}
 	}
 	h.loggingHandler.ServeHTTP(w, req)
+}
+
+func ValidateSnapshotLabels(labels map[string]string) (map[string]string, error) {
+	validLabels := make(map[string]string)
+	for key, val := range labels {
+		if errList := validation.IsQualifiedName(key); len(errList) > 0 {
+			return nil, fmt.Errorf("at least one error encountered while validating backup label with key %v: %v",
+				key, errList[0])
+		}
+		if val == "" {
+			return nil, fmt.Errorf("value for label with key %v cannot be empty", key)
+		}
+		validLabels[key] = val
+	}
+
+	for _, key := range reservedLabels {
+		if _, ok := validLabels[key]; ok {
+			return nil, fmt.Errorf("specified snapshot backup labels contain reserved keyword %v", key)
+		}
+	}
+
+	return validLabels, nil
 }
 
 func ValidateTags(inputTags []string) ([]string, error) {
