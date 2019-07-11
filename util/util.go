@@ -49,7 +49,7 @@ const (
 
 var (
 	cmdTimeout     = time.Minute // one minute by default
-	reservedLabels = []string{"RecurringJob", "ranchervm-base-image"}
+	reservedLabels = []string{"KubernetesStatus", "RecurringJob", "ranchervm-base-image"}
 
 	ConflictRetryInterval = 20 * time.Millisecond
 	ConflictRetryCounts   = 100

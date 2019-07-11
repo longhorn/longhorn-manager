@@ -1,8 +1,10 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
@@ -166,6 +168,15 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 
 	if vol.Spec.BaseImage != "" {
 		labels[types.BaseImageLabel] = vol.Spec.BaseImage
+	}
+
+	// Cannot directly compare the structs since KubernetesStatus contains a slice which cannot be compared.
+	if !reflect.DeepEqual(vol.Status.KubernetesStatus, types.KubernetesStatus{}) {
+		kubeStatus, err := json.Marshal(vol.Status.KubernetesStatus)
+		if err != nil {
+			return errors.Wrapf(err, "BUG: could not convert volume %v's KubernetesStatus to json", volName)
+		}
+		labels[types.KubernetesStatusLabel] = string(kubeStatus)
 	}
 
 	return s.m.BackupSnapshot(input.Name, labels, volName)
