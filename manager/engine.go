@@ -3,6 +3,7 @@ package manager
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -11,6 +12,10 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+)
+
+const (
+	BackupStatusQueryInterval = 2 * time.Second
 )
 
 func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*engineapi.Snapshot, error) {
@@ -170,6 +175,34 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 		if err != nil {
 			logrus.Warnf("Failed to update volume LastBackup for %v due to cannot get backup target: %v", volumeName, err)
 		}
+
+		bks := &types.BackupStatus{}
+		for {
+			engines, err := m.ds.ListVolumeEngines(volumeName)
+			if err != nil {
+				logrus.Errorf("fail to get engines for volume %v", volumeName)
+				return
+			}
+
+			for _, e := range engines {
+				backupStatusList := e.Status.BackupStatus
+				for _, b := range backupStatusList {
+					if b.SnapshotName == snapshotName {
+						bks = b
+						break
+					}
+				}
+			}
+			if bks.BackupError != "" {
+				logrus.Errorf("Failed to updated volume LastBackup for %v due to backup error %v", volumeName, bks.BackupError)
+				break
+			}
+			if bks.Progress == 100 {
+				break
+			}
+			time.Sleep(BackupStatusQueryInterval)
+		}
+
 		if err := UpdateVolumeLastBackup(volumeName, target, m.ds.GetVolume, m.ds.UpdateVolume); err != nil {
 			logrus.Warnf("Failed to update volume LastBackup for %v: %v", volumeName, err)
 		}
