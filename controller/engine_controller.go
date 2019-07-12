@@ -674,15 +674,35 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	needRestore := false
 	if engine.Status.LastRestoredBackup != "" {
-		info, err := client.Info()
+		rsMap, err := client.BackupRestoreStatus()
 		if err != nil {
+			logrus.Errorf("failed to get Backup Restore Status: %v", err)
 			return err
 		}
-		// for those engine just restored from backup, info.LastRestored is empty
-		if info.LastRestored != "" {
-			engine.Status.LastRestoredBackup = info.LastRestored
+
+		isRestoring := false
+		lastRestored := ""
+		for _, status := range rsMap {
+			if status.IsRestoring {
+				isRestoring = true
+			}
 		}
-		if !info.IsRestoring && engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
+
+		//Engine is not restoring, pick the lastRestored from replica
+		if !isRestoring {
+			for _, status := range rsMap {
+				if lastRestored != "" && status.LastRestored != lastRestored {
+					return fmt.Errorf("BUG: different lastRestored values even though engine is not restoring")
+				}
+				lastRestored = status.LastRestored
+			}
+		}
+
+		// for those engine just restored from backup, lastRestored is empty
+		if lastRestored != "" {
+			engine.Status.LastRestoredBackup = lastRestored
+		}
+		if !isRestoring && engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
 			needRestore = true
 		}
 	}
@@ -717,9 +737,10 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 
 		engine.Status.LastRestoredBackup = engine.Spec.RequestedBackupRestore
+		engineName := engine.Name
 		engine, err = m.ds.UpdateEngine(engine)
 		if err != nil {
-			logrus.Errorf("failed to do update engine %v after incremental restoration: %v", engine.Name, err)
+			logrus.Errorf("failed to do update engine %v after incremental restoration: %v", engineName, err)
 			return
 		}
 	}(client, engine)
