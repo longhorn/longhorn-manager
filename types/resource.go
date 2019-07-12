@@ -282,3 +282,8 @@ type BackupStatus struct {
 	BackupError  string `json:"backupError,omitempty"`
 	SnapshotName string `json:"snapshotName"`
 }
+
+type RestoreStatus struct {
+	IsRestoring  bool   `json:"isRestoring"`
+	LastRestored string `json:"lastRestored"`
+}
