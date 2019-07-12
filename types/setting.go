@@ -116,8 +116,8 @@ var (
 	SettingDefinitionCreateDefaultDiskLabeledNodes = SettingDefinition{
 		DisplayName: "Create Default Disk on Labeled Nodes",
 		Description: "Create default Disk automatically only on Nodes with the label " +
-			"\"node.longhorn.io/role: storage\" if no other Disks exist. If disabled, default Disk will be created on " +
-			"all new Nodes (only on first add).",
+			"\"node.longhorn.io/create-default-disk=true\" if no other Disks exist. If disabled, default Disk will " +
+			"be created on all new Nodes (only on first add).",
 		Category: SettingCategoryGeneral,
 		Type:     SettingTypeBool,
 		Required: true,
