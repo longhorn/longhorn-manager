@@ -56,6 +56,7 @@ type EngineClient interface {
 	SnapshotBackupStatus() (map[string]*types.BackupStatus, error)
 
 	BackupRestoreIncrementally(backupTarget, backupName, backupVolume, lastBackup string) error
+	BackupRestoreStatus() (map[string]*types.RestoreStatus, error)
 }
 
 type EngineClientRequest struct {

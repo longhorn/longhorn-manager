@@ -228,3 +228,16 @@ func (e *Engine) BackupRestoreIncrementally(backupTarget, backupName, backupVolu
 
 	return nil
 }
+
+func (e *Engine) BackupRestoreStatus() (map[string]*types.RestoreStatus, error) {
+	args := []string{"backup", "restore-status"}
+	output, err := e.ExecuteEngineBinary(args...)
+	if err != nil {
+		return nil, err
+	}
+	replicaStatusMap := make(map[string]*types.RestoreStatus)
+	if err := json.Unmarshal([]byte(output), &replicaStatusMap); err != nil {
+		return nil, err
+	}
+	return replicaStatusMap, nil
+}
