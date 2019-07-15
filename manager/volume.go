@@ -452,18 +452,19 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 		}
 	}
 
-	if v.Status.State != types.VolumeStateDetached && v.Status.State != types.VolumeStateDetaching {
-		v, err = m.Detach(volumeName)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to detach standby volume before activating it")
-		}
-	}
-
+	// Need to update volume before detaching, otherwise the engine will try to continue restoring backup
 	v.Spec.Frontend = types.VolumeFrontend(frontend)
 	v.Spec.Standby = false
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
 		return nil, err
+	}
+
+	if v.Status.State != types.VolumeStateDetached && v.Status.State != types.VolumeStateDetaching {
+		v, err = m.Detach(volumeName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to detach standby volume before activating it")
+		}
 	}
 
 	logrus.Debugf("Activated volume %v with frontend %v", v.Name, frontend)
