@@ -19,8 +19,6 @@ import (
 const (
 	TestNamespace      = "default"
 	TestThreadiness    = 10
-	TestRestoreFrom    = "vfs://empty"
-	TestRestoreName    = "empty"
 	TestIP1            = "1.2.3.4"
 	TestIP2            = "5.6.7.8"
 	TestNode1          = "test-node-name-1"

@@ -50,13 +50,8 @@ const (
 	// belongs to, for scheduling purpose
 	longhornReplicaKey = "longhorn-volume-replica"
 
-	// Empty replica will response fast
-	replicaReadinessProbeInitialDelay = 1
-	// Otherwise we will need to wait for a restore
-	replicaReadinessProbePeriodSeconds = 1
-	// assuming the restore will be done at least this per second
-	replicaReadinessProbeMinimalRestoreRate = 10 * 1024 * 1024
-	// if replica won't start restoring, this will be the default
+	replicaReadinessProbeInitialDelay            = 1
+	replicaReadinessProbePeriodSeconds           = 1
 	replicaReadinessProbeFailureThresholdDefault = 10
 )
 
@@ -310,38 +305,8 @@ func (rc *ReplicaController) enqueueReplica(replica *longhorn.Replica) {
 	rc.queue.AddRateLimited(key)
 }
 
-func (rc *ReplicaController) getReadinessProbeFailureThreshold(r *longhorn.Replica) int32 {
-	if r.Spec.RestoreFrom == "" {
-		// default value if
-		return replicaReadinessProbeFailureThresholdDefault
-	}
-	// this volume needs 2e9 * 1e7 which is 2+ Exabytes to overflow
-	return int32(r.Spec.VolumeSize / replicaReadinessProbeMinimalRestoreRate / replicaReadinessProbePeriodSeconds)
-}
-
 func singleQuotes(static string) string {
 	return fmt.Sprintf("'%s'", static)
-}
-
-func (rc *ReplicaController) restoreNeedForReplica(r *longhorn.Replica) (bool, error) {
-	if (r.Spec.RestoreFrom == "") != (r.Spec.RestoreName == "") {
-		return false, fmt.Errorf("BUG: r.Spec.RestoreFrom and r.Spec.RestoreName must both filled")
-	}
-	if r.Spec.RestoreFrom == "" {
-		return false, nil
-	}
-	rs, err := rc.ds.ListVolumeReplicas(r.Spec.VolumeName)
-	if err != nil {
-		return false, errors.Wrapf(err, "fail to check restore necessarity")
-	}
-	for _, r := range rs {
-		if r.Spec.HealthyAt != "" {
-			//volume was healthy, no need to restore the replica
-			//rebuild process will take care of it
-			return false, nil
-		}
-	}
-	return true, nil
 }
 
 func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
@@ -357,14 +322,6 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 	}
 	if r.Spec.BaseImage != "" {
 		cmd = append(cmd, "--backing-file", "/share/base_image")
-	}
-	toRestore, err := rc.restoreNeedForReplica(r)
-	if err != nil {
-		return nil, err
-	}
-	if toRestore {
-		cmd = append(cmd, "--restore-from", singleQuotes(r.Spec.RestoreFrom))
-		cmd = append(cmd, "--restore-name", singleQuotes(r.Spec.RestoreName))
 	}
 	cmd = append(cmd, "/volume")
 
@@ -409,7 +366,7 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 						},
 						InitialDelaySeconds: replicaReadinessProbeInitialDelay,
 						PeriodSeconds:       replicaReadinessProbePeriodSeconds,
-						FailureThreshold:    rc.getReadinessProbeFailureThreshold(r),
+						FailureThreshold:    replicaReadinessProbeFailureThresholdDefault,
 					},
 				},
 			},
@@ -486,23 +443,6 @@ func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 
 	// set pod to node that replica scheduled on
 	pod.Spec.NodeName = r.Spec.NodeID
-
-	if toRestore {
-		secret, err := rc.ds.GetSetting(types.SettingNameBackupTargetCredentialSecret)
-		if err != nil {
-			return nil, err
-		}
-		if secret.Value != "" {
-			credentials, err := rc.ds.GetCredentialFromSecret(secret.Value)
-			if err != nil {
-				return nil, err
-			}
-			hasEndpoint := (credentials[types.AWSEndPoint] != "")
-			if err := util.ConfigEnvWithCredential(r.Spec.RestoreFrom, secret.Value, hasEndpoint, &pod.Spec.Containers[0]); err != nil {
-				return nil, err
-			}
-		}
-	}
 
 	resourceReq, err := GetGuaranteedResourceRequirement(rc.ds)
 	if err != nil {
