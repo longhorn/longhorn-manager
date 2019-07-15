@@ -554,6 +554,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 	}
 
+	// InitialRestorationRequired means the volume is newly created restored volume and
+	// it needs to be attached automatically so that its engine will be launched then
+	// restore data from backup.
 	if v.Spec.InitialRestorationRequired {
 		usableNode, err := vc.ds.GetRandomReadyNode()
 		if err != nil {
@@ -681,6 +684,12 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			}
 			e.Spec.NodeID = ""
 			e.Spec.DesireState = types.InstanceStateStopped
+			// Need to unset these fields when detaching volume. It's for:
+			//   1. regular restored volume which has completed restoration and is being detaching automatically.
+			//   2. standby volume which has been activated and is being detaching.
+			e.Spec.RequestedBackupRestore = ""
+			e.Spec.BackupVolume = ""
+			e.Status.LastRestoredBackup = ""
 			e, err = vc.ds.UpdateEngine(e)
 			return err
 		}
@@ -827,12 +836,21 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Spec.NodeID)
 		}
 
-		//Automatically detach the new restored volume, but not the standby volume
-		if v.Spec.InitialRestorationRequired == true && v.Spec.FromBackup != "" && v.Status.State == types.VolumeStateAttached {
-			if v.Spec.Standby == false {
-				v.Spec.NodeID = ""
+		// If the newly created restored volume is state attached,
+		// it means the volume is restoring or has restored data
+		// from backup. Then it may need to be detached automatically.
+		if v.Spec.InitialRestorationRequired == true && v.Status.State == types.VolumeStateAttached {
+			// The initial full restoration is complete.
+			if e.Status.LastRestoredBackup != "" {
+				v.Spec.InitialRestorationRequired = false
+				// For disaster recovery (standby) volume, it will incrementally
+				// restore backups later. Hence it cannot be detached automatically.
+				if !v.Spec.Standby {
+					if e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup {
+						v.Spec.NodeID = ""
+					}
+				}
 			}
-			v.Spec.InitialRestorationRequired = false
 		}
 	}
 	return nil
@@ -1010,7 +1028,11 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 }
 
 func (vc *VolumeController) updateEngineForStandbyVolume(v *longhorn.Volume, e *longhorn.Engine) (err error) {
-	if !v.Spec.Standby || e == nil {
+	if e == nil {
+		return nil
+	}
+
+	if !v.Spec.Standby {
 		return nil
 	}
 
@@ -1023,6 +1045,25 @@ func (vc *VolumeController) updateEngineForStandbyVolume(v *longhorn.Volume, e *
 	}
 
 	return nil
+}
+
+func (vc *VolumeController) getInfoFromBackupURL(v *longhorn.Volume) (string, string, error) {
+	if v.Spec.FromBackup == "" {
+		return "", "", nil
+	}
+
+	backupVolumeName, err := backupstore.GetVolumeFromBackupURL(v.Spec.FromBackup)
+	if err != nil {
+		return "", "", errors.Wrapf(err, "failed to get backup volume name from backupURL %v", v.Spec.FromBackup)
+	}
+
+	backupName, err := backupstore.GetBackupFromBackupURL(v.Spec.FromBackup)
+	if err != nil {
+		return "", "", errors.Wrapf(err, "failed to get backup name from backupURL %v", v.Spec.FromBackup)
+	}
+
+	return backupVolumeName, backupName, nil
+
 }
 
 func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, error) {
@@ -1045,19 +1086,16 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 		},
 	}
 
-	if v.Spec.Standby {
-		backupVolume, err := backupstore.GetVolumeFromBackupURL(v.Spec.FromBackup)
+	if v.Spec.FromBackup != "" {
+		backupVolumeName, backupName, err := vc.getInfoFromBackupURL(v)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get backup volume when creating engine for standby volume %v", v.Name)
+			return nil, errors.Wrapf(err, "failed to get backup volume when creating engine object of restored volume %v", v.Name)
 		}
-		engine.Spec.BackupVolume = backupVolume
-
-		backupName, err := backupstore.GetBackupFromBackupURL(v.Spec.FromBackup)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get backup name when creating engine for standby volume %v", v.Name)
-		}
+		engine.Spec.BackupVolume = backupVolumeName
 		engine.Spec.RequestedBackupRestore = backupName
-		engine.Status.LastRestoredBackup = backupName
+
+		logrus.Debugf("Created engine %v for restored volume %v, BackupVolume is %v, RequestedBackupRestore is %v",
+			engine.Name, v.Name, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
 	}
 
 	return vc.ds.CreateEngine(engine)

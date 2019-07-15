@@ -672,38 +672,33 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.ReplicaModeMap = currentReplicaModeMap
 	}
 
-	needRestore := false
-	if engine.Status.LastRestoredBackup != "" {
-		rsMap, err := client.BackupRestoreStatus()
-		if err != nil {
-			logrus.Errorf("failed to get Backup Restore Status: %v", err)
-			return err
-		}
+	rsMap, err := client.BackupRestoreStatus()
+	if err != nil {
+		logrus.Errorf("failed to get Backup Restore Status: %v", err)
+		return err
+	}
 
-		isRestoring := false
-		lastRestored := ""
+	isRestoring := false
+	lastRestored := ""
+	for _, status := range rsMap {
+		if status.IsRestoring {
+			isRestoring = true
+		}
+	}
+
+	//Engine is not restoring, pick the lastRestored from replica then update LastRestoredBackup
+	isConsensual := true
+	if !isRestoring {
 		for _, status := range rsMap {
-			if status.IsRestoring {
-				isRestoring = true
+			if lastRestored != "" && status.LastRestored != lastRestored {
+				// this error shouldn't prevent the engine from updating the other status
+				logrus.Errorf("BUG: different lastRestored values even though engine is not restoring")
+				isConsensual = false
 			}
+			lastRestored = status.LastRestored
 		}
-
-		//Engine is not restoring, pick the lastRestored from replica
-		if !isRestoring {
-			for _, status := range rsMap {
-				if lastRestored != "" && status.LastRestored != lastRestored {
-					return fmt.Errorf("BUG: different lastRestored values even though engine is not restoring")
-				}
-				lastRestored = status.LastRestored
-			}
-		}
-
-		// for those engine just restored from backup, lastRestored is empty
-		if lastRestored != "" {
+		if isConsensual {
 			engine.Status.LastRestoredBackup = lastRestored
-		}
-		if !isRestoring && engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
-			needRestore = true
 		}
 	}
 
@@ -712,45 +707,47 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
-	if !needRestore {
+	if err = restoreBackup(isRestoring, isConsensual, engine, client, m.ds); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func needRestoration(isRestoring, isConsensual bool, engine *longhorn.Engine) bool {
+	if !isRestoring && isConsensual && engine.Spec.RequestedBackupRestore != "" && engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
+		return true
+	}
+	return false
+}
+
+func restoreBackup(isRestoring, isConsensual bool, engine *longhorn.Engine, client engineapi.EngineClient, ds *datastore.DataStore) error {
+	if !needRestoration(isRestoring, isConsensual, engine) {
 		return nil
 	}
 
-	go func(client engineapi.EngineClient, engine *longhorn.Engine) {
-		if engine.Spec.RequestedBackupRestore == "" || engine.Spec.RequestedBackupRestore == engine.Status.LastRestoredBackup {
-			return
-		}
+	if engine.Spec.BackupVolume == "" {
+		return fmt.Errorf("BUG: backup volume is empty for backup restoration of engine %v", engine.Name)
+	}
 
-		backupTarget, err := manager.GenerateBackupTarget(m.ds)
-		if err != nil {
-			logrus.Errorf("cannot generate BackupTarget for engine %v: %v", engine.Name, err)
-			return
-		}
+	backupTarget, err := manager.GenerateBackupTarget(ds)
+	if err != nil {
+		return errors.Wrapf(err, "cannot generate BackupTarget for backup restoration of engine %v", engine.Name)
+	}
 
-		credential, err := manager.GetBackupCredentialConfig(m.ds)
-		if err != nil {
-			logrus.Errorf("cannot get backup credential config for engine %v: %v", engine.Name, err)
-			return
-		}
+	credential, err := manager.GetBackupCredentialConfig(ds)
+	if err != nil {
+		return errors.Wrapf(err, "cannot get backup credential config for backup restoration of engine %v", engine.Name)
+	}
 
-		logrus.Infof("engine %v prepared to do incremental restore, backup target %v, backup volume %v, backup name %v",
-			engine.Name, backupTarget.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
+	logrus.Infof("engine %v prepared to restore backup, backup target: %v, backup volume: %v, requested restored backup name: %v, last restored backup name: %v",
+		engine.Name, backupTarget.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
 
-		err = client.BackupRestore(backupTarget.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup, credential)
-		if err != nil {
-			logrus.Errorf("failed to do incremental restoration in engine monitor: %v", err)
-			return
-		}
-
-		engine.Status.LastRestoredBackup = engine.Spec.RequestedBackupRestore
-		engineName := engine.Name
-		engine, err = m.ds.UpdateEngine(engine)
-		if err != nil {
-			logrus.Errorf("failed to do update engine %v after incremental restoration: %v", engineName, err)
-			return
-		}
-	}(client, engine)
-
+	// If engine.Status.LastRestoredBackup is empty, it's full restoration
+	if err = client.BackupRestore(backupTarget.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup, credential); err != nil {
+		return errors.Wrapf(err, "failed to restore backup %v with last restored backup %v in engine monitor",
+			engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
+	}
 	return nil
 }
 
