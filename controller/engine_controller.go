@@ -727,10 +727,16 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			return
 		}
 
+		credential, err := manager.GetBackupCredentialConfig(m.ds)
+		if err != nil {
+			logrus.Errorf("cannot get backup credential config for engine %v: %v", engine.Name, err)
+			return
+		}
+
 		logrus.Infof("engine %v prepared to do incremental restore, backup target %v, backup volume %v, backup name %v",
 			engine.Name, backupTarget.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
 
-		err = client.BackupRestoreIncrementally(backupTarget.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup)
+		err = client.BackupRestore(backupTarget.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup, credential)
 		if err != nil {
 			logrus.Errorf("failed to do incremental restoration in engine monitor: %v", err)
 			return
