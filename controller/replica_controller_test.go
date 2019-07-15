@@ -41,9 +41,7 @@ func newReplica(desireState, currentState types.InstanceState, failedAt string) 
 				DesireState: desireState,
 				OwnerID:     TestOwnerID1,
 			},
-			RestoreFrom: TestRestoreFrom,
-			RestoreName: TestRestoreName,
-			DiskID:      "diskid",
+			DiskID: "diskid",
 		},
 		Status: types.ReplicaStatus{
 			InstanceStatus: types.InstanceStatus{

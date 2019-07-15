@@ -533,9 +533,6 @@ func checkReplica(r *longhorn.Replica) error {
 	if (r.Status.CurrentState == types.InstanceStateRunning) != (r.Status.IP != "") {
 		return fmt.Errorf("BUG: instance state and IP wasn't in sync %+v", r)
 	}
-	if (r.Spec.RestoreFrom != "") != (r.Spec.RestoreName != "") {
-		return fmt.Errorf("BUG: replica RestoreFrom and RestoreName value wasn't in sync %+v", r)
-	}
 	return nil
 }
 

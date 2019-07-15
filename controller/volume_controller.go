@@ -1121,14 +1121,6 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 			BaseImage:  v.Spec.BaseImage,
 		},
 	}
-	if v.Spec.FromBackup != "" {
-		backupID, err := util.GetBackupID(v.Spec.FromBackup)
-		if err != nil {
-			return nil, err
-		}
-		replica.Spec.RestoreFrom = v.Spec.FromBackup
-		replica.Spec.RestoreName = backupID
-	}
 
 	return vc.ds.CreateReplica(replica)
 }
