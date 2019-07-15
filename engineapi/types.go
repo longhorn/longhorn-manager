@@ -3,6 +3,7 @@ package engineapi
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/longhorn/backupstore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -22,6 +23,8 @@ const (
 
 	FrontendISCSI    = "tgt-iscsi"
 	FrontendBlockDev = "tgt-blockdev"
+
+	commonTimeout = 1 * time.Minute
 )
 
 type Replica struct {
@@ -55,7 +58,7 @@ type EngineClient interface {
 	SnapshotBackup(snapName, backupTarget string, labels map[string]string, credential map[string]string) error
 	SnapshotBackupStatus() (map[string]*types.BackupStatus, error)
 
-	BackupRestoreIncrementally(backupTarget, backupName, backupVolume, lastBackup string) error
+	BackupRestore(backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error
 	BackupRestoreStatus() (map[string]*types.RestoreStatus, error)
 }
 

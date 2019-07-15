@@ -173,14 +173,6 @@ func (e *Engine) Info() (*Volume, error) {
 	return info, nil
 }
 
-func (e *Engine) BackupRestore(backup string) error {
-	if _, err := e.ExecuteEngineBinary("backup", "restore", backup); err != nil {
-		return errors.Wrapf(err, "error restoring backup '%s'", backup)
-	}
-	logrus.Debugf("Backup %v restored for volume %v", backup, e.Name())
-	return nil
-}
-
 func (e *Engine) Upgrade(binary string, replicaURLs []string) error {
 	args := []string{
 		"upgrade", "--longhorn-binary", binary,
@@ -217,15 +209,23 @@ func (e *Engine) Version(clientOnly bool) (*EngineVersion, error) {
 	return version, nil
 }
 
-func (e *Engine) BackupRestoreIncrementally(backupTarget, backupName, backupVolume, lastRestored string) error {
+func (e *Engine) BackupRestore(backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error {
 	backup := GetBackupURL(backupTarget, backupName, backupVolume)
 
-	_, err := e.ExecuteEngineBinaryWithTimeout(backupTimeout, "backup", "restore", backup,
-		"--incrementally", "--last-restored", lastRestored)
-	if err != nil {
+	// set credential if backup for s3
+	if err := util.ConfigBackupCredential(backupTarget, credential); err != nil {
 		return err
 	}
 
+	args := []string{"backup", "restore", backup}
+	if lastRestored != "" {
+		args = append(args, "--incrementally", "--last-restored", lastRestored)
+	}
+	if _, err := e.ExecuteEngineBinaryWithTimeout(commonTimeout, args...); err != nil {
+		return errors.Wrapf(err, "error restoring backup '%s'", backup)
+	}
+
+	logrus.Debugf("Backup %v restored for volume %v", backup, e.Name())
 	return nil
 }
 
