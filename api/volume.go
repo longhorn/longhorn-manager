@@ -213,6 +213,14 @@ func (s *Server) VolumeAttach(rw http.ResponseWriter, req *http.Request) error {
 func (s *Server) VolumeDetach(rw http.ResponseWriter, req *http.Request) error {
 	id := mux.Vars(req)["name"]
 
+	vol, err := s.m.Get(id)
+	if err != nil {
+		return errors.Wrap(err, "unable to get volume")
+	}
+	if vol.Spec.Standby {
+		return fmt.Errorf("cannot detach standby volume %v", vol.Name)
+	}
+
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.Detach(id)
 	})
