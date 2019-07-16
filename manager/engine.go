@@ -273,6 +273,18 @@ func (m *VolumeManager) GetBackupVolume(volumeName string) (*engineapi.BackupVol
 	return bv, nil
 }
 
+func (m *VolumeManager) DeleteBackupVolume(volumeName string) error {
+	backupTarget, err := GenerateBackupTarget(m.ds)
+	if err != nil {
+		return err
+	}
+	if err := backupTarget.DeleteVolume(volumeName); err != nil {
+		return err
+	}
+	logrus.Debugf("Deleted backup volume %v", volumeName)
+	return nil
+}
+
 func (m *VolumeManager) ListBackupsForVolume(volumeName string) ([]*engineapi.Backup, error) {
 	backupTarget, err := GenerateBackupTarget(m.ds)
 	if err != nil {

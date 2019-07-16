@@ -94,6 +94,7 @@ func NewRouter(s *Server) *mux.Router {
 
 	r.Methods("GET").Path("/v1/backupvolumes").Handler(f(schemas, s.BackupVolumeList))
 	r.Methods("GET").Path("/v1/backupvolumes/{volName}").Handler(f(schemas, s.BackupVolumeGet))
+	r.Methods("DELETE").Path("/v1/backupvolumes/{volName}").Handler(f(schemas, s.BackupVolumeDelete))
 	backupActions := map[string]func(http.ResponseWriter, *http.Request) error{
 		"backupList":   s.BackupList,
 		"backupGet":    s.BackupGet,

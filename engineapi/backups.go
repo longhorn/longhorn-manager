@@ -148,6 +148,17 @@ func (b *BackupTarget) GetVolume(volumeName string) (*BackupVolume, error) {
 	return list[volumeName], nil
 }
 
+func (b *BackupTarget) DeleteVolume(volumeName string) error {
+	_, err := b.ExecuteEngineBinary("backup", "rm", "--volume", volumeName, b.URL)
+	if err != nil {
+		if strings.Contains(err.Error(), "msg=\"cannot find ") {
+			logrus.Warnf("delete: could not find the backup volume: '%s'", volumeName)
+			return nil
+		}
+		return errors.Wrapf(err, "error deleting backup volume")
+	}
+	return nil
+}
 func (b *BackupTarget) List(volumeName string) ([]*Backup, error) {
 	if volumeName == "" {
 		return nil, nil

@@ -33,6 +33,14 @@ func (s *Server) BackupVolumeGet(w http.ResponseWriter, req *http.Request) error
 	return nil
 }
 
+func (s *Server) BackupVolumeDelete(w http.ResponseWriter, req *http.Request) error {
+	volName := mux.Vars(req)["volName"]
+	if err := s.m.DeleteBackupVolume(volName); err != nil {
+		return errors.Wrapf(err, "error deleting backup volume %s", volName)
+	}
+	return nil
+}
+
 func (s *Server) BackupList(w http.ResponseWriter, req *http.Request) error {
 	volName := mux.Vars(req)["volName"]
 
