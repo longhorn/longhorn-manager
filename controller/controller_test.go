@@ -54,6 +54,10 @@ const (
 	TestDiskID1           = "fsid"
 	TestDiskSize          = 5000000000
 	TestDiskAvailableSize = 3000000000
+
+	TestBackupTarget     = "s3://backupbucket@us-east-1/backupstore"
+	TestBackupVolumeName = "test-backup-volume-for-restoration"
+	TestBackupName       = "test-backup-for-restoration"
 )
 
 var (
