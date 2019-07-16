@@ -318,7 +318,7 @@ func recurringSchema(recurring *client.Schema) {
 
 func backupVolumeSchema(backupVolume *client.Schema) {
 	backupVolume.CollectionMethods = []string{"GET"}
-	backupVolume.ResourceMethods = []string{"GET"}
+	backupVolume.ResourceMethods = []string{"GET", "DELETE"}
 	backupVolume.ResourceActions = map[string]client.Action{
 		"backupList": {},
 		"backupGet": {
