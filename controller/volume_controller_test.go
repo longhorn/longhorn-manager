@@ -14,6 +14,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -91,6 +92,8 @@ type VolumeTestCase struct {
 }
 
 func (s *TestSuite) TestVolumeLifeCycle(c *C) {
+	testBackupURL := engineapi.GetBackupURL(TestBackupTarget, TestBackupName, TestBackupVolumeName)
+
 	var tc *VolumeTestCase
 	testCases := map[string]*VolumeTestCase{}
 
@@ -218,32 +221,40 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 
 	// after creation, restored volume should automatically be in attaching state
 	tc = generateVolumeTestCaseTemplate()
-	tc.volume.Spec.FromBackup = "random"
+	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = false
 	tc.volume.Spec.InitialRestorationRequired = true
-	for _, r := range tc.replicas {
-		r.Spec.HealthyAt = ""
-	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
 	tc.expectVolume.Spec.InitialRestorationRequired = true
 	tc.expectVolume.Spec.NodeID = TestNode1
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	for _, e := range tc.expectEngines {
+		e.Spec.OwnerID = TestNode1
+		e.Spec.DesireState = types.InstanceStateStopped
+		e.Spec.BackupVolume = TestBackupVolumeName
+		e.Spec.RequestedBackupRestore = TestBackupName
+	}
 	for _, r := range tc.expectReplicas {
 		r.Spec.DesireState = types.InstanceStateRunning
 	}
+	tc.replicas = nil
+	tc.engines = nil
 	testCases["restored volume is automatically attaching after creation"] = tc
 
 	// Newly restored volume changed from attaching to attached
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = TestNode1
-	tc.volume.Spec.FromBackup = "random"
+	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = false
 	tc.volume.Status.State = types.VolumeStateAttaching
 	tc.volume.Spec.InitialRestorationRequired = true
 	for _, e := range tc.engines {
-		e.Spec.NodeID = tc.volume.Spec.NodeID
+		e.Spec.OwnerID = TestNode1
+		e.Spec.NodeID = TestNode1
 		e.Spec.DesireState = types.InstanceStateRunning
+		e.Spec.BackupVolume = TestBackupVolumeName
+		e.Spec.RequestedBackupRestore = TestBackupName
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
 		e.Status.Endpoint = "/dev/" + tc.volume.Name
@@ -265,31 +276,135 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for _, r := range tc.expectReplicas {
 		r.Spec.HealthyAt = getTestNow()
 	}
-	tc.expectVolume.Spec.NodeID = ""
-	tc.expectVolume.Spec.InitialRestorationRequired = false
 	testCases["newly restored volume attaching to attached"] = tc
 
-	// Newly restored volume is automatically detaching after restoration completed
+	// Newly restored volume is waiting for restoration completed
 	tc = generateVolumeTestCaseTemplate()
-	tc.volume.Spec.FromBackup = "random"
+	tc.volume.Spec.NodeID = TestNode1
+	tc.volume.Spec.OwnerID = TestNode1
+	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = false
 	tc.volume.Spec.InitialRestorationRequired = true
 	tc.volume.Status.State = types.VolumeStateAttached
-	for _, r := range tc.replicas {
+	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
+	tc.volume.Status.CurrentImage = TestEngineImage
+	for _, e := range tc.engines {
+		e.Spec.OwnerID = TestNode1
+		e.Spec.NodeID = TestNode1
+		e.Spec.DesireState = types.InstanceStateRunning
+		e.Spec.BackupVolume = TestBackupVolumeName
+		e.Spec.RequestedBackupRestore = TestBackupName
+		e.Status.CurrentState = types.InstanceStateRunning
+		e.Status.IP = randomIP()
+		e.Status.Endpoint = "/dev/" + tc.volume.Name
+		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
+		e.Status.LastRestoredBackup = ""
+	}
+	for name, r := range tc.replicas {
 		r.Spec.HealthyAt = getTestNow()
+		r.Status.IP = randomIP()
+		r.Spec.DesireState = types.InstanceStateRunning
+		r.Status.CurrentState = types.InstanceStateRunning
+		for _, e := range tc.engines {
+			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+			e.Status.ReplicaModeMap[name] = types.ReplicaModeRW
+		}
 	}
 	tc.copyCurrentToExpect()
+	testCases["newly restored volume is waiting for restoration completed"] = tc
+
+	// try to detach newly restored volume after restoration completed
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.NodeID = TestNode1
+	tc.volume.Spec.OwnerID = TestNode1
+	tc.volume.Spec.FromBackup = testBackupURL
+	tc.volume.Spec.Standby = false
+	tc.volume.Spec.InitialRestorationRequired = true
+	tc.volume.Status.State = types.VolumeStateAttached
+	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
+	for _, e := range tc.engines {
+		e.Spec.OwnerID = TestNode1
+		e.Spec.NodeID = TestNode1
+		e.Spec.DesireState = types.InstanceStateRunning
+		e.Spec.BackupVolume = TestBackupVolumeName
+		e.Spec.RequestedBackupRestore = TestBackupName
+		e.Status.CurrentState = types.InstanceStateRunning
+		e.Status.IP = randomIP()
+		e.Status.Endpoint = "/dev/" + tc.volume.Name
+		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
+		e.Status.LastRestoredBackup = TestBackupName
+	}
+	for name, r := range tc.replicas {
+		r.Spec.HealthyAt = getTestNow()
+		r.Status.IP = randomIP()
+		r.Spec.DesireState = types.InstanceStateRunning
+		r.Status.CurrentState = types.InstanceStateRunning
+		for _, e := range tc.engines {
+			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+			e.Status.ReplicaModeMap[name] = types.ReplicaModeRW
+		}
+	}
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Spec.NodeID = ""
+	tc.expectVolume.Spec.InitialRestorationRequired = false
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	for _, r := range tc.expectReplicas {
+		r.Spec.HealthyAt = getTestNow()
+	}
+	testCases["try to detach newly restored volume after restoration completed"] = tc
+
+	// detaching newly restored volume after restoration completed
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.NodeID = ""
+	tc.volume.Spec.OwnerID = TestNode1
+	tc.volume.Spec.FromBackup = testBackupURL
+	tc.volume.Spec.Standby = false
+	tc.volume.Spec.InitialRestorationRequired = false
+	tc.volume.Status.State = types.VolumeStateAttached
+	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
+	for _, e := range tc.engines {
+		e.Spec.OwnerID = TestNode1
+		e.Spec.NodeID = TestNode1
+		e.Spec.DesireState = types.InstanceStateRunning
+		e.Spec.BackupVolume = TestBackupVolumeName
+		e.Spec.RequestedBackupRestore = TestBackupName
+		e.Status.CurrentState = types.InstanceStateRunning
+		e.Status.IP = randomIP()
+		e.Status.Endpoint = "/dev/" + tc.volume.Name
+		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
+		e.Status.LastRestoredBackup = TestBackupName
+	}
+	for name, r := range tc.replicas {
+		r.Spec.HealthyAt = getTestNow()
+		r.Status.IP = randomIP()
+		r.Spec.DesireState = types.InstanceStateRunning
+		r.Status.CurrentState = types.InstanceStateRunning
+		for _, e := range tc.engines {
+			e.Spec.ReplicaAddressMap[name] = r.Status.IP
+			e.Status.ReplicaModeMap[name] = types.ReplicaModeRW
+		}
+	}
+	tc.copyCurrentToExpect()
+	for _, e := range tc.expectEngines {
+		e.Spec.NodeID = ""
+		e.Spec.DesireState = types.InstanceStateStopped
+		e.Spec.BackupVolume = ""
+		e.Spec.RequestedBackupRestore = ""
+		e.Status.LastRestoredBackup = ""
+	}
+	tc.expectVolume.Spec.NodeID = ""
+	tc.expectVolume.Spec.InitialRestorationRequired = false
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	for _, r := range tc.expectReplicas {
 		r.Spec.HealthyAt = getTestNow()
 	}
-	testCases["newly restored volume automatically detaching"] = tc
+	testCases["newly restored volume automatically detaching after restoration completed"] = tc
 
 	// after creation, standby volume should automatically be in attaching state
 	tc = generateVolumeTestCaseTemplate()
-	tc.volume.Spec.FromBackup = "random"
+	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = true
 	tc.volume.Spec.InitialRestorationRequired = true
 	for _, r := range tc.replicas {
@@ -308,17 +423,20 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	// New standby volume changed from attaching to attached, and it's not automatically detached
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = TestNode1
-	tc.volume.Spec.FromBackup = "random"
+	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = true
 	tc.volume.Status.State = types.VolumeStateAttaching
 	tc.volume.Spec.InitialRestorationRequired = true
 	for _, e := range tc.engines {
 		e.Spec.NodeID = tc.volume.Spec.NodeID
 		e.Spec.DesireState = types.InstanceStateRunning
+		e.Spec.BackupVolume = TestBackupVolumeName
+		e.Spec.RequestedBackupRestore = TestBackupName
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
 		e.Status.Endpoint = "/dev/" + tc.volume.Name
 		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
+		e.Status.LastRestoredBackup = TestBackupName
 	}
 	for name, r := range tc.replicas {
 		r.Spec.DesireState = types.InstanceStateRunning
@@ -474,7 +592,8 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 	return &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: v.Name + "-e-" + util.RandomID(),
+			Name:      v.Name + "-e-" + util.RandomID(),
+			Namespace: TestNamespace,
 			Labels: map[string]string{
 				"longhornvolume": v.Name,
 			},
@@ -780,6 +899,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				for _, expectE = range tc.expectEngines {
 					break
 				}
+				c.Assert(retE.Spec, DeepEquals, expectE.Spec)
 				c.Assert(retE.Status, DeepEquals, expectE.Status)
 			} else {
 				c.Assert(retE.Spec, DeepEquals, tc.expectEngines[retE.Name].Spec)
