@@ -164,8 +164,11 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 
 	logrus.Debugf("ControllerPublishVolume: current nodeID %s", req.GetNodeId())
 	if needToAttach {
-		// attach longhorn volume
-		input := &longhornclient.AttachInput{HostId: req.GetNodeId()}
+		// attach longhorn volume with frontend enabled
+		input := &longhornclient.AttachInput{
+			HostId:          req.GetNodeId(),
+			DisableFrontend: false,
+		}
 		existVol, err = cs.apiClient.Volume.ActionAttach(existVol, input)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
