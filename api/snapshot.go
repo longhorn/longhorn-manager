@@ -131,6 +131,10 @@ func (s *Server) SnapshotRevert(w http.ResponseWriter, req *http.Request) (err e
 		return fmt.Errorf("cannot revert snapshot for standby volume %v", vol.Name)
 	}
 
+	if vol.Spec.Frontend != "" && !vol.Spec.DisableFrontend {
+		return fmt.Errorf("cannot revert snapshot for volume %v with frontend enabled", vol.Name)
+	}
+
 	if err := s.m.RevertSnapshot(input.Name, volName); err != nil {
 		return err
 	}
