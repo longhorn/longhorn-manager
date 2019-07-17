@@ -71,6 +71,7 @@ type VolumeSpec struct {
 	InitialRestorationRequired bool           `json:"initialRestorationRequired"`
 	DiskSelector               []string       `json:"diskSelector"`
 	NodeSelector               []string       `json:"nodeSelector"`
+	DisableFrontend            bool           `json:"disableFrontend"`
 }
 
 type KubernetesStatus struct {
@@ -154,6 +155,7 @@ type EngineSpec struct {
 	UpgradedReplicaAddressMap map[string]string `json:"upgradedReplicaAddressMap"`
 	BackupVolume              string            `json:"backupVolume"`
 	RequestedBackupRestore    string            `json:"requestedBackupRestore"`
+	DisableFrontend           bool              `json:"disableFrontend"`
 }
 
 type EngineStatus struct {
