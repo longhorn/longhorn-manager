@@ -17,7 +17,11 @@ type Controller struct {
 
 	HostId string `json:"hostId,omitempty" yaml:"host_id,omitempty"`
 
+	LastRestoredBackup string `json:"lastRestoredBackup,omitempty" yaml:"last_restored_backup,omitempty"`
+
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	RequestedBackupRestore string `json:"requestedBackupRestore,omitempty" yaml:"requested_backup_restore,omitempty"`
 
 	Running bool `json:"running,omitempty" yaml:"running,omitempty"`
 }

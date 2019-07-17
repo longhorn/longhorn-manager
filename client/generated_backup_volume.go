@@ -13,13 +13,17 @@ type BackupVolume struct {
 
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`
 
+	DataStored string `json:"dataStored,omitempty" yaml:"data_stored,omitempty"`
+
+	LastBackupAt string `json:"lastBackupAt,omitempty" yaml:"last_backup_at,omitempty"`
+
 	LastBackupName string `json:"lastBackupName,omitempty" yaml:"last_backup_name,omitempty"`
+
+	Messages map[string]string `json:"messages,omitempty" yaml:"messages,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
-
-	SpaceUsage string `json:"spaceUsage,omitempty" yaml:"space_usage,omitempty"`
 }
 
 type BackupVolumeCollection struct {
