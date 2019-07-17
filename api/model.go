@@ -224,6 +224,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("backupInput", BackupInput{})
 	schemas.AddType("backupStatus", BackupStatus{})
 	schemas.AddType("recurringJob", types.RecurringJob{})
+	schemas.AddType("kubernetesStatus", types.KubernetesStatus{})
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
 	schemas.AddType("salvageInput", SalvageInput{})
 	schemas.AddType("activateInput", ActivateInput{})
@@ -492,6 +493,9 @@ func volumeSchema(volume *client.Schema) {
 	nodeSelector := volume.ResourceFields["nodeSelector"]
 	nodeSelector.Create = true
 	volume.ResourceFields["nodeSelector"] = nodeSelector
+
+	kubernetesStatus := volume.ResourceFields["kubernetesStatus"]
+	volume.ResourceFields["kubernetesStatus"] = kubernetesStatus
 }
 
 func toSettingResource(setting *longhorn.Setting) *Setting {
