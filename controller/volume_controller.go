@@ -812,6 +812,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			e.Spec.NodeID = v.Spec.NodeID
 			e.Spec.ReplicaAddressMap = replicaAddressMap
 			e.Spec.DesireState = types.InstanceStateRunning
+			e.Spec.DisableFrontend = v.Spec.DisableFrontend
 			engineUpdated = true
 		}
 		if !vc.isVolumeUpgrading(v) {

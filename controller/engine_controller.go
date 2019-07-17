@@ -322,15 +322,23 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 
 	if e.Spec.Frontend == types.VolumeFrontendBlockDev {
 		frontend = EngineFrontendBlockDev
-		readinessHandler = v1.Handler{
-			Exec: &v1.ExecAction{
-				Command: []string{
-					"ls", "/dev/longhorn/" + e.Spec.VolumeName,
+		if !e.Spec.DisableFrontend {
+			readinessHandler = v1.Handler{
+				Exec: &v1.ExecAction{
+					Command: []string{
+						"ls", "/dev/longhorn/" + e.Spec.VolumeName,
+					},
 				},
-			},
+			}
+		} else {
+			readinessHandler, err = ec.getDefaultReadinessHandler()
+			if err != nil {
+				return nil, err
+			}
 		}
 	} else if e.Spec.Frontend == types.VolumeFrontendISCSI {
 		frontend = EngineFrontendISCSI
+		// use the same readiness handler even if e.Spec.DisableFrontend is true
 		readinessHandler, err = ec.getDefaultReadinessHandler()
 		if err != nil {
 			return nil, err
@@ -352,7 +360,7 @@ func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
 		"--listen", "0.0.0.0:" + engineapi.ControllerDefaultPort,
 		"--size", strconv.FormatInt(e.Spec.VolumeSize, 10),
 	}
-	if frontend != "" {
+	if frontend != "" && !e.Spec.DisableFrontend {
 		cmd = append(cmd, "--frontend", frontend)
 	}
 
