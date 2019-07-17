@@ -563,6 +563,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			return err
 		}
 		v.Spec.NodeID = usableNode.Name
+		// for automatically attached volume, we should disable its frontend
+		v.Spec.DisableFrontend = true
 	}
 
 	if e.Status.CurrentState == types.InstanceStateError && v.Spec.NodeID != "" {
