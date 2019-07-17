@@ -7,6 +7,8 @@ const (
 type Volume struct {
 	Resource `yaml:"-"`
 
+	BackupStatus []string `json:"backupStatus,omitempty" yaml:"backup_status,omitempty"`
+
 	BaseImage string `json:"baseImage,omitempty" yaml:"base_image,omitempty"`
 
 	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
@@ -17,6 +19,8 @@ type Volume struct {
 
 	CurrentImage string `json:"currentImage,omitempty" yaml:"current_image,omitempty"`
 
+	DisableFrontend bool `json:"disableFrontend,omitempty" yaml:"disable_frontend,omitempty"`
+
 	DiskSelector []string `json:"diskSelector,omitempty" yaml:"disk_selector,omitempty"`
 
 	EngineImage string `json:"engineImage,omitempty" yaml:"engine_image,omitempty"`
@@ -24,6 +28,14 @@ type Volume struct {
 	FromBackup string `json:"fromBackup,omitempty" yaml:"from_backup,omitempty"`
 
 	Frontend string `json:"frontend,omitempty" yaml:"frontend,omitempty"`
+
+	InitialRestorationRequired bool `json:"initialRestorationRequired,omitempty" yaml:"initial_restoration_required,omitempty"`
+
+	KubernetesStatus Types.KubernetesStatus `json:"kubernetesStatus,omitempty" yaml:"kubernetes_status,omitempty"`
+
+	LastBackup string `json:"lastBackup,omitempty" yaml:"last_backup,omitempty"`
+
+	LastBackupAt string `json:"lastBackupAt,omitempty" yaml:"last_backup_at,omitempty"`
 
 	MigrationNodeID string `json:"migrationNodeID,omitempty" yaml:"migration_node_id,omitempty"`
 
@@ -42,6 +54,8 @@ type Volume struct {
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
 
 	StaleReplicaTimeout int64 `json:"staleReplicaTimeout,omitempty" yaml:"stale_replica_timeout,omitempty"`
+
+	Standby bool `json:"standby,omitempty" yaml:"standby,omitempty"`
 
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
 }

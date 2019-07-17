@@ -11,8 +11,6 @@ type DiskUpdate struct {
 
 	Path string `json:"path,omitempty" yaml:"path,omitempty"`
 
-	StorageMaximum int64 `json:"storageMaximum,omitempty" yaml:"storage_maximum,omitempty"`
-
 	StorageReserved int64 `json:"storageReserved,omitempty" yaml:"storage_reserved,omitempty"`
 
 	Tags []string `json:"tags,omitempty" yaml:"tags,omitempty"`
