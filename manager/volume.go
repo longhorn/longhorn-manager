@@ -286,7 +286,7 @@ func (m *VolumeManager) Delete(name string) error {
 	return nil
 }
 
-func (m *VolumeManager) Attach(name, nodeID string) (v *longhorn.Volume, err error) {
+func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to attach volume %v to %v", name, nodeID)
 	}()
@@ -316,6 +316,7 @@ func (m *VolumeManager) Attach(name, nodeID string) (v *longhorn.Volume, err err
 	}
 	v.Spec.NodeID = nodeID
 	v.Spec.OwnerID = v.Spec.NodeID
+	v.Spec.DisableFrontend = disableFrontend
 
 	// Must be owned by the manager on the same node
 	v, err = m.ds.UpdateVolumeAndOwner(v)
@@ -323,7 +324,7 @@ func (m *VolumeManager) Attach(name, nodeID string) (v *longhorn.Volume, err err
 		return nil, err
 	}
 
-	logrus.Debugf("Attaching volume %v to %v", v.Name, v.Spec.NodeID)
+	logrus.Debugf("Attaching volume %v to %v with disableFrontend set %v", v.Name, v.Spec.NodeID, disableFrontend)
 	return v, nil
 }
 

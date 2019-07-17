@@ -197,7 +197,7 @@ func (s *Server) VolumeAttach(rw http.ResponseWriter, req *http.Request) error {
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.Attach(id, input.HostID)
+		return s.m.Attach(id, input.HostID, input.DisableFrontend)
 	})
 	if err != nil {
 		return err

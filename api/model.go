@@ -107,7 +107,8 @@ type EngineImage struct {
 }
 
 type AttachInput struct {
-	HostID string `json:"hostId"`
+	HostID          string `json:"hostId"`
+	DisableFrontend bool   `json:"disableFrontend"`
 }
 
 type SnapshotInput struct {
