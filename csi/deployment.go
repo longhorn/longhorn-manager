@@ -6,8 +6,7 @@ import (
 	"sync"
 
 	"github.com/sirupsen/logrus"
-	appsv1beta1 "k8s.io/api/apps/v1beta1"
-	appsv1beta2 "k8s.io/api/apps/v1beta2"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -38,7 +37,7 @@ var (
 
 type AttacherDeployment struct {
 	service    *v1.Service
-	deployment *appsv1beta1.Deployment
+	deployment *appsv1.Deployment
 }
 
 func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string, replicaCount int) *AttacherDeployment {
@@ -96,7 +95,7 @@ func (a *AttacherDeployment) Cleanup(kubeClient *clientset.Clientset) {
 
 type ProvisionerDeployment struct {
 	service    *v1.Service
-	deployment *appsv1beta1.Deployment
+	deployment *appsv1.Deployment
 }
 
 func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, provisionerName, rootDir string, replicaCount int) *ProvisionerDeployment {
@@ -152,7 +151,7 @@ func (p *ProvisionerDeployment) Cleanup(kubeClient *clientset.Clientset) {
 }
 
 type PluginDeployment struct {
-	daemonSet *appsv1beta2.DaemonSet
+	daemonSet *appsv1.DaemonSet
 }
 
 func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, managerImage, managerURL, rootDir string, kubeletPluginWatcherEnabled bool) *PluginDeployment {
@@ -238,13 +237,13 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 		})
 	}
 
-	daemonSet := &appsv1beta2.DaemonSet{
+	daemonSet := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      types.CSIPluginName,
 			Namespace: namespace,
 		},
 
-		Spec: appsv1beta2.DaemonSetSpec{
+		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"app": types.CSIPluginName,

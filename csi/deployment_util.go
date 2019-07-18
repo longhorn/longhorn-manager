@@ -8,8 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	appsv1beta1 "k8s.io/api/apps/v1beta1"
-	appsv1beta2 "k8s.io/api/apps/v1beta2"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -53,19 +52,23 @@ func getCommonService(commonName, namespace string) *v1.Service {
 	}
 }
 
-func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32) *appsv1beta1.Deployment {
-	return &appsv1beta1.Deployment{
+func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32) *appsv1.Deployment {
+	labels := map[string]string{
+		"app": commonName,
+	}
+	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      commonName,
 			Namespace: namespace,
 		},
-		Spec: appsv1beta1.DeploymentSpec{
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: labels,
+			},
 			Replicas: &replicaCount,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app": commonName,
-					},
+					Labels: labels,
 				},
 				Spec: v1.PodSpec{
 					ServiceAccountName: serviceAccount,
@@ -252,45 +255,45 @@ func serviceGetFunc(kubeClient *clientset.Clientset, name, namespace string) (ru
 }
 
 func deploymentCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
-	o, ok := obj.(*appsv1beta1.Deployment)
+	o, ok := obj.(*appsv1.Deployment)
 	if !ok {
 		return fmt.Errorf("BUG: cannot convert back the object")
 	}
-	_, err := kubeClient.AppsV1beta1().Deployments(o.Namespace).Create(o)
+	_, err := kubeClient.AppsV1().Deployments(o.Namespace).Create(o)
 	return err
 }
 
 func deploymentDeleteFunc(kubeClient *clientset.Clientset, name, namespace string) error {
 	propagation := metav1.DeletePropagationForeground
-	return kubeClient.AppsV1beta1().Deployments(namespace).Delete(
+	return kubeClient.AppsV1().Deployments(namespace).Delete(
 		name,
 		&metav1.DeleteOptions{PropagationPolicy: &propagation},
 	)
 }
 
 func deploymentGetFunc(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error) {
-	return kubeClient.AppsV1beta1().Deployments(namespace).Get(name, metav1.GetOptions{})
+	return kubeClient.AppsV1().Deployments(namespace).Get(name, metav1.GetOptions{})
 }
 
 func daemonSetCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
-	o, ok := obj.(*appsv1beta2.DaemonSet)
+	o, ok := obj.(*appsv1.DaemonSet)
 	if !ok {
 		return fmt.Errorf("BUG: cannot convert back the object")
 	}
-	_, err := kubeClient.AppsV1beta2().DaemonSets(o.Namespace).Create(o)
+	_, err := kubeClient.AppsV1().DaemonSets(o.Namespace).Create(o)
 	return err
 }
 
 func daemonSetDeleteFunc(kubeClient *clientset.Clientset, name, namespace string) error {
 	propagation := metav1.DeletePropagationForeground
-	return kubeClient.AppsV1beta2().DaemonSets(namespace).Delete(
+	return kubeClient.AppsV1().DaemonSets(namespace).Delete(
 		name,
 		&metav1.DeleteOptions{PropagationPolicy: &propagation},
 	)
 }
 
 func daemonSetGetFunc(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error) {
-	return kubeClient.AppsV1beta2().DaemonSets(namespace).Get(name, metav1.GetOptions{})
+	return kubeClient.AppsV1().DaemonSets(namespace).Get(name, metav1.GetOptions{})
 }
 
 // CheckMountPropagationWithNode https://github.com/kubernetes/kubernetes/issues/66086#issuecomment-404346854
