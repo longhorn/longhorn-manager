@@ -730,6 +730,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		if v.Spec.PendingNodeID != "" {
 			v.Spec.NodeID = v.Spec.PendingNodeID
 			v.Spec.PendingNodeID = ""
+			// for automatically re-attached volume, we shouldn't disable its frontend
+			v.Spec.DisableFrontend = false
 		}
 
 	} else {
