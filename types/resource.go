@@ -55,22 +55,22 @@ const (
 )
 
 type VolumeSpec struct {
-	OwnerID             string         `json:"ownerID"`
-	Size                int64          `json:"size,string"`
-	Frontend            VolumeFrontend `json:"frontend"`
-	FromBackup          string         `json:"fromBackup"`
-	NumberOfReplicas    int            `json:"numberOfReplicas"`
-	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`
-	NodeID              string         `json:"nodeID"`
-	MigrationNodeID     string         `json:"migrationNodeID"`
-	PendingNodeID       string         `json:"pendingNodeID"`
-	EngineImage         string         `json:"engineImage"`
-	RecurringJobs       []RecurringJob `json:"recurringJobs"`
-	BaseImage           string         `json:"baseImage"`
-	Standby             bool           `json:"Standby"`
-	RestorationRequired bool           `json:"restorationRequired"`
-	DiskSelector        []string       `json:"diskSelector"`
-	NodeSelector        []string       `json:"nodeSelector"`
+	OwnerID                    string         `json:"ownerID"`
+	Size                       int64          `json:"size,string"`
+	Frontend                   VolumeFrontend `json:"frontend"`
+	FromBackup                 string         `json:"fromBackup"`
+	NumberOfReplicas           int            `json:"numberOfReplicas"`
+	StaleReplicaTimeout        int            `json:"staleReplicaTimeout"`
+	NodeID                     string         `json:"nodeID"`
+	MigrationNodeID            string         `json:"migrationNodeID"`
+	PendingNodeID              string         `json:"pendingNodeID"`
+	EngineImage                string         `json:"engineImage"`
+	RecurringJobs              []RecurringJob `json:"recurringJobs"`
+	BaseImage                  string         `json:"baseImage"`
+	Standby                    bool           `json:"Standby"`
+	InitialRestorationRequired bool           `json:"initialRestorationRequired"`
+	DiskSelector               []string       `json:"diskSelector"`
+	NodeSelector               []string       `json:"nodeSelector"`
 }
 
 type KubernetesStatus struct {
