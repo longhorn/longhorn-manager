@@ -20,25 +20,25 @@ import (
 type Volume struct {
 	client.Resource
 
-	Name                string                 `json:"name"`
-	Size                string                 `json:"size"`
-	Frontend            types.VolumeFrontend   `json:"frontend"`
-	FromBackup          string                 `json:"fromBackup"`
-	NumberOfReplicas    int                    `json:"numberOfReplicas"`
-	StaleReplicaTimeout int                    `json:"staleReplicaTimeout"`
-	State               types.VolumeState      `json:"state"`
-	Robustness          types.VolumeRobustness `json:"robustness"`
-	EngineImage         string                 `json:"engineImage"`
-	CurrentImage        string                 `json:"currentImage"`
-	BaseImage           string                 `json:"baseImage"`
-	Created             string                 `json:"created"`
-	MigrationNodeID     string                 `json:"migrationNodeID"`
-	LastBackup          string                 `json:"lastBackup"`
-	LastBackupAt        string                 `json:"lastBackupAt"`
-	Standby             bool                   `json:"standby"`
-	RestorationRequired bool                   `json:"restorationRequired"`
-	DiskSelector        []string               `json:"diskSelector"`
-	NodeSelector        []string               `json:"nodeSelector"`
+	Name                       string                 `json:"name"`
+	Size                       string                 `json:"size"`
+	Frontend                   types.VolumeFrontend   `json:"frontend"`
+	FromBackup                 string                 `json:"fromBackup"`
+	NumberOfReplicas           int                    `json:"numberOfReplicas"`
+	StaleReplicaTimeout        int                    `json:"staleReplicaTimeout"`
+	State                      types.VolumeState      `json:"state"`
+	Robustness                 types.VolumeRobustness `json:"robustness"`
+	EngineImage                string                 `json:"engineImage"`
+	CurrentImage               string                 `json:"currentImage"`
+	BaseImage                  string                 `json:"baseImage"`
+	Created                    string                 `json:"created"`
+	MigrationNodeID            string                 `json:"migrationNodeID"`
+	LastBackup                 string                 `json:"lastBackup"`
+	LastBackupAt               string                 `json:"lastBackupAt"`
+	Standby                    bool                   `json:"standby"`
+	InitialRestorationRequired bool                   `json:"initialRestorationRequired"`
+	DiskSelector               []string               `json:"diskSelector"`
+	NodeSelector               []string               `json:"nodeSelector"`
 
 	RecurringJobs    []types.RecurringJob                          `json:"recurringJobs"`
 	Conditions       map[types.VolumeConditionType]types.Condition `json:"conditions"`
@@ -579,26 +579,26 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			Actions: map[string]string{},
 			Links:   map[string]string{},
 		},
-		Name:                v.Name,
-		Size:                strconv.FormatInt(v.Spec.Size, 10),
-		Frontend:            v.Spec.Frontend,
-		FromBackup:          v.Spec.FromBackup,
-		NumberOfReplicas:    v.Spec.NumberOfReplicas,
-		State:               v.Status.State,
-		Robustness:          v.Status.Robustness,
-		RecurringJobs:       v.Spec.RecurringJobs,
-		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
-		Created:             v.CreationTimestamp.String(),
-		EngineImage:         v.Spec.EngineImage,
-		CurrentImage:        v.Status.CurrentImage,
-		BaseImage:           v.Spec.BaseImage,
-		MigrationNodeID:     v.Spec.MigrationNodeID,
-		LastBackup:          v.Status.LastBackup,
-		LastBackupAt:        v.Status.LastBackupAt,
-		Standby:             v.Spec.Standby,
-		RestorationRequired: v.Spec.RestorationRequired,
-		DiskSelector:        v.Spec.DiskSelector,
-		NodeSelector:        v.Spec.NodeSelector,
+		Name:                       v.Name,
+		Size:                       strconv.FormatInt(v.Spec.Size, 10),
+		Frontend:                   v.Spec.Frontend,
+		FromBackup:                 v.Spec.FromBackup,
+		NumberOfReplicas:           v.Spec.NumberOfReplicas,
+		State:                      v.Status.State,
+		Robustness:                 v.Status.Robustness,
+		RecurringJobs:              v.Spec.RecurringJobs,
+		StaleReplicaTimeout:        v.Spec.StaleReplicaTimeout,
+		Created:                    v.CreationTimestamp.String(),
+		EngineImage:                v.Spec.EngineImage,
+		CurrentImage:               v.Status.CurrentImage,
+		BaseImage:                  v.Spec.BaseImage,
+		MigrationNodeID:            v.Spec.MigrationNodeID,
+		LastBackup:                 v.Status.LastBackup,
+		LastBackupAt:               v.Status.LastBackupAt,
+		Standby:                    v.Spec.Standby,
+		InitialRestorationRequired: v.Spec.InitialRestorationRequired,
+		DiskSelector:               v.Spec.DiskSelector,
+		NodeSelector:               v.Spec.NodeSelector,
 
 		Conditions:       v.Status.Conditions,
 		KubernetesStatus: v.Status.KubernetesStatus,

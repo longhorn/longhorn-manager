@@ -563,7 +563,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 	}
 
 	if neverAttached && v.Spec.FromBackup != "" {
-		v.Spec.RestorationRequired = true
+		v.Spec.InitialRestorationRequired = true
 		usableNode, err := vc.ds.GetRandomReadyNode()
 		if err != nil {
 			return err
@@ -837,11 +837,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 
 		//Automatically detach the new restored volume, but not the standby volume
-		if v.Spec.RestorationRequired == true && v.Spec.FromBackup != "" && v.Status.State == types.VolumeStateAttached {
+		if v.Spec.InitialRestorationRequired == true && v.Spec.FromBackup != "" && v.Status.State == types.VolumeStateAttached {
 			if v.Spec.Standby == false {
 				v.Spec.NodeID = ""
 			}
-			v.Spec.RestorationRequired = false
+			v.Spec.InitialRestorationRequired = false
 		}
 	}
 	return nil

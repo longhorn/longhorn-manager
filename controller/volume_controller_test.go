@@ -220,13 +220,13 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.FromBackup = "random"
 	tc.volume.Spec.Standby = false
-	tc.volume.Spec.RestorationRequired = true
+	tc.volume.Spec.InitialRestorationRequired = true
 	for _, r := range tc.replicas {
 		r.Spec.HealthyAt = ""
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
-	tc.expectVolume.Spec.RestorationRequired = true
+	tc.expectVolume.Spec.InitialRestorationRequired = true
 	tc.expectVolume.Spec.NodeID = TestNode1
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	for _, r := range tc.expectReplicas {
@@ -240,7 +240,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.FromBackup = "random"
 	tc.volume.Spec.Standby = false
 	tc.volume.Status.State = types.VolumeStateAttaching
-	tc.volume.Spec.RestorationRequired = true
+	tc.volume.Spec.InitialRestorationRequired = true
 	for _, e := range tc.engines {
 		e.Spec.NodeID = tc.volume.Spec.NodeID
 		e.Spec.DesireState = types.InstanceStateRunning
@@ -266,14 +266,14 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		r.Spec.HealthyAt = getTestNow()
 	}
 	tc.expectVolume.Spec.NodeID = ""
-	tc.expectVolume.Spec.RestorationRequired = false
+	tc.expectVolume.Spec.InitialRestorationRequired = false
 	testCases["newly restored volume attaching to attached"] = tc
 
 	// Newly restored volume is automatically detaching after restoration completed
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.FromBackup = "random"
 	tc.volume.Spec.Standby = false
-	tc.volume.Spec.RestorationRequired = true
+	tc.volume.Spec.InitialRestorationRequired = true
 	tc.volume.Status.State = types.VolumeStateAttached
 	for _, r := range tc.replicas {
 		r.Spec.HealthyAt = getTestNow()
@@ -291,13 +291,13 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.FromBackup = "random"
 	tc.volume.Spec.Standby = true
-	tc.volume.Spec.RestorationRequired = true
+	tc.volume.Spec.InitialRestorationRequired = true
 	for _, r := range tc.replicas {
 		r.Spec.HealthyAt = ""
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
-	tc.expectVolume.Spec.RestorationRequired = true
+	tc.expectVolume.Spec.InitialRestorationRequired = true
 	tc.expectVolume.Spec.NodeID = TestNode1
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	for _, r := range tc.expectReplicas {
@@ -311,7 +311,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.FromBackup = "random"
 	tc.volume.Spec.Standby = true
 	tc.volume.Status.State = types.VolumeStateAttaching
-	tc.volume.Spec.RestorationRequired = true
+	tc.volume.Spec.InitialRestorationRequired = true
 	for _, e := range tc.engines {
 		e.Spec.NodeID = tc.volume.Spec.NodeID
 		e.Spec.DesireState = types.InstanceStateRunning
@@ -337,7 +337,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		r.Spec.HealthyAt = getTestNow()
 	}
 	tc.expectVolume.Spec.NodeID = tc.volume.Spec.NodeID
-	tc.expectVolume.Spec.RestorationRequired = false
+	tc.expectVolume.Spec.InitialRestorationRequired = false
 	testCases["standby volume is not automatically detached"] = tc
 
 	// volume detaching - stop engine
