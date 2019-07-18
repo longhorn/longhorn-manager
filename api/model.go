@@ -45,9 +45,10 @@ type Volume struct {
 	Conditions       map[types.VolumeConditionType]types.Condition `json:"conditions"`
 	KubernetesStatus types.KubernetesStatus                        `json:"kubernetesStatus"`
 
-	Replicas     []Replica      `json:"replicas"`
-	Controllers  []Controller   `json:"controllers"`
-	BackupStatus []BackupStatus `json:"backupStatus"`
+	Replicas      []Replica       `json:"replicas"`
+	Controllers   []Controller    `json:"controllers"`
+	BackupStatus  []BackupStatus  `json:"backupStatus"`
+	RestoreStatus []RestoreStatus `json:"restoreStatus"`
 }
 
 type Snapshot struct {
@@ -211,6 +212,16 @@ type BackupStatus struct {
 	Error     string `json:"error"`
 }
 
+type RestoreStatus struct {
+	client.Resource
+	Replica      string `json:"replica"`
+	IsRestoring  bool   `json:"isRestoring"`
+	LastRestored string `json:"lastRestored"`
+	Progress     int    `json:"progress"`
+	Error        string `json:"error"`
+	Filename     string `json:"filename"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -223,6 +234,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("backup", Backup{})
 	schemas.AddType("backupInput", BackupInput{})
 	schemas.AddType("backupStatus", BackupStatus{})
+	schemas.AddType("restoreStatus", RestoreStatus{})
 	schemas.AddType("recurringJob", types.RecurringJob{})
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
 	schemas.AddType("salvageInput", SalvageInput{})
@@ -532,6 +544,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	var ve *longhorn.Engine
 	controllers := []Controller{}
 	backups := []BackupStatus{}
+	restoreStatus := []RestoreStatus{}
 	for _, e := range ves {
 		controllers = append(controllers, Controller{
 			Instance: Instance{
@@ -559,6 +572,20 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 					Progress:  status.Progress,
 					BackupURL: status.BackupURL,
 					Error:     status.Error,
+				})
+			}
+		}
+		rs := e.Status.RestoreStatus
+		if rs != nil {
+			for replica, status := range rs {
+				restoreStatus = append(restoreStatus, RestoreStatus{
+					Resource:     client.Resource{},
+					Replica:      replica,
+					IsRestoring:  status.IsRestoring,
+					LastRestored: status.LastRestored,
+					Progress:     status.Progress,
+					Error:        status.Error,
+					Filename:     status.Filename,
 				})
 			}
 		}
@@ -618,9 +645,10 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		Conditions:       v.Status.Conditions,
 		KubernetesStatus: v.Status.KubernetesStatus,
 
-		Controllers:  controllers,
-		Replicas:     replicas,
-		BackupStatus: backups,
+		Controllers:   controllers,
+		Replicas:      replicas,
+		BackupStatus:  backups,
+		RestoreStatus: restoreStatus,
 	}
 
 	actions := map[string]struct{}{}
