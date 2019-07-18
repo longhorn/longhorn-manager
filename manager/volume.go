@@ -201,6 +201,8 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		if baseImage, ok := backup.Labels[types.BaseImageLabel]; ok {
 			spec.BaseImage = baseImage
 		}
+
+		spec.InitialRestorationRequired = true
 	}
 
 	// make sure it's multiples of 4096
