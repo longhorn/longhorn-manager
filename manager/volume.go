@@ -182,6 +182,10 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 				if len(kubeStatus.WorkloadsStatus) != 0 && kubeStatus.LastPodRefAt == "" {
 					kubeStatus.LastPodRefAt = backup.SnapshotCreated
 				}
+
+				// Do not restore the PersistentVolume fields.
+				kubeStatus.PVName = ""
+				kubeStatus.PVStatus = ""
 			}
 		}
 
