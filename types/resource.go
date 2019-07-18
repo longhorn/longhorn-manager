@@ -158,10 +158,11 @@ type EngineSpec struct {
 
 type EngineStatus struct {
 	InstanceStatus
-	ReplicaModeMap     map[string]ReplicaMode   `json:"replicaModeMap"`
-	Endpoint           string                   `json:"endpoint"`
-	LastRestoredBackup string                   `json:"lastRestoredBackup"`
-	BackupStatus       map[string]*BackupStatus `json:"backupStatus"`
+	ReplicaModeMap     map[string]ReplicaMode    `json:"replicaModeMap"`
+	Endpoint           string                    `json:"endpoint"`
+	LastRestoredBackup string                    `json:"lastRestoredBackup"`
+	BackupStatus       map[string]*BackupStatus  `json:"backupStatus"`
+	RestoreStatus      map[string]*RestoreStatus `json:"restoreStatus"`
 }
 
 type ReplicaSpec struct {
@@ -285,4 +286,7 @@ type BackupStatus struct {
 type RestoreStatus struct {
 	IsRestoring  bool   `json:"isRestoring"`
 	LastRestored string `json:"lastRestored"`
+	Progress     int    `json:"progress,omitempty"`
+	Error        string `json:"error,omitempty"`
+	Filename     string `json:"filename,omitempty"`
 }
