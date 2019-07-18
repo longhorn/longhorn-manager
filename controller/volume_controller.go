@@ -554,16 +554,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 	}
 
-	neverAttached := true
-	for _, r := range rs {
-		if r.Spec.HealthyAt != "" {
-			neverAttached = false
-			break
-		}
-	}
-
-	if neverAttached && v.Spec.FromBackup != "" {
-		v.Spec.InitialRestorationRequired = true
+	if v.Spec.InitialRestorationRequired {
 		usableNode, err := vc.ds.GetRandomReadyNode()
 		if err != nil {
 			return err
