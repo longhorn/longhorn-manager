@@ -28,7 +28,6 @@ type RancherClient struct {
 	VolumeCondition           VolumeConditionOperations
 	NodeCondition             NodeConditionOperations
 	DiskCondition             DiskConditionOperations
-	Event                     EventOperations
 	SupportBundle             SupportBundleOperations
 	SupportBundleInitateInput SupportBundleInitateInputOperations
 	Tag                       TagOperations
@@ -72,7 +71,6 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.VolumeCondition = newVolumeConditionClient(client)
 	client.NodeCondition = newNodeConditionClient(client)
 	client.DiskCondition = newDiskConditionClient(client)
-	client.Event = newEventClient(client)
 	client.SupportBundle = newSupportBundleClient(client)
 	client.SupportBundleInitateInput = newSupportBundleInitateInputClient(client)
 	client.Tag = newTagClient(client)

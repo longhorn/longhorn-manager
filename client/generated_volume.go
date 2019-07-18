@@ -31,7 +31,7 @@ type Volume struct {
 
 	InitialRestorationRequired bool `json:"initialRestorationRequired,omitempty" yaml:"initial_restoration_required,omitempty"`
 
-	KubernetesStatus Types.KubernetesStatus `json:"kubernetesStatus,omitempty" yaml:"kubernetes_status,omitempty"`
+	KubernetesStatus KubernetesStatus `json:"kubernetesStatus,omitempty" yaml:"kubernetes_status,omitempty"`
 
 	LastBackup string `json:"lastBackup,omitempty" yaml:"last_backup,omitempty"`
 
