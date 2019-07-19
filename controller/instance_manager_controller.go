@@ -34,9 +34,10 @@ import (
 const (
 	defaultManagerPort = ":8500"
 
+	managerProbeInitialDelay  = 1
+	managerProbePeriodSeconds = 1
 
-	managerReadinessProbeInitialDelay     = 1
-	managerReadinessProbePeriodSeconds    = 1
+	managerLivenessProbeFailureThreshold  = 60
 	managerReadinessProbeFailureThreshold = 15
 )
 
@@ -504,14 +505,24 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 			Containers: []v1.Container{
 				{
 					Image: image.Spec.Image,
+					LivenessProbe: &v1.Probe{
+						Handler: v1.Handler{
+							Exec: &v1.ExecAction{
+								Command: []string{"/usr/local/bin/grpc_health_probe", "-addr=:8500"},
+							},
+						},
+						InitialDelaySeconds: managerProbeInitialDelay,
+						PeriodSeconds:       managerProbePeriodSeconds,
+						FailureThreshold:    managerLivenessProbeFailureThreshold,
+					},
 					ReadinessProbe: &v1.Probe{
 						Handler: v1.Handler{
 							Exec: &v1.ExecAction{
 								Command: []string{"/usr/local/bin/grpc_health_probe", "-addr=:8500"},
 							},
 						},
-						InitialDelaySeconds: managerReadinessProbeInitialDelay,
-						PeriodSeconds:       managerReadinessProbePeriodSeconds,
+						InitialDelaySeconds: managerProbeInitialDelay,
+						PeriodSeconds:       managerProbePeriodSeconds,
 						FailureThreshold:    managerReadinessProbeFailureThreshold,
 					},
 					SecurityContext: &v1.SecurityContext{
