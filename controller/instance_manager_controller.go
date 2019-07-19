@@ -376,40 +376,28 @@ func (imc *InstanceManagerController) pollProcesses(im *longhorn.InstanceManager
 	}
 
 	updatedInstanceMap := make(map[string]types.InstanceProcessStatus)
-
-	for name, p := range im.Status.Instances {
-		switch p.Type {
-		case types.InstanceTypeEngine:
-			updatedEngine, engineOK := engines[name]
-			if !engineOK {
-				// something's wrong
-			}
-			updatedInstanceMap[name] = types.InstanceProcessStatus{
-				Endpoint:  updatedEngine.Endpoint,
-				ErrorMsg:  updatedEngine.ProcessStatus.ErrorMsg,
-				Listen:    updatedEngine.Listen,
-				Name:      updatedEngine.Name,
-				PortEnd:   updatedEngine.ProcessStatus.PortEnd,
-				PortStart: updatedEngine.ProcessStatus.PortStart,
-				State:     types.InstanceState(updatedEngine.ProcessStatus.State),
-				Type:      types.InstanceTypeEngine,
-			}
-		case types.InstanceTypeReplica:
-			updatedProcess, processOK := processes[name]
-			if !processOK {
-				// something's wrong
-			}
-			updatedInstanceMap[name] = types.InstanceProcessStatus{
-				ErrorMsg:  updatedProcess.ProcessStatus.ErrorMsg,
-				Name:      updatedProcess.Name,
-				PortEnd:   updatedProcess.ProcessStatus.PortEnd,
-				PortStart: updatedProcess.ProcessStatus.PortStart,
-				State:     types.InstanceState(updatedProcess.ProcessStatus.State),
-				Type:      types.InstanceTypeEngine,
-			}
+	for name, engine := range engines {
+		updatedInstanceMap[name] = types.InstanceProcessStatus{
+			Endpoint:  engine.Endpoint,
+			ErrorMsg:  engine.ProcessStatus.ErrorMsg,
+			Listen:    engine.Listen,
+			Name:      engine.Name,
+			PortEnd:   engine.ProcessStatus.PortEnd,
+			PortStart: engine.ProcessStatus.PortStart,
+			State:     types.InstanceState(engine.ProcessStatus.State),
+			Type:      types.InstanceTypeEngine,
 		}
 	}
-
+	for name, process := range processes {
+		updatedInstanceMap[name] = types.InstanceProcessStatus{
+			ErrorMsg:  process.ProcessStatus.ErrorMsg,
+			Name:      process.Name,
+			PortEnd:   process.ProcessStatus.PortEnd,
+			PortStart: process.ProcessStatus.PortStart,
+			State:     types.InstanceState(process.ProcessStatus.State),
+			Type:      types.InstanceTypeReplica,
+		}
+	}
 	im.Status.Instances = updatedInstanceMap
 
 	return nil
