@@ -34,8 +34,6 @@ import (
 const (
 	defaultManagerPort = ":8500"
 
-	// Use a custom resync period so we can poll Instance Manager processes.
-	imcResyncPeriod = time.Second * 5
 
 	managerReadinessProbeInitialDelay     = 1
 	managerReadinessProbePeriodSeconds    = 1
@@ -84,7 +82,7 @@ func NewInstanceManagerController(
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-instance-manager"),
 	}
 
-	imInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	imInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			im := obj.(*longhorn.InstanceManager)
 			imc.enqueueInstanceManager(im)
@@ -97,9 +95,9 @@ func NewInstanceManagerController(
 			im := obj.(*longhorn.InstanceManager)
 			imc.enqueueInstanceManager(im)
 		},
-	}, imcResyncPeriod)
+	})
 
-	pInformer.Informer().AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+	pInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			switch t := obj.(type) {
 			case *v1.Pod:
@@ -123,7 +121,7 @@ func NewInstanceManagerController(
 				imc.enqueueInstanceManagerPod(pod)
 			},
 		},
-	}, imcResyncPeriod)
+	})
 
 	return imc
 }
