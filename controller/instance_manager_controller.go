@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -25,6 +26,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
+	"github.com/longhorn/longhorn-instance-manager/api"
 	"github.com/longhorn/longhorn-instance-manager/client"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
@@ -54,6 +56,35 @@ type InstanceManagerController struct {
 	pStoreSynced  cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
+
+	watcherLock *sync.Mutex
+	watchers    map[string]ManagerWatch
+}
+
+type ManagerWatch interface {
+	StartWatch()
+	StopWatch()
+}
+
+type EngineManagerWatch struct {
+	done         bool
+	engineClient *client.EngineManagerClient
+	engineWatch  *api.EngineStream
+	imc          *InstanceManagerController
+	imName       string
+	lock         *sync.Mutex
+	stopCh       chan struct{}
+}
+
+type ReplicaManagerWatch struct {
+	done          bool
+	imc           *InstanceManagerController
+	imName        string
+	imType        types.InstanceManagerType
+	lock          *sync.Mutex
+	processClient *client.ProcessManagerClient
+	processWatch  *api.ProcessStream
+	stopCh        chan struct{}
 }
 
 func NewInstanceManagerController(
@@ -81,6 +112,9 @@ func NewInstanceManagerController(
 		pStoreSynced:  pInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-instance-manager"),
+
+		watcherLock: &sync.Mutex{},
+		watchers:    make(map[string]ManagerWatch),
 	}
 
 	imInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -125,6 +159,38 @@ func NewInstanceManagerController(
 	})
 
 	return imc
+}
+
+func (imc *InstanceManagerController) NewEngineManagerWatch(im *longhorn.InstanceManager) (*EngineManagerWatch, error) {
+	if im.Status.IP == "" {
+		// IP should be set
+		return nil, errors.New("Instance Manager IP was not set before creating watch")
+	}
+
+	return &EngineManagerWatch{
+		done:         false,
+		engineClient: client.NewEngineManagerClient(im.Status.IP + defaultManagerPort),
+		imc:          imc,
+		imName:       im.Name,
+		lock:         &sync.Mutex{},
+		stopCh:       make(chan struct{}),
+	}, nil
+}
+
+func (imc *InstanceManagerController) NewReplicaManagerWatch(im *longhorn.InstanceManager) (*ReplicaManagerWatch, error) {
+	if im.Status.IP == "" {
+		// IP should be set
+		return nil, errors.New("Instance Manager IP was not set before creating watch")
+	}
+
+	return &ReplicaManagerWatch{
+		done:          false,
+		imc:           imc,
+		imName:        im.Name,
+		lock:          &sync.Mutex{},
+		processClient: client.NewProcessManagerClient(im.Status.IP + defaultManagerPort),
+		stopCh:        make(chan struct{}),
+	}, nil
 }
 
 func (imc *InstanceManagerController) filterInstanceManagerPod(obj *v1.Pod) bool {
@@ -335,7 +401,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		switch im.Status.CurrentState {
 		case types.InstanceManagerStateRunning:
 			if err := imc.pollProcesses(im); err != nil {
-				return err
+				return errors.Wrapf(err, "error running resync of processes for instance manager %v", im.Name)
 			}
 		case types.InstanceManagerStateStarting:
 			fallthrough
@@ -349,6 +415,29 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 			im.Status.CurrentState = types.InstanceManagerStateRunning
 			im.Status.IP = pod.Status.PodIP
 			im.Status.NodeBootID = node.Status.NodeInfo.BootID
+
+			imc.watcherLock.Lock()
+			// Set up Watcher and add to map if it doesn't exist. If it does, something else has already set the
+			// Watcher up.
+			if _, ok := imc.watchers[im.Name]; !ok {
+				var watch ManagerWatch
+				switch im.Spec.Type {
+				case types.InstanceManagerTypeEngine:
+					watch, err = imc.NewEngineManagerWatch(im)
+				case types.InstanceManagerTypeReplica:
+					watch, err = imc.NewReplicaManagerWatch(im)
+				default:
+					return fmt.Errorf("BUG: instance manager %v has invalid type %v", im.Name, im.Spec.Type)
+				}
+
+				if err != nil {
+					return err
+				}
+
+				watch.StartWatch()
+				imc.watchers[im.Name] = watch
+			}
+			imc.watcherLock.Unlock()
 		}
 	default:
 		im.Status.CurrentState = types.InstanceManagerStateError
@@ -373,16 +462,7 @@ func (imc *InstanceManagerController) pollProcesses(im *longhorn.InstanceManager
 
 		updatedInstanceMap := make(map[string]types.InstanceProcessStatus)
 		for name, engine := range engines {
-			updatedInstanceMap[name] = types.InstanceProcessStatus{
-				Endpoint:  engine.Endpoint,
-				ErrorMsg:  engine.ProcessStatus.ErrorMsg,
-				Listen:    engine.Listen,
-				Name:      engine.Name,
-				PortEnd:   engine.ProcessStatus.PortEnd,
-				PortStart: engine.ProcessStatus.PortStart,
-				State:     types.InstanceState(engine.ProcessStatus.State),
-				Type:      types.InstanceTypeEngine,
-			}
+			updatedInstanceMap[name] = engineToProcessStatus(engine)
 		}
 		im.Status.Instances = updatedInstanceMap
 	case types.InstanceManagerTypeReplica:
@@ -394,14 +474,7 @@ func (imc *InstanceManagerController) pollProcesses(im *longhorn.InstanceManager
 
 		updatedInstanceMap := make(map[string]types.InstanceProcessStatus)
 		for name, process := range processes {
-			updatedInstanceMap[name] = types.InstanceProcessStatus{
-				ErrorMsg:  process.ProcessStatus.ErrorMsg,
-				Name:      process.Name,
-				PortEnd:   process.ProcessStatus.PortEnd,
-				PortStart: process.ProcessStatus.PortStart,
-				State:     types.InstanceState(process.ProcessStatus.State),
-				Type:      types.InstanceTypeReplica,
-			}
+			updatedInstanceMap[name] = processToProcessStatus(process)
 		}
 		im.Status.Instances = updatedInstanceMap
 	default:
@@ -440,6 +513,15 @@ func (imc *InstanceManagerController) enqueueInstanceManagerPod(pod *v1.Pod) {
 func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.InstanceManager) error {
 	im.Status.IP = ""
 	im.Status.NodeBootID = ""
+
+	// Send a signal to the goroutines to stop running. If the channel for the Watch goroutines does not exist,
+	// something else already handled it.
+	imc.watcherLock.Lock()
+	if watch, ok := imc.watchers[im.Name]; ok {
+		watch.StopWatch()
+		delete(imc.watchers, im.Name)
+	}
+	imc.watcherLock.Unlock()
 
 	for name, instance := range im.Status.Instances {
 		instance.State = types.InstanceStateError
@@ -627,4 +709,174 @@ func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.I
 		},
 	}
 	return podSpec, nil
+}
+
+func (w *EngineManagerWatch) StartWatch() {
+	// Watch goroutine.
+	go func() {
+		var err error
+		for {
+			if w.done {
+				break
+			}
+			w.lock.Lock()
+			if w.engineWatch == nil {
+				if w.engineWatch, err = w.engineClient.EngineWatch(); err != nil {
+					logrus.Errorf("error starting engine watch for instance manager %v: %v", w.imName, err)
+					w.lock.Unlock()
+					time.Sleep(time.Second)
+					continue
+				}
+			}
+			w.lock.Unlock()
+
+			engine, err := w.engineWatch.Recv()
+			// Don't need to check for io.EOF, that is still unexpected.
+			if err != nil {
+				logrus.Errorf("error receiving next item in engine watch: %v", err)
+				w.lock.Lock()
+				w.engineWatch = nil
+				w.lock.Unlock()
+				continue
+			}
+
+			// Keep retrying until we encounter an error that isn't a conflict or we successfully post the update.
+			for {
+				im, err := w.imc.ds.GetInstanceManager(w.imName)
+				if err != nil {
+					logrus.Errorf("could not get instance manager %v: %v", w.imName, err)
+					break
+				}
+
+				if engine.Deleted {
+					delete(im.Status.Instances, engine.Name)
+				} else {
+					im.Status.Instances[engine.Name] = engineToProcessStatus(engine)
+				}
+				if _, err = w.imc.ds.UpdateInstanceManager(im); !apierrors.IsConflict(err) {
+					if err != nil {
+						logrus.Errorf("error updating instance manager %v with engine update %v: %v", im.Name,
+							engine.Name, err)
+					}
+					break
+				}
+				time.Sleep(time.Second)
+			}
+		}
+	}()
+
+	// Cleanup goroutine.
+	go func() {
+		<-w.stopCh
+		w.done = true
+
+		w.lock.Lock()
+		if w.engineWatch != nil {
+			if err := w.engineWatch.Close(); err != nil {
+				logrus.Errorf("error when closing instance manager %v engine watch: %v", w.imName, err)
+			}
+		}
+		w.lock.Unlock()
+	}()
+}
+
+func (w *EngineManagerWatch) StopWatch() {
+	close(w.stopCh)
+}
+
+func (w *ReplicaManagerWatch) StartWatch() {
+	// Watch goroutine.
+	go func() {
+		var err error
+		for {
+			if w.done {
+				break
+			}
+			w.lock.Lock()
+			if w.processWatch == nil {
+				if w.processWatch, err = w.processClient.ProcessWatch(); err != nil {
+					logrus.Errorf("error starting process watch for instance manager %v: %v", w.imName, err)
+					w.lock.Unlock()
+					time.Sleep(time.Second)
+					continue
+				}
+			}
+			w.lock.Unlock()
+
+			process, err := w.processWatch.Recv()
+			// Don't need to check for io.EOF, that is still unexpected.
+			if err != nil {
+				logrus.Errorf("error receiving next item in process watch: %v", err)
+				w.lock.Lock()
+				w.processWatch = nil
+				w.lock.Unlock()
+				continue
+			}
+
+			// Keep retrying until we encounter an error that isn't a conflict or we successfully post the update.
+			for {
+				im, err := w.imc.ds.GetInstanceManager(w.imName)
+				if err != nil {
+					logrus.Errorf("could not get instance manager %v: %v", w.imName, err)
+					break
+				}
+
+				if process.Deleted {
+					delete(im.Status.Instances, process.Name)
+				} else {
+					im.Status.Instances[process.Name] = processToProcessStatus(process)
+				}
+				if _, err = w.imc.ds.UpdateInstanceManager(im); !apierrors.IsConflict(err) {
+					if err != nil {
+						logrus.Errorf("error updating instance manager %v with process update %v: %v", im.Name,
+							process.Name, err)
+					}
+					break
+				}
+				time.Sleep(time.Second)
+			}
+		}
+	}()
+
+	// Cleanup goroutine.
+	go func() {
+		<-w.stopCh
+		w.done = true
+
+		w.lock.Lock()
+		if w.processWatch != nil {
+			if err := w.processWatch.Close(); err != nil {
+				logrus.Errorf("error when closing instance manager %v process watch: %v", w.imName, err)
+			}
+		}
+		w.lock.Unlock()
+	}()
+}
+
+func (w *ReplicaManagerWatch) StopWatch() {
+	close(w.stopCh)
+}
+
+func engineToProcessStatus(engine *api.Engine) types.InstanceProcessStatus {
+	return types.InstanceProcessStatus{
+		Endpoint:  engine.Endpoint,
+		ErrorMsg:  engine.ProcessStatus.ErrorMsg,
+		Listen:    engine.Listen,
+		Name:      engine.Name,
+		PortEnd:   engine.ProcessStatus.PortEnd,
+		PortStart: engine.ProcessStatus.PortStart,
+		State:     types.InstanceState(engine.ProcessStatus.State),
+		Type:      types.InstanceTypeEngine,
+	}
+}
+
+func processToProcessStatus(process *api.Process) types.InstanceProcessStatus {
+	return types.InstanceProcessStatus{
+		ErrorMsg:  process.ProcessStatus.ErrorMsg,
+		Name:      process.Name,
+		PortEnd:   process.ProcessStatus.PortEnd,
+		PortStart: process.ProcessStatus.PortStart,
+		State:     types.InstanceState(process.ProcessStatus.State),
+		Type:      types.InstanceTypeReplica,
+	}
 }
