@@ -193,8 +193,8 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 					}
 				}
 			}
-			if bks.BackupError != "" {
-				logrus.Errorf("Failed to updated volume LastBackup for %v due to backup error %v", volumeName, bks.BackupError)
+			if bks.Error != "" {
+				logrus.Errorf("Failed to updated volume LastBackup for %v due to backup error %v", volumeName, bks.Error)
 				break
 			}
 			if bks.Progress == 100 {

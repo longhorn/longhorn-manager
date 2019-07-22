@@ -278,7 +278,7 @@ type DiskStatus struct {
 type BackupStatus struct {
 	Progress     int    `json:"progress"`
 	BackupURL    string `json:"backupURL,omitempty"`
-	BackupError  string `json:"backupError,omitempty"`
+	Error        string `json:"error,omitempty"`
 	SnapshotName string `json:"snapshotName"`
 }
 
