@@ -25,7 +25,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
-	"github.com/longhorn/longhorn-engine-launcher/client"
+	"github.com/longhorn/longhorn-instance-manager/client"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
@@ -370,7 +370,7 @@ func (imc *InstanceManagerController) pollProcesses(im *longhorn.InstanceManager
 		return err
 	}
 
-	processClient := client.NewProcessLauncherClient(im.Status.IP + defaultManagerPort)
+	processClient := client.NewProcessManagerClient(im.Status.IP + defaultManagerPort)
 	processes, err := processClient.ProcessList()
 	if err != nil {
 		return err
