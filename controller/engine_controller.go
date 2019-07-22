@@ -685,6 +685,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		logrus.Errorf("failed to get Backup Restore Status: %v", err)
 		return err
 	}
+	engine.Status.RestoreStatus = rsMap
 
 	isRestoring := false
 	lastRestored := ""
