@@ -23,6 +23,7 @@ type Volume struct {
 	Name                       string                 `json:"name"`
 	Size                       string                 `json:"size"`
 	Frontend                   types.VolumeFrontend   `json:"frontend"`
+	DisableFrontend            bool                   `json:"disableFrontend"`
 	FromBackup                 string                 `json:"fromBackup"`
 	NumberOfReplicas           int                    `json:"numberOfReplicas"`
 	StaleReplicaTimeout        int                    `json:"staleReplicaTimeout"`
@@ -582,6 +583,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		Name:                       v.Name,
 		Size:                       strconv.FormatInt(v.Spec.Size, 10),
 		Frontend:                   v.Spec.Frontend,
+		DisableFrontend:            v.Spec.DisableFrontend,
 		FromBackup:                 v.Spec.FromBackup,
 		NumberOfReplicas:           v.Spec.NumberOfReplicas,
 		State:                      v.Status.State,
