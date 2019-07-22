@@ -202,11 +202,11 @@ type Tag struct {
 
 type BackupStatus struct {
 	client.Resource
-	Name        string `json:"id"`
-	Snapshot    string `json:"snapshot"`
-	Progress    int    `json:"progress"`
-	BackupURL   string `json:"backupURL"`
-	BackupError string `json:"backupError"`
+	Name      string `json:"id"`
+	Snapshot  string `json:"snapshot"`
+	Progress  int    `json:"progress"`
+	BackupURL string `json:"backupURL"`
+	Error     string `json:"error"`
 }
 
 func NewSchema() *client.Schemas {
@@ -539,12 +539,12 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		if backupStatus != nil {
 			for id, status := range backupStatus {
 				backups = append(backups, BackupStatus{
-					Resource:    client.Resource{},
-					Name:        id,
-					Snapshot:    status.SnapshotName,
-					Progress:    status.Progress,
-					BackupURL:   status.BackupURL,
-					BackupError: status.BackupError,
+					Resource:  client.Resource{},
+					Name:      id,
+					Snapshot:  status.SnapshotName,
+					Progress:  status.Progress,
+					BackupURL: status.BackupURL,
+					Error:     status.Error,
 				})
 			}
 		}
