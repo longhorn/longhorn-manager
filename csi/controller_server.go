@@ -153,6 +153,11 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		logrus.Warn(msg)
 		return nil, status.Error(codes.NotFound, msg)
 	}
+
+	if existVol.InitialRestorationRequired {
+		return nil, status.Errorf(codes.Aborted, "The volume %s is restoring backup", req.GetVolumeId())
+	}
+
 	if existVol.State == string(types.VolumeStateAttaching) || existVol.State == string(types.VolumeStateDetaching) {
 		return nil, status.Errorf(codes.Aborted, "The volume %s is %s", req.GetVolumeId(), existVol.State)
 	}
