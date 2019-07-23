@@ -246,9 +246,12 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}
 
 	if engine.DeletionTimestamp != nil {
-		// don't go through state transition because it can go wrong
-		if _, err := ec.DeleteInstance(engine); err != nil {
-			return err
+		// Only attempt Instance deletion if it's assigned to an InstanceManager.
+		if engine.Status.InstanceManagerName != "" {
+			// don't go through state transition because it can go wrong
+			if _, err := ec.DeleteInstance(engine); err != nil {
+				return err
+			}
 		}
 		return ec.ds.RemoveFinalizerForEngine(engine)
 	}
