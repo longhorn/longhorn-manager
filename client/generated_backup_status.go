@@ -7,9 +7,9 @@ const (
 type BackupStatus struct {
 	Resource `yaml:"-"`
 
-	BackupError string `json:"backupError,omitempty" yaml:"backup_error,omitempty"`
-
 	BackupURL string `json:"backupURL,omitempty" yaml:"backup_url,omitempty"`
+
+	Error string `json:"error,omitempty" yaml:"error,omitempty"`
 
 	Progress int64 `json:"progress,omitempty" yaml:"progress,omitempty"`
 

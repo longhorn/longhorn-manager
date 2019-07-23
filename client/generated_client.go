@@ -12,7 +12,6 @@ type RancherClient struct {
 	BackupInput               BackupInputOperations
 	BackupStatus              BackupStatusOperations
 	RecurringJob              RecurringJobOperations
-	KubernetesStatus          KubernetesStatusOperations
 	ReplicaRemoveInput        ReplicaRemoveInputOperations
 	SalvageInput              SalvageInputOperations
 	ActivateInput             ActivateInputOperations
@@ -22,6 +21,7 @@ type RancherClient struct {
 	DiskUpdate                DiskUpdateOperations
 	NodeInput                 NodeInputOperations
 	UpdateReplicaCountInput   UpdateReplicaCountInputOperations
+	WorkloadStatus            WorkloadStatusOperations
 	PVCreateInput             PVCreateInputOperations
 	PVCCreateInput            PVCCreateInputOperations
 	SettingDefinition         SettingDefinitionOperations
@@ -39,6 +39,7 @@ type RancherClient struct {
 	Node                      NodeOperations
 	DiskUpdateInput           DiskUpdateInputOperations
 	DiskInfo                  DiskInfoOperations
+	KubernetesStatus          KubernetesStatusOperations
 }
 
 func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
@@ -55,7 +56,6 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.BackupInput = newBackupInputClient(client)
 	client.BackupStatus = newBackupStatusClient(client)
 	client.RecurringJob = newRecurringJobClient(client)
-	client.KubernetesStatus = newKubernetesStatusClient(client)
 	client.ReplicaRemoveInput = newReplicaRemoveInputClient(client)
 	client.SalvageInput = newSalvageInputClient(client)
 	client.ActivateInput = newActivateInputClient(client)
@@ -65,6 +65,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.DiskUpdate = newDiskUpdateClient(client)
 	client.NodeInput = newNodeInputClient(client)
 	client.UpdateReplicaCountInput = newUpdateReplicaCountInputClient(client)
+	client.WorkloadStatus = newWorkloadStatusClient(client)
 	client.PVCreateInput = newPVCreateInputClient(client)
 	client.PVCCreateInput = newPVCCreateInputClient(client)
 	client.SettingDefinition = newSettingDefinitionClient(client)
@@ -82,6 +83,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.Node = newNodeClient(client)
 	client.DiskUpdateInput = newDiskUpdateInputClient(client)
 	client.DiskInfo = newDiskInfoClient(client)
+	client.KubernetesStatus = newKubernetesStatusClient(client)
 
 	return client
 }
