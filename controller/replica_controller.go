@@ -384,6 +384,10 @@ func (rc *ReplicaController) LogInstance(obj interface{}) (*imapi.LogStream, err
 	}
 
 	c, err := rc.getProcessManagerClient(r.Status.InstanceManagerName)
+	if err != nil {
+		return nil, err
+	}
+
 	stream, err := c.ProcessLog(r.Name)
 	if err != nil {
 		return nil, err
