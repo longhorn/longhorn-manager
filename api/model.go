@@ -224,7 +224,6 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("backupInput", BackupInput{})
 	schemas.AddType("backupStatus", BackupStatus{})
 	schemas.AddType("recurringJob", types.RecurringJob{})
-	schemas.AddType("kubernetesStatus", types.KubernetesStatus{})
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
 	schemas.AddType("salvageInput", SalvageInput{})
 	schemas.AddType("activateInput", ActivateInput{})
@@ -234,6 +233,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("diskUpdate", types.DiskSpec{})
 	schemas.AddType("nodeInput", NodeInput{})
 	schemas.AddType("UpdateReplicaCountInput", UpdateReplicaCountInput{})
+	schemas.AddType("workloadStatus", types.WorkloadStatus{})
 
 	schemas.AddType("PVCreateInput", PVCreateInput{})
 	schemas.AddType("PVCCreateInput", PVCCreateInput{})
@@ -258,6 +258,7 @@ func NewSchema() *client.Schemas {
 	nodeSchema(schemas.AddType("node", Node{}))
 	diskSchema(schemas.AddType("diskUpdateInput", DiskUpdateInput{}))
 	diskInfoSchema(schemas.AddType("diskInfo", DiskInfo{}))
+	kubernetesStatusSchema(schemas.AddType("kubernetesStatus", types.KubernetesStatus{}))
 
 	return schemas
 }
@@ -317,6 +318,12 @@ func recurringSchema(recurring *client.Schema) {
 	jobs := recurring.ResourceFields["jobs"]
 	jobs.Type = "array[recurringJob]"
 	recurring.ResourceFields["jobs"] = jobs
+}
+
+func kubernetesStatusSchema(status *client.Schema) {
+	workloadsStatus := status.ResourceFields["workloadsStatus"]
+	workloadsStatus.Type = "array[workloadStatus]"
+	status.ResourceFields["workloadsStatus"] = workloadsStatus
 }
 
 func backupVolumeSchema(backupVolume *client.Schema) {
@@ -495,6 +502,7 @@ func volumeSchema(volume *client.Schema) {
 	volume.ResourceFields["nodeSelector"] = nodeSelector
 
 	kubernetesStatus := volume.ResourceFields["kubernetesStatus"]
+	kubernetesStatus.Type = "kubernetesStatus"
 	volume.ResourceFields["kubernetesStatus"] = kubernetesStatus
 }
 
