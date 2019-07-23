@@ -233,8 +233,11 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 
 		if replica.Spec.NodeID == rc.controllerID {
-			if _, err := rc.DeleteInstance(replica); err != nil {
-				return err
+			// Only attempt Instance deletion if it's assigned to an InstanceManager.
+			if replica.Status.InstanceManagerName != "" {
+				if _, err := rc.DeleteInstance(replica); err != nil {
+					return err
+				}
 			}
 			if replica.Spec.Active {
 				// prevent accidentally deletion
