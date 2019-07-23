@@ -19,7 +19,7 @@ type KubernetesStatus struct {
 
 	PvcName string `json:"pvcName,omitempty" yaml:"pvc_name,omitempty"`
 
-	WorkloadsStatus []string `json:"workloadsStatus,omitempty" yaml:"workloads_status,omitempty"`
+	WorkloadsStatus []WorkloadStatus `json:"workloadsStatus,omitempty" yaml:"workloads_status,omitempty"`
 }
 
 type KubernetesStatusCollection struct {
