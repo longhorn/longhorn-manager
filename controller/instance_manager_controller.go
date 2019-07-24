@@ -363,42 +363,50 @@ func (imc *InstanceManagerController) pollProcesses(im *longhorn.InstanceManager
 		return errors.New("Instance Manager IP was not set before polling")
 	}
 
-	engineClient := client.NewEngineManagerClient(im.Status.IP + defaultManagerPort)
-	engines, err := engineClient.EngineList()
-	if err != nil {
-		return err
-	}
-
-	processClient := client.NewProcessManagerClient(im.Status.IP + defaultManagerPort)
-	processes, err := processClient.ProcessList()
-	if err != nil {
-		return err
-	}
-
-	updatedInstanceMap := make(map[string]types.InstanceProcessStatus)
-	for name, engine := range engines {
-		updatedInstanceMap[name] = types.InstanceProcessStatus{
-			Endpoint:  engine.Endpoint,
-			ErrorMsg:  engine.ProcessStatus.ErrorMsg,
-			Listen:    engine.Listen,
-			Name:      engine.Name,
-			PortEnd:   engine.ProcessStatus.PortEnd,
-			PortStart: engine.ProcessStatus.PortStart,
-			State:     types.InstanceState(engine.ProcessStatus.State),
-			Type:      types.InstanceTypeEngine,
+	switch im.Spec.Type {
+	case types.InstanceManagerTypeEngine:
+		engineClient := client.NewEngineManagerClient(im.Status.IP + defaultManagerPort)
+		engines, err := engineClient.EngineList()
+		if err != nil {
+			return err
 		}
-	}
-	for name, process := range processes {
-		updatedInstanceMap[name] = types.InstanceProcessStatus{
-			ErrorMsg:  process.ProcessStatus.ErrorMsg,
-			Name:      process.Name,
-			PortEnd:   process.ProcessStatus.PortEnd,
-			PortStart: process.ProcessStatus.PortStart,
-			State:     types.InstanceState(process.ProcessStatus.State),
-			Type:      types.InstanceTypeReplica,
+
+		updatedInstanceMap := make(map[string]types.InstanceProcessStatus)
+		for name, engine := range engines {
+			updatedInstanceMap[name] = types.InstanceProcessStatus{
+				Endpoint:  engine.Endpoint,
+				ErrorMsg:  engine.ProcessStatus.ErrorMsg,
+				Listen:    engine.Listen,
+				Name:      engine.Name,
+				PortEnd:   engine.ProcessStatus.PortEnd,
+				PortStart: engine.ProcessStatus.PortStart,
+				State:     types.InstanceState(engine.ProcessStatus.State),
+				Type:      types.InstanceTypeEngine,
+			}
 		}
+		im.Status.Instances = updatedInstanceMap
+	case types.InstanceManagerTypeReplica:
+		processClient := client.NewProcessManagerClient(im.Status.IP + defaultManagerPort)
+		processes, err := processClient.ProcessList()
+		if err != nil {
+			return err
+		}
+
+		updatedInstanceMap := make(map[string]types.InstanceProcessStatus)
+		for name, process := range processes {
+			updatedInstanceMap[name] = types.InstanceProcessStatus{
+				ErrorMsg:  process.ProcessStatus.ErrorMsg,
+				Name:      process.Name,
+				PortEnd:   process.ProcessStatus.PortEnd,
+				PortStart: process.ProcessStatus.PortStart,
+				State:     types.InstanceState(process.ProcessStatus.State),
+				Type:      types.InstanceTypeReplica,
+			}
+		}
+		im.Status.Instances = updatedInstanceMap
+	default:
+		return fmt.Errorf("BUG: instance manager %v has invalid type %v", im.Name, im.Spec.Type)
 	}
-	im.Status.Instances = updatedInstanceMap
 
 	return nil
 }
