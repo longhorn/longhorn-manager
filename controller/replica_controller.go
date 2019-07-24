@@ -400,9 +400,6 @@ func (rc *ReplicaController) LogInstance(obj interface{}) (*imapi.LogStream, err
 }
 
 func (rc *ReplicaController) enqueueInstanceManagerChange(im *longhorn.InstanceManager) {
-	if im.Spec.OwnerID != rc.controllerID {
-		return
-	}
 	imType, ok := im.Labels["type"]
 	if !ok || imType != string(types.InstanceManagerTypeReplica) {
 		return
@@ -414,7 +411,9 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(im *longhorn.InstanceM
 	}
 	for _, rList := range rs {
 		for _, r := range rList {
-			rc.enqueueReplica(r)
+			if r.Spec.OwnerID == rc.controllerID {
+				rc.enqueueReplica(r)
+			}
 		}
 	}
 	return
