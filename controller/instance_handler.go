@@ -165,13 +165,15 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		return err
 	}
 
-	im, err := h.ds.GetInstanceManager(status.InstanceManagerName)
-	if err != nil {
-		if datastore.ErrorIsNotFound(err) {
-			logrus.Debugf("cannot find instance manager %v", status.InstanceManagerName)
-			im = nil
-		} else {
-			return err
+	var im *longhorn.InstanceManager
+	if status.InstanceManagerName != "" {
+		im, err = h.ds.GetInstanceManager(status.InstanceManagerName)
+		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				logrus.Debugf("cannot find instance manager %v", status.InstanceManagerName)
+			} else {
+				return err
+			}
 		}
 	}
 
