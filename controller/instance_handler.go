@@ -289,7 +289,7 @@ func (h *InstanceHandler) prepareToCreateInstance(spec *types.InstanceSpec, stat
 func (h *InstanceHandler) createInstance(instanceName string, obj runtime.Object) error {
 	_, err := h.instanceManagerHandler.GetInstance(obj)
 	if err != nil {
-		if strings.Contains(err.Error(), "cannot find") {
+		if types.ErrorIsNotFound(err) {
 			if _, err := h.instanceManagerHandler.CreateInstance(obj); err != nil {
 				if !strings.Contains(err.Error(), "already exists") {
 					h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
@@ -308,14 +308,14 @@ func (h *InstanceHandler) createInstance(instanceName string, obj runtime.Object
 func (h *InstanceHandler) deleteInstance(instanceName string, obj runtime.Object) error {
 	pStatus, err := h.instanceManagerHandler.GetInstance(obj)
 	if err != nil {
-		if strings.Contains(err.Error(), "cannot find") {
+		if types.ErrorIsNotFound(err) {
 			return nil
 		}
 		return err
 	}
 	if pStatus.State == types.InstanceStateStarting || pStatus.State == types.InstanceStateRunning {
 		if _, err := h.instanceManagerHandler.DeleteInstance(obj); err != nil {
-			if !strings.Contains(err.Error(), "cannot find") {
+			if !types.ErrorIsNotFound(err) {
 				h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping %v: %v", instanceName, err)
 				return err
 			}
