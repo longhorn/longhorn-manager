@@ -283,6 +283,7 @@ type BackupStatus struct {
 	BackupURL    string `json:"backupURL,omitempty"`
 	Error        string `json:"error,omitempty"`
 	SnapshotName string `json:"snapshotName"`
+	State        string `json:"state"`
 }
 
 type RestoreStatus struct {
@@ -291,4 +292,5 @@ type RestoreStatus struct {
 	Progress     int    `json:"progress,omitempty"`
 	Error        string `json:"error,omitempty"`
 	Filename     string `json:"filename,omitempty"`
+	State        string `json:"state"`
 }

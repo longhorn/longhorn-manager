@@ -210,6 +210,7 @@ type BackupStatus struct {
 	Progress  int    `json:"progress"`
 	BackupURL string `json:"backupURL"`
 	Error     string `json:"error"`
+	State     string `json:"state"`
 }
 
 type RestoreStatus struct {
@@ -220,6 +221,7 @@ type RestoreStatus struct {
 	Progress     int    `json:"progress"`
 	Error        string `json:"error"`
 	Filename     string `json:"filename"`
+	State        string `json:"state"`
 }
 
 func NewSchema() *client.Schemas {
@@ -572,6 +574,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 					Progress:  status.Progress,
 					BackupURL: status.BackupURL,
 					Error:     status.Error,
+					State:     status.State,
 				})
 			}
 		}
@@ -586,6 +589,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 					Progress:     status.Progress,
 					Error:        status.Error,
 					Filename:     status.Filename,
+					State:        status.State,
 				})
 			}
 		}
