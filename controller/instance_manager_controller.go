@@ -400,22 +400,6 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		}
 		switch im.Status.CurrentState {
 		case types.InstanceManagerStateRunning:
-			if err := imc.pollProcesses(im); err != nil {
-				return errors.Wrapf(err, "error running resync of processes for instance manager %v", im.Name)
-			}
-		case types.InstanceManagerStateStarting:
-			fallthrough
-		case types.InstanceManagerStateUnknown:
-			nodeName := pod.Spec.NodeName
-			node, err := imc.kubeClient.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
-			if err != nil {
-				return err
-			}
-
-			im.Status.CurrentState = types.InstanceManagerStateRunning
-			im.Status.IP = pod.Status.PodIP
-			im.Status.NodeBootID = node.Status.NodeInfo.BootID
-
 			imc.watcherLock.Lock()
 			// Set up Watcher and add to map if it doesn't exist. If it does, something else has already set the
 			// Watcher up.
@@ -438,6 +422,22 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 				imc.watchers[im.Name] = watch
 			}
 			imc.watcherLock.Unlock()
+
+			if err := imc.pollProcesses(im); err != nil {
+				return errors.Wrapf(err, "error running resync of processes for instance manager %v", im.Name)
+			}
+		case types.InstanceManagerStateStarting:
+			fallthrough
+		case types.InstanceManagerStateUnknown:
+			nodeName := pod.Spec.NodeName
+			node, err := imc.kubeClient.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+
+			im.Status.CurrentState = types.InstanceManagerStateRunning
+			im.Status.IP = pod.Status.PodIP
+			im.Status.NodeBootID = node.Status.NodeInfo.BootID
 		}
 	default:
 		im.Status.CurrentState = types.InstanceManagerStateError
