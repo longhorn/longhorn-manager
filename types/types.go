@@ -177,3 +177,7 @@ func GetReplicaMountedDataPath(dataPath string) string {
 	}
 	return dataPath
 }
+
+func ErrorIsNotFound(err error) bool {
+	return strings.Contains(err.Error(), "cannot find")
+}
