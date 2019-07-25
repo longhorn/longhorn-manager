@@ -141,11 +141,13 @@ type InstanceSpec struct {
 }
 
 type InstanceStatus struct {
-	CurrentState InstanceState `json:"currentState"`
-	CurrentImage string        `json:"currentImage"`
-	IP           string        `json:"ip"`
-	Started      bool          `json:"started"`
-	NodeBootID   string        `json:"nodeBootID"`
+	InstanceManagerName string        `json:"instanceManagerName"`
+	CurrentState        InstanceState `json:"currentState"`
+	CurrentImage        string        `json:"currentImage"`
+	IP                  string        `json:"ip"`
+	Port                int           `json:"port"`
+	Started             bool          `json:"started"`
+	NodeBootID          string        `json:"nodeBootID"`
 }
 
 type EngineSpec struct {
@@ -293,4 +295,53 @@ type RestoreStatus struct {
 	Error        string `json:"error,omitempty"`
 	Filename     string `json:"filename,omitempty"`
 	State        string `json:"state"`
+}
+
+type InstanceType string
+
+const (
+	InstanceTypeEngine  = InstanceType("engine")
+	InstanceTypeReplica = InstanceType("replica")
+)
+
+type InstanceManagerState string
+
+const (
+	InstanceManagerStateError    = InstanceManagerState("error")
+	InstanceManagerStateRunning  = InstanceManagerState("running")
+	InstanceManagerStateStopped  = InstanceManagerState("stopped")
+	InstanceManagerStateStarting = InstanceManagerState("starting")
+	InstanceManagerStateUnknown  = InstanceManagerState("unknown")
+)
+
+type InstanceManagerType string
+
+const (
+	InstanceManagerTypeEngine  = InstanceManagerType("engine")
+	InstanceManagerTypeReplica = InstanceManagerType("replica")
+)
+
+type InstanceManagerSpec struct {
+	EngineImage string              `json:"engineImage"`
+	NodeID      string              `json:"nodeID"`
+	OwnerID     string              `json:"ownerID"`
+	Type        InstanceManagerType `json:"type"`
+}
+
+type InstanceManagerStatus struct {
+	CurrentState InstanceManagerState             `json:"currentState"`
+	Instances    map[string]InstanceProcessStatus `json:"instances"`
+	IP           string                           `json:"ip"`
+	NodeBootID   string                           `json:"nodeBootID"`
+}
+
+type InstanceProcessStatus struct {
+	Endpoint  string        `json:"endpoint"`
+	ErrorMsg  string        `json:"errorMsg"`
+	Listen    string        `json:"listen"`
+	Name      string        `json:"name"`
+	PortEnd   int32         `json:"portEnd"`
+	PortStart int32         `json:"portStart"`
+	State     InstanceState `json:"state"`
+	Type      InstanceType  `json:"type"`
 }

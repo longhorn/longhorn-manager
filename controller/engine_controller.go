@@ -3,7 +3,6 @@ package controller
 import (
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,12 +12,9 @@ import (
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -26,6 +22,10 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
+
+	imapi "github.com/longhorn/longhorn-instance-manager/api"
+	imclient "github.com/longhorn/longhorn-instance-manager/client"
+	imutil "github.com/longhorn/longhorn-instance-manager/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -42,15 +42,9 @@ const (
 
 	EngineFrontendBlockDev = "tgt-blockdev"
 	EngineFrontendISCSI    = "tgt-iscsi"
-
-	engineReadinessProbeInitialDelay     = 1
-	engineReadinessProbePeriodSeconds    = 1
-	engineReadinessProbeFailureThreshold = 15
 )
 
 var (
-	ownerKindEngine = longhorn.SchemeGroupVersion.WithKind("Engine").String()
-
 	EnginePollInterval = 5 * time.Second
 	EnginePollTimeout  = 30 * time.Second
 )
@@ -66,8 +60,8 @@ type EngineController struct {
 
 	ds *datastore.DataStore
 
-	eStoreSynced cache.InformerSynced
-	pStoreSynced cache.InformerSynced
+	eStoreSynced  cache.InformerSynced
+	imStoreSynced cache.InformerSynced
 
 	backoff *flowcontrol.Backoff
 	queue   workqueue.RateLimitingInterface
@@ -98,7 +92,7 @@ func NewEngineController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	engineInformer lhinformers.EngineInformer,
-	podInformer coreinformers.PodInformer,
+	instanceManagerInformer lhinformers.InstanceManagerInformer,
 	kubeClient clientset.Interface,
 	engines engineapi.EngineClientCollection,
 	namespace string, controllerID string) *EngineController {
@@ -116,7 +110,7 @@ func NewEngineController(
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-engine-controller"}),
 		eStoreSynced:  engineInformer.Informer().HasSynced,
-		pStoreSynced:  podInformer.Informer().HasSynced,
+		imStoreSynced: instanceManagerInformer.Informer().HasSynced,
 
 		backoff: flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
 		queue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-engine"),
@@ -126,7 +120,7 @@ func NewEngineController(
 		engineMonitorMap:         map[string]chan struct{}{},
 		engineMonitoringRemoveCh: make(chan string, 1),
 	}
-	ec.instanceHandler = NewInstanceHandler(podInformer, kubeClient, namespace, ec, ec.eventRecorder)
+	ec.instanceHandler = NewInstanceHandler(ds, ec, ec.eventRecorder)
 
 	engineInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -142,15 +136,18 @@ func NewEngineController(
 			ec.enqueueEngine(e)
 		},
 	})
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	instanceManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			ec.enqueueControlleeChange(obj)
+			im := obj.(*longhorn.InstanceManager)
+			ec.enqueueInstanceManagerChange(im)
 		},
 		UpdateFunc: func(old, cur interface{}) {
-			ec.enqueueControlleeChange(cur)
+			curIM := cur.(*longhorn.InstanceManager)
+			ec.enqueueInstanceManagerChange(curIM)
 		},
 		DeleteFunc: func(obj interface{}) {
-			ec.enqueueControlleeChange(obj)
+			im := obj.(*longhorn.InstanceManager)
+			ec.enqueueInstanceManagerChange(im)
 		},
 	})
 
@@ -165,7 +162,7 @@ func (ec *EngineController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start Longhorn engine controller")
 	defer logrus.Infof("Shutting down Longhorn engine controller")
 
-	if !controller.WaitForCacheSync("longhorn engines", stopCh, ec.eStoreSynced, ec.pStoreSynced) {
+	if !controller.WaitForCacheSync("longhorn engines", stopCh, ec.eStoreSynced, ec.imStoreSynced) {
 		return
 	}
 
@@ -234,15 +231,31 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return err
 	}
 
+	// Check if engine's managing node died
+	if engine.Spec.OwnerID != "" {
+		isDown, err := ec.ds.IsNodeDownOrDeleted(engine.Spec.OwnerID)
+		if err != nil {
+			return err
+		}
+		if isDown {
+			engine.Spec.OwnerID = ec.controllerID
+			if engine, err = ec.ds.UpdateEngine(engine); err != nil {
+				return err
+			}
+		}
+	}
 	// Not ours
 	if engine.Spec.OwnerID != ec.controllerID {
 		return nil
 	}
 
 	if engine.DeletionTimestamp != nil {
-		// don't go through state transition because it can go wrong
-		if err := ec.instanceHandler.DeleteInstanceForObject(engine); err != nil {
-			return err
+		// Only attempt Instance deletion if it's assigned to an InstanceManager.
+		if engine.Status.InstanceManagerName != "" {
+			// don't go through state transition because it can go wrong
+			if _, err := ec.DeleteInstance(engine); err != nil {
+				return err
+			}
 		}
 		return ec.ds.RemoveFinalizerForEngine(engine)
 	}
@@ -261,7 +274,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	}()
 
-	if err := ec.instanceHandler.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
+	if err := ec.instanceHandler.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus, types.InstanceManagerTypeEngine); err != nil {
 		return err
 	}
 
@@ -296,200 +309,138 @@ func (ec *EngineController) enqueueEngine(e *longhorn.Engine) {
 	ec.queue.AddRateLimited(key)
 }
 
-func validateEngine(e *longhorn.Engine) error {
-	if e.Spec.VolumeName == "" ||
-		len(e.Spec.ReplicaAddressMap) == 0 ||
-		e.Spec.NodeID == "" {
-		return fmt.Errorf("missing required field %+v", e)
+func (ec *EngineController) enqueueInstanceManagerChange(im *longhorn.InstanceManager) {
+	if im.Spec.OwnerID != ec.controllerID {
+		return
 	}
-	return nil
+	imType, ok := im.Labels["type"]
+	if !ok || imType != string(types.InstanceManagerTypeEngine) {
+		return
+	}
+
+	// When node is down, im.Spec.OwnerID is different from im.Spec.NodeID (updated
+	// by instance manager controller),
+	// but the OwnerID and NodeID of all related engines are still im.Spec.NodeID.
+	es, err := ec.ds.ListEnginesByNode(im.Spec.NodeID)
+	if err != nil {
+		logrus.Warnf("Failed to list engines on node %v", im.Spec.NodeID)
+	}
+	for _, e := range es {
+		ec.enqueueEngine(e)
+	}
+	return
 }
 
-func (ec *EngineController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
-	var (
-		frontend         string
-		readinessHandler v1.Handler
-		err              error
-	)
-	e, ok := obj.(*longhorn.Engine)
-	if !ok {
-		return nil, fmt.Errorf("BUG: invalid object for engine pod spec creation: %v", obj)
+func (ec *EngineController) getEngineManagerClient(instanceManagerName string) (*imclient.EngineManagerClient, error) {
+	im, err := ec.ds.GetInstanceManager(instanceManagerName)
+	if err != nil {
+		return nil, fmt.Errorf("cannot find Instance Manager %v", instanceManagerName)
 	}
-	if err := validateEngine(e); err != nil {
-		logrus.Errorf("Invalid spec for create controller: %v", e)
-		return nil, err
+	if im.Status.CurrentState != types.InstanceManagerStateRunning || im.Status.IP == "" {
+		return nil, fmt.Errorf("invalid Instance Manager %v", instanceManagerName)
 	}
 
+	return imclient.NewEngineManagerClient(imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)), nil
+}
+
+func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProcessStatus, error) {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return nil, fmt.Errorf("BUG: invalid object for engine process creation: %v", obj)
+	}
+	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
+		return nil, fmt.Errorf("missing parameters for engine process creation: %v", e)
+	}
+
+	frontend := ""
 	if e.Spec.Frontend == types.VolumeFrontendBlockDev {
 		frontend = EngineFrontendBlockDev
-		if !e.Spec.DisableFrontend {
-			readinessHandler = v1.Handler{
-				Exec: &v1.ExecAction{
-					Command: []string{
-						"ls", "/dev/longhorn/" + e.Spec.VolumeName,
-					},
-				},
-			}
-		} else {
-			readinessHandler, err = ec.getDefaultReadinessHandler()
-			if err != nil {
-				return nil, err
-			}
-		}
 	} else if e.Spec.Frontend == types.VolumeFrontendISCSI {
 		frontend = EngineFrontendISCSI
-		// use the same readiness handler even if e.Spec.DisableFrontend is true
-		readinessHandler, err = ec.getDefaultReadinessHandler()
-		if err != nil {
-			return nil, err
-		}
-	} else if e.Spec.Frontend == "" {
+	} else if e.Spec.Frontend == "" || e.Spec.DisableFrontend {
 		frontend = ""
-		readinessHandler, err = ec.getDefaultReadinessHandler()
-		if err != nil {
-			return nil, err
-		}
 	} else {
 		return nil, fmt.Errorf("unknown volume frontend %v", e.Spec.Frontend)
 	}
 
-	cmd := []string{
-		"engine-launcher", "start",
-		"--launcher-listen", "0.0.0.0:" + engineapi.EngineLauncherDefaultPort,
-		"--longhorn-binary", types.DefaultEngineBinaryPath,
-		"--listen", "0.0.0.0:" + engineapi.ControllerDefaultPort,
-		"--size", strconv.FormatInt(e.Spec.VolumeSize, 10),
-	}
-	if frontend != "" && !e.Spec.DisableFrontend {
-		cmd = append(cmd, "--frontend", frontend)
+	if e.Spec.DisableFrontend {
+		frontend = ""
 	}
 
-	for _, ip := range e.Spec.ReplicaAddressMap {
-		url := engineapi.GetReplicaDefaultURL(ip)
-		cmd = append(cmd, "--replica", url)
+	replicas := []string{}
+	for _, addr := range e.Spec.ReplicaAddressMap {
+		replicas = append(replicas, engineapi.GetBackendReplicaURL(addr))
 	}
-	cmd = append(cmd, e.Spec.VolumeName)
 
-	privilege := true
-	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      e.Name,
-			Namespace: e.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: longhorn.SchemeGroupVersion.String(),
-					Kind:       ownerKindEngine,
-					UID:        e.UID,
-					Name:       e.Name,
-				},
-			},
-		},
-		Spec: v1.PodSpec{
-			NodeName:      e.Spec.NodeID,
-			RestartPolicy: v1.RestartPolicyNever,
-			Containers: []v1.Container{
-				{
-					Name:    e.Name,
-					Image:   e.Spec.EngineImage,
-					Command: cmd,
-					SecurityContext: &v1.SecurityContext{
-						Privileged: &privilege,
-					},
-					VolumeMounts: []v1.VolumeMount{
-						{
-							Name:      "dev",
-							MountPath: "/host/dev",
-						},
-						{
-							Name:      "proc",
-							MountPath: "/host/proc",
-						},
-						{
-							Name:      "engine-binaries",
-							MountPath: types.EngineBinaryDirectoryInContainer,
-						},
-					},
-					ReadinessProbe: &v1.Probe{
-						Handler:             readinessHandler,
-						InitialDelaySeconds: engineReadinessProbeInitialDelay,
-						PeriodSeconds:       engineReadinessProbePeriodSeconds,
-						FailureThreshold:    engineReadinessProbeFailureThreshold,
-					},
-				},
-			},
-			Volumes: []v1.Volume{
-				{
-					Name: "dev",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: "/dev",
-						},
-					},
-				},
-				{
-					Name: "proc",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: "/proc",
-						},
-					},
-				},
-				{
-					Name: "engine-binaries",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: types.EngineBinaryDirectoryOnHost,
-						},
-					},
-				},
-			},
-		},
-	}
-	resourceReq, err := GetGuaranteedResourceRequirement(ec.ds)
+	c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
 	if err != nil {
 		return nil, err
 	}
-	if resourceReq != nil {
-		pod.Spec.Containers[0].Resources = *resourceReq
+
+	engineProcess, err := c.EngineCreate(
+		e.Spec.VolumeSize, e.Name, e.Spec.VolumeName,
+		types.DefaultEngineBinaryPath, "", "0.0.0.0", frontend, []string{}, replicas)
+	if err != nil {
+		return nil, err
 	}
-	return pod, nil
+
+	return engineapi.EngineProcessToInstanceStatus(engineProcess), nil
 }
 
-func (ec *EngineController) enqueueControlleeChange(obj interface{}) {
-	metaObj, err := meta.Accessor(obj)
+func (ec *EngineController) DeleteInstance(obj interface{}) (*types.InstanceProcessStatus, error) {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return nil, fmt.Errorf("BUG: invalid object for engine process deletion: %v", obj)
+	}
+
+	c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
 	if err != nil {
-		logrus.Warnf("BUG: %v cannot be convert to metav1.Object: %v", obj, err)
-		return
+		return nil, err
 	}
-	ownerRefs := metaObj.GetOwnerReferences()
-	for _, ref := range ownerRefs {
-		if ref.Kind != ownerKindEngine {
-			continue
-		}
-		namespace := metaObj.GetNamespace()
-		ec.ResolveRefAndEnqueue(namespace, &ref)
-		return
+
+	engineProcess, err := c.EngineDelete(e.Name)
+	if err != nil {
+		return nil, err
 	}
+
+	return engineapi.EngineProcessToInstanceStatus(engineProcess), nil
 }
 
-func (ec *EngineController) ResolveRefAndEnqueue(namespace string, ref *metav1.OwnerReference) {
-	if ref.Kind != ownerKindEngine {
-		return
+func (ec *EngineController) GetInstance(obj interface{}) (*types.InstanceProcessStatus, error) {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return nil, fmt.Errorf("BUG: invalid object for engine process get: %v", obj)
 	}
-	engine, err := ec.ds.GetEngine(ref.Name)
+
+	c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
 	if err != nil {
-		return
+		return nil, err
 	}
-	if engine.UID != ref.UID {
-		// The controller we found with this Name is not the same one that the
-		// OwnerRef points to.
-		return
+
+	engineProcess, err := c.EngineGet(e.Name)
+	if err != nil {
+		return nil, err
 	}
-	// Not ours
-	if engine.Spec.OwnerID != ec.controllerID {
-		return
+
+	return engineapi.EngineProcessToInstanceStatus(engineProcess), nil
+}
+
+func (ec *EngineController) LogInstance(obj interface{}) (*imapi.LogStream, error) {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return nil, fmt.Errorf("BUG: invalid object for engine process log: %v", obj)
 	}
-	ec.enqueueEngine(engine)
+
+	c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
+	if err != nil {
+		return nil, err
+	}
+	stream, err := c.EngineLog(e.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return stream, nil
 }
 
 // monitoringUpdater will listen to the event from engineMonitoringRemoveCh and
@@ -624,7 +575,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	addressReplicaMap := map[string]string{}
 	for replica, address := range engine.Spec.ReplicaAddressMap {
 		if addressReplicaMap[address] != "" {
-			return fmt.Errorf("invalid ReplicaAddressMap: duplicate IPs")
+			return fmt.Errorf("invalid ReplicaAddressMap: duplicate addresses")
 		}
 		addressReplicaMap[address] = replica
 	}
@@ -640,7 +591,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 	engine.Status.BackupStatus = backupStatusList
 
-	endpoint, err := client.Endpoint()
+	endpoint, err := engineapi.Endpoint(engine.Status.IP, engine.Name)
 	if err != nil {
 		return err
 	}
@@ -653,11 +604,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	currentReplicaModeMap := map[string]types.ReplicaMode{}
 	for url, r := range replicaURLModeMap {
-		ip := engineapi.GetIPFromURL(url)
-		replica, exists := addressReplicaMap[ip]
+		addr := engineapi.GetAddressFromBackendReplicaURL(url)
+		replica, exists := addressReplicaMap[addr]
 		if !exists {
 			// we have a entry doesn't exist in our spec
-			replica = unknownReplicaPrefix + ip
+			replica = unknownReplicaPrefix + addr
 		}
 		currentReplicaModeMap[replica] = r.Mode
 
@@ -665,11 +616,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			if r.Mode != engine.Status.ReplicaModeMap[replica] {
 				switch r.Mode {
 				case types.ReplicaModeERR:
-					m.eventRecorder.Eventf(engine, v1.EventTypeWarning, EventReasonFaulted, "Detected replica %v (%v) in error", replica, ip)
+					m.eventRecorder.Eventf(engine, v1.EventTypeWarning, EventReasonFaulted, "Detected replica %v (%v) in error", replica, addr)
 				case types.ReplicaModeWO:
-					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilding, "Detected rebuilding replica %v (%v)", replica, ip)
+					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilding, "Detected rebuilding replica %v (%v)", replica, addr)
 				case types.ReplicaModeRW:
-					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilded, "Detected replica %v (%v) has been rebuilded", replica, ip)
+					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilded, "Detected replica %v (%v) has been rebuilded", replica, addr)
 				default:
 					logrus.Errorf("Invalid engine replica mode %v", r.Mode)
 				}
@@ -780,10 +731,15 @@ func GetClientForEngine(e *longhorn.Engine, engines engineapi.EngineClientCollec
 	if image == "" {
 		return nil, fmt.Errorf("require specify engine image")
 	}
+	if e.Status.IP == "" || e.Status.Port == 0 {
+		return nil, fmt.Errorf("require IP and Port")
+	}
+
 	client, err = engines.NewEngineClient(&engineapi.EngineClientRequest{
 		VolumeName:  e.Spec.VolumeName,
 		EngineImage: image,
 		IP:          e.Status.IP,
+		Port:        e.Status.Port,
 	})
 	if err != nil {
 		return nil, err
@@ -792,14 +748,14 @@ func GetClientForEngine(e *longhorn.Engine, engines engineapi.EngineClientCollec
 }
 
 func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
-	unknownReplicaIPs := []string{}
+	unknownReplicaAddrs := []string{}
 	for replica := range e.Status.ReplicaModeMap {
-		// unknown replicas have been named as `unknownReplicaPrefix-<IP>`
+		// unknown replicas have been named as `unknownReplicaPrefix-<IP:Port>`
 		if strings.HasPrefix(replica, unknownReplicaPrefix) {
-			unknownReplicaIPs = append(unknownReplicaIPs, strings.TrimPrefix(replica, unknownReplicaPrefix))
+			unknownReplicaAddrs = append(unknownReplicaAddrs, strings.TrimPrefix(replica, unknownReplicaPrefix))
 		}
 	}
-	if len(unknownReplicaIPs) == 0 {
+	if len(unknownReplicaAddrs) == 0 {
 		return nil
 	}
 
@@ -807,15 +763,15 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 	if err != nil {
 		return err
 	}
-	for _, ip := range unknownReplicaIPs {
-		go func(ip string) {
-			url := engineapi.GetReplicaDefaultURL(ip)
+	for _, addr := range unknownReplicaAddrs {
+		go func(addr string) {
+			url := engineapi.GetBackendReplicaURL(addr)
 			if err := client.ReplicaRemove(url); err != nil {
-				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting, "Failed to remove unknown replica IP %v from engine: %v", ip, err)
+				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting, "Failed to remove unknown replica address %v from engine: %v", addr, err)
 			} else {
-				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonDelete, "Removed unknown replica IP %v from engine", ip)
+				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonDelete, "Removed unknown replica address %v from engine", addr)
 			}
-		}(ip)
+		}(addr)
 	}
 	return nil
 }
@@ -835,30 +791,30 @@ func (ec *EngineController) rebuildingNewReplica(e *longhorn.Engine) error {
 		logrus.Debugf("Skip rebuilding for volume %v because there is rebuilding in process", e.Spec.VolumeName)
 		return nil
 	}
-	for replica, ip := range e.Spec.ReplicaAddressMap {
+	for replica, addr := range e.Spec.ReplicaAddressMap {
 		// one is enough
 		if !replicaExists[replica] {
-			return ec.startRebuilding(e, replica, ip)
+			return ec.startRebuilding(e, replica, addr)
 		}
 	}
 	return nil
 }
 
-func doesIPExistInEngine(ip string, client engineapi.EngineClient) (bool, error) {
+func doesAddressExistInEngine(addr string, client engineapi.EngineClient) (bool, error) {
 	replicaURLModeMap, err := client.ReplicaList()
 	if err != nil {
 		return false, err
 	}
 	for url := range replicaURLModeMap {
 		// the replica has been rebuilt or in the process already
-		if ip == engineapi.GetIPFromURL(url) {
+		if addr == engineapi.GetAddressFromBackendReplicaURL(url) {
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip string) (err error) {
+func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to start rebuild for %v of %v", replica, e.Name)
 	}()
@@ -870,29 +826,34 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip stri
 
 	// we need to know the current status, since ReplicaAddressMap may
 	// haven't been updated since last rebuild
-	alreadyExists, err := doesIPExistInEngine(ip, client)
+	alreadyExists, err := doesAddressExistInEngine(addr, client)
 	if err != nil {
 		return err
 	}
 	// replica has already been added to the engine
 	if alreadyExists {
-		logrus.Debugf("replica %v ip %v has been added to the engine already", replica, ip)
+		logrus.Debugf("replica %v address %v has been added to the engine already", replica, addr)
 		return nil
 	}
 
-	replicaURL := engineapi.GetReplicaDefaultURL(ip)
+	replicaURL := engineapi.GetBackendReplicaURL(addr)
 	go func() {
 		// start rebuild
-		ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v with IP %v for %v", replica, ip, e.Spec.VolumeName)
+		ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v with Address %v for %v", replica, addr, e.Spec.VolumeName)
 		if err := client.ReplicaAdd(replicaURL); err != nil {
-			logrus.Errorf("Failed rebuilding %v of %v: %v", ip, e.Spec.VolumeName, err)
-			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedRebuilding, "Failed rebuilding replica with IP %v: %v", ip, err)
+			logrus.Errorf("Failed rebuilding %v of %v: %v", addr, e.Spec.VolumeName, err)
+			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedRebuilding, "Failed rebuilding replica with Address %v: %v", addr, err)
+			// we've sent out event to notify user. we don't want to
+			// automatically handle it because it may cause chain
+			// reaction to create numerous new replicas if we set
+			// the replica to failed.
+			// user can decide to delete it then we will try again
 			if err := client.ReplicaRemove(replicaURL); err != nil {
-				logrus.Errorf("Failed to remove rebuilding replica %v of %v due to rebuilding failure: %v", ip, e.Spec.VolumeName, err)
+				logrus.Errorf("Failed to remove rebuilding replica %v of %v due to rebuilding failure: %v", addr, e.Spec.VolumeName, err)
 				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting,
-					"Failed to remove rebuilding replica %v with ip %v for %v due to rebuilding failure: %v", replica, ip, e.Spec.VolumeName, err)
+					"Failed to remove rebuilding replica %v with address %v for %v due to rebuilding failure: %v", replica, addr, e.Spec.VolumeName, err)
 			} else {
-				logrus.Errorf("Removed failed rebuilding replica %v of %v", ip, e.Spec.VolumeName)
+				logrus.Errorf("Removed failed rebuilding replica %v of %v", addr, e.Spec.VolumeName)
 			}
 			// Before we mark the Replica as Failed automatically, we want to check the Backoff to avoid recreating new
 			// Replicas too quickly. If the Replica is still in the Backoff period, we will leave the Replica alone. If
@@ -921,11 +882,11 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, ip stri
 		// Replica rebuild succeeded, clear Backoff.
 		ec.backoff.DeleteEntry(e.Name)
 		ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilded,
-			"Replica %v with IP %v has been rebuilded for volume %v", replica, ip, e.Spec.VolumeName)
+			"Replica %v with Address %v has been rebuilded for volume %v", replica, addr, e.Spec.VolumeName)
 	}()
 	//wait until engine confirmed that rebuild started
 	if err := wait.PollImmediate(EnginePollInterval, EnginePollTimeout, func() (bool, error) {
-		return doesIPExistInEngine(ip, client)
+		return doesAddressExistInEngine(addr, client)
 	}); err != nil {
 		return err
 	}
@@ -949,15 +910,22 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	// will cause live replica to be removed. Volume controller should filter those.
 	if err != nil || version.ClientVersion.GitCommit != version.ServerVersion.GitCommit {
 		replicaURLs := []string{}
-		for _, ip := range e.Spec.UpgradedReplicaAddressMap {
-			replicaURLs = append(replicaURLs, engineapi.GetReplicaDefaultURL(ip))
+		for _, addr := range e.Spec.UpgradedReplicaAddressMap {
+			replicaURLs = append(replicaURLs, engineapi.GetBackendReplicaURL(addr))
 		}
 		binary := types.GetEngineBinaryDirectoryInContainerForImage(e.Spec.EngineImage) + "/longhorn"
 		logrus.Debugf("About to upgrade %v from %v to %v for %v",
 			e.Name, e.Status.CurrentImage, e.Spec.EngineImage, e.Spec.VolumeName)
-		if err := client.Upgrade(binary, replicaURLs); err != nil {
+
+		c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
+		if err != nil {
 			return err
 		}
+		engineProcess, err := c.EngineUpgrade(e.Spec.VolumeSize, e.Name, binary, replicaURLs)
+		if err != nil {
+			return err
+		}
+		e.Status.Port = int(engineProcess.ProcessStatus.PortStart)
 	}
 	logrus.Debugf("Engine %v has been upgraded from %v to %v", e.Name, e.Status.CurrentImage, e.Spec.EngineImage)
 	e.Status.CurrentImage = e.Spec.EngineImage
@@ -966,13 +934,4 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	e.Spec.UpgradedReplicaAddressMap = map[string]string{}
 	return nil
-}
-
-func (ec *EngineController) getDefaultReadinessHandler() (readinessHandler v1.Handler, err error) {
-	readinessHandler = v1.Handler{
-		Exec: &v1.ExecAction{
-			Command: []string{"/usr/bin/grpc_health_probe", fmt.Sprintf("-addr=:%s", engineapi.ControllerDefaultPort)},
-		},
-	}
-	return readinessHandler, err
 }

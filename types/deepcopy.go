@@ -116,3 +116,13 @@ func (n *DiskStatus) DeepCopyInto(to *DiskStatus) {
 		to.Conditions[key] = value
 	}
 }
+
+func (n *InstanceManagerStatus) DeepCopyInto(to *InstanceManagerStatus) {
+	*to = *n
+	if n.Instances != nil {
+		to.Instances = make(map[string]InstanceProcessStatus)
+		for key, value := range n.Instances {
+			to.Instances[key] = value
+		}
+	}
+}

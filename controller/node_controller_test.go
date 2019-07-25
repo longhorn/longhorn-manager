@@ -48,6 +48,7 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 	engineImageInformer := lhInformerFactory.Longhorn().V1alpha1().EngineImages()
 	nodeInformer := lhInformerFactory.Longhorn().V1alpha1().Nodes()
 	settingInformer := lhInformerFactory.Longhorn().V1alpha1().Settings()
+	imInformer := lhInformerFactory.Longhorn().V1alpha1().InstanceManagers()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
@@ -58,13 +59,13 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
-		engineImageInformer, nodeInformer, settingInformer,
+		engineImageInformer, nodeInformer, settingInformer, imInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		persistentVolumeInformer, persistentVolumeClaimInformer,
 		kubeClient, TestNamespace)
 
-	nc := NewNodeController(ds, scheme.Scheme, nodeInformer, settingInformer, podInformer, replicaInformer, kubeNodeInformer, kubeClient, TestNamespace, controllerID)
+	nc := NewNodeController(ds, scheme.Scheme, engineImageInformer, nodeInformer, settingInformer, podInformer, replicaInformer, kubeNodeInformer, kubeClient, TestNamespace, controllerID)
 	fakeRecorder := record.NewFakeRecorder(100)
 	nc.eventRecorder = fakeRecorder
 	nc.getDiskInfoHandler = fakeGetDiskInfo

@@ -205,12 +205,17 @@ var (
 
 	SettingDefinitionGuaranteedEngineCPU = SettingDefinition{
 		DisplayName: "Guaranteed Engine CPU",
-		Description: "(EXPERIMENTAL FEATURE) Allow Longhorn Engine to have guaranteed CPU allocation. The value is how many CPUs should be reserved for one Longhorn engine or replica. For example, 0.1 means one-tenth of a CPU. This will help the engine stability during the high node workload. It only applies to the volumes attached after the setting took effect. WARNING: Attaching of the volume may fail or stuck while using this feature due to the resource constraint. Disabled (\"0\") by default.",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "0",
+		Description: "(EXPERIMENTAL FEATURE) Allow Longhorn Engine to have guaranteed CPU allocation. The value is " +
+			"how many CPUs should be reserved for each Engine/Replica Manager Pod created by Longhorn. For example, " +
+			"0.1 means one-tenth of a CPU. This will help maintain engine stability during high node workload. It " +
+			"only applies to the Engine/Replica Manager Pods created after the setting took effect. WARNING: " +
+			"Attaching of the volume may fail or stuck while using this feature due to the resource constraint. " +
+			"Disabled (\"0\") by default.",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeInt,
+		Required: true,
+		ReadOnly: false,
+		Default:  "0",
 	}
 
 	SettingDefinitionDefaultLonghornStaticStorageClass = SettingDefinition{

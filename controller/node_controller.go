@@ -12,6 +12,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -68,6 +69,7 @@ type GetDiskInfoHandler func(string) (*util.DiskInfo, error)
 func NewNodeController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
+	engineImageInformer lhinformers.EngineImageInformer,
 	nodeInformer lhinformers.NodeInformer,
 	settingInformer lhinformers.SettingInformer,
 	podInformer coreinformers.PodInformer,
@@ -102,6 +104,21 @@ func NewNodeController(
 	}
 
 	nc.scheduler = scheduler.NewReplicaScheduler(ds)
+
+	engineImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			ei := obj.(*longhorn.EngineImage)
+			nc.enqueueEngineImage(ei)
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			cur := newObj.(*longhorn.EngineImage)
+			nc.enqueueEngineImage(cur)
+		},
+		DeleteFunc: func(obj interface{}) {
+			ei := obj.(*longhorn.EngineImage)
+			nc.enqueueEngineImage(ei)
+		},
+	})
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -320,6 +337,16 @@ func (nc *NodeController) syncNode(key string) (err error) {
 
 	if node.DeletionTimestamp != nil {
 		nc.eventRecorder.Eventf(node, v1.EventTypeWarning, EventReasonDelete, "BUG: Deleting node %v", node.Name)
+		imList, err := nc.ds.ListInstanceManagersByNode(node.Name)
+		if err != nil {
+			return err
+		}
+		for _, im := range imList.Items {
+			if err := nc.ds.DeleteInstanceManager(im.Name); err != nil {
+				return err
+			}
+			logrus.Infof("Cleaning up instance manager %v on deleted node %v", im.Name, node.Name)
+		}
 		return nc.ds.RemoveFinalizerForNode(node)
 	}
 
@@ -499,7 +526,24 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		}
 	}
 
+	// Sync Instance Managers for current node
+	if err := nc.syncInstanceManagers(node); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func (nc *NodeController) enqueueEngineImage(ei *longhorn.EngineImage) {
+	nodeList, err := nc.ds.ListNodes()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("Couldn't get all nodes: %v ", err))
+		return
+	}
+
+	for _, node := range nodeList {
+		nc.enqueueNode(node)
+	}
 }
 
 func (nc *NodeController) enqueueNode(node *longhorn.Node) {
@@ -763,4 +807,94 @@ func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error
 	node.Status.Conditions[types.NodeConditionTypeMountPropagation] = condition
 
 	return nil
+}
+
+func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
+	engineImages, err := nc.ds.ListEngineImages()
+	if err != nil {
+		return err
+	}
+	for id, image := range engineImages {
+		// Instance Manager should only be deployed provided that the image is ready.
+		imageReady := image.Status.State == types.EngineImageStateReady
+
+		engineIM, err := nc.ds.GetInstanceManagerBySelector(nc.controllerID, image.Name, string(types.InstanceManagerTypeEngine))
+		if err != nil {
+			return errors.Wrapf(err, "cannot get engine instance manager for node %v, engine image %v", nc.controllerID, id)
+		}
+		if engineIM == nil && imageReady {
+			if _, err := nc.createInstanceManager(image, types.InstanceManagerTypeEngine, node); err != nil {
+				return errors.Wrapf(err, "failed to create engine instance manager for node %v, engine image %v", nc.controllerID, id)
+			}
+			logrus.Infof("Created engine instance manager for node %v, engine image %v (%v)", nc.controllerID, id, image.Spec.Image)
+		}
+		if engineIM != nil && !imageReady {
+			if err := nc.ds.DeleteInstanceManager(engineIM.Name); err != nil {
+				return errors.Wrapf(err, "cannot cleanup engine instance manager of node %v, engine image %v", nc.controllerID, image.Name)
+			}
+		}
+
+		replicaIM, err := nc.ds.GetInstanceManagerBySelector(nc.controllerID, image.Name, string(types.InstanceManagerTypeReplica))
+		if err != nil {
+			return errors.Wrapf(err, "cannot get replica instance manager for node %v, engine image %v", nc.controllerID, id)
+		}
+		if replicaIM == nil && len(node.Spec.Disks) > 0 && imageReady {
+			if _, err := nc.createInstanceManager(image, types.InstanceManagerTypeReplica, node); err != nil {
+				return errors.Wrapf(err, "failed to create replica instance manager for node %v, engine image %v", nc.controllerID, id)
+			}
+			logrus.Infof("Created replica instance manager for node %v, engine image %v (%v)", nc.controllerID, id, image.Spec.Image)
+		}
+		// If the Node no longer has any Disks on it, it's safe to delete the Replica Instance Manager since its no longer needed.
+		if replicaIM != nil && (len(node.Spec.Disks) == 0 || !imageReady) {
+			if err := nc.ds.DeleteInstanceManager(replicaIM.Name); err != nil {
+				return errors.Wrapf(err, "cannot cleanup replica instance manager of node %v, engine image %v", nc.controllerID, image.Name)
+			}
+		}
+	}
+
+	return nil
+}
+
+func (nc *NodeController) createInstanceManager(ei *longhorn.EngineImage, imType types.InstanceManagerType,
+	node *longhorn.Node) (*longhorn.InstanceManager, error) {
+
+	var generateName string
+	switch imType {
+	case types.InstanceManagerTypeEngine:
+		generateName = "instance-manager-e-"
+	case types.InstanceManagerTypeReplica:
+		generateName = "instance-manager-r-"
+	}
+
+	instanceManager := &longhorn.InstanceManager{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: generateName,
+			// Even though the labels duplicate information already in the spec, spec cannot be used for
+			// Field Selectors in CustomResourceDefinitions:
+			// https://github.com/kubernetes/kubernetes/issues/53459
+			Labels: map[string]string{
+				"engineImage": ei.Name,
+				"nodeID":      nc.controllerID,
+				"type":        string(imType),
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: longhorn.SchemeGroupVersion.String(),
+					Kind:       longhorn.SchemeGroupVersion.WithKind("EngineImage").String(),
+					Name:       ei.Name,
+					UID:        ei.UID,
+				},
+			},
+		},
+		Spec: types.InstanceManagerSpec{
+			EngineImage: ei.Name,
+			NodeID:      nc.controllerID,
+			Type:        imType,
+		},
+		Status: types.InstanceManagerStatus{
+			CurrentState: types.InstanceManagerStateStopped,
+		},
+	}
+
+	return nc.ds.CreateInstanceManager(instanceManager)
 }

@@ -11,12 +11,10 @@ import (
 
 const (
 	// CurrentCLIVersion indicates the API version manager used to talk with the
-	// engine, including `longhorn-engine` and `longhorn-engine-launcher`
-	CurrentCLIVersion = 1
+	// engine, including `longhorn-engine` and `longhorn-instance-manager`
+	CurrentCLIVersion = 2
 
-	ControllerDefaultPort     = "9501"
-	EngineLauncherDefaultPort = "9510"
-	ReplicaDefaultPort        = "9502"
+	InstanceManagerDefaultPort = 8500
 
 	DefaultISCSIPort = "3260"
 	DefaultISCSILUN  = "1"
@@ -39,9 +37,7 @@ type Controller struct {
 
 type EngineClient interface {
 	Name() string
-	Endpoint() (string, error)
 	Version(clientOnly bool) (*EngineVersion, error)
-	Upgrade(binary string, replicaURLs []string) error
 
 	Info() (*Volume, error)
 
@@ -66,6 +62,7 @@ type EngineClientRequest struct {
 	VolumeName  string
 	EngineImage string
 	IP          string
+	Port        int
 }
 
 type EngineClientCollection interface {
@@ -129,27 +126,13 @@ type EngineVersion struct {
 	ServerVersion *types.EngineVersionDetails `json:"serverVersion"`
 }
 
-func GetControllerDefaultURL(ip string) string {
-	if ip == "" {
-		return ""
-	}
-	return "http://" + ip + ":" + ControllerDefaultPort
+func GetBackendReplicaURL(address string) string {
+	return "tcp://" + address
 }
 
-func GetEngineLauncherDefaultURL(ip string) string {
-	if ip == "" {
-		return ""
-	}
-	return ip + ":" + EngineLauncherDefaultPort
-}
-
-func GetReplicaDefaultURL(ip string) string {
-	return "tcp://" + ip + ":" + ReplicaDefaultPort
-}
-
-func GetIPFromURL(url string) string {
-	// tcp, \/\/<address>, 9502
-	return strings.TrimPrefix(strings.Split(url, ":")[1], "//")
+func GetAddressFromBackendReplicaURL(url string) string {
+	// tcp://<address>:<Port>
+	return strings.TrimPrefix(url, "tcp://")
 }
 
 func ValidateReplicaURL(url string) error {

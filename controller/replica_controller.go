@@ -13,12 +13,9 @@ import (
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -26,7 +23,12 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
+	imapi "github.com/longhorn/longhorn-instance-manager/api"
+	imclient "github.com/longhorn/longhorn-instance-manager/client"
+	imutil "github.com/longhorn/longhorn-instance-manager/util"
+
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -41,18 +43,6 @@ var (
 	//
 	// 5ms, 10ms, 20ms
 	maxRetries = 3
-
-	ownerKindReplica = longhorn.SchemeGroupVersion.WithKind("Replica").String()
-)
-
-const (
-	// longhornReplicaKey is the key to identify which volume the replica
-	// belongs to, for scheduling purpose
-	longhornReplicaKey = "longhorn-volume-replica"
-
-	replicaReadinessProbeInitialDelay            = 1
-	replicaReadinessProbePeriodSeconds           = 1
-	replicaReadinessProbeFailureThresholdDefault = 10
 )
 
 type ReplicaController struct {
@@ -66,8 +56,8 @@ type ReplicaController struct {
 
 	ds *datastore.DataStore
 
-	rStoreSynced cache.InformerSynced
-	pStoreSynced cache.InformerSynced
+	rStoreSynced  cache.InformerSynced
+	imStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
 
@@ -78,7 +68,7 @@ func NewReplicaController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	replicaInformer lhinformers.ReplicaInformer,
-	podInformer coreinformers.PodInformer,
+	instanceManagerInformer lhinformers.InstanceManagerInformer,
 	kubeClient clientset.Interface,
 	namespace string, controllerID string) *ReplicaController {
 
@@ -96,12 +86,12 @@ func NewReplicaController(
 
 		ds: ds,
 
-		rStoreSynced: replicaInformer.Informer().HasSynced,
-		pStoreSynced: podInformer.Informer().HasSynced,
+		rStoreSynced:  replicaInformer.Informer().HasSynced,
+		imStoreSynced: instanceManagerInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-replica"),
 	}
-	rc.instanceHandler = NewInstanceHandler(podInformer, kubeClient, namespace, rc, rc.eventRecorder)
+	rc.instanceHandler = NewInstanceHandler(ds, rc, rc.eventRecorder)
 
 	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -118,15 +108,18 @@ func NewReplicaController(
 		},
 	})
 
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	instanceManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			rc.enqueueControlleeChange(obj)
+			im := obj.(*longhorn.InstanceManager)
+			rc.enqueueInstanceManagerChange(im)
 		},
 		UpdateFunc: func(old, cur interface{}) {
-			rc.enqueueControlleeChange(cur)
+			curIM := cur.(*longhorn.InstanceManager)
+			rc.enqueueInstanceManagerChange(curIM)
 		},
 		DeleteFunc: func(obj interface{}) {
-			rc.enqueueControlleeChange(obj)
+			im := obj.(*longhorn.InstanceManager)
+			rc.enqueueInstanceManagerChange(im)
 		},
 	})
 	return rc
@@ -139,7 +132,7 @@ func (rc *ReplicaController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start Longhorn replica controller")
 	defer logrus.Infof("Shutting down Longhorn replica controller")
 
-	if !controller.WaitForCacheSync("longhorn replicas", stopCh, rc.rStoreSynced, rc.pStoreSynced) {
+	if !controller.WaitForCacheSync("longhorn replicas", stopCh, rc.rStoreSynced, rc.imStoreSynced) {
 		return
 	}
 
@@ -240,8 +233,11 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 
 		if replica.Spec.NodeID == rc.controllerID {
-			if err := rc.instanceHandler.DeleteInstanceForObject(replica); err != nil {
-				return err
+			// Only attempt Instance deletion if it's assigned to an InstanceManager.
+			if replica.Status.InstanceManagerName != "" {
+				if _, err := rc.DeleteInstance(replica); err != nil {
+					return err
+				}
 			}
 			if replica.Spec.Active {
 				// prevent accidentally deletion
@@ -292,7 +288,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}
 
-	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
+	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus, types.InstanceManagerTypeReplica)
 }
 
 func (rc *ReplicaController) enqueueReplica(replica *longhorn.Replica) {
@@ -305,189 +301,120 @@ func (rc *ReplicaController) enqueueReplica(replica *longhorn.Replica) {
 	rc.queue.AddRateLimited(key)
 }
 
-func singleQuotes(static string) string {
-	return fmt.Sprintf("'%s'", static)
+func (rc *ReplicaController) getProcessManagerClient(instanceManagerName string) (*imclient.ProcessManagerClient, error) {
+	im, err := rc.ds.GetInstanceManager(instanceManagerName)
+	if err != nil {
+		return nil, fmt.Errorf("cannot find Instance Manager %v", instanceManagerName)
+	}
+	if im.Status.CurrentState != types.InstanceManagerStateRunning || im.Status.IP == "" {
+		return nil, fmt.Errorf("invalid Instance Manager %v", instanceManagerName)
+	}
+
+	return imclient.NewProcessManagerClient(imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)), nil
 }
 
-func (rc *ReplicaController) CreatePodSpec(obj interface{}) (*v1.Pod, error) {
+func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstanceProcessStatus, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
-		return nil, fmt.Errorf("BUG: invalid object for engine pod spec creation: %v", r)
+		return nil, fmt.Errorf("BUG: invalid object for replica process creation: %v", obj)
+	}
+	if r.Spec.NodeID == "" || r.Spec.DataPath == "" || r.Spec.DiskID == "" || r.Spec.VolumeSize == 0 {
+		return nil, fmt.Errorf("missing parameters for replica process creation: %v", r)
 	}
 
-	cmd := []string{
-		"longhorn", "replica",
-		"--listen", "0.0.0.0:9502",
+	args := []string{
+		"replica", types.GetReplicaMountedDataPath(r.Spec.DataPath),
 		"--size", strconv.FormatInt(r.Spec.VolumeSize, 10),
 	}
-	if r.Spec.BaseImage != "" {
-		cmd = append(cmd, "--backing-file", "/share/base_image")
-	}
-	cmd = append(cmd, "/volume")
 
-	privilege := true
-	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      r.Name,
-			Namespace: r.Namespace,
-			Labels: map[string]string{
-				longhornReplicaKey: r.Spec.VolumeName,
-			},
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: longhorn.SchemeGroupVersion.String(),
-					Kind:       ownerKindReplica,
-					UID:        r.UID,
-					Name:       r.Name,
-				},
-			},
-		},
-		Spec: v1.PodSpec{
-			RestartPolicy: v1.RestartPolicyNever,
-			Containers: []v1.Container{
-				{
-					Name:    r.Name,
-					Image:   r.Spec.EngineImage,
-					Command: cmd,
-					SecurityContext: &v1.SecurityContext{
-						Privileged: &privilege,
-					},
-					VolumeMounts: []v1.VolumeMount{
-						{
-							Name:      "volume",
-							MountPath: "/volume",
-						},
-					},
-					ReadinessProbe: &v1.Probe{
-						Handler: v1.Handler{
-							Exec: &v1.ExecAction{
-								Command: []string{"/usr/bin/grpc_health_probe", "-addr=:9502"},
-							},
-						},
-						InitialDelaySeconds: replicaReadinessProbeInitialDelay,
-						PeriodSeconds:       replicaReadinessProbePeriodSeconds,
-						FailureThreshold:    replicaReadinessProbeFailureThresholdDefault,
-					},
-				},
-			},
-			Volumes: []v1.Volume{
-				{
-					Name: "volume",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: r.Spec.DataPath,
-						},
-					},
-				},
-			},
-		},
-	}
-
-	// error out if NodeID and DataPath wasn't filled in scheduler
-	if r.Spec.NodeID == "" || r.Spec.DataPath == "" || r.Spec.DiskID == "" {
-		return nil, fmt.Errorf("BUG: nodeID or datapath or diskID wasn't set for replica %v", r.Name)
-	}
-
-	if r.Spec.BaseImage != "" {
-		// Ensure base image is present before executing main containers
-		pod.Spec.InitContainers = append(pod.Spec.InitContainers, v1.Container{
-			Name:            "prime-base-image",
-			Image:           r.Spec.BaseImage,
-			ImagePullPolicy: v1.PullAlways,
-			Command:         []string{"/bin/sh", "-c", fmt.Sprintf("echo primed %s", r.Spec.BaseImage)},
-		})
-
-		// create a volume to propagate the base image bind mount
-		pod.Spec.Volumes = append(pod.Spec.Volumes, v1.Volume{
-			Name: "share",
-			VolumeSource: v1.VolumeSource{
-				EmptyDir: &v1.EmptyDirVolumeSource{},
-			},
-		})
-
-		hostToContainer := v1.MountPropagationHostToContainer
-		pod.Spec.Containers[0].VolumeMounts = append(pod.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
-			Name:             "share",
-			ReadOnly:         true,
-			MountPath:        "/share",
-			MountPropagation: &hostToContainer,
-		})
-		pod.Spec.Containers[0].Command = append([]string{"/bin/sh", "-c", fmt.Sprintf(
-			"while true; do list=$(ls /share/base_image/* 2>&1); if [ $? -eq 0 ]; then break; fi; echo waiting; sleep 1; done; echo Directory found $list; exec %s",
-			strings.Join(pod.Spec.Containers[0].Command, " "),
-		)})
-
-		bidirectional := v1.MountPropagationBidirectional
-		pod.Spec.Containers = append(pod.Spec.Containers, v1.Container{
-			Name: "base-image",
-			Command: []string{"/bin/sh", "-c", "function cleanup() { while true; do " +
-				"umount /share/base_image; if [ $? -eq 0 ]; then echo unmounted && " +
-				"kill $tpid && break; fi; echo waiting && sleep 1; done }; " +
-				"mkdir -p /share/base_image && mount --bind /base_image/ /share/base_image && " +
-				"echo base image mounted at /share/base_image && trap cleanup TERM && " +
-				"mkfifo noop && tail -f noop & tpid=$! && trap cleanup TERM && wait $tpid"},
-			Image:           r.Spec.BaseImage,
-			ImagePullPolicy: v1.PullNever,
-			SecurityContext: &v1.SecurityContext{
-				Privileged: &privilege,
-			},
-			VolumeMounts: []v1.VolumeMount{
-				{
-					Name:             "share",
-					MountPath:        "/share",
-					MountPropagation: &bidirectional,
-				},
-			},
-		})
-	}
-
-	// set pod to node that replica scheduled on
-	pod.Spec.NodeName = r.Spec.NodeID
-
-	resourceReq, err := GetGuaranteedResourceRequirement(rc.ds)
+	c, err := rc.getProcessManagerClient(r.Status.InstanceManagerName)
 	if err != nil {
 		return nil, err
 	}
-	if resourceReq != nil {
-		// engine container is always index 0
-		pod.Spec.Containers[0].Resources = *resourceReq
+
+	replicaProcess, err := c.ProcessCreate(
+		r.Name, types.DefaultEngineBinaryPath, types.DefaultReplicaPortCount,
+		args, []string{"--listen,0.0.0.0:"})
+	if err != nil {
+		return nil, err
 	}
-	return pod, nil
+
+	return engineapi.ReplicaProcessToInstanceStatus(replicaProcess), nil
 }
 
-func (rc *ReplicaController) enqueueControlleeChange(obj interface{}) {
-	metaObj, err := meta.Accessor(obj)
+func (rc *ReplicaController) DeleteInstance(obj interface{}) (*types.InstanceProcessStatus, error) {
+	r, ok := obj.(*longhorn.Replica)
+	if !ok {
+		return nil, fmt.Errorf("BUG: invalid object for replica process deletion: %v", obj)
+	}
+
+	c, err := rc.getProcessManagerClient(r.Status.InstanceManagerName)
 	if err != nil {
-		logrus.Warnf("BUG: %v cannot be convert to metav1.Object: %v", obj, err)
+		return nil, err
+	}
+
+	replicaProcess, err := c.ProcessDelete(r.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return engineapi.ReplicaProcessToInstanceStatus(replicaProcess), nil
+}
+
+func (rc *ReplicaController) GetInstance(obj interface{}) (*types.InstanceProcessStatus, error) {
+	r, ok := obj.(*longhorn.Replica)
+	if !ok {
+		return nil, fmt.Errorf("BUG: invalid object for replica process get: %v", obj)
+	}
+
+	c, err := rc.getProcessManagerClient(r.Status.InstanceManagerName)
+	if err != nil {
+		return nil, err
+	}
+
+	replicaProcess, err := c.ProcessGet(r.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return engineapi.ReplicaProcessToInstanceStatus(replicaProcess), nil
+}
+
+func (rc *ReplicaController) LogInstance(obj interface{}) (*imapi.LogStream, error) {
+	r, ok := obj.(*longhorn.Replica)
+	if !ok {
+		return nil, fmt.Errorf("BUG: invalid object for reploca process log: %v", obj)
+	}
+
+	c, err := rc.getProcessManagerClient(r.Status.InstanceManagerName)
+	if err != nil {
+		return nil, err
+	}
+
+	stream, err := c.ProcessLog(r.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return stream, nil
+}
+
+func (rc *ReplicaController) enqueueInstanceManagerChange(im *longhorn.InstanceManager) {
+	imType, ok := im.Labels["type"]
+	if !ok || imType != string(types.InstanceManagerTypeReplica) {
 		return
 	}
-	ownerRefs := metaObj.GetOwnerReferences()
-	for _, ref := range ownerRefs {
-		if ref.Kind != ownerKindReplica {
-			continue
+
+	rs, err := rc.ds.ListReplicasByNode(im.Spec.NodeID)
+	if err != nil {
+		logrus.Warnf("Failed to list replicas on node %v", im.Spec.NodeID)
+	}
+	for _, rList := range rs {
+		for _, r := range rList {
+			if r.Spec.OwnerID == rc.controllerID {
+				rc.enqueueReplica(r)
+			}
 		}
-		namespace := metaObj.GetNamespace()
-		rc.ResolveRefAndEnqueue(namespace, &ref)
-		return
 	}
-}
-
-func (rc *ReplicaController) ResolveRefAndEnqueue(namespace string, ref *metav1.OwnerReference) {
-	if ref.Kind != ownerKindReplica {
-		return
-	}
-	replica, err := rc.ds.GetReplica(ref.Name)
-	if err != nil {
-		return
-	}
-	if replica.UID != ref.UID {
-		// The controller we found with this Name is not the same one that the
-		// OwnerRef points to.
-		return
-	}
-	// Not ours
-	if replica.Spec.OwnerID != rc.controllerID {
-		return
-	}
-	rc.enqueueReplica(replica)
+	return
 }

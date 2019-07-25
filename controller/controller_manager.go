@@ -66,6 +66,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	engineImageInformer := lhInformerFactory.Longhorn().V1alpha1().EngineImages()
 	nodeInformer := lhInformerFactory.Longhorn().V1alpha1().Nodes()
 	settingInformer := lhInformerFactory.Longhorn().V1alpha1().Settings()
+	imInformer := lhInformerFactory.Longhorn().V1alpha1().InstanceManagers()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
@@ -77,16 +78,16 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
-		engineImageInformer, nodeInformer, settingInformer,
+		engineImageInformer, nodeInformer, settingInformer, imInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		persistentVolumeInformer, persistentVolumeClaimInformer,
 		kubeClient, namespace)
 	rc := NewReplicaController(ds, scheme,
-		replicaInformer, podInformer,
+		replicaInformer, imInformer,
 		kubeClient, namespace, controllerID)
 	ec := NewEngineController(ds, scheme,
-		engineInformer, podInformer,
+		engineInformer, imInformer,
 		kubeClient, &engineapi.EngineCollection{}, namespace, controllerID)
 	vc := NewVolumeController(ds, scheme,
 		volumeInformer, engineInformer, replicaInformer,
@@ -96,7 +97,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 		engineImageInformer, volumeInformer, daemonSetInformer,
 		kubeClient, namespace, controllerID)
 	nc := NewNodeController(ds, scheme,
-		nodeInformer, settingInformer, podInformer, replicaInformer, kubeNodeInformer,
+		engineImageInformer, nodeInformer, settingInformer, podInformer, replicaInformer, kubeNodeInformer,
 		kubeClient, namespace, controllerID)
 	ws := NewWebsocketController(volumeInformer, engineInformer, replicaInformer,
 		settingInformer, engineImageInformer, nodeInformer)
@@ -105,6 +106,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 		kubeClient, version)
 	kc := NewKubernetesController(ds, scheme, volumeInformer, persistentVolumeInformer,
 		persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer, kubeClient)
+	imc := NewInstanceManagerController(ds, scheme, imInformer, podInformer, kubeClient, namespace, controllerID)
 
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
@@ -119,6 +121,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	go ws.Run(stopCh)
 	go sc.Run(stopCh)
 	go kc.Run(Workers, stopCh)
+	go imc.Run(Workers, stopCh)
 
 	return ds, ws, nil
 }
