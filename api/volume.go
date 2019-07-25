@@ -107,6 +107,10 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		return err
 	}
 
+	if volume.BaseImage != "" {
+		return fmt.Errorf("BaseImage feature is currently unsupported")
+	}
+
 	if volume.Standby {
 		if volume.Frontend != "" {
 			return fmt.Errorf("cannot set frontend for standby volume: %v", volume.Name)
