@@ -254,7 +254,9 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		if engine.Status.InstanceManagerName != "" {
 			// don't go through state transition because it can go wrong
 			if _, err := ec.DeleteInstance(engine); err != nil {
-				return err
+				if !types.ErrorIsNotFound(err) {
+					return errors.Wrapf(err, "failed to cleanup the related engine process before deleting engine %v", engine.Name)
+				}
 			}
 		}
 		return ec.ds.RemoveFinalizerForEngine(engine)
