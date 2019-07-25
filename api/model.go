@@ -2,6 +2,7 @@ package api
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
@@ -542,6 +543,18 @@ func toSettingCollection(settings []*longhorn.Setting) *client.GenericCollection
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }
 
+func getReplicaName(address string, vrs []*longhorn.Replica, volumeName string) string {
+	for _, r := range vrs {
+		inputIP := strings.Split(strings.TrimPrefix(address, "tcp://"), ":")[0]
+		if inputIP == r.Status.IP {
+			return r.Name
+		}
+	}
+	logrus.Warnf("replica address[%v] received from engine restoreStatus for volume[%v] is not found",
+		address, volumeName)
+	return address
+}
+
 func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, apiContext *api.ApiContext) *Volume {
 	var ve *longhorn.Engine
 	controllers := []Controller{}
@@ -583,7 +596,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			for replica, status := range rs {
 				restoreStatus = append(restoreStatus, RestoreStatus{
 					Resource:     client.Resource{},
-					Replica:      replica,
+					Replica:      getReplicaName(replica, vrs, v.Name),
 					IsRestoring:  status.IsRestoring,
 					LastRestored: status.LastRestored,
 					Progress:     status.Progress,
