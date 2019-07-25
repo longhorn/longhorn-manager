@@ -236,7 +236,9 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			// Only attempt Instance deletion if it's assigned to an InstanceManager.
 			if replica.Status.InstanceManagerName != "" {
 				if _, err := rc.DeleteInstance(replica); err != nil {
-					return err
+					if !types.ErrorIsNotFound(err) {
+						return errors.Wrapf(err, "failed to cleanup the related replica process before deleting replica %v", replica.Name)
+					}
 				}
 			}
 			if replica.Spec.Active {
