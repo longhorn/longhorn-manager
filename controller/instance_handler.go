@@ -3,7 +3,6 @@ package controller
 import (
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -291,7 +290,7 @@ func (h *InstanceHandler) createInstance(instanceName string, obj runtime.Object
 	if err != nil {
 		if types.ErrorIsNotFound(err) {
 			if _, err := h.instanceManagerHandler.CreateInstance(obj); err != nil {
-				if !strings.Contains(err.Error(), "already exists") {
+				if !types.ErrorAlreadyExists(err) {
 					h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
 					return err
 				}
