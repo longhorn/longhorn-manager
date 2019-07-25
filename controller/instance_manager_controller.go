@@ -411,10 +411,12 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 				case types.InstanceManagerTypeReplica:
 					watch, err = imc.NewReplicaManagerWatch(im)
 				default:
+					imc.watcherLock.Unlock()
 					return fmt.Errorf("BUG: instance manager %v has invalid type %v", im.Name, im.Spec.Type)
 				}
 
 				if err != nil {
+					imc.watcherLock.Unlock()
 					return err
 				}
 
