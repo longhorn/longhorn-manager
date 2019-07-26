@@ -223,6 +223,7 @@ type RestoreStatus struct {
 	Error        string `json:"error"`
 	Filename     string `json:"filename"`
 	State        string `json:"state"`
+	BackupURL    string `json:"backupURL"`
 }
 
 func NewSchema() *client.Schemas {
@@ -603,6 +604,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 					Error:        status.Error,
 					Filename:     status.Filename,
 					State:        status.State,
+					BackupURL:    status.BackupURL,
 				})
 			}
 		}

@@ -295,6 +295,7 @@ type RestoreStatus struct {
 	Error        string `json:"error,omitempty"`
 	Filename     string `json:"filename,omitempty"`
 	State        string `json:"state"`
+	BackupURL    string `json:"backupURL"`
 }
 
 type InstanceType string
