@@ -315,7 +315,6 @@ func (m *VolumeManager) DeleteBackup(backupName, volumeName string) error {
 	if err := backupTarget.DeleteBackup(url); err != nil {
 		return err
 	}
-	logrus.Debugf("Deleted backup %v for volume %v", backupName, volumeName)
 	if err := UpdateVolumeLastBackup(volumeName, backupTarget, m.ds.GetVolume, m.ds.UpdateVolume); err != nil {
 		logrus.Warnf("Failed to update volume LastBackup for %v for backup deletion: %v", volumeName, err)
 	}
