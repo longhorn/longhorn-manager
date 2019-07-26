@@ -52,6 +52,14 @@ func (b *BackupTarget) ExecuteEngineBinary(args ...string) (string, error) {
 	return util.Execute(b.LonghornEngineBinary(), args...)
 }
 
+func (b *BackupTarget) ExecuteEngineBinaryWithoutTimeout(args ...string) (string, error) {
+	err := util.ConfigBackupCredential(b.URL, b.Credential)
+	if err != nil {
+		return "", err
+	}
+	return util.ExecuteWithOutTimeout(b.LonghornEngineBinary(), args...)
+}
+
 func parseBackup(v interface{}) (*Backup, error) {
 	backup := new(Backup)
 	if err := mapstructure.Decode(v, backup); err != nil {
@@ -185,14 +193,18 @@ func (b *BackupTarget) GetBackup(backupURL string) (*Backup, error) {
 }
 
 func (b *BackupTarget) DeleteBackup(backupURL string) error {
-	_, err := b.ExecuteEngineBinary("backup", "rm", backupURL)
-	if err != nil {
-		if strings.Contains(err.Error(), "msg=\"cannot find ") {
-			logrus.Warnf("delete: could not find the backup: '%s'", backupURL)
-			return nil
+	go func() {
+		logrus.Infof("Start Deleting backup %s", backupURL)
+		_, err := b.ExecuteEngineBinaryWithoutTimeout("backup", "rm", backupURL)
+		if err != nil {
+			if types.ErrorIsNotFound(err) {
+				logrus.Warnf("delete: could not find the backup: '%s'", backupURL)
+				return
+			}
+			logrus.Errorf("error deleting backup, error message: %v", err)
 		}
-		return errors.Wrapf(err, "error deleting backup")
-	}
+		logrus.Infof("Complete deleting backup %s", backupURL)
+	}()
 	return nil
 }
 

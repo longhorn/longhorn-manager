@@ -226,6 +226,20 @@ func ExecuteWithTimeout(timeout time.Duration, binary string, args ...string) (s
 	return output.String(), nil
 }
 
+func ExecuteWithOutTimeout(binary string, args ...string) (string, error) {
+	cmd := exec.Command(binary, args...)
+
+	var output, stderr bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to execute: %v %v, output %s, stderr, %s, error %v",
+			binary, args, output.String(), stderr.String(), err)
+	}
+	return output.String(), nil
+}
+
 func TimestampAfterTimeout(ts string, timeout time.Duration) bool {
 	now := time.Now()
 	t, err := time.Parse(time.RFC3339, ts)
