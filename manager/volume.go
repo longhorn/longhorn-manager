@@ -760,9 +760,6 @@ func (m *VolumeManager) UpdateReplicaCount(name string, count int) (v *longhorn.
 	if v.Spec.NodeID == "" || v.Status.State != types.VolumeStateAttached {
 		return nil, fmt.Errorf("invalid volume state to update replica count%v", v.Status.State)
 	}
-	if v.Status.Robustness != types.VolumeRobustnessHealthy {
-		return nil, fmt.Errorf("volume must be healthy to update replica count")
-	}
 	if v.Spec.EngineImage != v.Status.CurrentImage {
 		return nil, fmt.Errorf("upgrading in process, cannot update replica count")
 	}
