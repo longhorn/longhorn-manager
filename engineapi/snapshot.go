@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -15,8 +14,6 @@ import (
 
 const (
 	VolumeHeadName = "volume-head"
-	purgeTimeout   = 15 * time.Minute
-	backupTimeout  = 360 * time.Minute
 )
 
 func (e *Engine) SnapshotCreate(name string, labels map[string]string) (string, error) {
@@ -74,7 +71,7 @@ func (e *Engine) SnapshotRevert(name string) error {
 }
 
 func (e *Engine) SnapshotPurge() error {
-	if _, err := e.ExecuteEngineBinaryWithTimeout(purgeTimeout, "snapshot", "purge"); err != nil {
+	if _, err := e.ExecuteEngineBinaryWithoutTimeout("snapshot", "purge"); err != nil {
 		return errors.Wrapf(err, "error purging snapshots")
 	}
 	logrus.Debugf("Volume %v snapshot purge completed", e.Name())
@@ -102,7 +99,7 @@ func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string
 	if err != nil {
 		return err
 	}
-	backup, err := e.ExecuteEngineBinaryWithTimeout(backupTimeout, args...)
+	backup, err := e.ExecuteEngineBinaryWithoutTimeout(args...)
 	if err != nil {
 		return err
 	}

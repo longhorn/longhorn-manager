@@ -26,10 +26,6 @@ type Engine struct {
 	cURL  string
 }
 
-const (
-	rebuildTimeout = 180 * time.Minute
-)
-
 func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (EngineClient, error) {
 	if request.EngineImage == "" {
 		return nil, fmt.Errorf("Invalid empty engine image from request")
@@ -59,6 +55,11 @@ func (e *Engine) ExecuteEngineBinary(args ...string) (string, error) {
 func (e *Engine) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...string) (string, error) {
 	args = append([]string{"--url", e.cURL}, args...)
 	return util.ExecuteWithTimeout(timeout, e.LonghornEngineBinary(), args...)
+}
+
+func (e *Engine) ExecuteEngineBinaryWithoutTimeout(args ...string) (string, error) {
+	args = append([]string{"--url", e.cURL}, args...)
+	return util.ExecuteWithOutTimeout(e.LonghornEngineBinary(), args...)
 }
 
 func parseReplica(s string) (*Replica, error) {
@@ -104,7 +105,7 @@ func (e *Engine) ReplicaAdd(url string) error {
 	if err := ValidateReplicaURL(url); err != nil {
 		return err
 	}
-	if _, err := e.ExecuteEngineBinaryWithTimeout(rebuildTimeout, "add", url); err != nil {
+	if _, err := e.ExecuteEngineBinaryWithoutTimeout("add", url); err != nil {
 		return errors.Wrapf(err, "failed to add replica address='%s' to controller '%s'", url, e.name)
 	}
 	return nil
@@ -164,7 +165,7 @@ func (e *Engine) BackupRestore(backupTarget, backupName, backupVolume, lastResto
 	if lastRestored != "" {
 		args = append(args, "--incrementally", "--last-restored", lastRestored)
 	}
-	if _, err := e.ExecuteEngineBinaryWithTimeout(commonTimeout, args...); err != nil {
+	if _, err := e.ExecuteEngineBinaryWithoutTimeout(args...); err != nil {
 		return errors.Wrapf(err, "error restoring backup '%s'", backup)
 	}
 
