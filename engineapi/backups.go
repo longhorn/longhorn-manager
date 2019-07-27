@@ -211,3 +211,78 @@ func (b *BackupTarget) DeleteBackup(backupURL string) error {
 func GetBackupURL(backupTarget, backupName, volName string) string {
 	return fmt.Sprintf("%s?backup=%s&volume=%s", backupTarget, backupName, volName)
 }
+
+func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string]string, credential map[string]string) error {
+	if snapName == VolumeHeadName {
+		return fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)
+	}
+	snap, err := e.SnapshotGet(snapName)
+	if err != nil {
+		return errors.Wrapf(err, "error getting snapshot '%s', volume '%s'", snapName, e.name)
+	}
+	if snap == nil {
+		return errors.Errorf("could not find snapshot '%s' to backup, volume '%s'", snapName, e.name)
+	}
+	args := []string{"backup", "create", "--dest", backupTarget}
+	for k, v := range labels {
+		args = append(args, "--label", k+"="+v)
+	}
+	args = append(args, snapName)
+	// set credential if backup for s3
+	err = util.ConfigBackupCredential(backupTarget, credential)
+	if err != nil {
+		return err
+	}
+	backup, err := e.ExecuteEngineBinaryWithoutTimeout(args...)
+	if err != nil {
+		return err
+	}
+	logrus.Debugf("Backup %v created for volume %v snapshot %v", backup, e.Name(), snapName)
+	return nil
+}
+
+func (e *Engine) SnapshotBackupStatus() (map[string]*types.BackupStatus, error) {
+	args := []string{"backup", "status"}
+	output, err := e.ExecuteEngineBinary(args...)
+	if err != nil {
+		return nil, err
+	}
+	backups := make(map[string]*types.BackupStatus, 0)
+	if err := json.Unmarshal([]byte(output), &backups); err != nil {
+		return nil, err
+	}
+	return backups, nil
+}
+
+func (e *Engine) BackupRestore(backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error {
+	backup := GetBackupURL(backupTarget, backupName, backupVolume)
+
+	// set credential if backup for s3
+	if err := util.ConfigBackupCredential(backupTarget, credential); err != nil {
+		return err
+	}
+
+	args := []string{"backup", "restore", backup}
+	if lastRestored != "" {
+		args = append(args, "--incrementally", "--last-restored", lastRestored)
+	}
+	if _, err := e.ExecuteEngineBinaryWithoutTimeout(args...); err != nil {
+		return errors.Wrapf(err, "error restoring backup '%s'", backup)
+	}
+
+	logrus.Debugf("Backup %v restored for volume %v", backup, e.Name())
+	return nil
+}
+
+func (e *Engine) BackupRestoreStatus() (map[string]*types.RestoreStatus, error) {
+	args := []string{"backup", "restore-status"}
+	output, err := e.ExecuteEngineBinary(args...)
+	if err != nil {
+		return nil, err
+	}
+	replicaStatusMap := make(map[string]*types.RestoreStatus)
+	if err := json.Unmarshal([]byte(output), &replicaStatusMap); err != nil {
+		return nil, err
+	}
+	return replicaStatusMap, nil
+}

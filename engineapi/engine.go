@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 
 	imutil "github.com/longhorn/longhorn-instance-manager/util"
 
@@ -151,37 +150,4 @@ func (e *Engine) Version(clientOnly bool) (*EngineVersion, error) {
 		return nil, errors.Wrapf(err, "cannot decode volume version: %v", output)
 	}
 	return version, nil
-}
-
-func (e *Engine) BackupRestore(backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error {
-	backup := GetBackupURL(backupTarget, backupName, backupVolume)
-
-	// set credential if backup for s3
-	if err := util.ConfigBackupCredential(backupTarget, credential); err != nil {
-		return err
-	}
-
-	args := []string{"backup", "restore", backup}
-	if lastRestored != "" {
-		args = append(args, "--incrementally", "--last-restored", lastRestored)
-	}
-	if _, err := e.ExecuteEngineBinaryWithoutTimeout(args...); err != nil {
-		return errors.Wrapf(err, "error restoring backup '%s'", backup)
-	}
-
-	logrus.Debugf("Backup %v restored for volume %v", backup, e.Name())
-	return nil
-}
-
-func (e *Engine) BackupRestoreStatus() (map[string]*types.RestoreStatus, error) {
-	args := []string{"backup", "restore-status"}
-	output, err := e.ExecuteEngineBinary(args...)
-	if err != nil {
-		return nil, err
-	}
-	replicaStatusMap := make(map[string]*types.RestoreStatus)
-	if err := json.Unmarshal([]byte(output), &replicaStatusMap); err != nil {
-		return nil, err
-	}
-	return replicaStatusMap, nil
 }
