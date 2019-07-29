@@ -58,7 +58,7 @@ func (e *Engine) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...s
 
 func (e *Engine) ExecuteEngineBinaryWithoutTimeout(args ...string) (string, error) {
 	args = append([]string{"--url", e.cURL}, args...)
-	return util.ExecuteWithOutTimeout(e.LonghornEngineBinary(), args...)
+	return util.ExecuteWithoutTimeout(e.LonghornEngineBinary(), args...)
 }
 
 func parseReplica(s string) (*Replica, error) {

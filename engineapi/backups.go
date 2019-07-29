@@ -57,7 +57,7 @@ func (b *BackupTarget) ExecuteEngineBinaryWithoutTimeout(args ...string) (string
 	if err != nil {
 		return "", err
 	}
-	return util.ExecuteWithOutTimeout(b.LonghornEngineBinary(), args...)
+	return util.ExecuteWithoutTimeout(b.LonghornEngineBinary(), args...)
 }
 
 func parseBackup(v interface{}) (*Backup, error) {

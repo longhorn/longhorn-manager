@@ -226,7 +226,7 @@ func ExecuteWithTimeout(timeout time.Duration, binary string, args ...string) (s
 	return output.String(), nil
 }
 
-func ExecuteWithOutTimeout(binary string, args ...string) (string, error) {
+func ExecuteWithoutTimeout(binary string, args ...string) (string, error) {
 	cmd := exec.Command(binary, args...)
 
 	var output, stderr bytes.Buffer
