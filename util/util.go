@@ -44,7 +44,8 @@ const (
 	AWSSecretKey      = "AWS_SECRET_ACCESS_KEY"
 	AWSEndPoint       = "AWS_ENDPOINTS"
 
-	HostProcPath = "/host/proc"
+	HostProcPath     = "/host/proc"
+	ReplicaDirectory = "/replicas/"
 )
 
 var (
@@ -550,4 +551,17 @@ func ValidateTags(inputTags []string) ([]string, error) {
 	sort.Strings(tags)
 
 	return tags, nil
+}
+
+func CreateDiskPath(path string) error {
+	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
+	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
+	if err != nil {
+		return err
+	}
+	if _, err := nsExec.Execute("mkdir", []string{"-p", filepath.Join(path + ReplicaDirectory)}); err != nil {
+		return errors.Wrapf(err, "error creating data path %v on host", path)
+	}
+
+	return nil
 }
