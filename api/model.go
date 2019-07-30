@@ -3,6 +3,7 @@ package api
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
@@ -50,6 +51,8 @@ type Volume struct {
 	Controllers   []Controller    `json:"controllers"`
 	BackupStatus  []BackupStatus  `json:"backupStatus"`
 	RestoreStatus []RestoreStatus `json:"restoreStatus"`
+
+	Timestamp string `json:"timestamp"`
 }
 
 type Snapshot struct {
@@ -72,6 +75,8 @@ type Setting struct {
 	Name       string                  `json:"name"`
 	Value      string                  `json:"value"`
 	Definition types.SettingDefinition `json:"definition"`
+
+	Timestamp string `json:"timestamp"`
 }
 
 type Instance struct {
@@ -106,6 +111,8 @@ type EngineImage struct {
 	Image   string `json:"image"`
 	Default bool   `json:"default"`
 	types.EngineImageStatus
+
+	Timestamp string `json:"timestamp"`
 }
 
 type AttachInput struct {
@@ -167,6 +174,8 @@ type Node struct {
 	Disks           map[string]DiskInfo                         `json:"disks"`
 	Conditions      map[types.NodeConditionType]types.Condition `json:"conditions"`
 	Tags            []string                                    `json:"tags"`
+
+	Timestamp string `json:"timestamp"`
 }
 
 type DiskInfo struct {
@@ -182,6 +191,8 @@ type Event struct {
 	client.Resource
 	v1.Event
 	EventType string `json:"eventType"`
+
+	Timestamp string `json:"timestamp"`
 }
 
 type SupportBundle struct {
@@ -224,6 +235,10 @@ type RestoreStatus struct {
 	Filename     string `json:"filename"`
 	State        string `json:"state"`
 	BackupURL    string `json:"backupURL"`
+}
+
+func generateTimestamp() string {
+	return time.Now().UTC().Format(time.RFC3339Nano)
 }
 
 func NewSchema() *client.Schemas {
@@ -523,6 +538,7 @@ func volumeSchema(volume *client.Schema) {
 }
 
 func toSettingResource(setting *longhorn.Setting) *Setting {
+	timestamp := generateTimestamp()
 	return &Setting{
 		Resource: client.Resource{
 			Id:    setting.Name,
@@ -533,6 +549,8 @@ func toSettingResource(setting *longhorn.Setting) *Setting {
 		Value: setting.Value,
 
 		Definition: types.SettingDefinitions[types.SettingName(setting.Name)],
+
+		Timestamp: timestamp,
 	}
 }
 
@@ -557,6 +575,7 @@ func getReplicaName(address string, vrs []*longhorn.Replica, volumeName string) 
 }
 
 func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, apiContext *api.ApiContext) *Volume {
+	timestamp := time.Now().UTC().Format(time.RFC3339Nano)
 	var ve *longhorn.Engine
 	controllers := []Controller{}
 	backups := []BackupStatus{}
@@ -668,6 +687,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		Replicas:      replicas,
 		BackupStatus:  backups,
 		RestoreStatus: restoreStatus,
+
+		Timestamp: timestamp,
 	}
 
 	actions := map[string]struct{}{}
@@ -790,6 +811,7 @@ func toBackupCollection(bs []*engineapi.Backup) *client.GenericCollection {
 }
 
 func toEngineImageResource(ei *longhorn.EngineImage, isDefault bool) *EngineImage {
+	timestamp := generateTimestamp()
 	return &EngineImage{
 		Resource: client.Resource{
 			Id:    ei.Name,
@@ -800,6 +822,8 @@ func toEngineImageResource(ei *longhorn.EngineImage, isDefault bool) *EngineImag
 		Image:             ei.Spec.Image,
 		Default:           isDefault,
 		EngineImageStatus: ei.Status,
+
+		Timestamp: timestamp,
 	}
 }
 
@@ -828,6 +852,7 @@ func NewServer(m *manager.VolumeManager, wsc *controller.WebsocketController) *S
 }
 
 func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiContext) *Node {
+	timestamp := generateTimestamp()
 	n := &Node{
 		Resource: client.Resource{
 			Id:      node.Name,
@@ -840,6 +865,8 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 		AllowScheduling: node.Spec.AllowScheduling,
 		Conditions:      node.Status.Conditions,
 		Tags:            node.Spec.Tags,
+
+		Timestamp: timestamp,
 	}
 
 	disks := map[string]DiskInfo{}
@@ -868,6 +895,7 @@ func toNodeCollection(nodeList []*longhorn.Node, nodeIPMap map[string]string, ap
 }
 
 func toEventResource(event v1.Event) *Event {
+	timestamp := generateTimestamp()
 	e := &Event{
 		Resource: client.Resource{
 			Id:    event.Name,
@@ -876,6 +904,8 @@ func toEventResource(event v1.Event) *Event {
 		},
 		Event:     event,
 		EventType: event.Type,
+
+		Timestamp: timestamp,
 	}
 	return e
 }
