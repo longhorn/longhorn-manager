@@ -11,6 +11,14 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
 
+func (m *VolumeManager) GetInstanceManager(name string) (*longhorn.InstanceManager, error) {
+	return m.ds.GetInstanceManager(name)
+}
+
+func (m *VolumeManager) ListInstanceManagers() (map[string]*longhorn.InstanceManager, error) {
+	return m.ds.ListInstanceManagers()
+}
+
 func (m *VolumeManager) GetNode(name string) (*longhorn.Node, error) {
 	return m.ds.GetNode(name)
 }

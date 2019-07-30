@@ -241,6 +241,14 @@ func generateTimestamp() string {
 	return time.Now().UTC().Format(time.RFC3339Nano)
 }
 
+type InstanceManager struct {
+	client.Resource
+	CurrentState types.InstanceManagerState `json:"currentState"`
+	EngineImage  string                     `json:"engineImage"`
+	Name         string                     `json:"name"`
+	NodeID       string                     `json:"nodeID"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -279,6 +287,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("supportBundle", SupportBundle{})
 	schemas.AddType("supportBundleInitateInput", SupportBundleInitateInput{})
 
+	schemas.AddType("instanceManager", InstanceManager{})
 	schemas.AddType("tag", Tag{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
@@ -953,4 +962,25 @@ func toTagCollection(tags []string, tagType string, apiContext *api.ApiContext) 
 		data = append(data, toTagResource(tag, tagType, apiContext))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "tag"}}
+}
+
+func toInstanceManagerResource(im *longhorn.InstanceManager) *InstanceManager {
+	return &InstanceManager{
+		Resource: client.Resource{
+			Id:   im.Name,
+			Type: "instanceManager",
+		},
+		CurrentState: im.Status.CurrentState,
+		EngineImage:  im.Spec.EngineImage,
+		Name:         im.Name,
+		NodeID:       im.Spec.NodeID,
+	}
+}
+
+func toInstanceManagerCollection(instanceManagers map[string]*longhorn.InstanceManager) *client.GenericCollection {
+	var data []interface{}
+	for _, im := range instanceManagers {
+		data = append(data, toInstanceManagerResource(im))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "instanceManager"}}
 }
