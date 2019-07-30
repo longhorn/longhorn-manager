@@ -151,6 +151,7 @@ func NewJob(volumeName, snapshotName, backupTarget string, labels map[string]str
 		VolumeName:  v.Name,
 		EngineImage: engineImage,
 		IP:          e.Status.IP,
+		Port:        e.Status.Port,
 	})
 	if err != nil {
 		return nil, err
