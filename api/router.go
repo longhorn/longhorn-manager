@@ -125,6 +125,9 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("GET").Path("/v1/disktags").Handler(f(schemas, s.DiskTagList))
 	r.Methods("GET").Path("/v1/nodetags").Handler(f(schemas, s.NodeTagList))
 
+	r.Methods("GET").Path("/v1/instancemanagers").Handler(f(schemas, s.InstanceManagerList))
+	r.Methods("GET").Path("/v1/instancemanagers/{name}").Handler(f(schemas, s.InstanceManagerGet))
+
 	r.Methods("POST").Path("/v1/supportbundles").Handler(f(schemas, s.InitiateSupportBundle))
 	r.Methods("GET").Path("/v1/supportbundles/{name}/{bundleName}").Handler(f(schemas,
 		s.fwd.Handler(OwnerIDFromNode(s.m), s.QuerySupportBundle)))

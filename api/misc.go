@@ -112,3 +112,28 @@ func (s *Server) NodeTagList(rw http.ResponseWriter, req *http.Request) error {
 	apiContext.Write(toTagCollection(tags, "node", apiContext))
 	return nil
 }
+
+func (s *Server) InstanceManagerGet(rw http.ResponseWriter, req *http.Request) error {
+	id := mux.Vars(req)["name"]
+	apiContext := api.GetApiContext(req)
+
+	im, err := s.m.GetInstanceManager(id)
+	if err != nil {
+		return err
+	}
+
+	apiContext.Write(toInstanceManagerResource(im))
+	return nil
+}
+
+func (s *Server) InstanceManagerList(rw http.ResponseWriter, req *http.Request) error {
+	apiContext := api.GetApiContext(req)
+
+	instanceManagers, err := s.m.ListInstanceManagers()
+	if err != nil {
+		return errors.Wrap(err, "failed to list instance managers")
+	}
+
+	apiContext.Write(toInstanceManagerCollection(instanceManagers))
+	return nil
+}
