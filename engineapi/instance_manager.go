@@ -12,39 +12,54 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 )
 
-func EngineProcessToInstanceStatus(engineProcess *imapi.Engine) *types.InstanceProcessStatus {
+func EngineProcessToInstanceProcess(engineProcess *imapi.Engine) *types.InstanceProcess {
 	if engineProcess == nil {
 		return nil
 	}
 
-	return &types.InstanceProcessStatus{
-		Name:      engineProcess.Name,
-		Type:      types.InstanceTypeEngine,
-		State:     types.InstanceState(engineProcess.ProcessStatus.State),
-		ErrorMsg:  engineProcess.ProcessStatus.ErrorMsg,
-		PortStart: engineProcess.ProcessStatus.PortStart,
-		PortEnd:   engineProcess.ProcessStatus.PortEnd,
+	return &types.InstanceProcess{
+		Spec: types.InstanceProcessSpec{
+			UUID: engineProcess.UUID,
+			Name: engineProcess.Name,
+		},
+		Status: types.InstanceProcessStatus{
+			Type:      types.InstanceTypeEngine,
+			State:     types.InstanceState(engineProcess.ProcessStatus.State),
+			ErrorMsg:  engineProcess.ProcessStatus.ErrorMsg,
+			PortStart: engineProcess.ProcessStatus.PortStart,
+			PortEnd:   engineProcess.ProcessStatus.PortEnd,
 
-		Listen:   engineProcess.Listen,
-		Endpoint: engineProcess.Endpoint,
+			Listen:   engineProcess.Listen,
+			Endpoint: engineProcess.Endpoint,
+
+			ResourceVersion: engineProcess.ResourceVersion,
+		},
 	}
+
 }
 
-func ReplicaProcessToInstanceStatus(replicaProcess *imapi.Process) *types.InstanceProcessStatus {
+func ReplicaProcessToInstanceProcess(replicaProcess *imapi.Process) *types.InstanceProcess {
 	if replicaProcess == nil {
 		return nil
 	}
 
-	return &types.InstanceProcessStatus{
-		Name:      replicaProcess.Name,
-		Type:      types.InstanceTypeReplica,
-		State:     types.InstanceState(replicaProcess.ProcessStatus.State),
-		ErrorMsg:  replicaProcess.ProcessStatus.ErrorMsg,
-		PortStart: replicaProcess.ProcessStatus.PortStart,
-		PortEnd:   replicaProcess.ProcessStatus.PortEnd,
+	return &types.InstanceProcess{
+		Spec: types.InstanceProcessSpec{
+			UUID: replicaProcess.UUID,
+			Name: replicaProcess.Name,
+		},
+		Status: types.InstanceProcessStatus{
+			Type:      types.InstanceTypeReplica,
+			State:     types.InstanceState(replicaProcess.ProcessStatus.State),
+			ErrorMsg:  replicaProcess.ProcessStatus.ErrorMsg,
+			PortStart: replicaProcess.ProcessStatus.PortStart,
+			PortEnd:   replicaProcess.ProcessStatus.PortEnd,
 
-		Listen:   "",
-		Endpoint: "",
+			Listen:   "",
+			Endpoint: "",
+
+			ResourceVersion: replicaProcess.ProcessStatus.ResourceVersion,
+		},
 	}
 }
 
