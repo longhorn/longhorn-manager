@@ -30,6 +30,7 @@ type backupVolume struct {
 	DataStored     string
 	Messages       map[backupstore.MessageType]string
 	Backups        map[string]interface{}
+	Deleting       bool
 }
 
 func NewBackupTarget(backupTarget, engineImage string, credential map[string]string) *BackupTarget {
@@ -116,6 +117,7 @@ func parseBackupVolumesList(output string) (map[string]*BackupVolume, error) {
 			LastBackupAt:   v.LastBackupAt,
 			DataStored:     v.DataStored,
 			Messages:       v.Messages,
+			Deleting:       v.Deleting,
 		}
 	}
 

@@ -100,6 +100,7 @@ type BackupVolume struct {
 	Messages       map[backupstore.MessageType]string `json:"messages"`
 	Backups        map[string]*Backup                 `json:"backups"`
 	BaseImage      string                             `json:"baseImage"`
+	Deleting       bool                               `json:"deleting"`
 }
 
 type Backup struct {
