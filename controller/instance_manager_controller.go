@@ -858,27 +858,3 @@ func (w *ReplicaManagerWatch) StartWatch() {
 func (w *ReplicaManagerWatch) StopWatch() {
 	close(w.stopCh)
 }
-
-func engineToProcessStatus(engine *api.Engine) types.InstanceProcessStatus {
-	return types.InstanceProcessStatus{
-		Endpoint:  engine.Endpoint,
-		ErrorMsg:  engine.ProcessStatus.ErrorMsg,
-		Listen:    engine.Listen,
-		Name:      engine.Name,
-		PortEnd:   engine.ProcessStatus.PortEnd,
-		PortStart: engine.ProcessStatus.PortStart,
-		State:     types.InstanceState(engine.ProcessStatus.State),
-		Type:      types.InstanceTypeEngine,
-	}
-}
-
-func processToProcessStatus(process *api.Process) types.InstanceProcessStatus {
-	return types.InstanceProcessStatus{
-		ErrorMsg:  process.ProcessStatus.ErrorMsg,
-		Name:      process.Name,
-		PortEnd:   process.ProcessStatus.PortEnd,
-		PortStart: process.ProcessStatus.PortStart,
-		State:     types.InstanceState(process.ProcessStatus.State),
-		Type:      types.InstanceTypeReplica,
-	}
-}

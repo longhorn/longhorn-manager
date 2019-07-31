@@ -338,19 +338,31 @@ type InstanceManagerSpec struct {
 }
 
 type InstanceManagerStatus struct {
-	CurrentState InstanceManagerState             `json:"currentState"`
-	Instances    map[string]InstanceProcessStatus `json:"instances"`
-	IP           string                           `json:"ip"`
-	NodeBootID   string                           `json:"nodeBootID"`
+	CurrentState InstanceManagerState       `json:"currentState"`
+	Instances    map[string]InstanceProcess `json:"instances"`
+	IP           string                     `json:"ip"`
+	NodeBootID   string                     `json:"nodeBootID"`
+}
+
+type InstanceProcess struct {
+	Spec   InstanceProcessSpec   `json:"spec"`
+	Status InstanceProcessStatus `json:"status"`
+}
+
+type InstanceProcessSpec struct {
+	UUID      string `json:"uuid"`
+	Name      string `json:"name"`
+	CreatedAt string `json:"createdAt"`
+	DeletedAt string `json:"deletedAt"`
 }
 
 type InstanceProcessStatus struct {
-	Endpoint  string        `json:"endpoint"`
-	ErrorMsg  string        `json:"errorMsg"`
-	Listen    string        `json:"listen"`
-	Name      string        `json:"name"`
-	PortEnd   int32         `json:"portEnd"`
-	PortStart int32         `json:"portStart"`
-	State     InstanceState `json:"state"`
-	Type      InstanceType  `json:"type"`
+	Endpoint        string        `json:"endpoint"`
+	ErrorMsg        string        `json:"errorMsg"`
+	Listen          string        `json:"listen"`
+	PortEnd         int32         `json:"portEnd"`
+	PortStart       int32         `json:"portStart"`
+	State           InstanceState `json:"state"`
+	Type            InstanceType  `json:"type"`
+	ResourceVersion int64         `json:"resourceVersion"`
 }
