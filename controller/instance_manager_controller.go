@@ -24,6 +24,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 
 	"github.com/longhorn/longhorn-instance-manager/api"
@@ -461,12 +462,18 @@ func (imc *InstanceManagerController) pollProcesses(im *longhorn.InstanceManager
 		if err != nil {
 			return err
 		}
-
-		updatedInstanceMap := make(map[string]types.InstanceProcessStatus)
-		for name, engine := range engines {
-			updatedInstanceMap[name] = engineToProcessStatus(engine)
+		// Ignore the entries exists in `engines` but not in `im.Status.Instances`
+		for name, instance := range im.Status.Instances {
+			newEngineProcess, exist := engines[name]
+			if !exist {
+				// If `instance.Spec.DeletedAt` is empty, the instance process may be deleted or haven't been started.
+				if instance.Spec.DeletedAt != "" {
+					delete(im.Status.Instances, name)
+				}
+				continue
+			}
+			updateInstancesForInstanceManager(im, engineapi.EngineProcessToInstanceProcess(newEngineProcess), newEngineProcess.Deleted)
 		}
-		im.Status.Instances = updatedInstanceMap
 	case types.InstanceManagerTypeReplica:
 		processClient := client.NewProcessManagerClient(im.Status.IP + defaultManagerPort)
 		processes, err := processClient.ProcessList()
@@ -474,11 +481,18 @@ func (imc *InstanceManagerController) pollProcesses(im *longhorn.InstanceManager
 			return err
 		}
 
-		updatedInstanceMap := make(map[string]types.InstanceProcessStatus)
-		for name, process := range processes {
-			updatedInstanceMap[name] = processToProcessStatus(process)
+		// Ignore the entries exists in `processes` but not in `im.Status.Instances`
+		for name, instance := range im.Status.Instances {
+			newReplicaProcess, exist := processes[name]
+			if !exist {
+				// If `instance.Spec.DeletedAt` is empty, the instance process may be deleted or haven't been started.
+				if instance.Spec.DeletedAt != "" {
+					delete(im.Status.Instances, name)
+				}
+				continue
+			}
+			updateInstancesForInstanceManager(im, engineapi.ReplicaProcessToInstanceProcess(newReplicaProcess), newReplicaProcess.Deleted)
 		}
-		im.Status.Instances = updatedInstanceMap
 	default:
 		return fmt.Errorf("BUG: instance manager %v has invalid type %v", im.Name, im.Spec.Type)
 	}
@@ -526,8 +540,8 @@ func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.Instan
 	imc.watcherLock.Unlock()
 
 	for name, instance := range im.Status.Instances {
-		instance.State = types.InstanceStateError
-		instance.ErrorMsg = "Instance Manager errored"
+		instance.Status.State = types.InstanceStateError
+		instance.Status.ErrorMsg = "Instance Manager errored"
 		im.Status.Instances[name] = instance
 	}
 
@@ -750,11 +764,8 @@ func (w *EngineManagerWatch) StartWatch() {
 					break
 				}
 
-				if engine.Deleted {
-					delete(im.Status.Instances, engine.Name)
-				} else {
-					im.Status.Instances[engine.Name] = engineToProcessStatus(engine)
-				}
+				updateInstancesForInstanceManager(im, engineapi.EngineProcessToInstanceProcess(engine), engine.Deleted)
+
 				if _, err = w.imc.ds.UpdateInstanceManager(im); !apierrors.IsConflict(err) {
 					if err != nil {
 						logrus.Errorf("error updating instance manager %v with engine update %v: %v", im.Name,
@@ -823,11 +834,8 @@ func (w *ReplicaManagerWatch) StartWatch() {
 					break
 				}
 
-				if process.Deleted {
-					delete(im.Status.Instances, process.Name)
-				} else {
-					im.Status.Instances[process.Name] = processToProcessStatus(process)
-				}
+				updateInstancesForInstanceManager(im, engineapi.ReplicaProcessToInstanceProcess(process), process.Deleted)
+
 				if _, err = w.imc.ds.UpdateInstanceManager(im); !apierrors.IsConflict(err) {
 					if err != nil {
 						logrus.Errorf("error updating instance manager %v with process update %v: %v", im.Name,
@@ -857,4 +865,36 @@ func (w *ReplicaManagerWatch) StartWatch() {
 
 func (w *ReplicaManagerWatch) StopWatch() {
 	close(w.stopCh)
+}
+
+func updateInstancesForInstanceManager(im *longhorn.InstanceManager, newInstance *types.InstanceProcess, deleted bool) {
+	name := newInstance.Spec.Name
+	currentInstance, exist := im.Status.Instances[name]
+	newInstance.Spec = currentInstance.Spec
+	if !exist {
+		logrus.Warnf("Cannot find instance %v in instance manager %v", name, im.Name)
+		return
+	}
+	if currentInstance.Status.ResourceVersion >= newInstance.Status.ResourceVersion {
+		logrus.Debugf("Instance manager %v will ignore expired instance process %v", im.Name, name)
+		return
+	}
+
+	if deleted {
+		// The instance process shouldn't become state `deleted` without the related `DeletedAt` set.
+		// But the following race condition may cause the case:
+		//     1. Instance manager controller (imc) watch func gets latest result: instance becomes `deleted`  -->  the related entry will be removed
+		//     2. Instance handler (ih) creates a new instance with the same name  -->  ih will add entry for instance manager
+		//     3. imc watch func gets latest result: instance becomes `starting`  -->  the entry in the instance manager will be updated
+		//     4. imc poll func gets expired result: instance becomes `deleted` (here `DeletedAt` is empty)  --> should ignore this result/case
+		// Hence Ignoring this case can solve this race condition.
+		if currentInstance.Spec.DeletedAt != "" {
+			delete(im.Status.Instances, name)
+		}
+		return
+	}
+
+	im.Status.Instances[name] = *newInstance
+
+	return
 }

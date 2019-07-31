@@ -970,6 +970,7 @@ func (nc *NodeController) createInstanceManager(ei *longhorn.EngineImage, imType
 		},
 		Status: types.InstanceManagerStatus{
 			CurrentState: types.InstanceManagerStateStopped,
+			Instances:    map[string]types.InstanceProcess{},
 		},
 	}
 
