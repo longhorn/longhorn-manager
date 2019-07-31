@@ -115,7 +115,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 		// 1. keep stopped
 		"engine keeps stopped": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, false),
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, false),
 			newEngine(NonExistingInstance, "", "", "", 0, false, types.InstanceStateStopped, types.InstanceStateStopped),
 			newEngine(NonExistingInstance, "", "", "", 0, false, types.InstanceStateStopped, types.InstanceStateStopped),
 			false,
@@ -123,167 +123,167 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 		// 2. desire state becomes stopped
 		"engine desire state becomes start": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, false),
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, false),
 			newEngine(NonExistingInstance, "", "", "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
-			newEngine(NonExistingInstance, "", TestInstanceManagerName, "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
+			newEngine(NonExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
 			false,
 		},
 		// 3. wait for im update
 		"starting engine waits for im update": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, false),
-			newEngine(NonExistingInstance, TestInstanceManagerName, "", "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
-			newEngine(NonExistingInstance, "", TestInstanceManagerName, "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, false),
+			newEngine(NonExistingInstance, TestInstanceManagerName1, "", "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
+			newEngine(NonExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
 			false,
 		},
 
 		// 4.1.1. become starting
 		"engine becomes starting": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]types.InstanceProcessStatus{
 					ExistingInstance: types.InstanceProcessStatus{
 						State:     types.InstanceStateStarting,
 						PortStart: TestPort1,
 					},
 				}, false),
-			newEngine(ExistingInstance, "", TestInstanceManagerName, "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
-			newEngine(ExistingInstance, "", TestInstanceManagerName, "", 0, false, types.InstanceStateStarting, types.InstanceStateRunning),
+			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
+			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStarting, types.InstanceStateRunning),
 			false,
 		},
 		// 4.1.2. still starting
 		"engine is still starting": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]types.InstanceProcessStatus{
 					ExistingInstance: types.InstanceProcessStatus{
 						State:     types.InstanceStateStarting,
 						PortStart: TestPort1,
 					},
 				}, false),
-			newEngine(ExistingInstance, "", TestInstanceManagerName, "", 0, false, types.InstanceStateStarting, types.InstanceStateRunning),
-			newEngine(ExistingInstance, "", TestInstanceManagerName, "", 0, false, types.InstanceStateStarting, types.InstanceStateRunning),
+			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStarting, types.InstanceStateRunning),
+			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStarting, types.InstanceStateRunning),
 			false,
 		},
 		// 4.1.3. become started from starting
 		"engine becomes running from starting state": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]types.InstanceProcessStatus{
 					ExistingInstance: types.InstanceProcessStatus{
 						State:     types.InstanceStateRunning,
 						PortStart: TestPort1,
 					},
 				}, false),
-			newEngine(ExistingInstance, "", TestInstanceManagerName, "", 0, false, types.InstanceStateStarting, types.InstanceStateRunning),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
+			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStarting, types.InstanceStateRunning),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
 			false,
 		},
 		// 4.2. become started from stopped
 		"engine becomes running from stopped state": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]types.InstanceProcessStatus{
 					ExistingInstance: types.InstanceProcessStatus{
 						State:     types.InstanceStateRunning,
 						PortStart: TestPort1,
 					},
 				}, false),
-			newEngine(ExistingInstance, "", TestInstanceManagerName, "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
+			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
 			false,
 		},
 		// 5. keep running
 		"engine keeps running": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]types.InstanceProcessStatus{
 					ExistingInstance: types.InstanceProcessStatus{
 						State:     types.InstanceStateRunning,
 						PortStart: TestPort1,
 					},
 				}, false),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
 			false,
 		},
 		// 6. desire state becomes stopped
 		"engine desire state becomes stopped": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]types.InstanceProcessStatus{
 					ExistingInstance: types.InstanceProcessStatus{
 						State:     types.InstanceStateRunning,
 						PortStart: TestPort1,
 					},
 				}, false),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateStopped),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestIP1, TestPort1, false, types.InstanceStateRunning, types.InstanceStateStopped),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateStopped),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, false, types.InstanceStateRunning, types.InstanceStateStopped),
 			false,
 		},
 		// 7. wait for update
 		"stopping engine waits for im update": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]types.InstanceProcessStatus{
 					ExistingInstance: types.InstanceProcessStatus{
 						State:     types.InstanceStateRunning,
 						PortStart: TestPort1,
 					},
 				}, false),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestIP1, TestPort1, false, types.InstanceStateRunning, types.InstanceStateStopped),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestIP1, TestPort1, false, types.InstanceStateRunning, types.InstanceStateStopped),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, false, types.InstanceStateRunning, types.InstanceStateStopped),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, false, types.InstanceStateRunning, types.InstanceStateStopped),
 			false,
 		},
 
 		// 8.1.1. become stopping
 		"engine becomes stopping": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]types.InstanceProcessStatus{
 					ExistingInstance: types.InstanceProcessStatus{
 						State:     types.InstanceStateStopping,
 						PortStart: TestPort1,
 					},
 				}, false),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestIP1, TestPort1, false, types.InstanceStateRunning, types.InstanceStateStopped),
-			newEngine(ExistingInstance, "", TestInstanceManagerName, "", 0, false, types.InstanceStateStopping, types.InstanceStateStopped),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, false, types.InstanceStateRunning, types.InstanceStateStopped),
+			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStopping, types.InstanceStateStopped),
 			false,
 		},
 		// 8.1.2. still stopping
 		"engine is still stopping": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]types.InstanceProcessStatus{
 					ExistingInstance: types.InstanceProcessStatus{
 						State:     types.InstanceStateStopping,
 						PortStart: TestPort1,
 					},
 				}, false),
-			newEngine(ExistingInstance, "", TestInstanceManagerName, "", 0, false, types.InstanceStateStopping, types.InstanceStateStopped),
-			newEngine(ExistingInstance, "", TestInstanceManagerName, "", 0, false, types.InstanceStateStopping, types.InstanceStateStopped),
+			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStopping, types.InstanceStateStopped),
+			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStopping, types.InstanceStateStopped),
 			false,
 		},
 		// 8.1.3. become stopped from stopping
 		"engine becomes stopped from stopping state": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, false),
-			newEngine(NonExistingInstance, "", TestInstanceManagerName, "", 0, false, types.InstanceStateStopping, types.InstanceStateStopped),
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, false),
+			newEngine(NonExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStopping, types.InstanceStateStopped),
 			newEngine(NonExistingInstance, "", "", "", 0, false, types.InstanceStateStopped, types.InstanceStateStopped),
 			false,
 		},
 		// 8.2. become stopped from running
 		"engine becomes stopped from running state": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, false),
-			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateStopped),
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, false),
+			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateStopped),
 			newEngine(NonExistingInstance, "", "", "", 0, false, types.InstanceStateStopped, types.InstanceStateStopped),
 			false,
 		},
 		// corner case1: invalid desireState
 		"engine gets invalid desire state": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, false),
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, false),
 			newEngine(NonExistingInstance, "", "", "", 0, false, types.InstanceStateStopped, types.InstanceStateStopping),
 			newEngine(NonExistingInstance, "", "", "", 0, false, types.InstanceStateStopped, types.InstanceStateStopping),
 			true,
@@ -291,21 +291,21 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 		// corner case2: the instance currentState is running but the related instance manager is being deleting
 		"engine keeps running but instance manager is being deleting": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]types.InstanceProcessStatus{
 					ExistingInstance: types.InstanceProcessStatus{
 						State:     types.InstanceStateRunning,
 						PortStart: TestPort1,
 					},
 				}, true),
-			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
+			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
 			newEngine(NonExistingInstance, "", "", "", 0, true, types.InstanceStateError, types.InstanceStateRunning),
 			false,
 		},
 		// corner case3: the instance is stopped and the related instance manager is being deleting
 		"engine keeps stopped and instance manager is being deleting": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, true),
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, true),
 			newEngine(NonExistingInstance, "", "", "", 0, false, types.InstanceStateStopped, types.InstanceStateStopped),
 			newEngine(NonExistingInstance, "", "", "", 0, false, types.InstanceStateStopped, types.InstanceStateStopped),
 			false,
@@ -313,8 +313,8 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 		// corner case4: the instance currentState is running but the related instance manager is starting
 		"engine keeps running but instance manager somehow is starting": {
 			types.InstanceManagerTypeEngine,
-			newInstanceManager(types.InstanceManagerTypeEngine, types.InstanceManagerStateStarting, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, false),
-			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateStarting, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcessStatus{}, false),
+			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
 			newEngine(NonExistingInstance, "", "", "", 0, true, types.InstanceStateError, types.InstanceStateRunning),
 			false,
 		},
@@ -330,7 +330,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 
 		h := newTestInstanceHandler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
 
-		ei, err := lhClient.LonghornV1alpha1().EngineImages(TestNamespace).Create(newEngineImage())
+		ei, err := lhClient.LonghornV1alpha1().EngineImages(TestNamespace).Create(newEngineImage(types.EngineImageStateReady))
 		c.Assert(err, IsNil)
 		eiIndexer := lhInformerFactory.Longhorn().V1alpha1().EngineImages().Informer().GetIndexer()
 		err = eiIndexer.Add(ei)
