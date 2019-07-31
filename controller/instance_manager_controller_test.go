@@ -59,7 +59,7 @@ func newInstanceManager(
 	imType types.InstanceManagerType,
 	currentState types.InstanceManagerState,
 	currentOwnerID, nodeID, ip string,
-	instances map[string]types.InstanceProcessStatus,
+	instances map[string]types.InstanceProcess,
 	isDeleting bool) *longhorn.InstanceManager {
 
 	im := &longhorn.InstanceManager{
