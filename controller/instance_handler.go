@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/api/core/v1"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 )
@@ -26,12 +28,15 @@ type InstanceHandler struct {
 	ds                     *datastore.DataStore
 	instanceManagerHandler InstanceManagerHandler
 	eventRecorder          record.EventRecorder
+
+	// for unit test
+	nowHandler func() string
 }
 
 type InstanceManagerHandler interface {
-	GetInstance(obj interface{}) (*types.InstanceProcessStatus, error)
-	CreateInstance(obj interface{}) (*types.InstanceProcessStatus, error)
-	DeleteInstance(obj interface{}) (*types.InstanceProcessStatus, error)
+	GetInstance(obj interface{}) (*types.InstanceProcess, error)
+	CreateInstance(obj interface{}) (*types.InstanceProcess, error)
+	DeleteInstance(obj interface{}) (*types.InstanceProcess, error)
 	LogInstance(obj interface{}) (*imapi.LogStream, error)
 }
 
@@ -40,6 +45,8 @@ func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler Instance
 		ds:                     ds,
 		instanceManagerHandler: instanceManagerHandler,
 		eventRecorder:          eventRecorder,
+
+		nowHandler: util.Now,
 	}
 }
 
@@ -68,7 +75,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		return
 	}
 
-	pStatus, exists := im.Status.Instances[instanceName]
+	instance, exists := im.Status.Instances[instanceName]
 	if !exists {
 		// need to consider case: instance is just created but haven't been present in instance manager
 		if status.CurrentState != types.InstanceStateStopped {
@@ -86,7 +93,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		return
 	}
 
-	switch pStatus.State {
+	switch instance.Status.State {
 	case types.InstanceStateStarting:
 		status.CurrentState = types.InstanceStateStarting
 		status.CurrentImage = ""
@@ -98,8 +105,8 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			status.IP = im.Status.IP
 			logrus.Debugf("Instance %v starts running, IP %v", instanceName, status.IP)
 		}
-		if status.Port != int(pStatus.PortStart) {
-			status.Port = int(pStatus.PortStart)
+		if status.Port != int(instance.Status.PortStart) {
+			status.Port = int(instance.Status.PortStart)
 			logrus.Debugf("Instance %v starts running, Port %d", instanceName, status.Port)
 		}
 		// only set CurrentImage when first started, since later we may specify
@@ -134,7 +141,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.Port = 0
 	default:
-		logrus.Warnf("instance %v state is %v, error message %v", instanceName, pStatus.State, pStatus.ErrorMsg)
+		logrus.Warnf("instance %v state is %v, error message %v", instanceName, instance.Status.State, instance.Status.ErrorMsg)
 		status.CurrentState = types.InstanceStateError
 		status.CurrentImage = ""
 		status.InstanceManagerName = ""
@@ -191,7 +198,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 	switch spec.DesireState {
 	case types.InstanceStateRunning:
 		if im != nil && im.DeletionTimestamp == nil {
-			if i, exists := im.Status.Instances[instanceName]; exists && i.State == types.InstanceStateRunning {
+			if i, exists := im.Status.Instances[instanceName]; exists && i.Status.State == types.InstanceStateRunning {
 				status.Started = true
 				break
 			}
@@ -206,7 +213,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		if err != nil {
 			return err
 		}
-		err = h.createInstance(instanceName, runtimeObj)
+		err = h.createInstance(im, instanceName, runtimeObj)
 		if err != nil {
 			return err
 		}
@@ -215,8 +222,8 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 			// there is a delay between deleteInstance() invocation and state/InstanceManager update,
 			// hence instance `currentState` can be `running` but with false `Started` flag.
 			// deleteInstance() may be called multiple times.
-			if i, exists := im.Status.Instances[instanceName]; exists && status.Started && (i.State == types.InstanceStateRunning || i.State == types.InstanceStateStarting) {
-				if err := h.deleteInstance(instanceName, runtimeObj); err != nil {
+			if i, exists := im.Status.Instances[instanceName]; exists && status.Started && (i.Status.State == types.InstanceStateRunning || i.Status.State == types.InstanceStateStarting) {
+				if err := h.deleteInstance(im, instanceName, runtimeObj); err != nil {
 					return err
 				}
 			}
@@ -285,42 +292,82 @@ func (h *InstanceHandler) prepareToCreateInstance(spec *types.InstanceSpec, stat
 	return im, nil
 }
 
-func (h *InstanceHandler) createInstance(instanceName string, obj runtime.Object) error {
+func (h *InstanceHandler) createInstance(im *longhorn.InstanceManager, instanceName string, obj runtime.Object) error {
 	_, err := h.instanceManagerHandler.GetInstance(obj)
-	if err != nil {
-		if types.ErrorIsNotFound(err) {
-			if _, err := h.instanceManagerHandler.CreateInstance(obj); err != nil {
-				if !types.ErrorAlreadyExists(err) {
-					h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
-					return err
-				}
-			}
-			h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStart, "Starts %v", instanceName)
-		} else {
-			return err
+	if err == nil {
+		logrus.Debugf("Instance process %v had been created, need to wait for instance manager %v update",
+			instanceName, im.Name)
+		return nil
+	}
+	if !types.ErrorIsNotFound(err) {
+		return err
+	}
 
+	// Add new entry in the map
+	if _, exist := im.Status.Instances[instanceName]; exist {
+		return fmt.Errorf("cannot start new instance process %v before cleanup the old one", instanceName)
+	}
+	newInstance := types.InstanceProcess{
+		Spec: types.InstanceProcessSpec{
+			Name:      instanceName,
+			CreatedAt: h.nowHandler(),
+		},
+		Status: types.InstanceProcessStatus{
+			State: types.InstanceStateStarting,
+		},
+	}
+	im.Status.Instances[instanceName] = newInstance
+	newIM, err := h.ds.UpdateInstanceManager(im)
+	if err != nil {
+		return errors.Wrapf(err, "failed to add new instance entry then update instance manager %v before creating instance %v", im.Name, instanceName)
+	}
+	im = newIM
+
+	if _, err := h.instanceManagerHandler.CreateInstance(obj); err != nil {
+		if !types.ErrorAlreadyExists(err) {
+			h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
+			return err
 		}
 	}
+	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStart, "Starts %v", instanceName)
+
 	return nil
 }
 
-func (h *InstanceHandler) deleteInstance(instanceName string, obj runtime.Object) error {
-	pStatus, err := h.instanceManagerHandler.GetInstance(obj)
+func (h *InstanceHandler) deleteInstance(im *longhorn.InstanceManager, instanceName string, obj runtime.Object) error {
+	instance, err := h.instanceManagerHandler.GetInstance(obj)
 	if err != nil {
 		if types.ErrorIsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	if pStatus.State == types.InstanceStateStarting || pStatus.State == types.InstanceStateRunning {
-		if _, err := h.instanceManagerHandler.DeleteInstance(obj); err != nil {
-			if !types.ErrorIsNotFound(err) {
-				h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping %v: %v", instanceName, err)
-				return err
-			}
-		}
-		h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStop, "Stops %v", instanceName)
+
+	if instance.Status.State != types.InstanceStateStarting && instance.Status.State != types.InstanceStateRunning {
+		logrus.Debugf("Instance %v state %v is invalid for deletion", instanceName, instance.Status.State)
+		return nil
 	}
+
+	// Set deletion timestamp for the entry
+	currentInstance, exist := im.Status.Instances[instanceName]
+	if !exist {
+		return fmt.Errorf("cannot find instance process %v in instance manager %v before deleting it", instanceName, im.Name)
+	}
+	currentInstance.Spec.DeletedAt = h.nowHandler()
+	im.Status.Instances[instanceName] = currentInstance
+	newIM, err := h.ds.UpdateInstanceManager(im)
+	if err != nil {
+		return errors.Wrapf(err, "failed to set deletion timestamp then update instance manager %v before deleting instance %v", im.Name, instanceName)
+	}
+	im = newIM
+
+	if _, err := h.instanceManagerHandler.DeleteInstance(obj); err != nil {
+		if !types.ErrorIsNotFound(err) {
+			h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping %v: %v", instanceName, err)
+			return err
+		}
+	}
+	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStop, "Stops %v", instanceName)
 
 	return nil
 }

@@ -315,7 +315,7 @@ func (rc *ReplicaController) getProcessManagerClient(instanceManagerName string)
 	return imclient.NewProcessManagerClient(imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)), nil
 }
 
-func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstanceProcessStatus, error) {
+func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for replica process creation: %v", obj)
@@ -341,10 +341,10 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 		return nil, err
 	}
 
-	return engineapi.ReplicaProcessToInstanceStatus(replicaProcess), nil
+	return engineapi.ReplicaProcessToInstanceProcess(replicaProcess), nil
 }
 
-func (rc *ReplicaController) DeleteInstance(obj interface{}) (*types.InstanceProcessStatus, error) {
+func (rc *ReplicaController) DeleteInstance(obj interface{}) (*types.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for replica process deletion: %v", obj)
@@ -360,10 +360,10 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) (*types.InstancePro
 		return nil, err
 	}
 
-	return engineapi.ReplicaProcessToInstanceStatus(replicaProcess), nil
+	return engineapi.ReplicaProcessToInstanceProcess(replicaProcess), nil
 }
 
-func (rc *ReplicaController) GetInstance(obj interface{}) (*types.InstanceProcessStatus, error) {
+func (rc *ReplicaController) GetInstance(obj interface{}) (*types.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for replica process get: %v", obj)
@@ -379,7 +379,7 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*types.InstanceProces
 		return nil, err
 	}
 
-	return engineapi.ReplicaProcessToInstanceStatus(replicaProcess), nil
+	return engineapi.ReplicaProcessToInstanceProcess(replicaProcess), nil
 }
 
 func (rc *ReplicaController) LogInstance(obj interface{}) (*imapi.LogStream, error) {
