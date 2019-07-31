@@ -38,7 +38,7 @@ type InstanceManagerTestCase struct {
 	expectedType     types.InstanceManagerType
 }
 
-func newEngineImage() *longhorn.EngineImage {
+func newEngineImage(state types.EngineImageState) *longhorn.EngineImage {
 	return &longhorn.EngineImage{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getTestEngineImageName(),
@@ -49,12 +49,13 @@ func newEngineImage() *longhorn.EngineImage {
 			Image: TestEngineImage,
 		},
 		Status: types.EngineImageStatus{
-			State: types.EngineImageStateReady,
+			State: state,
 		},
 	}
 }
 
 func newInstanceManager(
+	name string,
 	imType types.InstanceManagerType,
 	currentState types.InstanceManagerState,
 	currentOwnerID, nodeID, ip string,
@@ -63,7 +64,7 @@ func newInstanceManager(
 
 	im := &longhorn.InstanceManager{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      TestInstanceManagerName,
+			Name:      name,
 			Namespace: TestNamespace,
 			UID:       uuid.NewUUID(),
 			Labels: map[string]string{
@@ -238,7 +239,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			tc.controllerID)
 
 		// Controller logic depends on the Instance Manager's Engine Image existing.
-		ei := newEngineImage()
+		ei := newEngineImage(types.EngineImageStateReady)
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
 		_, err = lhClient.LonghornV1alpha1().EngineImages(ei.Namespace).Create(ei)
@@ -270,7 +271,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		_, err = lhClient.LonghornV1alpha1().Nodes(lhNode2.Namespace).Create(lhNode2)
 		c.Assert(err, IsNil)
 
-		im := newInstanceManager(tc.expectedType, tc.currentState, tc.currentOwnerID, tc.nodeID, "", nil, false)
+		im := newInstanceManager(TestInstanceManagerName1, tc.expectedType, tc.currentState, tc.currentOwnerID, tc.nodeID, "", nil, false)
 		err = imIndexer.Add(im)
 		c.Assert(err, IsNil)
 		_, err = lhClient.LonghornV1alpha1().InstanceManagers(im.Namespace).Create(im)
