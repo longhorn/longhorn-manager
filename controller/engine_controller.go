@@ -345,7 +345,7 @@ func (ec *EngineController) getEngineManagerClient(instanceManagerName string) (
 	return imclient.NewEngineManagerClient(imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)), nil
 }
 
-func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProcessStatus, error) {
+func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for engine process creation: %v", obj)
@@ -386,10 +386,10 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProc
 		return nil, err
 	}
 
-	return engineapi.EngineProcessToInstanceStatus(engineProcess), nil
+	return engineapi.EngineProcessToInstanceProcess(engineProcess), nil
 }
 
-func (ec *EngineController) DeleteInstance(obj interface{}) (*types.InstanceProcessStatus, error) {
+func (ec *EngineController) DeleteInstance(obj interface{}) (*types.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for engine process deletion: %v", obj)
@@ -405,10 +405,10 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (*types.InstanceProc
 		return nil, err
 	}
 
-	return engineapi.EngineProcessToInstanceStatus(engineProcess), nil
+	return engineapi.EngineProcessToInstanceProcess(engineProcess), nil
 }
 
-func (ec *EngineController) GetInstance(obj interface{}) (*types.InstanceProcessStatus, error) {
+func (ec *EngineController) GetInstance(obj interface{}) (*types.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for engine process get: %v", obj)
@@ -424,7 +424,7 @@ func (ec *EngineController) GetInstance(obj interface{}) (*types.InstanceProcess
 		return nil, err
 	}
 
-	return engineapi.EngineProcessToInstanceStatus(engineProcess), nil
+	return engineapi.EngineProcessToInstanceProcess(engineProcess), nil
 }
 
 func (ec *EngineController) LogInstance(obj interface{}) (*imapi.LogStream, error) {
