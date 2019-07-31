@@ -55,6 +55,7 @@ type NodeController struct {
 	pStoreSynced  cache.InformerSynced
 	sStoreSynced  cache.InformerSynced
 	rStoreSynced  cache.InformerSynced
+	imStoreSynced cache.InformerSynced
 	knStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
@@ -74,6 +75,7 @@ func NewNodeController(
 	settingInformer lhinformers.SettingInformer,
 	podInformer coreinformers.PodInformer,
 	replicaInformer lhinformers.ReplicaInformer,
+	imInformer lhinformers.InstanceManagerInformer,
 	kubeNodeInformer coreinformers.NodeInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID string) *NodeController {
@@ -96,6 +98,7 @@ func NewNodeController(
 		pStoreSynced:  podInformer.Informer().HasSynced,
 		sStoreSynced:  settingInformer.Informer().HasSynced,
 		rStoreSynced:  replicaInformer.Informer().HasSynced,
+		imStoreSynced: imInformer.Informer().HasSynced,
 		knStoreSynced: kubeNodeInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-node"),
@@ -187,6 +190,32 @@ func NewNodeController(
 		},
 	)
 
+	imInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			switch t := obj.(type) {
+			case *longhorn.InstanceManager:
+				return nc.filterInstanceManager(t)
+			default:
+				utilruntime.HandleError(fmt.Errorf("unable to handle object in %T: %T", nc, obj))
+				return false
+			}
+		},
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				im := obj.(*longhorn.InstanceManager)
+				nc.enqueueInstanceManager(im)
+			},
+			UpdateFunc: func(oldObj, newObj interface{}) {
+				cur := newObj.(*longhorn.InstanceManager)
+				nc.enqueueInstanceManager(cur)
+			},
+			DeleteFunc: func(obj interface{}) {
+				im := obj.(*longhorn.InstanceManager)
+				nc.enqueueInstanceManager(im)
+			},
+		},
+	})
+
 	podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
@@ -240,6 +269,14 @@ func filterSettings(s *longhorn.Setting) bool {
 func (nc *NodeController) filterReplica(r *longhorn.Replica) bool {
 	// only sync replica running on current node
 	if r.Spec.NodeID == nc.controllerID {
+		return true
+	}
+	return false
+}
+
+func (nc *NodeController) filterInstanceManager(im *longhorn.InstanceManager) bool {
+	// Only sync Instance Managers belonging to the current Node.
+	if im.Spec.NodeID == nc.controllerID {
 		return true
 	}
 	return false
@@ -576,6 +613,16 @@ func (nc *NodeController) enqueueReplica(replica *longhorn.Replica) {
 		// the replica should be removed before that.
 		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v for replica %v: %v ",
 			replica.Spec.NodeID, replica.Name, err))
+		return
+	}
+	nc.enqueueNode(node)
+}
+
+func (nc *NodeController) enqueueInstanceManager(im *longhorn.InstanceManager) {
+	node, err := nc.ds.GetNode(im.Spec.NodeID)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v for instance manager %v: %v ", im.Spec.NodeID,
+			im.Name, err))
 		return
 	}
 	nc.enqueueNode(node)
