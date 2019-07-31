@@ -209,6 +209,7 @@ func (b *BackupTarget) DeleteBackup(backupURL string) error {
 				return
 			}
 			logrus.Errorf("error deleting backup, error message: %v", err)
+			return
 		}
 		logrus.Infof("Complete deleting backup %s", backupURL)
 	}()
