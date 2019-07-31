@@ -190,8 +190,10 @@ func (m *VolumeManager) DeleteNode(name string) error {
 		return err
 	}
 	condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
-	// Only could delete node from longhorn if kubernetes node missing
-	if condition.Status == types.ConditionStatusTrue || condition.Reason != types.NodeConditionReasonKubernetesNodeGone ||
+	// Only could delete node from longhorn if kubernetes node missing or manager pod is missing
+	if condition.Status == types.ConditionStatusTrue ||
+		(condition.Reason != types.NodeConditionReasonKubernetesNodeGone &&
+			condition.Reason != types.NodeConditionReasonManagerPodMissing) ||
 		node.Spec.AllowScheduling || len(replicas) > 0 || len(engines) > 0 {
 		return fmt.Errorf("Could not delete node %v with node ready condition is %v, reason is %v, node schedulable %v, and %v replica, %v engine running on it", name,
 			condition.Status, condition.Reason, node.Spec.AllowScheduling, len(replicas), len(engines))
