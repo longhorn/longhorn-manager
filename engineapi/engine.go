@@ -29,8 +29,8 @@ func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (Engine
 	if request.EngineImage == "" {
 		return nil, fmt.Errorf("Invalid empty engine image from request")
 	}
-	if request.IP == "" || request.Port == 0 {
-		return nil, fmt.Errorf("Invalid empty IP or port from request")
+	if request.IP != "" && request.Port == 0 {
+		return nil, fmt.Errorf("Invalid empty port from request with valid IP")
 	}
 	return &Engine{
 		name:  request.VolumeName,
