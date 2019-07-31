@@ -963,7 +963,3 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		}
 	}
 }
-
-func getTestNow() string {
-	return TestTimeNow
-}
