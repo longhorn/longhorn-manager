@@ -409,29 +409,27 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	}
 	testCases["test disable disk when file system changed"] = tc
 
-	// TODO: Test doesn't work because GenerateName isn't handled by the fake Kubernetes implementation, so there are
-	//  two conflicting Instance Managers with a Name of empty string.
-	//tc = &NodeTestCase{}
-	//tc.engineImages = []*longhorn.EngineImage{
-	//	newEngineImage(types.EngineImageStateReady),
-	//}
-	//tc.kubeNodes = generateKubeNodes(ManagerPodUp)
-	//tc.pods = generateManagerPod(ManagerPodUp)
-	//node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	//tc.nodes = map[string]*longhorn.Node{
-	//	TestNode1: node1,
-	//}
-	//tc.expectInstanceManagers = 2
-	//tc.expectNodeStatus = map[string]types.NodeStatus{
-	//	TestNode1: {
-	//		Conditions: map[types.NodeConditionType]types.Condition{
-	//			types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
-	//			types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
-	//		},
-	//		Readiness: types.NodeReadinessDeploying,
-	//	},
-	//}
-	//testCases["test create instance managers"] = tc
+	tc = &NodeTestCase{}
+	tc.engineImages = []*longhorn.EngineImage{
+		newEngineImage(types.EngineImageStateReady),
+	}
+	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
+	tc.pods = generateManagerPod(ManagerPodUp)
+	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
+	tc.nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+	}
+	tc.expectInstanceManagers = 2
+	tc.expectNodeStatus = map[string]types.NodeStatus{
+		TestNode1: {
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
+			},
+			Readiness: types.NodeReadinessDeploying,
+		},
+	}
+	testCases["test create instance managers"] = tc
 
 	tc = &NodeTestCase{}
 	tc.engineImages = []*longhorn.EngineImage{

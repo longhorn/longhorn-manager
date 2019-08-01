@@ -945,7 +945,6 @@ func (nc *NodeController) createInstanceManager(ei *longhorn.EngineImage, imType
 
 	instanceManager := &longhorn.InstanceManager{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: generateName,
 			// Even though the labels duplicate information already in the spec, spec cannot be used for
 			// Field Selectors in CustomResourceDefinitions:
 			// https://github.com/kubernetes/kubernetes/issues/53459
@@ -954,6 +953,7 @@ func (nc *NodeController) createInstanceManager(ei *longhorn.EngineImage, imType
 				"nodeID":      nc.controllerID,
 				"type":        string(imType),
 			},
+			Name: generateName + util.RandomID(),
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: longhorn.SchemeGroupVersion.String(),
