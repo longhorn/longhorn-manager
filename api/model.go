@@ -583,6 +583,15 @@ func getReplicaName(address string, vrs []*longhorn.Replica, volumeName string) 
 	return address
 }
 
+func isReplicaRestoring(replicaName string, rs []RestoreStatus) bool {
+	for _, status := range rs {
+		if replicaName == status.Replica {
+			return status.IsRestoring
+		}
+	}
+	return false
+}
+
 func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, apiContext *api.ApiContext) *Volume {
 	timestamp := time.Now().UTC().Format(time.RFC3339Nano)
 	var ve *longhorn.Engine
@@ -641,7 +650,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	replicas := []Replica{}
 	for _, r := range vrs {
 		mode := ""
-		if ve != nil && ve.Status.ReplicaModeMap != nil {
+		isReplicaRestoring := isReplicaRestoring(r.Name, restoreStatus)
+		if !isReplicaRestoring && ve != nil && ve.Status.ReplicaModeMap != nil {
 			mode = string(ve.Status.ReplicaModeMap[r.Name])
 		}
 		replicas = append(replicas, Replica{
