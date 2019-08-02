@@ -113,7 +113,6 @@ type Backup struct {
 	VolumeName      string            `json:"volumeName"`
 	VolumeSize      string            `json:"volumeSize"`
 	VolumeCreated   string            `json:"volumeCreated"`
-	Deleting        bool              `json:"deleting"`
 }
 
 type LauncherVolumeInfo struct {
