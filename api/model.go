@@ -247,6 +247,7 @@ type InstanceManager struct {
 	EngineImage  string                     `json:"engineImage"`
 	Name         string                     `json:"name"`
 	NodeID       string                     `json:"nodeID"`
+	ManagerType  string                     `json:"managerType"`
 }
 
 func NewSchema() *client.Schemas {
@@ -974,6 +975,7 @@ func toInstanceManagerResource(im *longhorn.InstanceManager) *InstanceManager {
 		EngineImage:  im.Spec.EngineImage,
 		Name:         im.Name,
 		NodeID:       im.Spec.NodeID,
+		ManagerType:  string(im.Spec.Type),
 	}
 }
 
