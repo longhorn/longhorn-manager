@@ -239,14 +239,17 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 	h.syncStatusWithInstanceManager(im, instanceName, spec, status)
 
 	if status.CurrentState == types.InstanceStateRunning {
-		if spec.NodeID != im.Spec.NodeID {
-			status.CurrentState = types.InstanceStateError
-			status.InstanceManagerName = ""
-			status.IP = ""
-			status.NodeBootID = ""
-			err := fmt.Errorf("BUG: instance %v wasn't pin down to the instance manager at %v", instanceName, im.Spec.NodeID)
-			logrus.Errorf("%v", err)
-			return err
+		// If `spec.DesireState` is `types.InstanceStateStopped`, `spec.NodeID` has been unset by volume controller.
+		if spec.DesireState != types.InstanceStateStopped {
+			if spec.NodeID != im.Spec.NodeID {
+				status.CurrentState = types.InstanceStateError
+				status.InstanceManagerName = ""
+				status.IP = ""
+				status.NodeBootID = ""
+				err := fmt.Errorf("BUG: instance %v NodeID %v is not the same as the instance manager %v NodeID %v", instanceName, spec.NodeID, im.Name, im.Spec.NodeID)
+				logrus.Errorf("%v", err)
+				return err
+			}
 		}
 	} else if status.CurrentState == types.InstanceStateError && im != nil {
 		if _, exists := im.Status.Instances[instanceName]; exists {
