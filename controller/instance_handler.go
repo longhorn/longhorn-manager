@@ -30,12 +30,13 @@ type InstanceHandler struct {
 	eventRecorder          record.EventRecorder
 
 	// for unit test
-	nowHandler func() string
+	nowHandler    func() string
+	uuidGenerator func() string
 }
 
 type InstanceManagerHandler interface {
 	GetInstance(obj interface{}) (*types.InstanceProcess, error)
-	CreateInstance(obj interface{}) (*types.InstanceProcess, error)
+	CreateInstance(obj interface{}, uuid string) (*types.InstanceProcess, error)
 	DeleteInstance(obj interface{}) (*types.InstanceProcess, error)
 	LogInstance(obj interface{}) (*imapi.LogStream, error)
 }
@@ -46,7 +47,8 @@ func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler Instance
 		instanceManagerHandler: instanceManagerHandler,
 		eventRecorder:          eventRecorder,
 
-		nowHandler: util.Now,
+		nowHandler:    util.Now,
+		uuidGenerator: util.UUID,
 	}
 }
 
@@ -309,6 +311,7 @@ func (h *InstanceHandler) createInstance(im *longhorn.InstanceManager, instanceN
 	}
 	newInstance := types.InstanceProcess{
 		Spec: types.InstanceProcessSpec{
+			UUID:      h.uuidGenerator(),
 			Name:      instanceName,
 			CreatedAt: h.nowHandler(),
 		},
@@ -323,7 +326,8 @@ func (h *InstanceHandler) createInstance(im *longhorn.InstanceManager, instanceN
 	}
 	im = newIM
 
-	if _, err := h.instanceManagerHandler.CreateInstance(obj); err != nil {
+	logrus.Debugf("Prepare to create instance %v according to new instance spec %+v", instanceName, newInstance.Spec)
+	if _, err := h.instanceManagerHandler.CreateInstance(obj, newInstance.Spec.UUID); err != nil {
 		if !types.ErrorAlreadyExists(err) {
 			h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
 			return err
