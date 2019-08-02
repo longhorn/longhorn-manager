@@ -315,13 +315,16 @@ func (rc *ReplicaController) getProcessManagerClient(instanceManagerName string)
 	return imclient.NewProcessManagerClient(imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)), nil
 }
 
-func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstanceProcess, error) {
+func (rc *ReplicaController) CreateInstance(obj interface{}, uuid string) (*types.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for replica process creation: %v", obj)
 	}
 	if r.Spec.NodeID == "" || r.Spec.DataPath == "" || r.Spec.DiskID == "" || r.Spec.VolumeSize == 0 {
 		return nil, fmt.Errorf("missing parameters for replica process creation: %v", r)
+	}
+	if uuid == "" {
+		return nil, fmt.Errorf("missing parameter UUID for engine process creation")
 	}
 
 	args := []string{
@@ -335,7 +338,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 	}
 
 	replicaProcess, err := c.ProcessCreate(
-		r.Name, types.DefaultEngineBinaryPath, types.DefaultReplicaPortCount,
+		uuid, r.Name, types.DefaultEngineBinaryPath, types.DefaultReplicaPortCount,
 		args, []string{"--listen,0.0.0.0:"})
 	if err != nil {
 		return nil, err
