@@ -236,7 +236,13 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
 	}
 
+	oldState := status.CurrentState
+
 	h.syncStatusWithInstanceManager(im, instanceName, spec, status)
+
+	if oldState != status.CurrentState {
+		logrus.Debugf("Instance handler updated instance %v state, old state %v, new state %v", instanceName, oldState, status.CurrentState)
+	}
 
 	if status.CurrentState == types.InstanceStateRunning {
 		// If `spec.DesireState` is `types.InstanceStateStopped`, `spec.NodeID` has been unset by volume controller.
