@@ -144,9 +144,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.Port = 0
 	default:
 		logrus.Warnf("instance %v state is %v, error message %v", instanceName, instance.Status.State, instance.Status.ErrorMsg)
+		// cannot cleanup InstanceManagerName here, since we need it to print the log.
 		status.CurrentState = types.InstanceStateError
 		status.CurrentImage = ""
-		status.InstanceManagerName = ""
 		status.IP = ""
 		status.Port = 0
 		// Don't reset status.NodeBootID, we need it to identify a node reboot
@@ -251,13 +251,16 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 				return err
 			}
 		}
-	} else if status.CurrentState == types.InstanceStateError && im != nil {
-		if _, exists := im.Status.Instances[instanceName]; exists {
-			logrus.Warnf("Instance %v crashed on Instance Manager %v at %v, try to get log", instanceName, im.Name, im.Spec.NodeID)
-			if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
-				logrus.Warnf("cannot get crash log for instance %v on Instance Manager %v at %v, error %v", instanceName, im.Name, im.Spec.NodeID, err)
+	} else if status.CurrentState == types.InstanceStateError {
+		if im != nil {
+			if _, exists := im.Status.Instances[instanceName]; exists {
+				logrus.Warnf("Instance %v crashed on Instance Manager %v at %v, try to get log", instanceName, im.Name, im.Spec.NodeID)
+				if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
+					logrus.Warnf("cannot get crash log for instance %v on Instance Manager %v at %v, error %v", instanceName, im.Name, im.Spec.NodeID, err)
+				}
 			}
 		}
+		status.InstanceManagerName = ""
 	}
 	return nil
 }
