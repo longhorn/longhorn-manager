@@ -508,7 +508,7 @@ func volumeSchema(volume *client.Schema) {
 
 	volumeStaleReplicaTimeout := volume.ResourceFields["staleReplicaTimeout"]
 	volumeStaleReplicaTimeout.Create = true
-	volumeStaleReplicaTimeout.Default = 20
+	volumeStaleReplicaTimeout.Default = 2880
 	volume.ResourceFields["staleReplicaTimeout"] = volumeStaleReplicaTimeout
 
 	volumeBaseImage := volume.ResourceFields["baseImage"]

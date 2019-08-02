@@ -16,7 +16,8 @@ import (
 )
 
 const (
-	defaultStaleReplicaTimeout = 20
+	// defaultStaleReplicaTimeout set to 48 hours (2880 minutes)
+	defaultStaleReplicaTimeout = 2880
 )
 
 func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, error) {
