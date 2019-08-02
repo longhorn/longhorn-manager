@@ -870,9 +870,20 @@ func (w *ReplicaManagerWatch) StopWatch() {
 func updateInstancesForInstanceManager(im *longhorn.InstanceManager, newInstance *types.InstanceProcess, deleted bool) {
 	name := newInstance.Spec.Name
 	currentInstance, exist := im.Status.Instances[name]
-	newInstance.Spec = currentInstance.Spec
+	newInstance.Spec.CreatedAt = currentInstance.Spec.CreatedAt
+	newInstance.Spec.DeletedAt = currentInstance.Spec.DeletedAt
 	if !exist {
 		logrus.Warnf("Cannot find instance %v in instance manager %v", name, im.Name)
+		return
+	}
+	// Check UUID to solve the following race condition:
+	//     1. Instance manager controller (imc) watch func gets latest result: instance becomes `deleted`  -->  the related entry will be removed
+	//     2. Instance handler (ih) creates a new instance with the same name  -->  ih will add entry for instance manager
+	//     3. imc poll func gets expired result: instance is `running`  -->  the related volume becomes `attached`
+	//     4. imc watch func gets latest result: instance becomes `starting`  -->  the related volume becomes `attaching`
+	if newInstance.Spec.UUID != currentInstance.Spec.UUID {
+		logrus.Debugf("Instance manager %v will ignore the instance process %v: new instance UUID %v is not the same as existing instance UUID %v",
+			im.Name, name, newInstance.Spec.UUID, currentInstance.Spec.UUID)
 		return
 	}
 	if currentInstance.Status.ResourceVersion >= newInstance.Status.ResourceVersion {
@@ -882,12 +893,6 @@ func updateInstancesForInstanceManager(im *longhorn.InstanceManager, newInstance
 
 	if deleted {
 		// The instance process shouldn't become state `deleted` without the related `DeletedAt` set.
-		// But the following race condition may cause the case:
-		//     1. Instance manager controller (imc) watch func gets latest result: instance becomes `deleted`  -->  the related entry will be removed
-		//     2. Instance handler (ih) creates a new instance with the same name  -->  ih will add entry for instance manager
-		//     3. imc watch func gets latest result: instance becomes `starting`  -->  the entry in the instance manager will be updated
-		//     4. imc poll func gets expired result: instance becomes `deleted` (here `DeletedAt` is empty)  --> should ignore this result/case
-		// Hence Ignoring this case can solve this race condition.
 		if currentInstance.Spec.DeletedAt != "" {
 			delete(im.Status.Instances, name)
 		}
