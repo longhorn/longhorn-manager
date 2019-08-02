@@ -58,7 +58,8 @@ const (
 	OptionDiskSelector        = "diskSelector"
 	OptionNodeSelector        = "nodeSelector"
 
-	DefaultStaleReplicaTimeout = "30"
+	// DefaultStaleReplicaTimeout in minutes. 48h by default
+	DefaultStaleReplicaTimeout = "2880"
 
 	EngineImageChecksumNameLength = 8
 )
