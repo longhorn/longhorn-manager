@@ -598,7 +598,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	client, err := GetClientForEngine(engine, m.engines, engine.Status.CurrentImage)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "failed to get client for engine %v in engine monitor", engine.Name)
 	}
 
 	backupStatusList, err := client.SnapshotBackupStatus()
@@ -777,7 +777,7 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 
 	client, err := GetClientForEngine(e, ec.engines, e.Status.CurrentImage)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "failed to get engine %v client when removing unknown replicas", e.Name)
 	}
 	for _, addr := range unknownReplicaAddrs {
 		go func(addr string) {
@@ -837,7 +837,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 
 	client, err := GetClientForEngine(e, ec.engines, e.Status.CurrentImage)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "failed to get engine %v client when starting rebuilding replicas", e.Name)
 	}
 
 	// we need to know the current status, since ReplicaAddressMap may
@@ -916,7 +916,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 
 	client, err := GetClientForEngine(e, ec.engines, e.Spec.EngineImage)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "failed to get engine %v client when upgrading engine", e.Name)
 	}
 	version, err := client.Version(false)
 	if err != nil {

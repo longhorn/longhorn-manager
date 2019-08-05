@@ -329,10 +329,10 @@ func (h *InstanceHandler) prepareToCreateInstance(spec *types.InstanceSpec, stat
 	engineImageName := types.GetEngineImageChecksumName(spec.EngineImage)
 	im, err := h.ds.GetInstanceManagerBySelector(spec.NodeID, engineImageName, string(managerType))
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to get instance manager by Labels: engineImage=%v,nodeID=%v,type=%v", spec.EngineImage, spec.NodeID, managerType)
 	}
 	if im == nil {
-		return nil, fmt.Errorf("cannot find instance manager by Labels: engineImage=%v,nodeID=%v,type=%v", spec.EngineImage, spec.NodeID, managerType)
+		return nil, fmt.Errorf("no matched instance manager by Labels: engineImage=%v,nodeID=%v,type=%v", spec.EngineImage, spec.NodeID, managerType)
 	}
 
 	status.InstanceManagerName = im.Name
@@ -347,7 +347,7 @@ func (h *InstanceHandler) createInstance(im *longhorn.InstanceManager, instanceN
 		return nil
 	}
 	if !types.ErrorIsNotFound(err) {
-		return err
+		return errors.Wrapf(err, "failed to check the existence of instance process %v before creating it", instanceName)
 	}
 
 	// Add new entry in the map
@@ -373,9 +373,11 @@ func (h *InstanceHandler) createInstance(im *longhorn.InstanceManager, instanceN
 
 	logrus.Debugf("Prepare to create instance %v according to new instance spec %+v", instanceName, newInstance.Spec)
 	if _, err := h.instanceManagerHandler.CreateInstance(obj, newInstance.Spec.UUID); err != nil {
-		if !types.ErrorAlreadyExists(err) {
+		if types.ErrorAlreadyExists(err) {
+			logrus.Infof("Cannot create instance process %v since it already existed", instanceName)
+		} else {
 			h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
-			return err
+			return errors.Wrapf(err, "failed to create instance process %v", instanceName)
 		}
 	}
 	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStart, "Starts %v", instanceName)
@@ -387,9 +389,10 @@ func (h *InstanceHandler) deleteInstance(im *longhorn.InstanceManager, instanceN
 	instance, err := h.instanceManagerHandler.GetInstance(obj)
 	if err != nil {
 		if types.ErrorIsNotFound(err) {
+			logrus.Debugf("Instance process %v had been deleted", instanceName)
 			return nil
 		}
-		return err
+		return errors.Wrapf(err, "failed to check the existence of instance process %v before deleting it", instanceName)
 	}
 
 	if instance.Status.State != types.InstanceStateStarting && instance.Status.State != types.InstanceStateRunning {
@@ -411,7 +414,9 @@ func (h *InstanceHandler) deleteInstance(im *longhorn.InstanceManager, instanceN
 	im = newIM
 
 	if _, err := h.instanceManagerHandler.DeleteInstance(obj); err != nil {
-		if !types.ErrorIsNotFound(err) {
+		if types.ErrorIsNotFound(err) {
+			logrus.Infof("Instance process %v had been deleted", instanceName)
+		} else {
 			h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping %v: %v", instanceName, err)
 			return err
 		}

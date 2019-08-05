@@ -952,7 +952,11 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		return nil
 	}
 	if oldImage.Status.State != types.EngineImageStateReady {
-		logrus.Warnf("live upgrade: volume %v engine upgrade from %v requests, but the image wasn't ready", v.Name, oldImage.Spec.Image)
+		if oldImage.Status.State == types.EngineImageStateIncompatible {
+			logrus.Warnf("live upgrade: volume %v current engine image %v is incompatible with longhorn manager", v.Name, oldImage.Spec.Image)
+		} else {
+			logrus.Warnf("live upgrade: volume %v engine upgrade from %v requests, but the image wasn't ready", v.Name, oldImage.Spec.Image)
+		}
 		return nil
 	}
 	newImage, err := vc.getEngineImage(v.Spec.EngineImage)
