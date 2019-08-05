@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -91,6 +92,7 @@ type EngineMonitor struct {
 func NewEngineController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
+	podInformer coreinformers.PodInformer,
 	engineInformer lhinformers.EngineInformer,
 	instanceManagerInformer lhinformers.InstanceManagerInformer,
 	kubeClient clientset.Interface,
@@ -120,7 +122,7 @@ func NewEngineController(
 		engineMonitorMap:         map[string]chan struct{}{},
 		engineMonitoringRemoveCh: make(chan string, 1),
 	}
-	ec.instanceHandler = NewInstanceHandler(ds, ec, ec.eventRecorder)
+	ec.instanceHandler = NewInstanceHandler(ds, ec, ec.eventRecorder, podInformer, kubeClient, namespace)
 
 	engineInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -281,6 +283,15 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}
 
 	if engine.Status.CurrentState == types.InstanceStateRunning {
+		ei, err := ec.ds.GetEngineImage(types.GetEngineImageChecksumName(engine.Status.CurrentImage))
+		if err != nil {
+			return errors.Wrapf(err, "failed to find current engine image object %v for engine %v", engine.Status.CurrentImage, engine.Name)
+		}
+		// Skip old engine whose APIVersion is 1.
+		if ei.Status.CLIAPIVersion < engineapi.CurrentCLIVersion {
+			return nil
+		}
+
 		// we allow across monitoring temporaily due to migration case
 		if !ec.isMonitoring(engine) {
 			ec.startMonitoring(engine)

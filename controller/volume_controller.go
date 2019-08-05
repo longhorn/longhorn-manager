@@ -804,8 +804,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 				continue
 			}
 			if r.Status.Port == 0 {
-				logrus.Errorf("BUG: replica %v is running but Port is empty", r.Name)
-				continue
+				// Do not skip this replica, otherwise the healthy replica count is 0 then sync func will error out.
+				logrus.Warnf("Replica %v is running but Port is empty. Maybe replica instance is using old engine image.", r.Name)
 			}
 			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 		}

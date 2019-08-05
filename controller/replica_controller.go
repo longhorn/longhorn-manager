@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -67,6 +68,7 @@ type ReplicaController struct {
 func NewReplicaController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
+	podInformer coreinformers.PodInformer,
 	replicaInformer lhinformers.ReplicaInformer,
 	instanceManagerInformer lhinformers.InstanceManagerInformer,
 	kubeClient clientset.Interface,
@@ -91,7 +93,7 @@ func NewReplicaController(
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-replica"),
 	}
-	rc.instanceHandler = NewInstanceHandler(ds, rc, rc.eventRecorder)
+	rc.instanceHandler = NewInstanceHandler(ds, rc, rc.eventRecorder, podInformer, kubeClient, namespace)
 
 	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {

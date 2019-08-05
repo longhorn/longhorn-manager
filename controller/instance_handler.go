@@ -1,24 +1,36 @@
 package controller
 
 import (
+	"bufio"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	coreinformers "k8s.io/client-go/informers/core/v1"
+	clientset "k8s.io/client-go/kubernetes"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/record"
 
 	imapi "github.com/longhorn/longhorn-instance-manager/api"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+)
+
+const (
+	CrashLogsTaillines = 500
 )
 
 // InstanceHandler can handle the state transition of correlated instance and
@@ -28,6 +40,11 @@ type InstanceHandler struct {
 	ds                     *datastore.DataStore
 	instanceManagerHandler InstanceManagerHandler
 	eventRecorder          record.EventRecorder
+
+	// to process old instance
+	namespace  string
+	kubeClient clientset.Interface
+	pLister    corelisters.PodLister
 
 	// for unit test
 	nowHandler    func() string
@@ -41,11 +58,15 @@ type InstanceManagerHandler interface {
 	LogInstance(obj interface{}) (*imapi.LogStream, error)
 }
 
-func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler InstanceManagerHandler, eventRecorder record.EventRecorder) *InstanceHandler {
+func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler InstanceManagerHandler, eventRecorder record.EventRecorder, podInformer coreinformers.PodInformer, kubeClient clientset.Interface, namespace string) *InstanceHandler {
 	return &InstanceHandler{
 		ds:                     ds,
 		instanceManagerHandler: instanceManagerHandler,
 		eventRecorder:          eventRecorder,
+
+		namespace:  namespace,
+		kubeClient: kubeClient,
+		pLister:    podInformer.Lister(),
 
 		nowHandler:    util.Now,
 		uuidGenerator: util.UUID,
@@ -171,6 +192,18 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 	instanceName, err := h.getNameFromObj(runtimeObj)
 	if err != nil {
 		return err
+	}
+
+	//may be old instance
+	if status.CurrentImage != "" {
+		ei, err := h.ds.GetEngineImage(types.GetEngineImageChecksumName(status.CurrentImage))
+		if err != nil {
+			return errors.Wrapf(err, "failed to find current engine image object %v for instance %v", status.CurrentImage, instanceName)
+		}
+		// old instance. APIVersion = 1.
+		if ei.Status.CLIAPIVersion < engineapi.CurrentCLIVersion {
+			return h.processOldInstance(runtimeObj, instanceName, spec, status)
+		}
 	}
 
 	var im *longhorn.InstanceManager
@@ -385,5 +418,120 @@ func (h *InstanceHandler) deleteInstance(im *longhorn.InstanceManager, instanceN
 	}
 	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStop, "Stops %v", instanceName)
 
+	return nil
+}
+
+func (h *InstanceHandler) processOldInstance(obj runtime.Object, instanceName string, spec *types.InstanceSpec, status *types.InstanceStatus) (err error) {
+	logrus.Debugf("Found old running instance %v", instanceName)
+
+	pod, err := h.pLister.Pods(h.namespace).Get(instanceName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	if apierrors.IsNotFound(err) {
+		pod = nil
+	}
+
+	if spec.LogRequested {
+		if pod == nil {
+			logrus.Warnf("Cannot get the log for old instance %v due to pod is already gone", instanceName)
+		} else {
+			logrus.Warnf("Try to get requested log for old instance %v on node %v", pod.Name, pod.Spec.NodeName)
+			if err := h.printOldInstancePodLogs(pod.Name, CrashLogsTaillines); err != nil {
+				logrus.Warnf("cannot get requested log for old instance %v on node %v, error %v", pod.Name, pod.Spec.NodeName, err)
+			}
+		}
+		spec.LogRequested = false
+	}
+
+	switch spec.DesireState {
+	case types.InstanceStateRunning:
+		if pod == nil || pod.Status.Phase != v1.PodRunning {
+			status.CurrentState = types.InstanceStateError
+			status.CurrentImage = ""
+			status.IP = ""
+		}
+	case types.InstanceStateStopped:
+		err := h.deleteOldInstancePod(pod, obj)
+		if err != nil {
+			return err
+		}
+		status.Started = false
+		status.NodeBootID = ""
+
+		// unset status.CurrentImage for old instance only if the pod is gone
+		if pod == nil {
+			status.CurrentState = types.InstanceStateStopped
+			status.CurrentImage = ""
+			status.IP = ""
+			return nil
+		}
+
+		if pod.DeletionTimestamp != nil {
+			status.CurrentState = types.InstanceStateStopping
+			status.IP = ""
+			if pod.DeletionGracePeriodSeconds != nil && *pod.DeletionGracePeriodSeconds != 0 {
+				// force deletion in the case of node lost
+				deletionDeadline := pod.DeletionTimestamp.Add(time.Duration(*pod.DeletionGracePeriodSeconds) * time.Second)
+				now := time.Now().UTC()
+				if now.After(deletionDeadline) {
+					logrus.Debugf("pod %v still exists after grace period %v passed, force deletion: now %v, deadline %v",
+						pod.Name, pod.DeletionGracePeriodSeconds, now, deletionDeadline)
+					gracePeriod := int64(0)
+					if err := h.kubeClient.CoreV1().Pods(h.namespace).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod}); err != nil {
+						logrus.Debugf("failed to force deletion pod %v: %v ", pod.Name, err)
+						return nil
+					}
+				}
+			}
+			return nil
+		}
+
+		status.CurrentState = types.InstanceStateStopped
+
+	default:
+		return fmt.Errorf("BUG: unknown old instance desire state: desire %v", spec.DesireState)
+	}
+	return nil
+}
+
+func (h *InstanceHandler) printOldInstancePodLogs(podName string, taillines int) error {
+	tails := int64(taillines)
+	req := h.kubeClient.CoreV1().Pods(h.namespace).GetLogs(podName, &v1.PodLogOptions{
+		Timestamps: true,
+		TailLines:  &tails,
+	})
+	if req.URL().Path == "" {
+		return fmt.Errorf("GetLogs for %v/%v returns empty request path, may due to unit test run: %+v", h.namespace, podName, req)
+	}
+
+	logReader, err := req.Stream()
+	if err != nil {
+		return err
+	}
+	defer logReader.Close()
+	scanner := bufio.NewScanner(logReader)
+	for scanner.Scan() {
+		logrus.Warnf("%s: %s", podName, scanner.Text())
+	}
+	return nil
+}
+
+func (h *InstanceHandler) deleteOldInstancePod(pod *v1.Pod, obj runtime.Object) (err error) {
+	// pod already stopped
+	if pod == nil {
+		return nil
+	}
+	// pod has been already asked to stop
+	if pod.DeletionTimestamp != nil {
+		return nil
+	}
+
+	if err := h.kubeClient.CoreV1().Pods(h.namespace).Delete(pod.Name, nil); err != nil {
+		h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping pod for old instance %v: %v", pod.Name, err)
+		return nil
+	}
+	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStop, "Stops pod for old instance %v", pod.Name)
 	return nil
 }

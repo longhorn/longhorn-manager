@@ -481,7 +481,7 @@ func newTestInstanceHandler(lhInformerFactory lhinformerfactory.SharedInformerFa
 		kubeClient, TestNamespace)
 	fakeRecorder := record.NewFakeRecorder(100)
 
-	ih := NewInstanceHandler(ds, &MockInstanceManagerHandler{}, fakeRecorder)
+	ih := NewInstanceHandler(ds, &MockInstanceManagerHandler{}, fakeRecorder, podInformer, kubeClient, TestNamespace)
 	ih.nowHandler = getTestNow
 	ih.uuidGenerator = getInstanceUUID
 	return ih
