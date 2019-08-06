@@ -69,8 +69,8 @@ func (e *Engine) SnapshotRevert(name string) error {
 
 func (e *Engine) SnapshotPurge() error {
 	if _, err := e.ExecuteEngineBinaryWithoutTimeout("snapshot", "purge"); err != nil {
-		return errors.Wrapf(err, "error purging snapshots")
+		return errors.Wrapf(err, "error starting snapshot purge")
 	}
-	logrus.Debugf("Volume %v snapshot purge completed", e.Name())
+	logrus.Debugf("Volume %v snapshot purge started", e.Name())
 	return nil
 }
