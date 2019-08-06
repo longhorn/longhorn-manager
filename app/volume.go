@@ -30,6 +30,8 @@ const (
 	FlagLabels       = "labels"
 	FlagRetain       = "retain"
 	FlagBackupTarget = "backuptarget"
+
+	SnapshotPurgeStatusInterval = 5 * time.Second
 )
 
 func SnapshotCmd() cli.Command {
@@ -192,6 +194,34 @@ func (job *Job) snapshotAndCleanup() error {
 	if len(cleanupSnapshotNames) > 0 {
 		if err := engine.SnapshotPurge(); err != nil {
 			return err
+		}
+		for {
+			done := true
+			errorList := map[string]string{}
+			purgeStatus, err := engine.SnapshotPurgeStatus()
+			if err != nil {
+				return err
+			}
+
+			for replica, status := range purgeStatus {
+				if status.IsPurging {
+					done = false
+					break
+				}
+				if status.Error != "" {
+					errorList[replica] = status.Error
+				}
+			}
+			if done {
+				if len(errorList) != 0 {
+					for replica, errMsg := range errorList {
+						logrus.Errorf("error purging snapshots on replica %v: %v", replica, errMsg)
+					}
+					return errors.New("encountered one or more errors while purging snapshots")
+				}
+				return nil
+			}
+			time.Sleep(SnapshotPurgeStatusInterval)
 		}
 	}
 	return nil
