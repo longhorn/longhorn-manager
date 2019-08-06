@@ -882,12 +882,11 @@ func updateInstancesForInstanceManager(im *longhorn.InstanceManager, newInstance
 	//     3. imc poll func gets expired result: instance is `running`  -->  the related volume becomes `attached`
 	//     4. imc watch func gets latest result: instance becomes `starting`  -->  the related volume becomes `attaching`
 	if newInstance.Spec.UUID != currentInstance.Spec.UUID {
-		logrus.Debugf("Instance manager %v will ignore the instance process %v: new instance UUID %v is not the same as existing instance UUID %v",
-			im.Name, name, newInstance.Spec.UUID, currentInstance.Spec.UUID)
+		//ignore UUID other than expected
 		return
 	}
 	if currentInstance.Status.ResourceVersion >= newInstance.Status.ResourceVersion {
-		logrus.Debugf("Instance manager %v will ignore expired instance process %v", im.Name, name)
+		//ignore old version
 		return
 	}
 
