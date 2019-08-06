@@ -51,6 +51,7 @@ type EngineClient interface {
 	SnapshotDelete(name string) error
 	SnapshotRevert(name string) error
 	SnapshotPurge() error
+	SnapshotPurgeStatus() (map[string]*types.PurgeStatus, error)
 	SnapshotBackup(snapName, backupTarget string, labels map[string]string, credential map[string]string) error
 	SnapshotBackupStatus() (map[string]*types.BackupStatus, error)
 
