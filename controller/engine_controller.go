@@ -667,6 +667,13 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 	}
 
+	purgeStatus, err := client.SnapshotPurgeStatus()
+	if err != nil {
+		logrus.Errorf("failed to get snapshot purge status: %v", err)
+		return err
+	}
+	engine.Status.PurgeStatus = purgeStatus
+
 	engine, err = m.ds.UpdateEngine(engine)
 	if err != nil {
 		return err
