@@ -137,11 +137,11 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 	if err != nil {
 		return err
 	}
-	//TODO time consuming operation, move it out of API server path
+
 	if err := engine.SnapshotPurge(); err != nil {
 		return err
 	}
-	logrus.Debugf("Purged snapshots for volume %v", volumeName)
+	logrus.Debugf("Started snapshot purge for volume %v", volumeName)
 	return nil
 }
 
