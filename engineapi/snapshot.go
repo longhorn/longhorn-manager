@@ -7,6 +7,8 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
@@ -73,4 +75,18 @@ func (e *Engine) SnapshotPurge() error {
 	}
 	logrus.Debugf("Volume %v snapshot purge started", e.Name())
 	return nil
+}
+
+func (e *Engine) SnapshotPurgeStatus() (map[string]*types.PurgeStatus, error) {
+	output, err := e.ExecuteEngineBinary("snapshot", "purge-status")
+	if err != nil {
+		return nil, errors.Wrapf(err, "error getting snapshot purge status")
+	}
+
+	data := map[string]*types.PurgeStatus{}
+	if err := json.Unmarshal([]byte(output), &data); err != nil {
+		return nil, errors.Wrapf(err, "error parsing snapshot purge status")
+	}
+
+	return data, nil
 }
