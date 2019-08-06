@@ -33,6 +33,10 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 )
 
+const (
+	LonghornCSIDriver = "io.rancher.longhorn"
+)
+
 type KubernetesController struct {
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -219,6 +223,11 @@ func (kc *KubernetesController) syncKubernetesStatus(key string) (err error) {
 		}
 		return errors.Wrapf(err, "Error getting Persistent Volume %s", name)
 	}
+
+	if pv.Spec.CSI.Driver != LonghornCSIDriver {
+		return nil
+	}
+
 	volumeName := kc.getCSIVolumeHandleFromPV(pv)
 	if volumeName == "" {
 		return nil
