@@ -167,6 +167,7 @@ type EngineStatus struct {
 	LastRestoredBackup string                    `json:"lastRestoredBackup"`
 	BackupStatus       map[string]*BackupStatus  `json:"backupStatus"`
 	RestoreStatus      map[string]*RestoreStatus `json:"restoreStatus"`
+	PurgeStatus        map[string]*PurgeStatus   `json:"purgeStatus"`
 }
 
 type ReplicaSpec struct {
@@ -304,6 +305,13 @@ type RestoreStatus struct {
 	Filename     string `json:"filename,omitempty"`
 	State        string `json:"state"`
 	BackupURL    string `json:"backupURL"`
+}
+
+type PurgeStatus struct {
+	Error     string `json:"error"`
+	IsPurging bool   `json:"isPurging"`
+	Progress  int    `json:"progress"`
+	State     string `json:"state"`
 }
 
 type InstanceType string
