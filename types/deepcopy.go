@@ -57,12 +57,32 @@ func (e *EngineSpec) DeepCopyInto(to *EngineSpec) {
 
 func (e *EngineStatus) DeepCopyInto(to *EngineStatus) {
 	*to = *e
-	if e.ReplicaModeMap == nil {
-		return
+	if e.BackupStatus != nil {
+		to.BackupStatus = make(map[string]*BackupStatus)
+		for key, value := range e.BackupStatus {
+			to.BackupStatus[key] = &BackupStatus{}
+			*to.BackupStatus[key] = *value
+		}
 	}
-	to.ReplicaModeMap = make(map[string]ReplicaMode)
-	for key, value := range e.ReplicaModeMap {
-		to.ReplicaModeMap[key] = value
+	if e.ReplicaModeMap != nil {
+		to.ReplicaModeMap = make(map[string]ReplicaMode)
+		for key, value := range e.ReplicaModeMap {
+			to.ReplicaModeMap[key] = value
+		}
+	}
+	if e.RestoreStatus != nil {
+		to.RestoreStatus = make(map[string]*RestoreStatus)
+		for key, value := range e.RestoreStatus {
+			to.RestoreStatus[key] = &RestoreStatus{}
+			*to.RestoreStatus[key] = *value
+		}
+	}
+	if e.PurgeStatus != nil {
+		to.PurgeStatus = make(map[string]*PurgeStatus)
+		for key, value := range e.PurgeStatus {
+			to.PurgeStatus[key] = &PurgeStatus{}
+			*to.PurgeStatus[key] = *value
+		}
 	}
 }
 
