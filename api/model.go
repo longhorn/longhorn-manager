@@ -51,6 +51,7 @@ type Volume struct {
 	Controllers   []Controller    `json:"controllers"`
 	BackupStatus  []BackupStatus  `json:"backupStatus"`
 	RestoreStatus []RestoreStatus `json:"restoreStatus"`
+	PurgeStatus   []PurgeStatus   `json:"purgeStatus"`
 
 	Timestamp string `json:"timestamp"`
 }
@@ -235,6 +236,15 @@ type RestoreStatus struct {
 	Filename     string `json:"filename"`
 	State        string `json:"state"`
 	BackupURL    string `json:"backupURL"`
+}
+
+type PurgeStatus struct {
+	client.Resource
+	Error     string `json:"error"`
+	IsPurging bool   `json:"isPurging"`
+	Progress  int    `json:"progress"`
+	Replica   string `json:"replica"`
+	State     string `json:"state"`
 }
 
 func generateTimestamp() string {
@@ -590,6 +600,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	controllers := []Controller{}
 	backups := []BackupStatus{}
 	restoreStatus := []RestoreStatus{}
+	var purgeStatuses []PurgeStatus
 	for _, e := range ves {
 		controllers = append(controllers, Controller{
 			Instance: Instance{
@@ -634,6 +645,19 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 					Filename:     status.Filename,
 					State:        status.State,
 					BackupURL:    status.BackupURL,
+				})
+			}
+		}
+		purgeStatus := e.Status.PurgeStatus
+		if purgeStatus != nil {
+			for replica, status := range purgeStatus {
+				purgeStatuses = append(purgeStatuses, PurgeStatus{
+					Resource:  client.Resource{},
+					Replica:   getReplicaName(replica, vrs, v.Name),
+					Error:     status.Error,
+					IsPurging: status.IsPurging,
+					Progress:  status.Progress,
+					State:     status.State,
 				})
 			}
 		}
@@ -697,6 +721,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		Replicas:      replicas,
 		BackupStatus:  backups,
 		RestoreStatus: restoreStatus,
+		PurgeStatus:   purgeStatuses,
 
 		Timestamp: timestamp,
 	}
