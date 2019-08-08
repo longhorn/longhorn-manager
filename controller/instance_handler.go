@@ -84,7 +84,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 
 	instance, exists := im.Status.Instances[instanceName]
 	if !exists {
-		// need to consider case: instance is just created but haven't been present in instance manager
+		// Consider the case: instance is just created but haven't been present in instance manager.
+		// For this kind of new instance, the initial and current state is `stopped` and we don't want
+		// to unset `status.InstanceManagerName`.
 		if status.CurrentState != types.InstanceStateStopped {
 			status.InstanceManagerName = ""
 		}
@@ -213,12 +215,12 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		// there is a delay between createInstance() invocation and state/InstanceManager update,
 		// hence instance `currentState` can be `stopped` but with `instanceManagerName` set.
 		// createInstance() may be called multiple times.
-		if status.CurrentState != types.InstanceStateStopped || status.InstanceManagerName != "" {
+		if status.CurrentState != types.InstanceStateStopped {
 			break
 		}
 		im, err = h.prepareToCreateInstance(spec, status, imType)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "failed to prepare for instance creation")
 		}
 		err = h.createInstance(im, instanceName, runtimeObj)
 		if err != nil {
@@ -307,7 +309,15 @@ func (h *InstanceHandler) prepareToCreateInstance(spec *types.InstanceSpec, stat
 		return nil, fmt.Errorf("cannot find instance manager by Labels: engineImage=%v,nodeID=%v,type=%v", spec.EngineImage, spec.NodeID, managerType)
 	}
 
-	status.InstanceManagerName = im.Name
+	// need to consider case: instance is just created but haven't been present in instance manager
+	if status.InstanceManagerName != "" {
+		if status.InstanceManagerName != im.Name {
+			return nil, fmt.Errorf("BUG: instance manager name suddenly becomes %v from %v", im.Name, status.InstanceManagerName)
+		}
+	} else {
+		status.InstanceManagerName = im.Name
+	}
+
 	return im, nil
 }
 
