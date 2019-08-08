@@ -166,12 +166,12 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			},
 			types.InstanceManagerTypeEngine,
 		},
-		"instance manager error": {
+		"instance manager error then restart immediately": {
 			TestNode1, false, TestNode1,
 			v1.PodFailed, TestNode1, types.InstanceManagerStateRunning,
 			TestNode1, 1,
 			types.InstanceManagerStatus{
-				CurrentState: types.InstanceManagerStateError,
+				CurrentState: types.InstanceManagerStateStarting,
 			},
 			types.InstanceManagerTypeEngine,
 		},
@@ -301,6 +301,14 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			case types.InstanceManagerTypeReplica:
 				c.Assert(pod.Spec.Containers[0].Name, Equals, "replica-manager")
 			}
+		}
+
+		if tc.expectedStatus.CurrentState == types.InstanceManagerStateRunning {
+			_, exist := imc.instanceManagerMonitorMap[im.Name]
+			c.Assert(exist, Equals, true)
+		} else {
+			_, exist := imc.instanceManagerMonitorMap[im.Name]
+			c.Assert(exist, Equals, false)
 		}
 
 		updatedIM, err := lhClient.LonghornV1alpha1().InstanceManagers(im.Namespace).Get(im.Name, metav1.GetOptions{})
