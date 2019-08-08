@@ -19,7 +19,6 @@ func EngineProcessToInstanceProcess(engineProcess *imapi.Engine) *types.Instance
 
 	return &types.InstanceProcess{
 		Spec: types.InstanceProcessSpec{
-			UUID: engineProcess.UUID,
 			Name: engineProcess.Name,
 		},
 		Status: types.InstanceProcessStatus{
@@ -45,7 +44,6 @@ func ReplicaProcessToInstanceProcess(replicaProcess *imapi.Process) *types.Insta
 
 	return &types.InstanceProcess{
 		Spec: types.InstanceProcessSpec{
-			UUID: replicaProcess.UUID,
 			Name: replicaProcess.Name,
 		},
 		Status: types.InstanceProcessStatus{
