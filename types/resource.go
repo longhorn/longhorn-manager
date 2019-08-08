@@ -358,10 +358,7 @@ type InstanceProcess struct {
 }
 
 type InstanceProcessSpec struct {
-	UUID      string `json:"uuid"`
-	Name      string `json:"name"`
-	CreatedAt string `json:"createdAt"`
-	DeletedAt string `json:"deletedAt"`
+	Name string `json:"name"`
 }
 
 type InstanceProcessStatus struct {
