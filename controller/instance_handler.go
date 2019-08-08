@@ -53,7 +53,7 @@ func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler Instance
 }
 
 func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceManager, instanceName string, spec *types.InstanceSpec, status *types.InstanceStatus) {
-	if im == nil || im.Status.CurrentState == types.InstanceManagerStateUnknown || im.Status.CurrentState == types.InstanceManagerStateStopped || im.Status.CurrentState == types.InstanceManagerStateError || im.DeletionTimestamp != nil {
+	if im == nil || im.Status.CurrentState == types.InstanceManagerStateStopped || im.Status.CurrentState == types.InstanceManagerStateError || im.DeletionTimestamp != nil {
 		if status.Started {
 			status.CurrentState = types.InstanceStateError
 		} else {
@@ -63,6 +63,11 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.InstanceManagerName = ""
 		status.IP = ""
 		status.Port = 0
+		return
+	}
+
+	// Do not modify instance object when the related node is down
+	if im.Status.CurrentState == types.InstanceManagerStateUnknown {
 		return
 	}
 
