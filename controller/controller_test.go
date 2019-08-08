@@ -58,8 +58,6 @@ const (
 	TestBackupTarget     = "s3://backupbucket@us-east-1/backupstore"
 	TestBackupVolumeName = "test-backup-volume-for-restoration"
 	TestBackupName       = "test-backup-for-restoration"
-
-	TestInstanceUUID = "test-instance-uuid"
 )
 
 var (
@@ -93,10 +91,6 @@ func getOwnerReference(obj runtime.Object) *metav1.OwnerReference {
 
 func getTestNow() string {
 	return TestTimeNow
-}
-
-func getInstanceUUID() string {
-	return TestInstanceUUID
 }
 
 func randomIP() string {
