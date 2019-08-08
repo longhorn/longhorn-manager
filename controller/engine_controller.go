@@ -345,16 +345,13 @@ func (ec *EngineController) getEngineManagerClient(instanceManagerName string) (
 	return imclient.NewEngineManagerClient(imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)), nil
 }
 
-func (ec *EngineController) CreateInstance(obj interface{}, uuid string) (*types.InstanceProcess, error) {
+func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for engine process creation: %v", obj)
 	}
 	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
 		return nil, fmt.Errorf("missing parameters for engine process creation: %v", e)
-	}
-	if uuid == "" {
-		return nil, fmt.Errorf("missing parameter UUID for engine process creation")
 	}
 
 	frontend := ""
@@ -382,8 +379,9 @@ func (ec *EngineController) CreateInstance(obj interface{}, uuid string) (*types
 		return nil, err
 	}
 
+	// TODO: will remove UUID after updating longhorn instance manager repo
 	engineProcess, err := c.EngineCreate(
-		e.Spec.VolumeSize, uuid, e.Name, e.Spec.VolumeName,
+		e.Spec.VolumeSize, "UUID", e.Name, e.Spec.VolumeName,
 		types.DefaultEngineBinaryPath, "", "0.0.0.0", frontend, []string{}, replicas)
 	if err != nil {
 		return nil, err
