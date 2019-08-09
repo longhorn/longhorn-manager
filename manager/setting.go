@@ -114,7 +114,7 @@ func (m *VolumeManager) SettingValidation(name, value string) (err error) {
 		if err != nil {
 			return fmt.Errorf("value %v is not int: %v", types.SettingNameDefaultReplicaCount, err)
 		}
-		if err := m.validateReplicaCount(c); err != nil {
+		if err := types.ValidateReplicaCount(c); err != nil {
 			return fmt.Errorf("value %v: %v", c, err)
 		}
 	case types.SettingNameGuaranteedEngineCPU:
