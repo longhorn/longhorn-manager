@@ -23,10 +23,13 @@ import (
 var VERSION = "v0.3.0"
 
 const (
-	FlagEngineImage    = "engine-image"
-	FlagManagerImage   = "manager-image"
-	FlagServiceAccount = "service-account"
-	FlagKubeConfig     = "kube-config"
+	FlagEngineImage        = "engine-image"
+	FlagManagerImage       = "manager-image"
+	FlagServiceAccount     = "service-account"
+	FlagKubeConfig         = "kube-config"
+	FlagDefaultSettingPath = "default-setting-path"
+
+	EnvDefaultSettingPath = "DEFAULT_SETTING_PATH"
 )
 
 func DaemonCmd() cli.Command {
@@ -48,6 +51,11 @@ func DaemonCmd() cli.Command {
 			cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",
+			},
+			cli.StringFlag{
+				Name:   FlagDefaultSettingPath,
+				Usage:  "Specify path to customized default setting",
+				EnvVar: EnvDefaultSettingPath,
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -78,10 +86,18 @@ func startManager(c *cli.Context) error {
 	}
 	kubeconfigPath := c.String(FlagKubeConfig)
 
+	defaultSettingPath := c.String(FlagDefaultSettingPath)
+
 	if err := environmentCheck(); err != nil {
 		logrus.Errorf("Failed environment check, please make sure you " +
 			"have iscsiadm/open-iscsi installed on the host")
 		return fmt.Errorf("Environment check failed: %v", err)
+	}
+
+	if defaultSettingPath != "" {
+		if _, err := os.Stat(defaultSettingPath); err != nil {
+			return fmt.Errorf("Cannot find customized default setting file on %v: %v", defaultSettingPath, err)
+		}
 	}
 
 	currentNodeID, err := util.GetRequiredEnv(types.EnvNodeName)
