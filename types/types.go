@@ -186,3 +186,10 @@ func ErrorIsNotFound(err error) bool {
 func ErrorAlreadyExists(err error) bool {
 	return strings.Contains(err.Error(), "already exists")
 }
+
+func ValidateReplicaCount(count int) error {
+	if count < 1 || count > 20 {
+		return fmt.Errorf("replica count value must between 1 to 20")
+	}
+	return nil
+}
