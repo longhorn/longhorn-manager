@@ -115,13 +115,27 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if len(findStr) != 0 {
 			return fmt.Errorf("value %s, contains %v", value, strings.Join(findStr, " or "))
 		}
+	case types.SettingNameCreateDefaultDiskLabeledNodes:
+		fallthrough
+	case types.SettingNameReplicaSoftAntiAffinity:
+		fallthrough
+	case types.SettingNameUpgradeChecker:
+		if value != "true" && value != "false" {
+			return fmt.Errorf("value %v of setting %v should be true or false", value, sName)
+		}
 	case types.SettingNameStorageOverProvisioningPercentage:
+		if _, err := strconv.Atoi(value); err != nil {
+			return fmt.Errorf("value %v is not a number", value)
+		}
 		// additional check whether over provisioning percentage is positive
 		value, err := util.ConvertSize(value)
 		if err != nil || value < 0 {
 			return fmt.Errorf("value %v should be positive", value)
 		}
 	case types.SettingNameStorageMinimalAvailablePercentage:
+		if _, err := strconv.Atoi(value); err != nil {
+			return fmt.Errorf("value %v is not a number", value)
+		}
 		// additional check whether minimal available percentage is between 0 to 100
 		value, err := util.ConvertSize(value)
 		if err != nil || value < 0 || value > 100 {
