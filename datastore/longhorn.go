@@ -2,6 +2,7 @@ package datastore
 
 import (
 	"fmt"
+	"io/ioutil"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v2"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -38,7 +40,21 @@ var (
 	VerificationRetryCounts   = 20
 )
 
-func (s *DataStore) InitSettings() error {
+func (s *DataStore) InitSettings(settingPath string) error {
+	defaultSettingMap := map[string]string{}
+	if settingPath != "" {
+		data, err := ioutil.ReadFile(settingPath)
+		if err != nil {
+			return fmt.Errorf("failed to read default setting file %v: %v", settingPath, err)
+		}
+
+		if err := yaml.Unmarshal(data, &defaultSettingMap); err != nil {
+			logrus.Errorf("Failed to unmarshal customized default settings from yaml data %v, will use built-in internal default settings: %v", string(data), err)
+			// `yaml.Unmarshal()` can return a partial result. We shouldn't allow it
+			defaultSettingMap = map[string]string{}
+		}
+	}
+
 	for _, sName := range types.SettingNameList {
 		definition, ok := types.SettingDefinitions[sName]
 		if !ok {
@@ -54,6 +70,16 @@ func (s *DataStore) InitSettings() error {
 						Value: definition.Default,
 					},
 				}
+				// `defaultSettingMap` may be empty, then built-in internal default setting will be used.
+				value, exists := defaultSettingMap[string(sName)]
+				if exists && value != "" {
+					if err := s.ValidateSetting(string(sName), value); err != nil {
+						logrus.Warnf("Invalid value %v for customized setting %v: %v", value, sName, err)
+					} else {
+						setting.Setting.Value = value
+					}
+				}
+
 				if _, err := s.CreateSetting(setting); err != nil {
 					return err
 				}
