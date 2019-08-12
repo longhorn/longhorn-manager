@@ -45,6 +45,7 @@ var (
 		SettingNameLatestLonghornVersion,
 		SettingNameDefaultReplicaCount,
 		SettingNameGuaranteedEngineCPU,
+		SettingNameDefaultLonghornStaticStorageClass,
 		SettingNameBackupstorePollInterval,
 	}
 )
