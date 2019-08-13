@@ -266,7 +266,16 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return errors.Wrapf(err, "cannot get daemonset for engine image %v", engineImage.Name)
 	}
 	if ds == nil {
-		dsSpec := ic.createEngineImageDaemonSetSpec(engineImage)
+		setting, err := ic.ds.GetSettingIfExisted(types.SettingNameTaintToleration)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get taint toleration setting before creating engine image daemonset")
+		}
+		tolerations, err := util.UnmarshalTolerationSetting(setting.Value)
+		if err != nil {
+			return errors.Wrapf(err, "failed to unmarshal taint toleration setting before creating engine image daemonset")
+		}
+
+		dsSpec := ic.createEngineImageDaemonSetSpec(engineImage, tolerations)
 		if err = ic.ds.CreateEngineImageDaemonSet(dsSpec); err != nil {
 			return errors.Wrapf(err, "fail to create daemonset for engine image %v", engineImage.Name)
 		}
@@ -497,7 +506,7 @@ func getEngineImageDaemonSetName(engineImageName string) string {
 	return "engine-image-" + engineImageName
 }
 
-func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage) *appsv1beta2.DaemonSet {
+func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []v1.Toleration) *appsv1beta2.DaemonSet {
 	dsName := getEngineImageDaemonSetName(ei.Name)
 	image := ei.Spec.Image
 	cmd := []string{
@@ -521,6 +530,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 					Labels: types.GetEngineImageLabel(),
 				},
 				Spec: v1.PodSpec{
+					Tolerations: tolerations,
 					Containers: []v1.Container{
 						{
 							Name:            dsName,
