@@ -187,7 +187,20 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if interval < 0 {
 			return fmt.Errorf("backupstore poll interval %v shouldn't be less than 0", value)
 		}
+	case types.SettingNameTaintToleration:
+		if _, err = util.UnmarshalTolerationSetting(value); err != nil {
+			return fmt.Errorf("the value of %v is invalid: %v", sName, err)
+		}
 
+		list, err := s.ListVolumesRO()
+		if err != nil {
+			return errors.Wrapf(err, "failed to list volumes before modifying toleration setting")
+		}
+		for _, v := range list {
+			if v.Status.State != types.VolumeStateDetached {
+				return fmt.Errorf("cannot modify toleration setting before all volumes are detached")
+			}
+		}
 	}
 	return nil
 }
