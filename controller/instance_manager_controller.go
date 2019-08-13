@@ -23,13 +23,12 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
-	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/engineapi"
-	"github.com/longhorn/longhorn-manager/types"
-
 	"github.com/longhorn/longhorn-instance-manager/api"
 	"github.com/longhorn/longhorn-instance-manager/client"
 	imutil "github.com/longhorn/longhorn-instance-manager/util"
+	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
@@ -489,13 +488,21 @@ func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.Instan
 }
 
 func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.InstanceManager, image *longhorn.EngineImage) error {
+	setting, err := imc.ds.GetSetting(types.SettingNameTaintToleration)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get taint toleration setting before creating instance manager pod")
+	}
+	tolerations, err := types.UnmarshalTolerations(setting.Value)
+	if err != nil {
+		return errors.Wrapf(err, "failed to unmarshal taint toleration setting before creating instance manager pod")
+	}
+
 	var podSpec *v1.Pod
-	var err error
 	switch im.Spec.Type {
 	case types.InstanceManagerTypeEngine:
-		podSpec, err = imc.createEngineManagerPodSpec(im, image)
+		podSpec, err = imc.createEngineManagerPodSpec(im, image, tolerations)
 	case types.InstanceManagerTypeReplica:
-		podSpec, err = imc.createReplicaManagerPodSpec(im, image)
+		podSpec, err = imc.createReplicaManagerPodSpec(im, image, tolerations)
 	}
 	if err != nil {
 		return err
@@ -510,7 +517,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 }
 
 func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager,
-	image *longhorn.EngineImage) (*v1.Pod, error) {
+	image *longhorn.EngineImage, tolerations []v1.Toleration) (*v1.Pod, error) {
 
 	privileged := true
 	podSpec := &v1.Pod{
@@ -528,6 +535,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		},
 		Spec: v1.PodSpec{
 			ServiceAccountName: imc.serviceAccount,
+			Tolerations:        tolerations,
 			Containers: []v1.Container{
 				{
 					Image: image.Spec.Image,
@@ -574,9 +582,9 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 }
 
 func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.InstanceManager,
-	image *longhorn.EngineImage) (*v1.Pod, error) {
+	image *longhorn.EngineImage, tolerations []v1.Toleration) (*v1.Pod, error) {
 
-	podSpec, err := imc.createGenericManagerPodSpec(im, image)
+	podSpec, err := imc.createGenericManagerPodSpec(im, image, tolerations)
 	if err != nil {
 		return nil, err
 	}
@@ -629,9 +637,9 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 }
 
 func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.InstanceManager,
-	image *longhorn.EngineImage) (*v1.Pod, error) {
+	image *longhorn.EngineImage, tolerations []v1.Toleration) (*v1.Pod, error) {
 
-	podSpec, err := imc.createGenericManagerPodSpec(im, image)
+	podSpec, err := imc.createGenericManagerPodSpec(im, image, tolerations)
 	if err != nil {
 		return nil, err
 	}

@@ -38,6 +38,17 @@ type InstanceManagerTestCase struct {
 	expectedType     types.InstanceManagerType
 }
 
+func newTolerationSetting() *longhorn.Setting {
+	return &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNameTaintToleration),
+		},
+		Setting: types.Setting{
+			Value: "",
+		},
+	}
+}
+
 func newEngineImage(state types.EngineImageState) *longhorn.EngineImage {
 	return &longhorn.EngineImage{
 		ObjectMeta: metav1.ObjectMeta{
@@ -234,12 +245,18 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 		eiIndexer := lhInformerFactory.Longhorn().V1alpha1().EngineImages().Informer().GetIndexer()
 		imIndexer := lhInformerFactory.Longhorn().V1alpha1().InstanceManagers().Informer().GetIndexer()
+		sIndexer := lhInformerFactory.Longhorn().V1alpha1().Settings().Informer().GetIndexer()
 		lhNodeIndexer := lhInformerFactory.Longhorn().V1alpha1().Nodes().Informer().GetIndexer()
 
 		imc := newTestInstanceManagerController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient,
 			tc.controllerID)
 
-		// Controller logic depends on the Instance Manager's Engine Image existing.
+		// Controller logic depends on the existence of Instance Manager's Engine Image and Toleration Setting.
+		setting := newTolerationSetting()
+		setting, err = lhClient.LonghornV1alpha1().Settings(TestNamespace).Create(setting)
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
 		ei := newEngineImage(types.EngineImageStateReady)
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
