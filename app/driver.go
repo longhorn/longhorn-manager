@@ -17,11 +17,13 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/util/version"
 
-	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/csi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+
+	longhornclient "github.com/longhorn/longhorn-manager/client"
+	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 )
 
 const (
@@ -151,6 +153,11 @@ func deployDriver(c *cli.Context) error {
 		return errors.Wrap(err, "unable to get k8s client")
 	}
 
+	lhClient, err := lhclientset.NewForConfig(config)
+	if err != nil {
+		return errors.Wrap(err, "unable to get clientset")
+	}
+
 	driverDetected := false
 	driver := c.String(FlagDriver)
 	if driver == "" {
@@ -182,7 +189,7 @@ func deployDriver(c *cli.Context) error {
 	switch driver {
 	case FlagDriverCSI:
 		logrus.Debug("Deploying CSI driver")
-		err = deployCSIDriver(kubeClient, c, managerImage, managerURL)
+		err = deployCSIDriver(kubeClient, lhClient, c, managerImage, managerURL)
 	case FlagDriverFlexvolume:
 		logrus.Debug("Deploying Flexvolume driver")
 		err = deployFlexvolumeDriver(kubeClient, c, managerImage, managerURL)
@@ -217,7 +224,7 @@ func isKubernetesVersionAtLeast(kubeClient *clientset.Clientset, vers string) (b
 	return currentVersion.AtLeast(minVersion), nil
 }
 
-func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerImage, managerURL string) error {
+func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clientset, c *cli.Context, managerImage, managerURL string) error {
 	csiAttacherImage := c.String(FlagCSIAttacherImage)
 	csiProvisionerImage := c.String(FlagCSIProvisionerImage)
 	csiDriverRegistrarImage := c.String(FlagCSIDriverRegistrarImage)
@@ -249,17 +256,26 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 		return err
 	}
 
-	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount)
+	setting, err := lhClient.LonghornV1alpha1().Settings(namespace).Get(string(types.SettingNameTaintToleration), metav1.GetOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to get taint toleration setting before starting CSI driver")
+	}
+	tolerations, err := types.UnmarshalTolerations(setting.Value)
+	if err != nil {
+		return errors.Wrapf(err, "failed to unmarshal taint toleration setting before starting CSI driver")
+	}
+
+	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount, tolerations)
 	if err := attacherDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, csiProvisionerName, rootDir, csiProvisionerReplicaCount)
+	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, csiProvisionerName, rootDir, csiProvisionerReplicaCount, tolerations)
 	if err := provisionerDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiDriverRegistrarImage, managerImage, managerURL, rootDir, kubeletPluginWatcherEnabled)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiDriverRegistrarImage, managerImage, managerURL, rootDir, kubeletPluginWatcherEnabled, tolerations)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
