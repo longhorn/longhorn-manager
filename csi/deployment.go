@@ -40,7 +40,7 @@ type AttacherDeployment struct {
 	deployment *appsv1.Deployment
 }
 
-func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string, replicaCount int) *AttacherDeployment {
+func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string, replicaCount int, tolerations []v1.Toleration) *AttacherDeployment {
 	service := getCommonService(types.CSIAttacherName, namespace)
 
 	deployment := getCommonDeployment(
@@ -57,6 +57,7 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 			"--leader-election-identity=$(POD_NAME)",
 		},
 		int32(replicaCount),
+		tolerations,
 	)
 
 	return &AttacherDeployment{
@@ -98,7 +99,7 @@ type ProvisionerDeployment struct {
 	deployment *appsv1.Deployment
 }
 
-func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, provisionerName, rootDir string, replicaCount int) *ProvisionerDeployment {
+func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, provisionerName, rootDir string, replicaCount int, tolerations []v1.Toleration) *ProvisionerDeployment {
 	service := getCommonService(types.CSIProvisionerName, namespace)
 
 	deployment := getCommonDeployment(
@@ -114,6 +115,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, provi
 			"--enable-leader-election",
 		},
 		int32(replicaCount),
+		tolerations,
 	)
 
 	return &ProvisionerDeployment{
@@ -154,7 +156,7 @@ type PluginDeployment struct {
 	daemonSet *appsv1.DaemonSet
 }
 
-func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, managerImage, managerURL, rootDir string, kubeletPluginWatcherEnabled bool) *PluginDeployment {
+func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, managerImage, managerURL, rootDir string, kubeletPluginWatcherEnabled bool, tolerations []v1.Toleration) *PluginDeployment {
 	args := []string{
 		"--v=5",
 		"--csi-address=$(ADDRESS)",
@@ -257,6 +259,7 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 				},
 				Spec: v1.PodSpec{
 					ServiceAccountName: serviceAccount,
+					Tolerations:        tolerations,
 					Containers: []v1.Container{
 						{
 							Name:  "driver-registrar",
