@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/longhorn/longhorn-manager/util"
@@ -335,6 +336,10 @@ func ValidateInitSetting(name, value string) (err error) {
 		if interval < 0 {
 			return fmt.Errorf("backupstore poll interval %v shouldn't be less than 0", value)
 		}
+	case SettingNameTaintToleration:
+		if _, err = UnmarshalTolerations(value); err != nil {
+			return fmt.Errorf("the value of %v is invalid: %v", sName, err)
+		}
 	}
 	return nil
 }
@@ -400,4 +405,59 @@ func OverwriteBuiltInSettingsWithCustomizedValues() error {
 	}
 
 	return nil
+}
+
+func ValidateAndUnmarshalToleration(s string) (*v1.Toleration, error) {
+	toleration := &v1.Toleration{}
+
+	// The schema should be `key=value:effect` or `key:effect`
+	s = strings.Trim(s, " ")
+	parts := strings.Split(s, ":")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid toleration setting %v: should contain both effect and key/value pair", s)
+	}
+
+	effect := v1.TaintEffect(strings.Trim(parts[1], " "))
+	if effect != v1.TaintEffectNoExecute && effect != v1.TaintEffectNoSchedule && effect != v1.TaintEffectPreferNoSchedule {
+		return nil, fmt.Errorf("invalid toleration setting %v: invalid effect", parts[1])
+	}
+	toleration.Effect = effect
+
+	if strings.Contains(parts[0], "=") {
+		pair := strings.Split(parts[0], "=")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid toleration setting %v: invalid key/value pair", parts[0])
+		}
+		toleration.Key = strings.Trim(pair[0], " ")
+		toleration.Value = strings.Trim(pair[1], " ")
+		toleration.Operator = v1.TolerationOpEqual
+	} else {
+		toleration.Key = strings.Trim(parts[0], " ")
+		toleration.Operator = v1.TolerationOpExists
+	}
+
+	if strings.Contains(toleration.Key, util.DefaultKubernetesTolerationKey) {
+		return nil, fmt.Errorf("the key of Longhorn toleration setting cannot contain \"%s\" "+
+			"since this substring is considered as the key of Kubernetes default tolerations", util.DefaultKubernetesTolerationKey)
+	}
+
+	return toleration, nil
+}
+
+func UnmarshalTolerations(tolerationSetting string) ([]v1.Toleration, error) {
+	res := []v1.Toleration{}
+
+	tolerationSetting = strings.Trim(tolerationSetting, " ")
+	if tolerationSetting != "" {
+		tolerationList := strings.Split(tolerationSetting, ",")
+		for _, t := range tolerationList {
+			toleration, err := ValidateAndUnmarshalToleration(t)
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, *toleration)
+		}
+	}
+
+	return res, nil
 }

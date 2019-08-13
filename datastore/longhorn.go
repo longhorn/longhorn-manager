@@ -100,6 +100,16 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 			return fmt.Errorf("cannot modify BackupTarget since there are existing standby volumes: %v", standbyVolumeNames)
 		}
+	case types.SettingNameTaintToleration:
+		list, err := s.ListVolumesRO()
+		if err != nil {
+			return errors.Wrapf(err, "failed to list volumes before modifying toleration setting")
+		}
+		for _, v := range list {
+			if v.Status.State != types.VolumeStateDetached {
+				return fmt.Errorf("cannot modify toleration setting before all volumes are detached")
+			}
+		}
 	}
 	return nil
 }

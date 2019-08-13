@@ -46,6 +46,8 @@ const (
 
 	HostProcPath     = "/host/proc"
 	ReplicaDirectory = "/replicas/"
+
+	DefaultKubernetesTolerationKey = "kubernetes.io"
 )
 
 var (
