@@ -226,10 +226,21 @@ func (s *DataStore) GetSettingValueExisted(sName types.SettingName) (string, err
 	if err != nil {
 		return "", err
 	}
-	if setting.Value == "" {
-		return "", fmt.Errorf("setting %v is empty", sName)
-	}
 	return setting.Value, nil
+}
+
+func (s *DataStore) GetSettingIfExisted(sName types.SettingName) (*longhorn.Setting, error) {
+	_, ok := types.SettingDefinitions[sName]
+	if !ok {
+		return nil, fmt.Errorf("setting %v is not supported", sName)
+	}
+
+	resultRO, err := s.getSettingRO(string(sName))
+	if err != nil {
+		return nil, err
+	}
+
+	return resultRO.DeepCopy(), nil
 }
 
 func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, error) {
