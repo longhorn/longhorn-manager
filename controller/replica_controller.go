@@ -336,7 +336,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 
 	// TODO: will remove UUID after updating longhorn instance manager repo
 	replicaProcess, err := c.ProcessCreate(
-		"UUID", r.Name, types.DefaultEngineBinaryPath, types.DefaultReplicaPortCount,
+		r.Name, types.DefaultEngineBinaryPath, types.DefaultReplicaPortCount,
 		args, []string{"--listen,0.0.0.0:"})
 	if err != nil {
 		return nil, err

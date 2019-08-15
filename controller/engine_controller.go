@@ -381,7 +381,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProc
 
 	// TODO: will remove UUID after updating longhorn instance manager repo
 	engineProcess, err := c.EngineCreate(
-		e.Spec.VolumeSize, "UUID", e.Name, e.Spec.VolumeName,
+		e.Spec.VolumeSize, e.Name, e.Spec.VolumeName,
 		types.DefaultEngineBinaryPath, "", "0.0.0.0", frontend, []string{}, replicas)
 	if err != nil {
 		return nil, err
