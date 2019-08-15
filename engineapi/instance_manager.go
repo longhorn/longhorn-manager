@@ -30,8 +30,6 @@ func EngineProcessToInstanceProcess(engineProcess *imapi.Engine) *types.Instance
 
 			Listen:   engineProcess.Listen,
 			Endpoint: engineProcess.Endpoint,
-
-			ResourceVersion: engineProcess.ResourceVersion,
 		},
 	}
 
@@ -55,8 +53,6 @@ func ReplicaProcessToInstanceProcess(replicaProcess *imapi.Process) *types.Insta
 
 			Listen:   "",
 			Endpoint: "",
-
-			ResourceVersion: replicaProcess.ProcessStatus.ResourceVersion,
 		},
 	}
 }
