@@ -75,6 +75,7 @@ type InstanceManagerMonitor struct {
 	lock                   *sync.Mutex
 	updateNotification     bool
 	stopCh                 chan struct{}
+	done                   bool
 
 	// used to notify the controller that monitoring has stopped
 	monitoringRemoveCh chan string
@@ -781,6 +782,7 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		instanceManagerUpdater: instanceManagerUpdater,
 		lock:                   &sync.Mutex{},
 		stopCh:                 stopCh,
+		done:                   false,
 		// notify monitor to update the instance map
 		updateNotification: false,
 		monitoringRemoveCh: imc.instanceManagerMonitorRemoveCh,
@@ -836,6 +838,10 @@ func (m *InstanceManagerMonitor) Run() {
 
 	go func() {
 		for {
+			if m.done {
+				return
+			}
+
 			if _, err := notifier.Recv(); err != nil {
 				logrus.Errorf("error receiving next item in engine watch: %v", err)
 			} else {
@@ -871,6 +877,7 @@ func (m *InstanceManagerMonitor) Run() {
 			}
 		case <-m.stopCh:
 			notifier.Close()
+			m.done = true
 			if err := m.updateInstanceMapForCleanup(); err != nil {
 				logrus.Errorf("failed to mark existing instances to error when stopping instance manager monitor: %v", err)
 			}
