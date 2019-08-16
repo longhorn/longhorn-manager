@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+
+cat << EOF
+USAGE:
+  # Must have Longhorn installed in "longhorn-system" namespace and have access to "kubectl" and the namespace
+  ./longhorn-engine-exec [volume-name] [longhorn-command-args]
+
+EXAMPLE:
+  ./longhorn-engine-exec test-vol snapshot ls
+  ./longhorn-engine-exec test-vol info
+
+EOF
+
+
+if [[ $# -lt 2 ]]
+then
+    echo "Require at least 2 parameters: [volume-name] and [longhorn-command-args]"
+    exit 1
+fi
+
+kubectl -n longhorn-system get lhv $1 > /dev/null
+if [[ $? -ne 0 ]]
+then
+    echo "Volume $1 is not found in Longhorn system"
+    exit 1
+fi
+
+
+OLD_IFS="$IFS"
+IFS=$'\n';
+
+for line in $(kubectl -n longhorn-system get lhe | grep "$1-e-.*")
+do
+    engineName=$(echo ${line} | sed "s/ .*//")
+    engineInfo=$(kubectl -n longhorn-system get lhe ${engineName} -o yaml)
+    engineVolume=$(echo "${engineInfo}" | grep "volumeName:" | sed "s/ *volumeName: *//")
+    if [[ $1 -eq ${engineVolume} ]]
+    then
+        enginePort=$(echo "${engineInfo}" | grep "port:" | sed "s/ *port: *//")
+        instanceManager=$(echo "${engineInfo}" | grep "instanceManagerName:" | sed "s/ *instanceManagerName: *//")
+        if [[ ${enginePort} -eq "" ]]
+        then
+            echo "Cannot find related port"
+            exit 1
+        fi
+        if [[ ${instanceManager} -eq "" ]]
+        then
+            echo "Cannot find related instance manager"
+            exit 1
+        fi
+
+        array=( $@ )
+        args=( ${array[@]:1} )
+
+        echo -e "\"longhorn\" command output: \n"
+        kubectl -n longhorn-system exec -it ${instanceManager} -- bash -c "longhorn --url localhost:${enginePort} ${args[@]}"
+
+        exit 0
+    fi
+done
+
+echo "Cannot find related engine for volume $1, exit"
+exit 1
