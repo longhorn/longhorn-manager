@@ -250,13 +250,9 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}
 
 	if engine.DeletionTimestamp != nil {
-		// Only attempt Instance deletion if it's assigned to an InstanceManager.
-		if engine.Status.InstanceManagerName != "" {
-			// don't go through state transition because it can go wrong
-			if _, err := ec.DeleteInstance(engine); err != nil {
-				if !types.ErrorIsNotFound(err) {
-					return errors.Wrapf(err, "failed to cleanup the related engine process before deleting engine %v", engine.Name)
-				}
+		if err := ec.DeleteInstance(engine); err != nil {
+			if !types.ErrorIsNotFound(err) {
+				return errors.Wrapf(err, "failed to cleanup the related engine process before deleting engine %v", engine.Name)
 			}
 		}
 		return ec.ds.RemoveFinalizerForEngine(engine)
@@ -390,23 +386,27 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProc
 	return engineapi.EngineProcessToInstanceProcess(engineProcess), nil
 }
 
-func (ec *EngineController) DeleteInstance(obj interface{}) (*types.InstanceProcess, error) {
+func (ec *EngineController) DeleteInstance(obj interface{}) error {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
-		return nil, fmt.Errorf("BUG: invalid object for engine process deletion: %v", obj)
+		return fmt.Errorf("BUG: invalid object for engine process deletion: %v", obj)
+	}
+
+	// Not assigned, safe to delete
+	if e.Status.InstanceManagerName == "" {
+		return nil
 	}
 
 	c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	engineProcess, err := c.EngineDelete(e.Name)
-	if err != nil {
-		return nil, err
+	if _, err := c.EngineDelete(e.Name); err != nil {
+		return err
 	}
 
-	return engineapi.EngineProcessToInstanceProcess(engineProcess), nil
+	return nil
 }
 
 func (ec *EngineController) GetInstance(obj interface{}) (*types.InstanceProcess, error) {
