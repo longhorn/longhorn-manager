@@ -231,19 +231,6 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return err
 	}
 
-	// Check if engine's managing node died
-	if engine.Spec.OwnerID != "" {
-		isDown, err := ec.ds.IsNodeDownOrDeleted(engine.Spec.OwnerID)
-		if err != nil {
-			return err
-		}
-		if isDown {
-			engine.Spec.OwnerID = ec.controllerID
-			if engine, err = ec.ds.UpdateEngine(engine); err != nil {
-				return err
-			}
-		}
-	}
 	// Not ours
 	if engine.Spec.OwnerID != ec.controllerID {
 		return nil
