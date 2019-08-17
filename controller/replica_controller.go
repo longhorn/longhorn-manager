@@ -233,12 +233,9 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 
 		if replica.Spec.NodeID == rc.controllerID {
-			// Only attempt Instance deletion if it's assigned to an InstanceManager.
-			if replica.Status.InstanceManagerName != "" {
-				if _, err := rc.DeleteInstance(replica); err != nil {
-					if !types.ErrorIsNotFound(err) {
-						return errors.Wrapf(err, "failed to cleanup the related replica process before deleting replica %v", replica.Name)
-					}
+			if err := rc.DeleteInstance(replica); err != nil {
+				if !types.ErrorIsNotFound(err) {
+					return errors.Wrapf(err, "failed to cleanup the related replica process before deleting replica %v", replica.Name)
 				}
 			}
 			if replica.Spec.Active {
@@ -345,23 +342,27 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 	return engineapi.ReplicaProcessToInstanceProcess(replicaProcess), nil
 }
 
-func (rc *ReplicaController) DeleteInstance(obj interface{}) (*types.InstanceProcess, error) {
+func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
-		return nil, fmt.Errorf("BUG: invalid object for replica process deletion: %v", obj)
+		return fmt.Errorf("BUG: invalid object for replica process deletion: %v", obj)
+	}
+
+	// Not assigned, safe to delete
+	if r.Status.InstanceManagerName == "" {
+		return nil
 	}
 
 	c, err := rc.getProcessManagerClient(r.Status.InstanceManagerName)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	replicaProcess, err := c.ProcessDelete(r.Name)
-	if err != nil {
-		return nil, err
+	if _, err := c.ProcessDelete(r.Name); err != nil {
+		return err
 	}
 
-	return engineapi.ReplicaProcessToInstanceProcess(replicaProcess), nil
+	return nil
 }
 
 func (rc *ReplicaController) GetInstance(obj interface{}) (*types.InstanceProcess, error) {

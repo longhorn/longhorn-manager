@@ -31,7 +31,7 @@ type InstanceHandler struct {
 type InstanceManagerHandler interface {
 	GetInstance(obj interface{}) (*types.InstanceProcess, error)
 	CreateInstance(obj interface{}) (*types.InstanceProcess, error)
-	DeleteInstance(obj interface{}) (*types.InstanceProcess, error)
+	DeleteInstance(obj interface{}) error
 	LogInstance(obj interface{}) (*imapi.LogStream, error)
 }
 
@@ -350,7 +350,7 @@ func (h *InstanceHandler) deleteInstance(im *longhorn.InstanceManager, instanceN
 	}
 
 	logrus.Debugf("Prepare to delete instance %v", instanceName)
-	if _, err := h.instanceManagerHandler.DeleteInstance(obj); err != nil {
+	if err := h.instanceManagerHandler.DeleteInstance(obj); err != nil {
 		if !types.ErrorIsNotFound(err) {
 			h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping %v: %v", instanceName, err)
 			return err
