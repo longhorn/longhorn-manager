@@ -55,16 +55,16 @@ func (imh *MockInstanceManagerHandler) CreateInstance(obj interface{}) (*types.I
 	return nil, fmt.Errorf("already exists")
 }
 
-func (imh *MockInstanceManagerHandler) DeleteInstance(obj interface{}) (*types.InstanceProcess, error) {
+func (imh *MockInstanceManagerHandler) DeleteInstance(obj interface{}) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	name := metadata.GetName()
 	if strings.Contains(name, NonExistingInstance) {
-		return nil, fmt.Errorf("cannot find")
+		return fmt.Errorf("cannot find")
 	}
-	return &types.InstanceProcess{}, nil
+	return nil
 }
 
 func (imh *MockInstanceManagerHandler) LogInstance(obj interface{}) (*imapi.LogStream, error) {
