@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: longhorn-ui
-        image: longhornio/longhorn-ui:master
+        image: longhornio/longhorn-ui:staging
         ports:
         - containerPort: 8000
         env:
