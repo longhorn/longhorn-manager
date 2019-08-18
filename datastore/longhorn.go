@@ -1326,16 +1326,16 @@ func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, 
 // GetInstanceManagerBySelector gets the Instance Managers matching the selector using Labels. Even though the labels
 // duplicate information already in the spec, spec cannot be used for Field Selectors in CustomResourceDefinitions:
 // https://github.com/kubernetes/kubernetes/issues/53459
-func (s *DataStore) GetInstanceManagerBySelector(node, image, managerType string) (*longhorn.InstanceManager, error) {
+func (s *DataStore) GetInstanceManagerBySelector(node, image string, managerType types.InstanceManagerType) (*longhorn.InstanceManager, error) {
 	resultRO, err := s.lhClient.LonghornV1alpha1().InstanceManagers(s.namespace).List(metav1.ListOptions{
-		LabelSelector: "engineImage=" + image + ",nodeID=" + node + ",type=" + managerType,
+		LabelSelector: "engineImage=" + image + ",nodeID=" + node + ",type=" + string(managerType),
 	})
 	if err != nil {
 		return nil, err
 	}
 	switch len(resultRO.Items) {
 	case 0:
-		return nil, nil
+		return nil, fmt.Errorf("cannot find instance manager by engineImage=%v, node=%v, type=%v", node, image, managerType)
 	case 1:
 		return resultRO.Items[0].DeepCopy(), nil
 	default:
@@ -1478,7 +1478,8 @@ func resourceVersionAtLeast(curr, min string) bool {
 
 func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.InstanceManager, error) {
 	var (
-		name, nodeID, engineImage, imType string
+		name, nodeID, engineImage string
+		imType                    types.InstanceManagerType
 	)
 
 	switch obj.(type) {
@@ -1487,13 +1488,13 @@ func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.Ins
 		name = engine.Name
 		nodeID = engine.Spec.NodeID
 		engineImage = engine.Spec.EngineImage
-		imType = string(types.InstanceManagerTypeEngine)
+		imType = types.InstanceManagerTypeEngine
 	case *longhorn.Replica:
 		replica := obj.(*longhorn.Replica)
 		name = replica.Name
 		nodeID = replica.Spec.NodeID
 		engineImage = replica.Spec.EngineImage
-		imType = string(types.InstanceManagerTypeReplica)
+		imType = types.InstanceManagerTypeReplica
 	default:
 		return nil, fmt.Errorf("unknown type for GetInstanceManagerByInstance, %+v", obj)
 	}
