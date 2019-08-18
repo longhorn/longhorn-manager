@@ -410,7 +410,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			spec = &r.Spec.InstanceSpec
 			status = &r.Status.InstanceStatus
 		}
-		err = h.ReconcileInstanceState(tc.obj, spec, status, tc.imType)
+		err = h.ReconcileInstanceState(tc.obj, spec, status)
 		if tc.errorOut {
 			c.Assert(err, NotNil)
 		} else {

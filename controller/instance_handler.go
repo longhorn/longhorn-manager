@@ -161,7 +161,7 @@ func (h *InstanceHandler) getNameFromObj(obj runtime.Object) (string, error) {
 	return metadata.GetName(), nil
 }
 
-func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.InstanceSpec, status *types.InstanceStatus, imType types.InstanceManagerType) (err error) {
+func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.InstanceSpec, status *types.InstanceStatus) (err error) {
 	runtimeObj, ok := obj.(runtime.Object)
 	if !ok {
 		return fmt.Errorf("obj is not a runtime.Object: %v", obj)
@@ -209,7 +209,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		if status.CurrentState != types.InstanceStateStopped {
 			break
 		}
-		im, err = h.prepareToCreateInstance(spec, status, imType)
+		im, err = h.prepareToCreateInstance(obj, status)
 		if err != nil {
 			return errors.Wrapf(err, "failed to prepare for instance creation")
 		}
@@ -289,18 +289,12 @@ func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Obj
 	return nil
 }
 
-func (h *InstanceHandler) prepareToCreateInstance(spec *types.InstanceSpec, status *types.InstanceStatus, managerType types.InstanceManagerType) (*longhorn.InstanceManager, error) {
-	// use engine image object name rather than image
-	engineImageName := types.GetEngineImageChecksumName(spec.EngineImage)
-	im, err := h.ds.GetInstanceManagerBySelector(spec.NodeID, engineImageName, string(managerType))
+func (h *InstanceHandler) prepareToCreateInstance(obj interface{}, status *types.InstanceStatus) (*longhorn.InstanceManager, error) {
+	im, err := h.ds.GetInstanceManagerByInstance(obj)
 	if err != nil {
 		return nil, err
 	}
-	if im == nil {
-		return nil, fmt.Errorf("cannot find instance manager by Labels: engineImage=%v,nodeID=%v,type=%v", spec.EngineImage, spec.NodeID, managerType)
-	}
 
-	// need to consider case: instance is just created but haven't been present in instance manager
 	if status.InstanceManagerName != "" {
 		if status.InstanceManagerName != im.Name {
 			return nil, fmt.Errorf("BUG: instance manager name suddenly becomes %v from %v", im.Name, status.InstanceManagerName)
