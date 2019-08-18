@@ -287,7 +287,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}
 
-	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus, types.InstanceManagerTypeReplica)
+	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
 }
 
 func (rc *ReplicaController) enqueueReplica(replica *longhorn.Replica) {
@@ -331,7 +331,6 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 		return nil, err
 	}
 
-	// TODO: will remove UUID after updating longhorn instance manager repo
 	replicaProcess, err := c.ProcessCreate(
 		r.Name, types.DefaultEngineBinaryPath, types.DefaultReplicaPortCount,
 		args, []string{"--listen,0.0.0.0:"})
