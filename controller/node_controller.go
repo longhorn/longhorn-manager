@@ -834,14 +834,21 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 	for id, image := range engineImages {
 		// Get the Instance Managers if they do exist, so we can handle them once we get the Instance Manager state.
-		engineIM, err := nc.ds.GetInstanceManagerBySelector(nc.controllerID, image.Name, string(types.InstanceManagerTypeEngine))
+		engineIM, err := nc.ds.GetInstanceManagerBySelector(nc.controllerID, image.Name, types.InstanceManagerTypeEngine)
 		if err != nil {
-			return errors.Wrapf(err, "cannot get engine instance manager for node %v, engine image %v", nc.controllerID, id)
+			if !types.ErrorIsNotFound(err) {
+				return errors.Wrapf(err, "cannot get engine instance manager for node %v, engine image %v", nc.controllerID, id)
+
+			}
+			engineIM = nil
 		}
 
-		replicaIM, err := nc.ds.GetInstanceManagerBySelector(nc.controllerID, image.Name, string(types.InstanceManagerTypeReplica))
+		replicaIM, err := nc.ds.GetInstanceManagerBySelector(nc.controllerID, image.Name, types.InstanceManagerTypeReplica)
 		if err != nil {
-			return errors.Wrapf(err, "cannot get replica instance manager for node %v, engine image %v", nc.controllerID, id)
+			if !types.ErrorIsNotFound(err) {
+				return errors.Wrapf(err, "cannot get replica instance manager for node %v, engine image %v", nc.controllerID, id)
+			}
+			replicaIM = nil
 		}
 
 		// Check the state of the Engine Image. Depending on the state, we'll determine if we should deploy an Instance
