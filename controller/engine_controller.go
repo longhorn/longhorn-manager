@@ -259,7 +259,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	}()
 
-	if err := ec.instanceHandler.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus, types.InstanceManagerTypeEngine); err != nil {
+	if err := ec.instanceHandler.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
 		return err
 	}
 
@@ -362,7 +362,6 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProc
 		return nil, err
 	}
 
-	// TODO: will remove UUID after updating longhorn instance manager repo
 	engineProcess, err := c.EngineCreate(
 		e.Spec.VolumeSize, e.Name, e.Spec.VolumeName,
 		types.DefaultEngineBinaryPath, "", "0.0.0.0", frontend, []string{}, replicas)

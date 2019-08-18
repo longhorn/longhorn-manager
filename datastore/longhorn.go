@@ -1475,3 +1475,31 @@ func resourceVersionAtLeast(curr, min string) bool {
 	}
 	return currVersion >= minVersion
 }
+
+func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.InstanceManager, error) {
+	var (
+		name, nodeID, engineImage, imType string
+	)
+
+	switch obj.(type) {
+	case *longhorn.Engine:
+		engine := obj.(*longhorn.Engine)
+		name = engine.Name
+		nodeID = engine.Spec.NodeID
+		engineImage = engine.Spec.EngineImage
+		imType = string(types.InstanceManagerTypeEngine)
+	case *longhorn.Replica:
+		replica := obj.(*longhorn.Replica)
+		name = replica.Name
+		nodeID = replica.Spec.NodeID
+		engineImage = replica.Spec.EngineImage
+		imType = string(types.InstanceManagerTypeReplica)
+	default:
+		return nil, fmt.Errorf("unknown type for GetInstanceManagerByInstance, %+v", obj)
+	}
+	if nodeID == "" || engineImage == "" {
+		return nil, fmt.Errorf("invalid request for GetInstanceManagerByInstance: no NodeID or EngineImage specified for instance %v", name)
+	}
+	engineImageName := types.GetEngineImageChecksumName(engineImage)
+	return s.GetInstanceManagerBySelector(nodeID, engineImageName, imType)
+}
