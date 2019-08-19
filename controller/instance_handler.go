@@ -323,6 +323,8 @@ func (h *InstanceHandler) createInstance(im *longhorn.InstanceManager, instanceN
 			h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
 			return err
 		}
+		// Already exists, lost track may due to previous datastore conflict
+		return nil
 	}
 	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStart, "Starts %v", instanceName)
 
