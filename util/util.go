@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -628,4 +629,29 @@ func IsKubernetesDefaultToleration(toleration v1.Toleration) bool {
 		return true
 	}
 	return false
+}
+
+func TolerationListToMap(tolerationList []v1.Toleration) map[string]v1.Toleration {
+	res := map[string]v1.Toleration{}
+	for _, t := range tolerationList {
+		res[t.Key] = t
+	}
+	return res
+}
+
+func AreIdenticalTolerations(oldTolerations, newTolerations map[string]v1.Toleration) bool {
+	// modified existing tolerations
+	for name := range oldTolerations {
+		if !IsKubernetesDefaultToleration(oldTolerations[name]) && !reflect.DeepEqual(newTolerations[name], oldTolerations[name]) {
+			return false
+		}
+	}
+	// appended new tolerations
+	for name := range newTolerations {
+		if _, exist := oldTolerations[name]; !exist {
+			return false
+		}
+	}
+
+	return true
 }
