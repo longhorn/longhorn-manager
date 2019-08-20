@@ -74,13 +74,14 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
+	deploymentInformer := kubeInformerFactory.Apps().V1beta2().Deployments()
 	volumeAttachmentInformer := kubeInformerFactory.Storage().V1beta1().VolumeAttachments()
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
 		engineImageInformer, nodeInformer, settingInformer, imInformer,
 		lhClient,
-		podInformer, cronJobInformer, daemonSetInformer,
+		podInformer, cronJobInformer, daemonSetInformer, deploymentInformer,
 		persistentVolumeInformer, persistentVolumeClaimInformer,
 		kubeClient, namespace)
 	rc := NewReplicaController(ds, scheme,
