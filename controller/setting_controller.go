@@ -26,6 +26,7 @@ import (
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
@@ -205,6 +206,10 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.updateBackupstorePollInterval(); err != nil {
 			return err
 		}
+	case string(types.SettingNameTaintToleration):
+		if err := sc.updateTaintToleration(); err != nil {
+			return err
+		}
 	default:
 	}
 
@@ -290,6 +295,64 @@ func (sc *SettingController) updateBackupstorePollInterval() (err error) {
 
 	go sc.bsMonitor.Start()
 	return nil
+}
+
+func (sc *SettingController) updateTaintToleration() error {
+	setting, err := sc.ds.GetSetting(types.SettingNameTaintToleration)
+	if err != nil {
+		return err
+	}
+	tolerationList, err := types.UnmarshalTolerations(setting.Value)
+	if err != nil {
+		return err
+	}
+	newTolerations := util.TolerationListToMap(tolerationList)
+
+	daemonsetList, err := sc.ds.ListDaemonSet()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list Longhorn daemonsets for toleration update")
+	}
+
+	deploymentList, err := sc.ds.ListDeployment()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list Longhorn deployments for toleration update")
+	}
+
+	for _, dp := range deploymentList {
+		if util.AreIdenticalTolerations(util.TolerationListToMap(dp.Spec.Template.Spec.Tolerations), newTolerations) {
+			continue
+		}
+		dp.Spec.Template.Spec.Tolerations = getFinalTolerations(util.TolerationListToMap(dp.Spec.Template.Spec.Tolerations), newTolerations)
+		if _, err := sc.ds.UpdateDeployment(dp); err != nil {
+			return err
+		}
+	}
+	for _, ds := range daemonsetList {
+		if util.AreIdenticalTolerations(util.TolerationListToMap(ds.Spec.Template.Spec.Tolerations), newTolerations) {
+			continue
+		}
+		ds.Spec.Template.Spec.Tolerations = getFinalTolerations(util.TolerationListToMap(ds.Spec.Template.Spec.Tolerations), newTolerations)
+		if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func getFinalTolerations(oldTolerations, newTolerations map[string]v1.Toleration) []v1.Toleration {
+	res := []v1.Toleration{}
+	// Combine Kubernetes default tolerations with new Longhorn toleration setting
+	for _, t := range oldTolerations {
+		if util.IsKubernetesDefaultToleration(t) {
+			res = append(res, t)
+		}
+	}
+	for _, t := range newTolerations {
+		res = append(res, t)
+	}
+
+	return res
 }
 
 func (bm *BackupStoreMonitor) Start() {
