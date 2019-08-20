@@ -152,6 +152,14 @@ func (s *DataStore) GetDaemonSet(name string) (*appsv1beta2.DaemonSet, error) {
 	return s.dsLister.DaemonSets(s.namespace).Get(name)
 }
 
+func (s *DataStore) ListDaemonSet() ([]*appsv1beta2.DaemonSet, error) {
+	return s.dsLister.DaemonSets(s.namespace).List(labels.Everything())
+}
+
+func (s *DataStore) UpdateDaemonSet(obj *appsv1beta2.DaemonSet) (*appsv1beta2.DaemonSet, error) {
+	return s.kubeClient.AppsV1beta2().DaemonSets(s.namespace).Update(obj)
+}
+
 func (s *DataStore) DeleteDaemonSet(name string) error {
 	propagation := metav1.DeletePropagationForeground
 	return s.kubeClient.AppsV1beta2().DaemonSets(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
@@ -159,6 +167,14 @@ func (s *DataStore) DeleteDaemonSet(name string) error {
 
 func (s *DataStore) GetDeployment(name string) (*appsv1beta2.Deployment, error) {
 	return s.kubeClient.AppsV1beta2().Deployments(s.namespace).Get(name, metav1.GetOptions{})
+}
+
+func (s *DataStore) ListDeployment() ([]*appsv1beta2.Deployment, error) {
+	return s.dpLister.Deployments(s.namespace).List(labels.Everything())
+}
+
+func (s *DataStore) UpdateDeployment(obj *appsv1beta2.Deployment) (*appsv1beta2.Deployment, error) {
+	return s.kubeClient.AppsV1beta2().Deployments(s.namespace).Update(obj)
 }
 
 func (s *DataStore) DeleteDeployment(name string) error {
