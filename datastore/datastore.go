@@ -47,6 +47,8 @@ type DataStore struct {
 	cjStoreSynced  cache.InformerSynced
 	dsLister       appslisters_v1beta2.DaemonSetLister
 	dsStoreSynced  cache.InformerSynced
+	dpLister       appslisters_v1beta2.DeploymentLister
+	dpStoreSynced  cache.InformerSynced
 	pvLister       corelisters.PersistentVolumeLister
 	pvStoreSynced  cache.InformerSynced
 	pvcLister      corelisters.PersistentVolumeClaimLister
@@ -66,6 +68,7 @@ func NewDataStore(
 	podInformer coreinformers.PodInformer,
 	cronJobInformer batchinformers_v1beta1.CronJobInformer,
 	daemonSetInformer appsinformers_v1beta2.DaemonSetInformer,
+	deploymentInformer appsinformers_v1beta2.DeploymentInformer,
 	persistentVolumeInformer coreinformers.PersistentVolumeInformer,
 	persistentVolumeClaimInformer coreinformers.PersistentVolumeClaimInformer,
 
@@ -98,6 +101,8 @@ func NewDataStore(
 		cjStoreSynced:  cronJobInformer.Informer().HasSynced,
 		dsLister:       daemonSetInformer.Lister(),
 		dsStoreSynced:  daemonSetInformer.Informer().HasSynced,
+		dpLister:       deploymentInformer.Lister(),
+		dpStoreSynced:  deploymentInformer.Informer().HasSynced,
 		pvLister:       persistentVolumeInformer.Lister(),
 		pvStoreSynced:  persistentVolumeInformer.Informer().HasSynced,
 		pvcLister:      persistentVolumeClaimInformer.Lister(),
@@ -110,7 +115,8 @@ func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 		s.vStoreSynced, s.eStoreSynced, s.rStoreSynced,
 		s.iStoreSynced, s.nStoreSynced, s.sStoreSynced,
 		s.pStoreSynced, s.cjStoreSynced, s.dsStoreSynced,
-		s.pvStoreSynced, s.pvcStoreSynced, s.imStoreSynced)
+		s.pvStoreSynced, s.pvcStoreSynced, s.imStoreSynced,
+		s.dpStoreSynced)
 }
 
 func ErrorIsNotFound(err error) bool {
