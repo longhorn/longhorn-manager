@@ -524,6 +524,9 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      im.Name,
 			Namespace: imc.namespace,
+			Labels: map[string]string{
+				"app": "instance-manager",
+			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: longhorn.SchemeGroupVersion.String(),
