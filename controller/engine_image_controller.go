@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	appsinformers_v1beta2 "k8s.io/client-go/informers/apps/v1beta2"
@@ -516,6 +517,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 		"-c",
 		"cp /usr/local/bin/longhorn* /data/ && echo installed && trap 'rm /data/longhorn* && echo cleaned up' EXIT && sleep infinity",
 	}
+	maxUnavailable := intstr.FromString(`100%`)
 	d := &appsv1beta2.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: dsName,
@@ -523,6 +525,12 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 		Spec: appsv1beta2.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: types.GetEngineImageLabel(),
+			},
+			UpdateStrategy: appsv1beta2.DaemonSetUpdateStrategy{
+				Type: appsv1beta2.RollingUpdateDaemonSetStrategyType,
+				RollingUpdate: &appsv1beta2.RollingUpdateDaemonSet{
+					MaxUnavailable: &maxUnavailable,
+				},
 			},
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
