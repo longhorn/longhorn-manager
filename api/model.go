@@ -81,12 +81,13 @@ type Setting struct {
 }
 
 type Instance struct {
-	Name         string `json:"name"`
-	NodeID       string `json:"hostId"`
-	Address      string `json:"address"`
-	Running      bool   `json:"running"`
-	EngineImage  string `json:"engineImage"`
-	CurrentImage string `json:"currentImage"`
+	Name                string `json:"name"`
+	NodeID              string `json:"hostId"`
+	Address             string `json:"address"`
+	Running             bool   `json:"running"`
+	EngineImage         string `json:"engineImage"`
+	CurrentImage        string `json:"currentImage"`
+	InstanceManagerName string `json:"instanceManagerName"`
 }
 
 type Controller struct {
@@ -604,12 +605,13 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	for _, e := range ves {
 		controllers = append(controllers, Controller{
 			Instance: Instance{
-				Name:         e.Name,
-				Running:      e.Status.CurrentState == types.InstanceStateRunning,
-				NodeID:       e.Spec.NodeID,
-				Address:      e.Status.IP,
-				EngineImage:  e.Spec.EngineImage,
-				CurrentImage: e.Status.CurrentImage,
+				Name:                e.Name,
+				Running:             e.Status.CurrentState == types.InstanceStateRunning,
+				NodeID:              e.Spec.NodeID,
+				Address:             e.Status.IP,
+				EngineImage:         e.Spec.EngineImage,
+				CurrentImage:        e.Status.CurrentImage,
+				InstanceManagerName: e.Status.InstanceManagerName,
 			},
 			Endpoint:               e.Status.Endpoint,
 			LastRestoredBackup:     e.Status.LastRestoredBackup,
@@ -671,12 +673,13 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		}
 		replicas = append(replicas, Replica{
 			Instance: Instance{
-				Name:         r.Name,
-				Running:      r.Status.CurrentState == types.InstanceStateRunning,
-				Address:      r.Status.IP,
-				NodeID:       r.Spec.NodeID,
-				EngineImage:  r.Spec.EngineImage,
-				CurrentImage: r.Status.CurrentImage,
+				Name:                r.Name,
+				Running:             r.Status.CurrentState == types.InstanceStateRunning,
+				Address:             r.Status.IP,
+				NodeID:              r.Spec.NodeID,
+				EngineImage:         r.Spec.EngineImage,
+				CurrentImage:        r.Status.CurrentImage,
+				InstanceManagerName: r.Status.InstanceManagerName,
 			},
 			DiskID:   r.Spec.DiskID,
 			DataPath: r.Spec.DataPath,
