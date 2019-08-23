@@ -107,7 +107,8 @@ func newPod(phase v1.PodPhase, name, namespace, nodeID string) *v1.Pod {
 			Namespace: namespace,
 		},
 		Spec: v1.PodSpec{
-			NodeName: nodeID,
+			ServiceAccountName: TestServiceAccount,
+			NodeName:           nodeID,
 		},
 		Status: v1.PodStatus{
 			Phase: phase,
@@ -143,7 +144,7 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 		kubeClient, TestNamespace)
 
 	imc := NewInstanceManagerController(ds, scheme.Scheme, imInformer, podInformer, kubeClient, TestNamespace,
-		controllerID)
+		controllerID, TestServiceAccount)
 	fakeRecorder := record.NewFakeRecorder(100)
 	imc.eventRecorder = fakeRecorder
 	imc.imStoreSynced = alwaysReady

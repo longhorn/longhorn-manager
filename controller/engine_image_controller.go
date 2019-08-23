@@ -43,7 +43,8 @@ type EngineImageController struct {
 	// which namespace controller is running with
 	namespace string
 	// use as the OwnerID of the engine image
-	controllerID string
+	controllerID   string
+	serviceAccount string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -64,7 +65,7 @@ func NewEngineImageController(
 	volumeInformer lhinformers.VolumeInformer,
 	dsInformer appsinformers_v1beta2.DaemonSetInformer,
 	kubeClient clientset.Interface,
-	namespace string, controllerID string) *EngineImageController {
+	namespace string, controllerID, serviceAccount string) *EngineImageController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -72,8 +73,9 @@ func NewEngineImageController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	ic := &EngineImageController{
-		namespace:    namespace,
-		controllerID: controllerID,
+		namespace:      namespace,
+		controllerID:   controllerID,
+		serviceAccount: serviceAccount,
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-engine-image-controller"}),
@@ -521,6 +523,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 					Labels: types.GetEngineImageLabel(),
 				},
 				Spec: v1.PodSpec{
+					ServiceAccountName: ic.serviceAccount,
 					Containers: []v1.Container{
 						{
 							Name:            dsName,
