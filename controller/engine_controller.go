@@ -735,6 +735,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 	engine.Status.Endpoint = endpoint
 
+	replicaRebuildStatus, err := client.ReplicaRebuildStatus()
+	if err != nil {
+		logrus.Errorf("failed to get rebuild status: %v", err)
+	}
+	engine.Status.RebuildStatus = replicaRebuildStatus
+
 	backupStatusList, err := client.SnapshotBackupStatus()
 	if err != nil {
 		logrus.Errorf("engine monitor: engine %v: failed to get backup status: %v", engine.Name, err)
@@ -1048,6 +1054,9 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	e.Status.CurrentImage = e.Spec.EngineImage
 	// reset ReplicaModeMap to reflect the new replicas
 	e.Status.ReplicaModeMap = nil
+	e.Status.BackupStatus = nil
+	e.Status.RestoreStatus = nil
+	e.Status.RebuildStatus = nil
 	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	e.Spec.UpgradedReplicaAddressMap = map[string]string{}
 	return nil

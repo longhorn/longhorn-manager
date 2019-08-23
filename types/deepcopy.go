@@ -77,6 +77,13 @@ func (e *EngineStatus) DeepCopyInto(to *EngineStatus) {
 			*to.RestoreStatus[key] = *value
 		}
 	}
+	if e.RebuildStatus != nil {
+		to.RebuildStatus = make(map[string]*RebuildStatus)
+		for key, value := range e.RebuildStatus {
+			to.RebuildStatus[key] = &RebuildStatus{}
+			*to.RebuildStatus[key] = *value
+		}
+	}
 	if e.PurgeStatus != nil {
 		to.PurgeStatus = make(map[string]*PurgeStatus)
 		for key, value := range e.PurgeStatus {

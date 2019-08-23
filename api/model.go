@@ -51,6 +51,7 @@ type Volume struct {
 	Controllers   []Controller    `json:"controllers"`
 	BackupStatus  []BackupStatus  `json:"backupStatus"`
 	RestoreStatus []RestoreStatus `json:"restoreStatus"`
+	RebuildStatus []RebuildStatus `json:"rebuildStatus"`
 	PurgeStatus   []PurgeStatus   `json:"purgeStatus"`
 
 	Timestamp string `json:"timestamp"`
@@ -239,6 +240,15 @@ type RestoreStatus struct {
 	BackupURL    string `json:"backupURL"`
 }
 
+type RebuildStatus struct {
+	client.Resource
+	Replica      string `json:"replica"`
+	IsRebuilding bool   `json:"isRebuilding"`
+	Progress     int    `json:"progress"`
+	Error        string `json:"error"`
+	State        string `json:"state"`
+}
+
 type PurgeStatus struct {
 	client.Resource
 	Error     string `json:"error"`
@@ -274,6 +284,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("backupInput", BackupInput{})
 	schemas.AddType("backupStatus", BackupStatus{})
 	schemas.AddType("restoreStatus", RestoreStatus{})
+	schemas.AddType("rebuildStatus", RebuildStatus{})
 	schemas.AddType("purgeStatus", PurgeStatus{})
 	schemas.AddType("recurringJob", types.RecurringJob{})
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
@@ -613,6 +624,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	controllers := []Controller{}
 	backups := []BackupStatus{}
 	restoreStatus := []RestoreStatus{}
+	rebuildStatus := []RebuildStatus{}
 	var purgeStatuses []PurgeStatus
 	for _, e := range ves {
 		controllers = append(controllers, Controller{
@@ -659,6 +671,19 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 					Filename:     status.Filename,
 					State:        status.State,
 					BackupURL:    status.BackupURL,
+				})
+			}
+		}
+		replicaRebuildStatus := e.Status.RebuildStatus
+		if rebuildStatus != nil {
+			for replica, status := range replicaRebuildStatus {
+				rebuildStatus = append(rebuildStatus, RebuildStatus{
+					Resource:     client.Resource{},
+					Replica:      getReplicaName(replica, vrs, v.Name),
+					IsRebuilding: status.IsRebuilding,
+					Progress:     status.Progress,
+					Error:        status.Error,
+					State:        status.State,
 				})
 			}
 		}
@@ -736,6 +761,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		Replicas:      replicas,
 		BackupStatus:  backups,
 		RestoreStatus: restoreStatus,
+		RebuildStatus: rebuildStatus,
 		PurgeStatus:   purgeStatuses,
 
 		Timestamp: timestamp,
