@@ -48,8 +48,9 @@ const (
 )
 
 type InstanceManagerController struct {
-	namespace    string
-	controllerID string
+	namespace      string
+	controllerID   string
+	serviceAccount string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -113,15 +114,16 @@ func NewInstanceManagerController(
 	imInformer lhinformers.InstanceManagerInformer,
 	pInformer coreinformers.PodInformer,
 	kubeClient clientset.Interface,
-	namespace, controllerID string) *InstanceManagerController {
+	namespace, controllerID, serviceAccount string) *InstanceManagerController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	imc := &InstanceManagerController{
-		namespace:    namespace,
-		controllerID: controllerID,
+		namespace:      namespace,
+		controllerID:   controllerID,
+		serviceAccount: serviceAccount,
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-instance-manager-controller"}),
@@ -525,6 +527,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 			},
 		},
 		Spec: v1.PodSpec{
+			ServiceAccountName: imc.serviceAccount,
 			Containers: []v1.Container{
 				{
 					Image: image.Spec.Image,
