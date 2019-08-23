@@ -96,7 +96,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 		serviceAccount, managerImage)
 	ic := NewEngineImageController(ds, scheme,
 		engineImageInformer, volumeInformer, daemonSetInformer,
-		kubeClient, namespace, controllerID)
+		kubeClient, namespace, controllerID, serviceAccount)
 	nc := NewNodeController(ds, scheme,
 		engineImageInformer, nodeInformer, settingInformer, podInformer, replicaInformer, imInformer, kubeNodeInformer,
 		kubeClient, namespace, controllerID)
@@ -107,7 +107,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 		kubeClient, version)
 	kc := NewKubernetesController(ds, scheme, volumeInformer, persistentVolumeInformer,
 		persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer, kubeClient)
-	imc := NewInstanceManagerController(ds, scheme, imInformer, podInformer, kubeClient, namespace, controllerID)
+	imc := NewInstanceManagerController(ds, scheme, imInformer, podInformer, kubeClient, namespace, controllerID, serviceAccount)
 
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
