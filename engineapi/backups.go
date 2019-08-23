@@ -289,3 +289,16 @@ func (e *Engine) BackupRestoreStatus() (map[string]*types.RestoreStatus, error) 
 	}
 	return replicaStatusMap, nil
 }
+
+func (e *Engine) ReplicaRebuildStatus() (map[string]*types.RebuildStatus, error) {
+	args := []string{"replica-rebuild-status"}
+	output, err := e.ExecuteEngineBinary(args...)
+	if err != nil {
+		return nil, err
+	}
+	replicaRebuildStatusMap := make(map[string]*types.RebuildStatus)
+	if err := json.Unmarshal([]byte(output), &replicaRebuildStatusMap); err != nil {
+		return nil, err
+	}
+	return replicaRebuildStatusMap, nil
+}

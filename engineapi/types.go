@@ -61,6 +61,7 @@ type EngineClient interface {
 
 	BackupRestore(backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error
 	BackupRestoreStatus() (map[string]*types.RestoreStatus, error)
+	ReplicaRebuildStatus() (map[string]*types.RebuildStatus, error)
 }
 
 type EngineClientRequest struct {

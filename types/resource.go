@@ -167,6 +167,7 @@ type EngineStatus struct {
 	LastRestoredBackup string                    `json:"lastRestoredBackup"`
 	BackupStatus       map[string]*BackupStatus  `json:"backupStatus"`
 	RestoreStatus      map[string]*RestoreStatus `json:"restoreStatus"`
+	RebuildStatus      map[string]*RebuildStatus `json:"rebuildStatus"`
 	PurgeStatus        map[string]*PurgeStatus   `json:"purgeStatus"`
 }
 
@@ -304,6 +305,13 @@ type PurgeStatus struct {
 	IsPurging bool   `json:"isPurging"`
 	Progress  int    `json:"progress"`
 	State     string `json:"state"`
+}
+
+type RebuildStatus struct {
+	IsRebuilding bool   `json:"isRebuilding"`
+	Progress     int    `json:"progress,omitempty"`
+	Error        string `json:"error,omitempty"`
+	State        string `json:"state,omitempty"`
 }
 
 type InstanceType string

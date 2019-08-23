@@ -198,3 +198,7 @@ func (e *EngineSimulator) BackupRestore(backupTarget, backupName, backupVolume, 
 func (e *EngineSimulator) BackupRestoreStatus() (map[string]*types.RestoreStatus, error) {
 	return nil, fmt.Errorf("Not implemented")
 }
+
+func (e *EngineSimulator) ReplicaRebuildStatus() (map[string]*types.RebuildStatus, error) {
+	return nil, fmt.Errorf("Not implemented")
+}
