@@ -72,16 +72,16 @@ const (
 	`
 )
 
-func getProcArg(kubeClient *clientset.Clientset, managerImage, name string) (string, error) {
+func getProcArg(kubeClient *clientset.Clientset, managerImage, serviceAccountName, name string) (string, error) {
 	switch name {
 	case ArgFlexvolumePluginDir:
-		dir, err := detectFlexvolumeDir(kubeClient, managerImage)
+		dir, err := detectFlexvolumeDir(kubeClient, managerImage, serviceAccountName)
 		if err != nil {
 			return "", errors.Wrap(err, `failed to get arg volume-plugin-dir. Need to specify "--flexvolume-dir" in your Longhorn deployment yaml.`)
 		}
 		return dir, nil
 	case ArgKubeletRootDir:
-		dir, err := detectKubeletRootDir(kubeClient, managerImage)
+		dir, err := detectKubeletRootDir(kubeClient, managerImage, serviceAccountName)
 		if err != nil {
 			return "", errors.Wrap(err, `failed to get arg root-dir. Need to specify "--kubelet-root-dir" in your Longhorn deployment yaml.`)
 		}
@@ -90,8 +90,8 @@ func getProcArg(kubeClient *clientset.Clientset, managerImage, name string) (str
 	return "", fmt.Errorf("getting arg %v is not supported", name)
 }
 
-func detectFlexvolumeDir(kubeClient *clientset.Clientset, managerImage string) (string, error) {
-	kubeletCmdline, err := getProcCmdline(kubeClient, managerImage, KubeletDetectionPodName, GetKubeletCmdlineScript)
+func detectFlexvolumeDir(kubeClient *clientset.Clientset, managerImage, serviceAccountName string) (string, error) {
+	kubeletCmdline, err := getProcCmdline(kubeClient, managerImage, serviceAccountName, KubeletDetectionPodName, GetKubeletCmdlineScript)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to get cmdline of proc kubelet")
 	}
@@ -109,9 +109,9 @@ func detectFlexvolumeDir(kubeClient *clientset.Clientset, managerImage string) (
 	return dir, nil
 }
 
-func detectKubeletRootDir(kubeClient *clientset.Clientset, managerImage string) (string, error) {
+func detectKubeletRootDir(kubeClient *clientset.Clientset, managerImage, serviceAccountName string) (string, error) {
 	// try to detect root-dir in proc kubelet
-	kubeletCmdline, err := getProcCmdline(kubeClient, managerImage, KubeletDetectionPodName, GetKubeletCmdlineScript)
+	kubeletCmdline, err := getProcCmdline(kubeClient, managerImage, serviceAccountName, KubeletDetectionPodName, GetKubeletCmdlineScript)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to get cmdline of proc kubelet")
 	}
@@ -128,7 +128,7 @@ func detectKubeletRootDir(kubeClient *clientset.Clientset, managerImage string) 
 		return rootDir, nil
 	}
 	// no proc kubelet. then try to detect data-dir and get root-dir in proc k3s
-	k3sCmdline, err := getProcCmdline(kubeClient, managerImage, K3SDetectionPodName, GetK3SCmdlineScript)
+	k3sCmdline, err := getProcCmdline(kubeClient, managerImage, serviceAccountName, K3SDetectionPodName, GetK3SCmdlineScript)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to get cmdline of proc k3s")
 	}
@@ -149,13 +149,13 @@ func detectKubeletRootDir(kubeClient *clientset.Clientset, managerImage string) 
 	return "", fmt.Errorf("failed to get kubelet root dir, no related proc for root-dir detection, error out")
 }
 
-func getProcCmdline(kubeClient *clientset.Clientset, managerImage, name, script string) (string, error) {
+func getProcCmdline(kubeClient *clientset.Clientset, managerImage, serviceAccountName, name, script string) (string, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		return "", fmt.Errorf("failed to detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
 	}
 
-	if err := deployDetectionPod(kubeClient, namespace, managerImage, name, script); err != nil {
+	if err := deployDetectionPod(kubeClient, namespace, managerImage, serviceAccountName, name, script); err != nil {
 		return "", errors.Wrapf(err, "failed to deploy proc cmdline detection pod %v", name)
 	}
 
@@ -188,13 +188,14 @@ func getProcCmdline(kubeClient *clientset.Clientset, managerImage, name, script 
 	return procArg, nil
 }
 
-func deployDetectionPod(kubeClient *clientset.Clientset, namespace, managerImage, name, script string) error {
+func deployDetectionPod(kubeClient *clientset.Clientset, namespace, managerImage, serviceAccountName, name, script string) error {
 	privileged := true
 	_, err := kubeClient.CoreV1().Pods(namespace).Create(&v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
 		Spec: v1.PodSpec{
+			ServiceAccountName: serviceAccountName,
 			Containers: []v1.Container{
 				v1.Container{
 					Name:    name,

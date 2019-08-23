@@ -230,7 +230,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, c *cli.Context, managerIma
 	rootDir := c.String(FlagKubeletRootDir)
 	if rootDir == "" {
 		var err error
-		rootDir, err = getProcArg(kubeClient, managerImage, ArgKubeletRootDir)
+		rootDir, err = getProcArg(kubeClient, managerImage, serviceAccountName, ArgKubeletRootDir)
 		if err != nil {
 			logrus.Error(err)
 			return err
@@ -298,10 +298,11 @@ func handleCSIUpgrade(kubeClient *clientset.Clientset, namespace string) error {
 }
 
 func deployFlexvolumeDriver(kubeClient *clientset.Clientset, c *cli.Context, managerImage, managerURL string) error {
+	serviceAccountName := os.Getenv(types.EnvServiceAccount)
 	flexvolumeDir := c.String(FlagFlexvolumeDir)
 	if flexvolumeDir == "" {
 		var err error
-		flexvolumeDir, err = getProcArg(kubeClient, managerImage, ArgFlexvolumePluginDir)
+		flexvolumeDir, err = getProcArg(kubeClient, managerImage, serviceAccountName, ArgFlexvolumePluginDir)
 		if err != nil {
 			logrus.Error(err)
 			return err
