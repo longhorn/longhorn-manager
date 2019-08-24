@@ -337,6 +337,11 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProc
 		return nil, fmt.Errorf("missing parameters for engine process creation: %v", e)
 	}
 
+	im, err := ec.ds.GetInstanceManagerByInstance(obj)
+	if err != nil {
+		return nil, err
+	}
+
 	frontend := ""
 	if e.Spec.Frontend == types.VolumeFrontendBlockDev {
 		frontend = EngineFrontendBlockDev
@@ -357,7 +362,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProc
 		replicas = append(replicas, engineapi.GetBackendReplicaURL(addr))
 	}
 
-	c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
+	c, err := ec.getEngineManagerClient(im.Name)
 	if err != nil {
 		return nil, err
 	}
