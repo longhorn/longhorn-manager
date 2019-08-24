@@ -321,12 +321,17 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 		return nil, fmt.Errorf("missing parameters for replica process creation: %v", r)
 	}
 
+	im, err := rc.ds.GetInstanceManagerByInstance(obj)
+	if err != nil {
+		return nil, err
+	}
+
 	args := []string{
 		"replica", types.GetReplicaMountedDataPath(r.Spec.DataPath),
 		"--size", strconv.FormatInt(r.Spec.VolumeSize, 10),
 	}
 
-	c, err := rc.getProcessManagerClient(r.Status.InstanceManagerName)
+	c, err := rc.getProcessManagerClient(im.Name)
 	if err != nil {
 		return nil, err
 	}
