@@ -220,10 +220,9 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 	case types.InstanceStateStopped:
 		if im != nil && im.DeletionTimestamp == nil {
 			// there is a delay between deleteInstance() invocation and state/InstanceManager update,
-			// hence instance `currentState` can be `running` but with false `Started` flag.
 			// deleteInstance() may be called multiple times.
-			if i, exists := im.Status.Instances[instanceName]; exists && status.Started && (i.Status.State == types.InstanceStateRunning || i.Status.State == types.InstanceStateStarting) {
-				if err := h.deleteInstance(im, instanceName, runtimeObj); err != nil {
+			if i, exists := im.Status.Instances[instanceName]; exists && (i.Status.State == types.InstanceStateRunning || i.Status.State == types.InstanceStateStarting) {
+				if err := h.deleteInstance(instanceName, runtimeObj); err != nil {
 					return err
 				}
 			}
@@ -313,7 +312,7 @@ func (h *InstanceHandler) createInstance(instanceName string, obj runtime.Object
 	return nil
 }
 
-func (h *InstanceHandler) deleteInstance(im *longhorn.InstanceManager, instanceName string, obj runtime.Object) error {
+func (h *InstanceHandler) deleteInstance(instanceName string, obj runtime.Object) error {
 	instance, err := h.instanceManagerHandler.GetInstance(obj)
 	if err != nil {
 		if types.ErrorIsNotFound(err) {
