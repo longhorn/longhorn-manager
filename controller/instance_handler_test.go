@@ -125,19 +125,10 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			types.InstanceManagerTypeEngine,
 			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
 			newEngine(NonExistingInstance, "", "", "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
-			newEngine(NonExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
+			newEngine(NonExistingInstance, "", "", "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
 			false,
 		},
-		// 3. wait for im update
-		"starting engine waits for im update": {
-			types.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
-			newEngine(NonExistingInstance, TestInstanceManagerName1, "", "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
-			newEngine(NonExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
-			false,
-		},
-
-		// 4.1.1. become starting
+		// 3.1.1. become starting
 		"engine becomes starting": {
 			types.InstanceManagerTypeEngine,
 			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
@@ -152,30 +143,11 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 						},
 					},
 				}, false),
-			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
+			newEngine(ExistingInstance, "", "", "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
 			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStarting, types.InstanceStateRunning),
 			false,
 		},
-		// 4.1.2. still starting
-		"engine is still starting": {
-			types.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
-				map[string]types.InstanceProcess{
-					ExistingInstance: {
-						Spec: types.InstanceProcessSpec{
-							Name: ExistingInstance,
-						},
-						Status: types.InstanceProcessStatus{
-							State:     types.InstanceStateStarting,
-							PortStart: TestPort1,
-						},
-					},
-				}, false),
-			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStarting, types.InstanceStateRunning),
-			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStarting, types.InstanceStateRunning),
-			false,
-		},
-		// 4.1.3. become running from starting
+		// 3.1.3. become running from starting
 		"engine becomes running from starting state": {
 			types.InstanceManagerTypeEngine,
 			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
@@ -194,7 +166,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
 			false,
 		},
-		// 4.2. become running from stopped
+		// 3.2. become running from stopped
 		"engine becomes running from stopped state": {
 			types.InstanceManagerTypeEngine,
 			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
@@ -209,11 +181,11 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 						},
 					},
 				}, false),
-			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
+			newEngine(ExistingInstance, "", "", "", 0, false, types.InstanceStateStopped, types.InstanceStateRunning),
 			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
 			false,
 		},
-		// 5. keep running
+		// 4. keep running
 		"engine keeps running": {
 			types.InstanceManagerTypeEngine,
 			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
@@ -232,7 +204,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
 			false,
 		},
-		// 6. desire state becomes stopped
+		// 5. desire state becomes stopped
 		"engine desire state becomes stopped": {
 			types.InstanceManagerTypeEngine,
 			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
@@ -251,7 +223,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, false, types.InstanceStateRunning, types.InstanceStateStopped),
 			false,
 		},
-		// 7. wait for update
+		// 6. wait for update
 		"stopping engine waits for im update": {
 			types.InstanceManagerTypeEngine,
 			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
@@ -270,7 +242,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, false, types.InstanceStateRunning, types.InstanceStateStopped),
 			false,
 		},
-		// 8.1.1. become stopping
+		// 7.1.1. become stopping
 		"engine becomes stopping": {
 			types.InstanceManagerTypeEngine,
 			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
@@ -289,7 +261,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStopping, types.InstanceStateStopped),
 			false,
 		},
-		// 8.1.2. still stopping
+		// 7.1.2. still stopping
 		"engine is still stopping": {
 			types.InstanceManagerTypeEngine,
 			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
@@ -308,7 +280,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", 0, false, types.InstanceStateStopping, types.InstanceStateStopped),
 			false,
 		},
-		// 8.1.3. become stopped from stopping
+		// 7.1.3. become stopped from stopping
 		"engine becomes stopped from stopping state": {
 			types.InstanceManagerTypeEngine,
 			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
@@ -316,7 +288,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			newEngine(NonExistingInstance, "", "", "", 0, false, types.InstanceStateStopped, types.InstanceStateStopped),
 			false,
 		},
-		// 8.2. become stopped from running
+		// 7.2. become stopped from running
 		"engine becomes stopped from running state": {
 			types.InstanceManagerTypeEngine,
 			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
