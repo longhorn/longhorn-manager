@@ -75,19 +75,13 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 
 	instance, exists := im.Status.Instances[instanceName]
 	if !exists {
-		// Consider the case: instance is just created but haven't been present in instance manager.
-		// For this kind of new instance, the initial and current state is `stopped` and we don't want
-		// to unset `status.InstanceManagerName`.
-		if status.CurrentState != types.InstanceStateStopped {
-			status.InstanceManagerName = ""
-		}
-
 		if status.Started {
 			status.CurrentState = types.InstanceStateError
 		} else {
 			status.CurrentState = types.InstanceStateStopped
 		}
 		status.CurrentImage = ""
+		status.InstanceManagerName = ""
 		status.IP = ""
 		status.Port = 0
 		return
@@ -97,6 +91,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	case types.InstanceStateStarting:
 		status.CurrentState = types.InstanceStateStarting
 		status.CurrentImage = ""
+		status.InstanceManagerName = im.Name
 		status.IP = ""
 		status.Port = 0
 	case types.InstanceStateRunning:
@@ -113,6 +108,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		// different spec.EngineImage for upgrade
 		if status.CurrentImage == "" {
 			status.CurrentImage = spec.EngineImage
+		}
+		if status.InstanceManagerName == "" {
+			status.InstanceManagerName = im.Name
 		}
 		nodeBootID := im.Status.NodeBootID
 		if status.NodeBootID == "" {
@@ -197,23 +195,25 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 
 	switch spec.DesireState {
 	case types.InstanceStateRunning:
-		if im != nil && im.DeletionTimestamp == nil {
-			if i, exists := im.Status.Instances[instanceName]; exists && i.Status.State == types.InstanceStateRunning {
-				status.Started = true
-				break
+		if im == nil {
+			im, err = h.ds.GetInstanceManagerByInstance(obj)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get instance manager")
 			}
 		}
-		// there is a delay between createInstance() invocation and state/InstanceManager update,
-		// hence instance `currentState` can be `stopped` but with `instanceManagerName` set.
+
+		if i, exists := im.Status.Instances[instanceName]; exists && i.Status.State == types.InstanceStateRunning {
+			status.Started = true
+			break
+		}
+
+		// there is a delay between createInstance() invocation and InstanceManager update,
 		// createInstance() may be called multiple times.
 		if status.CurrentState != types.InstanceStateStopped {
 			break
 		}
-		im, err = h.prepareToCreateInstance(obj, status)
-		if err != nil {
-			return errors.Wrapf(err, "failed to prepare for instance creation")
-		}
-		err = h.createInstance(im, instanceName, runtimeObj)
+
+		err = h.createInstance(instanceName, runtimeObj)
 		if err != nil {
 			return err
 		}
@@ -289,28 +289,10 @@ func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Obj
 	return nil
 }
 
-func (h *InstanceHandler) prepareToCreateInstance(obj interface{}, status *types.InstanceStatus) (*longhorn.InstanceManager, error) {
-	im, err := h.ds.GetInstanceManagerByInstance(obj)
-	if err != nil {
-		return nil, err
-	}
-
-	if status.InstanceManagerName != "" {
-		if status.InstanceManagerName != im.Name {
-			return nil, fmt.Errorf("BUG: instance manager name suddenly becomes %v from %v", im.Name, status.InstanceManagerName)
-		}
-	} else {
-		status.InstanceManagerName = im.Name
-	}
-
-	return im, nil
-}
-
-func (h *InstanceHandler) createInstance(im *longhorn.InstanceManager, instanceName string, obj runtime.Object) error {
+func (h *InstanceHandler) createInstance(instanceName string, obj runtime.Object) error {
 	_, err := h.instanceManagerHandler.GetInstance(obj)
 	if err == nil {
-		logrus.Debugf("Instance process %v had been created, need to wait for instance manager %v update",
-			instanceName, im.Name)
+		logrus.Debugf("Instance process %v had been created, need to wait for instance manager update", instanceName)
 		return nil
 	}
 	if !types.ErrorIsNotFound(err) {
