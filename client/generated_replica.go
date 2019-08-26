@@ -21,6 +21,8 @@ type Replica struct {
 
 	HostId string `json:"hostId,omitempty" yaml:"host_id,omitempty"`
 
+	InstanceManagerName string `json:"instanceManagerName,omitempty" yaml:"instance_manager_name,omitempty"`
+
 	Mode string `json:"mode,omitempty" yaml:"mode,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`

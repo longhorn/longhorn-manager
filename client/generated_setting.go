@@ -11,6 +11,8 @@ type Setting struct {
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
+	Timestamp string `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
+
 	Value string `json:"value,omitempty" yaml:"value,omitempty"`
 }
 
