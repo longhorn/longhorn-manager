@@ -34,16 +34,16 @@ do
     engineName=$(echo ${line} | sed "s/ .*//")
     engineInfo=$(kubectl -n longhorn-system get lhe ${engineName} -o yaml)
     engineVolume=$(echo "${engineInfo}" | grep "volumeName:" | sed "s/ *volumeName: *//")
-    if [[ $1 -eq ${engineVolume} ]]
+    if [[ "$1" == "${engineVolume}" ]]
     then
         enginePort=$(echo "${engineInfo}" | grep "port:" | sed "s/ *port: *//")
         instanceManager=$(echo "${engineInfo}" | grep "instanceManagerName:" | sed "s/ *instanceManagerName: *//")
-        if [[ ${enginePort} -eq "" ]]
+        if [[ "${enginePort}" == "" ]]
         then
             echo "Cannot find related port"
             exit 1
         fi
-        if [[ ${instanceManager} -eq "" ]]
+        if [[ "${instanceManager}" == "" ]]
         then
             echo "Cannot find related instance manager"
             exit 1
