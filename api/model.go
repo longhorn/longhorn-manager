@@ -274,6 +274,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("backupInput", BackupInput{})
 	schemas.AddType("backupStatus", BackupStatus{})
 	schemas.AddType("restoreStatus", RestoreStatus{})
+	schemas.AddType("purgeStatus", PurgeStatus{})
 	schemas.AddType("recurringJob", types.RecurringJob{})
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
 	schemas.AddType("salvageInput", SalvageInput{})
@@ -556,6 +557,18 @@ func volumeSchema(volume *client.Schema) {
 	kubernetesStatus := volume.ResourceFields["kubernetesStatus"]
 	kubernetesStatus.Type = "kubernetesStatus"
 	volume.ResourceFields["kubernetesStatus"] = kubernetesStatus
+
+	backupStatus := volume.ResourceFields["backupStatus"]
+	backupStatus.Type = "array[backupStatus]"
+	volume.ResourceFields["backupStatus"] = backupStatus
+
+	restoreStatus := volume.ResourceFields["restoreStatus"]
+	restoreStatus.Type = "array[restoreStatus]"
+	volume.ResourceFields["restoreStatus"] = restoreStatus
+
+	purgeStatus := volume.ResourceFields["purgeStatus"]
+	purgeStatus.Type = "array[purgeStatus]"
+	volume.ResourceFields["purgeStatus"] = purgeStatus
 }
 
 func toSettingResource(setting *longhorn.Setting) *Setting {
