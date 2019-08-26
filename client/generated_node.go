@@ -18,6 +18,8 @@ type Node struct {
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	Tags []string `json:"tags,omitempty" yaml:"tags,omitempty"`
+
+	Timestamp string `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
 }
 
 type NodeCollection struct {

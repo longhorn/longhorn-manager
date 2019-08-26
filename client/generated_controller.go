@@ -17,6 +17,8 @@ type Controller struct {
 
 	HostId string `json:"hostId,omitempty" yaml:"host_id,omitempty"`
 
+	InstanceManagerName string `json:"instanceManagerName,omitempty" yaml:"instance_manager_name,omitempty"`
+
 	LastRestoredBackup string `json:"lastRestoredBackup,omitempty" yaml:"last_restored_backup,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
