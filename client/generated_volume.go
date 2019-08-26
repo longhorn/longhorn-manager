@@ -7,7 +7,7 @@ const (
 type Volume struct {
 	Resource `yaml:"-"`
 
-	BackupStatus []string `json:"backupStatus,omitempty" yaml:"backup_status,omitempty"`
+	BackupStatus []BackupStatus `json:"backupStatus,omitempty" yaml:"backup_status,omitempty"`
 
 	BaseImage string `json:"baseImage,omitempty" yaml:"base_image,omitempty"`
 
@@ -45,9 +45,13 @@ type Volume struct {
 
 	NumberOfReplicas int64 `json:"numberOfReplicas,omitempty" yaml:"number_of_replicas,omitempty"`
 
+	PurgeStatus []PurgeStatus `json:"purgeStatus,omitempty" yaml:"purge_status,omitempty"`
+
 	RecurringJobs []RecurringJob `json:"recurringJobs,omitempty" yaml:"recurring_jobs,omitempty"`
 
 	Replicas []Replica `json:"replicas,omitempty" yaml:"replicas,omitempty"`
+
+	RestoreStatus []RestoreStatus `json:"restoreStatus,omitempty" yaml:"restore_status,omitempty"`
 
 	Robustness string `json:"robustness,omitempty" yaml:"robustness,omitempty"`
 
@@ -58,6 +62,8 @@ type Volume struct {
 	Standby bool `json:"standby,omitempty" yaml:"standby,omitempty"`
 
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
+
+	Timestamp string `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
 }
 
 type VolumeCollection struct {
