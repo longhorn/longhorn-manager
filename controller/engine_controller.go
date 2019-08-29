@@ -604,12 +604,18 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			// we have a entry doesn't exist in our spec
 			replica = unknownReplicaPrefix + addr
 		}
-		currentReplicaModeMap[replica] = r.Mode
 
 		if engine.Status.ReplicaModeMap != nil {
 			if r.Mode != engine.Status.ReplicaModeMap[replica] {
 				switch r.Mode {
 				case types.ReplicaModeERR:
+					// Need to double check replica state. Replica name maybe invalid or replica may be not found.
+					replicaObj, err := m.ds.GetReplica(replica)
+					if err == nil && (replicaObj.Status.CurrentState == types.InstanceStateRunning || replicaObj.Status.CurrentState == types.InstanceStateStarting) {
+						logrus.Warnf("Replica %v is state %v but with ERR mode. Maybe the replica list result of engine %v is out of date",
+							replica, replicaObj.Status.CurrentState, engine.Name)
+						replica = unknownReplicaPrefix + addr
+					}
 					m.eventRecorder.Eventf(engine, v1.EventTypeWarning, EventReasonFaulted, "Detected replica %v (%v) in error", replica, addr)
 				case types.ReplicaModeWO:
 					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilding, "Detected rebuilding replica %v (%v)", replica, addr)
@@ -620,6 +626,8 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 				}
 			}
 		}
+
+		currentReplicaModeMap[replica] = r.Mode
 	}
 	if !reflect.DeepEqual(engine.Status.ReplicaModeMap, currentReplicaModeMap) {
 		engine.Status.ReplicaModeMap = currentReplicaModeMap
