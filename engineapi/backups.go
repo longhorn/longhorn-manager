@@ -193,19 +193,16 @@ func (b *BackupTarget) GetBackup(backupURL string) (*Backup, error) {
 }
 
 func (b *BackupTarget) DeleteBackup(backupURL string) error {
-	go func() {
-		logrus.Infof("Start Deleting backup %s", backupURL)
-		_, err := b.ExecuteEngineBinaryWithoutTimeout("backup", "rm", backupURL)
-		if err != nil {
-			if types.ErrorIsNotFound(err) {
-				logrus.Warnf("delete: could not find the backup: '%s'", backupURL)
-				return
-			}
-			logrus.Errorf("error deleting backup, error message: %v", err)
-			return
+	logrus.Infof("Start Deleting backup %s", backupURL)
+	_, err := b.ExecuteEngineBinaryWithoutTimeout("backup", "rm", backupURL)
+	if err != nil {
+		if types.ErrorIsNotFound(err) {
+			logrus.Warnf("delete: could not find the backup: '%s'", backupURL)
+			return nil
 		}
-		logrus.Infof("Complete deleting backup %s", backupURL)
-	}()
+		return errors.Wrapf(err, "error deleting backup %v", backupURL)
+	}
+	logrus.Infof("Complete deleting backup %s", backupURL)
 	return nil
 }
 

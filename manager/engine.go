@@ -311,12 +311,15 @@ func (m *VolumeManager) DeleteBackup(backupName, volumeName string) error {
 		return err
 	}
 
-	url := engineapi.GetBackupURL(backupTarget.URL, backupName, volumeName)
-	if err := backupTarget.DeleteBackup(url); err != nil {
-		return err
-	}
-	if err := UpdateVolumeLastBackup(volumeName, backupTarget, m.ds.GetVolume, m.ds.UpdateVolume); err != nil {
-		logrus.Warnf("Failed to update volume LastBackup for %v for backup deletion: %v", volumeName, err)
-	}
+	go func() {
+		url := engineapi.GetBackupURL(backupTarget.URL, backupName, volumeName)
+		if err := backupTarget.DeleteBackup(url); err != nil {
+			logrus.Error(err)
+			return
+		}
+		if err := UpdateVolumeLastBackup(volumeName, backupTarget, m.ds.GetVolume, m.ds.UpdateVolume); err != nil {
+			logrus.Warnf("Failed to update volume LastBackup for %v for backup deletion: %v", volumeName, err)
+		}
+	}()
 	return nil
 }
