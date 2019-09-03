@@ -166,7 +166,7 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 		return err
 	}
 	go func() {
-		if err := engine.SnapshotBackup(snapshotName, backupTarget, labels, credential); err != nil {
+		if _, err := engine.SnapshotBackup(snapshotName, backupTarget, labels, credential); err != nil {
 			logrus.Errorf("Failed to backup snapshot %v with label %v for volume %v: %v", snapshotName, labels, volumeName, err)
 		}
 		logrus.Debugf("Backup snapshot %v with label %v for volume %v", snapshotName, labels, volumeName)
