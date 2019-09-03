@@ -32,6 +32,8 @@ const (
 	FlagBackupTarget = "backuptarget"
 
 	SnapshotPurgeStatusInterval = 5 * time.Second
+
+	WaitInterval = 5 * time.Second
 )
 
 func SnapshotCmd() cli.Command {
@@ -309,10 +311,44 @@ func (job *Job) backupAndCleanup() (err error) {
 	}
 
 	// CronJob template has covered the credential already, so we don't need to get the credential secret.
-	if _, err := job.engine.SnapshotBackup(job.snapshotName, job.backupTarget, job.labels, nil); err != nil {
+	backupName, err := job.engine.SnapshotBackup(job.snapshotName, job.backupTarget, job.labels, nil)
+	if err != nil {
 		return err
 	}
+
 	target := engineapi.NewBackupTarget(job.backupTarget, job.engineImage, nil)
+
+	// Wait for backup creation complete
+	for {
+		backupStatusList, err := job.engine.SnapshotBackupStatus()
+		if err != nil {
+			return err
+		}
+
+		info, exist := backupStatusList[backupName]
+		if !exist {
+			return fmt.Errorf("cannot find backup %v in backup status list", info.BackupURL)
+		}
+
+		complete := false
+		switch info.State {
+		case engineapi.BackupStateComplete:
+			complete = true
+			logrus.Debugf("Complete creating backup %v", info.BackupURL)
+		case engineapi.BackupStateInProgress:
+			logrus.Debugf("Creating backup %v, current progress %v", backupName, info.Progress)
+		case engineapi.BackupStateError:
+			return fmt.Errorf("failed to create backup %v: %v", info.BackupURL, info.Error)
+		default:
+			return fmt.Errorf("invalid state %v for backup %v", info.State, info.BackupURL)
+		}
+
+		if complete {
+			break
+		}
+		time.Sleep(WaitInterval)
+	}
+
 	backups, err := target.List(job.volumeName)
 	if err != nil {
 		return err

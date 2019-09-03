@@ -23,6 +23,10 @@ const (
 	FrontendBlockDev = "tgt-blockdev"
 
 	commonTimeout = 1 * time.Minute
+
+	BackupStateComplete   = "complete"
+	BackupStateError      = "error"
+	BackupStateInProgress = "in_progress"
 )
 
 type Replica struct {
