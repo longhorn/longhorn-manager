@@ -210,16 +210,16 @@ func GetBackupURL(backupTarget, backupName, volName string) string {
 	return fmt.Sprintf("%s?backup=%s&volume=%s", backupTarget, backupName, volName)
 }
 
-func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string]string, credential map[string]string) error {
+func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string]string, credential map[string]string) (string, error) {
 	if snapName == VolumeHeadName {
-		return fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)
+		return "", fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)
 	}
 	snap, err := e.SnapshotGet(snapName)
 	if err != nil {
-		return errors.Wrapf(err, "error getting snapshot '%s', volume '%s'", snapName, e.name)
+		return "", errors.Wrapf(err, "error getting snapshot '%s', volume '%s'", snapName, e.name)
 	}
 	if snap == nil {
-		return errors.Errorf("could not find snapshot '%s' to backup, volume '%s'", snapName, e.name)
+		return "", errors.Errorf("could not find snapshot '%s' to backup, volume '%s'", snapName, e.name)
 	}
 	args := []string{"backup", "create", "--dest", backupTarget}
 	for k, v := range labels {
@@ -229,14 +229,14 @@ func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string
 	// set credential if backup for s3
 	err = util.ConfigBackupCredential(backupTarget, credential)
 	if err != nil {
-		return err
+		return "", err
 	}
 	backup, err := e.ExecuteEngineBinaryWithoutTimeout(args...)
 	if err != nil {
-		return err
+		return "", err
 	}
 	logrus.Debugf("Backup %v created for volume %v snapshot %v", backup, e.Name(), snapName)
-	return nil
+	return strings.Trim(backup, "\n"), nil
 }
 
 func (e *Engine) SnapshotBackupStatus() (map[string]*types.BackupStatus, error) {
