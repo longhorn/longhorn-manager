@@ -309,7 +309,7 @@ func (job *Job) backupAndCleanup() (err error) {
 	}
 
 	// CronJob template has covered the credential already, so we don't need to get the credential secret.
-	if err := job.engine.SnapshotBackup(job.snapshotName, job.backupTarget, job.labels, nil); err != nil {
+	if _, err := job.engine.SnapshotBackup(job.snapshotName, job.backupTarget, job.labels, nil); err != nil {
 		return err
 	}
 	target := engineapi.NewBackupTarget(job.backupTarget, job.engineImage, nil)
