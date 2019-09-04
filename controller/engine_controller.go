@@ -585,12 +585,6 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 	engine.Status.BackupStatus = backupStatusList
 
-	endpoint, err := engineapi.Endpoint(engine.Status.IP, engine.Name)
-	if err != nil {
-		return err
-	}
-	engine.Status.Endpoint = endpoint
-
 	replicaURLModeMap, err := client.ReplicaList()
 	if err != nil {
 		return err
@@ -632,6 +626,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	if !reflect.DeepEqual(engine.Status.ReplicaModeMap, currentReplicaModeMap) {
 		engine.Status.ReplicaModeMap = currentReplicaModeMap
 	}
+
+	endpoint, err := engineapi.Endpoint(engine.Status.IP, engine.Name)
+	if err != nil {
+		return err
+	}
+	engine.Status.Endpoint = endpoint
 
 	rsMap, err := client.BackupRestoreStatus()
 	if err != nil {
