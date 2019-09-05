@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
-	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -15,7 +13,6 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -113,12 +110,8 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	}()
 	sName := types.SettingName(name)
 
-	definition, ok := types.SettingDefinitions[sName]
-	if !ok {
-		return fmt.Errorf("setting %v is not supported", sName)
-	}
-	if definition.Required == true && value == "" {
-		return fmt.Errorf("required setting %v shouldn't be empty", sName)
+	if err := types.ValidateInitSetting(name, value); err != nil {
+		return err
 	}
 
 	switch sName {
@@ -134,60 +127,6 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 			return fmt.Errorf("cannot modify BackupTarget since there are existing standby volumes: %v", standbyVolumeNames)
 		}
-		// additional check whether have $ or , have been set in BackupTarget
-		regStr := `[\$\,]`
-		reg := regexp.MustCompile(regStr)
-		findStr := reg.FindAllString(value, -1)
-		if len(findStr) != 0 {
-			return fmt.Errorf("value %s, contains %v", value, strings.Join(findStr, " or "))
-		}
-	case types.SettingNameCreateDefaultDiskLabeledNodes:
-		fallthrough
-	case types.SettingNameReplicaSoftAntiAffinity:
-		fallthrough
-	case types.SettingNameUpgradeChecker:
-		if value != "true" && value != "false" {
-			return fmt.Errorf("value %v of setting %v should be true or false", value, sName)
-		}
-	case types.SettingNameStorageOverProvisioningPercentage:
-		if _, err := strconv.Atoi(value); err != nil {
-			return fmt.Errorf("value %v is not a number", value)
-		}
-		// additional check whether over provisioning percentage is positive
-		value, err := util.ConvertSize(value)
-		if err != nil || value < 0 {
-			return fmt.Errorf("value %v should be positive", value)
-		}
-	case types.SettingNameStorageMinimalAvailablePercentage:
-		if _, err := strconv.Atoi(value); err != nil {
-			return fmt.Errorf("value %v is not a number", value)
-		}
-		// additional check whether minimal available percentage is between 0 to 100
-		value, err := util.ConvertSize(value)
-		if err != nil || value < 0 || value > 100 {
-			return fmt.Errorf("value %v should between 0 to 100", value)
-		}
-	case types.SettingNameDefaultReplicaCount:
-		c, err := strconv.Atoi(value)
-		if err != nil {
-			return fmt.Errorf("value %v is not int: %v", types.SettingNameDefaultReplicaCount, err)
-		}
-		if err := types.ValidateReplicaCount(c); err != nil {
-			return fmt.Errorf("value %v: %v", c, err)
-		}
-	case types.SettingNameGuaranteedEngineCPU:
-		if _, err := resource.ParseQuantity(value); err != nil {
-			return errors.Wrapf(err, "invalid value %v as CPU resource", value)
-		}
-	case types.SettingNameBackupstorePollInterval:
-		interval, err := strconv.Atoi(value)
-		if err != nil {
-			return fmt.Errorf("value of %v is not int: %v", types.SettingNameBackupstorePollInterval, err)
-		}
-		if interval < 0 {
-			return fmt.Errorf("backupstore poll interval %v shouldn't be less than 0", value)
-		}
-
 	}
 	return nil
 }
