@@ -1,5 +1,18 @@
 package types
 
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+
+	"github.com/pkg/errors"
+
+	"k8s.io/apimachinery/pkg/api/resource"
+
+	"github.com/longhorn/longhorn-manager/util"
+)
+
 type Setting struct {
 	Value string `json:"value"`
 }
@@ -229,3 +242,76 @@ var (
 		Default:     "longhorn-static",
 	}
 )
+
+func ValidateInitSetting(name, value string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "value %v of settings %v is invalid", value, name)
+	}()
+	sName := SettingName(name)
+
+	definition, ok := SettingDefinitions[sName]
+	if !ok {
+		return fmt.Errorf("setting %v is not supported", sName)
+	}
+	if definition.Required == true && value == "" {
+		return fmt.Errorf("required setting %v shouldn't be empty", sName)
+	}
+
+	switch sName {
+	case SettingNameBackupTarget:
+		// check whether have $ or , have been set in BackupTarget
+		regStr := `[\$\,]`
+		reg := regexp.MustCompile(regStr)
+		findStr := reg.FindAllString(value, -1)
+		if len(findStr) != 0 {
+			return fmt.Errorf("value %s, contains %v", value, strings.Join(findStr, " or "))
+		}
+	case SettingNameCreateDefaultDiskLabeledNodes:
+		fallthrough
+	case SettingNameReplicaSoftAntiAffinity:
+		fallthrough
+	case SettingNameUpgradeChecker:
+		if value != "true" && value != "false" {
+			return fmt.Errorf("value %v of setting %v should be true or false", value, sName)
+		}
+	case SettingNameStorageOverProvisioningPercentage:
+		if _, err := strconv.Atoi(value); err != nil {
+			return fmt.Errorf("value %v is not a number", value)
+		}
+		// additional check whether over provisioning percentage is positive
+		value, err := util.ConvertSize(value)
+		if err != nil || value < 0 {
+			return fmt.Errorf("value %v should be positive", value)
+		}
+	case SettingNameStorageMinimalAvailablePercentage:
+		if _, err := strconv.Atoi(value); err != nil {
+			return fmt.Errorf("value %v is not a number", value)
+		}
+		// additional check whether minimal available percentage is between 0 to 100
+		value, err := util.ConvertSize(value)
+		if err != nil || value < 0 || value > 100 {
+			return fmt.Errorf("value %v should between 0 to 100", value)
+		}
+	case SettingNameDefaultReplicaCount:
+		c, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("value %v is not int: %v", SettingNameDefaultReplicaCount, err)
+		}
+		if err := ValidateReplicaCount(c); err != nil {
+			return fmt.Errorf("value %v: %v", c, err)
+		}
+	case SettingNameGuaranteedEngineCPU:
+		if _, err := resource.ParseQuantity(value); err != nil {
+			return errors.Wrapf(err, "invalid value %v as CPU resource", value)
+		}
+	case SettingNameBackupstorePollInterval:
+		interval, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("value of %v is not int: %v", SettingNameBackupstorePollInterval, err)
+		}
+		if interval < 0 {
+			return fmt.Errorf("backupstore poll interval %v shouldn't be less than 0", value)
+		}
+	}
+	return nil
+}
