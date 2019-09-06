@@ -91,6 +91,9 @@ func startManager(c *cli.Context) error {
 			return fmt.Errorf("Cannot find customized default setting file on %v: %v", defaultSettingPath, err)
 		}
 	}
+	if err := types.OverwriteBuiltInSettingsWithCustomizedValues(); err != nil {
+		return fmt.Errorf("Failed to overwrite built-in settings with customized values: %v", err)
+	}
 
 	currentNodeID, err := util.GetRequiredEnv(types.EnvNodeName)
 	if err != nil {
