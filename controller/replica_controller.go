@@ -357,6 +357,26 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		return nil
 	}
 
+	im, err := rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
+	if err != nil {
+		return err
+	}
+
+	// Node down
+	if im.Spec.NodeID != im.Spec.OwnerID {
+		isDown, err := rc.ds.IsNodeDownOrDeleted(im.Spec.NodeID)
+		if err != nil {
+			return err
+		}
+		if isDown {
+			delete(im.Status.Instances, r.Name)
+			if _, err := rc.ds.UpdateInstanceManager(im); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+
 	c, err := rc.getProcessManagerClient(r.Status.InstanceManagerName)
 	if err != nil {
 		return err
