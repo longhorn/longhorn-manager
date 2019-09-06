@@ -382,7 +382,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		return err
 	}
 
-	if _, err := c.ProcessDelete(r.Name); err != nil {
+	if _, err := c.ProcessDelete(r.Name); err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
 
