@@ -311,10 +311,8 @@ func (h *InstanceHandler) deleteInstance(instanceName string, obj runtime.Object
 	// May try to force deleting instances on lost node. Don't need to check the instance
 	logrus.Debugf("Prepare to delete instance %v", instanceName)
 	if err := h.instanceManagerHandler.DeleteInstance(obj); err != nil {
-		if !types.ErrorIsNotFound(err) {
-			h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping %v: %v", instanceName, err)
-			return err
-		}
+		h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping %v: %v", instanceName, err)
+		return err
 	}
 	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStop, "Stops %v", instanceName)
 

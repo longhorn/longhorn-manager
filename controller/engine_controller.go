@@ -413,7 +413,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 		return err
 	}
 
-	if _, err := c.EngineDelete(e.Name); err != nil {
+	if _, err := c.EngineDelete(e.Name); err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
 
