@@ -363,3 +363,26 @@ func GetCustomizedDefaultSettings() (map[string]string, error) {
 
 	return defaultSettings, nil
 }
+
+func OverwriteBuiltInSettingsWithCustomizedValues() error {
+	logrus.Infof("Start overwriting built-in settings with customized values")
+	customizedDefaultSettings, err := GetCustomizedDefaultSettings()
+	if err != nil {
+		return err
+	}
+
+	for _, sName := range SettingNameList {
+		definition, ok := SettingDefinitions[sName]
+		if !ok {
+			return fmt.Errorf("BUG: setting %v is not defined", sName)
+		}
+
+		value, exists := customizedDefaultSettings[string(sName)]
+		if exists && value != "" {
+			definition.Default = value
+			SettingDefinitions[sName] = definition
+		}
+	}
+
+	return nil
+}

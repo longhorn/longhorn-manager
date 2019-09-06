@@ -35,11 +35,6 @@ var (
 )
 
 func (s *DataStore) InitSettings() error {
-	defaultSettings, err := types.GetCustomizedDefaultSettings()
-	if err != nil {
-		return err
-	}
-
 	for _, sName := range types.SettingNameList {
 		definition, ok := types.SettingDefinitions[sName]
 		if !ok {
@@ -55,12 +50,6 @@ func (s *DataStore) InitSettings() error {
 						Value: definition.Default,
 					},
 				}
-				// `defaultSettings` may be empty, then built-in internal default setting will be used.
-				value, exists := defaultSettings[string(sName)]
-				if exists && value != "" {
-					setting.Setting.Value = value
-				}
-
 				if _, err := s.CreateSetting(setting); err != nil {
 					return err
 				}
