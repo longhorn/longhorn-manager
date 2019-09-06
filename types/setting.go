@@ -2,11 +2,15 @@ package types
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v2"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 
@@ -318,4 +322,44 @@ func ValidateInitSetting(name, value string) (err error) {
 		}
 	}
 	return nil
+}
+
+func GetCustomizedDefaultSettings() (map[string]string, error) {
+	settingPath := os.Getenv(EnvDefaultSettingPath)
+	defaultSettings := map[string]string{}
+	if settingPath != "" {
+		data, err := ioutil.ReadFile(settingPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read default setting file %v: %v", settingPath, err)
+		}
+
+		// `yaml.Unmarshal()` can return a partial result. We shouldn't allow it
+		if err := yaml.Unmarshal(data, &defaultSettings); err != nil {
+			logrus.Errorf("Failed to unmarshal customized default settings from yaml data %v, will give up using them: %v", string(data), err)
+			defaultSettings = map[string]string{}
+		}
+	}
+
+	// won't accept partially valid result
+	for name, value := range defaultSettings {
+		value = strings.Trim(value, " ")
+		defaultSettings[name] = value
+
+		if _, exist := SettingDefinitions[SettingName(name)]; !exist {
+			logrus.Errorf("Customized settings are invalid, will give up using them: undefined setting %v", name)
+			defaultSettings = map[string]string{}
+			break
+		}
+		if value == "" {
+			delete(defaultSettings, name)
+			continue
+		}
+		if err := ValidateInitSetting(name, value); err != nil {
+			logrus.Errorf("Customized settings are invalid, will give up using them: the value of customized setting %v is invalid: %v", name, err)
+			defaultSettings = map[string]string{}
+			break
+		}
+	}
+
+	return defaultSettings, nil
 }
