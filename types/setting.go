@@ -13,6 +13,10 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 )
 
+const (
+	EnvDefaultSettingPath = "DEFAULT_SETTING_PATH"
+)
+
 type Setting struct {
 	Value string `json:"value"`
 }
