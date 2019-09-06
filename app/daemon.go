@@ -23,13 +23,10 @@ import (
 var VERSION = "v0.3.0"
 
 const (
-	FlagEngineImage        = "engine-image"
-	FlagManagerImage       = "manager-image"
-	FlagServiceAccount     = "service-account"
-	FlagKubeConfig         = "kube-config"
-	FlagDefaultSettingPath = "default-setting-path"
-
-	EnvDefaultSettingPath = "DEFAULT_SETTING_PATH"
+	FlagEngineImage    = "engine-image"
+	FlagManagerImage   = "manager-image"
+	FlagServiceAccount = "service-account"
+	FlagKubeConfig     = "kube-config"
 )
 
 func DaemonCmd() cli.Command {
@@ -51,11 +48,6 @@ func DaemonCmd() cli.Command {
 			cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",
-			},
-			cli.StringFlag{
-				Name:   FlagDefaultSettingPath,
-				Usage:  "Specify path to customized default setting",
-				EnvVar: EnvDefaultSettingPath,
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -86,7 +78,7 @@ func startManager(c *cli.Context) error {
 	}
 	kubeconfigPath := c.String(FlagKubeConfig)
 
-	defaultSettingPath := c.String(FlagDefaultSettingPath)
+	defaultSettingPath := os.Getenv(types.EnvDefaultSettingPath)
 
 	if err := environmentCheck(); err != nil {
 		logrus.Errorf("Failed environment check, please make sure you " +
