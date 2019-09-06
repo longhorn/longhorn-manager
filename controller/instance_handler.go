@@ -57,11 +57,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		return
 	}
 
-	// Do not modify instance object when the related node is down
-	if im.Status.CurrentState == types.InstanceManagerStateUnknown {
-		return
-	}
-
 	if im.Status.CurrentState == types.InstanceManagerStateStarting {
 		if status.Started {
 			status.CurrentState = types.InstanceStateError
@@ -313,19 +308,7 @@ func (h *InstanceHandler) createInstance(instanceName string, obj runtime.Object
 }
 
 func (h *InstanceHandler) deleteInstance(instanceName string, obj runtime.Object) error {
-	instance, err := h.instanceManagerHandler.GetInstance(obj)
-	if err != nil {
-		if types.ErrorIsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	if instance.Status.State != types.InstanceStateStarting && instance.Status.State != types.InstanceStateRunning {
-		logrus.Debugf("Instance %v state %v is invalid for deletion", instanceName, instance.Status.State)
-		return nil
-	}
-
+	// May try to force deleting instances on lost node. Don't need to check the instance
 	logrus.Debugf("Prepare to delete instance %v", instanceName)
 	if err := h.instanceManagerHandler.DeleteInstance(obj); err != nil {
 		if !types.ErrorIsNotFound(err) {
