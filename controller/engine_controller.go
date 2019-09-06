@@ -388,6 +388,26 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 		return nil
 	}
 
+	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
+	if err != nil {
+		return err
+	}
+
+	// Node down
+	if im.Spec.NodeID != im.Spec.OwnerID {
+		isDown, err := ec.ds.IsNodeDownOrDeleted(im.Spec.NodeID)
+		if err != nil {
+			return err
+		}
+		if isDown {
+			delete(im.Status.Instances, e.Name)
+			if _, err := ec.ds.UpdateInstanceManager(im); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+
 	c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
 	if err != nil {
 		return err
