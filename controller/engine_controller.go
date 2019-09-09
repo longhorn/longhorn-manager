@@ -12,6 +12,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -383,6 +384,10 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 		return fmt.Errorf("BUG: invalid object for engine process deletion: %v", obj)
 	}
 
+	if err := ec.deleteInstanceWithCLIAPIVersionOne(e); err != nil {
+		return err
+	}
+
 	// Not assigned, safe to delete
 	if e.Status.InstanceManagerName == "" {
 		return nil
@@ -417,6 +422,64 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 		return err
 	}
 
+	return nil
+}
+
+func (ec *EngineController) deleteInstanceWithCLIAPIVersionOne(e *longhorn.Engine) (err error) {
+	isCLIAPIVersionOne := false
+	if e.Status.CurrentImage != "" {
+		isCLIAPIVersionOne, err = ec.ds.IsEngineImageCLIAPIVersionOne(e.Status.CurrentImage)
+		if err != nil {
+			return err
+		}
+	}
+
+	if isCLIAPIVersionOne {
+		pod, err := ec.kubeClient.CoreV1().Pods(ec.namespace).Get(e.Name, metav1.GetOptions{})
+		if err != nil && !apierrors.IsNotFound(err) {
+			return errors.Wrapf(err, "failed to get pod for old engine %v", e.Name)
+		}
+		if apierrors.IsNotFound(err) {
+			pod = nil
+		}
+
+		logrus.Debugf("Prepared to delete old version engine %v with running pod", e.Name)
+		if err := ec.deleteOldEnginePod(pod, e); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (ec *EngineController) deleteOldEnginePod(pod *v1.Pod, e *longhorn.Engine) (err error) {
+	// pod already stopped
+	if pod == nil {
+		return nil
+	}
+
+	if pod.DeletionTimestamp != nil {
+		if pod.DeletionGracePeriodSeconds != nil && *pod.DeletionGracePeriodSeconds != 0 {
+			// force deletion in the case of node lost
+			deletionDeadline := pod.DeletionTimestamp.Add(time.Duration(*pod.DeletionGracePeriodSeconds) * time.Second)
+			now := time.Now().UTC()
+			if now.After(deletionDeadline) {
+				logrus.Debugf("engine pod %v still exists after grace period %v passed, force deletion: now %v, deadline %v",
+					pod.Name, pod.DeletionGracePeriodSeconds, now, deletionDeadline)
+				gracePeriod := int64(0)
+				if err := ec.kubeClient.CoreV1().Pods(ec.namespace).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod}); err != nil {
+					logrus.Debugf("failed to force deleting engine pod %v: %v ", pod.Name, err)
+					return nil
+				}
+			}
+		}
+		return nil
+	}
+
+	if err := ec.kubeClient.CoreV1().Pods(ec.namespace).Delete(pod.Name, nil); err != nil {
+		ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping pod for old engine %v: %v", pod.Name, err)
+		return nil
+	}
+	ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonStop, "Stops pod for old engine %v", pod.Name)
 	return nil
 }
 

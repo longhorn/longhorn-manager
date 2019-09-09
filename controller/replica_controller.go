@@ -13,6 +13,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -352,6 +353,10 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		return fmt.Errorf("BUG: invalid object for replica process deletion: %v", obj)
 	}
 
+	if err := rc.deleteInstanceWithCLIAPIVersionOne(r); err != nil {
+		return err
+	}
+
 	// Not assigned, safe to delete
 	if r.Status.InstanceManagerName == "" {
 		return nil
@@ -386,6 +391,64 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		return err
 	}
 
+	return nil
+}
+
+func (rc *ReplicaController) deleteInstanceWithCLIAPIVersionOne(r *longhorn.Replica) (err error) {
+	isCLIAPIVersionOne := false
+	if r.Status.CurrentImage != "" {
+		isCLIAPIVersionOne, err = rc.ds.IsEngineImageCLIAPIVersionOne(r.Status.CurrentImage)
+		if err != nil {
+			return err
+		}
+	}
+
+	if isCLIAPIVersionOne {
+		pod, err := rc.kubeClient.CoreV1().Pods(rc.namespace).Get(r.Name, metav1.GetOptions{})
+		if err != nil && !apierrors.IsNotFound(err) {
+			return errors.Wrapf(err, "failed to get pod for old replica %v", r.Name)
+		}
+		if apierrors.IsNotFound(err) {
+			pod = nil
+		}
+
+		logrus.Debugf("Prepared to delete old version replica %v with running pod", r.Name)
+		if err := rc.deleteOldReplicaPod(pod, r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (rc *ReplicaController) deleteOldReplicaPod(pod *v1.Pod, r *longhorn.Replica) (err error) {
+	// pod already stopped
+	if pod == nil {
+		return nil
+	}
+
+	if pod.DeletionTimestamp != nil {
+		if pod.DeletionGracePeriodSeconds != nil && *pod.DeletionGracePeriodSeconds != 0 {
+			// force deletion in the case of node lost
+			deletionDeadline := pod.DeletionTimestamp.Add(time.Duration(*pod.DeletionGracePeriodSeconds) * time.Second)
+			now := time.Now().UTC()
+			if now.After(deletionDeadline) {
+				logrus.Debugf("replica pod %v still exists after grace period %v passed, force deletion: now %v, deadline %v",
+					pod.Name, pod.DeletionGracePeriodSeconds, now, deletionDeadline)
+				gracePeriod := int64(0)
+				if err := rc.kubeClient.CoreV1().Pods(rc.namespace).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod}); err != nil {
+					logrus.Debugf("failed to force deleting replica pod %v: %v ", pod.Name, err)
+					return nil
+				}
+			}
+		}
+		return nil
+	}
+
+	if err := rc.kubeClient.CoreV1().Pods(rc.namespace).Delete(pod.Name, nil); err != nil {
+		rc.eventRecorder.Eventf(r, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping pod for old replica %v: %v", pod.Name, err)
+		return nil
+	}
+	rc.eventRecorder.Eventf(r, v1.EventTypeNormal, EventReasonStop, "Stops pod for old replica %v", pod.Name)
 	return nil
 }
 
