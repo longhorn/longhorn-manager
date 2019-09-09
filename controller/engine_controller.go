@@ -616,7 +616,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		replica, exists := addressReplicaMap[addr]
 		if !exists {
 			// we have a entry doesn't exist in our spec
-			replica = unknownReplicaPrefix + addr
+			replica = unknownReplicaPrefix + url
 		}
 		currentReplicaModeMap[replica] = r.Mode
 
@@ -769,14 +769,14 @@ func GetClientForEngine(e *longhorn.Engine, engines engineapi.EngineClientCollec
 }
 
 func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
-	unknownReplicaAddrs := []string{}
+	unknownReplicaURLs := []string{}
 	for replica := range e.Status.ReplicaModeMap {
-		// unknown replicas have been named as `unknownReplicaPrefix-<IP:Port>`
+		// unknown replicas have been named as `unknownReplicaPrefix-<replica URL>`
 		if strings.HasPrefix(replica, unknownReplicaPrefix) {
-			unknownReplicaAddrs = append(unknownReplicaAddrs, strings.TrimPrefix(replica, unknownReplicaPrefix))
+			unknownReplicaURLs = append(unknownReplicaURLs, strings.TrimPrefix(replica, unknownReplicaPrefix))
 		}
 	}
-	if len(unknownReplicaAddrs) == 0 {
+	if len(unknownReplicaURLs) == 0 {
 		return nil
 	}
 
@@ -784,15 +784,14 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 	if err != nil {
 		return err
 	}
-	for _, addr := range unknownReplicaAddrs {
-		go func(addr string) {
-			url := engineapi.GetBackendReplicaURL(addr)
+	for _, url := range unknownReplicaURLs {
+		go func(url string) {
 			if err := client.ReplicaRemove(url); err != nil {
-				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting, "Failed to remove unknown replica address %v from engine: %v", addr, err)
+				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting, "Failed to remove unknown replica %v from engine: %v", url, err)
 			} else {
-				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonDelete, "Removed unknown replica address %v from engine", addr)
+				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonDelete, "Removed unknown replica %v from engine", url)
 			}
-		}(addr)
+		}(url)
 	}
 	return nil
 }
