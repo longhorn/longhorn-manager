@@ -1173,6 +1173,7 @@ func (s *DataStore) ResetEngineMonitoringStatus(e *longhorn.Engine) (*longhorn.E
 	e.Status.ReplicaModeMap = nil
 	e.Status.BackupStatus = nil
 	e.Status.RestoreStatus = nil
+	e.Status.PurgeStatus = nil
 	ret, err := s.UpdateEngine(e)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to reset engine status for %v", e.Name)
