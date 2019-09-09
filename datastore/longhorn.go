@@ -1456,3 +1456,20 @@ func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.Ins
 	engineImageName := types.GetEngineImageChecksumName(engineImage)
 	return s.GetInstanceManagerBySelector(nodeID, engineImageName, imType)
 }
+
+func (s *DataStore) IsEngineImageCLIAPIVersionOne(imageName string) (bool, error) {
+	if imageName == "" {
+		return false, fmt.Errorf("cannot check the CLI API Version based on empty image name")
+	}
+
+	ei, err := s.GetEngineImage(types.GetEngineImageChecksumName(imageName))
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get engine image object based on image name %v", imageName)
+	}
+
+	if ei.Status.CLIAPIVersion == 1 {
+		logrus.Debugf("Found engine image object %v whose CLIAPIVersion was 1", ei.Name)
+		return true, nil
+	}
+	return false, nil
+}
