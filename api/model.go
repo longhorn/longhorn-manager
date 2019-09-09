@@ -603,7 +603,7 @@ func getReplicaName(address string, vrs []*longhorn.Replica, volumeName string) 
 			return r.Name
 		}
 	}
-	logrus.Warnf("replica address[%v] received from engine restoreStatus for volume[%v] is not found",
+	logrus.Warnf("Cannot find matching replica by the address[%v] in engine purge/restore status for volume[%v]",
 		address, volumeName)
 	return address
 }
