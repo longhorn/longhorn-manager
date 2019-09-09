@@ -260,8 +260,25 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	}()
 
+	isCLIAPIVersionOne := false
+	if engine.Status.CurrentImage != "" {
+		isCLIAPIVersionOne, err = ec.ds.IsEngineImageCLIAPIVersionOne(engine.Status.CurrentImage)
+		if err != nil {
+			return err
+		}
+	}
+
 	if err := ec.instanceHandler.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
 		return err
+	}
+
+	// For incompatible engine, skip starting engine monitor and clean up fields when the engine is not running
+	if isCLIAPIVersionOne {
+		if engine.Status.CurrentState != types.InstanceStateRunning {
+			engine.Status.Endpoint = ""
+			engine.Status.ReplicaModeMap = nil
+		}
+		return nil
 	}
 
 	if engine.Status.CurrentState == types.InstanceStateRunning {
