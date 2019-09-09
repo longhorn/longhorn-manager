@@ -847,6 +847,12 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		c.Assert(err, IsNil)
 		pIndexer.Add(p)
 
+		ei, err := lhClient.LonghornV1alpha1().EngineImages(TestNamespace).Create(newEngineImage(types.EngineImageStateReady))
+		c.Assert(err, IsNil)
+		eiIndexer := lhInformerFactory.Longhorn().V1alpha1().EngineImages().Informer().GetIndexer()
+		err = eiIndexer.Add(ei)
+		c.Assert(err, IsNil)
+
 		// need to create default node
 		for _, node := range tc.nodes {
 			node.Status.DiskStatus = map[string]types.DiskStatus{

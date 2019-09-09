@@ -749,6 +749,14 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			v.Status.State = types.VolumeStateAttaching
 		}
 
+		isCLIAPIVersionOne := false
+		if v.Status.CurrentImage != "" {
+			isCLIAPIVersionOne, err = vc.ds.IsEngineImageCLIAPIVersionOne(v.Status.CurrentImage)
+			if err != nil {
+				return err
+			}
+		}
+
 		replicaUpdated := false
 		for _, r := range rs {
 			// Don't attempt to start the replica or do anything else if it hasn't been scheduled.
@@ -804,8 +812,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 				continue
 			}
 			if r.Status.Port == 0 {
-				logrus.Errorf("BUG: replica %v is running but Port is empty", r.Name)
-				continue
+				// Do not skip this replica if its engine image is CLIAPIVersion 1.
+				if !isCLIAPIVersionOne {
+					logrus.Errorf("BUG: replica %v is running but Port is empty", r.Name)
+					continue
+				}
 			}
 			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 		}
