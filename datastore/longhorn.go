@@ -1276,7 +1276,7 @@ func (s *DataStore) GetInstanceManagerBySelector(node, image string, managerType
 	}
 	switch len(listRO) {
 	case 0:
-		return nil, fmt.Errorf("cannot find instance manager by engineImage=%v, node=%v, type=%v", node, image, managerType)
+		return nil, fmt.Errorf("cannot find instance manager by node=%v, engineImage=%v, type=%v", node, image, managerType)
 	case 1:
 		return listRO[0].DeepCopy(), nil
 	default:
