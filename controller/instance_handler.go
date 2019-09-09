@@ -164,8 +164,16 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		return err
 	}
 
+	isCLIAPIVersionOne := false
+	if status.CurrentImage != "" {
+		isCLIAPIVersionOne, err = h.ds.IsEngineImageCLIAPIVersionOne(status.CurrentImage)
+		if err != nil {
+			return err
+		}
+	}
+
 	var im *longhorn.InstanceManager
-	if status.InstanceManagerName != "" {
+	if !isCLIAPIVersionOne && status.InstanceManagerName != "" {
 		im, err = h.ds.GetInstanceManager(status.InstanceManagerName)
 		if err != nil {
 			if datastore.ErrorIsNotFound(err) {
@@ -188,8 +196,12 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		spec.LogRequested = false
 	}
 
+	// do nothing for incompatible instance except for deleting
 	switch spec.DesireState {
 	case types.InstanceStateRunning:
+		if isCLIAPIVersionOne {
+			return nil
+		}
 		if im == nil {
 			im, err = h.ds.GetInstanceManagerByInstance(obj)
 			if err != nil {
@@ -213,6 +225,19 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 			return err
 		}
 	case types.InstanceStateStopped:
+		if isCLIAPIVersionOne {
+			if err := h.deleteInstance(instanceName, runtimeObj); err != nil {
+				return err
+			}
+			status.Started = false
+			status.NodeBootID = ""
+			status.CurrentState = types.InstanceStateStopped
+			status.CurrentImage = ""
+			status.InstanceManagerName = ""
+			status.IP = ""
+			status.Port = 0
+			return nil
+		}
 		if im != nil && im.DeletionTimestamp == nil {
 			// there is a delay between deleteInstance() invocation and state/InstanceManager update,
 			// deleteInstance() may be called multiple times.
