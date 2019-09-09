@@ -61,6 +61,17 @@ func newEngineImage(state types.EngineImageState) *longhorn.EngineImage {
 		},
 		Status: types.EngineImageStatus{
 			State: state,
+			EngineVersionDetails: types.EngineVersionDetails{
+				Version:   "latest",
+				GitCommit: "latest",
+
+				CLIAPIVersion:           2,
+				CLIAPIMinVersion:        2,
+				ControllerAPIVersion:    2,
+				ControllerAPIMinVersion: 2,
+				DataFormatVersion:       1,
+				DataFormatMinVersion:    1,
+			},
 		},
 	}
 }
