@@ -37,7 +37,7 @@ do
     if [[ "$1" == "${engineVolume}" ]]
     then
         enginePort=$(echo "${engineInfo}" | grep "port:" | sed "s/ *port: *//")
-        instanceManager=$(echo "${engineInfo}" | grep "instanceManagerName:" | sed "s/ *instanceManagerName: *//")
+        instanceManager=$(echo "${engineInfo}" | grep "instanceManagerName:" | sed "s/ *instanceManagerName: *//" | sed "s/\"//g")
         if [[ "${enginePort}" == "" ]]
         then
             echo "Cannot find related port"
@@ -45,7 +45,7 @@ do
         fi
         if [[ "${instanceManager}" == "" ]]
         then
-            echo "Cannot find related instance manager"
+            echo "Cannot find related instance manager. Or the volume is not running and the instance manager is empty."
             exit 1
         fi
 
