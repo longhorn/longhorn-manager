@@ -327,7 +327,7 @@ func (job *Job) backupAndCleanup() (err error) {
 
 		info, exist := backupStatusList[backupName]
 		if !exist {
-			return fmt.Errorf("cannot find backup %v in backup status list", info.BackupURL)
+			return fmt.Errorf("cannot find backup %v in backup status list", backupName)
 		}
 
 		complete := false
