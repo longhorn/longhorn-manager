@@ -120,6 +120,11 @@ type Backup struct {
 	VolumeCreated   string            `json:"volumeCreated"`
 }
 
+type BackupCreateInfo struct {
+	BackupID      string
+	IsIncremental bool
+}
+
 type LauncherVolumeInfo struct {
 	Volume   string `json:"volume,omitempty"`
 	Frontend string `json:"frontend,omitempty"`
