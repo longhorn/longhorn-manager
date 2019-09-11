@@ -231,12 +231,17 @@ func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string
 	if err != nil {
 		return "", err
 	}
-	backup, err := e.ExecuteEngineBinaryWithoutTimeout(args...)
+	output, err := e.ExecuteEngineBinaryWithoutTimeout(args...)
 	if err != nil {
 		return "", err
 	}
-	logrus.Debugf("Backup %v created for volume %v snapshot %v", backup, e.Name(), snapName)
-	return strings.Trim(backup, "\n"), nil
+	backupCreateInfo := BackupCreateInfo{}
+	if err := json.Unmarshal([]byte(output), &backupCreateInfo); err != nil {
+		return "", err
+	}
+
+	logrus.Debugf("Backup %v created for volume %v snapshot %v", backupCreateInfo.BackupID, e.Name(), snapName)
+	return backupCreateInfo.BackupID, nil
 }
 
 func (e *Engine) SnapshotBackupStatus() (map[string]*types.BackupStatus, error) {
