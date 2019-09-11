@@ -879,9 +879,13 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		return fmt.Errorf("BUG: replenishReplica needs a valid engine")
 	}
 
-	// Wait for engine to be synced before rebuild to prevent duplicate IP for different replicas
+	// To prevent duplicate IP for different replicas cause problem
+	// Wait for engine to:
+	// 1. make sure the existing healthy replicas have shown up in engine.spec.ReplicaAddressMap
+	// 2. has recognized all the replicas from the spec.ReplicaAddressMap in the status.ReplicaModeMap
+	// 3. has cleaned up the extra entries in the status.ReplicaModeMap
 	// https://github.com/longhorn/longhorn/issues/687
-	if !vc.engineStatusHasSynced(e, len(rs)) {
+	if !vc.hasEngineStatusSynced(e, rs) {
 		return nil
 	}
 
@@ -907,8 +911,15 @@ func (vc *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map
 	return v.Spec.NumberOfReplicas - usableCount
 }
 
-func (vc *VolumeController) engineStatusHasSynced(e *longhorn.Engine, replicaSize int) bool {
-	if len(e.Spec.ReplicaAddressMap) != replicaSize {
+func (vc *VolumeController) hasEngineStatusSynced(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
+	healthyCount := 0
+	for _, r := range rs {
+		if r.Spec.FailedAt == "" {
+			healthyCount++
+		}
+	}
+
+	if len(e.Spec.ReplicaAddressMap) != healthyCount {
 		return false
 	}
 	if len(e.Spec.ReplicaAddressMap) != len(e.Status.ReplicaModeMap) {
