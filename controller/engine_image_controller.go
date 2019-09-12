@@ -244,6 +244,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 
 	dsName := getEngineImageDaemonSetName(engineImage.Name)
 	if engineImage.DeletionTimestamp != nil {
+		// deleting engine image daemonset will implicitly delete all related instance managers.
 		if err := ic.ds.DeleteDaemonSet(dsName); err != nil {
 			return errors.Wrapf(err, "cannot cleanup daemonset of engine image %v", engineImage.Name)
 		}
@@ -297,10 +298,12 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return err
 	}
 	readyNodeCount := int32(0)
+	readyNodeList := []*longhorn.Node{}
 	for _, node := range nodes {
 		condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
 		if condition.Status == types.ConditionStatusTrue {
 			readyNodeCount++
+			readyNodeList = append(readyNodeList, node)
 		}
 	}
 	if ds.Status.NumberAvailable < readyNodeCount {
@@ -324,6 +327,10 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		logrus.Errorf("Engine image %v isn't compatible with current manager: %v", engineImage.Spec.Image, err)
 		engineImage.Status.State = types.EngineImageStateIncompatible
 		// Allow update reference count and clean up even it's incompatible since engines may have been upgraded
+	}
+
+	if err := ic.syncInstanceManagers(engineImage, readyNodeList); err != nil {
+		return err
 	}
 
 	if err := ic.updateEngineImageRefCount(engineImage); err != nil {
@@ -583,4 +590,126 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 		},
 	}
 	return d
+}
+
+func (ic *EngineImageController) syncInstanceManagers(ei *longhorn.EngineImage, readyNodeList []*longhorn.Node) error {
+	for _, node := range readyNodeList {
+		// Get the Instance Managers if they do exist, so we can handle them once we get the Instance Manager state.
+		engineIM, err := ic.ds.GetInstanceManagerBySelector(node.Name, ei.Name, types.InstanceManagerTypeEngine)
+		if err != nil {
+			if !types.ErrorIsNotFound(err) {
+				return errors.Wrapf(err, "cannot get engine instance manager for node %v, engine image %v", node.Name, ei.Name)
+
+			}
+			engineIM = nil
+		}
+
+		replicaIM, err := ic.ds.GetInstanceManagerBySelector(node.Name, ei.Name, types.InstanceManagerTypeReplica)
+		if err != nil {
+			if !types.ErrorIsNotFound(err) {
+				return errors.Wrapf(err, "cannot get replica instance manager for node %v, engine image %v", node.Name, ei.Name)
+			}
+			replicaIM = nil
+		}
+
+		switch ei.Status.State {
+		case types.EngineImageStateIncompatible:
+			if engineIM != nil {
+				if err := ic.ds.DeleteInstanceManager(engineIM.Name); err != nil {
+					return errors.Wrapf(err, "cannot cleanup engine instance manager of node %v, engine image %v", node.Name, ei.Name)
+				}
+			}
+
+			if replicaIM != nil {
+				if err := ic.ds.DeleteInstanceManager(replicaIM.Name); err != nil {
+					return errors.Wrapf(err, "cannot cleanup replica instance manager of node %v, engine image %v", node.Name, ei.Name)
+				}
+			}
+		case types.EngineImageStateDeploying:
+			fallthrough
+		case types.EngineImageStateReady:
+			if engineIM == nil {
+				if _, err := ic.createInstanceManager(ei, types.InstanceManagerTypeEngine, node); err != nil {
+					return errors.Wrapf(err, "failed to create engine instance manager for node %v, engine image %v", node.Name, ei.Name)
+				}
+				ei.Status.State = types.EngineImageStateDeploying
+				logrus.Infof("Created engine instance manager for node %v, engine image %v (%v)", node.Name, ei.Name, ei.Spec.Image)
+			} else {
+				if engineIM.Status.CurrentState != types.InstanceManagerStateRunning {
+					ei.Status.State = types.EngineImageStateDeploying
+				}
+			}
+
+			if replicaIM == nil {
+				if len(node.Spec.Disks) > 0 {
+					if _, err := ic.createInstanceManager(ei, types.InstanceManagerTypeReplica, node); err != nil {
+						return errors.Wrapf(err, "failed to create replica instance manager for node %v, engine image %v", node.Name, ei.Name)
+					}
+					ei.Status.State = types.EngineImageStateDeploying
+					logrus.Infof("Created replica instance manager for node %v, engine image %v (%v)", node.Name, ei.Name, ei.Spec.Image)
+				}
+			} else {
+				if len(node.Spec.Disks) == 0 {
+					// If the Node no longer has any Disks on it, it's safe to delete the Replica Instance Manager since
+					// its no longer needed.
+					if err := ic.ds.DeleteInstanceManager(replicaIM.Name); err != nil {
+						return errors.Wrapf(err, "cannot cleanup replica instance manager of node %v, engine image %v", node.Name, ei.Name)
+					}
+				} else {
+					if replicaIM.Status.CurrentState != types.InstanceManagerStateRunning {
+						ei.Status.State = types.EngineImageStateDeploying
+					}
+				}
+			}
+		default:
+			return fmt.Errorf("BUG: engine image %v had unexpected state %v", ei.Name, ei.Status.State)
+		}
+	}
+
+	return nil
+}
+
+func (ic *EngineImageController) createInstanceManager(ei *longhorn.EngineImage, imType types.InstanceManagerType,
+	node *longhorn.Node) (*longhorn.InstanceManager, error) {
+
+	var generateName string
+	switch imType {
+	case types.InstanceManagerTypeEngine:
+		generateName = "instance-manager-e-"
+	case types.InstanceManagerTypeReplica:
+		generateName = "instance-manager-r-"
+	}
+
+	instanceManager := &longhorn.InstanceManager{
+		ObjectMeta: metav1.ObjectMeta{
+			// Even though the labels duplicate information already in the spec, spec cannot be used for
+			// Field Selectors in CustomResourceDefinitions:
+			// https://github.com/kubernetes/kubernetes/issues/53459
+			Labels: map[string]string{
+				"engineImage": ei.Name,
+				"nodeID":      node.Name,
+				"type":        string(imType),
+			},
+			Name: generateName + util.RandomID(),
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: longhorn.SchemeGroupVersion.String(),
+					Kind:       longhorn.SchemeGroupVersion.WithKind("EngineImage").String(),
+					Name:       ei.Name,
+					UID:        ei.UID,
+				},
+			},
+		},
+		Spec: types.InstanceManagerSpec{
+			EngineImage: ei.Name,
+			NodeID:      node.Name,
+			Type:        imType,
+		},
+		Status: types.InstanceManagerStatus{
+			CurrentState: types.InstanceManagerStateStopped,
+			Instances:    map[string]types.InstanceProcess{},
+		},
+	}
+
+	return ic.ds.CreateInstanceManager(instanceManager)
 }
