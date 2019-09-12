@@ -248,13 +248,6 @@ const (
 	NodeConditionReasonNoMountPropagationSupport = "NoMountPropagationSupport"
 )
 
-type NodeReadiness string
-
-const (
-	NodeReadinessDeploying = NodeReadiness("deploying")
-	NodeReadinessReady     = NodeReadiness("ready")
-)
-
 type DiskConditionType string
 
 const (
@@ -271,7 +264,6 @@ const (
 type NodeStatus struct {
 	Conditions map[NodeConditionType]Condition `json:"conditions"`
 	DiskStatus map[string]DiskStatus           `json:"diskStatus"`
-	Readiness  NodeReadiness                   `json:"readiness"`
 }
 
 type DiskSpec struct {

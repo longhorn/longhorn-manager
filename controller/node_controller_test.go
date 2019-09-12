@@ -427,7 +427,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			Readiness: types.NodeReadinessDeploying,
 		},
 	}
 	testCases["test create instance managers"] = tc
@@ -448,7 +447,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			Readiness: types.NodeReadinessReady,
 		},
 	}
 	testCases["test incompatible engine image without instance managers"] = tc
@@ -473,7 +471,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			Readiness: types.NodeReadinessDeploying,
 		},
 	}
 	testCases["test deploying engine image with instance managers"] = tc
@@ -494,7 +491,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			Readiness: types.NodeReadinessDeploying,
 		},
 	}
 	testCases["test deploying engine image without instance managers"] = tc
@@ -522,7 +518,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			Readiness: types.NodeReadinessDeploying,
 		},
 	}
 	testCases["test unready instance managers"] = tc
@@ -550,7 +545,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			Readiness: types.NodeReadinessReady,
 		},
 	}
 	testCases["test ready instance managers"] = tc
@@ -573,7 +567,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			Readiness: types.NodeReadinessDeploying,
 		},
 	}
 	testCases["test no replica instance manager"] = tc
@@ -677,10 +670,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			imList, err := lhClient.LonghornV1alpha1().InstanceManagers(TestNamespace).List(metav1.ListOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(imList.Items, HasLen, tc.expectInstanceManagers)
-
-			if tc.expectNodeStatus[nodeName].Readiness != "" {
-				c.Assert(n.Status.Readiness, Equals, tc.expectNodeStatus[nodeName].Readiness)
-			}
 		}
 
 	}
