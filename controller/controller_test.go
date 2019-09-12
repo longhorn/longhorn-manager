@@ -32,7 +32,6 @@ const (
 	TestServiceAccount = "longhorn-service-account"
 
 	TestInstanceManagerName1 = "instance-manager-engine-image-name-1"
-	TestInstanceManagerName2 = "instance-manager-engine-image-name-2"
 
 	TestPod1 = "test-pod-name-1"
 	TestPod2 = "test-pod-name-2"
