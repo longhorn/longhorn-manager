@@ -830,8 +830,6 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 		return err
 	}
 
-	nodeReadiness := types.NodeReadinessReady
-
 	for id, image := range engineImages {
 		// Get the Instance Managers if they do exist, so we can handle them once we get the Instance Manager state.
 		engineIM, err := nc.ds.GetInstanceManagerBySelector(nc.controllerID, image.Name, types.InstanceManagerTypeEngine)
@@ -855,31 +853,25 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 		// Manager, clean one up, or just leave it alone.
 		switch image.Status.State {
 		case types.EngineImageStateDeploying:
-			nodeReadiness = types.NodeReadinessDeploying
 			fallthrough
 		case types.EngineImageStateIncompatible:
 			if engineIM != nil {
-				nodeReadiness = types.NodeReadinessDeploying
 				if err := nc.ds.DeleteInstanceManager(engineIM.Name); err != nil {
 					return errors.Wrapf(err, "cannot cleanup engine instance manager of node %v, engine image %v", nc.controllerID, image.Name)
 				}
 			}
 
 			if replicaIM != nil {
-				nodeReadiness = types.NodeReadinessDeploying
 				if err := nc.ds.DeleteInstanceManager(replicaIM.Name); err != nil {
 					return errors.Wrapf(err, "cannot cleanup replica instance manager of node %v, engine image %v", nc.controllerID, image.Name)
 				}
 			}
 		case types.EngineImageStateReady:
 			if engineIM == nil {
-				nodeReadiness = types.NodeReadinessDeploying
 				if _, err := nc.createInstanceManager(image, types.InstanceManagerTypeEngine, node); err != nil {
 					return errors.Wrapf(err, "failed to create engine instance manager for node %v, engine image %v", nc.controllerID, id)
 				}
 				logrus.Infof("Created engine instance manager for node %v, engine image %v (%v)", nc.controllerID, id, image.Spec.Image)
-			} else if engineIM.Status.CurrentState != types.InstanceManagerStateRunning {
-				nodeReadiness = types.NodeReadinessDeploying
 			}
 
 			if replicaIM == nil && len(node.Spec.Disks) > 0 {
@@ -894,15 +886,12 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 					if err := nc.ds.DeleteInstanceManager(replicaIM.Name); err != nil {
 						return errors.Wrapf(err, "cannot cleanup replica instance manager of node %v, engine image %v", nc.controllerID, image.Name)
 					}
-				} else if replicaIM.Status.CurrentState != types.InstanceManagerStateRunning {
-					nodeReadiness = types.NodeReadinessDeploying
 				}
 			}
 		default:
 			return fmt.Errorf("BUG: engine image %v had unexpected state %v", image.Name, image.Status.State)
 		}
 	}
-	node.Status.Readiness = nodeReadiness
 
 	return nil
 }
