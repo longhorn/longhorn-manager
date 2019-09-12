@@ -32,15 +32,12 @@ const (
 var MountPropagationBidirectional = v1.MountPropagationBidirectional
 
 type NodeTestCase struct {
-	engineImages     []*longhorn.EngineImage
-	instanceManagers []*longhorn.InstanceManager
-	nodes            map[string]*longhorn.Node
-	pods             map[string]*v1.Pod
-	replicas         []*longhorn.Replica
-	kubeNodes        map[string]*v1.Node
+	nodes     map[string]*longhorn.Node
+	pods      map[string]*v1.Pod
+	replicas  []*longhorn.Replica
+	kubeNodes map[string]*v1.Node
 
-	expectInstanceManagers int
-	expectNodeStatus       map[string]types.NodeStatus
+	expectNodeStatus map[string]types.NodeStatus
 }
 
 func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
@@ -69,7 +66,7 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 		persistentVolumeInformer, persistentVolumeClaimInformer, kubeNodeInformer,
 		kubeClient, TestNamespace)
 
-	nc := NewNodeController(ds, scheme.Scheme, engineImageInformer, nodeInformer, settingInformer, podInformer, replicaInformer, imInformer, kubeNodeInformer, kubeClient, TestNamespace, controllerID)
+	nc := NewNodeController(ds, scheme.Scheme, nodeInformer, settingInformer, podInformer, replicaInformer, kubeNodeInformer, kubeClient, TestNamespace, controllerID)
 	fakeRecorder := record.NewFakeRecorder(100)
 	nc.eventRecorder = fakeRecorder
 	nc.getDiskInfoHandler = fakeGetDiskInfo
@@ -206,9 +203,6 @@ func kubeObjStatusSyncTest(testType string) *NodeTestCase {
 }
 
 func (s *TestSuite) TestSyncNode(c *C) {
-	// Skip the Lister check that occurs on creation of an Instance Manager.
-	datastore.SkipListerCheck = true
-
 	testCases := map[string]*NodeTestCase{}
 	testCases["manager pod up"] = kubeObjStatusSyncTest(ManagerPodUp)
 	testCases["manager pod down"] = kubeObjStatusSyncTest(ManagerPodDown)
@@ -410,167 +404,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	}
 	testCases["test disable disk when file system changed"] = tc
 
-	tc = &NodeTestCase{}
-	tc.engineImages = []*longhorn.EngineImage{
-		newEngineImage(types.EngineImageStateReady),
-	}
-	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
-	tc.pods = generateManagerPod(ManagerPodUp)
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	tc.nodes = map[string]*longhorn.Node{
-		TestNode1: node1,
-	}
-	tc.expectInstanceManagers = 2
-	tc.expectNodeStatus = map[string]types.NodeStatus{
-		TestNode1: {
-			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
-				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
-			},
-		},
-	}
-	testCases["test create instance managers"] = tc
-
-	tc = &NodeTestCase{}
-	tc.engineImages = []*longhorn.EngineImage{
-		newEngineImage(types.EngineImageStateIncompatible),
-	}
-	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
-	tc.pods = generateManagerPod(ManagerPodUp)
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	tc.nodes = map[string]*longhorn.Node{
-		TestNode1: node1,
-	}
-	tc.expectNodeStatus = map[string]types.NodeStatus{
-		TestNode1: {
-			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
-				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
-			},
-		},
-	}
-	testCases["test incompatible engine image without instance managers"] = tc
-
-	tc = &NodeTestCase{}
-	tc.engineImages = []*longhorn.EngineImage{
-		newEngineImage(types.EngineImageStateDeploying),
-	}
-	tc.instanceManagers = []*longhorn.InstanceManager{
-		newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning,
-			TestNode1, TestNode1, TestIP1, nil, false),
-	}
-	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
-	tc.pods = generateManagerPod(ManagerPodUp)
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	tc.nodes = map[string]*longhorn.Node{
-		TestNode1: node1,
-	}
-	tc.expectNodeStatus = map[string]types.NodeStatus{
-		TestNode1: {
-			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
-				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
-			},
-		},
-	}
-	testCases["test deploying engine image with instance managers"] = tc
-
-	tc = &NodeTestCase{}
-	tc.engineImages = []*longhorn.EngineImage{
-		newEngineImage(types.EngineImageStateDeploying),
-	}
-	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
-	tc.pods = generateManagerPod(ManagerPodUp)
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	tc.nodes = map[string]*longhorn.Node{
-		TestNode1: node1,
-	}
-	tc.expectNodeStatus = map[string]types.NodeStatus{
-		TestNode1: {
-			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
-				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
-			},
-		},
-	}
-	testCases["test deploying engine image without instance managers"] = tc
-
-	tc = &NodeTestCase{}
-	tc.engineImages = []*longhorn.EngineImage{
-		newEngineImage(types.EngineImageStateReady),
-	}
-	tc.instanceManagers = []*longhorn.InstanceManager{
-		newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine,
-			types.InstanceManagerStateStarting, TestNode1, TestNode1, TestIP1, nil, false),
-		newInstanceManager(TestInstanceManagerName2, types.InstanceManagerTypeReplica,
-			types.InstanceManagerStateStarting, TestNode1, TestNode1, TestIP1, nil, false),
-	}
-	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
-	tc.pods = generateManagerPod(ManagerPodUp)
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	tc.nodes = map[string]*longhorn.Node{
-		TestNode1: node1,
-	}
-	tc.expectInstanceManagers = 2
-	tc.expectNodeStatus = map[string]types.NodeStatus{
-		TestNode1: {
-			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
-				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
-			},
-		},
-	}
-	testCases["test unready instance managers"] = tc
-
-	tc = &NodeTestCase{}
-	tc.engineImages = []*longhorn.EngineImage{
-		newEngineImage(types.EngineImageStateReady),
-	}
-	tc.instanceManagers = []*longhorn.InstanceManager{
-		newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning,
-			TestNode1, TestNode1, TestIP1, nil, false),
-		newInstanceManager(TestInstanceManagerName2, types.InstanceManagerTypeReplica,
-			types.InstanceManagerStateRunning, TestNode1, TestNode1, TestIP1, nil, false),
-	}
-	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
-	tc.pods = generateManagerPod(ManagerPodUp)
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	tc.nodes = map[string]*longhorn.Node{
-		TestNode1: node1,
-	}
-	tc.expectInstanceManagers = 2
-	tc.expectNodeStatus = map[string]types.NodeStatus{
-		TestNode1: {
-			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
-				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
-			},
-		},
-	}
-	testCases["test ready instance managers"] = tc
-
-	tc = &NodeTestCase{}
-	tc.engineImages = []*longhorn.EngineImage{
-		newEngineImage(types.EngineImageStateReady),
-	}
-	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
-	tc.pods = generateManagerPod(ManagerPodUp)
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	node1.Spec.Disks = map[string]types.DiskSpec{}
-	tc.nodes = map[string]*longhorn.Node{
-		TestNode1: node1,
-	}
-	tc.expectInstanceManagers = 1
-	tc.expectNodeStatus = map[string]types.NodeStatus{
-		TestNode1: {
-			Conditions: map[types.NodeConditionType]types.Condition{
-				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
-				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
-			},
-		},
-	}
-	testCases["test no replica instance manager"] = tc
-
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
 		kubeClient := fake.NewSimpleClientset()
@@ -579,8 +412,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 
-		eiIndexer := lhInformerFactory.Longhorn().V1alpha1().EngineImages().Informer().GetIndexer()
-		imIndexer := lhInformerFactory.Longhorn().V1alpha1().InstanceManagers().Informer().GetIndexer()
 		nIndexer := lhInformerFactory.Longhorn().V1alpha1().Nodes().Informer().GetIndexer()
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
@@ -600,20 +431,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(pod)
 			c.Assert(err, IsNil)
 			pIndexer.Add(p)
-		}
-		// create engine images
-		for _, ei := range tc.engineImages {
-			ei, err := lhClient.LonghornV1alpha1().EngineImages(TestNamespace).Create(ei)
-			c.Assert(err, IsNil)
-			err = eiIndexer.Add(ei)
-			c.Assert(err, IsNil)
-		}
-		// create instance managers
-		for _, im := range tc.instanceManagers {
-			im, err := lhClient.LonghornV1alpha1().InstanceManagers(TestNamespace).Create(im)
-			c.Assert(err, IsNil)
-			err = imIndexer.Add(im)
-			c.Assert(err, IsNil)
 		}
 		// create node
 		for _, node := range tc.nodes {
@@ -665,11 +482,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				}
 				c.Assert(n.Status.DiskStatus, DeepEquals, tc.expectNodeStatus[nodeName].DiskStatus)
 			}
-
-			// Assertions related to the Instance Manager logic.
-			imList, err := lhClient.LonghornV1alpha1().InstanceManagers(TestNamespace).List(metav1.ListOptions{})
-			c.Assert(err, IsNil)
-			c.Assert(imList.Items, HasLen, tc.expectInstanceManagers)
 		}
 
 	}
