@@ -12,7 +12,6 @@ import (
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -531,11 +530,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		}
 	}
 
-	// Sync Instance Managers for current node
-	if err := nc.syncInstanceManagers(node); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -822,121 +816,4 @@ func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error
 	node.Status.Conditions[types.NodeConditionTypeMountPropagation] = condition
 
 	return nil
-}
-
-func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
-	engineImages, err := nc.ds.ListEngineImages()
-	if err != nil {
-		return err
-	}
-
-	for id, image := range engineImages {
-		// Get the Instance Managers if they do exist, so we can handle them once we get the Instance Manager state.
-		engineIM, err := nc.ds.GetInstanceManagerBySelector(nc.controllerID, image.Name, types.InstanceManagerTypeEngine)
-		if err != nil {
-			if !types.ErrorIsNotFound(err) {
-				return errors.Wrapf(err, "cannot get engine instance manager for node %v, engine image %v", nc.controllerID, id)
-
-			}
-			engineIM = nil
-		}
-
-		replicaIM, err := nc.ds.GetInstanceManagerBySelector(nc.controllerID, image.Name, types.InstanceManagerTypeReplica)
-		if err != nil {
-			if !types.ErrorIsNotFound(err) {
-				return errors.Wrapf(err, "cannot get replica instance manager for node %v, engine image %v", nc.controllerID, id)
-			}
-			replicaIM = nil
-		}
-
-		// Check the state of the Engine Image. Depending on the state, we'll determine if we should deploy an Instance
-		// Manager, clean one up, or just leave it alone.
-		switch image.Status.State {
-		case types.EngineImageStateDeploying:
-			fallthrough
-		case types.EngineImageStateIncompatible:
-			if engineIM != nil {
-				if err := nc.ds.DeleteInstanceManager(engineIM.Name); err != nil {
-					return errors.Wrapf(err, "cannot cleanup engine instance manager of node %v, engine image %v", nc.controllerID, image.Name)
-				}
-			}
-
-			if replicaIM != nil {
-				if err := nc.ds.DeleteInstanceManager(replicaIM.Name); err != nil {
-					return errors.Wrapf(err, "cannot cleanup replica instance manager of node %v, engine image %v", nc.controllerID, image.Name)
-				}
-			}
-		case types.EngineImageStateReady:
-			if engineIM == nil {
-				if _, err := nc.createInstanceManager(image, types.InstanceManagerTypeEngine, node); err != nil {
-					return errors.Wrapf(err, "failed to create engine instance manager for node %v, engine image %v", nc.controllerID, id)
-				}
-				logrus.Infof("Created engine instance manager for node %v, engine image %v (%v)", nc.controllerID, id, image.Spec.Image)
-			}
-
-			if replicaIM == nil && len(node.Spec.Disks) > 0 {
-				if _, err := nc.createInstanceManager(image, types.InstanceManagerTypeReplica, node); err != nil {
-					return errors.Wrapf(err, "failed to create replica instance manager for node %v, engine image %v", nc.controllerID, id)
-				}
-				logrus.Infof("Created replica instance manager for node %v, engine image %v (%v)", nc.controllerID, id, image.Spec.Image)
-			} else if replicaIM != nil {
-				if len(node.Spec.Disks) == 0 {
-					// If the Node no longer has any Disks on it, it's safe to delete the Replica Instance Manager since
-					// its no longer needed.
-					if err := nc.ds.DeleteInstanceManager(replicaIM.Name); err != nil {
-						return errors.Wrapf(err, "cannot cleanup replica instance manager of node %v, engine image %v", nc.controllerID, image.Name)
-					}
-				}
-			}
-		default:
-			return fmt.Errorf("BUG: engine image %v had unexpected state %v", image.Name, image.Status.State)
-		}
-	}
-
-	return nil
-}
-
-func (nc *NodeController) createInstanceManager(ei *longhorn.EngineImage, imType types.InstanceManagerType,
-	node *longhorn.Node) (*longhorn.InstanceManager, error) {
-
-	var generateName string
-	switch imType {
-	case types.InstanceManagerTypeEngine:
-		generateName = "instance-manager-e-"
-	case types.InstanceManagerTypeReplica:
-		generateName = "instance-manager-r-"
-	}
-
-	instanceManager := &longhorn.InstanceManager{
-		ObjectMeta: metav1.ObjectMeta{
-			// Even though the labels duplicate information already in the spec, spec cannot be used for
-			// Field Selectors in CustomResourceDefinitions:
-			// https://github.com/kubernetes/kubernetes/issues/53459
-			Labels: map[string]string{
-				"engineImage": ei.Name,
-				"nodeID":      nc.controllerID,
-				"type":        string(imType),
-			},
-			Name: generateName + util.RandomID(),
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: longhorn.SchemeGroupVersion.String(),
-					Kind:       longhorn.SchemeGroupVersion.WithKind("EngineImage").String(),
-					Name:       ei.Name,
-					UID:        ei.UID,
-				},
-			},
-		},
-		Spec: types.InstanceManagerSpec{
-			EngineImage: ei.Name,
-			NodeID:      nc.controllerID,
-			Type:        imType,
-		},
-		Status: types.InstanceManagerStatus{
-			CurrentState: types.InstanceManagerStateStopped,
-			Instances:    map[string]types.InstanceProcess{},
-		},
-	}
-
-	return nc.ds.CreateInstanceManager(instanceManager)
 }
