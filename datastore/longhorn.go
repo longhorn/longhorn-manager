@@ -1300,27 +1300,6 @@ func (s *DataStore) ListInstanceManagers() (map[string]*longhorn.InstanceManager
 	return itemMap, nil
 }
 
-func (s *DataStore) ListInstanceManagersByNode(name string) (map[string]*longhorn.InstanceManager, error) {
-	itemMap := make(map[string]*longhorn.InstanceManager)
-
-	selector, err := getInstanceManagerSelector(name, "", "")
-	if err != nil {
-		return nil, err
-	}
-	list, err := s.imLister.InstanceManagers(s.namespace).List(selector)
-	if err != nil {
-		return nil, err
-	}
-	for _, itemRO := range list {
-		// Cannot use cached object from lister
-		itemMap[itemRO.Name] = itemRO.DeepCopy()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return itemMap, nil
-}
-
 // RemoveFinalizerForInstanceManager will result in deletion if DeletionTimestamp was set
 func (s *DataStore) RemoveFinalizerForInstanceManager(obj *longhorn.InstanceManager) error {
 	if !util.FinalizerExists(longhornFinalizerKey, obj) {

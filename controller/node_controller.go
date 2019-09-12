@@ -50,7 +50,6 @@ type NodeController struct {
 	pStoreSynced  cache.InformerSynced
 	sStoreSynced  cache.InformerSynced
 	rStoreSynced  cache.InformerSynced
-	imStoreSynced cache.InformerSynced
 	knStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
@@ -65,12 +64,10 @@ type GetDiskInfoHandler func(string) (*util.DiskInfo, error)
 func NewNodeController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	engineImageInformer lhinformers.EngineImageInformer,
 	nodeInformer lhinformers.NodeInformer,
 	settingInformer lhinformers.SettingInformer,
 	podInformer coreinformers.PodInformer,
 	replicaInformer lhinformers.ReplicaInformer,
-	imInformer lhinformers.InstanceManagerInformer,
 	kubeNodeInformer coreinformers.NodeInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID string) *NodeController {
@@ -93,7 +90,6 @@ func NewNodeController(
 		pStoreSynced:  podInformer.Informer().HasSynced,
 		sStoreSynced:  settingInformer.Informer().HasSynced,
 		rStoreSynced:  replicaInformer.Informer().HasSynced,
-		imStoreSynced: imInformer.Informer().HasSynced,
 		knStoreSynced: kubeNodeInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-node"),
@@ -102,21 +98,6 @@ func NewNodeController(
 	}
 
 	nc.scheduler = scheduler.NewReplicaScheduler(ds)
-
-	engineImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			ei := obj.(*longhorn.EngineImage)
-			nc.enqueueEngineImage(ei)
-		},
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			cur := newObj.(*longhorn.EngineImage)
-			nc.enqueueEngineImage(cur)
-		},
-		DeleteFunc: func(obj interface{}) {
-			ei := obj.(*longhorn.EngineImage)
-			nc.enqueueEngineImage(ei)
-		},
-	})
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -185,32 +166,6 @@ func NewNodeController(
 		},
 	)
 
-	imInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-		FilterFunc: func(obj interface{}) bool {
-			switch t := obj.(type) {
-			case *longhorn.InstanceManager:
-				return nc.filterInstanceManager(t)
-			default:
-				utilruntime.HandleError(fmt.Errorf("unable to handle object in %T: %T", nc, obj))
-				return false
-			}
-		},
-		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
-				im := obj.(*longhorn.InstanceManager)
-				nc.enqueueInstanceManager(im)
-			},
-			UpdateFunc: func(oldObj, newObj interface{}) {
-				cur := newObj.(*longhorn.InstanceManager)
-				nc.enqueueInstanceManager(cur)
-			},
-			DeleteFunc: func(obj interface{}) {
-				im := obj.(*longhorn.InstanceManager)
-				nc.enqueueInstanceManager(im)
-			},
-		},
-	})
-
 	podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
@@ -264,14 +219,6 @@ func filterSettings(s *longhorn.Setting) bool {
 func (nc *NodeController) filterReplica(r *longhorn.Replica) bool {
 	// only sync replica running on current node
 	if r.Spec.NodeID == nc.controllerID {
-		return true
-	}
-	return false
-}
-
-func (nc *NodeController) filterInstanceManager(im *longhorn.InstanceManager) bool {
-	// Only sync Instance Managers belonging to the current Node.
-	if im.Spec.NodeID == nc.controllerID {
 		return true
 	}
 	return false
@@ -369,16 +316,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 
 	if node.DeletionTimestamp != nil {
 		nc.eventRecorder.Eventf(node, v1.EventTypeWarning, EventReasonDelete, "BUG: Deleting node %v", node.Name)
-		imList, err := nc.ds.ListInstanceManagersByNode(node.Name)
-		if err != nil {
-			return err
-		}
-		for _, im := range imList {
-			if err := nc.ds.DeleteInstanceManager(im.Name); err != nil {
-				return err
-			}
-			logrus.Infof("Cleaning up instance manager %v on deleted node %v", im.Name, node.Name)
-		}
 		return nc.ds.RemoveFinalizerForNode(node)
 	}
 
@@ -533,18 +470,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	return nil
 }
 
-func (nc *NodeController) enqueueEngineImage(ei *longhorn.EngineImage) {
-	nodeList, err := nc.ds.ListNodes()
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get all nodes: %v ", err))
-		return
-	}
-
-	for _, node := range nodeList {
-		nc.enqueueNode(node)
-	}
-}
-
 func (nc *NodeController) enqueueNode(node *longhorn.Node) {
 	key, err := controller.KeyFunc(node)
 	if err != nil {
@@ -575,16 +500,6 @@ func (nc *NodeController) enqueueReplica(replica *longhorn.Replica) {
 		// the replica should be removed before that.
 		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v for replica %v: %v ",
 			replica.Spec.NodeID, replica.Name, err))
-		return
-	}
-	nc.enqueueNode(node)
-}
-
-func (nc *NodeController) enqueueInstanceManager(im *longhorn.InstanceManager) {
-	node, err := nc.ds.GetNode(im.Spec.NodeID)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v for instance manager %v: %v ", im.Spec.NodeID,
-			im.Name, err))
 		return
 	}
 	nc.enqueueNode(node)
