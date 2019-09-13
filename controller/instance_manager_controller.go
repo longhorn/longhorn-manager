@@ -41,9 +41,11 @@ const (
 	managerLivenessProbeFailureThreshold  = 60
 	managerReadinessProbeFailureThreshold = 15
 
-	MaxPollCount = 30
+	// MaxPollCount, MinPollCount, PollInterval determines how often we sync instance map
+
+	MaxPollCount = 60
 	MinPollCount = 1
-	PollInterval = 1 * time.Second
+	PollInterval = 500 * time.Millisecond
 )
 
 type InstanceManagerController struct {
@@ -877,7 +879,6 @@ func (m *InstanceManagerMonitor) Run() {
 
 			m.lock.Lock()
 			timer++
-			// sync instance map at least every 30s, at most every 1s
 			if timer >= MaxPollCount || m.updateNotification {
 				needUpdate = true
 				m.updateNotification = false
