@@ -913,6 +913,9 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() error {
 		return fmt.Errorf("failed to list processes to update instance manager %v: %v", m.Name, err)
 	}
 
+	if reflect.DeepEqual(im.Status.Instances, resp) {
+		return nil
+	}
 	im.Status.Instances = resp
 	if _, err := m.ds.UpdateInstanceManager(im); err != nil {
 		return fmt.Errorf("failed to update instance map for instance manager %v: %v", m.Name, err)
