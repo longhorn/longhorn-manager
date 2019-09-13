@@ -9,7 +9,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/rest"
 
@@ -166,7 +165,7 @@ func (s *DataStore) DeleteDaemonSet(name string) error {
 }
 
 func (s *DataStore) GetDeployment(name string) (*appsv1beta2.Deployment, error) {
-	return s.kubeClient.AppsV1beta2().Deployments(s.namespace).Get(name, metav1.GetOptions{})
+	return s.dpLister.Deployments(s.namespace).Get(name)
 }
 
 func (s *DataStore) ListDeployment() ([]*appsv1beta2.Deployment, error) {
@@ -200,22 +199,8 @@ func (s *DataStore) ListManagerPods() ([]*corev1.Pod, error) {
 	return pList, nil
 }
 
-func (s *DataStore) GetLonghornEventList() (*corev1.EventList, error) {
-	return s.kubeClient.CoreV1().Events(s.namespace).List(metav1.ListOptions{FieldSelector: "involvedObject.apiVersion=longhorn.rancher.io/v1alpha1"})
-}
-
 func (s *DataStore) GetKubernetesNode(name string) (*corev1.Node, error) {
 	return s.kubeClient.CoreV1().Nodes().Get(name, metav1.GetOptions{})
-}
-
-// Followings are for support bundle
-
-func (s *DataStore) GetLonghornNamespace() (*corev1.Namespace, error) {
-	return s.kubeClient.CoreV1().Namespaces().Get(s.namespace, metav1.GetOptions{})
-}
-
-func (s *DataStore) GetAllEventsList() (runtime.Object, error) {
-	return s.kubeClient.CoreV1().Events(s.namespace).List(metav1.ListOptions{})
 }
 
 func (s *DataStore) CreatePersisentVolume(pv *corev1.PersistentVolume) (*corev1.PersistentVolume, error) {
@@ -236,37 +221,6 @@ func (s *DataStore) CreatePersisentVolumeClaim(ns string, pvc *corev1.Persistent
 
 func (s *DataStore) GetPersisentVolumeClaim(namespace, pvcName string) (*corev1.PersistentVolumeClaim, error) {
 	return s.pvcLister.PersistentVolumeClaims(namespace).Get(pvcName)
-}
-
-func (s *DataStore) GetAllPodsList() (runtime.Object, error) {
-	return s.kubeClient.CoreV1().Pods(s.namespace).List(metav1.ListOptions{})
-}
-
-func (s *DataStore) GetAllServicesList() (runtime.Object, error) {
-	return s.kubeClient.CoreV1().Services(s.namespace).List(metav1.ListOptions{})
-}
-func (s *DataStore) GetAllDeploymentsList() (runtime.Object, error) {
-	return s.kubeClient.AppsV1beta2().Deployments(s.namespace).List(metav1.ListOptions{})
-}
-
-func (s *DataStore) GetAllDaemonSetsList() (runtime.Object, error) {
-	return s.kubeClient.AppsV1beta2().DaemonSets(s.namespace).List(metav1.ListOptions{})
-}
-
-func (s *DataStore) GetAllStatefulSetsList() (runtime.Object, error) {
-	return s.kubeClient.AppsV1beta2().StatefulSets(s.namespace).List(metav1.ListOptions{})
-}
-
-func (s *DataStore) GetAllJobsList() (runtime.Object, error) {
-	return s.kubeClient.BatchV1().Jobs(s.namespace).List(metav1.ListOptions{})
-}
-
-func (s *DataStore) GetAllCronJobsList() (runtime.Object, error) {
-	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).List(metav1.ListOptions{})
-}
-
-func (s *DataStore) GetAllNodesList() (runtime.Object, error) {
-	return s.kubeClient.CoreV1().Nodes().List(metav1.ListOptions{})
 }
 
 func (s *DataStore) GetPodContainerLogRequest(podName, containerName string) *rest.Request {
