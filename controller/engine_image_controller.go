@@ -55,6 +55,7 @@ type EngineImageController struct {
 	iStoreSynced  cache.InformerSynced
 	vStoreSynced  cache.InformerSynced
 	dsStoreSynced cache.InformerSynced
+	nStoreSynced  cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
 }
@@ -65,6 +66,7 @@ func NewEngineImageController(
 	engineImageInformer lhinformers.EngineImageInformer,
 	volumeInformer lhinformers.VolumeInformer,
 	dsInformer appsinformers_v1beta2.DaemonSetInformer,
+	nodeInformer lhinformers.NodeInformer,
 	kubeClient clientset.Interface,
 	namespace string, controllerID, serviceAccount string) *EngineImageController {
 
@@ -86,6 +88,7 @@ func NewEngineImageController(
 		iStoreSynced:  engineImageInformer.Informer().HasSynced,
 		vStoreSynced:  volumeInformer.Informer().HasSynced,
 		dsStoreSynced: dsInformer.Informer().HasSynced,
+		nStoreSynced:  nodeInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-engine-image"),
 	}
@@ -133,6 +136,18 @@ func NewEngineImageController(
 		},
 	})
 
+	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			ic.enqueueAllEngineImagesForNodeChange()
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			ic.enqueueAllEngineImagesForNodeChange()
+		},
+		DeleteFunc: func(obj interface{}) {
+			ic.enqueueAllEngineImagesForNodeChange()
+		},
+	})
+
 	return ic
 }
 
@@ -143,7 +158,7 @@ func (ic *EngineImageController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start Longhorn Engine Image controller")
 	defer logrus.Infof("Shutting down Longhorn Engine Image controller")
 
-	if !controller.WaitForCacheSync("longhorn engine images", stopCh, ic.iStoreSynced, ic.dsStoreSynced) {
+	if !controller.WaitForCacheSync("longhorn engine images", stopCh, ic.iStoreSynced, ic.vStoreSynced, ic.dsStoreSynced, ic.nStoreSynced) {
 		return
 	}
 
@@ -490,6 +505,19 @@ func (ic *EngineImageController) enqueueControlleeChange(obj interface{}) {
 		ic.ResolveRefAndEnqueue(namespace, &ref)
 		return
 	}
+}
+
+func (ic *EngineImageController) enqueueAllEngineImagesForNodeChange() {
+	engineImages, err := ic.ds.ListEngineImages()
+	if err != nil {
+		logrus.Warnf("Failed to list engine images: %v", err)
+		return
+	}
+
+	for _, ei := range engineImages {
+		ic.enqueueEngineImage(ei)
+	}
+	return
 }
 
 func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *metav1.OwnerReference) {
