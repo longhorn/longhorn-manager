@@ -374,7 +374,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		if err != nil {
 			return err
 		}
-		for _, im := range imList.Items {
+		for _, im := range imList {
 			if err := nc.ds.DeleteInstanceManager(im.Name); err != nil {
 				return err
 			}

@@ -1246,21 +1246,39 @@ func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, 
 	return result, nil
 }
 
+func getInstanceManagerSelector(node, image, managerType string) (labels.Selector, error) {
+	labels := map[string]string{}
+	if node != "" {
+		labels["nodeID"] = node
+	}
+	if image != "" {
+		labels["engineImage"] = image
+	}
+	if managerType != "" {
+		labels["type"] = managerType
+	}
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: labels,
+	})
+}
+
 // GetInstanceManagerBySelector gets the Instance Managers matching the selector using Labels. Even though the labels
 // duplicate information already in the spec, spec cannot be used for Field Selectors in CustomResourceDefinitions:
 // https://github.com/kubernetes/kubernetes/issues/53459
 func (s *DataStore) GetInstanceManagerBySelector(node, image string, managerType types.InstanceManagerType) (*longhorn.InstanceManager, error) {
-	resultRO, err := s.lhClient.LonghornV1alpha1().InstanceManagers(s.namespace).List(metav1.ListOptions{
-		LabelSelector: "engineImage=" + image + ",nodeID=" + node + ",type=" + string(managerType),
-	})
+	selector, err := getInstanceManagerSelector(node, image, string(managerType))
 	if err != nil {
 		return nil, err
 	}
-	switch len(resultRO.Items) {
+	listRO, err := s.imLister.InstanceManagers(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	switch len(listRO) {
 	case 0:
 		return nil, fmt.Errorf("cannot find instance manager by engineImage=%v, node=%v, type=%v", node, image, managerType)
 	case 1:
-		return resultRO.Items[0].DeepCopy(), nil
+		return listRO[0].DeepCopy(), nil
 	default:
 		// There shouldn't be more than one Instance Manager that matches the selector.
 		return nil, errors.Errorf("found more than one instance manager matching node %v, image %v, type %v", node, image, managerType)
@@ -1282,14 +1300,25 @@ func (s *DataStore) ListInstanceManagers() (map[string]*longhorn.InstanceManager
 	return itemMap, nil
 }
 
-func (s *DataStore) ListInstanceManagersByNode(name string) (*longhorn.InstanceManagerList, error) {
-	resultRO, err := s.lhClient.LonghornV1alpha1().InstanceManagers(s.namespace).List(metav1.ListOptions{
-		LabelSelector: "nodeID=" + name,
-	})
+func (s *DataStore) ListInstanceManagersByNode(name string) (map[string]*longhorn.InstanceManager, error) {
+	itemMap := make(map[string]*longhorn.InstanceManager)
+
+	selector, err := getInstanceManagerSelector(name, "", "")
 	if err != nil {
 		return nil, err
 	}
-	return resultRO.DeepCopy(), nil
+	list, err := s.imLister.InstanceManagers(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return itemMap, nil
 }
 
 // RemoveFinalizerForInstanceManager will result in deletion if DeletionTimestamp was set
