@@ -66,7 +66,7 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 		engineImageInformer, nodeInformer, settingInformer, imInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer, deploymentInformer,
-		persistentVolumeInformer, persistentVolumeClaimInformer,
+		persistentVolumeInformer, persistentVolumeClaimInformer, kubeNodeInformer,
 		kubeClient, TestNamespace)
 
 	nc := NewNodeController(ds, scheme.Scheme, engineImageInformer, nodeInformer, settingInformer, podInformer, replicaInformer, imInformer, kubeNodeInformer, kubeClient, TestNamespace, controllerID)

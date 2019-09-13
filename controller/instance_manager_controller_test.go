@@ -146,13 +146,14 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 	deploymentInformer := kubeInformerFactory.Apps().V1beta2().Deployments()
 	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
 	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
+	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
 		engineImageInformer, nodeInformer, settingInformer, imInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer, deploymentInformer,
-		persistentVolumeInformer, persistentVolumeClaimInformer,
+		persistentVolumeInformer, persistentVolumeClaimInformer, kubeNodeInformer,
 		kubeClient, TestNamespace)
 
 	imc := NewInstanceManagerController(ds, scheme.Scheme, imInformer, podInformer, kubeClient, TestNamespace,

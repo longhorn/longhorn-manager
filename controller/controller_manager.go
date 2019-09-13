@@ -82,7 +82,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 		engineImageInformer, nodeInformer, settingInformer, imInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer, deploymentInformer,
-		persistentVolumeInformer, persistentVolumeClaimInformer,
+		persistentVolumeInformer, persistentVolumeClaimInformer, kubeNodeInformer,
 		kubeClient, namespace)
 	rc := NewReplicaController(ds, scheme,
 		replicaInformer, imInformer,

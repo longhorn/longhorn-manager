@@ -148,7 +148,7 @@ func newPodWithPVC(podName string) *apiv1.Pod {
 			Name:      podName,
 			Namespace: TestNamespace,
 			OwnerReferences: []metav1.OwnerReference{
-				metav1.OwnerReference{
+				{
 					Kind: TestWorkloadKind,
 					Name: TestWorkloadName,
 				},
@@ -156,25 +156,25 @@ func newPodWithPVC(podName string) *apiv1.Pod {
 		},
 		Spec: apiv1.PodSpec{
 			Containers: []apiv1.Container{
-				apiv1.Container{
+				{
 					Name:            podName,
 					Image:           "nginx:stable-alpine",
 					ImagePullPolicy: apiv1.PullIfNotPresent,
 					VolumeMounts: []apiv1.VolumeMount{
-						apiv1.VolumeMount{
+						{
 							Name:      "vol",
 							MountPath: "/data",
 						},
 					},
 					Ports: []apiv1.ContainerPort{
-						apiv1.ContainerPort{
+						{
 							ContainerPort: 80,
 						},
 					},
 				},
 			},
 			Volumes: []apiv1.Volume{
-				apiv1.Volume{
+				{
 					Name: "vol",
 					VolumeSource: apiv1.VolumeSource{
 						PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{
@@ -227,13 +227,14 @@ func newTestKubernetesController(lhInformerFactory lhinformerfactory.SharedInfor
 	daemonSetInformer := kubeInformerFactory.Apps().V1beta2().DaemonSets()
 	deploymentInformer := kubeInformerFactory.Apps().V1beta2().Deployments()
 	volumeAttachmentInformer := kubeInformerFactory.Storage().V1beta1().VolumeAttachments()
+	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
 		engineImageInformer, nodeInformer, settingInformer, imInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer, deploymentInformer,
-		persistentVolumeInformer, persistentVolumeClaimInformer,
+		persistentVolumeInformer, persistentVolumeClaimInformer, kubeNodeInformer,
 		kubeClient, TestNamespace)
 
 	kc := NewKubernetesController(ds, scheme.Scheme, volumeInformer, persistentVolumeInformer,
