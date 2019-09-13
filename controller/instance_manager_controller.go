@@ -595,7 +595,7 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 	podSpec.ObjectMeta.Labels["instance-manager-type"] = "engine"
 	podSpec.Spec.Containers[0].Name = "engine-manager"
 	podSpec.Spec.Containers[0].Command = []string{
-		"engine-manager", "daemon", "--listen", "0.0.0.0:8500",
+		"engine-manager", "--debug", "daemon", "--listen", "0.0.0.0:8500",
 	}
 	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
 		{
