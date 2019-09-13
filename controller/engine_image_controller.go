@@ -349,7 +349,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	}
 
 	if err := ic.updateEngineImageRefCount(engineImage); err != nil {
-		return err
+		return errors.Wrapf(err, "failed to update RefCount for engine image %v(%v)", engineImage.Name, engineImage.Spec.Image)
 	}
 
 	if err := ic.cleanupExpiredEngineImage(engineImage); err != nil {
@@ -407,6 +407,22 @@ func (ic *EngineImageController) updateEngineImageRefCount(ei *longhorn.EngineIm
 	for _, v := range volumes {
 		if v.Spec.EngineImage == image || v.Status.CurrentImage == image {
 			refCount++
+		}
+		// Volume engine is still using the engine manager of this old engine image after live upgrading to other engine image.
+		if v.Status.CurrentImage != image && v.Status.State == types.VolumeStateAttached {
+			es, err := ic.ds.ListVolumeEngines(v.Name)
+			if err != nil {
+				return err
+			}
+			for _, e := range es {
+				im, err := ic.ds.GetInstanceManager(e.Status.InstanceManagerName)
+				if err != nil {
+					return err
+				}
+				if ei.Name == im.Spec.EngineImage {
+					refCount++
+				}
+			}
 		}
 	}
 	ei.Status.RefCount = refCount
