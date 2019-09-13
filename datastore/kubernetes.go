@@ -193,6 +193,24 @@ func (s *DataStore) ListManagerPods() ([]*corev1.Pod, error) {
 	return pList, nil
 }
 
+func (s *DataStore) ListInstanceManagerPods() ([]*corev1.Pod, error) {
+	selector, err := getInstanceManagerSelector("", "", "")
+	if err != nil {
+		return nil, err
+	}
+
+	podList, err := s.pLister.Pods(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	res := []*corev1.Pod{}
+	for _, item := range podList {
+		res = append(res, item.DeepCopy())
+	}
+	return res, nil
+}
+
 func (s *DataStore) GetKubernetesNode(name string) (*corev1.Node, error) {
 	return s.knLister.Get(name)
 }
