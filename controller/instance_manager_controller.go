@@ -865,7 +865,6 @@ func (m *InstanceManagerMonitor) Run() {
 				m.updateNotification = true
 				m.lock.Unlock()
 			}
-			time.Sleep(time.Second)
 		}
 	}()
 
