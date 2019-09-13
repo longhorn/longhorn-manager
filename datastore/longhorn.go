@@ -1253,19 +1253,36 @@ func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, 
 }
 
 func getInstanceManagerSelector(node, image, managerType string) (labels.Selector, error) {
-	labels := map[string]string{}
-	if node != "" {
-		labels["nodeID"] = node
+	labels := types.GetInstanceManagerLabels(node, image, managerType)
+	if node == "" {
+		delete(labels, types.GetLonghornLabelKey(types.LonghornLabelNode))
 	}
-	if image != "" {
-		labels["engineImage"] = image
+	if image == "" {
+		delete(labels, types.GetLonghornLabelKey(types.LonghornLabelEngineImage))
 	}
-	if managerType != "" {
-		labels["type"] = managerType
+	if managerType == "" {
+		delete(labels, types.GetLonghornLabelKey(types.LonghornLabelInstanceManagerType))
 	}
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: labels,
 	})
+}
+
+func CheckInstanceManagerType(im *longhorn.InstanceManager) (types.InstanceManagerType, error) {
+	imTypeLabelkey := types.GetLonghornLabelKey(types.LonghornLabelInstanceManagerType)
+	imType, exist := im.Labels[imTypeLabelkey]
+	if !exist {
+		return types.InstanceManagerType(""), fmt.Errorf("no label %v in instance manager %v", imTypeLabelkey, im.Name)
+	}
+
+	switch imType {
+	case string(types.InstanceManagerTypeEngine):
+		return types.InstanceManagerTypeEngine, nil
+	case string(types.InstanceManagerTypeReplica):
+		return types.InstanceManagerTypeReplica, nil
+	}
+
+	return types.InstanceManagerType(""), fmt.Errorf("unknown type %v for instance manager %v", imType, im.Name)
 }
 
 // GetInstanceManagerBySelector gets the Instance Managers matching the selector using Labels. Even though the labels

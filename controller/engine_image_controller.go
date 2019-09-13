@@ -709,12 +709,8 @@ func (ic *EngineImageController) createInstanceManager(ei *longhorn.EngineImage,
 			// Even though the labels duplicate information already in the spec, spec cannot be used for
 			// Field Selectors in CustomResourceDefinitions:
 			// https://github.com/kubernetes/kubernetes/issues/53459
-			Labels: map[string]string{
-				"engineImage": ei.Name,
-				"nodeID":      node.Name,
-				"type":        string(imType),
-			},
-			Name: generateName + util.RandomID(),
+			Labels: types.GetInstanceManagerLabels(node.Name, ei.Name, string(imType)),
+			Name:   generateName + util.RandomID(),
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: longhorn.SchemeGroupVersion.String(),
