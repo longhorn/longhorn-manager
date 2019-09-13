@@ -318,6 +318,11 @@ func (sc *SettingController) updateTaintToleration() error {
 		return errors.Wrapf(err, "failed to list Longhorn deployments for toleration update")
 	}
 
+	imPodList, err := sc.ds.ListInstanceManagerPods()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list instance manager pods for toleration update")
+	}
+
 	for _, dp := range deploymentList {
 		if util.AreIdenticalTolerations(util.TolerationListToMap(dp.Spec.Template.Spec.Tolerations), newTolerations) {
 			continue
@@ -333,6 +338,14 @@ func (sc *SettingController) updateTaintToleration() error {
 		}
 		ds.Spec.Template.Spec.Tolerations = getFinalTolerations(util.TolerationListToMap(ds.Spec.Template.Spec.Tolerations), newTolerations)
 		if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
+			return err
+		}
+	}
+	for _, imPod := range imPodList {
+		if util.AreIdenticalTolerations(util.TolerationListToMap(imPod.Spec.Tolerations), newTolerations) {
+			continue
+		}
+		if err := sc.ds.DeletePod(imPod.Name); err != nil {
 			return err
 		}
 	}
