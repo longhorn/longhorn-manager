@@ -491,8 +491,8 @@ func (rc *ReplicaController) LogInstance(obj interface{}) (*imapi.LogStream, err
 }
 
 func (rc *ReplicaController) enqueueInstanceManagerChange(im *longhorn.InstanceManager) {
-	imType, ok := im.Labels["type"]
-	if !ok || imType != string(types.InstanceManagerTypeReplica) {
+	imType, err := datastore.CheckInstanceManagerType(im)
+	if err != nil || imType != types.InstanceManagerTypeReplica {
 		return
 	}
 

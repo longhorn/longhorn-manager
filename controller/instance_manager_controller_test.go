@@ -89,11 +89,7 @@ func newInstanceManager(
 			Name:      name,
 			Namespace: TestNamespace,
 			UID:       uuid.NewUUID(),
-			Labels: map[string]string{
-				"engineImage": getTestEngineImageName(),
-				"nodeID":      TestNode1,
-				"type":        string(imType),
-			},
+			Labels:    types.GetInstanceManagerLabels(TestNode1, getTestEngineImageName(), string(imType)),
 		},
 		Spec: types.InstanceManagerSpec{
 			EngineImage: getTestEngineImageName(),

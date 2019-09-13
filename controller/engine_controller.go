@@ -316,8 +316,8 @@ func (ec *EngineController) enqueueInstanceManagerChange(im *longhorn.InstanceMa
 	if im.Spec.OwnerID != ec.controllerID {
 		return
 	}
-	imType, ok := im.Labels["type"]
-	if !ok || imType != string(types.InstanceManagerTypeEngine) {
+	imType, err := datastore.CheckInstanceManagerType(im)
+	if err != nil || imType != types.InstanceManagerTypeEngine {
 		return
 	}
 

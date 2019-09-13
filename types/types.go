@@ -30,7 +30,10 @@ const (
 
 	LonghornLabelKeyPrefix = "longhorn.io"
 
-	LonghornLabelEngineImage = "engine-image"
+	LonghornLabelEngineImage         = "engine-image"
+	LonghornLabelInstanceManager     = "instance-manager"
+	LonghornLabelNode                = "node"
+	LonghornLabelInstanceManagerType = "instance-manager-type"
 )
 
 const (
@@ -145,6 +148,15 @@ func GetEngineImageLabels(engineImageName string) map[string]string {
 	return map[string]string{
 		GetLonghornLabelComponentKey():                LonghornLabelEngineImage,
 		GetLonghornLabelKey(LonghornLabelEngineImage): engineImageName,
+	}
+}
+
+func GetInstanceManagerLabels(node, engineImageName, managerType string) map[string]string {
+	return map[string]string{
+		GetLonghornLabelComponentKey():                        LonghornLabelInstanceManager,
+		GetLonghornLabelKey(LonghornLabelNode):                node,
+		GetLonghornLabelKey(LonghornLabelEngineImage):         engineImageName,
+		GetLonghornLabelKey(LonghornLabelInstanceManagerType): managerType,
 	}
 }
 
