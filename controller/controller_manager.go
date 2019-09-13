@@ -95,7 +95,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 		kubeClient, namespace, controllerID,
 		serviceAccount, managerImage)
 	ic := NewEngineImageController(ds, scheme,
-		engineImageInformer, volumeInformer, daemonSetInformer,
+		engineImageInformer, volumeInformer, daemonSetInformer, nodeInformer,
 		kubeClient, namespace, controllerID, serviceAccount)
 	nc := NewNodeController(ds, scheme,
 		nodeInformer, settingInformer, podInformer, replicaInformer, kubeNodeInformer,
