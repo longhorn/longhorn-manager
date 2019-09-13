@@ -200,7 +200,7 @@ func (s *DataStore) ListManagerPods() ([]*corev1.Pod, error) {
 }
 
 func (s *DataStore) GetKubernetesNode(name string) (*corev1.Node, error) {
-	return s.kubeClient.CoreV1().Nodes().Get(name, metav1.GetOptions{})
+	return s.knLister.Get(name)
 }
 
 func (s *DataStore) CreatePersisentVolume(pv *corev1.PersistentVolume) (*corev1.PersistentVolume, error) {

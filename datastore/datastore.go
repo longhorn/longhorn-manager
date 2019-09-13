@@ -53,6 +53,8 @@ type DataStore struct {
 	pvStoreSynced  cache.InformerSynced
 	pvcLister      corelisters.PersistentVolumeClaimLister
 	pvcStoreSynced cache.InformerSynced
+	knLister       corelisters.NodeLister
+	knStoreSynced  cache.InformerSynced
 }
 
 func NewDataStore(
@@ -71,6 +73,7 @@ func NewDataStore(
 	deploymentInformer appsinformers_v1beta2.DeploymentInformer,
 	persistentVolumeInformer coreinformers.PersistentVolumeInformer,
 	persistentVolumeClaimInformer coreinformers.PersistentVolumeClaimInformer,
+	kubeNodeInformer coreinformers.NodeInformer,
 
 	kubeClient clientset.Interface,
 	namespace string) *DataStore {
@@ -107,6 +110,8 @@ func NewDataStore(
 		pvStoreSynced:  persistentVolumeInformer.Informer().HasSynced,
 		pvcLister:      persistentVolumeClaimInformer.Lister(),
 		pvcStoreSynced: persistentVolumeClaimInformer.Informer().HasSynced,
+		knLister:       kubeNodeInformer.Lister(),
+		knStoreSynced:  kubeNodeInformer.Informer().HasSynced,
 	}
 }
 
@@ -116,7 +121,7 @@ func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 		s.iStoreSynced, s.nStoreSynced, s.sStoreSynced,
 		s.pStoreSynced, s.cjStoreSynced, s.dsStoreSynced,
 		s.pvStoreSynced, s.pvcStoreSynced, s.imStoreSynced,
-		s.dpStoreSynced)
+		s.dpStoreSynced, s.knStoreSynced)
 }
 
 func ErrorIsNotFound(err error) bool {
