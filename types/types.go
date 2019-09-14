@@ -27,6 +27,10 @@ const (
 
 	BaseImageLabel        = "ranchervm-base-image"
 	KubernetesStatusLabel = "KubernetesStatus"
+
+	LonghornLabelKeyPrefix = "longhorn.io"
+
+	LonghornLabelEngineImage = "engine-image"
 )
 
 const (
@@ -129,9 +133,18 @@ var (
 	LonghornSystemValueEngineImage = "engine-image"
 )
 
-func GetEngineImageLabel() map[string]string {
+func GetLonghornLabelKey(name string) string {
+	return fmt.Sprintf("%s/%s", LonghornLabelKeyPrefix, name)
+}
+
+func GetLonghornLabelComponentKey() string {
+	return GetLonghornLabelKey("component")
+}
+
+func GetEngineImageLabels(engineImageName string) map[string]string {
 	return map[string]string{
-		LonghornSystemKey: LonghornSystemValueEngineImage,
+		GetLonghornLabelComponentKey():                LonghornLabelEngineImage,
+		GetLonghornLabelKey(LonghornLabelEngineImage): engineImageName,
 	}
 }
 
@@ -192,4 +205,12 @@ func ValidateReplicaCount(count int) error {
 		return fmt.Errorf("replica count value must between 1 to 20")
 	}
 	return nil
+}
+
+func GetDaemonSetNameFromEngineImageName(engineImageName string) string {
+	return "engine-image-" + engineImageName
+}
+
+func GetEngineImageNameFromDaemonSetName(dsName string) string {
+	return strings.TrimPrefix(dsName, "engine-image-")
 }
