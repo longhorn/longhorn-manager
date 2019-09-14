@@ -390,7 +390,7 @@ func (c *UninstallController) deleteEngineImages(engineImages map[string]*longho
 			}
 			logrus.WithFields(logFields).Infof("Marked for deletion")
 		} else if ei.DeletionTimestamp.Before(&timeout) {
-			dsName := getEngineImageDaemonSetName(ei.Name)
+			dsName := types.GetDaemonSetNameFromEngineImageName(ei.Name)
 			if err = c.ds.DeleteDaemonSet(dsName); err != nil {
 				if !apierrors.IsNotFound(err) {
 					err = errors.Wrapf(err, "Failed to remove daemon set")

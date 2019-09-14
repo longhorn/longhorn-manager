@@ -851,6 +851,12 @@ func (s *DataStore) ListEngineImages() (map[string]*longhorn.EngineImage, error)
 	return itemMap, nil
 }
 
+func getEngineImageSelector(engineImageName string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetEngineImageLabels(engineImageName),
+	})
+}
+
 func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	if err := util.AddFinalizer(longhornFinalizerKey, node); err != nil {
 		return nil, err

@@ -257,7 +257,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return fmt.Errorf("Image %v checksum %v doesn't match engine image name %v", engineImage.Spec.Image, checksumName, engineImage.Name)
 	}
 
-	dsName := getEngineImageDaemonSetName(engineImage.Name)
+	dsName := types.GetDaemonSetNameFromEngineImageName(engineImage.Name)
 	if engineImage.DeletionTimestamp != nil {
 		// deleting engine image daemonset will implicitly delete all related instance managers.
 		if err := ic.ds.DeleteDaemonSet(dsName); err != nil {
@@ -540,12 +540,8 @@ func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *met
 	ic.enqueueEngineImage(engineImage)
 }
 
-func getEngineImageDaemonSetName(engineImageName string) string {
-	return "engine-image-" + engineImageName
-}
-
 func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []v1.Toleration) *appsv1beta2.DaemonSet {
-	dsName := getEngineImageDaemonSetName(ei.Name)
+	dsName := types.GetDaemonSetNameFromEngineImageName(ei.Name)
 	image := ei.Spec.Image
 	cmd := []string{
 		"/bin/bash",
@@ -561,7 +557,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 		},
 		Spec: appsv1beta2.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
-				MatchLabels: types.GetEngineImageLabel(),
+				MatchLabels: types.GetEngineImageLabels(ei.Name),
 			},
 			UpdateStrategy: appsv1beta2.DaemonSetUpdateStrategy{
 				Type: appsv1beta2.RollingUpdateDaemonSetStrategyType,
@@ -572,7 +568,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   dsName,
-					Labels: types.GetEngineImageLabel(),
+					Labels: types.GetEngineImageLabels(ei.Name),
 				},
 				Spec: v1.PodSpec{
 					ServiceAccountName: ic.serviceAccount,

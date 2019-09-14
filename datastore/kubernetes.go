@@ -97,17 +97,11 @@ func (s *DataStore) DeleteCronJob(cronJobName string) error {
 	return nil
 }
 
-func getEngineImageSelector() (labels.Selector, error) {
-	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: types.GetEngineImageLabel(),
-	})
-}
-
 func (s *DataStore) CreateEngineImageDaemonSet(ds *appsv1beta2.DaemonSet) error {
 	if ds.Labels == nil {
 		ds.Labels = map[string]string{}
 	}
-	for k, v := range types.GetEngineImageLabel() {
+	for k, v := range types.GetEngineImageLabels(types.GetEngineImageNameFromDaemonSetName(ds.Name)) {
 		ds.Labels[k] = v
 	}
 	if _, err := s.kubeClient.AppsV1beta2().DaemonSets(s.namespace).Create(ds); err != nil {
