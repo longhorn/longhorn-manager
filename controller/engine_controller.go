@@ -539,37 +539,41 @@ func (m *EngineMonitor) Run() {
 	}()
 
 	wait.Until(func() {
-		engine, err := m.ds.GetEngine(m.Name)
-		if err != nil {
-			if datastore.ErrorIsNotFound(err) {
-				logrus.Infof("stop engine %v monitoring because the engine no longer exists", m.Name)
+		for {
+			engine, err := m.ds.GetEngine(m.Name)
+			if err != nil {
+				if datastore.ErrorIsNotFound(err) {
+					logrus.Infof("stop engine %v monitoring because the engine no longer exists", m.Name)
+					m.stop(engine)
+					return
+				}
+				utilruntime.HandleError(errors.Wrapf(err, "fail to get engine %v for monitoring", m.Name))
+				return
+			}
+
+			// when engine stopped, nodeID will be empty as well
+			if engine.Spec.OwnerID != m.controllerID {
+				logrus.Infof("stop engine %v monitoring because the engine is no longer running on node %v",
+					m.Name, m.controllerID)
 				m.stop(engine)
 				return
 			}
-			utilruntime.HandleError(errors.Wrapf(err, "fail to get engine %v for monitoring", m.Name))
-			return
-		}
 
-		// when engine stopped, nodeID will be empty as well
-		if engine.Spec.OwnerID != m.controllerID {
-			logrus.Infof("stop engine %v monitoring because the engine is no longer running on node %v",
-				m.Name, m.controllerID)
-			m.stop(engine)
-			return
-		}
+			// engine is maybe starting
+			if engine.Status.CurrentState != types.InstanceStateRunning {
+				return
+			}
 
-		// engine is maybe starting
-		if engine.Status.CurrentState != types.InstanceStateRunning {
-			return
-		}
+			// engine is upgrading
+			if engine.Status.CurrentImage != engine.Spec.EngineImage {
+				return
+			}
 
-		// engine is upgrading
-		if engine.Status.CurrentImage != engine.Spec.EngineImage {
-			return
-		}
-
-		if err := m.refresh(engine); err != nil {
-			utilruntime.HandleError(errors.Wrapf(err, "fail to update status for engine %v", m.Name))
+			if err := m.refresh(engine); err == nil || !apierrors.IsConflict(errors.Cause(err)) {
+				utilruntime.HandleError(errors.Wrapf(err, "fail to update status for engine %v", m.Name))
+				break
+			}
+			// Retry if the error is due to conflict
 		}
 	}, EnginePollInterval, m.stopCh)
 }
