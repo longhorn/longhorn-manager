@@ -131,7 +131,7 @@ var (
 
 	SettingDefinitionBackupstorePollInterval = SettingDefinition{
 		DisplayName: "Backupstore Poll Interval",
-		Description: "In seconds. The interval to poll the backup store for updating volumes' Last Backup field.",
+		Description: "In seconds. The interval to poll the backup store for updating volumes' Last Backup field. Set to 0 to disable the polling.",
 		Category:    SettingCategoryBackup,
 		Type:        SettingTypeInt,
 		Required:    true,
