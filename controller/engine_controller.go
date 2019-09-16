@@ -683,12 +683,6 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
-	backupStatusList, err := client.SnapshotBackupStatus()
-	if err != nil {
-		return err
-	}
-	engine.Status.BackupStatus = backupStatusList
-
 	replicaURLModeMap, err := client.ReplicaList()
 	if err != nil {
 		return err
@@ -729,43 +723,50 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 	engine.Status.Endpoint = endpoint
 
-	rsMap, err := client.BackupRestoreStatus()
+	backupStatusList, err := client.SnapshotBackupStatus()
 	if err != nil {
-		logrus.Errorf("failed to get Backup Restore Status: %v", err)
-		return err
+		logrus.Errorf("engine monitor: engine %v: failed to get backup status: %v", engine.Name, err)
+	} else {
+		engine.Status.BackupStatus = backupStatusList
 	}
-	engine.Status.RestoreStatus = rsMap
 
 	isRestoring := false
-	lastRestored := ""
-	for _, status := range rsMap {
-		if status.IsRestoring {
-			isRestoring = true
-		}
-	}
-
-	//Engine is not restoring, pick the lastRestored from replica then update LastRestoredBackup
 	isConsensual := true
-	if !isRestoring {
+	rsMap, err := client.BackupRestoreStatus()
+	if err != nil {
+		logrus.Errorf("engine monitor: engine %v: failed to get restore status: %v", engine.Name, err)
+	} else {
+		engine.Status.RestoreStatus = rsMap
+
+		lastRestored := ""
 		for _, status := range rsMap {
-			if lastRestored != "" && status.LastRestored != lastRestored {
-				// this error shouldn't prevent the engine from updating the other status
-				logrus.Errorf("BUG: different lastRestored values even though engine is not restoring")
-				isConsensual = false
+			if status.IsRestoring {
+				isRestoring = true
 			}
-			lastRestored = status.LastRestored
 		}
-		if isConsensual {
-			engine.Status.LastRestoredBackup = lastRestored
+
+		//Engine is not restoring, pick the lastRestored from replica then update LastRestoredBackup
+		if !isRestoring {
+			for _, status := range rsMap {
+				if lastRestored != "" && status.LastRestored != lastRestored {
+					// this error shouldn't prevent the engine from updating the other status
+					logrus.Errorf("BUG: engine %v: different lastRestored values even though engine is not restoring", engine.Name)
+					isConsensual = false
+				}
+				lastRestored = status.LastRestored
+			}
+			if isConsensual {
+				engine.Status.LastRestoredBackup = lastRestored
+			}
 		}
 	}
 
 	purgeStatus, err := client.SnapshotPurgeStatus()
 	if err != nil {
-		logrus.Errorf("failed to get snapshot purge status: %v", err)
-		return err
+		logrus.Errorf("engine monitor: engine %v: failed to get snapshot purge status: %v", engine.Name, err)
+	} else {
+		engine.Status.PurgeStatus = purgeStatus
 	}
-	engine.Status.PurgeStatus = purgeStatus
 
 	engine, err = m.ds.UpdateEngine(engine)
 	if err != nil {
