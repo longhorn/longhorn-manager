@@ -859,6 +859,7 @@ func (m *InstanceManagerMonitor) Run() {
 
 			if _, err := notifier.Recv(); err != nil {
 				logrus.Errorf("error receiving next item in engine watch: %v", err)
+				time.Sleep(MinPollCount * PollInterval)
 			} else {
 				m.lock.Lock()
 				m.updateNotification = true
