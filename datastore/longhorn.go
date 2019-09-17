@@ -991,11 +991,10 @@ func (s *DataStore) ListNodes() (map[string]*longhorn.Node, error) {
 }
 
 func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
+	logrus.Debugf("Prepare to find a random ready node")
 	nodeList, err := s.ListNodes()
-	msg := fmt.Sprintf("nodelist %v", nodeList)
-	logrus.Errorf(msg)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to get random ready node")
 	}
 	var usableNode *longhorn.Node
 	for name := range nodeList {
