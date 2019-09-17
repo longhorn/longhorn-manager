@@ -151,12 +151,12 @@ func GetEngineImageLabels(engineImageName string) map[string]string {
 	}
 }
 
-func GetInstanceManagerLabels(node, engineImageName, managerType string) map[string]string {
+func GetInstanceManagerLabels(node, engineImageName string, managerType InstanceManagerType) map[string]string {
 	return map[string]string{
 		GetLonghornLabelComponentKey():                        LonghornLabelInstanceManager,
 		GetLonghornLabelKey(LonghornLabelNode):                node,
 		GetLonghornLabelKey(LonghornLabelEngineImage):         engineImageName,
-		GetLonghornLabelKey(LonghornLabelInstanceManagerType): managerType,
+		GetLonghornLabelKey(LonghornLabelInstanceManagerType): string(managerType),
 	}
 }
 
