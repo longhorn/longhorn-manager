@@ -496,6 +496,7 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(im *longhorn.InstanceM
 		return
 	}
 
+	// replica's NodeID won't change, don't need to check instance manager
 	rs, err := rc.ds.ListReplicasByNode(im.Spec.NodeID)
 	if err != nil {
 		logrus.Warnf("Failed to list replicas on node %v", im.Spec.NodeID)
