@@ -258,7 +258,7 @@ var (
 		DisplayName: "Kubernetes Taint Toleration",
 		Description: `By setting tolerations for Longhorn then adding taints for the nodes, the nodes with large storage can be dedicated to Longhorn only (to store replica data) and reject other general workloads.
 Before modifying toleration setting, all Longhorn volumes should be detached then Longhorn components will be restarted to apply new tolerations. And toleration update will take a while. Users cannot operate Longhorn system during update. Hence it's recommended to set toleration during Longhorn deployment.
-Multiple tolerations can be set here, and these tolerations are separated by comma. For example, "key1=value1:NoSchedule, key2:NoExecute". 
+Multiple tolerations can be set here, and these tolerations are separated by semicolon. For example, "key1=value1:NoSchedule; key2:NoExecute". 
 Notice that "kubernetes.io" is used as the key of all Kubernetes default tolerations, please do not contain this substring in your toleration setting.`,
 		Category: SettingCategoryGeneral,
 		Type:     SettingTypeString,
@@ -449,7 +449,7 @@ func UnmarshalTolerations(tolerationSetting string) ([]v1.Toleration, error) {
 
 	tolerationSetting = strings.Trim(tolerationSetting, " ")
 	if tolerationSetting != "" {
-		tolerationList := strings.Split(tolerationSetting, ",")
+		tolerationList := strings.Split(tolerationSetting, ";")
 		for _, t := range tolerationList {
 			toleration, err := ValidateAndUnmarshalToleration(t)
 			if err != nil {
