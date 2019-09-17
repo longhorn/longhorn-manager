@@ -1245,13 +1245,6 @@ func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, 
 	return result, nil
 }
 
-func getInstanceManagerSelector(node, image, managerType string) (labels.Selector, error) {
-	labels := types.GetInstanceManagerLabels(node, image, managerType)
-	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: labels,
-	})
-}
-
 func CheckInstanceManagerType(im *longhorn.InstanceManager) (types.InstanceManagerType, error) {
 	imTypeLabelkey := types.GetLonghornLabelKey(types.LonghornLabelInstanceManagerType)
 	imType, exist := im.Labels[imTypeLabelkey]
@@ -1273,7 +1266,9 @@ func CheckInstanceManagerType(im *longhorn.InstanceManager) (types.InstanceManag
 // duplicate information already in the spec, spec cannot be used for Field Selectors in CustomResourceDefinitions:
 // https://github.com/kubernetes/kubernetes/issues/53459
 func (s *DataStore) GetInstanceManagerBySelector(node, image string, managerType types.InstanceManagerType) (*longhorn.InstanceManager, error) {
-	selector, err := getInstanceManagerSelector(node, image, string(managerType))
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetInstanceManagerLabels(node, image, managerType),
+	})
 	if err != nil {
 		return nil, err
 	}

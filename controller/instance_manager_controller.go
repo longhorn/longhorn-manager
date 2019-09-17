@@ -591,7 +591,7 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 		return nil, err
 	}
 
-	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, image.Name, string(types.InstanceManagerTypeEngine))
+	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, image.Name, types.InstanceManagerTypeEngine)
 	podSpec.Spec.Containers[0].Name = "engine-manager"
 	podSpec.Spec.Containers[0].Command = []string{
 		"engine-manager", "--debug", "daemon", "--listen", "0.0.0.0:8500",
@@ -647,7 +647,7 @@ func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.I
 		return nil, err
 	}
 
-	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, image.Name, string(types.InstanceManagerTypeReplica))
+	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, image.Name, types.InstanceManagerTypeReplica)
 	podSpec.Spec.Containers[0].Name = "replica-manager"
 	podSpec.Spec.Containers[0].Command = []string{
 		"longhorn-instance-manager", "daemon", "--listen", "0.0.0.0:8500",
