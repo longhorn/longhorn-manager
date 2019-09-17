@@ -193,8 +193,14 @@ func (s *DataStore) ListManagerPods() ([]*corev1.Pod, error) {
 	return pList, nil
 }
 
+func getInstanceManagerComponentSelector() (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetInstanceManagerComponentLabel(),
+	})
+}
+
 func (s *DataStore) ListInstanceManagerPods() ([]*corev1.Pod, error) {
-	selector, err := getInstanceManagerSelector("", "", "")
+	selector, err := getInstanceManagerComponentSelector()
 	if err != nil {
 		return nil, err
 	}
