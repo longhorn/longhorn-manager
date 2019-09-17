@@ -559,7 +559,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 	// InitialRestorationRequired means the volume is newly created restored volume and
 	// it needs to be attached automatically so that its engine will be launched then
 	// restore data from backup.
-	if v.Spec.InitialRestorationRequired {
+	if v.Spec.InitialRestorationRequired && v.Spec.NodeID == "" {
 		usableNode, err := vc.ds.GetRandomReadyNode()
 		if err != nil {
 			return err
