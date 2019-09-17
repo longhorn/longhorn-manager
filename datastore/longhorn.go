@@ -1247,15 +1247,6 @@ func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, 
 
 func getInstanceManagerSelector(node, image, managerType string) (labels.Selector, error) {
 	labels := types.GetInstanceManagerLabels(node, image, managerType)
-	if node == "" {
-		delete(labels, types.GetLonghornLabelKey(types.LonghornLabelNode))
-	}
-	if image == "" {
-		delete(labels, types.GetLonghornLabelKey(types.LonghornLabelEngineImage))
-	}
-	if managerType == "" {
-		delete(labels, types.GetLonghornLabelKey(types.LonghornLabelInstanceManagerType))
-	}
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: labels,
 	})
