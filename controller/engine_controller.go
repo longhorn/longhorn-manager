@@ -321,14 +321,27 @@ func (ec *EngineController) enqueueInstanceManagerChange(im *longhorn.InstanceMa
 		return
 	}
 
-	// When node is down, im.Spec.OwnerID is different from im.Spec.NodeID (updated
-	// by instance manager controller),
-	// but the OwnerID and NodeID of all related engines are still im.Spec.NodeID.
+	engineMap := map[string]*longhorn.Engine{}
+
+	// when attaching, instance manager name is not available
 	es, err := ec.ds.ListEnginesByNode(im.Spec.NodeID)
 	if err != nil {
-		logrus.Warnf("Failed to list engines on node %v", im.Spec.NodeID)
+		logrus.Warnf("Failed to list engines for node %v: %v", im.Spec.NodeID, err)
 	}
 	for _, e := range es {
+		engineMap[e.Name] = e
+	}
+
+	// when detaching, node ID is not available
+	es, err = ec.ds.ListEnginesROByInstanceManager(im.Name)
+	if err != nil {
+		logrus.Warnf("Failed to list engines for instance manager %v: %v", im.Name, err)
+	}
+	for _, e := range es {
+		engineMap[e.Name] = e
+	}
+
+	for _, e := range engineMap {
 		ec.enqueueEngine(e)
 	}
 	return

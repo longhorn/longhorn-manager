@@ -430,6 +430,10 @@ func (s *DataStore) CreateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	if err := tagNodeLabel(e.Spec.NodeID, e); err != nil {
 		return nil, err
 	}
+	if err := tagInstanceManagerLabel(e.Status.InstanceManagerName, e); err != nil {
+		return nil, err
+	}
+
 	ret, err := s.lhClient.LonghornV1alpha1().Engines(s.namespace).Create(e)
 	if err != nil {
 		return nil, err
@@ -460,6 +464,9 @@ func (s *DataStore) UpdateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 		return nil, err
 	}
 	if err := tagNodeLabel(e.Spec.NodeID, e); err != nil {
+		return nil, err
+	}
+	if err := tagInstanceManagerLabel(e.Status.InstanceManagerName, e); err != nil {
 		return nil, err
 	}
 
@@ -580,6 +587,10 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {
 		return nil, err
 	}
+	if err := tagInstanceManagerLabel(r.Status.InstanceManagerName, r); err != nil {
+		return nil, err
+	}
+
 	ret, err := s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Create(r)
 	if err != nil {
 		return nil, err
@@ -610,6 +621,9 @@ func (s *DataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 		return nil, err
 	}
 	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {
+		return nil, err
+	}
+	if err := tagInstanceManagerLabel(r.Status.InstanceManagerName, r); err != nil {
 		return nil, err
 	}
 
@@ -1454,4 +1468,50 @@ func (s *DataStore) IsEngineImageCLIAPIVersionOne(imageName string) (bool, error
 		return true, nil
 	}
 	return false, nil
+}
+
+func tagInstanceManagerLabel(imName string, obj runtime.Object) error {
+	// fix instance manager label for object
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[types.GetLonghornLabelKey(types.LonghornLabelInstanceManager)] = imName
+	metadata.SetLabels(labels)
+	return nil
+}
+
+func getInstanceManagerLabels(imName string) map[string]string {
+	return map[string]string{
+		types.GetLonghornLabelKey(types.LonghornLabelInstanceManager): imName,
+	}
+}
+
+func getInstanceManagerSelector(imName string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: getInstanceManagerLabels(imName),
+	})
+}
+
+func (s *DataStore) ListEnginesROByInstanceManager(name string) ([]*longhorn.Engine, error) {
+	selector, err := getInstanceManagerSelector(name)
+	list, err := s.eLister.Engines(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (s *DataStore) ListReplicasROByInstanceManager(name string) ([]*longhorn.Replica, error) {
+	selector, err := getInstanceManagerSelector(name)
+	list, err := s.rLister.Replicas(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	return list, nil
 }
