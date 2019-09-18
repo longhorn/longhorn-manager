@@ -56,6 +56,7 @@ type EngineImageController struct {
 	vStoreSynced  cache.InformerSynced
 	dsStoreSynced cache.InformerSynced
 	nStoreSynced  cache.InformerSynced
+	imStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
 }
@@ -67,6 +68,7 @@ func NewEngineImageController(
 	volumeInformer lhinformers.VolumeInformer,
 	dsInformer appsinformers_v1beta2.DaemonSetInformer,
 	nodeInformer lhinformers.NodeInformer,
+	imInformer lhinformers.InstanceManagerInformer,
 	kubeClient clientset.Interface,
 	namespace string, controllerID, serviceAccount string) *EngineImageController {
 
@@ -89,6 +91,7 @@ func NewEngineImageController(
 		vStoreSynced:  volumeInformer.Informer().HasSynced,
 		dsStoreSynced: dsInformer.Informer().HasSynced,
 		nStoreSynced:  nodeInformer.Informer().HasSynced,
+		imStoreSynced: imInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-engine-image"),
 	}
@@ -148,6 +151,21 @@ func NewEngineImageController(
 		},
 	})
 
+	imInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			im := obj.(*longhorn.InstanceManager)
+			ic.enqueueInstanceManager(im)
+		},
+		UpdateFunc: func(old, cur interface{}) {
+			curIM := cur.(*longhorn.InstanceManager)
+			ic.enqueueInstanceManager(curIM)
+		},
+		DeleteFunc: func(obj interface{}) {
+			im := obj.(*longhorn.InstanceManager)
+			ic.enqueueInstanceManager(im)
+		},
+	})
+
 	return ic
 }
 
@@ -158,7 +176,7 @@ func (ic *EngineImageController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start Longhorn Engine Image controller")
 	defer logrus.Infof("Shutting down Longhorn Engine Image controller")
 
-	if !controller.WaitForCacheSync("longhorn engine images", stopCh, ic.iStoreSynced, ic.vStoreSynced, ic.dsStoreSynced, ic.nStoreSynced) {
+	if !controller.WaitForCacheSync("longhorn engine images", stopCh, ic.iStoreSynced, ic.vStoreSynced, ic.dsStoreSynced, ic.nStoreSynced, ic.imStoreSynced) {
 		return
 	}
 
@@ -533,6 +551,17 @@ func (ic *EngineImageController) enqueueAllEngineImagesForNodeChange() {
 	for _, ei := range engineImages {
 		ic.enqueueEngineImage(ei)
 	}
+	return
+}
+
+func (ic *EngineImageController) enqueueInstanceManager(im *longhorn.InstanceManager) {
+	ei, err := ic.ds.GetEngineImage(im.Spec.EngineImage)
+	if err != nil {
+		logrus.Errorf("failed to get the engine image %v when enqueuing instance manager change: %v", im.Spec.EngineImage, err)
+		return
+	}
+
+	ic.enqueueEngineImage(ei)
 	return
 }
 
