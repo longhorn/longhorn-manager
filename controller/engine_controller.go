@@ -313,9 +313,6 @@ func (ec *EngineController) enqueueEngine(e *longhorn.Engine) {
 }
 
 func (ec *EngineController) enqueueInstanceManagerChange(im *longhorn.InstanceManager) {
-	if im.Spec.OwnerID != ec.controllerID {
-		return
-	}
 	imType, err := datastore.CheckInstanceManagerType(im)
 	if err != nil || imType != types.InstanceManagerTypeEngine {
 		return
@@ -342,7 +339,9 @@ func (ec *EngineController) enqueueInstanceManagerChange(im *longhorn.InstanceMa
 	}
 
 	for _, e := range engineMap {
-		ec.enqueueEngine(e)
+		if e.Spec.OwnerID == ec.controllerID {
+			ec.enqueueEngine(e)
+		}
 	}
 	return
 }
