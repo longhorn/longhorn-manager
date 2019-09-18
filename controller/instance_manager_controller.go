@@ -366,7 +366,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 				im.Status.CurrentState = types.InstanceManagerStateStarting
 			} else if im.Status.CurrentState != types.InstanceManagerStateStarting {
 				im.Status.CurrentState = types.InstanceManagerStateError
-				logrus.Errorf("BUG: Instance Manager Pod is pending but doesn't match Instance Manager state")
+				logrus.Errorf("Instance Manager %v is state %v but the related pod is pending.", im.Name, im.Status.CurrentState)
 			}
 		case v1.PodRunning:
 			// Make sure readiness probe has passed.
