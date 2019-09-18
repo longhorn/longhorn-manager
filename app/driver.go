@@ -192,7 +192,7 @@ func deployDriver(c *cli.Context) error {
 		err = deployCSIDriver(kubeClient, lhClient, c, managerImage, managerURL)
 	case FlagDriverFlexvolume:
 		logrus.Debug("Deploying Flexvolume driver")
-		err = deployFlexvolumeDriver(kubeClient, c, managerImage, managerURL)
+		err = deployFlexvolumeDriver(kubeClient, lhClient, c, managerImage, managerURL)
 	default:
 		return fmt.Errorf("Unsupported driver %s", driver)
 	}
@@ -233,11 +233,20 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 	csiProvisionerReplicaCount := c.Int(FlagCSIProvisionerReplicaCount)
 	namespace := os.Getenv(types.EnvPodNamespace)
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
-
 	rootDir := c.String(FlagKubeletRootDir)
+
+	setting, err := lhClient.LonghornV1alpha1().Settings(namespace).Get(string(types.SettingNameTaintToleration), metav1.GetOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to get taint toleration setting before starting CSI driver")
+	}
+	tolerations, err := types.UnmarshalTolerations(setting.Value)
+	if err != nil {
+		return errors.Wrapf(err, "failed to unmarshal taint toleration setting before starting CSI driver")
+	}
+
 	if rootDir == "" {
 		var err error
-		rootDir, err = getProcArg(kubeClient, managerImage, serviceAccountName, ArgKubeletRootDir)
+		rootDir, err = getProcArg(kubeClient, managerImage, serviceAccountName, ArgKubeletRootDir, tolerations)
 		if err != nil {
 			logrus.Error(err)
 			return err
@@ -254,15 +263,6 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 
 	if err := handleCSIUpgrade(kubeClient, namespace); err != nil {
 		return err
-	}
-
-	setting, err := lhClient.LonghornV1alpha1().Settings(namespace).Get(string(types.SettingNameTaintToleration), metav1.GetOptions{})
-	if err != nil {
-		return errors.Wrapf(err, "failed to get taint toleration setting before starting CSI driver")
-	}
-	tolerations, err := types.UnmarshalTolerations(setting.Value)
-	if err != nil {
-		return errors.Wrapf(err, "failed to unmarshal taint toleration setting before starting CSI driver")
 	}
 
 	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount, tolerations)
@@ -313,12 +313,23 @@ func handleCSIUpgrade(kubeClient *clientset.Clientset, namespace string) error {
 	return nil
 }
 
-func deployFlexvolumeDriver(kubeClient *clientset.Clientset, c *cli.Context, managerImage, managerURL string) error {
+func deployFlexvolumeDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clientset, c *cli.Context, managerImage, managerURL string) error {
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
 	flexvolumeDir := c.String(FlagFlexvolumeDir)
+	namespace := os.Getenv(types.EnvPodNamespace)
+
+	setting, err := lhClient.LonghornV1alpha1().Settings(namespace).Get(string(types.SettingNameTaintToleration), metav1.GetOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to get taint toleration setting before starting CSI driver")
+	}
+	tolerations, err := types.UnmarshalTolerations(setting.Value)
+	if err != nil {
+		return errors.Wrapf(err, "failed to unmarshal taint toleration setting before starting CSI driver")
+	}
+
 	if flexvolumeDir == "" {
 		var err error
-		flexvolumeDir, err = getProcArg(kubeClient, managerImage, serviceAccountName, ArgFlexvolumePluginDir)
+		flexvolumeDir, err = getProcArg(kubeClient, managerImage, serviceAccountName, ArgFlexvolumePluginDir, tolerations)
 		if err != nil {
 			logrus.Error(err)
 			return err
