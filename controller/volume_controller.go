@@ -794,6 +794,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 		replicaAddressMap := map[string]string{}
 		for _, r := range rs {
+			// Ignore unscheduled replicas
+			if r.Spec.NodeID == "" {
+				continue
+			}
 			if r.Spec.FailedAt != "" {
 				continue
 			}
