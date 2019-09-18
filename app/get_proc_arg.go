@@ -155,6 +155,13 @@ func getProcCmdline(kubeClient *clientset.Clientset, managerImage, serviceAccoun
 		return "", fmt.Errorf("failed to detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
 	}
 
+	if _, err := kubeClient.CoreV1().Pods(namespace).Get(name, metav1.GetOptions{}); err == nil {
+		logrus.Warnf("Found old detection pod %v, need to clean up it before deploying new one", name)
+		if err := kubeClient.CoreV1().Pods(namespace).Delete(name, &metav1.DeleteOptions{}); err != nil {
+			return "", errors.Wrapf(err, "failed to clean up old detection pod %v", name)
+		}
+	}
+
 	if err := deployDetectionPod(kubeClient, namespace, managerImage, serviceAccountName, name, script, tolerations); err != nil {
 		return "", errors.Wrapf(err, "failed to deploy proc cmdline detection pod %v", name)
 	}
