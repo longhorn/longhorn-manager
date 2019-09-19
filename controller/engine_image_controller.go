@@ -749,6 +749,7 @@ func (ic *EngineImageController) createInstanceManager(ei *longhorn.EngineImage,
 		generateName = "instance-manager-r-"
 	}
 
+	blockOwnerDeletion := true
 	instanceManager := &longhorn.InstanceManager{
 		ObjectMeta: metav1.ObjectMeta{
 			// Even though the labels duplicate information already in the spec, spec cannot be used for
@@ -758,10 +759,11 @@ func (ic *EngineImageController) createInstanceManager(ei *longhorn.EngineImage,
 			Name:   generateName + util.RandomID(),
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: longhorn.SchemeGroupVersion.String(),
-					Kind:       longhorn.SchemeGroupVersion.WithKind("EngineImage").String(),
-					Name:       ei.Name,
-					UID:        ei.UID,
+					APIVersion:         longhorn.SchemeGroupVersion.String(),
+					Kind:               longhorn.SchemeGroupVersion.WithKind("EngineImage").String(),
+					Name:               ei.Name,
+					UID:                ei.UID,
+					BlockOwnerDeletion: &blockOwnerDeletion,
 				},
 			},
 		},
