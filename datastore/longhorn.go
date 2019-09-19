@@ -806,7 +806,8 @@ func (s *DataStore) UpdateEngineImage(img *longhorn.EngineImage) (*longhorn.Engi
 
 // DeleteEngineImage won't result in immediately deletion since finalizer was set by default
 func (s *DataStore) DeleteEngineImage(name string) error {
-	return s.lhClient.LonghornV1alpha1().EngineImages(s.namespace).Delete(name, &metav1.DeleteOptions{})
+	propagation := metav1.DeletePropagationForeground
+	return s.lhClient.LonghornV1alpha1().EngineImages(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
 }
 
 // RemoveFinalizerForEngineImage will result in deletion if DeletionTimestamp was set
