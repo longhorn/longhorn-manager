@@ -166,6 +166,13 @@ func GetInstanceManagerComponentLabel() map[string]string {
 	}
 }
 
+func GetInstanceManagerWithEngineImageKeyLabel(engineImageName string) map[string]string {
+	return map[string]string{
+		GetLonghornLabelComponentKey():                LonghornLabelInstanceManager,
+		GetLonghornLabelKey(LonghornLabelEngineImage): engineImageName,
+	}
+}
+
 func GetEngineImageChecksumName(image string) string {
 	return engineImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:EngineImageChecksumNameLength]
 }
