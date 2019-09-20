@@ -3,7 +3,7 @@ package datastore
 import (
 	"fmt"
 
-	appsv1beta2 "k8s.io/api/apps/v1beta2"
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1beta1 "k8s.io/api/batch/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -97,20 +97,20 @@ func (s *DataStore) DeleteCronJob(cronJobName string) error {
 	return nil
 }
 
-func (s *DataStore) CreateEngineImageDaemonSet(ds *appsv1beta2.DaemonSet) error {
+func (s *DataStore) CreateEngineImageDaemonSet(ds *appsv1.DaemonSet) error {
 	if ds.Labels == nil {
 		ds.Labels = map[string]string{}
 	}
 	for k, v := range types.GetEngineImageLabels(types.GetEngineImageNameFromDaemonSetName(ds.Name)) {
 		ds.Labels[k] = v
 	}
-	if _, err := s.kubeClient.AppsV1beta2().DaemonSets(s.namespace).Create(ds); err != nil {
+	if _, err := s.kubeClient.AppsV1().DaemonSets(s.namespace).Create(ds); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *DataStore) GetEngineImageDaemonSet(name string) (*appsv1beta2.DaemonSet, error) {
+func (s *DataStore) GetEngineImageDaemonSet(name string) (*appsv1.DaemonSet, error) {
 	resultRO, err := s.dsLister.DaemonSets(s.namespace).Get(name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -141,38 +141,38 @@ func (s *DataStore) GetInstanceManagerPod(name string) (*corev1.Pod, error) {
 	return resultRO.DeepCopy(), nil
 }
 
-func (s *DataStore) GetDaemonSet(name string) (*appsv1beta2.DaemonSet, error) {
+func (s *DataStore) GetDaemonSet(name string) (*appsv1.DaemonSet, error) {
 	return s.dsLister.DaemonSets(s.namespace).Get(name)
 }
 
-func (s *DataStore) ListDaemonSet() ([]*appsv1beta2.DaemonSet, error) {
+func (s *DataStore) ListDaemonSet() ([]*appsv1.DaemonSet, error) {
 	return s.dsLister.DaemonSets(s.namespace).List(labels.Everything())
 }
 
-func (s *DataStore) UpdateDaemonSet(obj *appsv1beta2.DaemonSet) (*appsv1beta2.DaemonSet, error) {
-	return s.kubeClient.AppsV1beta2().DaemonSets(s.namespace).Update(obj)
+func (s *DataStore) UpdateDaemonSet(obj *appsv1.DaemonSet) (*appsv1.DaemonSet, error) {
+	return s.kubeClient.AppsV1().DaemonSets(s.namespace).Update(obj)
 }
 
 func (s *DataStore) DeleteDaemonSet(name string) error {
 	propagation := metav1.DeletePropagationForeground
-	return s.kubeClient.AppsV1beta2().DaemonSets(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
+	return s.kubeClient.AppsV1().DaemonSets(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
 }
 
-func (s *DataStore) GetDeployment(name string) (*appsv1beta2.Deployment, error) {
+func (s *DataStore) GetDeployment(name string) (*appsv1.Deployment, error) {
 	return s.dpLister.Deployments(s.namespace).Get(name)
 }
 
-func (s *DataStore) ListDeployment() ([]*appsv1beta2.Deployment, error) {
+func (s *DataStore) ListDeployment() ([]*appsv1.Deployment, error) {
 	return s.dpLister.Deployments(s.namespace).List(labels.Everything())
 }
 
-func (s *DataStore) UpdateDeployment(obj *appsv1beta2.Deployment) (*appsv1beta2.Deployment, error) {
-	return s.kubeClient.AppsV1beta2().Deployments(s.namespace).Update(obj)
+func (s *DataStore) UpdateDeployment(obj *appsv1.Deployment) (*appsv1.Deployment, error) {
+	return s.kubeClient.AppsV1().Deployments(s.namespace).Update(obj)
 }
 
 func (s *DataStore) DeleteDeployment(name string) error {
 	propagation := metav1.DeletePropagationForeground
-	return s.kubeClient.AppsV1beta2().Deployments(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
+	return s.kubeClient.AppsV1().Deployments(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
 }
 
 func (s *DataStore) ListManagerPods() ([]*corev1.Pod, error) {

@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	appsv1beta2 "k8s.io/api/apps/v1beta2"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -17,7 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	appsinformers_v1beta2 "k8s.io/client-go/informers/apps/v1beta2"
+	appsinformers "k8s.io/client-go/informers/apps/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -66,7 +66,7 @@ func NewEngineImageController(
 	scheme *runtime.Scheme,
 	engineImageInformer lhinformers.EngineImageInformer,
 	volumeInformer lhinformers.VolumeInformer,
-	dsInformer appsinformers_v1beta2.DaemonSetInformer,
+	dsInformer appsinformers.DaemonSetInformer,
 	nodeInformer lhinformers.NodeInformer,
 	imInformer lhinformers.InstanceManagerInformer,
 	kubeClient clientset.Interface,
@@ -585,7 +585,7 @@ func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *met
 	ic.enqueueEngineImage(engineImage)
 }
 
-func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []v1.Toleration) *appsv1beta2.DaemonSet {
+func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []v1.Toleration) *appsv1.DaemonSet {
 	dsName := types.GetDaemonSetNameFromEngineImageName(ei.Name)
 	image := ei.Spec.Image
 	cmd := []string{
@@ -596,17 +596,17 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 		"cp /usr/local/bin/longhorn* /data/ && echo installed && trap 'rm /data/longhorn* && echo cleaned up' EXIT && sleep infinity",
 	}
 	maxUnavailable := intstr.FromString(`100%`)
-	d := &appsv1beta2.DaemonSet{
+	d := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: dsName,
 		},
-		Spec: appsv1beta2.DaemonSetSpec{
+		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: types.GetEngineImageLabels(ei.Name),
 			},
-			UpdateStrategy: appsv1beta2.DaemonSetUpdateStrategy{
-				Type: appsv1beta2.RollingUpdateDaemonSetStrategyType,
-				RollingUpdate: &appsv1beta2.RollingUpdateDaemonSet{
+			UpdateStrategy: appsv1.DaemonSetUpdateStrategy{
+				Type: appsv1.RollingUpdateDaemonSetStrategyType,
+				RollingUpdate: &appsv1.RollingUpdateDaemonSet{
 					MaxUnavailable: &maxUnavailable,
 				},
 			},
