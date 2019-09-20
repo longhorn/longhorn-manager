@@ -2,11 +2,11 @@ package datastore
 
 import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	appsinformers_v1beta2 "k8s.io/client-go/informers/apps/v1beta2"
+	appsinformers "k8s.io/client-go/informers/apps/v1"
 	batchinformers_v1beta1 "k8s.io/client-go/informers/batch/v1beta1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	appslisters_v1beta2 "k8s.io/client-go/listers/apps/v1beta2"
+	appslisters "k8s.io/client-go/listers/apps/v1"
 	batchlisters_v1beta1 "k8s.io/client-go/listers/batch/v1beta1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -45,9 +45,9 @@ type DataStore struct {
 	pStoreSynced   cache.InformerSynced
 	cjLister       batchlisters_v1beta1.CronJobLister
 	cjStoreSynced  cache.InformerSynced
-	dsLister       appslisters_v1beta2.DaemonSetLister
+	dsLister       appslisters.DaemonSetLister
 	dsStoreSynced  cache.InformerSynced
-	dpLister       appslisters_v1beta2.DeploymentLister
+	dpLister       appslisters.DeploymentLister
 	dpStoreSynced  cache.InformerSynced
 	pvLister       corelisters.PersistentVolumeLister
 	pvStoreSynced  cache.InformerSynced
@@ -69,8 +69,8 @@ func NewDataStore(
 
 	podInformer coreinformers.PodInformer,
 	cronJobInformer batchinformers_v1beta1.CronJobInformer,
-	daemonSetInformer appsinformers_v1beta2.DaemonSetInformer,
-	deploymentInformer appsinformers_v1beta2.DeploymentInformer,
+	daemonSetInformer appsinformers.DaemonSetInformer,
+	deploymentInformer appsinformers.DeploymentInformer,
 	persistentVolumeInformer coreinformers.PersistentVolumeInformer,
 	persistentVolumeClaimInformer coreinformers.PersistentVolumeClaimInformer,
 	kubeNodeInformer coreinformers.NodeInformer,

@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/informers/apps/v1beta2"
+	appsv1 "k8s.io/client-go/informers/apps/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
@@ -62,7 +62,7 @@ func NewUninstallController(
 	engineImageInformer lhinformers.EngineImageInformer,
 	nodeInformer lhinformers.NodeInformer,
 	imInformer lhinformers.InstanceManagerInformer,
-	daemonSetInformer v1beta2.DaemonSetInformer,
+	daemonSetInformer appsv1.DaemonSetInformer,
 ) *UninstallController {
 	c := &UninstallController{
 		namespace: namespace,

@@ -9,7 +9,7 @@ import (
 	"github.com/urfave/cli"
 
 	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
-	appsv1beta2 "k8s.io/api/apps/v1beta2"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -292,7 +292,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 
 func handleCSIUpgrade(kubeClient *clientset.Clientset, namespace string) error {
 	// Upgrade from v0.3.x to v0.4.0, remove the existing attacher/provisioner statefulsets
-	statefulSets, err := kubeClient.AppsV1beta2().StatefulSets(namespace).List(metav1.ListOptions{})
+	statefulSets, err := kubeClient.AppsV1().StatefulSets(namespace).List(metav1.ListOptions{})
 	if err != nil {
 		// no existing statefulset needs to be cleaned up
 		if apierrors.IsNotFound(err) {
@@ -303,7 +303,7 @@ func handleCSIUpgrade(kubeClient *clientset.Clientset, namespace string) error {
 	for _, s := range statefulSets.Items {
 		if (s.Name == types.CSIAttacherName || s.Name == types.CSIProvisionerName) && s.DeletionTimestamp == nil {
 			propagation := metav1.DeletePropagationForeground
-			if err := kubeClient.AppsV1beta2().StatefulSets(namespace).Delete(
+			if err := kubeClient.AppsV1().StatefulSets(namespace).Delete(
 				s.Name, &metav1.DeleteOptions{PropagationPolicy: &propagation}); err != nil {
 				return err
 			}
@@ -375,16 +375,16 @@ func deployFlexvolumeDriver(kubeClient *clientset.Clientset, lhClient *lhclients
 	return nil
 }
 
-func getFlexvolumeDaemonSetSpec(image, flexvolumeDir string) *appsv1beta2.DaemonSet {
+func getFlexvolumeDaemonSetSpec(image, flexvolumeDir string) *appsv1.DaemonSet {
 	cmd := []string{
 		"/entrypoint.sh",
 	}
 	privilege := true
-	d := &appsv1beta2.DaemonSet{
+	d := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: LonghornFlexvolumeDriver,
 		},
-		Spec: appsv1beta2.DaemonSetSpec{
+		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"app": LonghornFlexvolumeDriver,
@@ -509,8 +509,8 @@ func newDaemonSetOps(kubeClient *clientset.Clientset) (*DaemonSetOps, error) {
 	}, nil
 }
 
-func (ops *DaemonSetOps) Get(name string) (*appsv1beta2.DaemonSet, error) {
-	d, err := ops.kubeClient.AppsV1beta2().DaemonSets(ops.namespace).Get(name, metav1.GetOptions{})
+func (ops *DaemonSetOps) Get(name string) (*appsv1.DaemonSet, error) {
+	d, err := ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Get(name, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
@@ -520,11 +520,11 @@ func (ops *DaemonSetOps) Get(name string) (*appsv1beta2.DaemonSet, error) {
 	return d, nil
 }
 
-func (ops *DaemonSetOps) Create(name string, d *appsv1beta2.DaemonSet) (*appsv1beta2.DaemonSet, error) {
-	return ops.kubeClient.AppsV1beta2().DaemonSets(ops.namespace).Create(d)
+func (ops *DaemonSetOps) Create(name string, d *appsv1.DaemonSet) (*appsv1.DaemonSet, error) {
+	return ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Create(d)
 }
 
 func (ops *DaemonSetOps) Delete(name string) error {
 	propagation := metav1.DeletePropagationForeground
-	return ops.kubeClient.AppsV1beta2().DaemonSets(ops.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
+	return ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
 }

@@ -22,15 +22,15 @@ func (s *DataStore) GetAllServicesList() (runtime.Object, error) {
 	return s.kubeClient.CoreV1().Services(s.namespace).List(metav1.ListOptions{})
 }
 func (s *DataStore) GetAllDeploymentsList() (runtime.Object, error) {
-	return s.kubeClient.AppsV1beta2().Deployments(s.namespace).List(metav1.ListOptions{})
+	return s.kubeClient.AppsV1().Deployments(s.namespace).List(metav1.ListOptions{})
 }
 
 func (s *DataStore) GetAllDaemonSetsList() (runtime.Object, error) {
-	return s.kubeClient.AppsV1beta2().DaemonSets(s.namespace).List(metav1.ListOptions{})
+	return s.kubeClient.AppsV1().DaemonSets(s.namespace).List(metav1.ListOptions{})
 }
 
 func (s *DataStore) GetAllStatefulSetsList() (runtime.Object, error) {
-	return s.kubeClient.AppsV1beta2().StatefulSets(s.namespace).List(metav1.ListOptions{})
+	return s.kubeClient.AppsV1().StatefulSets(s.namespace).List(metav1.ListOptions{})
 }
 
 func (s *DataStore) GetAllJobsList() (runtime.Object, error) {
