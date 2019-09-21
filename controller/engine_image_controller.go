@@ -430,8 +430,18 @@ func (ic *EngineImageController) updateEngineImageRefCount(ei *longhorn.EngineIm
 		if v.Spec.EngineImage == image || v.Status.CurrentImage == image {
 			refCount++
 		}
+
 		// Volume engine is still using the engine manager of this old engine image after live upgrading to other engine image.
 		if v.Status.CurrentImage != image && v.Status.State == types.VolumeStateAttached {
+			// For old version engine image, there is no related instance manager
+			isCLIAPIVersionOne, err := ic.ds.IsEngineImageCLIAPIVersionOne(v.Status.CurrentImage)
+			if err != nil {
+				return err
+			}
+			if isCLIAPIVersionOne {
+				continue
+			}
+
 			es, err := ic.ds.ListVolumeEngines(v.Name)
 			if err != nil {
 				return err
