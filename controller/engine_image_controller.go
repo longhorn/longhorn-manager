@@ -361,7 +361,6 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	}
 
 	if err := engineapi.CheckCLICompatibilty(engineImage.Status.CLIAPIVersion, engineImage.Status.CLIAPIMinVersion); err != nil {
-		logrus.Errorf("Engine image %v isn't compatible with current manager: %v", engineImage.Spec.Image, err)
 		engineImage.Status.State = types.EngineImageStateIncompatible
 		// Allow update reference count and clean up even it's incompatible since engines may have been upgraded
 	}
