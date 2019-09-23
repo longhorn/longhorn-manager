@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: longhorn-manager
-        image: longhornio/longhorn-manager:v0.6.0
+        image: longhornio/longhorn-manager:v0.6.1
         imagePullPolicy: Always
         securityContext:
           privileged: true
@@ -27,7 +27,7 @@ spec:
         - --engine-image
         - longhornio/longhorn-engine:v0.6.0
         - --manager-image
-        - longhornio/longhorn-manager:v0.6.0
+        - longhornio/longhorn-manager:v0.6.1
         - --service-account
         - longhorn-service-account
         ports:
