@@ -224,10 +224,6 @@ func (kc *KubernetesController) syncKubernetesStatus(key string) (err error) {
 		return errors.Wrapf(err, "Error getting Persistent Volume %s", name)
 	}
 
-	if pv.Spec.CSI.Driver != LonghornCSIDriver {
-		return nil
-	}
-
 	volumeName := kc.getCSIVolumeHandleFromPV(pv)
 	if volumeName == "" {
 		return nil
@@ -308,7 +304,7 @@ func (kc *KubernetesController) getCSIVolumeHandleFromPV(pv *v1.PersistentVolume
 		return ""
 	}
 	// try to get associated Longhorn volume name
-	if pv.Spec.CSI == nil || pv.Spec.CSI.VolumeHandle == "" {
+	if pv.Spec.CSI == nil || pv.Spec.CSI.VolumeHandle == "" || pv.Spec.CSI.Driver != LonghornCSIDriver {
 		return ""
 	}
 	return pv.Spec.CSI.VolumeHandle

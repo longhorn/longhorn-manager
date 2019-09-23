@@ -476,6 +476,22 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	tc.expectVolume.Status.KubernetesStatus.LastPodRefAt = getTestNow()
 	testCases["pv deleted"] = tc
 
+	// unknown PV - no CSI
+	tc = generateKubernetesTestCaseTemplate()
+	tc.pv.Spec.CSI = nil
+	tc.pvc = nil
+	tc.pods = nil
+	tc.copyCurrentToExpect()
+	testCases["unknown pv - no CSI"] = tc
+
+	// unknown PV - wrong CSI driver
+	tc = generateKubernetesTestCaseTemplate()
+	tc.pv.Spec.CSI.Driver = "random_csi_driver"
+	tc.pvc = nil
+	tc.pods = nil
+	tc.copyCurrentToExpect()
+	testCases["unknown pv - wrong CSI driver"] = tc
+
 	s.runKubernetesTestCases(c, testCases)
 }
 
