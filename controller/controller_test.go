@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -15,23 +18,28 @@ import (
 
 	"github.com/longhorn/longhorn-manager/types"
 
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+
 	. "gopkg.in/check.v1"
 )
 
 const (
-	TestNamespace      = "default"
-	TestIP1            = "1.2.3.4"
-	TestIP2            = "5.6.7.8"
-	TestPort1          = 9501
-	TestNode1          = "test-node-name-1"
-	TestNode2          = "test-node-name-2"
-	TestOwnerID1       = TestNode1
-	TestOwnerID2       = TestNode2
-	TestEngineImage    = "longhorn-engine:latest"
-	TestManagerImage   = "longhorn-manager:latest"
-	TestServiceAccount = "longhorn-service-account"
+	TestNamespace           = "default"
+	TestIP1                 = "1.2.3.4"
+	TestIP2                 = "5.6.7.8"
+	TestPort1               = 9501
+	TestNode1               = "test-node-name-1"
+	TestNode2               = "test-node-name-2"
+	TestOwnerID1            = TestNode1
+	TestOwnerID2            = TestNode2
+	TestEngineImage         = "longhorn-engine:latest"
+	TestUpgradedEngineImage = "longhorn-engine:upgraded"
+	TestManagerImage        = "longhorn-manager:latest"
+	TestServiceAccount      = "longhorn-service-account"
 
 	TestInstanceManagerName1 = "instance-manager-engine-image-name-1"
+	TestEngineManagerName    = "instance-manager-e-test-name"
+	TestReplicaManagerName   = "instance-manager-r-test-name"
 
 	TestPod1 = "test-pod-name-1"
 	TestPod2 = "test-pod-name-2"
@@ -39,6 +47,7 @@ const (
 	TestVolumeName         = "test-volume"
 	TestVolumeSize         = 1073741824
 	TestVolumeStaleTimeout = 60
+	TestEngineName         = "test-volume-engine"
 
 	TestPVName  = "test-pv"
 	TestPVCName = "test-pvc"
@@ -74,6 +83,52 @@ func (s *TestSuite) SetUpTest(c *C) {
 	logrus.SetLevel(logrus.DebugLevel)
 }
 
+func newSetting(name, value string) *longhorn.Setting {
+	return &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
+		Setting: types.Setting{
+			Value: value,
+		},
+	}
+}
+
+func newEngineImageDaemonSet() *appsv1.DaemonSet {
+	return &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      getTestEngineImageDaemonSetName(),
+			Namespace: TestNamespace,
+			Labels:    types.GetEngineImageLabels(getTestEngineImageName()),
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: types.GetEngineImageLabels(getTestEngineImageName()),
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   getTestEngineImageDaemonSetName(),
+					Labels: types.GetEngineImageLabels(getTestEngineImageName()),
+				},
+				Spec: corev1.PodSpec{
+					ServiceAccountName: TestServiceAccount,
+					Containers: []corev1.Container{
+						{
+							Name:  getTestEngineImageDaemonSetName(),
+							Image: TestEngineImage,
+						},
+					},
+				},
+			},
+		},
+		Status: appsv1.DaemonSetStatus{
+			DesiredNumberScheduled: 1,
+			NumberAvailable:        1,
+		},
+	}
+}
+
 func getKey(obj interface{}, c *C) string {
 	key, err := controller.KeyFunc(obj)
 	c.Assert(err, IsNil)
@@ -104,6 +159,28 @@ func getTestEngineImageName() string {
 	return types.GetEngineImageChecksumName(TestEngineImage)
 }
 
+func getTestEngineImageDaemonSetName() string {
+	return types.GetDaemonSetNameFromEngineImageName(types.GetEngineImageChecksumName(TestEngineImage))
+}
+
 func randomPort() int {
 	return rand.Int() % 30000
+}
+
+func fakeEngineBinaryChecker(image string) bool {
+	return true
+}
+
+func fakeEngineImageUpdater(ei *longhorn.EngineImage) error {
+	return nil
+}
+
+func fakeInstanceManagerNameGenerator(imType types.InstanceManagerType) (string, error) {
+	switch imType {
+	case types.InstanceManagerTypeEngine:
+		return TestEngineManagerName, nil
+	case types.InstanceManagerTypeReplica:
+		return TestReplicaManagerName, nil
+	}
+	return "", fmt.Errorf("Cannot generate instance manager name for unknown instance manager type %v", imType)
 }

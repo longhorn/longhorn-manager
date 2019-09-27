@@ -94,6 +94,10 @@ const (
 	MaximumJobNameSize = 8
 
 	engineImagePrefix = "ei-"
+
+	instanceManagerPrefix = "instance-manager-"
+	engineManagerPrefix   = instanceManagerPrefix + "e-"
+	replicaManagerPrefix  = instanceManagerPrefix + "r-"
 )
 
 func GenerateEngineNameForVolume(vName string) string {
@@ -182,6 +186,14 @@ func GetVolumeLabels(volumeName string) map[string]string {
 
 func GetEngineImageChecksumName(image string) string {
 	return engineImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:EngineImageChecksumNameLength]
+}
+
+func GetRandomEngineManagerName() string {
+	return engineManagerPrefix + util.RandomID()
+}
+
+func GetRandomReplicaManagerName() string {
+	return replicaManagerPrefix + util.RandomID()
 }
 
 // GetVolumeConditionFromStatus returns a copy of v.Status.Condition[conditionType]

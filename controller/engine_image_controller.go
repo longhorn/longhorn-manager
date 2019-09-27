@@ -59,6 +59,12 @@ type EngineImageController struct {
 	imStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
+
+	// for unit test
+	nowHandler                   func() string
+	engineBinaryChecker          func(string) bool
+	engineImageVersionUpdater    func(*longhorn.EngineImage) error
+	instanceManagerNameGenerator func(types.InstanceManagerType) (string, error)
 }
 
 func NewEngineImageController(
@@ -94,6 +100,11 @@ func NewEngineImageController(
 		imStoreSynced: imInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-engine-image"),
+
+		nowHandler:                   util.Now,
+		engineBinaryChecker:          types.EngineBinaryExistOnHostForImage,
+		engineImageVersionUpdater:    updateEngineImageVersion,
+		instanceManagerNameGenerator: getInstanceManagerName,
 	}
 
 	engineImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -347,7 +358,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return nil
 	}
 
-	if !types.EngineBinaryExistOnHostForImage(engineImage.Spec.Image) {
+	if !ic.engineBinaryChecker(engineImage.Spec.Image) {
 		engineImage.Status.State = types.EngineImageStateDeploying
 		return nil
 	}
@@ -355,7 +366,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	// will only become ready for the first time if all the following functions succeed
 	engineImage.Status.State = types.EngineImageStateReady
 
-	if err := ic.updateEngineImageVersion(engineImage); err != nil {
+	if err := ic.engineImageVersionUpdater(engineImage); err != nil {
 		return err
 	}
 
@@ -396,7 +407,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	return nil
 }
 
-func (ic *EngineImageController) updateEngineImageVersion(ei *longhorn.EngineImage) error {
+func updateEngineImageVersion(ei *longhorn.EngineImage) error {
 	engineCollection := &engineapi.EngineCollection{}
 	// we're getting local longhorn engine version, don't need volume etc
 	client, err := engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
@@ -470,7 +481,7 @@ func (ic *EngineImageController) updateEngineImageRefCount(ei *longhorn.EngineIm
 	ei.Status.RefCount = refCount
 	if ei.Status.RefCount == 0 {
 		if ei.Status.NoRefSince == "" {
-			ei.Status.NoRefSince = util.Now()
+			ei.Status.NoRefSince = ic.nowHandler()
 		}
 	} else {
 		ei.Status.NoRefSince = ""
@@ -504,6 +515,7 @@ func (ic *EngineImageController) cleanupExpiredEngineImage(ei *longhorn.EngineIm
 		}
 
 		logrus.Infof("Engine image %v (%v) expired, clean it up", ei.Name, ei.Spec.Image)
+		// TODO: Need to consider if the engine image can be removed in engine image controller
 		if err := ic.ds.DeleteEngineImage(ei.Name); err != nil {
 			return err
 		}
@@ -764,15 +776,10 @@ func (ic *EngineImageController) syncInstanceManagers(ei *longhorn.EngineImage, 
 
 func (ic *EngineImageController) createInstanceManager(ei *longhorn.EngineImage, imType types.InstanceManagerType,
 	node *longhorn.Node) (*longhorn.InstanceManager, error) {
-
-	var generateName string
-	switch imType {
-	case types.InstanceManagerTypeEngine:
-		generateName = "instance-manager-e-"
-	case types.InstanceManagerTypeReplica:
-		generateName = "instance-manager-r-"
+	imName, err := ic.instanceManagerNameGenerator(imType)
+	if err != nil {
+		return nil, err
 	}
-
 	blockOwnerDeletion := true
 	instanceManager := &longhorn.InstanceManager{
 		ObjectMeta: metav1.ObjectMeta{
@@ -780,7 +787,7 @@ func (ic *EngineImageController) createInstanceManager(ei *longhorn.EngineImage,
 			// Field Selectors in CustomResourceDefinitions:
 			// https://github.com/kubernetes/kubernetes/issues/53459
 			Labels: types.GetInstanceManagerLabels(node.Name, ei.Name, imType),
-			Name:   generateName + util.RandomID(),
+			Name:   imName,
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion:         longhorn.SchemeGroupVersion.String(),
@@ -803,4 +810,14 @@ func (ic *EngineImageController) createInstanceManager(ei *longhorn.EngineImage,
 	}
 
 	return ic.ds.CreateInstanceManager(instanceManager)
+}
+
+func getInstanceManagerName(imType types.InstanceManagerType) (string, error) {
+	switch imType {
+	case types.InstanceManagerTypeEngine:
+		return types.GetRandomEngineManagerName(), nil
+	case types.InstanceManagerTypeReplica:
+		return types.GetRandomReplicaManagerName(), nil
+	}
+	return "", fmt.Errorf("cannot generate name for unknown instance manager type %v", imType)
 }

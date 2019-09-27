@@ -49,15 +49,16 @@ func newTolerationSetting() *longhorn.Setting {
 	}
 }
 
-func newEngineImage(state types.EngineImageState) *longhorn.EngineImage {
+func newEngineImage(image string, state types.EngineImageState) *longhorn.EngineImage {
 	return &longhorn.EngineImage{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      getTestEngineImageName(),
-			Namespace: TestNamespace,
-			UID:       uuid.NewUUID(),
+			Name:       types.GetEngineImageChecksumName(image),
+			Namespace:  TestNamespace,
+			UID:        uuid.NewUUID(),
+			Finalizers: []string{longhornFinalizerKey},
 		},
 		Spec: types.EngineImageSpec{
-			Image: TestEngineImage,
+			Image: image,
 		},
 		Status: types.EngineImageStatus{
 			State: state,
@@ -266,7 +267,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		c.Assert(err, IsNil)
 		err = sIndexer.Add(setting)
 		c.Assert(err, IsNil)
-		ei := newEngineImage(types.EngineImageStateReady)
+		ei := newEngineImage(TestEngineImage, types.EngineImageStateReady)
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
 		_, err = lhClient.LonghornV1alpha1().EngineImages(ei.Namespace).Create(ei)
