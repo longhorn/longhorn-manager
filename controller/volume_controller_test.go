@@ -847,7 +847,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		c.Assert(err, IsNil)
 		pIndexer.Add(p)
 
-		ei, err := lhClient.LonghornV1alpha1().EngineImages(TestNamespace).Create(newEngineImage(types.EngineImageStateReady))
+		ei, err := lhClient.LonghornV1alpha1().EngineImages(TestNamespace).Create(newEngineImage(TestEngineImage, types.EngineImageStateReady))
 		c.Assert(err, IsNil)
 		eiIndexer := lhInformerFactory.Longhorn().V1alpha1().EngineImages().Informer().GetIndexer()
 		err = eiIndexer.Add(ei)

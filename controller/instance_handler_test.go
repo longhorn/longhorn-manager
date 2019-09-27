@@ -76,6 +76,7 @@ func newEngine(name, currentImage, imName, ip string, port int, started bool, cu
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: TestNamespace,
+			Labels:    types.GetVolumeLabels(TestVolumeName),
 		},
 		Spec: types.EngineSpec{
 			InstanceSpec: types.InstanceSpec{
@@ -352,7 +353,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 
 		h := newTestInstanceHandler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
 
-		ei, err := lhClient.LonghornV1alpha1().EngineImages(TestNamespace).Create(newEngineImage(types.EngineImageStateReady))
+		ei, err := lhClient.LonghornV1alpha1().EngineImages(TestNamespace).Create(newEngineImage(TestEngineImage, types.EngineImageStateReady))
 		c.Assert(err, IsNil)
 		eiIndexer := lhInformerFactory.Longhorn().V1alpha1().EngineImages().Informer().GetIndexer()
 		err = eiIndexer.Add(ei)
