@@ -35,11 +35,10 @@ import (
 )
 
 const (
-	managerProbeInitialDelay  = 1
-	managerProbePeriodSeconds = 1
+	managerProbeInitialDelay  = 3
+	managerProbePeriodSeconds = 5
 
-	managerLivenessProbeFailureThreshold  = 60
-	managerReadinessProbeFailureThreshold = 15
+	managerLivenessProbeFailureThreshold = 3
 
 	// MaxPollCount, MinPollCount, PollInterval determines how often we sync instance map
 
@@ -550,16 +549,6 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 						InitialDelaySeconds: managerProbeInitialDelay,
 						PeriodSeconds:       managerProbePeriodSeconds,
 						FailureThreshold:    managerLivenessProbeFailureThreshold,
-					},
-					ReadinessProbe: &v1.Probe{
-						Handler: v1.Handler{
-							Exec: &v1.ExecAction{
-								Command: []string{"/usr/local/bin/grpc_health_probe", "-addr=:8500"},
-							},
-						},
-						InitialDelaySeconds: managerProbeInitialDelay,
-						PeriodSeconds:       managerProbePeriodSeconds,
-						FailureThreshold:    managerReadinessProbeFailureThreshold,
 					},
 					SecurityContext: &v1.SecurityContext{
 						Privileged: &privileged,
