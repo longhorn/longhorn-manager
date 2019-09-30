@@ -569,6 +569,19 @@ func CreateDiskPath(path string) error {
 	return nil
 }
 
+func CheckDiskPathReplicaSubdirectory(diskPath string) (bool, error) {
+	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
+	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
+	if err != nil {
+		return false, err
+	}
+	if _, err := nsExec.Execute("ls", []string{filepath.Join(diskPath, ReplicaDirectory)}); err != nil {
+		return false, nil
+	}
+
+	return true, nil
+}
+
 func IsKubernetesDefaultToleration(toleration v1.Toleration) bool {
 	if strings.Contains(toleration.Key, DefaultKubernetesTolerationKey) {
 		return true
