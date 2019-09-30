@@ -562,7 +562,7 @@ func CreateDiskPath(path string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := nsExec.Execute("mkdir", []string{"-p", filepath.Join(path + ReplicaDirectory)}); err != nil {
+	if _, err := nsExec.Execute("mkdir", []string{"-p", filepath.Join(path, ReplicaDirectory)}); err != nil {
 		return errors.Wrapf(err, "error creating data path %v on host", path)
 	}
 
