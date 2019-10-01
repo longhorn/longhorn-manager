@@ -365,6 +365,18 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		// Allow update reference count and clean up even it's incompatible since engines may have been upgraded
 	}
 
+	if engineImage.Status.State != types.EngineImageStateIncompatible && !reflect.DeepEqual(types.GetEngineImageLabels(engineImage.Name), ds.Labels) {
+		engineImage.Status.State = types.EngineImageStateDeploying
+		// Cannot use update to correct the labels. The label update for the DaemonSet won’t be applied to the its pods.
+		// The related issue: https://github.com/longhorn/longhorn/issues/769
+		if err := ic.ds.DeleteDaemonSet(dsName); err != nil && !datastore.ErrorIsNotFound(err) {
+			return errors.Wrapf(err, "cannot delete the DaemonSet with mismatching labels for engine image %v", engineImage.Name)
+		}
+		logrus.Infof("Removed DaemonSet %v with mismatching labels for engine image %v (%v). The DaemonSet with correct labels will be recreated automatically after deletion",
+			dsName, engineImage.Name, engineImage.Spec.Image)
+		return nil
+	}
+
 	if err := ic.syncInstanceManagers(engineImage, readyNodeList); err != nil {
 		return err
 	}
