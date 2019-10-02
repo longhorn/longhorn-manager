@@ -277,11 +277,10 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 
 	dsName := types.GetDaemonSetNameFromEngineImageName(engineImage.Name)
 	if engineImage.DeletionTimestamp != nil {
-		// deleting engine image daemonset will implicitly delete all related instance managers.
 		if err := ic.ds.DeleteDaemonSet(dsName); err != nil && !datastore.ErrorIsNotFound(err) {
-			return errors.Wrapf(err, "cannot cleanup daemonset of engine image %v", engineImage.Name)
+			return errors.Wrapf(err, "cannot cleanup DaemonSet of engine image %v", engineImage.Name)
 		}
-		logrus.Infof("Removed daemon set %v for engine image %v (%v)", dsName, engineImage.Name, engineImage.Spec.Image)
+		logrus.Infof("Removed DaemonSet %v for engine image %v (%v)", dsName, engineImage.Name, engineImage.Spec.Image)
 		if err := ic.ds.DeleteInstanceManagersForEngineImage(engineImage.Name); err != nil {
 			return errors.Wrapf(err, "cannot cleanup instance managers of engine image %v", engineImage.Name)
 		}
