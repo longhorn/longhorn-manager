@@ -254,11 +254,12 @@ func generateTimestamp() string {
 
 type InstanceManager struct {
 	client.Resource
-	CurrentState types.InstanceManagerState `json:"currentState"`
-	EngineImage  string                     `json:"engineImage"`
-	Name         string                     `json:"name"`
-	NodeID       string                     `json:"nodeID"`
-	ManagerType  string                     `json:"managerType"`
+	CurrentState types.InstanceManagerState       `json:"currentState"`
+	EngineImage  string                           `json:"engineImage"`
+	Name         string                           `json:"name"`
+	NodeID       string                           `json:"nodeID"`
+	ManagerType  string                           `json:"managerType"`
+	Instances    map[string]types.InstanceProcess `json:"instances"`
 }
 
 func NewSchema() *client.Schemas {
@@ -300,8 +301,10 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("supportBundle", SupportBundle{})
 	schemas.AddType("supportBundleInitateInput", SupportBundleInitateInput{})
 
-	schemas.AddType("instanceManager", InstanceManager{})
 	schemas.AddType("tag", Tag{})
+
+	schemas.AddType("instanceManager", InstanceManager{})
+	schemas.AddType("instanceProcess", types.InstanceProcess{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
@@ -1016,6 +1019,7 @@ func toInstanceManagerResource(im *longhorn.InstanceManager) *InstanceManager {
 		Name:         im.Name,
 		NodeID:       im.Spec.NodeID,
 		ManagerType:  string(im.Spec.Type),
+		Instances:    im.Status.Instances,
 	}
 }
 
