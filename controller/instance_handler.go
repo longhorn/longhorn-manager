@@ -130,7 +130,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			status.CurrentState = types.InstanceStateStopped
 		}
 		status.CurrentImage = ""
-		status.InstanceManagerName = ""
 		status.IP = ""
 		status.Port = 0
 	default:
@@ -241,7 +240,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		if im != nil && im.DeletionTimestamp == nil {
 			// there is a delay between deleteInstance() invocation and state/InstanceManager update,
 			// deleteInstance() may be called multiple times.
-			if i, exists := im.Status.Instances[instanceName]; exists && (i.Status.State == types.InstanceStateRunning || i.Status.State == types.InstanceStateStarting) {
+			if _, exists := im.Status.Instances[instanceName]; exists {
 				if err := h.deleteInstance(instanceName, runtimeObj); err != nil {
 					return err
 				}
@@ -266,7 +265,6 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		if spec.DesireState != types.InstanceStateStopped {
 			if spec.NodeID != im.Spec.NodeID {
 				status.CurrentState = types.InstanceStateError
-				status.InstanceManagerName = ""
 				status.IP = ""
 				status.NodeBootID = ""
 				err := fmt.Errorf("BUG: instance %v NodeID %v is not the same as the instance manager %v NodeID %v", instanceName, spec.NodeID, im.Name, im.Spec.NodeID)
@@ -283,7 +281,6 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 				}
 			}
 		}
-		status.InstanceManagerName = ""
 	}
 	return nil
 }
