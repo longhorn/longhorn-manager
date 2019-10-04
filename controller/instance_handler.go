@@ -82,6 +82,17 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		return
 	}
 
+	if status.InstanceManagerName != "" && status.InstanceManagerName != im.Name {
+		logrus.Errorf("BUG: The related process of instance %v is found in the instance manager %v, but the instance manager name in the instance status is %v. "+
+			"The instance manager name shouldn't change except for cleanup",
+			instanceName, im.Name, status.InstanceManagerName)
+	}
+	// `status.InstanceManagerName` should be set when the related instance process status
+	// exists in the instance manager.
+	// `status.InstanceManagerName` can be used to clean up the process in instance manager
+	// and fetch log even if the instance status becomes `error` or `stopped`
+	status.InstanceManagerName = im.Name
+
 	switch instance.Status.State {
 	case types.InstanceStateStarting:
 		status.CurrentState = types.InstanceStateStarting
@@ -103,9 +114,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		// different spec.EngineImage for upgrade
 		if status.CurrentImage == "" {
 			status.CurrentImage = spec.EngineImage
-		}
-		if status.InstanceManagerName == "" {
-			status.InstanceManagerName = im.Name
 		}
 		nodeBootID := im.Status.NodeBootID
 		if status.NodeBootID == "" {
@@ -134,7 +142,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.Port = 0
 	default:
 		logrus.Warnf("instance %v state is %v, error message %v", instanceName, instance.Status.State, instance.Status.ErrorMsg)
-		// cannot cleanup InstanceManagerName here, since we need it to print the log.
 		status.CurrentState = types.InstanceStateError
 		status.CurrentImage = ""
 		status.IP = ""
