@@ -179,13 +179,22 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 	}
 
 	var im *longhorn.InstanceManager
-	if !isCLIAPIVersionOne && status.InstanceManagerName != "" {
-		im, err = h.ds.GetInstanceManager(status.InstanceManagerName)
-		if err != nil {
-			if datastore.ErrorIsNotFound(err) {
-				logrus.Debugf("cannot find instance manager %v", status.InstanceManagerName)
-			} else {
-				return err
+	if !isCLIAPIVersionOne {
+		if status.InstanceManagerName != "" {
+			im, err = h.ds.GetInstanceManager(status.InstanceManagerName)
+			if err != nil {
+				if datastore.ErrorIsNotFound(err) {
+					logrus.Debugf("cannot find instance manager %v", status.InstanceManagerName)
+				} else {
+					return err
+				}
+			}
+		}
+		// There should be an available instance manager for a scheduled instance when its related engine image is compatible
+		if im == nil && spec.EngineImage != "" && spec.NodeID != "" {
+			im, err = h.ds.GetInstanceManagerByInstance(obj)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get instance manager for instance %v", instanceName)
 			}
 		}
 	}
@@ -207,12 +216,6 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 	case types.InstanceStateRunning:
 		if isCLIAPIVersionOne {
 			return nil
-		}
-		if im == nil {
-			im, err = h.ds.GetInstanceManagerByInstance(obj)
-			if err != nil {
-				return errors.Wrapf(err, "failed to get instance manager")
-			}
 		}
 
 		if i, exists := im.Status.Instances[instanceName]; exists && i.Status.State == types.InstanceStateRunning {
@@ -244,6 +247,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 			status.Port = 0
 			return nil
 		}
+
 		if im != nil && im.DeletionTimestamp == nil {
 			// there is a delay between deleteInstance() invocation and state/InstanceManager update,
 			// deleteInstance() may be called multiple times.
