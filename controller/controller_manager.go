@@ -106,7 +106,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 		settingInformer,
 		kubeClient, version)
 	kc := NewKubernetesController(ds, scheme, volumeInformer, persistentVolumeInformer,
-		persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer, kubeClient)
+		persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer, kubeClient, controllerID)
 	imc := NewInstanceManagerController(ds, scheme, imInformer, podInformer, kubeClient, namespace, controllerID, serviceAccount)
 
 	go kubeInformerFactory.Start(stopCh)

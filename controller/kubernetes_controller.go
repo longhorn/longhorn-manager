@@ -38,6 +38,9 @@ const (
 )
 
 type KubernetesController struct {
+	// use as the OwnerID of the controller
+	controllerID string
+
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
@@ -71,7 +74,8 @@ func NewKubernetesController(
 	persistentVolumeClaimInformer coreinformers.PersistentVolumeClaimInformer,
 	podInformer coreinformers.PodInformer,
 	volumeAttachmentInformer v1beta1.VolumeAttachmentInformer,
-	kubeClient clientset.Interface) *KubernetesController {
+	kubeClient clientset.Interface,
+	controllerID string) *KubernetesController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -79,6 +83,8 @@ func NewKubernetesController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	kc := &KubernetesController{
+		controllerID: controllerID,
+
 		ds: ds,
 
 		kubeClient:    kubeClient,
@@ -235,6 +241,11 @@ func (kc *KubernetesController) syncKubernetesStatus(key string) (err error) {
 			return nil
 		}
 		return err
+	}
+
+	if volume.Spec.OwnerID != kc.controllerID {
+		// Not ours
+		return nil
 	}
 
 	// existing volume may be used/reused by pv
