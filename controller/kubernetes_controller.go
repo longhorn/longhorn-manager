@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1beta1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -248,6 +250,20 @@ func (kc *KubernetesController) syncKubernetesStatus(key string) (err error) {
 		return nil
 	}
 
+	existingVolume := volume.DeepCopy()
+	defer func() {
+		// we're going to update volume assume things changes
+		if err == nil && !reflect.DeepEqual(existingVolume, volume) {
+			_, err = kc.ds.UpdateVolume(volume)
+		}
+		// requeue if it's conflict
+		if apierrors.IsConflict(errors.Cause(err)) {
+			logrus.Debugf("Requeue for volume %v due to conflict", volumeName)
+			kc.enqueueVolumeChange(volume)
+			err = nil
+		}
+	}()
+
 	// existing volume may be used/reused by pv
 	if volume.Status.KubernetesStatus.PVName != name {
 		volume.Status.KubernetesStatus = types.KubernetesStatus{}
@@ -301,11 +317,6 @@ func (kc *KubernetesController) syncKubernetesStatus(key string) (err error) {
 	kc.setWorkloads(ks, pods)
 
 	defer kc.cleanupVolumeAttachment(terminatingPodCount, volume, ks)
-
-	volume, err = kc.ds.UpdateVolume(volume)
-	if err != nil {
-		return err
-	}
 
 	return nil
 }
