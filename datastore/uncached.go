@@ -52,3 +52,7 @@ func (s *DataStore) GetLonghornNamespace() (*corev1.Namespace, error) {
 func (s *DataStore) GetAllEventsList() (runtime.Object, error) {
 	return s.kubeClient.CoreV1().Events(s.namespace).List(metav1.ListOptions{})
 }
+
+func (s *DataStore) GetAllConfigMaps() (runtime.Object, error) {
+	return s.kubeClient.CoreV1().ConfigMaps(s.namespace).List(metav1.ListOptions{})
+}

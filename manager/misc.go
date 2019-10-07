@@ -211,6 +211,7 @@ func (m *VolumeManager) generateSupportBundleYAMLsForKubernetes(dir string, errL
 	getListAndEncodeToYAML("jobs", m.ds.GetAllJobsList, dir, errLog)
 	getListAndEncodeToYAML("cronjobs", m.ds.GetAllCronJobsList, dir, errLog)
 	getListAndEncodeToYAML("nodes", m.ds.GetAllNodesList, dir, errLog)
+	getListAndEncodeToYAML("configmaps", m.ds.GetAllConfigMaps, dir, errLog)
 }
 
 func getListAndEncodeToYAML(name string, getListFunc GetRuntimeObjectListFunc, yamlsDir string, errLog io.Writer) {
@@ -239,6 +240,9 @@ func (m *VolumeManager) generateSupportBundleYAMLsForLonghorn(dir string, errLog
 	}, dir, errLog)
 	getObjectMapAndEncodeToYAML("replicas", func() (interface{}, error) {
 		return m.ds.ListReplicas()
+	}, dir, errLog)
+	getObjectMapAndEncodeToYAML("instancemanagers", func() (interface{}, error) {
+		return m.ds.ListInstanceManagers()
 	}, dir, errLog)
 }
 
