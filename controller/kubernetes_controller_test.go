@@ -238,7 +238,7 @@ func newTestKubernetesController(lhInformerFactory lhinformerfactory.SharedInfor
 		kubeClient, TestNamespace)
 
 	kc := NewKubernetesController(ds, scheme.Scheme, volumeInformer, persistentVolumeInformer,
-		persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer, kubeClient)
+		persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer, kubeClient, TestNode1)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	kc.eventRecorder = fakeRecorder
