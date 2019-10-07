@@ -407,6 +407,10 @@ func (kc *KubernetesController) cleanupForPVDeletion(pvName string) (bool, error
 		}
 		return false, errors.Wrapf(err, "failed to get volume for cleanup in cleanupForPVDeletion")
 	}
+	if kc.controllerID != volume.Spec.OwnerID {
+		kc.pvToVolumeCache.Delete(pvName)
+		return true, nil
+	}
 	pv, err := kc.pvLister.Get(pvName)
 	if err != nil && !datastore.ErrorIsNotFound(err) {
 		return false, errors.Wrapf(err, "failed to get associated pv in cleanupForPVDeletion")
