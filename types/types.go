@@ -34,6 +34,7 @@ const (
 	LonghornLabelInstanceManager     = "instance-manager"
 	LonghornLabelNode                = "node"
 	LonghornLabelInstanceManagerType = "instance-manager-type"
+	LonghornLabelVolume              = "longhornvolume"
 )
 
 const (
@@ -173,6 +174,12 @@ func GetInstanceManagerWithEngineImageKeyLabel(engineImageName string) map[strin
 	}
 }
 
+func GetVolumeLabels(volumeName string) map[string]string {
+	return map[string]string{
+		LonghornLabelVolume: volumeName,
+	}
+}
+
 func GetEngineImageChecksumName(image string) string {
 	return engineImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:EngineImageChecksumNameLength]
 }
@@ -238,4 +245,13 @@ func GetDaemonSetNameFromEngineImageName(engineImageName string) string {
 
 func GetEngineImageNameFromDaemonSetName(dsName string) string {
 	return strings.TrimPrefix(dsName, "engine-image-")
+}
+
+func LabelsToString(labels map[string]string) string {
+	res := ""
+	for k, v := range labels {
+		res += fmt.Sprintf("%s=%s,", k, v)
+	}
+	res = strings.TrimSuffix(res, ",")
+	return res
 }

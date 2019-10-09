@@ -22,7 +22,6 @@ import (
 )
 
 const (
-	LonghornVolumeKey = "longhornvolume"
 	// NameMaximumLength restricted the length due to Kubernetes name limitation
 	NameMaximumLength = 40
 )
@@ -200,12 +199,6 @@ func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]strin
 	return credentialSecret, nil
 }
 
-func getVolumeLabels(volumeName string) map[string]string {
-	return map[string]string{
-		LonghornVolumeKey: volumeName,
-	}
-}
-
 func checkVolume(v *longhorn.Volume) error {
 	size, err := util.ConvertSize(v.Spec.Size)
 	if err != nil {
@@ -235,8 +228,9 @@ func tagVolumeLabel(volumeName string, obj runtime.Object) error {
 	if labels == nil {
 		labels = map[string]string{}
 	}
-	if labels[LonghornVolumeKey] == "" {
-		labels[LonghornVolumeKey] = volumeName
+
+	for k, v := range types.GetVolumeLabels(volumeName) {
+		labels[k] = v
 	}
 	metadata.SetLabels(labels)
 	return nil
@@ -254,7 +248,7 @@ func fixupMetadata(volumeName string, obj runtime.Object) error {
 
 func getVolumeSelector(volumeName string) (labels.Selector, error) {
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: getVolumeLabels(volumeName),
+		MatchLabels: types.GetVolumeLabels(volumeName),
 	})
 }
 
