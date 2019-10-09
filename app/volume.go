@@ -15,7 +15,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 
-	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
@@ -136,7 +135,7 @@ func NewJob(volumeName, snapshotName, backupTarget string, labels map[string]str
 		return nil, fmt.Errorf("cannot take snapshot for volume %v during migration", v.Name)
 	}
 	eList, err := lhClient.LonghornV1alpha1().Engines(namespace).List(metav1.ListOptions{
-		LabelSelector: datastore.LonghornVolumeKey + "=" + volumeName,
+		LabelSelector: types.LabelsToString(types.GetVolumeLabels(volumeName)),
 	})
 	if err != nil {
 		return nil, err
