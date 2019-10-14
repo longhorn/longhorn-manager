@@ -409,6 +409,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	// Restart instance manager automatically. Otherwise users need to take care of it then we need to expose API
 	// for operating instance manager.
 	if im.Status.CurrentState == types.InstanceManagerStateError || im.Status.CurrentState == types.InstanceManagerStateStopped {
+		logrus.Warnf("Starts to clean up then recreates pod for instance manager %v with state %v", im.Name, im.Status.CurrentState)
 		if err := imc.cleanupInstanceManager(im); err != nil {
 			return err
 		}
