@@ -46,6 +46,7 @@ func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler Instance
 func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceManager, instanceName string, spec *types.InstanceSpec, status *types.InstanceStatus) {
 	if im == nil || im.Status.CurrentState == types.InstanceManagerStateStopped || im.Status.CurrentState == types.InstanceManagerStateError || im.DeletionTimestamp != nil {
 		if status.Started {
+			logrus.Warnf("Cannot find the instance manager for the running instance %v, will mark the instance as state ERROR", instanceName)
 			status.CurrentState = types.InstanceStateError
 		} else {
 			status.CurrentState = types.InstanceStateStopped
@@ -59,6 +60,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 
 	if im.Status.CurrentState == types.InstanceManagerStateStarting {
 		if status.Started {
+			logrus.Warnf("The starting instance manager %v shouldn't contain the running instance %v, will mark the instance as state ERROR", im.Name, instanceName)
 			status.CurrentState = types.InstanceStateError
 			status.CurrentImage = ""
 			status.InstanceManagerName = ""
@@ -71,6 +73,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	instance, exists := im.Status.Instances[instanceName]
 	if !exists {
 		if status.Started {
+			logrus.Warnf("Cannot find the instance status in instance manager %v for the running instance %v, will mark the instance as state ERROR", im.Name, instanceName)
 			status.CurrentState = types.InstanceStateError
 		} else {
 			status.CurrentState = types.InstanceStateStopped
@@ -141,7 +144,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.Port = 0
 	default:
-		logrus.Warnf("instance %v state is %v, error message %v", instanceName, instance.Status.State, instance.Status.ErrorMsg)
+		logrus.Warnf("Instance %v is state %v, error message: %v", instanceName, instance.Status.State, instance.Status.ErrorMsg)
 		status.CurrentState = types.InstanceStateError
 		status.CurrentImage = ""
 		status.IP = ""
