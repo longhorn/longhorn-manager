@@ -648,8 +648,9 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 			},
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:   dsName,
-					Labels: types.GetEngineImageLabels(ei.Name),
+					Name:            dsName,
+					Labels:          types.GetEngineImageLabels(ei.Name),
+					OwnerReferences: datastore.GetOwnerReferencesForEngineImage(ei),
 				},
 				Spec: v1.PodSpec{
 					ServiceAccountName: ic.serviceAccount,
@@ -780,23 +781,14 @@ func (ic *EngineImageController) createInstanceManager(ei *longhorn.EngineImage,
 	if err != nil {
 		return nil, err
 	}
-	blockOwnerDeletion := true
 	instanceManager := &longhorn.InstanceManager{
 		ObjectMeta: metav1.ObjectMeta{
 			// Even though the labels duplicate information already in the spec, spec cannot be used for
 			// Field Selectors in CustomResourceDefinitions:
 			// https://github.com/kubernetes/kubernetes/issues/53459
-			Labels: types.GetInstanceManagerLabels(node.Name, ei.Name, imType),
-			Name:   imName,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion:         longhorn.SchemeGroupVersion.String(),
-					Kind:               types.LonghornKindEngineImage,
-					Name:               ei.Name,
-					UID:                ei.UID,
-					BlockOwnerDeletion: &blockOwnerDeletion,
-				},
-			},
+			Labels:          types.GetInstanceManagerLabels(node.Name, ei.Name, imType),
+			Name:            imName,
+			OwnerReferences: datastore.GetOwnerReferencesForEngineImage(ei),
 		},
 		Spec: types.InstanceManagerSpec{
 			EngineImage: ei.Name,
