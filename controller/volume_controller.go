@@ -1220,9 +1220,6 @@ func (vc *VolumeController) enqueueControlleeChange(obj interface{}) {
 	}
 	ownerRefs := metaObj.GetOwnerReferences()
 	for _, ref := range ownerRefs {
-		if ref.Kind != ownerKindVolume {
-			continue
-		}
 		namespace := metaObj.GetNamespace()
 		vc.ResolveRefAndEnqueue(namespace, &ref)
 		return
@@ -1230,8 +1227,11 @@ func (vc *VolumeController) enqueueControlleeChange(obj interface{}) {
 }
 
 func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.OwnerReference) {
-	if ref.Kind != ownerKindVolume {
-		return
+	if ref.Kind != types.LonghornKindVolume {
+		// TODO: Will stop checking this wrong reference kind after all Longhorn components having used the new kinds
+		if ref.Kind != ownerKindVolume {
+			return
+		}
 	}
 	volume, err := vc.ds.GetVolume(ref.Name)
 	if err != nil {
@@ -1253,7 +1253,7 @@ func (vc *VolumeController) getOwnerReferencesForVolume(v *longhorn.Volume) []me
 	return []metav1.OwnerReference{
 		{
 			APIVersion: longhorn.SchemeGroupVersion.String(),
-			Kind:       ownerKindVolume,
+			Kind:       types.LonghornKindVolume,
 			UID:        v.UID,
 			Name:       v.Name,
 		},
