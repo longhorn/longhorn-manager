@@ -11,6 +11,12 @@ import (
 )
 
 const (
+	LonghornKindVolume          = "Volume"
+	LonghornKindEngineImage     = "EngineImage"
+	LonghornKindInstanceManager = "InstanceManager"
+)
+
+const (
 	DefaultAPIPort = 9500
 
 	DefaultReplicaPortCount = 15

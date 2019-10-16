@@ -529,7 +529,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: longhorn.SchemeGroupVersion.String(),
-					Kind:       longhorn.SchemeGroupVersion.WithKind("InstanceManager").String(),
+					Kind:       types.LonghornKindInstanceManager,
 					Name:       im.Name,
 					UID:        im.UID,
 				},

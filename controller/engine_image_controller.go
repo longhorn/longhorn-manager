@@ -568,9 +568,6 @@ func (ic *EngineImageController) enqueueControlleeChange(obj interface{}) {
 	}
 	ownerRefs := metaObj.GetOwnerReferences()
 	for _, ref := range ownerRefs {
-		if ref.Kind != ownerKindEngineImage {
-			continue
-		}
 		namespace := metaObj.GetNamespace()
 		ic.ResolveRefAndEnqueue(namespace, &ref)
 		return
@@ -602,8 +599,11 @@ func (ic *EngineImageController) enqueueInstanceManager(im *longhorn.InstanceMan
 }
 
 func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *metav1.OwnerReference) {
-	if ref.Kind != ownerKindEngineImage {
-		return
+	if ref.Kind != types.LonghornKindEngineImage {
+		// TODO: Will stop checking this wrong reference kind after all Longhorn components having used the new kinds
+		if ref.Kind != ownerKindEngineImage {
+			return
+		}
 	}
 	engineImage, err := ic.ds.GetEngineImage(ref.Name)
 	if err != nil {
@@ -791,7 +791,7 @@ func (ic *EngineImageController) createInstanceManager(ei *longhorn.EngineImage,
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion:         longhorn.SchemeGroupVersion.String(),
-					Kind:               longhorn.SchemeGroupVersion.WithKind("EngineImage").String(),
+					Kind:               types.LonghornKindEngineImage,
 					Name:               ei.Name,
 					UID:                ei.UID,
 					BlockOwnerDeletion: &blockOwnerDeletion,
