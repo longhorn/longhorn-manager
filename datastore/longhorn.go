@@ -757,6 +757,19 @@ func (s *DataStore) fixupReplica(replica *longhorn.Replica) (*longhorn.Replica, 
 	return replica, nil
 }
 
+func GetOwnerReferencesForEngineImage(ei *longhorn.EngineImage) []metav1.OwnerReference {
+	blockOwnerDeletion := true
+	return []metav1.OwnerReference{
+		{
+			APIVersion:         longhorn.SchemeGroupVersion.String(),
+			Kind:               types.LonghornKindEngineImage,
+			Name:               ei.Name,
+			UID:                ei.UID,
+			BlockOwnerDeletion: &blockOwnerDeletion,
+		},
+	}
+}
+
 func (s *DataStore) CreateEngineImage(img *longhorn.EngineImage) (*longhorn.EngineImage, error) {
 	if err := util.AddFinalizer(longhornFinalizerKey, img); err != nil {
 		return nil, err
