@@ -136,8 +136,6 @@ func (tc *EngineImageControllerTestCase) copyCurrentToExpected() {
 }
 
 func generateEngineImageControllerTestCases() map[string]*EngineImageControllerTestCase {
-	deleteTime := metav1.Now()
-
 	var tc *EngineImageControllerTestCase
 	testCases := map[string]*EngineImageControllerTestCase{}
 
@@ -156,17 +154,17 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.expectedDaemonSet.Status.NumberAvailable = 0
 	testCases["Engine image DaemonSet creation"] = tc
 
-	// The controller will do cleanup then remove finalizer for the deleting engine image
-	// The fake k8s client won't clean up the object with DeletionTimestamp set and Finalizers unset,
-	// hence the expectedEngineImage is not nil here.
-	tc = getEngineImageControllerTestTemplate()
-	tc.currentEngineImage.DeletionTimestamp = &deleteTime
-	tc.copyCurrentToExpected()
-	tc.expectedEngineImage.Finalizers = []string{}
-	tc.expectedEngineManager = nil
-	tc.expectedReplicaManager = nil
-	tc.expectedDaemonSet = nil
-	testCases["Engine image deletion"] = tc
+	// The controller will rely on foreground deletion to clean up the dependants then remove finalizer for the deleting engine image
+	// The fake k8s client won't apply foreground deletion to delete the dependants and clean up the object with DeletionTimestamp set and Finalizers unset,
+	// hence the expectedEngineImage, expectedEngineManager, and expectedReplicaManager are not nil here.
+	//tc = getEngineImageControllerTestTemplate()
+	//deleteTime := metav1.Now()
+	//tc.copyCurrentToExpected()
+	//tc.expectedEngineImage.Finalizers = []string{}
+	//tc.expectedEngineManager.DeletionTimestamp = nil
+	//tc.expectedReplicaManager.DeletionTimestamp = nil
+	//tc.expectedDaemonSet.DeletionTimestamp = nil
+	//testCases["Engine image deletion"] = tc
 
 	// The DaemonSet is not ready hence the engine image will become state `deploying`
 	tc = getEngineImageControllerTestTemplate()
