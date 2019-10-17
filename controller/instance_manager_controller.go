@@ -472,22 +472,26 @@ func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.Instan
 		imc.stopMonitoring(im)
 	}
 
-	// double check the instance map of instance manager.
-	// instance manager may be updated when stopping the monitor, we need to get the latest version before modifying it.
-	im, err := imc.ds.GetInstanceManager(im.Name)
-	if err != nil {
-		return err
-	}
-	for name, instance := range im.Status.Instances {
-		instance.Status.State = types.InstanceStateError
-		instance.Status.ErrorMsg = "Instance Manager errored"
-		im.Status.Instances[name] = instance
-	}
+	// Skip updating instance manager if its deletion timestamp is set, so that the controller won't try to add finalizer for the deleting object in the update function.
+	// The related instances will become state error after the instance manager is gone hence we don't need to worry about the impacts of this skip.
+	if im.DeletionTimestamp == nil {
+		// double check the instance map of instance manager.
+		// instance manager may be updated when stopping the monitor, we need to get the latest version before modifying it.
+		im, err := imc.ds.GetInstanceManager(im.Name)
+		if err != nil {
+			return err
+		}
+		for name, instance := range im.Status.Instances {
+			instance.Status.State = types.InstanceStateError
+			instance.Status.ErrorMsg = "Instance Manager error"
+			im.Status.Instances[name] = instance
+		}
 
-	// need to update im before deleting pod
-	im, err = imc.ds.UpdateInstanceManager(im)
-	if err != nil {
-		return err
+		// need to update im before deleting pod
+		im, err = imc.ds.UpdateInstanceManager(im)
+		if err != nil {
+			return err
+		}
 	}
 
 	pod, err := imc.ds.GetInstanceManagerPod(im.Name)
