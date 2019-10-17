@@ -34,7 +34,7 @@ func TestConvertSize(t *testing.T) {
 
 	size, err = ConvertSize("1G")
 	assert.Nil(err)
-	assert.Equal(int64(1E9), size)
+	assert.Equal(int64(1e9), size)
 }
 
 func TestRoundUpSize(t *testing.T) {

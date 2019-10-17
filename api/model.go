@@ -191,8 +191,8 @@ type DiskUpdateInput struct {
 
 type Event struct {
 	client.Resource
-	v1.Event
-	EventType string `json:"eventType"`
+	Event     v1.Event `json:"event"`
+	EventType string   `json:"eventType"`
 
 	Timestamp string `json:"timestamp"`
 }
