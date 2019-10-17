@@ -252,6 +252,17 @@ func getVolumeSelector(volumeName string) (labels.Selector, error) {
 	})
 }
 
+func GetOwnerReferencesForVolume(v *longhorn.Volume) []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		{
+			APIVersion: longhorn.SchemeGroupVersion.String(),
+			Kind:       types.LonghornKindVolume,
+			UID:        v.UID,
+			Name:       v.Name,
+		},
+	}
+}
+
 func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	if err := checkVolume(v); err != nil {
 		return nil, err
@@ -1213,6 +1224,17 @@ func (s *DataStore) ListEnginesByNode(name string) ([]*longhorn.Engine, error) {
 		return nil, err
 	}
 	return engineList, nil
+}
+
+func GetOwnerReferencesForInstanceManager(im *longhorn.InstanceManager) []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		{
+			APIVersion: longhorn.SchemeGroupVersion.String(),
+			Kind:       types.LonghornKindInstanceManager,
+			Name:       im.Name,
+			UID:        im.UID,
+		},
+	}
 }
 
 func (s *DataStore) CreateInstanceManager(im *longhorn.InstanceManager) (*longhorn.InstanceManager, error) {

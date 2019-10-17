@@ -549,6 +549,15 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		newVolume = true
 	}
 
+	// TODO: Will remove this reference kind correcting after all Longhorn components having used the new kinds
+	if len(e.OwnerReferences) < 1 || e.OwnerReferences[0].Kind != types.LonghornKindVolume {
+		e.OwnerReferences = datastore.GetOwnerReferencesForVolume(v)
+		e, err = vc.ds.UpdateEngine(e)
+		if err != nil {
+			return err
+		}
+	}
+
 	if len(rs) == 0 {
 		// first time creation
 		if err = vc.replenishReplicas(v, e, rs); err != nil {
@@ -607,6 +616,15 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 
 	allScheduled := true
 	for _, r := range rs {
+		// TODO: Will remove this reference kind correcting after all Longhorn components having used the new kinds
+		if len(r.OwnerReferences) < 1 || r.OwnerReferences[0].Kind != types.LonghornKindVolume {
+			r.OwnerReferences = datastore.GetOwnerReferencesForVolume(v)
+			r, err = vc.ds.UpdateReplica(r)
+			if err != nil {
+				return err
+			}
+		}
+
 		// check whether the replica need to be scheduled
 		if r.Spec.NodeID != "" {
 			continue
@@ -1136,7 +1154,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 	engine := &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            types.GenerateEngineNameForVolume(v.Name),
-			OwnerReferences: vc.getOwnerReferencesForVolume(v),
+			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: types.EngineSpec{
 			InstanceSpec: types.InstanceSpec{
@@ -1172,7 +1190,7 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            types.GenerateReplicaNameForVolume(v.Name),
-			OwnerReferences: vc.getOwnerReferencesForVolume(v),
+			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: types.ReplicaSpec{
 			InstanceSpec: types.InstanceSpec{
@@ -1195,7 +1213,7 @@ func (vc *VolumeController) duplicateReplica(r *longhorn.Replica, v *longhorn.Vo
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            types.GenerateReplicaNameForVolume(r.Spec.VolumeName),
-			OwnerReferences: vc.getOwnerReferencesForVolume(v),
+			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: r.DeepCopy().Spec,
 	}
@@ -1249,17 +1267,6 @@ func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 	vc.enqueueVolume(volume)
 }
 
-func (vc *VolumeController) getOwnerReferencesForVolume(v *longhorn.Volume) []metav1.OwnerReference {
-	return []metav1.OwnerReference{
-		{
-			APIVersion: longhorn.SchemeGroupVersion.String(),
-			Kind:       types.LonghornKindVolume,
-			UID:        v.UID,
-			Name:       v.Name,
-		},
-	}
-}
-
 func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.RecurringJob, suspend bool, backupTarget string, credentialSecret string) (*batchv1beta1.CronJob, error) {
 	backoffLimit := int32(CronJobBackoffLimit)
 	cmd := []string{
@@ -1281,7 +1288,7 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
 			Namespace:       vc.namespace,
-			OwnerReferences: vc.getOwnerReferencesForVolume(v),
+			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: batchv1beta1.CronJobSpec{
 			Schedule:          job.Cron,
@@ -1408,9 +1415,18 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 			}
 		}
 	}
-	for name := range appliedCronJobROs {
+	for name, job := range appliedCronJobROs {
 		if currentCronJobs[name] == nil {
 			if err := vc.ds.DeleteCronJob(name); err != nil {
+				return err
+			}
+		}
+
+		// TODO: Will Remove this reference kind correcting after all Longhorn components having used the new kinds
+		if len(job.OwnerReferences) < 1 || job.OwnerReferences[0].Kind != types.LonghornKindVolume {
+			job.OwnerReferences = datastore.GetOwnerReferencesForVolume(v)
+			job, err = vc.kubeClient.BatchV1beta1().CronJobs(vc.namespace).Update(job)
+			if err != nil {
 				return err
 			}
 		}
