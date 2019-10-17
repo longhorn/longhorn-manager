@@ -341,6 +341,11 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		return err
 	}
 
+	// TODO: Will remove this reference kind correcting after all Longhorn components having used the new kinds
+	if len(im.OwnerReferences) < 1 || im.OwnerReferences[0].Kind != types.LonghornKindEngineImage {
+		im.OwnerReferences = datastore.GetOwnerReferencesForEngineImage(image)
+	}
+
 	pod, err := imc.ds.GetInstanceManagerPod(im.Name)
 	if err != nil {
 		return errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)
@@ -359,6 +364,15 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 			im.Status.CurrentState = types.InstanceManagerStateError
 		}
 	} else {
+		// TODO: Will remove this reference kind correcting after all Longhorn components having used the new kinds
+		if len(pod.OwnerReferences) < 1 || pod.OwnerReferences[0].Kind != types.LonghornKindInstanceManager {
+			pod.OwnerReferences = datastore.GetOwnerReferencesForInstanceManager(im)
+			pod, err = imc.kubeClient.CoreV1().Pods(imc.namespace).Update(pod)
+			if err != nil {
+				return err
+			}
+		}
+
 		switch pod.Status.Phase {
 		case v1.PodPending:
 			if im.Status.CurrentState == types.InstanceManagerStateUnknown {
@@ -524,16 +538,9 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 	privileged := true
 	podSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      im.Name,
-			Namespace: imc.namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: longhorn.SchemeGroupVersion.String(),
-					Kind:       types.LonghornKindInstanceManager,
-					Name:       im.Name,
-					UID:        im.UID,
-				},
-			},
+			Name:            im.Name,
+			Namespace:       imc.namespace,
+			OwnerReferences: datastore.GetOwnerReferencesForInstanceManager(im),
 		},
 		Spec: v1.PodSpec{
 			ServiceAccountName: imc.serviceAccount,
