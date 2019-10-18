@@ -396,9 +396,12 @@ func (c *UninstallController) deleteEngineImages(engineImages map[string]*longho
 					err = errors.Wrapf(err, "Failed to remove daemon set")
 					return
 				}
-				err = nil
-			} else {
 				logrus.WithFields(logFields).Infof("Removed daemon set")
+				err = nil
+			}
+			if err = c.ds.DeleteInstanceManagersForEngineImage(ei.Name); err != nil {
+				err = errors.Wrapf(err, "Failed to cleanup instance managers of engine image %v", ei.Name)
+				return
 			}
 			if err = c.ds.RemoveFinalizerForEngineImage(ei); err != nil {
 				err = errors.Wrapf(err, "Failed to remove finalizer")
