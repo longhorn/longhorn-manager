@@ -9,7 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	imutil "github.com/longhorn/longhorn-instance-manager/util"
+	imutil "github.com/longhorn/longhorn-engine/pkg/instance-manager/util"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"

@@ -14,7 +14,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
-	imapi "github.com/longhorn/longhorn-instance-manager/api"
+	imapi "github.com/longhorn/longhorn-engine/pkg/instance-manager/api"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"

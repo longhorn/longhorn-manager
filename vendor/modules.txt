@@ -5,12 +5,14 @@ github.com/Microsoft/go-winio/pkg/guid
 github.com/RoaringBitmap/roaring
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
-# github.com/c9s/goprocinfo v0.0.0-20170724085704-0010a05ce49f
+# github.com/c9s/goprocinfo v0.0.0-20190309065803-0b2ad9ac246b
 github.com/c9s/goprocinfo/linux
 # github.com/cespare/xxhash/v2 v2.1.0
 github.com/cespare/xxhash/v2
 # github.com/container-storage-interface/spec v0.3.0
 github.com/container-storage-interface/spec/lib/go/csi/v0
+# github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d
+github.com/cpuguy83/go-md2man/v2/md2man
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
 # github.com/docker/distribution v2.7.1+incompatible
@@ -29,7 +31,7 @@ github.com/gogo/protobuf/sortkeys
 github.com/golang/glog
 # github.com/golang/groupcache v0.0.0-20191002201903-404acd9df4cc
 github.com/golang/groupcache/lru
-# github.com/golang/protobuf v1.3.2
+# github.com/golang/protobuf v1.3.3-0.20190920234318-1680a479a2cf
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/ptypes
 github.com/golang/protobuf/ptypes/any
@@ -51,9 +53,9 @@ github.com/googleapis/gnostic/compiler
 github.com/googleapis/gnostic/extensions
 # github.com/gorilla/context v1.1.1
 github.com/gorilla/context
-# github.com/gorilla/handlers v1.4.0
+# github.com/gorilla/handlers v1.4.2
 github.com/gorilla/handlers
-# github.com/gorilla/mux v1.7.0
+# github.com/gorilla/mux v1.7.3
 github.com/gorilla/mux
 # github.com/gorilla/websocket v1.4.0
 github.com/gorilla/websocket
@@ -79,19 +81,19 @@ github.com/kubernetes-csi/drivers/pkg/csi-common
 github.com/kubernetes-incubator/external-storage/lib/controller
 github.com/kubernetes-incubator/external-storage/lib/controller/metrics
 github.com/kubernetes-incubator/external-storage/lib/util
-# github.com/longhorn/backupstore v0.0.0-20190611155040-ff219ef1a30b
+# github.com/longhorn/backupstore v0.0.0-20191018221817-26f8c517c0c3
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-iscsi-helper v0.0.0-20190611161909-7f2d6582326a
+# github.com/longhorn/go-iscsi-helper v0.0.0-20191018221834-9c502e2401f4
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/longhorn-instance-manager v0.0.0-20190816204957-31cf9178e93a
-github.com/longhorn/longhorn-instance-manager/api
-github.com/longhorn/longhorn-instance-manager/client
-github.com/longhorn/longhorn-instance-manager/rpc
-github.com/longhorn/longhorn-instance-manager/types
-github.com/longhorn/longhorn-instance-manager/util
+# github.com/longhorn/longhorn-engine v0.6.3-0.20191019001331-17b9010c3464
+github.com/longhorn/longhorn-engine/pkg/instance-manager/api
+github.com/longhorn/longhorn-engine/pkg/instance-manager/client
+github.com/longhorn/longhorn-engine/pkg/instance-manager/rpc
+github.com/longhorn/longhorn-engine/pkg/instance-manager/types
+github.com/longhorn/longhorn-engine/pkg/instance-manager/util
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/mitchellh/mapstructure v1.1.2
@@ -133,8 +135,12 @@ github.com/rancher/go-rancher/api
 github.com/rancher/go-rancher/client
 # github.com/robfig/cron v1.2.0
 github.com/robfig/cron
+# github.com/russross/blackfriday/v2 v2.0.1
+github.com/russross/blackfriday/v2
 # github.com/satori/go.uuid v1.1.1-0.20170321230731-5bf94b69c6b6
 github.com/satori/go.uuid
+# github.com/shurcooL/sanitized_anchor_name v1.0.0
+github.com/shurcooL/sanitized_anchor_name
 # github.com/sirupsen/logrus v1.4.2
 github.com/sirupsen/logrus
 # github.com/spf13/pflag v1.0.5
@@ -144,7 +150,7 @@ github.com/stretchr/testify/assert
 github.com/stretchr/testify/require
 # github.com/tinylib/msgp v1.1.1-0.20190612170807-0573788bc2a8
 github.com/tinylib/msgp/msgp
-# github.com/urfave/cli v1.19.1
+# github.com/urfave/cli v1.22.1
 github.com/urfave/cli
 # github.com/willf/bitset v1.1.10
 github.com/willf/bitset
@@ -170,7 +176,7 @@ golang.org/x/oauth2/internal
 # golang.org/x/sys v0.0.0-20191010194322-b09406accb47
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/text v0.3.0
+# golang.org/x/text v0.3.2
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi

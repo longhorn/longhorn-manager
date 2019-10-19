@@ -20,6 +20,13 @@ type DeltaBackupConfig struct {
 	Labels   map[string]string
 }
 
+type DeltaRestoreConfig struct {
+	BackupURL      string
+	DeltaOps       DeltaRestoreOperations
+	LastBackupName string
+	Filename       string
+}
+
 type BlockMapping struct {
 	Offset        int64
 	BlockChecksum string
@@ -34,6 +41,10 @@ type DeltaBlockBackupOperations interface {
 	UpdateBackupStatus(id, volumeID string, backupProgress int, backupURL string, err string) error
 }
 
+type DeltaRestoreOperations interface {
+	UpdateRestoreStatus(snapshot string, restoreProgress int, err error)
+}
+
 const (
 	DEFAULT_BLOCK_SIZE = 2097152
 
@@ -45,9 +56,9 @@ const (
 	PROGRESS_PERCENTAGE_BACKUP_TOTAL    = 100
 )
 
-func CreateDeltaBlockBackup(config *DeltaBackupConfig) (string, error) {
+func CreateDeltaBlockBackup(config *DeltaBackupConfig) (string, bool, error) {
 	if config == nil {
-		return "", fmt.Errorf("Invalid empty config for backup")
+		return "", false, fmt.Errorf("Invalid empty config for backup")
 	}
 
 	volume := config.Volume
@@ -55,37 +66,38 @@ func CreateDeltaBlockBackup(config *DeltaBackupConfig) (string, error) {
 	destURL := config.DestURL
 	deltaOps := config.DeltaOps
 	if deltaOps == nil {
-		return "", fmt.Errorf("Missing DeltaBlockBackupOperations")
+		return "", false, fmt.Errorf("Missing DeltaBlockBackupOperations")
 	}
 
 	bsDriver, err := GetBackupStoreDriver(destURL)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	if err := addVolume(volume, bsDriver); err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	// Update volume from backupstore
 	volume, err = loadVolume(volume.Name, bsDriver)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	lastBackupName := volume.LastBackupName
 
 	if err := deltaOps.OpenSnapshot(snapshot.Name, volume.Name); err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	var lastSnapshotName string
 	var lastBackup *Backup
+	isIncrementalBackup := false
 	if lastBackupName != "" {
 		lastBackup, err = loadBackup(lastBackupName, volume.Name, bsDriver)
 		if err != nil {
 			deltaOps.CloseSnapshot(snapshot.Name, volume.Name)
-			return "", err
+			return "", isIncrementalBackup, err
 		}
 
 		lastSnapshotName = lastBackup.SnapshotName
@@ -114,14 +126,17 @@ func CreateDeltaBlockBackup(config *DeltaBackupConfig) (string, error) {
 		LogFieldLastSnapshot: lastSnapshotName,
 	}).Debug("Generating snapshot changed blocks metadata")
 
+	if lastSnapshotName != "" {
+		isIncrementalBackup = true
+	}
 	delta, err := deltaOps.CompareSnapshot(snapshot.Name, lastSnapshotName, volume.Name)
 	if err != nil {
 		deltaOps.CloseSnapshot(snapshot.Name, volume.Name)
-		return "", err
+		return "", isIncrementalBackup, err
 	}
 	if delta.BlockSize != DEFAULT_BLOCK_SIZE {
 		deltaOps.CloseSnapshot(snapshot.Name, volume.Name)
-		return "", fmt.Errorf("currently doesn't support different block sizes driver other than %v", DEFAULT_BLOCK_SIZE)
+		return "", isIncrementalBackup, fmt.Errorf("currently doesn't support different block sizes driver other than %v", DEFAULT_BLOCK_SIZE)
 	}
 	log.WithFields(logrus.Fields{
 		LogFieldReason:       LogReasonComplete,
@@ -147,17 +162,18 @@ func CreateDeltaBlockBackup(config *DeltaBackupConfig) (string, error) {
 
 	go func() {
 		defer deltaOps.CloseSnapshot(snapshot.Name, volume.Name)
-		if progress, backup, err := performIncrementalBackup(config, delta, deltaBackup, lastBackup, bsDriver); err != nil {
+		if progress, backup, err := performIncrementalBackup(config, delta, deltaBackup, lastBackup, bsDriver,
+			isIncrementalBackup); err != nil {
 			deltaOps.UpdateBackupStatus(snapshot.Name, volume.Name, progress, "", err.Error())
 		} else {
 			deltaOps.UpdateBackupStatus(snapshot.Name, volume.Name, progress, backup, "")
 		}
 	}()
-	return deltaBackup.Name, nil
+	return deltaBackup.Name, isIncrementalBackup, nil
 }
 
 func performIncrementalBackup(config *DeltaBackupConfig, delta *Mappings, deltaBackup *Backup, lastBackup *Backup,
-	bsDriver BackupStoreDriver) (int, string, error) {
+	bsDriver BackupStoreDriver, isIncrementalBackup bool) (int, string, error) {
 
 	volume := config.Volume
 	snapshot := config.Snapshot
@@ -227,6 +243,7 @@ func performIncrementalBackup(config *DeltaBackupConfig, delta *Mappings, deltaB
 	backup.CreatedTime = util.Now()
 	backup.Size = int64(len(backup.Blocks)) * DEFAULT_BLOCK_SIZE
 	backup.Labels = config.Labels
+	backup.IsIncremental = isIncrementalBackup
 
 	if err := saveBackup(backup, bsDriver); err != nil {
 		return progress, "", err
@@ -285,7 +302,18 @@ func mergeSnapshotMap(deltaBackup, lastBackup *Backup) *Backup {
 	return backup
 }
 
-func RestoreDeltaBlockBackup(backupURL, volDevName string) error {
+func RestoreDeltaBlockBackup(config *DeltaRestoreConfig) error {
+	if config == nil {
+		return fmt.Errorf("invalid empty config for restore")
+	}
+
+	volDevName := config.Filename
+	backupURL := config.BackupURL
+	deltaOps := config.DeltaOps
+	if deltaOps == nil {
+		return fmt.Errorf("missing DeltaRestoreOperations")
+	}
+
 	bsDriver, err := GetBackupStoreDriver(backupURL)
 	if err != nil {
 		return err
@@ -312,7 +340,6 @@ func RestoreDeltaBlockBackup(backupURL, volDevName string) error {
 	if err != nil {
 		return err
 	}
-	defer volDev.Close()
 
 	stat, err := volDev.Stat()
 	if err != nil {
@@ -333,21 +360,29 @@ func RestoreDeltaBlockBackup(backupURL, volDevName string) error {
 		LogFieldVolumeDev:  volDevName,
 		LogEventBackupURL:  backupURL,
 	}).Debug()
-	blkCounts := len(backup.Blocks)
-	for i, block := range backup.Blocks {
-		log.Debugf("Restore for %v: block %v, %v/%v", volDevName, block.BlockChecksum, i+1, blkCounts)
-		if err := restoreBlockToFile(srcVolumeName, volDev, bsDriver, block); err != nil {
-			return err
-		}
-	}
 
-	// We want to truncate regular files, but not device
-	if stat.Mode()&os.ModeType == 0 {
-		log.Debugf("Truncate %v to size %v", volDevName, vol.Size)
-		if err := volDev.Truncate(vol.Size); err != nil {
-			return err
+	go func() {
+		defer volDev.Close()
+		blkCounts := len(backup.Blocks)
+		var progress int
+		for i, block := range backup.Blocks {
+			log.Debugf("Restore for %v: block %v, %v/%v", volDevName, block.BlockChecksum, i+1, blkCounts)
+			if err := restoreBlockToFile(srcVolumeName, volDev, bsDriver, block); err != nil {
+				deltaOps.UpdateRestoreStatus(volDevName, progress, err)
+			}
+			progress = int((float64(i+1) / float64(blkCounts)) * PROGRESS_PERCENTAGE_BACKUP_SNAPSHOT)
+			deltaOps.UpdateRestoreStatus(volDevName, progress, err)
 		}
-	}
+
+		// We want to truncate regular files, but not device
+		if stat.Mode()&os.ModeType == 0 {
+			log.Debugf("Truncate %v to size %v", volDevName, vol.Size)
+			if err := volDev.Truncate(vol.Size); err != nil {
+				deltaOps.UpdateRestoreStatus(volDevName, progress, err)
+			}
+		}
+		deltaOps.UpdateRestoreStatus(volDevName, PROGRESS_PERCENTAGE_BACKUP_TOTAL, nil)
+	}()
 
 	return nil
 }
@@ -372,7 +407,18 @@ func restoreBlockToFile(volumeName string, volDev *os.File, bsDriver BackupStore
 	return nil
 }
 
-func RestoreDeltaBlockBackupIncrementally(backupURL, volDevName, lastBackupName string) error {
+func RestoreDeltaBlockBackupIncrementally(config *DeltaRestoreConfig) error {
+	if config == nil {
+		return fmt.Errorf("invalid empty config for restore")
+	}
+
+	backupURL := config.BackupURL
+	volDevName := config.Filename
+	lastBackupName := config.LastBackupName
+	deltaOps := config.DeltaOps
+	if deltaOps == nil {
+		return fmt.Errorf("missing DeltaBlockBackupOperations")
+	}
 	bsDriver, err := GetBackupStoreDriver(backupURL)
 	if err != nil {
 		return err
@@ -392,12 +438,12 @@ func RestoreDeltaBlockBackupIncrementally(backupURL, volDevName, lastBackupName 
 	}
 
 	if vol.Size == 0 || vol.Size%DEFAULT_BLOCK_SIZE != 0 {
-		return fmt.Errorf("Read invalid volume size %v", vol.Size)
+		return fmt.Errorf("read invalid volume size %v", vol.Size)
 	}
 
 	// check lastBackupName
 	if !util.ValidateName(lastBackupName) {
-		return fmt.Errorf("Invalid parameter lastBackupName %v", lastBackupName)
+		return fmt.Errorf("invalid parameter lastBackupName %v", lastBackupName)
 	}
 
 	// check volDev
@@ -415,7 +461,6 @@ func RestoreDeltaBlockBackupIncrementally(backupURL, volDevName, lastBackupName 
 		}
 		logrus.Debugf("File %v existed\n", volDevName)
 	}
-	defer volDev.Close()
 
 	stat, err := volDev.Stat()
 	if err != nil {
@@ -440,8 +485,35 @@ func RestoreDeltaBlockBackupIncrementally(backupURL, volDevName, lastBackupName 
 		LogFieldVolumeDev:  volDevName,
 		LogEventBackupURL:  backupURL,
 	}).Debugf("Started incrementally restoring from %v to %v", lastBackup, backup)
+	go func() {
+		defer volDev.Close()
+
+		if err := performIncrementalRestore(srcVolumeName, volDev, lastBackup, backup, bsDriver, config); err != nil {
+			deltaOps.UpdateRestoreStatus(volDevName, 0, err)
+			return
+		}
+		// We want to truncate regular files, but not device
+		if stat.Mode()&os.ModeType == 0 {
+			log.Debugf("Truncate %v to size %v", volDevName, vol.Size)
+			if err := volDev.Truncate(vol.Size); err != nil {
+				deltaOps.UpdateRestoreStatus(volDevName, 0, err)
+				return
+			}
+		}
+		deltaOps.UpdateRestoreStatus(volDevName, PROGRESS_PERCENTAGE_BACKUP_TOTAL, nil)
+	}()
+	return nil
+}
+
+func performIncrementalRestore(srcVolumeName string, volDev *os.File, lastBackup *Backup, backup *Backup,
+	bsDriver BackupStoreDriver, config *DeltaRestoreConfig) error {
+	var progress int
+	volDevName := config.Filename
+	deltaOps := config.DeltaOps
 
 	emptyBlock := make([]byte, DEFAULT_BLOCK_SIZE)
+	total := len(backup.Blocks) + len(lastBackup.Blocks)
+
 	for b, l := 0, 0; b < len(backup.Blocks) || l < len(lastBackup.Blocks); {
 		if b >= len(backup.Blocks) {
 			if err := fillBlockToFile(&emptyBlock, volDev, lastBackup.Blocks[l].Offset); err != nil {
@@ -479,21 +551,25 @@ func RestoreDeltaBlockBackupIncrementally(backupURL, volDevName, lastBackupName 
 			}
 			l++
 		}
+		progress = int((float64(b+l+2) / float64(total)) * PROGRESS_PERCENTAGE_BACKUP_SNAPSHOT)
+		deltaOps.UpdateRestoreStatus(volDevName, progress, nil)
 	}
-
-	// We want to truncate regular files, but not device
-	if stat.Mode()&os.ModeType == 0 {
-		log.Debugf("Truncate %v to size %v", volDevName, vol.Size)
-		if err := volDev.Truncate(vol.Size); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
 func fillBlockToFile(block *[]byte, volDev *os.File, offset int64) error {
 	if _, err := volDev.WriteAt(*block, offset); err != nil {
+		return err
+	}
+	return nil
+}
+
+func DeleteBackupVolume(volumeName string, destURL string) error {
+	bsDriver, err := GetBackupStoreDriver(destURL)
+	if err != nil {
+		return err
+	}
+	if err := removeVolume(volumeName, bsDriver); err != nil {
 		return err
 	}
 	return nil
