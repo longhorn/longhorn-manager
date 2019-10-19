@@ -24,9 +24,9 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
-	imapi "github.com/longhorn/longhorn-instance-manager/api"
-	imclient "github.com/longhorn/longhorn-instance-manager/client"
-	imutil "github.com/longhorn/longhorn-instance-manager/util"
+	imapi "github.com/longhorn/longhorn-engine/pkg/instance-manager/api"
+	imclient "github.com/longhorn/longhorn-engine/pkg/instance-manager/client"
+	imutil "github.com/longhorn/longhorn-engine/pkg/instance-manager/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"

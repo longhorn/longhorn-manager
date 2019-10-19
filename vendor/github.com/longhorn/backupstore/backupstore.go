@@ -29,6 +29,7 @@ type Backup struct {
 	CreatedTime       string
 	Size              int64 `json:",string"`
 	Labels            map[string]string
+	IsIncremental     bool
 
 	Blocks     []BlockMapping `json:",omitempty"`
 	SingleFile BackupFile     `json:",omitempty"`
@@ -74,9 +75,19 @@ func removeVolume(volumeName string, driver BackupStoreDriver) error {
 	}
 
 	volumeDir := getVolumePath(volumeName)
-	if err := driver.Remove(volumeDir); err != nil {
-		return err
+	volumeBlocksDirectory := getBlockPath(volumeName)
+	volumeBackupsDirectory := getBackupPath(volumeName)
+
+	if err := driver.Remove(volumeBackupsDirectory); err != nil {
+		return fmt.Errorf("failed to remove all the backups for volume %v: %v", volumeName, err)
 	}
+	if err := driver.Remove(volumeBlocksDirectory); err != nil {
+		return fmt.Errorf("failed to remove all the blocks for volume %v: %v", volumeName, err)
+	}
+	if err := driver.Remove(volumeDir); err != nil {
+		return fmt.Errorf("failed to remove backup volume %v directory in backupstore: %v", volumeName, err)
+	}
+
 	log.Debug("Removed volume directory in backupstore: ", volumeDir)
 	log.Debug("Removed backupstore volume ", volumeName)
 
