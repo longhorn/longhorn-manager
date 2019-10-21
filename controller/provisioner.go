@@ -5,12 +5,12 @@ import (
 	"strconv"
 	"strings"
 
-	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
+	pvController "github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller"
 	"github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	volumeutil "k8s.io/kubernetes/pkg/volume/util"
+	volumehelpers "k8s.io/cloud-provider/volume/helpers"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/types"
@@ -83,7 +83,7 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 	if frontend == "" {
 		frontend = types.VolumeFrontendBlockDev
 	}
-	sizeGiB := volumeutil.RoundUpToGiB(resourceStorage)
+	sizeGiB := volumehelpers.RoundUpToGiB(resourceStorage)
 	volReq := &longhornclient.Volume{
 		Name:                opts.PVName,
 		Size:                fmt.Sprintf("%dGi", sizeGiB),
@@ -100,7 +100,7 @@ func (p *Provisioner) Provision(opts pvController.VolumeOptions) (*v1.Persistent
 		return nil, err
 	}
 	logrus.Infof("provisioner: created volume %v, size: %dGi", v.Name, sizeGiB)
-	quantity := resource.NewQuantity(sizeGiB*volumeutil.GIB, resource.BinarySI)
+	quantity := resource.NewQuantity(sizeGiB*volumehelpers.GiB, resource.BinarySI)
 
 	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{

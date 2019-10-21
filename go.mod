@@ -3,9 +3,9 @@ module github.com/longhorn/longhorn-manager
 go 1.13
 
 replace (
-	k8s.io/api => k8s.io/api v0.0.0-20181005203742-357ec6384fa7
-	k8s.io/apimachinery => k8s.io/apimachinery v0.0.0-20180913025736-6dd46049f395
-	k8s.io/client-go => k8s.io/client-go v0.0.0-20181005204318-cb4883f3dea0
+	k8s.io/api => k8s.io/api v0.0.0-20191004102349-159aefb8556b
+	k8s.io/apimachinery => k8s.io/apimachinery v0.0.0-20191004074956-c5d2f014d689
+	k8s.io/client-go => k8s.io/client-go v11.0.1-0.20191004102930-01520b8320fc+incompatible
 )
 
 require (
@@ -27,7 +27,6 @@ require (
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.3
 	github.com/gorilla/websocket v1.4.0
-	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.11.3 // indirect
@@ -35,14 +34,14 @@ require (
 	github.com/imdario/mergo v0.3.8 // indirect
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/kubernetes-csi/drivers v0.4.1
-	github.com/kubernetes-incubator/external-storage v5.2.0+incompatible
+	github.com/kubernetes-sigs/sig-storage-lib-external-provisioner v3.1.0+incompatible
 	github.com/longhorn/backupstore v0.0.0-20191018221817-26f8c517c0c3
 	github.com/longhorn/go-iscsi-helper v0.0.0-20191018221834-9c502e2401f4
 	github.com/longhorn/longhorn-engine v0.6.3-0.20191019001331-17b9010c3464
+	github.com/miekg/dns v1.1.22 // indirect
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
 	github.com/pborman/uuid v1.2.0 // indirect
-	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/client_golang v1.2.1 // indirect
 	github.com/rancher/go-rancher v0.1.1-0.20190307222549-9756097e5e4c
@@ -62,13 +61,14 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/square/go-jose.v2 v2.3.1 // indirect
 	gopkg.in/yaml.v2 v2.2.4
-	k8s.io/api v0.0.0-20181005203742-357ec6384fa7
-	k8s.io/apiextensions-apiserver v0.0.0-20181005210900-6b7e25efea53
-	k8s.io/apimachinery v0.0.0-20180913025736-6dd46049f395
-	k8s.io/apiserver v0.0.0-20181005205051-9f398e330d7f // indirect
-	k8s.io/client-go v10.0.0+incompatible
-	k8s.io/csi-api v0.0.0-20181005211323-acd5d7181032 // indirect
+	k8s.io/api v0.0.0-20191016225839-816a9b7df678
+	k8s.io/apiextensions-apiserver v0.0.0-20191015221719-7d47edc353ef
+	k8s.io/apimachinery v0.0.0-20191016225534-b1267f8c42b4
+	k8s.io/apiserver v0.0.0-20191015220424-a5d070e3855f // indirect
+	k8s.io/client-go v11.0.1-0.20191004102930-01520b8320fc+incompatible
+	k8s.io/cloud-provider v0.0.0-20191004111010-9775d7be8494
 	k8s.io/kube-openapi v0.0.0-20190918143330-0270cf2f1c1d // indirect
-	k8s.io/kubernetes v1.12.1
+	k8s.io/kubernetes v1.14.8
 	k8s.io/utils v0.0.0-20191010214722-8d271d903fe4
+	sigs.k8s.io/sig-storage-lib-external-provisioner v4.0.1+incompatible
 )

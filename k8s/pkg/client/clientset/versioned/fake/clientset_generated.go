@@ -75,8 +75,3 @@ var _ clientset.Interface = &Clientset{}
 func (c *Clientset) LonghornV1alpha1() longhornv1alpha1.LonghornV1alpha1Interface {
 	return &fakelonghornv1alpha1.FakeLonghornV1alpha1{Fake: &c.Fake}
 }
-
-// Longhorn retrieves the LonghornV1alpha1Client
-func (c *Clientset) Longhorn() longhornv1alpha1.LonghornV1alpha1Interface {
-	return &fakelonghornv1alpha1.FakeLonghornV1alpha1{Fake: &c.Fake}
-}

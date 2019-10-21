@@ -439,14 +439,14 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		}
 		// create node
 		for _, node := range tc.nodes {
-			n, err := lhClient.Longhorn().Nodes(TestNamespace).Create(node)
+			n, err := lhClient.LonghornV1alpha1().Nodes(TestNamespace).Create(node)
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
 			nIndexer.Add(n)
 		}
 		// create replicas
 		for _, replica := range tc.replicas {
-			r, err := lhClient.Longhorn().Replicas(TestNamespace).Create(replica)
+			r, err := lhClient.LonghornV1alpha1().Replicas(TestNamespace).Create(replica)
 			c.Assert(err, IsNil)
 			c.Assert(r, NotNil)
 			rIndexer.Add(r)

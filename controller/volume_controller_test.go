@@ -865,7 +865,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 					},
 				},
 			}
-			n, err := lhClient.Longhorn().Nodes(TestNamespace).Create(node)
+			n, err := lhClient.LonghornV1alpha1().Nodes(TestNamespace).Create(node)
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
 			nIndexer.Add(n)
