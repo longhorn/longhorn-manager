@@ -28,8 +28,6 @@ import (
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	LonghornV1alpha1() longhornv1alpha1.LonghornV1alpha1Interface
-	// Deprecated: please explicitly pick a version if possible.
-	Longhorn() longhornv1alpha1.LonghornV1alpha1Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
@@ -41,12 +39,6 @@ type Clientset struct {
 
 // LonghornV1alpha1 retrieves the LonghornV1alpha1Client
 func (c *Clientset) LonghornV1alpha1() longhornv1alpha1.LonghornV1alpha1Interface {
-	return c.longhornV1alpha1
-}
-
-// Deprecated: Longhorn retrieves the default version of LonghornClient.
-// Please explicitly pick a version.
-func (c *Clientset) Longhorn() longhornv1alpha1.LonghornV1alpha1Interface {
 	return c.longhornV1alpha1
 }
 

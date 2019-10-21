@@ -8,14 +8,14 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
-	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
+	pvController "github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/version"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/kubernetes/pkg/util/version"
 
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/csi"

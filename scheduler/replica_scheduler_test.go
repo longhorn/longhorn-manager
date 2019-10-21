@@ -485,7 +485,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		}
 		// create node
 		for _, node := range tc.nodes {
-			n, err := lhClient.Longhorn().Nodes(TestNamespace).Create(node)
+			n, err := lhClient.LonghornV1alpha1().Nodes(TestNamespace).Create(node)
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
 			nIndexer.Add(n)
@@ -498,12 +498,12 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		// set settings
 		if tc.storageOverProvisioningPercentage != "" && tc.storageMinimalAvailablePercentage != "" {
 			s := initSettings(string(types.SettingNameStorageOverProvisioningPercentage), tc.storageOverProvisioningPercentage)
-			setting, err := lhClient.Longhorn().Settings(TestNamespace).Create(s)
+			setting, err := lhClient.LonghornV1alpha1().Settings(TestNamespace).Create(s)
 			c.Assert(err, IsNil)
 			sIndexer.Add(setting)
 
 			s = initSettings(string(types.SettingNameStorageMinimalAvailablePercentage), tc.storageMinimalAvailablePercentage)
-			setting, err = lhClient.Longhorn().Settings(TestNamespace).Create(s)
+			setting, err = lhClient.LonghornV1alpha1().Settings(TestNamespace).Create(s)
 			c.Assert(err, IsNil)
 			sIndexer.Add(setting)
 		}

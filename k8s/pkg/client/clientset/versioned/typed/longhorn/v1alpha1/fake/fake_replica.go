@@ -119,7 +119,7 @@ func (c *FakeReplicas) DeleteCollection(options *v1.DeleteOptions, listOptions v
 // Patch applies the patch and returns the patched replica.
 func (c *FakeReplicas) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.Replica, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(replicasResource, c.ns, name, data, subresources...), &v1alpha1.Replica{})
+		Invokes(testing.NewPatchSubresourceAction(replicasResource, c.ns, name, pt, data, subresources...), &v1alpha1.Replica{})
 
 	if obj == nil {
 		return nil, err

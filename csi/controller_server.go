@@ -10,7 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	volumeutil "k8s.io/kubernetes/pkg/volume/util"
+	putil "sigs.k8s.io/sig-storage-lib-external-provisioner/util"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/types"
@@ -80,11 +80,11 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	vol.Name = req.Name
 
-	volSizeBytes := int64(volumeutil.GIB)
+	volSizeBytes := int64(putil.GiB)
 	if req.GetCapacityRange() != nil {
 		volSizeBytes = int64(req.GetCapacityRange().GetRequiredBytes())
 	}
-	volSizeGiB := volumeutil.RoundUpSize(volSizeBytes, volumeutil.GIB)
+	volSizeGiB := putil.RoundUpToGiB(volSizeBytes)
 	vol.Size = fmt.Sprintf("%dGi", volSizeGiB)
 
 	logrus.Infof("CreateVolume: creating a volume by API client, name: %s, size: %s", vol.Name, vol.Size)
@@ -100,7 +100,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			Id:            resVol.Id,
-			CapacityBytes: int64(volSizeGiB * volumeutil.GIB),
+			CapacityBytes: int64(volSizeGiB * putil.GiB),
 			Attributes:    req.GetParameters(),
 		},
 	}, nil

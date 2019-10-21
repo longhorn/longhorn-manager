@@ -119,7 +119,7 @@ func (c *FakeInstanceManagers) DeleteCollection(options *v1.DeleteOptions, listO
 // Patch applies the patch and returns the patched instanceManager.
 func (c *FakeInstanceManagers) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.InstanceManager, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(instancemanagersResource, c.ns, name, data, subresources...), &v1alpha1.InstanceManager{})
+		Invokes(testing.NewPatchSubresourceAction(instancemanagersResource, c.ns, name, pt, data, subresources...), &v1alpha1.InstanceManager{})
 
 	if obj == nil {
 		return nil, err

@@ -119,7 +119,7 @@ func (c *FakeEngines) DeleteCollection(options *v1.DeleteOptions, listOptions v1
 // Patch applies the patch and returns the patched engine.
 func (c *FakeEngines) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.Engine, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(enginesResource, c.ns, name, data, subresources...), &v1alpha1.Engine{})
+		Invokes(testing.NewPatchSubresourceAction(enginesResource, c.ns, name, pt, data, subresources...), &v1alpha1.Engine{})
 
 	if obj == nil {
 		return nil, err
