@@ -55,7 +55,6 @@ const (
 )
 
 type VolumeSpec struct {
-	OwnerID                    string         `json:"ownerID"`
 	Size                       int64          `json:"size,string"`
 	Frontend                   VolumeFrontend `json:"frontend"`
 	FromBackup                 string         `json:"fromBackup"`
@@ -96,6 +95,7 @@ type WorkloadStatus struct {
 }
 
 type VolumeStatus struct {
+	OwnerID          string                            `json:"ownerID"`
 	State            VolumeState                       `json:"state"`
 	Robustness       VolumeRobustness                  `json:"robustness"`
 	CurrentImage     string                            `json:"currentImage"`
@@ -131,7 +131,6 @@ const (
 )
 
 type InstanceSpec struct {
-	OwnerID      string        `json:"ownerID"`
 	VolumeName   string        `json:"volumeName"`
 	VolumeSize   int64         `json:"volumeSize,string"`
 	NodeID       string        `json:"nodeID"`
@@ -141,6 +140,7 @@ type InstanceSpec struct {
 }
 
 type InstanceStatus struct {
+	OwnerID             string        `json:"ownerID"`
 	InstanceManagerName string        `json:"instanceManagerName"`
 	CurrentState        InstanceState `json:"currentState"`
 	CurrentImage        string        `json:"currentImage"`
@@ -195,11 +195,11 @@ const (
 )
 
 type EngineImageSpec struct {
-	OwnerID string `json:"ownerID"`
-	Image   string `json:"image"`
+	Image string `json:"image"`
 }
 
 type EngineImageStatus struct {
+	OwnerID    string           `json:"ownerID"`
 	State      EngineImageState `json:"state"`
 	RefCount   int              `json:"refCount"`
 	NoRefSince string           `json:"noRefSince"`
@@ -333,11 +333,11 @@ const (
 type InstanceManagerSpec struct {
 	EngineImage string              `json:"engineImage"`
 	NodeID      string              `json:"nodeID"`
-	OwnerID     string              `json:"ownerID"`
 	Type        InstanceManagerType `json:"type"`
 }
 
 type InstanceManagerStatus struct {
+	OwnerID      string                     `json:"ownerID"`
 	CurrentState InstanceManagerState       `json:"currentState"`
 	Instances    map[string]InstanceProcess `json:"instances"`
 	IP           string                     `json:"ip"`

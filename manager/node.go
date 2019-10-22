@@ -204,8 +204,8 @@ func (m *VolumeManager) DeleteNode(name string) error {
 		return err
 	}
 	for _, ei := range eiList {
-		if ei.Spec.OwnerID == name {
-			ei.Spec.OwnerID = ""
+		if ei.Status.OwnerID == name {
+			ei.Status.OwnerID = ""
 			if _, err := m.ds.UpdateEngineImage(ei); err != nil {
 				return err
 			}
@@ -213,8 +213,8 @@ func (m *VolumeManager) DeleteNode(name string) error {
 	}
 	volumeList, err := m.ds.ListVolumes()
 	for _, volume := range volumeList {
-		if volume.Spec.OwnerID == name {
-			volume.Spec.OwnerID = ""
+		if volume.Status.OwnerID == name {
+			volume.Status.OwnerID = ""
 			if _, err := m.ds.UpdateVolume(volume); err != nil {
 				return err
 			}

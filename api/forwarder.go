@@ -23,7 +23,7 @@ func OwnerIDFromVolume(m *manager.VolumeManager) func(req *http.Request) (string
 		if volume == nil {
 			return "", nil
 		}
-		return volume.Spec.OwnerID, nil
+		return volume.Status.OwnerID, nil
 	}
 }
 

@@ -251,7 +251,6 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			Name: name,
 		},
 		Spec: types.VolumeSpec{
-			OwnerID:                    "", // the first controller who see it will pick it up
 			Size:                       size,
 			Frontend:                   spec.Frontend,
 			EngineImage:                defaultEngineImage,
@@ -315,8 +314,9 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool) (v *lo
 		return v, nil
 	}
 	v.Spec.NodeID = nodeID
-	v.Spec.OwnerID = v.Spec.NodeID
 	v.Spec.DisableFrontend = disableFrontend
+	//FIXME
+	v.Status.OwnerID = v.Spec.NodeID
 
 	// Must be owned by the manager on the same node
 	v, err = m.ds.UpdateVolumeAndOwner(v)
@@ -346,8 +346,9 @@ func (m *VolumeManager) Detach(name string) (v *longhorn.Volume, err error) {
 		return v, nil
 	}
 
-	v.Spec.OwnerID = m.currentNodeID
 	v.Spec.NodeID = ""
+	//FIXME
+	v.Status.OwnerID = m.currentNodeID
 
 	// Ownership transfer to the one called detach in case the original
 	// owner is down (so it cannot do anything to proceed)

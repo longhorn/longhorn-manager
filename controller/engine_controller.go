@@ -233,7 +233,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}
 
 	// Not ours
-	if engine.Spec.OwnerID != ec.controllerID {
+	if engine.Status.OwnerID != ec.controllerID {
 		return nil
 	}
 
@@ -339,7 +339,7 @@ func (ec *EngineController) enqueueInstanceManagerChange(im *longhorn.InstanceMa
 	}
 
 	for _, e := range engineMap {
-		if e.Spec.OwnerID == ec.controllerID {
+		if e.Status.OwnerID == ec.controllerID {
 			ec.enqueueEngine(e)
 		}
 	}
@@ -428,7 +428,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 	}
 
 	// Node down
-	if im.Spec.NodeID != im.Spec.OwnerID {
+	if im.Spec.NodeID != im.Status.OwnerID {
 		isDown, err := ec.ds.IsNodeDownOrDeleted(im.Spec.NodeID)
 		if err != nil {
 			return err
@@ -644,7 +644,7 @@ func (m *EngineMonitor) Run() {
 			}
 
 			// when engine stopped, nodeID will be empty as well
-			if engine.Spec.OwnerID != m.controllerID {
+			if engine.Status.OwnerID != m.controllerID {
 				logrus.Infof("stop engine %v monitoring because the engine is no longer running on node %v",
 					m.Name, m.controllerID)
 				m.stop(engine)

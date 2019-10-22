@@ -239,10 +239,10 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Spec.DisableFrontend = true
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	for _, e := range tc.expectEngines {
-		e.Spec.OwnerID = TestNode1
 		e.Spec.DesireState = types.InstanceStateStopped
 		e.Spec.BackupVolume = TestBackupVolumeName
 		e.Spec.RequestedBackupRestore = TestBackupName
+		e.Status.OwnerID = TestNode1
 	}
 	for _, r := range tc.expectReplicas {
 		r.Spec.DesireState = types.InstanceStateRunning
@@ -260,11 +260,11 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.DisableFrontend = true
 	tc.volume.Status.State = types.VolumeStateAttaching
 	for _, e := range tc.engines {
-		e.Spec.OwnerID = TestNode1
 		e.Spec.NodeID = TestNode1
 		e.Spec.DesireState = types.InstanceStateRunning
 		e.Spec.BackupVolume = TestBackupVolumeName
 		e.Spec.RequestedBackupRestore = TestBackupName
+		e.Status.OwnerID = TestNode1
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
 		e.Status.Port = randomPort()
@@ -293,20 +293,20 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	// Newly restored volume is waiting for restoration completed
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = TestNode1
-	tc.volume.Spec.OwnerID = TestNode1
 	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = false
 	tc.volume.Spec.InitialRestorationRequired = true
 	tc.volume.Spec.DisableFrontend = true
+	tc.volume.Status.OwnerID = TestNode1
 	tc.volume.Status.State = types.VolumeStateAttached
 	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
 	tc.volume.Status.CurrentImage = TestEngineImage
 	for _, e := range tc.engines {
-		e.Spec.OwnerID = TestNode1
 		e.Spec.NodeID = TestNode1
 		e.Spec.DesireState = types.InstanceStateRunning
 		e.Spec.BackupVolume = TestBackupVolumeName
 		e.Spec.RequestedBackupRestore = TestBackupName
+		e.Status.OwnerID = TestNode1
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
 		e.Status.Port = randomPort()
@@ -331,19 +331,19 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	// try to detach newly restored volume after restoration completed
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = TestNode1
-	tc.volume.Spec.OwnerID = TestNode1
 	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = false
 	tc.volume.Spec.InitialRestorationRequired = true
 	tc.volume.Spec.DisableFrontend = true
+	tc.volume.Status.OwnerID = TestNode1
 	tc.volume.Status.State = types.VolumeStateAttached
 	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
 	for _, e := range tc.engines {
-		e.Spec.OwnerID = TestNode1
 		e.Spec.NodeID = TestNode1
 		e.Spec.DesireState = types.InstanceStateRunning
 		e.Spec.BackupVolume = TestBackupVolumeName
 		e.Spec.RequestedBackupRestore = TestBackupName
+		e.Status.OwnerID = TestNode1
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
 		e.Status.Port = randomPort()
@@ -374,19 +374,19 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	// detaching newly restored volume after restoration completed
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = ""
-	tc.volume.Spec.OwnerID = TestNode1
 	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = false
 	tc.volume.Spec.InitialRestorationRequired = false
 	tc.volume.Spec.DisableFrontend = true
+	tc.volume.Status.OwnerID = TestNode1
 	tc.volume.Status.State = types.VolumeStateAttached
 	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
 	for _, e := range tc.engines {
-		e.Spec.OwnerID = TestNode1
 		e.Spec.NodeID = TestNode1
 		e.Spec.DesireState = types.InstanceStateRunning
 		e.Spec.BackupVolume = TestBackupVolumeName
 		e.Spec.RequestedBackupRestore = TestBackupName
+		e.Status.OwnerID = TestNode1
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
 		e.Status.Port = randomPort()
@@ -601,11 +601,11 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			Frontend:            types.VolumeFrontendBlockDev,
 			NumberOfReplicas:    replicaCount,
 			Size:                TestVolumeSize,
-			OwnerID:             TestOwnerID1,
 			StaleReplicaTimeout: TestVolumeStaleTimeout,
 			EngineImage:         TestEngineImage,
 		},
 		Status: types.VolumeStatus{
+			OwnerID: TestOwnerID1,
 			Conditions: map[types.VolumeConditionType]types.Condition{
 				types.VolumeConditionTypeScheduled: {
 					Type:   string(types.VolumeConditionTypeScheduled),
@@ -627,7 +627,6 @@ func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 		},
 		Spec: types.EngineSpec{
 			InstanceSpec: types.InstanceSpec{
-				OwnerID:     v.Spec.OwnerID,
 				VolumeName:  v.Name,
 				VolumeSize:  v.Spec.Size,
 				EngineImage: TestEngineImage,
@@ -636,6 +635,11 @@ func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 			Frontend:                  types.VolumeFrontendBlockDev,
 			ReplicaAddressMap:         map[string]string{},
 			UpgradedReplicaAddressMap: map[string]string{},
+		},
+		Status: types.EngineStatus{
+			InstanceStatus: types.InstanceStatus{
+				OwnerID: v.Status.OwnerID,
+			},
 		},
 	}
 }
@@ -652,7 +656,6 @@ func newReplicaForVolume(v *longhorn.Volume, e *longhorn.Engine, nodeID, diskID 
 		},
 		Spec: types.ReplicaSpec{
 			InstanceSpec: types.InstanceSpec{
-				OwnerID:     v.Spec.OwnerID,
 				NodeID:      nodeID,
 				VolumeName:  v.Name,
 				VolumeSize:  v.Spec.Size,
@@ -663,6 +666,11 @@ func newReplicaForVolume(v *longhorn.Volume, e *longhorn.Engine, nodeID, diskID 
 			DiskID:     diskID,
 			DataPath:   filepath.Join(TestDefaultDataPath, "/replicas", replicaName),
 			Active:     true,
+		},
+		Status: types.ReplicaStatus{
+			InstanceStatus: types.InstanceStatus{
+				OwnerID: v.Status.OwnerID,
+			},
 		},
 	}
 }

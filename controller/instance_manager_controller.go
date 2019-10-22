@@ -273,16 +273,16 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	}
 
 	nodeStatusDown := false
-	if im.Spec.OwnerID != "" {
-		nodeStatusDown, err = imc.ds.IsNodeDownOrDeleted(im.Spec.OwnerID)
+	if im.Status.OwnerID != "" {
+		nodeStatusDown, err = imc.ds.IsNodeDownOrDeleted(im.Status.OwnerID)
 		if err != nil {
 			logrus.Warnf("Found error while checking if ownerID is down or deleted: %v", err)
 		}
 	}
 
 	// Node for Instance Manager came back up, take back ownership of Instance Manager.
-	if im.Spec.NodeID == imc.controllerID && im.Spec.OwnerID != imc.controllerID {
-		im.Spec.OwnerID = imc.controllerID
+	if im.Spec.NodeID == imc.controllerID && im.Status.OwnerID != imc.controllerID {
+		im.Status.OwnerID = imc.controllerID
 		newIM, err := imc.ds.UpdateInstanceManager(im)
 		if err != nil {
 			// Conflict with another controller, keep trying.
@@ -294,10 +294,10 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		}
 		im = newIM
 		logrus.Debugf("Instance Manager Controller %v picked up %v", imc.controllerID, im.Name)
-	} else if im.Spec.OwnerID == "" || nodeStatusDown {
+	} else if im.Status.OwnerID == "" || nodeStatusDown {
 		// No owner yet, or Instance Manager's Node is down. Assign to some other Node until the correct Node can take
 		// over.
-		im.Spec.OwnerID = imc.controllerID
+		im.Status.OwnerID = imc.controllerID
 		im, err = imc.ds.UpdateInstanceManager(im)
 		if err != nil {
 			// we don't mind others coming first
@@ -307,7 +307,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 			return err
 		}
 		logrus.Debugf("Instance Manager Controller %v picked up %v", imc.controllerID, im.Name)
-	} else if im.Spec.OwnerID != imc.controllerID {
+	} else if im.Status.OwnerID != imc.controllerID {
 		// Not ours
 		return nil
 	}

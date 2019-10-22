@@ -83,13 +83,13 @@ func newEngine(name, currentImage, imName, ip string, port int, started bool, cu
 				VolumeName:  TestVolumeName,
 				VolumeSize:  TestVolumeSize,
 				DesireState: desireState,
-				OwnerID:     TestOwnerID1,
 				NodeID:      TestNode1,
 				EngineImage: TestEngineImage,
 			},
 		},
 		Status: types.EngineStatus{
 			InstanceStatus: types.InstanceStatus{
+				OwnerID:             TestOwnerID1,
 				CurrentState:        currentState,
 				CurrentImage:        currentImage,
 				InstanceManagerName: imName,

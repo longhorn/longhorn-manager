@@ -226,9 +226,9 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
-	if volume.Spec.OwnerID == "" {
+	if volume.Status.OwnerID == "" {
 		// Claim it
-		volume.Spec.OwnerID = vc.controllerID
+		volume.Status.OwnerID = vc.controllerID
 		volume, err = vc.ds.UpdateVolume(volume)
 		if err != nil {
 			// we don't mind others coming first
@@ -238,7 +238,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			return err
 		}
 		logrus.Debugf("Volume Controller %v picked up %v", vc.controllerID, volume.Name)
-	} else if volume.Spec.OwnerID != vc.controllerID {
+	} else if volume.Status.OwnerID != vc.controllerID {
 		// Not mines
 		return nil
 	}
@@ -1161,11 +1161,15 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 				VolumeSize:  v.Spec.Size,
 				EngineImage: v.Status.CurrentImage,
 				DesireState: types.InstanceStateStopped,
-				OwnerID:     vc.controllerID,
 			},
 			Frontend:                  v.Spec.Frontend,
 			ReplicaAddressMap:         map[string]string{},
 			UpgradedReplicaAddressMap: map[string]string{},
+		},
+		Status: types.EngineStatus{
+			InstanceStatus: types.InstanceStatus{
+				OwnerID: vc.controllerID,
+			},
 		},
 	}
 
@@ -1197,11 +1201,15 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 				VolumeSize:  v.Spec.Size,
 				EngineImage: v.Status.CurrentImage,
 				DesireState: types.InstanceStateStopped,
-				OwnerID:     vc.controllerID,
 			},
 			EngineName: e.Name,
 			Active:     true,
 			BaseImage:  v.Spec.BaseImage,
+		},
+		Status: types.ReplicaStatus{
+			InstanceStatus: types.InstanceStatus{
+				OwnerID: vc.controllerID,
+			},
 		},
 	}
 
@@ -1260,7 +1268,7 @@ func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 		return
 	}
 	// Not ours
-	if volume.Spec.OwnerID != vc.controllerID {
+	if volume.Status.OwnerID != vc.controllerID {
 		return
 	}
 	vc.enqueueVolume(volume)
@@ -1507,6 +1515,7 @@ func (vc *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 		nr := vc.duplicateReplica(r, v)
 		nr.Spec.DesireState = types.InstanceStateRunning
 		nr.Spec.Active = false
+		nr.Status.OwnerID = r.Status.OwnerID
 		fixupFunc(nr, obj)
 		nr, err := vc.ds.CreateReplica(nr)
 		if err != nil {
@@ -1591,7 +1600,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 			return err
 		}
 
-		v.Spec.OwnerID = v.Spec.NodeID
+		v.Status.OwnerID = v.Spec.NodeID
 		v.Spec.MigrationNodeID = ""
 		if _, err := vc.ds.UpdateVolumeAndOwner(v); err != nil {
 			return err

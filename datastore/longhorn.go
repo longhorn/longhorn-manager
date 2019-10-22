@@ -1172,8 +1172,8 @@ func (s *DataStore) UpdateVolumeAndOwner(v *longhorn.Volume) (*longhorn.Volume, 
 		return nil, err
 	}
 	for _, engine := range engines {
-		if engine.Spec.OwnerID != v.Spec.OwnerID {
-			engine.Spec.OwnerID = v.Spec.OwnerID
+		if engine.Status.OwnerID != v.Status.OwnerID {
+			engine.Status.OwnerID = v.Status.OwnerID
 			if _, err := s.UpdateEngine(engine); err != nil {
 				return nil, err
 			}
@@ -1185,8 +1185,8 @@ func (s *DataStore) UpdateVolumeAndOwner(v *longhorn.Volume) (*longhorn.Volume, 
 		return nil, err
 	}
 	for _, replica := range replicas {
-		if replica.Spec.OwnerID != v.Spec.OwnerID {
-			replica.Spec.OwnerID = v.Spec.OwnerID
+		if replica.Status.OwnerID != v.Status.OwnerID {
+			replica.Status.OwnerID = v.Status.OwnerID
 			if _, err := s.UpdateReplica(replica); err != nil {
 				return nil, err
 			}

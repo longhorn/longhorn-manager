@@ -141,9 +141,9 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 
 	// The TestNode2 is a non-existing node and is just used for node down test.
 	tc = getEngineImageControllerTestTemplate()
-	tc.currentEngineImage.Spec.OwnerID = TestNode2
+	tc.currentEngineImage.Status.OwnerID = TestNode2
 	tc.copyCurrentToExpected()
-	tc.expectedEngineImage.Spec.OwnerID = TestNode1
+	tc.expectedEngineImage.Status.OwnerID = TestNode1
 	testCases["Engine image ownerID node is down"] = tc
 
 	tc = getEngineImageControllerTestTemplate()

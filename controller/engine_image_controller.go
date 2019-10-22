@@ -257,16 +257,16 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	}
 
 	nodeStatusDown := false
-	if engineImage.Spec.OwnerID != "" {
-		nodeStatusDown, err = ic.ds.IsNodeDownOrDeleted(engineImage.Spec.OwnerID)
+	if engineImage.Status.OwnerID != "" {
+		nodeStatusDown, err = ic.ds.IsNodeDownOrDeleted(engineImage.Status.OwnerID)
 		if err != nil {
 			logrus.Warnf("Found error while checking ownerID is down or deleted:%v", err)
 		}
 	}
 
-	if engineImage.Spec.OwnerID == "" || nodeStatusDown {
+	if engineImage.Status.OwnerID == "" || nodeStatusDown {
 		// Claim it
-		engineImage.Spec.OwnerID = ic.controllerID
+		engineImage.Status.OwnerID = ic.controllerID
 		engineImage, err = ic.ds.UpdateEngineImage(engineImage)
 		if err != nil {
 			// we don't mind others coming first
@@ -276,7 +276,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			return err
 		}
 		logrus.Debugf("Engine Image Controller %v picked up %v (%v)", ic.controllerID, engineImage.Name, engineImage.Spec.Image)
-	} else if engineImage.Spec.OwnerID != ic.controllerID {
+	} else if engineImage.Status.OwnerID != ic.controllerID {
 		// Not ours
 		return nil
 	}
@@ -556,7 +556,7 @@ func (ic *EngineImageController) enqueueVolumes(volumes ...*longhorn.Volume) {
 			continue
 		}
 		// Not ours
-		if engineImage.Spec.OwnerID != ic.controllerID {
+		if engineImage.Status.OwnerID != ic.controllerID {
 			continue
 		}
 		ic.enqueueEngineImage(engineImage)
@@ -618,7 +618,7 @@ func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *met
 		return
 	}
 	// Not ours
-	if engineImage.Spec.OwnerID != ic.controllerID {
+	if engineImage.Status.OwnerID != ic.controllerID {
 		return
 	}
 	ic.enqueueEngineImage(engineImage)

@@ -144,9 +144,11 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 		Spec: types.VolumeSpec{
 			NumberOfReplicas:    replicaCount,
 			Size:                TestVolumeSize,
-			OwnerID:             TestOwnerID1,
 			StaleReplicaTimeout: TestVolumeStaleTimeout,
 			EngineImage:         TestEngineImage,
+		},
+		Status: types.VolumeStatus{
+			OwnerID: TestOwnerID1,
 		},
 	}
 }
@@ -161,11 +163,15 @@ func newReplicaForVolume(v *longhorn.Volume) *longhorn.Replica {
 		},
 		Spec: types.ReplicaSpec{
 			InstanceSpec: types.InstanceSpec{
-				OwnerID:     v.Spec.OwnerID,
 				VolumeName:  v.Name,
 				VolumeSize:  v.Spec.Size,
 				EngineImage: TestEngineImage,
 				DesireState: types.InstanceStateStopped,
+			},
+		},
+		Status: types.ReplicaStatus{
+			InstanceStatus: types.InstanceStatus{
+				OwnerID: v.Status.OwnerID,
 			},
 		},
 	}

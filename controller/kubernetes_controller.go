@@ -245,7 +245,7 @@ func (kc *KubernetesController) syncKubernetesStatus(key string) (err error) {
 		return err
 	}
 
-	if volume.Spec.OwnerID != kc.controllerID {
+	if volume.Status.OwnerID != kc.controllerID {
 		// Not ours
 		return nil
 	}
@@ -407,7 +407,7 @@ func (kc *KubernetesController) cleanupForPVDeletion(pvName string) (bool, error
 		}
 		return false, errors.Wrapf(err, "failed to get volume for cleanup in cleanupForPVDeletion")
 	}
-	if kc.controllerID != volume.Spec.OwnerID {
+	if kc.controllerID != volume.Status.OwnerID {
 		kc.pvToVolumeCache.Delete(pvName)
 		return true, nil
 	}

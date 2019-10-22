@@ -203,12 +203,12 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	}
 
 	if replica.DeletionTimestamp != nil {
-		if replica.Spec.OwnerID != "" {
+		if replica.Status.OwnerID != "" {
 			// Check if replica's managing node died
-			if down, err := rc.ds.IsNodeDownOrDeleted(replica.Spec.OwnerID); err != nil {
+			if down, err := rc.ds.IsNodeDownOrDeleted(replica.Status.OwnerID); err != nil {
 				return err
 			} else if down {
-				replica.Spec.OwnerID = rc.controllerID
+				replica.Status.OwnerID = rc.controllerID
 				_, err = rc.ds.UpdateReplica(replica)
 				return err
 			}
@@ -254,14 +254,14 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			return rc.ds.RemoveFinalizerForReplica(replica)
 		}
 
-		if replica.Spec.NodeID == "" && replica.Spec.OwnerID == rc.controllerID {
+		if replica.Spec.NodeID == "" && replica.Status.OwnerID == rc.controllerID {
 			logrus.Debugf("Deleted replica %v without cleanup due to no node ID", replica.Name)
 			return rc.ds.RemoveFinalizerForReplica(replica)
 		}
 	}
 
 	// Not ours
-	if replica.Spec.OwnerID != rc.controllerID {
+	if replica.Status.OwnerID != rc.controllerID {
 		return nil
 	}
 
@@ -368,7 +368,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 
 	// Node down
-	if im.Spec.NodeID != im.Spec.OwnerID {
+	if im.Spec.NodeID != im.Status.OwnerID {
 		isDown, err := rc.ds.IsNodeDownOrDeleted(im.Spec.NodeID)
 		if err != nil {
 			return err
@@ -503,7 +503,7 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(im *longhorn.InstanceM
 	}
 	for _, rList := range rs {
 		for _, r := range rList {
-			if r.Spec.OwnerID == rc.controllerID {
+			if r.Status.OwnerID == rc.controllerID {
 				rc.enqueueReplica(r)
 			}
 		}

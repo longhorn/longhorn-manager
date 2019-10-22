@@ -61,7 +61,8 @@ func newEngineImage(image string, state types.EngineImageState) *longhorn.Engine
 			Image: image,
 		},
 		Status: types.EngineImageStatus{
-			State: state,
+			OwnerID: TestNode1,
+			State:   state,
 			EngineVersionDetails: types.EngineVersionDetails{
 				Version:   "latest",
 				GitCommit: "latest",
@@ -95,10 +96,10 @@ func newInstanceManager(
 		Spec: types.InstanceManagerSpec{
 			EngineImage: getTestEngineImageName(),
 			NodeID:      nodeID,
-			OwnerID:     currentOwnerID,
 			Type:        imType,
 		},
 		Status: types.InstanceManagerStatus{
+			OwnerID:      currentOwnerID,
 			CurrentState: currentState,
 			IP:           ip,
 			Instances:    instances,
@@ -183,6 +184,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			v1.PodRunning, TestNode2, types.InstanceManagerStateUnknown,
 			TestNode1, 1,
 			types.InstanceManagerStatus{
+				OwnerID:      TestNode1,
 				CurrentState: types.InstanceManagerStateRunning,
 				IP:           TestIP1,
 			},
@@ -193,6 +195,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			v1.PodFailed, TestNode1, types.InstanceManagerStateRunning,
 			TestNode1, 1,
 			types.InstanceManagerStatus{
+				OwnerID:      TestNode1,
 				CurrentState: types.InstanceManagerStateStarting,
 			},
 			types.InstanceManagerTypeEngine,
@@ -202,6 +205,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			v1.PodRunning, TestNode1, types.InstanceManagerStateRunning,
 			TestNode2, 1,
 			types.InstanceManagerStatus{
+				OwnerID:      TestNode2,
 				CurrentState: types.InstanceManagerStateUnknown,
 			},
 			types.InstanceManagerTypeEngine,
@@ -210,6 +214,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			TestNode1, false, TestNode1,
 			v1.PodRunning, TestNode1, types.InstanceManagerStateError,
 			TestNode1, 1, types.InstanceManagerStatus{
+				OwnerID:      TestNode1,
 				CurrentState: types.InstanceManagerStateStarting,
 			},
 			types.InstanceManagerTypeEngine,
@@ -218,6 +223,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			TestNode1, false, TestNode1,
 			v1.PodRunning, TestNode1, types.InstanceManagerStateStarting,
 			TestNode1, 1, types.InstanceManagerStatus{
+				OwnerID:      TestNode1,
 				CurrentState: types.InstanceManagerStateRunning,
 				IP:           TestIP1,
 			},
@@ -228,6 +234,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			"", TestNode1, types.InstanceManagerStateStopped,
 			TestNode1, 1,
 			types.InstanceManagerStatus{
+				OwnerID:      TestNode1,
 				CurrentState: types.InstanceManagerStateStarting,
 			},
 			types.InstanceManagerTypeEngine,
@@ -237,6 +244,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			"", TestNode1, types.InstanceManagerStateStopped,
 			TestNode1, 1,
 			types.InstanceManagerStatus{
+				OwnerID:      TestNode1,
 				CurrentState: types.InstanceManagerStateStarting,
 			},
 			types.InstanceManagerTypeReplica,
@@ -341,7 +349,6 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		updatedIM, err := lhClient.LonghornV1alpha1().InstanceManagers(im.Namespace).Get(im.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
-		c.Assert(updatedIM.Spec.OwnerID, Equals, tc.expectedOwnerID)
 		c.Assert(updatedIM.Status, DeepEquals, tc.expectedStatus)
 	}
 }

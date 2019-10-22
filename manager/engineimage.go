@@ -64,8 +64,7 @@ func (m *VolumeManager) CreateEngineImage(image string) (*longhorn.EngineImage, 
 			Name: name,
 		},
 		Spec: types.EngineImageSpec{
-			OwnerID: "", // the first controller who see it will pick it up
-			Image:   image,
+			Image: image,
 		},
 	}
 	ei, err := m.ds.CreateEngineImage(ei)
