@@ -62,7 +62,6 @@ type VolumeSpec struct {
 	StaleReplicaTimeout        int            `json:"staleReplicaTimeout"`
 	NodeID                     string         `json:"nodeID"`
 	MigrationNodeID            string         `json:"migrationNodeID"`
-	PendingNodeID              string         `json:"pendingNodeID"`
 	EngineImage                string         `json:"engineImage"`
 	RecurringJobs              []RecurringJob `json:"recurringJobs"`
 	BaseImage                  string         `json:"baseImage"`
@@ -103,6 +102,7 @@ type VolumeStatus struct {
 	Conditions       map[VolumeConditionType]Condition `json:"conditions"`
 	LastBackup       string                            `json:"lastBackup"`
 	LastBackupAt     string                            `json:"lastBackupAt"`
+	PendingNodeID    string                            `json:"pendingNodeID"`
 }
 
 type RecurringJobType string

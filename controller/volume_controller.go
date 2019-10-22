@@ -590,7 +590,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		// If it's due to reboot, we're going to reattach the volume later
 		// e.Status.NodeBootID would only reset when the instance stopped by request
 		if e.Status.NodeBootID != "" && e.Status.NodeBootID != node.Status.NodeInfo.BootID {
-			v.Spec.PendingNodeID = v.Spec.NodeID
+			v.Status.PendingNodeID = v.Spec.NodeID
 			msg := fmt.Sprintf("Detect the reboot of volume %v attached node %v, reattach the volume", v.Name, v.Spec.NodeID)
 			logrus.Errorf(msg)
 			vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonRebooted, msg)
@@ -746,9 +746,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonDetached, "volume %v has been detached", v.Name)
 		}
 		// Automatic reattach the volume if PendingNodeID was set, it's for reboot
-		if v.Spec.PendingNodeID != "" {
-			v.Spec.NodeID = v.Spec.PendingNodeID
-			v.Spec.PendingNodeID = ""
+		if v.Status.PendingNodeID != "" {
+			v.Spec.NodeID = v.Status.PendingNodeID
+			v.Status.PendingNodeID = ""
 			// for automatically re-attached volume, we shouldn't disable its frontend
 			v.Spec.DisableFrontend = false
 		}
