@@ -35,7 +35,6 @@ type Volume struct {
 	CurrentImage               string                 `json:"currentImage"`
 	BaseImage                  string                 `json:"baseImage"`
 	Created                    string                 `json:"created"`
-	MigrationNodeID            string                 `json:"migrationNodeID"`
 	LastBackup                 string                 `json:"lastBackup"`
 	LastBackupAt               string                 `json:"lastBackupAt"`
 	Standby                    bool                   `json:"standby"`
@@ -484,12 +483,6 @@ func volumeSchema(volume *client.Schema) {
 		"engineUpgrade": {
 			Input: "engineUpgradeInput",
 		},
-
-		"migrationStart": {
-			Input: "nodeInput",
-		},
-		"migrationConfirm":  {},
-		"migrationRollback": {},
 	}
 	volume.ResourceFields["controllers"] = client.Field{
 		Type:     "array[controller]",
@@ -724,7 +717,6 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		EngineImage:                v.Spec.EngineImage,
 		CurrentImage:               v.Status.CurrentImage,
 		BaseImage:                  v.Spec.BaseImage,
-		MigrationNodeID:            v.Spec.MigrationNodeID,
 		LastBackup:                 v.Status.LastBackup,
 		LastBackupAt:               v.Status.LastBackupAt,
 		Standby:                    v.Spec.Standby,
@@ -773,9 +765,6 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["recurringUpdate"] = struct{}{}
 			actions["replicaRemove"] = struct{}{}
 			actions["engineUpgrade"] = struct{}{}
-			actions["migrationStart"] = struct{}{}
-			actions["migrationConfirm"] = struct{}{}
-			actions["migrationRollback"] = struct{}{}
 			actions["updateReplicaCount"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}

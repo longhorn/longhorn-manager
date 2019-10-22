@@ -58,9 +58,6 @@ func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]st
 		}
 	}
 
-	if err := m.checkVolumeNotInMigration(volumeName); err != nil {
-		return nil, err
-	}
 	engine, err := m.GetEngineClient(volumeName)
 	if err != nil {
 		return nil, err
@@ -85,9 +82,6 @@ func (m *VolumeManager) DeleteSnapshot(snapshotName, volumeName string) error {
 		return fmt.Errorf("volume and snapshot name required")
 	}
 
-	if err := m.checkVolumeNotInMigration(volumeName); err != nil {
-		return err
-	}
 	engine, err := m.GetEngineClient(volumeName)
 	if err != nil {
 		return err
@@ -104,9 +98,6 @@ func (m *VolumeManager) RevertSnapshot(snapshotName, volumeName string) error {
 		return fmt.Errorf("volume and snapshot name required")
 	}
 
-	if err := m.checkVolumeNotInMigration(volumeName); err != nil {
-		return err
-	}
 	engine, err := m.GetEngineClient(volumeName)
 	if err != nil {
 		return err
@@ -130,9 +121,6 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 		return fmt.Errorf("volume name required")
 	}
 
-	if err := m.checkVolumeNotInMigration(volumeName); err != nil {
-		return err
-	}
 	engine, err := m.GetEngineClient(volumeName)
 	if err != nil {
 		return err
@@ -150,9 +138,6 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 		return fmt.Errorf("volume and snapshot name required")
 	}
 
-	if err := m.checkVolumeNotInMigration(volumeName); err != nil {
-		return err
-	}
 	backupTarget, err := m.GetSettingValueExisted(types.SettingNameBackupTarget)
 	if err != nil {
 		return err

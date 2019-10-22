@@ -330,10 +330,6 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 	}
 
-	if err := vc.processMigration(volume, engines, replicas); err != nil {
-		return err
-	}
-
 	if err := vc.ReconcileVolumeState(volume, engine, replicas); err != nil {
 		return err
 	}
@@ -373,8 +369,6 @@ func (vc *VolumeController) getNodeAttachedEngine(node string, es map[string]*lo
 
 // ReconcileEngineReplicaState will get the current main engine e.Status.ReplicaModeMap, then update
 // v and rs accordingly.
-// We will only update the replica status and won't start rebuilding if
-// MigrationNodeID was set. The logic in replenishReplicas() prevents that.
 func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to reconcile engine/replica state for %v", v.Name)
@@ -480,7 +474,7 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 			break
 		}
 	}
-	cleanupLeftoverReplicas := !vc.isVolumeUpgrading(v) && !vc.isVolumeMigrating(v)
+	cleanupLeftoverReplicas := !vc.isVolumeUpgrading(v)
 
 	for _, r := range rs {
 		if cleanupLeftoverReplicas {
@@ -903,7 +897,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 // It will count all the potentially usable replicas, since some replicas maybe
 // blank or in rebuilding state
 func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
-	if vc.isVolumeUpgrading(v) || vc.isVolumeMigrating(v) {
+	if vc.isVolumeUpgrading(v) {
 		return nil
 	}
 
@@ -1446,10 +1440,6 @@ func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
 	return v.Status.CurrentImage != v.Spec.EngineImage
 }
 
-func (vc *VolumeController) isVolumeMigrating(v *longhorn.Volume) bool {
-	return v.Spec.MigrationNodeID != ""
-}
-
 func (vc *VolumeController) getEngineImage(image string) (*longhorn.EngineImage, error) {
 	name := types.GetEngineImageChecksumName(image)
 	img, err := vc.ds.GetEngineImage(name)
@@ -1553,136 +1543,5 @@ func (vc *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica
 			rs[r.Name] = r
 		}
 	}
-	return nil
-}
-
-func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "fail to process migration for %v", v.Name)
-	}()
-	// only process if volume is attached
-	if v.Spec.NodeID == "" {
-		return nil
-	}
-
-	// cannot process migrate when upgrading
-	if vc.isVolumeUpgrading(v) {
-		return nil
-	}
-
-	if len(es) > 2 {
-		return fmt.Errorf("BUG: volume %v: more than two engines exists", v.Name)
-	}
-
-	if !vc.isVolumeMigrating(v) {
-		if len(es) != 2 {
-			return nil
-		}
-
-		// rollback migration
-		if _, err := vc.getCurrentEngineAndCleanupOthers(v, es); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	// confirm migration
-	if v.Spec.MigrationNodeID == v.Spec.NodeID {
-		// must be set after migration preparation done
-		currentEngine, err := vc.getCurrentEngineAndCleanupOthers(v, es)
-		if err != nil {
-			return err
-		}
-
-		if err := vc.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
-			return r.Spec.EngineName == engineName
-		}, currentEngine.Name); err != nil {
-			return err
-		}
-
-		v.Status.OwnerID = v.Spec.NodeID
-		v.Spec.MigrationNodeID = ""
-		if _, err := vc.ds.UpdateVolumeAndOwner(v); err != nil {
-			return err
-		}
-
-		// cleanupCorruptedOrStaleReplicas() will take care of old replicas
-		logrus.Infof("volume %v: confirmMigration: migration to node %v has been confirmed", v.Name, v.Spec.NodeID)
-		return nil
-	}
-
-	currentEngine, migrationEngine, err := vc.getCurrentEngineAndExtra(v, es)
-	if err != nil {
-		return err
-	}
-
-	if migrationEngine == nil {
-		migrationEngine, err = vc.createEngine(v)
-		if err != nil {
-			return err
-		}
-		es[migrationEngine.Name] = migrationEngine
-	}
-
-	currentReplicas := map[string]*longhorn.Replica{}
-	migrationReplicas := map[string]*longhorn.Replica{}
-	unknownReplicas := map[string]*longhorn.Replica{}
-	for _, r := range rs {
-		if r.Spec.FailedAt != "" {
-			continue
-		}
-		if r.Spec.EngineName == currentEngine.Name {
-			currentReplicas[r.Spec.DataPath] = r
-		} else if r.Spec.EngineName == migrationEngine.Name {
-			migrationReplicas[r.Spec.DataPath] = r
-		} else {
-			logrus.Warnf("migration: volume %v: found unknown replica with engine %v",
-				v.Name, r.Spec.EngineName)
-			unknownReplicas[r.Spec.DataPath] = r
-		}
-	}
-
-	if err := vc.createAndStartMatchingReplicas(v, rs, currentReplicas, migrationReplicas, func(r *longhorn.Replica, engineName string) {
-		r.Spec.EngineName = engineName
-	}, migrationEngine.Name); err != nil {
-		return err
-	}
-
-	if migrationEngine.Spec.DesireState != types.InstanceStateRunning {
-		replicaAddressMap := map[string]string{}
-		for _, r := range migrationReplicas {
-			// wait for all potentially healthy replicas become running
-			if r.Status.CurrentState != types.InstanceStateRunning {
-				return nil
-			}
-			if r.Status.IP == "" {
-				logrus.Errorf("BUG: replica %v is running but IP is empty", r.Name)
-				continue
-			}
-			if r.Status.Port == 0 {
-				logrus.Errorf("BUG: replica %v is running but Port is empty", r.Name)
-				continue
-			}
-			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
-		}
-		if migrationEngine.Spec.NodeID != "" && migrationEngine.Spec.NodeID != v.Spec.MigrationNodeID {
-			return fmt.Errorf("volume %v: engine is on node %v vs volume migration on %v",
-				v.Name, migrationEngine.Spec.NodeID, v.Spec.NodeID)
-		}
-		migrationEngine.Spec.NodeID = v.Spec.MigrationNodeID
-		migrationEngine.Spec.ReplicaAddressMap = replicaAddressMap
-		migrationEngine.Spec.DesireState = types.InstanceStateRunning
-		migrationEngine, err := vc.ds.UpdateEngine(migrationEngine)
-		if err != nil {
-			return err
-		}
-		es[migrationEngine.Name] = migrationEngine
-	}
-
-	if migrationEngine.Status.CurrentState != types.InstanceStateRunning {
-		return nil
-	}
-
-	logrus.Infof("volume %v: migration: migration node %v is ready", v.Name, v.Spec.MigrationNodeID)
 	return nil
 }
