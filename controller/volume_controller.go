@@ -711,7 +711,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			//   2. standby volume which has been activated and is being detaching.
 			e.Spec.RequestedBackupRestore = ""
 			e.Spec.BackupVolume = ""
-			e.Status.LastRestoredBackup = ""
 			e, err = vc.ds.UpdateEngine(e)
 			return err
 		}

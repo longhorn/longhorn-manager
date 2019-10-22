@@ -411,7 +411,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Spec.DesireState = types.InstanceStateStopped
 		e.Spec.BackupVolume = ""
 		e.Spec.RequestedBackupRestore = ""
-		e.Status.LastRestoredBackup = ""
 	}
 	tc.expectVolume.Spec.NodeID = ""
 	tc.expectVolume.Spec.InitialRestorationRequired = false

@@ -1202,6 +1202,7 @@ func (s *DataStore) UpdateVolumeAndOwner(v *longhorn.Volume) (*longhorn.Volume, 
 
 func (s *DataStore) ResetEngineMonitoringStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
 	e.Status.Endpoint = ""
+	e.Status.LastRestoredBackup = ""
 	e.Status.ReplicaModeMap = nil
 	e.Status.BackupStatus = nil
 	e.Status.RestoreStatus = nil
