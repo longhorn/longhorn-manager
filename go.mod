@@ -35,7 +35,7 @@ require (
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/kubernetes-csi/drivers v0.4.1
 	github.com/kubernetes-sigs/sig-storage-lib-external-provisioner v3.1.0+incompatible
-	github.com/longhorn/backupstore v0.0.0-20191018221817-26f8c517c0c3
+	github.com/longhorn/backupstore v0.0.0-20191024011200-18aa87a9e271
 	github.com/longhorn/go-iscsi-helper v0.0.0-20191018221834-9c502e2401f4
 	github.com/longhorn/longhorn-engine v0.6.3-0.20191019001331-17b9010c3464
 	github.com/miekg/dns v1.1.22 // indirect
