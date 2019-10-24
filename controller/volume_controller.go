@@ -559,17 +559,21 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 	}
 
+	v.Status.FrontendDisabled = v.Spec.DisableFrontend
+
 	// InitialRestorationRequired means the volume is newly created restored volume and
 	// it needs to be attached automatically so that its engine will be launched then
 	// restore data from backup.
-	if v.Spec.InitialRestorationRequired && v.Spec.NodeID == "" {
-		usableNode, err := vc.ds.GetRandomReadyNode()
-		if err != nil {
-			return err
-		}
-		v.Spec.NodeID = usableNode.Name
+	if v.Spec.InitialRestorationRequired {
 		// for automatically attached volume, we should disable its frontend
-		v.Spec.DisableFrontend = true
+		v.Status.FrontendDisabled = true
+		if v.Spec.NodeID == "" {
+			usableNode, err := vc.ds.GetRandomReadyNode()
+			if err != nil {
+				return err
+			}
+			v.Spec.NodeID = usableNode.Name
+		}
 	}
 
 	if e.Status.CurrentState == types.InstanceStateError && v.Spec.NodeID != "" {
@@ -743,8 +747,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		if v.Status.PendingNodeID != "" {
 			v.Spec.NodeID = v.Status.PendingNodeID
 			v.Status.PendingNodeID = ""
-			// for automatically re-attached volume, we shouldn't disable its frontend
-			v.Spec.DisableFrontend = false
 		}
 
 	} else {
@@ -848,7 +850,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			e.Spec.NodeID = v.Spec.NodeID
 			e.Spec.ReplicaAddressMap = replicaAddressMap
 			e.Spec.DesireState = types.InstanceStateRunning
-			e.Spec.DisableFrontend = v.Spec.DisableFrontend
+			e.Spec.DisableFrontend = v.Status.FrontendDisabled
 			engineUpdated = true
 		}
 		if !vc.isVolumeUpgrading(v) {

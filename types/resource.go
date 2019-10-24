@@ -102,6 +102,7 @@ type VolumeStatus struct {
 	LastBackup       string                            `json:"lastBackup"`
 	LastBackupAt     string                            `json:"lastBackupAt"`
 	PendingNodeID    string                            `json:"pendingNodeID"`
+	FrontendDisabled bool                              `json:"frontendDisabled"`
 }
 
 type RecurringJobType string

@@ -236,7 +236,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
 	tc.expectVolume.Spec.InitialRestorationRequired = true
 	tc.expectVolume.Spec.NodeID = TestNode1
-	tc.expectVolume.Spec.DisableFrontend = true
+	tc.expectVolume.Spec.DisableFrontend = false
+	tc.expectVolume.Status.FrontendDisabled = true
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	for _, e := range tc.expectEngines {
 		e.Spec.DesireState = types.InstanceStateStopped
@@ -257,7 +258,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = false
 	tc.volume.Spec.InitialRestorationRequired = true
-	tc.volume.Spec.DisableFrontend = true
+	tc.volume.Spec.DisableFrontend = false
+	tc.volume.Status.FrontendDisabled = true
 	tc.volume.Status.State = types.VolumeStateAttaching
 	for _, e := range tc.engines {
 		e.Spec.NodeID = TestNode1
@@ -285,6 +287,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.State = types.VolumeStateAttached
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessHealthy
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.FrontendDisabled = true
 	for _, r := range tc.expectReplicas {
 		r.Spec.HealthyAt = getTestNow()
 	}
@@ -296,11 +299,12 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = false
 	tc.volume.Spec.InitialRestorationRequired = true
-	tc.volume.Spec.DisableFrontend = true
+	tc.volume.Spec.DisableFrontend = false
 	tc.volume.Status.OwnerID = TestNode1
 	tc.volume.Status.State = types.VolumeStateAttached
 	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
 	tc.volume.Status.CurrentImage = TestEngineImage
+	tc.volume.Status.FrontendDisabled = true
 	for _, e := range tc.engines {
 		e.Spec.NodeID = TestNode1
 		e.Spec.DesireState = types.InstanceStateRunning
@@ -334,7 +338,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = false
 	tc.volume.Spec.InitialRestorationRequired = true
-	tc.volume.Spec.DisableFrontend = true
+	tc.volume.Spec.DisableFrontend = false
+	tc.volume.Status.FrontendDisabled = true
 	tc.volume.Status.OwnerID = TestNode1
 	tc.volume.Status.State = types.VolumeStateAttached
 	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
@@ -365,7 +370,9 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Spec.NodeID = ""
 	tc.expectVolume.Spec.InitialRestorationRequired = false
+	tc.expectVolume.Spec.DisableFrontend = false
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.FrontendDisabled = true
 	for _, r := range tc.expectReplicas {
 		r.Spec.HealthyAt = getTestNow()
 	}
@@ -377,10 +384,11 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = false
 	tc.volume.Spec.InitialRestorationRequired = false
-	tc.volume.Spec.DisableFrontend = true
+	tc.volume.Spec.DisableFrontend = false
 	tc.volume.Status.OwnerID = TestNode1
 	tc.volume.Status.State = types.VolumeStateAttached
 	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
+	tc.volume.Status.FrontendDisabled = true
 	for _, e := range tc.engines {
 		e.Spec.NodeID = TestNode1
 		e.Spec.DesireState = types.InstanceStateRunning
@@ -414,6 +422,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	tc.expectVolume.Spec.NodeID = ""
 	tc.expectVolume.Spec.InitialRestorationRequired = false
+	tc.expectVolume.Spec.DisableFrontend = false
+	tc.expectVolume.Status.FrontendDisabled = false
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
@@ -427,6 +437,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = true
 	tc.volume.Spec.InitialRestorationRequired = true
+	tc.volume.Spec.DisableFrontend = false
 	for _, r := range tc.replicas {
 		r.Spec.HealthyAt = ""
 	}
@@ -434,7 +445,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
 	tc.expectVolume.Spec.InitialRestorationRequired = true
 	tc.expectVolume.Spec.NodeID = TestNode1
-	tc.expectVolume.Spec.DisableFrontend = true
+	tc.expectVolume.Spec.DisableFrontend = false
+	tc.expectVolume.Status.FrontendDisabled = true
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	for _, r := range tc.expectReplicas {
 		r.Spec.DesireState = types.InstanceStateRunning
@@ -446,7 +458,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.NodeID = TestNode1
 	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = true
-	tc.volume.Spec.DisableFrontend = true
+	tc.volume.Spec.DisableFrontend = false
+	tc.volume.Status.FrontendDisabled = true
 	tc.volume.Status.State = types.VolumeStateAttaching
 	tc.volume.Spec.InitialRestorationRequired = true
 	for _, e := range tc.engines {
@@ -475,11 +488,13 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.State = types.VolumeStateAttached
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessHealthy
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Spec.NodeID = tc.volume.Spec.NodeID
+	tc.expectVolume.Spec.InitialRestorationRequired = false
+	tc.expectVolume.Spec.DisableFrontend = false
+	tc.expectVolume.Status.FrontendDisabled = true
 	for _, r := range tc.expectReplicas {
 		r.Spec.HealthyAt = getTestNow()
 	}
-	tc.expectVolume.Spec.NodeID = tc.volume.Spec.NodeID
-	tc.expectVolume.Spec.InitialRestorationRequired = false
 	testCases["standby volume is not automatically detached"] = tc
 
 	// volume detaching - stop engine
