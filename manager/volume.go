@@ -158,6 +158,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 	size := spec.Size
 	lastBackup := ""
 	kubeStatus := &types.KubernetesStatus{}
+	initialRestorationRequired := false
 	if spec.FromBackup != "" {
 		backupTarget, err := GenerateBackupTarget(m.ds)
 		if err != nil {
@@ -202,7 +203,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			spec.BaseImage = baseImage
 		}
 
-		spec.InitialRestorationRequired = true
+		initialRestorationRequired = true
 	}
 
 	// make sure it's multiples of 4096
@@ -251,22 +252,22 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			Name: name,
 		},
 		Spec: types.VolumeSpec{
-			Size:                       size,
-			Frontend:                   spec.Frontend,
-			EngineImage:                defaultEngineImage,
-			FromBackup:                 spec.FromBackup,
-			NumberOfReplicas:           spec.NumberOfReplicas,
-			StaleReplicaTimeout:        spec.StaleReplicaTimeout,
-			BaseImage:                  spec.BaseImage,
-			RecurringJobs:              spec.RecurringJobs,
-			Standby:                    spec.Standby,
-			InitialRestorationRequired: spec.InitialRestorationRequired,
-			DiskSelector:               spec.DiskSelector,
-			NodeSelector:               spec.NodeSelector,
+			Size:                size,
+			Frontend:            spec.Frontend,
+			EngineImage:         defaultEngineImage,
+			FromBackup:          spec.FromBackup,
+			NumberOfReplicas:    spec.NumberOfReplicas,
+			StaleReplicaTimeout: spec.StaleReplicaTimeout,
+			BaseImage:           spec.BaseImage,
+			RecurringJobs:       spec.RecurringJobs,
+			Standby:             spec.Standby,
+			DiskSelector:        spec.DiskSelector,
+			NodeSelector:        spec.NodeSelector,
 		},
 		Status: types.VolumeStatus{
-			KubernetesStatus: *kubeStatus,
-			LastBackup:       lastBackup,
+			InitialRestorationRequired: initialRestorationRequired,
+			KubernetesStatus:           *kubeStatus,
+			LastBackup:                 lastBackup,
 		},
 	}
 	v, err = m.ds.CreateVolume(v)

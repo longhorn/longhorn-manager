@@ -564,7 +564,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 	// InitialRestorationRequired means the volume is newly created restored volume and
 	// it needs to be attached automatically so that its engine will be launched then
 	// restore data from backup.
-	if v.Spec.InitialRestorationRequired {
+	if v.Status.InitialRestorationRequired {
 		// for automatically attached volume, we should disable its frontend
 		v.Status.FrontendDisabled = true
 		if v.Spec.NodeID == "" {
@@ -878,10 +878,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		// If the newly created restored volume is state attached,
 		// it means the volume is restoring or has restored data
 		// from backup. Then it may need to be detached automatically.
-		if v.Spec.InitialRestorationRequired == true && v.Status.State == types.VolumeStateAttached {
+		if v.Status.InitialRestorationRequired == true && v.Status.State == types.VolumeStateAttached {
 			// The initial full restoration is complete.
 			if e.Status.LastRestoredBackup != "" {
-				v.Spec.InitialRestorationRequired = false
+				v.Status.InitialRestorationRequired = false
 				// For disaster recovery (standby) volume, it will incrementally
 				// restore backups later. Hence it cannot be detached automatically.
 				if !v.Spec.Standby {

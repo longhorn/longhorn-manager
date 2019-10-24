@@ -55,20 +55,19 @@ const (
 )
 
 type VolumeSpec struct {
-	Size                       int64          `json:"size,string"`
-	Frontend                   VolumeFrontend `json:"frontend"`
-	FromBackup                 string         `json:"fromBackup"`
-	NumberOfReplicas           int            `json:"numberOfReplicas"`
-	StaleReplicaTimeout        int            `json:"staleReplicaTimeout"`
-	NodeID                     string         `json:"nodeID"`
-	EngineImage                string         `json:"engineImage"`
-	RecurringJobs              []RecurringJob `json:"recurringJobs"`
-	BaseImage                  string         `json:"baseImage"`
-	Standby                    bool           `json:"Standby"`
-	InitialRestorationRequired bool           `json:"initialRestorationRequired"`
-	DiskSelector               []string       `json:"diskSelector"`
-	NodeSelector               []string       `json:"nodeSelector"`
-	DisableFrontend            bool           `json:"disableFrontend"`
+	Size                int64          `json:"size,string"`
+	Frontend            VolumeFrontend `json:"frontend"`
+	FromBackup          string         `json:"fromBackup"`
+	NumberOfReplicas    int            `json:"numberOfReplicas"`
+	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`
+	NodeID              string         `json:"nodeID"`
+	EngineImage         string         `json:"engineImage"`
+	RecurringJobs       []RecurringJob `json:"recurringJobs"`
+	BaseImage           string         `json:"baseImage"`
+	Standby             bool           `json:"Standby"`
+	DiskSelector        []string       `json:"diskSelector"`
+	NodeSelector        []string       `json:"nodeSelector"`
+	DisableFrontend     bool           `json:"disableFrontend"`
 }
 
 type KubernetesStatus struct {
@@ -93,16 +92,17 @@ type WorkloadStatus struct {
 }
 
 type VolumeStatus struct {
-	OwnerID          string                            `json:"ownerID"`
-	State            VolumeState                       `json:"state"`
-	Robustness       VolumeRobustness                  `json:"robustness"`
-	CurrentImage     string                            `json:"currentImage"`
-	KubernetesStatus KubernetesStatus                  `json:"kubernetesStatus"`
-	Conditions       map[VolumeConditionType]Condition `json:"conditions"`
-	LastBackup       string                            `json:"lastBackup"`
-	LastBackupAt     string                            `json:"lastBackupAt"`
-	PendingNodeID    string                            `json:"pendingNodeID"`
-	FrontendDisabled bool                              `json:"frontendDisabled"`
+	OwnerID                    string                            `json:"ownerID"`
+	State                      VolumeState                       `json:"state"`
+	Robustness                 VolumeRobustness                  `json:"robustness"`
+	CurrentImage               string                            `json:"currentImage"`
+	KubernetesStatus           KubernetesStatus                  `json:"kubernetesStatus"`
+	Conditions                 map[VolumeConditionType]Condition `json:"conditions"`
+	LastBackup                 string                            `json:"lastBackup"`
+	LastBackupAt               string                            `json:"lastBackupAt"`
+	PendingNodeID              string                            `json:"pendingNodeID"`
+	FrontendDisabled           bool                              `json:"frontendDisabled"`
+	InitialRestorationRequired bool                              `json:"initialRestorationRequired"`
 }
 
 type RecurringJobType string
