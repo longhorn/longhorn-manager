@@ -37,7 +37,7 @@ require (
 	github.com/kubernetes-sigs/sig-storage-lib-external-provisioner v3.1.0+incompatible
 	github.com/longhorn/backupstore v0.0.0-20191024011200-18aa87a9e271
 	github.com/longhorn/go-iscsi-helper v0.0.0-20191018221834-9c502e2401f4
-	github.com/longhorn/longhorn-engine v0.6.3-0.20191019001331-17b9010c3464
+	github.com/longhorn/longhorn-engine v0.6.3-0.20191024174101-ec70e76d6911
 	github.com/miekg/dns v1.1.22 // indirect
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
