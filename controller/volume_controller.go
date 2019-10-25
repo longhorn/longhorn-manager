@@ -415,6 +415,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 				e.Spec.LogRequested = true
 				r.Spec.LogRequested = true
 				r.Spec.FailedAt = vc.nowHandler()
+				r.Spec.DesireState = types.InstanceStateStopped
 				r, err = vc.ds.UpdateReplica(r)
 				if err != nil {
 					return err
@@ -707,6 +708,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			for _, r := range rs {
 				if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" {
 					r.Spec.FailedAt = vc.nowHandler()
+					r.Spec.DesireState = types.InstanceStateStopped
 					r, err = vc.ds.UpdateReplica(r)
 					if err != nil {
 						return err
@@ -799,6 +801,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			}
 			if nodeDown {
 				r.Spec.FailedAt = vc.nowHandler()
+				r.Spec.DesireState = types.InstanceStateStopped
 				r, err = vc.ds.UpdateReplica(r)
 				if err != nil {
 					return err

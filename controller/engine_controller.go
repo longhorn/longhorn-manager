@@ -983,6 +983,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 					return
 				}
 				rep.Spec.FailedAt = util.Now()
+				rep.Spec.DesireState = types.InstanceStateStopped
 				if _, err := ec.ds.UpdateReplica(rep); err != nil {
 					logrus.Errorf("Could not mark failed rebuild on replica %v: %v", replica, err)
 					return

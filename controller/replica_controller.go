@@ -279,15 +279,6 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}()
 
-	// we need to stop the replica when replica failed connection with controller
-	if replica.Spec.FailedAt != "" {
-		if replica.Spec.DesireState != types.InstanceStateStopped {
-			replica.Spec.DesireState = types.InstanceStateStopped
-			_, err := rc.ds.UpdateReplica(replica)
-			return err
-		}
-	}
-
 	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
 }
 
