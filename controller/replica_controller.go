@@ -214,26 +214,19 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			}
 		}
 
-		if replica.Spec.NodeID != "" {
+		nodeID := replica.Spec.NodeID
+		if nodeID != "" {
 			// Check if replica's executing node died
 			if down, err := rc.ds.IsNodeDownOrDeleted(replica.Spec.NodeID); err != nil {
 				return err
 			} else if down {
-				dataPath := replica.Spec.DataPath
-				nodeID := replica.Spec.NodeID
-				replica.Spec.DataPath = ""
-				replica.Spec.NodeID = ""
-				_, err = rc.ds.UpdateReplica(replica)
-				if err == nil {
-					rc.eventRecorder.Eventf(replica, v1.EventTypeWarning, EventReasonOrphaned,
-						"Node %v down or deleted, can't cleanup replica %v data at %v",
-						nodeID, replica.Name, dataPath)
-				}
-				return err
+				logrus.Errorf("Node %v down or deleted, can't cleanup replica %v data at %v",
+					nodeID, replica.Name, replica.Spec.DataPath)
+				nodeID = ""
 			}
 		}
 
-		if replica.Spec.NodeID == rc.controllerID {
+		if nodeID == rc.controllerID {
 			if err := rc.DeleteInstance(replica); err != nil {
 				if !types.ErrorIsNotFound(err) {
 					return errors.Wrapf(err, "failed to cleanup the related replica process before deleting replica %v", replica.Name)
@@ -254,7 +247,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			return rc.ds.RemoveFinalizerForReplica(replica)
 		}
 
-		if replica.Spec.NodeID == "" && replica.Status.OwnerID == rc.controllerID {
+		if nodeID == "" && replica.Status.OwnerID == rc.controllerID {
 			logrus.Debugf("Deleted replica %v without cleanup due to no node ID", replica.Name)
 			return rc.ds.RemoveFinalizerForReplica(replica)
 		}
