@@ -95,6 +95,7 @@ type VolumeStatus struct {
 	OwnerID                    string                            `json:"ownerID"`
 	State                      VolumeState                       `json:"state"`
 	Robustness                 VolumeRobustness                  `json:"robustness"`
+	CurrentNodeID              string                            `json:"currentNodeID"`
 	CurrentImage               string                            `json:"currentImage"`
 	KubernetesStatus           KubernetesStatus                  `json:"kubernetesStatus"`
 	Conditions                 map[VolumeConditionType]Condition `json:"conditions"`

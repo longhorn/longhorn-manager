@@ -625,7 +625,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			LastRestoredBackup:     e.Status.LastRestoredBackup,
 			RequestedBackupRestore: e.Spec.RequestedBackupRestore,
 		})
-		if e.Spec.NodeID == v.Spec.NodeID {
+		if e.Spec.NodeID == v.Status.CurrentNodeID {
 			ve = e
 		}
 		backupStatus := e.Status.BackupStatus

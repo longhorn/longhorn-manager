@@ -112,7 +112,7 @@ func getEngineImageControllerTestTemplate() *EngineImageControllerTestCase {
 		currentDaemonSet:      newEngineImageDaemonSet(),
 	}
 
-	tc.volume.Spec.NodeID = TestNode1
+	tc.volume.Status.CurrentNodeID = TestNode1
 	tc.volume.Status.State = types.VolumeStateAttached
 	tc.volume.Status.CurrentImage = TestEngineImage
 	tc.currentEngineImage.Status.RefCount = 1

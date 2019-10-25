@@ -312,7 +312,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 	}()
 
-	engine := vc.getNodeAttachedEngine(volume.Spec.NodeID, engines)
+	engine := vc.getNodeAttachedEngine(volume.Status.CurrentNodeID, engines)
 	if engine == nil {
 		if len(engines) == 1 {
 			for _, e := range engines {
@@ -395,7 +395,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 				vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFaulted, "volume %v became faulted", v.Name)
 			}
 			// detach the volume
-			v.Spec.NodeID = ""
+			v.Status.CurrentNodeID = ""
 		}
 		return nil
 	}
@@ -446,7 +446,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFaulted, "volume %v became faulted", v.Name)
 		}
 		// detach the volume
-		v.Spec.NodeID = ""
+		v.Status.CurrentNodeID = ""
 	} else if healthyCount >= v.Spec.NumberOfReplicas {
 		v.Status.Robustness = types.VolumeRobustnessHealthy
 		if oldRobustness == types.VolumeRobustnessDegraded {
@@ -532,6 +532,23 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		v.Status.CurrentImage = v.Spec.EngineImage
 	}
 
+	if v.Status.CurrentNodeID == "" {
+		// If there is a pending attach operation, we need to stay detached until PendingNodeID was cleared
+		if v.Status.PendingNodeID == "" && v.Status.Robustness != types.VolumeRobustnessFaulted {
+			v.Status.CurrentNodeID = v.Spec.NodeID
+		}
+	} else { // v.Status.CurrentNodeID != ""
+		if v.Spec.NodeID != "" {
+			if v.Spec.NodeID != v.Status.CurrentNodeID {
+				return fmt.Errorf("volume %v has already attached to node %v, but asked to attach to node %v", v.Name, v.Status.CurrentNodeID, v.Spec.NodeID)
+			}
+		} else { // v.Spec.NodeID == ""
+			if !(v.Status.InitialRestorationRequired || v.Spec.Standby) {
+				v.Status.CurrentNodeID = ""
+			}
+		}
+	}
+
 	if e == nil {
 		// first time creation
 		//TODO this creation won't be recorded in the engines, since
@@ -572,24 +589,24 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			if err != nil {
 				return err
 			}
-			v.Spec.NodeID = usableNode.Name
+			v.Status.CurrentNodeID = usableNode.Name
 		}
 	}
 
-	if e.Status.CurrentState == types.InstanceStateError && v.Spec.NodeID != "" {
-		if e.Spec.NodeID != "" && e.Spec.NodeID != v.Spec.NodeID {
+	if e.Status.CurrentState == types.InstanceStateError && v.Status.CurrentNodeID != "" {
+		if e.Spec.NodeID != "" && e.Spec.NodeID != v.Status.CurrentNodeID {
 			return fmt.Errorf("BUG: engine %v nodeID %v doesn't match volume %v nodeID %v",
-				e.Name, e.Spec.NodeID, v.Name, v.Spec.NodeID)
+				e.Name, e.Spec.NodeID, v.Name, v.Status.CurrentNodeID)
 		}
-		node, err := vc.ds.GetKubernetesNode(v.Spec.NodeID)
+		node, err := vc.ds.GetKubernetesNode(v.Status.CurrentNodeID)
 		if err != nil {
 			return err
 		}
 		// If it's due to reboot, we're going to reattach the volume later
 		// e.Status.NodeBootID would only reset when the instance stopped by request
 		if e.Status.NodeBootID != "" && e.Status.NodeBootID != node.Status.NodeInfo.BootID {
-			v.Status.PendingNodeID = v.Spec.NodeID
-			msg := fmt.Sprintf("Detect the reboot of volume %v attached node %v, reattach the volume", v.Name, v.Spec.NodeID)
+			v.Status.PendingNodeID = v.Status.CurrentNodeID
+			msg := fmt.Sprintf("Detect the reboot of volume %v attached node %v, reattach the volume", v.Name, v.Status.CurrentNodeID)
 			logrus.Errorf(msg)
 			vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonRebooted, msg)
 		} else {
@@ -609,7 +626,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 				}
 			}
 		}
-		v.Spec.NodeID = ""
+		v.Status.CurrentNodeID = ""
 	}
 
 	allScheduled := true
@@ -666,7 +683,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 	}
 
 	oldState := v.Status.State
-	if v.Spec.NodeID == "" {
+	if v.Status.CurrentNodeID == "" {
 		// the final state will be determined at the end of the clause
 		if newVolume {
 			v.Status.State = types.VolumeStateCreating
@@ -745,7 +762,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 		// Automatic reattach the volume if PendingNodeID was set, it's for reboot
 		if v.Status.PendingNodeID != "" {
-			v.Spec.NodeID = v.Status.PendingNodeID
+			v.Status.CurrentNodeID = v.Status.PendingNodeID
 			v.Status.PendingNodeID = ""
 		}
 
@@ -843,11 +860,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 
 		engineUpdated := false
 		if e.Spec.DesireState != types.InstanceStateRunning {
-			if e.Spec.NodeID != "" && e.Spec.NodeID != v.Spec.NodeID {
+			if e.Spec.NodeID != "" && e.Spec.NodeID != v.Status.CurrentNodeID {
 				return fmt.Errorf("engine is on node %v vs volume on %v, must detach first",
-					e.Spec.NodeID, v.Spec.NodeID)
+					e.Spec.NodeID, v.Status.CurrentNodeID)
 			}
-			e.Spec.NodeID = v.Spec.NodeID
+			e.Spec.NodeID = v.Status.CurrentNodeID
 			e.Spec.ReplicaAddressMap = replicaAddressMap
 			e.Spec.DesireState = types.InstanceStateRunning
 			e.Spec.DisableFrontend = v.Status.FrontendDisabled
@@ -872,7 +889,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 
 		v.Status.State = types.VolumeStateAttached
 		if oldState != v.Status.State {
-			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Spec.NodeID)
+			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
 		}
 
 		// If the newly created restored volume is state attached,
@@ -886,7 +903,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 				// restore backups later. Hence it cannot be detached automatically.
 				if !v.Spec.Standby {
 					if e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup {
-						v.Spec.NodeID = ""
+						v.Status.CurrentNodeID = ""
 					}
 				}
 			}
@@ -1305,7 +1322,7 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 							Name: types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
 						},
 						Spec: v1.PodSpec{
-							NodeName: v.Spec.NodeID,
+							NodeName: v.Status.CurrentNodeID,
 							Containers: []v1.Container{
 								{
 									Name:    types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
@@ -1456,7 +1473,7 @@ func (vc *VolumeController) getCurrentEngineAndExtra(v *longhorn.Volume, es map[
 		return nil, nil, fmt.Errorf("more than two engines exists")
 	}
 	for _, e := range es {
-		if e.Spec.NodeID == v.Spec.NodeID &&
+		if e.Spec.NodeID == v.Status.CurrentNodeID &&
 			e.Spec.DesireState == types.InstanceStateRunning &&
 			e.Status.CurrentState == types.InstanceStateRunning {
 			currentEngine = e
