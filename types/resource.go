@@ -163,12 +163,13 @@ type EngineSpec struct {
 
 type EngineStatus struct {
 	InstanceStatus
-	ReplicaModeMap     map[string]ReplicaMode    `json:"replicaModeMap"`
-	Endpoint           string                    `json:"endpoint"`
-	LastRestoredBackup string                    `json:"lastRestoredBackup"`
-	BackupStatus       map[string]*BackupStatus  `json:"backupStatus"`
-	RestoreStatus      map[string]*RestoreStatus `json:"restoreStatus"`
-	PurgeStatus        map[string]*PurgeStatus   `json:"purgeStatus"`
+	CurrentReplicaAddressMap map[string]string         `json:"currentReplicaAddressMap"`
+	ReplicaModeMap           map[string]ReplicaMode    `json:"replicaModeMap"`
+	Endpoint                 string                    `json:"endpoint"`
+	LastRestoredBackup       string                    `json:"lastRestoredBackup"`
+	BackupStatus             map[string]*BackupStatus  `json:"backupStatus"`
+	RestoreStatus            map[string]*RestoreStatus `json:"restoreStatus"`
+	PurgeStatus              map[string]*PurgeStatus   `json:"purgeStatus"`
 }
 
 type ReplicaSpec struct {

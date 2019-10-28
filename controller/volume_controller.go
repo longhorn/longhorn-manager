@@ -1119,6 +1119,12 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		return err
 	}
 
+	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
+	e.Spec.UpgradedReplicaAddressMap = map[string]string{}
+	e, err = vc.ds.UpdateEngine(e)
+	if err != nil {
+		return err
+	}
 	// cleanupCorruptedOrStaleReplicas() will take care of old replicas
 	logrus.Infof("Engine %v of volume %s has been upgraded from %v to %v", e.Name, v.Name, v.Status.CurrentImage, v.Spec.EngineImage)
 	v.Status.CurrentImage = v.Spec.EngineImage

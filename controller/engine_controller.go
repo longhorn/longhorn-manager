@@ -268,6 +268,14 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	}
 
+	if len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
+		if err := ec.Upgrade(engine); err != nil {
+			return err
+		}
+	} else {
+		engine.Status.CurrentReplicaAddressMap = engine.Spec.ReplicaAddressMap
+	}
+
 	if err := ec.instanceHandler.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
 		return err
 	}
@@ -285,10 +293,6 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		// we allow across monitoring temporaily due to migration case
 		if !ec.isMonitoring(engine) {
 			ec.startMonitoring(engine)
-		} else if engine.Status.CurrentImage != engine.Spec.EngineImage && len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
-			if err := ec.Upgrade(engine); err != nil {
-				return err
-			}
 		} else if engine.Status.ReplicaModeMap != nil {
 			if err := ec.ReconcileEngineState(engine); err != nil {
 				return err
@@ -388,7 +392,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProc
 	}
 
 	replicas := []string{}
-	for _, addr := range e.Spec.ReplicaAddressMap {
+	for _, addr := range e.Status.CurrentReplicaAddressMap {
 		replicas = append(replicas, engineapi.GetBackendReplicaURL(addr))
 	}
 
@@ -683,7 +687,7 @@ func (m *EngineMonitor) stop(e *longhorn.Engine) {
 
 func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	addressReplicaMap := map[string]string{}
-	for replica, address := range engine.Spec.ReplicaAddressMap {
+	for replica, address := range engine.Status.CurrentReplicaAddressMap {
 		if addressReplicaMap[address] != "" {
 			return fmt.Errorf("invalid ReplicaAddressMap: duplicate addresses")
 		}
@@ -908,7 +912,7 @@ func (ec *EngineController) rebuildingNewReplica(e *longhorn.Engine) error {
 		logrus.Debugf("Skip rebuilding for volume %v because there is rebuilding in process", e.Spec.VolumeName)
 		return nil
 	}
-	for replica, addr := range e.Spec.ReplicaAddressMap {
+	for replica, addr := range e.Status.CurrentReplicaAddressMap {
 		// one is enough
 		if !replicaExists[replica] {
 			return ec.startRebuilding(e, replica, addr)
@@ -1047,9 +1051,8 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	}
 	logrus.Debugf("Engine %v has been upgraded from %v to %v", e.Name, e.Status.CurrentImage, e.Spec.EngineImage)
 	e.Status.CurrentImage = e.Spec.EngineImage
+	e.Status.CurrentReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	// reset ReplicaModeMap to reflect the new replicas
 	e.Status.ReplicaModeMap = nil
-	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
-	e.Spec.UpgradedReplicaAddressMap = map[string]string{}
 	return nil
 }
