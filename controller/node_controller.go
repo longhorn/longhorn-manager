@@ -576,14 +576,12 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		return err
 	}
 
-	updateDiskMap := map[string]types.DiskSpec{}
 	originDiskStatus := node.Status.DiskStatus
 	if originDiskStatus == nil {
 		originDiskStatus = map[string]types.DiskStatus{}
 	}
 	for diskID, disk := range diskMap {
 		diskConditions := map[types.DiskConditionType]types.Condition{}
-		updateDisk := disk
 		diskStatus := types.DiskStatus{}
 		_, ok := originDiskStatus[diskID]
 		if ok {
@@ -618,8 +616,6 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			readyCondition.Status = types.ConditionStatusFalse
 			readyCondition.Reason = types.DiskConditionReasonNoDiskInfo
 			readyCondition.Message = fmt.Sprintf("Get disk information on node %v error: %v", node.Name, err)
-			// disable invalid disk
-			updateDisk.AllowScheduling = false
 			diskStatus.StorageMaximum = 0
 			diskStatus.StorageAvailable = 0
 		} else if diskInfo == nil || diskInfo.Fsid != diskID {
@@ -632,8 +628,6 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			readyCondition.Status = types.ConditionStatusFalse
 			readyCondition.Reason = types.DiskConditionReasonDiskFilesystemChanged
 			readyCondition.Message = fmt.Sprintf("disk %v on node %v has changed file system", disk.Path, node.Name)
-			// disable invalid disk
-			updateDisk.AllowScheduling = false
 			diskStatus.StorageMaximum = 0
 			diskStatus.StorageAvailable = 0
 		} else {
@@ -692,7 +686,6 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 
 		diskStatus.Conditions = diskConditions
 		diskStatusMap[diskID] = diskStatus
-		updateDiskMap[diskID] = updateDisk
 	}
 
 	// if there's some replicas scheduled to wrong disks, write them to error log
@@ -707,7 +700,6 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 	}
 
 	node.Status.DiskStatus = diskStatusMap
-	node.Spec.Disks = updateDiskMap
 
 	return nil
 }
