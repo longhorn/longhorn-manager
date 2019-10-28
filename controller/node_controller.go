@@ -402,8 +402,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 			condition.Reason = string(types.NodeConditionReasonKubernetesNodeGone)
 			condition.Message = fmt.Sprintf("Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name)
 			node.Status.Conditions[types.NodeConditionTypeReady] = condition
-			// set node unschedulable
-			node.Spec.AllowScheduling = false
 		} else {
 			return err
 		}
