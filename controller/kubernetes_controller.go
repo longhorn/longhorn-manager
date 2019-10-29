@@ -253,8 +253,8 @@ func (kc *KubernetesController) syncKubernetesStatus(key string) (err error) {
 	existingVolume := volume.DeepCopy()
 	defer func() {
 		// we're going to update volume assume things changes
-		if err == nil && !reflect.DeepEqual(existingVolume, volume) {
-			_, err = kc.ds.UpdateVolume(volume)
+		if err == nil && !reflect.DeepEqual(existingVolume.Status, volume.Status) {
+			_, err = kc.ds.UpdateVolumeStatus(volume)
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
@@ -425,7 +425,7 @@ func (kc *KubernetesController) cleanupForPVDeletion(pvName string) (bool, error
 		}
 		volume.Status.KubernetesStatus.PVName = ""
 		volume.Status.KubernetesStatus.PVStatus = ""
-		volume, err = kc.ds.UpdateVolume(volume)
+		volume, err = kc.ds.UpdateVolumeStatus(volume)
 		if err != nil {
 			return false, errors.Wrapf(err, "failed to update volume in cleanupForPVDeletion")
 		}

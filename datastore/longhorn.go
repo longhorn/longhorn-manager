@@ -309,6 +309,17 @@ func (s *DataStore) UpdateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	return obj, nil
 }
 
+func (s *DataStore) UpdateVolumeStatus(v *longhorn.Volume) (*longhorn.Volume, error) {
+	obj, err := s.lhClient.LonghornV1alpha1().Volumes(s.namespace).UpdateStatus(v)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(v.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getVolumeRO(name)
+	})
+	return obj, nil
+}
+
 // DeleteVolume won't result in immediately deletion since finalizer was set by default
 func (s *DataStore) DeleteVolume(name string) error {
 	return s.lhClient.LonghornV1alpha1().Volumes(s.namespace).Delete(name, &metav1.DeleteOptions{})

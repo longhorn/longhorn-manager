@@ -231,7 +231,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	if volume.Status.OwnerID == "" {
 		// Claim it
 		volume.Status.OwnerID = vc.controllerID
-		volume, err = vc.ds.UpdateVolume(volume)
+		volume, err = vc.ds.UpdateVolumeStatus(volume)
 		if err != nil {
 			// we don't mind others coming first
 			if apierrors.IsConflict(errors.Cause(err)) {
@@ -257,7 +257,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	if volume.DeletionTimestamp != nil {
 		if volume.Status.State != types.VolumeStateDeleting {
 			volume.Status.State = types.VolumeStateDeleting
-			volume, err = vc.ds.UpdateVolume(volume)
+			volume, err = vc.ds.UpdateVolumeStatus(volume)
 			if err != nil {
 				return err
 			}
@@ -303,8 +303,8 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	existingVolume := volume.DeepCopy()
 	defer func() {
 		// we're going to update volume assume things changes
-		if err == nil && !reflect.DeepEqual(existingVolume, volume) {
-			_, err = vc.ds.UpdateVolume(volume)
+		if err == nil && !reflect.DeepEqual(existingVolume.Status, volume.Status) {
+			_, err = vc.ds.UpdateVolumeStatus(volume)
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
