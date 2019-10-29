@@ -124,6 +124,12 @@ func (m *VolumeManager) DiskUpdate(name string, updateDisks []types.DiskSpec) (*
 				isInvalid = true
 				logrus.Warnf("Update disk on node %v warning: The disk %v has changed file system, please mount it back or remove it", name, oDisk.Path)
 				diskUpdateMap[fsid] = oDisk
+				// allow disable scheduling to remove the disk https://github.com/longhorn/longhorn/issues/838
+				if uDisk.AllowScheduling == false {
+					uDisk = oDisk
+					uDisk.AllowScheduling = false
+					diskUpdateMap[fsid] = uDisk
+				}
 				break
 			}
 		}
