@@ -592,9 +592,6 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {
 		return nil, err
 	}
-	if err := tagInstanceManagerLabel(r.Status.InstanceManagerName, r); err != nil {
-		return nil, err
-	}
 
 	ret, err := s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Create(r)
 	if err != nil {
@@ -626,9 +623,6 @@ func (s *DataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 		return nil, err
 	}
 	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {
-		return nil, err
-	}
-	if err := tagInstanceManagerLabel(r.Status.InstanceManagerName, r); err != nil {
 		return nil, err
 	}
 
@@ -1566,15 +1560,6 @@ func getInstanceManagerSelector(imName string) (labels.Selector, error) {
 func (s *DataStore) ListEnginesROByInstanceManager(name string) ([]*longhorn.Engine, error) {
 	selector, err := getInstanceManagerSelector(name)
 	list, err := s.eLister.Engines(s.namespace).List(selector)
-	if err != nil {
-		return nil, err
-	}
-	return list, nil
-}
-
-func (s *DataStore) ListReplicasROByInstanceManager(name string) ([]*longhorn.Replica, error) {
-	selector, err := getInstanceManagerSelector(name)
-	list, err := s.rLister.Replicas(s.namespace).List(selector)
 	if err != nil {
 		return nil, err
 	}
