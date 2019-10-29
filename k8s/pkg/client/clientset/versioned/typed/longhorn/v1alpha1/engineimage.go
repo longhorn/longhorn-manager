@@ -39,6 +39,7 @@ type EngineImagesGetter interface {
 type EngineImageInterface interface {
 	Create(*v1alpha1.EngineImage) (*v1alpha1.EngineImage, error)
 	Update(*v1alpha1.EngineImage) (*v1alpha1.EngineImage, error)
+	UpdateStatus(*v1alpha1.EngineImage) (*v1alpha1.EngineImage, error)
 	Delete(name string, options *v1.DeleteOptions) error
 	DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error
 	Get(name string, options v1.GetOptions) (*v1alpha1.EngineImage, error)
@@ -126,6 +127,22 @@ func (c *engineImages) Update(engineImage *v1alpha1.EngineImage) (result *v1alph
 		Namespace(c.ns).
 		Resource("engineimages").
 		Name(engineImage.Name).
+		Body(engineImage).
+		Do().
+		Into(result)
+	return
+}
+
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+
+func (c *engineImages) UpdateStatus(engineImage *v1alpha1.EngineImage) (result *v1alpha1.EngineImage, err error) {
+	result = &v1alpha1.EngineImage{}
+	err = c.client.Put().
+		Namespace(c.ns).
+		Resource("engineimages").
+		Name(engineImage.Name).
+		SubResource("status").
 		Body(engineImage).
 		Do().
 		Into(result)

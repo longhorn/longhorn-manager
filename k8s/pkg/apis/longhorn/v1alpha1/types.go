@@ -82,7 +82,6 @@ type SettingList struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +genclient:noStatus
 
 type EngineImage struct {
 	metav1.TypeMeta   `json:",inline"`

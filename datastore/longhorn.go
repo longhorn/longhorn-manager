@@ -816,6 +816,17 @@ func (s *DataStore) UpdateEngineImage(img *longhorn.EngineImage) (*longhorn.Engi
 	return obj, nil
 }
 
+func (s *DataStore) UpdateEngineImageStatus(img *longhorn.EngineImage) (*longhorn.EngineImage, error) {
+	obj, err := s.lhClient.LonghornV1alpha1().EngineImages(s.namespace).UpdateStatus(img)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(img.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getEngineImageRO(name)
+	})
+	return obj, nil
+}
+
 // DeleteEngineImage won't result in immediately deletion since finalizer was set by default
 func (s *DataStore) DeleteEngineImage(name string) error {
 	propagation := metav1.DeletePropagationForeground

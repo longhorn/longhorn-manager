@@ -267,7 +267,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	if engineImage.Status.OwnerID == "" || nodeStatusDown {
 		// Claim it
 		engineImage.Status.OwnerID = ic.controllerID
-		engineImage, err = ic.ds.UpdateEngineImage(engineImage)
+		engineImage, err = ic.ds.UpdateEngineImageStatus(engineImage)
 		if err != nil {
 			// we don't mind others coming first
 			if apierrors.IsConflict(errors.Cause(err)) {
@@ -296,8 +296,8 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	oldImageState := engineImage.Status.State
 	existingEngineImage := engineImage.DeepCopy()
 	defer func() {
-		if err == nil && !reflect.DeepEqual(existingEngineImage, engineImage) {
-			_, err = ic.ds.UpdateEngineImage(engineImage)
+		if err == nil && !reflect.DeepEqual(existingEngineImage.Status, engineImage.Status) {
+			_, err = ic.ds.UpdateEngineImageStatus(engineImage)
 		}
 		if apierrors.IsConflict(errors.Cause(err)) {
 			logrus.Debugf("Requeue %v due to conflict", key)
