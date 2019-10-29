@@ -39,6 +39,7 @@ type NodesGetter interface {
 type NodeInterface interface {
 	Create(*v1alpha1.Node) (*v1alpha1.Node, error)
 	Update(*v1alpha1.Node) (*v1alpha1.Node, error)
+	UpdateStatus(*v1alpha1.Node) (*v1alpha1.Node, error)
 	Delete(name string, options *v1.DeleteOptions) error
 	DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error
 	Get(name string, options v1.GetOptions) (*v1alpha1.Node, error)
@@ -126,6 +127,22 @@ func (c *nodes) Update(node *v1alpha1.Node) (result *v1alpha1.Node, err error) {
 		Namespace(c.ns).
 		Resource("nodes").
 		Name(node.Name).
+		Body(node).
+		Do().
+		Into(result)
+	return
+}
+
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+
+func (c *nodes) UpdateStatus(node *v1alpha1.Node) (result *v1alpha1.Node, err error) {
+	result = &v1alpha1.Node{}
+	err = c.client.Put().
+		Namespace(c.ns).
+		Resource("nodes").
+		Name(node.Name).
+		SubResource("status").
 		Body(node).
 		Do().
 		Into(result)

@@ -992,6 +992,17 @@ func (s *DataStore) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	return obj, nil
 }
 
+func (s *DataStore) UpdateNodeStatus(node *longhorn.Node) (*longhorn.Node, error) {
+	obj, err := s.lhClient.LonghornV1alpha1().Nodes(s.namespace).UpdateStatus(node)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(node.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getNodeRO(name)
+	})
+	return obj, nil
+}
+
 func (s *DataStore) ListNodes() (map[string]*longhorn.Node, error) {
 	itemMap := make(map[string]*longhorn.Node)
 

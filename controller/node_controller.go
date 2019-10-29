@@ -326,8 +326,8 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	existingNode := node.DeepCopy()
 	defer func() {
 		// we're going to update volume assume things changes
-		if err == nil && !reflect.DeepEqual(existingNode, node) {
-			_, err = nc.ds.UpdateNode(node)
+		if err == nil && !reflect.DeepEqual(existingNode.Status, node.Status) {
+			_, err = nc.ds.UpdateNodeStatus(node)
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {

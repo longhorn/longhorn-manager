@@ -100,6 +100,18 @@ func (c *FakeNodes) Update(node *v1alpha1.Node) (result *v1alpha1.Node, err erro
 	return obj.(*v1alpha1.Node), err
 }
 
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+func (c *FakeNodes) UpdateStatus(node *v1alpha1.Node) (*v1alpha1.Node, error) {
+	obj, err := c.Fake.
+		Invokes(testing.NewUpdateSubresourceAction(nodesResource, "status", c.ns, node), &v1alpha1.Node{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.Node), err
+}
+
 // Delete takes name of the node and deletes it. Returns an error if one occurs.
 func (c *FakeNodes) Delete(name string, options *v1.DeleteOptions) error {
 	_, err := c.Fake.
