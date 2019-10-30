@@ -275,7 +275,11 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}
 
-	if takeOver {
+	if replica.Status.OwnerID != rc.controllerID {
+		if !takeOver {
+			// Not ours
+			return nil
+		}
 		replica.Status.OwnerID = rc.controllerID
 		replica, err = rc.ds.UpdateReplica(replica)
 		if err != nil {
@@ -286,11 +290,6 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			return err
 		}
 		logrus.Debugf("Replica controller %v picked up %v", rc.controllerID, replica.Name)
-	}
-
-	// Not ours
-	if replica.Status.OwnerID != rc.controllerID {
-		return nil
 	}
 
 	existingReplica := replica.DeepCopy()

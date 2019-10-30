@@ -250,7 +250,11 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 	}
 
-	if takeOver {
+	if volume.Status.OwnerID != vc.controllerID {
+		if !takeOver {
+			// Not mines
+			return nil
+		}
 		volume.Status.OwnerID = vc.controllerID
 		volume, err = vc.ds.UpdateVolumeStatus(volume)
 		if err != nil {
@@ -261,11 +265,6 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			return err
 		}
 		logrus.Debugf("Volume controller %v picked up %v", vc.controllerID, volume.Name)
-	}
-
-	if volume.Status.OwnerID != vc.controllerID {
-		// Not mines
-		return nil
 	}
 
 	engines, err := vc.ds.ListVolumeEngines(volume.Name)

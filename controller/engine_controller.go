@@ -254,7 +254,11 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	}
 
-	if takeOver {
+	if engine.Status.OwnerID != ec.controllerID {
+		if !takeOver {
+			// Not ours
+			return nil
+		}
 		engine.Status.OwnerID = ec.controllerID
 		engine, err = ec.ds.UpdateEngine(engine)
 		if err != nil {
@@ -265,11 +269,6 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 			return err
 		}
 		logrus.Debugf("Engine controller %v picked up %v", ec.controllerID, engine.Name)
-	}
-
-	// Not ours
-	if engine.Status.OwnerID != ec.controllerID {
-		return nil
 	}
 
 	if engine.DeletionTimestamp != nil {
