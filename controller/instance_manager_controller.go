@@ -360,8 +360,8 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 
 	// Sync instance manager status with related pod
 	if pod == nil {
-		if im.Status.CurrentState != types.InstanceManagerStateStopped {
-			im.Status.CurrentState = types.InstanceManagerStateError
+		if im.Status.CurrentState != types.InstanceManagerStateError {
+			im.Status.CurrentState = types.InstanceManagerStateStopped
 		}
 	} else {
 		// TODO: Will remove this reference kind correcting after all Longhorn components having used the new kinds

@@ -237,8 +237,8 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.currentEngineManager = nil
 	tc.currentReplicaManager = nil
 	tc.copyCurrentToExpected()
-	tc.expectedEngineManager = newInstanceManager(TestEngineManagerName, types.InstanceManagerTypeEngine, types.InstanceManagerStateStopped, TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
-	tc.expectedReplicaManager = newInstanceManager(TestReplicaManagerName, types.InstanceManagerTypeReplica, types.InstanceManagerStateStopped, TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
+	tc.expectedEngineManager = newInstanceManager(TestEngineManagerName, types.InstanceManagerTypeEngine, "", TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
+	tc.expectedReplicaManager = newInstanceManager(TestReplicaManagerName, types.InstanceManagerTypeReplica, "", TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
 	testCases["Engine manager and replica manager creation"] = tc
 
 	tc = getEngineImageControllerTestTemplate()
@@ -246,8 +246,8 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.currentReplicaManager = nil
 	tc.copyCurrentToExpected()
 	tc.expectedEngineImage.Status.State = types.EngineImageStateDeploying
-	tc.expectedEngineManager = newInstanceManager(TestEngineManagerName, types.InstanceManagerTypeEngine, types.InstanceManagerStateStopped, TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
-	tc.expectedReplicaManager = newInstanceManager(TestReplicaManagerName, types.InstanceManagerTypeReplica, types.InstanceManagerStateStopped, TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
+	tc.expectedEngineManager = newInstanceManager(TestEngineManagerName, types.InstanceManagerTypeEngine, "", TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
+	tc.expectedReplicaManager = newInstanceManager(TestReplicaManagerName, types.InstanceManagerTypeReplica, "", TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
 	testCases["Engine image becomes state deploying when recreating instance managers"] = tc
 
 	tc = getEngineImageControllerTestTemplate()
@@ -272,7 +272,7 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.currentReplicaManager = nil
 	tc.copyCurrentToExpected()
 	tc.expectedEngineImage.Status.State = types.EngineImageStateDeploying
-	tc.expectedReplicaManager = newInstanceManager(TestReplicaManagerName, types.InstanceManagerTypeReplica, types.InstanceManagerStateStopped, TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
+	tc.expectedReplicaManager = newInstanceManager(TestReplicaManagerName, types.InstanceManagerTypeReplica, "", TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
 	testCases["Replica Manager will be created when the first disk is added to the node"] = tc
 
 	tc = getEngineImageControllerTestTemplate()
