@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"encoding/json"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
@@ -29,6 +30,7 @@ import (
 	imutil "github.com/longhorn/longhorn-engine/pkg/instance-manager/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -531,6 +533,49 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 	newVolume := false
 	if v.Status.CurrentImage == "" {
 		v.Status.CurrentImage = v.Spec.EngineImage
+	}
+
+	if v.Spec.FromBackup != "" && !v.Status.RestoreInitiated {
+		kubeStatus := &types.KubernetesStatus{}
+
+		backupTarget, err := manager.GenerateBackupTarget(vc.ds)
+		if err != nil {
+			return err
+		}
+		backup, err := backupTarget.GetBackup(v.Spec.FromBackup)
+		if err != nil {
+			return fmt.Errorf("cannot get backup %v: %v", v.Spec.FromBackup, err)
+		}
+
+		// If KubernetesStatus is set on Backup, restore it.
+		if statusJSON, ok := backup.Labels[types.KubernetesStatusLabel]; ok {
+			if err := json.Unmarshal([]byte(statusJSON), kubeStatus); err != nil {
+				logrus.Warningf("Ignore KubernetesStatus json for volume %v: backup %v: %v",
+					v.Name, backup.Name, err)
+			} else {
+				// We were able to unmarshal KubernetesStatus. Set the Ref fields.
+				if kubeStatus.PVCName != "" && kubeStatus.LastPVCRefAt == "" {
+					kubeStatus.LastPVCRefAt = backup.SnapshotCreated
+				}
+				if len(kubeStatus.WorkloadsStatus) != 0 && kubeStatus.LastPodRefAt == "" {
+					kubeStatus.LastPodRefAt = backup.SnapshotCreated
+				}
+
+				// Do not restore the PersistentVolume fields.
+				kubeStatus.PVName = ""
+				kubeStatus.PVStatus = ""
+			}
+		}
+
+		// set LastBackup for standby volumes only
+		if v.Spec.Standby {
+			v.Status.LastBackup = backup.Name
+		}
+
+		v.Status.KubernetesStatus = *kubeStatus
+		v.Status.InitialRestorationRequired = true
+
+		v.Status.RestoreInitiated = true
 	}
 
 	if v.Status.CurrentNodeID == "" {

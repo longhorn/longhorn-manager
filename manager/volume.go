@@ -1,7 +1,6 @@
 package manager
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
@@ -156,9 +155,6 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 	}
 
 	size := spec.Size
-	lastBackup := ""
-	kubeStatus := &types.KubernetesStatus{}
-	initialRestorationRequired := false
 	if spec.FromBackup != "" {
 		backupTarget, err := GenerateBackupTarget(m.ds)
 		if err != nil {
@@ -170,40 +166,11 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		}
 		logrus.Infof("Override size of volume %v to %v because it's from backup", name, backup.VolumeSize)
 
-		// If KubernetesStatus is set on Backup, restore it.
-		if statusJSON, ok := backup.Labels[types.KubernetesStatusLabel]; ok {
-			if err := json.Unmarshal([]byte(statusJSON), kubeStatus); err != nil {
-				logrus.Errorf("could not unmarshal KubernetesStatus json for backup %v: %v",
-					backup.Name, err)
-			} else {
-				// We were able to unmarshal KubernetesStatus. Set the Ref fields.
-				if kubeStatus.PVCName != "" && kubeStatus.LastPVCRefAt == "" {
-					kubeStatus.LastPVCRefAt = backup.SnapshotCreated
-				}
-				if len(kubeStatus.WorkloadsStatus) != 0 && kubeStatus.LastPodRefAt == "" {
-					kubeStatus.LastPodRefAt = backup.SnapshotCreated
-				}
-
-				// Do not restore the PersistentVolume fields.
-				kubeStatus.PVName = ""
-				kubeStatus.PVStatus = ""
-			}
-		}
-
-		// set LastBackup for standby volumes only
-		if spec.Standby {
-			lastBackup = backup.Name
-		}
 		// formalize the final size to the unit in bytes
 		size, err = util.ConvertSize(backup.VolumeSize)
 		if err != nil {
 			return nil, fmt.Errorf("get invalid size for volume %v: %v", backup.VolumeSize, err)
 		}
-		if baseImage, ok := backup.Labels[types.BaseImageLabel]; ok {
-			spec.BaseImage = baseImage
-		}
-
-		initialRestorationRequired = true
 	}
 
 	// make sure it's multiples of 4096
@@ -263,11 +230,6 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			Standby:             spec.Standby,
 			DiskSelector:        spec.DiskSelector,
 			NodeSelector:        spec.NodeSelector,
-		},
-		Status: types.VolumeStatus{
-			InitialRestorationRequired: initialRestorationRequired,
-			KubernetesStatus:           *kubeStatus,
-			LastBackup:                 lastBackup,
 		},
 	}
 	v, err = m.ds.CreateVolume(v)

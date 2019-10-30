@@ -104,6 +104,7 @@ type VolumeStatus struct {
 	PendingNodeID              string                            `json:"pendingNodeID"`
 	FrontendDisabled           bool                              `json:"frontendDisabled"`
 	InitialRestorationRequired bool                              `json:"initialRestorationRequired"`
+	RestoreInitiated           bool                              `json:"restoreInitiated"`
 }
 
 type RecurringJobType string
