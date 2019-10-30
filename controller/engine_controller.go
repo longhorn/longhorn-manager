@@ -358,22 +358,16 @@ func (ec *EngineController) enqueueInstanceManagerChange(im *longhorn.InstanceMa
 
 	engineMap := map[string]*longhorn.Engine{}
 
-	// when attaching, instance manager name is not available
-	es, err := ec.ds.ListEnginesByNode(im.Spec.NodeID)
+	es, err := ec.ds.ListEnginesRO()
 	if err != nil {
-		logrus.Warnf("Failed to list engines for node %v: %v", im.Spec.NodeID, err)
+		logrus.Warnf("Engine controller: failed to list engines: %v", err)
 	}
 	for _, e := range es {
-		engineMap[e.Name] = e
-	}
-
-	// when detaching, node ID is not available
-	es, err = ec.ds.ListEnginesROByInstanceManager(im.Name)
-	if err != nil {
-		logrus.Warnf("Failed to list engines for instance manager %v: %v", im.Name, err)
-	}
-	for _, e := range es {
-		engineMap[e.Name] = e
+		// when attaching, instance manager name is not available
+		// when detaching, node ID is not available
+		if e.Spec.NodeID == im.Spec.NodeID || e.Status.InstanceManagerName == im.Name {
+			engineMap[e.Name] = e
+		}
 	}
 
 	for _, e := range engineMap {
