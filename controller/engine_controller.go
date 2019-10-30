@@ -232,6 +232,41 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return err
 	}
 
+	takeOver := false
+
+	ownerDown := false
+	if engine.Status.OwnerID != "" {
+		ownerDown, err = ec.ds.IsNodeDownOrDeleted(engine.Status.OwnerID)
+		if err != nil {
+			logrus.Warnf("Found error while checking if engine %v owner is down or deleted: %v", engine.Name, err)
+		}
+	}
+
+	if ec.controllerID == engine.Spec.NodeID {
+		takeOver = true
+	} else if engine.Status.OwnerID == "" {
+		if engine.Spec.NodeID == "" {
+			takeOver = true
+		}
+	} else { // engine.Status.OwnerID != ""
+		if ownerDown {
+			takeOver = true
+		}
+	}
+
+	if takeOver {
+		engine.Status.OwnerID = ec.controllerID
+		engine, err = ec.ds.UpdateEngine(engine)
+		if err != nil {
+			// we don't mind others coming first
+			if apierrors.IsConflict(errors.Cause(err)) {
+				return nil
+			}
+			return err
+		}
+		logrus.Debugf("Engine controller %v picked up %v", ec.controllerID, engine.Name)
+	}
+
 	// Not ours
 	if engine.Status.OwnerID != ec.controllerID {
 		return nil

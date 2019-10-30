@@ -248,7 +248,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Spec.DesireState = types.InstanceStateStopped
 		e.Spec.BackupVolume = TestBackupVolumeName
 		e.Spec.RequestedBackupRestore = TestBackupName
-		e.Status.OwnerID = TestNode1
 	}
 	for _, r := range tc.expectReplicas {
 		r.Spec.DesireState = types.InstanceStateRunning
@@ -676,11 +675,6 @@ func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 			Frontend:                  types.VolumeFrontendBlockDev,
 			ReplicaAddressMap:         map[string]string{},
 			UpgradedReplicaAddressMap: map[string]string{},
-		},
-		Status: types.EngineStatus{
-			InstanceStatus: types.InstanceStatus{
-				OwnerID: v.Status.OwnerID,
-			},
 		},
 	}
 }
