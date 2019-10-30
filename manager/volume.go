@@ -279,12 +279,10 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool) (v *lo
 	v.Spec.NodeID = nodeID
 	v.Spec.DisableFrontend = disableFrontend
 
-	// Must be owned by the manager on the same node
-	v, err = m.ds.UpdateVolumeAndOwner(v)
+	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
 		return nil, err
 	}
-
 	logrus.Debugf("Attaching volume %v to %v with disableFrontend set %v", v.Name, v.Spec.NodeID, disableFrontend)
 	return v, nil
 }
@@ -309,13 +307,10 @@ func (m *VolumeManager) Detach(name string) (v *longhorn.Volume, err error) {
 
 	v.Spec.NodeID = ""
 
-	// Ownership transfer to the one called detach in case the original
-	// owner is down (so it cannot do anything to proceed)
-	v, err = m.ds.UpdateVolumeAndOwner(v)
+	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
 		return nil, err
 	}
-
 	logrus.Debugf("Detaching volume %v from %v", v.Name, oldNodeID)
 	return v, nil
 }

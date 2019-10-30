@@ -1193,40 +1193,6 @@ func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error
 	return false, fmt.Errorf("The %v setting value couldn't be converted to bool, value is %v ", string(settingName), value)
 }
 
-func (s *DataStore) UpdateVolumeAndOwner(v *longhorn.Volume) (*longhorn.Volume, error) {
-	engines, err := s.ListVolumeEngines(v.Name)
-	if err != nil {
-		return nil, err
-	}
-	for _, engine := range engines {
-		if engine.Status.OwnerID != v.Status.OwnerID {
-			engine.Status.OwnerID = v.Status.OwnerID
-			if _, err := s.UpdateEngine(engine); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	replicas, err := s.ListVolumeReplicas(v.Name)
-	if err != nil {
-		return nil, err
-	}
-	for _, replica := range replicas {
-		if replica.Status.OwnerID != v.Status.OwnerID {
-			replica.Status.OwnerID = v.Status.OwnerID
-			if _, err := s.UpdateReplica(replica); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	v, err = s.UpdateVolume(v)
-	if err != nil {
-		return nil, err
-	}
-	return v, nil
-}
-
 func (s *DataStore) ResetEngineMonitoringStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
 	e.Status.Endpoint = ""
 	e.Status.LastRestoredBackup = ""
