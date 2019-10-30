@@ -39,6 +39,7 @@ type InstanceManagersGetter interface {
 type InstanceManagerInterface interface {
 	Create(*v1alpha1.InstanceManager) (*v1alpha1.InstanceManager, error)
 	Update(*v1alpha1.InstanceManager) (*v1alpha1.InstanceManager, error)
+	UpdateStatus(*v1alpha1.InstanceManager) (*v1alpha1.InstanceManager, error)
 	Delete(name string, options *v1.DeleteOptions) error
 	DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error
 	Get(name string, options v1.GetOptions) (*v1alpha1.InstanceManager, error)
@@ -126,6 +127,22 @@ func (c *instanceManagers) Update(instanceManager *v1alpha1.InstanceManager) (re
 		Namespace(c.ns).
 		Resource("instancemanagers").
 		Name(instanceManager.Name).
+		Body(instanceManager).
+		Do().
+		Into(result)
+	return
+}
+
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+
+func (c *instanceManagers) UpdateStatus(instanceManager *v1alpha1.InstanceManager) (result *v1alpha1.InstanceManager, err error) {
+	result = &v1alpha1.InstanceManager{}
+	err = c.client.Put().
+		Namespace(c.ns).
+		Resource("instancemanagers").
+		Name(instanceManager.Name).
+		SubResource("status").
 		Body(instanceManager).
 		Do().
 		Into(result)

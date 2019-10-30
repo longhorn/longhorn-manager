@@ -283,7 +283,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	// Node for Instance Manager came back up, take back ownership of Instance Manager.
 	if im.Spec.NodeID == imc.controllerID && im.Status.OwnerID != imc.controllerID {
 		im.Status.OwnerID = imc.controllerID
-		newIM, err := imc.ds.UpdateInstanceManager(im)
+		newIM, err := imc.ds.UpdateInstanceManagerStatus(im)
 		if err != nil {
 			// Conflict with another controller, keep trying.
 			if apierrors.IsConflict(errors.Cause(err)) {
@@ -298,7 +298,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		// No owner yet, or Instance Manager's Node is down. Assign to some other Node until the correct Node can take
 		// over.
 		im.Status.OwnerID = imc.controllerID
-		im, err = imc.ds.UpdateInstanceManager(im)
+		im, err = imc.ds.UpdateInstanceManagerStatus(im)
 		if err != nil {
 			// we don't mind others coming first
 			if apierrors.IsConflict(errors.Cause(err)) {
@@ -321,8 +321,8 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 
 	existingIM := im.DeepCopy()
 	defer func() {
-		if err == nil && !reflect.DeepEqual(existingIM, im) {
-			_, err = imc.ds.UpdateInstanceManager(im)
+		if err == nil && !reflect.DeepEqual(existingIM.Status, im.Status) {
+			_, err = imc.ds.UpdateInstanceManagerStatus(im)
 		}
 		if apierrors.IsConflict(errors.Cause(err)) {
 			logrus.Debugf("Requeue %v due to conflict", key)
@@ -488,7 +488,7 @@ func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.Instan
 		}
 
 		// need to update im before deleting pod
-		im, err = imc.ds.UpdateInstanceManager(im)
+		im, err = imc.ds.UpdateInstanceManagerStatus(im)
 		if err != nil {
 			return err
 		}
@@ -916,7 +916,7 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() error {
 		return nil
 	}
 	im.Status.Instances = resp
-	if _, err := m.ds.UpdateInstanceManager(im); err != nil {
+	if _, err := m.ds.UpdateInstanceManagerStatus(im); err != nil {
 		return fmt.Errorf("failed to update instance map for instance manager %v: %v", m.Name, err)
 	}
 
@@ -935,7 +935,7 @@ func (m *InstanceManagerMonitor) updateInstanceMapForCleanup() error {
 		im.Status.Instances[name] = instance
 	}
 
-	if _, err := m.ds.UpdateInstanceManager(im); err != nil {
+	if _, err := m.ds.UpdateInstanceManagerStatus(im); err != nil {
 		return fmt.Errorf("failed to update instance map for instance manager %v: %v", m.Name, err)
 	}
 

@@ -100,6 +100,18 @@ func (c *FakeInstanceManagers) Update(instanceManager *v1alpha1.InstanceManager)
 	return obj.(*v1alpha1.InstanceManager), err
 }
 
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+func (c *FakeInstanceManagers) UpdateStatus(instanceManager *v1alpha1.InstanceManager) (*v1alpha1.InstanceManager, error) {
+	obj, err := c.Fake.
+		Invokes(testing.NewUpdateSubresourceAction(instancemanagersResource, "status", c.ns, instanceManager), &v1alpha1.InstanceManager{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.InstanceManager), err
+}
+
 // Delete takes name of the instanceManager and deletes it. Returns an error if one occurs.
 func (c *FakeInstanceManagers) Delete(name string, options *v1.DeleteOptions) error {
 	_, err := c.Fake.

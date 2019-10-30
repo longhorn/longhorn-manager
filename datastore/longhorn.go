@@ -1444,6 +1444,17 @@ func (s *DataStore) UpdateInstanceManager(im *longhorn.InstanceManager) (*longho
 	return obj, nil
 }
 
+func (s *DataStore) UpdateInstanceManagerStatus(im *longhorn.InstanceManager) (*longhorn.InstanceManager, error) {
+	obj, err := s.lhClient.LonghornV1alpha1().InstanceManagers(s.namespace).UpdateStatus(im)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(im.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getInstanceManagerRO(name)
+	})
+	return obj, nil
+}
+
 func verifyCreation(name, kind string, getMethod func(name string) (runtime.Object, error)) (runtime.Object, error) {
 	// WORKAROUND: The immedidate read after object's creation can fail.
 	// See https://github.com/longhorn/longhorn/issues/133
