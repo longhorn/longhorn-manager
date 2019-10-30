@@ -10,7 +10,7 @@ replace (
 
 require (
 	github.com/Microsoft/go-winio v0.4.14 // indirect
-	github.com/container-storage-interface/spec v0.3.0
+	github.com/container-storage-interface/spec v1.1.0
 	github.com/coreos/bbolt v1.3.3 // indirect
 	github.com/coreos/etcd v3.3.17+incompatible // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
@@ -34,7 +34,7 @@ require (
 	github.com/imdario/mergo v0.3.8 // indirect
 	github.com/jinzhu/copier v0.0.0-20190924061706-b57f9002281a
 	github.com/jonboulle/clockwork v0.1.0 // indirect
-	github.com/kubernetes-csi/drivers v0.4.1
+	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/kubernetes-sigs/sig-storage-lib-external-provisioner v3.1.0+incompatible
 	github.com/longhorn/backupstore v0.0.0-20191024011200-18aa87a9e271
 	github.com/longhorn/go-iscsi-helper v0.0.0-20191018221834-9c502e2401f4
@@ -56,6 +56,7 @@ require (
 	github.com/urfave/cli v1.22.1
 	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
 	go.etcd.io/bbolt v1.3.3 // indirect
+	golang.org/x/net v0.0.0-20190923162816-aa69164e4478
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0
 	google.golang.org/grpc v1.23.0
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127
