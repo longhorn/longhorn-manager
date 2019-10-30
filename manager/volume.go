@@ -278,8 +278,6 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool) (v *lo
 	}
 	v.Spec.NodeID = nodeID
 	v.Spec.DisableFrontend = disableFrontend
-	//FIXME
-	v.Status.OwnerID = v.Spec.NodeID
 
 	// Must be owned by the manager on the same node
 	v, err = m.ds.UpdateVolumeAndOwner(v)
@@ -310,8 +308,6 @@ func (m *VolumeManager) Detach(name string) (v *longhorn.Volume, err error) {
 	}
 
 	v.Spec.NodeID = ""
-	//FIXME
-	v.Status.OwnerID = m.currentNodeID
 
 	// Ownership transfer to the one called detach in case the original
 	// owner is down (so it cannot do anything to proceed)

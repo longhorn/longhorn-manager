@@ -228,8 +228,29 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
-	if volume.Status.OwnerID == "" {
-		// Claim it
+	takeOver := false
+
+	ownerDown := false
+	if volume.Status.OwnerID != "" {
+		ownerDown, err = vc.ds.IsNodeDownOrDeleted(volume.Status.OwnerID)
+		if err != nil {
+			logrus.Warnf("Found error while checking if volume %v owner is down or deleted: %v", volume.Name, err)
+		}
+	}
+
+	if vc.controllerID == volume.Spec.NodeID {
+		takeOver = true
+	} else if volume.Status.OwnerID == "" {
+		if volume.Spec.NodeID == "" {
+			takeOver = true
+		}
+	} else { // volume.Status.OwnerID != ""
+		if ownerDown {
+			takeOver = true
+		}
+	}
+
+	if takeOver {
 		volume.Status.OwnerID = vc.controllerID
 		volume, err = vc.ds.UpdateVolumeStatus(volume)
 		if err != nil {
@@ -239,8 +260,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			}
 			return err
 		}
-		logrus.Debugf("Volume Controller %v picked up %v", vc.controllerID, volume.Name)
-	} else if volume.Status.OwnerID != vc.controllerID {
+		logrus.Debugf("Volume controller %v picked up %v", vc.controllerID, volume.Name)
+	}
+
+	if volume.Status.OwnerID != vc.controllerID {
 		// Not mines
 		return nil
 	}
@@ -1232,11 +1255,6 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 			Frontend:                  v.Spec.Frontend,
 			ReplicaAddressMap:         map[string]string{},
 			UpgradedReplicaAddressMap: map[string]string{},
-		},
-		Status: types.EngineStatus{
-			InstanceStatus: types.InstanceStatus{
-				OwnerID: vc.controllerID,
-			},
 		},
 	}
 
