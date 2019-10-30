@@ -8,7 +8,6 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +resource:path=volume
 // +genclient:noStatus
 
 type Volume struct {
@@ -19,7 +18,6 @@ type Volume struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +resource:path=volumes
 
 type VolumeList struct {
 	metav1.TypeMeta `json:",inline"`
@@ -29,7 +27,6 @@ type VolumeList struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +resource:path=engine
 // +genclient:noStatus
 
 type Engine struct {
@@ -40,7 +37,6 @@ type Engine struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +resource:path=engines
 
 type EngineList struct {
 	metav1.TypeMeta `json:",inline"`
@@ -50,7 +46,6 @@ type EngineList struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +resource:path=replica
 // +genclient:noStatus
 
 type Replica struct {
@@ -61,7 +56,6 @@ type Replica struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +resource:path=replicas
 
 type ReplicaList struct {
 	metav1.TypeMeta `json:",inline"`
@@ -71,7 +65,6 @@ type ReplicaList struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +resource:path=settings
 
 type Setting struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -80,7 +73,6 @@ type Setting struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +resource:path=settings
 
 type SettingList struct {
 	metav1.TypeMeta `json:",inline"`
@@ -90,7 +82,6 @@ type SettingList struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +resource:path=replica
 // +genclient:noStatus
 
 type EngineImage struct {
@@ -101,7 +92,6 @@ type EngineImage struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +resource:path=replicas
 
 type EngineImageList struct {
 	metav1.TypeMeta `json:",inline"`
