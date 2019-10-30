@@ -209,7 +209,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 				return err
 			} else if down {
 				replica.Status.OwnerID = rc.controllerID
-				_, err = rc.ds.UpdateReplica(replica)
+				_, err = rc.ds.UpdateReplicaStatus(replica)
 				return err
 			}
 		}
@@ -281,7 +281,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			return nil
 		}
 		replica.Status.OwnerID = rc.controllerID
-		replica, err = rc.ds.UpdateReplica(replica)
+		replica, err = rc.ds.UpdateReplicaStatus(replica)
 		if err != nil {
 			// we don't mind others coming first
 			if apierrors.IsConflict(errors.Cause(err)) {
@@ -295,8 +295,8 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	existingReplica := replica.DeepCopy()
 	defer func() {
 		// we're going to update replica assume things changes
-		if err == nil && !reflect.DeepEqual(existingReplica, replica) {
-			_, err = rc.ds.UpdateReplica(replica)
+		if err == nil && !reflect.DeepEqual(existingReplica.Status, replica.Status) {
+			_, err = rc.ds.UpdateReplicaStatus(replica)
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {

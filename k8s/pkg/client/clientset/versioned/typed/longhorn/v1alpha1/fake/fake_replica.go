@@ -100,6 +100,18 @@ func (c *FakeReplicas) Update(replica *v1alpha1.Replica) (result *v1alpha1.Repli
 	return obj.(*v1alpha1.Replica), err
 }
 
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+func (c *FakeReplicas) UpdateStatus(replica *v1alpha1.Replica) (*v1alpha1.Replica, error) {
+	obj, err := c.Fake.
+		Invokes(testing.NewUpdateSubresourceAction(replicasResource, "status", c.ns, replica), &v1alpha1.Replica{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.Replica), err
+}
+
 // Delete takes name of the replica and deletes it. Returns an error if one occurs.
 func (c *FakeReplicas) Delete(name string, options *v1.DeleteOptions) error {
 	_, err := c.Fake.

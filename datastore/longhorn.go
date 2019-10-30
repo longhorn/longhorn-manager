@@ -647,6 +647,21 @@ func (s *DataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	return obj, nil
 }
 
+func (s *DataStore) UpdateReplicaStatus(r *longhorn.Replica) (*longhorn.Replica, error) {
+	if err := checkReplica(r); err != nil {
+		return nil, err
+	}
+
+	obj, err := s.lhClient.LonghornV1alpha1().Replicas(s.namespace).UpdateStatus(r)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(r.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getReplicaRO(name)
+	})
+	return obj, nil
+}
+
 // DeleteReplica won't result in immediately deletion since finalizer was set by default
 func (s *DataStore) DeleteReplica(name string) error {
 	return s.lhClient.LonghornV1alpha1().Replicas(s.namespace).Delete(name, &metav1.DeleteOptions{})
