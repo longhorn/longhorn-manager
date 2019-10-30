@@ -1291,11 +1291,6 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 			Active:     true,
 			BaseImage:  v.Spec.BaseImage,
 		},
-		Status: types.ReplicaStatus{
-			InstanceStatus: types.InstanceStatus{
-				OwnerID: vc.controllerID,
-			},
-		},
 	}
 
 	return vc.ds.CreateReplica(replica)
@@ -1596,7 +1591,6 @@ func (vc *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 		nr := vc.duplicateReplica(r, v)
 		nr.Spec.DesireState = types.InstanceStateRunning
 		nr.Spec.Active = false
-		nr.Status.OwnerID = r.Status.OwnerID
 		fixupFunc(nr, obj)
 		nr, err := vc.ds.CreateReplica(nr)
 		if err != nil {

@@ -702,11 +702,6 @@ func newReplicaForVolume(v *longhorn.Volume, e *longhorn.Engine, nodeID, diskID 
 			DataPath:   filepath.Join(TestDefaultDataPath, "/replicas", replicaName),
 			Active:     true,
 		},
-		Status: types.ReplicaStatus{
-			InstanceStatus: types.InstanceStatus{
-				OwnerID: v.Status.OwnerID,
-			},
-		},
 	}
 }
 

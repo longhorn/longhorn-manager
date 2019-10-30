@@ -253,6 +253,41 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}
 
+	takeOver := false
+
+	ownerDown := false
+	if replica.Status.OwnerID != "" {
+		ownerDown, err = rc.ds.IsNodeDownOrDeleted(replica.Status.OwnerID)
+		if err != nil {
+			logrus.Warnf("Found error while checking if replica %v owner is down or deleted: %v", replica.Name, err)
+		}
+	}
+
+	if rc.controllerID == replica.Spec.NodeID {
+		takeOver = true
+	} else if replica.Status.OwnerID == "" {
+		if replica.Spec.NodeID == "" {
+			takeOver = true
+		}
+	} else { // volume.Status.OwnerID != ""
+		if ownerDown {
+			takeOver = true
+		}
+	}
+
+	if takeOver {
+		replica.Status.OwnerID = rc.controllerID
+		replica, err = rc.ds.UpdateReplica(replica)
+		if err != nil {
+			// we don't mind others coming first
+			if apierrors.IsConflict(errors.Cause(err)) {
+				return nil
+			}
+			return err
+		}
+		logrus.Debugf("Replica controller %v picked up %v", rc.controllerID, replica.Name)
+	}
+
 	// Not ours
 	if replica.Status.OwnerID != rc.controllerID {
 		return nil
