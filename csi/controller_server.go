@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
-	csicommon "github.com/kubernetes-csi/drivers/pkg/csi-common"
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,33 +22,45 @@ const (
 )
 
 type ControllerServer struct {
-	*csicommon.DefaultControllerServer
-	apiClient *longhornclient.RancherClient
+	apiClient   *longhornclient.RancherClient
+	nodeID      string
+	caps        []*csi.ControllerServiceCapability
+	accessModes []*csi.VolumeCapability_AccessMode
 }
 
-func NewControllerServer(d *csicommon.CSIDriver, apiClient *longhornclient.RancherClient) *ControllerServer {
+func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string) *ControllerServer {
 	return &ControllerServer{
-		DefaultControllerServer: csicommon.NewDefaultControllerServer(d),
-		apiClient:               apiClient,
+		apiClient: apiClient,
+		nodeID:    nodeID,
+		caps: getControllerServiceCapabilities(
+			[]csi.ControllerServiceCapability_RPC_Type{
+				csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+				csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+			}),
+		accessModes: getVolumeCapabilityAccessModes(
+			[]csi.VolumeCapability_AccessMode_Mode{
+				csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+			}),
 	}
-}
-
-func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
 }
 
 func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	logrus.Infof("ControllerServer create volume req: %v", req)
-	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
+	if err := cs.validateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
 		logrus.Errorf("CreateVolume: invalid create volume req: %v", req)
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	// Check sanity of request Name, Volume Capabilities
+	// Check request parameters like Name and Volume Capabilities
 	if len(req.GetName()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume Name cannot be empty")
 	}
-	if req.GetVolumeCapabilities() == nil {
+	volumeCaps := req.GetVolumeCapabilities()
+	if volumeCaps == nil {
 		return nil, status.Error(codes.InvalidArgument, "Volume Capabilities cannot be empty")
+	}
+
+	if err := cs.validateVolumeCapabilities(req.GetVolumeCapabilities()); err != nil {
+		return nil, err
 	}
 
 	// check for already existing volume name
@@ -66,9 +77,9 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		}
 		return &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
-				Id:            existVol.Id,
+				VolumeId:      existVol.Id,
 				CapacityBytes: exVolSize,
-				Attributes:    req.GetParameters(),
+				VolumeContext: req.GetParameters(),
 			},
 		}, nil
 	}
@@ -99,16 +110,21 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			Id:            resVol.Id,
+			VolumeId:      resVol.Id,
 			CapacityBytes: int64(volSizeGiB * putil.GiB),
-			Attributes:    req.GetParameters(),
+			VolumeContext: req.GetParameters(),
 		},
 	}, nil
 }
 
 func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	logrus.Infof("ControllerServer delete volume req: %v", req)
-	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
+
+	// Check arguments
+	if len(req.GetVolumeId()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+	if err := cs.validateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
 		logrus.Errorf("DeleteVolume: invalid delete volume req: %v", req)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -131,14 +147,25 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
+func (cs *ControllerServer) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
+	return &csi.ControllerGetCapabilitiesResponse{
+		Capabilities: cs.caps,
+	}, nil
+}
+
 func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	logrus.Infof("ControllerServer ValidateVolumeCapabilities req: %v", req)
-	for _, cap := range req.GetVolumeCapabilities() {
-		if cap.GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER {
-			return &csi.ValidateVolumeCapabilitiesResponse{Supported: false, Message: ""}, nil
-		}
+	if err := cs.validateVolumeCapabilities(req.GetVolumeCapabilities()); err != nil {
+		return nil, err
 	}
-	return &csi.ValidateVolumeCapabilitiesResponse{Supported: true, Message: ""}, nil
+
+	return &csi.ValidateVolumeCapabilitiesResponse{
+		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
+			VolumeContext:      req.GetVolumeContext(),
+			VolumeCapabilities: req.GetVolumeCapabilities(),
+			Parameters:         req.GetParameters(),
+		},
+	}, nil
 }
 
 // ControllerPublishVolume will attach the volume to the specified node
@@ -230,6 +257,30 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 
+func (cs *ControllerServer) ListVolumes(context.Context, *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func (cs *ControllerServer) GetCapacity(context.Context, *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func (cs *ControllerServer) CreateSnapshot(context.Context, *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func (cs *ControllerServer) DeleteSnapshot(context.Context, *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func (cs *ControllerServer) ListSnapshots(context.Context, *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func (cs *ControllerServer) ControllerExpandVolume(context.Context, *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
 func (cs *ControllerServer) waitForVolumeState(volumeID string, state types.VolumeState, notFoundRetry, notFoundReturn bool) bool {
 	timeout := time.After(timeoutAttachDetach)
 	tick := time.Tick(tickAttachDetach)
@@ -257,4 +308,71 @@ func (cs *ControllerServer) waitForVolumeState(volumeID string, state types.Volu
 			}
 		}
 	}
+}
+
+func (cs *ControllerServer) validateControllerServiceRequest(c csi.ControllerServiceCapability_RPC_Type) error {
+	if c == csi.ControllerServiceCapability_RPC_UNKNOWN {
+		return nil
+	}
+
+	for _, cap := range cs.caps {
+		if c == cap.GetRpc().GetType() {
+			return nil
+		}
+	}
+	return status.Errorf(codes.InvalidArgument, "unsupported capability %s", c)
+}
+
+func (cs *ControllerServer) validateVolumeCapabilities(volumeCaps []*csi.VolumeCapability) error {
+	if volumeCaps == nil {
+		return status.Error(codes.InvalidArgument, "Volume Capabilities cannot be empty")
+	}
+
+	for _, cap := range volumeCaps {
+		if cap.GetMount() == nil && cap.GetBlock() == nil {
+			return status.Error(codes.InvalidArgument, "cannot have both mount and block access type be undefined")
+		}
+		if cap.GetBlock() != nil {
+			return status.Error(codes.InvalidArgument, "access type block is not supported")
+		}
+
+		supportedMode := false
+		for _, m := range cs.accessModes {
+			if cap.GetAccessMode().GetMode() == m.GetMode() {
+				supportedMode = true
+				break
+			}
+		}
+		if !supportedMode {
+			return status.Errorf(codes.InvalidArgument, "access mode %v is not supported", cap.GetAccessMode().Mode.String())
+		}
+	}
+
+	return nil
+}
+
+func getControllerServiceCapabilities(cl []csi.ControllerServiceCapability_RPC_Type) []*csi.ControllerServiceCapability {
+	var cscs []*csi.ControllerServiceCapability
+
+	for _, cap := range cl {
+		logrus.Infof("Enabling controller service capability: %v", cap.String())
+		cscs = append(cscs, &csi.ControllerServiceCapability{
+			Type: &csi.ControllerServiceCapability_Rpc{
+				Rpc: &csi.ControllerServiceCapability_RPC{
+					Type: cap,
+				},
+			},
+		})
+	}
+
+	return cscs
+}
+
+func getVolumeCapabilityAccessModes(vc []csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability_AccessMode {
+	var vca []*csi.VolumeCapability_AccessMode
+	for _, c := range vc {
+		logrus.Infof("Enabling volume access mode: %v", c.String())
+		vca = append(vca, &csi.VolumeCapability_AccessMode{Mode: c})
+	}
+	return vca
 }
