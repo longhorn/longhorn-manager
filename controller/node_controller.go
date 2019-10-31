@@ -452,7 +452,8 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 
 	// sync default Disk on labeled Nodes
-	if err := nc.syncDefaultDisk(node); err != nil {
+	node, err = nc.syncDefaultDisk(node)
+	if err != nil {
 		return err
 	}
 
@@ -535,15 +536,15 @@ func (nc *NodeController) enqueueKubernetesNode(n *v1.Node) {
 // syncDefaultDisk handles creation of the default Disk if Create Default Disk on Labeled Nodes is enabled. This allows
 // for the default Disk to be created even if the Node has been labeled after initial registration with Longhorn,
 // provided that there are no existing Disks remaining on the Node.
-func (nc *NodeController) syncDefaultDisk(node *longhorn.Node) error {
+func (nc *NodeController) syncDefaultDisk(node *longhorn.Node) (*longhorn.Node, error) {
 	requireLabel, err := nc.ds.GetSettingAsBool(types.SettingNameCreateDefaultDiskLabeledNodes)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if requireLabel && len(node.Spec.Disks) == 0 {
 		kubeNode, err := nc.ds.GetKubernetesNode(node.Name)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if val, ok := kubeNode.Labels[types.NodeCreateDefaultDiskLabel]; ok {
 			createDisk, err := strconv.ParseBool(val)
@@ -552,12 +553,14 @@ func (nc *NodeController) syncDefaultDisk(node *longhorn.Node) error {
 					types.NodeCreateDefaultDiskLabel, val, err)
 			} else if createDisk {
 				if err := nc.ds.CreateDefaultDisk(node); err != nil {
-					return err
+					return nil, err
 				}
+				//TODO Find a way to move this outside the controller since it changes the node's spec
+				return nc.ds.UpdateNode(node)
 			}
 		}
 	}
-	return nil
+	return node, nil
 }
 
 func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
