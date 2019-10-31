@@ -356,7 +356,7 @@ func (job *Job) backupAndCleanup() (err error) {
 		}
 		logrus.Debugf("Cleaned up backup %v for %v", url, job.volumeName)
 	}
-	if err := manager.UpdateVolumeLastBackup(job.volumeName, target, job.GetVolume, job.UpdateVolume); err != nil {
+	if err := manager.UpdateVolumeLastBackup(job.volumeName, target, job.GetVolume, job.UpdateVolumeStatus); err != nil {
 		logrus.Warnf("Failed to update volume LastBackup for %v: %v", job.volumeName, err)
 	}
 	return nil
@@ -403,6 +403,6 @@ func (job *Job) GetVolume(name string) (*longhorn.Volume, error) {
 	return job.lhClient.LonghornV1alpha1().Volumes(job.namespace).Get(name, metav1.GetOptions{})
 }
 
-func (job *Job) UpdateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
-	return job.lhClient.LonghornV1alpha1().Volumes(job.namespace).Update(v)
+func (job *Job) UpdateVolumeStatus(v *longhorn.Volume) (*longhorn.Volume, error) {
+	return job.lhClient.LonghornV1alpha1().Volumes(job.namespace).UpdateStatus(v)
 }

@@ -245,7 +245,7 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 		sc.bsMonitor.Stop()
 		sc.bsMonitor = nil
 		manager.SyncVolumesLastBackupWithBackupVolumes(nil,
-			sc.ds.ListVolumes, sc.ds.GetVolume, sc.ds.UpdateVolume)
+			sc.ds.ListVolumes, sc.ds.GetVolume, sc.ds.UpdateVolumeStatus)
 	}
 
 	if targetSetting.Value == "" {
@@ -384,7 +384,7 @@ func (bm *BackupStoreMonitor) Start() {
 			logrus.Warnf("backup store monitor: failed to list backup volumes in %v: %v", bm.target.URL, err)
 		}
 		manager.SyncVolumesLastBackupWithBackupVolumes(backupVolumes,
-			bm.ds.ListVolumes, bm.ds.GetVolume, bm.ds.UpdateVolume)
+			bm.ds.ListVolumes, bm.ds.GetVolume, bm.ds.UpdateVolumeStatus)
 	}, bm.pollInterval, bm.stopCh)
 }
 

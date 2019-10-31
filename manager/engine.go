@@ -188,7 +188,7 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 			time.Sleep(BackupStatusQueryInterval)
 		}
 
-		if err := UpdateVolumeLastBackup(volumeName, target, m.ds.GetVolume, m.ds.UpdateVolume); err != nil {
+		if err := UpdateVolumeLastBackup(volumeName, target, m.ds.GetVolume, m.ds.UpdateVolumeStatus); err != nil {
 			logrus.Warnf("Failed to update volume LastBackup for %v: %v", volumeName, err)
 		}
 	}()
@@ -241,7 +241,7 @@ func (m *VolumeManager) ListBackupVolumes() (map[string]*engineapi.BackupVolume,
 		return nil, err
 	}
 	// side effect, update known volumes
-	SyncVolumesLastBackupWithBackupVolumes(backupVolumes, m.ds.ListVolumes, m.ds.GetVolume, m.ds.UpdateVolume)
+	SyncVolumesLastBackupWithBackupVolumes(backupVolumes, m.ds.ListVolumes, m.ds.GetVolume, m.ds.UpdateVolumeStatus)
 	return backupVolumes, nil
 }
 
@@ -255,7 +255,7 @@ func (m *VolumeManager) GetBackupVolume(volumeName string) (*engineapi.BackupVol
 		return nil, err
 	}
 	// side effect, update known volumes
-	SyncVolumeLastBackupWithBackupVolume(volumeName, bv, m.ds.GetVolume, m.ds.UpdateVolume)
+	SyncVolumeLastBackupWithBackupVolume(volumeName, bv, m.ds.GetVolume, m.ds.UpdateVolumeStatus)
 	return bv, nil
 }
 
@@ -302,7 +302,7 @@ func (m *VolumeManager) DeleteBackup(backupName, volumeName string) error {
 			logrus.Error(err)
 			return
 		}
-		if err := UpdateVolumeLastBackup(volumeName, backupTarget, m.ds.GetVolume, m.ds.UpdateVolume); err != nil {
+		if err := UpdateVolumeLastBackup(volumeName, backupTarget, m.ds.GetVolume, m.ds.UpdateVolumeStatus); err != nil {
 			logrus.Warnf("Failed to update volume LastBackup for %v for backup deletion: %v", volumeName, err)
 		}
 	}()
