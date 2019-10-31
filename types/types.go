@@ -45,6 +45,10 @@ const (
 	LonghornLabelNode                = "node"
 	LonghornLabelInstanceManagerType = "instance-manager-type"
 	LonghornLabelVolume              = "longhornvolume"
+
+	LonghornDriverName = "driver.longhorn.io"
+
+	DepracatedDriverName = "io.rancher.longhorn"
 )
 
 const (

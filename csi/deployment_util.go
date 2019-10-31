@@ -341,7 +341,7 @@ func GetInContainerPluginsDir() string {
 }
 
 func GetOnHostCSISocketDir(kubeletRootDir string) string {
-	return filepath.Join(filepath.Join(kubeletRootDir, DefaultCommonPluginsDirSuffix), "io.rancher.longhorn")
+	return filepath.Join(filepath.Join(kubeletRootDir, DefaultCommonPluginsDirSuffix), types.LonghornDriverName)
 }
 
 func GetOnHostCSISocketFilePath(kubeletRootDir string) string {

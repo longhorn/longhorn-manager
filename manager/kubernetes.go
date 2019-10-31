@@ -100,7 +100,7 @@ func NewPVManifest(v *longhorn.Volume, pvName, storageClassName string) *apiv1.P
 
 			PersistentVolumeSource: apiv1.PersistentVolumeSource{
 				CSI: &apiv1.CSIPersistentVolumeSource{
-					Driver: "io.rancher.longhorn",
+					Driver: types.LonghornDriverName,
 					FSType: "ext4",
 					VolumeAttributes: map[string]string{
 						"diskSelector":        diskSelector,

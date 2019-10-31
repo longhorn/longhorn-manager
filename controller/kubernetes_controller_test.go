@@ -103,7 +103,7 @@ func newPV() *apiv1.PersistentVolume {
 			VolumeMode: &pvcVolumeMode,
 			PersistentVolumeSource: apiv1.PersistentVolumeSource{
 				CSI: &apiv1.CSIPersistentVolumeSource{
-					Driver: "io.rancher.longhorn",
+					Driver: types.LonghornDriverName,
 					FSType: "ext4",
 					VolumeAttributes: map[string]string{
 						"numberOfReplicas":    "3",
@@ -197,7 +197,7 @@ func newVA(vaName, nodeName, pvName string) *storagev1.VolumeAttachment {
 			CreationTimestamp: metav1.Now(),
 		},
 		Spec: storagev1.VolumeAttachmentSpec{
-			Attacher: "io.rancher.longhorn",
+			Attacher: types.LonghornDriverName,
 			NodeName: nodeName,
 			Source: storagev1.VolumeAttachmentSource{
 				PersistentVolumeName: &pvName,
