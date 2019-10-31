@@ -330,6 +330,11 @@ func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *lo
 	if v.Status.Robustness != types.VolumeRobustnessFaulted {
 		return nil, fmt.Errorf("invalid robustness state to salvage: %v", v.Status.Robustness)
 	}
+	v.Spec.NodeID = ""
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
 
 	for _, name := range replicaNames {
 		r, err := m.ds.GetReplica(name)
@@ -349,12 +354,6 @@ func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *lo
 		}
 	}
 
-	v.Spec.NodeID = ""
-	v.Status.Robustness = types.VolumeRobustnessUnknown
-	v, err = m.ds.UpdateVolume(v)
-	if err != nil {
-		return nil, err
-	}
 	logrus.Debugf("Salvaged replica %+v for volume %v", replicaNames, v.Name)
 	return v, nil
 }

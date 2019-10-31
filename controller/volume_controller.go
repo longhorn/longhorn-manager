@@ -470,8 +470,6 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		if oldRobustness != types.VolumeRobustnessFaulted {
 			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFaulted, "volume %v became faulted", v.Name)
 		}
-		// detach the volume
-		v.Status.CurrentNodeID = ""
 	} else if healthyCount >= v.Spec.NumberOfReplicas {
 		v.Status.Robustness = types.VolumeRobustnessHealthy
 		if oldRobustness == types.VolumeRobustnessDegraded {
@@ -748,6 +746,22 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 		//condition.LastProbeTime = util.Now()
 		v.Status.Conditions[types.VolumeConditionTypeScheduled] = condition
+	}
+
+	allFaulted := true
+	for _, r := range rs {
+		if r.Spec.FailedAt == "" {
+			allFaulted = false
+		}
+	}
+	if allFaulted {
+		v.Status.Robustness = types.VolumeRobustnessFaulted
+		v.Status.CurrentNodeID = ""
+	} else { // !allFaulted
+		// Don't need to touch other status since it should converge naturally
+		if v.Status.Robustness == types.VolumeRobustnessFaulted {
+			v.Status.Robustness = types.VolumeRobustnessUnknown
+		}
 	}
 
 	oldState := v.Status.State
