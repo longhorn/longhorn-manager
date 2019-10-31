@@ -226,7 +226,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	if existVol == nil {
-		msg := fmt.Sprintf("ControllerPublishVolume: the volume %s not exists", req.GetVolumeId())
+		msg := fmt.Sprintf("ControllerUnpublishVolume: the volume %s not exists", req.GetVolumeId())
 		logrus.Warn(msg)
 		return nil, status.Error(codes.NotFound, msg)
 	}
