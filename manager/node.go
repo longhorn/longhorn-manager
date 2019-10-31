@@ -204,28 +204,6 @@ func (m *VolumeManager) DeleteNode(name string) error {
 		return fmt.Errorf("Could not delete node %v with node ready condition is %v, reason is %v, node schedulable %v, and %v replica, %v engine running on it", name,
 			condition.Status, condition.Reason, node.Spec.AllowScheduling, len(replicas), len(engines))
 	}
-	// before delete, clear ownerID of volumes and engine images handle by removed node
-	eiList, err := m.ds.ListEngineImages()
-	if err != nil {
-		return err
-	}
-	for _, ei := range eiList {
-		if ei.Status.OwnerID == name {
-			ei.Status.OwnerID = ""
-			if _, err := m.ds.UpdateEngineImage(ei); err != nil {
-				return err
-			}
-		}
-	}
-	volumeList, err := m.ds.ListVolumes()
-	for _, volume := range volumeList {
-		if volume.Status.OwnerID == name {
-			volume.Status.OwnerID = ""
-			if _, err := m.ds.UpdateVolume(volume); err != nil {
-				return err
-			}
-		}
-	}
 	if err := m.ds.DeleteNode(name); err != nil {
 		return err
 	}
