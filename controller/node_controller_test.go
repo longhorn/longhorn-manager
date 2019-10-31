@@ -15,7 +15,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 
@@ -42,13 +42,13 @@ type NodeTestCase struct {
 
 func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset, controllerID string) *NodeController {
-	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
-	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Engines()
-	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
-	engineImageInformer := lhInformerFactory.Longhorn().V1alpha1().EngineImages()
-	nodeInformer := lhInformerFactory.Longhorn().V1alpha1().Nodes()
-	settingInformer := lhInformerFactory.Longhorn().V1alpha1().Settings()
-	imInformer := lhInformerFactory.Longhorn().V1alpha1().InstanceManagers()
+	volumeInformer := lhInformerFactory.Longhorn().V1beta1().Volumes()
+	engineInformer := lhInformerFactory.Longhorn().V1beta1().Engines()
+	replicaInformer := lhInformerFactory.Longhorn().V1beta1().Replicas()
+	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
+	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
+	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
+	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
@@ -417,10 +417,10 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 
-		nIndexer := lhInformerFactory.Longhorn().V1alpha1().Nodes().Informer().GetIndexer()
+		nIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
-		rIndexer := lhInformerFactory.Longhorn().V1alpha1().Replicas().Informer().GetIndexer()
+		rIndexer := lhInformerFactory.Longhorn().V1beta1().Replicas().Informer().GetIndexer()
 		knIndexer := kubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
 
 		// create kuberentes node
@@ -439,14 +439,14 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		}
 		// create node
 		for _, node := range tc.nodes {
-			n, err := lhClient.LonghornV1alpha1().Nodes(TestNamespace).Create(node)
+			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(node)
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
 			nIndexer.Add(n)
 		}
 		// create replicas
 		for _, replica := range tc.replicas {
-			r, err := lhClient.LonghornV1alpha1().Replicas(TestNamespace).Create(replica)
+			r, err := lhClient.LonghornV1beta1().Replicas(TestNamespace).Create(replica)
 			c.Assert(err, IsNil)
 			c.Assert(r, NotNil)
 			rIndexer.Add(r)
@@ -456,7 +456,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			err := nc.syncNode(getKey(node, c))
 			c.Assert(err, IsNil)
 
-			n, err := lhClient.LonghornV1alpha1().Nodes(TestNamespace).Get(node.Name, metav1.GetOptions{})
+			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Get(node.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			for ctype, condition := range n.Status.Conditions {
 				/*

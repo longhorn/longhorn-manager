@@ -9,7 +9,7 @@ import (
 // Event list is uncached but current lister doesn't field selector, so we have no choice but read from API directly
 
 func (s *DataStore) GetLonghornEventList() (*corev1.EventList, error) {
-	return s.kubeClient.CoreV1().Events(s.namespace).List(metav1.ListOptions{FieldSelector: "involvedObject.apiVersion=longhorn.rancher.io/v1alpha1"})
+	return s.kubeClient.CoreV1().Events(s.namespace).List(metav1.ListOptions{FieldSelector: "involvedObject.apiVersion=longhorn.io/v1beta1"})
 }
 
 // The following APIs are not cached, should only be used in e.g. the support bundle

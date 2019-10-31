@@ -20,7 +20,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 
@@ -47,13 +47,13 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
 	controllerID string) *VolumeController {
 
-	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
-	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Engines()
-	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
-	engineImageInformer := lhInformerFactory.Longhorn().V1alpha1().EngineImages()
-	nodeInformer := lhInformerFactory.Longhorn().V1alpha1().Nodes()
-	settingInformer := lhInformerFactory.Longhorn().V1alpha1().Settings()
-	imInformer := lhInformerFactory.Longhorn().V1alpha1().InstanceManagers()
+	volumeInformer := lhInformerFactory.Longhorn().V1beta1().Volumes()
+	engineInformer := lhInformerFactory.Longhorn().V1beta1().Engines()
+	replicaInformer := lhInformerFactory.Longhorn().V1beta1().Replicas()
+	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
+	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
+	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
+	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
@@ -864,10 +864,10 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
-		vIndexer := lhInformerFactory.Longhorn().V1alpha1().Volumes().Informer().GetIndexer()
-		eIndexer := lhInformerFactory.Longhorn().V1alpha1().Engines().Informer().GetIndexer()
-		rIndexer := lhInformerFactory.Longhorn().V1alpha1().Replicas().Informer().GetIndexer()
-		nIndexer := lhInformerFactory.Longhorn().V1alpha1().Nodes().Informer().GetIndexer()
+		vIndexer := lhInformerFactory.Longhorn().V1beta1().Volumes().Informer().GetIndexer()
+		eIndexer := lhInformerFactory.Longhorn().V1beta1().Engines().Informer().GetIndexer()
+		rIndexer := lhInformerFactory.Longhorn().V1beta1().Replicas().Informer().GetIndexer()
+		nIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
 
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 		knIndexer := kubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
@@ -884,9 +884,9 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		c.Assert(err, IsNil)
 		pIndexer.Add(p)
 
-		ei, err := lhClient.LonghornV1alpha1().EngineImages(TestNamespace).Create(newEngineImage(TestEngineImage, types.EngineImageStateReady))
+		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(newEngineImage(TestEngineImage, types.EngineImageStateReady))
 		c.Assert(err, IsNil)
-		eiIndexer := lhInformerFactory.Longhorn().V1alpha1().EngineImages().Informer().GetIndexer()
+		eiIndexer := lhInformerFactory.Longhorn().V1beta1().EngineImages().Informer().GetIndexer()
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
 
@@ -902,7 +902,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 					},
 				},
 			}
-			n, err := lhClient.LonghornV1alpha1().Nodes(TestNamespace).Create(node)
+			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(node)
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
 			nIndexer.Add(n)
@@ -918,14 +918,14 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		}
 
 		// Need to put it into both fakeclientset and Indexer
-		v, err := lhClient.LonghornV1alpha1().Volumes(TestNamespace).Create(tc.volume)
+		v, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(tc.volume)
 		c.Assert(err, IsNil)
 		err = vIndexer.Add(v)
 		c.Assert(err, IsNil)
 
 		if tc.engines != nil {
 			for _, e := range tc.engines {
-				e, err := lhClient.LonghornV1alpha1().Engines(TestNamespace).Create(e)
+				e, err := lhClient.LonghornV1beta1().Engines(TestNamespace).Create(e)
 				c.Assert(err, IsNil)
 				err = eIndexer.Add(e)
 				c.Assert(err, IsNil)
@@ -934,7 +934,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 		if tc.replicas != nil {
 			for _, r := range tc.replicas {
-				r, err = lhClient.LonghornV1alpha1().Replicas(TestNamespace).Create(r)
+				r, err = lhClient.LonghornV1beta1().Replicas(TestNamespace).Create(r)
 				c.Assert(err, IsNil)
 				err = rIndexer.Add(r)
 				c.Assert(err, IsNil)
@@ -944,7 +944,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		err = vc.syncVolume(getKey(v, c))
 		c.Assert(err, IsNil)
 
-		retV, err := lhClient.LonghornV1alpha1().Volumes(TestNamespace).Get(v.Name, metav1.GetOptions{})
+		retV, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Get(v.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(retV.Spec, DeepEquals, tc.expectVolume.Spec)
 		// mask timestamps
@@ -960,7 +960,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		}
 		c.Assert(retV.Status, DeepEquals, tc.expectVolume.Status)
 
-		retEs, err := lhClient.LonghornV1alpha1().Engines(TestNamespace).List(metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
+		retEs, err := lhClient.LonghornV1beta1().Engines(TestNamespace).List(metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
 		c.Assert(err, IsNil)
 		c.Assert(retEs.Items, HasLen, len(tc.expectEngines))
 		for _, retE := range retEs.Items {
@@ -978,7 +978,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			}
 		}
 
-		retRs, err := lhClient.LonghornV1alpha1().Replicas(TestNamespace).List(metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
+		retRs, err := lhClient.LonghornV1beta1().Replicas(TestNamespace).List(metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
 		c.Assert(err, IsNil)
 		c.Assert(retRs.Items, HasLen, len(tc.expectReplicas))
 		for _, retR := range retRs.Items {

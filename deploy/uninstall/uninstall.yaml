@@ -24,7 +24,7 @@ rules:
   - apiGroups: ["batch"]
     resources: ["jobs", "cronjobs"]
     verbs: ["*"]
-  - apiGroups: ["longhorn.rancher.io"]
+  - apiGroups: ["longhorn.io"]
     resources: ["volumes", "engines", "replicas", "settings", "engineimages", "nodes", "instancemanagers"]
     verbs: ["*"]
 ---

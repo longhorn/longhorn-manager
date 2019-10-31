@@ -10,7 +10,7 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/sirupsen/logrus"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 type ReplicaScheduler struct {

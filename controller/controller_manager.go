@@ -19,7 +19,7 @@ import (
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 )
@@ -60,13 +60,13 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
 	lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, time.Second*30)
 
-	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
-	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Engines()
-	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
-	engineImageInformer := lhInformerFactory.Longhorn().V1alpha1().EngineImages()
-	nodeInformer := lhInformerFactory.Longhorn().V1alpha1().Nodes()
-	settingInformer := lhInformerFactory.Longhorn().V1alpha1().Settings()
-	imInformer := lhInformerFactory.Longhorn().V1alpha1().InstanceManagers()
+	replicaInformer := lhInformerFactory.Longhorn().V1beta1().Replicas()
+	engineInformer := lhInformerFactory.Longhorn().V1beta1().Engines()
+	volumeInformer := lhInformerFactory.Longhorn().V1beta1().Volumes()
+	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
+	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
+	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
+	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()

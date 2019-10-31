@@ -13,7 +13,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 
@@ -48,13 +48,13 @@ type EngineImageControllerTestCase struct {
 func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *EngineImageController {
 
-	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
-	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Engines()
-	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
-	engineImageInformer := lhInformerFactory.Longhorn().V1alpha1().EngineImages()
-	nodeInformer := lhInformerFactory.Longhorn().V1alpha1().Nodes()
-	settingInformer := lhInformerFactory.Longhorn().V1alpha1().Settings()
-	imInformer := lhInformerFactory.Longhorn().V1alpha1().InstanceManagers()
+	volumeInformer := lhInformerFactory.Longhorn().V1beta1().Volumes()
+	engineInformer := lhInformerFactory.Longhorn().V1beta1().Engines()
+	replicaInformer := lhInformerFactory.Longhorn().V1beta1().Replicas()
+	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
+	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
+	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
+	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
@@ -311,47 +311,47 @@ func (s *TestSuite) TestEngineImage(c *C) {
 
 		dsIndexer := kubeInformerFactory.Apps().V1().DaemonSets().Informer().GetIndexer()
 
-		nodeIndexer := lhInformerFactory.Longhorn().V1alpha1().Nodes().Informer().GetIndexer()
-		settingIndexer := lhInformerFactory.Longhorn().V1alpha1().Settings().Informer().GetIndexer()
-		eiIndexer := lhInformerFactory.Longhorn().V1alpha1().EngineImages().Informer().GetIndexer()
-		vIndexer := lhInformerFactory.Longhorn().V1alpha1().Volumes().Informer().GetIndexer()
-		eIndexer := lhInformerFactory.Longhorn().V1alpha1().Engines().Informer().GetIndexer()
-		imIndexer := lhInformerFactory.Longhorn().V1alpha1().InstanceManagers().Informer().GetIndexer()
+		nodeIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
+		settingIndexer := lhInformerFactory.Longhorn().V1beta1().Settings().Informer().GetIndexer()
+		eiIndexer := lhInformerFactory.Longhorn().V1beta1().EngineImages().Informer().GetIndexer()
+		vIndexer := lhInformerFactory.Longhorn().V1beta1().Volumes().Informer().GetIndexer()
+		eIndexer := lhInformerFactory.Longhorn().V1beta1().Engines().Informer().GetIndexer()
+		imIndexer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers().Informer().GetIndexer()
 
 		ic := newTestEngineImageController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
 
-		setting, err := lhClient.LonghornV1alpha1().Settings(TestNamespace).Create(newSetting(string(types.SettingNameDefaultEngineImage), tc.defaultEngineImage))
+		setting, err := lhClient.LonghornV1beta1().Settings(TestNamespace).Create(newSetting(string(types.SettingNameDefaultEngineImage), tc.defaultEngineImage))
 		c.Assert(err, IsNil)
 		err = settingIndexer.Add(setting)
 		c.Assert(err, IsNil)
 		// For DaemonSet creation test
-		setting, err = lhClient.LonghornV1alpha1().Settings(TestNamespace).Create(newSetting(string(types.SettingNameTaintToleration), ""))
+		setting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(newSetting(string(types.SettingNameTaintToleration), ""))
 		c.Assert(err, IsNil)
 		err = settingIndexer.Add(setting)
 		c.Assert(err, IsNil)
 
-		node, err := lhClient.LonghornV1alpha1().Nodes(TestNamespace).Create(tc.node)
+		node, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(tc.node)
 		c.Assert(err, IsNil)
 		err = nodeIndexer.Add(node)
 		c.Assert(err, IsNil)
 
-		ei, err := lhClient.LonghornV1alpha1().EngineImages(TestNamespace).Create(tc.currentEngineImage)
+		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(tc.currentEngineImage)
 		c.Assert(err, IsNil)
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
-		ei, err = lhClient.LonghornV1alpha1().EngineImages(TestNamespace).Create(tc.upgradedEngineImage)
+		ei, err = lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(tc.upgradedEngineImage)
 		c.Assert(err, IsNil)
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
 
 		if tc.volume != nil {
-			v, err := lhClient.LonghornV1alpha1().Volumes(TestNamespace).Create(tc.volume)
+			v, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(tc.volume)
 			c.Assert(err, IsNil)
 			err = vIndexer.Add(v)
 			c.Assert(err, IsNil)
 		}
 		if tc.engine != nil {
-			e, err := lhClient.LonghornV1alpha1().Engines(TestNamespace).Create(tc.engine)
+			e, err := lhClient.LonghornV1beta1().Engines(TestNamespace).Create(tc.engine)
 			c.Assert(err, IsNil)
 			err = eIndexer.Add(e)
 			c.Assert(err, IsNil)
@@ -363,13 +363,13 @@ func (s *TestSuite) TestEngineImage(c *C) {
 			c.Assert(err, IsNil)
 		}
 		if tc.currentEngineManager != nil {
-			em, err := lhClient.LonghornV1alpha1().InstanceManagers(TestNamespace).Create(tc.currentEngineManager)
+			em, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(tc.currentEngineManager)
 			c.Assert(err, IsNil)
 			err = imIndexer.Add(em)
 			c.Assert(err, IsNil)
 		}
 		if tc.currentReplicaManager != nil {
-			rm, err := lhClient.LonghornV1alpha1().InstanceManagers(TestNamespace).Create(tc.currentReplicaManager)
+			rm, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(tc.currentReplicaManager)
 			c.Assert(err, IsNil)
 			err = imIndexer.Add(rm)
 			c.Assert(err, IsNil)
@@ -379,7 +379,7 @@ func (s *TestSuite) TestEngineImage(c *C) {
 		err = ic.syncEngineImage(engineImageControllerKey)
 		c.Assert(err, IsNil)
 
-		ei, err = lhClient.LonghornV1alpha1().EngineImages(TestNamespace).Get(getTestEngineImageName(), metav1.GetOptions{})
+		ei, err = lhClient.LonghornV1beta1().EngineImages(TestNamespace).Get(getTestEngineImageName(), metav1.GetOptions{})
 		if tc.expectedEngineImage == nil {
 			c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
 		} else {
@@ -396,14 +396,14 @@ func (s *TestSuite) TestEngineImage(c *C) {
 			ds.Status.DesiredNumberScheduled = 1
 			c.Assert(ds.Status, DeepEquals, tc.expectedDaemonSet.Status)
 		}
-		em, err := lhClient.LonghornV1alpha1().InstanceManagers(TestNamespace).Get(TestEngineManagerName, metav1.GetOptions{})
+		em, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Get(TestEngineManagerName, metav1.GetOptions{})
 		if tc.expectedEngineManager == nil {
 			c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
 		} else {
 			c.Assert(err, IsNil)
 			c.Assert(em.Status.CurrentState, DeepEquals, tc.expectedEngineManager.Status.CurrentState)
 		}
-		rm, err := lhClient.LonghornV1alpha1().InstanceManagers(TestNamespace).Get(TestReplicaManagerName, metav1.GetOptions{})
+		rm, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Get(TestReplicaManagerName, metav1.GetOptions{})
 		if tc.expectedReplicaManager == nil {
 			c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
 		} else {

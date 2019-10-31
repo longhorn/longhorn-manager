@@ -14,7 +14,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 
@@ -53,13 +53,13 @@ func newReplicaScheduler(lhInformerFactory lhinformerfactory.SharedInformerFacto
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *ReplicaScheduler {
 	fmt.Printf("testing NewReplicaScheduler\n")
 
-	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
-	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Engines()
-	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
-	engineImageInformer := lhInformerFactory.Longhorn().V1alpha1().EngineImages()
-	nodeInformer := lhInformerFactory.Longhorn().V1alpha1().Nodes()
-	settingInformer := lhInformerFactory.Longhorn().V1alpha1().Settings()
-	imInformer := lhInformerFactory.Longhorn().V1alpha1().InstanceManagers()
+	volumeInformer := lhInformerFactory.Longhorn().V1beta1().Volumes()
+	engineInformer := lhInformerFactory.Longhorn().V1beta1().Engines()
+	replicaInformer := lhInformerFactory.Longhorn().V1beta1().Replicas()
+	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
+	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
+	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
+	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
@@ -476,10 +476,10 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 
-		vIndexer := lhInformerFactory.Longhorn().V1alpha1().Volumes().Informer().GetIndexer()
-		rIndexer := lhInformerFactory.Longhorn().V1alpha1().Replicas().Informer().GetIndexer()
-		nIndexer := lhInformerFactory.Longhorn().V1alpha1().Nodes().Informer().GetIndexer()
-		sIndexer := lhInformerFactory.Longhorn().V1alpha1().Settings().Informer().GetIndexer()
+		vIndexer := lhInformerFactory.Longhorn().V1beta1().Volumes().Informer().GetIndexer()
+		rIndexer := lhInformerFactory.Longhorn().V1beta1().Replicas().Informer().GetIndexer()
+		nIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
+		sIndexer := lhInformerFactory.Longhorn().V1beta1().Settings().Informer().GetIndexer()
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
 		s := newReplicaScheduler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
@@ -491,31 +491,31 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		}
 		// create node
 		for _, node := range tc.nodes {
-			n, err := lhClient.LonghornV1alpha1().Nodes(TestNamespace).Create(node)
+			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(node)
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
 			nIndexer.Add(n)
 		}
 		// create volume
-		volume, err := lhClient.LonghornV1alpha1().Volumes(TestNamespace).Create(tc.volume)
+		volume, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(tc.volume)
 		c.Assert(err, IsNil)
 		c.Assert(volume, NotNil)
 		vIndexer.Add(volume)
 		// set settings
 		if tc.storageOverProvisioningPercentage != "" && tc.storageMinimalAvailablePercentage != "" {
 			s := initSettings(string(types.SettingNameStorageOverProvisioningPercentage), tc.storageOverProvisioningPercentage)
-			setting, err := lhClient.LonghornV1alpha1().Settings(TestNamespace).Create(s)
+			setting, err := lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
 			c.Assert(err, IsNil)
 			sIndexer.Add(setting)
 
 			s = initSettings(string(types.SettingNameStorageMinimalAvailablePercentage), tc.storageMinimalAvailablePercentage)
-			setting, err = lhClient.LonghornV1alpha1().Settings(TestNamespace).Create(s)
+			setting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
 			c.Assert(err, IsNil)
 			sIndexer.Add(setting)
 		}
 		// validate scheduler
 		for _, replica := range tc.replicas {
-			r, err := lhClient.LonghornV1alpha1().Replicas(TestNamespace).Create(replica)
+			r, err := lhClient.LonghornV1beta1().Replicas(TestNamespace).Create(replica)
 			c.Assert(err, IsNil)
 			c.Assert(r, NotNil)
 			rIndexer.Add(r)

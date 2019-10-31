@@ -20,8 +20,8 @@ package fake
 
 import (
 	clientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	longhornv1alpha1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1alpha1"
-	fakelonghornv1alpha1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1alpha1/fake"
+	longhornv1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1beta1"
+	fakelonghornv1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1beta1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
@@ -71,7 +71,7 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 
 var _ clientset.Interface = &Clientset{}
 
-// LonghornV1alpha1 retrieves the LonghornV1alpha1Client
-func (c *Clientset) LonghornV1alpha1() longhornv1alpha1.LonghornV1alpha1Interface {
-	return &fakelonghornv1alpha1.FakeLonghornV1alpha1{Fake: &c.Fake}
+// LonghornV1beta1 retrieves the LonghornV1beta1Client
+func (c *Clientset) LonghornV1beta1() longhornv1beta1.LonghornV1beta1Interface {
+	return &fakelonghornv1beta1.FakeLonghornV1beta1{Fake: &c.Fake}
 }

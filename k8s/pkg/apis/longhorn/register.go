@@ -1,5 +1,5 @@
 package longhorn
 
 const (
-	GroupName = "longhorn.rancher.io"
+	GroupName = "longhorn.io"
 )

@@ -16,7 +16,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 
@@ -212,13 +212,13 @@ func newVA(vaName, nodeName, pvName string) *storagev1.VolumeAttachment {
 func newTestKubernetesController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *KubernetesController {
 
-	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
-	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Engines()
-	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
-	engineImageInformer := lhInformerFactory.Longhorn().V1alpha1().EngineImages()
-	nodeInformer := lhInformerFactory.Longhorn().V1alpha1().Nodes()
-	settingInformer := lhInformerFactory.Longhorn().V1alpha1().Settings()
-	imInformer := lhInformerFactory.Longhorn().V1alpha1().InstanceManagers()
+	volumeInformer := lhInformerFactory.Longhorn().V1beta1().Volumes()
+	engineInformer := lhInformerFactory.Longhorn().V1beta1().Engines()
+	replicaInformer := lhInformerFactory.Longhorn().V1beta1().Replicas()
+	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
+	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
+	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
+	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
@@ -505,7 +505,7 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
-		vIndexer := lhInformerFactory.Longhorn().V1alpha1().Volumes().Informer().GetIndexer()
+		vIndexer := lhInformerFactory.Longhorn().V1beta1().Volumes().Informer().GetIndexer()
 
 		pvIndexer := kubeInformerFactory.Core().V1().PersistentVolumes().Informer().GetIndexer()
 		pvcIndexer := kubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
@@ -516,7 +516,7 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		// Need to create pv, pvc, pod and longhorn volume
 		var v *longhorn.Volume
 		if tc.volume != nil {
-			v, err = lhClient.LonghornV1alpha1().Volumes(TestNamespace).Create(tc.volume)
+			v, err = lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(tc.volume)
 			c.Assert(err, IsNil)
 			err = vIndexer.Add(v)
 			c.Assert(err, IsNil)
@@ -553,7 +553,7 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		}
 
 		if v != nil {
-			retV, err := lhClient.LonghornV1alpha1().Volumes(TestNamespace).Get(v.Name, metav1.GetOptions{})
+			retV, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Get(v.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(retV.Spec, DeepEquals, tc.expectVolume.Spec)
 			sort.Slice(retV.Status.KubernetesStatus.WorkloadsStatus, func(i, j int) bool {
@@ -701,8 +701,8 @@ func (s *TestSuite) runDisasterRecoveryTestCases(c *C, testCases map[string]*Dis
 
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
-		vIndexer := lhInformerFactory.Longhorn().V1alpha1().Volumes().Informer().GetIndexer()
-		nodeIndexer := lhInformerFactory.Longhorn().V1alpha1().Nodes().Informer().GetIndexer()
+		vIndexer := lhInformerFactory.Longhorn().V1beta1().Volumes().Informer().GetIndexer()
+		nodeIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
 
 		pvIndexer := kubeInformerFactory.Core().V1().PersistentVolumes().Informer().GetIndexer()
 		pvcIndexer := kubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
@@ -712,14 +712,14 @@ func (s *TestSuite) runDisasterRecoveryTestCases(c *C, testCases map[string]*Dis
 		kc := newTestKubernetesController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
 
 		if tc.node != nil {
-			node, err := lhClient.LonghornV1alpha1().Nodes(TestNamespace).Create(tc.node)
+			node, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(tc.node)
 			c.Assert(err, IsNil)
 			nodeIndexer.Add(node)
 		}
 
 		var v *longhorn.Volume
 		if tc.volume != nil {
-			v, err = lhClient.LonghornV1alpha1().Volumes(TestNamespace).Create(tc.volume)
+			v, err = lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(tc.volume)
 			c.Assert(err, IsNil)
 			err = vIndexer.Add(v)
 			c.Assert(err, IsNil)

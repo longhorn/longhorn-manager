@@ -21,7 +21,7 @@ package externalversions
 import (
 	"fmt"
 
-	v1alpha1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	v1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 )
@@ -52,21 +52,21 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=longhorn.rancher.io, Version=v1alpha1
-	case v1alpha1.SchemeGroupVersion.WithResource("engines"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1alpha1().Engines().Informer()}, nil
-	case v1alpha1.SchemeGroupVersion.WithResource("engineimages"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1alpha1().EngineImages().Informer()}, nil
-	case v1alpha1.SchemeGroupVersion.WithResource("instancemanagers"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1alpha1().InstanceManagers().Informer()}, nil
-	case v1alpha1.SchemeGroupVersion.WithResource("nodes"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1alpha1().Nodes().Informer()}, nil
-	case v1alpha1.SchemeGroupVersion.WithResource("replicas"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1alpha1().Replicas().Informer()}, nil
-	case v1alpha1.SchemeGroupVersion.WithResource("settings"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1alpha1().Settings().Informer()}, nil
-	case v1alpha1.SchemeGroupVersion.WithResource("volumes"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1alpha1().Volumes().Informer()}, nil
+	// Group=longhorn.io, Version=v1beta1
+	case v1beta1.SchemeGroupVersion.WithResource("engines"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta1().Engines().Informer()}, nil
+	case v1beta1.SchemeGroupVersion.WithResource("engineimages"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta1().EngineImages().Informer()}, nil
+	case v1beta1.SchemeGroupVersion.WithResource("instancemanagers"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta1().InstanceManagers().Informer()}, nil
+	case v1beta1.SchemeGroupVersion.WithResource("nodes"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta1().Nodes().Informer()}, nil
+	case v1beta1.SchemeGroupVersion.WithResource("replicas"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta1().Replicas().Informer()}, nil
+	case v1beta1.SchemeGroupVersion.WithResource("settings"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta1().Settings().Informer()}, nil
+	case v1beta1.SchemeGroupVersion.WithResource("volumes"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta1().Volumes().Informer()}, nil
 
 	}
 
