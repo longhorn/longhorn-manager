@@ -35,10 +35,6 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 )
 
-const (
-	LonghornCSIDriver = "io.rancher.longhorn"
-)
-
 type KubernetesController struct {
 	// use as the OwnerID of the controller
 	controllerID string
@@ -326,7 +322,7 @@ func (kc *KubernetesController) getCSIVolumeHandleFromPV(pv *v1.PersistentVolume
 		return ""
 	}
 	// try to get associated Longhorn volume name
-	if pv.Spec.CSI == nil || pv.Spec.CSI.VolumeHandle == "" || pv.Spec.CSI.Driver != LonghornCSIDriver {
+	if pv.Spec.CSI == nil || pv.Spec.CSI.VolumeHandle == "" || (pv.Spec.CSI.Driver != types.LonghornDriverName && pv.Spec.CSI.Driver != types.DepracatedDriverName) {
 		return ""
 	}
 	return pv.Spec.CSI.VolumeHandle

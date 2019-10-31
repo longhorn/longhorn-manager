@@ -31,8 +31,8 @@ const (
 	DefaultInContainerCSIRegistrationDir  = "/registration"
 	DefaultCommonPluginsDirSuffix         = "/plugins/"
 
-	AnnotationCSIVersion        = "longhorn.rancher.io/version"
-	AnnotationKubernetesVersion = "longhorn.rancher.io/kubernetes-version"
+	AnnotationCSIVersion        = types.LonghornDriverName + "/version"
+	AnnotationKubernetesVersion = types.LonghornDriverName + "/kubernetes-version"
 )
 
 var (
@@ -193,7 +193,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 									Exec: &v1.ExecAction{
 										Command: []string{
 											"/bin/sh", "-c",
-											"rm -rf /registration/io.rancher.longhorn /registration/io.rancher.longhorn-reg.sock " + GetInContainerCSISocketDir(),
+											fmt.Sprintf("rm -rf %s/%s %s/%s-reg.sock %s/*", GetInContainerCSIRegistrationDir(), types.LonghornDriverName, GetInContainerCSIRegistrationDir(), types.LonghornDriverName, GetInContainerCSISocketDir()),
 										},
 									},
 								},
@@ -252,7 +252,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 								"csi",
 								"--nodeid=$(NODE_ID)",
 								"--endpoint=$(CSI_ENDPOINT)",
-								"--drivername=io.rancher.longhorn",
+								fmt.Sprintf("--drivername=%s", types.LonghornDriverName),
 								"--manager-url=" + managerURL,
 							},
 							Env: []v1.EnvVar{

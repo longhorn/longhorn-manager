@@ -5,6 +5,7 @@ import (
 	"github.com/urfave/cli"
 
 	"github.com/longhorn/longhorn-manager/csi"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 func CSICommand() cli.Command {
@@ -18,7 +19,7 @@ func CSICommand() cli.Command {
 			},
 			cli.StringFlag{
 				Name:  "drivername",
-				Value: "io.rancher.longhorn",
+				Value: types.LonghornDriverName,
 				Usage: "Name of the CSI driver",
 			},
 			cli.StringFlag{
