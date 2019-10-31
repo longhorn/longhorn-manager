@@ -490,6 +490,17 @@ func (s *DataStore) UpdateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	return obj, nil
 }
 
+func (s *DataStore) UpdateEngineStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
+	obj, err := s.lhClient.LonghornV1alpha1().Engines(s.namespace).UpdateStatus(e)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(e.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getEngineRO(name)
+	})
+	return obj, nil
+}
+
 // DeleteEngine won't result in immediately deletion since finalizer was set by default
 func (s *DataStore) DeleteEngine(name string) error {
 	return s.lhClient.LonghornV1alpha1().Engines(s.namespace).Delete(name, &metav1.DeleteOptions{})
@@ -1206,14 +1217,14 @@ func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error
 	return false, fmt.Errorf("The %v setting value couldn't be converted to bool, value is %v ", string(settingName), value)
 }
 
-func (s *DataStore) ResetEngineMonitoringStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
+func (s *DataStore) ResetMonitoringEngineStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
 	e.Status.Endpoint = ""
 	e.Status.LastRestoredBackup = ""
 	e.Status.ReplicaModeMap = nil
 	e.Status.BackupStatus = nil
 	e.Status.RestoreStatus = nil
 	e.Status.PurgeStatus = nil
-	ret, err := s.UpdateEngine(e)
+	ret, err := s.UpdateEngineStatus(e)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to reset engine status for %v", e.Name)
 	}

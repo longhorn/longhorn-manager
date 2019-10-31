@@ -260,7 +260,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 			return nil
 		}
 		engine.Status.OwnerID = ec.controllerID
-		engine, err = ec.ds.UpdateEngine(engine)
+		engine, err = ec.ds.UpdateEngineStatus(engine)
 		if err != nil {
 			// we don't mind others coming first
 			if apierrors.IsConflict(errors.Cause(err)) {
@@ -283,8 +283,8 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	existingEngine := engine.DeepCopy()
 	defer func() {
 		// we're going to update engine assume things changes
-		if err == nil && !reflect.DeepEqual(existingEngine, engine) {
-			_, err = ec.ds.UpdateEngine(engine)
+		if err == nil && !reflect.DeepEqual(existingEngine.Status, engine.Status) {
+			_, err = ec.ds.UpdateEngineStatus(engine)
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
@@ -637,7 +637,7 @@ func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
 }
 
 func (ec *EngineController) stopMonitoring(e *longhorn.Engine) {
-	if _, err := ec.ds.ResetEngineMonitoringStatus(e); err != nil {
+	if _, err := ec.ds.ResetMonitoringEngineStatus(e); err != nil {
 		utilruntime.HandleError(errors.Wrapf(err, "failed to update engine %v to stop monitoring", e.Name))
 		// better luck next time
 		return
@@ -704,7 +704,7 @@ func (m *EngineMonitor) Run() {
 
 func (m *EngineMonitor) stop(e *longhorn.Engine) {
 	if e != nil {
-		if _, err := m.ds.ResetEngineMonitoringStatus(e); err != nil {
+		if _, err := m.ds.ResetMonitoringEngineStatus(e); err != nil {
 			utilruntime.HandleError(errors.Wrapf(err, "failed to update engine %v to stop monitoring", m.Name))
 			// better luck next time
 			return
@@ -812,7 +812,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.PurgeStatus = purgeStatus
 	}
 
-	engine, err = m.ds.UpdateEngine(engine)
+	engine, err = m.ds.UpdateEngineStatus(engine)
 	if err != nil {
 		return err
 	}
