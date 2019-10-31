@@ -17,13 +17,19 @@ import (
 )
 
 const (
-	DefaultCSIAttacherImage        = "quay.io/k8scsi/csi-attacher:v0.4.2"
-	DefaultCSIProvisionerImage     = "quay.io/k8scsi/csi-provisioner:v0.4.2"
-	DefaultCSIDriverRegistrarImage = "quay.io/k8scsi/driver-registrar:v0.4.1"
-	DefaultCSIProvisionerName      = "rancher.io/longhorn"
+	DefaultCSIAttacherImage            = "quay.io/k8scsi/csi-attacher:v2.0.0"
+	DefaultCSIProvisionerImage         = "quay.io/k8scsi/csi-provisioner:v1.4.0"
+	DefaultCSINodeDriverRegistrarImage = "quay.io/k8scsi/csi-node-driver-registrar:v1.2.0"
 
 	DefaultCSIAttacherReplicaCount    = 3
 	DefaultCSIProvisionerReplicaCount = 3
+
+	DefaultInContainerKubeletRootDir      = "/var/lib/kubelet/"
+	DefaultCSISocketFileName              = "csi.sock"
+	DefaultOnHostCSIRegistrationDirSuffix = "/plugins_registry"
+	DefaultInContainerCSISocketDir        = "/csi/"
+	DefaultInContainerCSIRegistrationDir  = "/registration"
+	DefaultCommonPluginsDirSuffix         = "/plugins/"
 
 	AnnotationCSIVersion        = "longhorn.rancher.io/version"
 	AnnotationKubernetesVersion = "longhorn.rancher.io/kubernetes-version"
@@ -54,7 +60,6 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 			"--csi-address=$(ADDRESS)",
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
-			"--leader-election-identity=$(POD_NAME)",
 		},
 		int32(replicaCount),
 		tolerations,
@@ -99,7 +104,7 @@ type ProvisionerDeployment struct {
 	deployment *appsv1.Deployment
 }
 
-func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, provisionerName, rootDir string, replicaCount int, tolerations []v1.Toleration) *ProvisionerDeployment {
+func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootDir string, replicaCount int, tolerations []v1.Toleration) *ProvisionerDeployment {
 	service := getCommonService(types.CSIProvisionerName, namespace)
 
 	deployment := getCommonDeployment(
@@ -110,9 +115,10 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, provi
 		rootDir,
 		[]string{
 			"--v=5",
-			"--provisioner=" + provisionerName,
 			"--csi-address=$(ADDRESS)",
 			"--enable-leader-election",
+			"--leader-election-type=leases",
+			"--leader-election-namespace=$(POD_NAMESPACE)",
 		},
 		int32(replicaCount),
 		tolerations,
@@ -156,89 +162,7 @@ type PluginDeployment struct {
 	daemonSet *appsv1.DaemonSet
 }
 
-func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, managerImage, managerURL, rootDir string, kubeletPluginWatcherEnabled bool, tolerations []v1.Toleration) *PluginDeployment {
-	args := []string{
-		"--v=5",
-		"--csi-address=$(ADDRESS)",
-	}
-	volumeMounts := []v1.VolumeMount{
-		{
-			Name:      "socket-dir",
-			MountPath: "/var/lib/kubelet/plugins/io.rancher.longhorn",
-		},
-	}
-	volumes := []v1.Volume{
-		{
-			Name: "plugin-dir",
-			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
-					Path: filepath.Join(rootDir, "/plugins/io.rancher.longhorn"),
-					Type: &HostPathDirectoryOrCreate,
-				},
-			},
-		},
-		{
-			Name: "pods-mount-dir",
-			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
-					Path: filepath.Join(rootDir, "/pods"),
-					Type: &HostPathDirectoryOrCreate,
-				},
-			},
-		},
-		{
-			Name: "socket-dir",
-			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
-					Path: filepath.Join(rootDir, "/plugins/io.rancher.longhorn"),
-					Type: &HostPathDirectoryOrCreate,
-				},
-			},
-		},
-		{
-			Name: "host-dev",
-			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
-					Path: "/dev",
-				},
-			},
-		},
-		{
-			Name: "host-sys",
-			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
-					Path: "/sys",
-				},
-			},
-		},
-		{
-			Name: "lib-modules",
-			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
-					Path: "/lib/modules",
-				},
-			},
-		},
-	}
-
-	// for Kubernetes v1.12+
-	if kubeletPluginWatcherEnabled {
-		args = append(args, fmt.Sprintf("--kubelet-registration-path=%s", filepath.Join(rootDir, "/plugins/io.rancher.longhorn/csi.sock")))
-		volumeMounts = append(volumeMounts, v1.VolumeMount{
-			Name:      "registration-dir",
-			MountPath: "/registration",
-		})
-		volumes = append(volumes, v1.Volume{
-			Name: "registration-dir",
-			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
-					Path: filepath.Join(rootDir, "/plugins/"),
-					Type: &HostPathDirectory,
-				},
-			},
-		})
-	}
-
+func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, managerImage, managerURL, rootDir string, tolerations []v1.Toleration) *PluginDeployment {
 	daemonSet := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      types.CSIPluginName,
@@ -262,25 +186,43 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 					Tolerations:        tolerations,
 					Containers: []v1.Container{
 						{
-							Name:  "driver-registrar",
-							Image: driverRegistrarImage,
-							Args:  args,
-							Env: []v1.EnvVar{
-								{
-									Name:  "ADDRESS",
-									Value: "/var/lib/kubelet/plugins/io.rancher.longhorn/csi.sock",
-								},
-								{
-									Name: "KUBE_NODE_NAME",
-									ValueFrom: &v1.EnvVarSource{
-										FieldRef: &v1.ObjectFieldSelector{
-											FieldPath: "spec.nodeName",
+							Name:  "node-driver-registrar",
+							Image: nodeDriverRegistrarImage,
+							Lifecycle: &v1.Lifecycle{
+								PreStop: &v1.Handler{
+									Exec: &v1.ExecAction{
+										Command: []string{
+											"/bin/sh", "-c",
+											"rm -rf /registration/io.rancher.longhorn /registration/io.rancher.longhorn-reg.sock " + GetInContainerCSISocketDir(),
 										},
 									},
 								},
 							},
+							SecurityContext: &v1.SecurityContext{
+								Privileged: pointer.BoolPtr(true),
+							},
+							Args: []string{
+								"--v=5",
+								"--csi-address=$(ADDRESS)",
+								"--kubelet-registration-path=" + GetOnHostCSISocketFilePath(rootDir),
+							},
+							Env: []v1.EnvVar{
+								{
+									Name:  "ADDRESS",
+									Value: GetInContainerCSISocketFilePath(),
+								},
+							},
 							//ImagePullPolicy: v1.PullAlways,
-							VolumeMounts: volumeMounts,
+							VolumeMounts: []v1.VolumeMount{
+								{
+									Name:      "socket-dir",
+									MountPath: GetInContainerCSISocketDir(),
+								},
+								{
+									Name:      "registration-dir",
+									MountPath: GetInContainerCSIRegistrationDir(),
+								},
+							},
 						},
 						{
 							Name: "longhorn-csi-plugin",
@@ -294,6 +236,16 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 								AllowPrivilegeEscalation: pointer.BoolPtr(true),
 							},
 							Image: managerImage,
+							Lifecycle: &v1.Lifecycle{
+								PreStop: &v1.Handler{
+									Exec: &v1.ExecAction{
+										Command: []string{
+											"/bin/sh", "-c",
+											fmt.Sprintf("rm -f %s/*", GetInContainerCSISocketDir()),
+										},
+									},
+								},
+							},
 							Args: []string{
 								"longhorn-manager",
 								"-d",
@@ -314,13 +266,18 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 								},
 								{
 									Name:  "CSI_ENDPOINT",
-									Value: "unix://var/lib/kubelet/plugins/io.rancher.longhorn/csi.sock",
+									Value: GetCSIEndpoint(),
 								},
 							},
 							VolumeMounts: []v1.VolumeMount{
 								{
-									Name:      "plugin-dir",
-									MountPath: "/var/lib/kubelet/plugins/io.rancher.longhorn",
+									Name:             "plugin-dir",
+									MountPath:        GetInContainerPluginsDir(),
+									MountPropagation: &MountPropagationBidirectional,
+								},
+								{
+									Name:      "socket-dir",
+									MountPath: GetInContainerCSISocketDir(),
 								},
 								{
 									Name:             "pods-mount-dir",
@@ -343,7 +300,68 @@ func NewPluginDeployment(namespace, serviceAccount, driverRegistrarImage, manage
 							},
 						},
 					},
-					Volumes: volumes,
+					Volumes: []v1.Volume{
+						{
+							Name: "registration-dir",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: GetOnHostCSIRegistrationDir(rootDir),
+									Type: &HostPathDirectory,
+								},
+							},
+						},
+						{
+							Name: "socket-dir",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: GetOnHostCSISocketDir(rootDir),
+									Type: &HostPathDirectoryOrCreate,
+								},
+							},
+						},
+						{
+							Name: "plugin-dir",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: GetOnHostPluginsDir(rootDir),
+									Type: &HostPathDirectory,
+								},
+							},
+						},
+						{
+							Name: "pods-mount-dir",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: filepath.Join(rootDir, "/pods"),
+									Type: &HostPathDirectoryOrCreate,
+								},
+							},
+						},
+						{
+							Name: "host-dev",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: "/dev",
+								},
+							},
+						},
+						{
+							Name: "host-sys",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: "/sys",
+								},
+							},
+						},
+						{
+							Name: "lib-modules",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: "/lib/modules",
+								},
+							},
+						},
+					},
 				},
 			},
 		},

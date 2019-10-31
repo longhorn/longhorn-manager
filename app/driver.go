@@ -41,14 +41,12 @@ const (
 	FlagFlexvolumeDir  = "flexvolume-dir"
 	FlagKubeletRootDir = "kubelet-root-dir"
 
-	FlagCSIAttacherImage        = "csi-attacher-image"
-	FlagCSIProvisionerImage     = "csi-provisioner-image"
-	FlagCSIDriverRegistrarImage = "csi-driver-registrar-image"
-	FlagCSIProvisionerName      = "csi-provisioner-name"
-	EnvCSIAttacherImage         = "CSI_ATTACHER_IMAGE"
-	EnvCSIProvisionerImage      = "CSI_PROVISIONER_IMAGE"
-	EnvCSIDriverRegistrarImage  = "CSI_DRIVER_REGISTRAR_IMAGE"
-	EnvCSIProvisionerName       = "CSI_PROVISIONER_NAME"
+	FlagCSIAttacherImage            = "csi-attacher-image"
+	FlagCSIProvisionerImage         = "csi-provisioner-image"
+	FlagCSINodeDriverRegistrarImage = "csi-node-driver-registrar-image"
+	EnvCSIAttacherImage             = "CSI_ATTACHER_IMAGE"
+	EnvCSIProvisionerImage          = "CSI_PROVISIONER_IMAGE"
+	EnvCSINodeDriverRegistrarImage  = "CSI_NODE_DRIVER_REGISTRAR_IMAGE"
 
 	FlagCSIAttacherReplicaCount    = "csi-attacher-replica-count"
 	FlagCSIProvisionerReplicaCount = "csi-provisioner-replica-count"
@@ -107,16 +105,10 @@ func DeployDriverCmd() cli.Command {
 				Value:  csi.DefaultCSIProvisionerReplicaCount,
 			},
 			cli.StringFlag{
-				Name:   FlagCSIDriverRegistrarImage,
-				Usage:  "Specify CSI driver-registrar image",
-				EnvVar: EnvCSIDriverRegistrarImage,
-				Value:  csi.DefaultCSIDriverRegistrarImage,
-			},
-			cli.StringFlag{
-				Name:   FlagCSIProvisionerName,
-				Usage:  "Specify CSI provisioner name",
-				EnvVar: EnvCSIProvisionerName,
-				Value:  csi.DefaultCSIProvisionerName,
+				Name:   FlagCSINodeDriverRegistrarImage,
+				Usage:  "Specify CSI node-driver-registrar image",
+				EnvVar: EnvCSINodeDriverRegistrarImage,
+				Value:  csi.DefaultCSINodeDriverRegistrarImage,
 			},
 			cli.StringFlag{
 				Name:  FlagKubeConfig,
@@ -227,8 +219,7 @@ func isKubernetesVersionAtLeast(kubeClient *clientset.Clientset, vers string) (b
 func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clientset, c *cli.Context, managerImage, managerURL string) error {
 	csiAttacherImage := c.String(FlagCSIAttacherImage)
 	csiProvisionerImage := c.String(FlagCSIProvisionerImage)
-	csiDriverRegistrarImage := c.String(FlagCSIDriverRegistrarImage)
-	csiProvisionerName := c.String(FlagCSIProvisionerName)
+	csiNodeDriverRegistrarImage := c.String(FlagCSINodeDriverRegistrarImage)
 	csiAttacherReplicaCount := c.Int(FlagCSIAttacherReplicaCount)
 	csiProvisionerReplicaCount := c.Int(FlagCSIProvisionerReplicaCount)
 	namespace := os.Getenv(types.EnvPodNamespace)
@@ -256,11 +247,6 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		logrus.Infof("User specified root dir: %v", rootDir)
 	}
 
-	kubeletPluginWatcherEnabled, err := isKubernetesVersionAtLeast(kubeClient, types.KubeletPluginWatcherMinVersion)
-	if err != nil {
-		return err
-	}
-
 	if err := handleCSIUpgrade(kubeClient, namespace); err != nil {
 		return err
 	}
@@ -270,12 +256,12 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, csiProvisionerName, rootDir, csiProvisionerReplicaCount, tolerations)
+	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, rootDir, csiProvisionerReplicaCount, tolerations)
 	if err := provisionerDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiDriverRegistrarImage, managerImage, managerURL, rootDir, kubeletPluginWatcherEnabled, tolerations)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, managerImage, managerURL, rootDir, tolerations)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
