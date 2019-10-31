@@ -4,8 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
-	csicommon "github.com/kubernetes-csi/drivers/pkg/csi-common"
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -13,12 +12,12 @@ import (
 )
 
 type NodeServer struct {
-	*csicommon.DefaultNodeServer
+	nodeID string
 }
 
-func NewNodeServer(d *csicommon.CSIDriver) *NodeServer {
+func NewNodeServer(nodeID string) *NodeServer {
 	return &NodeServer{
-		DefaultNodeServer: csicommon.NewDefaultNodeServer(d),
+		nodeID: nodeID,
 	}
 }
 
@@ -94,4 +93,22 @@ func (ns *NodeServer) NodeUnstageVolume(
 	*csi.NodeUnstageVolumeResponse, error) {
 
 	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
+	return &csi.NodeGetInfoResponse{
+		NodeId: ns.nodeID,
+	}, nil
+}
+
+func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
+	return &csi.NodeGetCapabilitiesResponse{}, nil
 }
