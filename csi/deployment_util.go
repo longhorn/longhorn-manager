@@ -21,7 +21,7 @@ import (
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 )
 
-var VERSION = "v0.3.0"
+var VERSION = "v1.1.0"
 
 const (
 	maxRetryCountForMountPropagationCheck = 10
@@ -82,15 +82,7 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 							Env: []v1.EnvVar{
 								{
 									Name:  "ADDRESS",
-									Value: "/var/lib/kubelet/plugins/io.rancher.longhorn/csi.sock",
-								},
-								{
-									Name: "POD_NAME",
-									ValueFrom: &v1.EnvVarSource{
-										FieldRef: &v1.ObjectFieldSelector{
-											FieldPath: "metadata.name",
-										},
-									},
+									Value: GetInContainerCSISocketFilePath(),
 								},
 								{
 									Name: "POD_NAMESPACE",
@@ -104,7 +96,7 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 							VolumeMounts: []v1.VolumeMount{
 								{
 									Name:      "socket-dir",
-									MountPath: "/var/lib/kubelet/plugins/io.rancher.longhorn",
+									MountPath: GetInContainerCSISocketDir(),
 								},
 							},
 						},
@@ -114,7 +106,7 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 							Name: "socket-dir",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
-									Path: filepath.Join(rootDir, "/plugins/io.rancher.longhorn"),
+									Path: GetOnHostCSISocketDir(rootDir),
 									Type: &HostPathDirectoryOrCreate,
 								},
 							},
@@ -330,4 +322,40 @@ func CheckMountPropagationWithNode(managerURL string) error {
 	}
 
 	return nil
+}
+
+func GetInContainerCSISocketDir() string {
+	return DefaultInContainerCSISocketDir
+}
+
+func GetInContainerCSISocketFilePath() string {
+	return filepath.Join(GetInContainerCSISocketDir(), DefaultCSISocketFileName)
+}
+
+func GetInContainerCSIRegistrationDir() string {
+	return DefaultInContainerCSIRegistrationDir
+}
+
+func GetInContainerPluginsDir() string {
+	return filepath.Join(DefaultInContainerKubeletRootDir, DefaultCommonPluginsDirSuffix)
+}
+
+func GetOnHostCSISocketDir(kubeletRootDir string) string {
+	return filepath.Join(filepath.Join(kubeletRootDir, DefaultCommonPluginsDirSuffix), "io.rancher.longhorn")
+}
+
+func GetOnHostCSISocketFilePath(kubeletRootDir string) string {
+	return filepath.Join(GetOnHostCSISocketDir(kubeletRootDir), DefaultCSISocketFileName)
+}
+
+func GetOnHostCSIRegistrationDir(kubeletRootDir string) string {
+	return filepath.Join(kubeletRootDir, DefaultOnHostCSIRegistrationDirSuffix)
+}
+
+func GetOnHostPluginsDir(kubeletRootDir string) string {
+	return filepath.Join(kubeletRootDir, DefaultCommonPluginsDirSuffix)
+}
+
+func GetCSIEndpoint() string {
+	return "unix://" + GetInContainerCSISocketFilePath()
 }

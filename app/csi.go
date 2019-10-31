@@ -13,7 +13,7 @@ func CSICommand() cli.Command {
 		Flags: []cli.Flag{
 			cli.StringFlag{
 				Name:  "endpoint",
-				Value: "unix://var/lib/kubelet/plugins/io.rancher.longhorn/csi.sock",
+				Value: csi.GetCSIEndpoint(),
 				Usage: "CSI endpoint",
 			},
 			cli.StringFlag{
