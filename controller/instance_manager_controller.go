@@ -47,6 +47,10 @@ const (
 	PollInterval = 500 * time.Millisecond
 )
 
+var (
+	hostToContainer = v1.MountPropagationHostToContainer
+)
+
 type InstanceManagerController struct {
 	namespace      string
 	controllerID   string
@@ -584,8 +588,9 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 			Name:      "proc",
 		},
 		{
-			MountPath: types.EngineBinaryDirectoryInContainer,
-			Name:      "engine-binaries",
+			MountPath:        types.EngineBinaryDirectoryInContainer,
+			Name:             "engine-binaries",
+			MountPropagation: &hostToContainer,
 		},
 	}
 	podSpec.Spec.Volumes = []v1.Volume{
@@ -632,8 +637,9 @@ func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.I
 	}
 	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
 		{
-			MountPath: "/host",
-			Name:      "host",
+			MountPath:        "/host",
+			Name:             "host",
+			MountPropagation: &hostToContainer,
 		},
 	}
 	podSpec.Spec.Volumes = []v1.Volume{
