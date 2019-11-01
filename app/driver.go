@@ -251,6 +251,10 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
+	if err := upgradeLonghornRelatedComponents(kubeClient, namespace); err != nil {
+		return err
+	}
+
 	csiDriverObjectDeployment := csi.NewCSIDriverObject()
 	if err := csiDriverObjectDeployment.Deploy(kubeClient); err != nil {
 		return err
