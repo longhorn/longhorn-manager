@@ -228,30 +228,8 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
-	takeOver := false
-
-	ownerDown := false
-	if volume.Status.OwnerID != "" {
-		ownerDown, err = vc.ds.IsNodeDownOrDeleted(volume.Status.OwnerID)
-		if err != nil {
-			logrus.Warnf("Found error while checking if volume %v owner is down or deleted: %v", volume.Name, err)
-		}
-	}
-
-	if vc.controllerID == volume.Spec.NodeID {
-		takeOver = true
-	} else if volume.Status.OwnerID == "" {
-		if volume.Spec.NodeID == "" {
-			takeOver = true
-		}
-	} else { // volume.Status.OwnerID != ""
-		if ownerDown {
-			takeOver = true
-		}
-	}
-
 	if volume.Status.OwnerID != vc.controllerID {
-		if !takeOver {
+		if !vc.isResponsibleFor(volume) {
 			// Not mines
 			return nil
 		}
@@ -1642,4 +1620,8 @@ func (vc *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica
 		}
 	}
 	return nil
+}
+
+func (vc *VolumeController) isResponsibleFor(v *longhorn.Volume) bool {
+	return isControllerResponsibleFor(vc.controllerID, vc.ds, v.Name, v.Spec.NodeID, v.Status.OwnerID)
 }
