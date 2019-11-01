@@ -445,7 +445,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 		}
 		if isDown {
 			delete(im.Status.Instances, e.Name)
-			if _, err := ec.ds.UpdateInstanceManager(im); err != nil {
+			if _, err := ec.ds.UpdateInstanceManagerStatus(im); err != nil {
 				return err
 			}
 			return nil
