@@ -48,7 +48,8 @@ const (
 
 	LonghornDriverName = "driver.longhorn.io"
 
-	DepracatedDriverName = "io.rancher.longhorn"
+	DeprecatedProvisionerName = "rancher.io/longhorn"
+	DepracatedDriverName      = "io.rancher.longhorn"
 )
 
 const (
