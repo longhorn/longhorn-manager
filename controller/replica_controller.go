@@ -253,30 +253,8 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}
 
-	takeOver := false
-
-	ownerDown := false
-	if replica.Status.OwnerID != "" {
-		ownerDown, err = rc.ds.IsNodeDownOrDeleted(replica.Status.OwnerID)
-		if err != nil {
-			logrus.Warnf("Found error while checking if replica %v owner is down or deleted: %v", replica.Name, err)
-		}
-	}
-
-	if rc.controllerID == replica.Spec.NodeID {
-		takeOver = true
-	} else if replica.Status.OwnerID == "" {
-		if replica.Spec.NodeID == "" {
-			takeOver = true
-		}
-	} else { // volume.Status.OwnerID != ""
-		if ownerDown {
-			takeOver = true
-		}
-	}
-
 	if replica.Status.OwnerID != rc.controllerID {
-		if !takeOver {
+		if !rc.isResponsibleFor(replica) {
 			// Not ours
 			return nil
 		}
@@ -527,4 +505,8 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(im *longhorn.InstanceM
 		}
 	}
 	return
+}
+
+func (rc *ReplicaController) isResponsibleFor(r *longhorn.Replica) bool {
+	return isControllerResponsibleFor(rc.controllerID, rc.ds, r.Name, r.Spec.NodeID, r.Status.OwnerID)
 }

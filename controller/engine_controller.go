@@ -232,30 +232,8 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return err
 	}
 
-	takeOver := false
-
-	ownerDown := false
-	if engine.Status.OwnerID != "" {
-		ownerDown, err = ec.ds.IsNodeDownOrDeleted(engine.Status.OwnerID)
-		if err != nil {
-			logrus.Warnf("Found error while checking if engine %v owner is down or deleted: %v", engine.Name, err)
-		}
-	}
-
-	if ec.controllerID == engine.Spec.NodeID {
-		takeOver = true
-	} else if engine.Status.OwnerID == "" {
-		if engine.Spec.NodeID == "" {
-			takeOver = true
-		}
-	} else { // engine.Status.OwnerID != ""
-		if ownerDown {
-			takeOver = true
-		}
-	}
-
 	if engine.Status.OwnerID != ec.controllerID {
-		if !takeOver {
+		if !ec.isResponsibleFor(engine) {
 			// Not ours
 			return nil
 		}
@@ -1083,4 +1061,8 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	// reset ReplicaModeMap to reflect the new replicas
 	e.Status.ReplicaModeMap = nil
 	return nil
+}
+
+func (ec *EngineController) isResponsibleFor(e *longhorn.Engine) bool {
+	return isControllerResponsibleFor(ec.controllerID, ec.ds, e.Name, e.Spec.NodeID, e.Status.OwnerID)
 }

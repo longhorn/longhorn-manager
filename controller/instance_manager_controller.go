@@ -272,31 +272,11 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		return err
 	}
 
-	nodeStatusDown := false
-	if im.Status.OwnerID != "" {
-		nodeStatusDown, err = imc.ds.IsNodeDownOrDeleted(im.Status.OwnerID)
-		if err != nil {
-			logrus.Warnf("Found error while checking if ownerID is down or deleted: %v", err)
+	if im.Status.OwnerID != imc.controllerID {
+		if !imc.isResponsibleFor(im) {
+			// Not ours
+			return nil
 		}
-	}
-
-	// Node for Instance Manager came back up, take back ownership of Instance Manager.
-	if im.Spec.NodeID == imc.controllerID && im.Status.OwnerID != imc.controllerID {
-		im.Status.OwnerID = imc.controllerID
-		newIM, err := imc.ds.UpdateInstanceManagerStatus(im)
-		if err != nil {
-			// Conflict with another controller, keep trying.
-			if apierrors.IsConflict(errors.Cause(err)) {
-				imc.enqueueInstanceManager(im)
-				return nil
-			}
-			return err
-		}
-		im = newIM
-		logrus.Debugf("Instance Manager Controller %v picked up %v", imc.controllerID, im.Name)
-	} else if im.Status.OwnerID == "" || nodeStatusDown {
-		// No owner yet, or Instance Manager's Node is down. Assign to some other Node until the correct Node can take
-		// over.
 		im.Status.OwnerID = imc.controllerID
 		im, err = imc.ds.UpdateInstanceManagerStatus(im)
 		if err != nil {
@@ -307,9 +287,6 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 			return err
 		}
 		logrus.Debugf("Instance Manager Controller %v picked up %v", imc.controllerID, im.Name)
-	} else if im.Status.OwnerID != imc.controllerID {
-		// Not ours
-		return nil
 	}
 
 	if im.DeletionTimestamp != nil {
@@ -940,4 +917,8 @@ func (m *InstanceManagerMonitor) updateInstanceMapForCleanup() error {
 	}
 
 	return nil
+}
+
+func (imc *InstanceManagerController) isResponsibleFor(im *longhorn.InstanceManager) bool {
+	return isControllerResponsibleFor(imc.controllerID, imc.ds, im.Name, im.Spec.NodeID, im.Status.OwnerID)
 }

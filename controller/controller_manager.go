@@ -145,3 +145,27 @@ func GetGuaranteedResourceRequirement(ds *datastore.DataStore) (*corev1.Resource
 		},
 	}, nil
 }
+
+func isControllerResponsibleFor(controllerID string, ds *datastore.DataStore, name, preferredOwnerID, currentOwnerID string) bool {
+	var err error
+	responsible := false
+
+	ownerDown := false
+	if currentOwnerID != "" {
+		ownerDown, err = ds.IsNodeDownOrDeleted(currentOwnerID)
+		if err != nil {
+			logrus.Warnf("Error while checking if object %v owner is down or deleted: %v", name, err)
+		}
+	}
+
+	if controllerID == preferredOwnerID {
+		responsible = true
+	} else if currentOwnerID == "" {
+		responsible = true
+	} else { // currentOwnerID != ""
+		if ownerDown {
+			responsible = true
+		}
+	}
+	return responsible
+}
