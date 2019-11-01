@@ -225,11 +225,15 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	// VOLUME_NOT_FOUND is no longer the ControllerUnpublishVolume error
+	// See https://github.com/container-storage-interface/spec/issues/382 for details
 	if existVol == nil {
 		msg := fmt.Sprintf("ControllerUnpublishVolume: the volume %s not exists", req.GetVolumeId())
 		logrus.Warn(msg)
-		return nil, status.Error(codes.NotFound, msg)
+		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
+
 	if existVol.State == string(types.VolumeStateDetaching) {
 		return nil, status.Errorf(codes.Aborted, "The volume %s is detaching", req.GetVolumeId())
 	}
