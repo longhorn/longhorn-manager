@@ -175,6 +175,10 @@ func (s *DataStore) DeleteDeployment(name string) error {
 	return s.kubeClient.AppsV1().Deployments(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
 }
 
+func (s *DataStore) DeleteCSIDriver(name string) error {
+	return s.kubeClient.StorageV1beta1().CSIDrivers().Delete(name, &metav1.DeleteOptions{})
+}
+
 func (s *DataStore) ListManagerPods() ([]*corev1.Pod, error) {
 	selector, err := s.getManagerSelector()
 	if err != nil {

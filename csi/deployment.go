@@ -8,6 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
+	storagev1beta "k8s.io/api/storage/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
@@ -381,5 +382,36 @@ func (p *PluginDeployment) Cleanup(kubeClient *clientset.Clientset) {
 	if err := cleanup(kubeClient, p.daemonSet, "daemon set",
 		daemonSetDeleteFunc, daemonSetGetFunc); err != nil {
 		logrus.Warnf("Failed to cleanup DaemonSet in plugin deployment: %v", err)
+	}
+}
+
+type DriverObjectDeployment struct {
+	obj *storagev1beta.CSIDriver
+}
+
+func NewCSIDriverObject() *DriverObjectDeployment {
+	falseFlag := false
+	obj := &storagev1beta.CSIDriver{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: types.LonghornDriverName,
+		},
+		Spec: storagev1beta.CSIDriverSpec{
+			PodInfoOnMount: &falseFlag,
+		},
+	}
+	return &DriverObjectDeployment{
+		obj: obj,
+	}
+}
+
+func (d *DriverObjectDeployment) Deploy(kubeClient *clientset.Clientset) error {
+	return deploy(kubeClient, d.obj, "CSI Driver",
+		csiDriverObjectCreateFunc, csiDriverObjectDeleteFunc, csiDriverObjectGetFunc)
+}
+
+func (d *DriverObjectDeployment) Cleanup(kubeClient *clientset.Clientset) {
+	if err := cleanup(kubeClient, d.obj, "CSI Driver",
+		csiDriverObjectDeleteFunc, csiDriverObjectGetFunc); err != nil {
+		logrus.Warnf("Failed to cleanup CSI Driver object in CSI Driver object deployment: %v", err)
 	}
 }
