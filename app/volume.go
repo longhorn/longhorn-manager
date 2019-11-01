@@ -20,7 +20,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 )
 
@@ -127,14 +127,11 @@ func NewJob(volumeName, snapshotName, backupTarget string, labels map[string]str
 		return nil, errors.Wrap(err, "unable to get clientset")
 	}
 
-	v, err := lhClient.LonghornV1alpha1().Volumes(namespace).Get(volumeName, metav1.GetOptions{})
+	v, err := lhClient.LonghornV1beta1().Volumes(namespace).Get(volumeName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
-	if v.Spec.MigrationNodeID != "" {
-		return nil, fmt.Errorf("cannot take snapshot for volume %v during migration", v.Name)
-	}
-	eList, err := lhClient.LonghornV1alpha1().Engines(namespace).List(metav1.ListOptions{
+	eList, err := lhClient.LonghornV1beta1().Engines(namespace).List(metav1.ListOptions{
 		LabelSelector: types.LabelsToString(types.GetVolumeLabels(volumeName)),
 	})
 	if err != nil {
@@ -359,7 +356,7 @@ func (job *Job) backupAndCleanup() (err error) {
 		}
 		logrus.Debugf("Cleaned up backup %v for %v", url, job.volumeName)
 	}
-	if err := manager.UpdateVolumeLastBackup(job.volumeName, target, job.GetVolume, job.UpdateVolume); err != nil {
+	if err := manager.UpdateVolumeLastBackup(job.volumeName, target, job.GetVolume, job.UpdateVolumeStatus); err != nil {
 		logrus.Warnf("Failed to update volume LastBackup for %v: %v", job.volumeName, err)
 	}
 	return nil
@@ -403,9 +400,9 @@ func (job *Job) listBackupURLsForCleanup(backups []*engineapi.Backup) []string {
 }
 
 func (job *Job) GetVolume(name string) (*longhorn.Volume, error) {
-	return job.lhClient.LonghornV1alpha1().Volumes(job.namespace).Get(name, metav1.GetOptions{})
+	return job.lhClient.LonghornV1beta1().Volumes(job.namespace).Get(name, metav1.GetOptions{})
 }
 
-func (job *Job) UpdateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
-	return job.lhClient.LonghornV1alpha1().Volumes(job.namespace).Update(v)
+func (job *Job) UpdateVolumeStatus(v *longhorn.Volume) (*longhorn.Volume, error) {
+	return job.lhClient.LonghornV1beta1().Volumes(job.namespace).UpdateStatus(v)
 }

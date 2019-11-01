@@ -16,7 +16,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 
@@ -61,7 +61,8 @@ func newEngineImage(image string, state types.EngineImageState) *longhorn.Engine
 			Image: image,
 		},
 		Status: types.EngineImageStatus{
-			State: state,
+			OwnerID: TestNode1,
+			State:   state,
 			EngineVersionDetails: types.EngineVersionDetails{
 				Version:   "latest",
 				GitCommit: "latest",
@@ -95,10 +96,10 @@ func newInstanceManager(
 		Spec: types.InstanceManagerSpec{
 			EngineImage: getTestEngineImageName(),
 			NodeID:      nodeID,
-			OwnerID:     currentOwnerID,
 			Type:        imType,
 		},
 		Status: types.InstanceManagerStatus{
+			OwnerID:      currentOwnerID,
 			CurrentState: currentState,
 			IP:           ip,
 			Instances:    instances,
@@ -140,13 +141,13 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 	kubeInformerFactory informers.SharedInformerFactory, lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
 	controllerID string) *InstanceManagerController {
 
-	volumeInformer := lhInformerFactory.Longhorn().V1alpha1().Volumes()
-	engineInformer := lhInformerFactory.Longhorn().V1alpha1().Engines()
-	replicaInformer := lhInformerFactory.Longhorn().V1alpha1().Replicas()
-	engineImageInformer := lhInformerFactory.Longhorn().V1alpha1().EngineImages()
-	nodeInformer := lhInformerFactory.Longhorn().V1alpha1().Nodes()
-	settingInformer := lhInformerFactory.Longhorn().V1alpha1().Settings()
-	imInformer := lhInformerFactory.Longhorn().V1alpha1().InstanceManagers()
+	volumeInformer := lhInformerFactory.Longhorn().V1beta1().Volumes()
+	engineInformer := lhInformerFactory.Longhorn().V1beta1().Engines()
+	replicaInformer := lhInformerFactory.Longhorn().V1beta1().Replicas()
+	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
+	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
+	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
+	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
@@ -183,6 +184,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			v1.PodRunning, TestNode2, types.InstanceManagerStateUnknown,
 			TestNode1, 1,
 			types.InstanceManagerStatus{
+				OwnerID:      TestNode1,
 				CurrentState: types.InstanceManagerStateRunning,
 				IP:           TestIP1,
 			},
@@ -193,6 +195,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			v1.PodFailed, TestNode1, types.InstanceManagerStateRunning,
 			TestNode1, 1,
 			types.InstanceManagerStatus{
+				OwnerID:      TestNode1,
 				CurrentState: types.InstanceManagerStateStarting,
 			},
 			types.InstanceManagerTypeEngine,
@@ -202,6 +205,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			v1.PodRunning, TestNode1, types.InstanceManagerStateRunning,
 			TestNode2, 1,
 			types.InstanceManagerStatus{
+				OwnerID:      TestNode2,
 				CurrentState: types.InstanceManagerStateUnknown,
 			},
 			types.InstanceManagerTypeEngine,
@@ -210,6 +214,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			TestNode1, false, TestNode1,
 			v1.PodRunning, TestNode1, types.InstanceManagerStateError,
 			TestNode1, 1, types.InstanceManagerStatus{
+				OwnerID:      TestNode1,
 				CurrentState: types.InstanceManagerStateStarting,
 			},
 			types.InstanceManagerTypeEngine,
@@ -218,6 +223,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			TestNode1, false, TestNode1,
 			v1.PodRunning, TestNode1, types.InstanceManagerStateStarting,
 			TestNode1, 1, types.InstanceManagerStatus{
+				OwnerID:      TestNode1,
 				CurrentState: types.InstanceManagerStateRunning,
 				IP:           TestIP1,
 			},
@@ -228,6 +234,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			"", TestNode1, types.InstanceManagerStateStopped,
 			TestNode1, 1,
 			types.InstanceManagerStatus{
+				OwnerID:      TestNode1,
 				CurrentState: types.InstanceManagerStateStarting,
 			},
 			types.InstanceManagerTypeEngine,
@@ -237,6 +244,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			"", TestNode1, types.InstanceManagerStateStopped,
 			TestNode1, 1,
 			types.InstanceManagerStatus{
+				OwnerID:      TestNode1,
 				CurrentState: types.InstanceManagerStateStarting,
 			},
 			types.InstanceManagerTypeReplica,
@@ -253,24 +261,24 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
-		eiIndexer := lhInformerFactory.Longhorn().V1alpha1().EngineImages().Informer().GetIndexer()
-		imIndexer := lhInformerFactory.Longhorn().V1alpha1().InstanceManagers().Informer().GetIndexer()
-		sIndexer := lhInformerFactory.Longhorn().V1alpha1().Settings().Informer().GetIndexer()
-		lhNodeIndexer := lhInformerFactory.Longhorn().V1alpha1().Nodes().Informer().GetIndexer()
+		eiIndexer := lhInformerFactory.Longhorn().V1beta1().EngineImages().Informer().GetIndexer()
+		imIndexer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers().Informer().GetIndexer()
+		sIndexer := lhInformerFactory.Longhorn().V1beta1().Settings().Informer().GetIndexer()
+		lhNodeIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
 
 		imc := newTestInstanceManagerController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient,
 			tc.controllerID)
 
 		// Controller logic depends on the existence of Instance Manager's Engine Image and Toleration Setting.
 		setting := newTolerationSetting()
-		setting, err = lhClient.LonghornV1alpha1().Settings(TestNamespace).Create(setting)
+		setting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(setting)
 		c.Assert(err, IsNil)
 		err = sIndexer.Add(setting)
 		c.Assert(err, IsNil)
 		ei := newEngineImage(TestEngineImage, types.EngineImageStateReady)
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
-		_, err = lhClient.LonghornV1alpha1().EngineImages(ei.Namespace).Create(ei)
+		_, err = lhClient.LonghornV1beta1().EngineImages(ei.Namespace).Create(ei)
 		c.Assert(err, IsNil)
 
 		// Create Nodes for test. Conditionally add the first Node.
@@ -284,7 +292,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			lhNode1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
 			err = lhNodeIndexer.Add(lhNode1)
 			c.Assert(err, IsNil)
-			_, err = lhClient.LonghornV1alpha1().Nodes(lhNode1.Namespace).Create(lhNode1)
+			_, err = lhClient.LonghornV1beta1().Nodes(lhNode1.Namespace).Create(lhNode1)
 			c.Assert(err, IsNil)
 		}
 
@@ -296,13 +304,13 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		lhNode2 := newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
 		err = lhNodeIndexer.Add(lhNode2)
 		c.Assert(err, IsNil)
-		_, err = lhClient.LonghornV1alpha1().Nodes(lhNode2.Namespace).Create(lhNode2)
+		_, err = lhClient.LonghornV1beta1().Nodes(lhNode2.Namespace).Create(lhNode2)
 		c.Assert(err, IsNil)
 
 		im := newInstanceManager(TestInstanceManagerName1, tc.expectedType, tc.currentState, tc.currentOwnerID, tc.nodeID, "", nil, false)
 		err = imIndexer.Add(im)
 		c.Assert(err, IsNil)
-		_, err = lhClient.LonghornV1alpha1().InstanceManagers(im.Namespace).Create(im)
+		_, err = lhClient.LonghornV1beta1().InstanceManagers(im.Namespace).Create(im)
 		c.Assert(err, IsNil)
 
 		if tc.currentPodPhase != "" {
@@ -339,9 +347,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			c.Assert(exist, Equals, false)
 		}
 
-		updatedIM, err := lhClient.LonghornV1alpha1().InstanceManagers(im.Namespace).Get(im.Name, metav1.GetOptions{})
+		updatedIM, err := lhClient.LonghornV1beta1().InstanceManagers(im.Namespace).Get(im.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
-		c.Assert(updatedIM.Spec.OwnerID, Equals, tc.expectedOwnerID)
 		c.Assert(updatedIM.Status, DeepEquals, tc.expectedStatus)
 	}
 }

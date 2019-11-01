@@ -55,23 +55,19 @@ const (
 )
 
 type VolumeSpec struct {
-	OwnerID                    string         `json:"ownerID"`
-	Size                       int64          `json:"size,string"`
-	Frontend                   VolumeFrontend `json:"frontend"`
-	FromBackup                 string         `json:"fromBackup"`
-	NumberOfReplicas           int            `json:"numberOfReplicas"`
-	StaleReplicaTimeout        int            `json:"staleReplicaTimeout"`
-	NodeID                     string         `json:"nodeID"`
-	MigrationNodeID            string         `json:"migrationNodeID"`
-	PendingNodeID              string         `json:"pendingNodeID"`
-	EngineImage                string         `json:"engineImage"`
-	RecurringJobs              []RecurringJob `json:"recurringJobs"`
-	BaseImage                  string         `json:"baseImage"`
-	Standby                    bool           `json:"Standby"`
-	InitialRestorationRequired bool           `json:"initialRestorationRequired"`
-	DiskSelector               []string       `json:"diskSelector"`
-	NodeSelector               []string       `json:"nodeSelector"`
-	DisableFrontend            bool           `json:"disableFrontend"`
+	Size                int64          `json:"size,string"`
+	Frontend            VolumeFrontend `json:"frontend"`
+	FromBackup          string         `json:"fromBackup"`
+	NumberOfReplicas    int            `json:"numberOfReplicas"`
+	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`
+	NodeID              string         `json:"nodeID"`
+	EngineImage         string         `json:"engineImage"`
+	RecurringJobs       []RecurringJob `json:"recurringJobs"`
+	BaseImage           string         `json:"baseImage"`
+	Standby             bool           `json:"Standby"`
+	DiskSelector        []string       `json:"diskSelector"`
+	NodeSelector        []string       `json:"nodeSelector"`
+	DisableFrontend     bool           `json:"disableFrontend"`
 }
 
 type KubernetesStatus struct {
@@ -96,13 +92,19 @@ type WorkloadStatus struct {
 }
 
 type VolumeStatus struct {
-	State            VolumeState                       `json:"state"`
-	Robustness       VolumeRobustness                  `json:"robustness"`
-	CurrentImage     string                            `json:"currentImage"`
-	KubernetesStatus KubernetesStatus                  `json:"kubernetesStatus"`
-	Conditions       map[VolumeConditionType]Condition `json:"conditions"`
-	LastBackup       string                            `json:"lastBackup"`
-	LastBackupAt     string                            `json:"lastBackupAt"`
+	OwnerID                    string                            `json:"ownerID"`
+	State                      VolumeState                       `json:"state"`
+	Robustness                 VolumeRobustness                  `json:"robustness"`
+	CurrentNodeID              string                            `json:"currentNodeID"`
+	CurrentImage               string                            `json:"currentImage"`
+	KubernetesStatus           KubernetesStatus                  `json:"kubernetesStatus"`
+	Conditions                 map[VolumeConditionType]Condition `json:"conditions"`
+	LastBackup                 string                            `json:"lastBackup"`
+	LastBackupAt               string                            `json:"lastBackupAt"`
+	PendingNodeID              string                            `json:"pendingNodeID"`
+	FrontendDisabled           bool                              `json:"frontendDisabled"`
+	InitialRestorationRequired bool                              `json:"initialRestorationRequired"`
+	RestoreInitiated           bool                              `json:"restoreInitiated"`
 }
 
 type RecurringJobType string
@@ -131,7 +133,6 @@ const (
 )
 
 type InstanceSpec struct {
-	OwnerID      string        `json:"ownerID"`
 	VolumeName   string        `json:"volumeName"`
 	VolumeSize   int64         `json:"volumeSize,string"`
 	NodeID       string        `json:"nodeID"`
@@ -141,6 +142,7 @@ type InstanceSpec struct {
 }
 
 type InstanceStatus struct {
+	OwnerID             string        `json:"ownerID"`
 	InstanceManagerName string        `json:"instanceManagerName"`
 	CurrentState        InstanceState `json:"currentState"`
 	CurrentImage        string        `json:"currentImage"`
@@ -162,12 +164,13 @@ type EngineSpec struct {
 
 type EngineStatus struct {
 	InstanceStatus
-	ReplicaModeMap     map[string]ReplicaMode    `json:"replicaModeMap"`
-	Endpoint           string                    `json:"endpoint"`
-	LastRestoredBackup string                    `json:"lastRestoredBackup"`
-	BackupStatus       map[string]*BackupStatus  `json:"backupStatus"`
-	RestoreStatus      map[string]*RestoreStatus `json:"restoreStatus"`
-	PurgeStatus        map[string]*PurgeStatus   `json:"purgeStatus"`
+	CurrentReplicaAddressMap map[string]string         `json:"currentReplicaAddressMap"`
+	ReplicaModeMap           map[string]ReplicaMode    `json:"replicaModeMap"`
+	Endpoint                 string                    `json:"endpoint"`
+	LastRestoredBackup       string                    `json:"lastRestoredBackup"`
+	BackupStatus             map[string]*BackupStatus  `json:"backupStatus"`
+	RestoreStatus            map[string]*RestoreStatus `json:"restoreStatus"`
+	PurgeStatus              map[string]*PurgeStatus   `json:"purgeStatus"`
 }
 
 type ReplicaSpec struct {
@@ -195,11 +198,11 @@ const (
 )
 
 type EngineImageSpec struct {
-	OwnerID string `json:"ownerID"`
-	Image   string `json:"image"`
+	Image string `json:"image"`
 }
 
 type EngineImageStatus struct {
+	OwnerID    string           `json:"ownerID"`
 	State      EngineImageState `json:"state"`
 	RefCount   int              `json:"refCount"`
 	NoRefSince string           `json:"noRefSince"`
@@ -333,11 +336,11 @@ const (
 type InstanceManagerSpec struct {
 	EngineImage string              `json:"engineImage"`
 	NodeID      string              `json:"nodeID"`
-	OwnerID     string              `json:"ownerID"`
 	Type        InstanceManagerType `json:"type"`
 }
 
 type InstanceManagerStatus struct {
+	OwnerID      string                     `json:"ownerID"`
 	CurrentState InstanceManagerState       `json:"currentState"`
 	Instances    map[string]InstanceProcess `json:"instances"`
 	IP           string                     `json:"ip"`

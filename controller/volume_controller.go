@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"encoding/json"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
@@ -29,12 +30,13 @@ import (
 	imutil "github.com/longhorn/longhorn-engine/pkg/instance-manager/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 var (
@@ -226,10 +228,35 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
-	if volume.Spec.OwnerID == "" {
-		// Claim it
-		volume.Spec.OwnerID = vc.controllerID
-		volume, err = vc.ds.UpdateVolume(volume)
+	takeOver := false
+
+	ownerDown := false
+	if volume.Status.OwnerID != "" {
+		ownerDown, err = vc.ds.IsNodeDownOrDeleted(volume.Status.OwnerID)
+		if err != nil {
+			logrus.Warnf("Found error while checking if volume %v owner is down or deleted: %v", volume.Name, err)
+		}
+	}
+
+	if vc.controllerID == volume.Spec.NodeID {
+		takeOver = true
+	} else if volume.Status.OwnerID == "" {
+		if volume.Spec.NodeID == "" {
+			takeOver = true
+		}
+	} else { // volume.Status.OwnerID != ""
+		if ownerDown {
+			takeOver = true
+		}
+	}
+
+	if volume.Status.OwnerID != vc.controllerID {
+		if !takeOver {
+			// Not mines
+			return nil
+		}
+		volume.Status.OwnerID = vc.controllerID
+		volume, err = vc.ds.UpdateVolumeStatus(volume)
 		if err != nil {
 			// we don't mind others coming first
 			if apierrors.IsConflict(errors.Cause(err)) {
@@ -237,10 +264,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			}
 			return err
 		}
-		logrus.Debugf("Volume Controller %v picked up %v", vc.controllerID, volume.Name)
-	} else if volume.Spec.OwnerID != vc.controllerID {
-		// Not mines
-		return nil
+		logrus.Debugf("Volume controller %v picked up %v", vc.controllerID, volume.Name)
 	}
 
 	engines, err := vc.ds.ListVolumeEngines(volume.Name)
@@ -255,7 +279,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	if volume.DeletionTimestamp != nil {
 		if volume.Status.State != types.VolumeStateDeleting {
 			volume.Status.State = types.VolumeStateDeleting
-			volume, err = vc.ds.UpdateVolume(volume)
+			volume, err = vc.ds.UpdateVolumeStatus(volume)
 			if err != nil {
 				return err
 			}
@@ -301,8 +325,8 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	existingVolume := volume.DeepCopy()
 	defer func() {
 		// we're going to update volume assume things changes
-		if err == nil && !reflect.DeepEqual(existingVolume, volume) {
-			_, err = vc.ds.UpdateVolume(volume)
+		if err == nil && !reflect.DeepEqual(existingVolume.Status, volume.Status) {
+			_, err = vc.ds.UpdateVolumeStatus(volume)
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
@@ -312,7 +336,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 	}()
 
-	engine := vc.getNodeAttachedEngine(volume.Spec.NodeID, engines)
+	engine := vc.getNodeAttachedEngine(volume.Status.CurrentNodeID, engines)
 	if engine == nil {
 		if len(engines) == 1 {
 			for _, e := range engines {
@@ -328,10 +352,6 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		if err := vc.ReconcileEngineReplicaState(volume, engine, replicas); err != nil {
 			return err
 		}
-	}
-
-	if err := vc.processMigration(volume, engines, replicas); err != nil {
-		return err
 	}
 
 	if err := vc.ReconcileVolumeState(volume, engine, replicas); err != nil {
@@ -373,8 +393,6 @@ func (vc *VolumeController) getNodeAttachedEngine(node string, es map[string]*lo
 
 // ReconcileEngineReplicaState will get the current main engine e.Status.ReplicaModeMap, then update
 // v and rs accordingly.
-// We will only update the replica status and won't start rebuilding if
-// MigrationNodeID was set. The logic in replenishReplicas() prevents that.
 func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to reconcile engine/replica state for %v", v.Name)
@@ -401,7 +419,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 				vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFaulted, "volume %v became faulted", v.Name)
 			}
 			// detach the volume
-			v.Spec.NodeID = ""
+			v.Status.CurrentNodeID = ""
 		}
 		return nil
 	}
@@ -421,6 +439,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 				e.Spec.LogRequested = true
 				r.Spec.LogRequested = true
 				r.Spec.FailedAt = vc.nowHandler()
+				r.Spec.DesireState = types.InstanceStateStopped
 				r, err = vc.ds.UpdateReplica(r)
 				if err != nil {
 					return err
@@ -451,8 +470,6 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		if oldRobustness != types.VolumeRobustnessFaulted {
 			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFaulted, "volume %v became faulted", v.Name)
 		}
-		// detach the volume
-		v.Spec.NodeID = ""
 	} else if healthyCount >= v.Spec.NumberOfReplicas {
 		v.Status.Robustness = types.VolumeRobustnessHealthy
 		if oldRobustness == types.VolumeRobustnessDegraded {
@@ -480,7 +497,7 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 			break
 		}
 	}
-	cleanupLeftoverReplicas := !vc.isVolumeUpgrading(v) && !vc.isVolumeMigrating(v)
+	cleanupLeftoverReplicas := !vc.isVolumeUpgrading(v)
 
 	for _, r := range rs {
 		if cleanupLeftoverReplicas {
@@ -538,6 +555,66 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		v.Status.CurrentImage = v.Spec.EngineImage
 	}
 
+	if v.Spec.FromBackup != "" && !v.Status.RestoreInitiated {
+		kubeStatus := &types.KubernetesStatus{}
+
+		backupTarget, err := manager.GenerateBackupTarget(vc.ds)
+		if err != nil {
+			return err
+		}
+		backup, err := backupTarget.GetBackup(v.Spec.FromBackup)
+		if err != nil {
+			return fmt.Errorf("cannot get backup %v: %v", v.Spec.FromBackup, err)
+		}
+
+		// If KubernetesStatus is set on Backup, restore it.
+		if statusJSON, ok := backup.Labels[types.KubernetesStatusLabel]; ok {
+			if err := json.Unmarshal([]byte(statusJSON), kubeStatus); err != nil {
+				logrus.Warningf("Ignore KubernetesStatus json for volume %v: backup %v: %v",
+					v.Name, backup.Name, err)
+			} else {
+				// We were able to unmarshal KubernetesStatus. Set the Ref fields.
+				if kubeStatus.PVCName != "" && kubeStatus.LastPVCRefAt == "" {
+					kubeStatus.LastPVCRefAt = backup.SnapshotCreated
+				}
+				if len(kubeStatus.WorkloadsStatus) != 0 && kubeStatus.LastPodRefAt == "" {
+					kubeStatus.LastPodRefAt = backup.SnapshotCreated
+				}
+
+				// Do not restore the PersistentVolume fields.
+				kubeStatus.PVName = ""
+				kubeStatus.PVStatus = ""
+			}
+		}
+
+		// set LastBackup for standby volumes only
+		if v.Spec.Standby {
+			v.Status.LastBackup = backup.Name
+		}
+
+		v.Status.KubernetesStatus = *kubeStatus
+		v.Status.InitialRestorationRequired = true
+
+		v.Status.RestoreInitiated = true
+	}
+
+	if v.Status.CurrentNodeID == "" {
+		// If there is a pending attach operation, we need to stay detached until PendingNodeID was cleared
+		if v.Status.PendingNodeID == "" && v.Status.Robustness != types.VolumeRobustnessFaulted {
+			v.Status.CurrentNodeID = v.Spec.NodeID
+		}
+	} else { // v.Status.CurrentNodeID != ""
+		if v.Spec.NodeID != "" {
+			if v.Spec.NodeID != v.Status.CurrentNodeID {
+				return fmt.Errorf("volume %v has already attached to node %v, but asked to attach to node %v", v.Name, v.Status.CurrentNodeID, v.Spec.NodeID)
+			}
+		} else { // v.Spec.NodeID == ""
+			if !(v.Status.InitialRestorationRequired || v.Spec.Standby) {
+				v.Status.CurrentNodeID = ""
+			}
+		}
+	}
+
 	if e == nil {
 		// first time creation
 		//TODO this creation won't be recorded in the engines, since
@@ -565,33 +642,37 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 	}
 
+	v.Status.FrontendDisabled = v.Spec.DisableFrontend
+
 	// InitialRestorationRequired means the volume is newly created restored volume and
 	// it needs to be attached automatically so that its engine will be launched then
 	// restore data from backup.
-	if v.Spec.InitialRestorationRequired && v.Spec.NodeID == "" {
-		usableNode, err := vc.ds.GetRandomReadyNode()
-		if err != nil {
-			return err
-		}
-		v.Spec.NodeID = usableNode.Name
+	if v.Status.InitialRestorationRequired {
 		// for automatically attached volume, we should disable its frontend
-		v.Spec.DisableFrontend = true
+		v.Status.FrontendDisabled = true
+		if v.Spec.NodeID == "" {
+			usableNode, err := vc.ds.GetRandomReadyNode()
+			if err != nil {
+				return err
+			}
+			v.Status.CurrentNodeID = usableNode.Name
+		}
 	}
 
-	if e.Status.CurrentState == types.InstanceStateError && v.Spec.NodeID != "" {
-		if e.Spec.NodeID != "" && e.Spec.NodeID != v.Spec.NodeID {
+	if e.Status.CurrentState == types.InstanceStateError && v.Status.CurrentNodeID != "" {
+		if e.Spec.NodeID != "" && e.Spec.NodeID != v.Status.CurrentNodeID {
 			return fmt.Errorf("BUG: engine %v nodeID %v doesn't match volume %v nodeID %v",
-				e.Name, e.Spec.NodeID, v.Name, v.Spec.NodeID)
+				e.Name, e.Spec.NodeID, v.Name, v.Status.CurrentNodeID)
 		}
-		node, err := vc.ds.GetKubernetesNode(v.Spec.NodeID)
+		node, err := vc.ds.GetKubernetesNode(v.Status.CurrentNodeID)
 		if err != nil {
 			return err
 		}
 		// If it's due to reboot, we're going to reattach the volume later
 		// e.Status.NodeBootID would only reset when the instance stopped by request
 		if e.Status.NodeBootID != "" && e.Status.NodeBootID != node.Status.NodeInfo.BootID {
-			v.Spec.PendingNodeID = v.Spec.NodeID
-			msg := fmt.Sprintf("Detect the reboot of volume %v attached node %v, reattach the volume", v.Name, v.Spec.NodeID)
+			v.Status.PendingNodeID = v.Status.CurrentNodeID
+			msg := fmt.Sprintf("Detect the reboot of volume %v attached node %v, reattach the volume", v.Name, v.Status.CurrentNodeID)
 			logrus.Errorf(msg)
 			vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonRebooted, msg)
 		} else {
@@ -611,7 +692,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 				}
 			}
 		}
-		v.Spec.NodeID = ""
+		v.Status.CurrentNodeID = ""
 	}
 
 	allScheduled := true
@@ -667,8 +748,24 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		v.Status.Conditions[types.VolumeConditionTypeScheduled] = condition
 	}
 
+	allFaulted := true
+	for _, r := range rs {
+		if r.Spec.FailedAt == "" {
+			allFaulted = false
+		}
+	}
+	if allFaulted {
+		v.Status.Robustness = types.VolumeRobustnessFaulted
+		v.Status.CurrentNodeID = ""
+	} else { // !allFaulted
+		// Don't need to touch other status since it should converge naturally
+		if v.Status.Robustness == types.VolumeRobustnessFaulted {
+			v.Status.Robustness = types.VolumeRobustnessUnknown
+		}
+	}
+
 	oldState := v.Status.State
-	if v.Spec.NodeID == "" {
+	if v.Status.CurrentNodeID == "" {
 		// the final state will be determined at the end of the clause
 		if newVolume {
 			v.Status.State = types.VolumeStateCreating
@@ -692,6 +789,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			for _, r := range rs {
 				if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" {
 					r.Spec.FailedAt = vc.nowHandler()
+					r.Spec.DesireState = types.InstanceStateStopped
 					r, err = vc.ds.UpdateReplica(r)
 					if err != nil {
 						return err
@@ -711,7 +809,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			//   2. standby volume which has been activated and is being detaching.
 			e.Spec.RequestedBackupRestore = ""
 			e.Spec.BackupVolume = ""
-			e.Status.LastRestoredBackup = ""
 			e, err = vc.ds.UpdateEngine(e)
 			return err
 		}
@@ -747,11 +844,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonDetached, "volume %v has been detached", v.Name)
 		}
 		// Automatic reattach the volume if PendingNodeID was set, it's for reboot
-		if v.Spec.PendingNodeID != "" {
-			v.Spec.NodeID = v.Spec.PendingNodeID
-			v.Spec.PendingNodeID = ""
-			// for automatically re-attached volume, we shouldn't disable its frontend
-			v.Spec.DisableFrontend = false
+		if v.Status.PendingNodeID != "" {
+			v.Status.CurrentNodeID = v.Status.PendingNodeID
+			v.Status.PendingNodeID = ""
 		}
 
 	} else {
@@ -787,6 +882,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			}
 			if nodeDown {
 				r.Spec.FailedAt = vc.nowHandler()
+				r.Spec.DesireState = types.InstanceStateStopped
 				r, err = vc.ds.UpdateReplica(r)
 				if err != nil {
 					return err
@@ -848,14 +944,14 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 
 		engineUpdated := false
 		if e.Spec.DesireState != types.InstanceStateRunning {
-			if e.Spec.NodeID != "" && e.Spec.NodeID != v.Spec.NodeID {
+			if e.Spec.NodeID != "" && e.Spec.NodeID != v.Status.CurrentNodeID {
 				return fmt.Errorf("engine is on node %v vs volume on %v, must detach first",
-					e.Spec.NodeID, v.Spec.NodeID)
+					e.Spec.NodeID, v.Status.CurrentNodeID)
 			}
-			e.Spec.NodeID = v.Spec.NodeID
+			e.Spec.NodeID = v.Status.CurrentNodeID
 			e.Spec.ReplicaAddressMap = replicaAddressMap
 			e.Spec.DesireState = types.InstanceStateRunning
-			e.Spec.DisableFrontend = v.Spec.DisableFrontend
+			e.Spec.DisableFrontend = v.Status.FrontendDisabled
 			engineUpdated = true
 		}
 		if !vc.isVolumeUpgrading(v) {
@@ -877,21 +973,21 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 
 		v.Status.State = types.VolumeStateAttached
 		if oldState != v.Status.State {
-			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Spec.NodeID)
+			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
 		}
 
 		// If the newly created restored volume is state attached,
 		// it means the volume is restoring or has restored data
 		// from backup. Then it may need to be detached automatically.
-		if v.Spec.InitialRestorationRequired == true && v.Status.State == types.VolumeStateAttached {
+		if v.Status.InitialRestorationRequired == true && v.Status.State == types.VolumeStateAttached {
 			// The initial full restoration is complete.
 			if e.Status.LastRestoredBackup != "" {
-				v.Spec.InitialRestorationRequired = false
+				v.Status.InitialRestorationRequired = false
 				// For disaster recovery (standby) volume, it will incrementally
 				// restore backups later. Hence it cannot be detached automatically.
 				if !v.Spec.Standby {
 					if e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup {
-						v.Spec.NodeID = ""
+						v.Status.CurrentNodeID = ""
 					}
 				}
 			}
@@ -904,7 +1000,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 // It will count all the potentially usable replicas, since some replicas maybe
 // blank or in rebuilding state
 func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
-	if vc.isVolumeUpgrading(v) || vc.isVolumeMigrating(v) {
+	if vc.isVolumeUpgrading(v) {
 		return nil
 	}
 
@@ -1104,6 +1200,12 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		return err
 	}
 
+	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
+	e.Spec.UpgradedReplicaAddressMap = map[string]string{}
+	e, err = vc.ds.UpdateEngine(e)
+	if err != nil {
+		return err
+	}
 	// cleanupCorruptedOrStaleReplicas() will take care of old replicas
 	logrus.Infof("Engine %v of volume %s has been upgraded from %v to %v", e.Name, v.Name, v.Status.CurrentImage, v.Spec.EngineImage)
 	v.Status.CurrentImage = v.Spec.EngineImage
@@ -1162,7 +1264,6 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 				VolumeSize:  v.Spec.Size,
 				EngineImage: v.Status.CurrentImage,
 				DesireState: types.InstanceStateStopped,
-				OwnerID:     vc.controllerID,
 			},
 			Frontend:                  v.Spec.Frontend,
 			ReplicaAddressMap:         map[string]string{},
@@ -1198,7 +1299,6 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 				VolumeSize:  v.Spec.Size,
 				EngineImage: v.Status.CurrentImage,
 				DesireState: types.InstanceStateStopped,
-				OwnerID:     vc.controllerID,
 			},
 			EngineName: e.Name,
 			Active:     true,
@@ -1261,7 +1361,7 @@ func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 		return
 	}
 	// Not ours
-	if volume.Spec.OwnerID != vc.controllerID {
+	if volume.Status.OwnerID != vc.controllerID {
 		return
 	}
 	vc.enqueueVolume(volume)
@@ -1302,7 +1402,7 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 							Name: types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
 						},
 						Spec: v1.PodSpec{
-							NodeName: v.Spec.NodeID,
+							NodeName: v.Status.CurrentNodeID,
 							Containers: []v1.Container{
 								{
 									Name:    types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
@@ -1439,10 +1539,6 @@ func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
 	return v.Status.CurrentImage != v.Spec.EngineImage
 }
 
-func (vc *VolumeController) isVolumeMigrating(v *longhorn.Volume) bool {
-	return v.Spec.MigrationNodeID != ""
-}
-
 func (vc *VolumeController) getEngineImage(image string) (*longhorn.EngineImage, error) {
 	name := types.GetEngineImageChecksumName(image)
 	img, err := vc.ds.GetEngineImage(name)
@@ -1457,7 +1553,7 @@ func (vc *VolumeController) getCurrentEngineAndExtra(v *longhorn.Volume, es map[
 		return nil, nil, fmt.Errorf("more than two engines exists")
 	}
 	for _, e := range es {
-		if e.Spec.NodeID == v.Spec.NodeID &&
+		if e.Spec.NodeID == v.Status.CurrentNodeID &&
 			e.Spec.DesireState == types.InstanceStateRunning &&
 			e.Status.CurrentState == types.InstanceStateRunning {
 			currentEngine = e
@@ -1545,136 +1641,5 @@ func (vc *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica
 			rs[r.Name] = r
 		}
 	}
-	return nil
-}
-
-func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "fail to process migration for %v", v.Name)
-	}()
-	// only process if volume is attached
-	if v.Spec.NodeID == "" {
-		return nil
-	}
-
-	// cannot process migrate when upgrading
-	if vc.isVolumeUpgrading(v) {
-		return nil
-	}
-
-	if len(es) > 2 {
-		return fmt.Errorf("BUG: volume %v: more than two engines exists", v.Name)
-	}
-
-	if !vc.isVolumeMigrating(v) {
-		if len(es) != 2 {
-			return nil
-		}
-
-		// rollback migration
-		if _, err := vc.getCurrentEngineAndCleanupOthers(v, es); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	// confirm migration
-	if v.Spec.MigrationNodeID == v.Spec.NodeID {
-		// must be set after migration preparation done
-		currentEngine, err := vc.getCurrentEngineAndCleanupOthers(v, es)
-		if err != nil {
-			return err
-		}
-
-		if err := vc.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
-			return r.Spec.EngineName == engineName
-		}, currentEngine.Name); err != nil {
-			return err
-		}
-
-		v.Spec.OwnerID = v.Spec.NodeID
-		v.Spec.MigrationNodeID = ""
-		if _, err := vc.ds.UpdateVolumeAndOwner(v); err != nil {
-			return err
-		}
-
-		// cleanupCorruptedOrStaleReplicas() will take care of old replicas
-		logrus.Infof("volume %v: confirmMigration: migration to node %v has been confirmed", v.Name, v.Spec.NodeID)
-		return nil
-	}
-
-	currentEngine, migrationEngine, err := vc.getCurrentEngineAndExtra(v, es)
-	if err != nil {
-		return err
-	}
-
-	if migrationEngine == nil {
-		migrationEngine, err = vc.createEngine(v)
-		if err != nil {
-			return err
-		}
-		es[migrationEngine.Name] = migrationEngine
-	}
-
-	currentReplicas := map[string]*longhorn.Replica{}
-	migrationReplicas := map[string]*longhorn.Replica{}
-	unknownReplicas := map[string]*longhorn.Replica{}
-	for _, r := range rs {
-		if r.Spec.FailedAt != "" {
-			continue
-		}
-		if r.Spec.EngineName == currentEngine.Name {
-			currentReplicas[r.Spec.DataPath] = r
-		} else if r.Spec.EngineName == migrationEngine.Name {
-			migrationReplicas[r.Spec.DataPath] = r
-		} else {
-			logrus.Warnf("migration: volume %v: found unknown replica with engine %v",
-				v.Name, r.Spec.EngineName)
-			unknownReplicas[r.Spec.DataPath] = r
-		}
-	}
-
-	if err := vc.createAndStartMatchingReplicas(v, rs, currentReplicas, migrationReplicas, func(r *longhorn.Replica, engineName string) {
-		r.Spec.EngineName = engineName
-	}, migrationEngine.Name); err != nil {
-		return err
-	}
-
-	if migrationEngine.Spec.DesireState != types.InstanceStateRunning {
-		replicaAddressMap := map[string]string{}
-		for _, r := range migrationReplicas {
-			// wait for all potentially healthy replicas become running
-			if r.Status.CurrentState != types.InstanceStateRunning {
-				return nil
-			}
-			if r.Status.IP == "" {
-				logrus.Errorf("BUG: replica %v is running but IP is empty", r.Name)
-				continue
-			}
-			if r.Status.Port == 0 {
-				logrus.Errorf("BUG: replica %v is running but Port is empty", r.Name)
-				continue
-			}
-			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
-		}
-		if migrationEngine.Spec.NodeID != "" && migrationEngine.Spec.NodeID != v.Spec.MigrationNodeID {
-			return fmt.Errorf("volume %v: engine is on node %v vs volume migration on %v",
-				v.Name, migrationEngine.Spec.NodeID, v.Spec.NodeID)
-		}
-		migrationEngine.Spec.NodeID = v.Spec.MigrationNodeID
-		migrationEngine.Spec.ReplicaAddressMap = replicaAddressMap
-		migrationEngine.Spec.DesireState = types.InstanceStateRunning
-		migrationEngine, err := vc.ds.UpdateEngine(migrationEngine)
-		if err != nil {
-			return err
-		}
-		es[migrationEngine.Name] = migrationEngine
-	}
-
-	if migrationEngine.Status.CurrentState != types.InstanceStateRunning {
-		return nil
-	}
-
-	logrus.Infof("volume %v: migration: migration node %v is ready", v.Name, v.Spec.MigrationNodeID)
 	return nil
 }

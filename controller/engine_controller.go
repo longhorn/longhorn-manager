@@ -34,8 +34,8 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 const (
@@ -232,9 +232,43 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return err
 	}
 
-	// Not ours
-	if engine.Spec.OwnerID != ec.controllerID {
-		return nil
+	takeOver := false
+
+	ownerDown := false
+	if engine.Status.OwnerID != "" {
+		ownerDown, err = ec.ds.IsNodeDownOrDeleted(engine.Status.OwnerID)
+		if err != nil {
+			logrus.Warnf("Found error while checking if engine %v owner is down or deleted: %v", engine.Name, err)
+		}
+	}
+
+	if ec.controllerID == engine.Spec.NodeID {
+		takeOver = true
+	} else if engine.Status.OwnerID == "" {
+		if engine.Spec.NodeID == "" {
+			takeOver = true
+		}
+	} else { // engine.Status.OwnerID != ""
+		if ownerDown {
+			takeOver = true
+		}
+	}
+
+	if engine.Status.OwnerID != ec.controllerID {
+		if !takeOver {
+			// Not ours
+			return nil
+		}
+		engine.Status.OwnerID = ec.controllerID
+		engine, err = ec.ds.UpdateEngineStatus(engine)
+		if err != nil {
+			// we don't mind others coming first
+			if apierrors.IsConflict(errors.Cause(err)) {
+				return nil
+			}
+			return err
+		}
+		logrus.Debugf("Engine controller %v picked up %v", ec.controllerID, engine.Name)
 	}
 
 	if engine.DeletionTimestamp != nil {
@@ -249,8 +283,8 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	existingEngine := engine.DeepCopy()
 	defer func() {
 		// we're going to update engine assume things changes
-		if err == nil && !reflect.DeepEqual(existingEngine, engine) {
-			_, err = ec.ds.UpdateEngine(engine)
+		if err == nil && !reflect.DeepEqual(existingEngine.Status, engine.Status) {
+			_, err = ec.ds.UpdateEngineStatus(engine)
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
@@ -266,6 +300,14 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		if err != nil {
 			return err
 		}
+	}
+
+	if len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
+		if err := ec.Upgrade(engine); err != nil {
+			return err
+		}
+	} else {
+		engine.Status.CurrentReplicaAddressMap = engine.Spec.ReplicaAddressMap
 	}
 
 	if err := ec.instanceHandler.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
@@ -285,10 +327,6 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		// we allow across monitoring temporaily due to migration case
 		if !ec.isMonitoring(engine) {
 			ec.startMonitoring(engine)
-		} else if engine.Status.CurrentImage != engine.Spec.EngineImage && len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
-			if err := ec.Upgrade(engine); err != nil {
-				return err
-			}
 		} else if engine.Status.ReplicaModeMap != nil {
 			if err := ec.ReconcileEngineState(engine); err != nil {
 				return err
@@ -320,26 +358,20 @@ func (ec *EngineController) enqueueInstanceManagerChange(im *longhorn.InstanceMa
 
 	engineMap := map[string]*longhorn.Engine{}
 
-	// when attaching, instance manager name is not available
-	es, err := ec.ds.ListEnginesByNode(im.Spec.NodeID)
+	es, err := ec.ds.ListEnginesRO()
 	if err != nil {
-		logrus.Warnf("Failed to list engines for node %v: %v", im.Spec.NodeID, err)
+		logrus.Warnf("Engine controller: failed to list engines: %v", err)
 	}
 	for _, e := range es {
-		engineMap[e.Name] = e
-	}
-
-	// when detaching, node ID is not available
-	es, err = ec.ds.ListEnginesROByInstanceManager(im.Name)
-	if err != nil {
-		logrus.Warnf("Failed to list engines for instance manager %v: %v", im.Name, err)
-	}
-	for _, e := range es {
-		engineMap[e.Name] = e
+		// when attaching, instance manager name is not available
+		// when detaching, node ID is not available
+		if e.Spec.NodeID == im.Spec.NodeID || e.Status.InstanceManagerName == im.Name {
+			engineMap[e.Name] = e
+		}
 	}
 
 	for _, e := range engineMap {
-		if e.Spec.OwnerID == ec.controllerID {
+		if e.Status.OwnerID == ec.controllerID {
 			ec.enqueueEngine(e)
 		}
 	}
@@ -388,7 +420,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProc
 	}
 
 	replicas := []string{}
-	for _, addr := range e.Spec.ReplicaAddressMap {
+	for _, addr := range e.Status.CurrentReplicaAddressMap {
 		replicas = append(replicas, engineapi.GetBackendReplicaURL(addr))
 	}
 
@@ -428,7 +460,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 	}
 
 	// Node down
-	if im.Spec.NodeID != im.Spec.OwnerID {
+	if im.Spec.NodeID != im.Status.OwnerID {
 		isDown, err := ec.ds.IsNodeDownOrDeleted(im.Spec.NodeID)
 		if err != nil {
 			return err
@@ -605,7 +637,7 @@ func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
 }
 
 func (ec *EngineController) stopMonitoring(e *longhorn.Engine) {
-	if _, err := ec.ds.ResetEngineMonitoringStatus(e); err != nil {
+	if _, err := ec.ds.ResetMonitoringEngineStatus(e); err != nil {
 		utilruntime.HandleError(errors.Wrapf(err, "failed to update engine %v to stop monitoring", e.Name))
 		// better luck next time
 		return
@@ -644,7 +676,7 @@ func (m *EngineMonitor) Run() {
 			}
 
 			// when engine stopped, nodeID will be empty as well
-			if engine.Spec.OwnerID != m.controllerID {
+			if engine.Status.OwnerID != m.controllerID {
 				logrus.Infof("stop engine %v monitoring because the engine is no longer running on node %v",
 					m.Name, m.controllerID)
 				m.stop(engine)
@@ -672,7 +704,7 @@ func (m *EngineMonitor) Run() {
 
 func (m *EngineMonitor) stop(e *longhorn.Engine) {
 	if e != nil {
-		if _, err := m.ds.ResetEngineMonitoringStatus(e); err != nil {
+		if _, err := m.ds.ResetMonitoringEngineStatus(e); err != nil {
 			utilruntime.HandleError(errors.Wrapf(err, "failed to update engine %v to stop monitoring", m.Name))
 			// better luck next time
 			return
@@ -683,7 +715,7 @@ func (m *EngineMonitor) stop(e *longhorn.Engine) {
 
 func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	addressReplicaMap := map[string]string{}
-	for replica, address := range engine.Spec.ReplicaAddressMap {
+	for replica, address := range engine.Status.CurrentReplicaAddressMap {
 		if addressReplicaMap[address] != "" {
 			return fmt.Errorf("invalid ReplicaAddressMap: duplicate addresses")
 		}
@@ -780,7 +812,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.PurgeStatus = purgeStatus
 	}
 
-	engine, err = m.ds.UpdateEngine(engine)
+	engine, err = m.ds.UpdateEngineStatus(engine)
 	if err != nil {
 		return err
 	}
@@ -908,7 +940,7 @@ func (ec *EngineController) rebuildingNewReplica(e *longhorn.Engine) error {
 		logrus.Debugf("Skip rebuilding for volume %v because there is rebuilding in process", e.Spec.VolumeName)
 		return nil
 	}
-	for replica, addr := range e.Spec.ReplicaAddressMap {
+	for replica, addr := range e.Status.CurrentReplicaAddressMap {
 		// one is enough
 		if !replicaExists[replica] {
 			return ec.startRebuilding(e, replica, addr)
@@ -983,6 +1015,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 					return
 				}
 				rep.Spec.FailedAt = util.Now()
+				rep.Spec.DesireState = types.InstanceStateStopped
 				if _, err := ec.ds.UpdateReplica(rep); err != nil {
 					logrus.Errorf("Could not mark failed rebuild on replica %v: %v", replica, err)
 					return
@@ -1046,9 +1079,8 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	}
 	logrus.Debugf("Engine %v has been upgraded from %v to %v", e.Name, e.Status.CurrentImage, e.Spec.EngineImage)
 	e.Status.CurrentImage = e.Spec.EngineImage
+	e.Status.CurrentReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	// reset ReplicaModeMap to reflect the new replicas
 	e.Status.ReplicaModeMap = nil
-	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
-	e.Spec.UpgradedReplicaAddressMap = map[string]string{}
 	return nil
 }

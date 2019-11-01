@@ -33,8 +33,8 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 var (
@@ -203,37 +203,30 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	}
 
 	if replica.DeletionTimestamp != nil {
-		if replica.Spec.OwnerID != "" {
+		if replica.Status.OwnerID != "" {
 			// Check if replica's managing node died
-			if down, err := rc.ds.IsNodeDownOrDeleted(replica.Spec.OwnerID); err != nil {
+			if down, err := rc.ds.IsNodeDownOrDeleted(replica.Status.OwnerID); err != nil {
 				return err
 			} else if down {
-				replica.Spec.OwnerID = rc.controllerID
-				_, err = rc.ds.UpdateReplica(replica)
+				replica.Status.OwnerID = rc.controllerID
+				_, err = rc.ds.UpdateReplicaStatus(replica)
 				return err
 			}
 		}
 
-		if replica.Spec.NodeID != "" {
+		nodeID := replica.Spec.NodeID
+		if nodeID != "" {
 			// Check if replica's executing node died
 			if down, err := rc.ds.IsNodeDownOrDeleted(replica.Spec.NodeID); err != nil {
 				return err
 			} else if down {
-				dataPath := replica.Spec.DataPath
-				nodeID := replica.Spec.NodeID
-				replica.Spec.DataPath = ""
-				replica.Spec.NodeID = ""
-				_, err = rc.ds.UpdateReplica(replica)
-				if err == nil {
-					rc.eventRecorder.Eventf(replica, v1.EventTypeWarning, EventReasonOrphaned,
-						"Node %v down or deleted, can't cleanup replica %v data at %v",
-						nodeID, replica.Name, dataPath)
-				}
-				return err
+				logrus.Errorf("Node %v down or deleted, can't cleanup replica %v data at %v",
+					nodeID, replica.Name, replica.Spec.DataPath)
+				nodeID = ""
 			}
 		}
 
-		if replica.Spec.NodeID == rc.controllerID {
+		if nodeID == rc.controllerID {
 			if err := rc.DeleteInstance(replica); err != nil {
 				if !types.ErrorIsNotFound(err) {
 					return errors.Wrapf(err, "failed to cleanup the related replica process before deleting replica %v", replica.Name)
@@ -254,22 +247,56 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			return rc.ds.RemoveFinalizerForReplica(replica)
 		}
 
-		if replica.Spec.NodeID == "" && replica.Spec.OwnerID == rc.controllerID {
+		if nodeID == "" && replica.Status.OwnerID == rc.controllerID {
 			logrus.Debugf("Deleted replica %v without cleanup due to no node ID", replica.Name)
 			return rc.ds.RemoveFinalizerForReplica(replica)
 		}
 	}
 
-	// Not ours
-	if replica.Spec.OwnerID != rc.controllerID {
-		return nil
+	takeOver := false
+
+	ownerDown := false
+	if replica.Status.OwnerID != "" {
+		ownerDown, err = rc.ds.IsNodeDownOrDeleted(replica.Status.OwnerID)
+		if err != nil {
+			logrus.Warnf("Found error while checking if replica %v owner is down or deleted: %v", replica.Name, err)
+		}
+	}
+
+	if rc.controllerID == replica.Spec.NodeID {
+		takeOver = true
+	} else if replica.Status.OwnerID == "" {
+		if replica.Spec.NodeID == "" {
+			takeOver = true
+		}
+	} else { // volume.Status.OwnerID != ""
+		if ownerDown {
+			takeOver = true
+		}
+	}
+
+	if replica.Status.OwnerID != rc.controllerID {
+		if !takeOver {
+			// Not ours
+			return nil
+		}
+		replica.Status.OwnerID = rc.controllerID
+		replica, err = rc.ds.UpdateReplicaStatus(replica)
+		if err != nil {
+			// we don't mind others coming first
+			if apierrors.IsConflict(errors.Cause(err)) {
+				return nil
+			}
+			return err
+		}
+		logrus.Debugf("Replica controller %v picked up %v", rc.controllerID, replica.Name)
 	}
 
 	existingReplica := replica.DeepCopy()
 	defer func() {
 		// we're going to update replica assume things changes
-		if err == nil && !reflect.DeepEqual(existingReplica, replica) {
-			_, err = rc.ds.UpdateReplica(replica)
+		if err == nil && !reflect.DeepEqual(existingReplica.Status, replica.Status) {
+			_, err = rc.ds.UpdateReplicaStatus(replica)
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
@@ -278,15 +305,6 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			err = nil
 		}
 	}()
-
-	// we need to stop the replica when replica failed connection with controller
-	if replica.Spec.FailedAt != "" {
-		if replica.Spec.DesireState != types.InstanceStateStopped {
-			replica.Spec.DesireState = types.InstanceStateStopped
-			_, err := rc.ds.UpdateReplica(replica)
-			return err
-		}
-	}
 
 	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
 }
@@ -368,7 +386,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 
 	// Node down
-	if im.Spec.NodeID != im.Spec.OwnerID {
+	if im.Spec.NodeID != im.Status.OwnerID {
 		isDown, err := rc.ds.IsNodeDownOrDeleted(im.Spec.NodeID)
 		if err != nil {
 			return err
@@ -503,7 +521,7 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(im *longhorn.InstanceM
 	}
 	for _, rList := range rs {
 		for _, r := range rList {
-			if r.Spec.OwnerID == rc.controllerID {
+			if r.Status.OwnerID == rc.controllerID {
 				rc.enqueueReplica(r)
 			}
 		}

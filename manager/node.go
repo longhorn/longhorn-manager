@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 func (m *VolumeManager) GetInstanceManager(name string) (*longhorn.InstanceManager, error) {
@@ -124,6 +124,12 @@ func (m *VolumeManager) DiskUpdate(name string, updateDisks []types.DiskSpec) (*
 				isInvalid = true
 				logrus.Warnf("Update disk on node %v warning: The disk %v has changed file system, please mount it back or remove it", name, oDisk.Path)
 				diskUpdateMap[fsid] = oDisk
+				// allow disable scheduling to remove the disk https://github.com/longhorn/longhorn/issues/838
+				if uDisk.AllowScheduling == false {
+					uDisk = oDisk
+					uDisk.AllowScheduling = false
+					diskUpdateMap[fsid] = uDisk
+				}
 				break
 			}
 		}
@@ -197,28 +203,6 @@ func (m *VolumeManager) DeleteNode(name string) error {
 		node.Spec.AllowScheduling || len(replicas) > 0 || len(engines) > 0 {
 		return fmt.Errorf("Could not delete node %v with node ready condition is %v, reason is %v, node schedulable %v, and %v replica, %v engine running on it", name,
 			condition.Status, condition.Reason, node.Spec.AllowScheduling, len(replicas), len(engines))
-	}
-	// before delete, clear ownerID of volumes and engine images handle by removed node
-	eiList, err := m.ds.ListEngineImages()
-	if err != nil {
-		return err
-	}
-	for _, ei := range eiList {
-		if ei.Spec.OwnerID == name {
-			ei.Spec.OwnerID = ""
-			if _, err := m.ds.UpdateEngineImage(ei); err != nil {
-				return err
-			}
-		}
-	}
-	volumeList, err := m.ds.ListVolumes()
-	for _, volume := range volumeList {
-		if volume.Spec.OwnerID == name {
-			volume.Spec.OwnerID = ""
-			if _, err := m.ds.UpdateVolume(volume); err != nil {
-				return err
-			}
-		}
 	}
 	if err := m.ds.DeleteNode(name); err != nil {
 		return err

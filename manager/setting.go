@@ -7,7 +7,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/types"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 func (m *VolumeManager) GetSettingValueExisted(sName types.SettingName) (string, error) {

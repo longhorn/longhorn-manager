@@ -235,7 +235,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
 	rootDir := c.String(FlagKubeletRootDir)
 
-	setting, err := lhClient.LonghornV1alpha1().Settings(namespace).Get(string(types.SettingNameTaintToleration), metav1.GetOptions{})
+	setting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameTaintToleration), metav1.GetOptions{})
 	if err != nil {
 		return errors.Wrapf(err, "failed to get taint toleration setting before starting CSI driver")
 	}
@@ -318,7 +318,7 @@ func deployFlexvolumeDriver(kubeClient *clientset.Clientset, lhClient *lhclients
 	flexvolumeDir := c.String(FlagFlexvolumeDir)
 	namespace := os.Getenv(types.EnvPodNamespace)
 
-	setting, err := lhClient.LonghornV1alpha1().Settings(namespace).Get(string(types.SettingNameTaintToleration), metav1.GetOptions{})
+	setting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameTaintToleration), metav1.GetOptions{})
 	if err != nil {
 		return errors.Wrapf(err, "failed to get taint toleration setting before starting CSI driver")
 	}

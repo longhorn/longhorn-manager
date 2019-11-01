@@ -10,7 +10,7 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/sirupsen/logrus"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 type ReplicaScheduler struct {
@@ -134,7 +134,8 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, repl
 		if storageScheduled > 0 {
 			info.StorageScheduled += storageScheduled
 		}
-		if !disk.AllowScheduling ||
+		diskReadyCondition := types.GetDiskConditionFromStatus(status, types.DiskConditionTypeReady)
+		if diskReadyCondition.Status == types.ConditionStatusFalse || !disk.AllowScheduling ||
 			!rcs.IsSchedulableToDisk(replica.Spec.VolumeSize, info) {
 			continue
 		}

@@ -19,20 +19,20 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
-	CRDEngineName          = "engines.longhorn.rancher.io"
-	CRDReplicaName         = "replicas.longhorn.rancher.io"
-	CRDVolumeName          = "volumes.longhorn.rancher.io"
-	CRDEngineImageName     = "engineimages.longhorn.rancher.io"
-	CRDNodeName            = "nodes.longhorn.rancher.io"
-	CRDInstanceManagerName = "instancemanagers.longhorn.rancher.io"
+	CRDEngineName          = "engines.longhorn.io"
+	CRDReplicaName         = "replicas.longhorn.io"
+	CRDVolumeName          = "volumes.longhorn.io"
+	CRDEngineImageName     = "engineimages.longhorn.io"
+	CRDNodeName            = "nodes.longhorn.io"
+	CRDInstanceManagerName = "instancemanagers.longhorn.io"
 )
 
 var (

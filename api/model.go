@@ -16,7 +16,7 @@ import (
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 type Volume struct {
@@ -35,7 +35,6 @@ type Volume struct {
 	CurrentImage               string                 `json:"currentImage"`
 	BaseImage                  string                 `json:"baseImage"`
 	Created                    string                 `json:"created"`
-	MigrationNodeID            string                 `json:"migrationNodeID"`
 	LastBackup                 string                 `json:"lastBackup"`
 	LastBackupAt               string                 `json:"lastBackupAt"`
 	Standby                    bool                   `json:"standby"`
@@ -484,12 +483,6 @@ func volumeSchema(volume *client.Schema) {
 		"engineUpgrade": {
 			Input: "engineUpgradeInput",
 		},
-
-		"migrationStart": {
-			Input: "nodeInput",
-		},
-		"migrationConfirm":  {},
-		"migrationRollback": {},
 	}
 	volume.ResourceFields["controllers"] = client.Field{
 		Type:     "array[controller]",
@@ -632,7 +625,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			LastRestoredBackup:     e.Status.LastRestoredBackup,
 			RequestedBackupRestore: e.Spec.RequestedBackupRestore,
 		})
-		if e.Spec.NodeID == v.Spec.NodeID {
+		if e.Spec.NodeID == v.Status.CurrentNodeID {
 			ve = e
 		}
 		backupStatus := e.Status.BackupStatus
@@ -710,27 +703,27 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			Actions: map[string]string{},
 			Links:   map[string]string{},
 		},
-		Name:                       v.Name,
-		Size:                       strconv.FormatInt(v.Spec.Size, 10),
-		Frontend:                   v.Spec.Frontend,
-		DisableFrontend:            v.Spec.DisableFrontend,
-		FromBackup:                 v.Spec.FromBackup,
-		NumberOfReplicas:           v.Spec.NumberOfReplicas,
+		Name:                v.Name,
+		Size:                strconv.FormatInt(v.Spec.Size, 10),
+		Frontend:            v.Spec.Frontend,
+		DisableFrontend:     v.Spec.DisableFrontend,
+		FromBackup:          v.Spec.FromBackup,
+		NumberOfReplicas:    v.Spec.NumberOfReplicas,
+		RecurringJobs:       v.Spec.RecurringJobs,
+		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
+		Created:             v.CreationTimestamp.String(),
+		EngineImage:         v.Spec.EngineImage,
+		BaseImage:           v.Spec.BaseImage,
+		Standby:             v.Spec.Standby,
+		DiskSelector:        v.Spec.DiskSelector,
+		NodeSelector:        v.Spec.NodeSelector,
+
 		State:                      v.Status.State,
 		Robustness:                 v.Status.Robustness,
-		RecurringJobs:              v.Spec.RecurringJobs,
-		StaleReplicaTimeout:        v.Spec.StaleReplicaTimeout,
-		Created:                    v.CreationTimestamp.String(),
-		EngineImage:                v.Spec.EngineImage,
 		CurrentImage:               v.Status.CurrentImage,
-		BaseImage:                  v.Spec.BaseImage,
-		MigrationNodeID:            v.Spec.MigrationNodeID,
 		LastBackup:                 v.Status.LastBackup,
 		LastBackupAt:               v.Status.LastBackupAt,
-		Standby:                    v.Spec.Standby,
-		InitialRestorationRequired: v.Spec.InitialRestorationRequired,
-		DiskSelector:               v.Spec.DiskSelector,
-		NodeSelector:               v.Spec.NodeSelector,
+		InitialRestorationRequired: v.Status.InitialRestorationRequired,
 
 		Conditions:       v.Status.Conditions,
 		KubernetesStatus: v.Status.KubernetesStatus,
@@ -773,9 +766,6 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["recurringUpdate"] = struct{}{}
 			actions["replicaRemove"] = struct{}{}
 			actions["engineUpgrade"] = struct{}{}
-			actions["migrationStart"] = struct{}{}
-			actions["migrationConfirm"] = struct{}{}
-			actions["migrationRollback"] = struct{}{}
 			actions["updateReplicaCount"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}

@@ -11,7 +11,7 @@ import (
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 const (
@@ -58,9 +58,6 @@ func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]st
 		}
 	}
 
-	if err := m.checkVolumeNotInMigration(volumeName); err != nil {
-		return nil, err
-	}
 	engine, err := m.GetEngineClient(volumeName)
 	if err != nil {
 		return nil, err
@@ -85,9 +82,6 @@ func (m *VolumeManager) DeleteSnapshot(snapshotName, volumeName string) error {
 		return fmt.Errorf("volume and snapshot name required")
 	}
 
-	if err := m.checkVolumeNotInMigration(volumeName); err != nil {
-		return err
-	}
 	engine, err := m.GetEngineClient(volumeName)
 	if err != nil {
 		return err
@@ -104,9 +98,6 @@ func (m *VolumeManager) RevertSnapshot(snapshotName, volumeName string) error {
 		return fmt.Errorf("volume and snapshot name required")
 	}
 
-	if err := m.checkVolumeNotInMigration(volumeName); err != nil {
-		return err
-	}
 	engine, err := m.GetEngineClient(volumeName)
 	if err != nil {
 		return err
@@ -130,9 +121,6 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 		return fmt.Errorf("volume name required")
 	}
 
-	if err := m.checkVolumeNotInMigration(volumeName); err != nil {
-		return err
-	}
 	engine, err := m.GetEngineClient(volumeName)
 	if err != nil {
 		return err
@@ -150,9 +138,6 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 		return fmt.Errorf("volume and snapshot name required")
 	}
 
-	if err := m.checkVolumeNotInMigration(volumeName); err != nil {
-		return err
-	}
 	backupTarget, err := m.GetSettingValueExisted(types.SettingNameBackupTarget)
 	if err != nil {
 		return err
@@ -203,7 +188,7 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 			time.Sleep(BackupStatusQueryInterval)
 		}
 
-		if err := UpdateVolumeLastBackup(volumeName, target, m.ds.GetVolume, m.ds.UpdateVolume); err != nil {
+		if err := UpdateVolumeLastBackup(volumeName, target, m.ds.GetVolume, m.ds.UpdateVolumeStatus); err != nil {
 			logrus.Warnf("Failed to update volume LastBackup for %v: %v", volumeName, err)
 		}
 	}()
@@ -256,7 +241,7 @@ func (m *VolumeManager) ListBackupVolumes() (map[string]*engineapi.BackupVolume,
 		return nil, err
 	}
 	// side effect, update known volumes
-	SyncVolumesLastBackupWithBackupVolumes(backupVolumes, m.ds.ListVolumes, m.ds.GetVolume, m.ds.UpdateVolume)
+	SyncVolumesLastBackupWithBackupVolumes(backupVolumes, m.ds.ListVolumes, m.ds.GetVolume, m.ds.UpdateVolumeStatus)
 	return backupVolumes, nil
 }
 
@@ -270,7 +255,7 @@ func (m *VolumeManager) GetBackupVolume(volumeName string) (*engineapi.BackupVol
 		return nil, err
 	}
 	// side effect, update known volumes
-	SyncVolumeLastBackupWithBackupVolume(volumeName, bv, m.ds.GetVolume, m.ds.UpdateVolume)
+	SyncVolumeLastBackupWithBackupVolume(volumeName, bv, m.ds.GetVolume, m.ds.UpdateVolumeStatus)
 	return bv, nil
 }
 
@@ -317,7 +302,7 @@ func (m *VolumeManager) DeleteBackup(backupName, volumeName string) error {
 			logrus.Error(err)
 			return
 		}
-		if err := UpdateVolumeLastBackup(volumeName, backupTarget, m.ds.GetVolume, m.ds.UpdateVolume); err != nil {
+		if err := UpdateVolumeLastBackup(volumeName, backupTarget, m.ds.GetVolume, m.ds.UpdateVolumeStatus); err != nil {
 			logrus.Warnf("Failed to update volume LastBackup for %v for backup deletion: %v", volumeName, err)
 		}
 	}()

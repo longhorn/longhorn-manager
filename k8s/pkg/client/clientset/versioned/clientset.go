@@ -19,7 +19,7 @@ limitations under the License.
 package versioned
 
 import (
-	longhornv1alpha1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1alpha1"
+	longhornv1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1beta1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
@@ -27,19 +27,19 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
-	LonghornV1alpha1() longhornv1alpha1.LonghornV1alpha1Interface
+	LonghornV1beta1() longhornv1beta1.LonghornV1beta1Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
 // version included in a Clientset.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	longhornV1alpha1 *longhornv1alpha1.LonghornV1alpha1Client
+	longhornV1beta1 *longhornv1beta1.LonghornV1beta1Client
 }
 
-// LonghornV1alpha1 retrieves the LonghornV1alpha1Client
-func (c *Clientset) LonghornV1alpha1() longhornv1alpha1.LonghornV1alpha1Interface {
-	return c.longhornV1alpha1
+// LonghornV1beta1 retrieves the LonghornV1beta1Client
+func (c *Clientset) LonghornV1beta1() longhornv1beta1.LonghornV1beta1Interface {
+	return c.longhornV1beta1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -58,7 +58,7 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 	}
 	var cs Clientset
 	var err error
-	cs.longhornV1alpha1, err = longhornv1alpha1.NewForConfig(&configShallowCopy)
+	cs.longhornV1beta1, err = longhornv1beta1.NewForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 // panics if there is an error in the config.
 func NewForConfigOrDie(c *rest.Config) *Clientset {
 	var cs Clientset
-	cs.longhornV1alpha1 = longhornv1alpha1.NewForConfigOrDie(c)
+	cs.longhornV1beta1 = longhornv1beta1.NewForConfigOrDie(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
 	return &cs
@@ -83,7 +83,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
-	cs.longhornV1alpha1 = longhornv1alpha1.New(c)
+	cs.longhornV1beta1 = longhornv1beta1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs

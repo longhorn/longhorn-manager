@@ -30,8 +30,8 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 var (
@@ -257,17 +257,17 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	}
 
 	nodeStatusDown := false
-	if engineImage.Spec.OwnerID != "" {
-		nodeStatusDown, err = ic.ds.IsNodeDownOrDeleted(engineImage.Spec.OwnerID)
+	if engineImage.Status.OwnerID != "" {
+		nodeStatusDown, err = ic.ds.IsNodeDownOrDeleted(engineImage.Status.OwnerID)
 		if err != nil {
 			logrus.Warnf("Found error while checking ownerID is down or deleted:%v", err)
 		}
 	}
 
-	if engineImage.Spec.OwnerID == "" || nodeStatusDown {
+	if engineImage.Status.OwnerID == "" || nodeStatusDown {
 		// Claim it
-		engineImage.Spec.OwnerID = ic.controllerID
-		engineImage, err = ic.ds.UpdateEngineImage(engineImage)
+		engineImage.Status.OwnerID = ic.controllerID
+		engineImage, err = ic.ds.UpdateEngineImageStatus(engineImage)
 		if err != nil {
 			// we don't mind others coming first
 			if apierrors.IsConflict(errors.Cause(err)) {
@@ -276,7 +276,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			return err
 		}
 		logrus.Debugf("Engine Image Controller %v picked up %v (%v)", ic.controllerID, engineImage.Name, engineImage.Spec.Image)
-	} else if engineImage.Spec.OwnerID != ic.controllerID {
+	} else if engineImage.Status.OwnerID != ic.controllerID {
 		// Not ours
 		return nil
 	}
@@ -296,8 +296,8 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	oldImageState := engineImage.Status.State
 	existingEngineImage := engineImage.DeepCopy()
 	defer func() {
-		if err == nil && !reflect.DeepEqual(existingEngineImage, engineImage) {
-			_, err = ic.ds.UpdateEngineImage(engineImage)
+		if err == nil && !reflect.DeepEqual(existingEngineImage.Status, engineImage.Status) {
+			_, err = ic.ds.UpdateEngineImageStatus(engineImage)
 		}
 		if apierrors.IsConflict(errors.Cause(err)) {
 			logrus.Debugf("Requeue %v due to conflict", key)
@@ -556,7 +556,7 @@ func (ic *EngineImageController) enqueueVolumes(volumes ...*longhorn.Volume) {
 			continue
 		}
 		// Not ours
-		if engineImage.Spec.OwnerID != ic.controllerID {
+		if engineImage.Status.OwnerID != ic.controllerID {
 			continue
 		}
 		ic.enqueueEngineImage(engineImage)
@@ -618,7 +618,7 @@ func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *met
 		return
 	}
 	// Not ours
-	if engineImage.Spec.OwnerID != ic.controllerID {
+	if engineImage.Status.OwnerID != ic.controllerID {
 		return
 	}
 	ic.enqueueEngineImage(engineImage)
@@ -797,10 +797,6 @@ func (ic *EngineImageController) createInstanceManager(ei *longhorn.EngineImage,
 			EngineImage: ei.Name,
 			NodeID:      node.Name,
 			Type:        imType,
-		},
-		Status: types.InstanceManagerStatus{
-			CurrentState: types.InstanceManagerStateStopped,
-			Instances:    map[string]types.InstanceProcess{},
 		},
 	}
 

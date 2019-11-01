@@ -13,7 +13,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 var (
@@ -64,8 +64,7 @@ func (m *VolumeManager) CreateEngineImage(image string) (*longhorn.EngineImage, 
 			Name: name,
 		},
 		Spec: types.EngineImageSpec{
-			OwnerID: "", // the first controller who see it will pick it up
-			Image:   image,
+			Image: image,
 		},
 	}
 	ei, err := m.ds.CreateEngineImage(ei)

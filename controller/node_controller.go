@@ -28,8 +28,8 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 var (
@@ -326,8 +326,8 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	existingNode := node.DeepCopy()
 	defer func() {
 		// we're going to update volume assume things changes
-		if err == nil && !reflect.DeepEqual(existingNode, node) {
-			_, err = nc.ds.UpdateNode(node)
+		if err == nil && !reflect.DeepEqual(existingNode.Status, node.Status) {
+			_, err = nc.ds.UpdateNodeStatus(node)
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
@@ -402,8 +402,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 			condition.Reason = string(types.NodeConditionReasonKubernetesNodeGone)
 			condition.Message = fmt.Sprintf("Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name)
 			node.Status.Conditions[types.NodeConditionTypeReady] = condition
-			// set node unschedulable
-			node.Spec.AllowScheduling = false
 		} else {
 			return err
 		}
@@ -454,7 +452,8 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 
 	// sync default Disk on labeled Nodes
-	if err := nc.syncDefaultDisk(node); err != nil {
+	node, err = nc.syncDefaultDisk(node)
+	if err != nil {
 		return err
 	}
 
@@ -537,15 +536,15 @@ func (nc *NodeController) enqueueKubernetesNode(n *v1.Node) {
 // syncDefaultDisk handles creation of the default Disk if Create Default Disk on Labeled Nodes is enabled. This allows
 // for the default Disk to be created even if the Node has been labeled after initial registration with Longhorn,
 // provided that there are no existing Disks remaining on the Node.
-func (nc *NodeController) syncDefaultDisk(node *longhorn.Node) error {
+func (nc *NodeController) syncDefaultDisk(node *longhorn.Node) (*longhorn.Node, error) {
 	requireLabel, err := nc.ds.GetSettingAsBool(types.SettingNameCreateDefaultDiskLabeledNodes)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if requireLabel && len(node.Spec.Disks) == 0 {
 		kubeNode, err := nc.ds.GetKubernetesNode(node.Name)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if val, ok := kubeNode.Labels[types.NodeCreateDefaultDiskLabel]; ok {
 			createDisk, err := strconv.ParseBool(val)
@@ -554,12 +553,14 @@ func (nc *NodeController) syncDefaultDisk(node *longhorn.Node) error {
 					types.NodeCreateDefaultDiskLabel, val, err)
 			} else if createDisk {
 				if err := nc.ds.CreateDefaultDisk(node); err != nil {
-					return err
+					return nil, err
 				}
+				//TODO Find a way to move this outside the controller since it changes the node's spec
+				return nc.ds.UpdateNode(node)
 			}
 		}
 	}
-	return nil
+	return node, nil
 }
 
 func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
@@ -578,14 +579,12 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		return err
 	}
 
-	updateDiskMap := map[string]types.DiskSpec{}
 	originDiskStatus := node.Status.DiskStatus
 	if originDiskStatus == nil {
 		originDiskStatus = map[string]types.DiskStatus{}
 	}
 	for diskID, disk := range diskMap {
 		diskConditions := map[types.DiskConditionType]types.Condition{}
-		updateDisk := disk
 		diskStatus := types.DiskStatus{}
 		_, ok := originDiskStatus[diskID]
 		if ok {
@@ -620,8 +619,6 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			readyCondition.Status = types.ConditionStatusFalse
 			readyCondition.Reason = types.DiskConditionReasonNoDiskInfo
 			readyCondition.Message = fmt.Sprintf("Get disk information on node %v error: %v", node.Name, err)
-			// disable invalid disk
-			updateDisk.AllowScheduling = false
 			diskStatus.StorageMaximum = 0
 			diskStatus.StorageAvailable = 0
 		} else if diskInfo == nil || diskInfo.Fsid != diskID {
@@ -634,8 +631,6 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			readyCondition.Status = types.ConditionStatusFalse
 			readyCondition.Reason = types.DiskConditionReasonDiskFilesystemChanged
 			readyCondition.Message = fmt.Sprintf("disk %v on node %v has changed file system", disk.Path, node.Name)
-			// disable invalid disk
-			updateDisk.AllowScheduling = false
 			diskStatus.StorageMaximum = 0
 			diskStatus.StorageAvailable = 0
 		} else {
@@ -694,7 +689,6 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 
 		diskStatus.Conditions = diskConditions
 		diskStatusMap[diskID] = diskStatus
-		updateDiskMap[diskID] = updateDisk
 	}
 
 	// if there's some replicas scheduled to wrong disks, write them to error log
@@ -709,7 +703,6 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 	}
 
 	node.Status.DiskStatus = diskStatusMap
-	node.Spec.Disks = updateDiskMap
 
 	return nil
 }
