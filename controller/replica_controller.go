@@ -371,7 +371,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		}
 		if isDown {
 			delete(im.Status.Instances, r.Name)
-			if _, err := rc.ds.UpdateInstanceManager(im); err != nil {
+			if _, err := rc.ds.UpdateInstanceManagerStatus(im); err != nil {
 				return err
 			}
 			return nil
