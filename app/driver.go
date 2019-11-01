@@ -251,6 +251,11 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
+	csiDriverObjectDeployment := csi.NewCSIDriverObject()
+	if err := csiDriverObjectDeployment.Deploy(kubeClient); err != nil {
+		return err
+	}
+
 	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount, tolerations)
 	if err := attacherDeployment.Deploy(kubeClient); err != nil {
 		return err

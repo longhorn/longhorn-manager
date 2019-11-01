@@ -567,5 +567,13 @@ func (c *UninstallController) deleteDriver() (bool, error) {
 		logrus.Infof("%v already marked for deletion", name)
 		wait = true
 	}
+
+	if err := c.ds.DeleteCSIDriver(types.LonghornDriverName); err != nil {
+		if !apierrors.IsNotFound(err) {
+			logrus.Warnf("failed to delete CSIDriver object %v: %v", types.LonghornDriverName, err)
+			wait = true
+		}
+	}
+
 	return wait, nil
 }
