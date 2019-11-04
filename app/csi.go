@@ -33,7 +33,7 @@ func CSICommand() cli.Command {
 			},
 			cli.StringFlag{
 				Name:  "csi-version",
-				Value: "0.2.0",
+				Value: "0.3.0",
 				Usage: "CSI plugin version",
 			},
 		},
