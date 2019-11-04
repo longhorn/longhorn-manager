@@ -377,3 +377,23 @@ func GetOnHostPluginsDir(kubeletRootDir string) string {
 func GetCSIEndpoint() string {
 	return "unix://" + GetInContainerCSISocketFilePath()
 }
+
+func GetOldInContainerCSISocketDir() string {
+	return filepath.Join(GetInContainerPluginsDir(), types.DepracatedDriverName)
+}
+
+func GetOldInContainerCSISocketFilePath() string {
+	return filepath.Join(GetOldInContainerCSISocketDir(), DefaultCSISocketFileName)
+}
+
+func GetOldOnHostCSISocketDir(kubeletRootDir string) string {
+	return filepath.Join(filepath.Join(kubeletRootDir, DefaultCommonPluginsDirSuffix), types.DepracatedDriverName)
+}
+
+func GetOldOnHostCSISocketFilePath(kubeletRootDir string) string {
+	return filepath.Join(GetOldOnHostCSISocketDir(kubeletRootDir), DefaultCSISocketFileName)
+}
+
+func GetOldCSIEndpoint() string {
+	return "unix://" + GetOldInContainerCSISocketFilePath()
+}

@@ -275,6 +275,11 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
+	compatibleAttacherDeployment := csi.NewCompatibleAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, tolerations)
+	if err := compatibleAttacherDeployment.Deploy(kubeClient); err != nil {
+		return err
+	}
+
 	logrus.Debug("CSI deployment done")
 
 	done := make(chan struct{})
