@@ -3,8 +3,9 @@ package types
 const (
 	LonghornManagerDaemonSetName = "longhorn-manager"
 
-	DriverDeployerName = "longhorn-driver-deployer"
-	CSIAttacherName    = "csi-attacher"
-	CSIProvisionerName = "csi-provisioner"
-	CSIPluginName      = "longhorn-csi-plugin"
+	DriverDeployerName        = "longhorn-driver-deployer"
+	CSIAttacherName           = "csi-attacher"
+	CSIProvisionerName        = "csi-provisioner"
+	CSIPluginName             = "longhorn-csi-plugin"
+	CompatibleCSIAttacherName = "compatible-csi-attacher"
 )
