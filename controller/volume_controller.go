@@ -637,42 +637,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 	}
 
-	if e.Status.CurrentState == types.InstanceStateError && v.Status.CurrentNodeID != "" {
-		if e.Spec.NodeID != "" && e.Spec.NodeID != v.Status.CurrentNodeID {
-			return fmt.Errorf("BUG: engine %v nodeID %v doesn't match volume %v nodeID %v",
-				e.Name, e.Spec.NodeID, v.Name, v.Status.CurrentNodeID)
-		}
-		node, err := vc.ds.GetKubernetesNode(v.Status.CurrentNodeID)
-		if err != nil {
-			return err
-		}
-		// If it's due to reboot, we're going to reattach the volume later
-		// e.Status.NodeBootID would only reset when the instance stopped by request
-		if e.Status.NodeBootID != "" && e.Status.NodeBootID != node.Status.NodeInfo.BootID {
-			v.Status.PendingNodeID = v.Status.CurrentNodeID
-			msg := fmt.Sprintf("Detect the reboot of volume %v attached node %v, reattach the volume", v.Name, v.Status.CurrentNodeID)
-			logrus.Errorf(msg)
-			vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonRebooted, msg)
-		} else {
-			// Engine dead unexpected, force detaching the volume
-			msg := fmt.Sprintf("Engine of volume %v dead unexpectedly, detach the volume", v.Name)
-			logrus.Errorf(msg)
-			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFaulted, msg)
-			e.Spec.LogRequested = true
-			for _, r := range rs {
-				if r.Status.CurrentState == types.InstanceStateRunning {
-					r.Spec.LogRequested = true
-					r, err = vc.ds.UpdateReplica(r)
-					if err != nil {
-						return err
-					}
-					rs[r.Name] = r
-				}
-			}
-		}
-		v.Status.CurrentNodeID = ""
-	}
-
 	allScheduled := true
 	for _, r := range rs {
 		// TODO: Will remove this reference kind correcting after all Longhorn components having used the new kinds
@@ -739,6 +703,26 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		// Don't need to touch other status since it should converge naturally
 		if v.Status.Robustness == types.VolumeRobustnessFaulted {
 			v.Status.Robustness = types.VolumeRobustnessUnknown
+		}
+
+		// reattach volume if detached unexpected and there are still healthy replicas
+		if e.Status.CurrentState == types.InstanceStateError && v.Status.CurrentNodeID != "" {
+			v.Status.PendingNodeID = v.Status.CurrentNodeID
+			msg := fmt.Sprintf("Engine of volume %v dead unexpectedly, reattach the volume", v.Name)
+			logrus.Warnf(msg)
+			vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonDetachedUnexpectly, msg)
+			e.Spec.LogRequested = true
+			for _, r := range rs {
+				if r.Status.CurrentState == types.InstanceStateRunning {
+					r.Spec.LogRequested = true
+					r, err = vc.ds.UpdateReplica(r)
+					if err != nil {
+						return err
+					}
+					rs[r.Name] = r
+				}
+			}
+			v.Status.CurrentNodeID = ""
 		}
 	}
 

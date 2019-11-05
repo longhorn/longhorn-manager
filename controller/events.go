@@ -21,5 +21,5 @@ const (
 	EventReasonDegraded = "Degraded"
 	EventReasonOrphaned = "Orphaned"
 
-	EventReasonRebooted = "Rebooted"
+	EventReasonDetachedUnexpectly = "DetachedUnexpectly"
 )
