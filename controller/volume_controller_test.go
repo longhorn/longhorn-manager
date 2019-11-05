@@ -245,7 +245,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.FrontendDisabled = true
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	for _, e := range tc.expectEngines {
-		e.Spec.DesireState = types.InstanceStateStopped
 		e.Spec.BackupVolume = TestBackupVolumeName
 		e.Spec.RequestedBackupRestore = TestBackupName
 	}
@@ -296,6 +295,9 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessHealthy
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectVolume.Status.FrontendDisabled = true
+	for _, e := range tc.expectEngines {
+		e.Spec.DisableFrontend = true
+	}
 	for _, r := range tc.expectReplicas {
 		r.Spec.HealthyAt = getTestNow()
 	}
@@ -320,6 +322,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Spec.DesireState = types.InstanceStateRunning
 		e.Spec.BackupVolume = TestBackupVolumeName
 		e.Spec.RequestedBackupRestore = TestBackupName
+		e.Spec.DisableFrontend = true
 		e.Status.OwnerID = TestNode1
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
@@ -360,6 +363,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Spec.DesireState = types.InstanceStateRunning
 		e.Spec.BackupVolume = TestBackupVolumeName
 		e.Spec.RequestedBackupRestore = TestBackupName
+		e.Spec.DisableFrontend = tc.volume.Status.FrontendDisabled
 		e.Status.OwnerID = TestNode1
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
@@ -483,10 +487,11 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.InitialRestorationRequired = true
 	tc.volume.Status.RestoreInitiated = true
 	for _, e := range tc.engines {
-		e.Spec.NodeID = tc.volume.Spec.NodeID
+		e.Spec.NodeID = tc.volume.Status.CurrentNodeID
 		e.Spec.DesireState = types.InstanceStateRunning
 		e.Spec.BackupVolume = TestBackupVolumeName
 		e.Spec.RequestedBackupRestore = TestBackupName
+		e.Spec.DisableFrontend = tc.volume.Status.FrontendDisabled
 		e.Status.CurrentState = types.InstanceStateRunning
 		e.Status.IP = randomIP()
 		e.Status.Port = randomPort()
