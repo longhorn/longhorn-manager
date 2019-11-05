@@ -149,6 +149,7 @@ type InstanceStatus struct {
 	IP                  string        `json:"ip"`
 	Port                int           `json:"port"`
 	Started             bool          `json:"started"`
+	LogFetched          bool          `json:"logFetched"`
 }
 
 type EngineSpec struct {
