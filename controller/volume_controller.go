@@ -848,8 +848,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			}
 		}
 
-		replicaUpdated := false
 		for _, r := range rs {
+			oldRSpec := r.Spec
 			// Don't attempt to start the replica or do anything else if it hasn't been scheduled.
 			if r.Spec.NodeID == "" {
 				continue
@@ -859,30 +859,21 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 				return errors.Wrapf(err, "cannot find node %v", r.Spec.NodeID)
 			}
 			if nodeDown {
-				r.Spec.FailedAt = vc.nowHandler()
-				r.Spec.DesireState = types.InstanceStateStopped
-				r, err = vc.ds.UpdateReplica(r)
-				if err != nil {
-					return err
+				if r.Spec.FailedAt == "" {
+					r.Spec.FailedAt = vc.nowHandler()
 				}
-				rs[r.Name] = r
-			}
-			if r.Spec.FailedAt == "" &&
-				r.Spec.DesireState != types.InstanceStateRunning &&
-				r.Spec.EngineImage == v.Status.CurrentImage {
-
+				r.Spec.DesireState = types.InstanceStateStopped
+			} else if r.Spec.FailedAt == "" && r.Spec.EngineImage == v.Status.CurrentImage {
 				r.Spec.DesireState = types.InstanceStateRunning
-				replicaUpdated = true
+			}
+
+			if !reflect.DeepEqual(r.Spec, oldRSpec) {
 				r, err := vc.ds.UpdateReplica(r)
 				if err != nil {
 					return err
 				}
 				rs[r.Name] = r
 			}
-		}
-		// wait for instances to start
-		if replicaUpdated {
-			return nil
 		}
 		replicaAddressMap := map[string]string{}
 		for _, r := range rs {
