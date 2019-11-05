@@ -911,23 +911,16 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			return fmt.Errorf("no healthy replica for starting")
 		}
 
-		engineUpdated := false
-		if e.Spec.DesireState != types.InstanceStateRunning {
-			if e.Spec.NodeID != "" && e.Spec.NodeID != v.Status.CurrentNodeID {
-				return fmt.Errorf("engine is on node %v vs volume on %v, must detach first",
-					e.Spec.NodeID, v.Status.CurrentNodeID)
-			}
-			e.Spec.NodeID = v.Status.CurrentNodeID
-			e.Spec.ReplicaAddressMap = replicaAddressMap
-			e.Spec.DesireState = types.InstanceStateRunning
-			e.Spec.DisableFrontend = v.Status.FrontendDisabled
-			engineUpdated = true
+		oldESpec := e.Spec
+		if e.Spec.NodeID != "" && e.Spec.NodeID != v.Status.CurrentNodeID {
+			return fmt.Errorf("engine is on node %v vs volume on %v, must detach first",
+				e.Spec.NodeID, v.Status.CurrentNodeID)
 		}
-		if !reflect.DeepEqual(e.Spec.ReplicaAddressMap, replicaAddressMap) {
-			e.Spec.ReplicaAddressMap = replicaAddressMap
-			engineUpdated = true
-		}
-		if engineUpdated {
+		e.Spec.NodeID = v.Status.CurrentNodeID
+		e.Spec.ReplicaAddressMap = replicaAddressMap
+		e.Spec.DesireState = types.InstanceStateRunning
+		e.Spec.DisableFrontend = v.Status.FrontendDisabled
+		if !reflect.DeepEqual(e.Spec, oldESpec) {
 			e, err = vc.ds.UpdateEngine(e)
 			if err != nil {
 				return err
