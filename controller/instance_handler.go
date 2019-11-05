@@ -118,13 +118,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		if status.CurrentImage == "" {
 			status.CurrentImage = spec.EngineImage
 		}
-		nodeBootID := im.Status.NodeBootID
-		if status.NodeBootID == "" {
-			status.NodeBootID = nodeBootID
-		} else if status.NodeBootID != nodeBootID {
-			logrus.Warnf("Instance %v's node %v has been rebooted. Original boot ID is %v, current node boot ID is %v",
-				instanceName, im.Spec.NodeID, status.NodeBootID, nodeBootID)
-		}
 	case types.InstanceStateStopping:
 		if status.Started {
 			status.CurrentState = types.InstanceStateError
@@ -149,7 +142,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.CurrentImage = ""
 		status.IP = ""
 		status.Port = 0
-		// Don't reset status.NodeBootID, we need it to identify a node reboot
 	}
 }
 
@@ -242,7 +234,6 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 				return err
 			}
 			status.Started = false
-			status.NodeBootID = ""
 			status.CurrentState = types.InstanceStateStopped
 			status.CurrentImage = ""
 			status.InstanceManagerName = ""
@@ -261,7 +252,6 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 			}
 		}
 		status.Started = false
-		status.NodeBootID = ""
 	default:
 		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
 	}
@@ -280,7 +270,6 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 			if spec.NodeID != im.Spec.NodeID {
 				status.CurrentState = types.InstanceStateError
 				status.IP = ""
-				status.NodeBootID = ""
 				err := fmt.Errorf("BUG: instance %v NodeID %v is not the same as the instance manager %v NodeID %v", instanceName, spec.NodeID, im.Name, im.Spec.NodeID)
 				logrus.Errorf("%v", err)
 				return err

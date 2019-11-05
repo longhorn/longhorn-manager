@@ -371,14 +371,8 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 			}
 
 			if im.Status.CurrentState == types.InstanceManagerStateStarting || im.Status.CurrentState == types.InstanceManagerStateUnknown {
-				nodeName := pod.Spec.NodeName
-				node, err := imc.kubeClient.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
-				if err != nil {
-					return err
-				}
 				im.Status.CurrentState = types.InstanceManagerStateRunning
 				im.Status.IP = pod.Status.PodIP
-				im.Status.NodeBootID = node.Status.NodeInfo.BootID
 			} else if im.Status.CurrentState != types.InstanceManagerStateRunning {
 				im.Status.CurrentState = types.InstanceManagerStateError
 			}
@@ -447,7 +441,6 @@ func (imc *InstanceManagerController) enqueueInstanceManagerPod(pod *v1.Pod) {
 // or prepare for deletion.
 func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.InstanceManager) error {
 	im.Status.IP = ""
-	im.Status.NodeBootID = ""
 
 	if imc.isMonitoring(im.Name) {
 		imc.stopMonitoring(im)
