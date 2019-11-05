@@ -620,6 +620,24 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		}
 	}
 
+	if e.Spec.LogRequested && e.Status.LogFetched {
+		e.Spec.LogRequested = false
+		e, err = vc.ds.UpdateEngine(e)
+		if err != nil {
+			return err
+		}
+	}
+	for _, r := range rs {
+		if r.Spec.LogRequested && r.Status.LogFetched {
+			r.Spec.LogRequested = false
+		}
+		r, err = vc.ds.UpdateReplica(r)
+		if err != nil {
+			return err
+		}
+		rs[r.Name] = r
+	}
+
 	v.Status.FrontendDisabled = v.Spec.DisableFrontend
 
 	// InitialRestorationRequired means the volume is newly created restored volume and

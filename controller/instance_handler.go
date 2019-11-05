@@ -195,15 +195,19 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 	}
 
 	if spec.LogRequested {
-		if im == nil {
-			logrus.Warnf("Cannot get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
-		} else {
-			logrus.Warnf("Try to get requested log for %v on node %v", instanceName, im.Spec.NodeID)
-			if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
-				logrus.Warnf("cannot get requested log for instance %v on node %v, error %v", instanceName, im.Spec.NodeID, err)
+		if !status.LogFetched {
+			if im == nil {
+				logrus.Warnf("Cannot get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
+			} else {
+				logrus.Warnf("Try to get requested log for %v on node %v", instanceName, im.Spec.NodeID)
+				if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
+					logrus.Warnf("cannot get requested log for instance %v on node %v, error %v", instanceName, im.Spec.NodeID, err)
+				}
 			}
+			status.LogFetched = true
 		}
-		spec.LogRequested = false
+	} else { // spec.LogRequested = false
+		status.LogFetched = false
 	}
 
 	// do nothing for incompatible instance except for deleting
