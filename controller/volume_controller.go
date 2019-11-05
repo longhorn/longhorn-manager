@@ -923,11 +923,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			e.Spec.DisableFrontend = v.Status.FrontendDisabled
 			engineUpdated = true
 		}
-		if !vc.isVolumeUpgrading(v) {
-			if !reflect.DeepEqual(e.Spec.ReplicaAddressMap, replicaAddressMap) {
-				e.Spec.ReplicaAddressMap = replicaAddressMap
-				engineUpdated = true
-			}
+		if !reflect.DeepEqual(e.Spec.ReplicaAddressMap, replicaAddressMap) {
+			e.Spec.ReplicaAddressMap = replicaAddressMap
+			engineUpdated = true
 		}
 		if engineUpdated {
 			e, err = vc.ds.UpdateEngine(e)
