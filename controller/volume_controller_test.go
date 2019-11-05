@@ -382,7 +382,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Spec.NodeID = ""
 	tc.expectVolume.Spec.DisableFrontend = false
-	tc.expectVolume.Status.CurrentNodeID = ""
+	tc.expectVolume.Status.CurrentNodeID = TestNode1
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectVolume.Status.FrontendDisabled = true
 	tc.expectVolume.Status.InitialRestorationRequired = false
@@ -400,7 +400,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.OwnerID = TestNode1
 	tc.volume.Status.State = types.VolumeStateAttached
 	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
-	tc.volume.Status.CurrentNodeID = ""
+	tc.volume.Status.CurrentNodeID = TestNode1
 	tc.volume.Status.FrontendDisabled = true
 	tc.volume.Status.InitialRestorationRequired = false
 	tc.volume.Status.RestoreInitiated = true

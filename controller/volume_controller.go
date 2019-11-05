@@ -940,26 +940,16 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			return nil
 		}
 
+		if v.Status.InitialRestorationRequired {
+			if e.Status.LastRestoredBackup != "" {
+				// The initial full restoration is complete.
+				v.Status.InitialRestorationRequired = false
+			}
+		}
+
 		v.Status.State = types.VolumeStateAttached
 		if oldState != v.Status.State {
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
-		}
-
-		// If the newly created restored volume is state attached,
-		// it means the volume is restoring or has restored data
-		// from backup. Then it may need to be detached automatically.
-		if v.Status.InitialRestorationRequired == true && v.Status.State == types.VolumeStateAttached {
-			// The initial full restoration is complete.
-			if e.Status.LastRestoredBackup != "" {
-				v.Status.InitialRestorationRequired = false
-				// For disaster recovery (standby) volume, it will incrementally
-				// restore backups later. Hence it cannot be detached automatically.
-				if !v.Spec.Standby {
-					if e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup {
-						v.Status.CurrentNodeID = ""
-					}
-				}
-			}
 		}
 	}
 	return nil
