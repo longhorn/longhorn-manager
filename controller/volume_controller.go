@@ -646,7 +646,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 	if v.Status.InitialRestorationRequired {
 		// for automatically attached volume, we should disable its frontend
 		v.Status.FrontendDisabled = true
-		if v.Spec.NodeID == "" {
+		if v.Status.CurrentNodeID == "" {
 			usableNode, err := vc.ds.GetRandomReadyNode()
 			if err != nil {
 				return err
