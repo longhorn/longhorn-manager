@@ -149,7 +149,6 @@ type InstanceStatus struct {
 	IP                  string        `json:"ip"`
 	Port                int           `json:"port"`
 	Started             bool          `json:"started"`
-	NodeBootID          string        `json:"nodeBootID"`
 }
 
 type EngineSpec struct {
@@ -344,7 +343,6 @@ type InstanceManagerStatus struct {
 	CurrentState InstanceManagerState       `json:"currentState"`
 	Instances    map[string]InstanceProcess `json:"instances"`
 	IP           string                     `json:"ip"`
-	NodeBootID   string                     `json:"nodeBootID"`
 }
 
 type InstanceProcess struct {
