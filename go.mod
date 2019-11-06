@@ -32,6 +32,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway v1.11.3 // indirect
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/imdario/mergo v0.3.8 // indirect
+	github.com/jinzhu/copier v0.0.0-20190924061706-b57f9002281a
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/kubernetes-csi/drivers v0.4.1
 	github.com/kubernetes-sigs/sig-storage-lib-external-provisioner v3.1.0+incompatible
