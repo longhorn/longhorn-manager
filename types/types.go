@@ -14,6 +14,10 @@ const (
 	LonghornKindVolume          = "Volume"
 	LonghornKindEngineImage     = "EngineImage"
 	LonghornKindInstanceManager = "InstanceManager"
+
+	CRDAPIVersionV1alpha1 = "longhorn.rancher.io/v1alpha1"
+	CRDAPIVersionV1beta1  = "longhorn.io/v1beta1"
+	CurrentCRDAPIVersion  = CRDAPIVersionV1beta1
 )
 
 const (

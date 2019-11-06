@@ -96,8 +96,9 @@ type WorkloadStatus struct {
 }
 
 type VolumeStatus struct {
-	State            VolumeState                       `json:"state"`
-	Robustness       VolumeRobustness                  `json:"robustness"`
+	State      VolumeState      `json:"state"`
+	Robustness VolumeRobustness `json:"robustness"`
+
 	CurrentImage     string                            `json:"currentImage"`
 	KubernetesStatus KubernetesStatus                  `json:"kubernetesStatus"`
 	Conditions       map[VolumeConditionType]Condition `json:"conditions"`
