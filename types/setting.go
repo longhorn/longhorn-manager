@@ -52,6 +52,7 @@ const (
 	SettingNameDefaultLonghornStaticStorageClass = SettingName("default-longhorn-static-storage-class")
 	SettingNameBackupstorePollInterval           = SettingName("backupstore-poll-interval")
 	SettingNameTaintToleration                   = SettingName("taint-toleration")
+	SettingNameCRDAPIVersion                     = SettingName("crd-api-version")
 )
 
 var (
@@ -71,6 +72,7 @@ var (
 		SettingNameDefaultLonghornStaticStorageClass,
 		SettingNameBackupstorePollInterval,
 		SettingNameTaintToleration,
+		SettingNameCRDAPIVersion,
 	}
 )
 
@@ -109,6 +111,7 @@ var (
 		SettingNameDefaultLonghornStaticStorageClass: SettingDefinitionDefaultLonghornStaticStorageClass,
 		SettingNameBackupstorePollInterval:           SettingDefinitionBackupstorePollInterval,
 		SettingNameTaintToleration:                   SettingDefinitionTaintToleration,
+		SettingNameCRDAPIVersion:                     SettingDefinitionCRDAPIVersion,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -264,6 +267,15 @@ Notice that "kubernetes.io" is used as the key of all Kubernetes default tolerat
 		Type:     SettingTypeString,
 		Required: false,
 		ReadOnly: false,
+	}
+
+	SettingDefinitionCRDAPIVersion = SettingDefinition{
+		DisplayName: "Custom Resource API Version",
+		Description: "The current customer resource's API version, e.g. longhorn.io/v1beta1. Set by manager automatically",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    true,
 	}
 )
 
