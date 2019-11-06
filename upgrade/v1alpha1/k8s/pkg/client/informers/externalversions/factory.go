@@ -23,9 +23,9 @@ import (
 	sync "sync"
 	time "time"
 
-	versioned "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	internalinterfaces "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/internalinterfaces"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn"
+	versioned "github.com/longhorn/longhorn-manager/upgrade/v1alpha1/k8s/pkg/client/clientset/versioned"
+	internalinterfaces "github.com/longhorn/longhorn-manager/upgrade/v1alpha1/k8s/pkg/client/informers/externalversions/internalinterfaces"
+	longhorn "github.com/longhorn/longhorn-manager/upgrade/v1alpha1/k8s/pkg/client/informers/externalversions/longhorn"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"

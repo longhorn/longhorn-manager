@@ -3,7 +3,7 @@ package v1alpha1
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/upgrade/v1alpha1/types"
 )
 
 // +genclient

@@ -5,7 +5,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn"
+	"github.com/longhorn/longhorn-manager/upgrade/v1alpha1/k8s/pkg/apis/longhorn"
 )
 
 var (
