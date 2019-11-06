@@ -19,7 +19,7 @@ limitations under the License.
 package versioned
 
 import (
-	longhornv1alpha1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1alpha1"
+	longhornv1alpha1 "github.com/longhorn/longhorn-manager/upgrade/v1alpha1/k8s/pkg/client/clientset/versioned/typed/longhorn/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"

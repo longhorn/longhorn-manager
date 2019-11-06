@@ -19,8 +19,8 @@ limitations under the License.
 package longhorn
 
 import (
-	internalinterfaces "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
+	internalinterfaces "github.com/longhorn/longhorn-manager/upgrade/v1alpha1/k8s/pkg/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "github.com/longhorn/longhorn-manager/upgrade/v1alpha1/k8s/pkg/client/informers/externalversions/longhorn/v1alpha1"
 )
 
 // Interface provides access to each of this group's versions.

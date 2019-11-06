@@ -21,10 +21,10 @@ package v1alpha1
 import (
 	time "time"
 
-	longhornv1alpha1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1alpha1"
-	versioned "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	internalinterfaces "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/listers/longhorn/v1alpha1"
+	longhornv1alpha1 "github.com/longhorn/longhorn-manager/upgrade/v1alpha1/k8s/pkg/apis/longhorn/v1alpha1"
+	versioned "github.com/longhorn/longhorn-manager/upgrade/v1alpha1/k8s/pkg/client/clientset/versioned"
+	internalinterfaces "github.com/longhorn/longhorn-manager/upgrade/v1alpha1/k8s/pkg/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "github.com/longhorn/longhorn-manager/upgrade/v1alpha1/k8s/pkg/client/listers/longhorn/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
