@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,12 +24,9 @@ const (
 
 	ArgNameFlexvolumePluginDir = "--volume-plugin-dir"
 	ArgNameKubeletRootDir      = "--root-dir"
-	ArgNameK3SDataDir          = "--data-dir"
-	ArgShortNameK3SDataDir     = "-d"
 
 	DefaultFlexvolumeDir  = "/usr/libexec/kubernetes/kubelet-plugins/volume/exec/"
 	DefaultKubeletRootDir = "/var/lib/kubelet"
-	DefaultK3SDataDir     = "/var/lib/rancher/k3s"
 
 	KubeletDetectionPodName = "discover-proc-kubelet-cmdline"
 	K3SDetectionPodName     = "discover-proc-k3s-cmdline"
@@ -127,23 +123,14 @@ func detectKubeletRootDir(kubeClient *clientset.Clientset, managerImage, service
 		}
 		return rootDir, nil
 	}
-	// no proc kubelet. then try to detect data-dir and get root-dir in proc k3s
+	// no proc kubelet. then try to check proc k3s
 	k3sCmdline, err := getProcCmdline(kubeClient, managerImage, serviceAccountName, K3SDetectionPodName, GetK3SCmdlineScript, tolerations)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to get cmdline of proc k3s")
 	}
-	// proc k3s exists.
+	// proc k3s exists. For k3s v0.10.0+, its root dir is always the default value
 	if k3sCmdline != "" {
-		dataDir, err := getArgFromCmdline(k3sCmdline, ArgNameK3SDataDir, ArgShortNameK3SDataDir)
-		if err != nil {
-			return "", errors.Wrap(err, "failed to get arg data-dir in cmdline of proc k3s")
-		}
-		if dataDir == "" {
-			logrus.Warnf(`Cmdline of proc k3s found: "%s". But arg "%s" or "%s" not found. Hence default value will be used: "%s"`, k3sCmdline, ArgNameK3SDataDir, ArgShortNameK3SDataDir, DefaultK3SDataDir)
-			dataDir = DefaultK3SDataDir
-		}
-		rootDir := filepath.Join(dataDir, "/agent/kubelet")
-		return rootDir, nil
+		return DefaultKubeletRootDir, nil
 	}
 	// no related proc found. error out
 	return "", fmt.Errorf("failed to get kubelet root dir, no related proc for root-dir detection, error out")
