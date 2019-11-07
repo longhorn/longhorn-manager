@@ -613,3 +613,79 @@ func TolerationListToMap(tolerationList []v1.Toleration) map[string]v1.Toleratio
 	}
 	return res
 }
+
+func RemountVolume(volumeName string) error {
+	devicePath := fmt.Sprintf("/dev/longhorn/%s", volumeName)
+	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
+	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
+	if err != nil {
+		return err
+	}
+
+	// The record schema is like: `<Device Path> <Mount Point> <Mount Options>`
+	res, err := nsExec.Execute("bash", []string{"-c", "mount | grep -v grep | grep ext4 | awk '{print $1,$3,$6}'"})
+	if err != nil {
+		return errors.Wrapf(err, "error using command mount to get mount info")
+	}
+	mountRecords := strings.Split(strings.TrimSpace(res), "\n")
+
+	// Grouping and counting duplicate the volume related mount records
+	mountPoints := map[string]int{}
+	for _, record := range mountRecords {
+		record = strings.TrimSpace(record)
+		if record == "" {
+			continue
+		}
+
+		items := strings.Split(record, " ")
+		if len(items) != 3 {
+			return fmt.Errorf("found invaild record %v", record)
+		}
+		if devicePath == strings.TrimSpace(items[0]) {
+			m := strings.TrimSpace(items[1])
+			if m != "" {
+				if _, exist := mountPoints[m]; exist {
+					mountPoints[m] = mountPoints[m] + 1
+				} else {
+					mountPoints[m] = 1
+				}
+			}
+		}
+	}
+
+	// Check if the mount point used multiple device.
+	// If YES, it means users manually mount some devices for this mount point and we cannot remount it automatically .
+	for _, record := range mountRecords {
+		items := strings.Split(record, " ")
+		m := strings.TrimSpace(items[1])
+		if _, exist := mountPoints[m]; exist {
+			// The mount point also used other devices
+			if devicePath != strings.TrimSpace(items[0]) {
+				logrus.Warnf("The mount point %s used multiple devices, hence Longhorn won't do remount for it", m)
+				delete(mountPoints, m)
+			}
+		}
+	}
+
+	for m, count := range mountPoints {
+		// Unmount n-1 layers for the mount point then mount it
+		for i := count - 1; i > 0; i-- {
+			if _, err := nsExec.Execute("umount", []string{m}); err != nil {
+				return err
+			}
+		}
+		if _, err := nsExec.Execute("mount", []string{devicePath, m}); err != nil {
+			if strings.Contains(err.Error(), "already mounted") {
+				// Use `-o remount` for the valid mount point
+				if _, err := nsExec.Execute("mount", []string{"-o", "remount", m}); err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		}
+
+		logrus.Debugf("Succeed to handle the remount request for volume %v on host path %v", volumeName, m)
+	}
+	return nil
+}
