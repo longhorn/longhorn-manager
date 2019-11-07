@@ -71,8 +71,22 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Error(codes.NotFound, "Volume not mounted")
 	}
 
-	err = mount.CleanupMountPoint(req.GetTargetPath(), mount.New(""), false)
-	if err != nil {
+	mounter := mount.New("")
+	for {
+		if err := mounter.Unmount(targetPath); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		notMnt, err := mounter.IsLikelyNotMountPoint(targetPath)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		if notMnt {
+			break
+		}
+		logrus.Debugf("There are multiple mount layers on mount point %v, will unmount all mount layers for this mount point", targetPath)
+	}
+
+	if err := mount.CleanupMountPoint(targetPath, mounter, false); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	logrus.Debugf("NodeUnpublishVolume: done %s", req.GetVolumeId())
