@@ -17,10 +17,11 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/upgrade"
 	"github.com/longhorn/longhorn-manager/util"
 )
 
-var VERSION = "v0.3.0"
+var VERSION = "VERSION_PLACEHOLDER"
 
 const (
 	FlagEngineImage    = "engine-image"
@@ -106,6 +107,10 @@ func startManager(c *cli.Context) error {
 	}
 
 	done := make(chan struct{})
+
+	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID); err != nil {
+		return err
+	}
 
 	ds, wsc, err := controller.StartControllers(done, currentNodeID, serviceAccount, managerImage, kubeconfigPath, VERSION)
 	if err != nil {
