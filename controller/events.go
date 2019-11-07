@@ -22,4 +22,5 @@ const (
 	EventReasonOrphaned = "Orphaned"
 
 	EventReasonDetachedUnexpectly = "DetachedUnexpectly"
+	EventReasonRemount            = "Remount"
 )

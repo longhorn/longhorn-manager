@@ -590,6 +590,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			if !(v.Status.InitialRestorationRequired || v.Spec.Standby) {
 				v.Status.CurrentNodeID = ""
 			}
+			// users can manually restore the volume and they won't be blocked by this field if remount fails
+			v.Status.RemountRequired = false
 		}
 	}
 
@@ -726,6 +728,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		// reattach volume if detached unexpected and there are still healthy replicas
 		if e.Status.CurrentState == types.InstanceStateError && v.Status.CurrentNodeID != "" {
 			v.Status.PendingNodeID = v.Status.CurrentNodeID
+			// remount the reattached volumes later if necessary
+			v.Status.RemountRequired = true
 			msg := fmt.Sprintf("Engine of volume %v dead unexpectedly, reattach the volume", v.Name)
 			logrus.Warnf(msg)
 			vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonDetachedUnexpectly, msg)
@@ -938,6 +942,16 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 				// The initial full restoration is complete.
 				v.Status.InitialRestorationRequired = false
 			}
+		}
+
+		if v.Status.RemountRequired {
+			if err := util.RemountVolume(v.Name); err != nil {
+				return err
+			}
+			v.Status.RemountRequired = false
+			msg := fmt.Sprintf("Volume %v has been remounted on node %v", v.Name, v.Status.CurrentNodeID)
+			logrus.Infof(msg)
+			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonRemount, msg)
 		}
 
 		v.Status.State = types.VolumeStateAttached
