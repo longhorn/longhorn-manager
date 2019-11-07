@@ -1,8 +1,6 @@
 package v1alpha1
 
 import (
-	"fmt"
-
 	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -277,7 +275,8 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 		}
 	}
 
-	return fmt.Errorf("upgrade wasn't completed")
+	logrus.Infof("%v: completed", upgradeLogPrefix)
+	return nil
 }
 
 func copyObjectMetaFromV1alpha1(to, from *metav1.ObjectMeta) {
