@@ -336,8 +336,8 @@ func (cs *ControllerServer) validateVolumeCapabilities(volumeCaps []*csi.VolumeC
 		if cap.GetMount() == nil && cap.GetBlock() == nil {
 			return status.Error(codes.InvalidArgument, "cannot have both mount and block access type be undefined")
 		}
-		if cap.GetBlock() != nil {
-			return status.Error(codes.InvalidArgument, "access type block is not supported")
+		if cap.GetMount() != nil && cap.GetBlock() != nil {
+			return status.Error(codes.InvalidArgument, "cannot have both block and mount access type")
 		}
 
 		supportedMode := false
