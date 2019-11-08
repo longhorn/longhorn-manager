@@ -2,6 +2,7 @@ package csi
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -12,6 +13,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/mount"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 type NodeServer struct {
@@ -31,13 +33,31 @@ func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) *Node
 func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	logrus.Infof("NodeServer NodePublishVolume req: %v", req)
 
+	existVol, err := ns.apiClient.Volume.ById(req.GetVolumeId())
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if existVol == nil {
+		msg := fmt.Sprintf("NodePublishVolume: the volume %s not exists", req.GetVolumeId())
+		logrus.Warn(msg)
+		return nil, status.Error(codes.NotFound, msg)
+	}
+
+	if len(existVol.Controllers) != 1 {
+		return nil, status.Errorf(codes.InvalidArgument, "There should be only one controller for volume %s", req.GetVolumeId())
+	}
+	if existVol.State != string(types.VolumeStateAttached) || existVol.DisableFrontend ||
+		existVol.Frontend != string(types.VolumeFrontendBlockDev) || existVol.Controllers[0].Endpoint == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "There is no block device frontend for volume %s", req.GetVolumeId())
+	}
+
 	readOnly := req.GetReadonly()
 	if readOnly {
 		return nil, status.Error(codes.FailedPrecondition, "Not support readOnly")
 	}
 
 	targetPath := req.GetTargetPath()
-	devicePath := filepath.Join("/dev/longhorn/", req.GetVolumeId())
+	devicePath := existVol.Controllers[0].Endpoint
 	diskMounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOsExec()}
 
 	vc := req.GetVolumeCapability()
