@@ -31,7 +31,7 @@ func (m *Manager) Run(driverName, nodeID, endpoint, csiVersion, identityVersion,
 
 	// Create GRPC servers
 	m.ids = NewIdentityServer(driverName, identityVersion)
-	m.ns = NewNodeServer(nodeID)
+	m.ns = NewNodeServer(apiClient, nodeID)
 	m.cs = NewControllerServer(apiClient, nodeID)
 	s := NewNonBlockingGRPCServer()
 	s.Start(endpoint, m.ids, m.cs, m.ns)

@@ -9,15 +9,20 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/kubernetes/pkg/util/mount"
+
+	longhornclient "github.com/longhorn/longhorn-manager/client"
 )
 
 type NodeServer struct {
+	apiClient *longhornclient.RancherClient
+
 	nodeID string
 }
 
-func NewNodeServer(nodeID string) *NodeServer {
+func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) *NodeServer {
 	return &NodeServer{
-		nodeID: nodeID,
+		apiClient: apiClient,
+		nodeID:    nodeID,
 	}
 }
 
