@@ -19,6 +19,9 @@ import (
 const (
 	FlagFromVersion = "from-version"
 	FlagToVersion   = "to-version"
+
+	RetryCounts   = 100
+	RetryInterval = 3 * time.Second
 )
 
 var ownerKindReplica = longhorn.SchemeGroupVersion.WithKind("Replica").String()
@@ -108,7 +111,9 @@ func (u *postUpgrader) Run() error {
 	logrus.Infof("from-version: %v", u.fromVersion)
 	logrus.Infof("  to-version: %v", u.toVersion)
 
-	u.waitManagerUpgradeComplete()
+	if err := u.waitManagerUpgradeComplete(); err != nil {
+		return err
+	}
 
 	if err := u.deleteOrphanedReplicaJobs(); err != nil {
 		return err
@@ -117,10 +122,9 @@ func (u *postUpgrader) Run() error {
 	return nil
 }
 
-func (u *postUpgrader) waitManagerUpgradeComplete() {
-	t := time.NewTicker(3 * time.Second)
-	defer t.Stop()
-	for range t.C {
+func (u *postUpgrader) waitManagerUpgradeComplete() error {
+	complete := false
+	for i := 0; i < RetryCounts; i++ {
 		ds, err := u.kubeClient.AppsV1().DaemonSets(u.namespace).Get(
 			types.LonghornManagerDaemonSetName, metav1.GetOptions{})
 		if err != nil {
@@ -137,7 +141,7 @@ func (u *postUpgrader) waitManagerUpgradeComplete() {
 			logrus.Warningf("couldn't list pods: %v", err)
 			continue
 		}
-		complete := true
+		complete = true
 		for _, pod := range podList.Items {
 			if app, ok := pod.Labels["app"]; !ok || app != types.LonghornManagerDaemonSetName {
 				continue
@@ -151,7 +155,13 @@ func (u *postUpgrader) waitManagerUpgradeComplete() {
 			logrus.Infof("Manager upgrade complete")
 			break
 		}
+		time.Sleep(RetryInterval)
 	}
+
+	if !complete {
+		return fmt.Errorf("manager upgrade is still in progress")
+	}
+	return nil
 }
 
 func (u *postUpgrader) deleteOrphanedReplicaJobs() error {
