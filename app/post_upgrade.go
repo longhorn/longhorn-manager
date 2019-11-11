@@ -115,9 +115,6 @@ func (u *postUpgrader) Run() error {
 		return err
 	}
 
-	if err := u.deleteOrphanedReplicaJobs(); err != nil {
-		return err
-	}
 	// future routines go here
 	return nil
 }
@@ -160,30 +157,6 @@ func (u *postUpgrader) waitManagerUpgradeComplete() error {
 
 	if !complete {
 		return fmt.Errorf("manager upgrade is still in progress")
-	}
-	return nil
-}
-
-func (u *postUpgrader) deleteOrphanedReplicaJobs() error {
-	v032, err := version.ParseGeneric("0.3.2")
-	if err != nil {
-		return err
-	}
-	if u.fromVersion.LessThan(v032) && u.toVersion.AtLeast(v032) {
-		logrus.WithFields(logrus.Fields{"version": v032}).Info("Deleting orphaned replica cleanup jobs")
-		jobs, err := u.kubeClient.BatchV1().Jobs(u.namespace).List(metav1.ListOptions{})
-		if err != nil {
-			return err
-		}
-		for _, job := range jobs.Items {
-			if len(job.OwnerReferences) == 1 && job.OwnerReferences[0].Kind == ownerKindReplica {
-				if err := u.kubeClient.BatchV1().Jobs(u.namespace).Delete(job.Name, &metav1.DeleteOptions{}); err != nil {
-					return err
-				}
-				logrus.WithFields(logrus.Fields{"job": job.Name}).Info("Deleted orphaned job")
-			}
-		}
-		logrus.WithFields(logrus.Fields{"version": v032}).Info("Successfully deleted orphaned replica cleanup jobs")
 	}
 	return nil
 }
