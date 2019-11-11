@@ -19,13 +19,10 @@ import (
 const (
 	DetectPodMaxPolls = 120
 
-	ArgFlexvolumePluginDir = "volume-plugin-dir"
-	ArgKubeletRootDir      = "root-dir"
+	ArgKubeletRootDir = "root-dir"
 
-	ArgNameFlexvolumePluginDir = "--volume-plugin-dir"
-	ArgNameKubeletRootDir      = "--root-dir"
+	ArgNameKubeletRootDir = "--root-dir"
 
-	DefaultFlexvolumeDir  = "/usr/libexec/kubernetes/kubelet-plugins/volume/exec/"
 	DefaultKubeletRootDir = "/var/lib/kubelet"
 
 	KubeletDetectionPodName = "discover-proc-kubelet-cmdline"
@@ -70,12 +67,6 @@ const (
 
 func getProcArg(kubeClient *clientset.Clientset, managerImage, serviceAccountName, name string, tolerations []v1.Toleration) (string, error) {
 	switch name {
-	case ArgFlexvolumePluginDir:
-		dir, err := detectFlexvolumeDir(kubeClient, managerImage, serviceAccountName, tolerations)
-		if err != nil {
-			return "", errors.Wrap(err, `failed to get arg volume-plugin-dir. Need to specify "--flexvolume-dir" in your Longhorn deployment yaml.`)
-		}
-		return dir, nil
 	case ArgKubeletRootDir:
 		dir, err := detectKubeletRootDir(kubeClient, managerImage, serviceAccountName, tolerations)
 		if err != nil {
@@ -84,25 +75,6 @@ func getProcArg(kubeClient *clientset.Clientset, managerImage, serviceAccountNam
 		return dir, nil
 	}
 	return "", fmt.Errorf("getting arg %v is not supported", name)
-}
-
-func detectFlexvolumeDir(kubeClient *clientset.Clientset, managerImage, serviceAccountName string, tolerations []v1.Toleration) (string, error) {
-	kubeletCmdline, err := getProcCmdline(kubeClient, managerImage, serviceAccountName, KubeletDetectionPodName, GetKubeletCmdlineScript, tolerations)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to get cmdline of proc kubelet")
-	}
-	if kubeletCmdline == "" {
-		return "", fmt.Errorf("failed to get flexvolume dir, no related proc for volume-plugin-dir detection, error out")
-	}
-	dir, err := getArgFromCmdline(kubeletCmdline, ArgNameFlexvolumePluginDir)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to get arg volume-plugin-dir in cmdline of proc kubelet")
-	}
-	if dir == "" {
-		logrus.Warnf(`Cmdline of proc kubelet found: "%s". But arg "%s" not found. Hence default value will be used: "%s"`, kubeletCmdline, ArgNameFlexvolumePluginDir, DefaultFlexvolumeDir)
-		dir = DefaultFlexvolumeDir
-	}
-	return dir, nil
 }
 
 func detectKubeletRootDir(kubeClient *clientset.Clientset, managerImage, serviceAccountName string, tolerations []v1.Toleration) (string, error) {
@@ -192,7 +164,7 @@ func deployDetectionPod(kubeClient *clientset.Clientset, namespace, managerImage
 			ServiceAccountName: serviceAccountName,
 			Tolerations:        tolerations,
 			Containers: []v1.Container{
-				v1.Container{
+				{
 					Name:    name,
 					Image:   managerImage,
 					Command: []string{"/bin/bash"},
