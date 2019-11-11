@@ -53,8 +53,7 @@ const (
 )
 
 const (
-	CSIMinVersion                  = "v1.10.0"
-	KubeletPluginWatcherMinVersion = "v1.12.0"
+	CSIMinVersion = "v1.14.0"
 )
 
 type ReplicaMode string
