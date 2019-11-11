@@ -8,7 +8,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -17,9 +16,6 @@ import (
 )
 
 const (
-	FlagFromVersion = "from-version"
-	FlagToVersion   = "to-version"
-
 	RetryCounts   = 100
 	RetryInterval = 3 * time.Second
 )
@@ -30,16 +26,6 @@ func PostUpgradeCmd() cli.Command {
 	return cli.Command{
 		Name: "post-upgrade",
 		Flags: []cli.Flag{
-			cli.StringFlag{
-				Name:  FlagFromVersion,
-				Usage: "Specify version we upgraded from",
-			},
-			cli.StringFlag{
-				Name:   FlagToVersion,
-				Value:  VERSION,
-				Usage:  "Specify version we upgraded to",
-				Hidden: true,
-			},
 			cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",
@@ -76,41 +62,19 @@ func postUpgrade(c *cli.Context) error {
 		return errors.Wrap(err, "unable to get k8s client")
 	}
 
-	fromVersion, err := version.ParseGeneric(c.String(FlagFromVersion))
-	if err != nil {
-		return errors.Wrapf(err, "error parsing from-version %s",
-			c.String(FlagFromVersion))
-	}
-
-	toVersion, err := version.ParseGeneric(c.String(FlagToVersion))
-	if err != nil {
-		return errors.Wrapf(err, "error parsing to-version %s",
-			c.String(FlagToVersion))
-	}
-
-	if fromVersion.AtLeast(toVersion) {
-		return fmt.Errorf("from-version %v must be less than to-version %v",
-			fromVersion, toVersion)
-	}
-
-	return newPostUpgrader(namespace, kubeClient, fromVersion, toVersion).Run()
+	return newPostUpgrader(namespace, kubeClient).Run()
 }
 
 type postUpgrader struct {
-	namespace   string
-	kubeClient  kubernetes.Interface
-	fromVersion *version.Version
-	toVersion   *version.Version
+	namespace  string
+	kubeClient kubernetes.Interface
 }
 
-func newPostUpgrader(namespace string, kubeClient kubernetes.Interface, fromVersion, toVersion *version.Version) *postUpgrader {
-	return &postUpgrader{namespace, kubeClient, fromVersion, toVersion}
+func newPostUpgrader(namespace string, kubeClient kubernetes.Interface) *postUpgrader {
+	return &postUpgrader{namespace, kubeClient}
 }
 
 func (u *postUpgrader) Run() error {
-	logrus.Infof("from-version: %v", u.fromVersion)
-	logrus.Infof("  to-version: %v", u.toVersion)
-
 	if err := u.waitManagerUpgradeComplete(); err != nil {
 		return err
 	}
