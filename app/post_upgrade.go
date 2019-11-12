@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	RetryCounts   = 100
-	RetryInterval = 3 * time.Second
+	RetryCounts   = 360
+	RetryInterval = 5 * time.Second
 )
 
 var ownerKindReplica = longhorn.SchemeGroupVersion.WithKind("Replica").String()
