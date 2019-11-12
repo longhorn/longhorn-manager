@@ -43,7 +43,7 @@ spec:
           mountPath: /var/lib/rancher/longhorn/
           mountPropagation: Bidirectional
         - name: longhorn-default-setting
-          mountPath: /var/lib/longhorn/setting/
+          mountPath: /var/lib/longhorn-setting/
         env:
         - name: POD_NAMESPACE
           valueFrom:
@@ -59,7 +59,7 @@ spec:
               fieldPath: spec.nodeName
         # Should be: mount path of the volume longhorn-default-setting + the key of the configmap data in 04-default-setting.yaml
         - name: DEFAULT_SETTING_PATH
-          value: /var/lib/longhorn/setting/default-setting.yaml
+          value: /var/lib/longhorn-setting/default-setting.yaml
       volumes:
       - name: dev
         hostPath:
