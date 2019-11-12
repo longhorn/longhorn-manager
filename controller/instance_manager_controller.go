@@ -352,7 +352,13 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		switch pod.Status.Phase {
 		case v1.PodPending:
 			if im.Status.CurrentState == types.InstanceManagerStateUnknown {
-				im.Status.CurrentState = types.InstanceManagerStateStarting
+				if len(pod.Status.ContainerStatuses) != 0 && pod.Status.ContainerStatuses[0].State.Terminated != nil {
+					im.Status.CurrentState = types.InstanceManagerStateError
+					logrus.Errorf("Instance Manager %v pod terminated. Details %+v. Set state to Error.", im.Name,
+						pod.Status.ContainerStatuses[0].State.Terminated)
+				} else {
+					im.Status.CurrentState = types.InstanceManagerStateStarting
+				}
 			} else if im.Status.CurrentState != types.InstanceManagerStateStarting {
 				im.Status.CurrentState = types.InstanceManagerStateError
 				logrus.Errorf("Instance Manager %v is state %v but the related pod is pending.", im.Name, im.Status.CurrentState)
