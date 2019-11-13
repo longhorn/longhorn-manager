@@ -4,9 +4,9 @@ set -x
 
 namespace=longhorn-system
 
-clean_crs() {
+clean_crds() {
 	crd=$1
-	kubectl -n $namespace get $crd --no-headers|cut -f1 -d" "| xargs kubectl -n $namespace patch $crd --type='merge' -p '{"metadata":{"finalizers": null}}'
+	kubectl -n $namespace get $crd --no-headers|cut -f1 -d" "| xargs kubectl -n $namespace patch $crd --type='merge' -p '{"metadata":{"finalizers": null, "ownerReferences":null}}'
 	kubectl -n $namespace delete $crd --all
 	kubectl -n $namespace delete crd $crd
 }
@@ -46,7 +46,5 @@ esac
 
 for crd in "${list[@]}"
 do
-	clean_crs $crd
+	clean_crds $crd
 done
-
-#kubectl -n longhorn-system get instancemanagers.longhorn.rancher.io --no-headers|cut -f1 -d" "| xargs kubectl -n longhorn-system patch instancemanagers.longhorn.rancher.io --type='merge' -p '{"metadata":{"finalizers": null}}'
