@@ -322,11 +322,6 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		return err
 	}
 
-	// TODO: Will remove this reference kind correcting after all Longhorn components having used the new kinds
-	if len(im.OwnerReferences) < 1 || im.OwnerReferences[0].Kind != types.LonghornKindEngineImage {
-		im.OwnerReferences = datastore.GetOwnerReferencesForEngineImage(image)
-	}
-
 	pod, err := imc.ds.GetInstanceManagerPod(im.Name)
 	if err != nil {
 		return errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)

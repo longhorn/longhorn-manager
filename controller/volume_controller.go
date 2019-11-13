@@ -606,15 +606,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 		newVolume = true
 	}
 
-	// TODO: Will remove this reference kind correcting after all Longhorn components having used the new kinds
-	if len(e.OwnerReferences) < 1 || e.OwnerReferences[0].Kind != types.LonghornKindVolume {
-		e.OwnerReferences = datastore.GetOwnerReferencesForVolume(v)
-		e, err = vc.ds.UpdateEngine(e)
-		if err != nil {
-			return err
-		}
-	}
-
 	if len(rs) == 0 {
 		// first time creation
 		if err = vc.replenishReplicas(v, e, rs); err != nil {
@@ -659,15 +650,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 
 	allScheduled := true
 	for _, r := range rs {
-		// TODO: Will remove this reference kind correcting after all Longhorn components having used the new kinds
-		if len(r.OwnerReferences) < 1 || r.OwnerReferences[0].Kind != types.LonghornKindVolume {
-			r.OwnerReferences = datastore.GetOwnerReferencesForVolume(v)
-			r, err = vc.ds.UpdateReplica(r)
-			if err != nil {
-				return err
-			}
-		}
-
 		// check whether the replica need to be scheduled
 		if r.Spec.NodeID != "" {
 			continue
