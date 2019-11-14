@@ -3,12 +3,8 @@ github.com/Microsoft/go-winio
 github.com/Microsoft/go-winio/pkg/guid
 # github.com/RoaringBitmap/roaring v0.4.18
 github.com/RoaringBitmap/roaring
-# github.com/beorn7/perks v1.0.1
-github.com/beorn7/perks/quantile
 # github.com/c9s/goprocinfo v0.0.0-20190309065803-0b2ad9ac246b
 github.com/c9s/goprocinfo/linux
-# github.com/cespare/xxhash/v2 v2.1.0
-github.com/cespare/xxhash/v2
 # github.com/container-storage-interface/spec v1.1.0
 github.com/container-storage-interface/spec/lib/go/csi
 # github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d
@@ -74,13 +70,11 @@ github.com/kr/pretty
 github.com/kr/text
 # github.com/kubernetes-csi/csi-lib-utils v0.6.1
 github.com/kubernetes-csi/csi-lib-utils/protosanitizer
-# github.com/kubernetes-sigs/sig-storage-lib-external-provisioner v3.1.0+incompatible
-github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller
 # github.com/longhorn/backupstore v0.0.0-20191024011200-18aa87a9e271
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-iscsi-helper v0.0.0-20191018221834-9c502e2401f4
+# github.com/longhorn/go-iscsi-helper v0.0.0-20191114213333-9143c9e5f2f6
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/util
 # github.com/longhorn/longhorn-engine v0.6.3-0.20191024174101-ec70e76d6911
@@ -89,8 +83,6 @@ github.com/longhorn/longhorn-engine/pkg/instance-manager/client
 github.com/longhorn/longhorn-engine/pkg/instance-manager/rpc
 github.com/longhorn/longhorn-engine/pkg/instance-manager/types
 github.com/longhorn/longhorn-engine/pkg/instance-manager/util
-# github.com/matttproud/golang_protobuf_extensions v1.0.1
-github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/miekg/dns v1.1.22
 github.com/miekg/dns
 # github.com/mitchellh/mapstructure v1.1.2
@@ -111,20 +103,6 @@ github.com/philhofer/fwd
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus/client_golang v1.2.1
-github.com/prometheus/client_golang/prometheus
-github.com/prometheus/client_golang/prometheus/internal
-github.com/prometheus/client_golang/prometheus/promhttp
-# github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
-github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.7.0
-github.com/prometheus/common/expfmt
-github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg
-github.com/prometheus/common/model
-# github.com/prometheus/procfs v0.0.5
-github.com/prometheus/procfs
-github.com/prometheus/procfs/internal/fs
-github.com/prometheus/procfs/internal/util
 # github.com/rancher/go-rancher v0.1.1-0.20190307222549-9756097e5e4c
 github.com/rancher/go-rancher/api
 github.com/rancher/go-rancher/client
@@ -530,8 +508,6 @@ k8s.io/client-go/util/retry
 k8s.io/client-go/util/workqueue
 # k8s.io/cloud-provider v0.0.0-20191004111010-9775d7be8494
 k8s.io/cloud-provider/features
-k8s.io/cloud-provider/volume
-k8s.io/cloud-provider/volume/helpers
 # k8s.io/klog v0.3.0
 k8s.io/klog
 # k8s.io/kube-openapi v0.0.0-20190918143330-0270cf2f1c1d
@@ -574,7 +550,6 @@ k8s.io/utils/path
 k8s.io/utils/pointer
 k8s.io/utils/trace
 # sigs.k8s.io/sig-storage-lib-external-provisioner v4.0.1+incompatible
-sigs.k8s.io/sig-storage-lib-external-provisioner/controller/metrics
 sigs.k8s.io/sig-storage-lib-external-provisioner/util
 # sigs.k8s.io/yaml v1.1.0
 sigs.k8s.io/yaml

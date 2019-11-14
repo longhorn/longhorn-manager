@@ -35,9 +35,8 @@ require (
 	github.com/jinzhu/copier v0.0.0-20190924061706-b57f9002281a
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/kubernetes-sigs/sig-storage-lib-external-provisioner v3.1.0+incompatible
 	github.com/longhorn/backupstore v0.0.0-20191024011200-18aa87a9e271
-	github.com/longhorn/go-iscsi-helper v0.0.0-20191018221834-9c502e2401f4
+	github.com/longhorn/go-iscsi-helper v0.0.0-20191114213333-9143c9e5f2f6
 	github.com/longhorn/longhorn-engine v0.6.3-0.20191024174101-ec70e76d6911
 	github.com/miekg/dns v1.1.22 // indirect
 	github.com/mitchellh/mapstructure v1.1.2
@@ -68,7 +67,7 @@ require (
 	k8s.io/apimachinery v0.0.0-20191016225534-b1267f8c42b4
 	k8s.io/apiserver v0.0.0-20191015220424-a5d070e3855f // indirect
 	k8s.io/client-go v11.0.1-0.20191004102930-01520b8320fc+incompatible
-	k8s.io/cloud-provider v0.0.0-20191004111010-9775d7be8494
+	k8s.io/cloud-provider v0.0.0-20191004111010-9775d7be8494 // indirect
 	k8s.io/kube-openapi v0.0.0-20190918143330-0270cf2f1c1d // indirect
 	k8s.io/kubernetes v1.14.8
 	k8s.io/utils v0.0.0-20191010214722-8d271d903fe4
