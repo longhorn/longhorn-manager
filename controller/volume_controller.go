@@ -719,10 +719,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 			for _, r := range rs {
 				if r.Status.CurrentState == types.InstanceStateRunning {
 					r.Spec.LogRequested = true
-					r, err = vc.ds.UpdateReplica(r)
-					if err != nil {
-						return err
-					}
 					rs[r.Name] = r
 				}
 			}
