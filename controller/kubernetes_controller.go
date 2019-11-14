@@ -254,7 +254,7 @@ func (kc *KubernetesController) syncKubernetesStatus(key string) (err error) {
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
-			logrus.Debugf("Requeue for volume %v due to conflict", volumeName)
+			logrus.Debugf("Requeue for volume %v due to conflict: %v", volumeName, err)
 			kc.enqueueVolumeChange(volume)
 			err = nil
 		}

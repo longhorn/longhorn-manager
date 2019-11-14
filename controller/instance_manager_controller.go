@@ -306,7 +306,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 			_, err = imc.ds.UpdateInstanceManagerStatus(im)
 		}
 		if apierrors.IsConflict(errors.Cause(err)) {
-			logrus.Debugf("Requeue %v due to conflict", key)
+			logrus.Debugf("Requeue %v due to conflict: %v", key, err)
 			imc.enqueueInstanceManager(im)
 			err = nil
 		}
