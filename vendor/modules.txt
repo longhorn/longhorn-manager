@@ -77,7 +77,7 @@ github.com/longhorn/backupstore/util
 # github.com/longhorn/go-iscsi-helper v0.0.0-20191114213333-9143c9e5f2f6
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/longhorn-engine v0.6.3-0.20191024174101-ec70e76d6911
+# github.com/longhorn/longhorn-engine v0.7.0-rc2.0.20191114220907-3b14850979ff
 github.com/longhorn/longhorn-engine/pkg/instance-manager/api
 github.com/longhorn/longhorn-engine/pkg/instance-manager/client
 github.com/longhorn/longhorn-engine/pkg/instance-manager/rpc
