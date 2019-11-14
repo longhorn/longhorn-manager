@@ -266,7 +266,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
-			logrus.Debugf("Requeue %v due to conflict", key)
+			logrus.Debugf("Requeue %v due to conflict: %v", key, err)
 			ec.enqueueEngine(engine)
 			err = nil
 		}

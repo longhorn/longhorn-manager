@@ -300,7 +300,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			_, err = ic.ds.UpdateEngineImageStatus(engineImage)
 		}
 		if apierrors.IsConflict(errors.Cause(err)) {
-			logrus.Debugf("Requeue %v due to conflict", key)
+			logrus.Debugf("Requeue %v due to conflict: %v", key, err)
 			ic.enqueueEngineImage(engineImage)
 			err = nil
 		}
