@@ -37,7 +37,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backupstore v0.0.0-20191024011200-18aa87a9e271
 	github.com/longhorn/go-iscsi-helper v0.0.0-20191114213333-9143c9e5f2f6
-	github.com/longhorn/longhorn-engine v0.6.3-0.20191024174101-ec70e76d6911
+	github.com/longhorn/longhorn-engine v0.7.0-rc2.0.20191114220907-3b14850979ff
 	github.com/miekg/dns v1.1.22 // indirect
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect

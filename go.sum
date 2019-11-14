@@ -144,12 +144,10 @@ github.com/kubernetes-csi/csi-lib-utils v0.6.1 h1:+AZ58SRSRWh2vmMoWAAGcv7x6fIyBM
 github.com/kubernetes-csi/csi-lib-utils v0.6.1/go.mod h1:GVmlUmxZ+SUjVLXicRFjqWUUvWez0g0Y78zNV9t7KfQ=
 github.com/longhorn/backupstore v0.0.0-20191024011200-18aa87a9e271 h1:J8r0K0eiLKRxcYLIHCb+ydD2RfYp9VP6ymHRFfhRJpM=
 github.com/longhorn/backupstore v0.0.0-20191024011200-18aa87a9e271/go.mod h1:TEcXB6izcrf4DMxnAhEKasrrmRq0nK4wlTUVrDIZaYg=
-github.com/longhorn/go-iscsi-helper v0.0.0-20191018221834-9c502e2401f4 h1:fQM/Nk3EV2S4RvYPkBGc4SUXqFIhe7Arz6av+H8CNhM=
-github.com/longhorn/go-iscsi-helper v0.0.0-20191018221834-9c502e2401f4/go.mod h1:3RTrAwLd6uaku/4wPE0KkSQI2OmhPgGO1SQ2Hbix5hY=
 github.com/longhorn/go-iscsi-helper v0.0.0-20191114213333-9143c9e5f2f6 h1:KdoXalE4r4AOgi+LMJx9lOZB/xE3EVXKAVwuPAROdKA=
 github.com/longhorn/go-iscsi-helper v0.0.0-20191114213333-9143c9e5f2f6/go.mod h1:3RTrAwLd6uaku/4wPE0KkSQI2OmhPgGO1SQ2Hbix5hY=
-github.com/longhorn/longhorn-engine v0.6.3-0.20191024174101-ec70e76d6911 h1:6nk62RyvgIRCfnNx0LDVqi2lF0nRHJbf9bIzjX1asZM=
-github.com/longhorn/longhorn-engine v0.6.3-0.20191024174101-ec70e76d6911/go.mod h1:jH7idjMgVMWRb+ulApNmkODlp1ADXw1agw6uFRd1tfE=
+github.com/longhorn/longhorn-engine v0.7.0-rc2.0.20191114220907-3b14850979ff h1:yF9U5w57TKHIOxUvO58Bkg7oXW2F0XO6GlgKFuah5ww=
+github.com/longhorn/longhorn-engine v0.7.0-rc2.0.20191114220907-3b14850979ff/go.mod h1:PLcKr+kfexgoyOtGO0XNdf8PQzFmAoW4H8f24Xc+PHo=
 github.com/longhorn/sparse-tools v0.0.0-20191018221755-2c0ba6f832b2/go.mod h1:1WSSJRDNret4VKADAzvD49oaVt1/idYVWBL8TiyevRk=
 github.com/mailru/easyjson v0.0.0-20160728113105-d5b7844b561a/go.mod h1:C1wdFJiN94OJF2b5HbByQZoLdCWB1Yqtg26g4irojpc=
 github.com/mattn/go-colorable v0.1.4/go.mod h1:U0ppj6V5qS13XJ6of8GYAs25YV2eR4EVcfRqFIhoBtE=
