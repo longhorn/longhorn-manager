@@ -18,6 +18,10 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
+const (
+	LonghornEngineV062 = "longhornio/longhorn-engine:v0.6.2"
+)
+
 type VolumeManager struct {
 	ds *datastore.DataStore
 
@@ -537,6 +541,13 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 	v, err = m.ds.GetVolume(volumeName)
 	if err != nil {
 		return nil, err
+	}
+
+	if v.Status.State != types.VolumeStateDetached {
+		//TODO Remove this condition after implementing https://github.com/longhorn/longhorn/issues/880
+		if v.Spec.EngineImage == LonghornEngineV062 {
+			return nil, fmt.Errorf("cannot live upgrade from %v", LonghornEngineV062)
+		}
 	}
 
 	if v.Spec.EngineImage == image {
