@@ -422,6 +422,34 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 	return v, nil
 }
 
+func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to expand volume %v", volumeName)
+	}()
+
+	v, err = m.ds.GetVolume(volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Status.State != types.VolumeStateDetached && v.Status.State != types.VolumeStateAttached {
+		return nil, fmt.Errorf("invalid volume state to expand: %v", v.Status.State)
+	}
+
+	if v.Spec.Size >= size {
+		return nil, fmt.Errorf("cannot expand volume %v with current size %v to a smaller or the same size %v", v.Name, v.Spec.Size, size)
+	}
+	v.Spec.Size = size
+
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Debugf("Expanding volume %v to size %v", v.Name, size)
+	return v, nil
+}
+
 func (m *VolumeManager) UpdateRecurringJobs(volumeName string, jobs []types.RecurringJob) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to update volume recurring jobs for %v", volumeName)

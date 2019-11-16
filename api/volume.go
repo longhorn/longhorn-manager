@@ -333,6 +333,43 @@ func (s *Server) VolumeActivate(rw http.ResponseWriter, req *http.Request) error
 	return s.responseWithVolume(rw, req, "", v)
 }
 
+func (s *Server) VolumeExpand(rw http.ResponseWriter, req *http.Request) error {
+	var input ExpandInput
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	size, err := util.ConvertSize(input.Size)
+	if err != nil {
+		return fmt.Errorf("fail to parse size %v", err)
+	}
+
+	id := mux.Vars(req)["name"]
+
+	vol, err := s.m.Get(id)
+	if err != nil {
+		return errors.Wrap(err, "unable to get volume")
+	}
+	if vol.Spec.Standby {
+		return fmt.Errorf("cannot manually expand standby volume %v", vol.Name)
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.Expand(id, size)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	}
+
+	return s.responseWithVolume(rw, req, "", v)
+}
+
 func (s *Server) PVCreate(rw http.ResponseWriter, req *http.Request) error {
 	var input PVCreateInput
 	id := mux.Vars(req)["name"]

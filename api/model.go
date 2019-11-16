@@ -91,6 +91,7 @@ type Instance struct {
 
 type Controller struct {
 	Instance
+	Size                   string `json:"size"`
 	Endpoint               string `json:"endpoint"`
 	LastRestoredBackup     string `json:"lastRestoredBackup"`
 	RequestedBackupRestore string `json:"requestedBackupRestore"`
@@ -165,6 +166,10 @@ type PVCCreateInput struct {
 
 type ActivateInput struct {
 	Frontend string `json:"frontend"`
+}
+
+type ExpandInput struct {
+	Size string `json:"size"`
 }
 
 type Node struct {
@@ -279,6 +284,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
 	schemas.AddType("salvageInput", SalvageInput{})
 	schemas.AddType("activateInput", ActivateInput{})
+	schemas.AddType("expandInput", ExpandInput{})
 	schemas.AddType("engineUpgradeInput", EngineUpgradeInput{})
 	schemas.AddType("replica", Replica{})
 	schemas.AddType("controller", Controller{})
@@ -434,6 +440,9 @@ func volumeSchema(volume *client.Schema) {
 		},
 		"activate": {
 			Input: "activateInput",
+		},
+		"expand": {
+			Input: "expandInput",
 		},
 
 		"snapshotPurge": {},
@@ -621,6 +630,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 				CurrentImage:        e.Status.CurrentImage,
 				InstanceManagerName: e.Status.InstanceManagerName,
 			},
+			Size:                   strconv.FormatInt(e.Status.CurrentSize, 10),
 			Endpoint:               e.Status.Endpoint,
 			LastRestoredBackup:     e.Status.LastRestoredBackup,
 			RequestedBackupRestore: e.Spec.RequestedBackupRestore,
@@ -747,6 +757,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["attach"] = struct{}{}
 			actions["recurringUpdate"] = struct{}{}
 			actions["activate"] = struct{}{}
+			actions["expand"] = struct{}{}
 			actions["replicaRemove"] = struct{}{}
 			actions["engineUpgrade"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
@@ -756,6 +767,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		case types.VolumeStateAttached:
 			actions["detach"] = struct{}{}
 			actions["activate"] = struct{}{}
+			actions["expand"] = struct{}{}
 			actions["snapshotPurge"] = struct{}{}
 			actions["snapshotCreate"] = struct{}{}
 			actions["snapshotList"] = struct{}{}
