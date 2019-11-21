@@ -21,27 +21,33 @@ func upgradeLonghornRelatedComponents(kubeClient *clientset.Clientset, namespace
 		return err
 	}
 	for _, pv := range pvList.Items {
-		if v, exist := pv.Annotations[PVAnnotationCSIProvisioner]; exist {
-			if v == types.DeprecatedProvisionerName {
-				pv.Annotations[PVAnnotationCSIProvisioner] = types.LonghornDriverName
-				_, err := kubeClient.CoreV1().PersistentVolumes().Update(&pv)
-				if err != nil {
-					return err
-				}
-			}
-
-			pvc, err := kubeClient.CoreV1().PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(pv.Spec.ClaimRef.Name, metav1.GetOptions{})
-			if err != nil {
-				return err
-			}
-			if v, exist := pvc.Annotations[PVCAnnotationCSIProvisioner]; exist && v == types.DeprecatedProvisionerName {
-				pvc.Annotations[PVCAnnotationCSIProvisioner] = types.LonghornDriverName
-				_, err := kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Update(pvc)
-				if err != nil {
-					return err
-				}
-			}
+		// Make sure we are handling the Longhorn related PVs only
+		if v, exist := pv.Annotations[PVAnnotationCSIProvisioner]; !exist || v != types.DeprecatedProvisionerName {
+			continue
 		}
+		pv.Annotations[PVAnnotationCSIProvisioner] = types.LonghornDriverName
+		if _, err := kubeClient.CoreV1().PersistentVolumes().Update(&pv); err != nil {
+			return err
+		}
+
+		// No related PVC. The PV provisioned by the static provisioner contains the annotation but no ClaimRef field.
+		// e.g., PVs created by the local storage provisioner.
+		// See https://github.com/longhorn/longhorn/issues/905 for more details.
+		if pv.Spec.ClaimRef == nil {
+			continue
+		}
+		pvc, err := kubeClient.CoreV1().PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(pv.Spec.ClaimRef.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		if v, exist := pvc.Annotations[PVCAnnotationCSIProvisioner]; !exist || v != types.DeprecatedProvisionerName {
+			continue
+		}
+		pvc.Annotations[PVCAnnotationCSIProvisioner] = types.LonghornDriverName
+		if _, err := kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Update(pvc); err != nil {
+			return err
+		}
+
 	}
 
 	return nil
