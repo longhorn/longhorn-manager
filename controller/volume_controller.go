@@ -352,16 +352,9 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 	}()
 
-	engine := vc.getNodeAttachedEngine(volume.Status.CurrentNodeID, engines)
-	if engine == nil {
-		if len(engines) == 1 {
-			for _, e := range engines {
-				engine = e
-				break
-			}
-		} else if len(engines) > 1 {
-			return fmt.Errorf("BUG: multiple engines when volume is detached")
-		}
+	engine, err := vc.getCurrentEngine(volume, engines)
+	if err != nil {
+		return err
 	}
 
 	if len(engines) <= 1 {
@@ -370,7 +363,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 	}
 
-	if err := vc.ReconcileVolumeState(volume, engine, replicas); err != nil {
+	if err := vc.ReconcileVolumeState(volume, engines, replicas); err != nil {
 		return err
 	}
 
@@ -395,16 +388,28 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	return nil
 }
 
-func (vc *VolumeController) getNodeAttachedEngine(node string, es map[string]*longhorn.Engine) *longhorn.Engine {
-	if node == "" {
-		return nil
+func (vc *VolumeController) getCurrentEngine(v *longhorn.Volume, es map[string]*longhorn.Engine) (*longhorn.Engine, error) {
+	if len(es) == 0 {
+		return nil, nil
 	}
-	for _, e := range es {
-		if e.Spec.NodeID == node {
-			return e
+
+	if len(es) == 1 {
+		for _, e := range es {
+			return e, nil
 		}
 	}
-	return nil
+
+	// len(es) > 1
+	node := v.Status.CurrentNodeID
+	if node != "" {
+		for _, e := range es {
+			if e.Spec.NodeID == node {
+				return e, nil
+			}
+		}
+		return nil, fmt.Errorf("BUG: multiple engines detected but none matched volume %v attached node %v", v.Name, node)
+	}
+	return nil, fmt.Errorf("BUG: multiple engines detected when volume %v is detached", v.Name)
 }
 
 // ReconcileEngineReplicaState will get the current main engine e.Status.ReplicaModeMap, then update
@@ -551,10 +556,15 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 }
 
 // ReconcileVolumeState handles the attaching and detaching of volume
-func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
+func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to reconcile volume state for %v", v.Name)
 	}()
+
+	e, err := vc.getCurrentEngine(v, es)
+	if err != nil {
+		return err
+	}
 
 	newVolume := false
 	if v.Status.CurrentImage == "" {
@@ -625,13 +635,12 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, e *longhorn
 
 	if e == nil {
 		// first time creation
-		//TODO this creation won't be recorded in the engines, since
-		//it's nil
 		e, err = vc.createEngine(v)
 		if err != nil {
 			return err
 		}
 		newVolume = true
+		es[e.Name] = e
 	}
 
 	if len(rs) == 0 {
