@@ -310,42 +310,37 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		existingReplicas[k] = r.DeepCopy()
 	}
 	defer func() {
-		if err == nil {
-			// create/delete engine/replica has been handled already
-			// so we only need to worry about entries in the current list
-			for k, r := range replicas {
-				if existingReplicas[k] == nil ||
-					!reflect.DeepEqual(existingReplicas[k].Spec, replicas[k].Spec) {
-					// reuse err
-					_, err = vc.ds.UpdateReplica(r)
-					if err != nil {
-						break
-					}
+		var lastErr error
+		// create/delete engine/replica has been handled already
+		// so we only need to worry about entries in the current list
+		for k, r := range replicas {
+			if existingReplicas[k] == nil ||
+				!reflect.DeepEqual(existingReplicas[k].Spec, replicas[k].Spec) {
+				if _, err := vc.ds.UpdateReplica(r); err != nil {
+					lastErr = err
 				}
 			}
 		}
 		// stop updating if replicas weren't fully updated
-		if err == nil {
+		if lastErr == nil {
 			for k, e := range engines {
 				if existingEngines[k] == nil ||
 					!reflect.DeepEqual(existingEngines[k].Spec, engines[k].Spec) {
-					// reuse err
-					_, err = vc.ds.UpdateEngine(e)
-					if err != nil {
+					if _, err := vc.ds.UpdateEngine(e); err != nil {
 						break
 					}
 				}
 			}
 		}
 		// stop updating if engines and replicas weren't fully updated
-		if err == nil {
+		if err == nil && lastErr == nil {
 			if !reflect.DeepEqual(existingVolume.Status, volume.Status) {
 				// reuse err
 				_, err = vc.ds.UpdateVolumeStatus(volume)
 			}
 		}
 		// requeue if it's conflict
-		if apierrors.IsConflict(errors.Cause(err)) {
+		if apierrors.IsConflict(errors.Cause(err)) || apierrors.IsConflict(errors.Cause(lastErr)) {
 			logrus.Debugf("Requeue %v due to error %v", key, err)
 			vc.enqueueVolume(volume)
 			err = nil
@@ -701,9 +696,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			// no need to continue, since we won't able to schedule
 			// more replicas if we failed this one
 			break
-		} else {
-			rs[r.Name] = scheduledReplica
 		}
+		rs[r.Name] = scheduledReplica
 	}
 	if allScheduled {
 		condition := types.GetVolumeConditionFromStatus(v.Status, types.VolumeConditionTypeScheduled)
@@ -1206,7 +1200,6 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 	return vc.ds.CreateEngine(engine)
 }
 
-// createReplica returns (nil, nil) for unschedulable replica
 func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (*longhorn.Replica, error) {
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
