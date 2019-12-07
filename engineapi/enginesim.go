@@ -191,6 +191,10 @@ func (e *EngineSimulator) Info() (*Volume, error) {
 	return nil, fmt.Errorf("Not implemented")
 }
 
+func (e *EngineSimulator) Expand(size int64) error {
+	return fmt.Errorf("Not implemented")
+}
+
 func (e *EngineSimulator) BackupRestore(backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error {
 	return fmt.Errorf("Not implemented")
 }

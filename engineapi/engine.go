@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -153,4 +154,12 @@ func (e *Engine) Version(clientOnly bool) (*EngineVersion, error) {
 		return nil, errors.Wrapf(err, "cannot decode volume version: %v", output)
 	}
 	return version, nil
+}
+
+func (e *Engine) Expand(size int64) error {
+	if _, err := e.ExecuteEngineBinary("expand", "--size", strconv.FormatInt(size, 10)); err != nil {
+		return errors.Wrapf(err, "cannot get expand volume engine to size %v", size)
+	}
+
+	return nil
 }
