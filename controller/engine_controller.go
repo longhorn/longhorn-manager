@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -739,6 +740,23 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.ReplicaModeMap = currentReplicaModeMap
 	}
 
+	// TODO: find a more advanced way to handle invocations for incompatible running engines
+	ei, err := m.ds.GetEngineImage(types.GetEngineImageChecksumName(engine.Spec.EngineImage))
+	if err != nil {
+		return err
+	}
+
+	if ei.Status.State != types.EngineImageStateIncompatible {
+		volumeInfo, err := client.Info()
+		if err != nil {
+			return err
+		}
+		engine.Status.CurrentSize = volumeInfo.Size
+	} else {
+		// For incompatible running engine, the current size is always `engine.Spec.VolumeSize`.
+		engine.Status.CurrentSize = engine.Spec.VolumeSize
+	}
+
 	endpoint, err := engineapi.Endpoint(engine.Status.IP, engine.Name)
 	if err != nil {
 		return err
@@ -795,29 +813,83 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
-	if err = restoreBackup(isRestoring, isConsensual, engine, client, m.ds); err != nil {
+	if ei.Status.State != types.EngineImageStateIncompatible {
+		if engine.Spec.VolumeSize != engine.Status.CurrentSize {
+			logrus.Infof("engine monitor: Expanding the size from %v to %v for engine %v", engine.Status.CurrentSize, engine.Spec.VolumeSize, engine.Name)
+			if err := client.Expand(engine.Spec.VolumeSize); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+
+	needRestoration, err := checkForRestoration(isRestoring, isConsensual, engine, ei, m.ds)
+	if err != nil {
 		return err
+	}
+	// Incremental restoration will implicitly expand the DR volume once the backup volume is expanded
+	if needRestoration {
+		if err = restoreBackup(engine, client, m.ds); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func needRestoration(isRestoring, isConsensual bool, engine *longhorn.Engine) bool {
-	if !isRestoring && isConsensual && engine.Spec.RequestedBackupRestore != "" && engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
-		return true
-	}
-	return false
-}
-
-func restoreBackup(isRestoring, isConsensual bool, engine *longhorn.Engine, client engineapi.EngineClient, ds *datastore.DataStore) error {
-	if !needRestoration(isRestoring, isConsensual, engine) {
-		return nil
+func checkForRestoration(isRestoring, isConsensual bool, engine *longhorn.Engine, ei *longhorn.EngineImage, ds *datastore.DataStore) (bool, error) {
+	if isRestoring || !isConsensual || engine.Spec.RequestedBackupRestore == "" || engine.Spec.RequestedBackupRestore == engine.Status.LastRestoredBackup {
+		return false, nil
 	}
 
 	if engine.Spec.BackupVolume == "" {
-		return fmt.Errorf("BUG: backup volume is empty for backup restoration of engine %v", engine.Name)
+		return false, fmt.Errorf("BUG: backup volume is empty for backup restoration of engine %v", engine.Name)
 	}
 
+	if ei.Status.State != types.EngineImageStateIncompatible {
+		return checkSizeBeforeRestoration(engine, ds)
+	}
+
+	return true, nil
+}
+
+func checkSizeBeforeRestoration(engine *longhorn.Engine, ds *datastore.DataStore) (bool, error) {
+	backupTarget, err := manager.GenerateBackupTarget(ds)
+	if err != nil {
+		return false, errors.Wrapf(err, "engine monitor: Cannot generate BackupTarget for expansion check of the DR volume engine %v", engine.Name)
+	}
+
+	bv, err := backupTarget.GetVolume(engine.Spec.BackupVolume)
+	if err != nil {
+		return false, err
+	}
+	bvSize, err := strconv.ParseInt(bv.Size, 10, 64)
+	if err != nil {
+		return false, err
+	}
+
+	v, err := ds.GetVolume(engine.Spec.VolumeName)
+	if err != nil {
+		return false, err
+	}
+
+	if bvSize < v.Spec.Size {
+		return false, fmt.Errorf("engine monitor: BUG: the backup volume size %v is smaller than the size %v of the DR volume %v", bvSize, engine.Spec.VolumeSize, v.Name)
+	} else if bvSize > v.Spec.Size {
+		// TODO: Find a way to update volume.Spec.Size outside of the controller
+		// The volume controller will update `engine.Spec.VolumeSize` later then trigger expansion call
+		logrus.Infof("engine monitor: Prepare to expand the size from %v to %v for DR volume %v", v.Spec.Size, bvSize, v.Name)
+		v.Spec.Size = bvSize
+		if _, err := ds.UpdateVolume(v); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func restoreBackup(engine *longhorn.Engine, client engineapi.EngineClient, ds *datastore.DataStore) error {
 	backupTarget, err := manager.GenerateBackupTarget(ds)
 	if err != nil {
 		return errors.Wrapf(err, "cannot generate BackupTarget for backup restoration of engine %v", engine.Name)

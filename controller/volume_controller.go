@@ -620,7 +620,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				return fmt.Errorf("volume %v has already attached to node %v, but asked to attach to node %v", v.Name, v.Status.CurrentNodeID, v.Spec.NodeID)
 			}
 		} else { // v.Spec.NodeID == ""
-			if !(v.Status.InitialRestorationRequired || v.Spec.Standby) {
+			// Cannot automatically detach the volume if:
+			// 1) The volume is doing initial restoration;
+			// 2) The volume is DR/standy volume;
+			// 3) The volume is being expanding.
+			if !(v.Status.InitialRestorationRequired || v.Spec.Standby || v.Status.ExpansionRequired) {
 				v.Status.CurrentNodeID = ""
 			}
 			// users can manually restore the volume and they won't be blocked by this field if remount fails
@@ -657,18 +661,30 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 	v.Status.FrontendDisabled = v.Spec.DisableFrontend
 
+	autoAttachRequired := false
 	// InitialRestorationRequired means the volume is newly created restored volume and
-	// it needs to be attached automatically so that its engine will be launched then
-	// restore data from backup.
+	// it needs to be attached automatically with frontend disabled. Then its engine
+	// will be launched and the data will be restored from backup.
 	if v.Status.InitialRestorationRequired {
-		// for automatically attached volume, we should disable its frontend
+		autoAttachRequired = true
 		v.Status.FrontendDisabled = true
+	}
+	if e != nil && e.Spec.VolumeSize != v.Spec.Size {
+		// Need to automatically attach the volume with frontend enabled for offline expansion
+		if v.Spec.NodeID == "" {
+			autoAttachRequired = true
+		}
+		v.Status.ExpansionRequired = true
+		e.Spec.VolumeSize = v.Spec.Size
+		for _, r := range rs {
+			r.Spec.VolumeSize = v.Spec.Size
+		}
+	}
+	if autoAttachRequired {
 		if v.Status.CurrentNodeID == "" {
-			usableNode, err := vc.ds.GetRandomReadyNode()
-			if err != nil {
-				return err
-			}
-			v.Status.CurrentNodeID = usableNode.Name
+			// Should use vc.controllerID or v.Status.OwnerID as CurrentNodeID,
+			// otherwise they may be not equal
+			v.Status.CurrentNodeID = v.Status.OwnerID
 		}
 	}
 
@@ -915,6 +931,20 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			if e.Status.LastRestoredBackup != "" {
 				// The initial full restoration is complete.
 				v.Status.InitialRestorationRequired = false
+			}
+		}
+
+		if v.Status.ExpansionRequired {
+			if v.Spec.Size == e.Status.CurrentSize {
+				if !v.Spec.DisableFrontend && v.Spec.Frontend == types.VolumeFrontendBlockDev {
+					// Best effort. We don't know if there is a file system built in the volume.
+					if err := util.ExpandFileSystem(v.Name); err != nil {
+						logrus.Warnf("failed to expand the file system for the volume %v: %v", v.Name, err)
+					} else {
+						logrus.Infof("Succeeded to expand the file system for the volume %v", v.Name)
+					}
+				}
+				v.Status.ExpansionRequired = false
 			}
 		}
 
