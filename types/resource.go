@@ -165,6 +165,7 @@ type EngineSpec struct {
 
 type EngineStatus struct {
 	InstanceStatus
+	CurrentSize              int64                     `json:"currentSize,string"`
 	CurrentReplicaAddressMap map[string]string         `json:"currentReplicaAddressMap"`
 	ReplicaModeMap           map[string]ReplicaMode    `json:"replicaModeMap"`
 	Endpoint                 string                    `json:"endpoint"`
