@@ -627,7 +627,7 @@ func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.I
 	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, image.Name, types.InstanceManagerTypeReplica)
 	podSpec.Spec.Containers[0].Name = "replica-manager"
 	podSpec.Spec.Containers[0].Args = []string{
-		"longhorn-instance-manager", "daemon", "--listen", "0.0.0.0:8500",
+		"longhorn-instance-manager", "--debug", "daemon", "--listen", "0.0.0.0:8500",
 	}
 	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
 		{
