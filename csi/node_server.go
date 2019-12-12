@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/sirupsen/logrus"
@@ -14,18 +15,23 @@ import (
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 type NodeServer struct {
 	apiClient *longhornclient.RancherClient
-
-	nodeID string
+	nodeID    string
+	caps      []*csi.NodeServiceCapability
 }
 
 func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) *NodeServer {
 	return &NodeServer{
 		apiClient: apiClient,
 		nodeID:    nodeID,
+		caps: getNodeServiceCapabilities(
+			[]csi.NodeServiceCapability_RPC_Type{
+				csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+			}),
 	}
 }
 
@@ -173,11 +179,72 @@ func (ns *NodeServer) NodeUnstageVolume(
 }
 
 func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	return nil, status.Errorf(codes.Unimplemented, "")
 }
 
+// NodeExpandVolume is designed to expand the file system for ONLINE expansion.
+// However, once the block device expansion complete, Longhorn will try to expand the file system even if there is no NodeExpandVolume invocation.
+// Longhorn cannot guarantee if the file system expansion succeeds since some volumes may not contain file system or they are not block devices.
+// This means the function NodeExpandVolume in Longhorn is actually used to verify if the ONLINE expansion complete.
 func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	logrus.Infof("NodeServer NodeExpandVolume req: %v", req)
+
+	requestedSize := req.CapacityRange.GetRequiredBytes()
+	mountPath := req.VolumePath
+	mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOsExec()}
+	exists, err := mounter.ExistsPath(mountPath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+	if !exists {
+		return nil, status.Errorf(codes.Internal, "Invalid volume path %v for volume %v", mountPath, req.GetVolumeId())
+	}
+	existVol, err := ns.apiClient.Volume.ById(req.GetVolumeId())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+	if existVol == nil {
+		msg := fmt.Sprintf("NodeExpandVolume: the volume %s not exists", req.GetVolumeId())
+		logrus.Warn(msg)
+		return nil, status.Errorf(codes.NotFound, msg)
+	}
+	if len(existVol.Controllers) != 1 {
+		return nil, status.Errorf(codes.InvalidArgument, "There should be only one controller for volume %s", req.GetVolumeId())
+	}
+	// If the volume is not attached/in maintenance mode/using iSCSI frontend, this function shouldn't been invoked.
+	if existVol.State != string(types.VolumeStateAttached) {
+		return nil, status.Errorf(codes.FailedPrecondition, "Invalid volume state %v for expansion", existVol.State)
+	}
+	if existVol.DisableFrontend || existVol.Frontend == string(types.VolumeFrontendISCSI) {
+		return nil, status.Errorf(codes.FailedPrecondition, "Don't need to call NodeExpandVolume to expand the file system for volume %v", existVol.Name)
+	}
+	volumeSize, err := strconv.ParseInt(existVol.Size, 10, 64)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+	currentSize, err := strconv.ParseInt(existVol.Controllers[0].Size, 10, 64)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+	if requestedSize != volumeSize {
+		return nil, status.Errorf(codes.OutOfRange, "The size %v of volume %v is not equal to the requested size %v.", volumeSize, req.GetVolumeId(), requestedSize)
+	}
+	if requestedSize != currentSize {
+		return nil, status.Errorf(codes.Aborted, "Waiting for the block device expansion of volume %s complete", req.GetVolumeId())
+	}
+
+	devicePath := existVol.Controllers[0].Endpoint
+	fsType, err := detectFileSystem(devicePath)
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "Failed to detect the file system for volume %v: %v", existVol.Name, err)
+	}
+	if !util.IsSupportedFileSystem(fsType) {
+		return nil, status.Errorf(codes.FailedPrecondition, "Unsupported file system %v for volume %v", fsType, existVol.Name)
+	}
+
+	return &csi.NodeExpandVolumeResponse{
+		CapacityBytes: requestedSize,
+	}, nil
 }
 
 func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
@@ -187,5 +254,24 @@ func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 }
 
 func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
-	return &csi.NodeGetCapabilitiesResponse{}, nil
+	return &csi.NodeGetCapabilitiesResponse{
+		Capabilities: ns.caps,
+	}, nil
+}
+
+func getNodeServiceCapabilities(cs []csi.NodeServiceCapability_RPC_Type) []*csi.NodeServiceCapability {
+	var nscs []*csi.NodeServiceCapability
+
+	for _, cap := range cs {
+		logrus.Infof("Enabling node service capability: %v", cap.String())
+		nscs = append(nscs, &csi.NodeServiceCapability{
+			Type: &csi.NodeServiceCapability_Rpc{
+				Rpc: &csi.NodeServiceCapability_RPC{
+					Type: cap,
+				},
+			},
+		})
+	}
+
+	return nscs
 }
