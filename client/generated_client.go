@@ -17,6 +17,7 @@ type RancherClient struct {
 	ReplicaRemoveInput        ReplicaRemoveInputOperations
 	SalvageInput              SalvageInputOperations
 	ActivateInput             ActivateInputOperations
+	ExpandInput               ExpandInputOperations
 	EngineUpgradeInput        EngineUpgradeInputOperations
 	Replica                   ReplicaOperations
 	Controller                ControllerOperations
@@ -63,6 +64,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.ReplicaRemoveInput = newReplicaRemoveInputClient(client)
 	client.SalvageInput = newSalvageInputClient(client)
 	client.ActivateInput = newActivateInputClient(client)
+	client.ExpandInput = newExpandInputClient(client)
 	client.EngineUpgradeInput = newEngineUpgradeInputClient(client)
 	client.Replica = newReplicaClient(client)
 	client.Controller = newControllerClient(client)

@@ -31,6 +31,8 @@ type EngineImage struct {
 
 	NoRefSince string `json:"noRefSince,omitempty" yaml:"no_ref_since,omitempty"`
 
+	OwnerID string `json:"ownerID,omitempty" yaml:"owner_id,omitempty"`
+
 	RefCount int64 `json:"refCount,omitempty" yaml:"ref_count,omitempty"`
 
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
