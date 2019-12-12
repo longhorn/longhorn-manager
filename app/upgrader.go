@@ -5,6 +5,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 )
 
@@ -38,6 +39,9 @@ func upgradeLonghornRelatedComponents(kubeClient *clientset.Clientset, namespace
 		}
 		pvc, err := kubeClient.CoreV1().PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(pv.Spec.ClaimRef.Name, metav1.GetOptions{})
 		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				continue
+			}
 			return err
 		}
 		if v, exist := pvc.Annotations[PVCAnnotationCSIProvisioner]; !exist || v != types.DeprecatedProvisionerName {
