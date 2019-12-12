@@ -540,11 +540,7 @@ func (s *DataStore) getEngine(name string) (*longhorn.Engine, error) {
 }
 
 func (s *DataStore) GetEngine(name string) (*longhorn.Engine, error) {
-	result, err := s.eLister.Engines(s.namespace).Get(name)
-	if err != nil {
-		return nil, err
-	}
-	return s.fixupEngine(result)
+	return s.eLister.Engines(s.namespace).Get(name)
 }
 
 func (s *DataStore) listEngines(selector labels.Selector) (map[string]*longhorn.Engine, error) {
@@ -555,10 +551,7 @@ func (s *DataStore) listEngines(selector labels.Selector) (map[string]*longhorn.
 	engines := map[string]*longhorn.Engine{}
 	for _, e := range list {
 		// Cannot use cached object from lister
-		engines[e.Name], err = s.fixupEngine(e.DeepCopy())
-		if err != nil {
-			return nil, err
-		}
+		engines[e.Name] = e.DeepCopy()
 	}
 	return engines, nil
 }
@@ -577,19 +570,6 @@ func (s *DataStore) ListVolumeEngines(volumeName string) (map[string]*longhorn.E
 		return nil, err
 	}
 	return s.listEngines(selector)
-}
-
-func (s *DataStore) fixupEngine(engine *longhorn.Engine) (*longhorn.Engine, error) {
-	// v0.3
-	if engine.Spec.VolumeSize == 0 || engine.Spec.Frontend == "" {
-		volume, err := s.getVolumeRO(engine.Spec.VolumeName)
-		if err != nil {
-			return nil, fmt.Errorf("BUG: cannot fix up engine object, volume %v cannot be found", engine.Spec.VolumeName)
-		}
-		engine.Spec.VolumeSize = volume.Spec.Size
-		engine.Spec.Frontend = volume.Spec.Frontend
-	}
-	return engine, nil
 }
 
 func checkReplica(r *longhorn.Replica) error {
