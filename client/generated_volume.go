@@ -85,6 +85,8 @@ type VolumeOperations interface {
 
 	ActionDetach(*Volume) (*Volume, error)
 
+	ActionExpand(*Volume, *ExpandInput) (*Volume, error)
+
 	ActionReplicaRemove(*Volume, *ReplicaRemoveInput) (*Volume, error)
 
 	ActionSalvage(*Volume, *SalvageInput) (*Volume, error)
@@ -162,6 +164,15 @@ func (c *VolumeClient) ActionDetach(resource *Volume) (*Volume, error) {
 	resp := &Volume{}
 
 	err := c.rancherClient.doAction(VOLUME_TYPE, "detach", &resource.Resource, nil, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionExpand(resource *Volume, input *ExpandInput) (*Volume, error) {
+
+	resp := &Volume{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "expand", &resource.Resource, input, resp)
 
 	return resp, err
 }

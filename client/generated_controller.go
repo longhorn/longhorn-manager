@@ -26,6 +26,8 @@ type Controller struct {
 	RequestedBackupRestore string `json:"requestedBackupRestore,omitempty" yaml:"requested_backup_restore,omitempty"`
 
 	Running bool `json:"running,omitempty" yaml:"running,omitempty"`
+
+	Size string `json:"size,omitempty" yaml:"size,omitempty"`
 }
 
 type ControllerCollection struct {
