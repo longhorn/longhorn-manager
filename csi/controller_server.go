@@ -3,6 +3,7 @@ package csi
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -36,6 +37,7 @@ func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string)
 			[]csi.ControllerServiceCapability_RPC_Type{
 				csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 				csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+				csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 			}),
 		accessModes: getVolumeCapabilityAccessModes(
 			[]csi.VolumeCapability_AccessMode_Mode{
@@ -281,8 +283,50 @@ func (cs *ControllerServer) ListSnapshots(context.Context, *csi.ListSnapshotsReq
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-func (cs *ControllerServer) ControllerExpandVolume(context.Context, *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+	logrus.Infof("ControllerServer ControllerExpandVolume req: %v", req)
+	existVol, err := cs.apiClient.Volume.ById(req.GetVolumeId())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+	if existVol == nil {
+		msg := fmt.Sprintf("ControllerExpandVolume: the volume %s not exists", req.GetVolumeId())
+		logrus.Warn(msg)
+		return nil, status.Errorf(codes.NotFound, msg)
+	}
+	if len(existVol.Controllers) != 1 {
+		return nil, status.Errorf(codes.InvalidArgument, "There should be only one controller for volume %s", req.GetVolumeId())
+	}
+	// Support online and offline expansion
+	if existVol.State != string(types.VolumeStateAttached) && existVol.State != string(types.VolumeStateDetached) {
+		return nil, status.Errorf(codes.FailedPrecondition, "Invalid volume state %v for expansion", existVol.State)
+	}
+	volumeSize, err := strconv.ParseInt(existVol.Size, 10, 64)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+	requestedSize := req.CapacityRange.GetRequiredBytes()
+	if requestedSize <= volumeSize {
+		return nil, status.Errorf(codes.OutOfRange, "The requested size %v is smaller than or the same as the size %v of volume %v", requestedSize, volumeSize, existVol.Name)
+	}
+
+	if _, err = cs.apiClient.Volume.ActionExpand(existVol, &longhornclient.ExpandInput{
+		Size: strconv.FormatInt(requestedSize, 10),
+	}); err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+
+	// If the volume is detached/in maintenance mode/not using block device frontend,
+	// there is no need to call the function `NodeExpandVolume`.
+	nodeExpansionRequired := true
+	if existVol.State == string(types.VolumeStateDetached) || existVol.DisableFrontend || existVol.Frontend != string(types.VolumeFrontendBlockDev) {
+		nodeExpansionRequired = false
+	}
+
+	return &csi.ControllerExpandVolumeResponse{
+		CapacityBytes:         req.CapacityRange.GetRequiredBytes(),
+		NodeExpansionRequired: nodeExpansionRequired,
+	}, nil
 }
 
 func (cs *ControllerServer) waitForVolumeState(volumeID string, state types.VolumeState, notFoundRetry, notFoundReturn bool) bool {
