@@ -20,10 +20,12 @@ import (
 const (
 	DefaultCSIAttacherImage            = "quay.io/k8scsi/csi-attacher:v2.0.0"
 	DefaultCSIProvisionerImage         = "quay.io/k8scsi/csi-provisioner:v1.4.0"
+	DefaultCSIResizerImage             = "quay.io/k8scsi/csi-resizer:v0.3.0"
 	DefaultCSINodeDriverRegistrarImage = "quay.io/k8scsi/csi-node-driver-registrar:v1.2.0"
 
 	DefaultCSIAttacherReplicaCount    = 3
 	DefaultCSIProvisionerReplicaCount = 3
+	DefaultCSIResizerReplicaCount     = 3
 
 	DefaultInContainerKubeletRootDir      = "/var/lib/kubelet/"
 	DefaultCSISocketFileName              = "csi.sock"
@@ -155,6 +157,64 @@ func (p *ProvisionerDeployment) Cleanup(kubeClient *clientset.Clientset) {
 		if err := cleanup(kubeClient, p.deployment, "deployment",
 			deploymentDeleteFunc, deploymentGetFunc); err != nil {
 			logrus.Warnf("Failed to cleanup deployment in provisioner deployment: %v", err)
+		}
+	})
+}
+
+type ResizerDeployment struct {
+	service    *v1.Service
+	deployment *appsv1.Deployment
+}
+
+func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir string, replicaCount int, tolerations []v1.Toleration) *ResizerDeployment {
+	service := getCommonService(types.CSIResizerName, namespace)
+
+	deployment := getCommonDeployment(
+		types.CSIResizerName,
+		namespace,
+		serviceAccount,
+		resizerImage,
+		rootDir,
+		[]string{
+			"--v=5",
+			"--csi-address=$(ADDRESS)",
+			"--leader-election",
+			"--leader-election-namespace=$(POD_NAMESPACE)",
+		},
+		int32(replicaCount),
+		tolerations,
+	)
+
+	return &ResizerDeployment{
+		service:    service,
+		deployment: deployment,
+	}
+}
+
+func (p *ResizerDeployment) Deploy(kubeClient *clientset.Clientset) error {
+	if err := deploy(kubeClient, p.service, "service",
+		serviceCreateFunc, serviceDeleteFunc, serviceGetFunc); err != nil {
+		return err
+	}
+
+	return deploy(kubeClient, p.deployment, "deployment",
+		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc)
+}
+
+func (p *ResizerDeployment) Cleanup(kubeClient *clientset.Clientset) {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	util.RunAsync(&wg, func() {
+		if err := cleanup(kubeClient, p.service, "service",
+			serviceDeleteFunc, serviceGetFunc); err != nil {
+			logrus.Warnf("Failed to cleanup service in resizer deployment: %v", err)
+		}
+	})
+	util.RunAsync(&wg, func() {
+		if err := cleanup(kubeClient, p.deployment, "deployment",
+			deploymentDeleteFunc, deploymentGetFunc); err != nil {
+			logrus.Warnf("Failed to cleanup deployment in resizer deployment: %v", err)
 		}
 	})
 }

@@ -53,7 +53,8 @@ const (
 )
 
 const (
-	CSIMinVersion = "v1.14.0"
+	CSIMinVersion                = "v1.14.0"
+	CSIVolumeExpansionMinVersion = "v1.16.0"
 )
 
 type ReplicaMode string
