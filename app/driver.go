@@ -31,15 +31,19 @@ const (
 
 	FlagCSIAttacherImage            = "csi-attacher-image"
 	FlagCSIProvisionerImage         = "csi-provisioner-image"
+	FlagCSIResizerImage             = "csi-resizer-image"
 	FlagCSINodeDriverRegistrarImage = "csi-node-driver-registrar-image"
 	EnvCSIAttacherImage             = "CSI_ATTACHER_IMAGE"
 	EnvCSIProvisionerImage          = "CSI_PROVISIONER_IMAGE"
+	EnvCSIResizerImage              = "CSI_RESIZER_IMAGE"
 	EnvCSINodeDriverRegistrarImage  = "CSI_NODE_DRIVER_REGISTRAR_IMAGE"
 
 	FlagCSIAttacherReplicaCount    = "csi-attacher-replica-count"
 	FlagCSIProvisionerReplicaCount = "csi-provisioner-replica-count"
+	FlagCSIResizerReplicaCount     = "csi-resizer-replica-count"
 	EnvCSIAttacherReplicaCount     = "CSI_ATTACHER_REPLICA_COUNT"
 	EnvCSIProvisionerReplicaCount  = "CSI_PROVISIONER_REPLICA_COUNT"
+	EnvCSIResizerReplicaCount      = "CSI_RESIZER_REPLICA_COUNT"
 )
 
 func DeployDriverCmd() cli.Command {
@@ -81,6 +85,18 @@ func DeployDriverCmd() cli.Command {
 				Name:   FlagCSIProvisionerReplicaCount,
 				Usage:  "Specify number of CSI provisioner replicas",
 				EnvVar: EnvCSIProvisionerReplicaCount,
+				Value:  csi.DefaultCSIProvisionerReplicaCount,
+			},
+			cli.StringFlag{
+				Name:   FlagCSIResizerImage,
+				Usage:  "Specify CSI resizer image",
+				EnvVar: EnvCSIResizerImage,
+				Value:  csi.DefaultCSIResizerImage,
+			},
+			cli.IntFlag{
+				Name:   FlagCSIResizerReplicaCount,
+				Usage:  "Specify number of CSI resizer replicas",
+				EnvVar: EnvCSIResizerReplicaCount,
 				Value:  csi.DefaultCSIProvisionerReplicaCount,
 			},
 			cli.StringFlag{
@@ -158,9 +174,11 @@ func checkKubernetesVersion(kubeClient *clientset.Clientset) error {
 func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clientset, c *cli.Context, managerImage, managerURL string) error {
 	csiAttacherImage := c.String(FlagCSIAttacherImage)
 	csiProvisionerImage := c.String(FlagCSIProvisionerImage)
+	csiResizerImage := c.String(FlagCSIResizerImage)
 	csiNodeDriverRegistrarImage := c.String(FlagCSINodeDriverRegistrarImage)
 	csiAttacherReplicaCount := c.Int(FlagCSIAttacherReplicaCount)
 	csiProvisionerReplicaCount := c.Int(FlagCSIProvisionerReplicaCount)
+	csiResizerReplicaCount := c.Int(FlagCSIResizerReplicaCount)
 	namespace := os.Getenv(types.EnvPodNamespace)
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
 	rootDir := c.String(FlagKubeletRootDir)
@@ -186,6 +204,11 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		logrus.Infof("User specified root dir: %v", rootDir)
 	}
 
+	volumeExpansionEnabled, err := isKubernetesVersionAtLeast(kubeClient, types.CSIVolumeExpansionMinVersion)
+	if err != nil {
+		return err
+	}
+
 	if err := handleCSIUpgrade(kubeClient, namespace); err != nil {
 		return err
 	}
@@ -207,6 +230,13 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, rootDir, csiProvisionerReplicaCount, tolerations)
 	if err := provisionerDeployment.Deploy(kubeClient); err != nil {
 		return err
+	}
+
+	if volumeExpansionEnabled {
+		resizerDeployment := csi.NewResizerDeployment(namespace, serviceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, tolerations)
+		if err := resizerDeployment.Deploy(kubeClient); err != nil {
+			return err
+		}
 	}
 
 	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, managerImage, managerURL, rootDir, tolerations)
@@ -285,4 +315,14 @@ func (ops *DaemonSetOps) Create(name string, d *appsv1.DaemonSet) (*appsv1.Daemo
 func (ops *DaemonSetOps) Delete(name string) error {
 	propagation := metav1.DeletePropagationForeground
 	return ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
+}
+
+func isKubernetesVersionAtLeast(kubeClient *clientset.Clientset, vers string) (bool, error) {
+	serverVersion, err := kubeClient.Discovery().ServerVersion()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to get Kubernetes server version")
+	}
+	currentVersion := version.MustParseSemantic(serverVersion.GitVersion)
+	minVersion := version.MustParseSemantic(vers)
+	return currentVersion.AtLeast(minVersion), nil
 }
