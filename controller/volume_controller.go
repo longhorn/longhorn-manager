@@ -903,7 +903,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		e.Spec.NodeID = v.Status.CurrentNodeID
 		e.Spec.ReplicaAddressMap = replicaAddressMap
 		e.Spec.DesireState = types.InstanceStateRunning
+		// The volume may be activated
 		e.Spec.DisableFrontend = v.Status.FrontendDisabled
+		e.Spec.Frontend = v.Spec.Frontend
 		// wait for engine to be up
 		if e.Status.CurrentState != types.InstanceStateRunning {
 			return nil
