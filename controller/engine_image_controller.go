@@ -723,17 +723,7 @@ func (ic *EngineImageController) syncInstanceManagers(ei *longhorn.EngineImage, 
 
 		switch ei.Status.State {
 		case types.EngineImageStateIncompatible:
-			if engineIM != nil {
-				if err := ic.ds.DeleteInstanceManager(engineIM.Name); err != nil {
-					return errors.Wrapf(err, "cannot cleanup engine instance manager of node %v, engine image %v", node.Name, ei.Name)
-				}
-			}
-
-			if replicaIM != nil {
-				if err := ic.ds.DeleteInstanceManager(replicaIM.Name); err != nil {
-					return errors.Wrapf(err, "cannot cleanup replica instance manager of node %v, engine image %v", node.Name, ei.Name)
-				}
-			}
+			continue
 		case types.EngineImageStateDeploying:
 			fallthrough
 		case types.EngineImageStateReady:

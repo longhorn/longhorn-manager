@@ -290,9 +290,7 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.currentEngineImage.Status.EngineVersionDetails = incompatibleVersion
 	tc.copyCurrentToExpected()
 	tc.expectedEngineImage.Status.State = types.EngineImageStateIncompatible
-	tc.expectedEngineManager = nil
-	tc.expectedReplicaManager = nil
-	testCases["Incompatible engine image cleanup"] = tc
+	testCases["Incompatible engine image"] = tc
 
 	return testCases
 }
