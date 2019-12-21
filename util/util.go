@@ -625,7 +625,7 @@ func RemountVolume(volumeName string) error {
 	}
 
 	// The record schema is like: `<Device Path> <Mount Point> <Mount Options>`
-	res, err := nsExec.Execute("bash", []string{"-c", "mount | grep -v grep | grep ext4 | awk '{print $1,$3,$6}'"})
+	res, err := nsExec.Execute("bash", []string{"-c", "mount | grep ext4 | awk '{print $1,$3,$6}'"})
 	if err != nil {
 		return errors.Wrapf(err, "error using command mount to get mount info")
 	}
@@ -636,9 +636,9 @@ func RemountVolume(volumeName string) error {
 	for _, record := range mountRecords {
 		record = strings.TrimSpace(record)
 		if record == "" {
+			logrus.Warnf("DEBUG: There is an empty line in the mount records: %+v", mountRecords)
 			continue
 		}
-
 		items := strings.Split(record, " ")
 		if len(items) != 3 {
 			return fmt.Errorf("found invaild record %v", record)
@@ -658,7 +658,13 @@ func RemountVolume(volumeName string) error {
 	// Check if the mount point used multiple device.
 	// If YES, it means users manually mount some devices for this mount point and we cannot remount it automatically .
 	for _, record := range mountRecords {
+		if record == "" {
+			continue
+		}
 		items := strings.Split(record, " ")
+		if len(items) != 3 {
+			return fmt.Errorf("found invaild record %v", record)
+		}
 		m := strings.TrimSpace(items[1])
 		if _, exist := mountPoints[m]; exist {
 			// The mount point also used other devices
