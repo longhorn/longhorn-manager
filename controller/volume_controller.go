@@ -315,7 +315,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		// so we only need to worry about entries in the current list
 		for k, r := range replicas {
 			if existingReplicas[k] == nil ||
-				!reflect.DeepEqual(existingReplicas[k].Spec, replicas[k].Spec) {
+				!reflect.DeepEqual(existingReplicas[k].Spec, r.Spec) {
 				if _, err := vc.ds.UpdateReplica(r); err != nil {
 					lastErr = err
 				}
@@ -325,15 +325,15 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		if lastErr == nil {
 			for k, e := range engines {
 				if existingEngines[k] == nil ||
-					!reflect.DeepEqual(existingEngines[k].Spec, engines[k].Spec) {
+					!reflect.DeepEqual(existingEngines[k].Spec, e.Spec) {
 					if _, err := vc.ds.UpdateEngine(e); err != nil {
-						break
+						lastErr = err
 					}
 				}
 			}
 		}
 		// stop updating if engines and replicas weren't fully updated
-		if err == nil && lastErr == nil {
+		if lastErr == nil {
 			if !reflect.DeepEqual(existingVolume.Status, volume.Status) {
 				// reuse err
 				_, err = vc.ds.UpdateVolumeStatus(volume)
@@ -341,7 +341,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) || apierrors.IsConflict(errors.Cause(lastErr)) {
-			logrus.Debugf("Requeue %v due to error %v", key, err)
+			logrus.Debugf("Requeue %v due to error %v or %v", key, err, lastErr)
 			vc.enqueueVolume(volume)
 			err = nil
 		}
@@ -356,13 +356,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		if err := vc.ReconcileEngineReplicaState(volume, engine, replicas); err != nil {
 			return err
 		}
-	}
 
-	if err := vc.ReconcileVolumeState(volume, engines, replicas); err != nil {
-		return err
-	}
-
-	if len(engines) <= 1 {
 		if err := vc.updateRecurringJobs(volume); err != nil {
 			return err
 		}
@@ -374,6 +368,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		if err := vc.upgradeEngineForVolume(volume, engine, replicas); err != nil {
 			return err
 		}
+	}
+
+	if err := vc.ReconcileVolumeState(volume, engines, replicas); err != nil {
+		return err
 	}
 
 	if err := vc.cleanupCorruptedOrStaleReplicas(volume, replicas); err != nil {
