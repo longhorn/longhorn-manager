@@ -40,7 +40,7 @@ spec:
         - name: varrun
           mountPath: /var/run/
         - name: longhorn
-          mountPath: /var/lib/rancher/longhorn/
+          mountPath: /var/lib/longhorn/
           mountPropagation: Bidirectional
         - name: longhorn-default-setting
           mountPath: /var/lib/longhorn-setting/
@@ -72,7 +72,7 @@ spec:
           path: /var/run/
       - name: longhorn
         hostPath:
-          path: /var/lib/rancher/longhorn/
+          path: /var/lib/longhorn/
       - name: longhorn-default-setting
         configMap:
           name: longhorn-default-setting

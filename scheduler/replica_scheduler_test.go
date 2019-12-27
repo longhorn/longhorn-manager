@@ -37,7 +37,7 @@ const (
 	TestVolumeSize         = 1073741824
 	TestVolumeStaleTimeout = 60
 
-	TestDefaultDataPath = "/var/lib/rancher/longhorn"
+	TestDefaultDataPath = "/var/lib/longhorn"
 
 	TestDaemon1 = "longhorn-manager-1"
 	TestDaemon2 = "longhorn-manager-2"

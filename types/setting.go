@@ -161,7 +161,7 @@ var (
 		Type:        SettingTypeString,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "/var/lib/rancher/longhorn/",
+		Default:     "/var/lib/longhorn/",
 	}
 
 	SettingDefinitionDefaultEngineImage = SettingDefinition{
