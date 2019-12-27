@@ -27,7 +27,7 @@ const (
 
 	DefaultEngineBinaryPath          = "/usr/local/bin/longhorn"
 	EngineBinaryDirectoryInContainer = "/engine-binaries/"
-	EngineBinaryDirectoryOnHost      = "/var/lib/rancher/longhorn/engine-binaries/"
+	EngineBinaryDirectoryOnHost      = "/var/lib/longhorn/engine-binaries/"
 
 	ReplicaMountedDataPathPrefix = "/host"
 

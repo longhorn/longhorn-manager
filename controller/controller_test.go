@@ -56,7 +56,7 @@ const (
 
 	TestTimeNow = "2015-01-02T00:00:00Z"
 
-	TestDefaultDataPath   = "/var/lib/rancher/longhorn"
+	TestDefaultDataPath   = "/var/lib/longhorn"
 	TestDaemon1           = "longhorn-manager-1"
 	TestDaemon2           = "longhorn-manager-2"
 	TestDiskID1           = "fsid"
