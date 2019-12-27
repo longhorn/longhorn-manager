@@ -49,6 +49,7 @@ type EngineClient interface {
 	ReplicaList() (map[string]*Replica, error)
 	ReplicaAdd(url string) error
 	ReplicaRemove(url string) error
+	ReplicaRebuildStatus() (map[string]*types.RebuildStatus, error)
 
 	SnapshotCreate(name string, labels map[string]string) (string, error)
 	SnapshotList() (map[string]*Snapshot, error)
