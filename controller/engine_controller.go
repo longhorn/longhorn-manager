@@ -741,20 +741,26 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	// TODO: find a more advanced way to handle invocations for incompatible running engines
-	ei, err := m.ds.GetEngineImage(types.GetEngineImageChecksumName(engine.Spec.EngineImage))
+	isOldVersion, err := m.ds.IsEngineImageCLIAPIVersionLessThanThree(engine.Status.CurrentImage)
 	if err != nil {
 		return err
 	}
-
-	if ei.Status.State != types.EngineImageStateIncompatible {
+	if !isOldVersion {
 		volumeInfo, err := client.Info()
 		if err != nil {
 			return err
 		}
 		engine.Status.CurrentSize = volumeInfo.Size
+
+		rebuildStatus, err := client.ReplicaRebuildStatus()
+		if err != nil {
+			return err
+		}
+		engine.Status.RebuildStatus = rebuildStatus
 	} else {
 		// For incompatible running engine, the current size is always `engine.Spec.VolumeSize`.
 		engine.Status.CurrentSize = engine.Spec.VolumeSize
+		engine.Status.RebuildStatus = map[string]*types.RebuildStatus{}
 	}
 
 	endpoint, err := engineapi.Endpoint(engine.Status.IP, engine.Name)
@@ -813,7 +819,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
-	if ei.Status.State != types.EngineImageStateIncompatible {
+	if !isOldVersion {
 		if engine.Spec.VolumeSize != engine.Status.CurrentSize {
 			logrus.Infof("engine monitor: Expanding the size from %v to %v for engine %v", engine.Status.CurrentSize, engine.Spec.VolumeSize, engine.Name)
 			if err := client.Expand(engine.Spec.VolumeSize); err != nil {
@@ -823,7 +829,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 	}
 
-	needRestoration, err := checkForRestoration(isRestoring, isConsensual, engine, ei, m.ds)
+	needRestoration, err := checkForRestoration(isRestoring, isConsensual, engine, isOldVersion, m.ds)
 	if err != nil {
 		return err
 	}
@@ -837,7 +843,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	return nil
 }
 
-func checkForRestoration(isRestoring, isConsensual bool, engine *longhorn.Engine, ei *longhorn.EngineImage, ds *datastore.DataStore) (bool, error) {
+func checkForRestoration(isRestoring, isConsensual bool, engine *longhorn.Engine, isOldVersion bool, ds *datastore.DataStore) (bool, error) {
 	if isRestoring || !isConsensual || engine.Spec.RequestedBackupRestore == "" || engine.Spec.RequestedBackupRestore == engine.Status.LastRestoredBackup {
 		return false, nil
 	}
@@ -846,7 +852,7 @@ func checkForRestoration(isRestoring, isConsensual bool, engine *longhorn.Engine
 		return false, fmt.Errorf("BUG: backup volume is empty for backup restoration of engine %v", engine.Name)
 	}
 
-	if ei.Status.State != types.EngineImageStateIncompatible {
+	if !isOldVersion {
 		return checkSizeBeforeRestoration(engine, ds)
 	}
 
@@ -1132,6 +1138,9 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	e.Status.CurrentReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	// reset ReplicaModeMap to reflect the new replicas
 	e.Status.ReplicaModeMap = nil
+	e.Status.BackupStatus = nil
+	e.Status.RestoreStatus = nil
+	e.Status.RebuildStatus = nil
 	return nil
 }
 

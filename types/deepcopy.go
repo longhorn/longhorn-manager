@@ -84,6 +84,13 @@ func (e *EngineStatus) DeepCopyInto(to *EngineStatus) {
 			*to.PurgeStatus[key] = *value
 		}
 	}
+	if e.RebuildStatus != nil {
+		to.RebuildStatus = make(map[string]*RebuildStatus)
+		for key, value := range e.RebuildStatus {
+			to.RebuildStatus[key] = &RebuildStatus{}
+			*to.RebuildStatus[key] = *value
+		}
+	}
 }
 
 func (n *NodeSpec) DeepCopyInto(to *NodeSpec) {
