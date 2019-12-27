@@ -163,3 +163,17 @@ func (e *Engine) Expand(size int64) error {
 
 	return nil
 }
+
+func (e *Engine) ReplicaRebuildStatus() (map[string]*types.RebuildStatus, error) {
+	output, err := e.ExecuteEngineBinary("replica-rebuild-status")
+	if err != nil {
+		return nil, errors.Wrapf(err, "error getting replica rebuild status")
+	}
+
+	data := map[string]*types.RebuildStatus{}
+	if err := json.Unmarshal([]byte(output), &data); err != nil {
+		return nil, errors.Wrapf(err, "error parsing replica rebuild status")
+	}
+
+	return data, nil
+}
