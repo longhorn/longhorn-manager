@@ -144,6 +144,8 @@ github.com/kubernetes-csi/csi-lib-utils v0.6.1 h1:+AZ58SRSRWh2vmMoWAAGcv7x6fIyBM
 github.com/kubernetes-csi/csi-lib-utils v0.6.1/go.mod h1:GVmlUmxZ+SUjVLXicRFjqWUUvWez0g0Y78zNV9t7KfQ=
 github.com/longhorn/backupstore v0.0.0-20191024011200-18aa87a9e271 h1:J8r0K0eiLKRxcYLIHCb+ydD2RfYp9VP6ymHRFfhRJpM=
 github.com/longhorn/backupstore v0.0.0-20191024011200-18aa87a9e271/go.mod h1:TEcXB6izcrf4DMxnAhEKasrrmRq0nK4wlTUVrDIZaYg=
+github.com/longhorn/backupstore v0.0.0-20191228031959-3524b8ae9518 h1:MujcirudfHDmbVXhkKHwjYf9OVMM5Mwb2/li9/XA2uo=
+github.com/longhorn/backupstore v0.0.0-20191228031959-3524b8ae9518/go.mod h1:TEcXB6izcrf4DMxnAhEKasrrmRq0nK4wlTUVrDIZaYg=
 github.com/longhorn/go-iscsi-helper v0.0.0-20191114213333-9143c9e5f2f6 h1:KdoXalE4r4AOgi+LMJx9lOZB/xE3EVXKAVwuPAROdKA=
 github.com/longhorn/go-iscsi-helper v0.0.0-20191114213333-9143c9e5f2f6/go.mod h1:3RTrAwLd6uaku/4wPE0KkSQI2OmhPgGO1SQ2Hbix5hY=
 github.com/longhorn/longhorn-engine v0.7.0-rc2.0.20191114220907-3b14850979ff h1:yF9U5w57TKHIOxUvO58Bkg7oXW2F0XO6GlgKFuah5ww=
