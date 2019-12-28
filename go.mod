@@ -35,7 +35,7 @@ require (
 	github.com/jinzhu/copier v0.0.0-20190924061706-b57f9002281a
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/longhorn/backupstore v0.0.0-20191024011200-18aa87a9e271
+	github.com/longhorn/backupstore v0.0.0-20191228031959-3524b8ae9518
 	github.com/longhorn/go-iscsi-helper v0.0.0-20191114213333-9143c9e5f2f6
 	github.com/longhorn/longhorn-engine v0.7.0-rc2.0.20191114220907-3b14850979ff
 	github.com/miekg/dns v1.1.22 // indirect
