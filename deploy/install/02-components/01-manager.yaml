@@ -32,6 +32,9 @@ spec:
         - longhorn-service-account
         ports:
         - containerPort: 9500
+        readinessProbe:
+          tcpSocket:
+            port: 9500
         volumeMounts:
         - name: dev
           mountPath: /host/dev/
