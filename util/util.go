@@ -629,17 +629,18 @@ func RemountVolume(volumeName string) error {
 	if err != nil {
 		return errors.Wrapf(err, "error using command mount to get mount info")
 	}
-	mountRecords := strings.Split(strings.TrimSpace(res), "\n")
+	res = strings.TrimSpace(res)
+	if res == "" {
+		logrus.Infof("Cannot find any mount record for volume %v, will skip remounting it", volumeName)
+		return nil
+	}
+
+	mountRecords := strings.Split(res, "\n")
 
 	// Grouping and counting duplicate the volume related mount records
 	mountPoints := map[string]int{}
 	for _, record := range mountRecords {
-		record = strings.TrimSpace(record)
-		if record == "" {
-			logrus.Warnf("DEBUG: There is an empty line in the mount records: %+v", mountRecords)
-			continue
-		}
-		items := strings.Split(record, " ")
+		items := strings.Split(strings.TrimSpace(record), " ")
 		if len(items) != 3 {
 			return fmt.Errorf("found invaild record %v", record)
 		}
@@ -655,21 +656,18 @@ func RemountVolume(volumeName string) error {
 		}
 	}
 
-	// Check if the mount point used multiple device.
-	// If YES, it means users manually mount some devices for this mount point and we cannot remount it automatically .
+	// Check if the mount point is being used by multiple devices.
+	// If YES, it means users manually mount some devices on this mount point and we cannot remount it automatically .
 	for _, record := range mountRecords {
-		if record == "" {
-			continue
-		}
-		items := strings.Split(record, " ")
+		items := strings.Split(strings.TrimSpace(record), " ")
 		if len(items) != 3 {
 			return fmt.Errorf("found invaild record %v", record)
 		}
 		m := strings.TrimSpace(items[1])
 		if _, exist := mountPoints[m]; exist {
-			// The mount point also used other devices
+			// The mount point is also used by other devices
 			if devicePath != strings.TrimSpace(items[0]) {
-				logrus.Warnf("The mount point %s used multiple devices, hence Longhorn won't do remount for it", m)
+				logrus.Warnf("The mount point %s is being used by multiple devices, hence Longhorn won't do remount for it", m)
 				delete(mountPoints, m)
 			}
 		}
