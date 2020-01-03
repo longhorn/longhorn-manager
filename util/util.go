@@ -800,15 +800,19 @@ func DetectFileSystem(volumeName string) (string, error) {
 		return "", err
 	}
 
-	output, err := nsExec.Execute("blkid", []string{devicePath})
+	// The output schema of `blkid` can be different.
+	// For filesystem `btrfs`, the schema is: `<device path>: UUID="<filesystem UUID>" UUID_SUB="<filesystem UUID_SUB>" TYPE="<filesystem type>"`
+	// For filesystem `ext4` or `xfs`, the schema is: `<device path>: UUID="<filesystem UUID>" TYPE="<filesystem type>"`
+	cmd := fmt.Sprintf("blkid %s | sed 's/.*TYPE=//g'", devicePath)
+	output, err := nsExec.Execute("bash", []string{"-c", cmd})
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to get the file system info for volume %v, maybe there is no Linux file system on the volume", volumeName)
 	}
-	items := strings.Split(output, " ")
-	if len(items) < 3 {
-		return "", fmt.Errorf("failed to detect the file system for volume %v, invalid output of command blkid", volumeName)
+	fsType := strings.Trim(strings.TrimSpace(output), "\"")
+	if fsType == "" {
+		return "", fmt.Errorf("cannot get the filesystem type by using the command %v", cmd)
 	}
-	return strings.Trim(strings.TrimPrefix(strings.TrimSpace(items[2]), "TYPE="), "\""), nil
+	return fsType, nil
 }
 
 func IsSupportedFileSystem(fsType string) bool {
