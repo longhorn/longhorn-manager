@@ -623,6 +623,17 @@ func RemountVolume(volumeName string) error {
 		return nil
 	}
 
+	// mounting multiple layers with xfs filesystem will get the following error:
+	// 		mount: wrong fs type, bad option, bad superblock on <device path>,
+	// 		       missing codepage or helper program, or other error
+	// the error in `dmesg`:
+	//		[191813.758870] XFS (sdb): Filesystem has duplicate UUID <filesystem UUID> - can't mount
+	// This error is caused by duplicate UUID of the XFS Filesystem
+	if fsType == "xfs" {
+		logrus.Warnf("Longhorn doesn't support remount filesystem xfs for volume %v", volumeName)
+		return nil
+	}
+
 	devicePath := filepath.Join(DeviceDirectory, volumeName)
 	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
 	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
