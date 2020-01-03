@@ -312,14 +312,14 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	node, err := nc.ds.GetNode(name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			logrus.Errorf("BUG: Longhorn node %v has been deleted", key)
+			logrus.Errorf("Longhorn node %v has been deleted", key)
 			return nil
 		}
 		return err
 	}
 
 	if node.DeletionTimestamp != nil {
-		nc.eventRecorder.Eventf(node, v1.EventTypeWarning, EventReasonDelete, "BUG: Deleting node %v", node.Name)
+		nc.eventRecorder.Eventf(node, v1.EventTypeWarning, EventReasonDelete, "Deleting node %v", node.Name)
 		return nc.ds.RemoveFinalizerForNode(node)
 	}
 
