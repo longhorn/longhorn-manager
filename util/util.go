@@ -617,6 +617,12 @@ func TolerationListToMap(tolerationList []v1.Toleration) map[string]v1.Toleratio
 }
 
 func RemountVolume(volumeName string) error {
+	fsType, err := DetectFileSystem(volumeName)
+	if err != nil {
+		logrus.Warnf("Failed to detect the filesystem for volume %v, will skip remounting it: %v", volumeName, err)
+		return nil
+	}
+
 	devicePath := filepath.Join(DeviceDirectory, volumeName)
 	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
 	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
@@ -625,7 +631,7 @@ func RemountVolume(volumeName string) error {
 	}
 
 	// The record schema is like: `<Device Path> <Mount Point> <Mount Options>`
-	res, err := nsExec.Execute("bash", []string{"-c", "mount | grep ext4 | awk '{print $1,$3,$6}'"})
+	res, err := nsExec.Execute("bash", []string{"-c", fmt.Sprintf("mount | grep %s | awk '{print $1,$3,$6}'", fsType)})
 	if err != nil {
 		return errors.Wrapf(err, "error using command mount to get mount info")
 	}
