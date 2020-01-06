@@ -306,6 +306,7 @@ func (m *VolumeManager) Detach(name string) (v *longhorn.Volume, err error) {
 	}
 
 	v.Spec.NodeID = ""
+	v.Spec.DisableFrontend = false
 
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
