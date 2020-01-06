@@ -97,7 +97,7 @@ func DeployDriverCmd() cli.Command {
 				Name:   FlagCSIResizerReplicaCount,
 				Usage:  "Specify number of CSI resizer replicas",
 				EnvVar: EnvCSIResizerReplicaCount,
-				Value:  csi.DefaultCSIProvisionerReplicaCount,
+				Value:  csi.DefaultCSIResizerReplicaCount,
 			},
 			cli.StringFlag{
 				Name:   FlagCSINodeDriverRegistrarImage,
