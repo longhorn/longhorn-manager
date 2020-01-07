@@ -332,11 +332,6 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 							},
 							VolumeMounts: []v1.VolumeMount{
 								{
-									Name:             "plugin-dir",
-									MountPath:        GetInContainerPluginsDir(),
-									MountPropagation: &MountPropagationBidirectional,
-								},
-								{
 									Name:      "socket-dir",
 									MountPath: GetInContainerCSISocketDir(),
 								},
@@ -446,11 +441,6 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 							},
 							VolumeMounts: []v1.VolumeMount{
 								{
-									Name:             "plugin-dir",
-									MountPath:        GetInContainerPluginsDir(),
-									MountPropagation: &MountPropagationBidirectional,
-								},
-								{
 									Name:      "old-socket-dir",
 									MountPath: GetOldInContainerCSISocketDir(),
 								},
@@ -491,15 +481,6 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 								HostPath: &v1.HostPathVolumeSource{
 									Path: GetOnHostCSISocketDir(rootDir),
 									Type: &HostPathDirectoryOrCreate,
-								},
-							},
-						},
-						{
-							Name: "plugin-dir",
-							VolumeSource: v1.VolumeSource{
-								HostPath: &v1.HostPathVolumeSource{
-									Path: GetOnHostPluginsDir(rootDir),
-									Type: &HostPathDirectory,
 								},
 							},
 						},
