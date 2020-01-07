@@ -30,9 +30,10 @@ const (
 	DefaultInContainerKubeletRootDir      = "/var/lib/kubelet/"
 	DefaultCSISocketFileName              = "csi.sock"
 	DefaultOnHostCSIRegistrationDirSuffix = "/plugins_registry"
+	DefaultOnHostPluginsDirSuffix         = "/obsoleted-longhorn-plugins/"
 	DefaultInContainerCSISocketDir        = "/csi/"
 	DefaultInContainerCSIRegistrationDir  = "/registration"
-	DefaultCommonPluginsDirSuffix         = "/plugins/"
+	DefaultInContainerPluginsDirSuffix    = "/plugins/"
 
 	AnnotationCSIVersion        = types.LonghornDriverName + "/version"
 	AnnotationKubernetesVersion = types.LonghornDriverName + "/kubernetes-version"
