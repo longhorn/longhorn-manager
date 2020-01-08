@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -204,6 +205,11 @@ func GetVolumeLabels(volumeName string) map[string]string {
 
 func GetEngineImageChecksumName(image string) string {
 	return engineImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:EngineImageChecksumNameLength]
+}
+
+func ValidateEngineImageChecksumName(name string) bool {
+	matched, _ := regexp.MatchString(fmt.Sprintf("^%s[a-fA-F0-9]{%d}$", engineImagePrefix, EngineImageChecksumNameLength), name)
+	return matched
 }
 
 func GetRandomEngineManagerName() string {

@@ -58,37 +58,14 @@ func Upgrade(kubeconfigPath, currentNodeID string) error {
 		return errors.Wrap(err, "unable to create scheme")
 	}
 
-	crdAPIVersion := ""
-
-	crdAPIVersionSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameCRDAPIVersion), metav1.GetOptions{})
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
-		// apierrors.IsNotFound(err)
-
-		// v1alpha1 doesn't have a setting entry for crd-api-version, need to create
-		crdAPIVersionSetting = &longhorn.Setting{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: string(types.SettingNameCRDAPIVersion),
-			},
-			Setting: types.Setting{
-				Value: "",
-			},
-		}
-		crdAPIVersionSetting, err = lhClient.LonghornV1beta1().Settings(namespace).Create(crdAPIVersionSetting)
-		if err != nil {
-			return errors.Wrap(err, "cannot create CRDAPIVersionSetting")
-		}
-	} else {
-		crdAPIVersion = crdAPIVersionSetting.Value
+	if err := upgrade(currentNodeID, namespace, config, lhClient, kubeClient); err != nil {
+		return err
 	}
 
-	if crdAPIVersion == types.CurrentCRDAPIVersion {
-		// No upgrade is needed
-		return nil
-	}
+	return nil
+}
 
+func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -111,9 +88,12 @@ func Upgrade(kubeconfigPath, currentNodeID string) error {
 		RetryPeriod:     2 * time.Second,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
-				if err := doUpgrade(ctx, namespace, config, lhClient); err != nil {
-					logrus.Errorf("cannot finish upgrade: %v", err)
+				if err := doAPIVersionUpgrade(namespace, config, lhClient); err != nil {
+					logrus.Errorf("cannot finish APIVersion upgrade: %v", err)
 					return
+				}
+				if err := doInstanceManagerUpgrade(namespace, lhClient); err != nil {
+					logrus.Errorf("cannot finish InstanceManager upgrade: %v", err)
 				}
 				// we only need to run upgrade once
 				cancel()
@@ -133,11 +113,12 @@ func Upgrade(kubeconfigPath, currentNodeID string) error {
 	return nil
 }
 
-func doUpgrade(ctx context.Context, namespace string, config *restclient.Config, lhClient *lhclientset.Clientset) error {
+func doAPIVersionUpgrade(namespace string, config *restclient.Config, lhClient *lhclientset.Clientset) error {
 	defer func() {
-		logrus.Info("Upgrade completed")
+		logrus.Info("Upgrade APIVersion completed")
 	}()
-	logrus.Info("Start the upgrade process")
+	logrus.Info("Start the APIVersion upgrade process")
+
 	crdAPIVersion := ""
 
 	crdAPIVersionSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameCRDAPIVersion), metav1.GetOptions{})
@@ -145,7 +126,19 @@ func doUpgrade(ctx context.Context, namespace string, config *restclient.Config,
 		if !apierrors.IsNotFound(err) {
 			return err
 		}
-		// v1alpha1 doesn't have a setting entry for crd-api-version
+		// v1alpha1 doesn't have a setting entry for crd-api-version, need to create
+		crdAPIVersionSetting = &longhorn.Setting{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: string(types.SettingNameCRDAPIVersion),
+			},
+			Setting: types.Setting{
+				Value: "",
+			},
+		}
+		crdAPIVersionSetting, err = lhClient.LonghornV1beta1().Settings(namespace).Create(crdAPIVersionSetting)
+		if err != nil {
+			return errors.Wrap(err, "cannot create CRDAPIVersionSetting")
+		}
 	} else {
 		crdAPIVersion = crdAPIVersionSetting.Value
 	}
@@ -190,6 +183,37 @@ func doUpgrade(ctx context.Context, namespace string, config *restclient.Config,
 		logrus.Infof("CRD has been upgraded to %v", crdAPIVersionSetting.Value)
 	default:
 		return fmt.Errorf("don't support upgrade from %v to %v", crdAPIVersion, types.CurrentCRDAPIVersion)
+	}
+
+	return nil
+}
+
+func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset) error {
+	defer func() {
+		logrus.Info("Upgrade instance managers completed")
+	}()
+	logrus.Info("Start the instance managers upgrade process")
+
+	list, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).List(metav1.ListOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing instance managers during the instance managers upgrade")
+	}
+
+	for _, im := range list.Items {
+		if !types.ValidateEngineImageChecksumName(im.Spec.EngineImage) {
+			continue
+		}
+		ei, err := lhClient.LonghornV1beta1().EngineImages(namespace).Get(im.Spec.EngineImage, metav1.GetOptions{})
+		if err != nil {
+			return errors.Wrapf(err, "failed to find out the related engine image %v during the instance managers upgrade", im.Spec.EngineImage)
+		}
+		im.Spec.EngineImage = ei.Spec.Image
+		if _, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).Update(&im); err != nil {
+			return errors.Wrapf(err, "failed to update the Spec.EngineImage field for instance manager %v during the instance managers upgrade", im.Name)
+		}
 	}
 
 	return nil
