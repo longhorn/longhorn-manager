@@ -94,7 +94,7 @@ func newInstanceManager(
 			Labels:    types.GetInstanceManagerLabels(TestNode1, getTestEngineImageName(), imType),
 		},
 		Spec: types.InstanceManagerSpec{
-			EngineImage: getTestEngineImageName(),
+			EngineImage: TestEngineImage,
 			NodeID:      nodeID,
 			Type:        imType,
 		},

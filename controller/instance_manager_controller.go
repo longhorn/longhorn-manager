@@ -294,11 +294,12 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		}
 	}()
 
-	image, err := imc.ds.GetEngineImage(im.Spec.EngineImage)
+	eiName := types.GetEngineImageChecksumName(im.Spec.EngineImage)
+	image, err := imc.ds.GetEngineImage(eiName)
 	if err != nil {
 		im.Status.CurrentState = types.InstanceManagerStateError
 		if datastore.ErrorIsNotFound(err) {
-			logrus.Infof("Engine image %v for instance manager %v has been deleted", im.Spec.EngineImage, key)
+			logrus.Infof("Engine image %v(%v) for instance manager %v has been deleted", eiName, im.Spec.EngineImage, key)
 			return nil
 		}
 		return err

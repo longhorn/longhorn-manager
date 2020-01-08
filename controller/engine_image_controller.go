@@ -475,7 +475,7 @@ func (ic *EngineImageController) updateEngineImageRefCount(ei *longhorn.EngineIm
 				if err != nil {
 					return err
 				}
-				if ei.Name == im.Spec.EngineImage {
+				if ei.Spec.Image == im.Spec.EngineImage {
 					refCount++
 				}
 			}
@@ -591,9 +591,10 @@ func (ic *EngineImageController) enqueueAllEngineImagesForNodeChange() {
 }
 
 func (ic *EngineImageController) enqueueInstanceManager(im *longhorn.InstanceManager) {
-	ei, err := ic.ds.GetEngineImage(im.Spec.EngineImage)
+	eiName := types.GetEngineImageChecksumName(im.Spec.EngineImage)
+	ei, err := ic.ds.GetEngineImage(eiName)
 	if err != nil {
-		logrus.Errorf("failed to get the engine image %v when enqueuing instance manager change: %v", im.Spec.EngineImage, err)
+		logrus.Errorf("failed to get the engine image %v(%v) when enqueuing instance manager change: %v", eiName, im.Spec.EngineImage, err)
 		return
 	}
 
@@ -784,7 +785,7 @@ func (ic *EngineImageController) createInstanceManager(ei *longhorn.EngineImage,
 			OwnerReferences: datastore.GetOwnerReferencesForEngineImage(ei),
 		},
 		Spec: types.InstanceManagerSpec{
-			EngineImage: ei.Name,
+			EngineImage: ei.Spec.Image,
 			NodeID:      node.Name,
 			Type:        imType,
 		},
