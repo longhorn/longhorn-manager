@@ -335,6 +335,11 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 							},
 							VolumeMounts: []v1.VolumeMount{
 								{
+									Name:             "kubernetes-csi-dir",
+									MountPath:        GetInContainerKubernetesCSIDir(),
+									MountPropagation: &MountPropagationBidirectional,
+								},
+								{
 									Name:      "socket-dir",
 									MountPath: GetInContainerCSISocketDir(),
 								},
@@ -469,6 +474,15 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 						},
 					},
 					Volumes: []v1.Volume{
+						{
+							Name: "kubernetes-csi-dir",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: GetOnHostKubernetesCSIDir(rootDir),
+									Type: &HostPathDirectoryOrCreate,
+								},
+							},
+						},
 						{
 							Name: "registration-dir",
 							VolumeSource: v1.VolumeSource{
