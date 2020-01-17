@@ -359,7 +359,7 @@ func GetInContainerPluginsDir() string {
 }
 
 func GetOnHostCSISocketDir(kubeletRootDir string) string {
-	return filepath.Join(GetOnHostPluginsDir(kubeletRootDir), types.LonghornDriverName)
+	return filepath.Join(GetOnHostObseletedPluginsDir(kubeletRootDir), types.LonghornDriverName)
 }
 
 func GetOnHostCSISocketFilePath(kubeletRootDir string) string {
@@ -372,6 +372,10 @@ func GetOnHostCSIRegistrationDir(kubeletRootDir string) string {
 
 func GetOnHostPluginsDir(kubeletRootDir string) string {
 	return filepath.Join(kubeletRootDir, DefaultOnHostPluginsDirSuffix)
+}
+
+func GetOnHostObseletedPluginsDir(kubeletRootDir string) string {
+	return filepath.Join(kubeletRootDir, DefaultOnHostObseletedPluginsDirSuffix)
 }
 
 func GetCSIEndpoint() string {
@@ -387,7 +391,7 @@ func GetOldInContainerCSISocketFilePath() string {
 }
 
 func GetOldOnHostCSISocketDir(kubeletRootDir string) string {
-	return filepath.Join(GetOnHostPluginsDir(kubeletRootDir), types.DepracatedDriverName)
+	return filepath.Join(GetOnHostObseletedPluginsDir(kubeletRootDir), types.DepracatedDriverName)
 }
 
 func GetOldOnHostCSISocketFilePath(kubeletRootDir string) string {

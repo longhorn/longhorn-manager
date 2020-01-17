@@ -27,13 +27,15 @@ const (
 	DefaultCSIProvisionerReplicaCount = 3
 	DefaultCSIResizerReplicaCount     = 3
 
-	DefaultInContainerKubeletRootDir      = "/var/lib/kubelet/"
-	DefaultCSISocketFileName              = "csi.sock"
-	DefaultOnHostCSIRegistrationDirSuffix = "/plugins_registry"
-	DefaultOnHostPluginsDirSuffix         = "/obsoleted-longhorn-plugins/"
-	DefaultInContainerCSISocketDir        = "/csi/"
-	DefaultInContainerCSIRegistrationDir  = "/registration"
-	DefaultInContainerPluginsDirSuffix    = "/plugins/"
+	DefaultInContainerKubeletRootDir       = "/var/lib/kubelet/"
+	DefaultCSISocketFileName               = "csi.sock"
+	DefaultOnHostCSIRegistrationDirSuffix  = "/plugins_registry"
+	DefaultOnHostObseletedPluginsDirSuffix = "/obsoleted-longhorn-plugins/"
+	DefaultOnHostPluginsDirSuffix          = "/plugins/"
+	DefaultInContainerCSISocketDir         = "/csi/"
+	DefaultInContainerCSIRegistrationDir   = "/registration"
+	DefaultInContainerPluginsDirSuffix     = "/plugins/"
+	DefaultKubernetesCSIDirSuffix          = "/kubernetes.io/csi/"
 
 	AnnotationCSIVersion        = types.LonghornDriverName + "/version"
 	AnnotationKubernetesVersion = types.LonghornDriverName + "/kubernetes-version"
