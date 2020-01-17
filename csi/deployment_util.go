@@ -358,6 +358,14 @@ func GetInContainerPluginsDir() string {
 	return filepath.Join(DefaultInContainerKubeletRootDir, DefaultInContainerPluginsDirSuffix)
 }
 
+func GetInContainerKubernetesCSIDir() string {
+	return filepath.Join(DefaultInContainerKubeletRootDir, DefaultInContainerPluginsDirSuffix, DefaultKubernetesCSIDirSuffix)
+}
+
+func GetOnHostKubernetesCSIDir(kubeletRootDir string) string {
+	return filepath.Join(kubeletRootDir, DefaultOnHostPluginsDirSuffix, DefaultKubernetesCSIDirSuffix)
+}
+
 func GetOnHostCSISocketDir(kubeletRootDir string) string {
 	return filepath.Join(GetOnHostObseletedPluginsDir(kubeletRootDir), types.LonghornDriverName)
 }
