@@ -44,6 +44,7 @@ type EngineClient interface {
 	Version(clientOnly bool) (*EngineVersion, error)
 
 	Info() (*Volume, error)
+	Endpoint() (string, error)
 	Expand(size int64) error
 
 	ReplicaList() (map[string]*Replica, error)

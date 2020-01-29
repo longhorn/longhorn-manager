@@ -26,9 +26,6 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	imapi "github.com/longhorn/longhorn-engine/pkg/instance-manager/api"
-	imclient "github.com/longhorn/longhorn-engine/pkg/instance-manager/client"
-	imutil "github.com/longhorn/longhorn-engine/pkg/instance-manager/util"
-
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/manager"
@@ -41,9 +38,6 @@ import (
 
 const (
 	unknownReplicaPrefix = "UNKNOWN-"
-
-	EngineFrontendBlockDev = "tgt-blockdev"
-	EngineFrontendISCSI    = "tgt-iscsi"
 )
 
 var (
@@ -357,18 +351,6 @@ func (ec *EngineController) enqueueInstanceManagerChange(im *longhorn.InstanceMa
 	return
 }
 
-func (ec *EngineController) getEngineManagerClient(instanceManagerName string) (*imclient.EngineManagerClient, error) {
-	im, err := ec.ds.GetInstanceManager(instanceManagerName)
-	if err != nil {
-		return nil, fmt.Errorf("cannot find Instance Manager %v", instanceManagerName)
-	}
-	if im.Status.CurrentState != types.InstanceManagerStateRunning || im.Status.IP == "" {
-		return nil, fmt.Errorf("invalid Instance Manager %v", instanceManagerName)
-	}
-
-	return imclient.NewEngineManagerClient(imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)), nil
-}
-
 func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
@@ -383,39 +365,49 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProc
 		return nil, err
 	}
 
+	frontend, err := getEngineProcessFrontend(e)
+	if err != nil {
+		return nil, err
+	}
+
+	args := []string{"controller", e.Spec.VolumeName, "--frontend", frontend,
+		"--enable-backend", types.DefaultEngineBackend}
+	for _, addr := range e.Status.CurrentReplicaAddressMap {
+		args = append(args, "--replica", engineapi.GetBackendReplicaURL(addr))
+	}
+
+	c, err := engineapi.GetProcessManagerClient(im)
+	if err != nil {
+		return nil, err
+	}
+
+	engineProcess, err := c.ProcessCreate(
+		e.Name, types.DefaultEngineBinaryPath, types.DefaultEnginePortCount,
+		args, []string{"--listen,0.0.0.0:"})
+	if err != nil {
+		return nil, err
+	}
+
+	return engineapi.ProcessToInstanceProcess(engineProcess), nil
+}
+
+func getEngineProcessFrontend(e *longhorn.Engine) (string, error) {
 	frontend := ""
+	// TODO: fix the iscsi frontend
 	if e.Spec.Frontend == types.VolumeFrontendBlockDev {
-		frontend = EngineFrontendBlockDev
-	} else if e.Spec.Frontend == types.VolumeFrontendISCSI {
-		frontend = EngineFrontendISCSI
+		frontend = string(types.EngineFrontendBlockDev)
+		//} else if e.Spec.Frontend == types.VolumeFrontendISCSI {
+		//	frontend = string(types.EngineFrontendISCSI)
 	} else if e.Spec.Frontend == "" || e.Spec.DisableFrontend {
 		frontend = ""
 	} else {
-		return nil, fmt.Errorf("unknown volume frontend %v", e.Spec.Frontend)
+		return "", fmt.Errorf("unknown volume frontend %v", e.Spec.Frontend)
 	}
 
 	if e.Spec.DisableFrontend {
 		frontend = ""
 	}
-
-	replicas := []string{}
-	for _, addr := range e.Status.CurrentReplicaAddressMap {
-		replicas = append(replicas, engineapi.GetBackendReplicaURL(addr))
-	}
-
-	c, err := ec.getEngineManagerClient(im.Name)
-	if err != nil {
-		return nil, err
-	}
-
-	engineProcess, err := c.EngineCreate(
-		e.Spec.VolumeSize, e.Name, e.Spec.VolumeName,
-		types.DefaultEngineBinaryPath, "", "0.0.0.0", frontend, []string{}, replicas)
-	if err != nil {
-		return nil, err
-	}
-
-	return engineapi.EngineProcessToInstanceProcess(engineProcess), nil
+	return frontend, nil
 }
 
 func (ec *EngineController) DeleteInstance(obj interface{}) error {
@@ -453,12 +445,12 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 		}
 	}
 
-	c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
+	c, err := engineapi.GetProcessManagerClient(im)
 	if err != nil {
 		return err
 	}
 
-	if _, err := c.EngineDelete(e.Name); err != nil && !types.ErrorIsNotFound(err) {
+	if _, err := c.ProcessDelete(e.Name); err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
 
@@ -529,17 +521,21 @@ func (ec *EngineController) GetInstance(obj interface{}) (*types.InstanceProcess
 		return nil, fmt.Errorf("BUG: invalid object for engine process get: %v", obj)
 	}
 
-	c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
+	im, err := ec.ds.GetInstanceManagerByInstance(obj)
+	if err != nil {
+		return nil, err
+	}
+	c, err := engineapi.GetProcessManagerClient(im)
 	if err != nil {
 		return nil, err
 	}
 
-	engineProcess, err := c.EngineGet(e.Name)
+	engineProcess, err := c.ProcessGet(e.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	return engineapi.EngineProcessToInstanceProcess(engineProcess), nil
+	return engineapi.ProcessToInstanceProcess(engineProcess), nil
 }
 
 func (ec *EngineController) LogInstance(obj interface{}) (*imapi.LogStream, error) {
@@ -548,11 +544,16 @@ func (ec *EngineController) LogInstance(obj interface{}) (*imapi.LogStream, erro
 		return nil, fmt.Errorf("BUG: invalid object for engine process log: %v", obj)
 	}
 
-	c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
+	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
 	if err != nil {
 		return nil, err
 	}
-	stream, err := c.EngineLog(e.Name)
+	c, err := engineapi.GetProcessManagerClient(im)
+	if err != nil {
+		return nil, err
+	}
+
+	stream, err := c.ProcessLog(e.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -752,6 +753,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 		engine.Status.CurrentSize = volumeInfo.Size
 
+		endpoint, err := client.Endpoint()
+		if err != nil {
+			return err
+		}
+		engine.Status.Endpoint = endpoint
+
 		rebuildStatus, err := client.ReplicaRebuildStatus()
 		if err != nil {
 			return err
@@ -762,12 +769,6 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.CurrentSize = engine.Spec.VolumeSize
 		engine.Status.RebuildStatus = map[string]*types.RebuildStatus{}
 	}
-
-	endpoint, err := engineapi.Endpoint(engine.Status.IP, engine.Name)
-	if err != nil {
-		return err
-	}
-	engine.Status.Endpoint = endpoint
 
 	backupStatusList, err := client.SnapshotBackupStatus()
 	if err != nil {
@@ -1115,23 +1116,11 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	// Don't use image with different image name but same commit here. It
 	// will cause live replica to be removed. Volume controller should filter those.
 	if err != nil || version.ClientVersion.GitCommit != version.ServerVersion.GitCommit {
-		replicaURLs := []string{}
-		for _, addr := range e.Spec.UpgradedReplicaAddressMap {
-			replicaURLs = append(replicaURLs, engineapi.GetBackendReplicaURL(addr))
-		}
-		binary := types.GetEngineBinaryDirectoryInContainerForImage(e.Spec.EngineImage) + "/longhorn"
 		logrus.Debugf("About to upgrade %v from %v to %v for %v",
 			e.Name, e.Status.CurrentImage, e.Spec.EngineImage, e.Spec.VolumeName)
-
-		c, err := ec.getEngineManagerClient(e.Status.InstanceManagerName)
-		if err != nil {
+		if err := ec.UpgradeEngineProcess(e); err != nil {
 			return err
 		}
-		engineProcess, err := c.EngineUpgrade(e.Spec.VolumeSize, e.Name, binary, replicaURLs)
-		if err != nil {
-			return err
-		}
-		e.Status.Port = int(engineProcess.ProcessStatus.PortStart)
 	}
 	logrus.Debugf("Engine %v has been upgraded from %v to %v", e.Name, e.Status.CurrentImage, e.Spec.EngineImage)
 	e.Status.CurrentImage = e.Spec.EngineImage
@@ -1141,6 +1130,39 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	e.Status.BackupStatus = nil
 	e.Status.RestoreStatus = nil
 	e.Status.RebuildStatus = nil
+	return nil
+}
+
+func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine) error {
+	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
+	if err != nil {
+		return err
+	}
+	c, err := engineapi.GetProcessManagerClient(im)
+	if err != nil {
+		return err
+	}
+
+	binary := types.GetEngineBinaryDirectoryInContainerForImage(e.Spec.EngineImage) + "/longhorn"
+
+	frontend, err := getEngineProcessFrontend(e)
+	if err != nil {
+		return err
+	}
+
+	args := []string{"controller", e.Spec.VolumeName, "--frontend", frontend, "--upgrade"}
+	for _, addr := range e.Status.CurrentReplicaAddressMap {
+		args = append(args, "--replica", engineapi.GetBackendReplicaURL(addr))
+	}
+
+	engineProcess, err := c.ProcessReplace(
+		e.Name, binary, types.DefaultEnginePortCount,
+		args, []string{"--listen,0.0.0.0:"}, "SIGHUP")
+	if err != nil {
+		return err
+	}
+
+	e.Status.Port = int(engineProcess.ProcessStatus.PortStart)
 	return nil
 }
 
