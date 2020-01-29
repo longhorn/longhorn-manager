@@ -36,8 +36,8 @@ require (
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backupstore v0.0.0-20191228031959-3524b8ae9518
-	github.com/longhorn/go-iscsi-helper v0.0.0-20191114213333-9143c9e5f2f6
-	github.com/longhorn/longhorn-engine v0.7.0-rc2.0.20191114220907-3b14850979ff
+	github.com/longhorn/go-iscsi-helper v0.0.0-20191217235054-ce79ff17c4a2
+	github.com/longhorn/longhorn-engine v0.7.1-0.20200129003840-e1981aa9dbfd
 	github.com/miekg/dns v1.1.22 // indirect
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
