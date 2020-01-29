@@ -3,77 +3,43 @@ package engineapi
 import (
 	"fmt"
 
-	"github.com/sirupsen/logrus"
-
 	imapi "github.com/longhorn/longhorn-engine/pkg/instance-manager/api"
 	imclient "github.com/longhorn/longhorn-engine/pkg/instance-manager/client"
 	imutil "github.com/longhorn/longhorn-engine/pkg/instance-manager/util"
 
 	"github.com/longhorn/longhorn-manager/types"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
-func EngineProcessToInstanceProcess(engineProcess *imapi.Engine) *types.InstanceProcess {
-	if engineProcess == nil {
+func ProcessToInstanceProcess(p *imapi.Process) *types.InstanceProcess {
+	if p == nil {
 		return nil
 	}
 
 	return &types.InstanceProcess{
 		Spec: types.InstanceProcessSpec{
-			Name: engineProcess.Name,
+			Name: p.Name,
 		},
 		Status: types.InstanceProcessStatus{
-			Type:      types.InstanceTypeEngine,
-			State:     types.InstanceState(engineProcess.ProcessStatus.State),
-			ErrorMsg:  engineProcess.ProcessStatus.ErrorMsg,
-			PortStart: engineProcess.ProcessStatus.PortStart,
-			PortEnd:   engineProcess.ProcessStatus.PortEnd,
+			State:     types.InstanceState(p.ProcessStatus.State),
+			ErrorMsg:  p.ProcessStatus.ErrorMsg,
+			PortStart: p.ProcessStatus.PortStart,
+			PortEnd:   p.ProcessStatus.PortEnd,
 
-			Listen:   engineProcess.Listen,
-			Endpoint: engineProcess.Endpoint,
-		},
-	}
-
-}
-
-func ReplicaProcessToInstanceProcess(replicaProcess *imapi.Process) *types.InstanceProcess {
-	if replicaProcess == nil {
-		return nil
-	}
-
-	return &types.InstanceProcess{
-		Spec: types.InstanceProcessSpec{
-			Name: replicaProcess.Name,
-		},
-		Status: types.InstanceProcessStatus{
-			Type:      types.InstanceTypeReplica,
-			State:     types.InstanceState(replicaProcess.ProcessStatus.State),
-			ErrorMsg:  replicaProcess.ProcessStatus.ErrorMsg,
-			PortStart: replicaProcess.ProcessStatus.PortStart,
-			PortEnd:   replicaProcess.ProcessStatus.PortEnd,
-
+			// These fields are not used, maybe we can deprecate them later.
+			Type:     "",
 			Listen:   "",
 			Endpoint: "",
 		},
 	}
+
 }
 
-func Endpoint(ip, engineName string) (string, error) {
-	c := imclient.NewEngineManagerClient(imutil.GetURL(ip, InstanceManagerDefaultPort))
-	engineProcess, err := c.EngineGet(engineName)
-	if err != nil {
-		logrus.Warn("Fail to get engine process info: ", err)
-		return "", err
+func GetProcessManagerClient(im *longhorn.InstanceManager) (*imclient.ProcessManagerClient, error) {
+	if im.Status.CurrentState != types.InstanceManagerStateRunning || im.Status.IP == "" {
+		return nil, fmt.Errorf("invalid Instance Manager %v", im.Name)
 	}
 
-	switch engineProcess.Frontend {
-	case string(FrontendISCSI):
-		// it will looks like this in the end
-		// iscsi://10.42.0.12:3260/iqn.2014-09.com.rancher:vol-name/1
-		return "iscsi://" + ip + ":" + DefaultISCSIPort + "/" + engineProcess.Endpoint + "/" + DefaultISCSILUN, nil
-	case string(FrontendBlockDev):
-		return engineProcess.Endpoint, nil
-	case "":
-		return "", nil
-	}
-	return "", fmt.Errorf("Unknown frontend %v", engineProcess.Frontend)
+	return imclient.NewProcessManagerClient(imutil.GetURL(im.Status.IP, InstanceManagerDefaultPort)), nil
 }

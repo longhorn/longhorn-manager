@@ -328,7 +328,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 		"--size", strconv.FormatInt(r.Spec.VolumeSize, 10),
 	}
 
-	c, err := rc.getProcessManagerClient(im.Name)
+	c, err := engineapi.GetProcessManagerClient(im)
 	if err != nil {
 		return nil, err
 	}
@@ -340,7 +340,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 		return nil, err
 	}
 
-	return engineapi.ReplicaProcessToInstanceProcess(replicaProcess), nil
+	return engineapi.ProcessToInstanceProcess(replicaProcess), nil
 }
 
 func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
@@ -378,7 +378,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		}
 	}
 
-	c, err := rc.getProcessManagerClient(r.Status.InstanceManagerName)
+	c, err := engineapi.GetProcessManagerClient(im)
 	if err != nil {
 		return err
 	}
@@ -454,7 +454,11 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*types.InstanceProces
 		return nil, fmt.Errorf("BUG: invalid object for replica process get: %v", obj)
 	}
 
-	c, err := rc.getProcessManagerClient(r.Status.InstanceManagerName)
+	im, err := rc.ds.GetInstanceManagerByInstance(obj)
+	if err != nil {
+		return nil, err
+	}
+	c, err := engineapi.GetProcessManagerClient(im)
 	if err != nil {
 		return nil, err
 	}
@@ -464,7 +468,7 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*types.InstanceProces
 		return nil, err
 	}
 
-	return engineapi.ReplicaProcessToInstanceProcess(replicaProcess), nil
+	return engineapi.ProcessToInstanceProcess(replicaProcess), nil
 }
 
 func (rc *ReplicaController) LogInstance(obj interface{}) (*imapi.LogStream, error) {
@@ -473,7 +477,11 @@ func (rc *ReplicaController) LogInstance(obj interface{}) (*imapi.LogStream, err
 		return nil, fmt.Errorf("BUG: invalid object for reploca process log: %v", obj)
 	}
 
-	c, err := rc.getProcessManagerClient(r.Status.InstanceManagerName)
+	im, err := rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
+	if err != nil {
+		return nil, err
+	}
+	c, err := engineapi.GetProcessManagerClient(im)
 	if err != nil {
 		return nil, err
 	}

@@ -23,7 +23,10 @@ const (
 const (
 	DefaultAPIPort = 9500
 
+	DefaultEnginePortCount  = 1
 	DefaultReplicaPortCount = 15
+
+	DefaultEngineBackend = "tcp"
 
 	DefaultEngineBinaryPath          = "/usr/local/bin/longhorn"
 	EngineBinaryDirectoryInContainer = "/engine-binaries/"

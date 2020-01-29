@@ -75,7 +75,7 @@ type InstanceManagerMonitor struct {
 	Name         string
 	controllerID string
 
-	instanceManagerUpdater InstanceManagerUpdater
+	instanceManagerUpdater *InstanceManagerUpdater
 	ds                     *datastore.DataStore
 	lock                   *sync.Mutex
 	updateNotification     bool
@@ -86,29 +86,11 @@ type InstanceManagerMonitor struct {
 	monitoringRemoveCh chan string
 }
 
-type InstanceManagerUpdater interface {
-	GetNotifier() (InstanceManagerNotifier, error)
-	Poll() (map[string]types.InstanceProcess, error)
-}
-
-type InstanceManagerNotifier interface {
-	Recv() (struct{}, error)
-	Close()
-}
-
-type EngineManagerUpdater struct {
-	client *client.EngineManagerClient
-}
-
-type ReplicaManagerUpdater struct {
+type InstanceManagerUpdater struct {
 	client *client.ProcessManagerClient
 }
 
-type EngineManagerNotifier struct {
-	stream *api.EngineStream
-}
-
-type ReplicaManagerNotifier struct {
+type InstanceManagerNotifier struct {
 	stream *api.ProcessStream
 }
 
@@ -386,9 +368,9 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		if !imc.isMonitoring(im.Name) {
 			switch im.Spec.Type {
 			case types.InstanceManagerTypeEngine:
-				imc.startMonitoring(im, NewEngineManagerUpdater(im))
+				fallthrough
 			case types.InstanceManagerTypeReplica:
-				imc.startMonitoring(im, NewReplicaManagerUpdater(im))
+				imc.startMonitoring(im, NewInstanceManagerUpdater(im))
 			default:
 				logrus.Errorf("BUG: instance manager %v has invalid type %v", im.Name, im.Spec.Type)
 				im.Status.CurrentState = types.InstanceManagerStateError
@@ -649,60 +631,13 @@ func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.I
 	return podSpec, nil
 }
 
-func NewEngineManagerUpdater(im *longhorn.InstanceManager) *EngineManagerUpdater {
-	return &EngineManagerUpdater{
-		client: client.NewEngineManagerClient(imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)),
-	}
-}
-
-func NewReplicaManagerUpdater(im *longhorn.InstanceManager) *ReplicaManagerUpdater {
-	return &ReplicaManagerUpdater{
+func NewInstanceManagerUpdater(im *longhorn.InstanceManager) *InstanceManagerUpdater {
+	return &InstanceManagerUpdater{
 		client: client.NewProcessManagerClient(imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)),
 	}
 }
 
-func (updater *EngineManagerUpdater) Poll() (map[string]types.InstanceProcess, error) {
-	result := map[string]types.InstanceProcess{}
-
-	resp, err := updater.client.EngineList()
-	if err != nil {
-		return result, err
-	}
-
-	for name, instance := range resp {
-		result[name] = *engineapi.EngineProcessToInstanceProcess(instance)
-	}
-	return result, nil
-}
-
-func (updater *EngineManagerUpdater) GetNotifier() (InstanceManagerNotifier, error) {
-	watch, err := updater.client.EngineWatch()
-	if err != nil {
-		return nil, err
-	}
-	return NewEngineManagerNotifier(watch), nil
-}
-
-func NewEngineManagerNotifier(stream *api.EngineStream) *EngineManagerNotifier {
-	return &EngineManagerNotifier{
-		stream: stream,
-	}
-}
-
-func (notifier *EngineManagerNotifier) Recv() (struct{}, error) {
-	if _, err := notifier.stream.Recv(); err != nil {
-		return struct{}{}, err
-	}
-
-	return struct{}{}, nil
-}
-
-func (notifier *EngineManagerNotifier) Close() {
-	notifier.stream.Close()
-	return
-}
-
-func (updater *ReplicaManagerUpdater) Poll() (map[string]types.InstanceProcess, error) {
+func (updater *InstanceManagerUpdater) Poll() (map[string]types.InstanceProcess, error) {
 	result := map[string]types.InstanceProcess{}
 
 	resp, err := updater.client.ProcessList()
@@ -711,26 +646,26 @@ func (updater *ReplicaManagerUpdater) Poll() (map[string]types.InstanceProcess, 
 	}
 
 	for name, instance := range resp {
-		result[name] = *engineapi.ReplicaProcessToInstanceProcess(instance)
+		result[name] = *engineapi.ProcessToInstanceProcess(instance)
 	}
 	return result, nil
 }
 
-func (updater *ReplicaManagerUpdater) GetNotifier() (InstanceManagerNotifier, error) {
+func (updater *InstanceManagerUpdater) GetNotifier() (*InstanceManagerNotifier, error) {
 	watch, err := updater.client.ProcessWatch()
 	if err != nil {
 		return nil, err
 	}
-	return NewReplicaManagerNotifier(watch), nil
+	return NewInstanceManagerNotifier(watch), nil
 }
 
-func NewReplicaManagerNotifier(stream *api.ProcessStream) *ReplicaManagerNotifier {
-	return &ReplicaManagerNotifier{
+func NewInstanceManagerNotifier(stream *api.ProcessStream) *InstanceManagerNotifier {
+	return &InstanceManagerNotifier{
 		stream: stream,
 	}
 }
 
-func (notifier *ReplicaManagerNotifier) Recv() (struct{}, error) {
+func (notifier *InstanceManagerNotifier) Recv() (struct{}, error) {
 	if _, err := notifier.stream.Recv(); err != nil {
 		return struct{}{}, err
 	}
@@ -738,7 +673,7 @@ func (notifier *ReplicaManagerNotifier) Recv() (struct{}, error) {
 	return struct{}{}, nil
 }
 
-func (notifier *ReplicaManagerNotifier) Close() {
+func (notifier *InstanceManagerNotifier) Close() {
 	notifier.stream.Close()
 	return
 }
@@ -760,7 +695,7 @@ func (imc *InstanceManagerController) removeFromInstanceManagerMonitorMap(imName
 	}
 }
 
-func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManager, instanceManagerUpdater InstanceManagerUpdater) {
+func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManager, instanceManagerUpdater *InstanceManagerUpdater) {
 	if im.Status.IP == "" {
 		// IP should be set
 		logrus.Errorf("IP of instance manager %v was not set before monitoring", im.Name)
