@@ -1151,7 +1151,7 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine) error {
 	}
 
 	args := []string{"controller", e.Spec.VolumeName, "--frontend", frontend, "--upgrade"}
-	for _, addr := range e.Status.CurrentReplicaAddressMap {
+	for _, addr := range e.Spec.UpgradedReplicaAddressMap {
 		args = append(args, "--replica", engineapi.GetBackendReplicaURL(addr))
 	}
 
