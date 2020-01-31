@@ -74,8 +74,9 @@ github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-iscsi-helper v0.0.0-20191217235054-ce79ff17c4a2
+# github.com/longhorn/go-iscsi-helper v0.0.0-20200131201948-d9cbae282eb0
 github.com/longhorn/go-iscsi-helper/iscsi
+github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
 # github.com/longhorn/longhorn-engine v0.7.1-0.20200129003840-e1981aa9dbfd
 github.com/longhorn/longhorn-engine/pkg/instance-manager/api
