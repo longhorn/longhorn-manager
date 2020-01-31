@@ -10,6 +10,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	devtypes "github.com/longhorn/go-iscsi-helper/types"
 	imutil "github.com/longhorn/longhorn-engine/pkg/instance-manager/util"
 
 	"github.com/longhorn/longhorn-manager/types"
@@ -144,12 +145,12 @@ func (e *Engine) Endpoint() (string, error) {
 	}
 
 	switch info.Frontend {
-	case string(types.EngineFrontendBlockDev):
+	case devtypes.FrontendTGTBlockDev:
 		return info.Endpoint, nil
-	//case string(FrontendISCSI):
-	//	// it will looks like this in the end
-	//	// iscsi://10.42.0.12:3260/iqn.2014-09.com.rancher:vol-name/1
-	//	return "iscsi://" + e.ip + ":" + DefaultISCSIPort + "/" + info.Endpoint + "/" + DefaultISCSILUN, nil
+	case devtypes.FrontendTGTISCSI:
+		// it will looks like this in the end
+		// iscsi://10.42.0.12:3260/iqn.2014-09.com.rancher:vol-name/1
+		return "iscsi://" + e.ip + ":" + DefaultISCSIPort + "/" + info.Endpoint + "/" + DefaultISCSILUN, nil
 	case "":
 		return "", nil
 	}
