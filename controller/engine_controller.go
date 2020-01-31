@@ -25,6 +25,8 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
+	devtypes "github.com/longhorn/go-iscsi-helper/types"
+
 	imapi "github.com/longhorn/longhorn-engine/pkg/instance-manager/api"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -393,11 +395,10 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProc
 
 func getEngineProcessFrontend(e *longhorn.Engine) (string, error) {
 	frontend := ""
-	// TODO: fix the iscsi frontend
 	if e.Spec.Frontend == types.VolumeFrontendBlockDev {
-		frontend = string(types.EngineFrontendBlockDev)
-		//} else if e.Spec.Frontend == types.VolumeFrontendISCSI {
-		//	frontend = string(types.EngineFrontendISCSI)
+		frontend = string(devtypes.FrontendTGTBlockDev)
+	} else if e.Spec.Frontend == types.VolumeFrontendISCSI {
+		frontend = string(devtypes.FrontendTGTISCSI)
 	} else if e.Spec.Frontend == "" || e.Spec.DisableFrontend {
 		frontend = ""
 	} else {

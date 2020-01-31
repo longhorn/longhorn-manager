@@ -27,12 +27,6 @@ const (
 	VolumeFrontendISCSI    = VolumeFrontend("iscsi")
 )
 
-type EngineFrontend string
-
-const (
-	EngineFrontendBlockDev = EngineFrontend("tgt")
-)
-
 type ConditionStatus string
 
 const (
