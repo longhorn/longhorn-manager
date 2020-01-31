@@ -16,12 +16,12 @@ import (
 var (
 	TgtdRetryCounts   = 5
 	TgtdRetryInterval = 1 * time.Second
-
-	daemonIsRunning = false
 )
 
 const (
 	tgtBinary = "tgtadm"
+
+	maxTargetID = 4095
 )
 
 // CreateTarget will create a iSCSI target using the name specified. If name is
@@ -152,19 +152,20 @@ func UnbindInitiator(tid int, initiator string) error {
 
 // StartDaemon will start tgtd daemon, prepare for further commands
 func StartDaemon(debug bool) error {
-	if daemonIsRunning {
+	if CheckTargetForBackingStore("rdwr") {
+		fmt.Fprintf(os.Stderr, "go-iscsi-helper: tgtd is already running\n")
 		return nil
 	}
 
 	logFile := "/var/log/tgtd.log"
-	logf, err := os.Create(logFile)
+	logf, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 	go startDaemon(logf, debug)
 
 	// Wait until daemon is up
-	daemonIsRunning = false
+	daemonIsRunning := false
 	for i := 0; i < TgtdRetryCounts; i++ {
 		if CheckTargetForBackingStore("rdwr") {
 			daemonIsRunning = true
@@ -192,6 +193,10 @@ func startDaemon(logf *os.File, debug bool) {
 	cmd.Stdout = mw
 	cmd.Stderr = mw
 	if err := cmd.Run(); err != nil {
+		if CheckTargetForBackingStore("rdwr") {
+			fmt.Fprintf(mw, "go-iscsi-helper: tgtd is already running\n")
+			return
+		}
 		fmt.Fprintf(mw, "go-iscsi-helper: command failed: %v\n", err)
 		panic(err)
 	}
@@ -255,7 +260,6 @@ func ShutdownTgtd() error {
 	if err != nil {
 		return err
 	}
-	daemonIsRunning = false
 	return nil
 }
 
@@ -334,4 +338,43 @@ func CloseConnection(tid int, sid, cid string) error {
 		return err
 	}
 	return nil
+}
+
+func FindNextAvailableTargetID() (int, error) {
+	existingTids := map[int]struct{}{}
+	opts := []string{
+		"--lld", "iscsi",
+		"--op", "show",
+		"--mode", "target",
+	}
+	output, err := util.Execute(tgtBinary, opts)
+	if err != nil {
+		return -1, err
+	}
+	/* Output will looks like:
+	Target 1: iqn.2016-08.com.example:a
+		System information:
+		...
+	Target 2: iqn.2016-08.com.example:b
+		System information:
+		...
+	*/
+	tid := -1
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	for scanner.Scan() {
+		if strings.HasPrefix(scanner.Text(), "Target ") {
+			tidString := strings.Fields(strings.Split(scanner.Text(), ":")[0])[1]
+			tid, err = strconv.Atoi(tidString)
+			if err != nil {
+				return -1, fmt.Errorf("BUG: Fail to parse %s, %v", tidString, err)
+			}
+			existingTids[tid] = struct{}{}
+		}
+	}
+	for i := 1; i < maxTargetID; i++ {
+		if _, exists := existingTids[i]; !exists {
+			return i, nil
+		}
+	}
+	return -1, fmt.Errorf("cannot find an available target ID")
 }
