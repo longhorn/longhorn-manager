@@ -80,3 +80,6 @@ spec:
         configMap:
           name: longhorn-default-setting
       serviceAccountName: longhorn-service-account
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: "100%"
