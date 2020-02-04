@@ -369,8 +369,11 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 		return nil, err
 	}
 
-	if !v.Spec.Standby {
+	if !v.Status.IsStandby {
 		return nil, fmt.Errorf("volume %v is already in active mode", v.Name)
+	}
+	if !v.Spec.Standby {
+		return nil, fmt.Errorf("volume %v is being activated", v.Name)
 	}
 
 	if frontend != string(types.VolumeFrontendBlockDev) && frontend != string(types.VolumeFrontendISCSI) {
@@ -400,16 +403,11 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 		engine = e
 	}
 
-	if v.Status.LastBackup == "" {
-		if engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
-			return nil, fmt.Errorf("standby volume %v hasn't finished incremental restored, requested backup restore: %v, last restored backup: %v",
-				v.Name, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
-		}
-	} else {
-		if v.Status.LastBackup != engine.Status.LastRestoredBackup {
-			return nil, fmt.Errorf("standby volume %v hasn't finished incremental restored, backup volume last backup: %v, standby volume last restored backup: %v",
-				v.Name, v.Status.LastBackup, engine.Status.LastRestoredBackup)
-		}
+	if v.Status.LastBackup != engine.Status.LastRestoredBackup || engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
+		logrus.Infof("Standby volume %v will be activated after finishing restoration, "+
+			"backup volume's latest backup: %v, "+
+			"engine requested backup restore: %v, engine last restored backup: %v",
+			v.Name, v.Status.LastBackup, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
 	}
 
 	v.Spec.Frontend = types.VolumeFrontend(frontend)
@@ -419,7 +417,7 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 		return nil, err
 	}
 
-	logrus.Debugf("Activated volume %v with frontend %v", v.Name, frontend)
+	logrus.Debugf("Activating volume %v with frontend %v", v.Name, frontend)
 	return v, nil
 }
 
