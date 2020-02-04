@@ -92,14 +92,23 @@ func SyncVolumesLastBackupWithBackupVolumes(backupVolumes map[string]*engineapi.
 	for _, v := range volumes {
 		var bv *engineapi.BackupVolume
 		if backupVolumes != nil {
+			// Stop updating LastBackup field as long as the DR volume is in activating status. (v.Spec.Standby is false)
+			// Otherwise the incremental restoration may not be stopped
+			// and the DR volume will get stuck in activating status for a long time.
 			if v.Spec.Standby {
-				vName, err := backupstore.GetVolumeFromBackupURL(v.Spec.FromBackup)
+				bvName, err := backupstore.GetVolumeFromBackupURL(v.Spec.FromBackup)
 				if err != nil {
 					logrus.Errorf("cannot parse field FromBackup of standby volume %v: %v", v.Name, err)
 					return
 				}
-				bv = backupVolumes[vName]
+				bv = backupVolumes[bvName]
 			} else {
+				// The BackupVolume of the activating DR volume is empty now.
+				// Hence the LastBackup field of the activating DR volume will become empty if we don't skip it.
+				// Then the activate volume cannot be detached automatically after the restoration complete.
+				if v.Status.IsStandby {
+					continue
+				}
 				bv = backupVolumes[v.Name]
 			}
 		}

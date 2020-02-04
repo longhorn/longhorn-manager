@@ -221,7 +221,7 @@ func (s *Server) VolumeDetach(rw http.ResponseWriter, req *http.Request) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to get volume")
 	}
-	if vol.Spec.Standby {
+	if vol.Status.IsStandby {
 		return fmt.Errorf("cannot detach standby volume %v", vol.Name)
 	}
 
@@ -352,7 +352,7 @@ func (s *Server) VolumeExpand(rw http.ResponseWriter, req *http.Request) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to get volume")
 	}
-	if vol.Spec.Standby {
+	if vol.Status.IsStandby {
 		return fmt.Errorf("cannot manually expand standby volume %v", vol.Name)
 	}
 
@@ -384,7 +384,7 @@ func (s *Server) PVCreate(rw http.ResponseWriter, req *http.Request) error {
 		return errors.Wrap(err, "unable to get volume")
 	}
 
-	if vol.Spec.Standby {
+	if vol.Status.IsStandby {
 		return fmt.Errorf("cannot create PV for standby volume %v", vol.Name)
 	}
 
@@ -411,7 +411,7 @@ func (s *Server) PVCCreate(rw http.ResponseWriter, req *http.Request) error {
 		return errors.Wrap(err, "unable to get volume")
 	}
 
-	if vol.Spec.Standby {
+	if vol.Status.IsStandby {
 		return fmt.Errorf("cannot create PVC for standby volume %v", vol.Name)
 	}
 

@@ -32,7 +32,7 @@ func (s *Server) SnapshotCreate(w http.ResponseWriter, req *http.Request) (err e
 		return errors.Wrap(err, "unable to get volume")
 	}
 
-	if vol.Spec.Standby {
+	if vol.Status.IsStandby {
 		return fmt.Errorf("cannot create snapshot for standby volume %v", vol.Name)
 	}
 
@@ -99,7 +99,7 @@ func (s *Server) SnapshotDelete(w http.ResponseWriter, req *http.Request) (err e
 		return errors.Wrap(err, "unable to get volume")
 	}
 
-	if vol.Spec.Standby {
+	if vol.Status.IsStandby {
 		return fmt.Errorf("cannot delete snapshot for standby volume %v", vol.Name)
 	}
 
@@ -127,7 +127,7 @@ func (s *Server) SnapshotRevert(w http.ResponseWriter, req *http.Request) (err e
 		return errors.Wrap(err, "unable to get volume")
 	}
 
-	if vol.Spec.Standby {
+	if vol.Status.IsStandby {
 		return fmt.Errorf("cannot revert snapshot for standby volume %v", vol.Name)
 	}
 
@@ -161,7 +161,7 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 		return errors.Wrap(err, "unable to get volume")
 	}
 
-	if vol.Spec.Standby {
+	if vol.Status.IsStandby {
 		return fmt.Errorf("cannot create backup for standby volume %v", vol.Name)
 	}
 
