@@ -181,6 +181,8 @@ type Node struct {
 	Disks           map[string]DiskInfo                         `json:"disks"`
 	Conditions      map[types.NodeConditionType]types.Condition `json:"conditions"`
 	Tags            []string                                    `json:"tags"`
+	Region          string                                      `json:"region"`
+	Zone            string                                      `json:"zone"`
 
 	Timestamp string `json:"timestamp"`
 }
@@ -946,6 +948,8 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 		AllowScheduling: node.Spec.AllowScheduling,
 		Conditions:      node.Status.Conditions,
 		Tags:            node.Spec.Tags,
+		Region:          node.Status.Region,
+		Zone:            node.Status.Zone,
 
 		Timestamp: timestamp,
 	}

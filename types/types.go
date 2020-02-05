@@ -50,6 +50,11 @@ const (
 	LonghornLabelInstanceManagerType = "instance-manager-type"
 	LonghornLabelVolume              = "longhornvolume"
 
+	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
+	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
+	KubernetesTopologyRegionLabelKey      = "topology.kubernetes.io/region"
+	KubernetesTopologyZoneLabelKey        = "topology.kubernetes.io/zone"
+
 	LonghornDriverName = "driver.longhorn.io"
 
 	DeprecatedProvisionerName = "rancher.io/longhorn"
@@ -59,6 +64,8 @@ const (
 const (
 	CSIMinVersion                = "v1.14.0"
 	CSIVolumeExpansionMinVersion = "v1.16.0"
+
+	KubernetesTopologyLabelsVersion = "v1.17.0"
 )
 
 type ReplicaMode string
@@ -201,6 +208,27 @@ func GetVolumeLabels(volumeName string) map[string]string {
 	return map[string]string{
 		LonghornLabelVolume: volumeName,
 	}
+}
+
+func GetRegionAndZone(labels map[string]string, isUsingTopologyLabels bool) (string, string) {
+	region := ""
+	zone := ""
+	if isUsingTopologyLabels {
+		if v, ok := labels[KubernetesTopologyRegionLabelKey]; ok {
+			region = v
+		}
+		if v, ok := labels[KubernetesTopologyZoneLabelKey]; ok {
+			zone = v
+		}
+	} else {
+		if v, ok := labels[KubernetesFailureDomainRegionLabelKey]; ok {
+			region = v
+		}
+		if v, ok := labels[KubernetesFailureDomainZoneLabelKey]; ok {
+			zone = v
+		}
+	}
+	return region, zone
 }
 
 func GetEngineImageChecksumName(image string) string {

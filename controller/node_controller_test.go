@@ -6,6 +6,7 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
@@ -71,6 +72,7 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 	nc.eventRecorder = fakeRecorder
 	nc.getDiskInfoHandler = fakeGetDiskInfo
 	nc.diskPathReplicaSubdirectoryChecker = fakeCheckDiskPathReplicaSubdirectory
+	nc.topologyLabelsChecker = fakeTopologyLabelsChecker
 
 	nc.nStoreSynced = alwaysReady
 	nc.pStoreSynced = alwaysReady
@@ -94,6 +96,10 @@ func fakeGetDiskInfo(directory string) (*util.DiskInfo, error) {
 
 func fakeCheckDiskPathReplicaSubdirectory(path string) (bool, error) {
 	return true, nil
+}
+
+func fakeTopologyLabelsChecker(kubeClient clientset.Interface, vers string) (bool, error) {
+	return false, nil
 }
 
 func generateKubeNodes(testType string) map[string]*v1.Node {
