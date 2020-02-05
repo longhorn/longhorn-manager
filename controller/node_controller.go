@@ -56,12 +56,14 @@ type NodeController struct {
 
 	getDiskInfoHandler                 GetDiskInfoHandler
 	diskPathReplicaSubdirectoryChecker DiskPathReplicaSubdirectoryChecker
+	topologyLabelsChecker              TopologyLabelsChecker
 
 	scheduler *scheduler.ReplicaScheduler
 }
 
 type GetDiskInfoHandler func(string) (*util.DiskInfo, error)
 type DiskPathReplicaSubdirectoryChecker func(string) (bool, error)
+type TopologyLabelsChecker func(kubeClient clientset.Interface, vers string) (bool, error)
 
 func NewNodeController(
 	ds *datastore.DataStore,
@@ -98,6 +100,7 @@ func NewNodeController(
 
 		getDiskInfoHandler:                 util.GetDiskInfo,
 		diskPathReplicaSubdirectoryChecker: util.CheckDiskPathReplicaSubdirectory,
+		topologyLabelsChecker:              util.IsKubernetesVersionAtLeast,
 	}
 
 	nc.scheduler = scheduler.NewReplicaScheduler(ds)
@@ -445,6 +448,13 @@ func (nc *NodeController) syncNode(key string) (err error) {
 				break
 			}
 		}
+
+		isUsingTopologyLabels, err := nc.topologyLabelsChecker(nc.kubeClient, types.KubernetesTopologyLabelsVersion)
+		if err != nil {
+			return err
+		}
+		node.Status.Region, node.Status.Zone = types.GetRegionAndZone(kubeNode.Labels, isUsingTopologyLabels)
+
 	}
 
 	if nc.controllerID != node.Name {
