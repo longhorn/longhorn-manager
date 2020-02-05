@@ -31,6 +31,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/apimachinery/pkg/util/version"
+	clientset "k8s.io/client-go/kubernetes"
 
 	iscsi_util "github.com/longhorn/go-iscsi-helper/util"
 )
@@ -820,4 +822,14 @@ func IsSupportedFileSystem(fsType string) bool {
 		return true
 	}
 	return false
+}
+
+func IsKubernetesVersionAtLeast(kubeClient clientset.Interface, vers string) (bool, error) {
+	serverVersion, err := kubeClient.Discovery().ServerVersion()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to get Kubernetes server version")
+	}
+	currentVersion := version.MustParseSemantic(serverVersion.GitVersion)
+	minVersion := version.MustParseSemantic(vers)
+	return currentVersion.AtLeast(minVersion), nil
 }

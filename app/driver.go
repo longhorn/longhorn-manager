@@ -204,7 +204,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		logrus.Infof("User specified root dir: %v", rootDir)
 	}
 
-	volumeExpansionEnabled, err := isKubernetesVersionAtLeast(kubeClient, types.CSIVolumeExpansionMinVersion)
+	volumeExpansionEnabled, err := util.IsKubernetesVersionAtLeast(kubeClient, types.CSIVolumeExpansionMinVersion)
 	if err != nil {
 		return err
 	}
@@ -315,14 +315,4 @@ func (ops *DaemonSetOps) Create(name string, d *appsv1.DaemonSet) (*appsv1.Daemo
 func (ops *DaemonSetOps) Delete(name string) error {
 	propagation := metav1.DeletePropagationForeground
 	return ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
-}
-
-func isKubernetesVersionAtLeast(kubeClient *clientset.Clientset, vers string) (bool, error) {
-	serverVersion, err := kubeClient.Discovery().ServerVersion()
-	if err != nil {
-		return false, errors.Wrap(err, "failed to get Kubernetes server version")
-	}
-	currentVersion := version.MustParseSemantic(serverVersion.GitVersion)
-	minVersion := version.MustParseSemantic(vers)
-	return currentVersion.AtLeast(minVersion), nil
 }
