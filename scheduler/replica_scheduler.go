@@ -71,27 +71,47 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 }
 
 func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.Node, replicas map[string]*longhorn.Replica, replica *longhorn.Replica, volume *longhorn.Volume) map[string]*Disk {
-	diskCandidates := map[string]*Disk{}
-	filterdNode := []*longhorn.Node{}
+	usedNodes := map[string]*longhorn.Node{}
+	usedZones := map[string]bool{}
+	for _, r := range replicas {
+		if r.Spec.NodeID != "" && r.DeletionTimestamp == nil && r.Spec.FailedAt == "" {
+			if node, ok := nodeInfo[r.Spec.NodeID]; ok {
+				usedNodes[r.Spec.NodeID] = node
+				// If multi-zone feature is disabled, node.Status.Zone is always empty.
+				usedZones[node.Status.Zone] = true
+			}
+		}
+	}
+
+	unusedNodeCandidates := map[string]*longhorn.Node{}
+	unusedNodeWithNewZoneCandidates := map[string]*longhorn.Node{}
 	for nodeName, node := range nodeInfo {
-		// Filter Nodes first. If the Nodes don't match the tags, don't bother checking their Disks as candidates.
-		isFilterd := false
-		if !rcs.checkTagsAreFulfilled(node.Spec.Tags, volume.Spec.NodeSelector) {
-			isFilterd = true
-		}
-		for _, r := range replicas {
-			// filter replica in deleting process
-			if r.Spec.NodeID != "" && r.Spec.NodeID == nodeName && r.DeletionTimestamp == nil && r.Spec.FailedAt == "" {
-				filterdNode = append(filterdNode, node)
-				isFilterd = true
-				break
+		if _, ok := usedNodes[nodeName]; !ok {
+			// Filter Nodes first. If the Nodes don't match the tags, don't bother marking them as candidates.
+			if !rcs.checkTagsAreFulfilled(node.Spec.Tags, volume.Spec.NodeSelector) {
+				continue
+			}
+			unusedNodeCandidates[nodeName] = node
+			// Multi-zone feature is enabled.
+			if node.Status.Zone != "" {
+				if _, ok := usedZones[node.Status.Zone]; !ok {
+					unusedNodeWithNewZoneCandidates[nodeName] = node
+				}
 			}
 		}
-		if !isFilterd {
-			diskCandidates = rcs.filterNodeDisksForReplica(node, replica, replicas, volume)
-			if len(diskCandidates) > 0 {
-				return diskCandidates
-			}
+	}
+
+	diskCandidates := map[string]*Disk{}
+	for _, node := range unusedNodeWithNewZoneCandidates {
+		diskCandidates = rcs.filterNodeDisksForReplica(node, replica, replicas, volume)
+		if len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+	}
+	for _, node := range unusedNodeCandidates {
+		diskCandidates = rcs.filterNodeDisksForReplica(node, replica, replicas, volume)
+		if len(diskCandidates) > 0 {
+			return diskCandidates
 		}
 	}
 	// If there's no disk fit for replica on other nodes,
@@ -103,7 +123,7 @@ func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.
 	}
 	// Defaulting to soft anti-affinity if we can't get the hard anti-affinity setting.
 	if err != nil || softAntiAffinity {
-		for _, node := range filterdNode {
+		for _, node := range usedNodes {
 			diskCandidates = rcs.filterNodeDisksForReplica(node, replica, replicas, volume)
 		}
 	}
