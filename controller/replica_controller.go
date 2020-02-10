@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
 
@@ -322,25 +321,12 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 	if err != nil {
 		return nil, err
 	}
-
-	args := []string{
-		"replica", types.GetReplicaMountedDataPath(r.Spec.DataPath),
-		"--size", strconv.FormatInt(r.Spec.VolumeSize, 10),
-	}
-
-	c, err := engineapi.GetProcessManagerClient(im)
+	c, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
 		return nil, err
 	}
 
-	replicaProcess, err := c.ProcessCreate(
-		r.Name, types.DefaultEngineBinaryPath, types.DefaultReplicaPortCount,
-		args, []string{"--listen,0.0.0.0:"})
-	if err != nil {
-		return nil, err
-	}
-
-	return engineapi.ProcessToInstanceProcess(replicaProcess), nil
+	return c.ReplicaProcessCreate(r.Name, r.Spec.EngineImage, r.Spec.DataPath, r.Spec.VolumeSize)
 }
 
 func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
@@ -378,12 +364,11 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		}
 	}
 
-	c, err := engineapi.GetProcessManagerClient(im)
+	c, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
 		return err
 	}
-
-	if _, err := c.ProcessDelete(r.Name); err != nil && !types.ErrorIsNotFound(err) {
+	if err := c.ProcessDelete(r.Name); err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
 
@@ -454,21 +439,27 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*types.InstanceProces
 		return nil, fmt.Errorf("BUG: invalid object for replica process get: %v", obj)
 	}
 
-	im, err := rc.ds.GetInstanceManagerByInstance(obj)
-	if err != nil {
-		return nil, err
+	var (
+		im  *longhorn.InstanceManager
+		err error
+	)
+	if r.Status.InstanceManagerName == "" {
+		im, err = rc.ds.GetInstanceManagerByInstance(obj)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		im, err = rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
+		if err != nil {
+			return nil, err
+		}
 	}
-	c, err := engineapi.GetProcessManagerClient(im)
+	c, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
 		return nil, err
 	}
 
-	replicaProcess, err := c.ProcessGet(r.Name)
-	if err != nil {
-		return nil, err
-	}
-
-	return engineapi.ProcessToInstanceProcess(replicaProcess), nil
+	return c.ProcessGet(r.Name)
 }
 
 func (rc *ReplicaController) LogInstance(obj interface{}) (*imapi.LogStream, error) {
@@ -481,17 +472,12 @@ func (rc *ReplicaController) LogInstance(obj interface{}) (*imapi.LogStream, err
 	if err != nil {
 		return nil, err
 	}
-	c, err := engineapi.GetProcessManagerClient(im)
+	c, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
 		return nil, err
 	}
 
-	stream, err := c.ProcessLog(r.Name)
-	if err != nil {
-		return nil, err
-	}
-
-	return stream, nil
+	return c.ProcessLog(r.Name)
 }
 
 func (rc *ReplicaController) enqueueInstanceManagerChange(im *longhorn.InstanceManager) {
