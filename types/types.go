@@ -24,16 +24,10 @@ const (
 const (
 	DefaultAPIPort = 9500
 
-	DefaultEnginePortCount  = 1
-	DefaultReplicaPortCount = 15
-
-	DefaultEngineBackend = "tcp"
-
-	DefaultEngineBinaryPath          = "/usr/local/bin/longhorn"
 	EngineBinaryDirectoryInContainer = "/engine-binaries/"
 	EngineBinaryDirectoryOnHost      = "/var/lib/longhorn/engine-binaries/"
-
-	ReplicaMountedDataPathPrefix = "/host"
+	ReplicaHostPrefix                = "/host"
+	EngineBinaryName                 = "longhorn"
 
 	LonghornNodeKey = "longhornnode"
 
@@ -153,9 +147,14 @@ func GetEngineBinaryDirectoryOnHostForImage(image string) string {
 	return filepath.Join(EngineBinaryDirectoryOnHost, cname)
 }
 
-func GetEngineBinaryDirectoryInContainerForImage(image string) string {
+func GetEngineBinaryDirectoryForEngineManagerContainer(image string) string {
 	cname := GetImageCanonicalName(image)
 	return filepath.Join(EngineBinaryDirectoryInContainer, cname)
+}
+
+func GetEngineBinaryDirectoryForReplicaManagerContainer(image string) string {
+	cname := GetImageCanonicalName(image)
+	return filepath.Join(filepath.Join(ReplicaHostPrefix, EngineBinaryDirectoryOnHost), cname)
 }
 
 func EngineBinaryExistOnHostForImage(image string) bool {
@@ -284,8 +283,8 @@ func GetDiskConditionFromStatus(status DiskStatus, conditionType DiskConditionTy
 }
 
 func GetReplicaMountedDataPath(dataPath string) string {
-	if !strings.HasPrefix(dataPath, ReplicaMountedDataPathPrefix) {
-		return filepath.Join(ReplicaMountedDataPathPrefix, dataPath)
+	if !strings.HasPrefix(dataPath, ReplicaHostPrefix) {
+		return filepath.Join(ReplicaHostPrefix, dataPath)
 	}
 	return dataPath
 }

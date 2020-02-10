@@ -19,9 +19,6 @@ const (
 	DefaultISCSIPort = "3260"
 	DefaultISCSILUN  = "1"
 
-	FrontendISCSI    = "tgt-iscsi"
-	FrontendBlockDev = "tgt-blockdev"
-
 	commonTimeout = 1 * time.Minute
 
 	BackupStateComplete   = "complete"

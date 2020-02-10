@@ -24,8 +24,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-instance-manager/pkg/api"
-	"github.com/longhorn/longhorn-instance-manager/pkg/client"
-	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -87,7 +86,7 @@ type InstanceManagerMonitor struct {
 }
 
 type InstanceManagerUpdater struct {
-	client *client.ProcessManagerClient
+	client *engineapi.InstanceManagerClient
 }
 
 type InstanceManagerNotifier struct {
@@ -633,23 +632,14 @@ func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.I
 }
 
 func NewInstanceManagerUpdater(im *longhorn.InstanceManager) *InstanceManagerUpdater {
+	c, _ := engineapi.NewInstanceManagerClient(im)
 	return &InstanceManagerUpdater{
-		client: client.NewProcessManagerClient(imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)),
+		client: c,
 	}
 }
 
 func (updater *InstanceManagerUpdater) Poll() (map[string]types.InstanceProcess, error) {
-	result := map[string]types.InstanceProcess{}
-
-	resp, err := updater.client.ProcessList()
-	if err != nil {
-		return result, err
-	}
-
-	for name, instance := range resp {
-		result[name] = *engineapi.ProcessToInstanceProcess(instance)
-	}
-	return result, nil
+	return updater.client.ProcessList()
 }
 
 func (updater *InstanceManagerUpdater) GetNotifier() (*InstanceManagerNotifier, error) {
