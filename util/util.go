@@ -259,6 +259,16 @@ func TimestampAfterTimeout(ts string, timeout time.Duration) bool {
 	return now.After(deadline)
 }
 
+func TimestampWithinLimit(latest time.Time, ts string, limit time.Duration) bool {
+	t, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		logrus.Errorf("Cannot parse time %v", ts)
+		return false
+	}
+	deadline := t.Add(limit)
+	return deadline.After(latest)
+}
+
 func ValidateName(name string) bool {
 	validName := regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]+$`)
 	return validName.MatchString(name)

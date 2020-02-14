@@ -23,4 +23,5 @@ const (
 
 	EventReasonDetachedUnexpectly = "DetachedUnexpectly"
 	EventReasonRemount            = "Remount"
+	EventReasonAutoSalvaged       = "AutoSalvaged"
 )
