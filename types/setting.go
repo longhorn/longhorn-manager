@@ -53,6 +53,7 @@ const (
 	SettingNameBackupstorePollInterval           = SettingName("backupstore-poll-interval")
 	SettingNameTaintToleration                   = SettingName("taint-toleration")
 	SettingNameCRDAPIVersion                     = SettingName("crd-api-version")
+	SettingNameAutoSalvage                       = SettingName("auto-salvage")
 )
 
 var (
@@ -73,6 +74,7 @@ var (
 		SettingNameBackupstorePollInterval,
 		SettingNameTaintToleration,
 		SettingNameCRDAPIVersion,
+		SettingNameAutoSalvage,
 	}
 )
 
@@ -112,6 +114,7 @@ var (
 		SettingNameBackupstorePollInterval:           SettingDefinitionBackupstorePollInterval,
 		SettingNameTaintToleration:                   SettingDefinitionTaintToleration,
 		SettingNameCRDAPIVersion:                     SettingDefinitionCRDAPIVersion,
+		SettingNameAutoSalvage:                       SettingDefinitionAutoSalvage,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -276,6 +279,16 @@ Notice that "kubernetes.io" is used as the key of all Kubernetes default tolerat
 		Type:        SettingTypeString,
 		Required:    true,
 		ReadOnly:    true,
+	}
+
+	SettingDefinitionAutoSalvage = SettingDefinition{
+		DisplayName: "Automatic salvage",
+		Description: "Automatically salvage faulted volume or not.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "true",
 	}
 )
 

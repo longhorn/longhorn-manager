@@ -44,6 +44,8 @@ var (
 
 	RetryInterval = 100 * time.Millisecond
 	RetryCounts   = 20
+
+	AutoSalvageTimeLimit = 1 * time.Minute
 )
 
 const (
@@ -720,6 +722,47 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	if allFaulted {
 		v.Status.Robustness = types.VolumeRobustnessFaulted
 		v.Status.CurrentNodeID = ""
+
+		autoSalvage, err := vc.ds.GetSettingAsBool(types.SettingNameAutoSalvage)
+		if err != nil {
+			return err
+		}
+		// make sure the volume is detached before automatically salvage
+		if autoSalvage && v.Status.State == types.VolumeStateDetached {
+			lastFailedAt := time.Time{}
+			failedUsableReplicas := map[string]*longhorn.Replica{}
+			dataExists := false
+			for _, r := range rs {
+				if r.Spec.HealthyAt == "" {
+					continue
+				}
+				dataExists = true
+				failedAt, err := util.ParseTime(r.Spec.FailedAt)
+				if err != nil {
+					logrus.Errorf("volume controller: failed to parse timestamp for replica %v: %v",
+						r.Name, err)
+					continue
+				}
+				if failedAt.After(lastFailedAt) {
+					lastFailedAt = failedAt
+				}
+				// all failedUsableReplica contains data
+				failedUsableReplicas[r.Name] = r
+			}
+			if !dataExists {
+				logrus.Warnf("volume controller: cannot auto salvage volume %v: no data exists", v.Name)
+			} else {
+				for _, r := range failedUsableReplicas {
+					if util.TimestampWithinLimit(lastFailedAt, r.Spec.FailedAt, AutoSalvageTimeLimit) {
+						r.Spec.FailedAt = ""
+						msg := fmt.Sprintf("Replica %v of volume %v has been automatically salvaged", r.Name, v.Name)
+						logrus.Warnf(msg)
+						vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonAutoSalvaged, msg)
+					}
+				}
+			}
+		}
+
 	} else { // !allFaulted
 		// Don't need to touch other status since it should converge naturally
 		if v.Status.Robustness == types.VolumeRobustnessFaulted {
