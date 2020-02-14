@@ -417,24 +417,6 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 	}
 
 	if e.Status.CurrentState != types.InstanceStateRunning {
-		// Corner case: when vc found healthyCount is 0, vc failed to update volume to faulted state
-		// and volume may be detached (engine stopped state).
-		// Then the volume needs to be reconciled to the faulted state here.
-		availableCount := 0
-		for _, r := range rs {
-			if r.Spec.FailedAt == "" {
-				availableCount++
-			}
-		}
-		if availableCount == 0 {
-			oldRobustness := v.Status.Robustness
-			v.Status.Robustness = types.VolumeRobustnessFaulted
-			if oldRobustness != types.VolumeRobustnessFaulted {
-				vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFaulted, "volume %v became faulted", v.Name)
-			}
-			// detach the volume
-			v.Status.CurrentNodeID = ""
-		}
 		return nil
 	}
 
@@ -472,10 +454,8 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 
 	oldRobustness := v.Status.Robustness
 	if healthyCount == 0 { // no healthy replica exists, going to faulted
-		v.Status.Robustness = types.VolumeRobustnessFaulted
-		if oldRobustness != types.VolumeRobustnessFaulted {
-			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFaulted, "volume %v became faulted", v.Name)
-		}
+		// ReconcileVolumeState() will deal with the faulted case
+		return nil
 	} else if healthyCount >= v.Spec.NumberOfReplicas {
 		v.Status.Robustness = types.VolumeRobustnessHealthy
 		if oldRobustness == types.VolumeRobustnessDegraded {
