@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -56,6 +57,10 @@ func Upgrade(kubeconfigPath, currentNodeID string) error {
 	scheme := runtime.NewScheme()
 	if err := longhorn.SchemeBuilder.AddToScheme(scheme); err != nil {
 		return errors.Wrap(err, "unable to create scheme")
+	}
+
+	if err := migrateEngineBinaries(); err != nil {
+		return err
 	}
 
 	if err := upgrade(currentNodeID, namespace, config, lhClient, kubeClient); err != nil {
@@ -217,4 +222,8 @@ func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset)
 	}
 
 	return nil
+}
+
+func migrateEngineBinaries() error {
+	return util.CopyHostDirectoryContent(types.DeprecatedEngineBinaryDirectoryOnHost, types.EngineBinaryDirectoryOnHost)
 }
