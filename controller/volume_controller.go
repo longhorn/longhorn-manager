@@ -752,13 +752,22 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			if !dataExists {
 				logrus.Warnf("volume controller: cannot auto salvage volume %v: no data exists", v.Name)
 			} else {
+				salvaged := false
 				for _, r := range failedUsableReplicas {
 					if util.TimestampWithinLimit(lastFailedAt, r.Spec.FailedAt, AutoSalvageTimeLimit) {
 						r.Spec.FailedAt = ""
 						msg := fmt.Sprintf("Replica %v of volume %v has been automatically salvaged", r.Name, v.Name)
 						logrus.Warnf(msg)
 						vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonAutoSalvaged, msg)
+						salvaged = true
 					}
+				}
+				if salvaged {
+					// remount the reattached volume later if possible
+					// For the auto-salvaged volume, `v.Status.CurrentNodeID` is empty but `v.Spec.NodeID` shouldn't be empty.
+					v.Status.PendingNodeID = v.Spec.NodeID
+					v.Status.RemountRequired = true
+					v.Status.Robustness = types.VolumeRobustnessUnknown
 				}
 			}
 		}
