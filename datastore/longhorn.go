@@ -1267,20 +1267,6 @@ func (s *DataStore) DeleteInstanceManager(name string) error {
 	return s.lhClient.LonghornV1beta1().InstanceManagers(s.namespace).Delete(name, &metav1.DeleteOptions{})
 }
 
-func (s *DataStore) DeleteInstanceManagersForEngineImage(engineImageName string) error {
-	imMap, err := s.ListInstanceManagersForEngineImage(engineImageName)
-	if err != nil {
-		return errors.Wrapf(err, "failed to list all related instance managers for engine image %v", engineImageName)
-	}
-
-	for imName := range imMap {
-		if err := s.lhClient.LonghornV1beta1().InstanceManagers(s.namespace).Delete(imName, &metav1.DeleteOptions{}); err != nil && !ErrorIsNotFound(err) {
-			return errors.Wrapf(err, "failed to delete instance manager %v for engine image %v", imName, engineImageName)
-		}
-	}
-	return nil
-}
-
 func (s *DataStore) getInstanceManagerRO(name string) (*longhorn.InstanceManager, error) {
 	return s.imLister.InstanceManagers(s.namespace).Get(name)
 }
@@ -1353,27 +1339,6 @@ func (s *DataStore) ListInstanceManagers() (map[string]*longhorn.InstanceManager
 	}
 
 	for _, itemRO := range list {
-		// Cannot use cached object from lister
-		itemMap[itemRO.Name] = itemRO.DeepCopy()
-	}
-	return itemMap, nil
-}
-
-func (s *DataStore) ListInstanceManagersForEngineImage(engineImageName string) (map[string]*longhorn.InstanceManager, error) {
-	itemMap := map[string]*longhorn.InstanceManager{}
-
-	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: types.GetInstanceManagerWithEngineImageKeyLabel(engineImageName),
-	})
-	if err != nil {
-		return nil, err
-	}
-	listRO, err := s.imLister.InstanceManagers(s.namespace).List(selector)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, itemRO := range listRO {
 		// Cannot use cached object from lister
 		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
