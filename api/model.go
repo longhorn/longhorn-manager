@@ -271,7 +271,7 @@ func generateTimestamp() string {
 type InstanceManager struct {
 	client.Resource
 	CurrentState types.InstanceManagerState       `json:"currentState"`
-	EngineImage  string                           `json:"engineImage"`
+	Image        string                           `json:"image"`
 	Name         string                           `json:"name"`
 	NodeID       string                           `json:"nodeID"`
 	ManagerType  string                           `json:"managerType"`
@@ -1047,7 +1047,7 @@ func toInstanceManagerResource(im *longhorn.InstanceManager) *InstanceManager {
 			Type: "instanceManager",
 		},
 		CurrentState: im.Status.CurrentState,
-		EngineImage:  im.Spec.EngineImage,
+		Image:        im.Spec.Image,
 		Name:         im.Name,
 		NodeID:       im.Spec.NodeID,
 		ManagerType:  string(im.Spec.Type),

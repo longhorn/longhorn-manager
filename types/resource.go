@@ -348,16 +348,21 @@ const (
 )
 
 type InstanceManagerSpec struct {
-	EngineImage string              `json:"engineImage"`
-	NodeID      string              `json:"nodeID"`
-	Type        InstanceManagerType `json:"type"`
+	Image  string              `json:"image"`
+	NodeID string              `json:"nodeID"`
+	Type   InstanceManagerType `json:"type"`
+
+	// TODO: deprecate this field
+	EngineImage string `json:"engineImage"`
 }
 
 type InstanceManagerStatus struct {
-	OwnerID      string                     `json:"ownerID"`
-	CurrentState InstanceManagerState       `json:"currentState"`
-	Instances    map[string]InstanceProcess `json:"instances"`
-	IP           string                     `json:"ip"`
+	OwnerID       string                     `json:"ownerID"`
+	CurrentState  InstanceManagerState       `json:"currentState"`
+	Instances     map[string]InstanceProcess `json:"instances"`
+	IP            string                     `json:"ip"`
+	APIMinVersion int                        `json:"apiMinVersion"`
+	APIVersion    int                        `json:"apiVersion"`
 }
 
 type InstanceProcess struct {
