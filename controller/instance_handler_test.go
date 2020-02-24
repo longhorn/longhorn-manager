@@ -351,12 +351,20 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 
+		eiIndexer := lhInformerFactory.Longhorn().V1beta1().EngineImages().Informer().GetIndexer()
+		sIndexer := lhInformerFactory.Longhorn().V1beta1().Settings().Informer().GetIndexer()
+
 		h := newTestInstanceHandler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
 
 		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(newEngineImage(TestEngineImage, types.EngineImageStateReady))
 		c.Assert(err, IsNil)
-		eiIndexer := lhInformerFactory.Longhorn().V1beta1().EngineImages().Informer().GetIndexer()
 		err = eiIndexer.Add(ei)
+		c.Assert(err, IsNil)
+
+		imImageSetting := newDefaultInstanceManagerImageSetting()
+		imImageSetting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(imImageSetting)
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(imImageSetting)
 		c.Assert(err, IsNil)
 
 		im, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(tc.instanceManager)

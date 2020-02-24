@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/types"
@@ -91,6 +92,46 @@ func newSetting(name, value string) *longhorn.Setting {
 		},
 		Setting: types.Setting{
 			Value: value,
+		},
+	}
+}
+
+func newDefaultInstanceManagerImageSetting() *longhorn.Setting {
+	return &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: string(types.SettingNameDefaultInstanceManagerImage),
+		},
+		Setting: types.Setting{
+			Value: TestInstanceManagerImage,
+		},
+	}
+}
+
+func newEngineImage(image string, state types.EngineImageState) *longhorn.EngineImage {
+	return &longhorn.EngineImage{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       types.GetEngineImageChecksumName(image),
+			Namespace:  TestNamespace,
+			UID:        uuid.NewUUID(),
+			Finalizers: []string{longhornFinalizerKey},
+		},
+		Spec: types.EngineImageSpec{
+			Image: image,
+		},
+		Status: types.EngineImageStatus{
+			OwnerID: TestNode1,
+			State:   state,
+			EngineVersionDetails: types.EngineVersionDetails{
+				Version:   "latest",
+				GitCommit: "latest",
+
+				CLIAPIVersion:           3,
+				CLIAPIMinVersion:        3,
+				ControllerAPIVersion:    3,
+				ControllerAPIMinVersion: 3,
+				DataFormatVersion:       1,
+				DataFormatMinVersion:    1,
+			},
 		},
 	}
 }
