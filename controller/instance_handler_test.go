@@ -365,11 +365,6 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 		err = imIndexer.Add(im)
 		c.Assert(err, IsNil)
 
-		ima, err := h.ds.GetInstanceManagerBySelector(TestNode1, getTestEngineImageName(), tc.imType)
-		c.Assert(err, IsNil)
-		c.Assert(ima, NotNil)
-		c.Assert(ima, DeepEquals, im)
-
 		var spec *types.InstanceSpec
 		var status *types.InstanceStatus
 		if tc.imType == types.InstanceManagerTypeEngine {

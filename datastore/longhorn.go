@@ -1305,29 +1305,67 @@ func CheckInstanceManagerType(im *longhorn.InstanceManager) (types.InstanceManag
 	return types.InstanceManagerType(""), fmt.Errorf("unknown type %v for instance manager %v", imType, im.Name)
 }
 
-// GetInstanceManagerBySelector gets the Instance Managers matching the selector using Labels. Even though the labels
-// duplicate information already in the spec, spec cannot be used for Field Selectors in CustomResourceDefinitions:
-// https://github.com/kubernetes/kubernetes/issues/53459
-func (s *DataStore) GetInstanceManagerBySelector(node, image string, managerType types.InstanceManagerType) (*longhorn.InstanceManager, error) {
+func (s *DataStore) ListInstanceManagersBySelector(node, instanceManagerImage string, managerType types.InstanceManagerType) (map[string]*longhorn.InstanceManager, error) {
+	itemMap := map[string]*longhorn.InstanceManager{}
+
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: types.GetInstanceManagerLabels(node, image, managerType),
+		MatchLabels: types.GetInstanceManagerLabels(node, instanceManagerImage, managerType),
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	listRO, err := s.imLister.InstanceManagers(s.namespace).List(selector)
 	if err != nil {
 		return nil, err
 	}
-	switch len(listRO) {
-	case 0:
-		return nil, fmt.Errorf("cannot find instance manager by node=%v, engineImage=%v, type=%v", node, image, managerType)
-	case 1:
-		return listRO[0].DeepCopy(), nil
-	default:
-		// There shouldn't be more than one Instance Manager that matches the selector.
-		return nil, errors.Errorf("found more than one instance manager matching node %v, image %v, type %v", node, image, managerType)
+	for _, itemRO := range listRO {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
+	return itemMap, nil
+}
+
+func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.InstanceManager, error) {
+	var (
+		name, nodeID string
+		imType       types.InstanceManagerType
+	)
+
+	image, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return nil, err
+	}
+
+	switch obj.(type) {
+	case *longhorn.Engine:
+		engine := obj.(*longhorn.Engine)
+		name = engine.Name
+		nodeID = engine.Spec.NodeID
+		imType = types.InstanceManagerTypeEngine
+	case *longhorn.Replica:
+		replica := obj.(*longhorn.Replica)
+		name = replica.Name
+		nodeID = replica.Spec.NodeID
+		imType = types.InstanceManagerTypeReplica
+	default:
+		return nil, fmt.Errorf("unknown type for GetInstanceManagerByInstance, %+v", obj)
+	}
+	if nodeID == "" {
+		return nil, fmt.Errorf("invalid request for GetInstanceManagerByInstance: no NodeID specified for instance %v", name)
+	}
+
+	imMap, err := s.ListInstanceManagersBySelector(nodeID, image, imType)
+	if err != nil {
+		return nil, err
+	}
+	if len(imMap) == 1 {
+		for _, im := range imMap {
+			return im, nil
+		}
+
+	}
+	return nil, fmt.Errorf("can not find the only available instance manager for instance %v, node %v, instance manager image %v, type %v", name, nodeID, image, imType)
 }
 
 func (s *DataStore) ListInstanceManagers() (map[string]*longhorn.InstanceManager, error) {
@@ -1461,35 +1499,6 @@ func resourceVersionAtLeast(curr, min string) bool {
 		return false
 	}
 	return currVersion >= minVersion
-}
-
-func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.InstanceManager, error) {
-	var (
-		name, nodeID, engineImage string
-		imType                    types.InstanceManagerType
-	)
-
-	switch obj.(type) {
-	case *longhorn.Engine:
-		engine := obj.(*longhorn.Engine)
-		name = engine.Name
-		nodeID = engine.Spec.NodeID
-		engineImage = engine.Spec.EngineImage
-		imType = types.InstanceManagerTypeEngine
-	case *longhorn.Replica:
-		replica := obj.(*longhorn.Replica)
-		name = replica.Name
-		nodeID = replica.Spec.NodeID
-		engineImage = replica.Spec.EngineImage
-		imType = types.InstanceManagerTypeReplica
-	default:
-		return nil, fmt.Errorf("unknown type for GetInstanceManagerByInstance, %+v", obj)
-	}
-	if nodeID == "" || engineImage == "" {
-		return nil, fmt.Errorf("invalid request for GetInstanceManagerByInstance: no NodeID or EngineImage specified for instance %v", name)
-	}
-	engineImageName := types.GetEngineImageChecksumName(engineImage)
-	return s.GetInstanceManagerBySelector(nodeID, engineImageName, imType)
 }
 
 func (s *DataStore) IsEngineImageCLIAPIVersionOne(imageName string) (bool, error) {

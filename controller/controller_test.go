@@ -23,18 +23,19 @@ import (
 )
 
 const (
-	TestNamespace           = "default"
-	TestIP1                 = "1.2.3.4"
-	TestIP2                 = "5.6.7.8"
-	TestPort1               = 9501
-	TestNode1               = "test-node-name-1"
-	TestNode2               = "test-node-name-2"
-	TestOwnerID1            = TestNode1
-	TestOwnerID2            = TestNode2
-	TestEngineImage         = "longhorn-engine:latest"
-	TestUpgradedEngineImage = "longhorn-engine:upgraded"
-	TestManagerImage        = "longhorn-manager:latest"
-	TestServiceAccount      = "longhorn-service-account"
+	TestNamespace            = "default"
+	TestIP1                  = "1.2.3.4"
+	TestIP2                  = "5.6.7.8"
+	TestPort1                = 9501
+	TestNode1                = "test-node-name-1"
+	TestNode2                = "test-node-name-2"
+	TestOwnerID1             = TestNode1
+	TestOwnerID2             = TestNode2
+	TestEngineImage          = "longhorn-engine:latest"
+	TestUpgradedEngineImage  = "longhorn-engine:upgraded"
+	TestInstanceManagerImage = "longhorn-instance-manager:latest"
+	TestManagerImage         = "longhorn-manager:latest"
+	TestServiceAccount       = "longhorn-service-account"
 
 	TestInstanceManagerName1 = "instance-manager-engine-image-name-1"
 	TestEngineManagerName    = "instance-manager-e-test-name"
