@@ -24,10 +24,11 @@ import (
 var VERSION = "VERSION_PLACEHOLDER"
 
 const (
-	FlagEngineImage    = "engine-image"
-	FlagManagerImage   = "manager-image"
-	FlagServiceAccount = "service-account"
-	FlagKubeConfig     = "kube-config"
+	FlagEngineImage          = "engine-image"
+	FlagInstanceManagerImage = "instance-manager-image"
+	FlagManagerImage         = "manager-image"
+	FlagServiceAccount       = "service-account"
+	FlagKubeConfig           = "kube-config"
 )
 
 func DaemonCmd() cli.Command {
@@ -37,6 +38,10 @@ func DaemonCmd() cli.Command {
 			cli.StringFlag{
 				Name:  FlagEngineImage,
 				Usage: "Specify Longhorn engine image",
+			},
+			cli.StringFlag{
+				Name:  FlagInstanceManagerImage,
+				Usage: "Specify Longhorn instance manager image",
 			},
 			cli.StringFlag{
 				Name:  FlagManagerImage,
@@ -68,6 +73,10 @@ func startManager(c *cli.Context) error {
 	engineImage := c.String(FlagEngineImage)
 	if engineImage == "" {
 		return fmt.Errorf("require %v", FlagEngineImage)
+	}
+	instanceManagerImage := c.String(FlagInstanceManagerImage)
+	if instanceManagerImage == "" {
+		return fmt.Errorf("require %v", FlagInstanceManagerImage)
 	}
 	managerImage := c.String(FlagManagerImage)
 	if managerImage == "" {
@@ -127,6 +136,10 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
+	if err := updateSettingDefaultInstanceManagerImage(m, instanceManagerImage); err != nil {
+		return err
+	}
+
 	if err := initDaemonNode(ds); err != nil {
 		return err
 	}
@@ -179,6 +192,20 @@ func updateSettingDefaultEngineImage(m *manager.VolumeManager, engineImage strin
 	if settingDefaultEngineImage.Value != engineImage {
 		settingDefaultEngineImage.Value = engineImage
 		if _, err := m.CreateOrUpdateSetting(settingDefaultEngineImage); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func updateSettingDefaultInstanceManagerImage(m *manager.VolumeManager, instanceManagerImage string) error {
+	settingDefaultInstanceManagerImage, err := m.GetSetting(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return err
+	}
+	if settingDefaultInstanceManagerImage.Value != instanceManagerImage {
+		settingDefaultInstanceManagerImage.Value = instanceManagerImage
+		if _, err := m.CreateOrUpdateSetting(settingDefaultInstanceManagerImage); err != nil {
 			return err
 		}
 	}

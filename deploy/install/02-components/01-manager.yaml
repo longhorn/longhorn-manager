@@ -26,6 +26,8 @@ spec:
         - daemon
         - --engine-image
         - longhornio/longhorn-engine:master
+        - --instance-manager-image
+        - longhornio/longhorn-instance-manager:master
         - --manager-image
         - longhornio/longhorn-manager:master
         - --service-account
