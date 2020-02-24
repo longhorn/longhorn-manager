@@ -293,17 +293,6 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		}
 	}()
 
-	eiName := types.GetEngineImageChecksumName(im.Spec.EngineImage)
-	image, err := imc.ds.GetEngineImage(eiName)
-	if err != nil {
-		im.Status.CurrentState = types.InstanceManagerStateError
-		if datastore.ErrorIsNotFound(err) {
-			logrus.Infof("Engine image %v(%v) for instance manager %v has been deleted", eiName, im.Spec.EngineImage, key)
-			return nil
-		}
-		return err
-	}
-
 	pod, err := imc.ds.GetInstanceManagerPod(im.Name)
 	if err != nil {
 		return errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)
@@ -385,7 +374,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		if err := imc.cleanupInstanceManager(im); err != nil {
 			return err
 		}
-		if err := imc.createInstanceManagerPod(im, image); err != nil {
+		if err := imc.createInstanceManagerPod(im); err != nil {
 			return err
 		}
 		im.Status.CurrentState = types.InstanceManagerStateStarting
@@ -464,7 +453,7 @@ func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.Instan
 	return nil
 }
 
-func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.InstanceManager, image *longhorn.EngineImage) error {
+func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.InstanceManager) error {
 	setting, err := imc.ds.GetSetting(types.SettingNameTaintToleration)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get taint toleration setting before creating instance manager pod")
@@ -477,9 +466,9 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	var podSpec *v1.Pod
 	switch im.Spec.Type {
 	case types.InstanceManagerTypeEngine:
-		podSpec, err = imc.createEngineManagerPodSpec(im, image, tolerations)
+		podSpec, err = imc.createEngineManagerPodSpec(im, tolerations)
 	case types.InstanceManagerTypeReplica:
-		podSpec, err = imc.createReplicaManagerPodSpec(im, image, tolerations)
+		podSpec, err = imc.createReplicaManagerPodSpec(im, tolerations)
 	}
 	if err != nil {
 		return err
@@ -493,9 +482,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	return nil
 }
 
-func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager,
-	image *longhorn.EngineImage, tolerations []v1.Toleration) (*v1.Pod, error) {
-
+func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration) (*v1.Pod, error) {
 	privileged := true
 	podSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -508,7 +495,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 			Tolerations:        tolerations,
 			Containers: []v1.Container{
 				{
-					Image: image.Spec.Image,
+					Image: im.Spec.Image,
 					LivenessProbe: &v1.Probe{
 						Handler: v1.Handler{
 							Exec: &v1.ExecAction{
@@ -541,15 +528,13 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 	return podSpec, nil
 }
 
-func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.InstanceManager,
-	image *longhorn.EngineImage, tolerations []v1.Toleration) (*v1.Pod, error) {
-
-	podSpec, err := imc.createGenericManagerPodSpec(im, image, tolerations)
+func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration) (*v1.Pod, error) {
+	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations)
 	if err != nil {
 		return nil, err
 	}
 
-	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, image.Name, types.InstanceManagerTypeEngine)
+	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, types.InstanceManagerTypeEngine)
 	podSpec.Spec.Containers[0].Name = "engine-manager"
 	podSpec.Spec.Containers[0].Args = []string{
 		"engine-manager", "--debug", "daemon", "--listen", "0.0.0.0:8500",
@@ -598,15 +583,13 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 	return podSpec, nil
 }
 
-func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.InstanceManager,
-	image *longhorn.EngineImage, tolerations []v1.Toleration) (*v1.Pod, error) {
-
-	podSpec, err := imc.createGenericManagerPodSpec(im, image, tolerations)
+func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration) (*v1.Pod, error) {
+	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations)
 	if err != nil {
 		return nil, err
 	}
 
-	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, image.Name, types.InstanceManagerTypeReplica)
+	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, types.InstanceManagerTypeReplica)
 	podSpec.Spec.Containers[0].Name = "replica-manager"
 	podSpec.Spec.Containers[0].Args = []string{
 		"longhorn-instance-manager", "--debug", "daemon", "--listen", "0.0.0.0:8500",

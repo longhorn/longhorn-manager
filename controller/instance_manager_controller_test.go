@@ -49,35 +49,6 @@ func newTolerationSetting() *longhorn.Setting {
 	}
 }
 
-func newEngineImage(image string, state types.EngineImageState) *longhorn.EngineImage {
-	return &longhorn.EngineImage{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       types.GetEngineImageChecksumName(image),
-			Namespace:  TestNamespace,
-			UID:        uuid.NewUUID(),
-			Finalizers: []string{longhornFinalizerKey},
-		},
-		Spec: types.EngineImageSpec{
-			Image: image,
-		},
-		Status: types.EngineImageStatus{
-			OwnerID: TestNode1,
-			State:   state,
-			EngineVersionDetails: types.EngineVersionDetails{
-				Version:   "latest",
-				GitCommit: "latest",
-
-				CLIAPIVersion:           3,
-				CLIAPIMinVersion:        3,
-				ControllerAPIVersion:    3,
-				ControllerAPIMinVersion: 3,
-				DataFormatVersion:       1,
-				DataFormatMinVersion:    1,
-			},
-		},
-	}
-}
-
 func newInstanceManager(
 	name string,
 	imType types.InstanceManagerType,
@@ -91,12 +62,12 @@ func newInstanceManager(
 			Name:      name,
 			Namespace: TestNamespace,
 			UID:       uuid.NewUUID(),
-			Labels:    types.GetInstanceManagerLabels(TestNode1, getTestEngineImageName(), imType),
+			Labels:    types.GetInstanceManagerLabels(TestNode1, TestInstanceManagerImage, imType),
 		},
 		Spec: types.InstanceManagerSpec{
-			EngineImage: TestEngineImage,
-			NodeID:      nodeID,
-			Type:        imType,
+			Image:  TestInstanceManagerImage,
+			NodeID: nodeID,
+			Type:   imType,
 		},
 		Status: types.InstanceManagerStatus{
 			OwnerID:      currentOwnerID,
@@ -261,7 +232,6 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
-		eiIndexer := lhInformerFactory.Longhorn().V1beta1().EngineImages().Informer().GetIndexer()
 		imIndexer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers().Informer().GetIndexer()
 		sIndexer := lhInformerFactory.Longhorn().V1beta1().Settings().Informer().GetIndexer()
 		lhNodeIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
@@ -269,16 +239,16 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		imc := newTestInstanceManagerController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient,
 			tc.controllerID)
 
-		// Controller logic depends on the existence of Instance Manager's Engine Image and Toleration Setting.
-		setting := newTolerationSetting()
-		setting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(setting)
+		// Controller logic depends on the existence of DefaultInstanceManagerImage Setting and Toleration Setting.
+		tolerationSetting := newTolerationSetting()
+		tolerationSetting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(tolerationSetting)
 		c.Assert(err, IsNil)
-		err = sIndexer.Add(setting)
+		err = sIndexer.Add(tolerationSetting)
 		c.Assert(err, IsNil)
-		ei := newEngineImage(TestEngineImage, types.EngineImageStateReady)
-		err = eiIndexer.Add(ei)
+		imImageSetting := newDefaultInstanceManagerImageSetting()
+		imImageSetting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(imImageSetting)
 		c.Assert(err, IsNil)
-		_, err = lhClient.LonghornV1beta1().EngineImages(ei.Namespace).Create(ei)
+		err = sIndexer.Add(imImageSetting)
 		c.Assert(err, IsNil)
 
 		// Create Nodes for test. Conditionally add the first Node.
