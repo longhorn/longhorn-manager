@@ -42,6 +42,7 @@ const (
 	SettingNameCreateDefaultDiskLabeledNodes     = SettingName("create-default-disk-labeled-nodes")
 	SettingNameDefaultDataPath                   = SettingName("default-data-path")
 	SettingNameDefaultEngineImage                = SettingName("default-engine-image")
+	SettingNameDefaultInstanceManagerImage       = SettingName("default-instance-manager-image")
 	SettingNameReplicaSoftAntiAffinity           = SettingName("replica-soft-anti-affinity")
 	SettingNameStorageOverProvisioningPercentage = SettingName("storage-over-provisioning-percentage")
 	SettingNameStorageMinimalAvailablePercentage = SettingName("storage-minimal-available-percentage")
@@ -63,6 +64,7 @@ var (
 		SettingNameCreateDefaultDiskLabeledNodes,
 		SettingNameDefaultDataPath,
 		SettingNameDefaultEngineImage,
+		SettingNameDefaultInstanceManagerImage,
 		SettingNameReplicaSoftAntiAffinity,
 		SettingNameStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage,
@@ -103,6 +105,7 @@ var (
 		SettingNameCreateDefaultDiskLabeledNodes:     SettingDefinitionCreateDefaultDiskLabeledNodes,
 		SettingNameDefaultDataPath:                   SettingDefinitionDefaultDataPath,
 		SettingNameDefaultEngineImage:                SettingDefinitionDefaultEngineImage,
+		SettingNameDefaultInstanceManagerImage:       SettingDefinitionDefaultInstanceManagerImage,
 		SettingNameReplicaSoftAntiAffinity:           SettingDefinitionReplicaSoftAntiAffinity,
 		SettingNameStorageOverProvisioningPercentage: SettingDefinitionStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage: SettingDefinitionStorageMinimalAvailablePercentage,
@@ -170,6 +173,15 @@ var (
 	SettingDefinitionDefaultEngineImage = SettingDefinition{
 		DisplayName: "Default Engine Image",
 		Description: "The default engine image used by the manager. Can be changed on the manager starting command line only",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    true,
+	}
+
+	SettingDefinitionDefaultInstanceManagerImage = SettingDefinition{
+		DisplayName: "Default Instance Manager Image",
+		Description: "The default instance manager image used by the manager. Can be changed on the manager starting command line only",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
 		Required:    true,
