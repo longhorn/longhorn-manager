@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"fmt"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -173,14 +172,4 @@ func fakeEngineBinaryChecker(image string) bool {
 
 func fakeEngineImageUpdater(ei *longhorn.EngineImage) error {
 	return nil
-}
-
-func fakeInstanceManagerNameGenerator(imType types.InstanceManagerType) (string, error) {
-	switch imType {
-	case types.InstanceManagerTypeEngine:
-		return TestEngineManagerName, nil
-	case types.InstanceManagerTypeReplica:
-		return TestReplicaManagerName, nil
-	}
-	return "", fmt.Errorf("Cannot generate instance manager name for unknown instance manager type %v", imType)
 }
