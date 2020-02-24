@@ -34,15 +34,11 @@ type EngineImageControllerTestCase struct {
 	// For expired engine image cleanup
 	defaultEngineImage string
 
-	currentEngineImage    *longhorn.EngineImage
-	currentEngineManager  *longhorn.InstanceManager
-	currentReplicaManager *longhorn.InstanceManager
-	currentDaemonSet      *appv1.DaemonSet
+	currentEngineImage *longhorn.EngineImage
+	currentDaemonSet   *appv1.DaemonSet
 
-	expectedEngineImage    *longhorn.EngineImage
-	expectedEngineManager  *longhorn.InstanceManager
-	expectedReplicaManager *longhorn.InstanceManager
-	expectedDaemonSet      *appv1.DaemonSet
+	expectedEngineImage *longhorn.EngineImage
+	expectedDaemonSet   *appv1.DaemonSet
 }
 
 func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
@@ -77,7 +73,7 @@ func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInfo
 
 	ic := NewEngineImageController(
 		ds, scheme.Scheme,
-		engineImageInformer, volumeInformer, daemonSetInformer, nodeInformer, imInformer,
+		engineImageInformer, volumeInformer, daemonSetInformer,
 		kubeClient, TestNamespace, TestNode1, TestServiceAccount)
 
 	fakeRecorder := record.NewFakeRecorder(100)
@@ -86,13 +82,10 @@ func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInfo
 	ic.iStoreSynced = alwaysReady
 	ic.vStoreSynced = alwaysReady
 	ic.dsStoreSynced = alwaysReady
-	ic.nStoreSynced = alwaysReady
-	ic.imStoreSynced = alwaysReady
 
 	ic.nowHandler = getTestNow
 	ic.engineBinaryChecker = fakeEngineBinaryChecker
 	ic.engineImageVersionUpdater = fakeEngineImageUpdater
-	ic.instanceManagerNameGenerator = fakeInstanceManagerNameGenerator
 
 	return ic
 }
@@ -106,10 +99,8 @@ func getEngineImageControllerTestTemplate() *EngineImageControllerTestCase {
 
 		defaultEngineImage: TestEngineImage,
 
-		currentEngineImage:    newEngineImage(TestEngineImage, types.EngineImageStateReady),
-		currentEngineManager:  newInstanceManager(TestEngineManagerName, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
-		currentReplicaManager: newInstanceManager(TestReplicaManagerName, types.InstanceManagerTypeReplica, types.InstanceManagerStateRunning, TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
-		currentDaemonSet:      newEngineImageDaemonSet(),
+		currentEngineImage: newEngineImage(TestEngineImage, types.EngineImageStateReady),
+		currentDaemonSet:   newEngineImageDaemonSet(),
 	}
 
 	tc.volume.Status.CurrentNodeID = TestNode1
@@ -123,12 +114,6 @@ func getEngineImageControllerTestTemplate() *EngineImageControllerTestCase {
 func (tc *EngineImageControllerTestCase) copyCurrentToExpected() {
 	if tc.currentEngineImage != nil {
 		tc.expectedEngineImage = tc.currentEngineImage.DeepCopy()
-	}
-	if tc.currentEngineManager != nil {
-		tc.expectedEngineManager = tc.currentEngineManager.DeepCopy()
-	}
-	if tc.currentReplicaManager != nil {
-		tc.expectedReplicaManager = tc.currentReplicaManager.DeepCopy()
 	}
 	if tc.currentDaemonSet != nil {
 		tc.expectedDaemonSet = tc.currentDaemonSet.DeepCopy()
@@ -154,18 +139,6 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.expectedDaemonSet.Status.NumberAvailable = 0
 	testCases["Engine image DaemonSet creation"] = tc
 
-	// The controller will rely on foreground deletion to clean up the dependants then remove finalizer for the deleting engine image
-	// The fake k8s client won't apply foreground deletion to delete the dependants and clean up the object with DeletionTimestamp set and Finalizers unset,
-	// hence the expectedEngineImage, expectedEngineManager, and expectedReplicaManager are not nil here.
-	//tc = getEngineImageControllerTestTemplate()
-	//deleteTime := metav1.Now()
-	//tc.copyCurrentToExpected()
-	//tc.expectedEngineImage.Finalizers = []string{}
-	//tc.expectedEngineManager.DeletionTimestamp = nil
-	//tc.expectedReplicaManager.DeletionTimestamp = nil
-	//tc.expectedDaemonSet.DeletionTimestamp = nil
-	//testCases["Engine image deletion"] = tc
-
 	// The DaemonSet is not ready hence the engine image will become state `deploying`
 	tc = getEngineImageControllerTestTemplate()
 	tc.currentDaemonSet.Status.NumberAvailable = 0
@@ -181,17 +154,6 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.expectedEngineImage.Status.RefCount = 1
 	tc.expectedEngineImage.Status.NoRefSince = ""
 	testCases["One volume starts to use the engine image"] = tc
-
-	// The engine is still using the engine manager of current engine image after live upgrade,
-	// hence the `currentEngineImage.Status.refCount` should keep 1
-	tc = getEngineImageControllerTestTemplate()
-	tc.volume.Spec.EngineImage = TestUpgradedEngineImage
-	tc.volume.Status.CurrentImage = TestUpgradedEngineImage
-	tc.engine.Spec.EngineImage = TestUpgradedEngineImage
-	tc.engine.Status.CurrentImage = TestUpgradedEngineImage
-	tc.engine.Status.InstanceManagerName = TestEngineManagerName
-	tc.copyCurrentToExpected()
-	testCases["Volume is using other engine image after live upgrade"] = tc
 
 	// No volume is using the current engine image.
 	tc = getEngineImageControllerTestTemplate()
@@ -223,57 +185,6 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.expectedEngineImage.Status.State = types.EngineImageStateDeploying
 	tc.expectedDaemonSet = nil
 	testCases["DaemonSet with deprecated labels is found"] = tc
-
-	tc = getEngineImageControllerTestTemplate()
-	tc.currentEngineImage.Status.State = types.EngineImageStateDeploying
-	tc.currentEngineManager = nil
-	tc.currentReplicaManager = nil
-	tc.currentDaemonSet.Status.NumberAvailable = 0
-	tc.copyCurrentToExpected()
-	testCases["Engine manager or replica manager cannot be created before the DaemonSet is ready"] = tc
-
-	tc = getEngineImageControllerTestTemplate()
-	tc.currentEngineImage.Status.State = types.EngineImageStateDeploying
-	tc.currentEngineManager = nil
-	tc.currentReplicaManager = nil
-	tc.copyCurrentToExpected()
-	tc.expectedEngineManager = newInstanceManager(TestEngineManagerName, types.InstanceManagerTypeEngine, "", TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
-	tc.expectedReplicaManager = newInstanceManager(TestReplicaManagerName, types.InstanceManagerTypeReplica, "", TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
-	testCases["Engine manager and replica manager creation"] = tc
-
-	tc = getEngineImageControllerTestTemplate()
-	tc.currentEngineManager = nil
-	tc.currentReplicaManager = nil
-	tc.copyCurrentToExpected()
-	tc.expectedEngineImage.Status.State = types.EngineImageStateDeploying
-	tc.expectedEngineManager = newInstanceManager(TestEngineManagerName, types.InstanceManagerTypeEngine, "", TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
-	tc.expectedReplicaManager = newInstanceManager(TestReplicaManagerName, types.InstanceManagerTypeReplica, "", TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
-	testCases["Engine image becomes state deploying when recreating instance managers"] = tc
-
-	tc = getEngineImageControllerTestTemplate()
-	tc.currentEngineImage.Status.State = types.EngineImageStateDeploying
-	tc.currentEngineManager.Status.CurrentState = types.InstanceManagerStateStopped
-	tc.copyCurrentToExpected()
-	testCases["Engine image keeps state deploying when some instance managers are not ready"] = tc
-
-	tc = getEngineImageControllerTestTemplate()
-	tc.currentEngineImage.Status.State = types.EngineImageStateDeploying
-	tc.copyCurrentToExpected()
-	tc.expectedEngineImage.Status.State = types.EngineImageStateReady
-	testCases["Engine image becomes state ready when the DaemonSet and all instance managers are running"] = tc
-
-	tc = getEngineImageControllerTestTemplate()
-	tc.node.Spec.Disks = map[string]types.DiskSpec{}
-	tc.copyCurrentToExpected()
-	tc.expectedReplicaManager = nil
-	testCases["Replica Manager will be removed and the engine image keeps ready state when the node disk is empty"] = tc
-
-	tc = getEngineImageControllerTestTemplate()
-	tc.currentReplicaManager = nil
-	tc.copyCurrentToExpected()
-	tc.expectedEngineImage.Status.State = types.EngineImageStateDeploying
-	tc.expectedReplicaManager = newInstanceManager(TestReplicaManagerName, types.InstanceManagerTypeReplica, "", TestNode1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
-	testCases["Replica Manager will be created when the first disk is added to the node"] = tc
 
 	tc = getEngineImageControllerTestTemplate()
 	incompatibleVersion := types.EngineVersionDetails{
@@ -314,7 +225,6 @@ func (s *TestSuite) TestEngineImage(c *C) {
 		eiIndexer := lhInformerFactory.Longhorn().V1beta1().EngineImages().Informer().GetIndexer()
 		vIndexer := lhInformerFactory.Longhorn().V1beta1().Volumes().Informer().GetIndexer()
 		eIndexer := lhInformerFactory.Longhorn().V1beta1().Engines().Informer().GetIndexer()
-		imIndexer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers().Informer().GetIndexer()
 
 		ic := newTestEngineImageController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
 
@@ -360,18 +270,6 @@ func (s *TestSuite) TestEngineImage(c *C) {
 			err = dsIndexer.Add(ds)
 			c.Assert(err, IsNil)
 		}
-		if tc.currentEngineManager != nil {
-			em, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(tc.currentEngineManager)
-			c.Assert(err, IsNil)
-			err = imIndexer.Add(em)
-			c.Assert(err, IsNil)
-		}
-		if tc.currentReplicaManager != nil {
-			rm, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(tc.currentReplicaManager)
-			c.Assert(err, IsNil)
-			err = imIndexer.Add(rm)
-			c.Assert(err, IsNil)
-		}
 
 		engineImageControllerKey := fmt.Sprintf("%s/%s", TestNamespace, getTestEngineImageName())
 		err = ic.syncEngineImage(engineImageControllerKey)
@@ -393,20 +291,6 @@ func (s *TestSuite) TestEngineImage(c *C) {
 			// For the DaemonSet created by the fake k8s client, the field `Status.DesiredNumberScheduled` won't be set automatically.
 			ds.Status.DesiredNumberScheduled = 1
 			c.Assert(ds.Status, DeepEquals, tc.expectedDaemonSet.Status)
-		}
-		em, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Get(TestEngineManagerName, metav1.GetOptions{})
-		if tc.expectedEngineManager == nil {
-			c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
-		} else {
-			c.Assert(err, IsNil)
-			c.Assert(em.Status.CurrentState, DeepEquals, tc.expectedEngineManager.Status.CurrentState)
-		}
-		rm, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Get(TestReplicaManagerName, metav1.GetOptions{})
-		if tc.expectedReplicaManager == nil {
-			c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
-		} else {
-			c.Assert(err, IsNil)
-			c.Assert(rm.Status.CurrentState, DeepEquals, tc.expectedReplicaManager.Status.CurrentState)
 		}
 	}
 }

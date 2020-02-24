@@ -55,16 +55,13 @@ type EngineImageController struct {
 	iStoreSynced  cache.InformerSynced
 	vStoreSynced  cache.InformerSynced
 	dsStoreSynced cache.InformerSynced
-	nStoreSynced  cache.InformerSynced
-	imStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
 
 	// for unit test
-	nowHandler                   func() string
-	engineBinaryChecker          func(string) bool
-	engineImageVersionUpdater    func(*longhorn.EngineImage) error
-	instanceManagerNameGenerator func(types.InstanceManagerType) (string, error)
+	nowHandler                func() string
+	engineBinaryChecker       func(string) bool
+	engineImageVersionUpdater func(*longhorn.EngineImage) error
 }
 
 func NewEngineImageController(
@@ -73,8 +70,6 @@ func NewEngineImageController(
 	engineImageInformer lhinformers.EngineImageInformer,
 	volumeInformer lhinformers.VolumeInformer,
 	dsInformer appsinformers.DaemonSetInformer,
-	nodeInformer lhinformers.NodeInformer,
-	imInformer lhinformers.InstanceManagerInformer,
 	kubeClient clientset.Interface,
 	namespace string, controllerID, serviceAccount string) *EngineImageController {
 
@@ -96,15 +91,12 @@ func NewEngineImageController(
 		iStoreSynced:  engineImageInformer.Informer().HasSynced,
 		vStoreSynced:  volumeInformer.Informer().HasSynced,
 		dsStoreSynced: dsInformer.Informer().HasSynced,
-		nStoreSynced:  nodeInformer.Informer().HasSynced,
-		imStoreSynced: imInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-engine-image"),
 
-		nowHandler:                   util.Now,
-		engineBinaryChecker:          types.EngineBinaryExistOnHostForImage,
-		engineImageVersionUpdater:    updateEngineImageVersion,
-		instanceManagerNameGenerator: getInstanceManagerName,
+		nowHandler:                util.Now,
+		engineBinaryChecker:       types.EngineBinaryExistOnHostForImage,
+		engineImageVersionUpdater: updateEngineImageVersion,
 	}
 
 	engineImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -150,33 +142,6 @@ func NewEngineImageController(
 		},
 	})
 
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			ic.enqueueAllEngineImagesForNodeChange()
-		},
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			ic.enqueueAllEngineImagesForNodeChange()
-		},
-		DeleteFunc: func(obj interface{}) {
-			ic.enqueueAllEngineImagesForNodeChange()
-		},
-	})
-
-	imInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			im := obj.(*longhorn.InstanceManager)
-			ic.enqueueInstanceManager(im)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			curIM := cur.(*longhorn.InstanceManager)
-			ic.enqueueInstanceManager(curIM)
-		},
-		DeleteFunc: func(obj interface{}) {
-			im := obj.(*longhorn.InstanceManager)
-			ic.enqueueInstanceManager(im)
-		},
-	})
-
 	return ic
 }
 
@@ -187,7 +152,7 @@ func (ic *EngineImageController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start Longhorn Engine Image controller")
 	defer logrus.Infof("Shutting down Longhorn Engine Image controller")
 
-	if !controller.WaitForCacheSync("longhorn engine images", stopCh, ic.iStoreSynced, ic.vStoreSynced, ic.dsStoreSynced, ic.nStoreSynced, ic.imStoreSynced) {
+	if !controller.WaitForCacheSync("longhorn engine images", stopCh, ic.iStoreSynced, ic.vStoreSynced, ic.dsStoreSynced) {
 		return
 	}
 
@@ -288,7 +253,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 
 	dsName := types.GetDaemonSetNameFromEngineImageName(engineImage.Name)
 	if engineImage.DeletionTimestamp != nil {
-		// Will use the foreground deletion to implicitly clean up the related DaemonSet and instance managers.
+		// Will use the foreground deletion to implicitly clean up the related DaemonSet.
 		logrus.Infof("Removing engine image %v (%v)", engineImage.Name, engineImage.Spec.Image)
 		return ic.ds.RemoveFinalizerForEngineImage(engineImage)
 	}
@@ -390,10 +355,6 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return nil
 	}
 
-	if err := ic.syncInstanceManagers(engineImage, readyNodeList); err != nil {
-		return err
-	}
-
 	if err := ic.updateEngineImageRefCount(engineImage); err != nil {
 		return errors.Wrapf(err, "failed to update RefCount for engine image %v(%v)", engineImage.Name, engineImage.Spec.Image)
 	}
@@ -453,32 +414,6 @@ func (ic *EngineImageController) updateEngineImageRefCount(ei *longhorn.EngineIm
 	for _, v := range volumes {
 		if v.Spec.EngineImage == image || v.Status.CurrentImage == image {
 			refCount++
-		}
-
-		// Volume engine is still using the engine manager of this old engine image after live upgrading to other engine image.
-		if v.Status.CurrentImage != image && v.Status.State == types.VolumeStateAttached {
-			// For old version engine image, there is no related instance manager
-			isCLIAPIVersionOne, err := ic.ds.IsEngineImageCLIAPIVersionOne(v.Status.CurrentImage)
-			if err != nil {
-				return err
-			}
-			if isCLIAPIVersionOne {
-				continue
-			}
-
-			es, err := ic.ds.ListVolumeEngines(v.Name)
-			if err != nil {
-				return err
-			}
-			for _, e := range es {
-				im, err := ic.ds.GetInstanceManager(e.Status.InstanceManagerName)
-				if err != nil {
-					return err
-				}
-				if ei.Spec.Image == im.Spec.EngineImage {
-					refCount++
-				}
-			}
 		}
 	}
 	ei.Status.RefCount = refCount
@@ -575,31 +510,6 @@ func (ic *EngineImageController) enqueueControlleeChange(obj interface{}) {
 		ic.ResolveRefAndEnqueue(namespace, &ref)
 		return
 	}
-}
-
-func (ic *EngineImageController) enqueueAllEngineImagesForNodeChange() {
-	engineImages, err := ic.ds.ListEngineImages()
-	if err != nil {
-		logrus.Warnf("Failed to list engine images: %v", err)
-		return
-	}
-
-	for _, ei := range engineImages {
-		ic.enqueueEngineImage(ei)
-	}
-	return
-}
-
-func (ic *EngineImageController) enqueueInstanceManager(im *longhorn.InstanceManager) {
-	eiName := types.GetEngineImageChecksumName(im.Spec.EngineImage)
-	ei, err := ic.ds.GetEngineImage(eiName)
-	if err != nil {
-		logrus.Errorf("failed to get the engine image %v(%v) when enqueuing instance manager change: %v", eiName, im.Spec.EngineImage, err)
-		return
-	}
-
-	ic.enqueueEngineImage(ei)
-	return
 }
 
 func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *metav1.OwnerReference) {
@@ -700,106 +610,4 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 		},
 	}
 	return d
-}
-
-func (ic *EngineImageController) syncInstanceManagers(ei *longhorn.EngineImage, readyNodeList []*longhorn.Node) error {
-	for _, node := range readyNodeList {
-		// Get the Instance Managers if they do exist, so we can handle them once we get the Instance Manager state.
-		engineIM, err := ic.ds.GetInstanceManagerBySelector(node.Name, ei.Name, types.InstanceManagerTypeEngine)
-		if err != nil {
-			if !types.ErrorIsNotFound(err) {
-				return errors.Wrapf(err, "cannot get engine instance manager for node %v, engine image %v", node.Name, ei.Name)
-
-			}
-			engineIM = nil
-		}
-
-		replicaIM, err := ic.ds.GetInstanceManagerBySelector(node.Name, ei.Name, types.InstanceManagerTypeReplica)
-		if err != nil {
-			if !types.ErrorIsNotFound(err) {
-				return errors.Wrapf(err, "cannot get replica instance manager for node %v, engine image %v", node.Name, ei.Name)
-			}
-			replicaIM = nil
-		}
-
-		switch ei.Status.State {
-		case types.EngineImageStateIncompatible:
-			continue
-		case types.EngineImageStateDeploying:
-			fallthrough
-		case types.EngineImageStateReady:
-			if engineIM == nil {
-				if _, err := ic.createInstanceManager(ei, types.InstanceManagerTypeEngine, node); err != nil {
-					return errors.Wrapf(err, "failed to create engine instance manager for node %v, engine image %v", node.Name, ei.Name)
-				}
-				ei.Status.State = types.EngineImageStateDeploying
-				logrus.Infof("Created engine instance manager for node %v, engine image %v (%v)", node.Name, ei.Name, ei.Spec.Image)
-			} else {
-				if engineIM.Status.CurrentState != types.InstanceManagerStateRunning {
-					ei.Status.State = types.EngineImageStateDeploying
-				}
-			}
-
-			if replicaIM == nil {
-				if len(node.Spec.Disks) > 0 {
-					if _, err := ic.createInstanceManager(ei, types.InstanceManagerTypeReplica, node); err != nil {
-						return errors.Wrapf(err, "failed to create replica instance manager for node %v, engine image %v", node.Name, ei.Name)
-					}
-					ei.Status.State = types.EngineImageStateDeploying
-					logrus.Infof("Created replica instance manager for node %v, engine image %v (%v)", node.Name, ei.Name, ei.Spec.Image)
-				}
-			} else {
-				if len(node.Spec.Disks) == 0 {
-					// If the Node no longer has any Disks on it, it's safe to delete the Replica Instance Manager since
-					// its no longer needed.
-					if err := ic.ds.DeleteInstanceManager(replicaIM.Name); err != nil {
-						return errors.Wrapf(err, "cannot cleanup replica instance manager of node %v, engine image %v", node.Name, ei.Name)
-					}
-				} else {
-					if replicaIM.Status.CurrentState != types.InstanceManagerStateRunning {
-						ei.Status.State = types.EngineImageStateDeploying
-					}
-				}
-			}
-		default:
-			return fmt.Errorf("BUG: engine image %v had unexpected state %v", ei.Name, ei.Status.State)
-		}
-	}
-
-	return nil
-}
-
-func (ic *EngineImageController) createInstanceManager(ei *longhorn.EngineImage, imType types.InstanceManagerType,
-	node *longhorn.Node) (*longhorn.InstanceManager, error) {
-	imName, err := ic.instanceManagerNameGenerator(imType)
-	if err != nil {
-		return nil, err
-	}
-	instanceManager := &longhorn.InstanceManager{
-		ObjectMeta: metav1.ObjectMeta{
-			// Even though the labels duplicate information already in the spec, spec cannot be used for
-			// Field Selectors in CustomResourceDefinitions:
-			// https://github.com/kubernetes/kubernetes/issues/53459
-			Labels:          types.GetInstanceManagerLabels(node.Name, ei.Name, imType),
-			Name:            imName,
-			OwnerReferences: datastore.GetOwnerReferencesForEngineImage(ei),
-		},
-		Spec: types.InstanceManagerSpec{
-			EngineImage: ei.Spec.Image,
-			NodeID:      node.Name,
-			Type:        imType,
-		},
-	}
-
-	return ic.ds.CreateInstanceManager(instanceManager)
-}
-
-func getInstanceManagerName(imType types.InstanceManagerType) (string, error) {
-	switch imType {
-	case types.InstanceManagerTypeEngine:
-		return types.GetRandomEngineManagerName(), nil
-	case types.InstanceManagerTypeReplica:
-		return types.GetRandomReplicaManagerName(), nil
-	}
-	return "", fmt.Errorf("cannot generate name for unknown instance manager type %v", imType)
 }
