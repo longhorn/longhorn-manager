@@ -38,11 +38,12 @@ const (
 
 	LonghornLabelKeyPrefix = "longhorn.io"
 
-	LonghornLabelEngineImage         = "engine-image"
-	LonghornLabelInstanceManager     = "instance-manager"
-	LonghornLabelNode                = "node"
-	LonghornLabelInstanceManagerType = "instance-manager-type"
-	LonghornLabelVolume              = "longhornvolume"
+	LonghornLabelEngineImage          = "engine-image"
+	LonghornLabelInstanceManager      = "instance-manager"
+	LonghornLabelNode                 = "node"
+	LonghornLabelInstanceManagerType  = "instance-manager-type"
+	LonghornLabelInstanceManagerImage = "instance-manager-image"
+	LonghornLabelVolume               = "longhornvolume"
 
 	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
@@ -181,13 +182,19 @@ func GetEngineImageLabels(engineImageName string) map[string]string {
 	}
 }
 
-func GetInstanceManagerLabels(node, engineImageName string, managerType InstanceManagerType) map[string]string {
-	return map[string]string{
+func GetInstanceManagerLabels(node, instanceManagerImage string, managerType InstanceManagerType) map[string]string {
+	labels := map[string]string{
 		GetLonghornLabelComponentKey():                        LonghornLabelInstanceManager,
-		GetLonghornLabelKey(LonghornLabelNode):                node,
-		GetLonghornLabelKey(LonghornLabelEngineImage):         engineImageName,
 		GetLonghornLabelKey(LonghornLabelInstanceManagerType): string(managerType),
 	}
+	if node != "" {
+		labels[GetLonghornLabelKey(LonghornLabelNode)] = node
+	}
+	if instanceManagerImage != "" {
+		labels[GetLonghornLabelKey(LonghornLabelInstanceManagerImage)] = GetImageCanonicalName(instanceManagerImage)
+	}
+
+	return labels
 }
 
 func GetInstanceManagerComponentLabel() map[string]string {
