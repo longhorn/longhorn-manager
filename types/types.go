@@ -163,9 +163,7 @@ func EngineBinaryExistOnHostForImage(image string) bool {
 }
 
 var (
-	LonghornSystemKey              = "longhorn"
-	LonghornSystemValueManager     = "manager"
-	LonghornSystemValueEngineImage = "engine-image"
+	LonghornSystemKey = "longhorn"
 )
 
 func GetLonghornLabelKey(name string) string {
@@ -195,13 +193,6 @@ func GetInstanceManagerLabels(node, engineImageName string, managerType Instance
 func GetInstanceManagerComponentLabel() map[string]string {
 	return map[string]string{
 		GetLonghornLabelComponentKey(): LonghornLabelInstanceManager,
-	}
-}
-
-func GetInstanceManagerWithEngineImageKeyLabel(engineImageName string) map[string]string {
-	return map[string]string{
-		GetLonghornLabelComponentKey():                LonghornLabelInstanceManager,
-		GetLonghornLabelKey(LonghornLabelEngineImage): engineImageName,
 	}
 }
 
