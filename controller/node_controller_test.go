@@ -33,12 +33,16 @@ const (
 var MountPropagationBidirectional = v1.MountPropagationBidirectional
 
 type NodeTestCase struct {
-	nodes     map[string]*longhorn.Node
-	pods      map[string]*v1.Pod
-	replicas  []*longhorn.Replica
-	kubeNodes map[string]*v1.Node
+	nodes           map[string]*longhorn.Node
+	pods            map[string]*v1.Pod
+	replicas        []*longhorn.Replica
+	kubeNodes       map[string]*v1.Node
+	engineManagers  map[string]*longhorn.InstanceManager
+	replicaManagers map[string]*longhorn.InstanceManager
 
-	expectNodeStatus map[string]types.NodeStatus
+	expectNodeStatus      map[string]types.NodeStatus
+	expectEngineManagers  map[string]*longhorn.InstanceManager
+	expectReplicaManagers map[string]*longhorn.InstanceManager
 }
 
 func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
@@ -415,6 +419,160 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	}
 	testCases["test disable disk when file system changed"] = tc
 
+	tc = &NodeTestCase{}
+	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
+	tc.pods = generateManagerPod(ManagerPodUp)
+	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
+	node1.Status.DiskStatus = map[string]types.DiskStatus{
+		TestDiskID1: {
+			StorageScheduled: 0,
+			StorageAvailable: 0,
+			Conditions: map[types.DiskConditionType]types.Condition{
+				types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+			},
+		},
+	}
+	tc.nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+	}
+	tc.expectNodeStatus = map[string]types.NodeStatus{
+		TestNode1: {
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
+			},
+			DiskStatus: map[string]types.DiskStatus{
+				TestDiskID1: {
+					StorageScheduled: 0,
+					StorageAvailable: 0,
+					Conditions: map[types.DiskConditionType]types.Condition{
+						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse, string(types.DiskConditionReasonDiskPressure)),
+						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
+					},
+					ScheduledReplica: map[string]int64{},
+				},
+			},
+		},
+	}
+	tc.expectEngineManagers = map[string]*longhorn.InstanceManager{
+		TestEngineManagerName: newInstanceManager(TestEngineManagerName, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
+	}
+	tc.expectReplicaManagers = map[string]*longhorn.InstanceManager{
+		TestReplicaManagerName: newInstanceManager(TestReplicaManagerName, types.InstanceManagerTypeReplica, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
+	}
+	testCases["create default instance managers after node up"] = tc
+
+	tc = &NodeTestCase{}
+	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
+	tc.pods = generateManagerPod(ManagerPodUp)
+	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
+	node1.Status.DiskStatus = map[string]types.DiskStatus{
+		TestDiskID1: {
+			StorageScheduled: 0,
+			StorageAvailable: 0,
+			Conditions: map[types.DiskConditionType]types.Condition{
+				types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+			},
+		},
+	}
+	tc.nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+	}
+	tc.expectNodeStatus = map[string]types.NodeStatus{
+		TestNode1: {
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
+			},
+			DiskStatus: map[string]types.DiskStatus{
+				TestDiskID1: {
+					StorageScheduled: 0,
+					StorageAvailable: 0,
+					Conditions: map[types.DiskConditionType]types.Condition{
+						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse, string(types.DiskConditionReasonDiskPressure)),
+						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
+					},
+					ScheduledReplica: map[string]int64{},
+				},
+			},
+		},
+	}
+	extraEngineManager := newInstanceManager("extra-engine-manger-name", types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+		map[string]types.InstanceProcess{
+			ExistingInstance: {
+				Spec: types.InstanceProcessSpec{
+					Name: ExistingInstance,
+				},
+				Status: types.InstanceProcessStatus{
+					State:     types.InstanceStateRunning,
+					PortStart: TestPort1,
+				},
+			},
+		}, false)
+	extraEngineManager.Spec.Image = TestExtraInstanceManagerImage
+	extraReplicaManager := newInstanceManager("extra-replica-manger-name", types.InstanceManagerTypeReplica, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false)
+	extraReplicaManager.Spec.Image = TestExtraInstanceManagerImage
+	tc.engineManagers = map[string]*longhorn.InstanceManager{
+		TestEngineManagerName:      newInstanceManager(TestEngineManagerName, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
+		"extra-engine-manger-name": extraEngineManager,
+	}
+	tc.replicaManagers = map[string]*longhorn.InstanceManager{
+		TestReplicaManagerName:      newInstanceManager(TestReplicaManagerName, types.InstanceManagerTypeReplica, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
+		"extra-replica-manger-name": extraReplicaManager,
+	}
+	tc.expectEngineManagers = map[string]*longhorn.InstanceManager{
+		TestEngineManagerName:      newInstanceManager(TestEngineManagerName, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
+		"extra-engine-manger-name": extraEngineManager,
+	}
+	tc.expectReplicaManagers = map[string]*longhorn.InstanceManager{
+		TestReplicaManagerName: newInstanceManager(TestReplicaManagerName, types.InstanceManagerTypeReplica, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
+	}
+	testCases["clean up redundant instance managers only if there is no running instances"] = tc
+
+	tc = &NodeTestCase{}
+	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
+	tc.pods = generateManagerPod(ManagerPodUp)
+	node1 = newNode(TestNode1, TestNamespace, false, types.ConditionStatusTrue, "")
+	node1.Spec.Disks = map[string]types.DiskSpec{}
+	node1.Status.DiskStatus = map[string]types.DiskStatus{}
+	tc.nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+	}
+	tc.expectNodeStatus = map[string]types.NodeStatus{
+		TestNode1: {
+			Conditions: map[types.NodeConditionType]types.Condition{
+				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
+			},
+			DiskStatus: map[string]types.DiskStatus{},
+		},
+	}
+	extraReplicaManager = newInstanceManager("extra-replica-manger-name", types.InstanceManagerTypeReplica, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+		map[string]types.InstanceProcess{
+			ExistingInstance: {
+				Spec: types.InstanceProcessSpec{
+					Name: ExistingInstance,
+				},
+				Status: types.InstanceProcessStatus{
+					State:     types.InstanceStateRunning,
+					PortStart: TestPort1,
+				},
+			},
+		}, false)
+	extraReplicaManager.Spec.Image = TestExtraInstanceManagerImage
+	tc.engineManagers = map[string]*longhorn.InstanceManager{
+		TestEngineManagerName: newInstanceManager(TestEngineManagerName, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
+	}
+	tc.replicaManagers = map[string]*longhorn.InstanceManager{
+		TestReplicaManagerName:      newInstanceManager(TestReplicaManagerName, types.InstanceManagerTypeReplica, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
+		"extra-replica-manger-name": extraReplicaManager,
+	}
+	tc.expectEngineManagers = map[string]*longhorn.InstanceManager{
+		TestEngineManagerName: newInstanceManager(TestEngineManagerName, types.InstanceManagerTypeEngine, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
+	}
+	tc.expectReplicaManagers = map[string]*longhorn.InstanceManager{}
+	testCases["clean up all replica managers if there is no disk on the node"] = tc
+
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
 		kubeClient := fake.NewSimpleClientset()
@@ -428,6 +586,15 @@ func (s *TestSuite) TestSyncNode(c *C) {
 
 		rIndexer := lhInformerFactory.Longhorn().V1beta1().Replicas().Informer().GetIndexer()
 		knIndexer := kubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+
+		sIndexer := lhInformerFactory.Longhorn().V1beta1().Settings().Informer().GetIndexer()
+		imIndexer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers().Informer().GetIndexer()
+
+		imImageSetting := newDefaultInstanceManagerImageSetting()
+		imImageSetting, err := lhClient.LonghornV1beta1().Settings(TestNamespace).Create(imImageSetting)
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(imImageSetting)
+		c.Assert(err, IsNil)
 
 		// create kuberentes node
 		for _, kubeNode := range tc.kubeNodes {
@@ -456,6 +623,19 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			c.Assert(err, IsNil)
 			c.Assert(r, NotNil)
 			rIndexer.Add(r)
+		}
+		// create instance managers
+		for _, em := range tc.engineManagers {
+			em, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(em)
+			c.Assert(err, IsNil)
+			err = imIndexer.Add(em)
+			c.Assert(err, IsNil)
+		}
+		for _, rm := range tc.replicaManagers {
+			rm, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(rm)
+			c.Assert(err, IsNil)
+			err = imIndexer.Add(rm)
+			c.Assert(err, IsNil)
 		}
 		// sync node status
 		for nodeName, node := range tc.nodes {
@@ -492,6 +672,23 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					n.Status.DiskStatus[fsid] = diskStatus
 				}
 				c.Assert(n.Status.DiskStatus, DeepEquals, tc.expectNodeStatus[nodeName].DiskStatus)
+			}
+		}
+
+		for emName := range tc.engineManagers {
+			em, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Get(emName, metav1.GetOptions{})
+			if expectEM, exist := tc.expectEngineManagers[emName]; !exist {
+				c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
+			} else {
+				c.Assert(em.Spec, DeepEquals, expectEM.Spec)
+			}
+		}
+		for rmName := range tc.replicaManagers {
+			rm, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Get(rmName, metav1.GetOptions{})
+			if expectRM, exist := tc.expectReplicaManagers[rmName]; !exist {
+				c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
+			} else {
+				c.Assert(rm.Spec, DeepEquals, expectRM.Spec)
 			}
 		}
 

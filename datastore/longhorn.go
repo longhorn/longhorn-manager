@@ -1153,6 +1153,19 @@ func tagNodeLabel(nodeID string, obj runtime.Object) error {
 	return nil
 }
 
+func GetOwnerReferencesForNode(node *longhorn.Node) []metav1.OwnerReference {
+	blockOwnerDeletion := true
+	return []metav1.OwnerReference{
+		{
+			APIVersion:         longhorn.SchemeGroupVersion.String(),
+			Kind:               types.LonghornKindNode,
+			Name:               node.Name,
+			UID:                node.UID,
+			BlockOwnerDeletion: &blockOwnerDeletion,
+		},
+	}
+}
+
 func (s *DataStore) GetSettingAsInt(settingName types.SettingName) (int64, error) {
 	definition, ok := types.SettingDefinitions[settingName]
 	if !ok {
@@ -1366,6 +1379,10 @@ func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.Ins
 
 	}
 	return nil, fmt.Errorf("can not find the only available instance manager for instance %v, node %v, instance manager image %v, type %v", name, nodeID, image, imType)
+}
+
+func (s *DataStore) ListInstanceManagersByNode(node string, imType types.InstanceManagerType) (map[string]*longhorn.InstanceManager, error) {
+	return s.ListInstanceManagersBySelector(node, "", imType)
 }
 
 func (s *DataStore) ListInstanceManagers() (map[string]*longhorn.InstanceManager, error) {

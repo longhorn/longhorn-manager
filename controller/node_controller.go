@@ -12,6 +12,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -480,6 +481,10 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		}
 	}
 
+	if err := nc.syncInstanceManagers(node); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -750,4 +755,94 @@ func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error
 	node.Status.Conditions[types.NodeConditionTypeMountPropagation] = condition
 
 	return nil
+}
+
+func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
+	defaultInstanceManagerImage, err := nc.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return err
+	}
+
+	imTypes := []types.InstanceManagerType{types.InstanceManagerTypeEngine}
+
+	// Clean up all replica managers if there is no disk on the node
+	if len(node.Spec.Disks) == 0 {
+		logrus.Debugf("Prepare to clean up all replica managers on node %v since there is no available disk: %+v", node.Name, node)
+		rmMap, err := nc.ds.ListInstanceManagersByNode(node.Name, types.InstanceManagerTypeReplica)
+		if err != nil {
+			return err
+		}
+		for _, rm := range rmMap {
+			if err := nc.ds.DeleteInstanceManager(rm.Name); err != nil {
+				return err
+			}
+		}
+	} else {
+		imTypes = append(imTypes, types.InstanceManagerTypeReplica)
+	}
+
+	for _, imType := range imTypes {
+		defaultInstanceManagerCreated := false
+		imMap, err := nc.ds.ListInstanceManagersByNode(node.Name, imType)
+		if err != nil {
+			return err
+		}
+		for _, im := range imMap {
+			if im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)] != im.Spec.NodeID {
+				return fmt.Errorf("BUG: Instance manager %v NodeID %v is not consistent with the label %v=%v",
+					im.Name, im.Spec.NodeID, types.GetLonghornLabelKey(types.LonghornLabelNode), im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)])
+			}
+			cleanupRequired := true
+			if im.Spec.Image == defaultInstanceManagerImage {
+				// Create default instance manager if needed.
+				defaultInstanceManagerCreated = true
+				cleanupRequired = false
+			} else {
+				// Clean up old instance managers if there is no running instance.
+				if im.Status.CurrentState == types.InstanceManagerStateRunning && im.DeletionTimestamp == nil {
+					for _, instance := range im.Status.Instances {
+						if instance.Status.State == types.InstanceStateRunning || instance.Status.State == types.InstanceStateStarting {
+							cleanupRequired = false
+							break
+						}
+					}
+				}
+			}
+			if cleanupRequired {
+				logrus.Debugf("Prepare to clean up the redundant instance manager %v when there is no running/starting instance", im.Name)
+				if err := nc.ds.DeleteInstanceManager(im.Name); err != nil {
+					return err
+				}
+			}
+		}
+		if !defaultInstanceManagerCreated {
+			imName, err := types.GetInstanceManagerName(imType)
+			if err != nil {
+				return err
+			}
+			logrus.Debugf("Prepare to create default instance manager %v, node: %v, default instance manager image: %v, type: %v",
+				imName, node.Name, defaultInstanceManagerImage, imType)
+			if _, err := nc.createInstanceManager(node, imName, defaultInstanceManagerImage, imType); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, image string, imType types.InstanceManagerType) (*longhorn.InstanceManager, error) {
+	instanceManager := &longhorn.InstanceManager{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:          types.GetInstanceManagerLabels(node.Name, image, imType),
+			Name:            imName,
+			OwnerReferences: datastore.GetOwnerReferencesForNode(node),
+		},
+		Spec: types.InstanceManagerSpec{
+			Image:  image,
+			NodeID: node.Name,
+			Type:   imType,
+		},
+	}
+
+	return nc.ds.CreateInstanceManager(instanceManager)
 }
