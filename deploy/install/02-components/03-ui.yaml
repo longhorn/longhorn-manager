@@ -39,3 +39,18 @@ spec:
   - port: 80
     targetPort: 8000
   type: LoadBalancer
+---
+kind: Service
+apiVersion: v1
+metadata:
+  labels:
+    app: longhorn-ui
+  name: longhorn-web
+  namespace: longhorn-system
+spec:
+  selector:
+    app: longhorn-ui
+  ports:
+  - port: 12345
+    targetPort: 8000
+  type: ClusterIP
