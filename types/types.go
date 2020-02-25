@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	LonghornKindNode            = "Node"
 	LonghornKindVolume          = "Volume"
 	LonghornKindEngineImage     = "EngineImage"
 	LonghornKindInstanceManager = "InstanceManager"
@@ -239,12 +240,14 @@ func ValidateEngineImageChecksumName(name string) bool {
 	return matched
 }
 
-func GetRandomEngineManagerName() string {
-	return engineManagerPrefix + util.RandomID()
-}
-
-func GetRandomReplicaManagerName() string {
-	return replicaManagerPrefix + util.RandomID()
+func GetInstanceManagerName(imType InstanceManagerType) (string, error) {
+	switch imType {
+	case InstanceManagerTypeEngine:
+		return engineManagerPrefix + util.RandomID(), nil
+	case InstanceManagerTypeReplica:
+		return replicaManagerPrefix + util.RandomID(), nil
+	}
+	return "", fmt.Errorf("cannot generate name for unknown instance manager type %v", imType)
 }
 
 // GetVolumeConditionFromStatus returns a copy of v.Status.Condition[conditionType]
