@@ -24,6 +24,9 @@ const (
 
 	DefaultPortArg         = "--listen,0.0.0.0:"
 	DefaultTerminateSignal = "SIGHUP"
+
+	// IncompatibleInstanceManagerAPIVersion means the instance manager version in v0.7.0
+	IncompatibleInstanceManagerAPIVersion = -1
 )
 
 type InstanceManagerClient struct {
