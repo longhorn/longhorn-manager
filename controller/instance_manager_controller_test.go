@@ -14,6 +14,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
@@ -47,6 +48,12 @@ func newTolerationSetting() *longhorn.Setting {
 			Value: "",
 		},
 	}
+}
+
+func fakeInstanceManagerVersionUpdater(im *longhorn.InstanceManager) error {
+	im.Status.APIMinVersion = engineapi.CurrentInstanceManagerAPIVersion
+	im.Status.APIVersion = engineapi.CurrentInstanceManagerAPIVersion
+	return nil
 }
 
 func newInstanceManager(
@@ -142,6 +149,7 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 	imc.eventRecorder = fakeRecorder
 	imc.imStoreSynced = alwaysReady
 	imc.pStoreSynced = alwaysReady
+	imc.versionUpdater = fakeInstanceManagerVersionUpdater
 
 	return imc
 }
@@ -155,9 +163,11 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			v1.PodRunning, TestNode2, types.InstanceManagerStateUnknown,
 			TestNode1, 1,
 			types.InstanceManagerStatus{
-				OwnerID:      TestNode1,
-				CurrentState: types.InstanceManagerStateRunning,
-				IP:           TestIP1,
+				OwnerID:       TestNode1,
+				CurrentState:  types.InstanceManagerStateRunning,
+				IP:            TestIP1,
+				APIMinVersion: 1,
+				APIVersion:    1,
 			},
 			types.InstanceManagerTypeEngine,
 		},
@@ -166,8 +176,10 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			v1.PodFailed, TestNode1, types.InstanceManagerStateRunning,
 			TestNode1, 1,
 			types.InstanceManagerStatus{
-				OwnerID:      TestNode1,
-				CurrentState: types.InstanceManagerStateStarting,
+				OwnerID:       TestNode1,
+				CurrentState:  types.InstanceManagerStateStarting,
+				APIMinVersion: 0,
+				APIVersion:    0,
 			},
 			types.InstanceManagerTypeEngine,
 		},
@@ -176,8 +188,10 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			v1.PodRunning, TestNode1, types.InstanceManagerStateRunning,
 			TestNode2, 1,
 			types.InstanceManagerStatus{
-				OwnerID:      TestNode2,
-				CurrentState: types.InstanceManagerStateUnknown,
+				OwnerID:       TestNode2,
+				CurrentState:  types.InstanceManagerStateUnknown,
+				APIMinVersion: 0,
+				APIVersion:    0,
 			},
 			types.InstanceManagerTypeEngine,
 		},
@@ -185,8 +199,10 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			TestNode1, false, TestNode1,
 			v1.PodRunning, TestNode1, types.InstanceManagerStateError,
 			TestNode1, 1, types.InstanceManagerStatus{
-				OwnerID:      TestNode1,
-				CurrentState: types.InstanceManagerStateStarting,
+				OwnerID:       TestNode1,
+				CurrentState:  types.InstanceManagerStateStarting,
+				APIMinVersion: 0,
+				APIVersion:    0,
 			},
 			types.InstanceManagerTypeEngine,
 		},
@@ -194,9 +210,11 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			TestNode1, false, TestNode1,
 			v1.PodRunning, TestNode1, types.InstanceManagerStateStarting,
 			TestNode1, 1, types.InstanceManagerStatus{
-				OwnerID:      TestNode1,
-				CurrentState: types.InstanceManagerStateRunning,
-				IP:           TestIP1,
+				OwnerID:       TestNode1,
+				CurrentState:  types.InstanceManagerStateRunning,
+				IP:            TestIP1,
+				APIMinVersion: 1,
+				APIVersion:    1,
 			},
 			types.InstanceManagerTypeEngine,
 		},
@@ -205,8 +223,10 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			"", TestNode1, types.InstanceManagerStateStopped,
 			TestNode1, 1,
 			types.InstanceManagerStatus{
-				OwnerID:      TestNode1,
-				CurrentState: types.InstanceManagerStateStarting,
+				OwnerID:       TestNode1,
+				CurrentState:  types.InstanceManagerStateStarting,
+				APIMinVersion: 0,
+				APIVersion:    0,
 			},
 			types.InstanceManagerTypeEngine,
 		},
@@ -215,8 +235,10 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			"", TestNode1, types.InstanceManagerStateStopped,
 			TestNode1, 1,
 			types.InstanceManagerStatus{
-				OwnerID:      TestNode1,
-				CurrentState: types.InstanceManagerStateStarting,
+				OwnerID:       TestNode1,
+				CurrentState:  types.InstanceManagerStateStarting,
+				APIMinVersion: 0,
+				APIVersion:    0,
 			},
 			types.InstanceManagerTypeReplica,
 		},

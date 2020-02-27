@@ -17,6 +17,7 @@ import (
 
 const (
 	CurrentInstanceManagerAPIVersion = 1
+	UnknownInstanceManagerAPIVersion = 0
 
 	DefaultEnginePortCount  = 1
 	DefaultReplicaPortCount = 15
