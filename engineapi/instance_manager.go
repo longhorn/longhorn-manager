@@ -3,9 +3,9 @@ package engineapi
 import (
 	"fmt"
 
-	imapi "github.com/longhorn/longhorn-engine/pkg/instance-manager/api"
-	imclient "github.com/longhorn/longhorn-engine/pkg/instance-manager/client"
-	imutil "github.com/longhorn/longhorn-engine/pkg/instance-manager/util"
+	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
+	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
+	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/types"
 

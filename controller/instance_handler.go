@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 
-	imapi "github.com/longhorn/longhorn-engine/pkg/instance-manager/api"
+	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"

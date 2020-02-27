@@ -26,8 +26,8 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	devtypes "github.com/longhorn/go-iscsi-helper/types"
+	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
-	imapi "github.com/longhorn/longhorn-engine/pkg/instance-manager/api"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/manager"
