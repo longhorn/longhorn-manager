@@ -8,9 +8,10 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"github.com/longhorn/longhorn-engine/pkg/instance-manager/api"
-	"github.com/longhorn/longhorn-engine/pkg/instance-manager/rpc"
-	"github.com/longhorn/longhorn-engine/pkg/instance-manager/types"
+	"github.com/longhorn/longhorn-instance-manager/pkg/api"
+	"github.com/longhorn/longhorn-instance-manager/pkg/meta"
+	"github.com/longhorn/longhorn-instance-manager/pkg/rpc"
+	"github.com/longhorn/longhorn-instance-manager/pkg/types"
 )
 
 type ProcessManagerClient struct {
@@ -190,4 +191,28 @@ func (cli *ProcessManagerClient) ProcessReplace(name, binary string, portCount i
 		return nil, fmt.Errorf("failed to start process: %v", err)
 	}
 	return api.RPCToProcess(p), nil
+}
+
+func (cli *ProcessManagerClient) VersionGet() (*meta.VersionOutput, error) {
+	conn, err := grpc.Dial(cli.Address, grpc.WithInsecure())
+	if err != nil {
+		return nil, fmt.Errorf("cannot connect process manager service to %v: %v", cli.Address, err)
+	}
+
+	client := rpc.NewProcessManagerServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	resp, err := client.VersionGet(ctx, &empty.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get version: %v", err)
+	}
+	return &meta.VersionOutput{
+		Version:   resp.Version,
+		GitCommit: resp.GitCommit,
+		BuildDate: resp.BuildDate,
+
+		InstanceManagerAPIVersion:    int(resp.InstanceManagerAPIVersion),
+		InstanceManagerAPIMinVersion: int(resp.InstanceManagerAPIMinVersion),
+	}, nil
 }
