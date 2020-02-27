@@ -203,3 +203,11 @@ func (c *InstanceManagerClient) EngineProcessUpgrade(engineName, volumeName, eng
 	}
 	return c.parseProcess(engineProcess), nil
 }
+
+func (c *InstanceManagerClient) VersionGet() (majorVersion int, minorVersion int, err error) {
+	output, err := c.grpcClient.VersionGet()
+	if err != nil {
+		return 0, 0, err
+	}
+	return output.InstanceManagerAPIMinVersion, output.InstanceManagerAPIVersion, nil
+}
