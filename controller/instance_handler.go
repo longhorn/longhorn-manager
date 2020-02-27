@@ -288,6 +288,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 				}
 			}
 		}
+		status.InstanceManagerName = ""
 	}
 	return nil
 }
