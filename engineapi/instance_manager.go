@@ -12,6 +12,18 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
+const (
+	CurrentInstanceManagerAPIVersion = 1
+)
+
+func CheckInstanceManagerCompatibilty(imMinVersion, imVersion int) error {
+	if CurrentInstanceManagerAPIVersion > imVersion || CurrentInstanceManagerAPIVersion < imMinVersion {
+		return fmt.Errorf("Current InstanceManager version %v is not compatible with InstanceManagerAPIVersion %v and InstanceManagerAPIMinVersion %v",
+			CurrentInstanceManagerAPIVersion, imVersion, imMinVersion)
+	}
+	return nil
+}
+
 func ProcessToInstanceProcess(p *imapi.Process) *types.InstanceProcess {
 	if p == nil {
 		return nil
