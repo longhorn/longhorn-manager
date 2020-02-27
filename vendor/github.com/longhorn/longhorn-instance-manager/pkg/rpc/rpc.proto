@@ -10,6 +10,8 @@ service ProcessManagerService {
 	rpc ProcessLog(LogRequest) returns (stream LogResponse) {}
 	rpc ProcessWatch(google.protobuf.Empty) returns (stream ProcessResponse) {}
 	rpc ProcessReplace(ProcessReplaceRequest) returns (ProcessResponse) {}
+
+	rpc VersionGet(google.protobuf.Empty) returns(VersionResponse);
 }
 
 message ProcessSpec {
@@ -63,4 +65,13 @@ message LogResponse{
 message ProcessReplaceRequest {
 	ProcessSpec spec = 1;
 	string terminate_signal = 2;
+}
+
+message VersionResponse {
+    string version = 1;
+    string gitCommit = 2;
+    string buildDate = 3;
+
+    int64 instanceManagerAPIVersion = 4;
+    int64 instanceManagerAPIMinVersion = 5;
 }

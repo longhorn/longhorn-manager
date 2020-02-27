@@ -78,12 +78,13 @@ github.com/longhorn/backupstore/util
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/longhorn-engine v0.7.1-0.20200129003840-e1981aa9dbfd
-github.com/longhorn/longhorn-engine/pkg/instance-manager/api
-github.com/longhorn/longhorn-engine/pkg/instance-manager/client
-github.com/longhorn/longhorn-engine/pkg/instance-manager/rpc
-github.com/longhorn/longhorn-engine/pkg/instance-manager/types
-github.com/longhorn/longhorn-engine/pkg/instance-manager/util
+# github.com/longhorn/longhorn-instance-manager v0.0.0-20200226061011-dd95eaa89a05
+github.com/longhorn/longhorn-instance-manager/pkg/api
+github.com/longhorn/longhorn-instance-manager/pkg/client
+github.com/longhorn/longhorn-instance-manager/pkg/meta
+github.com/longhorn/longhorn-instance-manager/pkg/rpc
+github.com/longhorn/longhorn-instance-manager/pkg/types
+github.com/longhorn/longhorn-instance-manager/pkg/util
 # github.com/miekg/dns v1.1.22
 github.com/miekg/dns
 # github.com/mitchellh/mapstructure v1.1.2
