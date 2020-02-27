@@ -68,6 +68,9 @@ type InstanceManagerController struct {
 	instanceManagerMonitorMutex    *sync.RWMutex
 	instanceManagerMonitorMap      map[string]chan struct{}
 	instanceManagerMonitorRemoveCh chan string
+
+	// for unit test
+	versionUpdater func(*longhorn.InstanceManager) error
 }
 
 type InstanceManagerMonitor struct {
@@ -91,6 +94,20 @@ type InstanceManagerUpdater struct {
 
 type InstanceManagerNotifier struct {
 	stream *api.ProcessStream
+}
+
+func updateInstanceManagerVersion(im *longhorn.InstanceManager) error {
+	cli, err := engineapi.NewInstanceManagerClient(im)
+	if err != nil {
+		return err
+	}
+	apiMinVersion, apiVersion, err := cli.VersionGet()
+	if err != nil {
+		return err
+	}
+	im.Status.APIMinVersion = apiMinVersion
+	im.Status.APIVersion = apiVersion
+	return nil
 }
 
 func NewInstanceManagerController(
@@ -123,6 +140,8 @@ func NewInstanceManagerController(
 		instanceManagerMonitorMutex:    &sync.RWMutex{},
 		instanceManagerMonitorMap:      map[string]chan struct{}{},
 		instanceManagerMonitorRemoveCh: make(chan string, 1),
+
+		versionUpdater: updateInstanceManagerVersion,
 	}
 
 	imInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -354,15 +373,33 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	}
 
 	if im.Status.CurrentState == types.InstanceManagerStateRunning {
-		if !imc.isMonitoring(im.Name) {
-			switch im.Spec.Type {
-			case types.InstanceManagerTypeEngine:
-				fallthrough
-			case types.InstanceManagerTypeReplica:
-				imc.startMonitoring(im, NewInstanceManagerUpdater(im))
-			default:
-				logrus.Errorf("BUG: instance manager %v has invalid type %v", im.Name, im.Spec.Type)
-				im.Status.CurrentState = types.InstanceManagerStateError
+		if im.Status.APIVersion == engineapi.UnknownInstanceManagerAPIVersion {
+			if err := imc.versionUpdater(im); err != nil {
+				return err
+			}
+		}
+	} else {
+		im.Status.APIVersion = engineapi.UnknownInstanceManagerAPIVersion
+		im.Status.APIMinVersion = engineapi.UnknownInstanceManagerAPIVersion
+	}
+
+	if im.Status.CurrentState == types.InstanceManagerStateRunning {
+		if err := engineapi.CheckInstanceManagerCompatibilty(im.Status.APIMinVersion, im.Status.APIVersion); err != nil {
+			if imc.isMonitoring(im.Name) {
+				logrus.Infof("Instance manager controller will stop monitoring the incompatible instance manager %v", im.Name)
+				imc.stopMonitoring(im)
+			}
+		} else {
+			if !imc.isMonitoring(im.Name) {
+				switch im.Spec.Type {
+				case types.InstanceManagerTypeEngine:
+					fallthrough
+				case types.InstanceManagerTypeReplica:
+					imc.startMonitoring(im, NewInstanceManagerUpdater(im))
+				default:
+					logrus.Errorf("BUG: instance manager %v has invalid type %v", im.Name, im.Spec.Type)
+					im.Status.CurrentState = types.InstanceManagerStateError
+				}
 			}
 		}
 	}
