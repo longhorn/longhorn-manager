@@ -27,6 +27,7 @@ const (
 
 	// IncompatibleInstanceManagerAPIVersion means the instance manager version in v0.7.0
 	IncompatibleInstanceManagerAPIVersion = -1
+	DeprecatedInstanceManagerBinaryName   = "longhorn-instance-manager"
 )
 
 type InstanceManagerClient struct {
@@ -36,6 +37,11 @@ type InstanceManagerClient struct {
 
 	// The gRPC client supports backward compatibility.
 	grpcClient *imclient.ProcessManagerClient
+}
+
+func GetDeprecatedInstanceManagerBinary(image string) string {
+	cname := types.GetImageCanonicalName(image)
+	return filepath.Join(types.EngineBinaryDirectoryOnHost, cname, DeprecatedInstanceManagerBinaryName)
 }
 
 func CheckInstanceManagerCompatibilty(imMinVersion, imVersion int) error {

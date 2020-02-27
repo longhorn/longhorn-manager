@@ -372,6 +372,14 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		return err
 	}
 
+	// Directly remove the instance from the map. Best effort.
+	if im.Status.APIVersion == engineapi.IncompatibleInstanceManagerAPIVersion {
+		delete(im.Status.Instances, r.Name)
+		if _, err := rc.ds.UpdateInstanceManagerStatus(im); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
