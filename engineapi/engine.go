@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 
 	devtypes "github.com/longhorn/go-iscsi-helper/types"
-	imutil "github.com/longhorn/longhorn-engine/pkg/instance-manager/util"
+	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
