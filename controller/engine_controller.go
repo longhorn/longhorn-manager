@@ -679,6 +679,8 @@ func (m *EngineMonitor) stop(e *longhorn.Engine) {
 }
 
 func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
+	existingEngine := engine.DeepCopy()
+
 	addressReplicaMap := map[string]string{}
 	for replica, address := range engine.Status.CurrentReplicaAddressMap {
 		if addressReplicaMap[address] != "" {
@@ -800,9 +802,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.PurgeStatus = purgeStatus
 	}
 
-	engine, err = m.ds.UpdateEngineStatus(engine)
-	if err != nil {
-		return err
+	if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
+		engine, err = m.ds.UpdateEngineStatus(engine)
+		if err != nil {
+			return err
+		}
 	}
 
 	if !isOldVersion {
