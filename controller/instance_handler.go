@@ -288,7 +288,9 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 				}
 			}
 		}
-		status.InstanceManagerName = ""
+		if spec.DesireState == types.InstanceStateStopped {
+			status.InstanceManagerName = ""
+		}
 	}
 	return nil
 }
