@@ -108,7 +108,7 @@ func NewVolumeController(
 		eStoreSynced: engineInformer.Informer().HasSynced,
 		rStoreSynced: replicaInformer.Informer().HasSynced,
 
-		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-volume"),
+		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-volume"),
 
 		nowHandler: util.Now,
 	}

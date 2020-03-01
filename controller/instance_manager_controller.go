@@ -43,7 +43,7 @@ const (
 
 	MaxPollCount = 60
 	MinPollCount = 1
-	PollInterval = 500 * time.Millisecond
+	PollInterval = 1 * time.Second
 )
 
 var (
@@ -135,7 +135,7 @@ func NewInstanceManagerController(
 		imStoreSynced: imInformer.Informer().HasSynced,
 		pStoreSynced:  pInformer.Informer().HasSynced,
 
-		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-instance-manager"),
+		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-instance-manager"),
 
 		instanceManagerMonitorMutex:    &sync.RWMutex{},
 		instanceManagerMonitorMap:      map[string]chan struct{}{},
