@@ -111,7 +111,7 @@ func NewEngineController(
 		imStoreSynced: instanceManagerInformer.Informer().HasSynced,
 
 		backoff: flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
-		queue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-engine"),
+		queue:   workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-engine"),
 
 		engines:                  engines,
 		engineMonitorMutex:       &sync.RWMutex{},

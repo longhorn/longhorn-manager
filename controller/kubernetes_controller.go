@@ -99,7 +99,7 @@ func NewKubernetesController(
 		pStoreSynced:   podInformer.Informer().HasSynced,
 		vaStoreSynced:  volumeAttachmentInformer.Informer().HasSynced,
 
-		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Longhorn-Kubernetes"),
+		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "Longhorn-Kubernetes"),
 
 		pvToVolumeCache: sync.Map{},
 
