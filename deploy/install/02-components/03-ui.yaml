@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: longhorn-ui
-        image: longhornio/longhorn-ui:v0.8.0-rc1
+        image: longhornio/longhorn-ui:v0.8.0-rc2
         ports:
         - containerPort: 8000
         env:
