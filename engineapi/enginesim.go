@@ -210,3 +210,10 @@ func (e *EngineSimulator) BackupRestoreStatus() (map[string]*types.RestoreStatus
 func (e *EngineSimulator) ReplicaRebuildStatus() (map[string]*types.RebuildStatus, error) {
 	return nil, fmt.Errorf("Not implemented")
 }
+
+func (e *EngineSimulator) FrontendStart(volumeFrontend types.VolumeFrontend) error {
+	return fmt.Errorf("Not implemented")
+}
+func (e *EngineSimulator) FrontendShutdown() error {
+	return fmt.Errorf("Not implemented")
+}

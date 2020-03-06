@@ -197,3 +197,27 @@ func (e *Engine) ReplicaRebuildStatus() (map[string]*types.RebuildStatus, error)
 
 	return data, nil
 }
+
+func (e *Engine) FrontendStart(volumeFrontend types.VolumeFrontend) error {
+	frontendName, err := GetEngineProcessFrontend(volumeFrontend)
+	if err != nil {
+		return err
+	}
+	if frontendName == "" {
+		return fmt.Errorf("cannot start empty frontend")
+	}
+
+	if _, err := e.ExecuteEngineBinary("frontend", "start", frontendName); err != nil {
+		return errors.Wrapf(err, "error starting frontend %v", frontendName)
+	}
+
+	return nil
+}
+
+func (e *Engine) FrontendShutdown() error {
+	if _, err := e.ExecuteEngineBinary("frontend", "shutdown"); err != nil {
+		return errors.Wrapf(err, "error shutting down the frontend")
+	}
+
+	return nil
+}

@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strconv"
 
-	devtypes "github.com/longhorn/go-iscsi-helper/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
@@ -88,21 +87,6 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *types.InstancePr
 		},
 	}
 
-}
-
-func GetEngineProcessFrontend(volumeFrontend types.VolumeFrontend) (string, error) {
-	frontend := ""
-	if volumeFrontend == types.VolumeFrontendBlockDev {
-		frontend = string(devtypes.FrontendTGTBlockDev)
-	} else if volumeFrontend == types.VolumeFrontendISCSI {
-		frontend = string(devtypes.FrontendTGTISCSI)
-	} else if volumeFrontend == types.VolumeFrontend("") {
-		frontend = ""
-	} else {
-		return "", fmt.Errorf("unknown volume frontend %v", volumeFrontend)
-	}
-
-	return frontend, nil
 }
 
 func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName, engineImage string, volumeFrontend types.VolumeFrontend, replicaAddressMap map[string]string) (*types.InstanceProcess, error) {

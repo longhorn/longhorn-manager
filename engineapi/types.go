@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	devtypes "github.com/longhorn/go-iscsi-helper/types"
+
 	"github.com/longhorn/backupstore"
 	"github.com/longhorn/longhorn-manager/types"
 )
@@ -43,6 +45,9 @@ type EngineClient interface {
 	Info() (*Volume, error)
 	Endpoint() (string, error)
 	Expand(size int64) error
+
+	FrontendStart(volumeFrontend types.VolumeFrontend) error
+	FrontendShutdown() error
 
 	ReplicaList() (map[string]*Replica, error)
 	ReplicaAdd(url string) error
@@ -157,4 +162,19 @@ func CheckCLICompatibilty(cliVersion, cliMinVersion int) error {
 		return fmt.Errorf("Current CLI version %v is not compatible with CLIVersion %v and CLIMinVersion %v", CurrentCLIVersion, cliVersion, cliMinVersion)
 	}
 	return nil
+}
+
+func GetEngineProcessFrontend(volumeFrontend types.VolumeFrontend) (string, error) {
+	frontend := ""
+	if volumeFrontend == types.VolumeFrontendBlockDev {
+		frontend = string(devtypes.FrontendTGTBlockDev)
+	} else if volumeFrontend == types.VolumeFrontendISCSI {
+		frontend = string(devtypes.FrontendTGTISCSI)
+	} else if volumeFrontend == types.VolumeFrontend("") {
+		frontend = ""
+	} else {
+		return "", fmt.Errorf("unknown volume frontend %v", volumeFrontend)
+	}
+
+	return frontend, nil
 }
