@@ -795,7 +795,6 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		case types.VolumeStateAttached:
 			actions["detach"] = struct{}{}
 			actions["activate"] = struct{}{}
-			actions["expand"] = struct{}{}
 			actions["snapshotPurge"] = struct{}{}
 			actions["snapshotCreate"] = struct{}{}
 			actions["snapshotList"] = struct{}{}
