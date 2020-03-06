@@ -297,8 +297,8 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	if len(existVol.Controllers) != 1 {
 		return nil, status.Errorf(codes.InvalidArgument, "There should be only one controller for volume %s", req.GetVolumeId())
 	}
-	// Support online and offline expansion
-	if existVol.State != string(types.VolumeStateAttached) && existVol.State != string(types.VolumeStateDetached) {
+	// Support offline expansion only
+	if existVol.State != string(types.VolumeStateDetached) {
 		return nil, status.Errorf(codes.FailedPrecondition, "Invalid volume state %v for expansion", existVol.State)
 	}
 	volumeSize, err := strconv.ParseInt(existVol.Size, 10, 64)
@@ -316,16 +316,9 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
-	// If the volume is detached/in maintenance mode/not using block device frontend,
-	// there is no need to call the function `NodeExpandVolume`.
-	nodeExpansionRequired := true
-	if existVol.State == string(types.VolumeStateDetached) || existVol.DisableFrontend || existVol.Frontend != string(types.VolumeFrontendBlockDev) {
-		nodeExpansionRequired = false
-	}
-
 	return &csi.ControllerExpandVolumeResponse{
 		CapacityBytes:         req.CapacityRange.GetRequiredBytes(),
-		NodeExpansionRequired: nodeExpansionRequired,
+		NodeExpansionRequired: false,
 	}, nil
 }
 
