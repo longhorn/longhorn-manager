@@ -363,7 +363,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProc
 	}
 	frontend := e.Spec.Frontend
 	if e.Spec.DisableFrontend {
-		frontend = types.VolumeFrontend("")
+		frontend = types.VolumeFrontendEmpty
 	}
 
 	im, err := ec.ds.GetInstanceManagerByInstance(obj)
@@ -734,17 +734,23 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 	if !isOldVersion {
+		endpoint, err := client.Endpoint()
+		if err != nil {
+			return err
+		}
+		engine.Status.Endpoint = endpoint
+
 		volumeInfo, err := client.Info()
 		if err != nil {
 			return err
 		}
 		engine.Status.CurrentSize = volumeInfo.Size
 
-		endpoint, err := client.Endpoint()
-		if err != nil {
-			return err
+		if engine.Status.Endpoint == "" && !engine.Spec.DisableFrontend && engine.Spec.Frontend != types.VolumeFrontendEmpty {
+			if err := client.FrontendStart(engine.Spec.Frontend); err != nil {
+				return errors.Wrapf(err, "failed to start the frontend %v", engine.Spec.Frontend)
+			}
 		}
-		engine.Status.Endpoint = endpoint
 
 		rebuildStatus, err := client.ReplicaRebuildStatus()
 		if err != nil {
@@ -1125,7 +1131,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine) error {
 	frontend := e.Spec.Frontend
 	if e.Spec.DisableFrontend {
-		frontend = types.VolumeFrontend("")
+		frontend = types.VolumeFrontendEmpty
 	}
 
 	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
