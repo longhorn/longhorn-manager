@@ -655,11 +655,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		autoAttachRequired = true
 		v.Status.FrontendDisabled = true
 	}
-	if e != nil && e.Spec.VolumeSize != v.Spec.Size {
-		// Need to automatically attach the volume with frontend enabled for offline expansion
-		if v.Spec.NodeID == "" {
-			autoAttachRequired = true
-		}
+	// Need to automatically attach the volume for offline expansion.
+	if v.Spec.NodeID == "" && e != nil && e.Spec.VolumeSize != v.Spec.Size {
+		autoAttachRequired = true
 		v.Status.ExpansionRequired = true
 		e.Spec.VolumeSize = v.Spec.Size
 		for _, r := range rs {
@@ -972,15 +970,24 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 		if v.Status.ExpansionRequired {
 			if v.Spec.Size == e.Status.CurrentSize {
-				if !v.Spec.DisableFrontend && v.Spec.Frontend == types.VolumeFrontendBlockDev {
-					// Best effort. We don't know if there is a file system built in the volume.
-					if err := util.ExpandFileSystem(v.Name); err != nil {
-						logrus.Warnf("failed to expand the file system for the volume %v: %v", v.Name, err)
-					} else {
-						logrus.Infof("Succeeded to expand the file system for the volume %v", v.Name)
+				// Start the blockdev frontend and expand the filesystem.
+				if v.Spec.Frontend == types.VolumeFrontendBlockDev {
+					v.Status.FrontendDisabled = false
+					e.Spec.DisableFrontend = false
+					// Wait for the frontend to be up after e.Spec.DisableFrontend getting changed.
+					// If the frontend is up, the engine endpoint won't be empty.
+					if e.Status.Endpoint != "" {
+						// Best effort. We don't know if there is a file system built in the volume.
+						if err := util.ExpandFileSystem(v.Name); err != nil {
+							logrus.Warnf("failed to expand the file system for the volume %v: %v", v.Name, err)
+						} else {
+							logrus.Infof("Succeeded to expand the file system for the volume %v", v.Name)
+						}
+						v.Status.ExpansionRequired = false
 					}
+				} else {
+					v.Status.ExpansionRequired = false
 				}
-				v.Status.ExpansionRequired = false
 			}
 		}
 

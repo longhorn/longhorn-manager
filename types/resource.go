@@ -25,6 +25,7 @@ type VolumeFrontend string
 const (
 	VolumeFrontendBlockDev = VolumeFrontend("blockdev")
 	VolumeFrontendISCSI    = VolumeFrontend("iscsi")
+	VolumeFrontendEmpty    = VolumeFrontend("")
 )
 
 type ConditionStatus string
