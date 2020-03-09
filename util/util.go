@@ -787,8 +787,9 @@ func ExpandFileSystem(volumeName string) (err error) {
 	if err != nil {
 		logrus.Warnf("failed to use command mount to get the mount info of volume %v, consider the volume as unmounted: %v", volumeName, err)
 	} else {
+		// For empty `mountRes`, `mountPoints` is [""]
 		mountPoints := strings.Split(strings.TrimSpace(mountRes), "\n")
-		if mountPoints != nil && len(mountPoints) != 0 {
+		if !(len(mountPoints) == 1 && strings.TrimSpace(mountPoints[0]) == "") {
 			// pick up a random mount point
 			for _, m := range mountPoints {
 				mountPoint = strings.TrimSpace(m)
@@ -797,9 +798,9 @@ func ExpandFileSystem(volumeName string) (err error) {
 					break
 				}
 			}
-		}
-		if tmpMountNeeded {
-			logrus.Errorf("BUG: Found mount point records %v for volume %v but there is no valid(non-empty) mount point", mountRes, volumeName)
+			if tmpMountNeeded {
+				logrus.Errorf("BUG: Found mount point records %v for volume %v but there is no valid(non-empty) mount point", mountRes, volumeName)
+			}
 		}
 	}
 	if tmpMountNeeded {
