@@ -1015,6 +1015,9 @@ func (s *DataStore) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	verifyUpdate(node.Name, obj, func(name string) (runtime.Object, error) {
 		return s.getNodeRO(name)
 	})
+	if obj.Status.Conditions == nil {
+		obj.Status.Conditions = map[types.NodeConditionType]types.Condition{}
+	}
 	return obj, nil
 }
 
