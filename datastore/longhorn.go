@@ -930,30 +930,37 @@ func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	return ret, nil
 }
 
-// CreateDefaultDisk creates a default DiskSpec based on DefaultDataPath and applies it to the provided Node.
-func (s *DataStore) CreateDefaultDisk(node *longhorn.Node) error {
-	pathSetting, err := s.GetSetting(types.SettingNameDefaultDataPath)
-	if err != nil {
-		return err
-	}
+func (s *DataStore) CreateDefaultDisks(node *longhorn.Node, annotations map[string]string) error {
+	if val, exist := annotations[types.KubeNodeDefaultDiskConfigAnnotationKey]; exist {
+		configDisks, err := types.GetDisksFromAnnotation(val)
+		if err != nil {
+			logrus.Errorf("invalid default disk config in kube node annotation %v for node %v: %v", val, node.Name, err)
+		} else {
+			node.Spec.Disks = configDisks
+		}
+	} else {
+		pathSetting, err := s.GetSetting(types.SettingNameDefaultDataPath)
+		if err != nil {
+			return err
+		}
 
-	if err := util.CreateDiskPath(pathSetting.Value); err != nil {
-		return err
-	}
+		if err := util.CreateDiskPath(pathSetting.Value); err != nil {
+			return err
+		}
 
-	diskInfo, err := util.GetDiskInfo(pathSetting.Value)
-	if err != nil {
-		return err
-	}
+		diskInfo, err := util.GetDiskInfo(pathSetting.Value)
+		if err != nil {
+			return err
+		}
 
-	defaultDisk := map[string]types.DiskSpec{
-		diskInfo.Fsid: {
-			Path:            diskInfo.Path,
-			AllowScheduling: true,
-			StorageReserved: diskInfo.StorageMaximum * 30 / 100,
-		},
+		node.Spec.Disks = map[string]types.DiskSpec{
+			diskInfo.Fsid: {
+				Path:            diskInfo.Path,
+				AllowScheduling: true,
+				StorageReserved: diskInfo.StorageMaximum * 30 / 100,
+			},
+		}
 	}
-	node.Spec.Disks = defaultDisk
 
 	return nil
 }
@@ -972,10 +979,13 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 		Spec: types.NodeSpec{
 			Name:            name,
 			AllowScheduling: true,
+			Tags:            []string{},
 		},
 	}
+
+	// For newly added node, the customized default disks will be applied only if the setting is enabled.
 	if !requireLabel {
-		if err := s.CreateDefaultDisk(node); err != nil {
+		if err := s.CreateDefaultDisks(node, map[string]string{}); err != nil {
 			return nil, err
 		}
 	}

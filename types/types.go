@@ -1,12 +1,15 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/pkg/errors"
 
 	"github.com/longhorn/longhorn-manager/util"
 )
@@ -32,7 +35,11 @@ const (
 
 	LonghornNodeKey = "longhornnode"
 
-	NodeCreateDefaultDiskLabel = "node.longhorn.io/create-default-disk"
+	NodeCreateDefaultDiskLabelKey             = "node.longhorn.io/create-default-disk"
+	NodeCreateDefaultDiskLabelValueTrue       = "true"
+	NodeCreateDefaultDiskLabelValueConfig     = "config"
+	KubeNodeDefaultDiskConfigAnnotationKey    = "node.longhorn.io/default-disks-config"
+	KubeNodeDefaultNodeTagConfigAnnotationKey = "node.longhorn.io/default-node-tags"
 
 	BaseImageLabel        = "ranchervm-base-image"
 	KubernetesStatusLabel = "KubernetesStatus"
@@ -320,4 +327,79 @@ func LabelsToString(labels map[string]string) string {
 	}
 	res = strings.TrimSuffix(res, ",")
 	return res
+}
+
+func GetDisksFromAnnotation(annotation string) (map[string]DiskSpec, error) {
+	validDisks := map[string]DiskSpec{}
+
+	disks, err := UnmarshalToDisks(annotation)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to unmarshal the default disks annotation")
+	}
+	for _, disk := range disks {
+		if disk.Path == "" || disk.StorageReserved < 0 {
+			return nil, fmt.Errorf("invalid disk %+v", disk)
+		}
+		diskInfo, err := util.GetDiskInfo(disk.Path)
+		if err != nil {
+			return nil, err
+		}
+		for _, vDisk := range validDisks {
+			if vDisk.Path == disk.Path {
+				return nil, fmt.Errorf("duplicate disk path %v", disk.Path)
+			}
+		}
+		if _, exist := validDisks[diskInfo.Fsid]; exist {
+			return nil, fmt.Errorf("the disk %v is the same file system with %v, fsid %v", disk.Path, validDisks[diskInfo.Fsid].Path, diskInfo.Fsid)
+		}
+		if disk.StorageReserved > diskInfo.StorageMaximum {
+			return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
+		}
+		tags, err := util.ValidateTags(disk.Tags)
+		if err != nil {
+			return nil, err
+		}
+		disk.Tags = tags
+		// create replica subdirectory on the disk data path
+		if err := util.CreateDiskPath(disk.Path); err != nil {
+			return nil, err
+		}
+		validDisks[diskInfo.Fsid] = disk
+	}
+
+	return validDisks, nil
+}
+
+func GetNodeTagsFromAnnotation(annotation string) ([]string, error) {
+	nodeTags, err := UnmarshalToNodeTags(annotation)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to unmarshal the node tag annotation")
+	}
+	validNodeTags, err := util.ValidateTags(nodeTags)
+	if err != nil {
+		return nil, err
+	}
+
+	return validNodeTags, nil
+}
+
+// UnmarshalToDisks input format should be:
+// `[{"path":"/mnt/disk1","allowScheduling":false},
+//   {"path":"/mnt/disk2","allowScheduling":false,"storageReserved":1024,"tags":["ssd","fast"]}]`
+func UnmarshalToDisks(s string) ([]DiskSpec, error) {
+	var res []DiskSpec
+	if err := json.Unmarshal([]byte(s), &res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// UnmarshalToNodeTags input format should be:
+// `["worker1","enabled"]`
+func UnmarshalToNodeTags(s string) ([]string, error) {
+	var res []string
+	if err := json.Unmarshal([]byte(s), &res); err != nil {
+		return nil, err
+	}
+	return res, nil
 }
