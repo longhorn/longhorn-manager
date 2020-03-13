@@ -767,12 +767,12 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 	// Clean up all replica managers if there is no disk on the node
 	if len(node.Spec.Disks) == 0 {
-		logrus.Debugf("Prepare to clean up all replica managers on node %v since there is no available disk: %+v", node.Name, node)
 		rmMap, err := nc.ds.ListInstanceManagersByNode(node.Name, types.InstanceManagerTypeReplica)
 		if err != nil {
 			return err
 		}
 		for _, rm := range rmMap {
+			logrus.Debugf("Prepare to clean up the replica manager %v since there is no available disk on node %v", rm.Name, node.Name)
 			if err := nc.ds.DeleteInstanceManager(rm.Name); err != nil {
 				return err
 			}
