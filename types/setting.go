@@ -55,6 +55,7 @@ const (
 	SettingNameTaintToleration                   = SettingName("taint-toleration")
 	SettingNameCRDAPIVersion                     = SettingName("crd-api-version")
 	SettingNameAutoSalvage                       = SettingName("auto-salvage")
+	SettingNameRegistrySecret                    = SettingName("registry-secret")
 )
 
 var (
@@ -77,6 +78,7 @@ var (
 		SettingNameTaintToleration,
 		SettingNameCRDAPIVersion,
 		SettingNameAutoSalvage,
+		SettingNameRegistrySecret,
 	}
 )
 
@@ -118,6 +120,7 @@ var (
 		SettingNameTaintToleration:                   SettingDefinitionTaintToleration,
 		SettingNameCRDAPIVersion:                     SettingDefinitionCRDAPIVersion,
 		SettingNameAutoSalvage:                       SettingDefinitionAutoSalvage,
+		SettingNameRegistrySecret:                    SettingDefinitionRegistrySecret,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -301,6 +304,16 @@ Notice that "kubernetes.io" is used as the key of all Kubernetes default tolerat
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "true",
+	}
+
+	SettingDefinitionRegistrySecret = SettingDefinition{
+		DisplayName: "Registry secret",
+		Description: "The Kubernetes Secret name",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    false,
+		ReadOnly:    false,
+		Default:     "",
 	}
 )
 

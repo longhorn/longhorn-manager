@@ -18,3 +18,4 @@ data:
     default-longhorn-static-storage-class:
     backupstore-poll-interval:
     taint-toleration:
+    registry-secret:
