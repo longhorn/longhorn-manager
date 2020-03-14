@@ -51,6 +51,16 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: spec.serviceAccountName
+          # For AirGap Installation
+          # Replce PREFIX with your private registery
+          #- name: CSI_ATTACHER_IMAGE
+          #  value: PREFIX/csi-attacher:v2.0.0
+          #- name: CSI_PROVISIONER_IMAGE
+          #  value: PREFIX/csi-provisioner:v1.4.0
+          #- name: CSI_NODE_DRIVER_REGISTRAR_IMAGE
+          #  value: PREFIX/csi-node-driver-registrar:v1.2.0
+          #- name: CSI_RESIZER_IMAGE
+          #  value: PREFIX/csi-resizer:v0.3.0
       #imagePullSecrets:
       #- name:
       serviceAccountName: longhorn-service-account
