@@ -51,4 +51,6 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: spec.serviceAccountName
+      #imagePullSecrets:
+      #- name:
       serviceAccountName: longhorn-service-account
