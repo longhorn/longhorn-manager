@@ -285,7 +285,14 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			return errors.Wrapf(err, "failed to unmarshal taint toleration setting before creating engine image daemonset")
 		}
 
-		dsSpec := ic.createEngineImageDaemonSetSpec(engineImage, tolerations)
+		registrySecretSetting, err := ic.ds.GetSetting(types.SettingNameRegistrySecret)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get registry secret setting before creating engine image daemonset")
+		}
+		registrySecret := registrySecretSetting.Value
+
+		dsSpec := ic.createEngineImageDaemonSetSpec(engineImage, tolerations, registrySecret)
+
 		if err = ic.ds.CreateEngineImageDaemonSet(dsSpec); err != nil {
 			return errors.Wrapf(err, "fail to create daemonset for engine image %v", engineImage.Name)
 		}
@@ -535,7 +542,7 @@ func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *met
 	ic.enqueueEngineImage(engineImage)
 }
 
-func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []v1.Toleration) *appsv1.DaemonSet {
+func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []v1.Toleration, registrySecret string) *appsv1.DaemonSet {
 	dsName := types.GetDaemonSetNameFromEngineImageName(ei.Name)
 	image := ei.Spec.Image
 	cmd := []string{
@@ -593,6 +600,11 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 								InitialDelaySeconds: 5,
 								PeriodSeconds:       5,
 							},
+						},
+					},
+					ImagePullSecrets: []v1.LocalObjectReference{
+						{
+							Name: registrySecret,
 						},
 					},
 					Volumes: []v1.Volume{

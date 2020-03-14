@@ -53,7 +53,7 @@ func getCommonService(commonName, namespace string) *v1.Service {
 	}
 }
 
-func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32, tolerations []v1.Toleration) *appsv1.Deployment {
+func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32, tolerations []v1.Toleration, registrySecret string) *appsv1.Deployment {
 	labels := map[string]string{
 		"app": commonName,
 	}
@@ -100,6 +100,11 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 									MountPath: GetInContainerCSISocketDir(),
 								},
 							},
+						},
+					},
+					ImagePullSecrets: []v1.LocalObjectReference{
+						{
+							Name: registrySecret,
 						},
 					},
 					Volumes: []v1.Volume{
