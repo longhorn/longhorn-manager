@@ -567,17 +567,25 @@ func (nc *NodeController) syncDefaultDisks(node *longhorn.Node) error {
 		if val, ok := kubeNode.Labels[types.NodeCreateDefaultDiskLabelKey]; ok {
 			createDisk := false
 			annotations := map[string]string{}
+			dataPath := ""
 			val = strings.ToLower(val)
 			if val == types.NodeCreateDefaultDiskLabelValueConfig {
 				createDisk = true
 				annotations = kubeNode.Annotations
 			} else if val == types.NodeCreateDefaultDiskLabelValueTrue {
+				dataPath, err = nc.ds.GetSettingValueExisted(types.SettingNameDefaultDataPath)
+				if err != nil {
+					return err
+				}
 				createDisk = true
 			}
 			if createDisk {
-				if err := nc.ds.CreateDefaultDisks(node, annotations); err != nil {
+				disks, err := types.CreateDefaultDisks(annotations, dataPath)
+				if err != nil {
 					return err
 				}
+				node.Spec.Disks = disks
+
 				//TODO Find a way to move this outside the controller since it changes the node's spec
 				updatedNode, err := nc.ds.UpdateNode(node)
 				if err != nil {

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/longhorn-manager/util"
 )
@@ -402,4 +403,31 @@ func UnmarshalToNodeTags(s string) ([]string, error) {
 		return nil, err
 	}
 	return res, nil
+}
+
+func CreateDefaultDisks(annotations map[string]string, dataPath string) (map[string]DiskSpec, error) {
+	disks := map[string]DiskSpec{}
+	if val, exist := annotations[KubeNodeDefaultDiskConfigAnnotationKey]; exist {
+		if configDisks, err := GetDisksFromAnnotation(val); err != nil {
+			logrus.Errorf("invalid default disk config in kube node annotation %v: %v", val, err)
+		} else {
+			disks = configDisks
+		}
+	} else {
+		if err := util.CreateDiskPath(dataPath); err != nil {
+			return nil, err
+		}
+		diskInfo, err := util.GetDiskInfo(dataPath)
+		if err != nil {
+			return nil, err
+		}
+		disks = map[string]DiskSpec{
+			diskInfo.Fsid: {
+				Path:            diskInfo.Path,
+				AllowScheduling: true,
+				StorageReserved: diskInfo.StorageMaximum * 30 / 100,
+			},
+		}
+	}
+	return disks, nil
 }
