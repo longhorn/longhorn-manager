@@ -930,41 +930,6 @@ func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	return ret, nil
 }
 
-func (s *DataStore) CreateDefaultDisks(node *longhorn.Node, annotations map[string]string) error {
-	if val, exist := annotations[types.KubeNodeDefaultDiskConfigAnnotationKey]; exist {
-		configDisks, err := types.GetDisksFromAnnotation(val)
-		if err != nil {
-			logrus.Errorf("invalid default disk config in kube node annotation %v for node %v: %v", val, node.Name, err)
-		} else {
-			node.Spec.Disks = configDisks
-		}
-	} else {
-		pathSetting, err := s.GetSetting(types.SettingNameDefaultDataPath)
-		if err != nil {
-			return err
-		}
-
-		if err := util.CreateDiskPath(pathSetting.Value); err != nil {
-			return err
-		}
-
-		diskInfo, err := util.GetDiskInfo(pathSetting.Value)
-		if err != nil {
-			return err
-		}
-
-		node.Spec.Disks = map[string]types.DiskSpec{
-			diskInfo.Fsid: {
-				Path:            diskInfo.Path,
-				AllowScheduling: true,
-				StorageReserved: diskInfo.StorageMaximum * 30 / 100,
-			},
-		}
-	}
-
-	return nil
-}
-
 // CreateDefaultNode will create the default Disk at the value of the DefaultDataPath Setting only if Create Default
 // Disk on Labeled Nodes has been disabled.
 func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
@@ -985,9 +950,15 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 
 	// For newly added node, the customized default disks will be applied only if the setting is enabled.
 	if !requireLabel {
-		if err := s.CreateDefaultDisks(node, map[string]string{}); err != nil {
+		dataPath, err := s.GetSettingValueExisted(types.SettingNameDefaultDataPath)
+		if err != nil {
 			return nil, err
 		}
+		disks, err := types.CreateDefaultDisks(map[string]string{}, dataPath)
+		if err != nil {
+			return nil, err
+		}
+		node.Spec.Disks = disks
 	}
 
 	return s.CreateNode(node)
