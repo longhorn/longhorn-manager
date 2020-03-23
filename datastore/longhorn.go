@@ -2,7 +2,6 @@ package datastore
 
 import (
 	"fmt"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -408,24 +407,6 @@ func (s *DataStore) fixupVolume(volume *longhorn.Volume) (*longhorn.Volume, erro
 	if volume.Status.Conditions == nil {
 		volume.Status.Conditions = map[types.VolumeConditionType]types.Condition{}
 	}
-	// v0.3
-	if !volume.Spec.Standby && volume.Spec.Frontend == "" {
-		volume.Spec.Frontend = types.VolumeFrontendBlockDev
-	}
-	// v0.3
-	if volume.Spec.EngineImage == "" {
-		engines, err := s.ListVolumeEngines(volume.Name)
-		if err != nil || len(engines) == 0 {
-			return nil, fmt.Errorf("cannot fix up volume object, engine of %v cannot be found: %v", volume.Name, err)
-		}
-		if len(engines) != 1 {
-			return nil, fmt.Errorf("cannot fix up volume object, detected multiple engines")
-		}
-		for _, e := range engines {
-			volume.Spec.EngineImage = e.Spec.EngineImage
-			break
-		}
-	}
 	return volume, nil
 }
 
@@ -727,53 +708,6 @@ func (s *DataStore) ListVolumeReplicas(volumeName string) (map[string]*longhorn.
 }
 
 func (s *DataStore) fixupReplica(replica *longhorn.Replica) (*longhorn.Replica, error) {
-	// v0.3
-	pathSetting, err := s.GetSetting(types.SettingNameDefaultDataPath)
-	if err != nil {
-		return nil, err
-	}
-	if replica.Spec.EngineName == "" {
-		engines, err := s.ListVolumeEngines(replica.Spec.VolumeName)
-		if err != nil {
-			return nil, err
-		}
-		if len(engines) != 1 {
-			return nil, fmt.Errorf("cannot find the default engine the replica %v belong to", replica.Name)
-		}
-		for name := range engines {
-			replica.Spec.EngineName = name
-			break
-		}
-	}
-	if replica.Spec.NodeID == "" {
-		// allow scheduler to continue
-		return replica, nil
-	}
-	if replica.Spec.DiskID == "" {
-		// replica needs to be scheduled before assign diskID and dataPath
-		node, err := s.GetNode(replica.Spec.NodeID)
-		if err != nil {
-			if ErrorIsNotFound(err) {
-				return nil, fmt.Errorf("cannot find node %v for replica %v", replica.Spec.NodeID, replica.Name)
-			}
-			return nil, err
-		}
-		for fsid, disk := range node.Spec.Disks {
-			if disk.Path == pathSetting.Value {
-				replica.Spec.DiskID = fsid
-				break
-			}
-		}
-		if replica.Spec.DiskID == "" {
-			return nil, fmt.Errorf("cannot find default disk on node %v for replica %v", replica.Spec.NodeID, replica.Name)
-		}
-	}
-	if replica.Spec.DataPath == "" {
-		replica.Spec.DataPath = filepath.Join(pathSetting.Value, "/replicas/", replica.Name)
-		// We cannot tell if the field `Active` exists in the object since it's a bool
-		// so if it's old version, we will set it
-		replica.Spec.Active = true
-	}
 	return replica, nil
 }
 
