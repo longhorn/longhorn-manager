@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	upgradeLogPrefix = "upgrade from v1alpha1 to v1beta1"
+	upgradeLogPrefix = "upgrade from v1alpha1 to v1beta1:"
 )
 
 func IsCRDVersionMatch(config *restclient.Config, namespace string) (bool, error) {
