@@ -63,8 +63,6 @@ const (
 
 	DeprecatedProvisionerName = "rancher.io/longhorn"
 	DepracatedDriverName      = "io.rancher.longhorn"
-
-	DeprecatedEngineBinaryDirectoryOnHost = "/var/lib/rancher/longhorn/engine-binaries/"
 )
 
 const (
