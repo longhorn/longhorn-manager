@@ -361,8 +361,7 @@ func GetDisksFromAnnotation(annotation string) (map[string]DiskSpec, error) {
 			return nil, err
 		}
 		disk.Tags = tags
-		// create replica subdirectory on the disk data path
-		if err := util.CreateDiskPath(disk.Path); err != nil {
+		if err := util.CreateDiskPathReplicaSubdirectory(disk.Path); err != nil {
 			return nil, err
 		}
 		validDisks[diskInfo.Fsid] = disk
@@ -414,7 +413,7 @@ func CreateDefaultDisks(annotations map[string]string, dataPath string) (map[str
 			disks = configDisks
 		}
 	} else {
-		if err := util.CreateDiskPath(dataPath); err != nil {
+		if err := util.CreateDiskPathReplicaSubdirectory(dataPath); err != nil {
 			return nil, err
 		}
 		diskInfo, err := util.GetDiskInfo(dataPath)

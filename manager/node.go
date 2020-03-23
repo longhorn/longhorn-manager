@@ -154,7 +154,7 @@ func (m *VolumeManager) DiskUpdate(name string, updateDisks []types.DiskSpec) (*
 				diskUpdateMap[diskInfo.Fsid] = uDisk
 			} else {
 				// add disks
-				if err := util.CreateDiskPath(uDisk.Path); err != nil {
+				if err := util.CreateDiskPathReplicaSubdirectory(uDisk.Path); err != nil {
 					return nil, err
 				}
 				diskUpdateMap[diskInfo.Fsid] = uDisk

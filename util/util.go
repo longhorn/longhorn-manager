@@ -609,7 +609,7 @@ func ValidateTags(inputTags []string) ([]string, error) {
 	return tags, nil
 }
 
-func CreateDiskPath(path string) error {
+func CreateDiskPathReplicaSubdirectory(path string) error {
 	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
 	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
 	if err != nil {
