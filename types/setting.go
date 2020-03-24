@@ -413,22 +413,32 @@ func GetCustomizedDefaultSettings() (map[string]string, error) {
 	// won't accept partially valid result
 	for name, value := range defaultSettings {
 		value = strings.Trim(value, " ")
-		defaultSettings[name] = value
-
-		if _, exist := SettingDefinitions[SettingName(name)]; !exist {
+		definition, exist := SettingDefinitions[SettingName(name)]
+		if !exist {
 			logrus.Errorf("Customized settings are invalid, will give up using them: undefined setting %v", name)
 			defaultSettings = map[string]string{}
 			break
 		}
 		if value == "" {
-			delete(defaultSettings, name)
 			continue
+		}
+		// Make sure the value of boolean setting is always "true" or "false" in Longhorn.
+		// Otherwise the Longhorn UI cannot display the boolean setting correctly.
+		if definition.Type == SettingTypeBool {
+			result, err := strconv.ParseBool(value)
+			if err != nil {
+				logrus.Errorf("Invalid value %v for the boolean setting %v: %v", value, name, err)
+				defaultSettings = map[string]string{}
+				break
+			}
+			value = strconv.FormatBool(result)
 		}
 		if err := ValidateInitSetting(name, value); err != nil {
 			logrus.Errorf("Customized settings are invalid, will give up using them: the value of customized setting %v is invalid: %v", name, err)
 			defaultSettings = map[string]string{}
 			break
 		}
+		defaultSettings[name] = value
 	}
 
 	return defaultSettings, nil
