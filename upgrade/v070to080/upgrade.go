@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,7 +22,10 @@ const (
 	upgradeLogPrefix = "upgrade from v0.7.0 to v0.8.0: "
 )
 
-func migrateEngineBinaries() error {
+func migrateEngineBinaries() (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"migrate engine binaries failed")
+	}()
 	return util.CopyHostDirectoryContent(DeprecatedEngineBinaryDirectoryOnHost, types.EngineBinaryDirectoryOnHost)
 }
 
@@ -36,17 +38,15 @@ func UpgradeLocalNode() error {
 
 func UpgradeCRDs(namespace string, lhClient *lhclientset.Clientset) error {
 	if err := doInstanceManagerUpgrade(namespace, lhClient); err != nil {
-		logrus.Errorf(upgradeLogPrefix+"cannot finish InstanceManager upgrade: %v", err)
 		return err
 	}
 	return nil
 }
 
-func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset) error {
+func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset) (err error) {
 	defer func() {
-		logrus.Info(upgradeLogPrefix + "Upgrade instance managers completed")
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance manager failed")
 	}()
-	logrus.Info(upgradeLogPrefix + "Start the instance managers upgrade process")
 
 	nodeMap := map[string]longhorn.Node{}
 	nodeList, err := lhClient.LonghornV1beta1().Nodes(namespace).List(metav1.ListOptions{})
