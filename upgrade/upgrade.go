@@ -93,12 +93,19 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 		RetryPeriod:     2 * time.Second,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
-				if err := doAPIVersionUpgrade(namespace, config, lhClient); err != nil {
-					logrus.Errorf("cannot finish APIVersion upgrade: %v", err)
+				var err error
+				defer func() {
+					if err != nil {
+						logrus.Errorf("Upgrade failed: %v", err)
+						return
+					}
+					logrus.Infof("Finish upgrading")
+				}()
+				logrus.Infof("Start upgrading")
+				if err = doAPIVersionUpgrade(namespace, config, lhClient); err != nil {
 					return
 				}
-				if err := doCRDUpgrade(namespace, lhClient); err != nil {
-					logrus.Errorf("cannot finish CRD upgrade: %v", err)
+				if err = doCRDUpgrade(namespace, lhClient); err != nil {
 					return
 				}
 				// we only need to run upgrade once
@@ -119,11 +126,10 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 	return nil
 }
 
-func doAPIVersionUpgrade(namespace string, config *restclient.Config, lhClient *lhclientset.Clientset) error {
+func doAPIVersionUpgrade(namespace string, config *restclient.Config, lhClient *lhclientset.Clientset) (err error) {
 	defer func() {
-		logrus.Info("Upgrade APIVersion completed")
+		err = errors.Wrap(err, "upgrade API version failed")
 	}()
-	logrus.Info("Start the APIVersion upgrade process")
 
 	crdAPIVersion := ""
 
@@ -155,7 +161,7 @@ func doAPIVersionUpgrade(namespace string, config *restclient.Config, lhClient *
 		return fmt.Errorf("unrecognized CRD API version %v", crdAPIVersion)
 	}
 	if crdAPIVersion == types.CurrentCRDAPIVersion {
-		logrus.Info("No upgrade is needed")
+		logrus.Info("No API version upgrade is needed")
 		return nil
 	}
 
@@ -194,22 +200,20 @@ func doAPIVersionUpgrade(namespace string, config *restclient.Config, lhClient *
 	return nil
 }
 
-func doCRDUpgrade(namespace string, lhClient *lhclientset.Clientset) error {
+func doCRDUpgrade(namespace string, lhClient *lhclientset.Clientset) (err error) {
 	defer func() {
-		logrus.Info("Upgrade CRD completed")
+		err = errors.Wrap(err, "upgrade CRD failed")
 	}()
-	logrus.Info("Start CRD upgrade process")
 	if err := v070to080.UpgradeCRDs(namespace, lhClient); err != nil {
 		return err
 	}
 	return nil
 }
 
-func upgradeLocalNode() error {
+func upgradeLocalNode() (err error) {
 	defer func() {
-		logrus.Info("Upgrade local node completed")
+		err = errors.Wrap(err, "upgrade local node failed")
 	}()
-	logrus.Info("Start local node upgrade process")
 	if err := v070to080.UpgradeLocalNode(); err != nil {
 		return err
 	}
