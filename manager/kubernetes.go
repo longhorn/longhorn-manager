@@ -26,7 +26,7 @@ const (
 	KubeStatusPollInterval = 1 * time.Second
 )
 
-func (m *VolumeManager) PVCreate(name, pvName string) (v *longhorn.Volume, err error) {
+func (m *VolumeManager) PVCreate(name, pvName, fsType string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to create PV for volume %v", name)
 	}()
@@ -49,7 +49,11 @@ func (m *VolumeManager) PVCreate(name, pvName string) (v *longhorn.Volume, err e
 		return nil, fmt.Errorf("failed to get longhorn static storage class name for PV %v creation: %v", pvName, err)
 	}
 
-	pv := NewPVManifest(v, pvName, storageClassName)
+	if fsType == "" {
+		fsType = "ext4"
+	}
+
+	pv := NewPVManifest(v, pvName, storageClassName, fsType)
 	pv, err = m.ds.CreatePersisentVolume(pv)
 	if err != nil {
 		return nil, err
@@ -76,7 +80,7 @@ func (m *VolumeManager) PVCreate(name, pvName string) (v *longhorn.Volume, err e
 	return v, nil
 }
 
-func NewPVManifest(v *longhorn.Volume, pvName, storageClassName string) *apiv1.PersistentVolume {
+func NewPVManifest(v *longhorn.Volume, pvName, storageClassName, fsType string) *apiv1.PersistentVolume {
 	diskSelector := strings.Join(v.Spec.DiskSelector, ",")
 	nodeSelector := strings.Join(v.Spec.NodeSelector, ",")
 
@@ -101,7 +105,7 @@ func NewPVManifest(v *longhorn.Volume, pvName, storageClassName string) *apiv1.P
 			PersistentVolumeSource: apiv1.PersistentVolumeSource{
 				CSI: &apiv1.CSIPersistentVolumeSource{
 					Driver: types.LonghornDriverName,
-					FSType: "ext4",
+					FSType: fsType,
 					VolumeAttributes: map[string]string{
 						"diskSelector":        diskSelector,
 						"nodeSelector":        nodeSelector,

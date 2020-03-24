@@ -158,6 +158,7 @@ type UpdateReplicaCountInput struct {
 
 type PVCreateInput struct {
 	PVName string `json:"pvName"`
+	FSType string `json:"fsType"`
 }
 
 type PVCCreateInput struct {
