@@ -328,7 +328,7 @@ func LabelsToString(labels map[string]string) string {
 	return res
 }
 
-func GetDisksFromAnnotation(annotation string) (map[string]DiskSpec, error) {
+func CreateDisksFromAnnotation(annotation string) (map[string]DiskSpec, error) {
 	validDisks := map[string]DiskSpec{}
 
 	disks, err := UnmarshalToDisks(annotation)
@@ -405,7 +405,7 @@ func UnmarshalToNodeTags(s string) ([]string, error) {
 func CreateDefaultDisks(annotations map[string]string, dataPath string) (map[string]DiskSpec, error) {
 	disks := map[string]DiskSpec{}
 	if val, exist := annotations[KubeNodeDefaultDiskConfigAnnotationKey]; exist {
-		if configDisks, err := GetDisksFromAnnotation(val); err != nil {
+		if configDisks, err := CreateDisksFromAnnotation(val); err != nil {
 			logrus.Errorf("invalid default disk config in kube node annotation %v: %v", val, err)
 		} else {
 			disks = configDisks
