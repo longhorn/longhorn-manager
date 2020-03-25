@@ -881,6 +881,10 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 
 	// For newly added node, the customized default disks will be applied only if the setting is enabled.
 	if !requireLabel {
+		// Note: this part wasn't moved to the controller is because
+		// this will be done only once.
+		// If user remove all the disks on the node, the default disk
+		// will not be recreated automatically
 		dataPath, err := s.GetSettingValueExisted(types.SettingNameDefaultDataPath)
 		if err != nil {
 			return nil, err
