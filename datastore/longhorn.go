@@ -885,7 +885,7 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		disks, err := types.CreateDefaultDisks(map[string]string{}, dataPath)
+		disks, err := types.CreateDefaultDisk(dataPath)
 		if err != nil {
 			return nil, err
 		}
