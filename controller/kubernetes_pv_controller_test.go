@@ -209,8 +209,8 @@ func newVA(vaName, nodeName, pvName string) *storagev1.VolumeAttachment {
 	}
 }
 
-func newTestKubernetesController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
-	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *KubernetesController {
+func newTestKubernetesPVController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
+	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *KubernetesPVController {
 
 	volumeInformer := lhInformerFactory.Longhorn().V1beta1().Volumes()
 	engineInformer := lhInformerFactory.Longhorn().V1beta1().Engines()
@@ -237,7 +237,7 @@ func newTestKubernetesController(lhInformerFactory lhinformerfactory.SharedInfor
 		persistentVolumeInformer, persistentVolumeClaimInformer, kubeNodeInformer,
 		kubeClient, TestNamespace)
 
-	kc := NewKubernetesController(ds, scheme.Scheme, volumeInformer, persistentVolumeInformer,
+	kc := NewKubernetesPVController(ds, scheme.Scheme, volumeInformer, persistentVolumeInformer,
 		persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer, kubeClient, TestNode1)
 
 	fakeRecorder := record.NewFakeRecorder(100)
@@ -511,7 +511,7 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		pvcIndexer := kubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
-		kc := newTestKubernetesController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
+		kc := newTestKubernetesPVController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
 
 		// Need to create pv, pvc, pod and longhorn volume
 		var v *longhorn.Volume
@@ -709,7 +709,7 @@ func (s *TestSuite) runDisasterRecoveryTestCases(c *C, testCases map[string]*Dis
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 		vaIndexer := kubeInformerFactory.Storage().V1beta1().VolumeAttachments().Informer().GetIndexer()
 
-		kc := newTestKubernetesController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
+		kc := newTestKubernetesPVController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
 
 		if tc.node != nil {
 			node, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(tc.node)

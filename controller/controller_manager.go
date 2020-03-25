@@ -107,9 +107,10 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	sc := NewSettingController(ds, scheme,
 		settingInformer,
 		kubeClient, version)
-	kc := NewKubernetesController(ds, scheme, volumeInformer, persistentVolumeInformer,
-		persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer, kubeClient, controllerID)
 	imc := NewInstanceManagerController(ds, scheme, imInformer, podInformer, kubeClient, namespace, controllerID, serviceAccount)
+
+	kpvc := NewKubernetesPVController(ds, scheme, volumeInformer, persistentVolumeInformer,
+		persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer, kubeClient, controllerID)
 
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
@@ -123,8 +124,9 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	go nc.Run(Workers, stopCh)
 	go ws.Run(stopCh)
 	go sc.Run(stopCh)
-	go kc.Run(Workers, stopCh)
 	go imc.Run(Workers, stopCh)
+
+	go kpvc.Run(Workers, stopCh)
 
 	return ds, ws, nil
 }
