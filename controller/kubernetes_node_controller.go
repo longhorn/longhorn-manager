@@ -277,47 +277,65 @@ func (knc *KubernetesNodeController) enqueueKubernetesNode(node *v1.Node) {
 // syncDefaultDisks handles creation of the customized default Disk if the setting create-default-disk-labeled-nodes is enabled.
 // This allows for the default Disk to be customized and created even if the node has been labeled after initial registration with Longhorn,
 // provided that there are no existing disks remaining on the node.
-func (knc *KubernetesNodeController) syncDefaultDisks(node *longhorn.Node) error {
+func (knc *KubernetesNodeController) syncDefaultDisks(node *longhorn.Node) (err error) {
 	requireLabel, err := knc.ds.GetSettingAsBool(types.SettingNameCreateDefaultDiskLabeledNodes)
 	if err != nil {
 		return err
 	}
-	if requireLabel && len(node.Spec.Disks) == 0 {
-		kubeNode, err := knc.ds.GetKubernetesNode(node.Name)
+	if !requireLabel {
+		return nil
+	}
+	// only apply default disks if there is no existing disk
+	if len(node.Spec.Disks) != 0 {
+		return nil
+	}
+	kubeNode, err := knc.ds.GetKubernetesNode(node.Name)
+	if err != nil {
+		return err
+	}
+	val, ok := kubeNode.Labels[types.NodeCreateDefaultDiskLabelKey]
+	if !ok {
+		return nil
+	}
+	val = strings.ToLower(val)
+
+	disks := map[string]types.DiskSpec{}
+	switch val {
+	case types.NodeCreateDefaultDiskLabelValueTrue:
+		dataPath, err := knc.ds.GetSettingValueExisted(types.SettingNameDefaultDataPath)
 		if err != nil {
 			return err
 		}
-		if val, ok := kubeNode.Labels[types.NodeCreateDefaultDiskLabelKey]; ok {
-			createDisk := false
-			annotations := map[string]string{}
-			dataPath := ""
-			val = strings.ToLower(val)
-			if val == types.NodeCreateDefaultDiskLabelValueConfig {
-				createDisk = true
-				annotations = kubeNode.Annotations
-			} else if val == types.NodeCreateDefaultDiskLabelValueTrue {
-				dataPath, err = knc.ds.GetSettingValueExisted(types.SettingNameDefaultDataPath)
-				if err != nil {
-					return err
-				}
-				createDisk = true
-			}
-			if createDisk {
-				disks, err := types.CreateDefaultDisks(annotations, dataPath)
-				if err != nil {
-					return err
-				}
-				node.Spec.Disks = disks
-
-				updatedNode, err := knc.ds.UpdateNode(node)
-				if err != nil {
-					return err
-				}
-				node = updatedNode
-				return nil
-			}
+		disks, err = types.CreateDefaultDisk(dataPath)
+		if err != nil {
+			return err
 		}
+	case types.NodeCreateDefaultDiskLabelValueConfig:
+		annotation, ok := kubeNode.Annotations[types.KubeNodeDefaultDiskConfigAnnotationKey]
+		if !ok {
+			return nil
+		}
+		disks, err = types.CreateDisksFromAnnotation(annotation)
+		if err != nil {
+			logrus.Warnf("Kubernetes node: invalid annotation %v: %v: %v", types.KubeNodeDefaultDiskConfigAnnotationKey, val, err)
+			return nil
+		}
+	default:
+		logrus.Warnf("Kubernetes node: invalid label value: %v: %v", types.NodeCreateDefaultDiskLabelKey, val)
+		return nil
 	}
+
+	if len(disks) == 0 {
+		return nil
+	}
+
+	node.Spec.Disks = disks
+
+	updatedNode, err := knc.ds.UpdateNode(node)
+	if err != nil {
+		return err
+	}
+	node = updatedNode
 	return nil
 }
 
