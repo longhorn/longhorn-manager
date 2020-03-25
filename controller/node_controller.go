@@ -612,18 +612,6 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			diskStatus.StorageMaximum = 0
 			diskStatus.StorageAvailable = 0
 		} else {
-			// create the directory if disk path exists but the replica subdirectory doesn't exist
-			exists, err := nc.diskPathReplicaSubdirectoryChecker(disk.Path)
-			if err != nil {
-				return err
-			}
-			if !exists {
-				logrus.Warnf("The replica subdirectory of disk %v on node %v doesn't exist, will create it now", disk.Path, node.Name)
-				if err := util.CreateDiskPathReplicaSubdirectory(disk.Path); err != nil {
-					return errors.Wrapf(err, "failed to create replica subdirectory for disk %v on node %v", disk.Path, node.Name)
-				}
-			}
-
 			if readyCondition.Status != types.ConditionStatusTrue {
 				readyCondition.LastTransitionTime = util.Now()
 				nc.eventRecorder.Eventf(node, v1.EventTypeNormal, types.DiskConditionTypeReady,
