@@ -125,7 +125,7 @@ func NewNodeController(
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
 				case *longhorn.Setting:
-					return filterSettings(t)
+					return nc.filterSettings(t)
 				default:
 					utilruntime.HandleError(fmt.Errorf("unable to handle object in %T: %T", nc, obj))
 					return false
@@ -214,7 +214,7 @@ func NewNodeController(
 	return nc
 }
 
-func filterSettings(s *longhorn.Setting) bool {
+func (nc *NodeController) filterSettings(s *longhorn.Setting) bool {
 	// filter that only StorageMinimalAvailablePercentage will impact disk status
 	if types.SettingName(s.Name) == types.SettingNameStorageMinimalAvailablePercentage {
 		return true
@@ -461,16 +461,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return nil
 	}
 
-	// sync default disks on labeled Nodes
-	if err = nc.syncDefaultDisks(node); err != nil {
-		return err
-	}
-
-	// sync node tags
-	if err = nc.syncDefaultNodeTags(node); err != nil {
-		return err
-	}
-
 	// sync disks status on current node
 	if err := nc.syncDiskStatus(node); err != nil {
 		return err
@@ -549,82 +539,6 @@ func (nc *NodeController) enqueueKubernetesNode(n *v1.Node) {
 		return
 	}
 	nc.enqueueNode(node)
-}
-
-// syncDefaultDisks handles creation of the customized default Disk if the setting create-default-disk-labeled-nodes is enabled.
-// This allows for the default Disk to be customized and created even if the node has been labeled after initial registration with Longhorn,
-// provided that there are no existing disks remaining on the node.
-func (nc *NodeController) syncDefaultDisks(node *longhorn.Node) error {
-	requireLabel, err := nc.ds.GetSettingAsBool(types.SettingNameCreateDefaultDiskLabeledNodes)
-	if err != nil {
-		return err
-	}
-	if requireLabel && len(node.Spec.Disks) == 0 {
-		kubeNode, err := nc.ds.GetKubernetesNode(node.Name)
-		if err != nil {
-			return err
-		}
-		if val, ok := kubeNode.Labels[types.NodeCreateDefaultDiskLabelKey]; ok {
-			createDisk := false
-			annotations := map[string]string{}
-			dataPath := ""
-			val = strings.ToLower(val)
-			if val == types.NodeCreateDefaultDiskLabelValueConfig {
-				createDisk = true
-				annotations = kubeNode.Annotations
-			} else if val == types.NodeCreateDefaultDiskLabelValueTrue {
-				dataPath, err = nc.ds.GetSettingValueExisted(types.SettingNameDefaultDataPath)
-				if err != nil {
-					return err
-				}
-				createDisk = true
-			}
-			if createDisk {
-				disks, err := types.CreateDefaultDisks(annotations, dataPath)
-				if err != nil {
-					return err
-				}
-				node.Spec.Disks = disks
-
-				//TODO Find a way to move this outside the controller since it changes the node's spec
-				updatedNode, err := nc.ds.UpdateNode(node)
-				if err != nil {
-					return err
-				}
-				node = updatedNode
-				return nil
-			}
-		}
-	}
-	return nil
-}
-
-func (nc *NodeController) syncDefaultNodeTags(node *longhorn.Node) error {
-	if len(node.Spec.Tags) != 0 {
-		return nil
-	}
-
-	kubeNode, err := nc.ds.GetKubernetesNode(node.Name)
-	if err != nil {
-		return err
-	}
-
-	if val, exist := kubeNode.Annotations[types.KubeNodeDefaultNodeTagConfigAnnotationKey]; exist {
-		tags, err := types.GetNodeTagsFromAnnotation(val)
-		if err != nil {
-			logrus.Errorf("failed to set default node tags for node %v: %v", node.Name, err)
-			return nil
-		}
-		node.Spec.Tags = tags
-
-		//TODO Find a way to move this outside the controller since it changes the node's spec
-		updatedNode, err := nc.ds.UpdateNode(node)
-		if err != nil {
-			return err
-		}
-		node = updatedNode
-	}
-	return nil
 }
 
 func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
