@@ -568,26 +568,21 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		if ok {
 			diskStatus = originDiskStatus[diskID]
 		}
+
+		// calculate storage scheduled
 		scheduledReplica := map[string]int64{}
-		// if there's no replica assigned to this disk
-		if _, ok := replicaDiskMap[diskID]; !ok {
-			diskStatus.StorageScheduled = 0
-			scheduledReplica = map[string]int64{}
-		} else {
-			// calculate storage scheduled
-			replicaArray := replicaDiskMap[diskID]
-			var storageScheduled int64
-			for _, replica := range replicaArray {
-				storageScheduled += replica.Spec.VolumeSize
-				scheduledReplica[replica.Name] = replica.Spec.VolumeSize
-			}
-			diskStatus.StorageScheduled = storageScheduled
-			delete(replicaDiskMap, diskID)
+		storageScheduled := int64(0)
+		for _, replica := range replicaDiskMap[diskID] {
+			storageScheduled += replica.Spec.VolumeSize
+			scheduledReplica[replica.Name] = replica.Spec.VolumeSize
 		}
+		diskStatus.StorageScheduled = storageScheduled
 		diskStatus.ScheduledReplica = scheduledReplica
-		// get disk available size
-		diskInfo, err := nc.getDiskInfoHandler(disk.Path)
+		delete(replicaDiskMap, diskID)
+
+		// get disk stat
 		readyCondition := types.GetDiskConditionFromStatus(diskStatus, types.DiskConditionTypeReady)
+		diskInfo, err := nc.getDiskInfoHandler(disk.Path)
 		if err != nil {
 			if readyCondition.Status != types.ConditionStatusFalse {
 				readyCondition.LastTransitionTime = util.Now()
@@ -599,29 +594,31 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			readyCondition.Message = fmt.Sprintf("Get disk information on node %v error: %v", node.Name, err)
 			diskStatus.StorageMaximum = 0
 			diskStatus.StorageAvailable = 0
-		} else if diskInfo == nil || diskInfo.Fsid != diskID {
-			// if the file system has changed
-			if readyCondition.Status != types.ConditionStatusFalse {
-				readyCondition.LastTransitionTime = util.Now()
-				nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.DiskConditionReasonDiskFilesystemChanged,
-					"Disk %v on node %v is not ready: disk has changed file system", disk.Path, node.Name)
-			}
-			readyCondition.Status = types.ConditionStatusFalse
-			readyCondition.Reason = types.DiskConditionReasonDiskFilesystemChanged
-			readyCondition.Message = fmt.Sprintf("disk %v on node %v has changed file system", disk.Path, node.Name)
-			diskStatus.StorageMaximum = 0
-			diskStatus.StorageAvailable = 0
 		} else {
-			if readyCondition.Status != types.ConditionStatusTrue {
-				readyCondition.LastTransitionTime = util.Now()
-				nc.eventRecorder.Eventf(node, v1.EventTypeNormal, types.DiskConditionTypeReady,
-					"Disk %v on node %v is ready", disk.Path, node.Name)
+			if diskInfo.Fsid != diskID {
+				// if the file system has changed
+				if readyCondition.Status != types.ConditionStatusFalse {
+					readyCondition.LastTransitionTime = util.Now()
+					nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.DiskConditionReasonDiskFilesystemChanged,
+						"Disk %v on node %v is not ready: disk has changed file system", disk.Path, node.Name)
+				}
+				readyCondition.Status = types.ConditionStatusFalse
+				readyCondition.Reason = types.DiskConditionReasonDiskFilesystemChanged
+				readyCondition.Message = fmt.Sprintf("disk %v on node %v has changed file system", disk.Path, node.Name)
+				diskStatus.StorageMaximum = 0
+				diskStatus.StorageAvailable = 0
+			} else {
+				if readyCondition.Status != types.ConditionStatusTrue {
+					readyCondition.LastTransitionTime = util.Now()
+					nc.eventRecorder.Eventf(node, v1.EventTypeNormal, types.DiskConditionTypeReady,
+						"Disk %v on node %v is ready", disk.Path, node.Name)
+				}
+				readyCondition.Status = types.ConditionStatusTrue
+				readyCondition.Reason = ""
+				readyCondition.Message = ""
+				diskStatus.StorageMaximum = diskInfo.StorageMaximum
+				diskStatus.StorageAvailable = diskInfo.StorageAvailable
 			}
-			readyCondition.Status = types.ConditionStatusTrue
-			readyCondition.Reason = ""
-			readyCondition.Message = ""
-			diskStatus.StorageMaximum = diskInfo.StorageMaximum
-			diskStatus.StorageAvailable = diskInfo.StorageAvailable
 		}
 		diskConditions[types.DiskConditionTypeReady] = readyCondition
 
