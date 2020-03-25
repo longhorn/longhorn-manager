@@ -35,7 +35,7 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 )
 
-type KubernetesController struct {
+type KubernetesPVController struct {
 	// use as the OwnerID of the controller
 	controllerID string
 
@@ -64,7 +64,7 @@ type KubernetesController struct {
 	nowHandler func() string
 }
 
-func NewKubernetesController(
+func NewKubernetesPVController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	volumeInformer lhinformers.VolumeInformer,
@@ -73,20 +73,20 @@ func NewKubernetesController(
 	podInformer coreinformers.PodInformer,
 	volumeAttachmentInformer v1beta1.VolumeAttachmentInformer,
 	kubeClient clientset.Interface,
-	controllerID string) *KubernetesController {
+	controllerID string) *KubernetesPVController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
-	kc := &KubernetesController{
+	kc := &KubernetesPVController{
 		controllerID: controllerID,
 
 		ds: ds,
 
 		kubeClient:    kubeClient,
-		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-kubernetes-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-kubernetes-pv-controller"}),
 
 		pvLister:  persistentVolumeInformer.Lister(),
 		pvcLister: persistentVolumeClaimInformer.Lister(),
@@ -99,7 +99,7 @@ func NewKubernetesController(
 		pStoreSynced:   podInformer.Informer().HasSynced,
 		vaStoreSynced:  volumeAttachmentInformer.Informer().HasSynced,
 
-		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "Longhorn-Kubernetes"),
+		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-kubernetes-pv"),
 
 		pvToVolumeCache: sync.Map{},
 
@@ -148,7 +148,7 @@ func NewKubernetesController(
 	return kc
 }
 
-func (kc *KubernetesController) Run(workers int, stopCh <-chan struct{}) {
+func (kc *KubernetesPVController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer kc.queue.ShutDown()
 
@@ -167,12 +167,12 @@ func (kc *KubernetesController) Run(workers int, stopCh <-chan struct{}) {
 	<-stopCh
 }
 
-func (kc *KubernetesController) worker() {
+func (kc *KubernetesPVController) worker() {
 	for kc.processNextWorkItem() {
 	}
 }
 
-func (kc *KubernetesController) processNextWorkItem() bool {
+func (kc *KubernetesPVController) processNextWorkItem() bool {
 	key, quit := kc.queue.Get()
 
 	if quit {
@@ -186,7 +186,7 @@ func (kc *KubernetesController) processNextWorkItem() bool {
 	return true
 }
 
-func (kc *KubernetesController) handleErr(err error, key interface{}) {
+func (kc *KubernetesPVController) handleErr(err error, key interface{}) {
 	if err == nil {
 		kc.queue.Forget(key)
 		return
@@ -203,7 +203,7 @@ func (kc *KubernetesController) handleErr(err error, key interface{}) {
 	kc.queue.Forget(key)
 }
 
-func (kc *KubernetesController) syncKubernetesStatus(key string) (err error) {
+func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "kubernetes-controller: fail to sync %v", key)
 	}()
@@ -317,7 +317,7 @@ func (kc *KubernetesController) syncKubernetesStatus(key string) (err error) {
 	return nil
 }
 
-func (kc *KubernetesController) getCSIVolumeHandleFromPV(pv *v1.PersistentVolume) string {
+func (kc *KubernetesPVController) getCSIVolumeHandleFromPV(pv *v1.PersistentVolume) string {
 	if pv == nil {
 		return ""
 	}
@@ -328,7 +328,7 @@ func (kc *KubernetesController) getCSIVolumeHandleFromPV(pv *v1.PersistentVolume
 	return pv.Spec.CSI.VolumeHandle
 }
 
-func (kc *KubernetesController) enqueuePersistentVolume(pv *v1.PersistentVolume) {
+func (kc *KubernetesPVController) enqueuePersistentVolume(pv *v1.PersistentVolume) {
 	key, err := controller.KeyFunc(pv)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", pv, err))
@@ -338,7 +338,7 @@ func (kc *KubernetesController) enqueuePersistentVolume(pv *v1.PersistentVolume)
 	return
 }
 
-func (kc *KubernetesController) enqueuePodChange(pod *v1.Pod) {
+func (kc *KubernetesPVController) enqueuePodChange(pod *v1.Pod) {
 	if _, err := controller.KeyFunc(pod); err != nil {
 		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", pod, err))
 		return
@@ -363,7 +363,7 @@ func (kc *KubernetesController) enqueuePodChange(pod *v1.Pod) {
 	return
 }
 
-func (kc *KubernetesController) enqueueVolumeChange(volume *longhorn.Volume) {
+func (kc *KubernetesPVController) enqueueVolumeChange(volume *longhorn.Volume) {
 	if _, err := controller.KeyFunc(volume); err != nil {
 		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", volume, err))
 		return
@@ -379,7 +379,7 @@ func (kc *KubernetesController) enqueueVolumeChange(volume *longhorn.Volume) {
 	return
 }
 
-func (kc *KubernetesController) enqueuePVDeletion(pv *v1.PersistentVolume) {
+func (kc *KubernetesPVController) enqueuePVDeletion(pv *v1.PersistentVolume) {
 	if _, err := controller.KeyFunc(pv); err != nil {
 		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", pv, err))
 		return
@@ -390,7 +390,7 @@ func (kc *KubernetesController) enqueuePVDeletion(pv *v1.PersistentVolume) {
 	return
 }
 
-func (kc *KubernetesController) cleanupForPVDeletion(pvName string) (bool, error) {
+func (kc *KubernetesPVController) cleanupForPVDeletion(pvName string) (bool, error) {
 	volumeName, ok := kc.pvToVolumeCache.Load(pvName)
 	if !ok {
 		return false, nil
@@ -431,7 +431,7 @@ func (kc *KubernetesController) cleanupForPVDeletion(pvName string) (bool, error
 	return true, nil
 }
 
-func (kc *KubernetesController) getAssociatedPods(ks *types.KubernetesStatus) ([]*v1.Pod, int, error) {
+func (kc *KubernetesPVController) getAssociatedPods(ks *types.KubernetesStatus) ([]*v1.Pod, int, error) {
 	var pods []*v1.Pod
 	terminatingPodCount := 0
 	if ks.PVStatus != string(v1.VolumeBound) {
@@ -455,7 +455,7 @@ func (kc *KubernetesController) getAssociatedPods(ks *types.KubernetesStatus) ([
 	return pods, terminatingPodCount, nil
 }
 
-func (kc *KubernetesController) setWorkloads(ks *types.KubernetesStatus, pods []*v1.Pod) {
+func (kc *KubernetesPVController) setWorkloads(ks *types.KubernetesStatus, pods []*v1.Pod) {
 	if len(pods) == 0 {
 		if len(ks.WorkloadsStatus) == 0 || ks.LastPodRefAt != "" {
 			return
@@ -477,7 +477,7 @@ func (kc *KubernetesController) setWorkloads(ks *types.KubernetesStatus, pods []
 	return
 }
 
-func (kc *KubernetesController) detectWorkload(p *v1.Pod) (string, string) {
+func (kc *KubernetesPVController) detectWorkload(p *v1.Pod) (string, string) {
 	refs := p.GetObjectMeta().GetOwnerReferences()
 	for _, ref := range refs {
 		if ref.Name != "" && ref.Kind != "" {
@@ -487,7 +487,7 @@ func (kc *KubernetesController) detectWorkload(p *v1.Pod) (string, string) {
 	return "", ""
 }
 
-func (kc *KubernetesController) cleanupVolumeAttachment(terminatingPodCount int, volume *longhorn.Volume, ks *types.KubernetesStatus) {
+func (kc *KubernetesPVController) cleanupVolumeAttachment(terminatingPodCount int, volume *longhorn.Volume, ks *types.KubernetesStatus) {
 	// PV and PVC should exist. No terminating Pod. All live Pods should be Pending.
 	if !(ks.PVStatus == string(v1.VolumeBound) && ks.PVCName != "" && ks.LastPVCRefAt == "") {
 		return
@@ -529,7 +529,7 @@ func (kc *KubernetesController) cleanupVolumeAttachment(terminatingPodCount int,
 	return
 }
 
-func (kc *KubernetesController) getVolumeAttachment(ks *types.KubernetesStatus) (*storagev1.VolumeAttachment, error) {
+func (kc *KubernetesPVController) getVolumeAttachment(ks *types.KubernetesStatus) (*storagev1.VolumeAttachment, error) {
 	vas, err := kc.vaLister.List(labels.Everything())
 	if err != nil {
 		return nil, err
