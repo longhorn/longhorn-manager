@@ -25,6 +25,10 @@ type VolumeManager struct {
 	sb            *SupportBundle
 }
 
+const (
+	MaxRecurringJobRetain = 50
+)
+
 func NewVolumeManager(currentNodeID string, ds *datastore.DataStore) *VolumeManager {
 	return &VolumeManager{
 		ds: ds,
@@ -490,6 +494,8 @@ func (m *VolumeManager) validateRecurringJobs(jobs []types.RecurringJob) error {
 	if jobs == nil {
 		return nil
 	}
+
+	totalJobRetainCount := 0
 	for _, job := range jobs {
 		if job.Cron == "" || job.Task == "" || job.Name == "" || job.Retain == 0 {
 			return fmt.Errorf("invalid job %+v", job)
@@ -505,9 +511,14 @@ func (m *VolumeManager) validateRecurringJobs(jobs []types.RecurringJob) error {
 				return err
 			}
 		}
+		totalJobRetainCount += job.Retain
 	}
+
 	if err := m.checkDuplicateJobs(jobs); err != nil {
 		return err
+	}
+	if totalJobRetainCount > MaxRecurringJobRetain {
+		return fmt.Errorf("Job Can't retain more than %d snapshots", MaxRecurringJobRetain)
 	}
 	return nil
 }
