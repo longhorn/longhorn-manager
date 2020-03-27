@@ -550,7 +550,9 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 	}
 	args := []string{
 		"-c",
-		"cp /usr/local/bin/longhorn* /data/ && echo installed && trap 'rm /data/longhorn* && echo cleaned up' EXIT && sleep infinity",
+		"diff /usr/local/bin/longhorn /data/longhorn > /dev/null 2>&1; " +
+			"if [ $? -ne 0 ]; then cp -p /usr/local/bin/longhorn /data/ && echo installed; fi && " +
+			"trap 'rm /data/longhorn* && echo cleaned up' EXIT && sleep infinity",
 	}
 	maxUnavailable := intstr.FromString(`100%`)
 	d := &appsv1.DaemonSet{
