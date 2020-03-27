@@ -32,7 +32,7 @@ func (v *VolumeSpec) DeepCopyInto(to *VolumeSpec) {
 func (v *VolumeStatus) DeepCopyInto(to *VolumeStatus) {
 	*to = *v
 	if v.Conditions != nil {
-		to.Conditions = make(map[VolumeConditionType]Condition)
+		to.Conditions = make(map[string]Condition)
 		for key, value := range v.Conditions {
 			to.Conditions[key] = value
 		}
@@ -126,7 +126,7 @@ func (n *NodeStatus) DeepCopyInto(to *NodeStatus) {
 		to.DiskStatus[key] = value
 	}
 	if n.Conditions != nil {
-		to.Conditions = make(map[NodeConditionType]Condition)
+		to.Conditions = make(map[string]Condition)
 		for key, value := range n.Conditions {
 			to.Conditions[key] = value
 		}
@@ -138,7 +138,7 @@ func (n *DiskStatus) DeepCopyInto(to *DiskStatus) {
 	if n.Conditions == nil {
 		return
 	}
-	to.Conditions = make(map[DiskConditionType]Condition)
+	to.Conditions = make(map[string]Condition)
 	for key, value := range n.Conditions {
 		to.Conditions[key] = value
 	}

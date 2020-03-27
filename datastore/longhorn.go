@@ -402,7 +402,7 @@ func (s *DataStore) ListStandbyVolumesRO() (map[string]*longhorn.Volume, error) 
 
 func (s *DataStore) fixupVolume(volume *longhorn.Volume) *longhorn.Volume {
 	if volume.Status.Conditions == nil {
-		volume.Status.Conditions = map[types.VolumeConditionType]types.Condition{}
+		volume.Status.Conditions = map[string]types.Condition{}
 	}
 	return volume
 }
@@ -914,7 +914,7 @@ func (s *DataStore) getNode(name string) (*longhorn.Node, error) {
 
 func (s *DataStore) fixupNode(node *longhorn.Node) *longhorn.Node {
 	if node.Status.Conditions == nil {
-		node.Status.Conditions = map[types.NodeConditionType]types.Condition{}
+		node.Status.Conditions = map[string]types.Condition{}
 	}
 	return node
 }
@@ -973,7 +973,7 @@ func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
 	var usableNode *longhorn.Node
 	for name := range nodeList {
 		node := nodeList[name]
-		readyCondition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+		readyCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
 		if readyCondition.Status == types.ConditionStatusTrue && node.Spec.AllowScheduling == true {
 			usableNode = node
 			break
@@ -1016,7 +1016,7 @@ func (s *DataStore) IsNodeDownOrDeleted(name string) (bool, error) {
 		}
 		return false, err
 	}
-	cond := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+	cond := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
 	if cond.Status == types.ConditionStatusFalse &&
 		(cond.Reason == string(types.NodeConditionReasonKubernetesNodeGone) ||
 			cond.Reason == string(types.NodeConditionReasonKubernetesNodeNotReady)) {

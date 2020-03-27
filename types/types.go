@@ -255,35 +255,19 @@ func GetInstanceManagerName(imType InstanceManagerType) (string, error) {
 	return "", fmt.Errorf("cannot generate name for unknown instance manager type %v", imType)
 }
 
-// GetVolumeConditionFromStatus returns a copy of v.Status.Condition[conditionType]
-func GetVolumeConditionFromStatus(status VolumeStatus, conditionType VolumeConditionType) Condition {
-	condition, exists := status.Conditions[conditionType]
+// GetCondition returns a copy of conditions[conditionType], and automatically fill the unknown condition
+func GetCondition(conditions map[string]Condition, conditionType string) Condition {
+	condition, exists := conditions[conditionType]
 	if !exists {
-		condition = getUnknownCondition(string(conditionType))
+		condition = getUnknownCondition(conditionType)
 	}
 	return condition
 }
 
 func getUnknownCondition(conditionType string) Condition {
 	condition := Condition{
-		Type:   string(conditionType),
+		Type:   conditionType,
 		Status: ConditionStatusUnknown,
-	}
-	return condition
-}
-
-func GetNodeConditionFromStatus(status NodeStatus, conditionType NodeConditionType) Condition {
-	condition, exists := status.Conditions[conditionType]
-	if !exists {
-		condition = getUnknownCondition(string(conditionType))
-	}
-	return condition
-}
-
-func GetDiskConditionFromStatus(status DiskStatus, conditionType DiskConditionType) Condition {
-	condition, exists := status.Conditions[conditionType]
-	if !exists {
-		condition = getUnknownCondition(string(conditionType))
 	}
 	return condition
 }

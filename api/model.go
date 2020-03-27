@@ -42,9 +42,9 @@ type Volume struct {
 	DiskSelector               []string               `json:"diskSelector"`
 	NodeSelector               []string               `json:"nodeSelector"`
 
-	RecurringJobs    []types.RecurringJob                          `json:"recurringJobs"`
-	Conditions       map[types.VolumeConditionType]types.Condition `json:"conditions"`
-	KubernetesStatus types.KubernetesStatus                        `json:"kubernetesStatus"`
+	RecurringJobs    []types.RecurringJob       `json:"recurringJobs"`
+	Conditions       map[string]types.Condition `json:"conditions"`
+	KubernetesStatus types.KubernetesStatus     `json:"kubernetesStatus"`
 
 	Replicas      []Replica       `json:"replicas"`
 	Controllers   []Controller    `json:"controllers"`
@@ -176,14 +176,14 @@ type ExpandInput struct {
 
 type Node struct {
 	client.Resource
-	Name            string                                      `json:"name"`
-	Address         string                                      `json:"address"`
-	AllowScheduling bool                                        `json:"allowScheduling"`
-	Disks           map[string]DiskInfo                         `json:"disks"`
-	Conditions      map[types.NodeConditionType]types.Condition `json:"conditions"`
-	Tags            []string                                    `json:"tags"`
-	Region          string                                      `json:"region"`
-	Zone            string                                      `json:"zone"`
+	Name            string                     `json:"name"`
+	Address         string                     `json:"address"`
+	AllowScheduling bool                       `json:"allowScheduling"`
+	Disks           map[string]DiskInfo        `json:"disks"`
+	Conditions      map[string]types.Condition `json:"conditions"`
+	Tags            []string                   `json:"tags"`
+	Region          string                     `json:"region"`
+	Zone            string                     `json:"zone"`
 
 	Timestamp string `json:"timestamp"`
 }

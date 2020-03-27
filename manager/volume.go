@@ -207,7 +207,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			return nil, fmt.Errorf("couldn't list nodes")
 		}
 		for _, node := range nodes {
-			conditions := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeMountPropagation)
+			conditions := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeMountPropagation)
 			if conditions.Status != types.ConditionStatusTrue {
 				return nil, fmt.Errorf("cannot support BaseImage, node doesn't support mount propagation: %v", node)
 			}
@@ -268,7 +268,7 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool) (v *lo
 		return nil, errors.Wrapf(err, "cannot attach volume %v with image %v", v.Name, v.Spec.EngineImage)
 	}
 
-	condition := types.GetVolumeConditionFromStatus(v.Status, types.VolumeConditionTypeScheduled)
+	condition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled)
 	if condition.Status != types.ConditionStatusTrue {
 		return nil, fmt.Errorf("volume %v not scheduled", name)
 	}
