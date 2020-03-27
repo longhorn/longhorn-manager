@@ -322,7 +322,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	readyNodeCount := int32(0)
 	readyNodeList := []*longhorn.Node{}
 	for _, node := range nodes {
-		condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+		condition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
 		if condition.Status == types.ConditionStatusTrue {
 			readyNodeCount++
 			readyNodeList = append(readyNodeList, node)

@@ -349,7 +349,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	for _, pod := range managerPods {
 		if pod.Spec.NodeName == node.Name {
 			nodeManagerFound = true
-			condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+			condition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
 			//condition.LastProbeTime = util.Now()
 			podConditions := pod.Status.Conditions
 			for _, podCondition := range podConditions {
@@ -380,7 +380,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 
 	if !nodeManagerFound {
-		condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+		condition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
 		if condition.Status != types.ConditionStatusFalse {
 			condition.LastTransitionTime = util.Now()
 			nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonManagerPodMissing, "manager pod missing: node %v has no manager pod running on it", node.Name)
@@ -396,7 +396,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	if err != nil {
 		// if kubernetes node has been removed from cluster
 		if apierrors.IsNotFound(err) {
-			condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+			condition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
 			if condition.Status != types.ConditionStatusFalse {
 				condition.LastTransitionTime = util.Now()
 				nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonKubernetesNodeGone, "Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name)
@@ -410,7 +410,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		}
 	} else {
 		kubeConditions := kubeNode.Status.Conditions
-		condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+		condition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
 		for _, con := range kubeConditions {
 			switch con.Type {
 			case v1.NodeReady:
@@ -562,7 +562,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		originDiskStatus = map[string]types.DiskStatus{}
 	}
 	for diskID, disk := range diskMap {
-		diskConditions := map[types.DiskConditionType]types.Condition{}
+		diskConditions := map[string]types.Condition{}
 		diskStatus := types.DiskStatus{}
 		_, ok := originDiskStatus[diskID]
 		if ok {
@@ -581,7 +581,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		delete(replicaDiskMap, diskID)
 
 		// get disk stat
-		readyCondition := types.GetDiskConditionFromStatus(diskStatus, types.DiskConditionTypeReady)
+		readyCondition := types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeReady)
 		diskInfo, err := nc.getDiskInfoHandler(disk.Path)
 		if err != nil {
 			if readyCondition.Status != types.ConditionStatusFalse {
@@ -622,7 +622,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		}
 		diskConditions[types.DiskConditionTypeReady] = readyCondition
 
-		condition := types.GetDiskConditionFromStatus(diskStatus, types.DiskConditionTypeSchedulable)
+		condition := types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable)
 		//condition.LastProbeTime = util.Now()
 		// check disk pressure
 		info, err := nc.scheduler.GetDiskSchedulingInfo(disk, diskStatus)
@@ -672,7 +672,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 
 func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error {
 	// sync bidirectional mount propagation for node status to check whether the node could deploy CSI driver
-	condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeMountPropagation)
+	condition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeMountPropagation)
 	for _, mount := range pod.Spec.Containers[0].VolumeMounts {
 		if mount.Name == types.LonghornSystemKey {
 			mountPropagationStr := ""

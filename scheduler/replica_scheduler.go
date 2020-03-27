@@ -154,7 +154,7 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, repl
 		if storageScheduled > 0 {
 			info.StorageScheduled += storageScheduled
 		}
-		diskReadyCondition := types.GetDiskConditionFromStatus(status, types.DiskConditionTypeReady)
+		diskReadyCondition := types.GetCondition(status.Conditions, types.DiskConditionTypeReady)
 		if diskReadyCondition.Status == types.ConditionStatusFalse || !disk.AllowScheduling ||
 			!rcs.IsSchedulableToDisk(replica.Spec.VolumeSize, info) {
 			continue
@@ -195,7 +195,7 @@ func (rcs *ReplicaScheduler) getNodeInfo() (map[string]*longhorn.Node, error) {
 	}
 	scheduledNode := map[string]*longhorn.Node{}
 	for _, node := range nodeInfo {
-		nodeReadyCondition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+		nodeReadyCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
 		if node != nil && node.DeletionTimestamp == nil && nodeReadyCondition.Status == types.ConditionStatusTrue && node.Spec.AllowScheduling {
 			scheduledNode[node.Name] = node
 		}

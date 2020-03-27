@@ -45,8 +45,6 @@ type Condition struct {
 	Message            string          `json:"message"`
 }
 
-type VolumeConditionType string
-
 const (
 	VolumeConditionTypeScheduled = "scheduled"
 )
@@ -93,22 +91,22 @@ type WorkloadStatus struct {
 }
 
 type VolumeStatus struct {
-	OwnerID                    string                            `json:"ownerID"`
-	State                      VolumeState                       `json:"state"`
-	Robustness                 VolumeRobustness                  `json:"robustness"`
-	CurrentNodeID              string                            `json:"currentNodeID"`
-	CurrentImage               string                            `json:"currentImage"`
-	KubernetesStatus           KubernetesStatus                  `json:"kubernetesStatus"`
-	Conditions                 map[VolumeConditionType]Condition `json:"conditions"`
-	LastBackup                 string                            `json:"lastBackup"`
-	LastBackupAt               string                            `json:"lastBackupAt"`
-	PendingNodeID              string                            `json:"pendingNodeID"`
-	FrontendDisabled           bool                              `json:"frontendDisabled"`
-	InitialRestorationRequired bool                              `json:"initialRestorationRequired"`
-	RestoreInitiated           bool                              `json:"restoreInitiated"`
-	RemountRequired            bool                              `json:"remountRequired"`
-	ExpansionRequired          bool                              `json:"expansionRequired"`
-	IsStandby                  bool                              `json:"isStandby"`
+	OwnerID                    string               `json:"ownerID"`
+	State                      VolumeState          `json:"state"`
+	Robustness                 VolumeRobustness     `json:"robustness"`
+	CurrentNodeID              string               `json:"currentNodeID"`
+	CurrentImage               string               `json:"currentImage"`
+	KubernetesStatus           KubernetesStatus     `json:"kubernetesStatus"`
+	Conditions                 map[string]Condition `json:"conditions"`
+	LastBackup                 string               `json:"lastBackup"`
+	LastBackupAt               string               `json:"lastBackupAt"`
+	PendingNodeID              string               `json:"pendingNodeID"`
+	FrontendDisabled           bool                 `json:"frontendDisabled"`
+	InitialRestorationRequired bool                 `json:"initialRestorationRequired"`
+	RestoreInitiated           bool                 `json:"restoreInitiated"`
+	RemountRequired            bool                 `json:"remountRequired"`
+	ExpansionRequired          bool                 `json:"expansionRequired"`
+	IsStandby                  bool                 `json:"isStandby"`
 }
 
 type RecurringJobType string
@@ -240,8 +238,6 @@ type NodeSpec struct {
 	Tags            []string            `json:"tags"`
 }
 
-type NodeConditionType string
-
 const (
 	NodeConditionTypeReady            = "Ready"
 	NodeConditionTypeMountPropagation = "MountPropagation"
@@ -257,8 +253,6 @@ const (
 	NodeConditionReasonNoMountPropagationSupport = "NoMountPropagationSupport"
 )
 
-type DiskConditionType string
-
 const (
 	DiskConditionTypeSchedulable = "Schedulable"
 	DiskConditionTypeReady       = "Ready"
@@ -271,10 +265,10 @@ const (
 )
 
 type NodeStatus struct {
-	Conditions map[NodeConditionType]Condition `json:"conditions"`
-	DiskStatus map[string]DiskStatus           `json:"diskStatus"`
-	Region     string                          `json:"region"`
-	Zone       string                          `json:"zone"`
+	Conditions map[string]Condition  `json:"conditions"`
+	DiskStatus map[string]DiskStatus `json:"diskStatus"`
+	Region     string                `json:"region"`
+	Zone       string                `json:"zone"`
 }
 
 type DiskSpec struct {
@@ -285,11 +279,11 @@ type DiskSpec struct {
 }
 
 type DiskStatus struct {
-	Conditions       map[DiskConditionType]Condition `json:"conditions"`
-	StorageAvailable int64                           `json:"storageAvailable"`
-	StorageScheduled int64                           `json:"storageScheduled"`
-	StorageMaximum   int64                           `json:"storageMaximum"`
-	ScheduledReplica map[string]int64                `json:"scheduledReplica"`
+	Conditions       map[string]Condition `json:"conditions"`
+	StorageAvailable int64                `json:"storageAvailable"`
+	StorageScheduled int64                `json:"storageScheduled"`
+	StorageMaximum   int64                `json:"storageMaximum"`
+	ScheduledReplica map[string]int64     `json:"scheduledReplica"`
 }
 
 type BackupStatus struct {

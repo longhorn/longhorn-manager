@@ -134,7 +134,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.State = types.VolumeStateCreating
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
-	tc.expectVolume.Status.Conditions = map[types.VolumeConditionType]types.Condition{
+	tc.expectVolume.Status.Conditions = map[string]types.Condition{
 		types.VolumeConditionTypeScheduled: {
 			Type:   string(types.VolumeConditionTypeScheduled),
 			Status: types.ConditionStatusFalse,
@@ -590,7 +590,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc = generateVolumeTestCaseTemplate()
 	now := metav1.NewTime(time.Now())
 	tc.volume.SetDeletionTimestamp(&now)
-	tc.volume.Status.Conditions = map[types.VolumeConditionType]types.Condition{}
+	tc.volume.Status.Conditions = map[string]types.Condition{}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateDeleting
 	tc.expectEngines = nil
@@ -651,7 +651,7 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 		},
 		Status: types.VolumeStatus{
 			OwnerID: TestOwnerID1,
-			Conditions: map[types.VolumeConditionType]types.Condition{
+			Conditions: map[string]types.Condition{
 				types.VolumeConditionTypeScheduled: {
 					Type:   string(types.VolumeConditionTypeScheduled),
 					Status: types.ConditionStatusTrue,
@@ -769,7 +769,7 @@ func newNode(name, namespace string, allowScheduling bool, status types.Conditio
 			},
 		},
 		Status: types.NodeStatus{
-			Conditions: map[types.NodeConditionType]types.Condition{
+			Conditions: map[string]types.Condition{
 				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, status, reason),
 			},
 		},
@@ -902,7 +902,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 					StorageAvailable: TestDiskAvailableSize,
 					StorageScheduled: 0,
 					StorageMaximum:   TestDiskSize,
-					Conditions: map[types.DiskConditionType]types.Condition{
+					Conditions: map[string]types.Condition{
 						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
 					},
 				},

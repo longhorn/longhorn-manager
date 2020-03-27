@@ -195,7 +195,7 @@ func (m *VolumeManager) DeleteNode(name string) error {
 	if err != nil {
 		return err
 	}
-	condition := types.GetNodeConditionFromStatus(node.Status, types.NodeConditionTypeReady)
+	condition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
 	// Only could delete node from longhorn if kubernetes node missing or manager pod is missing
 	if condition.Status == types.ConditionStatusTrue ||
 		(condition.Reason != types.NodeConditionReasonKubernetesNodeGone &&
