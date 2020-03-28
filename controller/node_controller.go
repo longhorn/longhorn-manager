@@ -529,16 +529,11 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		return err
 	}
 
-	originDiskStatus := node.Status.DiskStatus
-	if originDiskStatus == nil {
-		originDiskStatus = map[string]types.DiskStatus{}
+	if node.Status.DiskStatus == nil {
+		node.Status.DiskStatus = map[string]types.DiskStatus{}
 	}
 	for diskID, disk := range diskMap {
-		diskStatus := types.DiskStatus{}
-		_, ok := originDiskStatus[diskID]
-		if ok {
-			diskStatus = originDiskStatus[diskID]
-		}
+		diskStatus := node.Status.DiskStatus[diskID]
 		if diskStatus.Conditions == nil {
 			diskStatus.Conditions = map[string]types.Condition{}
 		}
