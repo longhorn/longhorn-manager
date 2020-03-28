@@ -255,23 +255,6 @@ func GetInstanceManagerName(imType InstanceManagerType) (string, error) {
 	return "", fmt.Errorf("cannot generate name for unknown instance manager type %v", imType)
 }
 
-// GetCondition returns a copy of conditions[conditionType], and automatically fill the unknown condition
-func GetCondition(conditions map[string]Condition, conditionType string) Condition {
-	condition, exists := conditions[conditionType]
-	if !exists {
-		condition = getUnknownCondition(conditionType)
-	}
-	return condition
-}
-
-func getUnknownCondition(conditionType string) Condition {
-	condition := Condition{
-		Type:   conditionType,
-		Status: ConditionStatusUnknown,
-	}
-	return condition
-}
-
 func GetReplicaMountedDataPath(dataPath string) string {
 	if !strings.HasPrefix(dataPath, ReplicaHostPrefix) {
 		return filepath.Join(ReplicaHostPrefix, dataPath)

@@ -349,46 +349,31 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	for _, pod := range managerPods {
 		if pod.Spec.NodeName == node.Name {
 			nodeManagerFound = true
-			condition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
-			//condition.LastProbeTime = util.Now()
 			podConditions := pod.Status.Conditions
 			for _, podCondition := range podConditions {
 				if podCondition.Type == v1.PodReady {
 					if podCondition.Status == v1.ConditionTrue && pod.Status.Phase == v1.PodRunning {
-						if condition.Status != types.ConditionStatusTrue {
-							condition.LastTransitionTime = util.Now()
-							nc.eventRecorder.Eventf(node, v1.EventTypeNormal, types.NodeConditionTypeReady, "Node %v is ready", node.Name)
-						}
-						condition.Status = types.ConditionStatusTrue
-						condition.Reason = ""
-						condition.Message = ""
+						types.SetConditionAndRecord(node.Status.Conditions, types.NodeConditionTypeReady, types.ConditionStatusTrue,
+							"", fmt.Sprintf("Node %v is ready", node.Name),
+							nc.eventRecorder, node, v1.EventTypeNormal)
 					} else {
-						if condition.Status != types.ConditionStatusFalse {
-							condition.LastTransitionTime = util.Now()
-							nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonManagerPodDown, "Node %v is down: the manager pod %v is not running", node.Name, pod.Name)
-						}
-						condition.Status = types.ConditionStatusFalse
-						condition.Reason = string(types.NodeConditionReasonManagerPodDown)
-						condition.Message = fmt.Sprintf("the manager pod %v is not running", pod.Name)
+						types.SetConditionAndRecord(node.Status.Conditions, types.NodeConditionTypeReady, types.ConditionStatusFalse,
+							string(types.NodeConditionReasonManagerPodDown),
+							fmt.Sprintf("Node %v is down: the manager pod %v is not running", node.Name, pod.Name),
+							nc.eventRecorder, node, v1.EventTypeWarning)
 					}
 					break
 				}
 			}
-			node.Status.Conditions[types.NodeConditionTypeReady] = condition
 			break
 		}
 	}
 
 	if !nodeManagerFound {
-		condition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
-		if condition.Status != types.ConditionStatusFalse {
-			condition.LastTransitionTime = util.Now()
-			nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonManagerPodMissing, "manager pod missing: node %v has no manager pod running on it", node.Name)
-		}
-		condition.Status = types.ConditionStatusFalse
-		condition.Reason = string(types.NodeConditionReasonManagerPodMissing)
-		condition.Message = fmt.Sprintf("manager pod missing: node %v has no manager pod running on it", node.Name)
-		node.Status.Conditions[types.NodeConditionTypeReady] = condition
+		types.SetConditionAndRecord(node.Status.Conditions, types.NodeConditionTypeReady, types.ConditionStatusFalse,
+			string(types.NodeConditionReasonManagerPodMissing),
+			fmt.Sprintf("manager pod missing: node %v has no manager pod running on it", node.Name),
+			nc.eventRecorder, node, v1.EventTypeWarning)
 	}
 
 	// sync node state with kuberentes node status
@@ -396,33 +381,23 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	if err != nil {
 		// if kubernetes node has been removed from cluster
 		if apierrors.IsNotFound(err) {
-			condition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
-			if condition.Status != types.ConditionStatusFalse {
-				condition.LastTransitionTime = util.Now()
-				nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonKubernetesNodeGone, "Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name)
-			}
-			condition.Status = types.ConditionStatusFalse
-			condition.Reason = string(types.NodeConditionReasonKubernetesNodeGone)
-			condition.Message = fmt.Sprintf("Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name)
-			node.Status.Conditions[types.NodeConditionTypeReady] = condition
+			types.SetConditionAndRecord(node.Status.Conditions, types.NodeConditionTypeReady, types.ConditionStatusFalse,
+				string(types.NodeConditionReasonKubernetesNodeGone),
+				fmt.Sprintf("Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name),
+				nc.eventRecorder, node, v1.EventTypeWarning)
 		} else {
 			return err
 		}
 	} else {
 		kubeConditions := kubeNode.Status.Conditions
-		condition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
 		for _, con := range kubeConditions {
 			switch con.Type {
 			case v1.NodeReady:
 				if con.Status != v1.ConditionTrue {
-					if condition.Status != types.ConditionStatusFalse {
-						condition.LastTransitionTime = util.Now()
-						nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonKubernetesNodeNotReady, "Kubernetes node %v not ready: %v", node.Name, con.Reason)
-					}
-					condition.Status = types.ConditionStatusFalse
-					condition.Reason = string(types.NodeConditionReasonKubernetesNodeNotReady)
-					condition.Message = fmt.Sprintf("Kubernetes node %v not ready: %v", node.Name, con.Reason)
-					node.Status.Conditions[types.NodeConditionTypeReady] = condition
+					types.SetConditionAndRecord(node.Status.Conditions, types.NodeConditionTypeReady, types.ConditionStatusFalse,
+						string(types.NodeConditionReasonKubernetesNodeNotReady),
+						fmt.Sprintf("Kubernetes node %v not ready: %v", node.Name, con.Reason),
+						nc.eventRecorder, node, v1.EventTypeWarning)
 					break
 				}
 			case v1.NodeOutOfDisk,
@@ -431,14 +406,11 @@ func (nc *NodeController) syncNode(key string) (err error) {
 				v1.NodeMemoryPressure,
 				v1.NodeNetworkUnavailable:
 				if con.Status == v1.ConditionTrue {
-					if condition.Status != types.ConditionStatusFalse {
-						condition.LastTransitionTime = util.Now()
-						nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonKubernetesNodePressure, "Kubernetes node %v has pressure: %v, %v", node.Name, con.Reason, con.Message)
-					}
-					condition.Status = types.ConditionStatusFalse
-					condition.Reason = string(types.NodeConditionReasonKubernetesNodePressure)
-					condition.Message = fmt.Sprintf("Kubernetes node %v has pressure: %v, %v", node.Name, con.Reason, con.Message)
-					node.Status.Conditions[types.NodeConditionTypeReady] = condition
+					types.SetConditionAndRecord(node.Status.Conditions, types.NodeConditionTypeReady, types.ConditionStatusFalse,
+						string(types.NodeConditionReasonKubernetesNodePressure),
+						fmt.Sprintf("Kubernetes node %v has pressure: %v, %v", node.Name, con.Reason, con.Message),
+						nc.eventRecorder, node, v1.EventTypeWarning)
+
 					break
 				}
 			default:
@@ -562,11 +534,13 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		originDiskStatus = map[string]types.DiskStatus{}
 	}
 	for diskID, disk := range diskMap {
-		diskConditions := map[string]types.Condition{}
 		diskStatus := types.DiskStatus{}
 		_, ok := originDiskStatus[diskID]
 		if ok {
 			diskStatus = originDiskStatus[diskID]
+		}
+		if diskStatus.Conditions == nil {
+			diskStatus.Conditions = map[string]types.Condition{}
 		}
 
 		// calculate storage scheduled
@@ -578,79 +552,50 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		}
 		diskStatus.StorageScheduled = storageScheduled
 		diskStatus.ScheduledReplica = scheduledReplica
+		diskStatus.StorageMaximum = 0
+		diskStatus.StorageAvailable = 0
 		delete(replicaDiskMap, diskID)
 
 		// get disk stat
-		readyCondition := types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeReady)
 		diskInfo, err := nc.getDiskInfoHandler(disk.Path)
 		if err != nil {
-			if readyCondition.Status != types.ConditionStatusFalse {
-				readyCondition.LastTransitionTime = util.Now()
-				nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.DiskConditionReasonNoDiskInfo,
-					"Disk %v on node %v is not ready: Get disk information error: %v", disk.Path, node.Name, err)
-			}
-			readyCondition.Status = types.ConditionStatusFalse
-			readyCondition.Reason = types.DiskConditionReasonNoDiskInfo
-			readyCondition.Message = fmt.Sprintf("Get disk information on node %v error: %v", node.Name, err)
-			diskStatus.StorageMaximum = 0
-			diskStatus.StorageAvailable = 0
+			types.SetConditionAndRecord(diskStatus.Conditions, types.DiskConditionTypeReady, types.ConditionStatusFalse,
+				string(types.DiskConditionReasonNoDiskInfo),
+				fmt.Sprintf("Disk %v on node %v is not ready: Get disk information error: %v", disk.Path, node.Name, err),
+				nc.eventRecorder, node, v1.EventTypeWarning)
 		} else {
 			if diskInfo.Fsid != diskID {
-				// if the file system has changed
-				if readyCondition.Status != types.ConditionStatusFalse {
-					readyCondition.LastTransitionTime = util.Now()
-					nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.DiskConditionReasonDiskFilesystemChanged,
-						"Disk %v on node %v is not ready: disk has changed file system", disk.Path, node.Name)
-				}
-				readyCondition.Status = types.ConditionStatusFalse
-				readyCondition.Reason = types.DiskConditionReasonDiskFilesystemChanged
-				readyCondition.Message = fmt.Sprintf("disk %v on node %v has changed file system", disk.Path, node.Name)
-				diskStatus.StorageMaximum = 0
-				diskStatus.StorageAvailable = 0
+				types.SetConditionAndRecord(diskStatus.Conditions, types.DiskConditionTypeReady, types.ConditionStatusFalse,
+					string(types.DiskConditionReasonDiskFilesystemChanged),
+					fmt.Sprintf("Disk %v on node %v is not ready: disk has changed file system ID to %v", disk.Path, node.Name, diskInfo.Fsid),
+					nc.eventRecorder, node, v1.EventTypeWarning)
 			} else {
-				if readyCondition.Status != types.ConditionStatusTrue {
-					readyCondition.LastTransitionTime = util.Now()
-					nc.eventRecorder.Eventf(node, v1.EventTypeNormal, types.DiskConditionTypeReady,
-						"Disk %v on node %v is ready", disk.Path, node.Name)
-				}
-				readyCondition.Status = types.ConditionStatusTrue
-				readyCondition.Reason = ""
-				readyCondition.Message = ""
 				diskStatus.StorageMaximum = diskInfo.StorageMaximum
 				diskStatus.StorageAvailable = diskInfo.StorageAvailable
+				types.SetConditionAndRecord(diskStatus.Conditions, types.DiskConditionTypeReady, types.ConditionStatusTrue,
+					"", fmt.Sprintf("Disk %v on node %v is ready", disk.Path, node.Name),
+					nc.eventRecorder, node, v1.EventTypeNormal)
 			}
 		}
-		diskConditions[types.DiskConditionTypeReady] = readyCondition
 
-		condition := types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable)
-		//condition.LastProbeTime = util.Now()
 		// check disk pressure
 		info, err := nc.scheduler.GetDiskSchedulingInfo(disk, diskStatus)
 		if err != nil {
 			return err
 		}
 		if !nc.scheduler.IsSchedulableToDisk(0, info) {
-			if condition.Status != types.ConditionStatusFalse {
-				condition.LastTransitionTime = util.Now()
-				nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.DiskConditionReasonDiskPressure,
-					"unable to schedule any replica to disk %v on node %v", disk.Path, node.Name)
-			}
-			condition.Status = types.ConditionStatusFalse
-			condition.Reason = string(types.DiskConditionReasonDiskPressure)
-			condition.Message = fmt.Sprintf("the disk %v on the node %v has %v available, but requires reserved %v, minimal %v%s to schedule more replicas", disk.Path, node.Name, diskStatus.StorageAvailable, disk.StorageReserved, minimalAvailablePercentage, "%")
-		} else {
-			if condition.Status != types.ConditionStatusTrue {
-				condition.LastTransitionTime = util.Now()
-				nc.eventRecorder.Eventf(node, v1.EventTypeNormal, types.DiskConditionTypeSchedulable,
-					"Disk %v on node %v is schedulable", disk.Path, node.Name)
-			}
-			condition.Status = types.ConditionStatusTrue
-			condition.Reason = ""
-			condition.Message = ""
-		}
-		diskConditions[types.DiskConditionTypeSchedulable] = condition
+			types.SetConditionAndRecord(diskStatus.Conditions, types.DiskConditionTypeSchedulable, types.ConditionStatusFalse,
+				string(types.DiskConditionReasonDiskPressure),
+				fmt.Sprintf("the disk %v on the node %v has %v available, but requires reserved %v, minimal %v%s to schedule more replicas",
+					disk.Path, node.Name, diskStatus.StorageAvailable, disk.StorageReserved, minimalAvailablePercentage, "%"),
+				nc.eventRecorder, node, v1.EventTypeWarning)
 
-		diskStatus.Conditions = diskConditions
+		} else {
+			types.SetConditionAndRecord(diskStatus.Conditions, types.DiskConditionTypeSchedulable, types.ConditionStatusTrue,
+				"", fmt.Sprintf("Disk %v on node %v is schedulable", disk.Path, node.Name),
+				nc.eventRecorder, node, v1.EventTypeNormal)
+		}
+
 		diskStatusMap[diskID] = diskStatus
 	}
 
@@ -672,7 +617,6 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 
 func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error {
 	// sync bidirectional mount propagation for node status to check whether the node could deploy CSI driver
-	condition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeMountPropagation)
 	for _, mount := range pod.Spec.Containers[0].VolumeMounts {
 		if mount.Name == types.LonghornSystemKey {
 			mountPropagationStr := ""
@@ -682,25 +626,16 @@ func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error
 				mountPropagationStr = string(*mount.MountPropagation)
 			}
 			if mount.MountPropagation == nil || *mount.MountPropagation != v1.MountPropagationBidirectional {
-				if condition.Status != types.ConditionStatusFalse {
-					condition.LastTransitionTime = util.Now()
-				}
-				condition.Status = types.ConditionStatusFalse
-				condition.Reason = types.NodeConditionReasonNoMountPropagationSupport
-				condition.Message = fmt.Sprintf("The MountPropagation value %s is not detected from pod %s, node %s", mountPropagationStr, pod.Name, pod.Spec.NodeName)
+				types.SetCondition(node.Status.Conditions, types.NodeConditionTypeMountPropagation, types.ConditionStatusFalse,
+					string(types.NodeConditionReasonNoMountPropagationSupport),
+					fmt.Sprintf("The MountPropagation value %s is not detected from pod %s, node %s", mountPropagationStr, pod.Name, pod.Spec.NodeName))
 			} else {
-				if condition.Status != types.ConditionStatusTrue {
-					condition.LastTransitionTime = util.Now()
-				}
-				condition.Status = types.ConditionStatusTrue
-				condition.Reason = ""
-				condition.Message = ""
+				types.SetCondition(node.Status.Conditions, types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, "", "")
 			}
 			//condition.LastProbeTime = util.Now()
 			break
 		}
 	}
-	node.Status.Conditions[types.NodeConditionTypeMountPropagation] = condition
 
 	return nil
 }
