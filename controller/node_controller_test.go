@@ -645,12 +645,6 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Get(node.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			for ctype, condition := range n.Status.Conditions {
-				/*
-					if condition.Status != types.ConditionStatusUnknown {
-						c.Assert(condition.LastProbeTime, Not(Equals), "")
-					}
-				*/
-				condition.LastProbeTime = ""
 				condition.LastTransitionTime = ""
 				condition.Message = ""
 				n.Status.Conditions[ctype] = condition
@@ -661,10 +655,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				for fsid, diskStatus := range diskConditions {
 					for ctype, condition := range diskStatus.Conditions {
 						if condition.Status != types.ConditionStatusUnknown {
-							//c.Assert(condition.LastProbeTime, Not(Equals), "")
 							c.Assert(condition.LastTransitionTime, Not(Equals), "")
 						}
-						condition.LastProbeTime = ""
 						condition.LastTransitionTime = ""
 						condition.Message = ""
 						diskStatus.Conditions[ctype] = condition

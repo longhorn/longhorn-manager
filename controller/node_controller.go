@@ -632,7 +632,6 @@ func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error
 			} else {
 				types.SetCondition(node.Status.Conditions, types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, "", "")
 			}
-			//condition.LastProbeTime = util.Now()
 			break
 		}
 	}
