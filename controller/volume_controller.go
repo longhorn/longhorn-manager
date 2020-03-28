@@ -684,14 +684,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 		if scheduledReplica == nil {
 			logrus.Errorf("unable to schedule replica %v of volume %v", r.Name, v.Name)
-			condition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled)
-			if condition.Status != types.ConditionStatusFalse {
-				condition.Status = types.ConditionStatusFalse
-				condition.LastTransitionTime = util.Now()
-			}
-			//condition.LastProbeTime = util.Now()
-			condition.Reason = types.VolumeConditionReasonReplicaSchedulingFailure
-			v.Status.Conditions[types.VolumeConditionTypeScheduled] = condition
+			types.SetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled, types.ConditionStatusFalse,
+				types.VolumeConditionReasonReplicaSchedulingFailure, "")
 			allScheduled = false
 			// no need to continue, since we won't able to schedule
 			// more replicas if we failed this one
@@ -700,15 +694,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		rs[r.Name] = scheduledReplica
 	}
 	if allScheduled {
-		condition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled)
-		if condition.Status != types.ConditionStatusTrue {
-			condition.Status = types.ConditionStatusTrue
-			condition.Reason = ""
-			condition.Message = ""
-			condition.LastTransitionTime = util.Now()
-		}
-		//condition.LastProbeTime = util.Now()
-		v.Status.Conditions[types.VolumeConditionTypeScheduled] = condition
+		types.SetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled, types.ConditionStatusTrue, "", "")
 	}
 
 	allFaulted := true
