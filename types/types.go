@@ -106,7 +106,7 @@ type NotFoundError struct {
 }
 
 func (e *NotFoundError) Error() string {
-	return fmt.Sprintf("%v was not found", e.Name)
+	return fmt.Sprintf("cannot find %v", e.Name)
 }
 
 const (

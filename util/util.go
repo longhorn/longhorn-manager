@@ -53,6 +53,8 @@ const (
 	TemporaryMountPointDirectory = "/tmp/mnt/"
 
 	DefaultKubernetesTolerationKey = "kubernetes.io"
+
+	DiskConfigFile = "longhorn-disk.cfg"
 )
 
 var (
@@ -882,4 +884,55 @@ func IsKubernetesVersionAtLeast(kubeClient clientset.Interface, vers string) (bo
 	currentVersion := version.MustParseSemantic(serverVersion.GitVersion)
 	minVersion := version.MustParseSemantic(vers)
 	return currentVersion.AtLeast(minVersion), nil
+}
+
+type DiskConfig struct {
+	DiskUUID string `json:"diskUUID"`
+}
+
+func GetDiskConfig(path string) (*DiskConfig, error) {
+	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
+	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
+	if err != nil {
+		return nil, err
+	}
+	filePath := filepath.Join(path, DiskConfigFile)
+	output, err := nsExec.Execute("cat", []string{filePath})
+	if err != nil {
+		return nil, fmt.Errorf("cannot find config file %v on host: %v", filePath, err)
+	}
+
+	cfg := &DiskConfig{}
+	if err := json.Unmarshal([]byte(output), cfg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal %v content %v on host: %v", filePath, output, err)
+	}
+	return cfg, nil
+}
+
+func GenerateDiskConfig(path string) (*DiskConfig, error) {
+	cfg := &DiskConfig{
+		DiskUUID: UUID(),
+	}
+	encoded, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("BUG: Cannot marshal %+v: %v", cfg, err)
+	}
+
+	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
+	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
+	if err != nil {
+		return nil, err
+	}
+	filePath := filepath.Join(path, DiskConfigFile)
+	if _, err := nsExec.Execute("ls", []string{filePath}); err == nil {
+		return nil, fmt.Errorf("disk cfg on %v exists, cannot override", filePath)
+	}
+	if _, err := nsExec.ExecuteWithStdin("dd", []string{"of=" + filePath}, string(encoded)); err != nil {
+		return nil, fmt.Errorf("cannot write to disk cfg on %v: %v", filePath, err)
+	}
+	if _, err := nsExec.Execute("sync", []string{filePath}); err != nil {
+		return nil, fmt.Errorf("cannot sync disk cfg on %v: %v", filePath, err)
+	}
+
+	return cfg, nil
 }
