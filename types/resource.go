@@ -284,6 +284,7 @@ type DiskStatus struct {
 	StorageScheduled int64                `json:"storageScheduled"`
 	StorageMaximum   int64                `json:"storageMaximum"`
 	ScheduledReplica map[string]int64     `json:"scheduledReplica"`
+	DiskUUID         string               `json:"diskUUID"`
 }
 
 type BackupStatus struct {

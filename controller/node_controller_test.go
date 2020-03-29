@@ -28,6 +28,8 @@ const (
 	ManagerPodDown   = "managerPodDown"
 	KubeNodeDown     = "kubeNodeDown"
 	KubeNodePressure = "kubeNodePressure"
+
+	defaultDiskUUID = "default-disk-uuid"
 )
 
 var MountPropagationBidirectional = v1.MountPropagationBidirectional
@@ -77,6 +79,8 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 	nc.getDiskInfoHandler = fakeGetDiskInfo
 	nc.diskPathReplicaSubdirectoryChecker = fakeCheckDiskPathReplicaSubdirectory
 	nc.topologyLabelsChecker = fakeTopologyLabelsChecker
+	nc.getDiskConfig = fakeGetDiskConfig
+	nc.generateDiskConfig = fakeGenerateDiskConfig
 
 	nc.nStoreSynced = alwaysReady
 	nc.pStoreSynced = alwaysReady
@@ -104,6 +108,18 @@ func fakeCheckDiskPathReplicaSubdirectory(path string) (bool, error) {
 
 func fakeTopologyLabelsChecker(kubeClient clientset.Interface, vers string) (bool, error) {
 	return false, nil
+}
+
+func fakeGetDiskConfig(path string) (*util.DiskConfig, error) {
+	return &util.DiskConfig{
+		DiskUUID: defaultDiskUUID,
+	}, nil
+}
+
+func fakeGenerateDiskConfig(path string) (*util.DiskConfig, error) {
+	return &util.DiskConfig{
+		DiskUUID: defaultDiskUUID,
+	}, nil
 }
 
 func generateKubeNodes(testType string) map[string]*v1.Node {
@@ -271,6 +287,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					ScheduledReplica: map[string]int64{
 						replica1.Name: replica1.Spec.VolumeSize,
 					},
+					DiskUUID: defaultDiskUUID,
 				},
 			},
 		},
@@ -337,6 +354,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
 					},
 					ScheduledReplica: map[string]int64{},
+					DiskUUID:         defaultDiskUUID,
 				},
 			},
 		},
@@ -359,14 +377,14 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.pods = generateManagerPod(ManagerPodUp)
 	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
 	node1.Spec.Disks = map[string]types.DiskSpec{
-		"changedId": {
+		TestDiskID1: {
 			Path:            TestDefaultDataPath,
 			AllowScheduling: true,
 			StorageReserved: 0,
 		},
 	}
 	node1.Status.DiskStatus = map[string]types.DiskStatus{
-		"changedId": {
+		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
 			StorageMaximum:   TestDiskSize,
@@ -374,6 +392,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
 				types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
 			},
+			DiskUUID: "new-uuid",
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
@@ -394,7 +413,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
 			DiskStatus: map[string]types.DiskStatus{
-				"changedId": {
+				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
 					Conditions: map[string]types.Condition{
@@ -402,6 +421,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusFalse, string(types.DiskConditionReasonDiskFilesystemChanged)),
 					},
 					ScheduledReplica: map[string]int64{},
+					DiskUUID:         "new-uuid",
 				},
 			},
 		},
@@ -450,6 +470,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
 					},
 					ScheduledReplica: map[string]int64{},
+					DiskUUID:         defaultDiskUUID,
 				},
 			},
 		},
@@ -493,6 +514,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
 					},
 					ScheduledReplica: map[string]int64{},
+					DiskUUID:         defaultDiskUUID,
 				},
 			},
 		},
