@@ -27,8 +27,11 @@ func getUnknownCondition(conditionType string) Condition {
 func SetConditionAndRecord(conditions map[string]Condition, conditionType string, conditionValue ConditionStatus,
 	reason, message string, eventRecorder record.EventRecorder, obj runtime.Object, eventtype string) {
 
+	condition := GetCondition(conditions, conditionType)
+	if condition.Status != conditionValue {
+		eventRecorder.Event(obj, eventtype, conditionType, message)
+	}
 	SetCondition(conditions, conditionType, conditionValue, reason, message)
-	eventRecorder.Event(obj, eventtype, conditionType, message)
 }
 
 func SetCondition(conditions map[string]Condition, conditionType string, conditionValue ConditionStatus, reason, message string) {
