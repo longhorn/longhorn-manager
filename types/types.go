@@ -330,9 +330,6 @@ func CreateDisksFromAnnotation(annotation string) (map[string]DiskSpec, error) {
 			return nil, err
 		}
 		disk.Tags = tags
-		if err := util.CreateDiskPathReplicaSubdirectory(disk.Path); err != nil {
-			return nil, err
-		}
 		validDisks[disk.Name] = disk.DiskSpec
 	}
 

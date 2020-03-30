@@ -77,7 +77,6 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 	fakeRecorder := record.NewFakeRecorder(100)
 	nc.eventRecorder = fakeRecorder
 	nc.getDiskInfoHandler = fakeGetDiskInfo
-	nc.diskPathReplicaSubdirectoryChecker = fakeCheckDiskPathReplicaSubdirectory
 	nc.topologyLabelsChecker = fakeTopologyLabelsChecker
 	nc.getDiskConfig = fakeGetDiskConfig
 	nc.generateDiskConfig = fakeGenerateDiskConfig
@@ -100,10 +99,6 @@ func fakeGetDiskInfo(directory string) (*util.DiskInfo, error) {
 		StorageMaximum:   0,
 		StorageAvailable: 0,
 	}, nil
-}
-
-func fakeCheckDiskPathReplicaSubdirectory(path string) (bool, error) {
-	return true, nil
 }
 
 func fakeTopologyLabelsChecker(kubeClient clientset.Interface, vers string) (bool, error) {
