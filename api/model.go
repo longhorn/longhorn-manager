@@ -194,7 +194,7 @@ type DiskInfo struct {
 }
 
 type DiskUpdateInput struct {
-	Disks []types.DiskSpec `json:"disks"`
+	Disks map[string]types.DiskSpec `json:"disks"`
 }
 
 type Event struct {

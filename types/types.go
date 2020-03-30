@@ -60,6 +60,8 @@ const (
 
 	LonghornDriverName = "driver.longhorn.io"
 
+	DefaultDiskPrefix = "default-disk-"
+
 	DeprecatedProvisionerName = "rancher.io/longhorn"
 	DepracatedDriverName      = "io.rancher.longhorn"
 )
@@ -302,7 +304,7 @@ func CreateDisksFromAnnotation(annotation string) (map[string]DiskSpec, error) {
 		return nil, errors.Wrapf(err, "failed to unmarshal the default disks annotation")
 	}
 	for _, disk := range disks {
-		if disk.Path == "" || disk.StorageReserved < 0 {
+		if disk.Path == "" {
 			return nil, fmt.Errorf("invalid disk %+v", disk)
 		}
 		diskInfo, err := util.GetDiskInfo(disk.Path)
@@ -314,10 +316,13 @@ func CreateDisksFromAnnotation(annotation string) (map[string]DiskSpec, error) {
 				return nil, fmt.Errorf("duplicate disk path %v", disk.Path)
 			}
 		}
-		if _, exist := validDisks[diskInfo.Fsid]; exist {
-			return nil, fmt.Errorf("the disk %v is the same file system with %v, fsid %v", disk.Path, validDisks[diskInfo.Fsid].Path, diskInfo.Fsid)
+		if disk.Name == "" {
+			disk.Name = DefaultDiskPrefix + diskInfo.Fsid
 		}
-		if disk.StorageReserved > diskInfo.StorageMaximum {
+		if _, exist := validDisks[disk.Name]; exist {
+			return nil, fmt.Errorf("the disk %v is the same file system with %v, fsid %v", disk.Path, validDisks[disk.Name].Path, diskInfo.Fsid)
+		}
+		if disk.StorageReserved < 0 || disk.StorageReserved > diskInfo.StorageMaximum {
 			return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
 		}
 		tags, err := util.ValidateTags(disk.Tags)
@@ -328,7 +333,7 @@ func CreateDisksFromAnnotation(annotation string) (map[string]DiskSpec, error) {
 		if err := util.CreateDiskPathReplicaSubdirectory(disk.Path); err != nil {
 			return nil, err
 		}
-		validDisks[diskInfo.Fsid] = disk
+		validDisks[disk.Name] = disk.DiskSpec
 	}
 
 	return validDisks, nil
@@ -347,15 +352,19 @@ func GetNodeTagsFromAnnotation(annotation string) ([]string, error) {
 	return validNodeTags, nil
 }
 
+type DiskSpecWithName struct {
+	DiskSpec
+	Name string `json:"name"`
+}
+
 // UnmarshalToDisks input format should be:
 // `[{"path":"/mnt/disk1","allowScheduling":false},
 //   {"path":"/mnt/disk2","allowScheduling":false,"storageReserved":1024,"tags":["ssd","fast"]}]`
-func UnmarshalToDisks(s string) ([]DiskSpec, error) {
-	var res []DiskSpec
-	if err := json.Unmarshal([]byte(s), &res); err != nil {
+func UnmarshalToDisks(s string) (ret []DiskSpecWithName, err error) {
+	if err := json.Unmarshal([]byte(s), &ret); err != nil {
 		return nil, err
 	}
-	return res, nil
+	return ret, nil
 }
 
 // UnmarshalToNodeTags input format should be:
@@ -377,7 +386,7 @@ func CreateDefaultDisk(dataPath string) (map[string]DiskSpec, error) {
 		return nil, err
 	}
 	return map[string]DiskSpec{
-		diskInfo.Fsid: {
+		DefaultDiskPrefix + diskInfo.Fsid: {
 			Path:            diskInfo.Path,
 			AllowScheduling: true,
 			StorageReserved: diskInfo.StorageMaximum * 30 / 100,

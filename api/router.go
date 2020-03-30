@@ -106,7 +106,7 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("PUT").Path("/v1/nodes/{name}").Handler(f(schemas, s.NodeUpdate))
 	r.Methods("DELETE").Path("/v1/nodes/{name}").Handler(f(schemas, s.NodeDelete))
 	nodeActions := map[string]func(http.ResponseWriter, *http.Request) error{
-		"diskUpdate": s.fwd.Handler(OwnerIDFromNode(s.m), s.DiskUpdate),
+		"diskUpdate": s.DiskUpdate,
 	}
 	for name, action := range nodeActions {
 		r.Methods("POST").Path("/v1/nodes/{name}").Queries("action", name).Handler(f(schemas, action))

@@ -104,74 +104,38 @@ func (m *VolumeManager) ListNodesSorted() ([]*longhorn.Node, error) {
 	return nodes, nil
 }
 
-func (m *VolumeManager) DiskUpdate(name string, updateDisks []types.DiskSpec) (*longhorn.Node, error) {
+func (m *VolumeManager) DiskUpdate(name string, updateDisks map[string]types.DiskSpec) (*longhorn.Node, error) {
 	node, err := m.ds.GetNode(name)
 	if err != nil {
 		return nil, err
 	}
 
 	originDisks := node.Spec.Disks
-	diskUpdateMap := map[string]types.DiskSpec{}
 
-	for _, uDisk := range updateDisks {
-		diskInfo, err := util.GetDiskInfo(uDisk.Path)
+	for name, uDisk := range updateDisks {
+		if uDisk.StorageReserved < 0 {
+			return nil, fmt.Errorf("Update disk on node %v error: The storageReserved setting of disk %v(%v) is not valid, should be positive and no more than storageMaximum and storageAvailable", name, name, uDisk.Path)
+		}
+
+		// Validate Tags first before the updated Disk gets assigned.
+		tags, err := util.ValidateTags(uDisk.Tags)
 		if err != nil {
 			return nil, err
 		}
-		isInvalid := false
-		for fsid, oDisk := range originDisks {
-			if oDisk.Path == uDisk.Path && fsid != diskInfo.Fsid {
-				isInvalid = true
-				logrus.Warnf("Update disk on node %v warning: The disk %v has changed file system, please mount it back or remove it", name, oDisk.Path)
-				diskUpdateMap[fsid] = oDisk
-				// allow disable scheduling to remove the disk https://github.com/longhorn/longhorn/issues/838
-				if uDisk.AllowScheduling == false {
-					uDisk = oDisk
-					uDisk.AllowScheduling = false
-					diskUpdateMap[fsid] = uDisk
-				}
-				break
-			}
-		}
-		if !isInvalid {
-
-			if uDisk.StorageReserved < 0 || uDisk.StorageReserved > diskInfo.StorageMaximum {
-				return nil, fmt.Errorf("Update disk on node %v error: The storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", name, uDisk.Path)
-			}
-			// Validate Tags first before the updated Disk gets assigned.
-			tags, err := util.ValidateTags(uDisk.Tags)
-			if err != nil {
-				return nil, err
-			}
-			// Make sure we assign to pointer of DiskSpec or it won't update the Tags correctly.
-			(&uDisk).Tags = tags
-			// update disks
-			if oDisk, ok := originDisks[diskInfo.Fsid]; ok {
-				if oDisk.Path != uDisk.Path {
-					// current disk is the same file system with exist disk
-					return nil, fmt.Errorf("Add Disk on node %v error: The disk %v is the same file system with %v ", name, uDisk.Path, oDisk.Path)
-				}
-				diskUpdateMap[diskInfo.Fsid] = uDisk
-			} else {
-				// add disks
-				if err := util.CreateDiskPathReplicaSubdirectory(uDisk.Path); err != nil {
-					return nil, err
-				}
-				diskUpdateMap[diskInfo.Fsid] = uDisk
-			}
-
-		}
+		// TODO: Replace this after we change map[string]types.DiskSpec to map[string]*types.DiskSpec
+		// Make sure we assign to pointer of DiskSpec or it won't update the Tags correctly.
+		(&uDisk).Tags = tags
 	}
 
 	// delete disks
-	for fsid, oDisk := range originDisks {
-		if _, ok := diskUpdateMap[fsid]; !ok {
-			if oDisk.AllowScheduling || node.Status.DiskStatus[fsid].StorageScheduled != 0 {
+	for name, oDisk := range originDisks {
+		if _, ok := updateDisks[name]; !ok {
+			if oDisk.AllowScheduling || node.Status.DiskStatus[name].StorageScheduled != 0 {
 				return nil, fmt.Errorf("Delete Disk on node %v error: Please disable the disk %v and remove all replicas first ", name, oDisk.Path)
 			}
 		}
 	}
-	node.Spec.Disks = diskUpdateMap
+	node.Spec.Disks = updateDisks
 
 	node, err = m.ds.UpdateNode(node)
 	if err != nil {
