@@ -231,12 +231,12 @@ func (knc *KubernetesNodeController) syncKubernetesNode(key string) (err error) 
 	}
 
 	// sync default disks on labeled Nodes
-	if err = knc.syncDefaultDisks(node); err != nil {
+	if err := knc.syncDefaultDisks(node); err != nil {
 		return err
 	}
 
 	// sync node tags
-	if err = knc.syncDefaultNodeTags(node); err != nil {
+	if err := knc.syncDefaultNodeTags(node); err != nil {
 		return err
 	}
 
