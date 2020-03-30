@@ -23,7 +23,6 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
@@ -42,8 +41,6 @@ type KubernetesNodeController struct {
 	knStoreSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
-
-	diskPathReplicaSubdirectoryChecker DiskPathReplicaSubdirectoryChecker
 }
 
 func NewKubernetesNodeController(
@@ -73,8 +70,6 @@ func NewKubernetesNodeController(
 		knStoreSynced: kubeNodeInformer.Informer().HasSynced,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-kubernetes-node"),
-
-		diskPathReplicaSubdirectoryChecker: util.CheckDiskPathReplicaSubdirectory,
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{

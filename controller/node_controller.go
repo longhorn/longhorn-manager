@@ -54,17 +54,15 @@ type NodeController struct {
 
 	queue workqueue.RateLimitingInterface
 
-	getDiskInfoHandler                 GetDiskInfoHandler
-	diskPathReplicaSubdirectoryChecker DiskPathReplicaSubdirectoryChecker
-	topologyLabelsChecker              TopologyLabelsChecker
-	getDiskConfig                      GetDiskConfig
-	generateDiskConfig                 GenerateDiskConfig
+	getDiskInfoHandler    GetDiskInfoHandler
+	topologyLabelsChecker TopologyLabelsChecker
+	getDiskConfig         GetDiskConfig
+	generateDiskConfig    GenerateDiskConfig
 
 	scheduler *scheduler.ReplicaScheduler
 }
 
 type GetDiskInfoHandler func(string) (*util.DiskInfo, error)
-type DiskPathReplicaSubdirectoryChecker func(string) (bool, error)
 type TopologyLabelsChecker func(kubeClient clientset.Interface, vers string) (bool, error)
 
 type GetDiskConfig func(string) (*util.DiskConfig, error)
@@ -103,11 +101,10 @@ func NewNodeController(
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-node"),
 
-		getDiskInfoHandler:                 util.GetDiskInfo,
-		diskPathReplicaSubdirectoryChecker: util.CheckDiskPathReplicaSubdirectory,
-		topologyLabelsChecker:              util.IsKubernetesVersionAtLeast,
-		getDiskConfig:                      util.GetDiskConfig,
-		generateDiskConfig:                 util.GenerateDiskConfig,
+		getDiskInfoHandler:    util.GetDiskInfo,
+		topologyLabelsChecker: util.IsKubernetesVersionAtLeast,
+		getDiskConfig:         util.GetDiskConfig,
+		generateDiskConfig:    util.GenerateDiskConfig,
 	}
 
 	nc.scheduler = scheduler.NewReplicaScheduler(ds)
