@@ -117,14 +117,12 @@ func (m *VolumeManager) DiskUpdate(name string, updateDisks map[string]types.Dis
 			return nil, fmt.Errorf("Update disk on node %v error: The storageReserved setting of disk %v(%v) is not valid, should be positive and no more than storageMaximum and storageAvailable", name, name, uDisk.Path)
 		}
 
-		// Validate Tags first before the updated Disk gets assigned.
 		tags, err := util.ValidateTags(uDisk.Tags)
 		if err != nil {
 			return nil, err
 		}
-		// TODO: Replace this after we change map[string]types.DiskSpec to map[string]*types.DiskSpec
-		// Make sure we assign to pointer of DiskSpec or it won't update the Tags correctly.
-		(&uDisk).Tags = tags
+		uDisk.Tags = tags
+		updateDisks[name] = uDisk
 	}
 
 	// delete disks
