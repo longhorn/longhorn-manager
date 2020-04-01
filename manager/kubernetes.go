@@ -22,7 +22,7 @@ var (
 )
 
 const (
-	KubeStatusPollConut    = 5
+	KubeStatusPollCount    = 5
 	KubeStatusPollInterval = 1 * time.Second
 )
 
@@ -57,23 +57,6 @@ func (m *VolumeManager) PVCreate(name, pvName, fsType string) (v *longhorn.Volum
 	pv, err = m.ds.CreatePersisentVolume(pv)
 	if err != nil {
 		return nil, err
-	}
-	created := false
-	for i := 0; i < KubeStatusPollConut; i++ {
-		v, err = m.ds.GetVolume(name)
-		if err != nil {
-			return nil, err
-		}
-		pvStatus := v.Status.KubernetesStatus.PVStatus
-		if pvStatus != "" && pvStatus != string(apiv1.VolumePending) {
-			created = true
-			break
-		}
-		time.Sleep(KubeStatusPollInterval)
-	}
-
-	if !created {
-		return v, fmt.Errorf("created PV %v is not in 'Available' status", pvName)
 	}
 
 	logrus.Debugf("Created PV for volume %v: %+v", v.Name, v.Spec)
@@ -128,30 +111,37 @@ func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.
 	if err != nil {
 		return nil, err
 	}
-
 	ks := v.Status.KubernetesStatus
 
 	if ks.LastPVCRefAt == "" && ks.PVCName != "" {
 		return v, fmt.Errorf("volume already had PVC %v", ks.PVCName)
 	}
-
 	if pvcName == "" {
 		pvcName = v.Name
 	}
 
-	if ks.PVName == "" {
-		return nil, fmt.Errorf("no PVName set in volume %v kubernetes status %v", name, ks)
+	var pvFound bool
+	for i := 0; i < KubeStatusPollCount; i++ {
+		v, err = m.ds.GetVolume(name)
+		if err != nil {
+			return nil, err
+		}
+		ks = v.Status.KubernetesStatus
+		if v.Status.KubernetesStatus.PVName != "" &&
+			(ks.PVStatus == string(apiv1.VolumeAvailable) || ks.PVStatus == string(apiv1.VolumeReleased)) {
+			pvFound = true
+			break
+		}
+		time.Sleep(KubeStatusPollInterval)
 	}
-
-	if ks.PVStatus != string(apiv1.VolumeAvailable) && ks.PVStatus != string(apiv1.VolumeReleased) {
-		return nil, fmt.Errorf("cannot create PVC for PV %v since the PV status is %v", ks.PVName, ks.PVStatus)
+	if !pvFound {
+		return nil, fmt.Errorf("cannot found PV %v or the PV status %v is invalid for PVC creation", ks.PVName, ks.PVStatus)
 	}
 
 	pv, err := m.ds.GetPersisentVolume(ks.PVName)
 	if err != nil {
 		return nil, err
 	}
-
 	// cleanup ClaimRef of PV. Otherwise the existing PV cannot be reused.
 	if pv.Spec.ClaimRef != nil {
 		pv.Spec.ClaimRef = nil
@@ -165,24 +155,6 @@ func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.
 	pvc, err = m.ds.CreatePersisentVolumeClaim(namespace, pvc)
 	if err != nil {
 		return nil, err
-	}
-
-	created := false
-	for i := 0; i < KubeStatusPollConut; i++ {
-		v, err = m.ds.GetVolume(name)
-		if err != nil {
-			return nil, err
-		}
-		pvStatus := v.Status.KubernetesStatus.PVStatus
-		if pvStatus == string(apiv1.VolumeBound) {
-			created = true
-			break
-		}
-		time.Sleep(KubeStatusPollInterval)
-	}
-
-	if !created {
-		return v, fmt.Errorf("created PVC %v doesn't bound PV, PV status is %v", pvcName, v.Status.KubernetesStatus.PVStatus)
 	}
 
 	logrus.Debugf("Created PVC for volume %v: %+v", v.Name, v.Spec)
