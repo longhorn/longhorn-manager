@@ -208,7 +208,7 @@ var (
 		Type:        SettingTypeInt,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "500",
+		Default:     "200",
 	}
 
 	SettingDefinitionStorageMinimalAvailablePercentage = SettingDefinition{
@@ -218,7 +218,7 @@ var (
 		Type:        SettingTypeInt,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "10",
+		Default:     "25",
 	}
 
 	SettingDefinitionUpgradeChecker = SettingDefinition{
