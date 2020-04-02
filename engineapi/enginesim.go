@@ -151,11 +151,11 @@ func (e *EngineSimulator) SnapshotCreate(name string, labels map[string]string) 
 	return "", fmt.Errorf("Not implemented")
 }
 
-func (e *EngineSimulator) SnapshotList() (map[string]*Snapshot, error) {
+func (e *EngineSimulator) SnapshotList() (map[string]*types.Snapshot, error) {
 	return nil, fmt.Errorf("Not implemented")
 }
 
-func (e *EngineSimulator) SnapshotGet(name string) (*Snapshot, error) {
+func (e *EngineSimulator) SnapshotGet(name string) (*types.Snapshot, error) {
 	return nil, fmt.Errorf("Not implemented")
 }
 

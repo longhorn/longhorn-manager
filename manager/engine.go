@@ -18,7 +18,7 @@ const (
 	BackupStatusQueryInterval = 2 * time.Second
 )
 
-func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*engineapi.Snapshot, error) {
+func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*types.Snapshot, error) {
 	if volumeName == "" {
 		return nil, fmt.Errorf("volume name required")
 	}
@@ -29,7 +29,7 @@ func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*engineapi.
 	return engine.SnapshotList()
 }
 
-func (m *VolumeManager) GetSnapshot(snapshotName, volumeName string) (*engineapi.Snapshot, error) {
+func (m *VolumeManager) GetSnapshot(snapshotName, volumeName string) (*types.Snapshot, error) {
 	if volumeName == "" || snapshotName == "" {
 		return nil, fmt.Errorf("volume and snapshot name required")
 	}
@@ -47,7 +47,7 @@ func (m *VolumeManager) GetSnapshot(snapshotName, volumeName string) (*engineapi
 	return snapshot, nil
 }
 
-func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]string, volumeName string) (*engineapi.Snapshot, error) {
+func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]string, volumeName string) (*types.Snapshot, error) {
 	if volumeName == "" {
 		return nil, fmt.Errorf("volume name required")
 	}

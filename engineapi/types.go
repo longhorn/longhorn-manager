@@ -55,8 +55,8 @@ type EngineClient interface {
 	ReplicaRebuildStatus() (map[string]*types.RebuildStatus, error)
 
 	SnapshotCreate(name string, labels map[string]string) (string, error)
-	SnapshotList() (map[string]*Snapshot, error)
-	SnapshotGet(name string) (*Snapshot, error)
+	SnapshotList() (map[string]*types.Snapshot, error)
+	SnapshotGet(name string) (*types.Snapshot, error)
 	SnapshotDelete(name string) error
 	SnapshotRevert(name string) error
 	SnapshotPurge() error
@@ -87,17 +87,6 @@ type Volume struct {
 	Frontend      string `json:"frontend"`
 	FrontendState string `json:"frontendState"`
 	IsExpanding   bool   `json:"isExpanding"`
-}
-
-type Snapshot struct {
-	Name        string            `json:"name"`
-	Parent      string            `json:"parent"`
-	Children    map[string]bool   `json:"children"`
-	Removed     bool              `json:"removed"`
-	UserCreated bool              `json:"usercreated"`
-	Created     string            `json:"created"`
-	Size        string            `json:"size"`
-	Labels      map[string]string `json:"labels"`
 }
 
 type BackupVolume struct {

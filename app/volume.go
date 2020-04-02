@@ -230,7 +230,7 @@ type NameWithTimestamp struct {
 	Timestamp time.Time
 }
 
-func (job *Job) listSnapshotNamesForCleanup(snapshots map[string]*engineapi.Snapshot, retain int) []string {
+func (job *Job) listSnapshotNamesForCleanup(snapshots map[string]*types.Snapshot, retain int) []string {
 	sts := []*NameWithTimestamp{}
 
 	// if no label specified, don't action. We don't want to remove all

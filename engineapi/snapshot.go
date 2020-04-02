@@ -29,19 +29,19 @@ func (e *Engine) SnapshotCreate(name string, labels map[string]string) (string, 
 	return strings.TrimSpace(output), nil
 }
 
-func (e *Engine) SnapshotList() (map[string]*Snapshot, error) {
+func (e *Engine) SnapshotList() (map[string]*types.Snapshot, error) {
 	output, err := e.ExecuteEngineBinary("snapshot", "info")
 	if err != nil {
 		return nil, errors.Wrapf(err, "error listing snapshot")
 	}
-	data := map[string]*Snapshot{}
+	data := map[string]*types.Snapshot{}
 	if err := json.Unmarshal([]byte(output), &data); err != nil {
 		return nil, errors.Wrapf(err, "error parsing snapshot list")
 	}
 	return data, nil
 }
 
-func (e *Engine) SnapshotGet(name string) (*Snapshot, error) {
+func (e *Engine) SnapshotGet(name string) (*types.Snapshot, error) {
 	data, err := e.SnapshotList()
 	if err != nil {
 		return nil, err
