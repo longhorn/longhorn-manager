@@ -558,6 +558,12 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			return fmt.Errorf("cannot get backup %v: %v", v.Spec.FromBackup, err)
 		}
 
+		size, err := util.ConvertSize(backup.Size)
+		if err != nil {
+			return fmt.Errorf("cannot get the size of backup %v: %v", v.Spec.FromBackup, err)
+		}
+		v.Status.ActualSize = size
+
 		// If KubernetesStatus is set on Backup, restore it.
 		if statusJSON, ok := backup.Labels[types.KubernetesStatusLabel]; ok {
 			if err := json.Unmarshal([]byte(statusJSON), kubeStatus); err != nil {
@@ -626,6 +632,19 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 		newVolume = true
 		es[e.Name] = e
+	}
+
+	if len(e.Status.Snapshots) != 0 {
+		actualSize := int64(0)
+		for _, snapshot := range e.Status.Snapshots {
+			size, err := util.ConvertSize(snapshot.Size)
+			if err != nil {
+				logrus.Errorf("BUG: volume controller: unable to parse size %v for %v of %v: %v", snapshot.Size, snapshot.Name, v.Name, err)
+				// continue checking for other snapshots
+			}
+			actualSize += size
+		}
+		v.Status.ActualSize = actualSize
 	}
 
 	if len(rs) == 0 {

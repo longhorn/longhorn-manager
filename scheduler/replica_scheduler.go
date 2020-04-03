@@ -156,13 +156,14 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, repl
 		}
 		diskReadyCondition := types.GetCondition(status.Conditions, types.DiskConditionTypeReady)
 		if diskReadyCondition.Status == types.ConditionStatusFalse || !disk.AllowScheduling ||
-			!rcs.IsSchedulableToDisk(replica.Spec.VolumeSize, info) {
+			!rcs.IsSchedulableToDisk(replica.Spec.VolumeSize, volume.Status.ActualSize, info) {
 			continue
 		}
 		// Check if the Disk's Tags are valid.
 		if !rcs.checkTagsAreFulfilled(disk.Tags, volume.Spec.DiskSelector) {
 			continue
 		}
+
 		suggestDisk := &Disk{
 			DiskSpec: disk,
 			NodeID:   node.Name,
@@ -217,13 +218,13 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, di
 		replica.Name, replica.Spec.NodeID, replica.Spec.DiskID, replica.Spec.DataPath)
 }
 
-func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, info *DiskSchedulingInfo) bool {
+func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, requiredStorage int64, info *DiskSchedulingInfo) bool {
 	// StorageReserved = the space is already used by 3rd party + the space will be used by 3rd party.
 	// StorageAvailable = the space can be used by 3rd party or Longhorn system.
 	// There is no (direct) relationship between StorageReserved and StorageAvailable.
 	return info.StorageMaximum > 0 && info.StorageAvailable > 0 &&
-		(size+info.StorageScheduled) <= (info.StorageMaximum-info.StorageReserved)*(info.OverProvisioningPercentage/100) &&
-		info.StorageAvailable > info.StorageMaximum*info.MinimalAvailablePercentage/100
+		info.StorageAvailable-requiredStorage > info.StorageMaximum*info.MinimalAvailablePercentage/100 &&
+		(size+info.StorageScheduled) <= (info.StorageMaximum-info.StorageReserved)*(info.OverProvisioningPercentage/100)
 }
 
 func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk types.DiskSpec, diskStatus types.DiskStatus) (*DiskSchedulingInfo, error) {

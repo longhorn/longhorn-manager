@@ -107,6 +107,7 @@ type VolumeStatus struct {
 	RemountRequired            bool                 `json:"remountRequired"`
 	ExpansionRequired          bool                 `json:"expansionRequired"`
 	IsStandby                  bool                 `json:"isStandby"`
+	ActualSize                 int64                `json:"actualSize"`
 }
 
 type RecurringJobType string
