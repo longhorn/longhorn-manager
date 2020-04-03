@@ -2,28 +2,17 @@ package manager
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	apiv1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-)
-
-var (
-	pvVolumeMode = apiv1.PersistentVolumeFilesystem
-)
-
-const (
-	KubeStatusPollCount    = 5
-	KubeStatusPollInterval = 1 * time.Second
 )
 
 func (m *VolumeManager) PVCreate(name, pvName, fsType string) (v *longhorn.Volume, err error) {
@@ -53,7 +42,7 @@ func (m *VolumeManager) PVCreate(name, pvName, fsType string) (v *longhorn.Volum
 		fsType = "ext4"
 	}
 
-	pv := NewPVManifest(v, pvName, storageClassName, fsType)
+	pv := datastore.NewPVManifest(v, pvName, storageClassName, fsType)
 	pv, err = m.ds.CreatePersisentVolume(pv)
 	if err != nil {
 		return nil, err
@@ -61,45 +50,6 @@ func (m *VolumeManager) PVCreate(name, pvName, fsType string) (v *longhorn.Volum
 
 	logrus.Debugf("Created PV for volume %v: %+v", v.Name, v.Spec)
 	return v, nil
-}
-
-func NewPVManifest(v *longhorn.Volume, pvName, storageClassName, fsType string) *apiv1.PersistentVolume {
-	diskSelector := strings.Join(v.Spec.DiskSelector, ",")
-	nodeSelector := strings.Join(v.Spec.NodeSelector, ",")
-
-	return &apiv1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: pvName,
-		},
-		Spec: apiv1.PersistentVolumeSpec{
-			Capacity: apiv1.ResourceList{
-				apiv1.ResourceStorage: *resource.NewQuantity(v.Spec.Size, resource.BinarySI),
-			},
-			AccessModes: []apiv1.PersistentVolumeAccessMode{
-				apiv1.ReadWriteOnce,
-			},
-
-			PersistentVolumeReclaimPolicy: apiv1.PersistentVolumeReclaimRetain,
-
-			VolumeMode: &pvVolumeMode,
-
-			StorageClassName: storageClassName,
-
-			PersistentVolumeSource: apiv1.PersistentVolumeSource{
-				CSI: &apiv1.CSIPersistentVolumeSource{
-					Driver: types.LonghornDriverName,
-					FSType: fsType,
-					VolumeAttributes: map[string]string{
-						"diskSelector":        diskSelector,
-						"nodeSelector":        nodeSelector,
-						"numberOfReplicas":    string(v.Spec.NumberOfReplicas),
-						"staleReplicaTimeout": string(v.Spec.StaleReplicaTimeout),
-					},
-					VolumeHandle: v.Name,
-				},
-			},
-		},
-	}
 }
 
 func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.Volume, err error) {
@@ -121,7 +71,7 @@ func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.
 	}
 
 	var pvFound bool
-	for i := 0; i < KubeStatusPollCount; i++ {
+	for i := 0; i < datastore.KubeStatusPollCount; i++ {
 		v, err = m.ds.GetVolume(name)
 		if err != nil {
 			return nil, err
@@ -132,7 +82,7 @@ func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.
 			pvFound = true
 			break
 		}
-		time.Sleep(KubeStatusPollInterval)
+		time.Sleep(datastore.KubeStatusPollInterval)
 	}
 	if !pvFound {
 		return nil, fmt.Errorf("cannot found PV %v or the PV status %v is invalid for PVC creation", ks.PVName, ks.PVStatus)
@@ -151,7 +101,7 @@ func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.
 		}
 	}
 
-	pvc := NewPVCManifest(v, ks.PVName, namespace, pvcName, pv.Spec.StorageClassName)
+	pvc := datastore.NewPVCManifest(v, ks.PVName, namespace, pvcName, pv.Spec.StorageClassName)
 	pvc, err = m.ds.CreatePersisentVolumeClaim(namespace, pvc)
 	if err != nil {
 		return nil, err
@@ -159,25 +109,4 @@ func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.
 
 	logrus.Debugf("Created PVC for volume %v: %+v", v.Name, v.Spec)
 	return v, nil
-}
-
-func NewPVCManifest(v *longhorn.Volume, pvName, ns, pvcName, storageClassName string) *apiv1.PersistentVolumeClaim {
-	return &apiv1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pvcName,
-			Namespace: ns,
-		},
-		Spec: apiv1.PersistentVolumeClaimSpec{
-			AccessModes: []apiv1.PersistentVolumeAccessMode{
-				apiv1.ReadWriteOnce,
-			},
-			Resources: apiv1.ResourceRequirements{
-				Requests: apiv1.ResourceList{
-					apiv1.ResourceStorage: *resource.NewQuantity(v.Spec.Size, resource.BinarySI),
-				},
-			},
-			StorageClassName: &storageClassName,
-			VolumeName:       pvName,
-		},
-	}
 }
