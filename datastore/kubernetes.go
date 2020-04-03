@@ -229,6 +229,10 @@ func (s *DataStore) CreatePersisentVolume(pv *corev1.PersistentVolume) (*corev1.
 	return s.kubeClient.CoreV1().PersistentVolumes().Create(pv)
 }
 
+func (s *DataStore) DeletePersisentVolume(pvName string) error {
+	return s.kubeClient.CoreV1().PersistentVolumes().Delete(pvName, &metav1.DeleteOptions{})
+}
+
 func (s *DataStore) UpdatePersisentVolume(pv *corev1.PersistentVolume) (*corev1.PersistentVolume, error) {
 	return s.kubeClient.CoreV1().PersistentVolumes().Update(pv)
 }
@@ -239,6 +243,10 @@ func (s *DataStore) GetPersisentVolume(pvName string) (*corev1.PersistentVolume,
 
 func (s *DataStore) CreatePersisentVolumeClaim(ns string, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
 	return s.kubeClient.CoreV1().PersistentVolumeClaims(ns).Create(pvc)
+}
+
+func (s *DataStore) DeletePersisentVolumeClaim(ns, pvcName string) error {
+	return s.kubeClient.CoreV1().PersistentVolumeClaims(ns).Delete(pvcName, &metav1.DeleteOptions{})
 }
 
 func (s *DataStore) GetPersisentVolumeClaim(namespace, pvcName string) (*corev1.PersistentVolumeClaim, error) {
