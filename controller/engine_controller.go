@@ -724,9 +724,13 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			}
 		}
 	}
-	if !reflect.DeepEqual(engine.Status.ReplicaModeMap, currentReplicaModeMap) {
-		engine.Status.ReplicaModeMap = currentReplicaModeMap
+	engine.Status.ReplicaModeMap = currentReplicaModeMap
+
+	snapshots, err := client.SnapshotList()
+	if err != nil {
+		return err
 	}
+	engine.Status.Snapshots = snapshots
 
 	// TODO: find a more advanced way to handle invocations for incompatible running engines
 	isOldVersion, err := m.ds.IsEngineImageCLIAPIVersionLessThanThree(engine.Status.CurrentImage)

@@ -175,6 +175,7 @@ type EngineStatus struct {
 	RestoreStatus            map[string]*RestoreStatus `json:"restoreStatus"`
 	PurgeStatus              map[string]*PurgeStatus   `json:"purgeStatus"`
 	RebuildStatus            map[string]*RebuildStatus `json:"rebuildStatus"`
+	Snapshots                map[string]*Snapshot      `json:"snapshots"`
 }
 
 type Snapshot struct {
