@@ -2,17 +2,27 @@ package datastore
 
 import (
 	"fmt"
+	"strings"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1beta1 "k8s.io/api/batch/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/rest"
 
 	"github.com/longhorn/longhorn-manager/types"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+)
+
+const (
+	KubeStatusPollCount    = 5
+	KubeStatusPollInterval = 1 * time.Second
 )
 
 func (s *DataStore) getManagerLabel() map[string]string {
@@ -262,4 +272,66 @@ func (s *DataStore) GetPodContainerLogRequest(podName, containerName string) *re
 
 func (s *DataStore) GetKubernetesVersion() (*version.Info, error) {
 	return s.kubeClient.Discovery().ServerVersion()
+}
+
+func NewPVManifest(v *longhorn.Volume, pvName, storageClassName, fsType string) *corev1.PersistentVolume {
+	defaultVolumeMode := corev1.PersistentVolumeFilesystem
+
+	diskSelector := strings.Join(v.Spec.DiskSelector, ",")
+	nodeSelector := strings.Join(v.Spec.NodeSelector, ",")
+
+	return &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: pvName,
+		},
+		Spec: corev1.PersistentVolumeSpec{
+			Capacity: corev1.ResourceList{
+				corev1.ResourceStorage: *resource.NewQuantity(v.Spec.Size, resource.BinarySI),
+			},
+			AccessModes: []corev1.PersistentVolumeAccessMode{
+				corev1.ReadWriteOnce,
+			},
+
+			PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimRetain,
+
+			VolumeMode: &defaultVolumeMode,
+
+			StorageClassName: storageClassName,
+
+			PersistentVolumeSource: corev1.PersistentVolumeSource{
+				CSI: &corev1.CSIPersistentVolumeSource{
+					Driver: types.LonghornDriverName,
+					FSType: fsType,
+					VolumeAttributes: map[string]string{
+						"diskSelector":        diskSelector,
+						"nodeSelector":        nodeSelector,
+						"numberOfReplicas":    string(v.Spec.NumberOfReplicas),
+						"staleReplicaTimeout": string(v.Spec.StaleReplicaTimeout),
+					},
+					VolumeHandle: v.Name,
+				},
+			},
+		},
+	}
+}
+
+func NewPVCManifest(v *longhorn.Volume, pvName, ns, pvcName, storageClassName string) *corev1.PersistentVolumeClaim {
+	return &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pvcName,
+			Namespace: ns,
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{
+				corev1.ReadWriteOnce,
+			},
+			Resources: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: *resource.NewQuantity(v.Spec.Size, resource.BinarySI),
+				},
+			},
+			StorageClassName: &storageClassName,
+			VolumeName:       pvName,
+		},
+	}
 }
