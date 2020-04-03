@@ -669,7 +669,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		if err != nil {
 			return err
 		}
-		if !nc.scheduler.IsSchedulableToDisk(0, info) {
+		if !nc.scheduler.IsSchedulableToDisk(0, 0, info) {
 			types.SetConditionAndRecord(diskStatus.Conditions, types.DiskConditionTypeSchedulable, types.ConditionStatusFalse,
 				string(types.DiskConditionReasonDiskPressure),
 				fmt.Sprintf("the disk %v(%v) on the node %v has %v available, but requires reserved %v, minimal %v%s to schedule more replicas",

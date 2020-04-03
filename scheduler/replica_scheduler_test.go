@@ -467,6 +467,68 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.storageMinimalAvailablePercentage = "100"
 	testCases["there's no available disks for scheduling"] = tc
 
+	// Test no available disks due to volume.Status.ActualSize
+	tc = generateSchedulerTestCase()
+	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	tc.daemons = []*v1.Pod{
+		daemon1,
+		daemon2,
+	}
+	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
+	disk = newDisk(TestDefaultDataPath, true, TestDiskSize)
+	node1.Spec.Disks = map[string]types.DiskSpec{
+		TestDiskID1: disk,
+	}
+	node1.Status.DiskStatus = map[string]types.DiskStatus{
+		TestDiskID1: {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: map[string]types.Condition{
+				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			},
+		},
+	}
+	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	disk2 = newDisk(TestDefaultDataPath, true, 0)
+	node2.Spec.Disks = map[string]types.DiskSpec{
+		TestDiskID1: disk,
+		TestDiskID2: disk2,
+	}
+	node2.Status.DiskStatus = map[string]types.DiskStatus{
+		TestDiskID1: {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: map[string]types.Condition{
+				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			},
+		},
+		TestDiskID2: {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: map[string]types.Condition{
+				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			},
+		},
+	}
+	nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+		TestNode2: node2,
+	}
+	tc.nodes = nodes
+	tc.volume.Status.ActualSize = TestDiskAvailableSize - TestDiskSize*0.2
+	expectedNodes = map[string]*longhorn.Node{}
+	tc.expectedNodes = expectedNodes
+	tc.err = false
+	tc.isNilReplica = true
+	tc.storageOverProvisioningPercentage = "200"
+	tc.storageMinimalAvailablePercentage = "20"
+	testCases["there's no available disks for scheduling due to required storage"] = tc
+
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
 
