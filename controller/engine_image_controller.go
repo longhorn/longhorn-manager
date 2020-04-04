@@ -258,7 +258,6 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return ic.ds.RemoveFinalizerForEngineImage(engineImage)
 	}
 
-	oldImageState := engineImage.Status.State
 	existingEngineImage := engineImage.DeepCopy()
 	defer func() {
 		if err == nil && !reflect.DeepEqual(existingEngineImage.Status, engineImage.Status) {
@@ -297,6 +296,9 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			return errors.Wrapf(err, "fail to create daemonset for engine image %v", engineImage.Name)
 		}
 		logrus.Infof("Created daemon set %v for engine image %v (%v)", dsSpec.Name, engineImage.Name, engineImage.Spec.Image)
+		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions,
+			types.EngineImageConditionTypeReady, types.ConditionStatusFalse,
+			types.EngineImageConditionTypeReadyReasonDaemonSet, fmt.Sprintf("creating daemon set %v for %v", dsSpec.Name, engineImage.Spec.Image))
 		engineImage.Status.State = types.EngineImageStateDeploying
 		return nil
 	}
@@ -311,6 +313,9 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	}
 
 	if ds.Status.DesiredNumberScheduled == 0 {
+		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions,
+			types.EngineImageConditionTypeReady, types.ConditionStatusFalse,
+			types.EngineImageConditionTypeReadyReasonDaemonSet, "no pod scheduled")
 		engineImage.Status.State = types.EngineImageStateDeploying
 		return nil
 	}
@@ -329,25 +334,44 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		}
 	}
 	if ds.Status.NumberAvailable < readyNodeCount {
+		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, types.EngineImageConditionTypeReady, types.ConditionStatusFalse,
+			types.EngineImageConditionTypeReadyReasonDaemonSet, fmt.Sprintf("no enough pods are ready: %v vs %v", ds.Status.NumberAvailable, readyNodeCount))
 		engineImage.Status.State = types.EngineImageStateDeploying
 		return nil
 	}
 
 	if !ic.engineBinaryChecker(engineImage.Spec.Image) {
+		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, types.EngineImageConditionTypeReady, types.ConditionStatusFalse, types.EngineImageConditionTypeReadyReasonDaemonSet, "engine binary check failed")
 		engineImage.Status.State = types.EngineImageStateDeploying
 		return nil
 	}
-
-	// will only become ready for the first time if all the following functions succeed
-	engineImage.Status.State = types.EngineImageStateReady
 
 	if err := ic.engineImageVersionUpdater(engineImage); err != nil {
 		return err
 	}
 
 	if err := engineapi.CheckCLICompatibilty(engineImage.Status.CLIAPIVersion, engineImage.Status.CLIAPIMinVersion); err != nil {
+		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, types.EngineImageConditionTypeReady, types.ConditionStatusFalse, types.EngineImageConditionTypeReadyReasonBinary, "incompatible")
 		engineImage.Status.State = types.EngineImageStateIncompatible
 		// Allow update reference count and clean up even it's incompatible since engines may have been upgraded
+	}
+
+	if err := ic.updateEngineImageRefCount(engineImage); err != nil {
+		return errors.Wrapf(err, "failed to update RefCount for engine image %v(%v)", engineImage.Name, engineImage.Spec.Image)
+	}
+
+	if err := ic.cleanupExpiredEngineImage(engineImage); err != nil {
+		return err
+	}
+
+	// will only become ready for the first time if all the following functions succeed
+	if engineImage.Status.State != types.EngineImageStateIncompatible && engineImage.DeletionTimestamp == nil {
+		engineImage.Status.State = types.EngineImageStateReady
+
+		engineImage.Status.Conditions = types.SetConditionAndRecord(engineImage.Status.Conditions,
+			types.EngineImageConditionTypeReady, types.ConditionStatusTrue,
+			"", fmt.Sprintf("Engine image %v (%v) become ready", engineImage.Name, engineImage.Spec.Image),
+			ic.eventRecorder, engineImage, v1.EventTypeNormal)
 	}
 
 	if engineImage.Status.State != types.EngineImageStateIncompatible && !reflect.DeepEqual(types.GetEngineImageLabels(engineImage.Name), ds.Labels) {
@@ -359,20 +383,6 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		}
 		logrus.Infof("Removed DaemonSet %v with mismatching labels for engine image %v (%v). The DaemonSet with correct labels will be recreated automatically after deletion",
 			dsName, engineImage.Name, engineImage.Spec.Image)
-		return nil
-	}
-
-	if err := ic.updateEngineImageRefCount(engineImage); err != nil {
-		return errors.Wrapf(err, "failed to update RefCount for engine image %v(%v)", engineImage.Name, engineImage.Spec.Image)
-	}
-
-	if err := ic.cleanupExpiredEngineImage(engineImage); err != nil {
-		return err
-	}
-
-	if oldImageState != types.EngineImageStateReady && engineImage.Status.State == types.EngineImageStateReady &&
-		engineImage.DeletionTimestamp == nil {
-		logrus.Infof("Engine image %v (%v) become ready", engineImage.Name, engineImage.Spec.Image)
 	}
 
 	return nil

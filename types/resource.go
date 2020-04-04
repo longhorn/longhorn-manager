@@ -218,11 +218,19 @@ type EngineImageSpec struct {
 	Image string `json:"image"`
 }
 
+const (
+	EngineImageConditionTypeReady = "ready"
+
+	EngineImageConditionTypeReadyReasonDaemonSet = "daemonSet"
+	EngineImageConditionTypeReadyReasonBinary    = "binary"
+)
+
 type EngineImageStatus struct {
-	OwnerID    string           `json:"ownerID"`
-	State      EngineImageState `json:"state"`
-	RefCount   int              `json:"refCount"`
-	NoRefSince string           `json:"noRefSince"`
+	OwnerID    string               `json:"ownerID"`
+	State      EngineImageState     `json:"state"`
+	RefCount   int                  `json:"refCount"`
+	NoRefSince string               `json:"noRefSince"`
+	Conditions map[string]Condition `json:"conditions"`
 
 	EngineVersionDetails
 }

@@ -129,6 +129,7 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.currentEngineImage.Status.OwnerID = TestNode2
 	tc.copyCurrentToExpected()
 	tc.expectedEngineImage.Status.OwnerID = TestNode1
+
 	testCases["Engine image ownerID node is down"] = tc
 
 	tc = getEngineImageControllerTestTemplate()
@@ -137,6 +138,11 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.copyCurrentToExpected()
 	tc.expectedDaemonSet = newEngineImageDaemonSet()
 	tc.expectedDaemonSet.Status.NumberAvailable = 0
+	tc.expectedEngineImage.Status.Conditions[types.EngineImageConditionTypeReady] = types.Condition{
+		Type:   types.EngineImageConditionTypeReady,
+		Status: types.ConditionStatusFalse,
+		Reason: types.EngineImageConditionTypeReadyReasonDaemonSet,
+	}
 	testCases["Engine image DaemonSet creation"] = tc
 
 	// The DaemonSet is not ready hence the engine image will become state `deploying`
@@ -144,6 +150,11 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.currentDaemonSet.Status.NumberAvailable = 0
 	tc.copyCurrentToExpected()
 	tc.expectedEngineImage.Status.State = types.EngineImageStateDeploying
+	tc.expectedEngineImage.Status.Conditions[types.EngineImageConditionTypeReady] = types.Condition{
+		Type:   types.EngineImageConditionTypeReady,
+		Status: types.ConditionStatusFalse,
+		Reason: types.EngineImageConditionTypeReadyReasonDaemonSet,
+	}
 	testCases["Engine Image DaemonSet pods are suddenly removed"] = tc
 
 	// `ei.Status.refCount` should become 1 and `Status.NoRefSince` should be unset
@@ -163,17 +174,6 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.expectedEngineImage.Status.RefCount = 0
 	tc.expectedEngineImage.Status.NoRefSince = getTestNow()
 	testCases["The default engine image won't be cleaned up even if there is no volume using it"] = tc
-
-	// Since the finalizer mechanism doesn't work for fake k8s client, the expired engine image in this case
-	// will be removed directly then lead to the following engine image update failure.
-	// Comment it for now.
-	//tc = getEngineImageControllerTestTemplate()
-	//tc.volume = nil
-	//tc.engine = nil
-	//tc.defaultEngineImage = TestUpgradedEngineImage
-	//tc.copyCurrentToExpected()
-	//tc.expectedEngineImage = nil
-	//testCases["Expired engine image cleanup"] = tc
 
 	tc = getEngineImageControllerTestTemplate()
 	deprecatedLabels := map[string]string{
@@ -201,6 +201,11 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.currentEngineImage.Status.EngineVersionDetails = incompatibleVersion
 	tc.copyCurrentToExpected()
 	tc.expectedEngineImage.Status.State = types.EngineImageStateIncompatible
+	tc.expectedEngineImage.Status.Conditions[types.EngineImageConditionTypeReady] = types.Condition{
+		Type:   types.EngineImageConditionTypeReady,
+		Status: types.ConditionStatusFalse,
+		Reason: types.EngineImageConditionTypeReadyReasonBinary,
+	}
 	testCases["Incompatible engine image"] = tc
 
 	return testCases
@@ -280,6 +285,11 @@ func (s *TestSuite) TestEngineImage(c *C) {
 			c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
 		} else {
 			c.Assert(err, IsNil)
+			for k, v := range ei.Status.Conditions {
+				v.LastTransitionTime = ""
+				v.Message = ""
+				ei.Status.Conditions[k] = v
+			}
 			c.Assert(ei.Status, DeepEquals, tc.expectedEngineImage.Status)
 		}
 
