@@ -162,3 +162,13 @@ func (n *InstanceManagerStatus) DeepCopyInto(to *InstanceManagerStatus) {
 		}
 	}
 }
+
+func (ei *EngineImageStatus) DeepCopyInto(to *EngineImageStatus) {
+	*to = *ei
+	if ei.Conditions != nil {
+		to.Conditions = make(map[string]Condition)
+		for key, value := range ei.Conditions {
+			to.Conditions[key] = value
+		}
+	}
+}
