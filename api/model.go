@@ -957,8 +957,10 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 	disks := map[string]DiskInfo{}
 	for name, disk := range node.Spec.Disks {
 		di := DiskInfo{
-			disk,
-			*node.Status.DiskStatus[name],
+			DiskSpec: disk,
+		}
+		if node.Status.DiskStatus != nil && node.Status.DiskStatus[name] != nil {
+			di.DiskStatus = *node.Status.DiskStatus[name]
 		}
 		disks[name] = di
 	}
