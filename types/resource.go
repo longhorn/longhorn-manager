@@ -278,10 +278,10 @@ const (
 )
 
 type NodeStatus struct {
-	Conditions map[string]Condition  `json:"conditions"`
-	DiskStatus map[string]DiskStatus `json:"diskStatus"`
-	Region     string                `json:"region"`
-	Zone       string                `json:"zone"`
+	Conditions map[string]Condition   `json:"conditions"`
+	DiskStatus map[string]*DiskStatus `json:"diskStatus"`
+	Region     string                 `json:"region"`
+	Zone       string                 `json:"zone"`
 }
 
 type DiskSpec struct {

@@ -246,7 +246,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	node1.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
 	}
-	node1.Status.DiskStatus = map[string]types.DiskStatus{
+	node1.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
@@ -261,7 +261,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	node2.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
 	}
-	node2.Status.DiskStatus = map[string]types.DiskStatus{
+	node2.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
@@ -273,7 +273,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	node3.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
 	}
-	node3.Status.DiskStatus = map[string]types.DiskStatus{
+	node3.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
@@ -331,7 +331,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID2: disk2,
 	}
 
-	node1.Status.DiskStatus = map[string]types.DiskStatus{
+	node1.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
@@ -360,7 +360,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: disk,
 		TestDiskID2: disk2,
 	}
-	node2.Status.DiskStatus = map[string]types.DiskStatus{
+	node2.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
@@ -419,7 +419,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	node1.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
 	}
-	node1.Status.DiskStatus = map[string]types.DiskStatus{
+	node1.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageAvailable: 0,
 			StorageScheduled: 0,
@@ -436,7 +436,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: disk,
 		TestDiskID2: disk2,
 	}
-	node2.Status.DiskStatus = map[string]types.DiskStatus{
+	node2.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageAvailable: 0,
 			StorageScheduled: TestDiskAvailableSize,
@@ -480,7 +480,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	node1.Spec.Disks = map[string]types.DiskSpec{
 		TestDiskID1: disk,
 	}
-	node1.Status.DiskStatus = map[string]types.DiskStatus{
+	node1.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
@@ -497,7 +497,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		TestDiskID1: disk,
 		TestDiskID2: disk2,
 	}
-	node2.Status.DiskStatus = map[string]types.DiskStatus{
+	node2.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,

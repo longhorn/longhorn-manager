@@ -128,9 +128,11 @@ func (n *NodeStatus) DeepCopyInto(to *NodeStatus) {
 	if n.DiskStatus == nil {
 		return
 	}
-	to.DiskStatus = make(map[string]DiskStatus)
+	to.DiskStatus = make(map[string]*DiskStatus)
 	for key, value := range n.DiskStatus {
-		to.DiskStatus[key] = value
+		toDiskStatus := &DiskStatus{}
+		*toDiskStatus = *value
+		to.DiskStatus[key] = toDiskStatus
 	}
 	if n.Conditions != nil {
 		to.Conditions = make(map[string]Condition)
