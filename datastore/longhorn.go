@@ -344,19 +344,11 @@ func (s *DataStore) RemoveFinalizerForVolume(obj *longhorn.Volume) error {
 	return nil
 }
 
-func (s *DataStore) GetVolume(name string) (*longhorn.Volume, error) {
-	result, err := s.getVolume(name)
-	if err != nil {
-		return nil, err
-	}
-	return s.fixupVolume(result), nil
-}
-
 func (s *DataStore) getVolumeRO(name string) (*longhorn.Volume, error) {
 	return s.vLister.Volumes(s.namespace).Get(name)
 }
 
-func (s *DataStore) getVolume(name string) (*longhorn.Volume, error) {
+func (s *DataStore) GetVolume(name string) (*longhorn.Volume, error) {
 	resultRO, err := s.vLister.Volumes(s.namespace).Get(name)
 	if err != nil {
 		return nil, err
@@ -379,7 +371,7 @@ func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 
 	for _, itemRO := range list {
 		// Cannot use cached object from lister
-		itemMap[itemRO.Name] = s.fixupVolume(itemRO.DeepCopy())
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
 }
@@ -398,13 +390,6 @@ func (s *DataStore) ListStandbyVolumesRO() (map[string]*longhorn.Volume, error) 
 		}
 	}
 	return itemMap, nil
-}
-
-func (s *DataStore) fixupVolume(volume *longhorn.Volume) *longhorn.Volume {
-	if volume.Status.Conditions == nil {
-		volume.Status.Conditions = map[string]types.Condition{}
-	}
-	return volume
 }
 
 func checkEngine(engine *longhorn.Engine) error {
@@ -903,28 +888,13 @@ func (s *DataStore) getNodeRO(name string) (*longhorn.Node, error) {
 	return s.nLister.Nodes(s.namespace).Get(name)
 }
 
-func (s *DataStore) getNode(name string) (*longhorn.Node, error) {
+func (s *DataStore) GetNode(name string) (*longhorn.Node, error) {
 	resultRO, err := s.getNodeRO(name)
 	if err != nil {
 		return nil, err
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
-}
-
-func (s *DataStore) fixupNode(node *longhorn.Node) *longhorn.Node {
-	if node.Status.Conditions == nil {
-		node.Status.Conditions = map[string]types.Condition{}
-	}
-	return node
-}
-
-func (s *DataStore) GetNode(name string) (*longhorn.Node, error) {
-	node, err := s.getNode(name)
-	if err != nil {
-		return nil, err
-	}
-	return s.fixupNode(node), nil
 }
 
 func (s *DataStore) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) {
@@ -935,7 +905,7 @@ func (s *DataStore) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	verifyUpdate(node.Name, obj, func(name string) (runtime.Object, error) {
 		return s.getNodeRO(name)
 	})
-	return s.fixupNode(obj), nil
+	return obj, nil
 }
 
 func (s *DataStore) UpdateNodeStatus(node *longhorn.Node) (*longhorn.Node, error) {
@@ -946,7 +916,7 @@ func (s *DataStore) UpdateNodeStatus(node *longhorn.Node) (*longhorn.Node, error
 	verifyUpdate(node.Name, obj, func(name string) (runtime.Object, error) {
 		return s.getNodeRO(name)
 	})
-	return s.fixupNode(obj), nil
+	return obj, nil
 }
 
 func (s *DataStore) ListNodes() (map[string]*longhorn.Node, error) {
@@ -959,7 +929,7 @@ func (s *DataStore) ListNodes() (map[string]*longhorn.Node, error) {
 
 	for _, node := range nodeList {
 		// Cannot use cached object from lister
-		itemMap[node.Name] = s.fixupNode(node.DeepCopy())
+		itemMap[node.Name] = node.DeepCopy()
 	}
 	return itemMap, nil
 }

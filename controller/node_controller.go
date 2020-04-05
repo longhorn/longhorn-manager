@@ -357,11 +357,13 @@ func (nc *NodeController) syncNode(key string) (err error) {
 			for _, podCondition := range podConditions {
 				if podCondition.Type == v1.PodReady {
 					if podCondition.Status == v1.ConditionTrue && pod.Status.Phase == v1.PodRunning {
-						types.SetConditionAndRecord(node.Status.Conditions, types.NodeConditionTypeReady, types.ConditionStatusTrue,
+						node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+							types.NodeConditionTypeReady, types.ConditionStatusTrue,
 							"", fmt.Sprintf("Node %v is ready", node.Name),
 							nc.eventRecorder, node, v1.EventTypeNormal)
 					} else {
-						types.SetConditionAndRecord(node.Status.Conditions, types.NodeConditionTypeReady, types.ConditionStatusFalse,
+						node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+							types.NodeConditionTypeReady, types.ConditionStatusFalse,
 							string(types.NodeConditionReasonManagerPodDown),
 							fmt.Sprintf("Node %v is down: the manager pod %v is not running", node.Name, pod.Name),
 							nc.eventRecorder, node, v1.EventTypeWarning)
@@ -374,7 +376,8 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 
 	if !nodeManagerFound {
-		types.SetConditionAndRecord(node.Status.Conditions, types.NodeConditionTypeReady, types.ConditionStatusFalse,
+		node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+			types.NodeConditionTypeReady, types.ConditionStatusFalse,
 			string(types.NodeConditionReasonManagerPodMissing),
 			fmt.Sprintf("manager pod missing: node %v has no manager pod running on it", node.Name),
 			nc.eventRecorder, node, v1.EventTypeWarning)
@@ -385,7 +388,8 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	if err != nil {
 		// if kubernetes node has been removed from cluster
 		if apierrors.IsNotFound(err) {
-			types.SetConditionAndRecord(node.Status.Conditions, types.NodeConditionTypeReady, types.ConditionStatusFalse,
+			node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+				types.NodeConditionTypeReady, types.ConditionStatusFalse,
 				string(types.NodeConditionReasonKubernetesNodeGone),
 				fmt.Sprintf("Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name),
 				nc.eventRecorder, node, v1.EventTypeWarning)
@@ -398,7 +402,8 @@ func (nc *NodeController) syncNode(key string) (err error) {
 			switch con.Type {
 			case v1.NodeReady:
 				if con.Status != v1.ConditionTrue {
-					types.SetConditionAndRecord(node.Status.Conditions, types.NodeConditionTypeReady, types.ConditionStatusFalse,
+					node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+						types.NodeConditionTypeReady, types.ConditionStatusFalse,
 						string(types.NodeConditionReasonKubernetesNodeNotReady),
 						fmt.Sprintf("Kubernetes node %v not ready: %v", node.Name, con.Reason),
 						nc.eventRecorder, node, v1.EventTypeWarning)
@@ -410,7 +415,8 @@ func (nc *NodeController) syncNode(key string) (err error) {
 				v1.NodeMemoryPressure,
 				v1.NodeNetworkUnavailable:
 				if con.Status == v1.ConditionTrue {
-					types.SetConditionAndRecord(node.Status.Conditions, types.NodeConditionTypeReady, types.ConditionStatusFalse,
+					node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+						types.NodeConditionTypeReady, types.ConditionStatusFalse,
 						string(types.NodeConditionReasonKubernetesNodePressure),
 						fmt.Sprintf("Kubernetes node %v has pressure: %v, %v", node.Name, con.Reason, con.Message),
 						nc.eventRecorder, node, v1.EventTypeWarning)
@@ -568,7 +574,8 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 	fsid2Disks := map[string][]string{}
 	for id, info := range diskInfoMap {
 		if info.err != nil {
-			types.SetConditionAndRecord(diskStatusMap[id].Conditions, types.DiskConditionTypeReady, types.ConditionStatusFalse,
+			diskStatusMap[id].Conditions = types.SetConditionAndRecord(diskStatusMap[id].Conditions,
+				types.DiskConditionTypeReady, types.ConditionStatusFalse,
 				string(types.DiskConditionReasonNoDiskInfo),
 				fmt.Sprintf("Disk %v(%v) on node %v is not ready: Get disk information error: %v", id, node.Spec.Disks[id].Path, node.Name, info.err),
 				nc.eventRecorder, node, v1.EventTypeWarning)
@@ -588,7 +595,8 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			diskConfig, err := nc.getDiskConfig(node.Spec.Disks[id].Path)
 			if err != nil {
 				if !types.ErrorIsNotFound(err) {
-					types.SetConditionAndRecord(diskStatusMap[id].Conditions, types.DiskConditionTypeReady, types.ConditionStatusFalse,
+					diskStatusMap[id].Conditions = types.SetConditionAndRecord(diskStatusMap[id].Conditions,
+						types.DiskConditionTypeReady, types.ConditionStatusFalse,
 						string(types.DiskConditionReasonNoDiskInfo),
 						fmt.Sprintf("Disk %v(%v) on node %v is not ready: failed to get disk config: error: %v", id, disk.Path, node.Name, err),
 						nc.eventRecorder, node, v1.EventTypeWarning)
@@ -599,7 +607,8 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			}
 			if diskStatusMap[id].DiskUUID == "" {
 				if len(disks) > 1 {
-					types.SetConditionAndRecord(diskStatusMap[id].Conditions, types.DiskConditionTypeReady, types.ConditionStatusFalse,
+					diskStatusMap[id].Conditions = types.SetConditionAndRecord(diskStatusMap[id].Conditions,
+						types.DiskConditionTypeReady, types.ConditionStatusFalse,
 						string(types.DiskConditionReasonDiskFilesystemChanged),
 						fmt.Sprintf("Disk %v(%v) on node %v is not ready: disk has same file system ID %v as other disks %+v", id, disk.Path, node.Name, fsid, disks),
 						nc.eventRecorder, node, v1.EventTypeWarning)
@@ -608,7 +617,8 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 				if diskUUID == "" {
 					diskConfig, err := nc.generateDiskConfig(node.Spec.Disks[id].Path)
 					if err != nil {
-						types.SetConditionAndRecord(diskStatusMap[id].Conditions, types.DiskConditionTypeReady, types.ConditionStatusFalse,
+						diskStatusMap[id].Conditions = types.SetConditionAndRecord(diskStatusMap[id].Conditions,
+							types.DiskConditionTypeReady, types.ConditionStatusFalse,
 							string(types.DiskConditionReasonNoDiskInfo),
 							fmt.Sprintf("Disk %v(%v) on node %v is not ready: failed to generate disk config: error: %v", id, disk.Path, node.Name, err),
 							nc.eventRecorder, node, v1.EventTypeWarning)
@@ -619,12 +629,14 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 				diskStatus.DiskUUID = diskUUID
 			} else { // diskStatusMap[id].DiskUUID != ""
 				if diskUUID == "" {
-					types.SetConditionAndRecord(diskStatusMap[id].Conditions, types.DiskConditionTypeReady, types.ConditionStatusFalse,
+					diskStatusMap[id].Conditions = types.SetConditionAndRecord(diskStatusMap[id].Conditions,
+						types.DiskConditionTypeReady, types.ConditionStatusFalse,
 						string(types.DiskConditionReasonDiskFilesystemChanged),
 						fmt.Sprintf("Disk %v(%v) on node %v is not ready: cannot find disk config file, maybe due to a mount error", id, disk.Path, node.Name),
 						nc.eventRecorder, node, v1.EventTypeWarning)
 				} else if diskStatusMap[id].DiskUUID != diskUUID {
-					types.SetConditionAndRecord(diskStatusMap[id].Conditions, types.DiskConditionTypeReady, types.ConditionStatusFalse,
+					diskStatusMap[id].Conditions = types.SetConditionAndRecord(diskStatusMap[id].Conditions,
+						types.DiskConditionTypeReady, types.ConditionStatusFalse,
 						string(types.DiskConditionReasonDiskFilesystemChanged),
 						fmt.Sprintf("Disk %v(%v) on node %v is not ready: record diskUUID doesn't match the one on the disk ", id, disk.Path, node.Name),
 						nc.eventRecorder, node, v1.EventTypeWarning)
@@ -634,7 +646,8 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			if diskStatus.DiskUUID == diskUUID {
 				diskStatus.StorageMaximum = diskInfoMap[id].entry.StorageMaximum
 				diskStatus.StorageAvailable = diskInfoMap[id].entry.StorageAvailable
-				types.SetConditionAndRecord(diskStatusMap[id].Conditions, types.DiskConditionTypeReady, types.ConditionStatusTrue,
+				diskStatusMap[id].Conditions = types.SetConditionAndRecord(diskStatusMap[id].Conditions,
+					types.DiskConditionTypeReady, types.ConditionStatusTrue,
 					"", fmt.Sprintf("Disk %v(%v) on node %v is ready", id, disk.Path, node.Name),
 					nc.eventRecorder, node, v1.EventTypeNormal)
 			}
@@ -673,14 +686,16 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			return err
 		}
 		if !nc.scheduler.IsSchedulableToDisk(0, 0, info) {
-			types.SetConditionAndRecord(diskStatus.Conditions, types.DiskConditionTypeSchedulable, types.ConditionStatusFalse,
+			diskStatus.Conditions = types.SetConditionAndRecord(diskStatus.Conditions,
+				types.DiskConditionTypeSchedulable, types.ConditionStatusFalse,
 				string(types.DiskConditionReasonDiskPressure),
 				fmt.Sprintf("the disk %v(%v) on the node %v has %v available, but requires reserved %v, minimal %v%s to schedule more replicas",
 					id, disk.Path, node.Name, diskStatus.StorageAvailable, disk.StorageReserved, minimalAvailablePercentage, "%"),
 				nc.eventRecorder, node, v1.EventTypeWarning)
 
 		} else {
-			types.SetConditionAndRecord(diskStatus.Conditions, types.DiskConditionTypeSchedulable, types.ConditionStatusTrue,
+			diskStatus.Conditions = types.SetConditionAndRecord(diskStatus.Conditions,
+				types.DiskConditionTypeSchedulable, types.ConditionStatusTrue,
 				"", fmt.Sprintf("Disk %v(%v) on node %v is schedulable", id, disk.Path, node.Name),
 				nc.eventRecorder, node, v1.EventTypeNormal)
 		}
@@ -712,11 +727,11 @@ func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error
 				mountPropagationStr = string(*mount.MountPropagation)
 			}
 			if mount.MountPropagation == nil || *mount.MountPropagation != v1.MountPropagationBidirectional {
-				types.SetCondition(node.Status.Conditions, types.NodeConditionTypeMountPropagation, types.ConditionStatusFalse,
+				node.Status.Conditions = types.SetCondition(node.Status.Conditions, types.NodeConditionTypeMountPropagation, types.ConditionStatusFalse,
 					string(types.NodeConditionReasonNoMountPropagationSupport),
 					fmt.Sprintf("The MountPropagation value %s is not detected from pod %s, node %s", mountPropagationStr, pod.Name, pod.Spec.NodeName))
 			} else {
-				types.SetCondition(node.Status.Conditions, types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, "", "")
+				node.Status.Conditions = types.SetCondition(node.Status.Conditions, types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, "", "")
 			}
 			break
 		}
