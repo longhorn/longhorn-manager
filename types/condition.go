@@ -9,6 +9,9 @@ import (
 
 // GetCondition returns a copy of conditions[conditionType], and automatically fill the unknown condition
 func GetCondition(conditions map[string]Condition, conditionType string) Condition {
+	if conditions == nil {
+		return getUnknownCondition(conditionType)
+	}
 	condition, exists := conditions[conditionType]
 	if !exists {
 		condition = getUnknownCondition(conditionType)
@@ -25,16 +28,20 @@ func getUnknownCondition(conditionType string) Condition {
 }
 
 func SetConditionAndRecord(conditions map[string]Condition, conditionType string, conditionValue ConditionStatus,
-	reason, message string, eventRecorder record.EventRecorder, obj runtime.Object, eventtype string) {
+	reason, message string, eventRecorder record.EventRecorder, obj runtime.Object, eventtype string) map[string]Condition {
 
 	condition := GetCondition(conditions, conditionType)
 	if condition.Status != conditionValue {
 		eventRecorder.Event(obj, eventtype, conditionType, message)
 	}
-	SetCondition(conditions, conditionType, conditionValue, reason, message)
+	return SetCondition(conditions, conditionType, conditionValue, reason, message)
 }
 
-func SetCondition(conditions map[string]Condition, conditionType string, conditionValue ConditionStatus, reason, message string) {
+func SetCondition(originConditions map[string]Condition, conditionType string, conditionValue ConditionStatus, reason, message string) map[string]Condition {
+	conditions := map[string]Condition{}
+	if originConditions != nil {
+		conditions = originConditions
+	}
 	condition := GetCondition(conditions, conditionType)
 	if condition.Status != conditionValue {
 		condition.LastTransitionTime = util.Now()
@@ -43,4 +50,5 @@ func SetCondition(conditions map[string]Condition, conditionType string, conditi
 	condition.Reason = reason
 	condition.Message = message
 	conditions[conditionType] = condition
+	return conditions
 }

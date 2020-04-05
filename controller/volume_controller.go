@@ -703,7 +703,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 		if scheduledReplica == nil {
 			logrus.Errorf("unable to schedule replica %v of volume %v", r.Name, v.Name)
-			types.SetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled, types.ConditionStatusFalse,
+			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+				types.VolumeConditionTypeScheduled, types.ConditionStatusFalse,
 				types.VolumeConditionReasonReplicaSchedulingFailure, "")
 			allScheduled = false
 			// no need to continue, since we won't able to schedule
@@ -713,7 +714,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		rs[r.Name] = scheduledReplica
 	}
 	if allScheduled {
-		types.SetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled, types.ConditionStatusTrue, "", "")
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			types.VolumeConditionTypeScheduled, types.ConditionStatusTrue, "", "")
 	}
 
 	allFaulted := true
