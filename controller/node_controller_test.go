@@ -239,14 +239,14 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
 	tc.pods = generateManagerPod(ManagerPodUp)
 	node1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	node1.Status.DiskStatus = map[string]types.DiskStatus{
+	node1.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
 		},
 	}
 	node2 := newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
-	node2.Status.DiskStatus = map[string]types.DiskStatus{
+	node2.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
@@ -272,7 +272,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			DiskStatus: map[string]types.DiskStatus{
+			DiskStatus: map[string]*types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: TestVolumeSize,
 					Conditions: map[string]types.Condition{
@@ -290,7 +290,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			Conditions: map[string]types.Condition{
 				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 			},
-			DiskStatus: map[string]types.DiskStatus{
+			DiskStatus: map[string]*types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
@@ -307,7 +307,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
 	tc.pods = generateManagerPod(ManagerPodUp)
 	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	node1.Status.DiskStatus = map[string]types.DiskStatus{
+	node1.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
@@ -324,7 +324,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
-	node2.Status.DiskStatus = map[string]types.DiskStatus{
+	node2.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
@@ -340,7 +340,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			DiskStatus: map[string]types.DiskStatus{
+			DiskStatus: map[string]*types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
@@ -357,7 +357,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			Conditions: map[string]types.Condition{
 				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 			},
-			DiskStatus: map[string]types.DiskStatus{
+			DiskStatus: map[string]*types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
@@ -378,7 +378,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			StorageReserved: 0,
 		},
 	}
-	node1.Status.DiskStatus = map[string]types.DiskStatus{
+	node1.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
@@ -391,7 +391,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
-	node2.Status.DiskStatus = map[string]types.DiskStatus{
+	node2.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
@@ -407,7 +407,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			DiskStatus: map[string]types.DiskStatus{
+			DiskStatus: map[string]*types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
@@ -424,7 +424,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			Conditions: map[string]types.Condition{
 				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 			},
-			DiskStatus: map[string]types.DiskStatus{
+			DiskStatus: map[string]*types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
@@ -438,7 +438,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
 	tc.pods = generateManagerPod(ManagerPodUp)
 	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	node1.Status.DiskStatus = map[string]types.DiskStatus{
+	node1.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
@@ -456,7 +456,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			DiskStatus: map[string]types.DiskStatus{
+			DiskStatus: map[string]*types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
@@ -482,7 +482,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.kubeNodes = generateKubeNodes(ManagerPodUp)
 	tc.pods = generateManagerPod(ManagerPodUp)
 	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	node1.Status.DiskStatus = map[string]types.DiskStatus{
+	node1.Status.DiskStatus = map[string]*types.DiskStatus{
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
@@ -500,7 +500,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			DiskStatus: map[string]types.DiskStatus{
+			DiskStatus: map[string]*types.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
@@ -551,7 +551,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.pods = generateManagerPod(ManagerPodUp)
 	node1 = newNode(TestNode1, TestNamespace, false, types.ConditionStatusTrue, "")
 	node1.Spec.Disks = map[string]types.DiskSpec{}
-	node1.Status.DiskStatus = map[string]types.DiskStatus{}
+	node1.Status.DiskStatus = map[string]*types.DiskStatus{}
 	tc.nodes = map[string]*longhorn.Node{
 		TestNode1: node1,
 	}
@@ -561,7 +561,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
-			DiskStatus: map[string]types.DiskStatus{},
+			DiskStatus: map[string]*types.DiskStatus{},
 		},
 	}
 	extraReplicaManager = newInstanceManager("extra-replica-manger-name", types.InstanceManagerTypeReplica, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,

@@ -537,9 +537,12 @@ func (nc *NodeController) getDiskInfoMap(node *longhorn.Node) map[string]*diskIn
 func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 	// sync the disks between node.Spec.Disks and node.Status.DiskStatus
 	if node.Status.DiskStatus == nil {
-		node.Status.DiskStatus = map[string]types.DiskStatus{}
+		node.Status.DiskStatus = map[string]*types.DiskStatus{}
 	}
 	for id := range node.Spec.Disks {
+		if node.Status.DiskStatus[id] == nil {
+			node.Status.DiskStatus[id] = &types.DiskStatus{}
+		}
 		diskStatus := node.Status.DiskStatus[id]
 		if diskStatus.Conditions == nil {
 			diskStatus.Conditions = map[string]types.Condition{}

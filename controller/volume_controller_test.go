@@ -897,7 +897,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 		// need to create default node
 		for _, node := range tc.nodes {
-			node.Status.DiskStatus = map[string]types.DiskStatus{
+			node.Status.DiskStatus = map[string]*types.DiskStatus{
 				TestDiskID1: {
 					StorageAvailable: TestDiskAvailableSize,
 					StorageScheduled: 0,
