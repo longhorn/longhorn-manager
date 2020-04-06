@@ -2,6 +2,7 @@ package datastore
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -305,8 +306,8 @@ func NewPVManifest(v *longhorn.Volume, pvName, storageClassName, fsType string) 
 					VolumeAttributes: map[string]string{
 						"diskSelector":        diskSelector,
 						"nodeSelector":        nodeSelector,
-						"numberOfReplicas":    string(v.Spec.NumberOfReplicas),
-						"staleReplicaTimeout": string(v.Spec.StaleReplicaTimeout),
+						"numberOfReplicas":    strconv.Itoa(v.Spec.NumberOfReplicas),
+						"staleReplicaTimeout": strconv.Itoa(v.Spec.StaleReplicaTimeout),
 					},
 					VolumeHandle: v.Name,
 				},
