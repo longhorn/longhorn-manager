@@ -48,6 +48,8 @@ func main() {
 		app.CSICommand(),
 		app.PostUpgradeCmd(),
 		app.UninstallCmd(),
+		// TODO: Remove MigrateForPre070VolumesCmd() after v0.8.1
+		app.MigrateForPre070VolumesCmd(),
 	}
 	a.CommandNotFound = cmdNotFound
 	a.OnUsageError = onUsageError
