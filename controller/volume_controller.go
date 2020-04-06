@@ -1000,12 +1000,14 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 		if v.Status.RemountRequired {
 			if err := util.RemountVolume(v.Name); err != nil {
-				return err
+				msg := fmt.Sprintf("cannot proceed to remount %v on %v: %v", v.Name, v.Spec.NodeID, err)
+				vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonRemount, msg)
+			} else {
+				v.Status.RemountRequired = false
+				msg := fmt.Sprintf("Volume %v has been remounted on node %v", v.Name, v.Status.CurrentNodeID)
+				logrus.Infof(msg)
+				vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonRemount, msg)
 			}
-			v.Status.RemountRequired = false
-			msg := fmt.Sprintf("Volume %v has been remounted on node %v", v.Name, v.Status.CurrentNodeID)
-			logrus.Infof(msg)
-			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonRemount, msg)
 		}
 
 		v.Status.State = types.VolumeStateAttached
@@ -1486,6 +1488,7 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 
 	currentCronJobs := make(map[string]*batchv1beta1.CronJob)
 	for _, job := range v.Spec.RecurringJobs {
+		// TODO add condition for validation error, instead of blocking volume reconciliation loop
 		if backupTarget == "" && job.Task == types.RecurringJobTypeBackup {
 			return fmt.Errorf("cannot backup with empty backup target")
 		}
