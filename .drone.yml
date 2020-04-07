@@ -34,22 +34,22 @@ steps:
     event:
     - push
 
-- name: publish-staging-image
-  image: plugins/docker
+- name: slack_notify
+  image: plugins/slack
   settings:
-    custom_dns: 1.1.1.1
-    dockerfile: package/Dockerfile
-    password:
-      from_secret: docker_password
-    repo: longhornio/longhorn-manager
-    tag: staging
-    username:
-      from_secret: docker_username
+    template: "Build {{build.link}} failed.\n"
+    username: Drone_Publish
+    webhook:
+      from_secret: slack_webhook
   when:
-    branch:
-    - staging
     event:
-    - push
+      exclude:
+      - pull_request
+    instance:
+      include:
+      - drone-publish.rancher.io
+    status:
+      - failure
 
 volumes:
 - name: socket
