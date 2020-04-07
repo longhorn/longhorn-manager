@@ -40,6 +40,6 @@ func TestConvertSize(t *testing.T) {
 func TestRoundUpSize(t *testing.T) {
 	assert := require.New(t)
 
-	assert.Equal(int64(4096), RoundUpSize(0))
-	assert.Equal(int64(8192), RoundUpSize(2323+4096))
+	assert.Equal(int64(SizeAlignment), RoundUpSize(0))
+	assert.Equal(int64(2*SizeAlignment), RoundUpSize(SizeAlignment+1))
 }

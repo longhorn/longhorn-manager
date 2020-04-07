@@ -55,6 +55,8 @@ const (
 	DefaultKubernetesTolerationKey = "kubernetes.io"
 
 	DiskConfigFile = "longhorn-disk.cfg"
+
+	SizeAlignment = 2 * 1024 * 1024
 )
 
 var (
@@ -104,13 +106,13 @@ func ConvertSize(size interface{}) (int64, error) {
 
 func RoundUpSize(size int64) int64 {
 	if size <= 0 {
-		return 4096
+		return SizeAlignment
 	}
-	r := size % 4096
+	r := size % SizeAlignment
 	if r == 0 {
 		return size
 	}
-	return size - r + 4096
+	return size - r + SizeAlignment
 }
 
 func Backoff(maxDuration time.Duration, timeoutMessage string, f func() (bool, error)) error {
