@@ -871,10 +871,17 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		if oldState != v.Status.State {
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonDetached, "volume %v has been detached", v.Name)
 		}
-		// Automatic reattach the volume if PendingNodeID was set, it's for reboot
-		if v.Status.PendingNodeID != "" {
-			v.Status.CurrentNodeID = v.Status.PendingNodeID
-			v.Status.PendingNodeID = ""
+		// Automatic reattach the volume if PendingNodeID was set
+		currentImage, err := vc.getEngineImage(v.Status.CurrentImage)
+		if err != nil {
+			logrus.Errorf("volume controller: skip auto attach for %v since cannot access current image %v: %v", v.Name, v.Status.CurrentImage, err)
+		} else {
+			if currentImage.Status.State != types.EngineImageStateReady {
+				logrus.Warnf("volume controller: skip auto attach for %v due to the current image %v is not ready", v.Name, v.Status.CurrentImage)
+			} else if v.Status.PendingNodeID != "" {
+				v.Status.CurrentNodeID = v.Status.PendingNodeID
+				v.Status.PendingNodeID = ""
+			}
 		}
 
 	} else {
