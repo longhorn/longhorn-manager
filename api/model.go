@@ -233,6 +233,7 @@ type BackupStatus struct {
 	BackupURL string `json:"backupURL"`
 	Error     string `json:"error"`
 	State     string `json:"state"`
+	Replica   string `json:"replica"`
 }
 
 type RestoreStatus struct {
@@ -664,6 +665,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 					BackupURL: status.BackupURL,
 					Error:     status.Error,
 					State:     status.State,
+					Replica:   getReplicaName(status.ReplicaAddress, vrs, v.Name),
 				})
 			}
 		}
