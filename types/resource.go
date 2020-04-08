@@ -309,11 +309,12 @@ type DiskStatus struct {
 }
 
 type BackupStatus struct {
-	Progress     int    `json:"progress"`
-	BackupURL    string `json:"backupURL,omitempty"`
-	Error        string `json:"error,omitempty"`
-	SnapshotName string `json:"snapshotName"`
-	State        string `json:"state"`
+	Progress       int    `json:"progress"`
+	BackupURL      string `json:"backupURL,omitempty"`
+	Error          string `json:"error,omitempty"`
+	SnapshotName   string `json:"snapshotName"`
+	State          string `json:"state"`
+	ReplicaAddress string `json:"replicaAddress"`
 }
 
 type RestoreStatus struct {
