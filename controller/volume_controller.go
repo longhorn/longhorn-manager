@@ -666,6 +666,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 	v.Status.FrontendDisabled = v.Spec.DisableFrontend
 
+	if v.Status.IsStandby {
+		v.Status.FrontendDisabled = true
+	}
+
 	autoAttachRequired := false
 	// InitialRestorationRequired means the volume is newly created restored volume and
 	// it needs to be attached automatically with frontend disabled. Then its engine
