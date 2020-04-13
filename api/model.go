@@ -462,6 +462,9 @@ func volumeSchema(volume *client.Schema) {
 		"expand": {
 			Input: "expandInput",
 		},
+		"cancelExpansion": {
+			Output: "volume",
+		},
 
 		"snapshotPurge": {},
 		"snapshotCreate": {
@@ -795,12 +798,14 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["recurringUpdate"] = struct{}{}
 			actions["activate"] = struct{}{}
 			actions["expand"] = struct{}{}
+			actions["cancelExpansion"] = struct{}{}
 			actions["replicaRemove"] = struct{}{}
 			actions["engineUpgrade"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 		case types.VolumeStateAttaching:
 			actions["detach"] = struct{}{}
+			actions["cancelExpansion"] = struct{}{}
 		case types.VolumeStateAttached:
 			actions["detach"] = struct{}{}
 			actions["activate"] = struct{}{}
@@ -817,6 +822,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateReplicaCount"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
+			actions["cancelExpansion"] = struct{}{}
 		}
 	}
 
