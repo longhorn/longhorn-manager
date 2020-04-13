@@ -678,10 +678,20 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		autoAttachRequired = true
 		v.Status.FrontendDisabled = true
 	}
-	// Need to automatically attach the volume for offline expansion.
-	if v.Spec.NodeID == "" && e != nil && e.Spec.VolumeSize != v.Spec.Size {
-		autoAttachRequired = true
-		v.Status.ExpansionRequired = true
+
+	// Deal with offline expansion.
+	if v.Spec.NodeID == "" && e.Spec.VolumeSize != v.Spec.Size {
+		// The expansion is canceled or hasn't been started
+		if e.Status.CurrentSize == v.Spec.Size {
+			v.Status.ExpansionRequired = false
+			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonCanceledExpansion,
+				"Canceled expanding the volume %v, will automatically detach it", v.Name)
+		} else {
+			logrus.Infof("Starts to attach the volume without frontend for the expansion")
+			autoAttachRequired = true
+			v.Status.ExpansionRequired = true
+		}
+		v.Status.FrontendDisabled = true
 		e.Spec.VolumeSize = v.Spec.Size
 		for _, r := range rs {
 			r.Spec.VolumeSize = v.Spec.Size
@@ -987,9 +997,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 
 		if v.Status.ExpansionRequired {
+			// The engine expansion is complete
 			if v.Spec.Size == e.Status.CurrentSize {
-				// Start the blockdev frontend and expand the filesystem.
 				if v.Spec.Frontend == types.VolumeFrontendBlockDev {
+					logrus.Infof("Prepare to start frontend %v then try to expand the file system for volume %v", v.Spec.Frontend, v.Name)
 					v.Status.FrontendDisabled = false
 					e.Spec.DisableFrontend = false
 					// Wait for the frontend to be up after e.Spec.DisableFrontend getting changed.
@@ -1004,8 +1015,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 						v.Status.ExpansionRequired = false
 					}
 				} else {
+					logrus.Infof("Expanding file system is not supported for volume %v using frontend %v", v.Name, v.Spec.Frontend)
 					v.Status.ExpansionRequired = false
 				}
+				vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonSucceededExpansion,
+					"Succeeds to expand the volume %v to size %v, will automatically detach it", v.Name, e.Status.CurrentSize)
 			}
 		}
 
