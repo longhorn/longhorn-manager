@@ -178,6 +178,8 @@ type EngineStatus struct {
 	RebuildStatus            map[string]*RebuildStatus `json:"rebuildStatus"`
 	Snapshots                map[string]*Snapshot      `json:"snapshots"`
 	IsExpanding              bool                      `json:"isExpanding"`
+	LastExpansionError       string                    `json:"lastExpansionError"`
+	LastExpansionFailedAt    string                    `json:"lastExpansionFailedAt"`
 }
 
 type Snapshot struct {
