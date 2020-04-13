@@ -14,7 +14,9 @@ const (
 	EventReasonRebuilding       = "Rebuilding"
 	EventReasonFailedRebuilding = "FailedRebuilding"
 
-	EventReasonFailedExpansion = "FailedExpansion"
+	EventReasonFailedExpansion    = "FailedExpansion"
+	EventReasonSucceededExpansion = "SucceededExpansion"
+	EventReasonCanceledExpansion  = "CanceledExpansion"
 
 	EventReasonAttached = "Attached"
 	EventReasonDetached = "Detached"
