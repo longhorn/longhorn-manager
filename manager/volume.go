@@ -459,6 +459,51 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 	return v, nil
 }
 
+func (m *VolumeManager) CancelExpansion(volumeName string) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to cancel expansion for volume %v", volumeName)
+	}()
+
+	v, err = m.ds.GetVolume(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	if !v.Status.ExpansionRequired {
+		return nil, fmt.Errorf("volume expansion is not started")
+	}
+	if v.Status.IsStandby {
+		return nil, fmt.Errorf("canceling expansion for standby volume is not supported")
+	}
+
+	var engine *longhorn.Engine
+	es, err := m.ds.ListVolumeEngines(v.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list engines for volume %v: %v", v.Name, err)
+	}
+	if len(es) != 1 {
+		return nil, fmt.Errorf("found more than 1 engines for volume %v", v.Name)
+	}
+	for _, e := range es {
+		engine = e
+	}
+
+	if engine.Status.IsExpanding {
+		return nil, fmt.Errorf("the engine expansion is in progress")
+	}
+	if engine.Status.CurrentSize == v.Spec.Size {
+		return nil, fmt.Errorf("the engine expansion is already complete")
+	}
+
+	v.Spec.Size = engine.Status.CurrentSize
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Debugf("Canceling expansion for volume %v", v.Name)
+	return v, nil
+}
+
 func (m *VolumeManager) UpdateRecurringJobs(volumeName string, jobs []types.RecurringJob) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to update volume recurring jobs for %v", volumeName)
