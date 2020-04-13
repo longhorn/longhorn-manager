@@ -749,6 +749,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			return err
 		}
 		engine.Status.CurrentSize = volumeInfo.Size
+		engine.Status.IsExpanding = volumeInfo.IsExpanding
 
 		if engine.Status.Endpoint == "" && !engine.Spec.DisableFrontend && engine.Spec.Frontend != types.VolumeFrontendEmpty {
 			if err := client.FrontendStart(engine.Spec.Frontend); err != nil {
@@ -820,10 +821,13 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	if !isOldVersion {
+		// Cannot continue to start restoration if expansion is not complete
 		if engine.Spec.VolumeSize != engine.Status.CurrentSize {
-			logrus.Infof("engine monitor: Expanding the size from %v to %v for engine %v", engine.Status.CurrentSize, engine.Spec.VolumeSize, engine.Name)
-			if err := client.Expand(engine.Spec.VolumeSize); err != nil {
-				return err
+			if !engine.Status.IsExpanding {
+				logrus.Infof("engine monitor: Start expanding the size from %v to %v for engine %v", engine.Status.CurrentSize, engine.Spec.VolumeSize, engine.Name)
+				if err := client.Expand(engine.Spec.VolumeSize); err != nil {
+					return err
+				}
 			}
 			return nil
 		}

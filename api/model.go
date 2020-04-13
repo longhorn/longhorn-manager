@@ -96,6 +96,7 @@ type Controller struct {
 	Endpoint               string `json:"endpoint"`
 	LastRestoredBackup     string `json:"lastRestoredBackup"`
 	RequestedBackupRestore string `json:"requestedBackupRestore"`
+	IsExpanding            bool   `json:"isExpanding"`
 }
 
 type Replica struct {
@@ -650,6 +651,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			Endpoint:               e.Status.Endpoint,
 			LastRestoredBackup:     e.Status.LastRestoredBackup,
 			RequestedBackupRestore: e.Spec.RequestedBackupRestore,
+			IsExpanding:            e.Status.IsExpanding,
 		})
 		if e.Spec.NodeID == v.Status.CurrentNodeID {
 			ve = e
