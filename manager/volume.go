@@ -151,7 +151,10 @@ func (m *VolumeManager) getDefaultReplicaCount() (int, error) {
 
 func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn.Volume, err error) {
 	defer func() {
-		err = errors.Wrapf(err, "unable to create volume %v: %+v", name, spec)
+		err = errors.Wrapf(err, "unable to create volume %v", name)
+		if err != nil {
+			logrus.Errorf("manager: unable to create volume %v: %+v: %v", name, spec, err)
+		}
 	}()
 
 	if !util.ValidateName(name) {
