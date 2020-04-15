@@ -338,10 +338,11 @@ type PurgeStatus struct {
 }
 
 type RebuildStatus struct {
-	Error        string `json:"error"`
-	IsRebuilding bool   `json:"isRebuilding"`
-	Progress     int    `json:"progress"`
-	State        string `json:"state"`
+	Error              string `json:"error"`
+	IsRebuilding       bool   `json:"isRebuilding"`
+	Progress           int    `json:"progress"`
+	State              string `json:"state"`
+	FromReplicaAddress string `json:"fromReplicaAddress"`
 }
 
 type InstanceType string
