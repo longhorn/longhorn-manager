@@ -267,6 +267,7 @@ type RebuildStatus struct {
 	Progress     int    `json:"progress"`
 	Replica      string `json:"replica"`
 	State        string `json:"state"`
+	FromReplica  string `json:"fromReplica"`
 }
 
 func generateTimestamp() string {
@@ -717,6 +718,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 					IsRebuilding: status.IsRebuilding,
 					Progress:     status.Progress,
 					State:        status.State,
+					FromReplica:  getReplicaName(status.FromReplicaAddress, vrs, v.Name),
 				})
 			}
 		}
