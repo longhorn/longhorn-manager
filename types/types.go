@@ -330,6 +330,10 @@ func CreateDisksFromAnnotation(annotation string) (map[string]DiskSpec, error) {
 			return nil, err
 		}
 		disk.Tags = tags
+		_, exists := validDisks[disk.Name]
+		if exists {
+			return nil, fmt.Errorf("the disk name %v has duplicated", disk.Name)
+		}
 		validDisks[disk.Name] = disk.DiskSpec
 	}
 
