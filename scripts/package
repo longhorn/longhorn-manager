@@ -14,7 +14,7 @@ REPO=${REPO:-longhornio}
 IMAGE=${IMAGE:-${REPO}/longhorn-manager:${TAG}}
 
 if [ ! -e ./bin/longhorn-manager ]; then
-    ./scripts/build
+    VERSION=${VERSION} TAG=${TAG} ./scripts/build
 fi
 
 trap 'rm -rf ./package/bin' exit
