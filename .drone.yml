@@ -34,6 +34,23 @@ steps:
     event:
     - push
 
+- name: publish-tagged-image
+  image: plugins/docker
+  settings:
+    custom_dns: 1.1.1.1
+    dockerfile: package/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: longhornio/longhorn-manager
+    tag: "${DRONE_TAG}"
+    username:
+      from_secret: docker_username
+  when:
+    branch:
+    - master
+    event:
+    - tag
+
 - name: slack_notify
   image: plugins/slack
   settings:
