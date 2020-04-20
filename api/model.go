@@ -624,13 +624,17 @@ func toSettingCollection(settings []*longhorn.Setting) *client.GenericCollection
 }
 
 func getReplicaName(address string, vrs []*longhorn.Replica, volumeName string) string {
+	addressComponents := strings.Split(strings.TrimPrefix(address, "tcp://"), ":")
+	// The address format should be `<IP>:<Port>` after removing the prefix "tcp://".
+	if len(addressComponents) != 2 {
+		return address
+	}
 	for _, r := range vrs {
-		inputIP := strings.Split(strings.TrimPrefix(address, "tcp://"), ":")[0]
-		if inputIP == r.Status.IP {
+		if addressComponents[0] == r.Status.IP && addressComponents[1] == strconv.Itoa(r.Status.Port) {
 			return r.Name
 		}
 	}
-	//Cannot find matching replica by the address, replica may be removed already. Use address instead
+	// Cannot find matching replica by the address, replica may be removed already. Use address instead.
 	return address
 }
 
