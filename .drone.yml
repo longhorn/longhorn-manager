@@ -37,6 +37,8 @@ steps:
 - name: publish-tagged-image
   image: plugins/docker
   settings:
+    build_args:
+      - "TAG=${DRONE_TAG}"
     custom_dns: 1.1.1.1
     dockerfile: package/Dockerfile
     password:
@@ -47,7 +49,7 @@ steps:
       from_secret: docker_username
   when:
     branch:
-    - master
+    - drone-test
     event:
     - tag
 
