@@ -1,14 +1,16 @@
-kind: Service
 apiVersion: v1
+kind: Service
 metadata:
   labels:
     app: longhorn-manager
   name: longhorn-backend
   namespace: longhorn-system
 spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP
   selector:
     app: longhorn-manager
   ports:
-  - port: 9500
-    targetPort: 9500
-  sessionAffinity: ClientIP
+  - name: manager
+    port: 9500
+    targetPort: manager
