@@ -34,6 +34,7 @@ spec:
         - longhorn-service-account
         ports:
         - containerPort: 9500
+          name: manager
         readinessProbe:
           tcpSocket:
             port: 9500
@@ -65,8 +66,6 @@ spec:
         # Should be: mount path of the volume longhorn-default-setting + the key of the configmap data in 04-default-setting.yaml
         - name: DEFAULT_SETTING_PATH
           value: /var/lib/longhorn-setting/default-setting.yaml
-      #imagePullSecrets:
-      #- name:
       volumes:
       - name: dev
         hostPath:
@@ -83,6 +82,8 @@ spec:
       - name: longhorn-default-setting
         configMap:
           name: longhorn-default-setting
+#      imagePullSecrets:
+#      - name: ""
       serviceAccountName: longhorn-service-account
   updateStrategy:
     rollingUpdate:

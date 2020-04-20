@@ -29,15 +29,6 @@ spec:
           - longhornio/longhorn-manager:master
           - --manager-url
           - http://longhorn-backend:9500/v1
-          # manually set root directory for csi
-          #- --kubelet-root-dir
-          #- /var/lib/rancher/k3s/agent/kubelet
-          # manually specify number of CSI attacher replicas
-          #- --csi-attacher-replica-count
-          #- "3"
-          # manually specify number of CSI provisioner replicas
-          #- --csi-provisioner-replica-count
-          #- "3"
           env:
           - name: POD_NAMESPACE
             valueFrom:
@@ -51,6 +42,9 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: spec.serviceAccountName
+          # Manually set root directory for csi
+          #- name: KUBELET_ROOT_DIR
+          #  value: /var/lib/rancher/k3s/agent/kubelet
           # For AirGap Installation
           # Replce PREFIX with your private registery
           #- name: CSI_ATTACHER_IMAGE
@@ -61,6 +55,12 @@ spec:
           #  value: PREFIX/csi-node-driver-registrar:v1.2.0
           #- name: CSI_RESIZER_IMAGE
           #  value: PREFIX/csi-resizer:v0.3.0
+          # Manually specify number of CSI attacher replicas
+          #- name: CSI_ATTACHER_REPLICA_COUNT
+          #  value: "3"
+          # Manually specify number of CSI provisioner replicas
+          #- name: CSI_PROVISIONER_REPLICA_COUNT
+          #  value: "3"
       #imagePullSecrets:
       #- name:
       serviceAccountName: longhorn-service-account

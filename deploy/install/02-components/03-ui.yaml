@@ -20,11 +20,12 @@ spec:
         image: longhornio/longhorn-ui:master
         ports:
         - containerPort: 8000
+          name: http
         env:
           - name: LONGHORN_MANAGER_IP
             value: "http://longhorn-backend:9500"
-      #imagePullSecrets:
-      #- name:
+#      imagePullSecrets:
+#      - name:
       serviceAccountName: longhorn-service-account
 ---
 kind: Service
