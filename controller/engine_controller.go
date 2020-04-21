@@ -730,9 +730,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	snapshots, err := client.SnapshotList()
 	if err != nil {
-		return err
+		engine.Status.Snapshots = map[string]*types.Snapshot{}
+		engine.Status.SnapshotsError = err.Error()
+	} else {
+		engine.Status.Snapshots = snapshots
+		engine.Status.SnapshotsError = ""
 	}
-	engine.Status.Snapshots = snapshots
 
 	// TODO: find a more advanced way to handle invocations for incompatible running engines
 	isOldVersion, err := m.ds.IsEngineImageCLIAPIVersionLessThanThree(engine.Status.CurrentImage)
