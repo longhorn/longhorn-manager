@@ -177,6 +177,7 @@ type EngineStatus struct {
 	PurgeStatus              map[string]*PurgeStatus   `json:"purgeStatus"`
 	RebuildStatus            map[string]*RebuildStatus `json:"rebuildStatus"`
 	Snapshots                map[string]*Snapshot      `json:"snapshots"`
+	SnapshotsError           string                    `json:"snapshotsError"`
 	IsExpanding              bool                      `json:"isExpanding"`
 	LastExpansionError       string                    `json:"lastExpansionError"`
 	LastExpansionFailedAt    string                    `json:"lastExpansionFailedAt"`
