@@ -27,7 +27,6 @@ spec:
             value: "http://longhorn-backend:9500"
 #      imagePullSecrets:
 #      - name:
-      serviceAccountName: longhorn-service-account
 ---
 kind: Service
 apiVersion: v1
