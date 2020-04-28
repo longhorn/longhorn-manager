@@ -46,6 +46,7 @@ const (
 	AWSAccessKey      = "AWS_ACCESS_KEY_ID"
 	AWSSecretKey      = "AWS_SECRET_ACCESS_KEY"
 	AWSEndPoint       = "AWS_ENDPOINTS"
+	AWSCert           = "AWS_CERT"
 
 	HostProcPath                 = "/host/proc"
 	ReplicaDirectory             = "/replicas/"
@@ -377,6 +378,7 @@ func ConfigBackupCredential(backupTarget string, credential map[string]string) e
 			os.Setenv(AWSAccessKey, credential[AWSAccessKey])
 			os.Setenv(AWSSecretKey, credential[AWSSecretKey])
 			os.Setenv(AWSEndPoint, credential[AWSEndPoint])
+			os.Setenv(AWSCert, credential[AWSCert])
 		} else if os.Getenv(AWSAccessKey) == "" || os.Getenv(AWSSecretKey) == "" {
 			return fmt.Errorf("Could not backup for %s without credential secret", backupType)
 		}
@@ -384,7 +386,8 @@ func ConfigBackupCredential(backupTarget string, credential map[string]string) e
 	return nil
 }
 
-func ConfigEnvWithCredential(backupTarget string, credentialSecret string, hasEndpoint bool, container *v1.Container) error {
+func ConfigEnvWithCredential(backupTarget string, credentialSecret string, hasEndpoint bool, hasCert bool,
+	container *v1.Container) error {
 	backupType, err := CheckBackupType(backupTarget)
 	if err != nil {
 		return err
@@ -427,6 +430,20 @@ func ConfigEnvWithCredential(backupTarget string, credentialSecret string, hasEn
 				},
 			}
 			container.Env = append(container.Env, endpointEnv)
+		}
+		if hasCert {
+			certEnv := v1.EnvVar{
+				Name: AWSCert,
+				ValueFrom: &v1.EnvVarSource{
+					SecretKeyRef: &v1.SecretKeySelector{
+						LocalObjectReference: v1.LocalObjectReference{
+							Name: credentialSecret,
+						},
+						Key: AWSCert,
+					},
+				},
+			}
+			container.Env = append(container.Env, certEnv)
 		}
 	}
 	return nil

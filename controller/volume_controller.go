@@ -1476,8 +1476,9 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 				return nil, errors.Wrapf(err, "cannot get credential secret %v", credentialSecret)
 			}
 			hasEndpoint := (credentials[types.AWSEndPoint] != "")
+			hasCert := (credentials[types.AWSCert] != "")
 
-			util.ConfigEnvWithCredential(backupTarget, credentialSecret, hasEndpoint, &cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers[0])
+			util.ConfigEnvWithCredential(backupTarget, credentialSecret, hasEndpoint, hasCert, &cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers[0])
 		}
 	}
 	return cronJob, nil

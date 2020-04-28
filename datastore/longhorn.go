@@ -194,6 +194,7 @@ func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]strin
 		credentialSecret[types.AWSAccessKey] = string(secret.Data[types.AWSAccessKey])
 		credentialSecret[types.AWSSecretKey] = string(secret.Data[types.AWSSecretKey])
 		credentialSecret[types.AWSEndPoint] = string(secret.Data[types.AWSEndPoint])
+		credentialSecret[types.AWSCert] = string(secret.Data[types.AWSCert])
 	}
 	return credentialSecret, nil
 }
