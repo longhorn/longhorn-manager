@@ -468,9 +468,15 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		if oldRobustness != types.VolumeRobustnessDegraded {
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonDegraded, "volume %v became degraded", v.Name)
 		}
-		// start rebuilding if necessary
-		if err = vc.replenishReplicas(v, e, rs); err != nil {
-			return err
+		// When the volume is automatically attached, it means the volume may be one of the following cases:
+		//   1) the volume is restoring data
+		//   2) the volume is standby/DR volume
+		//   3) the volume is expanding the size
+		// And currently the rebuild is not supported for these cases.
+		if v.Spec.NodeID != "" {
+			if err = vc.replenishReplicas(v, e, rs); err != nil {
+				return err
+			}
 		}
 		// replicas will be started by ReconcileVolumeState() later
 	}
