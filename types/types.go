@@ -299,6 +299,7 @@ func LabelsToString(labels map[string]string) string {
 
 func CreateDisksFromAnnotation(annotation string) (map[string]DiskSpec, error) {
 	validDisks := map[string]DiskSpec{}
+	existFsid := map[string]string{}
 
 	disks, err := UnmarshalToDisks(annotation)
 	if err != nil {
@@ -317,12 +318,22 @@ func CreateDisksFromAnnotation(annotation string) (map[string]DiskSpec, error) {
 				return nil, fmt.Errorf("duplicate disk path %v", disk.Path)
 			}
 		}
+
+		// Set to default disk name
 		if disk.Name == "" {
 			disk.Name = DefaultDiskPrefix + diskInfo.Fsid
 		}
-		if _, exist := validDisks[disk.Name]; exist {
-			return nil, fmt.Errorf("the disk %v is the same file system with %v, fsid %v", disk.Path, validDisks[disk.Name].Path, diskInfo.Fsid)
+
+		if _, exist := existFsid[diskInfo.Fsid]; exist {
+			return nil, fmt.Errorf(
+				"the disk %v is the same"+
+					"file system with %v, fsid %v",
+				disk.Path, existFsid[diskInfo.Fsid],
+				diskInfo.Fsid)
 		}
+
+		existFsid[diskInfo.Fsid] = disk.Path
+
 		if disk.StorageReserved < 0 || disk.StorageReserved > diskInfo.StorageMaximum {
 			return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
 		}
