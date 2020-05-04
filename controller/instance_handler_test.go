@@ -322,7 +322,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 					},
 				}, true),
 			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
-			newEngine(NonExistingInstance, "", "", "", 0, true, types.InstanceStateError, types.InstanceStateRunning),
+			newEngine(NonExistingInstance, "", TestInstanceManagerName1, "", 0, true, types.InstanceStateError, types.InstanceStateRunning),
 			false,
 		},
 		// corner case3: the instance is stopped and the related instance manager is being deleting
@@ -338,7 +338,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			types.InstanceManagerTypeEngine,
 			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateStarting, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
 			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
-			newEngine(NonExistingInstance, "", "", "", 0, true, types.InstanceStateError, types.InstanceStateRunning),
+			newEngine(NonExistingInstance, "", TestInstanceManagerName1, "", 0, true, types.InstanceStateError, types.InstanceStateRunning),
 			false,
 		},
 	}
