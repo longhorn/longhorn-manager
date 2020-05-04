@@ -44,6 +44,11 @@ func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler Instance
 }
 
 func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceManager, instanceName string, spec *types.InstanceSpec, status *types.InstanceStatus) {
+	defer func() {
+		if status.CurrentState == types.InstanceStateStopped {
+			status.InstanceManagerName = ""
+		}
+	}()
 	if im == nil || im.Status.CurrentState == types.InstanceManagerStateStopped || im.Status.CurrentState == types.InstanceManagerStateError || im.DeletionTimestamp != nil {
 		if status.Started {
 			logrus.Warnf("Cannot find the instance manager for the running instance %v, will mark the instance as state ERROR", instanceName)
@@ -52,7 +57,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			status.CurrentState = types.InstanceStateStopped
 		}
 		status.CurrentImage = ""
-		status.InstanceManagerName = ""
 		status.IP = ""
 		status.Port = 0
 		return
@@ -63,7 +67,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			logrus.Warnf("The starting instance manager %v shouldn't contain the running instance %v, will mark the instance as state ERROR", im.Name, instanceName)
 			status.CurrentState = types.InstanceStateError
 			status.CurrentImage = ""
-			status.InstanceManagerName = ""
 			status.IP = ""
 			status.Port = 0
 		}
@@ -79,7 +82,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			status.CurrentState = types.InstanceStateStopped
 		}
 		status.CurrentImage = ""
-		status.InstanceManagerName = ""
 		status.IP = ""
 		status.Port = 0
 		return
@@ -100,7 +102,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	case types.InstanceStateStarting:
 		status.CurrentState = types.InstanceStateStarting
 		status.CurrentImage = ""
-		status.InstanceManagerName = im.Name
 		status.IP = ""
 		status.Port = 0
 	case types.InstanceStateRunning:
@@ -287,9 +288,6 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 					logrus.Warnf("cannot get crash log for instance %v on Instance Manager %v at %v, error %v", instanceName, im.Name, im.Spec.NodeID, err)
 				}
 			}
-		}
-		if spec.DesireState == types.InstanceStateStopped {
-			status.InstanceManagerName = ""
 		}
 	}
 	return nil
