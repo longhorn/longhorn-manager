@@ -31,6 +31,21 @@ func getVolumeLabelSelector(volumeName string) string {
 	return "longhornvolume=" + volumeName
 }
 
+func setVolumeConditionWithoutTimestamp(originConditions map[string]types.Condition, conditionType string, conditionValue types.ConditionStatus, reason, message string) map[string]types.Condition {
+	conditions := map[string]types.Condition{}
+	if originConditions != nil {
+		conditions = originConditions
+	}
+	condition := types.Condition{
+		Type:    conditionType,
+		Status:  conditionValue,
+		Reason:  reason,
+		Message: message,
+	}
+	conditions[conditionType] = condition
+	return conditions
+}
+
 func initSettings(ds *datastore.DataStore) {
 	settingDefaultEngineImage := &longhorn.Setting{
 		ObjectMeta: metav1.ObjectMeta{
@@ -113,6 +128,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.State = types.VolumeStateCreating
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.volume.Status.Conditions = map[string]types.Condition{}
 	tc.engines = nil
 	tc.replicas = nil
 	testCases["volume create"] = tc
@@ -134,13 +150,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.State = types.VolumeStateCreating
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
-	tc.expectVolume.Status.Conditions = map[string]types.Condition{
-		types.VolumeConditionTypeScheduled: {
-			Type:   string(types.VolumeConditionTypeScheduled),
-			Status: types.ConditionStatusFalse,
-			Reason: types.VolumeConditionReasonReplicaSchedulingFailure,
-		},
-	}
+	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.expectVolume.Status.Conditions,
+		types.VolumeConditionTypeScheduled, types.ConditionStatusFalse, types.VolumeConditionReasonReplicaSchedulingFailure, "")
 	testCases["volume create - replica scheduling failure"] = tc
 
 	// after creation, volume in detached state
@@ -236,6 +247,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.Standby = false
 	tc.volume.Status.InitialRestorationRequired = true
 	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
+		types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Spec.NodeID = ""
 	tc.expectVolume.Spec.DisableFrontend = false
@@ -266,6 +279,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.State = types.VolumeStateAttaching
 	tc.volume.Status.InitialRestorationRequired = true
 	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
+		types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
 	for _, e := range tc.engines {
 		e.Spec.NodeID = TestNode1
 		e.Spec.DesireState = types.InstanceStateRunning
@@ -317,6 +332,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.FrontendDisabled = true
 	tc.volume.Status.InitialRestorationRequired = true
 	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
+		types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
 	for _, e := range tc.engines {
 		e.Spec.NodeID = TestNode1
 		e.Spec.DesireState = types.InstanceStateRunning
@@ -358,6 +375,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
 	tc.volume.Status.InitialRestorationRequired = true
 	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
+		types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
 	for _, e := range tc.engines {
 		e.Spec.NodeID = TestNode1
 		e.Spec.DesireState = types.InstanceStateRunning
@@ -390,6 +409,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectVolume.Status.FrontendDisabled = true
 	tc.expectVolume.Status.InitialRestorationRequired = false
+	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.expectVolume.Status.Conditions,
+		types.VolumeConditionTypeRestore, types.ConditionStatusFalse, "", "")
 	for _, r := range tc.expectReplicas {
 		r.Spec.HealthyAt = getTestNow()
 	}
@@ -408,6 +429,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.FrontendDisabled = true
 	tc.volume.Status.InitialRestorationRequired = false
 	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
+		types.VolumeConditionTypeRestore, types.ConditionStatusFalse, "", "")
 	for _, e := range tc.engines {
 		e.Spec.NodeID = TestNode1
 		e.Spec.DesireState = types.InstanceStateRunning
@@ -452,6 +475,67 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	testCases["newly restored volume automatically detaching after restoration completed"] = tc
 
+	// try to update the volume as Faulted if all replicas failed to restore data
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.NodeID = ""
+	tc.volume.Spec.FromBackup = testBackupURL
+	tc.volume.Spec.Standby = false
+	tc.volume.Spec.DisableFrontend = false
+	tc.volume.Status.CurrentNodeID = TestNode1
+	tc.volume.Status.FrontendDisabled = true
+	tc.volume.Status.OwnerID = TestNode1
+	tc.volume.Status.State = types.VolumeStateAttached
+	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
+	tc.volume.Status.InitialRestorationRequired = true
+	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
+		types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
+	for _, e := range tc.engines {
+		e.Spec.NodeID = TestNode1
+		e.Spec.DesireState = types.InstanceStateRunning
+		e.Spec.BackupVolume = TestBackupVolumeName
+		e.Spec.RequestedBackupRestore = TestBackupName
+		e.Spec.DisableFrontend = tc.volume.Status.FrontendDisabled
+		e.Status.OwnerID = TestNode1
+		e.Status.CurrentState = types.InstanceStateRunning
+		e.Status.IP = randomIP()
+		e.Status.Port = randomPort()
+		e.Status.Endpoint = "/dev/" + tc.volume.Name
+		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
+		e.Status.LastRestoredBackup = TestBackupName
+	}
+	for name, r := range tc.replicas {
+		r.Spec.HealthyAt = getTestNow()
+		r.Spec.FailedAt = getTestNow()
+		r.Status.IP = randomIP()
+		r.Status.Port = randomPort()
+		r.Spec.DesireState = types.InstanceStateRunning
+		r.Status.CurrentState = types.InstanceStateRunning
+		for _, e := range tc.engines {
+			e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.IP, r.Status.Port)
+			e.Status.ReplicaModeMap[name] = types.ReplicaModeRW
+		}
+	}
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Spec.NodeID = ""
+	tc.expectVolume.Spec.DisableFrontend = false
+	tc.expectVolume.Status.CurrentNodeID = ""
+	tc.expectVolume.Status.State = types.VolumeStateDetaching
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.FrontendDisabled = true
+	tc.expectVolume.Status.InitialRestorationRequired = true
+	tc.expectVolume.Status.Robustness = types.VolumeRobustnessFaulted
+	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.expectVolume.Status.Conditions,
+		types.VolumeConditionTypeRestore, types.ConditionStatusFalse, types.VolumeConditionReasonRestoreFailure, "All replica restore failed")
+	for _, e := range tc.expectEngines {
+		e.Spec.NodeID = ""
+		e.Spec.DesireState = types.InstanceStateStopped
+		e.Spec.BackupVolume = ""
+		e.Spec.RequestedBackupRestore = ""
+		e.Spec.LogRequested = true
+	}
+	testCases["newly restored volume becomes faulted after all replica error"] = tc
+
 	// after creation, standby volume should automatically be in attaching state
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.FromBackup = testBackupURL
@@ -459,6 +543,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.DisableFrontend = false
 	tc.volume.Status.InitialRestorationRequired = true
 	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
+		types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
 	for _, r := range tc.replicas {
 		r.Spec.HealthyAt = ""
 	}
@@ -486,6 +572,9 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.State = types.VolumeStateAttaching
 	tc.volume.Status.InitialRestorationRequired = true
 	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.IsStandby = true
+	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
+		types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
 	for _, e := range tc.engines {
 		e.Spec.NodeID = tc.volume.Status.CurrentNodeID
 		e.Spec.DesireState = types.InstanceStateRunning
@@ -655,6 +744,10 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 				types.VolumeConditionTypeScheduled: {
 					Type:   string(types.VolumeConditionTypeScheduled),
 					Status: types.ConditionStatusTrue,
+				},
+				types.VolumeConditionTypeRestore: {
+					Type:   string(types.VolumeConditionTypeRestore),
+					Status: types.ConditionStatusFalse,
 				},
 			},
 		},
