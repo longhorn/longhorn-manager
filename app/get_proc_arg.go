@@ -156,7 +156,7 @@ func getProcCmdline(kubeClient *clientset.Clientset, managerImage, serviceAccoun
 
 func deployDetectionPod(kubeClient *clientset.Clientset, namespace, managerImage, serviceAccountName, name, script string, tolerations []v1.Toleration, registrySecret string) error {
 	privileged := true
-	_, err := kubeClient.CoreV1().Pods(namespace).Create(&v1.Pod{
+	detectionPodSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
@@ -176,13 +176,18 @@ func deployDetectionPod(kubeClient *clientset.Clientset, namespace, managerImage
 			},
 			RestartPolicy: v1.RestartPolicyNever,
 			HostPID:       true,
-			ImagePullSecrets: []v1.LocalObjectReference{
-				{
-					Name: registrySecret,
-				},
-			},
 		},
-	})
+	}
+
+	if registrySecret != "" {
+		detectionPodSpec.Spec.ImagePullSecrets = []v1.LocalObjectReference{
+			{
+				Name: registrySecret,
+			},
+		}
+	}
+
+	_, err := kubeClient.CoreV1().Pods(namespace).Create(detectionPodSpec)
 
 	return err
 }

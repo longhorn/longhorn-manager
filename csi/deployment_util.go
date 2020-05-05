@@ -57,7 +57,8 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 	labels := map[string]string{
 		"app": commonName,
 	}
-	return &appsv1.Deployment{
+
+	commonDeploymentSpec := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      commonName,
 			Namespace: namespace,
@@ -102,11 +103,6 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 							},
 						},
 					},
-					ImagePullSecrets: []v1.LocalObjectReference{
-						{
-							Name: registrySecret,
-						},
-					},
 					Volumes: []v1.Volume{
 						{
 							Name: "socket-dir",
@@ -122,6 +118,16 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 			},
 		},
 	}
+
+	if registrySecret != "" {
+		commonDeploymentSpec.Spec.Template.Spec.ImagePullSecrets = []v1.LocalObjectReference{
+			{
+				Name: registrySecret,
+			},
+		}
+	}
+
+	return commonDeploymentSpec
 }
 
 type resourceCreateFunc func(kubeClient *clientset.Clientset, obj runtime.Object) error
