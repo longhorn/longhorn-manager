@@ -614,11 +614,6 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 							},
 						},
 					},
-					ImagePullSecrets: []v1.LocalObjectReference{
-						{
-							Name: registrySecret,
-						},
-					},
 					Volumes: []v1.Volume{
 						{
 							Name: "data",
@@ -633,5 +628,14 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 			},
 		},
 	}
+
+	if registrySecret != "" {
+		d.Spec.Template.Spec.ImagePullSecrets = []v1.LocalObjectReference{
+			{
+				Name: registrySecret,
+			},
+		}
+	}
+
 	return d
 }

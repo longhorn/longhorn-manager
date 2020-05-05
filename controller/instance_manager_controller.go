@@ -554,14 +554,17 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 					},
 				},
 			},
-			ImagePullSecrets: []v1.LocalObjectReference{
-				{
-					Name: registrySecret,
-				},
-			},
 			NodeName:      imc.controllerID,
 			RestartPolicy: v1.RestartPolicyNever,
 		},
+	}
+
+	if registrySecret != "" {
+		podSpec.Spec.ImagePullSecrets = []v1.LocalObjectReference{
+			{
+				Name: registrySecret,
+			},
+		}
 	}
 
 	// Apply resource requirements to newly created Instance Manager Pods.

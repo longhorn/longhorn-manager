@@ -476,11 +476,6 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 							},
 						},
 					},
-					ImagePullSecrets: []v1.LocalObjectReference{
-						{
-							Name: registrySecret,
-						},
-					},
 					Volumes: []v1.Volume{
 						{
 							Name: "kubernetes-csi-dir",
@@ -555,6 +550,14 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 				},
 			},
 		},
+	}
+
+	if registrySecret != "" {
+		daemonSet.Spec.Template.Spec.ImagePullSecrets = []v1.LocalObjectReference{
+			{
+				Name: registrySecret,
+			},
+		}
 	}
 
 	return &PluginDeployment{
