@@ -45,6 +45,7 @@ type Volume struct {
 	RecurringJobs    []types.RecurringJob       `json:"recurringJobs"`
 	Conditions       map[string]types.Condition `json:"conditions"`
 	KubernetesStatus types.KubernetesStatus     `json:"kubernetesStatus"`
+	Ready            bool                       `json:"ready"`
 
 	Replicas      []Replica       `json:"replicas"`
 	Controllers   []Controller    `json:"controllers"`
@@ -751,6 +752,13 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		})
 	}
 
+	// If the volume is auto attached or faulted, it's not ready.
+	ready := true
+	if (v.Spec.NodeID == "" && v.Status.State != types.VolumeStateDetached) ||
+		v.Status.Robustness == types.VolumeRobustnessFaulted {
+		ready = false
+	}
+
 	r := &Volume{
 		Resource: client.Resource{
 			Id:      v.Name,
@@ -779,6 +787,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		LastBackup:                 v.Status.LastBackup,
 		LastBackupAt:               v.Status.LastBackupAt,
 		InitialRestorationRequired: v.Status.InitialRestorationRequired,
+		Ready:                      ready,
 
 		Conditions:       v.Status.Conditions,
 		KubernetesStatus: v.Status.KubernetesStatus,
