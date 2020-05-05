@@ -613,17 +613,16 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				return fmt.Errorf("volume %v has already attached to node %v, but asked to attach to node %v", v.Name, v.Status.CurrentNodeID, v.Spec.NodeID)
 			}
 		} else { // v.Spec.NodeID == ""
+			// Check if the DR volume can be activated.
+			if !v.Spec.Standby && v.Status.IsStandby && e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup && v.Status.LastBackup == e.Status.LastRestoredBackup {
+				v.Status.IsStandby = false
+			}
 			// Cannot automatically detach the volume if one of the following conditions is satisfied:
 			// 1) The volume is doing initial restoration;
-			// 2) The DR/standby volume hasn't been activated;
-			// 3) The DR volume is being activated but hasn't finished incremental restoration;
-			// 4) The volume is being expanding.
-			if !(v.Status.InitialRestorationRequired ||
-				v.Spec.Standby ||
-				(!v.Spec.Standby && v.Status.IsStandby && (e.Spec.RequestedBackupRestore != e.Status.LastRestoredBackup || v.Status.LastBackup != e.Status.LastRestoredBackup)) ||
-				v.Status.ExpansionRequired) {
+			// 2) The DR/standby volume hasn't been activated/finished activation;
+			// 3) The volume is being expanding.
+			if !(v.Status.InitialRestorationRequired || v.Status.IsStandby || v.Status.ExpansionRequired) {
 				v.Status.CurrentNodeID = ""
-				v.Status.IsStandby = false
 			}
 			// users can manually restore the volume and they won't be blocked by this field if remount fails
 			v.Status.RemountRequired = false
