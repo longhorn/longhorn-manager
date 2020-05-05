@@ -47,6 +47,10 @@ var (
 	EnginePollTimeout  = 30 * time.Second
 )
 
+const (
+	ConflictRetryCount = 5
+)
+
 type EngineController struct {
 	// which namespace controller is running with
 	namespace string
@@ -772,6 +776,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			}
 		}
 
+		// The rebuild failure will be handled by ec.startRebuilding()
 		rebuildStatus, err := client.ReplicaRebuildStatus()
 		if err != nil {
 			return err
@@ -790,37 +795,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.BackupStatus = backupStatusList
 	}
 
-	isRestoring := false
-	isConsensual := true
-	rsMap, err := client.BackupRestoreStatus()
-	if err != nil {
-		logrus.Errorf("engine monitor: engine %v: failed to get restore status: %v", engine.Name, err)
-	} else {
-		engine.Status.RestoreStatus = rsMap
-
-		lastRestored := ""
-		for _, status := range rsMap {
-			if status.IsRestoring {
-				isRestoring = true
-			}
-		}
-
-		//Engine is not restoring, pick the lastRestored from replica then update LastRestoredBackup
-		if !isRestoring {
-			for _, status := range rsMap {
-				if lastRestored != "" && status.LastRestored != lastRestored {
-					// this error shouldn't prevent the engine from updating the other status
-					logrus.Errorf("BUG: engine %v: different lastRestored values even though engine is not restoring", engine.Name)
-					isConsensual = false
-				}
-				lastRestored = status.LastRestored
-			}
-			if isConsensual {
-				engine.Status.LastRestoredBackup = lastRestored
-			}
-		}
-	}
-
+	// TODO: Check if the purge failure is handled somewhere else
 	purgeStatus, err := client.SnapshotPurgeStatus()
 	if err != nil {
 		logrus.Errorf("engine monitor: engine %v: failed to get snapshot purge status: %v", engine.Name, err)
@@ -828,6 +803,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.PurgeStatus = purgeStatus
 	}
 
+	// Make sure the engine object is updated before engineapi calls.
 	if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
 		engine, err = m.ds.UpdateEngineStatus(engine)
 		if err != nil {
@@ -856,12 +832,17 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		m.expansionBackoff.DeleteEntry(engine.Name)
 	}
 
-	needRestoration, err := checkForRestoration(isRestoring, isConsensual, engine, isOldVersion, m.ds)
+	rsMap, err := client.BackupRestoreStatus()
+	if err != nil {
+		logrus.Errorf("engine monitor: engine %v: failed to get restore status: %v", engine.Name, err)
+	}
+	needRestore, err := preRestoreCheckAndSync(engine, rsMap, isOldVersion, m.ds)
 	if err != nil {
 		return err
 	}
+
 	// Incremental restoration will implicitly expand the DR volume once the backup volume is expanded
-	if needRestoration {
+	if needRestore {
 		if err = restoreBackup(engine, client, m.ds); err != nil {
 			return err
 		}
@@ -870,7 +851,32 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	return nil
 }
 
-func checkForRestoration(isRestoring, isConsensual bool, engine *longhorn.Engine, isOldVersion bool, ds *datastore.DataStore) (bool, error) {
+func preRestoreCheckAndSync(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, isOldVersion bool, ds *datastore.DataStore) (needRestore bool, err error) {
+	existingEngine := engine.DeepCopy()
+	defer func() {
+		if err != nil {
+			err = errors.Wrapf(err, "failed pre-restore check for engine %v", engine.Name)
+			// Need to manually update the restore status if the the check fails
+			for _, status := range rsMap {
+				status.Error = err.Error()
+			}
+		}
+
+		// Make sure the engine object is updated after the pre-restore check and sync
+		engine.Status.RestoreStatus = rsMap
+		if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
+			if _, updateErr := ds.UpdateEngineStatus(engine); updateErr != nil {
+				err = errors.Wrapf(err, "engine monitor: Failed to update the engine %v status after the pre-restore check: %v", engine.Name, updateErr)
+				needRestore = false
+			}
+		}
+	}()
+
+	if rsMap == nil {
+		return false, nil
+	}
+	isRestoring, isConsensual := syncWithRestoreStatus(engine, rsMap)
+
 	if isRestoring || !isConsensual || engine.Spec.RequestedBackupRestore == "" || engine.Spec.RequestedBackupRestore == engine.Status.LastRestoredBackup {
 		return false, nil
 	}
@@ -884,6 +890,36 @@ func checkForRestoration(isRestoring, isConsensual bool, engine *longhorn.Engine
 	}
 
 	return true, nil
+}
+
+func syncWithRestoreStatus(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus) (bool, bool) {
+	isRestoring := false
+	isConsensual := true
+	lastRestored := ""
+	for _, status := range rsMap {
+		if status.IsRestoring {
+			isRestoring = true
+		}
+	}
+	// Engine is not restoring, pick the lastRestored from replica then update LastRestoredBackup
+	if !isRestoring {
+		for addr, status := range rsMap {
+			if lastRestored != "" && status.LastRestored != lastRestored {
+				// this error shouldn't prevent the engine from updating the other status
+				logrus.Errorf("BUG: engine %v: different lastRestored values even though engine is not restoring", engine.Name)
+				isConsensual = false
+			}
+			if status.Error != "" {
+				logrus.Errorf("Found restore error from %v for engine %v: %v", addr, engine.Name, status.Error)
+				isConsensual = false
+			}
+			lastRestored = status.LastRestored
+		}
+		if isConsensual {
+			engine.Status.LastRestoredBackup = lastRestored
+		}
+	}
+	return isRestoring, isConsensual
 }
 
 func checkSizeBeforeRestoration(engine *longhorn.Engine, ds *datastore.DataStore) (bool, error) {
@@ -901,22 +937,28 @@ func checkSizeBeforeRestoration(engine *longhorn.Engine, ds *datastore.DataStore
 		return false, err
 	}
 
-	v, err := ds.GetVolume(engine.Spec.VolumeName)
-	if err != nil {
-		return false, err
-	}
-
-	if bvSize < v.Spec.Size {
-		return false, fmt.Errorf("engine monitor: BUG: the backup volume size %v is smaller than the size %v of the DR volume %v", bvSize, engine.Spec.VolumeSize, v.Name)
-	} else if bvSize > v.Spec.Size {
-		// TODO: Find a way to update volume.Spec.Size outside of the controller
-		// The volume controller will update `engine.Spec.VolumeSize` later then trigger expansion call
-		logrus.Infof("engine monitor: Prepare to expand the size from %v to %v for DR volume %v", v.Spec.Size, bvSize, v.Name)
-		v.Spec.Size = bvSize
-		if _, err := ds.UpdateVolume(v); err != nil {
+	for i := 0; i < ConflictRetryCount; i++ {
+		v, err := ds.GetVolume(engine.Spec.VolumeName)
+		if err != nil {
 			return false, err
 		}
-		return false, nil
+
+		if bvSize < v.Spec.Size {
+			return false, fmt.Errorf("engine monitor: BUG: the backup volume size %v is smaller than the size %v of the DR volume %v", bvSize, engine.Spec.VolumeSize, v.Name)
+		} else if bvSize > v.Spec.Size {
+			// TODO: Find a way to update volume.Spec.Size outside of the controller
+			// The volume controller will update `engine.Spec.VolumeSize` later then trigger expansion call
+			logrus.Infof("engine monitor: Prepare to expand the size from %v to %v for DR volume %v", v.Spec.Size, bvSize, v.Name)
+			v.Spec.Size = bvSize
+			if _, err := ds.UpdateVolume(v); err != nil {
+				if !datastore.ErrorIsConflict(err) {
+					return false, err
+				}
+				logrus.Debugf("engine monitor: Retrying update the volume %v size before restore", v.Name)
+				continue
+			}
+			return false, nil
+		}
 	}
 
 	return true, nil
