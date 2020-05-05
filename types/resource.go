@@ -47,10 +47,13 @@ type Condition struct {
 
 const (
 	VolumeConditionTypeScheduled = "scheduled"
+	VolumeConditionTypeRestore   = "restore"
 )
 
 const (
 	VolumeConditionReasonReplicaSchedulingFailure = "ReplicaSchedulingFailure"
+	VolumeConditionReasonRestoreInProgress        = "RestoreInProgress"
+	VolumeConditionReasonRestoreFailure           = "RestoreFailure"
 )
 
 type VolumeSpec struct {

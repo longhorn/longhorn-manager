@@ -271,9 +271,13 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool) (v *lo
 		return nil, errors.Wrapf(err, "cannot attach volume %v with image %v", v.Name, v.Spec.EngineImage)
 	}
 
-	condition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled)
-	if condition.Status != types.ConditionStatusTrue {
+	scheduleCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled)
+	if scheduleCondition.Status != types.ConditionStatusTrue {
 		return nil, fmt.Errorf("volume %v not scheduled", name)
+	}
+	restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
+	if restoreCondition.Status == types.ConditionStatusTrue {
+		return nil, fmt.Errorf("volume %v is restoring data", name)
 	}
 
 	// already desired to be attached

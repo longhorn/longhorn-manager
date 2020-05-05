@@ -600,6 +600,14 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		v.Status.InitialRestorationRequired = true
 
 		v.Status.RestoreInitiated = true
+
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
+	}
+
+	if _, exists := v.Status.Conditions[types.VolumeConditionTypeRestore]; !exists {
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			types.VolumeConditionTypeRestore, types.ConditionStatusFalse, "", "")
 	}
 
 	if v.Status.CurrentNodeID == "" {
@@ -616,7 +624,14 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			// Check if the DR volume can be activated.
 			if !v.Spec.Standby && v.Status.IsStandby && e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup && v.Status.LastBackup == e.Status.LastRestoredBackup {
 				v.Status.IsStandby = false
+
+				restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
+				if restoreCondition.Status == types.ConditionStatusTrue && restoreCondition.Reason == types.VolumeConditionReasonRestoreInProgress {
+					v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+						types.VolumeConditionTypeRestore, types.ConditionStatusFalse, "", "")
+				}
 			}
+
 			// Cannot automatically detach the volume if one of the following conditions is satisfied:
 			// 1) The volume is doing initial restoration;
 			// 2) The DR/standby volume hasn't been activated/finished activation;
@@ -747,12 +762,18 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		v.Status.Robustness = types.VolumeRobustnessFaulted
 		v.Status.CurrentNodeID = ""
 
+		restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
+		if restoreCondition.Status == types.ConditionStatusTrue && restoreCondition.Reason == types.VolumeConditionReasonRestoreInProgress {
+			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+				types.VolumeConditionTypeRestore, types.ConditionStatusFalse, types.VolumeConditionReasonRestoreFailure, "All replica restore failed")
+		}
+
 		autoSalvage, err := vc.ds.GetSettingAsBool(types.SettingNameAutoSalvage)
 		if err != nil {
 			return err
 		}
 		// make sure the volume is detached before automatically salvage
-		if autoSalvage && v.Status.State == types.VolumeStateDetached {
+		if autoSalvage && v.Status.State == types.VolumeStateDetached && restoreCondition.Reason != types.VolumeConditionReasonRestoreFailure {
 			lastFailedAt := time.Time{}
 			failedUsableReplicas := map[string]*longhorn.Replica{}
 			dataExists := false
@@ -998,6 +1019,14 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			if e.Status.LastRestoredBackup != "" {
 				// The initial full restoration is complete.
 				v.Status.InitialRestorationRequired = false
+
+				if !v.Status.IsStandby {
+					restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
+					if restoreCondition.Status == types.ConditionStatusTrue && restoreCondition.Reason == types.VolumeConditionReasonRestoreInProgress {
+						v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+							types.VolumeConditionTypeRestore, types.ConditionStatusFalse, "", "")
+					}
+				}
 			}
 		}
 
