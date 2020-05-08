@@ -407,7 +407,7 @@ func (vc *VolumeController) getCurrentEngine(v *longhorn.Volume, es map[string]*
 	return nil, fmt.Errorf("BUG: multiple engines detected when volume %v is detached", v.Name)
 }
 
-// ReconcileEngineReplicaState will get the current main engine e.Status.ReplicaModeMap, then update
+// ReconcileEngineReplicaState will get the current main engine e.Status.ReplicaModeMap and e.Status.RestoreStatus, then update
 // v and rs accordingly.
 func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
@@ -427,12 +427,31 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		return nil
 	}
 
+	restoreStatusMap := map[string]*types.RestoreStatus{}
+	restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
+	if restoreCondition.Status == types.ConditionStatusTrue && restoreCondition.Reason == types.VolumeConditionReasonRestoreInProgress {
+		replicaList := []*longhorn.Replica{}
+		for _, r := range rs {
+			replicaList = append(replicaList, r)
+		}
+		for addr, status := range e.Status.RestoreStatus {
+			rName := datastore.ReplicaAddressToReplicaName(addr, replicaList)
+			if _, exists := rs[rName]; exists {
+				restoreStatusMap[rName] = status
+			} else {
+				logrus.Warnf("Found unknown replica in the restore status map, address %v, restore status: %+v", addr, status)
+			}
+		}
+	}
+
 	// 1. remove ERR replicas
 	// 2. count RW replicas
 	healthyCount := 0
 	for rName, mode := range e.Status.ReplicaModeMap {
 		r := rs[rName]
-		if mode == types.ReplicaModeERR {
+		restoreStatus := restoreStatusMap[rName]
+		if mode == types.ReplicaModeERR ||
+			(restoreStatus != nil && restoreStatus.Error != "") {
 			if r != nil {
 				e.Spec.LogRequested = true
 				r.Spec.LogRequested = true
