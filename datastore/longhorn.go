@@ -3,6 +3,7 @@ package datastore
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -692,6 +693,22 @@ func (s *DataStore) ListVolumeReplicas(volumeName string) (map[string]*longhorn.
 
 func (s *DataStore) fixupReplica(replica *longhorn.Replica) (*longhorn.Replica, error) {
 	return replica, nil
+}
+
+// ReplicaAddressToReplicaName will directly return the address if the format is invalid or the replica is not found.
+func ReplicaAddressToReplicaName(address string, rs []*longhorn.Replica) string {
+	addressComponents := strings.Split(strings.TrimPrefix(address, "tcp://"), ":")
+	// The address format should be `<IP>:<Port>` after removing the prefix "tcp://".
+	if len(addressComponents) != 2 {
+		return address
+	}
+	for _, r := range rs {
+		if addressComponents[0] == r.Status.IP && addressComponents[1] == strconv.Itoa(r.Status.Port) {
+			return r.Name
+		}
+	}
+	// Cannot find matching replica by the address, replica may be removed already. Use address instead.
+	return address
 }
 
 func GetOwnerReferencesForEngineImage(ei *longhorn.EngineImage) []metav1.OwnerReference {
