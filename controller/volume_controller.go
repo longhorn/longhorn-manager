@@ -1025,7 +1025,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 					v.Status.ExpansionRequired = false
 				}
 				vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonSucceededExpansion,
-					"Succeeds to expand the volume %v to size %v, will automatically detach it", v.Name, e.Status.CurrentSize)
+					"Succeeds to expand the volume %v to size %v, will automatically detach it if it's not DR volume", v.Name, e.Status.CurrentSize)
 			}
 		}
 
