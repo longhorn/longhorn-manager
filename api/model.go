@@ -2,7 +2,6 @@ package api
 
 import (
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/rancher/go-rancher/api"
@@ -12,6 +11,7 @@ import (
 	"k8s.io/api/core/v1"
 
 	"github.com/longhorn/longhorn-manager/controller"
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
@@ -624,21 +624,6 @@ func toSettingCollection(settings []*longhorn.Setting) *client.GenericCollection
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }
 
-func getReplicaName(address string, vrs []*longhorn.Replica, volumeName string) string {
-	addressComponents := strings.Split(strings.TrimPrefix(address, "tcp://"), ":")
-	// The address format should be `<IP>:<Port>` after removing the prefix "tcp://".
-	if len(addressComponents) != 2 {
-		return address
-	}
-	for _, r := range vrs {
-		if addressComponents[0] == r.Status.IP && addressComponents[1] == strconv.Itoa(r.Status.Port) {
-			return r.Name
-		}
-	}
-	// Cannot find matching replica by the address, replica may be removed already. Use address instead.
-	return address
-}
-
 func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, apiContext *api.ApiContext) *Volume {
 	timestamp := time.Now().UTC().Format(time.RFC3339Nano)
 	var ve *longhorn.Engine
@@ -680,7 +665,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 					BackupURL: status.BackupURL,
 					Error:     status.Error,
 					State:     status.State,
-					Replica:   getReplicaName(status.ReplicaAddress, vrs, v.Name),
+					Replica:   datastore.ReplicaAddressToReplicaName(status.ReplicaAddress, vrs),
 				})
 			}
 		}
@@ -689,7 +674,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			for replica, status := range rs {
 				restoreStatus = append(restoreStatus, RestoreStatus{
 					Resource:     client.Resource{},
-					Replica:      getReplicaName(replica, vrs, v.Name),
+					Replica:      datastore.ReplicaAddressToReplicaName(replica, vrs),
 					IsRestoring:  status.IsRestoring,
 					LastRestored: status.LastRestored,
 					Progress:     status.Progress,
@@ -705,7 +690,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			for replica, status := range purgeStatus {
 				purgeStatuses = append(purgeStatuses, PurgeStatus{
 					Resource:  client.Resource{},
-					Replica:   getReplicaName(replica, vrs, v.Name),
+					Replica:   datastore.ReplicaAddressToReplicaName(replica, vrs),
 					Error:     status.Error,
 					IsPurging: status.IsPurging,
 					Progress:  status.Progress,
@@ -718,12 +703,12 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			for replica, status := range rebuildStatus {
 				rebuildStatuses = append(rebuildStatuses, RebuildStatus{
 					Resource:     client.Resource{},
-					Replica:      getReplicaName(replica, vrs, v.Name),
+					Replica:      datastore.ReplicaAddressToReplicaName(replica, vrs),
 					Error:        status.Error,
 					IsRebuilding: status.IsRebuilding,
 					Progress:     status.Progress,
 					State:        status.State,
-					FromReplica:  getReplicaName(status.FromReplicaAddress, vrs, v.Name),
+					FromReplica:  datastore.ReplicaAddressToReplicaName(status.FromReplicaAddress, vrs),
 				})
 			}
 		}
