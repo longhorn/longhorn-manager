@@ -104,16 +104,17 @@ type BackupVolume struct {
 }
 
 type Backup struct {
-	Name            string            `json:"name"`
-	URL             string            `json:"url"`
-	SnapshotName    string            `json:"snapshotName"`
-	SnapshotCreated string            `json:"snapshotCreated"`
-	Created         string            `json:"created"`
-	Size            string            `json:"size"`
-	Labels          map[string]string `json:"labels"`
-	VolumeName      string            `json:"volumeName"`
-	VolumeSize      string            `json:"volumeSize"`
-	VolumeCreated   string            `json:"volumeCreated"`
+	Name            string                             `json:"name"`
+	URL             string                             `json:"url"`
+	SnapshotName    string                             `json:"snapshotName"`
+	SnapshotCreated string                             `json:"snapshotCreated"`
+	Created         string                             `json:"created"`
+	Size            string                             `json:"size"`
+	Labels          map[string]string                  `json:"labels"`
+	VolumeName      string                             `json:"volumeName"`
+	VolumeSize      string                             `json:"volumeSize"`
+	VolumeCreated   string                             `json:"volumeCreated"`
+	Messages        map[backupstore.MessageType]string `json:"messages"`
 }
 
 type BackupCreateInfo struct {
