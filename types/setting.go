@@ -125,7 +125,7 @@ var (
 
 	SettingDefinitionBackupTarget = SettingDefinition{
 		DisplayName: "Backup Target",
-		Description: "The target used for backup. Support NFS or S3.",
+		Description: "The endpoint used to access the backupstore. NFS and S3 are supported.",
 		Category:    SettingCategoryBackup,
 		Type:        SettingTypeString,
 		Required:    false,
@@ -134,7 +134,7 @@ var (
 
 	SettingDefinitionBackupTargetCredentialSecret = SettingDefinition{
 		DisplayName: "Backup Target Credential Secret",
-		Description: "The Kubernetes secret associated with the backup target.",
+		Description: "The name of the Kubernetes secret associated with the backup target.",
 		Category:    SettingCategoryBackup,
 		Type:        SettingTypeString,
 		Required:    false,
@@ -143,7 +143,7 @@ var (
 
 	SettingDefinitionBackupstorePollInterval = SettingDefinition{
 		DisplayName: "Backupstore Poll Interval",
-		Description: "In seconds. The interval to poll the backup store for updating volumes' Last Backup field. Set to 0 to disable the polling.",
+		Description: "In seconds. The backupstore poll interval determines how often Longhorn checks the backupstore for new backups. Set to 0 to disable the polling.",
 		Category:    SettingCategoryBackup,
 		Type:        SettingTypeInt,
 		Required:    true,
@@ -154,8 +154,8 @@ var (
 	SettingDefinitionCreateDefaultDiskLabeledNodes = SettingDefinition{
 		DisplayName: "Create Default Disk on Labeled Nodes",
 		Description: "Create default Disk automatically only on Nodes with the label " +
-			"\"node.longhorn.io/create-default-disk=true\" if no other Disks exist. If disabled, default Disk will " +
-			"be created on all new Nodes (only on first add).",
+			"\"node.longhorn.io/create-default-disk=true\" if no other disks exist. If disabled, the default disk will " +
+			"be created on all new nodes when each node is first added.",
 		Category: SettingCategoryGeneral,
 		Type:     SettingTypeBool,
 		Required: true,
@@ -213,7 +213,7 @@ var (
 
 	SettingDefinitionStorageMinimalAvailablePercentage = SettingDefinition{
 		DisplayName: "Storage Minimal Available Percentage",
-		Description: "If one disk's available capacity to it's maximum capacity in % is less than the minimal available percentage, the disk would become unschedulable until more space freed up.",
+		Description: "If the minimum available disk capacity exceeds the actual percentage of available disk capacity, the disk becomes unschedulable until more space is freed up.",
 		Category:    SettingCategoryScheduling,
 		Type:        SettingTypeInt,
 		Required:    true,
@@ -223,7 +223,7 @@ var (
 
 	SettingDefinitionUpgradeChecker = SettingDefinition{
 		DisplayName: "Enable Upgrade Checker",
-		Description: "Upgrade Checker will check for new Longhorn version periodically. When there is a new version available, it will notify the user using UI",
+		Description: "Upgrade Checker will check for new Longhorn version periodically. When there is a new version available, a notification will appear in the UI",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeBool,
 		Required:    true,
@@ -233,7 +233,7 @@ var (
 
 	SettingDefinitionLatestLonghornVersion = SettingDefinition{
 		DisplayName: "Latest Longhorn Version",
-		Description: "The latest version of Longhorn available. Update by Upgrade Checker automatically",
+		Description: "The latest version of Longhorn available. Updated by Upgrade Checker automatically",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
 		Required:    false,
@@ -242,7 +242,7 @@ var (
 
 	SettingDefinitionDefaultReplicaCount = SettingDefinition{
 		DisplayName: "Default Replica Count",
-		Description: "The default number of replicas when creating the volume from Longhorn UI. For Kubernetes, update the `numberOfReplicas` in the StorageClass",
+		Description: "The default number of replicas when a volume is created from the Longhorn UI. For Kubernetes configuration, update the `numberOfReplicas` in the StorageClass",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeInt,
 		Required:    true,
@@ -252,11 +252,11 @@ var (
 
 	SettingDefinitionGuaranteedEngineCPU = SettingDefinition{
 		DisplayName: "Guaranteed Engine CPU",
-		Description: "(EXPERIMENTAL FEATURE) Allow Longhorn Engine to have guaranteed CPU allocation. The value is " +
+		Description: "(EXPERIMENTAL) Allow Longhorn Engine to have guaranteed CPU allocation. The value is " +
 			"how many CPUs should be reserved for each Engine/Replica Manager Pod created by Longhorn. For example, " +
 			"0.1 means one-tenth of a CPU. This will help maintain engine stability during high node workload. It " +
 			"only applies to the Engine/Replica Manager Pods created after the setting took effect. WARNING: " +
-			"Attaching of the volume may fail or stuck while using this feature due to the resource constraint. " +
+			"After this setting is changed, the instance manager needs to be manually restarted." +
 			"Disabled (\"0\") by default.",
 		Category: SettingCategoryGeneral,
 		Type:     SettingTypeInt,
@@ -267,7 +267,7 @@ var (
 
 	SettingDefinitionDefaultLonghornStaticStorageClass = SettingDefinition{
 		DisplayName: "Default Longhorn Static StorageClass Name",
-		Description: "The 'storageClassName' is for PV/PVC when creating PV/PVC for an existing Longhorn volume. Notice that it's unnecessary for users create the related StorageClass object in Kubernetes since the StorageClass would only be used as matching labels for PVC bounding purpose. By default 'longhorn-static'.",
+		Description: "The 'storageClassName' is given to PVs and PVCs that are created for an existing Longhorn volume. The StorageClass name can also be used as a label, so it is possible to use a Longhorn StorageClass to bind a workload to an existing PV without creating a Kubernetes StorageClass object.",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
 		Required:    true,
@@ -277,14 +277,11 @@ var (
 
 	SettingDefinitionTaintToleration = SettingDefinition{
 		DisplayName: "Kubernetes Taint Toleration",
-		Description: `By setting tolerations for Longhorn then adding taints for the nodes, the nodes with large storage can be dedicated to Longhorn only (to store replica data) and reject other general workloads.
-Before modifying toleration setting, all Longhorn volumes should be detached then Longhorn components will be restarted to apply new tolerations. And toleration update will take a while. Users cannot operate Longhorn system during update. Hence it's recommended to set toleration during Longhorn deployment.
-Multiple tolerations can be set here, and these tolerations are separated by semicolon. For example, "key1=value1:NoSchedule; key2:NoExecute". 
-Notice that "kubernetes.io" is used as the key of all Kubernetes default tolerations, please do not contain this substring in your toleration setting.`,
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeString,
-		Required: false,
-		ReadOnly: false,
+		Description: `To dedicate nodes to store Longhorn replicas and reject other general workloads, set tolerations for Longhorn and add taints for the storage nodes. All Longhorn volumes should be detached before modifying toleration settings. We recommend setting tolerations during Longhorn deployment because the Longhorn system cannot be operated during the update. Multiple tolerations can be set here, and these tolerations are separated by semicolon. For example, "key1=value1:NoSchedule; key2:NoExecute". Because "kubernetes.io" is used as the key of all Kubernetes default tolerations, it should not be used in the toleration settings.`,
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    false,
+		ReadOnly:    false,
 	}
 
 	SettingDefinitionCRDAPIVersion = SettingDefinition{
@@ -298,7 +295,7 @@ Notice that "kubernetes.io" is used as the key of all Kubernetes default tolerat
 
 	SettingDefinitionAutoSalvage = SettingDefinition{
 		DisplayName: "Automatic salvage",
-		Description: "Automatically salvage faulted volume or not.",
+		Description: "If enabled, volumes will be automatically salvaged when all the replicas become faulty e.g. due to network disconnection. Longhorn will try to figure out which replica(s) are usable, then use them for the volume.",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeBool,
 		Required:    true,
