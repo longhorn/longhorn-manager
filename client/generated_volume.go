@@ -45,6 +45,10 @@ type Volume struct {
 
 	PurgeStatus []PurgeStatus `json:"purgeStatus,omitempty" yaml:"purge_status,omitempty"`
 
+	Ready bool `json:"ready,omitempty" yaml:"ready,omitempty"`
+
+	RebuildStatus []RebuildStatus `json:"rebuildStatus,omitempty" yaml:"rebuild_status,omitempty"`
+
 	RecurringJobs []RecurringJob `json:"recurringJobs,omitempty" yaml:"recurring_jobs,omitempty"`
 
 	Replicas []Replica `json:"replicas,omitempty" yaml:"replicas,omitempty"`
@@ -81,11 +85,19 @@ type VolumeOperations interface {
 	ById(id string) (*Volume, error)
 	Delete(container *Volume) error
 
+	ActionActivate(*Volume, *ActivateInput) (*Volume, error)
+
 	ActionAttach(*Volume, *AttachInput) (*Volume, error)
+
+	ActionCancelExpansion(*Volume) (*Volume, error)
 
 	ActionDetach(*Volume) (*Volume, error)
 
 	ActionExpand(*Volume, *ExpandInput) (*Volume, error)
+
+	ActionPvCreate(*Volume, *PVCreateInput) (*Volume, error)
+
+	ActionPvcCreate(*Volume, *PVCCreateInput) (*Volume, error)
 
 	ActionReplicaRemove(*Volume, *ReplicaRemoveInput) (*Volume, error)
 
@@ -150,11 +162,29 @@ func (c *VolumeClient) Delete(container *Volume) error {
 	return c.rancherClient.doResourceDelete(VOLUME_TYPE, &container.Resource)
 }
 
+func (c *VolumeClient) ActionActivate(resource *Volume, input *ActivateInput) (*Volume, error) {
+
+	resp := &Volume{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "activate", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
 func (c *VolumeClient) ActionAttach(resource *Volume, input *AttachInput) (*Volume, error) {
 
 	resp := &Volume{}
 
 	err := c.rancherClient.doAction(VOLUME_TYPE, "attach", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionCancelExpansion(resource *Volume) (*Volume, error) {
+
+	resp := &Volume{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "cancelExpansion", &resource.Resource, nil, resp)
 
 	return resp, err
 }
@@ -173,6 +203,24 @@ func (c *VolumeClient) ActionExpand(resource *Volume, input *ExpandInput) (*Volu
 	resp := &Volume{}
 
 	err := c.rancherClient.doAction(VOLUME_TYPE, "expand", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionPvCreate(resource *Volume, input *PVCreateInput) (*Volume, error) {
+
+	resp := &Volume{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "pvCreate", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionPvcCreate(resource *Volume, input *PVCCreateInput) (*Volume, error) {
+
+	resp := &Volume{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "pvcCreate", &resource.Resource, input, resp)
 
 	return resp, err
 }

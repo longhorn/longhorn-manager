@@ -7,6 +7,8 @@ const (
 type PVCreateInput struct {
 	Resource `yaml:"-"`
 
+	FsType string `json:"fsType,omitempty" yaml:"fs_type,omitempty"`
+
 	PvName string `json:"pvName,omitempty" yaml:"pv_name,omitempty"`
 }
 

@@ -11,6 +11,8 @@ type DiskInfo struct {
 
 	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
+	DiskUUID string `json:"diskUUID,omitempty" yaml:"disk_uuid,omitempty"`
+
 	Path string `json:"path,omitempty" yaml:"path,omitempty"`
 
 	ScheduledReplica map[string]string `json:"scheduledReplica,omitempty" yaml:"scheduled_replica,omitempty"`

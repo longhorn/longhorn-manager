@@ -13,6 +13,7 @@ type RancherClient struct {
 	BackupStatus              BackupStatusOperations
 	RestoreStatus             RestoreStatusOperations
 	PurgeStatus               PurgeStatusOperations
+	RebuildStatus             RebuildStatusOperations
 	RecurringJob              RecurringJobOperations
 	ReplicaRemoveInput        ReplicaRemoveInputOperations
 	SalvageInput              SalvageInputOperations
@@ -60,6 +61,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.BackupStatus = newBackupStatusClient(client)
 	client.RestoreStatus = newRestoreStatusClient(client)
 	client.PurgeStatus = newPurgeStatusClient(client)
+	client.RebuildStatus = newRebuildStatusClient(client)
 	client.RecurringJob = newRecurringJobClient(client)
 	client.ReplicaRemoveInput = newReplicaRemoveInputClient(client)
 	client.SalvageInput = newSalvageInputClient(client)

@@ -11,6 +11,8 @@ type Backup struct {
 
 	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 
+	Messages map[string]string `json:"messages,omitempty" yaml:"messages,omitempty"`
+
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
