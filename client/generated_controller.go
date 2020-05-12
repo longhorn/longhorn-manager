@@ -19,6 +19,12 @@ type Controller struct {
 
 	InstanceManagerName string `json:"instanceManagerName,omitempty" yaml:"instance_manager_name,omitempty"`
 
+	IsExpanding bool `json:"isExpanding,omitempty" yaml:"is_expanding,omitempty"`
+
+	LastExpansionError string `json:"lastExpansionError,omitempty" yaml:"last_expansion_error,omitempty"`
+
+	LastExpansionFailedAt string `json:"lastExpansionFailedAt,omitempty" yaml:"last_expansion_failed_at,omitempty"`
+
 	LastRestoredBackup string `json:"lastRestoredBackup,omitempty" yaml:"last_restored_backup,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`

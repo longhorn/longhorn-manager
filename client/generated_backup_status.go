@@ -13,6 +13,8 @@ type BackupStatus struct {
 
 	Progress int64 `json:"progress,omitempty" yaml:"progress,omitempty"`
 
+	Replica string `json:"replica,omitempty" yaml:"replica,omitempty"`
+
 	Snapshot string `json:"snapshot,omitempty" yaml:"snapshot,omitempty"`
 
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
