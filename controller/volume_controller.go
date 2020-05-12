@@ -49,8 +49,6 @@ var (
 )
 
 const (
-	LabelRecurringJob = "RecurringJob"
-
 	CronJobBackoffLimit = 3
 )
 
@@ -1448,7 +1446,7 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 		"longhorn-manager", "-d",
 		"snapshot", v.Name,
 		"--snapshot-name", job.Name,
-		"--labels", LabelRecurringJob + "=" + job.Name,
+		"--labels", types.RecurringJobLabel + "=" + job.Name,
 		"--retain", strconv.Itoa(job.Retain),
 	}
 	for key, val := range job.Labels {

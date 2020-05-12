@@ -182,7 +182,7 @@ func (job *Job) snapshotAndCleanup() error {
 	if err != nil {
 		return err
 	}
-	cleanupSnapshotNames := job.listSnapshotNamesForCleanup(snapshots, job.retain)
+	cleanupSnapshotNames := job.listSnapshotNamesForCleanup(snapshots)
 	for _, snapshot := range cleanupSnapshotNames {
 		if err := job.engine.SnapshotDelete(snapshot); err != nil {
 			return err
@@ -230,28 +230,17 @@ type NameWithTimestamp struct {
 	Timestamp time.Time
 }
 
-func (job *Job) listSnapshotNamesForCleanup(snapshots map[string]*types.Snapshot, retain int) []string {
+func (job *Job) listSnapshotNamesForCleanup(snapshots map[string]*types.Snapshot) []string {
 	sts := []*NameWithTimestamp{}
 
-	// if no label specified, don't action. We don't want to remove all
-	// unlabeled snapshots
-	if len(job.labels) == 0 {
+	// only remove snapshots that where created by our current job
+	jobLabel, found := job.labels[types.RecurringJobLabel]
+	if !found {
 		return []string{}
 	}
 	for _, snapshot := range snapshots {
-		matched := true
-		for k, v := range job.labels {
-			value, ok := snapshot.Labels[k]
-			if !ok {
-				matched = false
-				break
-			}
-			if v != value {
-				matched = false
-				break
-			}
-		}
-		if matched {
+		snapshotLabel, found := snapshot.Labels[types.RecurringJobLabel]
+		if found && jobLabel == snapshotLabel {
 			t, err := time.Parse(time.RFC3339, snapshot.Created)
 			if err != nil {
 				logrus.Errorf("Fail to parse datetime %v for snapshot %v",
@@ -365,25 +354,14 @@ func (job *Job) backupAndCleanup() (err error) {
 func (job *Job) listBackupURLsForCleanup(backups []*engineapi.Backup) []string {
 	sts := []*NameWithTimestamp{}
 
-	// if no label specified, don't action. We don't want to remove all
-	// unlabeled backups
-	if len(job.labels) == 0 {
+	// only remove backups that where created by our current job
+	jobLabel, found := job.labels[types.RecurringJobLabel]
+	if !found {
 		return []string{}
 	}
 	for _, backup := range backups {
-		matched := true
-		for k, v := range job.labels {
-			value, ok := backup.Labels[k]
-			if !ok {
-				matched = false
-				break
-			}
-			if v != value {
-				matched = false
-				break
-			}
-		}
-		if matched {
+		backupLabel, found := backup.Labels[types.RecurringJobLabel]
+		if found && jobLabel == backupLabel {
 			t, err := time.Parse(time.RFC3339, backup.Created)
 			if err != nil {
 				logrus.Errorf("Fail to parse datetime %v for backup %v",
