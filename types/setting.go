@@ -56,6 +56,7 @@ const (
 	SettingNameCRDAPIVersion                     = SettingName("crd-api-version")
 	SettingNameAutoSalvage                       = SettingName("auto-salvage")
 	SettingNameRegistrySecret                    = SettingName("registry-secret")
+	SettingNameDisableSchedulingOnCordonedNode   = SettingName("disable-scheduling-on-cordoned-node")
 )
 
 var (
@@ -79,6 +80,7 @@ var (
 		SettingNameCRDAPIVersion,
 		SettingNameAutoSalvage,
 		SettingNameRegistrySecret,
+		SettingNameDisableSchedulingOnCordonedNode,
 	}
 )
 
@@ -121,6 +123,7 @@ var (
 		SettingNameCRDAPIVersion:                     SettingDefinitionCRDAPIVersion,
 		SettingNameAutoSalvage:                       SettingDefinitionAutoSalvage,
 		SettingNameRegistrySecret:                    SettingDefinitionRegistrySecret,
+		SettingNameDisableSchedulingOnCordonedNode:   SettingDefinitionDisableSchedulingOnCordonedNode,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -312,6 +315,15 @@ var (
 		ReadOnly:    false,
 		Default:     "",
 	}
+	SettingDefinitionDisableSchedulingOnCordonedNode = SettingDefinition{
+		DisplayName: "Disable Scheduling On Cordoned Node",
+		Description: `Disable Longhorn manager to schedule replica on Kubernetes cordoned node`,
+		Category:    SettingCategoryScheduling,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "true",
+	}
 )
 
 func ValidateInitSetting(name, value string) (err error) {
@@ -340,6 +352,8 @@ func ValidateInitSetting(name, value string) (err error) {
 	case SettingNameCreateDefaultDiskLabeledNodes:
 		fallthrough
 	case SettingNameReplicaSoftAntiAffinity:
+		fallthrough
+	case SettingNameDisableSchedulingOnCordonedNode:
 		fallthrough
 	case SettingNameUpgradeChecker:
 		if value != "true" && value != "false" {

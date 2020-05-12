@@ -269,6 +269,7 @@ type NodeSpec struct {
 const (
 	NodeConditionTypeReady            = "Ready"
 	NodeConditionTypeMountPropagation = "MountPropagation"
+	NodeConditionTypeSchedulable      = "Schedulable"
 )
 
 const (
@@ -279,6 +280,7 @@ const (
 	NodeConditionReasonKubernetesNodePressure    = "KubernetesNodePressure"
 	NodeConditionReasonUnknownNodeConditionTrue  = "UnknownNodeConditionTrue"
 	NodeConditionReasonNoMountPropagationSupport = "NoMountPropagationSupport"
+	NodeConditionReasonKubernetesNodeCordoned    = "KubernetesNodeCordoned"
 )
 
 const (
