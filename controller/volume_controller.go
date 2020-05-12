@@ -771,6 +771,16 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			types.VolumeConditionTypeScheduled, types.ConditionStatusTrue, "", "")
 	}
 
+	// Disable auto-reattachment if the engine crashes in the starting phase for now.
+	// TODO: Find a better way to handle this case.
+	if e.Status.CurrentState == types.InstanceStateError && !e.Status.Started {
+		for _, r := range rs {
+			if r.Spec.FailedAt == "" {
+				r.Spec.FailedAt = vc.nowHandler()
+			}
+		}
+	}
+
 	allFaulted := true
 	for _, r := range rs {
 		if r.Spec.FailedAt == "" {
