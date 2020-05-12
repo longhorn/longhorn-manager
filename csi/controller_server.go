@@ -194,6 +194,9 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 	needToAttach := true
 	if existVol.State == string(types.VolumeStateAttached) {
 		needToAttach = false
+		if !existVol.Ready {
+			return nil, status.Errorf(codes.Aborted, "The volume %s is already attached but it is not ready for workloads", req.GetVolumeId())
+		}
 	}
 
 	logrus.Debugf("ControllerPublishVolume: current nodeID %s", req.GetNodeId())
