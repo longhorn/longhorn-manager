@@ -431,6 +431,37 @@ func (nc *NodeController) syncNode(key string) (err error) {
 			}
 		}
 
+		DisableSchedulingOnCordonedNode, err :=
+			nc.ds.GetSettingAsBool(types.SettingNameDisableSchedulingOnCordonedNode)
+		if err != nil {
+			logrus.Errorf("error getting disable scheduling on cordoned node setting: %v", err)
+		}
+
+		// Update node condition based on
+		// DisableSchedulingOnCordonedNode setting and
+		// k8s node status
+		kubeSpec := kubeNode.Spec
+		if DisableSchedulingOnCordonedNode &&
+			kubeSpec.Unschedulable == true {
+			node.Status.Conditions =
+				types.SetConditionAndRecord(node.Status.Conditions,
+					types.NodeConditionTypeSchedulable,
+					types.ConditionStatusFalse,
+					string(types.NodeConditionReasonKubernetesNodeCordoned),
+					fmt.Sprintf("Node %v is cordoned", node.Name),
+					nc.eventRecorder, node,
+					v1.EventTypeNormal)
+		} else {
+			node.Status.Conditions =
+				types.SetConditionAndRecord(node.Status.Conditions,
+					types.NodeConditionTypeSchedulable,
+					types.ConditionStatusTrue,
+					"",
+					"",
+					nc.eventRecorder, node,
+					v1.EventTypeNormal)
+		}
+
 		isUsingTopologyLabels, err := nc.topologyLabelsChecker(nc.kubeClient, types.KubernetesTopologyLabelsVersion)
 		if err != nil {
 			return err

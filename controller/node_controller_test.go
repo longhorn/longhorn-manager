@@ -168,13 +168,15 @@ func kubeObjStatusSyncTest(testType string) *NodeTestCase {
 		nodeStatus = map[string]types.NodeStatus{
 			TestNode1: {
 				Conditions: map[string]types.Condition{
+					types.NodeConditionTypeSchedulable:      newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
 					types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 					types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 				},
 			},
 			TestNode2: {
 				Conditions: map[string]types.Condition{
-					types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+					types.NodeConditionTypeSchedulable: newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+					types.NodeConditionTypeReady:       newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				},
 			},
 		}
@@ -182,13 +184,15 @@ func kubeObjStatusSyncTest(testType string) *NodeTestCase {
 		nodeStatus = map[string]types.NodeStatus{
 			TestNode1: {
 				Conditions: map[string]types.Condition{
+					types.NodeConditionTypeSchedulable:      newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
 					types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonManagerPodDown),
 					types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusFalse, types.NodeConditionReasonNoMountPropagationSupport),
 				},
 			},
 			TestNode2: {
 				Conditions: map[string]types.Condition{
-					types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+					types.NodeConditionTypeSchedulable: newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+					types.NodeConditionTypeReady:       newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				},
 			},
 		}
@@ -196,13 +200,15 @@ func kubeObjStatusSyncTest(testType string) *NodeTestCase {
 		nodeStatus = map[string]types.NodeStatus{
 			TestNode1: {
 				Conditions: map[string]types.Condition{
+					types.NodeConditionTypeSchedulable:      newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
 					types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeNotReady),
 					types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 				},
 			},
 			TestNode2: {
 				Conditions: map[string]types.Condition{
-					types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+					types.NodeConditionTypeSchedulable: newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+					types.NodeConditionTypeReady:       newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				},
 			},
 		}
@@ -210,13 +216,15 @@ func kubeObjStatusSyncTest(testType string) *NodeTestCase {
 		nodeStatus = map[string]types.NodeStatus{
 			TestNode1: {
 				Conditions: map[string]types.Condition{
+					types.NodeConditionTypeSchedulable:      newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
 					types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodePressure),
 					types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 				},
 			},
 			TestNode2: {
 				Conditions: map[string]types.Condition{
-					types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+					types.NodeConditionTypeSchedulable: newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+					types.NodeConditionTypeReady:       newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				},
 			},
 		}
@@ -269,6 +277,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[string]types.Condition{
+				types.NodeConditionTypeSchedulable:      newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
@@ -288,7 +297,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		},
 		TestNode2: {
 			Conditions: map[string]types.Condition{
-				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeSchedulable: newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeReady:       newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 			},
 			DiskStatus: map[string]*types.DiskStatus{
 				TestDiskID1: {
@@ -337,6 +347,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[string]types.Condition{
+				types.NodeConditionTypeSchedulable:      newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
@@ -355,7 +366,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		},
 		TestNode2: {
 			Conditions: map[string]types.Condition{
-				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeSchedulable: newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeReady:       newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 			},
 			DiskStatus: map[string]*types.DiskStatus{
 				TestDiskID1: {
@@ -404,6 +416,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[string]types.Condition{
+				types.NodeConditionTypeSchedulable:      newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
@@ -422,7 +435,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		},
 		TestNode2: {
 			Conditions: map[string]types.Condition{
-				types.NodeConditionTypeReady: newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeSchedulable: newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+				types.NodeConditionTypeReady:       newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 			},
 			DiskStatus: map[string]*types.DiskStatus{
 				TestDiskID1: {
@@ -453,6 +467,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[string]types.Condition{
+				types.NodeConditionTypeSchedulable:      newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
@@ -497,6 +512,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[string]types.Condition{
+				types.NodeConditionTypeSchedulable:      newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},
@@ -558,6 +574,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.expectNodeStatus = map[string]types.NodeStatus{
 		TestNode1: {
 			Conditions: map[string]types.Condition{
+				types.NodeConditionTypeSchedulable:      newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeReady:            newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
 				types.NodeConditionTypeMountPropagation: newNodeCondition(types.NodeConditionTypeMountPropagation, types.ConditionStatusTrue, ""),
 			},

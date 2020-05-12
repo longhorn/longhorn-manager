@@ -110,7 +110,8 @@ func newNode(name, namespace string, allowScheduling bool, status types.Conditio
 		},
 		Status: types.NodeStatus{
 			Conditions: map[string]types.Condition{
-				types.NodeConditionTypeReady: newCondition(types.NodeConditionTypeReady, status),
+				types.NodeConditionTypeSchedulable: newCondition(types.NodeConditionTypeSchedulable, status),
+				types.NodeConditionTypeReady:       newCondition(types.NodeConditionTypeReady, status),
 			},
 		},
 	}
