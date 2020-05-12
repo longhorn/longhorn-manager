@@ -459,10 +459,12 @@ func volumeSchema(volume *client.Schema) {
 			Output: "volume",
 		},
 		"activate": {
-			Input: "activateInput",
+			Input:  "activateInput",
+			Output: "volume",
 		},
 		"expand": {
-			Input: "expandInput",
+			Input:  "expandInput",
+			Output: "volume",
 		},
 		"cancelExpansion": {
 			Output: "volume",
@@ -499,10 +501,12 @@ func volumeSchema(volume *client.Schema) {
 		},
 
 		"pvCreate": {
-			Input: "PVCreateInput",
+			Input:  "PVCreateInput",
+			Output: "volume",
 		},
 		"pvcCreate": {
-			Input: "PVCCreateInput",
+			Input:  "PVCCreateInput",
+			Output: "volume",
 		},
 
 		"jobList": {},
@@ -597,6 +601,10 @@ func volumeSchema(volume *client.Schema) {
 	purgeStatus := volume.ResourceFields["purgeStatus"]
 	purgeStatus.Type = "array[purgeStatus]"
 	volume.ResourceFields["purgeStatus"] = purgeStatus
+
+	rebuildStatus := volume.ResourceFields["rebuildStatus"]
+	rebuildStatus.Type = "array[rebuildStatus]"
+	volume.ResourceFields["rebuildStatus"] = rebuildStatus
 }
 
 func toSettingResource(setting *longhorn.Setting) *Setting {
