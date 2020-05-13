@@ -57,6 +57,7 @@ const (
 	SettingNameAutoSalvage                       = SettingName("auto-salvage")
 	SettingNameRegistrySecret                    = SettingName("registry-secret")
 	SettingNameDisableSchedulingOnCordonedNode   = SettingName("disable-scheduling-on-cordoned-node")
+	SettingNameReplicaZoneSoftAntiAffinity       = SettingName("replica-zone-soft-anti-affinity")
 )
 
 var (
@@ -81,6 +82,7 @@ var (
 		SettingNameAutoSalvage,
 		SettingNameRegistrySecret,
 		SettingNameDisableSchedulingOnCordonedNode,
+		SettingNameReplicaZoneSoftAntiAffinity,
 	}
 )
 
@@ -124,6 +126,7 @@ var (
 		SettingNameAutoSalvage:                       SettingDefinitionAutoSalvage,
 		SettingNameRegistrySecret:                    SettingDefinitionRegistrySecret,
 		SettingNameDisableSchedulingOnCordonedNode:   SettingDefinitionDisableSchedulingOnCordonedNode,
+		SettingNameReplicaZoneSoftAntiAffinity:       SettingDefinitionReplicaZoneSoftAntiAffinity,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -195,7 +198,7 @@ var (
 	}
 
 	SettingDefinitionReplicaSoftAntiAffinity = SettingDefinition{
-		DisplayName: "Replica Soft Anti-Affinity",
+		DisplayName: "Replica Node Level Soft Anti-Affinity",
 		Description: "Allow scheduling on nodes with existing healthy replicas of the same volume",
 		Category:    SettingCategoryScheduling,
 		Type:        SettingTypeBool,
@@ -324,6 +327,15 @@ var (
 		ReadOnly:    false,
 		Default:     "true",
 	}
+	SettingDefinitionReplicaZoneSoftAntiAffinity = SettingDefinition{
+		DisplayName: "Replica Zone Level Soft Anti-Affinity",
+		Description: "Allow scheduling new Replicas of Volume to the Nodes in the same Zone as existing healthy Replicas. Nodes don't belong to any Zone will be treated as in the same Zone.",
+		Category:    SettingCategoryScheduling,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "true",
+	}
 )
 
 func ValidateInitSetting(name, value string) (err error) {
@@ -354,6 +366,8 @@ func ValidateInitSetting(name, value string) (err error) {
 	case SettingNameReplicaSoftAntiAffinity:
 		fallthrough
 	case SettingNameDisableSchedulingOnCordonedNode:
+		fallthrough
+	case SettingNameReplicaZoneSoftAntiAffinity:
 		fallthrough
 	case SettingNameUpgradeChecker:
 		if value != "true" && value != "false" {
