@@ -1122,7 +1122,32 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		replenishCount = 1
 		currentRebuilding := getRebuildingReplicaCount(e)
 		if currentRebuilding != 0 {
-			replenishCount = 0
+			return nil
+		}
+		if replenishCount != 0 {
+			// don't allow exceeding the cluster wide rebuild limit
+			concurrentLimit, err := vc.ds.GetSettingAsInt(types.SettingNameReplicaRebuildConcurrentLimit)
+			if err != nil {
+				return err
+			}
+			currentRebuildingClusterWide := 0
+			allEngines, err := vc.ds.ListEngines()
+			if err != nil {
+				return err
+			}
+			for _, engine := range allEngines {
+				if engine.Status.CurrentState != types.InstanceStateRunning {
+					continue
+				}
+				currentRebuildingClusterWide += getRebuildingReplicaCount(engine)
+				if currentRebuildingClusterWide >= int(concurrentLimit) {
+					break
+				}
+			}
+			if currentRebuildingClusterWide >= int(concurrentLimit) {
+				logrus.Debugf("volume controller: reached rebuild concurrent limit %v, delay rebuilding for volume %v", concurrentLimit, v.Name)
+				return nil
+			}
 		}
 	}
 	for i := 0; i < replenishCount; i++ {
