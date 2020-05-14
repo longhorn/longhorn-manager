@@ -990,7 +990,7 @@ func (ec *EngineController) ReconcileEngineState(e *longhorn.Engine) error {
 	if err := ec.removeUnknownReplica(e); err != nil {
 		return err
 	}
-	if err := ec.rebuildingNewReplica(e); err != nil {
+	if err := ec.rebuildNewReplica(e); err != nil {
 		return err
 	}
 	return nil
@@ -1050,7 +1050,7 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 	return nil
 }
 
-func (ec *EngineController) rebuildingNewReplica(e *longhorn.Engine) error {
+func (ec *EngineController) rebuildNewReplica(e *longhorn.Engine) error {
 	rebuildingInProgress := false
 	replicaExists := make(map[string]bool)
 	for replica, mode := range e.Status.ReplicaModeMap {
