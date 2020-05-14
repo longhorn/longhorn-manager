@@ -769,6 +769,48 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			types.VolumeConditionTypeScheduled, types.ConditionStatusTrue, "", "")
 	}
 
+	// When the node is down or the engine crashes unexpectedly during the restore, the engine restore status is empty.
+	// Hence all replicas need to be manually set to failure.
+	restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
+	if restoreCondition.Status == types.ConditionStatusTrue && restoreCondition.Reason == types.VolumeConditionReasonRestoreInProgress {
+		msg := ""
+		restoreInterrupted := false
+
+		if v.Status.CurrentNodeID == "" {
+			msg := fmt.Sprintf("BUG: The volume %v current node ID is empty during the restoring", v.Name)
+			logrus.Errorf(msg)
+			restoreInterrupted = true
+		} else {
+			isDown, err := vc.ds.IsNodeDownOrDeleted(v.Status.CurrentNodeID)
+			if err != nil {
+				return err
+			}
+			if isDown {
+				msg := fmt.Sprintf("The volume %v current node %v is down during the restoring", v.Name, v.Status.CurrentNodeID)
+				logrus.Warnf(msg)
+				restoreInterrupted = true
+			}
+
+			if !restoreInterrupted && e.Status.CurrentState == types.InstanceStateError {
+				msg := fmt.Sprintf("The volume %v engine %v crashes unexpectedly during the restoring", v.Name, e.Name)
+				logrus.Warnf(msg)
+				restoreInterrupted = true
+			}
+		}
+
+		// The volume restore condition and the volume robustness will be updated later.
+		if restoreInterrupted {
+			for _, r := range rs {
+				if r.Spec.FailedAt == "" {
+					r.Spec.DesireState = types.InstanceStateStopped
+					r.Spec.FailedAt = vc.nowHandler()
+				}
+			}
+			v.Status.CurrentNodeID = ""
+			vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonDetachedUnexpectly, msg)
+		}
+	}
+
 	allFaulted := true
 	for _, r := range rs {
 		if r.Spec.FailedAt == "" {
