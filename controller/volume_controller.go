@@ -1117,6 +1117,14 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 	}
 
 	replenishCount := vc.getReplenishReplicasCount(v, rs)
+	if len(rs) != 0 && replenishCount != 0 {
+		// For rebuild case, schedule and rebuild one replica at a time
+		replenishCount = 1
+		currentRebuilding := getRebuildingReplicaCount(e)
+		if currentRebuilding != 0 {
+			replenishCount = 0
+		}
+	}
 	for i := 0; i < replenishCount; i++ {
 		r, err := vc.createReplica(v, e, rs)
 		if err != nil {
@@ -1125,6 +1133,25 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		rs[r.Name] = r
 	}
 	return nil
+}
+
+func getRebuildingReplicaCount(e *longhorn.Engine) int {
+	rebuilding := 0
+	replicaExists := make(map[string]bool)
+	// replicas are currently rebuilding
+	for replica, mode := range e.Status.ReplicaModeMap {
+		replicaExists[replica] = true
+		if mode == types.ReplicaModeWO {
+			rebuilding++
+		}
+	}
+	// replicas are to be rebuilt
+	for replica := range e.Status.CurrentReplicaAddressMap {
+		if !replicaExists[replica] {
+			rebuilding++
+		}
+	}
+	return rebuilding
 }
 
 func (vc *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[string]*longhorn.Replica) int {
