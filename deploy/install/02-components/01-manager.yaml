@@ -27,7 +27,7 @@ spec:
         - --engine-image
         - longhornio/longhorn-engine:master
         - --instance-manager-image
-        - longhornio/longhorn-instance-manager:v1_20200301
+        - longhornio/longhorn-instance-manager:v1_20200514
         - --manager-image
         - longhornio/longhorn-manager:master
         - --service-account
