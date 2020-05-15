@@ -304,15 +304,18 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 		}
 	}
 
-	// podNum includes terminating pods
-	pods, terminatingPodCount, err := kc.getAssociatedPods(ks)
+	pods, err := kc.getAssociatedPods(ks)
 	if err != nil {
 		return err
 	}
 
-	kc.setWorkloads(ks, pods)
+	// for the workloads we only consider active pods
+	activePods := filterPods(pods, func(p *v1.Pod) bool {
+		return p.DeletionTimestamp == nil
+	})
+	kc.setWorkloads(ks, activePods)
 
-	defer kc.cleanupVolumeAttachment(terminatingPodCount, volume, ks)
+	defer kc.cleanupVolumeAttachment(pods, volume, ks)
 
 	return nil
 }
@@ -431,28 +434,33 @@ func (kc *KubernetesPVController) cleanupForPVDeletion(pvName string) (bool, err
 	return true, nil
 }
 
-func (kc *KubernetesPVController) getAssociatedPods(ks *types.KubernetesStatus) ([]*v1.Pod, int, error) {
+// filterPods includes only the pods where the passed predicate returns true
+func filterPods(pods []*v1.Pod, predicate func(pod *v1.Pod) bool) (filtered []*v1.Pod) {
+	for _, p := range pods {
+		if predicate(p) {
+			filtered = append(filtered, p)
+		}
+	}
+	return filtered
+}
+
+func (kc *KubernetesPVController) getAssociatedPods(ks *types.KubernetesStatus) ([]*v1.Pod, error) {
 	var pods []*v1.Pod
-	terminatingPodCount := 0
 	if ks.PVStatus != string(v1.VolumeBound) {
-		return pods, terminatingPodCount, nil
+		return pods, nil
 	}
 	ps, err := kc.pLister.Pods(ks.Namespace).List(labels.Everything())
 	if err != nil {
-		return nil, 0, errors.Wrapf(err, "failed to list pods in getAssociatedPod")
+		return nil, errors.Wrapf(err, "failed to list pods in getAssociatedPod")
 	}
 	for _, p := range ps {
 		for _, v := range p.Spec.Volumes {
 			if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == ks.PVCName {
-				if p.DeletionTimestamp == nil {
-					pods = append(pods, p)
-				} else {
-					terminatingPodCount++
-				}
+				pods = append(pods, p)
 			}
 		}
 	}
-	return pods, terminatingPodCount, nil
+	return pods, nil
 }
 
 func (kc *KubernetesPVController) setWorkloads(ks *types.KubernetesStatus, pods []*v1.Pod) {
@@ -487,18 +495,30 @@ func (kc *KubernetesPVController) detectWorkload(p *v1.Pod) (string, string) {
 	return "", ""
 }
 
-func (kc *KubernetesPVController) cleanupVolumeAttachment(terminatingPodCount int, volume *longhorn.Volume, ks *types.KubernetesStatus) {
-	// PV and PVC should exist. No terminating Pod. All live Pods should be Pending.
-	if !(ks.PVStatus == string(v1.VolumeBound) && ks.PVCName != "" && ks.LastPVCRefAt == "") {
-		return
+func (kc *KubernetesPVController) cleanupVolumeAttachment(pods []*v1.Pod, volume *longhorn.Volume, ks *types.KubernetesStatus) {
+	terminatingPods := filterPods(pods, func(p *v1.Pod) bool {
+		return p.DeletionTimestamp != nil
+	})
+
+	// in the default mode for safety reasons we wait till the deletion has passed
+	// this should lead to a force delete by the kubelet, but since the pod is still available
+	// we know that the kubelet failed to cleanup the pod resource.
+	waitForDeletion := false
+	for _, p := range terminatingPods {
+		waitForDeletion = waitForDeletion || p.DeletionTimestamp.After(time.Now())
 	}
-	if !(terminatingPodCount == 0 && len(ks.WorkloadsStatus) != 0 && ks.LastPodRefAt == "") {
-		return
-	}
+
+	// All live pods should be pending
+	allWorkloadsPending := len(ks.WorkloadsStatus) != 0
 	for _, ws := range ks.WorkloadsStatus {
-		if ws.PodStatus != string(v1.PodPending) {
-			return
-		}
+		allWorkloadsPending = allWorkloadsPending && ws.PodStatus == string(v1.PodPending)
+	}
+
+	// PV and PVC should exist.
+	cleanup := ks.PVStatus == string(v1.VolumeBound) && ks.PVCName != "" && ks.LastPVCRefAt == "" &&
+		!waitForDeletion && allWorkloadsPending && ks.LastPodRefAt == ""
+	if !cleanup {
+		return
 	}
 
 	va, err := kc.getVolumeAttachment(ks)
@@ -510,13 +530,13 @@ func (kc *KubernetesPVController) cleanupVolumeAttachment(terminatingPodCount in
 		return
 	}
 
-	cleanupFlag, err := kc.ds.IsNodeDownOrDeleted(va.Spec.NodeName)
+	// cleanup if the node is declared `NotReady` or doesn't exist.
+	cleanup, err = kc.ds.IsNodeDownOrDeleted(va.Spec.NodeName)
 	if err != nil {
 		logrus.Errorf("failed to detect node %v in cleanupVolumeAttachment: %v", va.Spec.NodeName, err)
 		return
 	}
-	// the node VolumeAttachment on is declared `NotReady` or doesn't exist.
-	if !cleanupFlag {
+	if !cleanup {
 		return
 	}
 
