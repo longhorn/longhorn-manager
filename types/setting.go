@@ -262,16 +262,16 @@ var (
 	SettingDefinitionGuaranteedEngineCPU = SettingDefinition{
 		DisplayName: "Guaranteed Engine CPU",
 		Description: "(EXPERIMENTAL) Allow Longhorn Engine to have guaranteed CPU allocation. The value is " +
-			"how many CPUs should be reserved for each Engine/Replica Manager Pod created by Longhorn. For example, " +
+			"how many CPUs should be reserved for each Engine/Replica Instance Manager Pod created by Longhorn. For example, " +
 			"0.1 means one-tenth of a CPU. This will help maintain engine stability during high node workload. It " +
 			"only applies to the Engine/Replica Manager Pods created after the setting took effect. WARNING: " +
 			"After this setting is changed, the instance manager needs to be manually restarted." +
-			"Disabled (\"0\") by default.",
+			"0.25 by default.",
 		Category: SettingCategoryGeneral,
 		Type:     SettingTypeInt,
 		Required: true,
 		ReadOnly: false,
-		Default:  "0",
+		Default:  "0.25",
 	}
 
 	SettingDefinitionDefaultLonghornStaticStorageClass = SettingDefinition{
