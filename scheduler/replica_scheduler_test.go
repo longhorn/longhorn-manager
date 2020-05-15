@@ -207,6 +207,7 @@ type ReplicaSchedulerTestCase struct {
 	nodes                             map[string]*longhorn.Node
 	storageOverProvisioningPercentage string
 	storageMinimalAvailablePercentage string
+	replicaNodeSoftAntiAffinity       string
 
 	// schedule state
 	expectedNodes map[string]*longhorn.Node
@@ -293,6 +294,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.expectedNodes = expectedNodes
 	tc.err = false
 	tc.isNilReplica = false
+	// Set replica node soft anti-affinity
+	tc.replicaNodeSoftAntiAffinity = "true"
 	testCases["nodes could not schedule"] = tc
 
 	// Test no disks on each nodes, volume should not schedule to any node
@@ -573,6 +576,16 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 
 			s = initSettings(string(types.SettingNameStorageMinimalAvailablePercentage), tc.storageMinimalAvailablePercentage)
 			setting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
+			c.Assert(err, IsNil)
+			sIndexer.Add(setting)
+		}
+		// Set replica node soft anti-affinity setting
+		if tc.replicaNodeSoftAntiAffinity != "" {
+			s := initSettings(
+				string(types.SettingNameReplicaSoftAntiAffinity),
+				tc.replicaNodeSoftAntiAffinity)
+			setting, err :=
+				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
 			c.Assert(err, IsNil)
 			sIndexer.Add(setting)
 		}
