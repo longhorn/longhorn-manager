@@ -264,9 +264,6 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool) (v *lo
 	if err != nil {
 		return nil, err
 	}
-	if v.Status.State != types.VolumeStateDetached {
-		return nil, fmt.Errorf("invalid state to attach %v: %v", name, v.Status.State)
-	}
 	if err := m.CheckEngineImageReadiness(v.Spec.EngineImage); err != nil {
 		return nil, errors.Wrapf(err, "cannot attach volume %v with image %v", v.Name, v.Spec.EngineImage)
 	}
@@ -280,16 +277,18 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool) (v *lo
 		return nil, fmt.Errorf("volume %v is restoring data", name)
 	}
 
-	// already desired to be attached
-	if v.Spec.NodeID != "" {
-		if v.Spec.NodeID != nodeID {
-			return nil, fmt.Errorf("Node to be attached %v is different from previous spec %v", nodeID, v.Spec.NodeID)
-		}
+	// no need to error if we are already attached to this node
+	if v.Status.State == types.VolumeStateAttached && v.Spec.NodeID == nodeID {
 		return v, nil
+	} else if v.Status.State != types.VolumeStateDetached {
+		return nil, fmt.Errorf("invalid state to attach %v: %v", name, v.Status.State)
+	} else if v.Spec.NodeID != "" && v.Spec.NodeID != nodeID {
+		return nil, fmt.Errorf("requested node %v is different from previous spec %v", nodeID, v.Spec.NodeID)
 	}
+
+	// request attachment to the new node
 	v.Spec.NodeID = nodeID
 	v.Spec.DisableFrontend = disableFrontend
-
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
 		return nil, err
@@ -307,23 +306,23 @@ func (m *VolumeManager) Detach(name string) (v *longhorn.Volume, err error) {
 	if err != nil {
 		return nil, err
 	}
-	if v.Status.State != types.VolumeStateAttached && v.Status.State != types.VolumeStateAttaching {
+
+	// no need to error if we are already detached
+	currentNode := v.Spec.NodeID
+	if (v.Status.State == types.VolumeStateDetached) && v.Spec.NodeID == "" {
+		return v, nil
+	} else if v.Status.State != types.VolumeStateAttached && v.Status.State != types.VolumeStateAttaching {
 		return nil, fmt.Errorf("invalid state to detach %v: %v", v.Name, v.Status.State)
 	}
 
-	oldNodeID := v.Spec.NodeID
-	if oldNodeID == "" {
-		return v, nil
-	}
-
+	// request detachment
 	v.Spec.NodeID = ""
 	v.Spec.DisableFrontend = false
-
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Detaching volume %v from %v", v.Name, oldNodeID)
+	logrus.Debugf("Detaching volume %v from %v", v.Name, currentNode)
 	return v, nil
 }
 
