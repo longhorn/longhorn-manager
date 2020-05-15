@@ -46,6 +46,18 @@ func setVolumeConditionWithoutTimestamp(originConditions map[string]types.Condit
 	return conditions
 }
 
+func initSettingsNameValue(name, value string) *longhorn.Setting {
+	setting := &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Setting: types.Setting{
+			Value: value,
+		},
+	}
+	return setting
+}
+
 func initSettings(ds *datastore.DataStore) {
 	settingDefaultEngineImage := &longhorn.Setting{
 		ObjectMeta: metav1.ObjectMeta{
@@ -109,6 +121,8 @@ type VolumeTestCase struct {
 	expectVolume   *longhorn.Volume
 	expectEngines  map[string]*longhorn.Engine
 	expectReplicas map[string]*longhorn.Replica
+
+	replicaNodeSoftAntiAffinity string
 }
 
 func (s *TestSuite) TestVolumeLifeCycle(c *C) {
@@ -131,6 +145,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.Conditions = map[string]types.Condition{}
 	tc.engines = nil
 	tc.replicas = nil
+	// Set replica node soft anti-affinity
+	tc.replicaNodeSoftAntiAffinity = "true"
 	testCases["volume create"] = tc
 
 	// unable to create volume because no node to schedule
@@ -266,6 +282,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	tc.replicas = nil
 	tc.engines = nil
+	// Set replica node soft anti-affinity
+	tc.replicaNodeSoftAntiAffinity = "true"
 	testCases["restored volume is automatically attaching after creation"] = tc
 
 	// Newly restored volume changed from attaching to attached
@@ -970,6 +988,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 		knIndexer := kubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+		sIndexer := lhInformerFactory.Longhorn().V1beta1().Settings().Informer().GetIndexer()
 
 		vc := newTestVolumeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestOwnerID1)
 
@@ -989,6 +1008,16 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
 
+		// Set replica node soft anti-affinity setting
+		if tc.replicaNodeSoftAntiAffinity != "" {
+			s := initSettingsNameValue(
+				string(types.SettingNameReplicaSoftAntiAffinity),
+				tc.replicaNodeSoftAntiAffinity)
+			setting, err :=
+				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
+			c.Assert(err, IsNil)
+			sIndexer.Add(setting)
+		}
 		// need to create default node
 		for _, node := range tc.nodes {
 			node.Status.DiskStatus = map[string]*types.DiskStatus{
