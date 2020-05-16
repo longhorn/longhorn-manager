@@ -800,9 +800,12 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	if v.Status.Robustness == types.VolumeRobustnessFaulted {
 		actions["salvage"] = struct{}{}
 	} else {
+		// attach/detach actions should always be exposed
+		// it's the managers job to determine whether an attach/detach action is valid
+		actions["attach"] = struct{}{}
+		actions["detach"] = struct{}{}
 		switch v.Status.State {
 		case types.VolumeStateDetached:
-			actions["attach"] = struct{}{}
 			actions["recurringUpdate"] = struct{}{}
 			actions["activate"] = struct{}{}
 			actions["expand"] = struct{}{}
@@ -812,7 +815,6 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 		case types.VolumeStateAttaching:
-			actions["detach"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
 		case types.VolumeStateAttached:
 			actions["detach"] = struct{}{}
