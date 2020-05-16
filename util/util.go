@@ -643,6 +643,30 @@ func CreateDiskPathReplicaSubdirectory(path string) error {
 	return nil
 }
 
+func DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(
+	nsExec *iscsi_util.NamespaceExecutor, path string) error {
+
+	var err error
+	dirPath := filepath.Join(path, ReplicaDirectory)
+	filePath := filepath.Join(path, DiskConfigFile)
+
+	// Check if the replica directory exist, delete it
+	if _, err := nsExec.Execute("ls", []string{dirPath}); err == nil {
+		if _, err := nsExec.Execute("rmdir", []string{dirPath}); err != nil {
+			return errors.Wrapf(err, "error deleting data path %v on host", path)
+		}
+	}
+
+	// Check if the disk cfg file exist, delete it
+	if _, err := nsExec.Execute("ls", []string{filePath}); err == nil {
+		if _, err := nsExec.Execute("rm", []string{filePath}); err != nil {
+			err = errors.Wrapf(err, "error deleting disk cfg file %v on host", filePath)
+		}
+	}
+
+	return err
+}
+
 func IsKubernetesDefaultToleration(toleration v1.Toleration) bool {
 	if strings.Contains(toleration.Key, DefaultKubernetesTolerationKey) {
 		return true
@@ -933,6 +957,16 @@ func GenerateDiskConfig(path string) (*DiskConfig, error) {
 	if _, err := nsExec.Execute("ls", []string{filePath}); err == nil {
 		return nil, fmt.Errorf("disk cfg on %v exists, cannot override", filePath)
 	}
+
+	defer func() {
+		if err != nil {
+			if derr := DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(nsExec, path); derr != nil {
+				err = errors.Wrapf(err, "cleaning up disk config path %v failed with error: %v", path, derr)
+			}
+
+		}
+	}()
+
 	if _, err := nsExec.ExecuteWithStdin("dd", []string{"of=" + filePath}, string(encoded)); err != nil {
 		return nil, fmt.Errorf("cannot write to disk cfg on %v: %v", filePath, err)
 	}
