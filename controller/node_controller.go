@@ -571,6 +571,25 @@ func (nc *NodeController) getDiskInfoMap(node *longhorn.Node) map[string]*diskIn
 	return result
 }
 
+// Check all disks in the same filesystem ID are in ready status
+func (nc *NodeController) isFSIDDuplicatedWithExistingReadyDisk(name string, disks []string, diskStatusMap map[string]*types.DiskStatus) bool {
+	if len(disks) > 1 {
+		for _, otherName := range disks {
+			diskReady :=
+				types.GetCondition(
+					diskStatusMap[otherName].Conditions,
+					types.DiskConditionTypeReady)
+
+			if (otherName != name) && (diskReady.Status ==
+				types.ConditionStatusTrue) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 	// sync the disks between node.Spec.Disks and node.Status.DiskStatus
 	if node.Status.DiskStatus == nil {
@@ -636,15 +655,25 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			} else {
 				diskUUID = diskConfig.DiskUUID
 			}
+
 			if diskStatusMap[id].DiskUUID == "" {
-				if len(disks) > 1 {
-					diskStatusMap[id].Conditions = types.SetConditionAndRecord(diskStatusMap[id].Conditions,
-						types.DiskConditionTypeReady, types.ConditionStatusFalse,
-						string(types.DiskConditionReasonDiskFilesystemChanged),
-						fmt.Sprintf("Disk %v(%v) on node %v is not ready: disk has same file system ID %v as other disks %+v", id, disk.Path, node.Name, fsid, disks),
-						nc.eventRecorder, node, v1.EventTypeWarning)
+				// Check disks in the same filesystem
+				if nc.isFSIDDuplicatedWithExistingReadyDisk(
+					id, disks, diskStatusMap) {
+					// Found multiple disks in the same Fsid
+					diskStatusMap[id].Conditions =
+						types.SetConditionAndRecord(
+							diskStatusMap[id].Conditions,
+							types.DiskConditionTypeReady,
+							types.ConditionStatusFalse,
+							string(types.DiskConditionReasonDiskFilesystemChanged),
+							fmt.Sprintf("Disk %v(%v) on node %v is not ready: disk has same file system ID %v as other disks %+v", id, disk.Path, node.Name, fsid, disks),
+							nc.eventRecorder, node,
+							v1.EventTypeWarning)
 					continue
+
 				}
+
 				if diskUUID == "" {
 					diskConfig, err := nc.generateDiskConfig(node.Spec.Disks[id].Path)
 					if err != nil {
