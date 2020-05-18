@@ -505,18 +505,21 @@ func (kc *KubernetesPVController) cleanupVolumeAttachment(pods []*v1.Pod, volume
 	// we know that the kubelet failed to cleanup the pod resource.
 	waitForDeletion := false
 	for _, p := range terminatingPods {
-		waitForDeletion = waitForDeletion || p.DeletionTimestamp.After(time.Now())
+		waitForDeletion = waitForDeletion || !p.DeletionTimestamp.After(time.Now())
 	}
 
-	// All live pods should be pending
-	allWorkloadsPending := len(ks.WorkloadsStatus) != 0
+	// we only want to delete the volume attachment for pods of a ReplicaSet
+	// we only want to delete the volume attachment if there are replacement pods pending
+	workloadsAllowDeletion := len(ks.WorkloadsStatus) != 0
+	workloadsPending := len(ks.WorkloadsStatus) != 0
 	for _, ws := range ks.WorkloadsStatus {
-		allWorkloadsPending = allWorkloadsPending && ws.PodStatus == string(v1.PodPending)
+		workloadsAllowDeletion = workloadsAllowDeletion && ws.WorkloadType == types.KubernetesReplicaSet
+		workloadsPending = workloadsPending && ws.PodStatus == string(v1.PodPending)
 	}
 
-	// PV and PVC should exist.
+	// PV and PVC should exist and be in active use
 	cleanup := ks.PVStatus == string(v1.VolumeBound) && ks.PVCName != "" && ks.LastPVCRefAt == "" &&
-		!waitForDeletion && allWorkloadsPending && ks.LastPodRefAt == ""
+		!waitForDeletion && workloadsPending && workloadsAllowDeletion && ks.LastPodRefAt == ""
 	if !cleanup {
 		return
 	}
@@ -533,7 +536,8 @@ func (kc *KubernetesPVController) cleanupVolumeAttachment(pods []*v1.Pod, volume
 	// cleanup if the node is declared `NotReady` or doesn't exist.
 	cleanup, err = kc.ds.IsNodeDownOrDeleted(va.Spec.NodeName)
 	if err != nil {
-		logrus.Errorf("failed to detect node %v in cleanupVolumeAttachment: %v", va.Spec.NodeName, err)
+		logrus.Errorf("failed to evaluate Node %v for VolumeAttachment %v in cleanupVolumeAttachment: %v",
+			va.Spec.NodeName, va.Name, err)
 		return
 	}
 	if !cleanup {
@@ -542,10 +546,12 @@ func (kc *KubernetesPVController) cleanupVolumeAttachment(pods []*v1.Pod, volume
 
 	err = kc.kubeClient.StorageV1beta1().VolumeAttachments().Delete(va.Name, &metav1.DeleteOptions{})
 	if err != nil {
-		logrus.Errorf("failed to delete VolumeAttachment %v in cleanupVolumeAttachment: %v", va.Name, err)
+		logrus.Errorf("failed to delete VolumeAttachment %v for Node %v in cleanupVolumeAttachment: %v",
+			va.Name, va.Spec.NodeName, err)
 		return
 	}
-	kc.eventRecorder.Eventf(volume, v1.EventTypeNormal, EventReasonDelete, "Cleanup Volume Attachment on 'NotReady' Node: %v", va.Name)
+	kc.eventRecorder.Eventf(volume, v1.EventTypeNormal, EventReasonDelete,
+		"Cleanup VolumeAttachment %v on 'NotReady' Node %v", va.Name, va.Spec.NodeName)
 	return
 }
 
