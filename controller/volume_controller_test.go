@@ -739,6 +739,36 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectReplicas = expectRs
 	testCases["volume attaching - start replicas - manager down"] = tc
 	s.runTestCases(c, testCases)
+
+	// restoring volume reattaching, stop replicas
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.NodeID = ""
+	tc.volume.Status.CurrentNodeID = ""
+	tc.volume.Status.PendingNodeID = TestNode1
+	tc.volume.Status.InitialRestorationRequired = true
+	tc.volume.Status.State = types.VolumeStateDetaching
+	for _, e := range tc.engines {
+		e.Spec.NodeID = ""
+		e.Status.CurrentState = types.InstanceStateStopped
+	}
+	for name, r := range tc.replicas {
+		r.Spec.DesireState = types.InstanceStateRunning
+		r.Spec.HealthyAt = getTestNow()
+		r.Status.CurrentState = types.InstanceStateRunning
+		r.Status.IP = randomIP()
+		r.Status.Port = randomPort()
+		for _, e := range tc.engines {
+			e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.IP, r.Status.Port)
+		}
+	}
+	tc.copyCurrentToExpect()
+	tc.expectVolume.Status.State = types.VolumeStateDetaching
+	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	for _, r := range tc.expectReplicas {
+		r.Spec.DesireState = types.InstanceStateStopped
+	}
+	testCases["restoring volume reattaching - stop replicas"] = tc
 }
 
 func newVolume(name string, replicaCount int) *longhorn.Volume {

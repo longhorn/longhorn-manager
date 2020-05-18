@@ -628,7 +628,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	}
 
 	if v.Status.CurrentNodeID == "" {
-		// If there is a pending attach operation, we need to stay detached until PendingNodeID was cleared
+		// `PendingNodeID != ""` means the engine dead unexpectedly.
+		// The volume will be detached by cleaning up `CurrentNodeID` then be reattached by `v.Status.CurrentNodeID = v.Status.PendingNodeID`.
+		// Hence this auto attachment logic shouldn't set `CurrentNodeID` in this case.
 		if v.Status.PendingNodeID == "" && v.Status.Robustness != types.VolumeRobustnessFaulted {
 			v.Status.CurrentNodeID = v.Spec.NodeID
 		}
@@ -735,7 +737,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 	}
 	if autoAttachRequired {
-		if v.Status.CurrentNodeID == "" {
+		// Do not set v.Status.CurrentNodeID here if the volume is being auto reattached.
+		if v.Status.CurrentNodeID == "" && v.Status.PendingNodeID == "" {
 			// Should use vc.controllerID or v.Status.OwnerID as CurrentNodeID,
 			// otherwise they may be not equal
 			v.Status.CurrentNodeID = v.Status.OwnerID
