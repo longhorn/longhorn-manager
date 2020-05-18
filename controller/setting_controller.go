@@ -210,6 +210,10 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.updateTaintToleration(); err != nil {
 			return err
 		}
+	case string(types.SettingNameGuaranteedEngineCPU):
+		if err := sc.updateGuaranteedEngineCPU(); err != nil {
+			return err
+		}
 	default:
 	}
 
@@ -509,4 +513,28 @@ func (sc *SettingController) enqueueSetting(setting *longhorn.Setting) {
 	}
 
 	sc.queue.AddRateLimited(key)
+}
+
+func (sc *SettingController) updateGuaranteedEngineCPU() error {
+	resourceReq, err := GetGuaranteedResourceRequirement(sc.ds)
+	if err != nil {
+		return err
+	}
+
+	imPodList, err := sc.ds.ListInstanceManagerPods()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list instance manager pods for toleration update")
+	}
+
+	for _, imPod := range imPodList {
+		podResourceReq := imPod.Spec.Containers[0].Resources
+		if IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq) {
+			continue
+		}
+		if err := sc.ds.DeletePod(imPod.Name); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

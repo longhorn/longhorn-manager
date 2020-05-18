@@ -186,3 +186,20 @@ func EnhancedDefaultControllerRateLimiter() workqueue.RateLimiter {
 		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
 	)
 }
+
+func IsSameGuaranteedCPURequirement(a, b *corev1.ResourceRequirements) bool {
+	if (a == nil) != (b == nil) {
+		return false
+	}
+	if a == nil { // means b == nil
+		return true
+	}
+	if (a.Requests == nil) != (b.Requests == nil) {
+		return false
+	}
+	if a.Requests == nil { // means b.Requests == nil
+		return true
+	}
+	requestA := a.Requests[corev1.ResourceCPU]
+	return (&requestA).Cmp(b.Requests[corev1.ResourceCPU]) == 0
+}
