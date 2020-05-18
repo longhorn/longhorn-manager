@@ -94,6 +94,7 @@ const (
 	SettingCategoryGeneral    = SettingCategory("general")
 	SettingCategoryBackup     = SettingCategory("backup")
 	SettingCategoryScheduling = SettingCategory("scheduling")
+	SettingCategoryDangerZone = SettingCategory("danger Zone")
 )
 
 type SettingDefinition struct {
@@ -261,17 +262,12 @@ var (
 
 	SettingDefinitionGuaranteedEngineCPU = SettingDefinition{
 		DisplayName: "Guaranteed Engine CPU",
-		Description: "(EXPERIMENTAL) Allow Longhorn Engine to have guaranteed CPU allocation. The value is " +
-			"how many CPUs should be reserved for each Engine/Replica Instance Manager Pod created by Longhorn. For example, " +
-			"0.1 means one-tenth of a CPU. This will help maintain engine stability during high node workload. It " +
-			"only applies to the Engine/Replica Manager Pods created after the setting took effect. WARNING: " +
-			"After this setting is changed, the instance manager needs to be manually restarted." +
-			"0.25 by default.",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeInt,
-		Required: true,
-		ReadOnly: false,
-		Default:  "0.25",
+		Description: "Allow Longhorn Instance Managers to have guaranteed CPU allocation. The value is how many CPUs should be reserved for each Engine/Replica Instance Manager Pod created by Longhorn. For example, 0.1 means one-tenth of a CPU. This will help maintain engine stability during high node workload. It only applies to the Engine/Replica Manager Pods created after the setting took effect. WARNING: After this setting is changed, all the instance managers on all the nodes will be automatically restarted. \nWARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES.",
+		Category:    SettingCategoryDangerZone,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "0.25",
 	}
 
 	SettingDefinitionDefaultLonghornStaticStorageClass = SettingDefinition{
@@ -286,8 +282,8 @@ var (
 
 	SettingDefinitionTaintToleration = SettingDefinition{
 		DisplayName: "Kubernetes Taint Toleration",
-		Description: `To dedicate nodes to store Longhorn replicas and reject other general workloads, set tolerations for Longhorn and add taints for the storage nodes. All Longhorn volumes should be detached before modifying toleration settings. We recommend setting tolerations during Longhorn deployment because the Longhorn system cannot be operated during the update. Multiple tolerations can be set here, and these tolerations are separated by semicolon. For example, "key1=value1:NoSchedule; key2:NoExecute". Because "kubernetes.io" is used as the key of all Kubernetes default tolerations, it should not be used in the toleration settings.`,
-		Category:    SettingCategoryGeneral,
+		Description: "To dedicate nodes to store Longhorn replicas and reject other general workloads, set tolerations for Longhorn and add taints for the storage nodes. All Longhorn volumes should be detached before modifying toleration settings. We recommend setting tolerations during Longhorn deployment because the Longhorn system cannot be operated during the update. Multiple tolerations can be set here, and these tolerations are separated by semicolon. For example, `key1=value1:NoSchedule; key2:NoExecute`. Because `kubernetes.io` is used as the key of all Kubernetes default tolerations, it should not be used in the toleration settings.\nWARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES.",
+		Category:    SettingCategoryDangerZone,
 		Type:        SettingTypeString,
 		Required:    false,
 		ReadOnly:    false,
