@@ -58,6 +58,7 @@ const (
 	SettingNameRegistrySecret                    = SettingName("registry-secret")
 	SettingNameDisableSchedulingOnCordonedNode   = SettingName("disable-scheduling-on-cordoned-node")
 	SettingNameReplicaZoneSoftAntiAffinity       = SettingName("replica-zone-soft-anti-affinity")
+	SettingNameVolumeAttachmentRecoveryPolicy    = SettingName("volume-attachment-recovery-policy")
 )
 
 var (
@@ -83,6 +84,7 @@ var (
 		SettingNameRegistrySecret,
 		SettingNameDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity,
+		SettingNameVolumeAttachmentRecoveryPolicy,
 	}
 )
 
@@ -103,6 +105,7 @@ type SettingDefinition struct {
 	Required    bool            `json:"required"`
 	ReadOnly    bool            `json:"readOnly"`
 	Default     string          `json:"default"`
+	Choices     []string        `json:"options,omitempty"` // +optional
 }
 
 var (
@@ -128,6 +131,7 @@ var (
 		SettingNameRegistrySecret:                    SettingDefinitionRegistrySecret,
 		SettingNameDisableSchedulingOnCordonedNode:   SettingDefinitionDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity:       SettingDefinitionReplicaZoneSoftAntiAffinity,
+		SettingNameVolumeAttachmentRecoveryPolicy:    SettingDefinitionVolumeAttachmentRecoveryPolicy,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -332,6 +336,31 @@ var (
 		ReadOnly:    false,
 		Default:     "true",
 	}
+	SettingDefinitionVolumeAttachmentRecoveryPolicy = SettingDefinition{
+		DisplayName: "Volume Attachment Recovery Policy",
+		Description: "Defines the Longhorn action when a Volume is stuck with a Deployment Pod on a failed node. " +
+			"`wait` leads to the deletion of the volume attachment as soon as the pods deletion time has passed." +
+			"`never` is the default Kubernetes behavior of never deleting volume attachments on terminating pods." +
+			"`immediate` leads to the deletion of the volume attachment as soon as all workload pods are pending.",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		Default:  string(VolumeAttachmentRecoveryPolicyWait),
+		Choices: []string{
+			string(VolumeAttachmentRecoveryPolicyNever),
+			string(VolumeAttachmentRecoveryPolicyWait),
+			string(VolumeAttachmentRecoveryPolicyImmediate),
+		},
+	}
+)
+
+type VolumeAttachmentRecoveryPolicy string
+
+const (
+	VolumeAttachmentRecoveryPolicyNever     = VolumeAttachmentRecoveryPolicy("never") // Kubernetes default behavior
+	VolumeAttachmentRecoveryPolicyWait      = VolumeAttachmentRecoveryPolicy("wait")  // Longhorn default behavior
+	VolumeAttachmentRecoveryPolicyImmediate = VolumeAttachmentRecoveryPolicy("immediate")
 )
 
 func ValidateInitSetting(name, value string) (err error) {
@@ -411,8 +440,24 @@ func ValidateInitSetting(name, value string) (err error) {
 		if _, err = UnmarshalTolerations(value); err != nil {
 			return fmt.Errorf("the value of %v is invalid: %v", sName, err)
 		}
+	case SettingNameVolumeAttachmentRecoveryPolicy:
+		var choices = SettingDefinitions[SettingNameVolumeAttachmentRecoveryPolicy].Choices
+		if !isValidChoice(choices, value) {
+			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, choices)
+		}
 	}
 	return nil
+}
+
+// isValidChoice checks if the passed value is part of the choices array,
+// an empty choices array allows for all values
+func isValidChoice(choices []string, value string) bool {
+	for _, c := range choices {
+		if value == c {
+			return true
+		}
+	}
+	return len(choices) == 0
 }
 
 func GetCustomizedDefaultSettings() (map[string]string, error) {

@@ -500,18 +500,38 @@ func (kc *KubernetesPVController) cleanupVolumeAttachment(pods []*v1.Pod, volume
 		return p.DeletionTimestamp != nil
 	})
 
-	// in the default mode for safety reasons we wait till the deletion has passed
-	// this should lead to a force delete by the kubelet, but since the pod is still available
-	// we know that the kubelet failed to cleanup the pod resource.
-	waitForDeletion := false
-	for _, p := range terminatingPods {
-		waitForDeletion = waitForDeletion || !p.DeletionTimestamp.After(time.Now())
+	// by default we wait for deletion
+	var deletionStrategy types.VolumeAttachmentRecoveryPolicy
+	if deletionSetting, err := kc.ds.GetSettingValueExisted(types.SettingNameVolumeAttachmentRecoveryPolicy); err != nil {
+		deletionStrategy = types.VolumeAttachmentRecoveryPolicyWait
+	} else {
+		deletionStrategy = types.VolumeAttachmentRecoveryPolicy(deletionSetting)
+	}
+
+	var waitingForPodDeletion bool
+	switch deletionStrategy {
+	case types.VolumeAttachmentRecoveryPolicyNever:
+		// Kubernetes default is to never remove a volume attachment from a downed node
+		waitingForPodDeletion = len(terminatingPods) > 0
+	case types.VolumeAttachmentRecoveryPolicyWait:
+		// in the Longhorn default mode for safety reasons we wait till the deletion time has passed
+		// this should lead to a force delete by the kubelet, but since the pod is still available
+		// we know that the kubelet failed to cleanup the pod resource.
+		for _, p := range terminatingPods {
+			waitingForPodDeletion = waitingForPodDeletion || p.DeletionTimestamp.After(time.Now())
+		}
+	case types.VolumeAttachmentRecoveryPolicyImmediate:
+		// immediately delete as soon as we have terminating and pending workloads
+		waitingForPodDeletion = false
+	default:
+		// don't delete the volume attachment if we don't have a known deletion strategy
+		waitingForPodDeletion = len(terminatingPods) > 0
 	}
 
 	// we only want to delete the volume attachment for pods of a ReplicaSet
 	// we only want to delete the volume attachment if there are replacement pods pending
-	workloadsAllowDeletion := len(ks.WorkloadsStatus) != 0
-	workloadsPending := len(ks.WorkloadsStatus) != 0
+	workloadsAllowDeletion := len(ks.WorkloadsStatus) > 0
+	workloadsPending := len(ks.WorkloadsStatus) > 0
 	for _, ws := range ks.WorkloadsStatus {
 		workloadsAllowDeletion = workloadsAllowDeletion && ws.WorkloadType == types.KubernetesReplicaSet
 		workloadsPending = workloadsPending && ws.PodStatus == string(v1.PodPending)
@@ -519,7 +539,7 @@ func (kc *KubernetesPVController) cleanupVolumeAttachment(pods []*v1.Pod, volume
 
 	// PV and PVC should exist and be in active use
 	cleanup := ks.PVStatus == string(v1.VolumeBound) && ks.PVCName != "" && ks.LastPVCRefAt == "" &&
-		!waitForDeletion && workloadsPending && workloadsAllowDeletion && ks.LastPodRefAt == ""
+		!waitingForPodDeletion && workloadsPending && workloadsAllowDeletion && ks.LastPodRefAt == ""
 	if !cleanup {
 		return
 	}
