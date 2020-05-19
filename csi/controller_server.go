@@ -279,16 +279,43 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 
 	needToDetach := false
 	if existVol.State == string(types.VolumeStateAttached) || existVol.State == string(types.VolumeStateAttaching) {
-		needToDetach = true
+
+		// try to wait till we are attached, but if we fail to attach we need to process the detach
+		// irregardless of the node we are on otherwise we might end up, allowing a bugged volume to remain in the attaching state forever
+		// NOTE: this is a tradeoff and it would be better if we could verify that we are actually stuck attaching to the requested node
+		if existVol.State == string(types.VolumeStateAttaching) {
+			if cs.waitForVolumeState(req.GetVolumeId(), types.VolumeStateAttached, false, true) {
+				existVol, err = cs.apiClient.Volume.ById(req.GetVolumeId())
+				if err != nil {
+					return nil, status.Error(codes.Internal, err.Error())
+				}
+			} else {
+				logrus.Warnf("Volume %s stuck in attaching state, processing detach request for node %s "+
+					"even though we don't know which node we are attaching on", req.GetVolumeId(), req.GetNodeId())
+			}
+		}
+
+		// only detach if we are actually attached to the requested node or we don't know where we are attached
+		if len(existVol.Controllers) == 0 || existVol.Controllers[0].HostId == "" {
+			logrus.Warnf("Processing volume %s detach request for node %s "+
+				"even though we don't know which node we are attached on", req.GetVolumeId(), req.GetNodeId())
+			needToDetach = true
+		} else if existVol.Controllers[0].HostId == req.GetNodeId() {
+			logrus.Infof("Requesting volume %s detach from node %s", req.GetVolumeId(), req.GetNodeId())
+			needToDetach = true
+		}
 	}
 
 	if needToDetach {
 		// detach longhorn volume
+		logrus.Debugf("requesting Volume %s detachment for %s", req.GetVolumeId(), req.GetNodeId())
 		_, err = cs.apiClient.Volume.ActionDetach(existVol)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 	} else {
+		logrus.Infof("don't need to detach Volume %s since we are already detached from node %s",
+			req.GetVolumeId(), req.GetNodeId())
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
