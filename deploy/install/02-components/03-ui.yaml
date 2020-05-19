@@ -19,6 +19,8 @@ spec:
       - name: longhorn-ui
         image: longhornio/longhorn-ui:master
         imagePullPolicy: Always
+        securityContext:
+          runAsUser: 0
         ports:
         - containerPort: 8000
           name: http

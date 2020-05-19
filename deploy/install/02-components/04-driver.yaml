@@ -64,3 +64,5 @@ spec:
       #imagePullSecrets:
       #- name:
       serviceAccountName: longhorn-service-account
+      securityContext:
+        runAsUser: 0
