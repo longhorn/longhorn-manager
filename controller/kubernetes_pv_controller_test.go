@@ -24,8 +24,11 @@ import (
 )
 
 const (
-	TestWorkloadName  = "test-statefulset"
-	TestWorkloadKind  = "StatefulSet"
+	TestWorkloadName       = "test-statefulset"
+	TestWorkloadKind       = "StatefulSet"
+	TestWorkloadReplicaSet = "test-replicaset"
+	TestReplicaSetKind     = "ReplicaSet"
+
 	TestStatusDeleted = "Deleted"
 )
 
@@ -598,7 +601,7 @@ func (s *TestSuite) TestDisasterRecovery(c *C) {
 		LastPodRefAt:    getTestNow(),
 	}
 	tc.vaShouldExist = false
-	testCases["va deleted"] = tc
+	testCases["va StatefulSet deleted"] = tc
 
 	tc = generateDisasterRecoveryTestCaseTemplate()
 	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
@@ -657,7 +660,7 @@ func (s *TestSuite) TestDisasterRecovery(c *C) {
 		WorkloadsStatus: workloads,
 	}
 	tc.vaShouldExist = true
-	testCases["va retained when one terminating pod is not cleared"] = tc
+	testCases["va StatefulSet retained when one terminating pod is not cleared"] = tc
 
 	// the associated 2 pods become Terminating. And user forces deleting all pods.
 	tc = generateDisasterRecoveryTestCaseTemplate()
@@ -686,7 +689,48 @@ func (s *TestSuite) TestDisasterRecovery(c *C) {
 		WorkloadsStatus: workloads,
 	}
 	tc.vaShouldExist = false
-	testCases["va deleted when all termiating pods are cleared"] = tc
+	testCases["va StatefulSet deleted when all terminating pods are cleared"] = tc
+
+	// ReplicaSet allows for VA deletion while the pods are stuck in the terminating state
+	tc = generateDisasterRecoveryTestCaseTemplate()
+	tc.volume.Status.State = types.VolumeStateAttached
+	tc.pvc.Status.Phase = apiv1.ClaimBound
+	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeGone)
+	workloads = []types.WorkloadStatus{}
+	for _, p := range tc.pods {
+		p.DeletionTimestamp = &deleteTime
+	}
+
+	pod2 = newPodWithPVC(TestPod2)
+	pod2.Status.Phase = apiv1.PodPending
+	tc.pods = append(tc.pods, pod2)
+	for _, p := range tc.pods {
+
+		// Change the pods to ReplicaSet before running
+		var ref = p.OwnerReferences[0]
+		ref.Name = TestWorkloadReplicaSet
+		ref.Kind = TestReplicaSetKind
+		p.OwnerReferences[0] = ref
+
+		if p.DeletionTimestamp == nil {
+			ws := types.WorkloadStatus{
+				PodName:      p.Name,
+				PodStatus:    string(p.Status.Phase),
+				WorkloadName: TestWorkloadReplicaSet,
+				WorkloadType: TestReplicaSetKind,
+			}
+			workloads = append(workloads, ws)
+		}
+	}
+	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
+		PVName:          TestPVName,
+		PVStatus:        string(apiv1.VolumeBound),
+		Namespace:       TestNamespace,
+		PVCName:         TestPVCName,
+		WorkloadsStatus: workloads,
+	}
+	tc.vaShouldExist = false
+	testCases["va ReplicaSet deleted when one terminating pod is not cleared"] = tc
 
 	s.runDisasterRecoveryTestCases(c, testCases)
 }
