@@ -548,8 +548,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for _, e := range tc.expectEngines {
 		e.Spec.NodeID = ""
 		e.Spec.DesireState = types.InstanceStateStopped
-		e.Spec.BackupVolume = ""
-		e.Spec.RequestedBackupRestore = ""
 		e.Spec.LogRequested = true
 	}
 	testCases["newly restored volume becomes faulted after all replica error"] = tc
