@@ -901,8 +901,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			// Need to unset these fields when detaching volume. It's for:
 			//   1. regular restored volume which has completed restoration and is being detaching automatically.
 			//   2. standby volume which has been activated and is being detaching.
-			e.Spec.RequestedBackupRestore = ""
-			e.Spec.BackupVolume = ""
+			restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
+			if restoreCondition.Status == types.ConditionStatusFalse && restoreCondition.Reason == "" {
+				e.Spec.RequestedBackupRestore = ""
+				e.Spec.BackupVolume = ""
+			}
 		}
 		// must make sure engine stopped first before stopping replicas
 		// otherwise we may corrupt the data
