@@ -58,7 +58,6 @@ const (
 	SettingNameRegistrySecret                    = SettingName("registry-secret")
 	SettingNameDisableSchedulingOnCordonedNode   = SettingName("disable-scheduling-on-cordoned-node")
 	SettingNameReplicaZoneSoftAntiAffinity       = SettingName("replica-zone-soft-anti-affinity")
-	SettingNameReplicaRebuildConcurrentLimit     = SettingName("replica-rebuild-concurrent-limit")
 )
 
 var (
@@ -84,7 +83,6 @@ var (
 		SettingNameRegistrySecret,
 		SettingNameDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity,
-		SettingNameReplicaRebuildConcurrentLimit,
 	}
 )
 
@@ -130,7 +128,6 @@ var (
 		SettingNameRegistrySecret:                    SettingDefinitionRegistrySecret,
 		SettingNameDisableSchedulingOnCordonedNode:   SettingDefinitionDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity:       SettingDefinitionReplicaZoneSoftAntiAffinity,
-		SettingNameReplicaRebuildConcurrentLimit:     SettingDefinitionReplicaRebuildConcurrentLimit,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -335,15 +332,6 @@ var (
 		ReadOnly:    false,
 		Default:     "true",
 	}
-	SettingDefinitionReplicaRebuildConcurrentLimit = SettingDefinition{
-		DisplayName: "Replica Rebuild Concurrent Limit",
-		Description: "The maximum number of replica build allowed to happen at the same time. Set to 0 to disable replica rebuild in the system. Note: if set to non-zero, the total rebuilding number might be slightly higher than the limit if multiple rebuilds was triggered at the exact same time.",
-		Category:    SettingCategoryScheduling,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "10",
-	}
 )
 
 func ValidateInitSetting(name, value string) (err error) {
@@ -422,14 +410,6 @@ func ValidateInitSetting(name, value string) (err error) {
 	case SettingNameTaintToleration:
 		if _, err = UnmarshalTolerations(value); err != nil {
 			return fmt.Errorf("the value of %v is invalid: %v", sName, err)
-		}
-	case SettingNameReplicaRebuildConcurrentLimit:
-		if _, err := strconv.Atoi(value); err != nil {
-			return fmt.Errorf("value %v is not a number", value)
-		}
-		value, err := util.ConvertSize(value)
-		if err != nil || value < 0 {
-			return fmt.Errorf("value %v should be at least 0", value)
 		}
 	}
 	return nil
