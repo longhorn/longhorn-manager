@@ -170,6 +170,25 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 	}, nil
 }
 
+func (cs *ControllerServer) isNodeReady(nodeID string) bool {
+	requestedNode, err := cs.apiClient.Node.ById(nodeID)
+	if err != nil || requestedNode == nil {
+		return false
+	}
+
+	if requestedNode.Conditions[string(types.NodeConditionTypeReady)] != nil {
+		condition := requestedNode.Conditions[string(types.NodeConditionTypeReady)].(map[string]interface{})
+		if condition != nil &&
+			condition["status"] != nil &&
+			condition["status"].(string) == string(types.ConditionStatusTrue) {
+			return true
+		}
+	}
+
+	// a non existing status is the same as node NotReady
+	return false
+}
+
 // ControllerPublishVolume will attach the volume to the specified node
 func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
 	logrus.Infof("ControllerServer ControllerPublishVolume req: %v", req)
@@ -183,6 +202,13 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Error(codes.NotFound, msg)
 	}
 
+	if !cs.isNodeReady(req.GetNodeId()) {
+		msg := fmt.Sprintf("ControllerPublishVolume: the volume %s cannot be attached to `NotReady` node %s",
+			req.GetVolumeId(), req.GetNodeId())
+		logrus.Warn(msg)
+		return nil, status.Error(codes.NotFound, msg)
+	}
+
 	if existVol.InitialRestorationRequired {
 		return nil, status.Errorf(codes.Aborted, "The volume %s is restoring backup", req.GetVolumeId())
 	}
@@ -191,16 +217,25 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Errorf(codes.Aborted, "The volume %s is %s", req.GetVolumeId(), existVol.State)
 	}
 
-	needToAttach := true
+	// the volume is already attached make sure it's to the same node as this
 	if existVol.State == string(types.VolumeStateAttached) {
-		needToAttach = false
-		if !existVol.Ready {
-			return nil, status.Errorf(codes.Aborted, "The volume %s is already attached but it is not ready for workloads", req.GetVolumeId())
+		if !existVol.Ready || len(existVol.Controllers) == 0 {
+			return nil, status.Errorf(codes.Aborted,
+				"The volume %s is already attached but it is not ready for workloads", req.GetVolumeId())
 		}
-	}
 
-	logrus.Debugf("ControllerPublishVolume: current nodeID %s", req.GetNodeId())
-	if needToAttach {
+		if existVol.Controllers[0].HostId != req.GetNodeId() {
+			return nil, status.Errorf(codes.FailedPrecondition,
+				"The volume %s cannot be attached to the node %s since it is already attached to the node %s",
+				req.GetVolumeId(), req.GetNodeId(), existVol.Controllers[0].HostId)
+		}
+
+		// TODO: add comparison for capabilities, to do so we need to pass the volume context
+		//  as part of the volume creation (this is for the Volume published but is incompatible case of the csi spec)
+		logrus.Infof("ControllerPublishVolume: no need to attach volume %s since it's already attached to the correct node %s",
+			req.GetVolumeId(), req.GetNodeId())
+	} else {
+		logrus.Debugf("ControllerPublishVolume: current nodeID %s", req.GetNodeId())
 		// attach longhorn volume with frontend enabled
 		input := &longhornclient.AttachInput{
 			HostId:          req.GetNodeId(),
@@ -210,12 +245,11 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
-	} else {
-		logrus.Infof("ControllerPublishVolume: no need to attach volume %s", req.GetVolumeId())
 	}
 
 	if !cs.waitForVolumeState(req.GetVolumeId(), types.VolumeStateAttached, false, false) {
-		return nil, status.Errorf(codes.Aborted, "Attaching volume %s failed", req.GetVolumeId())
+		return nil, status.Errorf(codes.Aborted, "Attaching volume %s on node %s failed",
+			req.GetVolumeId(), req.GetNodeId())
 	}
 	logrus.Debugf("Volume %s attached on %s", req.GetVolumeId(), req.GetNodeId())
 
