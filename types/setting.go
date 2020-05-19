@@ -337,7 +337,7 @@ var (
 	}
 	SettingDefinitionReplicaRebuildConcurrentLimit = SettingDefinition{
 		DisplayName: "Replica Rebuild Concurrent Limit",
-		Description: "The maximum number of replica build allowed to happen at the same time",
+		Description: "The maximum number of replica build allowed to happen at the same time. Set to 0 to disable replica rebuild in the system. Note: if set to non-zero, the total rebuilding number might be slightly higher than the limit if multiple rebuilds was triggered at the exact same time.",
 		Category:    SettingCategoryScheduling,
 		Type:        SettingTypeInt,
 		Required:    true,

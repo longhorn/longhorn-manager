@@ -1139,9 +1139,16 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 				if engine.Status.CurrentState != types.InstanceStateRunning {
 					continue
 				}
-				currentRebuildingClusterWide += getRebuildingReplicaCount(engine)
-				if currentRebuildingClusterWide >= int(concurrentLimit) {
-					break
+				replicas, err := vc.ds.ListVolumeReplicas(engine.Spec.VolumeName)
+				if err != nil {
+					return err
+				}
+				for _, replica := range replicas {
+					if replica.Spec.HealthyAt == "" && replica.Spec.FailedAt == "" &&
+						replica.Spec.NodeID != "" {
+						// newly scheduled replica to be rebuilt since the engine is running
+						currentRebuildingClusterWide++
+					}
 				}
 			}
 			if currentRebuildingClusterWide >= int(concurrentLimit) {
