@@ -526,6 +526,8 @@ func (kc *KubernetesPVController) cleanupVolumeAttachment(pods []*v1.Pod, volume
 	default:
 		// don't delete the volume attachment if we don't have a known deletion strategy
 		waitingForPodDeletion = len(terminatingPods) > 0
+		logrus.Errorf("Invalid VolumeAttachmentRecoveryPolicy [%v] for Volume %v proceeding with safest never policy",
+			string(deletionStrategy), volume.Name)
 	}
 
 	// we only want to delete the volume attachment for pods of a ReplicaSet
@@ -537,6 +539,9 @@ func (kc *KubernetesPVController) cleanupVolumeAttachment(pods []*v1.Pod, volume
 		workloadsPending = workloadsPending && ws.PodStatus == string(v1.PodPending)
 	}
 
+	// We make an exception for StatefulSet pods if there are no terminating pods
+	workloadsAllowDeletion = workloadsAllowDeletion || len(terminatingPods) == 0
+
 	// PV and PVC should exist and be in active use
 	cleanup := ks.PVStatus == string(v1.VolumeBound) && ks.PVCName != "" && ks.LastPVCRefAt == "" &&
 		!waitingForPodDeletion && workloadsPending && workloadsAllowDeletion && ks.LastPodRefAt == ""
@@ -546,7 +551,8 @@ func (kc *KubernetesPVController) cleanupVolumeAttachment(pods []*v1.Pod, volume
 
 	va, err := kc.getVolumeAttachment(ks)
 	if err != nil {
-		logrus.Errorf("failed to get VolumeAttachment in cleanupVolumeAttachment: %v", err)
+		logrus.Errorf("failed to get VolumeAttachment for volume %v in cleanupVolumeAttachment: %v",
+			volume.Name, err)
 		return
 	}
 	if va == nil {
@@ -556,8 +562,8 @@ func (kc *KubernetesPVController) cleanupVolumeAttachment(pods []*v1.Pod, volume
 	// cleanup if the node is declared `NotReady` or doesn't exist.
 	cleanup, err = kc.ds.IsNodeDownOrDeleted(va.Spec.NodeName)
 	if err != nil {
-		logrus.Errorf("failed to evaluate Node %v for VolumeAttachment %v in cleanupVolumeAttachment: %v",
-			va.Spec.NodeName, va.Name, err)
+		logrus.Errorf("failed to evaluate Node %v for Volume %v VolumeAttachment %v in cleanupVolumeAttachment: %v",
+			va.Spec.NodeName, volume.Name, va.Name, err)
 		return
 	}
 	if !cleanup {
@@ -566,12 +572,12 @@ func (kc *KubernetesPVController) cleanupVolumeAttachment(pods []*v1.Pod, volume
 
 	err = kc.kubeClient.StorageV1beta1().VolumeAttachments().Delete(va.Name, &metav1.DeleteOptions{})
 	if err != nil {
-		logrus.Errorf("failed to delete VolumeAttachment %v for Node %v in cleanupVolumeAttachment: %v",
-			va.Name, va.Spec.NodeName, err)
+		logrus.Errorf("failed to delete VolumeAttachment %v for Volume %v for Node %v in cleanupVolumeAttachment: %v",
+			va.Name, volume.Name, va.Spec.NodeName, err)
 		return
 	}
 	kc.eventRecorder.Eventf(volume, v1.EventTypeNormal, EventReasonDelete,
-		"Cleanup VolumeAttachment %v on 'NotReady' Node %v", va.Name, va.Spec.NodeName)
+		"Cleanup VolumeAttachment %v for Volume %v on 'NotReady' Node %v", va.Name, volume.Name, va.Spec.NodeName)
 	return
 }
 
