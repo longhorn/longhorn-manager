@@ -446,6 +446,10 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 		return nil, fmt.Errorf("invalid volume state to expand: %v", v.Status.State)
 	}
 
+	if types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled).Status != types.ConditionStatusTrue {
+		return nil, fmt.Errorf("cannot expand volume before replica scheduling success")
+	}
+
 	if v.Spec.Size >= size {
 		return nil, fmt.Errorf("cannot expand volume %v with current size %v to a smaller or the same size %v", v.Name, v.Spec.Size, size)
 	}
