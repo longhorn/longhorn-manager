@@ -38,10 +38,11 @@ metadata:
   name: longhorn-frontend
   namespace: longhorn-system
 spec:
+  type: ClusterIP
   selector:
     app: longhorn-ui
   ports:
-  - port: 80
-    targetPort: 8000
+  - name: http
+    port: 80
+    targetPort: http
     nodePort: null
-  type: ClusterIP
