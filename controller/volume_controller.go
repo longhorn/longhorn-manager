@@ -718,6 +718,33 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		v.Status.FrontendDisabled = true
 	}
 
+	allScheduled := true
+	for _, r := range rs {
+		// check whether the replica need to be scheduled
+		if r.Spec.NodeID != "" {
+			continue
+		}
+		scheduledReplica, err := vc.scheduler.ScheduleReplica(r, rs, v)
+		if err != nil {
+			return err
+		}
+		if scheduledReplica == nil {
+			logrus.Errorf("unable to schedule replica %v of volume %v", r.Name, v.Name)
+			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+				types.VolumeConditionTypeScheduled, types.ConditionStatusFalse,
+				types.VolumeConditionReasonReplicaSchedulingFailure, "")
+			allScheduled = false
+			// no need to continue, since we won't able to schedule
+			// more replicas if we failed this one
+			break
+		}
+		rs[r.Name] = scheduledReplica
+	}
+	if allScheduled {
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			types.VolumeConditionTypeScheduled, types.ConditionStatusTrue, "", "")
+	}
+
 	autoAttachRequired := false
 	// InitialRestorationRequired means the volume is newly created restored volume and
 	// it needs to be attached automatically with frontend disabled. Then its engine
@@ -745,40 +772,15 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			r.Spec.VolumeSize = v.Spec.Size
 		}
 	}
-	if autoAttachRequired {
+
+	// If the volume scheduling fails, auto attachment doesn't make sense.
+	if allScheduled && autoAttachRequired {
 		// Do not set v.Status.CurrentNodeID here if the volume is being auto reattached.
 		if v.Status.CurrentNodeID == "" && v.Status.PendingNodeID == "" {
 			// Should use vc.controllerID or v.Status.OwnerID as CurrentNodeID,
 			// otherwise they may be not equal
 			v.Status.CurrentNodeID = v.Status.OwnerID
 		}
-	}
-
-	allScheduled := true
-	for _, r := range rs {
-		// check whether the replica need to be scheduled
-		if r.Spec.NodeID != "" {
-			continue
-		}
-		scheduledReplica, err := vc.scheduler.ScheduleReplica(r, rs, v)
-		if err != nil {
-			return err
-		}
-		if scheduledReplica == nil {
-			logrus.Errorf("unable to schedule replica %v of volume %v", r.Name, v.Name)
-			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-				types.VolumeConditionTypeScheduled, types.ConditionStatusFalse,
-				types.VolumeConditionReasonReplicaSchedulingFailure, "")
-			allScheduled = false
-			// no need to continue, since we won't able to schedule
-			// more replicas if we failed this one
-			break
-		}
-		rs[r.Name] = scheduledReplica
-	}
-	if allScheduled {
-		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			types.VolumeConditionTypeScheduled, types.ConditionStatusTrue, "", "")
 	}
 
 	allFaulted := true
