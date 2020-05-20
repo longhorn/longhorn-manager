@@ -745,9 +745,16 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		})
 	}
 
-	// If the volume is auto attached or faulted, it's not ready.
+	// The volume is not ready for workloads if:
+	//   1. It's auto attached.
+	//   2. It fails to schedule replicas during the volume creation,
+	//      in which case scheduling failure will happen when the volume is detached.
+	//      In other cases, scheduling failure only happens when the volume is attached.
+	//   3. It's faulted.
 	ready := true
+	scheduledCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled)
 	if (v.Spec.NodeID == "" && v.Status.State != types.VolumeStateDetached) ||
+		(v.Status.State == types.VolumeStateDetached && scheduledCondition.Status != types.ConditionStatusTrue) ||
 		v.Status.Robustness == types.VolumeRobustnessFaulted {
 		ready = false
 	}
