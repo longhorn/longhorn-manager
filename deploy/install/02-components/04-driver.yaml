@@ -61,6 +61,8 @@ spec:
           # Manually specify number of CSI provisioner replicas
           #- name: CSI_PROVISIONER_REPLICA_COUNT
           #  value: "3"
+          #- name: CSI_RESIZER_REPLICA_COUNT
+          #  value: "3"
       #imagePullSecrets:
       #- name:
       serviceAccountName: longhorn-service-account
