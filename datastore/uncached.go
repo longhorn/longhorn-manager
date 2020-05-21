@@ -56,3 +56,7 @@ func (s *DataStore) GetAllEventsList() (runtime.Object, error) {
 func (s *DataStore) GetAllConfigMaps() (runtime.Object, error) {
 	return s.kubeClient.CoreV1().ConfigMaps(s.namespace).List(metav1.ListOptions{})
 }
+
+func (s *DataStore) GetAllVolumeAttachments() (runtime.Object, error) {
+	return s.kubeClient.StorageV1().VolumeAttachments().List(metav1.ListOptions{})
+}
