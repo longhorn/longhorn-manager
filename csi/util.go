@@ -20,6 +20,30 @@ const (
 	defaultStaleReplicaTimeout = 2880
 )
 
+// NewForcedParamsOsExec creates a osExecutor that allows for adding additional params to later occurring Run calls
+func NewForcedParamsOsExec(cmdParamMapping map[string]string) mount.Exec {
+	return &forcedParamsOsExec{
+		osExec:          mount.NewOsExec(),
+		cmdParamMapping: cmdParamMapping,
+	}
+}
+
+type forcedParamsOsExec struct {
+	osExec          mount.Exec
+	cmdParamMapping map[string]string
+}
+
+func (e *forcedParamsOsExec) Run(cmd string, args ...string) ([]byte, error) {
+	var params []string
+	if param := e.cmdParamMapping[cmd]; param != "" {
+		// we prepend the user params, since options are conventionally before the final args
+		// command [-option(s)] [argument(s)]
+		params = append(params, param)
+	}
+	params = append(params, args...)
+	return e.osExec.Run(cmd, params...)
+}
+
 func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, error) {
 	vol := &longhornclient.Volume{}
 

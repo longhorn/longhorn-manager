@@ -59,6 +59,7 @@ const (
 	SettingNameDisableSchedulingOnCordonedNode   = SettingName("disable-scheduling-on-cordoned-node")
 	SettingNameReplicaZoneSoftAntiAffinity       = SettingName("replica-zone-soft-anti-affinity")
 	SettingNameVolumeAttachmentRecoveryPolicy    = SettingName("volume-attachment-recovery-policy")
+	SettingNameMkfsExt4Parameters                = SettingName("mkfs-ext4-parameters")
 )
 
 var (
@@ -85,6 +86,7 @@ var (
 		SettingNameDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity,
 		SettingNameVolumeAttachmentRecoveryPolicy,
+		SettingNameMkfsExt4Parameters,
 	}
 )
 
@@ -132,6 +134,7 @@ var (
 		SettingNameDisableSchedulingOnCordonedNode:   SettingDefinitionDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity:       SettingDefinitionReplicaZoneSoftAntiAffinity,
 		SettingNameVolumeAttachmentRecoveryPolicy:    SettingDefinitionVolumeAttachmentRecoveryPolicy,
+		SettingNameMkfsExt4Parameters:                SettingDefinitionMkfsExt4Parameters,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -352,6 +355,14 @@ var (
 			string(VolumeAttachmentRecoveryPolicyWait),
 			string(VolumeAttachmentRecoveryPolicyImmediate),
 		},
+	}
+	SettingDefinitionMkfsExt4Parameters = SettingDefinition{
+		DisplayName: "Custom mkfs.ext4 parameters",
+		Description: "Allows setting additional filesystem creation parameters for ext4. For older host kernels it might be necessary to disable the optional ext4 metadata_csum feature by specifying `-O ^64bit,^metadata_csum`",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    false,
+		ReadOnly:    false,
 	}
 )
 
