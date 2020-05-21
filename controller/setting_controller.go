@@ -531,6 +531,7 @@ func (sc *SettingController) updateGuaranteedEngineCPU() error {
 		if IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq) {
 			continue
 		}
+		logrus.Infof("Delete instance manager pod %v to refresh GuaranteedEngineCPU option", imPod.Name)
 		if err := sc.ds.DeletePod(imPod.Name); err != nil {
 			return err
 		}

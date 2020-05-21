@@ -11,6 +11,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -221,4 +222,50 @@ func fakeEngineBinaryChecker(image string) bool {
 
 func fakeEngineImageUpdater(ei *longhorn.EngineImage) error {
 	return nil
+}
+
+func (s *TestSuite) TestIsSameGuaranteedCPURequirement(c *C) {
+	var (
+		a, b *corev1.ResourceRequirements
+		err  error
+	)
+
+	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+
+	b = &corev1.ResourceRequirements{}
+	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+
+	b.Requests = corev1.ResourceList{}
+	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+
+	b.Requests[corev1.ResourceCPU], err = resource.ParseQuantity("0")
+	c.Assert(err, IsNil)
+	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+
+	b.Requests[corev1.ResourceCPU], err = resource.ParseQuantity("0m")
+	c.Assert(err, IsNil)
+	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+
+	a = &corev1.ResourceRequirements{}
+	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+
+	a.Requests = corev1.ResourceList{}
+	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+
+	a.Requests[corev1.ResourceCPU], err = resource.ParseQuantity("0")
+	c.Assert(err, IsNil)
+	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+
+	a.Requests[corev1.ResourceCPU], err = resource.ParseQuantity("0m")
+	c.Assert(err, IsNil)
+	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
+
+	b.Requests[corev1.ResourceCPU], err = resource.ParseQuantity("250m")
+	a = &corev1.ResourceRequirements{}
+	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, false)
+
+	b.Requests[corev1.ResourceCPU], err = resource.ParseQuantity("250m")
+	a.Requests = corev1.ResourceList{}
+	a.Requests[corev1.ResourceCPU], err = resource.ParseQuantity("0.25")
+	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
 }
