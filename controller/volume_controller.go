@@ -641,7 +641,16 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			}
 		} else { // v.Spec.NodeID == ""
 			// Check if the DR volume can be activated.
-			if !v.Spec.Standby && v.Status.IsStandby && e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup && v.Status.LastBackup == e.Status.LastRestoredBackup {
+			// Notice that There are following cases for the activating DR volumes (`!v.Spec.Standby && v.Status.IsStandby`):
+			//   1. The DR volume is up-to-date. --> The activation should be allowed.
+			//   2. The DR volume restore is in progress. --> The activation should be blocked.
+			//   3. The last backup is updated but the incremental restore is just initialized.
+			//      (The last backup may be updated by the activation call.)
+			//      --> The activation should be blocked.
+			//   4. The last backup is removed from the backup volume then v.Status.LastBackup is empty. (Issue #1380)
+			//      --> The activation should be allowed.
+			if !v.Spec.Standby && v.Status.IsStandby && e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup &&
+				(v.Status.LastBackup == "" || (v.Status.LastBackup != "" && v.Status.LastBackup == e.Status.LastRestoredBackup)) {
 				v.Status.IsStandby = false
 
 				restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
