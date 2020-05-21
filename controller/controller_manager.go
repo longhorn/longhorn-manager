@@ -188,18 +188,12 @@ func EnhancedDefaultControllerRateLimiter() workqueue.RateLimiter {
 }
 
 func IsSameGuaranteedCPURequirement(a, b *corev1.ResourceRequirements) bool {
-	if (a == nil) != (b == nil) {
-		return false
+	var aQ, bQ resource.Quantity
+	if a != nil && a.Requests != nil {
+		aQ = a.Requests[corev1.ResourceCPU]
 	}
-	if a == nil { // means b == nil
-		return true
+	if b != nil && b.Requests != nil {
+		bQ = b.Requests[corev1.ResourceCPU]
 	}
-	if (a.Requests == nil) != (b.Requests == nil) {
-		return false
-	}
-	if a.Requests == nil { // means b.Requests == nil
-		return true
-	}
-	requestA := a.Requests[corev1.ResourceCPU]
-	return (&requestA).Cmp(b.Requests[corev1.ResourceCPU]) == 0
+	return (&aQ).Cmp(bQ) == 0
 }
