@@ -65,7 +65,6 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	targetPath := req.GetTargetPath()
 	devicePath := existVol.Controllers[0].Endpoint
 	diskMounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOsExec()}
-
 	vc := req.GetVolumeCapability()
 	if vc == nil {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not provided")
@@ -74,8 +73,28 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if blkCapability := vc.GetBlock(); blkCapability != nil {
 		return ns.nodePublishBlockVolume(req.GetVolumeId(), devicePath, targetPath, diskMounter)
 	} else if mntCapability := vc.GetMount(); mntCapability != nil {
+		userExt4Params, _ := ns.apiClient.Setting.ById(string(types.SettingNameMkfsExt4Parameters))
+
+		// mounter assumes ext4 by default
+		fsType := vc.GetMount().GetFsType()
+		if fsType == "" {
+			fsType = "ext4"
+		}
+
+		// we allow the user to provide additional params for ext4 filesystem creation.
+		// this allows an ext4 fs to be mounted on older kernels, see https://github.com/longhorn/longhorn/issues/1208
+		if fsType == "ext4" && userExt4Params != nil && userExt4Params.Value != "" {
+			ext4Params := userExt4Params.Value
+			logrus.Infof("enabling user provided ext4 fs creation params: %s for volume: %s", ext4Params, req.GetVolumeId())
+			cmdParamMapping := map[string]string{"mkfs." + fsType: ext4Params}
+			diskMounter = &mount.SafeFormatAndMount{
+				Interface: mount.New(""),
+				Exec:      NewForcedParamsOsExec(cmdParamMapping),
+			}
+		}
+
 		return ns.nodePublishMountVolume(req.GetVolumeId(), devicePath, targetPath,
-			vc.GetMount().GetFsType(), vc.GetMount().GetMountFlags(), diskMounter)
+			fsType, vc.GetMount().GetMountFlags(), diskMounter)
 	}
 
 	return nil, status.Error(codes.InvalidArgument, "Invalid volume capability, neither Mount nor Block")
