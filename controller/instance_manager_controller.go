@@ -76,12 +76,13 @@ type InstanceManagerMonitor struct {
 	Name         string
 	controllerID string
 
-	instanceManagerUpdater *InstanceManagerUpdater
-	ds                     *datastore.DataStore
-	lock                   *sync.Mutex
-	updateNotification     bool
-	stopCh                 chan struct{}
-	done                   bool
+	instanceManagerUpdater  *InstanceManagerUpdater
+	instanceManagerNotifier *InstanceManagerNotifier
+	ds                      *datastore.DataStore
+	lock                    *sync.Mutex
+	updateNotification      bool
+	stopCh                  chan struct{}
+	done                    bool
 }
 
 type InstanceManagerUpdater struct {
@@ -684,15 +685,23 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		return
 	}
 
+	// TODO: this function will error out in unit tests. Need to find a way to skip this part for unit tests.
+	instanceManagerNotifier, err := instanceManagerUpdater.GetNotifier()
+	if err != nil {
+		logrus.Errorf("Failed to get the notifier of instance manager %v before monitoring: %v", im.Name, err)
+		return
+	}
+
 	stopCh := make(chan struct{}, 1)
 	monitor := &InstanceManagerMonitor{
-		Name:                   im.Name,
-		controllerID:           imc.controllerID,
-		ds:                     imc.ds,
-		instanceManagerUpdater: instanceManagerUpdater,
-		lock:                   &sync.Mutex{},
-		stopCh:                 stopCh,
-		done:                   false,
+		Name:                    im.Name,
+		controllerID:            imc.controllerID,
+		ds:                      imc.ds,
+		instanceManagerUpdater:  instanceManagerUpdater,
+		instanceManagerNotifier: instanceManagerNotifier,
+		lock:                    &sync.Mutex{},
+		stopCh:                  stopCh,
+		done:                    false,
 		// notify monitor to update the instance map
 		updateNotification: false,
 	}
@@ -756,16 +765,7 @@ func (m *InstanceManagerMonitor) Run() {
 	logrus.Debugf("Start monitoring instance manager %v", m.Name)
 	defer func() {
 		logrus.Debugf("Stop monitoring instance manager %v", m.Name)
-	}()
-
-	notifier, err := m.instanceManagerUpdater.GetNotifier()
-	if err != nil {
-		logrus.Errorf("failed to start notifier during the instance manager %v monitor starting stage: %v", m.Name, err)
-		return
-	}
-
-	defer func() {
-		notifier.Close()
+		m.instanceManagerNotifier.Close()
 		m.done = true
 		close(m.stopCh)
 	}()
@@ -776,7 +776,7 @@ func (m *InstanceManagerMonitor) Run() {
 				return
 			}
 
-			if _, err := notifier.Recv(); err != nil {
+			if _, err := m.instanceManagerNotifier.Recv(); err != nil {
 				logrus.Errorf("error receiving next item in engine watch: %v", err)
 				time.Sleep(MinPollCount * PollInterval)
 			} else {
