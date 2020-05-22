@@ -69,7 +69,7 @@ func NewKubernetesNodeController(
 		sStoreSynced:  settingInformer.Informer().HasSynced,
 		knStoreSynced: kubeNodeInformer.Informer().HasSynced,
 
-		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-kubernetes-node"),
+		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-kubernetes-node"),
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{

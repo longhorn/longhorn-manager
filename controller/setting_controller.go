@@ -107,7 +107,7 @@ func NewSettingController(
 
 		sStoreSynced: settingInformer.Informer().HasSynced,
 
-		queue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-setting"),
+		queue:   workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-setting"),
 		version: version,
 	}
 
