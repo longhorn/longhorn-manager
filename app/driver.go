@@ -245,6 +245,26 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
+	// TODO: Remove This after v1.1.0
+	// Longhorn #1365, remove compatible CSI deployment
+	compatCSIAttacherName := "compatible-csi-attacher"
+	compatCSIAttacherDeployment, err :=
+		kubeClient.AppsV1().Deployments(namespace).Get(
+			compatCSIAttacherName, metav1.GetOptions{})
+
+	// Delete compatible-csi-attacher deployment if it exists
+	if err == nil {
+		logrus.Debugf("Deleting %v deployment",
+			compatCSIAttacherDeployment.Name)
+
+		err = kubeClient.AppsV1().Deployments(namespace).Delete(
+			compatCSIAttacherName, &metav1.DeleteOptions{})
+		if err != nil {
+			logrus.Warnf("Failed to delete %v deployment with err %v",
+				compatCSIAttacherDeployment.Name, err)
+		}
+	}
+
 	logrus.Debug("CSI deployment done")
 
 	done := make(chan struct{})
