@@ -9,7 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	storagev1beta "k8s.io/api/storage/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -399,24 +399,4 @@ func GetOnHostObseletedPluginsDir(kubeletRootDir string) string {
 
 func GetCSIEndpoint() string {
 	return "unix://" + GetInContainerCSISocketFilePath()
-}
-
-func GetOldInContainerCSISocketDir() string {
-	return filepath.Join(GetInContainerPluginsDir(), types.DepracatedDriverName)
-}
-
-func GetOldInContainerCSISocketFilePath() string {
-	return filepath.Join(GetOldInContainerCSISocketDir(), DefaultCSISocketFileName)
-}
-
-func GetOldOnHostCSISocketDir(kubeletRootDir string) string {
-	return filepath.Join(GetOnHostObseletedPluginsDir(kubeletRootDir), types.DepracatedDriverName)
-}
-
-func GetOldOnHostCSISocketFilePath(kubeletRootDir string) string {
-	return filepath.Join(GetOldOnHostCSISocketDir(kubeletRootDir), DefaultCSISocketFileName)
-}
-
-func GetOldCSIEndpoint() string {
-	return "unix://" + GetOldInContainerCSISocketFilePath()
 }
