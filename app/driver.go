@@ -240,14 +240,8 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 			return err
 		}
 	}
-
 	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, managerImage, managerURL, rootDir, tolerations, registrySecret)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
-		return err
-	}
-
-	compatibleAttacherDeployment := csi.NewCompatibleAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, tolerations, registrySecret)
-	if err := compatibleAttacherDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 

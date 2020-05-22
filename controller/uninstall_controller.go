@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apiextension "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -517,7 +517,6 @@ func (c *UninstallController) deleteDriver() (bool, error) {
 		types.CSIAttacherName,
 		types.CSIProvisionerName,
 		types.CSIResizerName,
-		types.CompatibleCSIAttacherName,
 	}
 	wait := false
 	for _, name := range deploymentsToClean {

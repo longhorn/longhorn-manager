@@ -7,7 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	storagev1beta "k8s.io/api/storage/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -366,115 +366,6 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 								},
 							},
 						},
-						{
-							Name:  "compatible-node-driver-registrar",
-							Image: nodeDriverRegistrarImage,
-							Lifecycle: &v1.Lifecycle{
-								PreStop: &v1.Handler{
-									Exec: &v1.ExecAction{
-										Command: []string{
-											"/bin/sh", "-c",
-											fmt.Sprintf("rm -rf %s/%s %s/%s-reg.sock %s/*", GetInContainerCSIRegistrationDir(), types.DepracatedDriverName, GetInContainerCSIRegistrationDir(), types.DepracatedDriverName, GetOldInContainerCSISocketDir()),
-										},
-									},
-								},
-							},
-							SecurityContext: &v1.SecurityContext{
-								Privileged: pointer.BoolPtr(true),
-							},
-							Args: []string{
-								"--v=5",
-								"--csi-address=$(ADDRESS)",
-								"--kubelet-registration-path=" + GetOldOnHostCSISocketFilePath(rootDir),
-							},
-							Env: []v1.EnvVar{
-								{
-									Name:  "ADDRESS",
-									Value: GetOldInContainerCSISocketFilePath(),
-								},
-							},
-							//ImagePullPolicy: v1.PullAlways,
-							VolumeMounts: []v1.VolumeMount{
-								{
-									Name:      "old-socket-dir",
-									MountPath: GetOldInContainerCSISocketDir(),
-								},
-								{
-									Name:      "registration-dir",
-									MountPath: GetInContainerCSIRegistrationDir(),
-								},
-							},
-						},
-						{
-							Name: "compatible-longhorn-csi-plugin",
-							SecurityContext: &v1.SecurityContext{
-								Privileged: pointer.BoolPtr(true),
-								Capabilities: &v1.Capabilities{
-									Add: []v1.Capability{
-										"SYS_ADMIN",
-									},
-								},
-								AllowPrivilegeEscalation: pointer.BoolPtr(true),
-							},
-							Lifecycle: &v1.Lifecycle{
-								PreStop: &v1.Handler{
-									Exec: &v1.ExecAction{
-										Command: []string{
-											"/bin/sh", "-c",
-											fmt.Sprintf("rm -f %s/*", GetOldInContainerCSISocketDir()),
-										},
-									},
-								},
-							},
-							Image: managerImage,
-							Args: []string{
-								"longhorn-manager",
-								"-d",
-								"csi",
-								"--nodeid=$(NODE_ID)",
-								"--endpoint=$(CSI_ENDPOINT)",
-								fmt.Sprintf("--drivername=%s", types.DepracatedDriverName),
-								"--manager-url=" + managerURL,
-							},
-							Env: []v1.EnvVar{
-								{
-									Name: "NODE_ID",
-									ValueFrom: &v1.EnvVarSource{
-										FieldRef: &v1.ObjectFieldSelector{
-											FieldPath: "spec.nodeName",
-										},
-									},
-								},
-								{
-									Name:  "CSI_ENDPOINT",
-									Value: GetOldCSIEndpoint(),
-								},
-							},
-							VolumeMounts: []v1.VolumeMount{
-								{
-									Name:      "old-socket-dir",
-									MountPath: GetOldInContainerCSISocketDir(),
-								},
-								{
-									Name:             "pods-mount-dir",
-									MountPath:        filepath.Join(rootDir, "/pods"),
-									MountPropagation: &MountPropagationBidirectional,
-								},
-								{
-									Name:      "host-dev",
-									MountPath: "/dev",
-								},
-								{
-									Name:      "host-sys",
-									MountPath: "/sys",
-								},
-								{
-									Name:      "lib-modules",
-									MountPath: "/lib/modules",
-									ReadOnly:  true,
-								},
-							},
-						},
 					},
 					Volumes: []v1.Volume{
 						{
@@ -537,15 +428,6 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 								},
 							},
 						},
-						{
-							Name: "old-socket-dir",
-							VolumeSource: v1.VolumeSource{
-								HostPath: &v1.HostPathVolumeSource{
-									Path: GetOldOnHostCSISocketDir(rootDir),
-									Type: &HostPathDirectoryOrCreate,
-								},
-							},
-						},
 					},
 				},
 			},
@@ -575,76 +457,6 @@ func (p *PluginDeployment) Cleanup(kubeClient *clientset.Clientset) {
 		daemonSetDeleteFunc, daemonSetGetFunc); err != nil {
 		logrus.Warnf("Failed to cleanup DaemonSet in plugin deployment: %v", err)
 	}
-}
-
-type CompatibleAttacherDeployment struct {
-	service    *v1.Service
-	deployment *appsv1.Deployment
-}
-
-func NewCompatibleAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string, tolerations []v1.Toleration, registrySecret string) *CompatibleAttacherDeployment {
-	service := getCommonService(types.CompatibleCSIAttacherName, namespace)
-
-	deployment := getCommonDeployment(
-		types.CompatibleCSIAttacherName,
-		namespace,
-		serviceAccount,
-		attacherImage,
-		rootDir,
-		[]string{
-			"--v=5",
-			"--csi-address=$(ADDRESS)",
-			"--leader-election",
-			"--leader-election-namespace=$(POD_NAMESPACE)",
-		},
-		int32(1),
-		tolerations,
-		registrySecret,
-	)
-	deployment.Spec.Template.Spec.Volumes = []v1.Volume{
-		{
-			Name: "socket-dir",
-			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
-					Path: GetOldOnHostCSISocketDir(rootDir),
-					Type: &HostPathDirectoryOrCreate,
-				},
-			},
-		},
-	}
-
-	return &CompatibleAttacherDeployment{
-		service:    service,
-		deployment: deployment,
-	}
-}
-
-func (a *CompatibleAttacherDeployment) Deploy(kubeClient *clientset.Clientset) error {
-	if err := deploy(kubeClient, a.service, "service",
-		serviceCreateFunc, serviceDeleteFunc, serviceGetFunc); err != nil {
-		return err
-	}
-
-	return deploy(kubeClient, a.deployment, "deployment",
-		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc)
-}
-
-func (a *CompatibleAttacherDeployment) Cleanup(kubeClient *clientset.Clientset) {
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, a.service, "service",
-			serviceDeleteFunc, serviceGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup service in attacher deployment: %v", err)
-		}
-	})
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, a.deployment, "deployment",
-			deploymentDeleteFunc, deploymentGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup deployment in attacher deployment: %v", err)
-		}
-	})
 }
 
 type DriverObjectDeployment struct {
