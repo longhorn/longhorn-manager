@@ -65,9 +65,8 @@ type InstanceManagerController struct {
 
 	queue workqueue.RateLimitingInterface
 
-	instanceManagerMonitorMutex    *sync.RWMutex
-	instanceManagerMonitorMap      map[string]chan struct{}
-	instanceManagerMonitorRemoveCh chan string
+	instanceManagerMonitorMutex *sync.RWMutex
+	instanceManagerMonitorMap   map[string]chan struct{}
 
 	// for unit test
 	versionUpdater func(*longhorn.InstanceManager) error
@@ -83,9 +82,6 @@ type InstanceManagerMonitor struct {
 	updateNotification     bool
 	stopCh                 chan struct{}
 	done                   bool
-
-	// used to notify the controller that monitoring has stopped
-	monitoringRemoveCh chan string
 }
 
 type InstanceManagerUpdater struct {
@@ -137,9 +133,8 @@ func NewInstanceManagerController(
 
 		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-instance-manager"),
 
-		instanceManagerMonitorMutex:    &sync.RWMutex{},
-		instanceManagerMonitorMap:      map[string]chan struct{}{},
-		instanceManagerMonitorRemoveCh: make(chan string, 1),
+		instanceManagerMonitorMutex: &sync.RWMutex{},
+		instanceManagerMonitorMap:   map[string]chan struct{}{},
 
 		versionUpdater: updateInstanceManagerVersion,
 	}
@@ -185,7 +180,6 @@ func NewInstanceManagerController(
 		},
 	})
 
-	go imc.monitorUpdater()
 	return imc
 }
 
@@ -445,9 +439,6 @@ func (imc *InstanceManagerController) enqueueInstanceManagerPod(pod *v1.Pod) {
 	imc.enqueueInstanceManager(im)
 }
 
-// cleanupInstanceManager cleans up the Pod that was created by the Instance Manager, stops the monitor, and marks
-// any processes that may be on that Instance Manager to Error. This is used when we need to recover from an error
-// or prepare for deletion.
 func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.InstanceManager) error {
 	im.Status.IP = ""
 
@@ -455,26 +446,9 @@ func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.Instan
 		imc.stopMonitoring(im)
 	}
 
-	// Skip updating instance manager if its deletion timestamp is set, so that the controller won't try to add finalizer for the deleting object in the update function.
-	// The related instances will become state error after the instance manager is gone hence we don't need to worry about the impacts of this skip.
-	if im.DeletionTimestamp == nil {
-		// double check the instance map of instance manager.
-		// instance manager may be updated when stopping the monitor, we need to get the latest version before modifying it.
-		im, err := imc.ds.GetInstanceManager(im.Name)
-		if err != nil {
-			return err
-		}
-		for name, instance := range im.Status.Instances {
-			instance.Status.State = types.InstanceStateError
-			instance.Status.ErrorMsg = "Instance Manager error"
-			im.Status.Instances[name] = instance
-		}
-
-		// need to update im before deleting pod
-		im, err = imc.ds.UpdateInstanceManagerStatus(im)
-		if err != nil {
-			return err
-		}
+	// Need to update the instances before deleting pod.
+	if err := imc.updateInstanceMapForCleanup(im.Name); err != nil {
+		logrus.Errorf("failed to mark existing instances to error when stopping instance manager monitor: %v", err)
 	}
 
 	pod, err := imc.ds.GetInstanceManagerPod(im.Name)
@@ -703,23 +677,6 @@ func (notifier *InstanceManagerNotifier) Close() {
 	return
 }
 
-func (imc *InstanceManagerController) monitorUpdater() {
-	for imName := range imc.instanceManagerMonitorRemoveCh {
-		imc.removeFromInstanceManagerMonitorMap(imName)
-	}
-}
-
-func (imc *InstanceManagerController) removeFromInstanceManagerMonitorMap(imName string) {
-	imc.instanceManagerMonitorMutex.Lock()
-	defer imc.instanceManagerMonitorMutex.Unlock()
-
-	stopCh, ok := imc.instanceManagerMonitorMap[imName]
-	if ok {
-		close(stopCh)
-		delete(imc.instanceManagerMonitorMap, imName)
-	}
-}
-
 func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManager, instanceManagerUpdater *InstanceManagerUpdater) {
 	if im.Status.IP == "" {
 		// IP should be set
@@ -738,7 +695,6 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		done:                   false,
 		// notify monitor to update the instance map
 		updateNotification: false,
-		monitoringRemoveCh: imc.instanceManagerMonitorRemoveCh,
 	}
 
 	imc.instanceManagerMonitorMutex.Lock()
@@ -755,16 +711,17 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 
 func (imc *InstanceManagerController) stopMonitoring(im *longhorn.InstanceManager) {
 	imc.instanceManagerMonitorMutex.Lock()
+	defer imc.instanceManagerMonitorMutex.Unlock()
 
 	stopCh, ok := imc.instanceManagerMonitorMap[im.Name]
 	if !ok {
-		imc.instanceManagerMonitorMutex.Unlock()
 		logrus.Warnf("instance manager %v: stop monitoring called when there is no monitoring", im.Name)
 		return
 	}
-	imc.instanceManagerMonitorMutex.Unlock()
-
 	stopCh <- struct{}{}
+
+	delete(imc.instanceManagerMonitorMap, im.Name)
+
 	return
 }
 
@@ -776,18 +733,42 @@ func (imc *InstanceManagerController) isMonitoring(imName string) bool {
 	return ok
 }
 
+func (imc *InstanceManagerController) updateInstanceMapForCleanup(imName string) error {
+	im, err := imc.ds.GetInstanceManager(imName)
+	if err != nil {
+		return fmt.Errorf("failed to get instance manager %v to cleanup instance map: %v", imName, err)
+	}
+
+	for name, instance := range im.Status.Instances {
+		instance.Status.State = types.InstanceStateError
+		instance.Status.ErrorMsg = "Instance Manager errored"
+		im.Status.Instances[name] = instance
+	}
+
+	if _, err := imc.ds.UpdateInstanceManagerStatus(im); err != nil {
+		return fmt.Errorf("failed to update instance map for instance manager %v: %v", imName, err)
+	}
+
+	return nil
+}
+
 func (m *InstanceManagerMonitor) Run() {
 	logrus.Debugf("Start monitoring instance manager %v", m.Name)
 	defer func() {
-		m.monitoringRemoveCh <- m.Name
 		logrus.Debugf("Stop monitoring instance manager %v", m.Name)
 	}()
 
 	notifier, err := m.instanceManagerUpdater.GetNotifier()
 	if err != nil {
-		logrus.Errorf("failed to start notifier for the monitor of instance manager %v: %v", m.Name, err)
+		logrus.Errorf("failed to start notifier during the instance manager %v monitor starting stage: %v", m.Name, err)
 		return
 	}
+
+	defer func() {
+		notifier.Close()
+		m.done = true
+		close(m.stopCh)
+	}()
 
 	go func() {
 		for {
@@ -830,11 +811,6 @@ func (m *InstanceManagerMonitor) Run() {
 				}
 			}
 		case <-m.stopCh:
-			notifier.Close()
-			m.done = true
-			if err := m.updateInstanceMapForCleanup(); err != nil {
-				logrus.Errorf("failed to mark existing instances to error when stopping instance manager monitor: %v", err)
-			}
 			return
 		}
 	}
@@ -855,25 +831,6 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() error {
 		return nil
 	}
 	im.Status.Instances = resp
-	if _, err := m.ds.UpdateInstanceManagerStatus(im); err != nil {
-		return fmt.Errorf("failed to update instance map for instance manager %v: %v", m.Name, err)
-	}
-
-	return nil
-}
-
-func (m *InstanceManagerMonitor) updateInstanceMapForCleanup() error {
-	im, err := m.ds.GetInstanceManager(m.Name)
-	if err != nil {
-		return fmt.Errorf("failed to get instance manager %v to cleanup instance map: %v", m.Name, err)
-	}
-
-	for name, instance := range im.Status.Instances {
-		instance.Status.State = types.InstanceStateError
-		instance.Status.ErrorMsg = "Instance Manager errored"
-		im.Status.Instances[name] = instance
-	}
-
 	if _, err := m.ds.UpdateInstanceManagerStatus(im); err != nil {
 		return fmt.Errorf("failed to update instance map for instance manager %v: %v", m.Name, err)
 	}
