@@ -92,7 +92,7 @@ func NewEngineImageController(
 		vStoreSynced:  volumeInformer.Informer().HasSynced,
 		dsStoreSynced: dsInformer.Informer().HasSynced,
 
-		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-engine-image"),
+		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-engine-image"),
 
 		nowHandler:                util.Now,
 		engineBinaryChecker:       types.EngineBinaryExistOnHostForImage,

@@ -99,7 +99,7 @@ func NewNodeController(
 		rStoreSynced:  replicaInformer.Informer().HasSynced,
 		knStoreSynced: kubeNodeInformer.Informer().HasSynced,
 
-		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "longhorn-node"),
+		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-node"),
 
 		getDiskInfoHandler:    util.GetDiskInfo,
 		topologyLabelsChecker: util.IsKubernetesVersionAtLeast,
