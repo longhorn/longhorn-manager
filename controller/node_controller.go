@@ -435,6 +435,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 			nc.ds.GetSettingAsBool(types.SettingNameDisableSchedulingOnCordonedNode)
 		if err != nil {
 			logrus.Errorf("error getting disable scheduling on cordoned node setting: %v", err)
+			return err
 		}
 
 		// Update node condition based on
