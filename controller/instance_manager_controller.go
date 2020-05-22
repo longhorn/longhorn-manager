@@ -407,8 +407,12 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 			return err
 		}
 		if err := imc.createInstanceManagerPod(im); err != nil {
-			return err
+			if !types.ErrorAlreadyExists(errors.Cause(err)) {
+				return err
+			}
+			return nil
 		}
+
 		im.Status.CurrentState = types.InstanceManagerStateStarting
 		return nil
 	}
