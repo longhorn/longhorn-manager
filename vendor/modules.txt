@@ -70,7 +70,7 @@ github.com/kr/pretty
 github.com/kr/text
 # github.com/kubernetes-csi/csi-lib-utils v0.6.1
 github.com/kubernetes-csi/csi-lib-utils/protosanitizer
-# github.com/longhorn/backupstore v0.0.0-20200522215414-07325fbd9a81
+# github.com/longhorn/backupstore v0.0.0-20200523213440-51dc4f4f8786
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/util
