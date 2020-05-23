@@ -19,3 +19,8 @@ data:
     backupstore-poll-interval:
     taint-toleration:
     registry-secret:
+    auto-salvage:
+    disable-scheduling-on-cordoned-node:
+    replica-zone-soft-anti-affinity:
+    volume-attachment-recovery-policy:
+    mkfs-ext4-parameters:
