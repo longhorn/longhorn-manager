@@ -807,10 +807,12 @@ func (m *InstanceManagerMonitor) Run() {
 	}()
 
 	timer := 0
-	ticker := time.Tick(MinPollCount * PollInterval)
+	ticker := time.NewTicker(MinPollCount * PollInterval)
+	defer ticker.Stop()
+	tick := ticker.C
 	for {
 		select {
-		case <-ticker:
+		case <-tick:
 			needUpdate := false
 
 			m.lock.Lock()

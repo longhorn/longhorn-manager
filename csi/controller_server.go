@@ -388,7 +388,9 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 
 func (cs *ControllerServer) waitForVolumeState(volumeID string, state types.VolumeState, notFoundRetry, notFoundReturn bool) bool {
 	timeout := time.After(timeoutAttachDetach)
-	tick := time.Tick(tickAttachDetach)
+	ticker := time.NewTicker(tickAttachDetach)
+	defer ticker.Stop()
+	tick := ticker.C
 	for {
 		select {
 		case <-timeout:
