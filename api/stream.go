@@ -62,7 +62,11 @@ func NewStreamHandlerFunc(streamType string, watcher *controller.Watcher, listFu
 		}
 
 		rateLimitTicker := maybeNewTicker(getPeriod(r))
+		if rateLimitTicker != nil {
+			defer rateLimitTicker.Stop()
+		}
 		keepAliveTicker := time.NewTicker(keepAlivePeriod)
+		defer keepAliveTicker.Stop()
 		recentWrite := false
 		for {
 			if rateLimitTicker != nil {
