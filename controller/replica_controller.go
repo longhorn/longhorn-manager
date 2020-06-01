@@ -201,57 +201,6 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		return err
 	}
 
-	if replica.DeletionTimestamp != nil {
-		if replica.Status.OwnerID != "" {
-			// Check if replica's managing node died
-			if down, err := rc.ds.IsNodeDownOrDeleted(replica.Status.OwnerID); err != nil {
-				return err
-			} else if down {
-				replica.Status.OwnerID = rc.controllerID
-				_, err = rc.ds.UpdateReplicaStatus(replica)
-				return err
-			}
-		}
-
-		nodeID := replica.Spec.NodeID
-		if nodeID != "" {
-			// Check if replica's executing node died
-			if down, err := rc.ds.IsNodeDownOrDeleted(replica.Spec.NodeID); err != nil {
-				return err
-			} else if down {
-				logrus.Errorf("Node %v down or deleted, can't cleanup replica %v data at %v",
-					nodeID, replica.Name, replica.Spec.DataPath)
-				nodeID = ""
-			}
-		}
-
-		if nodeID == rc.controllerID {
-			if err := rc.DeleteInstance(replica); err != nil {
-				if !types.ErrorIsNotFound(err) {
-					return errors.Wrapf(err, "failed to cleanup the related replica process before deleting replica %v", replica.Name)
-				}
-			}
-			if replica.Spec.Active {
-				// prevent accidentally deletion
-				if !strings.Contains(filepath.Base(filepath.Clean(replica.Spec.DataPath)), "-") {
-					return fmt.Errorf("%v doesn't look like a replica data path", replica.Spec.DataPath)
-				}
-				if err := util.RemoveHostDirectoryContent(replica.Spec.DataPath); err != nil {
-					return errors.Wrapf(err, "cannot cleanup after replica %v at %v", replica.Name, replica.Spec.DataPath)
-				}
-				logrus.Debugf("Cleanup replica %v at %v:%v completed", replica.Name, replica.Spec.NodeID, replica.Spec.DataPath)
-			} else {
-				logrus.Debugf("Didn't cleanup replica %v since it's not the active one for the path %v", replica.Name, replica.Spec.DataPath)
-			}
-			return rc.ds.RemoveFinalizerForReplica(replica)
-		}
-
-		if nodeID == "" && replica.Status.OwnerID == rc.controllerID {
-			logrus.Debugf("Deleted replica %v without cleanup due to no node ID", replica.Name)
-			return rc.ds.RemoveFinalizerForReplica(replica)
-		}
-	}
-
 	if replica.Status.OwnerID != rc.controllerID {
 		if !rc.isResponsibleFor(replica) {
 			// Not ours
@@ -267,6 +216,32 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			return err
 		}
 		logrus.Debugf("Replica controller %v picked up %v", rc.controllerID, replica.Name)
+	}
+
+	if replica.DeletionTimestamp != nil {
+		if err := rc.DeleteInstance(replica); err != nil {
+			return errors.Wrapf(err, "failed to cleanup the related replica process before deleting replica %v", replica.Name)
+		}
+
+		if replica.Spec.NodeID != "" && replica.Spec.NodeID != replica.Status.OwnerID {
+			logrus.Warnf("Node %v down or deleted, can't cleanup replica %v data at %v",
+				replica.Spec.NodeID, replica.Name, replica.Spec.DataPath)
+		} else if replica.Spec.NodeID != "" {
+			if replica.Spec.Active {
+				// prevent accidentally deletion
+				if !strings.Contains(filepath.Base(filepath.Clean(replica.Spec.DataPath)), "-") {
+					return fmt.Errorf("%v doesn't look like a replica data path", replica.Spec.DataPath)
+				}
+				if err := util.RemoveHostDirectoryContent(replica.Spec.DataPath); err != nil {
+					return errors.Wrapf(err, "cannot cleanup after replica %v at %v", replica.Name, replica.Spec.DataPath)
+				}
+				logrus.Debugf("Cleanup replica %v at %v:%v completed", replica.Name, replica.Spec.NodeID, replica.Spec.DataPath)
+			} else {
+				logrus.Debugf("Didn't cleanup replica %v since it's not the active one for the path %v", replica.Name, replica.Spec.DataPath)
+			}
+		}
+
+		return rc.ds.RemoveFinalizerForReplica(replica)
 	}
 
 	existingReplica := replica.DeepCopy()
