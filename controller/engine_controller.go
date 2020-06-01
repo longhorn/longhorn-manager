@@ -253,9 +253,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 
 	if engine.DeletionTimestamp != nil {
 		if err := ec.DeleteInstance(engine); err != nil {
-			if !types.ErrorIsNotFound(err) {
-				return errors.Wrapf(err, "failed to cleanup the related engine process before deleting engine %v", engine.Name)
-			}
+			return errors.Wrapf(err, "failed to cleanup the related engine process before deleting engine %v", engine.Name)
 		}
 		return ec.ds.RemoveFinalizerForEngine(engine)
 	}
