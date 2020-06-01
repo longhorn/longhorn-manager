@@ -341,6 +341,24 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			newEngine(NonExistingInstance, "", TestInstanceManagerName1, "", 0, true, types.InstanceStateError, types.InstanceStateRunning),
 			false,
 		},
+		// corner case5: the node is down
+		"engine node is down": {
+			types.InstanceManagerTypeEngine,
+			newInstanceManager(TestInstanceManagerName1, types.InstanceManagerTypeEngine, types.InstanceManagerStateUnknown, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{
+				ExistingInstance: {
+					Spec: types.InstanceProcessSpec{
+						Name: ExistingInstance,
+					},
+					Status: types.InstanceProcessStatus{
+						State:     types.InstanceStateRunning,
+						PortStart: TestPort1,
+					},
+				},
+			}, false),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestIP1, TestPort1, true, types.InstanceStateRunning, types.InstanceStateRunning),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, "", 0, true, types.InstanceStateUnknown, types.InstanceStateRunning),
+			false,
+		},
 	}
 	for name, tc := range testCases {
 		fmt.Printf("testing instance handler: %v\n", name)
