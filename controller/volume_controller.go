@@ -416,6 +416,13 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		return nil
 	}
 
+	if e.Status.CurrentState == types.InstanceStateUnknown {
+		if v.Status.Robustness != types.VolumeRobustnessUnknown {
+			v.Status.Robustness = types.VolumeRobustnessUnknown
+			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonUnknown, "volume %v is unknown", v.Name)
+		}
+		return nil
+	}
 	if e.Status.CurrentState != types.InstanceStateRunning {
 		return nil
 	}
@@ -966,7 +973,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 		// if engine was running, then we are attached already
 		// (but we may still need to start rebuilding replicas)
-		if e.Status.CurrentState != types.InstanceStateRunning {
+		if e.Status.CurrentState != types.InstanceStateRunning && e.Status.CurrentState != types.InstanceStateUnknown {
 			// the final state will be determined at the end of the clause
 			v.Status.State = types.VolumeStateAttaching
 		}

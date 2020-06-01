@@ -24,6 +24,7 @@ const (
 	EventReasonFaulted  = "Faulted"
 	EventReasonDegraded = "Degraded"
 	EventReasonOrphaned = "Orphaned"
+	EventReasonUnknown  = "Unknown"
 
 	EventReasonDetachedUnexpectly = "DetachedUnexpectly"
 	EventReasonRemount            = "Remount"

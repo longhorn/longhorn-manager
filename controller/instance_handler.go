@@ -87,6 +87,13 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		return
 	}
 
+	if im.Status.CurrentState == types.InstanceManagerStateUnknown {
+		status.CurrentState = types.InstanceStateUnknown
+		status.IP = ""
+		status.Port = 0
+		return
+	}
+
 	if status.InstanceManagerName != "" && status.InstanceManagerName != im.Name {
 		logrus.Errorf("BUG: The related process of instance %v is found in the instance manager %v, but the instance manager name in the instance status is %v. "+
 			"The instance manager name shouldn't change except for cleanup",

@@ -136,6 +136,7 @@ const (
 	InstanceStateError    = InstanceState("error")
 	InstanceStateStarting = InstanceState("starting")
 	InstanceStateStopping = InstanceState("stopping")
+	InstanceStateUnknown  = InstanceState("unknown")
 )
 
 type InstanceSpec struct {
