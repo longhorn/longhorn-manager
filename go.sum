@@ -144,8 +144,8 @@ github.com/kubernetes-csi/csi-lib-utils v0.6.1 h1:+AZ58SRSRWh2vmMoWAAGcv7x6fIyBM
 github.com/kubernetes-csi/csi-lib-utils v0.6.1/go.mod h1:GVmlUmxZ+SUjVLXicRFjqWUUvWez0g0Y78zNV9t7KfQ=
 github.com/longhorn/backupstore v0.0.0-20200530020211-e71b773c1805 h1:Pwi54tMcKVUJbUl9smehb+lDEE1lj4rSFYFqmUDqsr0=
 github.com/longhorn/backupstore v0.0.0-20200530020211-e71b773c1805/go.mod h1:TEcXB6izcrf4DMxnAhEKasrrmRq0nK4wlTUVrDIZaYg=
-github.com/longhorn/go-iscsi-helper v0.0.0-20200515141041-b8f2c4c3a56b h1:w/KuY/X3ayDihvDKX0tLW24ITCJn1ScvcdtcB07Tjvg=
-github.com/longhorn/go-iscsi-helper v0.0.0-20200515141041-b8f2c4c3a56b/go.mod h1:3RTrAwLd6uaku/4wPE0KkSQI2OmhPgGO1SQ2Hbix5hY=
+github.com/longhorn/go-iscsi-helper v0.0.0-20200601183015-ca8b762c2f38 h1:Kzy8VxF0qiJ0CESA5CxzAGIRb5LVNa8LtfFKeVmmZD0=
+github.com/longhorn/go-iscsi-helper v0.0.0-20200601183015-ca8b762c2f38/go.mod h1:3RTrAwLd6uaku/4wPE0KkSQI2OmhPgGO1SQ2Hbix5hY=
 github.com/longhorn/longhorn-instance-manager v0.0.0-20200226061011-dd95eaa89a05 h1:zj0FjrP7SEhpZDunUyWu07WkDsC0Bx2oaV1SIZZHZoo=
 github.com/longhorn/longhorn-instance-manager v0.0.0-20200226061011-dd95eaa89a05/go.mod h1:SfnIsnFj+HdmRiyF2buQ6+CB1WTD1pDQ4zEE6lBLs4s=
 github.com/mailru/easyjson v0.0.0-20160728113105-d5b7844b561a/go.mod h1:C1wdFJiN94OJF2b5HbByQZoLdCWB1Yqtg26g4irojpc=
