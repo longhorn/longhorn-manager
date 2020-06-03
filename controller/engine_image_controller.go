@@ -565,6 +565,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 			"trap 'rm /data/longhorn* && echo cleaned up' EXIT && sleep infinity",
 	}
 	maxUnavailable := intstr.FromString(`100%`)
+	privileged := true
 	d := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: dsName,
@@ -611,6 +612,9 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 								},
 								InitialDelaySeconds: 5,
 								PeriodSeconds:       5,
+							},
+							SecurityContext: &v1.SecurityContext{
+								Privileged: &privileged,
 							},
 						},
 					},
