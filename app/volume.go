@@ -213,9 +213,9 @@ func (job *Job) snapshotAndCleanup() error {
 			if done {
 				if len(errorList) != 0 {
 					for replica, errMsg := range errorList {
-						logrus.Errorf("error purging snapshots on replica %v: %v", replica, errMsg)
+						logrus.Warnf("error purging snapshots on replica %v: %v", replica, errMsg)
 					}
-					return errors.New("encountered one or more errors while purging snapshots")
+					logrus.Warnf("encountered one or more errors while purging snapshots")
 				}
 				return nil
 			}
@@ -341,9 +341,10 @@ func (job *Job) backupAndCleanup() (err error) {
 	cleanupBackupURLs := job.listBackupURLsForCleanup(backups)
 	for _, url := range cleanupBackupURLs {
 		if err := target.DeleteBackup(url); err != nil {
-			return fmt.Errorf("Cleaned up backup %v failed for %v: %v", url, job.volumeName, err)
+			logrus.Warnf("Cleaned up backup %v failed for %v: %v", url, job.volumeName, err)
+		} else {
+			logrus.Debugf("Cleaned up backup %v for %v", url, job.volumeName)
 		}
-		logrus.Debugf("Cleaned up backup %v for %v", url, job.volumeName)
 	}
 	if err := manager.UpdateVolumeLastBackup(job.volumeName, target, job.GetVolume, job.UpdateVolumeStatus); err != nil {
 		logrus.Warnf("Failed to update volume LastBackup for %v: %v", job.volumeName, err)
