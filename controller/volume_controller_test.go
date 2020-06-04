@@ -263,6 +263,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.Standby = false
 	tc.volume.Status.InitialRestorationRequired = true
 	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.CurrentNodeID = TestNode1
+	tc.volume.Status.State = types.VolumeStateAttaching
 	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
 		types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
 	tc.copyCurrentToExpect()
@@ -284,7 +286,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.engines = nil
 	// Set replica node soft anti-affinity
 	tc.replicaNodeSoftAntiAffinity = "true"
-	testCases["restored volume is automatically attaching after creation"] = tc
+	testCases["restored volume keeps automatically attaching after creation"] = tc
 
 	// Newly restored volume changed from attaching to attached
 	tc = generateVolumeTestCaseTemplate()
@@ -559,6 +561,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.DisableFrontend = false
 	tc.volume.Status.InitialRestorationRequired = true
 	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.CurrentNodeID = TestNode1
+	tc.volume.Status.State = types.VolumeStateAttaching
 	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
 		types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
 	for _, r := range tc.replicas {
@@ -575,7 +579,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for _, r := range tc.expectReplicas {
 		r.Spec.DesireState = types.InstanceStateRunning
 	}
-	testCases["new standby volume automatically attaching"] = tc
+	testCases["new standby volume keeps automatically attaching"] = tc
 
 	// New standby volume changed from attaching to attached, and it's not automatically detached
 	tc = generateVolumeTestCaseTemplate()

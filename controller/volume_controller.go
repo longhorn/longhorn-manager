@@ -668,10 +668,12 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			}
 
 			// Cannot automatically detach the volume if one of the following conditions is satisfied:
-			// 1) The volume is doing initial restoration;
-			// 2) The DR/standby volume hasn't been activated/finished activation;
+			// 1) The volume is doing initial restoration and the attached node is running;
+			// 2) The DR/standby volume hasn't been activated/finished activation and the attached node is running;
 			// 3) The volume is being expanding.
-			if !(v.Status.InitialRestorationRequired || v.Status.IsStandby || v.Status.ExpansionRequired) {
+			if !((v.Status.InitialRestorationRequired && v.Status.CurrentNodeID == v.Status.OwnerID) ||
+				(v.Status.IsStandby && v.Status.CurrentNodeID == v.Status.OwnerID) ||
+				v.Status.ExpansionRequired) {
 				v.Status.CurrentNodeID = ""
 			}
 			// users can manually restore the volume and they won't be blocked by this field if remount fails
@@ -753,11 +755,12 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	}
 
 	autoAttachRequired := false
-	// InitialRestorationRequired means the volume is newly created restored volume and
-	// it needs to be attached automatically with frontend disabled. Then its engine
-	// will be launched and the data will be restored from backup.
+	// Disable frontend for restoring/DR volumes.
 	if v.Status.InitialRestorationRequired {
-		autoAttachRequired = true
+		// May need to automatically attach restoring/DR volumes.
+		if v.Status.State == "" || v.Status.State == types.VolumeStateDetached {
+			autoAttachRequired = true
+		}
 		v.Status.FrontendDisabled = true
 	}
 
@@ -780,8 +783,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 	}
 
-	// If the volume scheduling fails, auto attachment doesn't make sense.
-	if allScheduled && autoAttachRequired {
+	// For the following cases, the auto attachment doesn't make sense:
+	//   1. The volume scheduling fails
+	//   2. The attached node is down (e.Status.CurrentState == types.InstanceStateUnknown)
+	if autoAttachRequired && allScheduled && e.Status.CurrentState != types.InstanceStateUnknown {
 		// Do not set v.Status.CurrentNodeID here if the volume is being auto reattached.
 		if v.Status.CurrentNodeID == "" && v.Status.PendingNodeID == "" {
 			// Should use vc.controllerID or v.Status.OwnerID as CurrentNodeID,
