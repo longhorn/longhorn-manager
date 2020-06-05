@@ -173,11 +173,19 @@ func NewJob(volumeName, snapshotName, backupTarget string, labels map[string]str
 	}, nil
 }
 
-func (job *Job) snapshotAndCleanup() error {
+func (job *Job) snapshotAndCleanup() (err error) {
 	engine := job.engine
 	if _, err := engine.SnapshotCreate(job.snapshotName, job.labels); err != nil {
 		return err
 	}
+
+	defer func() {
+		if err != nil {
+			logrus.Warnf("created snapshot successfully but errored on cleanup for %v: %v", job.volumeName, err)
+			err = nil
+		}
+	}()
+
 	snapshots, err := job.engine.SnapshotList()
 	if err != nil {
 		return err
@@ -334,6 +342,13 @@ func (job *Job) backupAndCleanup() (err error) {
 		time.Sleep(WaitInterval)
 	}
 
+	defer func() {
+		if err != nil {
+			logrus.Warnf("created backup successfully but errored on cleanup for %v: %v", job.volumeName, err)
+			err = nil
+		}
+	}()
+
 	backups, err := target.List(job.volumeName)
 	if err != nil {
 		return err
@@ -341,10 +356,9 @@ func (job *Job) backupAndCleanup() (err error) {
 	cleanupBackupURLs := job.listBackupURLsForCleanup(backups)
 	for _, url := range cleanupBackupURLs {
 		if err := target.DeleteBackup(url); err != nil {
-			logrus.Warnf("Cleaned up backup %v failed for %v: %v", url, job.volumeName, err)
-		} else {
-			logrus.Debugf("Cleaned up backup %v for %v", url, job.volumeName)
+			return fmt.Errorf("Cleaned up backup %v failed for %v: %v", url, job.volumeName, err)
 		}
+		logrus.Debugf("Cleaned up backup %v for %v", url, job.volumeName)
 	}
 	if err := manager.UpdateVolumeLastBackup(job.volumeName, target, job.GetVolume, job.UpdateVolumeStatus); err != nil {
 		logrus.Warnf("Failed to update volume LastBackup for %v: %v", job.volumeName, err)
