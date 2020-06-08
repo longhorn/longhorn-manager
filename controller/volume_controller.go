@@ -756,7 +756,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 	autoAttachRequired := false
 	// Disable frontend for restoring/DR volumes.
-	if v.Status.InitialRestorationRequired {
+	if v.Status.InitialRestorationRequired || v.Status.IsStandby {
 		// May need to automatically attach restoring/DR volumes.
 		if v.Status.State == "" || v.Status.State == types.VolumeStateDetached {
 			autoAttachRequired = true
