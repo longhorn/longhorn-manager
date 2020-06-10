@@ -341,10 +341,10 @@ var (
 	}
 	SettingDefinitionVolumeAttachmentRecoveryPolicy = SettingDefinition{
 		DisplayName: "Volume Attachment Recovery Policy",
-		Description: "Defines the Longhorn action when a Volume is stuck with a Deployment Pod on a failed node. " +
-			"`wait` leads to the deletion of the volume attachment as soon as the pods deletion time has passed." +
-			"`never` is the default Kubernetes behavior of never deleting volume attachments on terminating pods." +
-			"`immediate` leads to the deletion of the volume attachment as soon as all workload pods are pending.",
+		Description: "Defines the Longhorn action when a Volume is stuck with a Deployment Pod on a failed node.\n" +
+			"- **wait** leads to the deletion of the volume attachment as soon as the pods deletion time has passed.\n" +
+			"- **never** is the default Kubernetes behavior of never deleting volume attachments on terminating pods.\n" +
+			"- **immediate** leads to the deletion of the volume attachment as soon as all workload pods are pending.\n",
 		Category: SettingCategoryGeneral,
 		Type:     SettingTypeString,
 		Required: true,
