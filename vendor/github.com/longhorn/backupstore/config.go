@@ -88,7 +88,7 @@ func getVolumePath(volumeName string) string {
 	checksum := util.GetChecksum([]byte(volumeName))
 	volumeLayer1 := checksum[0:VOLUME_SEPARATE_LAYER1]
 	volumeLayer2 := checksum[VOLUME_SEPARATE_LAYER1:VOLUME_SEPARATE_LAYER2]
-	return filepath.Join(backupstoreBase, VOLUME_DIRECTORY, volumeLayer1, volumeLayer2, volumeName)
+	return filepath.Join(backupstoreBase, VOLUME_DIRECTORY, volumeLayer1, volumeLayer2, volumeName) + "/"
 }
 
 func getVolumeFilePath(volumeName string) string {
@@ -148,7 +148,7 @@ func getBackupNamesForVolume(volumeName string, driver BackupStoreDriver) ([]str
 		// path doesn't exist
 		return result, nil
 	}
-	return util.ExtractNames(fileList, BACKUP_CONFIG_PREFIX, CFG_SUFFIX)
+	return util.ExtractNames(fileList, BACKUP_CONFIG_PREFIX, CFG_SUFFIX), nil
 }
 
 func getBackupPath(volumeName string) string {
