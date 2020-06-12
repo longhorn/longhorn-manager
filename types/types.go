@@ -103,7 +103,7 @@ const (
 	// DefaultStaleReplicaTimeout in minutes. 48h by default
 	DefaultStaleReplicaTimeout = "2880"
 
-	EngineImageChecksumNameLength = 8
+	ImageChecksumNameLength = 8
 )
 
 type NotFoundError struct {
@@ -127,7 +127,8 @@ const (
 	// 5. Dash and buffer for 2
 	MaximumJobNameSize = 8
 
-	engineImagePrefix = "ei-"
+	engineImagePrefix          = "ei-"
+	instanceManagerImagePrefix = "imi-"
 
 	instanceManagerPrefix = "instance-manager-"
 	engineManagerPrefix   = instanceManagerPrefix + "e-"
@@ -206,7 +207,7 @@ func GetInstanceManagerLabels(node, instanceManagerImage string, managerType Ins
 		labels[GetLonghornLabelKey(LonghornLabelNode)] = node
 	}
 	if instanceManagerImage != "" {
-		labels[GetLonghornLabelKey(LonghornLabelInstanceManagerImage)] = GetImageCanonicalName(instanceManagerImage)
+		labels[GetLonghornLabelKey(LonghornLabelInstanceManagerImage)] = GetInstanceManagerImageChecksumName(GetImageCanonicalName(instanceManagerImage))
 	}
 
 	return labels
@@ -246,11 +247,15 @@ func GetRegionAndZone(labels map[string]string, isUsingTopologyLabels bool) (str
 }
 
 func GetEngineImageChecksumName(image string) string {
-	return engineImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:EngineImageChecksumNameLength]
+	return engineImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
+}
+
+func GetInstanceManagerImageChecksumName(image string) string {
+	return instanceManagerImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
 }
 
 func ValidateEngineImageChecksumName(name string) bool {
-	matched, _ := regexp.MatchString(fmt.Sprintf("^%s[a-fA-F0-9]{%d}$", engineImagePrefix, EngineImageChecksumNameLength), name)
+	matched, _ := regexp.MatchString(fmt.Sprintf("^%s[a-fA-F0-9]{%d}$", engineImagePrefix, ImageChecksumNameLength), name)
 	return matched
 }
 
