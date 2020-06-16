@@ -60,6 +60,7 @@ const (
 	SettingNameReplicaZoneSoftAntiAffinity       = SettingName("replica-zone-soft-anti-affinity")
 	SettingNameVolumeAttachmentRecoveryPolicy    = SettingName("volume-attachment-recovery-policy")
 	SettingNameMkfsExt4Parameters                = SettingName("mkfs-ext4-parameters")
+	SettingNamePriorityClass                     = SettingName("priority-class")
 )
 
 var (
@@ -87,6 +88,7 @@ var (
 		SettingNameReplicaZoneSoftAntiAffinity,
 		SettingNameVolumeAttachmentRecoveryPolicy,
 		SettingNameMkfsExt4Parameters,
+		SettingNamePriorityClass,
 	}
 )
 
@@ -135,6 +137,7 @@ var (
 		SettingNameReplicaZoneSoftAntiAffinity:       SettingDefinitionReplicaZoneSoftAntiAffinity,
 		SettingNameVolumeAttachmentRecoveryPolicy:    SettingDefinitionVolumeAttachmentRecoveryPolicy,
 		SettingNameMkfsExt4Parameters:                SettingDefinitionMkfsExt4Parameters,
+		SettingNamePriorityClass:                     SettingDefinitionPriorityClass,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -361,6 +364,13 @@ var (
 		Description: "Allows setting additional filesystem creation parameters for ext4. For older host kernels it might be necessary to disable the optional ext4 metadata_csum feature by specifying `-O ^64bit,^metadata_csum`",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
+		Required:    false,
+		ReadOnly:    false,
+	}
+	SettingDefinitionPriorityClass = SettingDefinition{
+		DisplayName: "Priority Class",
+		Description: "The name of the Priority Class to set on the Longhorn workloads. This can help prevent Longhorn workloads from being evicted under Node Pressure.\nWARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES.",
+		Category:    SettingCategoryDangerZone,
 		Required:    false,
 		ReadOnly:    false,
 	}
