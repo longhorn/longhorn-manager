@@ -18,6 +18,7 @@ data:
     default-longhorn-static-storage-class:
     backupstore-poll-interval:
     taint-toleration:
+    priority-class:
     registry-secret:
     auto-salvage:
     disable-scheduling-on-cordoned-node:
