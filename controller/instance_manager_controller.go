@@ -505,6 +505,11 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 }
 
 func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string) (*v1.Pod, error) {
+	priorityClass, err := imc.ds.GetSetting(types.SettingNamePriorityClass)
+	if err != nil {
+		return nil, err
+	}
+
 	privileged := true
 	podSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -515,6 +520,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		Spec: v1.PodSpec{
 			ServiceAccountName: imc.serviceAccount,
 			Tolerations:        tolerations,
+			PriorityClassName:  priorityClass.Value,
 			Containers: []v1.Container{
 				{
 					Image: im.Spec.Image,
