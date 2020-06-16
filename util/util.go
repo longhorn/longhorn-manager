@@ -247,7 +247,7 @@ func ExecuteWithoutTimeout(binary string, args ...string) (string, error) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to execute: %v %v, output %s, stderr, %s, error %v",
+		return output.String(), fmt.Errorf("failed to execute: %v %v, output %s, stderr, %s, error %v",
 			binary, args, output.String(), stderr.String(), err)
 	}
 	return output.String(), nil

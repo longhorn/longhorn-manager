@@ -133,6 +133,34 @@ type EngineVersion struct {
 	ServerVersion *types.EngineVersionDetails `json:"serverVersion"`
 }
 
+type TaskError struct {
+	ReplicaErrors []ReplicaError
+}
+
+type ReplicaError struct {
+	Address string
+	Message string
+}
+
+func (e TaskError) Error() string {
+	var errs []string
+	for _, re := range e.ReplicaErrors {
+		errs = append(errs, re.Error())
+	}
+
+	if errs == nil {
+		return "Unknown"
+	}
+	if len(errs) == 1 {
+		return errs[0]
+	}
+	return strings.Join(errs, "; ")
+}
+
+func (e ReplicaError) Error() string {
+	return fmt.Sprintf("%v: %v", e.Address, e.Message)
+}
+
 func GetBackendReplicaURL(address string) string {
 	return "tcp://" + address
 }
