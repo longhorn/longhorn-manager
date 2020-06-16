@@ -52,7 +52,7 @@ type AttacherDeployment struct {
 	deployment *appsv1.Deployment
 }
 
-func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string, replicaCount int, tolerations []v1.Toleration, registrySecret string) *AttacherDeployment {
+func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string, replicaCount int, tolerations []v1.Toleration, priorityClass, registrySecret string) *AttacherDeployment {
 	service := getCommonService(types.CSIAttacherName, namespace)
 
 	deployment := getCommonDeployment(
@@ -69,6 +69,7 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 		},
 		int32(replicaCount),
 		tolerations,
+		priorityClass,
 		registrySecret,
 	)
 
@@ -111,7 +112,7 @@ type ProvisionerDeployment struct {
 	deployment *appsv1.Deployment
 }
 
-func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootDir string, replicaCount int, tolerations []v1.Toleration, registrySecret string) *ProvisionerDeployment {
+func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootDir string, replicaCount int, tolerations []v1.Toleration, priorityClass, registrySecret string) *ProvisionerDeployment {
 	service := getCommonService(types.CSIProvisionerName, namespace)
 
 	deployment := getCommonDeployment(
@@ -129,6 +130,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 		},
 		int32(replicaCount),
 		tolerations,
+		priorityClass,
 		registrySecret,
 	)
 
@@ -171,7 +173,7 @@ type ResizerDeployment struct {
 	deployment *appsv1.Deployment
 }
 
-func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir string, replicaCount int, tolerations []v1.Toleration, registrySecret string) *ResizerDeployment {
+func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir string, replicaCount int, tolerations []v1.Toleration, priorityClass, registrySecret string) *ResizerDeployment {
 	service := getCommonService(types.CSIResizerName, namespace)
 
 	deployment := getCommonDeployment(
@@ -188,6 +190,7 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 		},
 		int32(replicaCount),
 		tolerations,
+		priorityClass,
 		registrySecret,
 	)
 
@@ -229,7 +232,7 @@ type PluginDeployment struct {
 	daemonSet *appsv1.DaemonSet
 }
 
-func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, managerImage, managerURL, rootDir string, tolerations []v1.Toleration, registrySecret string) *PluginDeployment {
+func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, managerImage, managerURL, rootDir string, tolerations []v1.Toleration, priorityClass, registrySecret string) *PluginDeployment {
 	daemonSet := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      types.CSIPluginName,
@@ -251,6 +254,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 				Spec: v1.PodSpec{
 					ServiceAccountName: serviceAccount,
 					Tolerations:        tolerations,
+					PriorityClassName:  priorityClass,
 					Containers: []v1.Container{
 						{
 							Name:  "node-driver-registrar",
