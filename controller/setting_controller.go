@@ -214,6 +214,10 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.updateGuaranteedEngineCPU(); err != nil {
 			return err
 		}
+	case string(types.SettingNamePriorityClass):
+		if err := sc.updatePriorityClass(); err != nil {
+			return err
+		}
 	default:
 	}
 
@@ -347,6 +351,58 @@ func (sc *SettingController) updateTaintToleration() error {
 	}
 	for _, imPod := range imPodList {
 		if util.AreIdenticalTolerations(util.TolerationListToMap(imPod.Spec.Tolerations), newTolerations) {
+			continue
+		}
+		if err := sc.ds.DeletePod(imPod.Name); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (sc *SettingController) updatePriorityClass() error {
+	setting, err := sc.ds.GetSetting(types.SettingNamePriorityClass)
+	if err != nil {
+		return err
+	}
+	newPriorityClass := setting.Value
+
+	daemonsetList, err := sc.ds.ListDaemonSet()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list Longhorn daemonsets for priority class update")
+	}
+
+	deploymentList, err := sc.ds.ListDeployment()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list Longhorn deployments for priority class update")
+	}
+
+	imPodList, err := sc.ds.ListInstanceManagerPods()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list instance manager pods for priority class update")
+	}
+
+	for _, dp := range deploymentList {
+		if dp.Spec.Template.Spec.PriorityClassName == newPriorityClass {
+			continue
+		}
+		dp.Spec.Template.Spec.PriorityClassName = newPriorityClass
+		if _, err := sc.ds.UpdateDeployment(dp); err != nil {
+			return err
+		}
+	}
+	for _, ds := range daemonsetList {
+		if ds.Spec.Template.Spec.PriorityClassName == newPriorityClass {
+			continue
+		}
+		ds.Spec.Template.Spec.PriorityClassName = newPriorityClass
+		if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
+			return err
+		}
+	}
+	for _, imPod := range imPodList {
+		if imPod.Spec.PriorityClassName == newPriorityClass {
 			continue
 		}
 		if err := sc.ds.DeletePod(imPod.Name); err != nil {
