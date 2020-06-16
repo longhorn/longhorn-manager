@@ -284,13 +284,19 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			return errors.Wrapf(err, "failed to unmarshal taint toleration setting before creating engine image daemonset")
 		}
 
+		priorityClassSetting, err := ic.ds.GetSetting(types.SettingNamePriorityClass)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get priority class setting before creating engine image daemonset")
+		}
+		priorityClass := priorityClassSetting.Value
+
 		registrySecretSetting, err := ic.ds.GetSetting(types.SettingNameRegistrySecret)
 		if err != nil {
 			return errors.Wrapf(err, "failed to get registry secret setting before creating engine image daemonset")
 		}
 		registrySecret := registrySecretSetting.Value
 
-		dsSpec := ic.createEngineImageDaemonSetSpec(engineImage, tolerations, registrySecret)
+		dsSpec := ic.createEngineImageDaemonSetSpec(engineImage, tolerations, priorityClass, registrySecret)
 
 		if err = ic.ds.CreateEngineImageDaemonSet(dsSpec); err != nil {
 			return errors.Wrapf(err, "fail to create daemonset for engine image %v", engineImage.Name)
@@ -552,7 +558,7 @@ func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *met
 	ic.enqueueEngineImage(engineImage)
 }
 
-func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []v1.Toleration, registrySecret string) *appsv1.DaemonSet {
+func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []v1.Toleration, priorityClass, registrySecret string) *appsv1.DaemonSet {
 	dsName := types.GetDaemonSetNameFromEngineImageName(ei.Name)
 	image := ei.Spec.Image
 	cmd := []string{
@@ -589,6 +595,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 				Spec: v1.PodSpec{
 					ServiceAccountName: ic.serviceAccount,
 					Tolerations:        tolerations,
+					PriorityClassName:  priorityClass,
 					Containers: []v1.Container{
 						{
 							Name:            dsName,
