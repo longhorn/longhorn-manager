@@ -109,6 +109,21 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 				return fmt.Errorf("cannot modify toleration setting before all volumes are detached")
 			}
 		}
+	case types.SettingNamePriorityClass:
+		if value != "" {
+			if _, err := s.GetPriorityClass(value); err != nil {
+				return errors.Wrapf(err, "failed to get priority class %v before modifying priority class setting", value)
+			}
+		}
+		list, err := s.ListVolumesRO()
+		if err != nil {
+			return errors.Wrapf(err, "failed to list volumes before modifying priority class setting")
+		}
+		for _, v := range list {
+			if v.Status.State != types.VolumeStateDetached {
+				return fmt.Errorf("cannot modify priority class setting before all volumes are detached")
+			}
+		}
 	}
 	return nil
 }
