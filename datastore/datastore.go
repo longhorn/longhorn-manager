@@ -5,10 +5,12 @@ import (
 	appsinformers "k8s.io/client-go/informers/apps/v1"
 	batchinformers_v1beta1 "k8s.io/client-go/informers/batch/v1beta1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
+	schedulinginformers "k8s.io/client-go/informers/scheduling/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	batchlisters_v1beta1 "k8s.io/client-go/listers/batch/v1beta1"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	schedulinglisters "k8s.io/client-go/listers/scheduling/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/controller"
 
@@ -55,6 +57,8 @@ type DataStore struct {
 	pvcStoreSynced cache.InformerSynced
 	knLister       corelisters.NodeLister
 	knStoreSynced  cache.InformerSynced
+	pcLister       schedulinglisters.PriorityClassLister
+	pcStoreSynced  cache.InformerSynced
 }
 
 func NewDataStore(
@@ -74,6 +78,7 @@ func NewDataStore(
 	persistentVolumeInformer coreinformers.PersistentVolumeInformer,
 	persistentVolumeClaimInformer coreinformers.PersistentVolumeClaimInformer,
 	kubeNodeInformer coreinformers.NodeInformer,
+	priorityClassInformer schedulinginformers.PriorityClassInformer,
 
 	kubeClient clientset.Interface,
 	namespace string) *DataStore {
@@ -112,6 +117,8 @@ func NewDataStore(
 		pvcStoreSynced: persistentVolumeClaimInformer.Informer().HasSynced,
 		knLister:       kubeNodeInformer.Lister(),
 		knStoreSynced:  kubeNodeInformer.Informer().HasSynced,
+		pcLister:       priorityClassInformer.Lister(),
+		pcStoreSynced:  priorityClassInformer.Informer().HasSynced,
 	}
 }
 
@@ -121,7 +128,7 @@ func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 		s.iStoreSynced, s.nStoreSynced, s.sStoreSynced,
 		s.pStoreSynced, s.cjStoreSynced, s.dsStoreSynced,
 		s.pvStoreSynced, s.pvcStoreSynced, s.imStoreSynced,
-		s.dpStoreSynced, s.knStoreSynced)
+		s.dpStoreSynced, s.knStoreSynced, s.pcStoreSynced)
 }
 
 func ErrorIsNotFound(err error) bool {

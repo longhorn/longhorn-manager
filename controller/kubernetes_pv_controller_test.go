@@ -231,13 +231,15 @@ func newTestKubernetesPVController(lhInformerFactory lhinformerfactory.SharedInf
 	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
 	volumeAttachmentInformer := kubeInformerFactory.Storage().V1beta1().VolumeAttachments()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
+	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
 		engineImageInformer, nodeInformer, settingInformer, imInformer,
 		lhClient,
-		podInformer, cronJobInformer, daemonSetInformer, deploymentInformer,
-		persistentVolumeInformer, persistentVolumeClaimInformer, kubeNodeInformer,
+		podInformer, cronJobInformer, daemonSetInformer,
+		deploymentInformer, persistentVolumeInformer,
+		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
 		kubeClient, TestNamespace)
 
 	kc := NewKubernetesPVController(ds, scheme.Scheme, volumeInformer, persistentVolumeInformer,
