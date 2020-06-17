@@ -103,8 +103,7 @@ const (
 	// DefaultStaleReplicaTimeout in minutes. 48h by default
 	DefaultStaleReplicaTimeout = "2880"
 
-	EngineImageChecksumNameLength          = 8
-	InstanceManagerImageChecksumNameLength = 8
+	EngineImageChecksumNameLength = 8
 )
 
 type NotFoundError struct {
@@ -128,8 +127,7 @@ const (
 	// 5. Dash and buffer for 2
 	MaximumJobNameSize = 8
 
-	engineImagePrefix          = "ei-"
-	instanceManagerImagePrefix = "imi-"
+	engineImagePrefix = "ei-"
 
 	instanceManagerPrefix = "instance-manager-"
 	engineManagerPrefix   = instanceManagerPrefix + "e-"
@@ -204,7 +202,7 @@ func GetInstanceManagerLabels(node, instanceManagerImage string, managerType Ins
 		labels[GetLonghornLabelKey(LonghornLabelNode)] = node
 	}
 	if instanceManagerImage != "" {
-		labels[GetLonghornLabelKey(LonghornLabelInstanceManagerImage)] = GetInstanceManagerImageChecksumName(GetImageCanonicalName(instanceManagerImage))
+		labels[GetLonghornLabelKey(LonghornLabelInstanceManagerImage)] = GetImageCanonicalName(instanceManagerImage)
 	}
 
 	return labels
@@ -245,10 +243,6 @@ func GetRegionAndZone(labels map[string]string, isUsingTopologyLabels bool) (str
 
 func GetEngineImageChecksumName(image string) string {
 	return engineImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:EngineImageChecksumNameLength]
-}
-
-func GetInstanceManagerImageChecksumName(image string) string {
-	return instanceManagerImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:InstanceManagerImageChecksumNameLength]
 }
 
 func ValidateEngineImageChecksumName(name string) bool {
