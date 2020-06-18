@@ -458,6 +458,9 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		if mode == types.ReplicaModeERR ||
 			(restoreStatus != nil && restoreStatus.Error != "") {
 			if r != nil {
+				if restoreStatus != nil && restoreStatus.Error != "" {
+					vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFailedRestore, "replica %v failed the restore: %s", r.Name, restoreStatus.Error)
+				}
 				e.Spec.LogRequested = true
 				r.Spec.LogRequested = true
 				r.Spec.FailedAt = vc.nowHandler()
