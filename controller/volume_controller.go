@@ -1496,11 +1496,12 @@ func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 	vc.enqueueVolume(volume)
 }
 
-func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.RecurringJob, suspend bool, backupTarget string, credentialSecret string) (*batchv1beta1.CronJob, error) {
+func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.RecurringJob, suspend bool) (*batchv1beta1.CronJob, error) {
 	backoffLimit := int32(CronJobBackoffLimit)
 	cmd := []string{
 		"longhorn-manager", "-d",
 		"snapshot", v.Name,
+		"--manager-url", types.GetDefaultManagerURL(),
 		"--snapshot-name", job.Name,
 		"--labels", types.RecurringJobLabel + "=" + job.Name,
 		"--retain", strconv.Itoa(job.Retain),
@@ -1509,7 +1510,7 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 		cmd = append(cmd, "--labels", key+"="+val)
 	}
 	if job.Task == types.RecurringJobTypeBackup {
-		cmd = append(cmd, "--backuptarget", backupTarget)
+		cmd = append(cmd, "--backup")
 	}
 	// for mounting inside container
 	privilege := true
@@ -1576,18 +1577,6 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 			},
 		},
 	}
-	if job.Task == types.RecurringJobTypeBackup {
-		if credentialSecret != "" {
-			credentials, err := vc.ds.GetCredentialFromSecret(credentialSecret)
-			if err != nil {
-				return nil, errors.Wrapf(err, "cannot get credential secret %v", credentialSecret)
-			}
-			hasEndpoint := (credentials[types.AWSEndPoint] != "")
-			hasCert := (credentials[types.AWSCert] != "")
-
-			util.ConfigEnvWithCredential(backupTarget, credentialSecret, hasEndpoint, hasCert, &cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers[0])
-		}
-	}
 	return cronJob, nil
 }
 
@@ -1601,18 +1590,6 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 		suspended = true
 	}
 
-	settingBackupTarget, err := vc.ds.GetSetting(types.SettingNameBackupTarget)
-	if err != nil {
-		return err
-	}
-	backupTarget := settingBackupTarget.Value
-
-	settingBackupCredentialSecret, err := vc.ds.GetSetting(types.SettingNameBackupTargetCredentialSecret)
-	if err != nil {
-		return err
-	}
-	backupCredentialSecret := settingBackupCredentialSecret.Value
-
 	// the cronjobs are RO in the map, but not the map itself
 	appliedCronJobROs, err := vc.ds.ListVolumeCronJobROs(v.Name)
 	if err != nil {
@@ -1621,12 +1598,7 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 
 	currentCronJobs := make(map[string]*batchv1beta1.CronJob)
 	for _, job := range v.Spec.RecurringJobs {
-		// TODO add condition for validation error, instead of blocking volume reconciliation loop
-		if backupTarget == "" && job.Task == types.RecurringJobTypeBackup {
-			return fmt.Errorf("cannot backup with empty backup target")
-		}
-
-		cronJob, err := vc.createCronJob(v, &job, suspended, backupTarget, backupCredentialSecret)
+		cronJob, err := vc.createCronJob(v, &job, suspended)
 		if err != nil {
 			return err
 		}
