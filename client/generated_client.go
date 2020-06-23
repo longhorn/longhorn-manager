@@ -5,7 +5,6 @@ type RancherClient struct {
 
 	ApiVersion                ApiVersionOperations
 	Error                     ErrorOperations
-	Snapshot                  SnapshotOperations
 	AttachInput               AttachInputOperations
 	SnapshotInput             SnapshotInputOperations
 	Backup                    BackupOperations
@@ -35,7 +34,9 @@ type RancherClient struct {
 	SupportBundle             SupportBundleOperations
 	SupportBundleInitateInput SupportBundleInitateInputOperations
 	Tag                       TagOperations
+	InstanceManager           InstanceManagerOperations
 	Volume                    VolumeOperations
+	Snapshot                  SnapshotOperations
 	BackupVolume              BackupVolumeOperations
 	Setting                   SettingOperations
 	RecurringInput            RecurringInputOperations
@@ -44,6 +45,8 @@ type RancherClient struct {
 	DiskUpdateInput           DiskUpdateInputOperations
 	DiskInfo                  DiskInfoOperations
 	KubernetesStatus          KubernetesStatusOperations
+	BackupListOutput          BackupListOutputOperations
+	SnapshotListOutput        SnapshotListOutputOperations
 }
 
 func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
@@ -53,7 +56,6 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 
 	client.ApiVersion = newApiVersionClient(client)
 	client.Error = newErrorClient(client)
-	client.Snapshot = newSnapshotClient(client)
 	client.AttachInput = newAttachInputClient(client)
 	client.SnapshotInput = newSnapshotInputClient(client)
 	client.Backup = newBackupClient(client)
@@ -83,7 +85,9 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.SupportBundle = newSupportBundleClient(client)
 	client.SupportBundleInitateInput = newSupportBundleInitateInputClient(client)
 	client.Tag = newTagClient(client)
+	client.InstanceManager = newInstanceManagerClient(client)
 	client.Volume = newVolumeClient(client)
+	client.Snapshot = newSnapshotClient(client)
 	client.BackupVolume = newBackupVolumeClient(client)
 	client.Setting = newSettingClient(client)
 	client.RecurringInput = newRecurringInputClient(client)
@@ -92,6 +96,8 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.DiskUpdateInput = newDiskUpdateInputClient(client)
 	client.DiskInfo = newDiskInfoClient(client)
 	client.KubernetesStatus = newKubernetesStatusClient(client)
+	client.BackupListOutput = newBackupListOutputClient(client)
+	client.SnapshotListOutput = newSnapshotListOutputClient(client)
 
 	return client
 }

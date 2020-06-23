@@ -15,6 +15,8 @@ type SettingDefinition struct {
 
 	DisplayName string `json:"displayName,omitempty" yaml:"display_name,omitempty"`
 
+	Options []string `json:"options,omitempty" yaml:"options,omitempty"`
+
 	ReadOnly bool `json:"readOnly,omitempty" yaml:"read_only,omitempty"`
 
 	Required bool `json:"required,omitempty" yaml:"required,omitempty"`

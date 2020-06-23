@@ -7,7 +7,7 @@ const (
 type Snapshot struct {
 	Resource `yaml:"-"`
 
-	Children map[string]string `json:"children,omitempty" yaml:"children,omitempty"`
+	Children map[string]interface{} `json:"children,omitempty" yaml:"children,omitempty"`
 
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`
 
