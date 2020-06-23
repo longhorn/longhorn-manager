@@ -150,6 +150,10 @@ func GetAPIServerAddressFromIP(ip string) string {
 	return ip + ":" + strconv.Itoa(DefaultAPIPort)
 }
 
+func GetDefaultManagerURL() string {
+	return "http://longhorn-backend:" + strconv.Itoa(DefaultAPIPort) + "/v1"
+}
+
 func GetImageCanonicalName(image string) string {
 	return strings.Replace(strings.Replace(image, ":", "-", -1), "/", "-", -1)
 }
