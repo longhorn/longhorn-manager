@@ -484,7 +484,9 @@ func volumeSchema(volume *client.Schema) {
 			Output: "volume",
 		},
 
-		"snapshotPurge": {},
+		"snapshotPurge": {
+			Output: "volume",
+		},
 		"snapshotCreate": {
 			Input:  "snapshotInput",
 			Output: "snapshot",
@@ -498,14 +500,15 @@ func volumeSchema(volume *client.Schema) {
 		},
 		"snapshotDelete": {
 			Input:  "snapshotInput",
-			Output: "snapshot",
+			Output: "volume",
 		},
 		"snapshotRevert": {
 			Input:  "snapshotInput",
 			Output: "snapshot",
 		},
 		"snapshotBackup": {
-			Input: "snapshotInput",
+			Input:  "snapshotInput",
+			Output: "volume",
 		},
 
 		"recurringUpdate": {
