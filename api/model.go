@@ -285,6 +285,16 @@ type InstanceManager struct {
 	Instances    map[string]types.InstanceProcess `json:"instances"`
 }
 
+type BackupListOutput struct {
+	Data []Backup `json:"data"`
+	Type string   `json:"type"`
+}
+
+type SnapshotListOutput struct {
+	Data []Snapshot `json:"data"`
+	Type string     `json:"type"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -340,6 +350,8 @@ func NewSchema() *client.Schemas {
 	diskSchema(schemas.AddType("diskUpdateInput", DiskUpdateInput{}))
 	diskInfoSchema(schemas.AddType("diskInfo", DiskInfo{}))
 	kubernetesStatusSchema(schemas.AddType("kubernetesStatus", types.KubernetesStatus{}))
+	backupListOutputSchema(schemas.AddType("backupListOutput", BackupListOutput{}))
+	snapshotListOutputSchema(schemas.AddType("snapshotListOutput", SnapshotListOutput{}))
 
 	return schemas
 }
@@ -411,7 +423,9 @@ func backupVolumeSchema(backupVolume *client.Schema) {
 	backupVolume.CollectionMethods = []string{"GET"}
 	backupVolume.ResourceMethods = []string{"GET", "DELETE"}
 	backupVolume.ResourceActions = map[string]client.Action{
-		"backupList": {},
+		"backupList": {
+			Output: "backupListOutput",
+		},
 		"backupGet": {
 			Input:  "backupInput",
 			Output: "backup",
@@ -479,7 +493,9 @@ func volumeSchema(volume *client.Schema) {
 			Input:  "snapshotInput",
 			Output: "snapshot",
 		},
-		"snapshotList": {},
+		"snapshotList": {
+			Output: "snapshotListOutput",
+		},
 		"snapshotDelete": {
 			Input:  "snapshotInput",
 			Output: "snapshot",
@@ -605,6 +621,18 @@ func volumeSchema(volume *client.Schema) {
 	rebuildStatus := volume.ResourceFields["rebuildStatus"]
 	rebuildStatus.Type = "array[rebuildStatus]"
 	volume.ResourceFields["rebuildStatus"] = rebuildStatus
+}
+
+func backupListOutputSchema(backupList *client.Schema) {
+	data := backupList.ResourceFields["data"]
+	data.Type = "array[backup]"
+	backupList.ResourceFields["data"] = data
+}
+
+func snapshotListOutputSchema(snapshotList *client.Schema) {
+	data := snapshotList.ResourceFields["data"]
+	data.Type = "array[snapshot]"
+	snapshotList.ResourceFields["data"] = data
 }
 
 func toSettingResource(setting *longhorn.Setting) *Setting {
