@@ -1,10 +1,8 @@
 package app
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
 	"sort"
 	"time"
 
@@ -16,10 +14,10 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/longhorn/longhorn-manager/engineapi"
-	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
+	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 )
@@ -28,7 +26,7 @@ const (
 	FlagSnapshotName = "snapshot-name"
 	FlagLabels       = "labels"
 	FlagRetain       = "retain"
-	FlagBackupTarget = "backuptarget"
+	FlagBackup       = "backup"
 
 	SnapshotPurgeStatusInterval = 5 * time.Second
 
@@ -39,6 +37,10 @@ func SnapshotCmd() cli.Command {
 	return cli.Command{
 		Name: "snapshot",
 		Flags: []cli.Flag{
+			cli.StringFlag{
+				Name:  FlagManagerURL,
+				Usage: "Longhorn manager API URL",
+			},
 			cli.StringFlag{
 				Name:  FlagSnapshotName,
 				Usage: "the base of snapshot name",
@@ -51,9 +53,9 @@ func SnapshotCmd() cli.Command {
 				Name:  FlagRetain,
 				Usage: "retain number of snapshots with the same label",
 			},
-			cli.StringFlag{
-				Name:  FlagBackupTarget,
-				Usage: "backup to destination if supplied, would be url like s3://bucket@region/path/ or vfs:///path/",
+			cli.BoolFlag{
+				Name:  FlagBackup,
+				Usage: "run the job with backup creation and cleanup",
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -66,6 +68,12 @@ func SnapshotCmd() cli.Command {
 
 func snapshot(c *cli.Context) error {
 	var err error
+
+	managerURL := c.String(FlagManagerURL)
+	if managerURL == "" {
+		return fmt.Errorf("require %v", FlagManagerURL)
+	}
+
 	if c.NArg() == 0 {
 		return errors.New("volume name is required")
 	}
@@ -88,12 +96,12 @@ func snapshot(c *cli.Context) error {
 		}
 	}
 
-	backupTarget := c.String(FlagBackupTarget)
-	job, err := NewJob(volume, snapshotName, backupTarget, labelMap, retain)
+	backup := c.Bool(FlagBackup)
+	job, err := NewJob(managerURL, volume, snapshotName, labelMap, retain)
 	if err != nil {
 		return err
 	}
-	if backupTarget != "" {
+	if backup {
 		return job.backupAndCleanup()
 	}
 	return job.snapshotAndCleanup()
@@ -102,17 +110,15 @@ func snapshot(c *cli.Context) error {
 type Job struct {
 	lhClient     lhclientset.Interface
 	namespace    string
-	volumeName   string
+	volume       *longhornclient.Volume
 	snapshotName string
-	backupTarget string
 	retain       int
 	labels       map[string]string
 
-	engine      engineapi.EngineClient
-	engineImage string
+	api *longhornclient.RancherClient
 }
 
-func NewJob(volumeName, snapshotName, backupTarget string, labels map[string]string, retain int) (*Job, error) {
+func NewJob(managerURL, volumeName, snapshotName string, labels map[string]string, retain int) (*Job, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		return nil, fmt.Errorf("Cannot detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
@@ -127,34 +133,14 @@ func NewJob(volumeName, snapshotName, backupTarget string, labels map[string]str
 		return nil, errors.Wrap(err, "unable to get clientset")
 	}
 
-	v, err := lhClient.LonghornV1beta1().Volumes(namespace).Get(volumeName, metav1.GetOptions{})
+	clientOpts := &longhornclient.ClientOpts{Url: managerURL}
+	apiClient, err := longhornclient.NewRancherClient(clientOpts)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "could not create longhorn-manager api client")
 	}
-	eList, err := lhClient.LonghornV1beta1().Engines(namespace).List(metav1.ListOptions{
-		LabelSelector: types.LabelsToString(types.GetVolumeLabels(volumeName)),
-	})
+	volume, err := apiClient.Volume.ById(volumeName)
 	if err != nil {
-		return nil, err
-	}
-	if len(eList.Items) != 1 {
-		return nil, fmt.Errorf("cannot find suitable engine: %+v", eList)
-	}
-	e := eList.Items[0]
-	if e.Status.IP == "" {
-		return nil, fmt.Errorf("engine %v is not running, no IP available", e.Name)
-	}
-
-	engines := engineapi.EngineCollection{}
-	engineImage := e.Status.CurrentImage
-	engineClient, err := engines.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:  v.Name,
-		EngineImage: engineImage,
-		IP:          e.Status.IP,
-		Port:        e.Status.Port,
-	})
-	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "could not get volume %v", volumeName)
 	}
 	// must at least retain 1 of course
 	if retain == 0 {
@@ -163,59 +149,64 @@ func NewJob(volumeName, snapshotName, backupTarget string, labels map[string]str
 	return &Job{
 		lhClient:     lhClient,
 		namespace:    namespace,
-		volumeName:   volumeName,
+		volume:       volume,
 		snapshotName: snapshotName,
-		backupTarget: backupTarget,
 		labels:       labels,
 		retain:       retain,
-		engine:       engineClient,
-		engineImage:  engineImage,
+		api:          apiClient,
 	}, nil
 }
 
 func (job *Job) snapshotAndCleanup() (err error) {
-	engine := job.engine
-	if _, err := engine.SnapshotCreate(job.snapshotName, job.labels); err != nil {
+	volumeAPI := job.api.Volume
+	volume := job.volume
+	volumeName := volume.Name
+	if _, err := volumeAPI.ActionSnapshotCreate(volume, &longhornclient.SnapshotInput{
+		Labels: job.labels,
+		Name:   job.snapshotName,
+	}); err != nil {
 		return err
 	}
 
 	defer func() {
 		if err != nil {
-			logrus.Warnf("created snapshot successfully but errored on cleanup for %v: %v", job.volumeName, err)
+			logrus.Warnf("created snapshot successfully but errored on cleanup for %v: %v", volumeName, err)
 			err = nil
 		}
 	}()
 
-	snapshots, err := job.engine.SnapshotList()
+	collection, err := volumeAPI.ActionSnapshotList(volume)
 	if err != nil {
 		return err
 	}
-	cleanupSnapshotNames := job.listSnapshotNamesForCleanup(snapshots)
+	cleanupSnapshotNames := job.listSnapshotNamesForCleanup(collection.Data)
 	for _, snapshot := range cleanupSnapshotNames {
-		if err := job.engine.SnapshotDelete(snapshot); err != nil {
+		if _, err := volumeAPI.ActionSnapshotDelete(volume, &longhornclient.SnapshotInput{
+			Name: snapshot,
+		}); err != nil {
 			return err
 		}
-		logrus.Debugf("Cleaned up snapshot %v for %v", snapshot, job.volumeName)
+		logrus.Debugf("Cleaned up snapshot %v for %v", snapshot, volumeName)
 	}
 	if len(cleanupSnapshotNames) > 0 {
-		if err := engine.SnapshotPurge(); err != nil {
+		if _, err := volumeAPI.ActionSnapshotPurge(volume); err != nil {
 			return err
 		}
 		for {
 			done := true
 			errorList := map[string]string{}
-			purgeStatus, err := engine.SnapshotPurgeStatus()
+			volume, err := volumeAPI.ById(volumeName)
 			if err != nil {
 				return err
 			}
 
-			for replica, status := range purgeStatus {
+			for _, status := range volume.PurgeStatus {
 				if status.IsPurging {
 					done = false
 					break
 				}
 				if status.Error != "" {
-					errorList[replica] = status.Error
+					errorList[status.Replica] = status.Error
 				}
 			}
 			if done {
@@ -238,7 +229,7 @@ type NameWithTimestamp struct {
 	Timestamp time.Time
 }
 
-func (job *Job) listSnapshotNamesForCleanup(snapshots map[string]*types.Snapshot) []string {
+func (job *Job) listSnapshotNamesForCleanup(snapshots []longhornclient.Snapshot) []string {
 	sts := []*NameWithTimestamp{}
 
 	// only remove snapshots that where created by our current job
@@ -280,60 +271,53 @@ func (job *Job) getCleanupList(sts []*NameWithTimestamp) []string {
 }
 
 func (job *Job) backupAndCleanup() (err error) {
+	backupAPI := job.api.BackupVolume
+	volumeAPI := job.api.Volume
+	snapshot := job.snapshotName
+	volume := job.volume
+	volumeName := volume.Name
 	defer func() {
-		err = errors.Wrapf(err, "failed to complete backupAndCleanup for %v", job.volumeName)
+		err = errors.Wrapf(err, "failed to complete backupAndCleanup for %v", volumeName)
 	}()
 
 	if err := job.snapshotAndCleanup(); err != nil {
 		return err
 	}
 
-	// Save current KubernetesStatus of Volume as a Label on the Backup. Run here because this should NOT be set on
-	// Snapshots.
-	v, err := job.GetVolume(job.volumeName)
-	if err != nil {
+	if _, err := volumeAPI.ActionSnapshotBackup(volume, &longhornclient.SnapshotInput{
+		Labels: job.labels,
+		Name:   snapshot,
+	}); err != nil {
 		return err
 	}
-	// Cannot directly compare the structs since KubernetesStatus contains a slice which cannot be compared.
-	if !reflect.DeepEqual(v.Status.KubernetesStatus, types.KubernetesStatus{}) {
-		kubeStatus, err := json.Marshal(v.Status.KubernetesStatus)
-		if err != nil {
-			return errors.Wrapf(err, "BUG: could not convert volume %v's KubernetesStatus to json", job.volumeName)
-		}
-		job.labels[types.KubernetesStatusLabel] = string(kubeStatus)
-	}
-
-	// CronJob template has covered the credential already, so we don't need to get the credential secret.
-	backupName, err := job.engine.SnapshotBackup(job.snapshotName, job.backupTarget, job.labels, nil)
-	if err != nil {
-		return err
-	}
-
-	target := engineapi.NewBackupTarget(job.backupTarget, job.engineImage, nil)
 
 	// Wait for backup creation complete
 	for {
-		backupStatusList, err := job.engine.SnapshotBackupStatus()
+		volume, err := volumeAPI.ById(volumeName)
 		if err != nil {
 			return err
 		}
-
-		info, exist := backupStatusList[backupName]
-		if !exist {
-			return fmt.Errorf("cannot find backup %v in backup status list", backupName)
+		var info *longhornclient.BackupStatus
+		for _, status := range volume.BackupStatus {
+			if status.Snapshot == snapshot {
+				info = &status
+				break
+			}
 		}
 
 		complete := false
-		switch info.State {
-		case engineapi.BackupStateComplete:
-			complete = true
-			logrus.Debugf("Complete creating backup %v", info.BackupURL)
-		case engineapi.BackupStateInProgress:
-			logrus.Debugf("Creating backup %v, current progress %v", backupName, info.Progress)
-		case engineapi.BackupStateError:
-			return fmt.Errorf("failed to create backup %v: %v", info.BackupURL, info.Error)
-		default:
-			return fmt.Errorf("invalid state %v for backup %v", info.State, info.BackupURL)
+		if info != nil {
+			switch info.State {
+			case engineapi.BackupStateComplete:
+				complete = true
+				logrus.Debugf("Complete creating backup %v", info.BackupURL)
+			case engineapi.BackupStateInProgress:
+				logrus.Debugf("Creating backup %v, current progress %v", info.BackupURL, info.Progress)
+			case engineapi.BackupStateError:
+				return fmt.Errorf("failed to create backup %v: %v", info.BackupURL, info.Error)
+			default:
+				return fmt.Errorf("invalid state %v for backup %v", info.State, info.BackupURL)
+			}
 		}
 
 		if complete {
@@ -344,29 +328,32 @@ func (job *Job) backupAndCleanup() (err error) {
 
 	defer func() {
 		if err != nil {
-			logrus.Warnf("created backup successfully but errored on cleanup for %v: %v", job.volumeName, err)
+			logrus.Warnf("created backup successfully but errored on cleanup for %v: %v", volumeName, err)
 			err = nil
 		}
 	}()
 
-	backups, err := target.List(job.volumeName)
+	backupVolume, err := backupAPI.ById(volumeName)
 	if err != nil {
 		return err
 	}
-	cleanupBackupURLs := job.listBackupURLsForCleanup(backups)
-	for _, url := range cleanupBackupURLs {
-		if err := target.DeleteBackup(url); err != nil {
-			return fmt.Errorf("Cleaned up backup %v failed for %v: %v", url, job.volumeName, err)
-		}
-		logrus.Debugf("Cleaned up backup %v for %v", url, job.volumeName)
+	backups, err := backupAPI.ActionBackupList(backupVolume)
+	if err != nil {
+		return err
 	}
-	if err := manager.UpdateVolumeLastBackup(job.volumeName, target, job.GetVolume, job.UpdateVolumeStatus); err != nil {
-		logrus.Warnf("Failed to update volume LastBackup for %v: %v", job.volumeName, err)
+	cleanupBackups := job.listBackupsForCleanup(backups.Data)
+	for _, backup := range cleanupBackups {
+		if _, err := backupAPI.ActionBackupDelete(backupVolume, &longhornclient.BackupInput{
+			Name: backup,
+		}); err != nil {
+			return fmt.Errorf("Cleaned up backup %v failed for %v: %v", backup, volumeName, err)
+		}
+		logrus.Debugf("Cleaned up backup %v for %v", backup, volumeName)
 	}
 	return nil
 }
 
-func (job *Job) listBackupURLsForCleanup(backups []*engineapi.Backup) []string {
+func (job *Job) listBackupsForCleanup(backups []longhornclient.Backup) []string {
 	sts := []*NameWithTimestamp{}
 
 	// only remove backups that where created by our current job
@@ -380,11 +367,11 @@ func (job *Job) listBackupURLsForCleanup(backups []*engineapi.Backup) []string {
 			t, err := time.Parse(time.RFC3339, backup.Created)
 			if err != nil {
 				logrus.Errorf("Fail to parse datetime %v for backup %v",
-					backup.Created, backup.URL)
+					backup.Created, backup)
 				continue
 			}
 			sts = append(sts, &NameWithTimestamp{
-				Name:      backup.URL,
+				Name:      backup.Name,
 				Timestamp: t,
 			})
 		}
