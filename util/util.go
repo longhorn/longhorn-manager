@@ -702,8 +702,7 @@ func TolerationListToMap(tolerationList []v1.Toleration) map[string]v1.Toleratio
 func RemountVolume(volumeName string) error {
 	fsType, err := DetectFileSystem(volumeName)
 	if err != nil {
-		logrus.Warnf("Failed to detect the filesystem for volume %v, will skip remounting it: %v", volumeName, err)
-		return nil
+		return errors.Wrapf(err, "failed to detect the filesystem for volume %v before the remount, will skip remounting it", volumeName)
 	}
 
 	// mounting multiple layers with xfs filesystem will get the following error:
@@ -713,8 +712,7 @@ func RemountVolume(volumeName string) error {
 	//		[191813.758870] XFS (sdb): Filesystem has duplicate UUID <filesystem UUID> - can't mount
 	// This error is caused by duplicate UUID of the XFS Filesystem
 	if fsType == "xfs" {
-		logrus.Warnf("Longhorn doesn't support remount filesystem xfs for volume %v", volumeName)
-		return nil
+		return fmt.Errorf("remount filesystem xfs for volume %v is not supported", volumeName)
 	}
 
 	devicePath := filepath.Join(DeviceDirectory, volumeName)
@@ -731,8 +729,7 @@ func RemountVolume(volumeName string) error {
 	}
 	res = strings.TrimSpace(res)
 	if res == "" {
-		logrus.Infof("Cannot find any mount record for volume %v, will skip remounting it", volumeName)
-		return nil
+		return fmt.Errorf("cannot find any mount record for volume %v, will skip remounting it", volumeName)
 	}
 
 	mountRecords := strings.Split(res, "\n")
@@ -771,6 +768,10 @@ func RemountVolume(volumeName string) error {
 				delete(mountPoints, m)
 			}
 		}
+	}
+
+	if len(mountPoints) == 0 {
+		return fmt.Errorf("there is not any available mount point for volume %v", volumeName)
 	}
 
 	for m, count := range mountPoints {
