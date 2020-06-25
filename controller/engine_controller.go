@@ -280,7 +280,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	}
 
-	if len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
+	if len(engine.Spec.UpgradedReplicaAddressMap) != 0 && engine.Status.CurrentImage != engine.Spec.EngineImage {
 		if err := ec.Upgrade(engine); err != nil {
 			return err
 		}
@@ -1181,7 +1181,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	}
 	// Don't use image with different image name but same commit here. It
 	// will cause live replica to be removed. Volume controller should filter those.
-	if err != nil || version.ClientVersion.GitCommit != version.ServerVersion.GitCommit {
+	if version.ClientVersion.GitCommit != version.ServerVersion.GitCommit {
 		logrus.Debugf("About to upgrade %v from %v to %v for %v",
 			e.Name, e.Status.CurrentImage, e.Spec.EngineImage, e.Spec.VolumeName)
 		if err := ec.UpgradeEngineProcess(e); err != nil {
