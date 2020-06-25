@@ -301,7 +301,6 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("apiVersion", client.Resource{})
 	schemas.AddType("schema", client.Schema{})
 	schemas.AddType("error", client.ServerApiError{})
-	schemas.AddType("snapshot", Snapshot{})
 	schemas.AddType("attachInput", AttachInput{})
 	schemas.AddType("snapshotInput", SnapshotInput{})
 	schemas.AddType("backup", Backup{})
@@ -342,6 +341,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("instanceProcess", types.InstanceProcess{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
+	snapshotSchema(schemas.AddType("snapshot", Snapshot{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
 	recurringSchema(schemas.AddType("recurringInput", RecurringInput{}))
@@ -624,6 +624,12 @@ func volumeSchema(volume *client.Schema) {
 	rebuildStatus := volume.ResourceFields["rebuildStatus"]
 	rebuildStatus.Type = "array[rebuildStatus]"
 	volume.ResourceFields["rebuildStatus"] = rebuildStatus
+}
+
+func snapshotSchema(snapshot *client.Schema) {
+	children := snapshot.ResourceFields["children"]
+	children.Type = "map[bool]"
+	snapshot.ResourceFields["children"] = children
 }
 
 func backupListOutputSchema(backupList *client.Schema) {
