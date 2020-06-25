@@ -25,6 +25,7 @@ import (
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 
 	"github.com/longhorn/longhorn-manager/upgrade/v070to080"
+	"github.com/longhorn/longhorn-manager/upgrade/v100to101"
 	"github.com/longhorn/longhorn-manager/upgrade/v1alpha1"
 )
 
@@ -103,6 +104,9 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 				}()
 				logrus.Infof("Start upgrading")
 				if err = doAPIVersionUpgrade(namespace, config, lhClient); err != nil {
+					return
+				}
+				if err = doPodsUpgrade(namespace, lhClient, kubeClient); err != nil {
 					return
 				}
 				if err = doCRDUpgrade(namespace, lhClient); err != nil {
@@ -207,6 +211,9 @@ func doCRDUpgrade(namespace string, lhClient *lhclientset.Clientset) (err error)
 	if err := v070to080.UpgradeCRDs(namespace, lhClient); err != nil {
 		return err
 	}
+	if err := v100to101.UpgradeCRDs(namespace, lhClient); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -215,6 +222,16 @@ func upgradeLocalNode() (err error) {
 		err = errors.Wrap(err, "upgrade local node failed")
 	}()
 	if err := v070to080.UpgradeLocalNode(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func doPodsUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
+	defer func() {
+		err = errors.Wrap(err, "upgrade Pods failed")
+	}()
+	if err = v100to101.UpgradeInstanceManagerPods(namespace, lhClient, kubeClient); err != nil {
 		return err
 	}
 	return nil
