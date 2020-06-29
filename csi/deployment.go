@@ -283,7 +283,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 									Value: GetInContainerCSISocketFilePath(),
 								},
 							},
-							//ImagePullPolicy: v1.PullAlways,
+							ImagePullPolicy: v1.PullIfNotPresent,
 							VolumeMounts: []v1.VolumeMount{
 								{
 									Name:      "socket-dir",

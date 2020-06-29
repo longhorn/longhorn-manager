@@ -20,7 +20,7 @@ spec:
       containers:
         - name: longhorn-driver-deployer
           image: longhornio/longhorn-manager:master
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           command:
           - longhorn-manager
           - -d
