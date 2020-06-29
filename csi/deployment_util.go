@@ -78,10 +78,10 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 					PriorityClassName:  priorityClass,
 					Containers: []v1.Container{
 						{
-							Name:  commonName,
-							Image: image,
-							Args:  args,
-							//ImagePullPolicy: v1.PullAlways,
+							Name:            commonName,
+							Image:           image,
+							Args:            args,
+							ImagePullPolicy: v1.PullIfNotPresent,
 							Env: []v1.EnvVar{
 								{
 									Name:  "ADDRESS",

@@ -523,7 +523,8 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 			PriorityClassName:  priorityClass.Value,
 			Containers: []v1.Container{
 				{
-					Image: im.Spec.Image,
+					Image:           im.Spec.Image,
+					ImagePullPolicy: v1.PullIfNotPresent,
 					LivenessProbe: &v1.Probe{
 						Handler: v1.Handler{
 							Exec: &v1.ExecAction{
