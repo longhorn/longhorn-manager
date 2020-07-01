@@ -283,6 +283,25 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 				}
 			}
 		}
+
+		kubeStatus := volume.Status.KubernetesStatus
+
+		if kubeStatus.PVName != "" {
+			if err := vc.ds.DeletePersisentVolume(kubeStatus.PVName); err != nil {
+				if !datastore.ErrorIsNotFound(err) {
+					return err
+				}
+			}
+		}
+
+		if kubeStatus.PVCName != "" && kubeStatus.LastPVCRefAt == "" {
+			if err := vc.ds.DeletePersisentVolumeClaim(kubeStatus.Namespace, kubeStatus.PVCName); err != nil {
+				if !datastore.ErrorIsNotFound(err) {
+					return err
+				}
+			}
+		}
+
 		// now replicas and engines have been marked for deletion
 
 		if engines, err := vc.ds.ListVolumeEngines(volume.Name); err != nil {
