@@ -188,7 +188,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager node down": {
 			TestNode2, true, TestNode1,
 			v1.PodRunning, TestNode1, types.InstanceManagerStateRunning,
-			TestNode2, 1,
+			TestNode2, 0,
 			types.InstanceManagerStatus{
 				OwnerID:       TestNode2,
 				CurrentState:  types.InstanceManagerStateUnknown,
