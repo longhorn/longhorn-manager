@@ -271,6 +271,14 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	}()
 
+	if len(engine.Spec.UpgradedReplicaAddressMap) == 0 || engine.Status.CurrentImage == engine.Spec.EngineImage {
+		engine.Status.CurrentReplicaAddressMap = engine.Spec.ReplicaAddressMap
+	}
+
+	if err := ec.instanceHandler.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
+		return err
+	}
+
 	isCLIAPIVersionOne := false
 	if engine.Status.CurrentImage != "" {
 		isCLIAPIVersionOne, err = ec.ds.IsEngineImageCLIAPIVersionOne(engine.Status.CurrentImage)
@@ -280,15 +288,11 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}
 
 	if len(engine.Spec.UpgradedReplicaAddressMap) != 0 && engine.Status.CurrentImage != engine.Spec.EngineImage {
-		if err := ec.Upgrade(engine); err != nil {
-			return err
+		if engine.Status.CurrentState == types.InstanceStateRunning {
+			if err := ec.Upgrade(engine); err != nil {
+				return err
+			}
 		}
-	} else {
-		engine.Status.CurrentReplicaAddressMap = engine.Spec.ReplicaAddressMap
-	}
-
-	if err := ec.instanceHandler.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
-		return err
 	}
 
 	// For incompatible engine, skip starting engine monitor and clean up fields when the engine is not running
