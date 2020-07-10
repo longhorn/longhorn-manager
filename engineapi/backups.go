@@ -269,8 +269,13 @@ func (e *Engine) BackupRestore(backupTarget, backupName, backupVolume, lastResto
 	if lastRestored != "" {
 		args = append(args, "--incrementally", "--last-restored", lastRestored)
 	}
-	if _, err := e.ExecuteEngineBinaryWithoutTimeout(args...); err != nil {
-		return errors.Wrapf(err, "error restoring backup '%s'", backup)
+	if output, err := e.ExecuteEngineBinaryWithoutTimeout(args...); err != nil {
+		var taskErr TaskError
+		if jsonErr := json.Unmarshal([]byte(output), &taskErr); jsonErr != nil {
+			logrus.Warnf("Cannot unmarshal the restore error, maybe it's not caused by the replica restore failure: %v", jsonErr)
+			return err
+		}
+		return taskErr
 	}
 
 	logrus.Debugf("Backup %v restored for volume %v", backup, e.Name())

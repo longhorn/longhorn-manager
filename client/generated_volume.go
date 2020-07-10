@@ -103,11 +103,17 @@ type VolumeOperations interface {
 
 	ActionSalvage(*Volume, *SalvageInput) (*Volume, error)
 
+	ActionSnapshotBackup(*Volume, *SnapshotInput) (*Volume, error)
+
 	ActionSnapshotCreate(*Volume, *SnapshotInput) (*Snapshot, error)
 
-	ActionSnapshotDelete(*Volume, *SnapshotInput) (*Snapshot, error)
+	ActionSnapshotDelete(*Volume, *SnapshotInput) (*Volume, error)
 
 	ActionSnapshotGet(*Volume, *SnapshotInput) (*Snapshot, error)
+
+	ActionSnapshotList(*Volume) (*SnapshotListOutput, error)
+
+	ActionSnapshotPurge(*Volume) (*Volume, error)
 
 	ActionSnapshotRevert(*Volume, *SnapshotInput) (*Snapshot, error)
 }
@@ -243,6 +249,15 @@ func (c *VolumeClient) ActionSalvage(resource *Volume, input *SalvageInput) (*Vo
 	return resp, err
 }
 
+func (c *VolumeClient) ActionSnapshotBackup(resource *Volume, input *SnapshotInput) (*Volume, error) {
+
+	resp := &Volume{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "snapshotBackup", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
 func (c *VolumeClient) ActionSnapshotCreate(resource *Volume, input *SnapshotInput) (*Snapshot, error) {
 
 	resp := &Snapshot{}
@@ -252,9 +267,9 @@ func (c *VolumeClient) ActionSnapshotCreate(resource *Volume, input *SnapshotInp
 	return resp, err
 }
 
-func (c *VolumeClient) ActionSnapshotDelete(resource *Volume, input *SnapshotInput) (*Snapshot, error) {
+func (c *VolumeClient) ActionSnapshotDelete(resource *Volume, input *SnapshotInput) (*Volume, error) {
 
-	resp := &Snapshot{}
+	resp := &Volume{}
 
 	err := c.rancherClient.doAction(VOLUME_TYPE, "snapshotDelete", &resource.Resource, input, resp)
 
@@ -266,6 +281,24 @@ func (c *VolumeClient) ActionSnapshotGet(resource *Volume, input *SnapshotInput)
 	resp := &Snapshot{}
 
 	err := c.rancherClient.doAction(VOLUME_TYPE, "snapshotGet", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionSnapshotList(resource *Volume) (*SnapshotListOutput, error) {
+
+	resp := &SnapshotListOutput{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "snapshotList", &resource.Resource, nil, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionSnapshotPurge(resource *Volume) (*Volume, error) {
+
+	resp := &Volume{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "snapshotPurge", &resource.Resource, nil, resp)
 
 	return resp, err
 }

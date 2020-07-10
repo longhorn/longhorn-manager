@@ -106,7 +106,7 @@ func (s *Server) SnapshotDelete(w http.ResponseWriter, req *http.Request) (err e
 	if err := s.m.DeleteSnapshot(input.Name, volName); err != nil {
 		return err
 	}
-	return nil
+	return s.responseWithVolume(w, req, volName, nil)
 }
 
 func (s *Server) SnapshotRevert(w http.ResponseWriter, req *http.Request) (err error) {
@@ -183,7 +183,11 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 		labels[types.KubernetesStatusLabel] = string(kubeStatus)
 	}
 
-	return s.m.BackupSnapshot(input.Name, labels, volName)
+	if err := s.m.BackupSnapshot(input.Name, labels, volName); err != nil {
+		return err
+	}
+
+	return s.responseWithVolume(w, req, volName, nil)
 }
 
 func (s *Server) SnapshotPurge(w http.ResponseWriter, req *http.Request) (err error) {
@@ -192,6 +196,9 @@ func (s *Server) SnapshotPurge(w http.ResponseWriter, req *http.Request) (err er
 	}()
 
 	volName := mux.Vars(req)["name"]
+	if err := s.m.PurgeSnapshot(volName); err != nil {
+		return err
+	}
 
-	return s.m.PurgeSnapshot(volName)
+	return s.responseWithVolume(w, req, volName, nil)
 }

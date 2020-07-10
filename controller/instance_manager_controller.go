@@ -316,6 +316,9 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	// that the Node it belongs to went down, or its newly scheduled.
 	if im.Spec.NodeID != imc.controllerID {
 		im.Status.CurrentState = types.InstanceManagerStateUnknown
+		if err := imc.cleanupInstanceManager(im); err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -323,6 +326,10 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	if pod == nil {
 		if im.Status.CurrentState != types.InstanceManagerStateError {
 			im.Status.CurrentState = types.InstanceManagerStateStopped
+		}
+	} else if pod.DeletionTimestamp != nil {
+		if im.Status.CurrentState != types.InstanceManagerStateError {
+			im.Status.CurrentState = types.InstanceManagerStateError
 		}
 	} else {
 		// TODO: Will remove this reference kind correcting after all Longhorn components having used the new kinds
@@ -336,15 +343,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 
 		switch pod.Status.Phase {
 		case v1.PodPending:
-			if im.Status.CurrentState == types.InstanceManagerStateUnknown {
-				if len(pod.Status.ContainerStatuses) != 0 && pod.Status.ContainerStatuses[0].State.Terminated != nil {
-					im.Status.CurrentState = types.InstanceManagerStateError
-					logrus.Errorf("Instance Manager %v pod terminated. Details %+v. Set state to Error.", im.Name,
-						pod.Status.ContainerStatuses[0].State.Terminated)
-				} else {
-					im.Status.CurrentState = types.InstanceManagerStateStarting
-				}
-			} else if im.Status.CurrentState != types.InstanceManagerStateStarting {
+			if im.Status.CurrentState != types.InstanceManagerStateStarting {
 				im.Status.CurrentState = types.InstanceManagerStateError
 				logrus.Errorf("Instance Manager %v is state %v but the related pod is pending.", im.Name, im.Status.CurrentState)
 			}
@@ -505,6 +504,11 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 }
 
 func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string) (*v1.Pod, error) {
+	priorityClass, err := imc.ds.GetSetting(types.SettingNamePriorityClass)
+	if err != nil {
+		return nil, err
+	}
+
 	privileged := true
 	podSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -515,9 +519,11 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		Spec: v1.PodSpec{
 			ServiceAccountName: imc.serviceAccount,
 			Tolerations:        tolerations,
+			PriorityClassName:  priorityClass.Value,
 			Containers: []v1.Container{
 				{
-					Image: im.Spec.Image,
+					Image:           im.Spec.Image,
+					ImagePullPolicy: v1.PullIfNotPresent,
 					LivenessProbe: &v1.Probe{
 						Handler: v1.Handler{
 							Exec: &v1.ExecAction{

@@ -59,6 +59,7 @@ func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInfo
 	daemonSetInformer := kubeInformerFactory.Apps().V1().DaemonSets()
 	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
+	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
 
 	// Skip the Lister check that occurs on creation of an Instance Manager.
 	datastore.SkipListerCheck = true
@@ -67,8 +68,9 @@ func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInfo
 		volumeInformer, engineInformer, replicaInformer,
 		engineImageInformer, nodeInformer, settingInformer, imInformer,
 		lhClient,
-		podInformer, cronJobInformer, daemonSetInformer, deploymentInformer,
-		persistentVolumeInformer, persistentVolumeClaimInformer, kubeNodeInformer,
+		podInformer, cronJobInformer, daemonSetInformer,
+		deploymentInformer, persistentVolumeInformer,
+		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
 		kubeClient, TestNamespace)
 
 	ic := NewEngineImageController(

@@ -109,6 +109,21 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 				return fmt.Errorf("cannot modify toleration setting before all volumes are detached")
 			}
 		}
+	case types.SettingNamePriorityClass:
+		if value != "" {
+			if _, err := s.GetPriorityClass(value); err != nil {
+				return errors.Wrapf(err, "failed to get priority class %v before modifying priority class setting", value)
+			}
+		}
+		list, err := s.ListVolumesRO()
+		if err != nil {
+			return errors.Wrapf(err, "failed to list volumes before modifying priority class setting")
+		}
+		for _, v := range list {
+			if v.Status.State != types.VolumeStateDetached {
+				return fmt.Errorf("cannot modify priority class setting before all volumes are detached")
+			}
+		}
 	}
 	return nil
 }
@@ -196,6 +211,9 @@ func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]strin
 		credentialSecret[types.AWSSecretKey] = string(secret.Data[types.AWSSecretKey])
 		credentialSecret[types.AWSEndPoint] = string(secret.Data[types.AWSEndPoint])
 		credentialSecret[types.AWSCert] = string(secret.Data[types.AWSCert])
+		credentialSecret[types.HTTPSProxy] = string(secret.Data[types.HTTPSProxy])
+		credentialSecret[types.HTTPProxy] = string(secret.Data[types.HTTPProxy])
+		credentialSecret[types.NOProxy] = string(secret.Data[types.NOProxy])
 	}
 	return credentialSecret, nil
 }

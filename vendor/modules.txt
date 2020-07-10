@@ -70,7 +70,7 @@ github.com/kr/pretty
 github.com/kr/text
 # github.com/kubernetes-csi/csi-lib-utils v0.6.1
 github.com/kubernetes-csi/csi-lib-utils/protosanitizer
-# github.com/longhorn/backupstore v0.0.0-20200611170443-441b1cd8f973
+# github.com/longhorn/backupstore v0.0.0-20200710011907-69879c2bc9b8
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/util
@@ -101,7 +101,7 @@ github.com/opencontainers/go-digest
 github.com/pborman/uuid
 # github.com/philhofer/fwd v1.0.0
 github.com/philhofer/fwd
-# github.com/pkg/errors v0.8.1
+# github.com/pkg/errors v0.9.1
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib

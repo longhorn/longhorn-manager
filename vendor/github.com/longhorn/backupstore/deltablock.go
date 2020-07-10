@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -115,6 +116,16 @@ func CreateDeltaBlockBackup(config *DeltaBackupConfig) (string, bool, error) {
 		return "", false, err
 	}
 
+	lock, err := New(bsDriver, volume.Name, BACKUP_LOCK)
+	if err != nil {
+		return "", false, err
+	}
+
+	if err := lock.Lock(); err != nil {
+		return "", false, err
+	}
+	defer lock.Unlock()
+
 	if err := addVolume(volume, bsDriver); err != nil {
 		return "", false, err
 	}
@@ -202,8 +213,15 @@ func CreateDeltaBlockBackup(config *DeltaBackupConfig) (string, bool, error) {
 		Blocks:       []BlockMapping{},
 	}
 
+	// keep lock alive for async go routine.
+	if err := lock.Lock(); err != nil {
+		deltaOps.CloseSnapshot(snapshot.Name, volume.Name)
+		return "", backupRequest.isIncrementalBackup(), err
+	}
 	go func() {
 		defer deltaOps.CloseSnapshot(snapshot.Name, volume.Name)
+		defer lock.Unlock()
+
 		if progress, backup, err := performBackup(config, delta, deltaBackup, backupRequest.lastBackup, bsDriver); err != nil {
 			deltaOps.UpdateBackupStatus(snapshot.Name, volume.Name, progress, "", err.Error())
 		} else {
@@ -380,6 +398,16 @@ func RestoreDeltaBlockBackup(config *DeltaRestoreConfig) error {
 		return err
 	}
 
+	lock, err := New(bsDriver, srcVolumeName, RESTORE_LOCK)
+	if err != nil {
+		return err
+	}
+
+	if err := lock.Lock(); err != nil {
+		return err
+	}
+	defer lock.Unlock()
+
 	vol, err := loadVolume(srcVolumeName, bsDriver)
 	if err != nil {
 		return generateError(logrus.Fields{
@@ -392,10 +420,23 @@ func RestoreDeltaBlockBackup(config *DeltaRestoreConfig) error {
 		return fmt.Errorf("Read invalid volume size %v", vol.Size)
 	}
 
+	if _, err := os.Stat(volDevName); err == nil {
+		logrus.Warnf("File %s for the restore exists, will remove and re-create it", volDevName)
+		if err := os.Remove(volDevName); err != nil {
+			return fmt.Errorf("failed to clean up the existing file %v before restore: %v", volDevName, err)
+		}
+	}
+
 	volDev, err := os.Create(volDevName)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		// make sure to close the device
+		if err != nil {
+			_ = volDev.Close()
+		}
+	}()
 
 	stat, err := volDev.Stat()
 	if err != nil {
@@ -417,8 +458,14 @@ func RestoreDeltaBlockBackup(config *DeltaRestoreConfig) error {
 		LogEventBackupURL:  backupURL,
 	}).Debug()
 
+	// keep lock alive for async go routine.
+	if err := lock.Lock(); err != nil {
+		return err
+	}
 	go func() {
 		defer volDev.Close()
+		defer lock.Unlock()
+
 		blkCounts := len(backup.Blocks)
 		var progress int
 		for i, block := range backup.Blocks {
@@ -485,6 +532,16 @@ func RestoreDeltaBlockBackupIncrementally(config *DeltaRestoreConfig) error {
 		return err
 	}
 
+	lock, err := New(bsDriver, srcVolumeName, RESTORE_LOCK)
+	if err != nil {
+		return err
+	}
+
+	if err := lock.Lock(); err != nil {
+		return err
+	}
+	defer lock.Unlock()
+
 	vol, err := loadVolume(srcVolumeName, bsDriver)
 	if err != nil {
 		return generateError(logrus.Fields{
@@ -502,21 +559,24 @@ func RestoreDeltaBlockBackupIncrementally(config *DeltaRestoreConfig) error {
 		return fmt.Errorf("invalid parameter lastBackupName %v", lastBackupName)
 	}
 
-	// check volDev
-	var volDev *os.File
-	if _, err := os.Stat(volDevName); os.IsNotExist(err) {
-		volDev, err = os.Create(volDevName)
-		if err != nil {
-			return err
+	// check the file. do not reuse if the file exists
+	if _, err := os.Stat(volDevName); err == nil {
+		logrus.Warnf("File %s for the incremental restore exists, will remove and re-create it", volDevName)
+		if err := os.Remove(volDevName); err != nil {
+			return fmt.Errorf("failed to clean up the existing file %v before incremental restore: %v", volDevName, err)
 		}
-		logrus.Debugf("Created new file %v", volDevName)
-	} else {
-		volDev, err = os.OpenFile(volDevName, os.O_RDWR, 0600)
-		if err != nil {
-			return err
-		}
-		logrus.Debugf("File %v existed\n", volDevName)
 	}
+
+	volDev, err := os.Create(volDevName)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		// make sure to close the device
+		if err != nil {
+			_ = volDev.Close()
+		}
+	}()
 
 	stat, err := volDev.Stat()
 	if err != nil {
@@ -541,8 +601,13 @@ func RestoreDeltaBlockBackupIncrementally(config *DeltaRestoreConfig) error {
 		LogFieldVolumeDev:  volDevName,
 		LogEventBackupURL:  backupURL,
 	}).Debugf("Started incrementally restoring from %v to %v", lastBackup, backup)
+	// keep lock alive for async go routine.
+	if err := lock.Lock(); err != nil {
+		return err
+	}
 	go func() {
 		defer volDev.Close()
+		defer lock.Unlock()
 
 		if err := performIncrementalRestore(srcVolumeName, volDev, lastBackup, backup, bsDriver, config); err != nil {
 			deltaOps.UpdateRestoreStatus(volDevName, 0, err)
@@ -625,6 +690,15 @@ func DeleteBackupVolume(volumeName string, destURL string) error {
 	if err != nil {
 		return err
 	}
+	lock, err := New(bsDriver, volumeName, DELETION_LOCK)
+	if err != nil {
+		return err
+	}
+
+	if err := lock.Lock(); err != nil {
+		return err
+	}
+	defer lock.Unlock()
 	if err := removeVolume(volumeName, bsDriver); err != nil {
 		return err
 	}
@@ -663,6 +737,39 @@ func getBlockInfoMap(backups []*Backup, volume string, driver BackupStoreDriver)
 	return blockInfos, nil
 }
 
+// This function will get the last backup from the remaining backups
+func GetLatestBackup(backupsToBeRetained []*Backup, vol *Volume) error {
+	var lastBackupName string
+	var lastBackupAt string
+
+	for _, backup := range backupsToBeRetained {
+		if lastBackupName == "" || lastBackupAt == "" {
+			lastBackupName = backup.Name
+			lastBackupAt = backup.SnapshotCreatedAt
+		}
+
+		backupTime, err := time.Parse(time.RFC3339, backup.SnapshotCreatedAt)
+		if err != nil {
+			return fmt.Errorf("Cannot parse backup %v time %v due to %v", backup.Name, backup.SnapshotCreatedAt, err)
+		}
+
+		lastBackupTime, err := time.Parse(time.RFC3339, lastBackupAt)
+		if err != nil {
+			return fmt.Errorf("Cannot parse  last backup %v time %v due to %v", lastBackupName, lastBackupAt, err)
+		}
+
+		if backupTime.After(lastBackupTime) {
+			lastBackupName = backup.Name
+			lastBackupAt = backup.SnapshotCreatedAt
+		}
+	}
+
+	vol.LastBackupName = lastBackupName
+	vol.LastBackupAt = lastBackupAt
+
+	return nil
+}
+
 func DeleteDeltaBlockBackup(backupURL string) error {
 	bsDriver, err := GetBackupStoreDriver(backupURL)
 	if err != nil {
@@ -674,6 +781,16 @@ func DeleteDeltaBlockBackup(backupURL string) error {
 		return err
 	}
 
+	lock, err := New(bsDriver, volumeName, DELETION_LOCK)
+	if err != nil {
+		return err
+	}
+
+	if err := lock.Lock(); err != nil {
+		return err
+	}
+	defer lock.Unlock()
+
 	// If we fail to load the backup we still want to proceed with the deletion of the backup file
 	backupToBeDeleted, err := loadBackup(backupName, volumeName, bsDriver)
 	if err != nil {
@@ -684,6 +801,12 @@ func DeleteDeltaBlockBackup(backupURL string) error {
 		}
 	}
 
+	// we can delete the requested backupToBeDeleted immediately before GC starts
+	if err := removeBackup(backupToBeDeleted, bsDriver); err != nil {
+		return err
+	}
+	log.Infof("Removed backup %v for volume %v", backupName, volumeName)
+
 	log.Debug("GC started")
 	var backupsToBeRetained []*Backup
 	deleteBlocks := true
@@ -692,7 +815,7 @@ func DeleteDeltaBlockBackup(backupURL string) error {
 		log.Warnf("skipping block deletion failed to load backup names for volume %v", volumeName)
 		deleteBlocks = false
 	}
-	backupNames = util.Filter(backupNames, func(name string) bool { return name != backupToBeDeleted.Name })
+
 	for _, name := range backupNames {
 		backup, err := loadBackup(name, volumeName, bsDriver)
 		if err != nil {
@@ -712,30 +835,29 @@ func DeleteDeltaBlockBackup(backupURL string) error {
 		backupsToBeRetained = append(backupsToBeRetained, backup)
 	}
 
-	blockMap, err := getBlockInfoMap(backupsToBeRetained, volumeName, bsDriver)
-	if err != nil {
-		log.Warnf("skipping block deletion because we failed to get block infos for volume %v error %v",
-			volumeName, err)
-		deleteBlocks = false
-	}
-
-	// we can delete the requested backupToBeDeleted now
-	if err := removeBackup(backupToBeDeleted, bsDriver); err != nil {
-		return err
-	}
-	log.Infof("Removed backup %v for volume %v", backupName, volumeName)
-
 	// update the volume
 	v, err := loadVolume(volumeName, bsDriver)
 	if err != nil {
 		return fmt.Errorf("Cannot find volume %v in backupstore due to: %v", volumeName, err)
 	}
+
 	if backupToBeDeleted.Name == v.LastBackupName {
 		v.LastBackupName = ""
 		v.LastBackupAt = ""
+		err := GetLatestBackup(backupsToBeRetained, v)
+		if err != nil {
+			return fmt.Errorf("Failed to get last backup creation time due to %v", err)
+		}
 		if err := saveVolume(v, bsDriver); err != nil {
 			return err
 		}
+	}
+
+	blockMap, err := getBlockInfoMap(backupsToBeRetained, volumeName, bsDriver)
+	if err != nil {
+		log.Warnf("skipping block deletion because we failed to get block infos for volume %v error %v",
+			volumeName, err)
+		deleteBlocks = false
 	}
 
 	// check if there have been new backups created while we where processing

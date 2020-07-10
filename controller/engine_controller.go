@@ -45,6 +45,8 @@ const (
 var (
 	EnginePollInterval = 5 * time.Second
 	EnginePollTimeout  = 30 * time.Second
+
+	EngineMonitorConflictRetryCount = 5
 )
 
 const (
@@ -70,10 +72,9 @@ type EngineController struct {
 
 	instanceHandler *InstanceHandler
 
-	engines                  engineapi.EngineClientCollection
-	engineMonitorMutex       *sync.RWMutex
-	engineMonitorMap         map[string]chan struct{}
-	engineMonitoringRemoveCh chan string
+	engines            engineapi.EngineClientCollection
+	engineMonitorMutex *sync.RWMutex
+	engineMonitorMap   map[string]chan struct{}
 }
 
 type EngineMonitor struct {
@@ -118,10 +119,9 @@ func NewEngineController(
 		backoff: flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
 		queue:   workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-engine"),
 
-		engines:                  engines,
-		engineMonitorMutex:       &sync.RWMutex{},
-		engineMonitorMap:         map[string]chan struct{}{},
-		engineMonitoringRemoveCh: make(chan string, 1),
+		engines:            engines,
+		engineMonitorMutex: &sync.RWMutex{},
+		engineMonitorMap:   map[string]chan struct{}{},
 	}
 	ec.instanceHandler = NewInstanceHandler(ds, ec, ec.eventRecorder)
 
@@ -154,7 +154,6 @@ func NewEngineController(
 		},
 	})
 
-	go ec.monitoringUpdater()
 	return ec
 }
 
@@ -549,26 +548,6 @@ func (ec *EngineController) LogInstance(obj interface{}) (*imapi.LogStream, erro
 	return c.ProcessLog(e.Name)
 }
 
-// monitoringUpdater will listen to the event from engineMonitoringRemoveCh and
-// remove the entry from the current monitor map
-// the engine will be added to the map when monitoring thread started
-func (ec *EngineController) monitoringUpdater() {
-	for engineName := range ec.engineMonitoringRemoveCh {
-		ec.removeFromEngineMonitorMap(engineName)
-	}
-}
-
-func (ec *EngineController) removeFromEngineMonitorMap(engineName string) {
-	ec.engineMonitorMutex.Lock()
-	defer ec.engineMonitorMutex.Unlock()
-
-	stopCh, ok := ec.engineMonitorMap[engineName]
-	if ok {
-		close(stopCh)
-		delete(ec.engineMonitorMap, engineName)
-	}
-}
-
 func (ec *EngineController) isMonitoring(e *longhorn.Engine) bool {
 	ec.engineMonitorMutex.RLock()
 	defer ec.engineMonitorMutex.RUnlock()
@@ -578,19 +557,16 @@ func (ec *EngineController) isMonitoring(e *longhorn.Engine) bool {
 }
 
 func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
-	//it's possible for monitor and engineController to send stop signal at
-	//the same time, don't make it block
-	stopCh := make(chan struct{}, 1)
+	stopCh := make(chan struct{})
 	monitor := &EngineMonitor{
-		Name:               e.Name,
-		namespace:          e.Namespace,
-		ds:                 ec.ds,
-		eventRecorder:      ec.eventRecorder,
-		engines:            ec.engines,
-		stopCh:             stopCh,
-		expansionBackoff:   flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
-		controllerID:       ec.controllerID,
-		monitoringRemoveCh: ec.engineMonitoringRemoveCh,
+		Name:             e.Name,
+		namespace:        e.Namespace,
+		ds:               ec.ds,
+		eventRecorder:    ec.eventRecorder,
+		engines:          ec.engines,
+		stopCh:           stopCh,
+		expansionBackoff: flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
+		controllerID:     ec.controllerID,
 	}
 
 	ec.engineMonitorMutex.Lock()
@@ -620,55 +596,29 @@ func (ec *EngineController) stopMonitoring(e *longhorn.Engine) {
 		logrus.Warnf("engine %v: stop monitoring called when there is no monitoring", e.Name)
 		return
 	}
-	stopCh <- struct{}{}
+	close(stopCh)
+
+	delete(ec.engineMonitorMap, e.Name)
+
 	return
 }
 
 func (m *EngineMonitor) Run() {
 	logrus.Debugf("Start monitoring %v", m.Name)
-	defer func() {
-		m.monitoringRemoveCh <- m.Name
-		logrus.Debugf("Stop monitoring %v", m.Name)
-	}()
+	defer logrus.Debugf("Stop monitoring %v", m.Name)
 
-	wait.Until(func() {
-		for {
-			engine, err := m.ds.GetEngine(m.Name)
-			if err != nil {
-				if datastore.ErrorIsNotFound(err) {
-					logrus.Infof("stop engine %v monitoring because the engine no longer exists", m.Name)
-					m.stop(engine)
-					return
-				}
-				utilruntime.HandleError(errors.Wrapf(err, "fail to get engine %v for monitoring", m.Name))
+	ticker := time.NewTicker(EnginePollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if needStop := m.sync(); needStop {
 				return
 			}
-
-			// when engine stopped, nodeID will be empty as well
-			if engine.Status.OwnerID != m.controllerID {
-				logrus.Infof("stop engine %v monitoring because the engine is no longer running on node %v",
-					m.Name, m.controllerID)
-				m.stop(engine)
-				return
-			}
-
-			// engine is maybe starting
-			if engine.Status.CurrentState != types.InstanceStateRunning {
-				return
-			}
-
-			// engine is upgrading
-			if engine.Status.CurrentImage != engine.Spec.EngineImage {
-				return
-			}
-
-			if err := m.refresh(engine); err == nil || !apierrors.IsConflict(errors.Cause(err)) {
-				utilruntime.HandleError(errors.Wrapf(err, "fail to update status for engine %v", m.Name))
-				break
-			}
-			// Retry if the error is due to conflict
+		case <-m.stopCh:
+			return
 		}
-	}, EnginePollInterval, m.stopCh)
+	}
 }
 
 func (m *EngineMonitor) stop(e *longhorn.Engine) {
@@ -679,7 +629,47 @@ func (m *EngineMonitor) stop(e *longhorn.Engine) {
 			return
 		}
 	}
-	m.stopCh <- struct{}{}
+}
+
+func (m *EngineMonitor) sync() bool {
+	for count := 0; count < EngineMonitorConflictRetryCount; count++ {
+		engine, err := m.ds.GetEngine(m.Name)
+		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				logrus.Infof("stop engine %v monitoring because the engine no longer exists", m.Name)
+				m.stop(engine)
+				return true
+			}
+			utilruntime.HandleError(errors.Wrapf(err, "fail to get engine %v for monitoring", m.Name))
+			return false
+		}
+
+		// when engine stopped, nodeID will be empty as well
+		if engine.Status.OwnerID != m.controllerID {
+			logrus.Infof("stop engine %v monitoring because the engine is no longer running on node %v",
+				m.Name, m.controllerID)
+			m.stop(engine)
+			return true
+		}
+
+		// engine is maybe starting
+		if engine.Status.CurrentState != types.InstanceStateRunning {
+			return false
+		}
+
+		// engine is upgrading
+		if engine.Status.CurrentImage != engine.Spec.EngineImage {
+			return false
+		}
+
+		if err := m.refresh(engine); err == nil || !apierrors.IsConflict(errors.Cause(err)) {
+			utilruntime.HandleError(errors.Wrapf(err, "fail to update status for engine %v", m.Name))
+			break
+		}
+		// Retry if the error is due to conflict
+	}
+
+	return false
 }
 
 func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
@@ -832,8 +822,18 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	rsMap, err := client.BackupRestoreStatus()
 	if err != nil {
-		logrus.Errorf("engine monitor: engine %v: failed to get restore status: %v", engine.Name, err)
+		return err
 	}
+
+	defer func() {
+		engine.Status.RestoreStatus = rsMap
+		if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
+			if _, updateErr := m.ds.UpdateEngineStatus(engine); updateErr != nil {
+				err = errors.Wrapf(err, "engine monitor: Failed to update the restore status for engine %v: %v", engine.Name, updateErr)
+			}
+		}
+	}()
+
 	needRestore, err := preRestoreCheckAndSync(engine, rsMap, isOldVersion, m.ds)
 	if err != nil {
 		return err
@@ -841,7 +841,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	// Incremental restoration will implicitly expand the DR volume once the backup volume is expanded
 	if needRestore {
-		if err = restoreBackup(engine, client, m.ds); err != nil {
+		if err = restoreBackup(engine, rsMap, client, m.ds); err != nil {
 			return err
 		}
 	}
@@ -850,7 +850,6 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 }
 
 func preRestoreCheckAndSync(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, isOldVersion bool, ds *datastore.DataStore) (needRestore bool, err error) {
-	existingEngine := engine.DeepCopy()
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "failed pre-restore check for engine %v", engine.Name)
@@ -858,15 +857,7 @@ func preRestoreCheckAndSync(engine *longhorn.Engine, rsMap map[string]*types.Res
 			for _, status := range rsMap {
 				status.Error = err.Error()
 			}
-		}
-
-		// Make sure the engine object is updated after the pre-restore check and sync
-		engine.Status.RestoreStatus = rsMap
-		if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
-			if _, updateErr := ds.UpdateEngineStatus(engine); updateErr != nil {
-				err = errors.Wrapf(err, "engine monitor: Failed to update the engine %v status after the pre-restore check: %v", engine.Name, updateErr)
-				needRestore = false
-			}
+			needRestore = false
 		}
 	}()
 
@@ -962,7 +953,7 @@ func checkSizeBeforeRestoration(engine *longhorn.Engine, ds *datastore.DataStore
 	return true, nil
 }
 
-func restoreBackup(engine *longhorn.Engine, client engineapi.EngineClient, ds *datastore.DataStore) error {
+func restoreBackup(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, client engineapi.EngineClient, ds *datastore.DataStore) error {
 	backupTarget, err := manager.GenerateBackupTarget(ds)
 	if err != nil {
 		return errors.Wrapf(err, "cannot generate BackupTarget for backup restoration of engine %v", engine.Name)
@@ -978,8 +969,18 @@ func restoreBackup(engine *longhorn.Engine, client engineapi.EngineClient, ds *d
 
 	// If engine.Status.LastRestoredBackup is empty, it's full restoration
 	if err = client.BackupRestore(backupTarget.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup, credential); err != nil {
-		return errors.Wrapf(err, "failed to restore backup %v with last restored backup %v in engine monitor",
-			engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
+		taskErr, ok := err.(engineapi.TaskError)
+		if !ok {
+			return errors.Wrapf(err, "failed to restore backup %v with last restored backup %v in engine monitor",
+				engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
+		}
+		for _, re := range taskErr.ReplicaErrors {
+			if status, exists := rsMap[re.Address]; exists {
+				status.Error = re.Error()
+			}
+		}
+		logrus.Warnf("Some replicas failed to start restoring backup %v with last restored backup %v in engine monitor: %v",
+			engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup, taskErr)
 	}
 	return nil
 }

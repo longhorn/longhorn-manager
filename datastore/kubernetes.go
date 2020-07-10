@@ -9,6 +9,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1beta1 "k8s.io/api/batch/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	schedulingv1 "k8s.io/api/scheduling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -262,6 +263,10 @@ func (s *DataStore) DeletePersisentVolumeClaim(ns, pvcName string) error {
 
 func (s *DataStore) GetPersisentVolumeClaim(namespace, pvcName string) (*corev1.PersistentVolumeClaim, error) {
 	return s.pvcLister.PersistentVolumeClaims(namespace).Get(pvcName)
+}
+
+func (s *DataStore) GetPriorityClass(pcName string) (*schedulingv1.PriorityClass, error) {
+	return s.pcLister.Get(pcName)
 }
 
 func (s *DataStore) GetPodContainerLogRequest(podName, containerName string) *rest.Request {

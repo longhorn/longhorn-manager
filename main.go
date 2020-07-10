@@ -31,6 +31,9 @@ func main() {
 		if c.GlobalBool("debug") {
 			logrus.SetLevel(logrus.DebugLevel)
 		}
+		if c.GlobalBool("log-json") {
+			logrus.SetFormatter(&logrus.JSONFormatter{})
+		}
 		return nil
 	}
 
@@ -39,6 +42,11 @@ func main() {
 			Name:   "debug, d",
 			Usage:  "enable debug logging level",
 			EnvVar: "RANCHER_DEBUG",
+		},
+		cli.BoolFlag{
+			Name:   "log-json, j",
+			Usage:  "log in json format",
+			EnvVar: "RANCHER_LOG_JSON",
 		},
 	}
 	a.Commands = []cli.Command{

@@ -48,6 +48,10 @@ const (
 	AWSEndPoint       = "AWS_ENDPOINTS"
 	AWSCert           = "AWS_CERT"
 
+	HTTPSProxy = "HTTPS_PROXY"
+	HTTPProxy  = "HTTP_PROXY"
+	NOProxy    = "NO_PROXY"
+
 	HostProcPath                 = "/host/proc"
 	ReplicaDirectory             = "/replicas/"
 	DeviceDirectory              = "/dev/longhorn/"
@@ -62,7 +66,7 @@ const (
 
 var (
 	cmdTimeout     = time.Minute // one minute by default
-	reservedLabels = []string{"KubernetesStatus", "RecurringJob", "ranchervm-base-image"}
+	reservedLabels = []string{"KubernetesStatus", "ranchervm-base-image"}
 
 	ConflictRetryInterval = 20 * time.Millisecond
 	ConflictRetryCounts   = 100
@@ -247,7 +251,7 @@ func ExecuteWithoutTimeout(binary string, args ...string) (string, error) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to execute: %v %v, output %s, stderr, %s, error %v",
+		return output.String(), fmt.Errorf("failed to execute: %v %v, output %s, stderr, %s, error %v",
 			binary, args, output.String(), stderr.String(), err)
 	}
 	return output.String(), nil
@@ -379,6 +383,9 @@ func ConfigBackupCredential(backupTarget string, credential map[string]string) e
 			os.Setenv(AWSSecretKey, credential[AWSSecretKey])
 			os.Setenv(AWSEndPoint, credential[AWSEndPoint])
 			os.Setenv(AWSCert, credential[AWSCert])
+			os.Setenv(HTTPSProxy, credential[HTTPSProxy])
+			os.Setenv(HTTPProxy, credential[HTTPProxy])
+			os.Setenv(NOProxy, credential[NOProxy])
 		} else if os.Getenv(AWSAccessKey) == "" || os.Getenv(AWSSecretKey) == "" {
 			return fmt.Errorf("Could not backup for %s without credential secret", backupType)
 		}

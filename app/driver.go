@@ -192,6 +192,12 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return errors.Wrapf(err, "failed to unmarshal taint toleration setting before starting CSI driver")
 	}
 
+	priorityClassSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNamePriorityClass), metav1.GetOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to get priority class setting before starting CSI driver")
+	}
+	priorityClass := priorityClassSetting.Value
+
 	registrySecretSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameRegistrySecret), metav1.GetOptions{})
 	if err != nil {
 		return errors.Wrapf(err, "failed to get registry secret setting before starting CSI driver")
@@ -200,7 +206,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 
 	if rootDir == "" {
 		var err error
-		rootDir, err = getProcArg(kubeClient, managerImage, serviceAccountName, ArgKubeletRootDir, tolerations, registrySecret)
+		rootDir, err = getProcArg(kubeClient, managerImage, serviceAccountName, ArgKubeletRootDir, tolerations, priorityClass, registrySecret)
 		if err != nil {
 			logrus.Error(err)
 			return err
@@ -224,23 +230,23 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount, tolerations, registrySecret)
+	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount, tolerations, priorityClass, registrySecret)
 	if err := attacherDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, rootDir, csiProvisionerReplicaCount, tolerations, registrySecret)
+	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, rootDir, csiProvisionerReplicaCount, tolerations, priorityClass, registrySecret)
 	if err := provisionerDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
 	if volumeExpansionEnabled {
-		resizerDeployment := csi.NewResizerDeployment(namespace, serviceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, tolerations, registrySecret)
+		resizerDeployment := csi.NewResizerDeployment(namespace, serviceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, tolerations, priorityClass, registrySecret)
 		if err := resizerDeployment.Deploy(kubeClient); err != nil {
 			return err
 		}
 	}
-	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, managerImage, managerURL, rootDir, tolerations, registrySecret)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, managerImage, managerURL, rootDir, tolerations, priorityClass, registrySecret)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}

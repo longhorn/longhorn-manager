@@ -17,7 +17,7 @@ spec:
       containers:
       - name: longhorn-manager
         image: longhornio/longhorn-manager:master
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         securityContext:
           privileged: true
         command:
