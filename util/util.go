@@ -48,6 +48,10 @@ const (
 	AWSEndPoint       = "AWS_ENDPOINTS"
 	AWSCert           = "AWS_CERT"
 
+	HTTPSProxy = "HTTPS_PROXY"
+	HTTPProxy  = "HTTP_PROXY"
+	NOProxy    = "NO_PROXY"
+
 	HostProcPath                 = "/host/proc"
 	ReplicaDirectory             = "/replicas/"
 	DeviceDirectory              = "/dev/longhorn/"
@@ -379,6 +383,9 @@ func ConfigBackupCredential(backupTarget string, credential map[string]string) e
 			os.Setenv(AWSSecretKey, credential[AWSSecretKey])
 			os.Setenv(AWSEndPoint, credential[AWSEndPoint])
 			os.Setenv(AWSCert, credential[AWSCert])
+			os.Setenv(HTTPSProxy, credential[HTTPSProxy])
+			os.Setenv(HTTPProxy, credential[HTTPProxy])
+			os.Setenv(NOProxy, credential[NOProxy])
 		} else if os.Getenv(AWSAccessKey) == "" || os.Getenv(AWSSecretKey) == "" {
 			return fmt.Errorf("Could not backup for %s without credential secret", backupType)
 		}
