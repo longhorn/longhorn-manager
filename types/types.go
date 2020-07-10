@@ -92,6 +92,10 @@ const (
 	AWSEndPoint  = "AWS_ENDPOINTS"
 	AWSCert      = "AWS_CERT"
 
+	HTTPSProxy = "HTTPS_PROXY"
+	HTTPProxy  = "HTTP_PROXY"
+	NOProxy    = "NO_PROXY"
+
 	OptionFromBackup          = "fromBackup"
 	OptionNumberOfReplicas    = "numberOfReplicas"
 	OptionStaleReplicaTimeout = "staleReplicaTimeout"

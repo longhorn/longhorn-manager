@@ -211,6 +211,9 @@ func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]strin
 		credentialSecret[types.AWSSecretKey] = string(secret.Data[types.AWSSecretKey])
 		credentialSecret[types.AWSEndPoint] = string(secret.Data[types.AWSEndPoint])
 		credentialSecret[types.AWSCert] = string(secret.Data[types.AWSCert])
+		credentialSecret[types.HTTPSProxy] = string(secret.Data[types.HTTPSProxy])
+		credentialSecret[types.HTTPProxy] = string(secret.Data[types.HTTPProxy])
+		credentialSecret[types.NOProxy] = string(secret.Data[types.NOProxy])
 	}
 	return credentialSecret, nil
 }
