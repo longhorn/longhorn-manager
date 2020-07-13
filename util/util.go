@@ -52,6 +52,8 @@ const (
 	HTTPProxy  = "HTTP_PROXY"
 	NOProxy    = "NO_PROXY"
 
+	VirtualHostedStyle = "VIRTUAL_HOSTED_STYLE"
+
 	HostProcPath                 = "/host/proc"
 	ReplicaDirectory             = "/replicas/"
 	DeviceDirectory              = "/dev/longhorn/"
@@ -386,6 +388,7 @@ func ConfigBackupCredential(backupTarget string, credential map[string]string) e
 			os.Setenv(HTTPSProxy, credential[HTTPSProxy])
 			os.Setenv(HTTPProxy, credential[HTTPProxy])
 			os.Setenv(NOProxy, credential[NOProxy])
+			os.Setenv(VirtualHostedStyle, credential[VirtualHostedStyle])
 		} else if os.Getenv(AWSAccessKey) == "" || os.Getenv(AWSSecretKey) == "" {
 			return fmt.Errorf("Could not backup for %s without credential secret", backupType)
 		}

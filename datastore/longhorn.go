@@ -214,6 +214,7 @@ func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]strin
 		credentialSecret[types.HTTPSProxy] = string(secret.Data[types.HTTPSProxy])
 		credentialSecret[types.HTTPProxy] = string(secret.Data[types.HTTPProxy])
 		credentialSecret[types.NOProxy] = string(secret.Data[types.NOProxy])
+		credentialSecret[types.VirtualHostedStyle] = string(secret.Data[types.VirtualHostedStyle])
 	}
 	return credentialSecret, nil
 }
