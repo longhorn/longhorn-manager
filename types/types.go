@@ -96,6 +96,8 @@ const (
 	HTTPProxy  = "HTTP_PROXY"
 	NOProxy    = "NO_PROXY"
 
+	VirtualHostedStyle = "VIRTUAL_HOSTED_STYLE"
+
 	OptionFromBackup          = "fromBackup"
 	OptionNumberOfReplicas    = "numberOfReplicas"
 	OptionStaleReplicaTimeout = "staleReplicaTimeout"
