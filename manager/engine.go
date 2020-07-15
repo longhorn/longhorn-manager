@@ -264,10 +264,14 @@ func (m *VolumeManager) DeleteBackupVolume(volumeName string) error {
 	if err != nil {
 		return err
 	}
-	if err := backupTarget.DeleteVolume(volumeName); err != nil {
-		return err
-	}
-	logrus.Debugf("Deleted backup volume %v", volumeName)
+
+	go func() {
+		if err := backupTarget.DeleteVolume(volumeName); err != nil {
+			logrus.Error(errors.Wrapf(err, "failed to delete backup volume %v", volumeName))
+			return
+		}
+		logrus.Debugf("Deleted backup volume %v", volumeName)
+	}()
 	return nil
 }
 
