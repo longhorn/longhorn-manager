@@ -18,10 +18,10 @@ import (
 )
 
 const (
-	DefaultCSIAttacherImage            = "quay.io/k8scsi/csi-attacher:v2.0.0"
-	DefaultCSIProvisionerImage         = "quay.io/k8scsi/csi-provisioner:v1.4.0"
-	DefaultCSIResizerImage             = "quay.io/k8scsi/csi-resizer:v0.3.0"
-	DefaultCSINodeDriverRegistrarImage = "quay.io/k8scsi/csi-node-driver-registrar:v1.2.0"
+	DefaultCSIAttacherImage            = "longhornio/csi-attacher:v2.0.0"
+	DefaultCSIProvisionerImage         = "longhornio/csi-provisioner:v1.4.0"
+	DefaultCSIResizerImage             = "longhornio/csi-resizer:v0.3.0"
+	DefaultCSINodeDriverRegistrarImage = "longhornio/csi-node-driver-registrar:v1.2.0"
 
 	DefaultCSIAttacherReplicaCount    = 3
 	DefaultCSIProvisionerReplicaCount = 3
