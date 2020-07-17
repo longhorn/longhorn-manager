@@ -283,7 +283,8 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		if err := ec.Upgrade(engine); err != nil {
 			return err
 		}
-	} else {
+	}
+	if len(engine.Spec.UpgradedReplicaAddressMap) == 0 {
 		engine.Status.CurrentReplicaAddressMap = engine.Spec.ReplicaAddressMap
 	}
 
@@ -658,7 +659,7 @@ func (m *EngineMonitor) sync() bool {
 		}
 
 		// engine is upgrading
-		if engine.Status.CurrentImage != engine.Spec.EngineImage {
+		if engine.Status.CurrentImage != engine.Spec.EngineImage || len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
 			return false
 		}
 
