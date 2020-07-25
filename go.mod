@@ -38,7 +38,7 @@ require (
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backupstore v0.0.0-20200717215103-739d80bd783e
-	github.com/longhorn/go-iscsi-helper v0.0.0-20200601183015-ca8b762c2f38
+	github.com/longhorn/go-iscsi-helper v0.0.0-20200724233216-c35d2e7ee6b6
 	github.com/longhorn/longhorn-instance-manager v0.0.0-20200226061011-dd95eaa89a05
 	github.com/miekg/dns v1.1.22 // indirect
 	github.com/mitchellh/mapstructure v1.1.2
