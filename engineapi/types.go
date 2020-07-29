@@ -12,9 +12,14 @@ import (
 )
 
 const (
-	// CurrentCLIVersion indicates the API version manager used to talk with the
+	// CurrentCLIVersion indicates the default API version manager used to talk with the
 	// engine, including `longhorn-engine` and `longhorn-instance-manager`
-	CurrentCLIVersion = 3
+	CurrentCLIVersion = 4
+	// MinCLIVersion indicates the Min API version manager used to talk with the
+	// engine.
+	MinCLIVersion = 3
+
+	CLIVersionFour = 4
 
 	InstanceManagerDefaultPort = 8500
 
@@ -179,8 +184,8 @@ func ValidateReplicaURL(url string) error {
 }
 
 func CheckCLICompatibilty(cliVersion, cliMinVersion int) error {
-	if CurrentCLIVersion > cliVersion || CurrentCLIVersion < cliMinVersion {
-		return fmt.Errorf("Current CLI version %v is not compatible with CLIVersion %v and CLIMinVersion %v", CurrentCLIVersion, cliVersion, cliMinVersion)
+	if MinCLIVersion > cliVersion || CurrentCLIVersion < cliMinVersion {
+		return fmt.Errorf("Manager current CLI version %v and min CLI version %v is not compatible with CLIVersion %v and CLIMinVersion %v", CurrentCLIVersion, MinCLIVersion, cliVersion, cliMinVersion)
 	}
 	return nil
 }
