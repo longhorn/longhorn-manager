@@ -871,6 +871,10 @@ func preRestoreCheckAndSync(engine *longhorn.Engine, rsMap map[string]*types.Res
 		if isRestoring || !isConsensual || engine.Spec.RequestedBackupRestore == "" || engine.Spec.RequestedBackupRestore == engine.Status.LastRestoredBackup {
 			return false, nil
 		}
+	} else {
+		if !syncWithRestoreStatus(engine, rsMap) {
+			return false, nil
+		}
 	}
 
 	if engine.Spec.BackupVolume == "" {
@@ -882,6 +886,47 @@ func preRestoreCheckAndSync(engine *longhorn.Engine, rsMap map[string]*types.Res
 	}
 
 	return true, nil
+}
+
+func syncWithRestoreStatus(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus) bool {
+	for _, status := range engine.Status.PurgeStatus {
+		if status.IsPurging {
+			return false
+		}
+	}
+
+	for _, status := range rsMap {
+		if status.Error != "" {
+			logrus.Warnf("Need to wait for the restore error handling for engine %v before the restore invocation: %v", engine.Name, status.Error)
+			return false
+		}
+	}
+
+	allReplicasAreRestoring := true
+	isConsensual := true
+	lastRestored := ""
+	for _, status := range rsMap {
+		if !status.IsRestoring {
+			allReplicasAreRestoring = false
+		}
+		if lastRestored == "" {
+			lastRestored = status.LastRestored
+		}
+		if lastRestored != "" && status.LastRestored != lastRestored {
+			isConsensual = false
+		}
+	}
+	if isConsensual {
+		if engine.Status.LastRestoredBackup != lastRestored {
+			logrus.Infof("Engine %v last restored backup is updated from %v to %v", engine.Name, engine.Status.LastRestoredBackup, lastRestored)
+		}
+		engine.Status.LastRestoredBackup = lastRestored
+	}
+
+	if engine.Spec.RequestedBackupRestore != "" && engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup && !allReplicasAreRestoring {
+		return true
+	}
+	return false
 }
 
 func syncWithRestoreStatusForCompatibleEngine(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus) (bool, bool) {
@@ -971,11 +1016,38 @@ func restoreBackup(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatu
 		// For compatible engines, `LastRestoredBackup` is required to indicate if the restore is incremental restore
 		logrus.Infof("engine %v prepared to restore backup, backup target: %v, backup volume: %v, requested restored backup name: %v, last restored backup name: %v",
 			engine.Name, backupTarget.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
-		// If engine.Status.LastRestoredBackup is empty, it's full restoration
 		if err = client.BackupRestore(backupTarget.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup, credential); err != nil {
 			if extraErr := handleRestoreErrorForCompatibleEngine(engine, rsMap, err); extraErr != nil {
 				return extraErr
 			}
+		}
+	} else {
+		if err = client.BackupRestore(backupTarget.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, "", credential); err != nil {
+			logrus.Infof("engine %v prepared to restore backup, backup target: %v, backup volume: %v, requested restored backup name: %v",
+				engine.Name, backupTarget.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
+			if extraErr := handleRestoreError(engine, rsMap, err); extraErr != nil {
+				return extraErr
+			}
+		}
+	}
+
+	return nil
+}
+
+func handleRestoreError(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, err error) error {
+	taskErr, ok := err.(engineapi.TaskError)
+	if !ok {
+		return errors.Wrapf(err, "failed to restore backup %v in engine monitor, will retry the restore later",
+			engine.Spec.RequestedBackupRestore)
+	}
+
+	for _, re := range taskErr.ReplicaErrors {
+		if status, exists := rsMap[re.Address]; exists {
+			if strings.Contains(re.Error(), "already in progress") || strings.Contains(re.Error(), "already restored backup") {
+				logrus.Debugf("Ignore the restore error from %v of the engine %v: %v", re.Address, engine.Name, re.Error())
+				continue
+			}
+			status.Error = re.Error()
 		}
 	}
 
