@@ -328,13 +328,14 @@ type BackupStatus struct {
 }
 
 type RestoreStatus struct {
-	IsRestoring  bool   `json:"isRestoring"`
-	LastRestored string `json:"lastRestored"`
-	Progress     int    `json:"progress,omitempty"`
-	Error        string `json:"error,omitempty"`
-	Filename     string `json:"filename,omitempty"`
-	State        string `json:"state"`
-	BackupURL    string `json:"backupURL"`
+	IsRestoring            bool   `json:"isRestoring"`
+	LastRestored           string `json:"lastRestored"`
+	CurrentRestoringBackup string `json:"currentRestoringBackup"`
+	Progress               int    `json:"progress,omitempty"`
+	Error                  string `json:"error,omitempty"`
+	Filename               string `json:"filename,omitempty"`
+	State                  string `json:"state"`
+	BackupURL              string `json:"backupURL"`
 }
 
 type PurgeStatus struct {

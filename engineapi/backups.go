@@ -266,9 +266,12 @@ func (e *Engine) BackupRestore(backupTarget, backupName, backupVolume, lastResto
 	}
 
 	args := []string{"backup", "restore", backup}
+	// TODO: Remove this compatible code and update the function signature
+	//  when the manager doesn't support the engine v1.0.0 or older version.
 	if lastRestored != "" {
 		args = append(args, "--incrementally", "--last-restored", lastRestored)
 	}
+
 	if output, err := e.ExecuteEngineBinaryWithoutTimeout(args...); err != nil {
 		var taskErr TaskError
 		if jsonErr := json.Unmarshal([]byte(output), &taskErr); jsonErr != nil {

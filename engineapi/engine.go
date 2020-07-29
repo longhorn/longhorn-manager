@@ -105,11 +105,15 @@ func (e *Engine) ReplicaList() (map[string]*Replica, error) {
 	return replicas, nil
 }
 
-func (e *Engine) ReplicaAdd(url string) error {
+func (e *Engine) ReplicaAdd(url string, isRestoreVolume bool) error {
 	if err := ValidateReplicaURL(url); err != nil {
 		return err
 	}
-	if _, err := e.ExecuteEngineBinaryWithoutTimeout("add", url); err != nil {
+	cmd := []string{"add", url}
+	if isRestoreVolume {
+		cmd = append(cmd, "--restore")
+	}
+	if _, err := e.ExecuteEngineBinaryWithoutTimeout(cmd...); err != nil {
 		return errors.Wrapf(err, "failed to add replica address='%s' to controller '%s'", url, e.name)
 	}
 	return nil
@@ -219,5 +223,16 @@ func (e *Engine) FrontendShutdown() error {
 		return errors.Wrapf(err, "error shutting down the frontend")
 	}
 
+	return nil
+}
+
+func (e *Engine) ReplicaRebuildVerify(url string) error {
+	if err := ValidateReplicaURL(url); err != nil {
+		return err
+	}
+	cmd := []string{"verify-rebuild-replica", url}
+	if _, err := e.ExecuteEngineBinaryWithoutTimeout(cmd...); err != nil {
+		return errors.Wrapf(err, "failed to verify rebuilding for the replica from address %s", url)
+	}
 	return nil
 }

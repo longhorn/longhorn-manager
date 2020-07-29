@@ -50,9 +50,10 @@ type EngineClient interface {
 	FrontendShutdown() error
 
 	ReplicaList() (map[string]*Replica, error)
-	ReplicaAdd(url string) error
+	ReplicaAdd(url string, isRestoreVolume bool) error
 	ReplicaRemove(url string) error
 	ReplicaRebuildStatus() (map[string]*types.RebuildStatus, error)
+	ReplicaRebuildVerify(url string) error
 
 	SnapshotCreate(name string, labels map[string]string) (string, error)
 	SnapshotList() (map[string]*types.Snapshot, error)
