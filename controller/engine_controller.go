@@ -1114,7 +1114,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 	go func() {
 		// start rebuild
 		ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v with Address %v for %v", replica, addr, e.Spec.VolumeName)
-		if err := client.ReplicaAdd(replicaURL); err != nil {
+		if err := client.ReplicaAdd(replicaURL, false); err != nil {
 			logrus.Errorf("Failed rebuilding %v of %v: %v", addr, e.Spec.VolumeName, err)
 			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedRebuilding, "Failed rebuilding replica with Address %v: %v", addr, err)
 			// we've sent out event to notify user. we don't want to

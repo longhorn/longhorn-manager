@@ -42,7 +42,7 @@ func (c *EngineSimulatorCollection) CreateEngineSimulator(request *EngineSimulat
 		mutex:          &sync.RWMutex{},
 	}
 	for _, addr := range request.ReplicaAddrs {
-		if err := s.ReplicaAdd(addr); err != nil {
+		if err := s.ReplicaAdd(addr, false); err != nil {
 			return err
 		}
 	}
@@ -106,7 +106,7 @@ func (e *EngineSimulator) ReplicaList() (map[string]*Replica, error) {
 	return ret, nil
 }
 
-func (e *EngineSimulator) ReplicaAdd(url string) error {
+func (e *EngineSimulator) ReplicaAdd(url string, isRestoreVolume bool) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
@@ -215,5 +215,9 @@ func (e *EngineSimulator) FrontendStart(volumeFrontend types.VolumeFrontend) err
 	return fmt.Errorf("Not implemented")
 }
 func (e *EngineSimulator) FrontendShutdown() error {
+	return fmt.Errorf("Not implemented")
+}
+
+func (e *EngineSimulator) ReplicaRebuildVerify(url string) error {
 	return fmt.Errorf("Not implemented")
 }
