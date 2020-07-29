@@ -731,11 +731,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	// TODO: find a more advanced way to handle invocations for incompatible running engines
-	isOldVersion, err := m.ds.IsEngineImageCLIAPIVersionLessThanThree(engine.Status.CurrentImage)
+	cliAPIVersion, err := m.ds.GetEngineImageCLIAPIVersion(engine.Status.CurrentImage)
 	if err != nil {
 		return err
 	}
-	if !isOldVersion {
+	if cliAPIVersion >= engineapi.MinCLIVersion {
 		endpoint, err := client.Endpoint()
 		if err != nil {
 			return err
@@ -800,7 +800,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 	}
 
-	if !isOldVersion {
+	if cliAPIVersion >= engineapi.MinCLIVersion {
 		// Cannot continue to start restoration if expansion is not complete
 		if engine.Spec.VolumeSize > engine.Status.CurrentSize {
 			if !engine.Status.IsExpanding && !m.expansionBackoff.IsInBackOffSince(engine.Name, time.Now()) {
@@ -835,14 +835,14 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 	}()
 
-	needRestore, err := preRestoreCheckAndSync(engine, rsMap, isOldVersion, m.ds)
+	needRestore, err := preRestoreCheckAndSync(engine, rsMap, cliAPIVersion, m.ds)
 	if err != nil {
 		return err
 	}
 
 	// Incremental restoration will implicitly expand the DR volume once the backup volume is expanded
 	if needRestore {
-		if err = restoreBackup(engine, rsMap, client, m.ds); err != nil {
+		if err = restoreBackup(engine, rsMap, client, cliAPIVersion, m.ds); err != nil {
 			return err
 		}
 	}
@@ -850,7 +850,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	return nil
 }
 
-func preRestoreCheckAndSync(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, isOldVersion bool, ds *datastore.DataStore) (needRestore bool, err error) {
+func preRestoreCheckAndSync(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, cliAPIVersion int, ds *datastore.DataStore) (needRestore bool, err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "failed pre-restore check for engine %v", engine.Name)
@@ -865,24 +865,26 @@ func preRestoreCheckAndSync(engine *longhorn.Engine, rsMap map[string]*types.Res
 	if rsMap == nil {
 		return false, nil
 	}
-	isRestoring, isConsensual := syncWithRestoreStatus(engine, rsMap)
+	if cliAPIVersion < engineapi.CLIVersionFour {
+		isRestoring, isConsensual := syncWithRestoreStatusForCompatibleEngine(engine, rsMap)
 
-	if isRestoring || !isConsensual || engine.Spec.RequestedBackupRestore == "" || engine.Spec.RequestedBackupRestore == engine.Status.LastRestoredBackup {
-		return false, nil
+		if isRestoring || !isConsensual || engine.Spec.RequestedBackupRestore == "" || engine.Spec.RequestedBackupRestore == engine.Status.LastRestoredBackup {
+			return false, nil
+		}
 	}
 
 	if engine.Spec.BackupVolume == "" {
 		return false, fmt.Errorf("BUG: backup volume is empty for backup restoration of engine %v", engine.Name)
 	}
 
-	if !isOldVersion {
+	if cliAPIVersion >= engineapi.MinCLIVersion {
 		return checkSizeBeforeRestoration(engine, ds)
 	}
 
 	return true, nil
 }
 
-func syncWithRestoreStatus(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus) (bool, bool) {
+func syncWithRestoreStatusForCompatibleEngine(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus) (bool, bool) {
 	isRestoring := false
 	isConsensual := true
 	lastRestored := ""
@@ -954,7 +956,7 @@ func checkSizeBeforeRestoration(engine *longhorn.Engine, ds *datastore.DataStore
 	return true, nil
 }
 
-func restoreBackup(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, client engineapi.EngineClient, ds *datastore.DataStore) error {
+func restoreBackup(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, client engineapi.EngineClient, cliAPIVersion int, ds *datastore.DataStore) error {
 	backupTarget, err := manager.GenerateBackupTarget(ds)
 	if err != nil {
 		return errors.Wrapf(err, "cannot generate BackupTarget for backup restoration of engine %v", engine.Name)
@@ -965,24 +967,36 @@ func restoreBackup(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatu
 		return errors.Wrapf(err, "cannot get backup credential config for backup restoration of engine %v", engine.Name)
 	}
 
-	logrus.Infof("engine %v prepared to restore backup, backup target: %v, backup volume: %v, requested restored backup name: %v, last restored backup name: %v",
-		engine.Name, backupTarget.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
-
-	// If engine.Status.LastRestoredBackup is empty, it's full restoration
-	if err = client.BackupRestore(backupTarget.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup, credential); err != nil {
-		taskErr, ok := err.(engineapi.TaskError)
-		if !ok {
-			return errors.Wrapf(err, "failed to restore backup %v with last restored backup %v in engine monitor",
-				engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
-		}
-		for _, re := range taskErr.ReplicaErrors {
-			if status, exists := rsMap[re.Address]; exists {
-				status.Error = re.Error()
+	if cliAPIVersion < engineapi.CLIVersionFour {
+		// For compatible engines, `LastRestoredBackup` is required to indicate if the restore is incremental restore
+		logrus.Infof("engine %v prepared to restore backup, backup target: %v, backup volume: %v, requested restored backup name: %v, last restored backup name: %v",
+			engine.Name, backupTarget.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
+		// If engine.Status.LastRestoredBackup is empty, it's full restoration
+		if err = client.BackupRestore(backupTarget.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup, credential); err != nil {
+			if extraErr := handleRestoreErrorForCompatibleEngine(engine, rsMap, err); extraErr != nil {
+				return extraErr
 			}
 		}
-		logrus.Warnf("Some replicas failed to start restoring backup %v with last restored backup %v in engine monitor: %v",
-			engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup, taskErr)
 	}
+
+	return nil
+}
+
+func handleRestoreErrorForCompatibleEngine(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, err error) error {
+	taskErr, ok := err.(engineapi.TaskError)
+	if !ok {
+		return errors.Wrapf(err, "failed to restore backup %v with last restored backup %v in engine monitor",
+			engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
+	}
+
+	for _, re := range taskErr.ReplicaErrors {
+		if status, exists := rsMap[re.Address]; exists {
+			status.Error = re.Error()
+		}
+	}
+	logrus.Warnf("Some replicas of the compatible engine %v failed to start restoring backup %v with last restored backup %v in engine monitor: %v",
+		engine.Name, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup, taskErr)
+
 	return nil
 }
 
