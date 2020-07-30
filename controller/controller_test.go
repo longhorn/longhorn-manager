@@ -127,7 +127,7 @@ func newEngineImage(image string, state types.EngineImageState) *longhorn.Engine
 				Version:   "latest",
 				GitCommit: "latest",
 
-				CLIAPIVersion:           3,
+				CLIAPIVersion:           4,
 				CLIAPIMinVersion:        3,
 				ControllerAPIVersion:    3,
 				ControllerAPIMinVersion: 3,

@@ -835,7 +835,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 	}()
 
-	needRestore, err := preRestoreCheckAndSync(engine, rsMap, cliAPIVersion, m.ds)
+	needRestore, err := preRestoreCheckAndSync(engine, rsMap, addressReplicaMap, cliAPIVersion, client, m.ds)
 	if err != nil {
 		return err
 	}
@@ -850,7 +850,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	return nil
 }
 
-func preRestoreCheckAndSync(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, cliAPIVersion int, ds *datastore.DataStore) (needRestore bool, err error) {
+func preRestoreCheckAndSync(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, addressReplicaMap map[string]string, cliAPIVersion int, client engineapi.EngineClient, ds *datastore.DataStore) (needRestore bool, err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "failed pre-restore check for engine %v", engine.Name)
@@ -872,7 +872,7 @@ func preRestoreCheckAndSync(engine *longhorn.Engine, rsMap map[string]*types.Res
 			return false, nil
 		}
 	} else {
-		if !syncWithRestoreStatus(engine, rsMap) {
+		if !syncWithRestoreStatus(engine, rsMap, addressReplicaMap, client) {
 			return false, nil
 		}
 	}
@@ -888,7 +888,7 @@ func preRestoreCheckAndSync(engine *longhorn.Engine, rsMap map[string]*types.Res
 	return true, nil
 }
 
-func syncWithRestoreStatus(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus) bool {
+func syncWithRestoreStatus(engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, addressReplicaMap map[string]string, client engineapi.EngineClient) bool {
 	for _, status := range engine.Status.PurgeStatus {
 		if status.IsPurging {
 			return false
@@ -905,9 +905,22 @@ func syncWithRestoreStatus(engine *longhorn.Engine, rsMap map[string]*types.Rest
 	allReplicasAreRestoring := true
 	isConsensual := true
 	lastRestored := ""
-	for _, status := range rsMap {
+	for url, status := range rsMap {
 		if !status.IsRestoring {
 			allReplicasAreRestoring = false
+
+			// Verify the rebuilding replica after the restore complete. This call will set the replica mode to RW.
+			if status.LastRestored != "" {
+				replicaName := addressReplicaMap[engineapi.GetAddressFromBackendReplicaURL(url)]
+				if mode, exists := engine.Status.ReplicaModeMap[replicaName]; exists && mode == types.ReplicaModeWO {
+					if err := client.ReplicaRebuildVerify(url); err != nil {
+						logrus.Errorf("Failed to verify the rebuilding replica %v for engine %v after the restore complete", url, engine.Name)
+						engine.Status.ReplicaModeMap[url] = types.ReplicaModeERR
+						return false
+					}
+					logrus.Infof("Succeeded to verify the rebuilding replica %v for engine %v after the restore complete", url, engine.Name)
+				}
+			}
 		}
 		if lastRestored == "" {
 			lastRestored = status.LastRestored
@@ -921,6 +934,11 @@ func syncWithRestoreStatus(engine *longhorn.Engine, rsMap map[string]*types.Rest
 			logrus.Infof("Engine %v last restored backup is updated from %v to %v", engine.Name, engine.Status.LastRestoredBackup, lastRestored)
 		}
 		engine.Status.LastRestoredBackup = lastRestored
+	} else {
+		if engine.Status.LastRestoredBackup != "" {
+			logrus.Debugf("Clean up the field LastRestoredBackup %v for engine %v due to the inconsistency. Maybe it's caused by replica rebuilding", engine.Status.LastRestoredBackup, engine.Name)
+		}
+		engine.Status.LastRestoredBackup = ""
 	}
 
 	if engine.Spec.RequestedBackupRestore != "" && engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup && !allReplicasAreRestoring {
@@ -1199,8 +1217,16 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 	replicaURL := engineapi.GetBackendReplicaURL(addr)
 	go func() {
 		// start rebuild
-		ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v with Address %v for %v", replica, addr, e.Spec.VolumeName)
-		if err := client.ReplicaAdd(replicaURL, false); err != nil {
+		if e.Spec.RequestedBackupRestore != "" {
+			if e.Spec.NodeID != "" {
+				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v with Address %v for restore engine %v", replica, addr, e.Spec.VolumeName)
+				err = client.ReplicaAdd(replicaURL, true)
+			}
+		} else {
+			ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v with Address %v for normal engine %v", replica, addr, e.Spec.VolumeName)
+			err = client.ReplicaAdd(replicaURL, false)
+		}
+		if err != nil {
 			logrus.Errorf("Failed rebuilding %v of %v: %v", addr, e.Spec.VolumeName, err)
 			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedRebuilding, "Failed rebuilding replica with Address %v: %v", addr, err)
 			// we've sent out event to notify user. we don't want to

@@ -486,7 +486,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	tc.expectVolume.Spec.NodeID = ""
 	tc.expectVolume.Spec.DisableFrontend = false
-	tc.expectVolume.Status.FrontendDisabled = false
 	tc.expectVolume.Status.CurrentNodeID = ""
 	tc.expectVolume.Status.State = types.VolumeStateDetaching
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
@@ -497,11 +496,91 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	testCases["newly restored volume automatically detaching after restoration completed"] = tc
 
-	// try to update the volume as Faulted if all replicas failed to restore data
+	// detaching newly restored volume after restoration completed
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = ""
 	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = false
+	tc.volume.Spec.DisableFrontend = false
+	tc.volume.Spec.EngineImage = TestEngineImage
+	tc.volume.Status.OwnerID = TestNode1
+	tc.volume.Status.State = types.VolumeStateAttached
+	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
+	tc.volume.Status.CurrentNodeID = TestNode1
+	tc.volume.Status.CurrentImage = TestEngineImage
+	tc.volume.Status.FrontendDisabled = true
+	tc.volume.Status.InitialRestorationRequired = true
+	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
+		types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
+	for _, e := range tc.engines {
+		e.Spec.NodeID = TestNode1
+		e.Spec.DesireState = types.InstanceStateRunning
+		e.Spec.BackupVolume = TestBackupVolumeName
+		e.Spec.RequestedBackupRestore = TestBackupName
+		e.Spec.EngineImage = TestEngineImage
+		e.Status.OwnerID = TestNode1
+		e.Status.CurrentState = types.InstanceStateRunning
+		e.Status.IP = randomIP()
+		e.Status.Port = randomPort()
+		e.Status.Endpoint = "/dev/" + tc.volume.Name
+		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
+		e.Status.LastRestoredBackup = TestBackupName
+		e.Status.CurrentImage = TestEngineImage
+	}
+	// Pick up one replica as the failed replica
+	failedReplicaName := ""
+	for name := range tc.replicas {
+		failedReplicaName = name
+		break
+	}
+	for name, r := range tc.replicas {
+		r.Spec.HealthyAt = getTestNow()
+		r.Spec.DesireState = types.InstanceStateRunning
+		if name != failedReplicaName {
+			r.Status.CurrentState = types.InstanceStateRunning
+			r.Status.IP = randomIP()
+			r.Status.Port = randomPort()
+		} else {
+			r.Status.CurrentState = types.InstanceStateError
+		}
+		for _, e := range tc.engines {
+			e.Spec.DisableFrontend = true
+			e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.IP, r.Status.Port)
+			if name != failedReplicaName {
+				e.Status.ReplicaModeMap[name] = types.ReplicaModeRW
+			} else {
+				e.Status.ReplicaModeMap[name] = types.ReplicaModeERR
+			}
+		}
+	}
+	tc.copyCurrentToExpect()
+	newReplicaMap := map[string]*longhorn.Replica{}
+	for name, r := range tc.replicas {
+		if name != failedReplicaName {
+			newReplicaMap[name] = r
+		}
+	}
+	tc.expectReplicas = newReplicaMap
+	for _, e := range tc.expectEngines {
+		delete(e.Spec.ReplicaAddressMap, failedReplicaName)
+		e.Spec.LogRequested = true
+	}
+	tc.expectVolume.Status.State = types.VolumeStateAttached
+	tc.expectVolume.Status.Robustness = types.VolumeRobustnessDegraded
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentNodeID = TestNode1
+	tc.expectVolume.Status.FrontendDisabled = true
+	tc.expectVolume.Status.InitialRestorationRequired = false
+	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
+		types.VolumeConditionTypeRestore, types.ConditionStatusFalse, "", "")
+	testCases["the restored volume keeps and wait for the rebuild after the restoration completed"] = tc
+
+	// try to update the volume as Faulted if all replicas failed to restore data
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.NodeID = ""
+	tc.volume.Spec.FromBackup = testBackupURL
+	tc.volume.Spec.Standby = true
 	tc.volume.Spec.DisableFrontend = false
 	tc.volume.Status.CurrentNodeID = TestNode1
 	tc.volume.Status.FrontendDisabled = true
@@ -510,6 +589,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.Robustness = types.VolumeRobustnessHealthy
 	tc.volume.Status.InitialRestorationRequired = true
 	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.IsStandby = true
 	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
 		types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
 	for _, e := range tc.engines {
@@ -528,7 +608,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	for name, r := range tc.replicas {
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.FailedAt = getTestNow()
 		r.Status.IP = randomIP()
 		r.Status.Port = randomPort()
 		r.Spec.DesireState = types.InstanceStateRunning
@@ -536,6 +615,12 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		for _, e := range tc.engines {
 			e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 			e.Status.ReplicaModeMap[name] = types.ReplicaModeRW
+			if e.Status.RestoreStatus == nil {
+				e.Status.RestoreStatus = map[string]*types.RestoreStatus{}
+			}
+			e.Status.RestoreStatus[name] = &types.RestoreStatus{
+				Error: "Test restore error",
+			}
 		}
 	}
 	tc.copyCurrentToExpect()
@@ -554,6 +639,11 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Spec.DesireState = types.InstanceStateStopped
 		e.Spec.LogRequested = true
 	}
+	for _, r := range tc.expectReplicas {
+		r.Spec.FailedAt = getTestNow()
+		r.Spec.DesireState = types.InstanceStateStopped
+		r.Spec.LogRequested = true
+	}
 	testCases["newly restored volume becomes faulted after all replica error"] = tc
 
 	// after creation, standby volume should automatically be in attaching state
@@ -565,8 +655,13 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.RestoreInitiated = true
 	tc.volume.Status.CurrentNodeID = TestNode1
 	tc.volume.Status.State = types.VolumeStateAttaching
+	tc.volume.Status.IsStandby = true
+	tc.volume.Status.LastBackup = TestBackupName
 	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
 		types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
+	for _, e := range tc.engines {
+		e.Spec.RequestedBackupRestore = TestBackupName
+	}
 	for _, r := range tc.replicas {
 		r.Spec.HealthyAt = ""
 	}
