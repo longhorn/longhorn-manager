@@ -30,7 +30,9 @@ import (
 )
 
 const (
-	leaseLockName = "longhorn-manager-upgrade-lock"
+	leaseLockName         = "longhorn-manager-upgrade-lock"
+	conflictRetryCounts   = 100
+	conflictRetryInterval = 20 * time.Millisecond
 )
 
 func Upgrade(kubeconfigPath, currentNodeID string) error {
@@ -95,6 +97,8 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				var err error
+				// we only need to run upgrade once
+				defer cancel()
 				defer func() {
 					if err != nil {
 						logrus.Errorf("Upgrade failed: %v", err)
@@ -102,18 +106,27 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 					}
 					logrus.Infof("Finish upgrading")
 				}()
+
 				logrus.Infof("Start upgrading")
+
 				if err = doAPIVersionUpgrade(namespace, config, lhClient); err != nil {
 					return
 				}
-				if err = doPodsUpgrade(namespace, lhClient, kubeClient); err != nil {
+
+				err = retryOnConflictCause(func() error {
+					return doPodsUpgrade(namespace, lhClient, kubeClient)
+				})
+				if err != nil {
 					return
 				}
-				if err = doCRDUpgrade(namespace, lhClient); err != nil {
+
+				err = retryOnConflictCause(func() error {
+					return doCRDUpgrade(namespace, lhClient)
+				})
+				if err != nil {
 					return
 				}
-				// we only need to run upgrade once
-				cancel()
+
 			},
 			OnStoppedLeading: func() {
 				logrus.Infof("Upgrade leader lost: %s", currentNodeID)
@@ -235,4 +248,18 @@ func doPodsUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeClient
 		return err
 	}
 	return nil
+}
+
+func retryOnConflictCause(fn func() error) (err error) {
+	for i := 0; i < conflictRetryCounts; i++ {
+		err = fn()
+		if err == nil {
+			return nil
+		}
+		if !apierrors.IsConflict(errors.Cause(err)) {
+			return err
+		}
+		time.Sleep(conflictRetryInterval)
+	}
+	return errors.Wrapf(err, "cannot finish API request due to too many conflicts")
 }
