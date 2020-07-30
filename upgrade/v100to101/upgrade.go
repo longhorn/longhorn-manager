@@ -92,7 +92,8 @@ func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset)
 	}
 
 	for _, im := range imList.Items {
-		if im.Spec.Image != "" {
+		newInstanceManagerLabels := types.GetInstanceManagerLabels(im.Spec.NodeID, im.Spec.Image, im.Spec.Type)
+		if im.Labels[types.LonghornLabelInstanceManagerImage] != newInstanceManagerLabels[types.LonghornLabelInstanceManagerImage] {
 			if err := upgradeInstanceManagersLabels(&im, lhClient, namespace); err != nil {
 				return err
 			}
