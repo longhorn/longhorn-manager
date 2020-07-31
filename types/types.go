@@ -44,6 +44,7 @@ const (
 	BaseImageLabel        = "ranchervm-base-image"
 	KubernetesStatusLabel = "KubernetesStatus"
 	KubernetesReplicaSet  = "ReplicaSet"
+	KubernetesStatefulSet = "StatefulSet"
 	RecurringJobLabel     = "RecurringJob"
 
 	LonghornLabelKeyPrefix = "longhorn.io"

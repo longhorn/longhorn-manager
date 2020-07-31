@@ -24,4 +24,5 @@ data:
     disable-scheduling-on-cordoned-node:
     replica-zone-soft-anti-affinity:
     volume-attachment-recovery-policy:
+    node-down-pod-deletion-policy:
     mkfs-ext4-parameters:

@@ -59,6 +59,7 @@ const (
 	SettingNameDisableSchedulingOnCordonedNode   = SettingName("disable-scheduling-on-cordoned-node")
 	SettingNameReplicaZoneSoftAntiAffinity       = SettingName("replica-zone-soft-anti-affinity")
 	SettingNameVolumeAttachmentRecoveryPolicy    = SettingName("volume-attachment-recovery-policy")
+	SettingNameNodeDownPodDeletionPolicy         = SettingName("node-down-pod-deletion-policy")
 	SettingNameMkfsExt4Parameters                = SettingName("mkfs-ext4-parameters")
 	SettingNamePriorityClass                     = SettingName("priority-class")
 )
@@ -87,6 +88,7 @@ var (
 		SettingNameDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity,
 		SettingNameVolumeAttachmentRecoveryPolicy,
+		SettingNameNodeDownPodDeletionPolicy,
 		SettingNameMkfsExt4Parameters,
 		SettingNamePriorityClass,
 	}
@@ -136,6 +138,7 @@ var (
 		SettingNameDisableSchedulingOnCordonedNode:   SettingDefinitionDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity:       SettingDefinitionReplicaZoneSoftAntiAffinity,
 		SettingNameVolumeAttachmentRecoveryPolicy:    SettingDefinitionVolumeAttachmentRecoveryPolicy,
+		SettingNameNodeDownPodDeletionPolicy:         SettingDefinitionNodeDownPodDeletionPolicy,
 		SettingNameMkfsExt4Parameters:                SettingDefinitionMkfsExt4Parameters,
 		SettingNamePriorityClass:                     SettingDefinitionPriorityClass,
 	}
@@ -359,6 +362,25 @@ var (
 			string(VolumeAttachmentRecoveryPolicyImmediate),
 		},
 	}
+	SettingDefinitionNodeDownPodDeletionPolicy = SettingDefinition{
+		DisplayName: "Pod Deletion Policy When Node is Down",
+		Description: "Defines the Longhorn action when a Volume is stuck with a StatefulSet/Deployment Pod on a node that is down.\n" +
+			"- **do-nothing** is the default Kubernetes behavior of never force deleting StatefulSet/Deployment terminating pods. Since the pod on the node that is down isn't removed, Longhorn volumes are stuck on nodes that are down.\n" +
+			"- **delete-statefulset-pod** Longhorn will force delete StatefulSet terminating pods on nodes that are down to release Longhorn volumes so that Kubernetes can spin up replacement pods.\n" +
+			"- **delete-deployment-pod** Longhorn will force delete Deployment terminating pods on nodes that are down to release Longhorn volumes so that Kubernetes can spin up replacement pods.\n" +
+			"- **delete-both-statefulset-and-deployment-pod** Longhorn will force delete StatefulSet/Deployment terminating pods on nodes that are down to release Longhorn volumes so that Kubernetes can spin up replacement pods.\n",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		Default:  string(NodeDownPodDeletionPolicyDoNothing),
+		Choices: []string{
+			string(NodeDownPodDeletionPolicyDoNothing),
+			string(NodeDownPodDeletionPolicyDeleteStatefulSetPod),
+			string(NodeDownPodDeletionPolicyDeleteDeploymentPod),
+			string(NodeDownPodDeletionPolicyDeleteBothStatefulsetAndDeploymentPod),
+		},
+	}
 	SettingDefinitionMkfsExt4Parameters = SettingDefinition{
 		DisplayName: "Custom mkfs.ext4 parameters",
 		Description: "Allows setting additional filesystem creation parameters for ext4. For older host kernels it might be necessary to disable the optional ext4 metadata_csum feature by specifying `-O ^64bit,^metadata_csum`",
@@ -382,6 +404,15 @@ const (
 	VolumeAttachmentRecoveryPolicyNever     = VolumeAttachmentRecoveryPolicy("never") // Kubernetes default behavior
 	VolumeAttachmentRecoveryPolicyWait      = VolumeAttachmentRecoveryPolicy("wait")  // Longhorn default behavior
 	VolumeAttachmentRecoveryPolicyImmediate = VolumeAttachmentRecoveryPolicy("immediate")
+)
+
+type NodeDownPodDeletionPolicy string
+
+const (
+	NodeDownPodDeletionPolicyDoNothing                             = NodeDownPodDeletionPolicy("do-nothing") // Kubernetes default behavior
+	NodeDownPodDeletionPolicyDeleteStatefulSetPod                  = NodeDownPodDeletionPolicy("delete-statefulset-pod")
+	NodeDownPodDeletionPolicyDeleteDeploymentPod                   = NodeDownPodDeletionPolicy("delete-deployment-pod")
+	NodeDownPodDeletionPolicyDeleteBothStatefulsetAndDeploymentPod = NodeDownPodDeletionPolicy("delete-both-statefulset-and-deployment-pod")
 )
 
 func ValidateInitSetting(name, value string) (err error) {
@@ -466,7 +497,13 @@ func ValidateInitSetting(name, value string) (err error) {
 		if !isValidChoice(choices, value) {
 			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, choices)
 		}
+	case SettingNameNodeDownPodDeletionPolicy:
+		var choices = SettingDefinitions[SettingNameNodeDownPodDeletionPolicy].Choices
+		if !isValidChoice(choices, value) {
+			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, choices)
+		}
 	}
+
 	return nil
 }
 
