@@ -115,6 +115,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 		persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer, kubeClient, controllerID)
 	knc := NewKubernetesNodeController(ds, scheme, nodeInformer, settingInformer, kubeNodeInformer,
 		kubeClient, controllerID)
+	kpc := NewKubernetesPodController(ds, scheme, podInformer, persistentVolumeInformer, persistentVolumeClaimInformer, kubeClient, controllerID)
 
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
@@ -132,6 +133,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 
 	go kpvc.Run(Workers, stopCh)
 	go knc.Run(Workers, stopCh)
+	go kpc.Run(Workers, stopCh)
 
 	return ds, ws, nil
 }
