@@ -73,6 +73,7 @@ func Upgrade(kubeconfigPath, currentNodeID string) error {
 
 func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) error {
 	ctx, cancel := context.WithCancel(context.Background())
+	var err error
 	defer cancel()
 
 	lock := &resourcelock.LeaseLock{
@@ -94,13 +95,13 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 		RetryPeriod:     2 * time.Second,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
-				var err error
+				defer cancel()
 				defer func() {
 					if err != nil {
 						logrus.Errorf("Upgrade failed: %v", err)
-						return
+					} else {
+						logrus.Infof("Finish upgrading")
 					}
-					logrus.Infof("Finish upgrading")
 				}()
 				logrus.Infof("Start upgrading")
 				if err = doAPIVersionUpgrade(namespace, config, lhClient); err != nil {
@@ -112,8 +113,6 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 				if err = doCRDUpgrade(namespace, lhClient); err != nil {
 					return
 				}
-				// we only need to run upgrade once
-				cancel()
 			},
 			OnStoppedLeading: func() {
 				logrus.Infof("Upgrade leader lost: %s", currentNodeID)
@@ -127,7 +126,7 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 		},
 	})
 
-	return nil
+	return err
 }
 
 func doAPIVersionUpgrade(namespace string, config *restclient.Config, lhClient *lhclientset.Clientset) (err error) {
