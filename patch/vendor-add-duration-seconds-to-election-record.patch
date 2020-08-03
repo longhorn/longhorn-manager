@@ -1,0 +1,33 @@
+From a7a87cf0cc127caa8811128b21640140711cf593 Mon Sep 17 00:00:00 2001
+From: Michael William Le Nguyen <michael@mail.ttp.codes>
+Date: Mon, 3 Aug 2020 15:04:11 -0700
+Subject: vendor: add duration seconds to election record
+
+This fixes the underlying cause of #1379 in client-go since this fix
+has yet to be merged upstream. This patch can be dropped on our end once
+one of these PRs gets merged into upstream:
+
+- kubernetes/kubernetes#88192
+- kubernetes/kubernetes#91942
+- kubernetes/kubernetes#91966
+
+Signed-off-by: Michael William Le Nguyen <michael@mail.ttp.codes>
+---
+ vendor/k8s.io/client-go/tools/leaderelection/leaderelection.go | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/vendor/k8s.io/client-go/tools/leaderelection/leaderelection.go b/vendor/k8s.io/client-go/tools/leaderelection/leaderelection.go
+index 02bdebd1..f8a3b81d 100644
+--- a/vendor/k8s.io/client-go/tools/leaderelection/leaderelection.go
++++ b/vendor/k8s.io/client-go/tools/leaderelection/leaderelection.go
+@@ -276,6 +276,7 @@ func (le *LeaderElector) release() bool {
+ 		return true
+ 	}
+ 	leaderElectionRecord := rl.LeaderElectionRecord{
++		LeaseDurationSeconds: le.observedRecord.LeaseDurationSeconds,
+ 		LeaderTransitions: le.observedRecord.LeaderTransitions,
+ 	}
+ 	if err := le.config.Lock.Update(leaderElectionRecord); err != nil {
+-- 
+2.28.0
+
