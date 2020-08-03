@@ -1,0 +1,64 @@
+From 33357268774c2891c846bf68237e742bd5bb3f86 Mon Sep 17 00:00:00 2001
+From: Michael William Le Nguyen <michael@mail.ttp.codes>
+Date: Mon, 3 Aug 2020 15:05:09 -0700
+Subject: vendor: fix nil pointer for Leader Election Record
+
+This merges in a fix for the LeaseSpecToLeaderElectionRecord function
+which isn't available until Kubernetes v1.17 which helps prevent a nil
+pointer reference when LeaseDurationSeconds is set. This fix is based on
+the changes in this commit:
+
+kubernetes/kubernetes@7907b29551c7ef87bbe398ac02836b4c87246d3d
+
+This patch can be dropped once Longhorn Manager switches to using the
+Kubernetes v1.17 API, which contains this fix.
+
+Signed-off-by: Michael William Le Nguyen <michael@mail.ttp.codes>
+---
+ .../leaderelection/resourcelock/leaselock.go  | 23 +++++++++----------
+ 1 file changed, 11 insertions(+), 12 deletions(-)
+
+diff --git a/vendor/k8s.io/client-go/tools/leaderelection/resourcelock/leaselock.go b/vendor/k8s.io/client-go/tools/leaderelection/resourcelock/leaselock.go
+index 285f9440..75492fe6 100644
+--- a/vendor/k8s.io/client-go/tools/leaderelection/resourcelock/leaselock.go
++++ b/vendor/k8s.io/client-go/tools/leaderelection/resourcelock/leaselock.go
+@@ -90,25 +90,24 @@ func (ll *LeaseLock) Identity() string {
+ }
+ 
+ func LeaseSpecToLeaderElectionRecord(spec *coordinationv1.LeaseSpec) *LeaderElectionRecord {
+-	holderIdentity := ""
++	var r LeaderElectionRecord
+ 	if spec.HolderIdentity != nil {
+-		holderIdentity = *spec.HolderIdentity
++		r.HolderIdentity = *spec.HolderIdentity
+ 	}
+-	leaseDurationSeconds := 0
+ 	if spec.LeaseDurationSeconds != nil {
+-		leaseDurationSeconds = int(*spec.LeaseDurationSeconds)
++		r.LeaseDurationSeconds = int(*spec.LeaseDurationSeconds)
+ 	}
+-	leaseTransitions := 0
+ 	if spec.LeaseTransitions != nil {
+-		leaseTransitions = int(*spec.LeaseTransitions)
++		r.LeaderTransitions = int(*spec.LeaseTransitions)
+ 	}
+-	return &LeaderElectionRecord{
+-		HolderIdentity:       holderIdentity,
+-		LeaseDurationSeconds: leaseDurationSeconds,
+-		AcquireTime:          metav1.Time{spec.AcquireTime.Time},
+-		RenewTime:            metav1.Time{spec.RenewTime.Time},
+-		LeaderTransitions:    leaseTransitions,
++	if spec.AcquireTime != nil {
++		r.AcquireTime = metav1.Time{spec.AcquireTime.Time}
+ 	}
++	if spec.RenewTime != nil {
++		r.RenewTime = metav1.Time{spec.RenewTime.Time}
++	}
++	return &r
++
+ }
+ 
+ func LeaderElectionRecordToLeaseSpec(ler *LeaderElectionRecord) coordinationv1.LeaseSpec {
+-- 
+2.28.0
+
