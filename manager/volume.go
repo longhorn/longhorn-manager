@@ -646,6 +646,12 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 			v.Name, v.Status.CurrentImage, v.Spec.EngineImage)
 	}
 
+	// TODO: Rebuild is not supported for old DR volumes and the handling of a degraded DR volume live upgrade will get stuck.
+	//  Hence the live upgrade should be prevented in API level. After all old DR volumes are gone, this check can be removed.
+	if v.Status.State == types.VolumeStateAttached && v.Status.IsStandby && v.Status.Robustness != types.VolumeRobustnessHealthy {
+		return nil, fmt.Errorf("cannot do live upgrade for a non-healthy DR volume %v", v.Name)
+	}
+
 	oldImage := v.Spec.EngineImage
 	v.Spec.EngineImage = image
 
