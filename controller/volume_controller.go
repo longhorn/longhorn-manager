@@ -520,8 +520,11 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		if err != nil {
 			return err
 		}
-		// Currently the rebuild is not supported for expanding volumes and old restore/DR volumes.
-		if v.Spec.NodeID != "" || (v.Spec.NodeID == "" && e.Spec.RequestedBackupRestore != "" && cliAPIVersion >= engineapi.CLIVersionFour) {
+		// Rebuild is not supported when:
+		//   1. the volume is old restore/DR volumes.
+		//   2. the volume is expanding size.
+		if !((v.Status.IsStandby || v.Status.InitialRestorationRequired) && cliAPIVersion < engineapi.CLIVersionFour) &&
+			v.Spec.Size == e.Status.CurrentSize {
 			if err = vc.replenishReplicas(v, e, rs); err != nil {
 				return err
 			}
