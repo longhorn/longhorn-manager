@@ -22,25 +22,25 @@ import (
 type Volume struct {
 	client.Resource
 
-	Name                       string                 `json:"name"`
-	Size                       string                 `json:"size"`
-	Frontend                   types.VolumeFrontend   `json:"frontend"`
-	DisableFrontend            bool                   `json:"disableFrontend"`
-	FromBackup                 string                 `json:"fromBackup"`
-	NumberOfReplicas           int                    `json:"numberOfReplicas"`
-	StaleReplicaTimeout        int                    `json:"staleReplicaTimeout"`
-	State                      types.VolumeState      `json:"state"`
-	Robustness                 types.VolumeRobustness `json:"robustness"`
-	EngineImage                string                 `json:"engineImage"`
-	CurrentImage               string                 `json:"currentImage"`
-	BaseImage                  string                 `json:"baseImage"`
-	Created                    string                 `json:"created"`
-	LastBackup                 string                 `json:"lastBackup"`
-	LastBackupAt               string                 `json:"lastBackupAt"`
-	Standby                    bool                   `json:"standby"`
-	InitialRestorationRequired bool                   `json:"initialRestorationRequired"`
-	DiskSelector               []string               `json:"diskSelector"`
-	NodeSelector               []string               `json:"nodeSelector"`
+	Name                string                 `json:"name"`
+	Size                string                 `json:"size"`
+	Frontend            types.VolumeFrontend   `json:"frontend"`
+	DisableFrontend     bool                   `json:"disableFrontend"`
+	FromBackup          string                 `json:"fromBackup"`
+	NumberOfReplicas    int                    `json:"numberOfReplicas"`
+	StaleReplicaTimeout int                    `json:"staleReplicaTimeout"`
+	State               types.VolumeState      `json:"state"`
+	Robustness          types.VolumeRobustness `json:"robustness"`
+	EngineImage         string                 `json:"engineImage"`
+	CurrentImage        string                 `json:"currentImage"`
+	BaseImage           string                 `json:"baseImage"`
+	Created             string                 `json:"created"`
+	LastBackup          string                 `json:"lastBackup"`
+	LastBackupAt        string                 `json:"lastBackupAt"`
+	Standby             bool                   `json:"standby"`
+	RestoreRequired     bool                   `json:"restoreRequired"`
+	DiskSelector        []string               `json:"diskSelector"`
+	NodeSelector        []string               `json:"nodeSelector"`
 
 	RecurringJobs    []types.RecurringJob       `json:"recurringJobs"`
 	Conditions       map[string]types.Condition `json:"conditions"`
@@ -818,13 +818,13 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		DiskSelector:        v.Spec.DiskSelector,
 		NodeSelector:        v.Spec.NodeSelector,
 
-		State:                      v.Status.State,
-		Robustness:                 v.Status.Robustness,
-		CurrentImage:               v.Status.CurrentImage,
-		LastBackup:                 v.Status.LastBackup,
-		LastBackupAt:               v.Status.LastBackupAt,
-		InitialRestorationRequired: v.Status.InitialRestorationRequired,
-		Ready:                      ready,
+		State:           v.Status.State,
+		Robustness:      v.Status.Robustness,
+		CurrentImage:    v.Status.CurrentImage,
+		LastBackup:      v.Status.LastBackup,
+		LastBackupAt:    v.Status.LastBackupAt,
+		RestoreRequired: v.Status.RestoreRequired,
+		Ready:           ready,
 
 		Conditions:       v.Status.Conditions,
 		KubernetesStatus: v.Status.KubernetesStatus,

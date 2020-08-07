@@ -86,7 +86,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 		v.Status.CurrentNodeID = old.Spec.NodeID
 		v.Status.PendingNodeID = old.Spec.PendingNodeID
 		v.Status.FrontendDisabled = old.Spec.DisableFrontend
-		v.Status.InitialRestorationRequired = old.Spec.InitialRestorationRequired
+		v.Status.RestoreRequired = old.Spec.InitialRestorationRequired
 		// The volume must complete restoration before upgrade
 		v.Status.RestoreInitiated = true
 

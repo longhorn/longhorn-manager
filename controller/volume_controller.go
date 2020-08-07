@@ -381,10 +381,6 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			return err
 		}
 
-		if err := vc.updateEngineForStandbyVolume(volume, engine); err != nil {
-			return err
-		}
-
 		if err := vc.upgradeEngineForVolume(volume, engine, replicas); err != nil {
 			return err
 		}
@@ -453,19 +449,16 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 	}
 
 	restoreStatusMap := map[string]*types.RestoreStatus{}
-	restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
-	if restoreCondition.Status == types.ConditionStatusTrue && restoreCondition.Reason == types.VolumeConditionReasonRestoreInProgress {
-		replicaList := []*longhorn.Replica{}
-		for _, r := range rs {
-			replicaList = append(replicaList, r)
-		}
-		for addr, status := range e.Status.RestoreStatus {
-			rName := datastore.ReplicaAddressToReplicaName(addr, replicaList)
-			if _, exists := rs[rName]; exists {
-				restoreStatusMap[rName] = status
-			} else {
-				logrus.Warnf("Found unknown replica in the restore status map, address %v, restore status: %+v", addr, status)
-			}
+	replicaList := []*longhorn.Replica{}
+	for _, r := range rs {
+		replicaList = append(replicaList, r)
+	}
+	for addr, status := range e.Status.RestoreStatus {
+		rName := datastore.ReplicaAddressToReplicaName(addr, replicaList)
+		if _, exists := rs[rName]; exists {
+			restoreStatusMap[rName] = status
+		} else {
+			logrus.Warnf("Found unknown replica in the restore status map, address %v, restore status: %+v", addr, status)
 		}
 	}
 
@@ -523,7 +516,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		// Rebuild is not supported when:
 		//   1. the volume is old restore/DR volumes.
 		//   2. the volume is expanding size.
-		if !((v.Status.IsStandby || v.Status.InitialRestorationRequired) && cliAPIVersion < engineapi.CLIVersionFour) &&
+		if !((v.Status.IsStandby || v.Status.RestoreRequired) && cliAPIVersion < engineapi.CLIVersionFour) &&
 			v.Spec.Size == e.Status.CurrentSize {
 			if err = vc.replenishReplicas(v, e, rs); err != nil {
 				return err
@@ -603,62 +596,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		v.Status.CurrentImage = v.Spec.EngineImage
 	}
 
-	if v.Spec.FromBackup != "" && !v.Status.RestoreInitiated {
-		kubeStatus := &types.KubernetesStatus{}
-
-		backupTarget, err := manager.GenerateBackupTarget(vc.ds)
-		if err != nil {
-			return err
-		}
-		backup, err := backupTarget.GetBackup(v.Spec.FromBackup)
-		if err != nil {
-			return fmt.Errorf("cannot get backup %v: %v", v.Spec.FromBackup, err)
-		}
-
-		size, err := util.ConvertSize(backup.Size)
-		if err != nil {
-			return fmt.Errorf("cannot get the size of backup %v: %v", v.Spec.FromBackup, err)
-		}
-		v.Status.ActualSize = size
-
-		// If KubernetesStatus is set on Backup, restore it.
-		if statusJSON, ok := backup.Labels[types.KubernetesStatusLabel]; ok {
-			if err := json.Unmarshal([]byte(statusJSON), kubeStatus); err != nil {
-				logrus.Warningf("Ignore KubernetesStatus json for volume %v: backup %v: %v",
-					v.Name, backup.Name, err)
-			} else {
-				// We were able to unmarshal KubernetesStatus. Set the Ref fields.
-				if kubeStatus.PVCName != "" && kubeStatus.LastPVCRefAt == "" {
-					kubeStatus.LastPVCRefAt = backup.SnapshotCreated
-				}
-				if len(kubeStatus.WorkloadsStatus) != 0 && kubeStatus.LastPodRefAt == "" {
-					kubeStatus.LastPodRefAt = backup.SnapshotCreated
-				}
-
-				// Do not restore the PersistentVolume fields.
-				kubeStatus.PVName = ""
-				kubeStatus.PVStatus = ""
-			}
-		}
-
-		// set LastBackup for standby volumes only
-		if v.Spec.Standby {
-			v.Status.LastBackup = backup.Name
-			v.Status.IsStandby = true
-		}
-
-		v.Status.KubernetesStatus = *kubeStatus
-		v.Status.InitialRestorationRequired = true
-
-		v.Status.RestoreInitiated = true
-
-		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
+	if err := vc.checkAndInitVolumeRestore(v); err != nil {
+		return err
 	}
-
-	if _, exists := v.Status.Conditions[types.VolumeConditionTypeRestore]; !exists {
-		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			types.VolumeConditionTypeRestore, types.ConditionStatusFalse, "", "")
+	if err := vc.updateRequestedBackupForVolumeRestore(v, e); err != nil {
+		return err
 	}
 
 	if v.Status.CurrentNodeID == "" {
@@ -673,64 +615,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			if v.Spec.NodeID != v.Status.CurrentNodeID {
 				return fmt.Errorf("volume %v has already attached to node %v, but asked to attach to node %v", v.Name, v.Status.CurrentNodeID, v.Spec.NodeID)
 			}
-		} else if e != nil { // v.Spec.NodeID == ""
-			// Need to set the restore condition to true if there are rebuilding replicas in restore/DR volumes.
-			if e.Spec.RequestedBackupRestore != "" && e.Status.LastRestoredBackup == "" {
-				restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
-				if restoreCondition.Status == types.ConditionStatusFalse && restoreCondition.Reason == "" {
-					v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-						types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
-				}
-			}
-
-			cliAPIVersion, err := vc.ds.GetEngineImageCLIAPIVersion(v.Status.CurrentImage)
-			if err != nil {
-				return err
-			}
-
-			// Check if the DR volume can be activated.
-			// Notice that There are following cases for the activating DR volumes (`!v.Spec.Standby && v.Status.IsStandby`):
-			//   1. The DR volume is up-to-date. --> The activation should be allowed.
-			//   2. The DR volume restore is in progress. --> The activation should be blocked.
-			//   3. The field `v.Status.LastBackup` is just updated but the corresponding incremental restore
-			//      is just/hasn't been initialized. (The last backup may be updated by the activation call.)
-			//      --> The activation should be blocked.
-			//   4. The last backup is removed from the backup volume then v.Status.LastBackup is empty. (Issue #1380)
-			//      --> The activation should be allowed.
-			//   5. The DR volume is purging snapshots before the rebuilding. --> The activation should be blocked.
-			//   6. The latest DR volume is not `Healthy` and is rebuilding replicas. --> The activation should be blocked.
-			isPurging := false
-			for _, status := range e.Status.PurgeStatus {
-				if status.IsPurging {
-					isPurging = true
-					break
-				}
-			}
-			if !v.Spec.Standby && e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup &&
-				(v.Status.LastBackup == "" || (v.Status.LastBackup != "" && v.Status.LastBackup == e.Status.LastRestoredBackup)) {
-				if !isPurging && (v.Status.Robustness == types.VolumeRobustnessHealthy || cliAPIVersion < engineapi.CLIVersionFour) {
-					v.Status.IsStandby = false
-				}
-
-				restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
-				if restoreCondition.Status == types.ConditionStatusTrue && restoreCondition.Reason == types.VolumeConditionReasonRestoreInProgress {
-					v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-						types.VolumeConditionTypeRestore, types.ConditionStatusFalse, "", "")
-				}
-			}
-
-			// Cannot automatically detach the volume if one of the following conditions is satisfied:
-			// 1) The volume is doing initial restoration and the attached node is running;
-			// 2) The DR/standby volume hasn't been activated/finished activation and the attached node is running;
-			// 3) The latest restore/DR volume is not `Healthy` and needs to be rebuilt.
-			// 4) The volume is being expanding.
-			// 5) The volume is purging snapshots.
-			if !((v.Status.InitialRestorationRequired && v.Status.CurrentNodeID == v.Status.OwnerID) ||
-				(v.Status.IsStandby && v.Status.CurrentNodeID == v.Status.OwnerID) ||
-				(v.Status.Robustness != types.VolumeRobustnessHealthy && cliAPIVersion >= engineapi.CLIVersionFour) ||
-				v.Status.ExpansionRequired || isPurging) {
-				v.Status.CurrentNodeID = ""
-			}
+		} else { // v.Spec.NodeID == ""
 			// users can manually remount the volume and they won't be blocked by this field if remount fails
 			v.Status.RemountRequired = false
 		}
@@ -803,48 +688,20 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			types.VolumeConditionTypeScheduled, types.ConditionStatusTrue, "", "")
 	}
 
-	autoAttachRequired := false
-	// Disable frontend for restoring/DR volumes.
-	if v.Status.InitialRestorationRequired || v.Status.IsStandby {
-		// May need to automatically attach restoring/DR volumes.
-		if v.Status.State == "" || v.Status.State == types.VolumeStateDetached {
-			autoAttachRequired = true
-		}
+	if err := vc.reconcileVolumeSize(v, e, rs, allScheduled); err != nil {
+		return err
 	}
 
-	// Deal with offline expansion.
-	if v.Spec.NodeID == "" && e.Spec.VolumeSize != v.Spec.Size {
-		// The expansion is canceled or hasn't been started
-		if e.Status.CurrentSize == v.Spec.Size {
-			v.Status.ExpansionRequired = false
-			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonCanceledExpansion,
-				"Canceled expanding the volume %v, will automatically detach it", v.Name)
-		} else {
-			logrus.Infof("Starts to attach the volume without frontend for the expansion")
-			autoAttachRequired = true
-			v.Status.ExpansionRequired = true
-		}
-		e.Spec.VolumeSize = v.Spec.Size
-		for _, r := range rs {
-			r.Spec.VolumeSize = v.Spec.Size
-		}
+	if err := vc.checkForAutoAttachment(v, e, rs, allScheduled); err != nil {
+		return err
+	}
+	if err := vc.checkForAutoDetachment(v, e, allScheduled); err != nil {
+		return err
 	}
 
-	// For the following cases, the auto attachment doesn't make sense:
-	//   1. The volume scheduling fails
-	//   2. The attached node is down (e.Status.CurrentState == types.InstanceStateUnknown)
-	if autoAttachRequired && allScheduled && e.Status.CurrentState != types.InstanceStateUnknown {
-		// Do not set v.Status.CurrentNodeID here if the volume is being auto reattached.
-		if v.Status.CurrentNodeID == "" && v.Status.PendingNodeID == "" {
-			// Should use vc.controllerID or v.Status.OwnerID as CurrentNodeID,
-			// otherwise they may be not equal
-			v.Status.CurrentNodeID = v.Status.OwnerID
-		}
-	}
-
-	// Typically, the frontend will be disabled for detached volumes or auto-attached volumes.
-	// The exception is that the frontend should be enabled during the expansion.
-	if autoAttachRequired || e.Spec.RequestedBackupRestore != "" || e.Status.LastRestoredBackup != "" {
+	// The frontend should be disabled for auto attached volumes.
+	// The exception is that the frontend should be enabled for the block device expansion during the offline expansion.
+	if v.Spec.NodeID == "" && v.Status.CurrentNodeID != "" {
 		v.Status.FrontendDisabled = true
 	} else {
 		v.Status.FrontendDisabled = v.Spec.DisableFrontend
@@ -860,18 +717,12 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		v.Status.Robustness = types.VolumeRobustnessFaulted
 		v.Status.CurrentNodeID = ""
 
-		restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
-		if restoreCondition.Status == types.ConditionStatusTrue && restoreCondition.Reason == types.VolumeConditionReasonRestoreInProgress {
-			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-				types.VolumeConditionTypeRestore, types.ConditionStatusFalse, types.VolumeConditionReasonRestoreFailure, "All replica restore failed")
-		}
-
 		autoSalvage, err := vc.ds.GetSettingAsBool(types.SettingNameAutoSalvage)
 		if err != nil {
 			return err
 		}
 		// make sure the volume is detached before automatically salvage
-		if autoSalvage && v.Status.State == types.VolumeStateDetached && restoreCondition.Reason != types.VolumeConditionReasonRestoreFailure {
+		if autoSalvage && v.Status.State == types.VolumeStateDetached && !v.Status.IsStandby && !v.Status.RestoreRequired {
 			lastFailedAt := time.Time{}
 			failedUsableReplicas := map[string]*longhorn.Replica{}
 			dataExists := false
@@ -948,8 +799,17 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		} else {
 			v.Status.State = types.VolumeStateDetaching
 		}
+
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			types.VolumeConditionTypeRestore, types.ConditionStatusFalse, "", "")
+
 		if v.Status.Robustness != types.VolumeRobustnessFaulted {
 			v.Status.Robustness = types.VolumeRobustnessUnknown
+		} else {
+			if v.Status.RestoreRequired || v.Status.IsStandby {
+				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+					types.VolumeConditionTypeRestore, types.ConditionStatusFalse, types.VolumeConditionReasonRestoreFailure, "All replica restore failed and the volume became Faulted")
+			}
 		}
 
 		// check if any replica has been RW yet
@@ -974,16 +834,13 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			if v.Status.Robustness == types.VolumeRobustnessFaulted {
 				e.Spec.LogRequested = true
 			}
-			e.Spec.NodeID = ""
-			e.Spec.DesireState = types.InstanceStateStopped
-			// Need to unset these fields when detaching volume. It's for:
-			//   1. regular restored volume which has completed restoration and is being detaching automatically.
-			//   2. standby volume which has been activated and is being detaching.
-			restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
-			if restoreCondition.Status == types.ConditionStatusFalse && restoreCondition.Reason == "" {
-				e.Spec.RequestedBackupRestore = ""
+			// Prevent this field from being unset when restore/DR volumes crash unexpectedly.
+			if !v.Status.RestoreRequired && !v.Status.IsStandby {
 				e.Spec.BackupVolume = ""
 			}
+			e.Spec.RequestedBackupRestore = ""
+			e.Spec.NodeID = ""
+			e.Spec.DesireState = types.InstanceStateStopped
 		}
 		// must make sure engine stopped first before stopping replicas
 		// otherwise we may corrupt the data
@@ -1116,19 +973,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			return nil
 		}
 
-		if v.Status.InitialRestorationRequired {
-			if e.Status.LastRestoredBackup != "" {
-				// The initial full restoration is complete.
-				v.Status.InitialRestorationRequired = false
-
-				if !v.Status.IsStandby {
-					restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
-					if restoreCondition.Status == types.ConditionStatusTrue && restoreCondition.Reason == types.VolumeConditionReasonRestoreInProgress {
-						v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-							types.VolumeConditionTypeRestore, types.ConditionStatusFalse, "", "")
-					}
-				}
-			}
+		if e.Spec.RequestedBackupRestore != "" {
+			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+				types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
 		}
 
 		if v.Status.ExpansionRequired {
@@ -1403,17 +1250,180 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 	return nil
 }
 
-func (vc *VolumeController) updateEngineForStandbyVolume(v *longhorn.Volume, e *longhorn.Engine) (err error) {
+func (vc *VolumeController) updateRequestedBackupForVolumeRestore(v *longhorn.Volume, e *longhorn.Engine) (err error) {
 	if e == nil {
 		return nil
 	}
 
-	if !v.Spec.Standby {
+	if v.Spec.FromBackup == "" {
+		return nil
+	}
+	if !v.Status.RestoreRequired && !v.Status.IsStandby {
 		return nil
 	}
 
 	if v.Status.LastBackup != "" && v.Status.LastBackup != e.Spec.RequestedBackupRestore {
 		e.Spec.RequestedBackupRestore = v.Status.LastBackup
+	}
+
+	return nil
+}
+
+func (vc *VolumeController) checkAndInitVolumeRestore(v *longhorn.Volume) error {
+	if v.Spec.FromBackup == "" || v.Status.RestoreInitiated {
+		return nil
+	}
+
+	backupTarget, err := manager.GenerateBackupTarget(vc.ds)
+	if err != nil {
+		return err
+	}
+	backup, err := backupTarget.GetBackup(v.Spec.FromBackup)
+	if err != nil {
+		return fmt.Errorf("cannot get backup %v: %v", v.Spec.FromBackup, err)
+	}
+
+	size, err := util.ConvertSize(backup.Size)
+	if err != nil {
+		return fmt.Errorf("cannot get the size of backup %v: %v", v.Spec.FromBackup, err)
+	}
+	v.Status.ActualSize = size
+
+	// If KubernetesStatus is set on Backup, restore it.
+	kubeStatus := &types.KubernetesStatus{}
+	if statusJSON, ok := backup.Labels[types.KubernetesStatusLabel]; ok {
+		if err := json.Unmarshal([]byte(statusJSON), kubeStatus); err != nil {
+			logrus.Warningf("Ignore KubernetesStatus json for volume %v: backup %v: %v",
+				v.Name, backup.Name, err)
+		} else {
+			// We were able to unmarshal KubernetesStatus. Set the Ref fields.
+			if kubeStatus.PVCName != "" && kubeStatus.LastPVCRefAt == "" {
+				kubeStatus.LastPVCRefAt = backup.SnapshotCreated
+			}
+			if len(kubeStatus.WorkloadsStatus) != 0 && kubeStatus.LastPodRefAt == "" {
+				kubeStatus.LastPodRefAt = backup.SnapshotCreated
+			}
+
+			// Do not restore the PersistentVolume fields.
+			kubeStatus.PVName = ""
+			kubeStatus.PVStatus = ""
+		}
+	}
+	v.Status.KubernetesStatus = *kubeStatus
+
+	if v.Spec.Standby {
+		v.Status.IsStandby = true
+	}
+
+	v.Status.RestoreRequired = true
+	v.Status.RestoreInitiated = true
+
+	return nil
+}
+
+func (vc *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, allScheduled bool) error {
+	if e == nil || rs == nil {
+		return nil
+	}
+	if e.Spec.VolumeSize == v.Spec.Size {
+		return nil
+	}
+
+	// The expansion is canceled or hasn't been started
+	if e.Status.CurrentSize == v.Spec.Size {
+		v.Status.ExpansionRequired = false
+		vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonCanceledExpansion,
+			"Canceled expanding the volume %v, will automatically detach it", v.Name)
+	} else {
+		logrus.Infof("Start to expand volume %v from size %v to size %v", v.Name, e.Spec.VolumeSize, v.Spec.Size)
+		v.Status.ExpansionRequired = true
+	}
+
+	e.Spec.VolumeSize = v.Spec.Size
+	for _, r := range rs {
+		r.Spec.VolumeSize = v.Spec.Size
+	}
+
+	return nil
+}
+
+func (vc *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, allScheduled bool) error {
+	if v.Spec.NodeID != "" || v.Status.CurrentNodeID != "" {
+		return nil
+	}
+	if !(v.Status.State == "" || v.Status.State == types.VolumeStateDetached) {
+		return nil
+	}
+	// Do not intervene the auto reattachment workflow during the engine crashing and volume recovery.
+	if v.Status.PendingNodeID != "" {
+		return nil
+	}
+	// It's meaningless to do auto attachment if the volume scheduling fails
+	if !allScheduled {
+		return nil
+	}
+
+	// Do auto attachment for:
+	//   1. restoring/DR volumes.
+	//   2. offline expansion.
+	if v.Status.RestoreRequired || v.Status.IsStandby ||
+		v.Status.ExpansionRequired {
+		// Should use vc.controllerID or v.Status.OwnerID as CurrentNodeID,
+		// otherwise they may be not equal
+		v.Status.CurrentNodeID = v.Status.OwnerID
+	}
+
+	return nil
+}
+
+func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longhorn.Engine, allScheduled bool) error {
+	if v.Spec.NodeID != "" || v.Status.CurrentNodeID == "" || e == nil {
+		return nil
+	}
+
+	if v.Status.ExpansionRequired {
+		return nil
+	}
+
+	// Do auto-detachment for non-restore/DR volumes.
+	if !v.Status.RestoreRequired && !v.Status.IsStandby {
+		v.Status.CurrentNodeID = ""
+		return nil
+	}
+
+	// Do auto-detachment for restore/DR volumes.
+	if v.Status.CurrentNodeID != v.Status.OwnerID {
+		logrus.Infof("Found the restore/DR volume %v is on the down node, will detach it first then re-attach it to restart the restoring", v.Name)
+		v.Status.CurrentNodeID = ""
+		return nil
+	}
+	// Can automatically detach/activate the restore/DR volume on the running node if the following conditions are satisfied:
+	// 1) The restored backup is up-to-date;
+	// 2) The volume is no longer a DR volume;
+	// 3) The restore/DR volume is
+	//   3.1) using the old engine image. And it's still running.
+	//	 3.2) or using the latest engine image without purging snapshots. And
+	//	   3.2.1) it's state `Healthy`;
+	//	   3.2.2) or it's state `Degraded` with schedule failure.
+	cliAPIVersion, err := vc.ds.GetEngineImageCLIAPIVersion(v.Status.CurrentImage)
+	if err != nil {
+		return err
+	}
+	isPurging := false
+	for _, status := range e.Status.PurgeStatus {
+		if status.IsPurging {
+			isPurging = true
+			break
+		}
+	}
+	if e.Spec.RequestedBackupRestore != "" && e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup &&
+		!v.Spec.Standby &&
+		((cliAPIVersion >= engineapi.CLIVersionFour && !isPurging && (v.Status.Robustness == types.VolumeRobustnessHealthy || (v.Status.Robustness == types.VolumeRobustnessDegraded && !allScheduled))) ||
+			(cliAPIVersion < engineapi.CLIVersionFour && (v.Status.Robustness == types.VolumeRobustnessHealthy || v.Status.Robustness == types.VolumeRobustnessDegraded))) {
+		logrus.Infof("Prepare to do auto detachment for restore/DR volume %v", v.Name)
+		v.Status.CurrentNodeID = ""
+		v.Status.IsStandby = false
+		v.Status.RestoreRequired = false
 	}
 
 	return nil
