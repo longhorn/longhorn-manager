@@ -94,23 +94,23 @@ type WorkloadStatus struct {
 }
 
 type VolumeStatus struct {
-	OwnerID                    string               `json:"ownerID"`
-	State                      VolumeState          `json:"state"`
-	Robustness                 VolumeRobustness     `json:"robustness"`
-	CurrentNodeID              string               `json:"currentNodeID"`
-	CurrentImage               string               `json:"currentImage"`
-	KubernetesStatus           KubernetesStatus     `json:"kubernetesStatus"`
-	Conditions                 map[string]Condition `json:"conditions"`
-	LastBackup                 string               `json:"lastBackup"`
-	LastBackupAt               string               `json:"lastBackupAt"`
-	PendingNodeID              string               `json:"pendingNodeID"`
-	FrontendDisabled           bool                 `json:"frontendDisabled"`
-	InitialRestorationRequired bool                 `json:"initialRestorationRequired"`
-	RestoreInitiated           bool                 `json:"restoreInitiated"`
-	RemountRequired            bool                 `json:"remountRequired"`
-	ExpansionRequired          bool                 `json:"expansionRequired"`
-	IsStandby                  bool                 `json:"isStandby"`
-	ActualSize                 int64                `json:"actualSize"`
+	OwnerID           string               `json:"ownerID"`
+	State             VolumeState          `json:"state"`
+	Robustness        VolumeRobustness     `json:"robustness"`
+	CurrentNodeID     string               `json:"currentNodeID"`
+	CurrentImage      string               `json:"currentImage"`
+	KubernetesStatus  KubernetesStatus     `json:"kubernetesStatus"`
+	Conditions        map[string]Condition `json:"conditions"`
+	LastBackup        string               `json:"lastBackup"`
+	LastBackupAt      string               `json:"lastBackupAt"`
+	PendingNodeID     string               `json:"pendingNodeID"`
+	FrontendDisabled  bool                 `json:"frontendDisabled"`
+	RestoreRequired   bool                 `json:"restoreRequired"`
+	RestoreInitiated  bool                 `json:"restoreInitiated"`
+	RemountRequired   bool                 `json:"remountRequired"`
+	ExpansionRequired bool                 `json:"expansionRequired"`
+	IsStandby         bool                 `json:"isStandby"`
+	ActualSize        int64                `json:"actualSize"`
 }
 
 type RecurringJobType string
