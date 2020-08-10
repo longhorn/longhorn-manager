@@ -206,7 +206,7 @@ func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.Eng
 		return nil, err
 	}
 	if len(es) == 0 {
-		return nil, fmt.Errorf("cannot fine engine")
+		return nil, fmt.Errorf("cannot find engine")
 	}
 	if len(es) != 1 {
 		return nil, fmt.Errorf("more than one engine exists")
