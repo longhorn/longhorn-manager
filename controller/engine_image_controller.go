@@ -356,6 +356,9 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return err
 	}
 
+	// will only become ready for the first time if all the following functions succeed
+	engineImage.Status.State = types.EngineImageStateReady
+
 	if err := engineapi.CheckCLICompatibilty(engineImage.Status.CLIAPIVersion, engineImage.Status.CLIAPIMinVersion); err != nil {
 		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, types.EngineImageConditionTypeReady, types.ConditionStatusFalse, types.EngineImageConditionTypeReadyReasonBinary, "incompatible")
 		engineImage.Status.State = types.EngineImageStateIncompatible
@@ -370,18 +373,11 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return err
 	}
 
-	// will only become ready for the first time if all the following functions succeed
-	if engineImage.Status.State != types.EngineImageStateIncompatible && engineImage.DeletionTimestamp == nil {
-		engineImage.Status.State = types.EngineImageStateReady
-
-		engineImage.Status.Conditions = types.SetConditionAndRecord(engineImage.Status.Conditions,
-			types.EngineImageConditionTypeReady, types.ConditionStatusTrue,
-			"", fmt.Sprintf("Engine image %v (%v) become ready", engineImage.Name, engineImage.Spec.Image),
-			ic.eventRecorder, engineImage, v1.EventTypeNormal)
-	}
-
 	if engineImage.Status.State != types.EngineImageStateIncompatible && !reflect.DeepEqual(types.GetEngineImageLabels(engineImage.Name), ds.Labels) {
 		engineImage.Status.State = types.EngineImageStateDeploying
+		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions,
+			types.EngineImageConditionTypeReady, types.ConditionStatusFalse,
+			types.EngineImageConditionTypeReadyReasonDaemonSet, fmt.Sprintf("Correcting the DaemonSet pod label for Engine image %v (%v)", engineImage.Name, engineImage.Spec.Image))
 		// Cannot use update to correct the labels. The label update for the DaemonSet won’t be applied to the its pods.
 		// The related issue: https://github.com/longhorn/longhorn/issues/769
 		if err := ic.ds.DeleteDaemonSet(dsName); err != nil && !datastore.ErrorIsNotFound(err) {
@@ -389,6 +385,13 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		}
 		logrus.Infof("Removed DaemonSet %v with mismatching labels for engine image %v (%v). The DaemonSet with correct labels will be recreated automatically after deletion",
 			dsName, engineImage.Name, engineImage.Spec.Image)
+	}
+
+	if engineImage.Status.State == types.EngineImageStateReady {
+		engineImage.Status.Conditions = types.SetConditionAndRecord(engineImage.Status.Conditions,
+			types.EngineImageConditionTypeReady, types.ConditionStatusTrue,
+			"", fmt.Sprintf("Engine image %v (%v) become ready", engineImage.Name, engineImage.Spec.Image),
+			ic.eventRecorder, engineImage, v1.EventTypeNormal)
 	}
 
 	return nil
@@ -408,19 +411,7 @@ func updateEngineImageVersion(ei *longhorn.EngineImage) error {
 	}
 	version, err := client.Version(true)
 	if err != nil {
-		logrus.Warnf("cannot get engine version for %v (%v): %v", ei.Name, ei.Spec.Image, err)
-		version = &engineapi.EngineVersion{
-			ClientVersion: &types.EngineVersionDetails{},
-			ServerVersion: nil,
-		}
-		version.ClientVersion.Version = "ei.Spec.Image"
-		version.ClientVersion.GitCommit = "unknown"
-		version.ClientVersion.BuildDate = "unknown"
-		version.ClientVersion.CLIAPIVersion = types.InvalidEngineVersion
-		version.ClientVersion.CLIAPIMinVersion = types.InvalidEngineVersion
-		version.ClientVersion.ControllerAPIVersion = types.InvalidEngineVersion
-		version.ClientVersion.DataFormatVersion = types.InvalidEngineVersion
-		version.ClientVersion.DataFormatMinVersion = types.InvalidEngineVersion
+		return errors.Wrapf(err, "cannot get engine version for %v (%v)", ei.Name, ei.Spec.Image)
 	}
 
 	ei.Status.EngineVersionDetails = *version.ClientVersion
@@ -613,7 +604,8 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 								Handler: v1.Handler{
 									Exec: &v1.ExecAction{
 										Command: []string{
-											"ls", "/data/longhorn",
+											"sh", "-c",
+											"ls /data/longhorn && /data/longhorn version --client-only",
 										},
 									},
 								},
