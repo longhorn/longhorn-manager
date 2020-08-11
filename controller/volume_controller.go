@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
 	"time"
 
@@ -375,6 +376,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 
 	if len(engines) <= 1 {
 		if err := vc.ReconcileEngineReplicaState(volume, engine, replicas); err != nil {
+			return err
+		}
+
+		if err := vc.reconcileLocalReplica(volume, engine, replicas); err != nil {
 			return err
 		}
 
@@ -1064,6 +1069,176 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	return nil
 }
 
+func (vc *VolumeController) reconcileLocalReplica(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
+	if isDataLocalityDisabled(v) {
+		return nil
+	}
+
+	if v.Status.State != types.VolumeStateAttached {
+		return nil
+	}
+
+	if e == nil {
+		return fmt.Errorf("BUG: ReconcileLocalReplica needs a valid engine")
+	}
+
+	if !vc.isSafeToModifyReplica(v, e, rs) {
+		return nil
+	}
+
+	if !hasLocalReplicaOnSameNodeAsEngine(e, rs) {
+		if _, err := vc.addLocalReplicaOnSameNodeAsEngine(v, e, rs); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// check if there are too many healthy replicas
+	healthyCount := 0
+	for _, r := range rs {
+		if r.Spec.FailedAt == "" && r.Spec.HealthyAt != "" {
+			healthyCount++
+		}
+	}
+
+	if healthyCount <= v.Spec.NumberOfReplicas {
+		return nil
+	}
+
+	// we prefer to delete replicas on the same disk, then replicas on the same node, then replicas on the same zone
+	rNames, err := vc.getPreferredReplicaCandidatesForDeletion(rs)
+	if err != nil {
+		return err
+	}
+
+	// Randomly delete extra non-local healthy replicas in the preferred candidate list rNames
+	// Sometime reconcileLocalReplica() is called more than once with the same input (v,e,rs).
+	// To make the deleting operation idempotent and prevent deleting more replica than needed,
+	// we always delete the replica with the smallest name.
+	sort.Strings(rNames)
+	for _, rName := range rNames {
+		r := rs[rName]
+		if r.Spec.NodeID != e.Spec.NodeID {
+			return vc.deleteReplica(r, rs)
+		}
+	}
+
+	return nil
+}
+
+func (vc *VolumeController) getPreferredReplicaCandidatesForDeletion(rs map[string]*longhorn.Replica) ([]string, error) {
+	diskToReplicaMap := make(map[string][]string)
+	nodeToReplicaMap := make(map[string][]string)
+	zoneToReplicaMap := make(map[string][]string)
+
+	nodeList, err := vc.ds.ListNodes()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, r := range rs {
+		diskToReplicaMap[r.Spec.NodeID+r.Spec.DiskID] = append(diskToReplicaMap[r.Spec.NodeID+r.Spec.DiskID], r.Name)
+		nodeToReplicaMap[r.Spec.NodeID] = append(nodeToReplicaMap[r.Spec.NodeID], r.Name)
+		if node, ok := nodeList[r.Spec.NodeID]; ok {
+			zoneToReplicaMap[node.Status.Zone] = append(zoneToReplicaMap[node.Status.Zone], r.Name)
+		}
+	}
+
+	var deletionCandidates []string
+
+	// prefer to delete replicas on the same disk
+	deletionCandidates = findValueWithBiggestLength(diskToReplicaMap)
+	if len(deletionCandidates) > 1 {
+		return deletionCandidates, nil
+	}
+
+	// if all replicas are on different disks, prefer to delete replicas on the same node
+	deletionCandidates = findValueWithBiggestLength(nodeToReplicaMap)
+	if len(deletionCandidates) > 1 {
+		return deletionCandidates, nil
+	}
+
+	// if all replicas are on different nodes, prefer to delete replicas on the same zone
+	deletionCandidates = findValueWithBiggestLength(zoneToReplicaMap)
+	if len(deletionCandidates) > 1 {
+		return deletionCandidates, nil
+	}
+
+	// if all replicas are on different zones, return all replicas' names in the input RS
+	deletionCandidates = make([]string, 0, len(rs))
+	for rName := range rs {
+		deletionCandidates = append(deletionCandidates, rName)
+	}
+	return deletionCandidates, nil
+}
+
+func findValueWithBiggestLength(m map[string][]string) []string {
+	targetKey, currentMax := "", 0
+	for k, v := range m {
+		if len(v) > currentMax {
+			targetKey, currentMax = k, len(v)
+		}
+	}
+	return m[targetKey]
+}
+
+func isDataLocalityDisabled(v *longhorn.Volume) bool {
+	return string(v.Spec.DataLocality) == "" || v.Spec.DataLocality == types.DataLocalityDisabled
+}
+
+// hasLocalReplicaOnSameNodeAsEngine returns whether there exist a replica on the same node as engine
+func hasLocalReplicaOnSameNodeAsEngine(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
+	for _, r := range rs {
+		if r.Spec.NodeID == e.Spec.NodeID {
+			return true
+		}
+	}
+	return false
+}
+
+// return true if successfully added, false otherwise
+func (vc *VolumeController) addLocalReplicaOnSameNodeAsEngine(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
+	// Create a new replica struct. We don't create a replica in DS using createReplica() directly
+	// because we may need to delete the new replica if it fails to ScheduleReplicaToNode.
+	// This prevent UI from repeatedly show creating/deleting the new replica
+	replicaStruct := vc.createReplicaManifest(v, e, rs)
+
+	// attempt schedule the new replica struct to the same node as engine
+	scheduledReplica, err := vc.scheduler.ScheduleReplicaToNode(replicaStruct, rs, v, e.Spec.NodeID)
+	if err != nil {
+		return false, err
+	}
+	// fail to schedule
+	if scheduledReplica == nil {
+		return false, nil
+	}
+
+	// save the new replica to DS, the new replica will be started by ReconcileVolumeState() later
+	r, err := vc.ds.CreateReplica(scheduledReplica)
+	if err != nil {
+		return false, err
+	}
+	rs[r.Name] = r
+	logrus.Infof("Added local replica %v of volume %v on the same node %v as engine.", r.Name, v.Name, e.Spec.NodeID)
+
+	return true, nil
+}
+
+// check if it is a safe time to create/delete replicas
+func (vc *VolumeController) isSafeToModifyReplica(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
+	if vc.isVolumeUpgrading(v) {
+		return false
+	}
+	if !vc.hasEngineStatusSynced(e, rs) {
+		return false
+	}
+	currentRebuilding := getRebuildingReplicaCount(e)
+	if currentRebuilding != 0 {
+		return false
+	}
+	return true
+}
+
 // replenishReplicas will keep replicas count to v.Spec.NumberOfReplicas
 // It will count all the potentially usable replicas, since some replicas maybe
 // blank or in rebuilding state
@@ -1541,6 +1716,28 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 	}
 
 	return vc.ds.CreateReplica(replica)
+}
+
+func (vc *VolumeController) createReplicaManifest(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) *longhorn.Replica {
+	replica := &longhorn.Replica{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            types.GenerateReplicaNameForVolume(v.Name),
+			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
+		},
+		Spec: types.ReplicaSpec{
+			InstanceSpec: types.InstanceSpec{
+				VolumeName:  v.Name,
+				VolumeSize:  v.Spec.Size,
+				EngineImage: v.Status.CurrentImage,
+				DesireState: types.InstanceStateStopped,
+			},
+			EngineName: e.Name,
+			Active:     true,
+			BaseImage:  v.Spec.BaseImage,
+		},
+	}
+
+	return replica
 }
 
 func (vc *VolumeController) duplicateReplica(r *longhorn.Replica, v *longhorn.Volume) *longhorn.Replica {

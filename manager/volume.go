@@ -190,6 +190,18 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		}
 		logrus.Infof("Use the default number of replicas %v", spec.NumberOfReplicas)
 	}
+
+	if string(spec.DataLocality) == "" {
+		defaultDataLocality, err := m.GetSettingValueExisted(types.SettingNameDefaultDataLocality)
+		if err != nil {
+			return nil, errors.Wrapf(err, "cannot get valid mode for setting default data locality for volume: %v", name)
+		}
+		spec.DataLocality = types.DataLocality(defaultDataLocality)
+	}
+	if err := types.ValidateDataLocality(spec.DataLocality); err != nil {
+		return nil, errors.Wrapf(err, "cannot create volume with data locality %v", spec.DataLocality)
+	}
+
 	defaultEngineImage, err := m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if defaultEngineImage == "" {
 		return nil, fmt.Errorf("BUG: Invalid empty Setting.EngineImage")
@@ -231,6 +243,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			EngineImage:         defaultEngineImage,
 			FromBackup:          spec.FromBackup,
 			NumberOfReplicas:    spec.NumberOfReplicas,
+			DataLocality:        spec.DataLocality,
 			StaleReplicaTimeout: spec.StaleReplicaTimeout,
 			BaseImage:           spec.BaseImage,
 			RecurringJobs:       spec.RecurringJobs,
@@ -696,5 +709,35 @@ func (m *VolumeManager) UpdateReplicaCount(name string, count int) (v *longhorn.
 		return nil, err
 	}
 	logrus.Debugf("Updated volume %v replica count from %v to %v", v.Name, oldCount, v.Spec.NumberOfReplicas)
+	return v, nil
+}
+
+func (m *VolumeManager) UpdateDataLocality(name string, dataLocality types.DataLocality) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update data locality for volume %v", name)
+	}()
+
+	if err := types.ValidateDataLocality(dataLocality); err != nil {
+		return nil, err
+	}
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.DataLocality == dataLocality {
+		logrus.Debugf("Volume %v already has data locality %v", v.Name, dataLocality)
+		return v, nil
+	}
+
+	oldDataLocality := v.Spec.DataLocality
+	v.Spec.DataLocality = dataLocality
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Debugf("Updated volume %v data locality from %v to %v", v.Name, oldDataLocality, v.Spec.DataLocality)
 	return v, nil
 }

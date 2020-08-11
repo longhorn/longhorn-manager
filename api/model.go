@@ -28,6 +28,7 @@ type Volume struct {
 	DisableFrontend     bool                   `json:"disableFrontend"`
 	FromBackup          string                 `json:"fromBackup"`
 	NumberOfReplicas    int                    `json:"numberOfReplicas"`
+	DataLocality        types.DataLocality     `json:"dataLocality"`
 	StaleReplicaTimeout int                    `json:"staleReplicaTimeout"`
 	State               types.VolumeState      `json:"state"`
 	Robustness          types.VolumeRobustness `json:"robustness"`
@@ -158,6 +159,10 @@ type NodeInput struct {
 
 type UpdateReplicaCountInput struct {
 	ReplicaCount int `json:"replicaCount"`
+}
+
+type UpdateDataLocalityInput struct {
+	DataLocality string `json:"dataLocality"`
 }
 
 type PVCreateInput struct {
@@ -321,6 +326,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("diskUpdate", types.DiskSpec{})
 	schemas.AddType("nodeInput", NodeInput{})
 	schemas.AddType("UpdateReplicaCountInput", UpdateReplicaCountInput{})
+	schemas.AddType("UpdateDataLocalityInput", UpdateDataLocalityInput{})
 	schemas.AddType("workloadStatus", types.WorkloadStatus{})
 
 	schemas.AddType("PVCreateInput", PVCreateInput{})
@@ -527,10 +533,15 @@ func volumeSchema(volume *client.Schema) {
 			Input: "UpdateReplicaCountInput",
 		},
 
+		"updateDataLocality": {
+			Input: "UpdateDataLocalityInput",
+		},
+
 		"pvCreate": {
 			Input:  "PVCreateInput",
 			Output: "volume",
 		},
+
 		"pvcCreate": {
 			Input:  "PVCCreateInput",
 			Output: "volume",
@@ -576,6 +587,11 @@ func volumeSchema(volume *client.Schema) {
 	volumeNumberOfReplicas.Required = true
 	volumeNumberOfReplicas.Default = 2
 	volume.ResourceFields["numberOfReplicas"] = volumeNumberOfReplicas
+
+	volumeDataLocality := volume.ResourceFields["dataLocality"]
+	volumeDataLocality.Create = true
+	volumeDataLocality.Default = types.DataLocalityDisabled
+	volume.ResourceFields["dataLocality"] = volumeDataLocality
 
 	volumeStaleReplicaTimeout := volume.ResourceFields["staleReplicaTimeout"]
 	volumeStaleReplicaTimeout.Create = true
@@ -817,6 +833,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		DisableFrontend:     v.Spec.DisableFrontend,
 		FromBackup:          v.Spec.FromBackup,
 		NumberOfReplicas:    v.Spec.NumberOfReplicas,
+		DataLocality:        v.Spec.DataLocality,
 		RecurringJobs:       v.Spec.RecurringJobs,
 		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
 		Created:             v.CreationTimestamp.String(),
@@ -863,6 +880,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["engineUpgrade"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
+			actions["updateDataLocality"] = struct{}{}
 		case types.VolumeStateAttaching:
 			actions["detach"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
@@ -880,6 +898,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["replicaRemove"] = struct{}{}
 			actions["engineUpgrade"] = struct{}{}
 			actions["updateReplicaCount"] = struct{}{}
+			actions["updateDataLocality"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}

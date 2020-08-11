@@ -28,6 +28,13 @@ const (
 	VolumeFrontendEmpty    = VolumeFrontend("")
 )
 
+type DataLocality string
+
+const (
+	DataLocalityDisabled   = DataLocality("disabled")
+	DataLocalityBestEffort = DataLocality("best-effort")
+)
+
 type ConditionStatus string
 
 const (
@@ -61,6 +68,7 @@ type VolumeSpec struct {
 	Frontend            VolumeFrontend `json:"frontend"`
 	FromBackup          string         `json:"fromBackup"`
 	NumberOfReplicas    int            `json:"numberOfReplicas"`
+	DataLocality        DataLocality   `json:"dataLocality"`
 	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`
 	NodeID              string         `json:"nodeID"`
 	EngineImage         string         `json:"engineImage"`
