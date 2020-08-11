@@ -186,6 +186,11 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.copyCurrentToExpected()
 	tc.expectedEngineImage.Status.State = types.EngineImageStateDeploying
 	tc.expectedDaemonSet = nil
+	tc.expectedEngineImage.Status.Conditions[types.EngineImageConditionTypeReady] = types.Condition{
+		Type:   types.EngineImageConditionTypeReady,
+		Status: types.ConditionStatusFalse,
+		Reason: types.EngineImageConditionTypeReadyReasonDaemonSet,
+	}
 	testCases["DaemonSet with deprecated labels is found"] = tc
 
 	tc = getEngineImageControllerTestTemplate()
