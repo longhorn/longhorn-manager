@@ -299,6 +299,13 @@ func ValidateReplicaCount(count int) error {
 	return nil
 }
 
+func ValidateDataLocality(mode DataLocality) error {
+	if mode != DataLocalityDisabled && mode != DataLocalityBestEffort {
+		return fmt.Errorf("invalid data locality mode: %v", mode)
+	}
+	return nil
+}
+
 func GetDaemonSetNameFromEngineImageName(engineImageName string) string {
 	return "engine-image-" + engineImageName
 }

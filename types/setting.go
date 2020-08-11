@@ -49,6 +49,7 @@ const (
 	SettingNameUpgradeChecker                    = SettingName("upgrade-checker")
 	SettingNameLatestLonghornVersion             = SettingName("latest-longhorn-version")
 	SettingNameDefaultReplicaCount               = SettingName("default-replica-count")
+	SettingNameDefaultDataLocality               = SettingName("default-data-locality")
 	SettingNameGuaranteedEngineCPU               = SettingName("guaranteed-engine-cpu")
 	SettingNameDefaultLonghornStaticStorageClass = SettingName("default-longhorn-static-storage-class")
 	SettingNameBackupstorePollInterval           = SettingName("backupstore-poll-interval")
@@ -78,6 +79,7 @@ var (
 		SettingNameUpgradeChecker,
 		SettingNameLatestLonghornVersion,
 		SettingNameDefaultReplicaCount,
+		SettingNameDefaultDataLocality,
 		SettingNameGuaranteedEngineCPU,
 		SettingNameDefaultLonghornStaticStorageClass,
 		SettingNameBackupstorePollInterval,
@@ -128,6 +130,7 @@ var (
 		SettingNameUpgradeChecker:                    SettingDefinitionUpgradeChecker,
 		SettingNameLatestLonghornVersion:             SettingDefinitionLatestLonghornVersion,
 		SettingNameDefaultReplicaCount:               SettingDefinitionDefaultReplicaCount,
+		SettingNameDefaultDataLocality:               SettingDefinitionDefaultDataLocality,
 		SettingNameGuaranteedEngineCPU:               SettingDefinitionGuaranteedEngineCPU,
 		SettingNameDefaultLonghornStaticStorageClass: SettingDefinitionDefaultLonghornStaticStorageClass,
 		SettingNameBackupstorePollInterval:           SettingDefinitionBackupstorePollInterval,
@@ -268,6 +271,24 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "3",
+	}
+
+	SettingDefinitionDefaultDataLocality = SettingDefinition{
+		DisplayName: "Default Data Locality",
+		Description: "We say a Longhorn volume has data locality if there is a local replica of the volume on the same node as the pod which is using the volume.\n\n" +
+			"This setting specifies the default data locality when a volume is created from the Longhorn UI. For Kubernetes configuration, update the `dataLocality` in the StorageClass\n\n" +
+			"The available modes are: \n\n" +
+			"- **disable** is the default mode. There may be a local replica of the volume on the same node as the consuming pod or there may not be. Longhorn doesn't do anything\n" +
+			"- **best-effort** instructs Longhorn to try to keep a local replica on the same node as the consuming pod. If Longhorn cannot keep the local replica (due to not having enough disk space, incompatible disk tags, etc...), Longhorn does not stop the volume.\n",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		Default:  string(DataLocalityDisabled),
+		Choices: []string{
+			string(DataLocalityDisabled),
+			string(DataLocalityBestEffort),
+		},
 	}
 
 	SettingDefinitionGuaranteedEngineCPU = SettingDefinition{
@@ -499,6 +520,11 @@ func ValidateInitSetting(name, value string) (err error) {
 		}
 	case SettingNameNodeDownPodDeletionPolicy:
 		var choices = SettingDefinitions[SettingNameNodeDownPodDeletionPolicy].Choices
+		if !isValidChoice(choices, value) {
+			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, choices)
+		}
+	case SettingNameDefaultDataLocality:
+		var choices = SettingDefinitions[SettingNameDefaultDataLocality].Choices
 		if !isValidChoice(choices, value) {
 			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, choices)
 		}

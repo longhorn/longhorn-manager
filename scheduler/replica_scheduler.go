@@ -70,6 +70,41 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	return replica, nil
 }
 
+// ScheduleReplicaToNode will return (nil, nil) for unschedulable replica
+func (rcs *ReplicaScheduler) ScheduleReplicaToNode(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, nodeID string) (*longhorn.Replica, error) {
+	// only called when replica is starting for the first time
+	if replica.Spec.NodeID != "" {
+		return nil, fmt.Errorf("BUG: Replica %v has been scheduled to node %v", replica.Name, replica.Spec.NodeID)
+	}
+
+	// get all hosts
+	schedulableNodesInfo, err := rcs.getNodeInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	node, exist := schedulableNodesInfo[nodeID]
+	if !exist {
+		return nil, nil
+	}
+
+	nodeInfo := make(map[string]*longhorn.Node)
+	nodeInfo[nodeID] = node
+
+	// find proper disk
+	diskCandidates := rcs.chooseDiskCandidates(nodeInfo, replicas, replica, volume)
+
+	// there's no disk that fit for current replica
+	if len(diskCandidates) == 0 {
+		return nil, nil
+	}
+
+	// schedule replica to disk
+	rcs.scheduleReplicaToDisk(replica, diskCandidates)
+
+	return replica, nil
+}
+
 func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.Node, replicas map[string]*longhorn.Replica, replica *longhorn.Replica, volume *longhorn.Volume) map[string]*Disk {
 	nodeSoftAntiAffinity, err :=
 		rcs.ds.GetSettingAsBool(types.SettingNameReplicaSoftAntiAffinity)
