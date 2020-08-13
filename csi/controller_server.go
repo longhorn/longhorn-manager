@@ -209,7 +209,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Error(codes.NotFound, msg)
 	}
 
-	if existVol.InitialRestorationRequired {
+	if existVol.RestoreRequired {
 		return nil, status.Errorf(codes.Aborted, "The volume %s is restoring backup", req.GetVolumeId())
 	}
 
