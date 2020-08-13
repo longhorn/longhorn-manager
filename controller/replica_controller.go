@@ -448,7 +448,7 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*types.InstanceProces
 func (rc *ReplicaController) LogInstance(obj interface{}) (*imapi.LogStream, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
-		return nil, fmt.Errorf("BUG: invalid object for reploca process log: %v", obj)
+		return nil, fmt.Errorf("BUG: invalid object for replica process log: %v", obj)
 	}
 
 	im, err := rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
