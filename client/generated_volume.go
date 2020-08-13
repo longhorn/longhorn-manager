@@ -29,8 +29,6 @@ type Volume struct {
 
 	Frontend string `json:"frontend,omitempty" yaml:"frontend,omitempty"`
 
-	InitialRestorationRequired bool `json:"initialRestorationRequired,omitempty" yaml:"initial_restoration_required,omitempty"`
-
 	KubernetesStatus KubernetesStatus `json:"kubernetesStatus,omitempty" yaml:"kubernetes_status,omitempty"`
 
 	LastBackup string `json:"lastBackup,omitempty" yaml:"last_backup,omitempty"`
@@ -52,6 +50,8 @@ type Volume struct {
 	RecurringJobs []RecurringJob `json:"recurringJobs,omitempty" yaml:"recurring_jobs,omitempty"`
 
 	Replicas []Replica `json:"replicas,omitempty" yaml:"replicas,omitempty"`
+
+	RestoreRequired bool `json:"restoreRequired,omitempty" yaml:"restore_required,omitempty"`
 
 	RestoreStatus []RestoreStatus `json:"restoreStatus,omitempty" yaml:"restore_status,omitempty"`
 
