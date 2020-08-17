@@ -1341,7 +1341,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 				continue
 			}
 			if r.Status.Port == 0 {
-				logrus.Errorf("BUG: replica %v is running but IP is empty", r.Name)
+				logrus.Errorf("BUG: replica %v is running but port is 0", r.Name)
 				continue
 			}
 			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
