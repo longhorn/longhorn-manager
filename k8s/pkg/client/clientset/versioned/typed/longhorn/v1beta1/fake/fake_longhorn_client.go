@@ -28,6 +28,10 @@ type FakeLonghornV1beta1 struct {
 	*testing.Fake
 }
 
+func (c *FakeLonghornV1beta1) Disks(namespace string) v1beta1.DiskInterface {
+	return &FakeDisks{c, namespace}
+}
+
 func (c *FakeLonghornV1beta1) Engines(namespace string) v1beta1.EngineInterface {
 	return &FakeEngines{c, namespace}
 }

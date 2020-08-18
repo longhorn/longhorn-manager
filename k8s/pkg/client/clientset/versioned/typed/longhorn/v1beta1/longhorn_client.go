@@ -27,6 +27,7 @@ import (
 
 type LonghornV1beta1Interface interface {
 	RESTClient() rest.Interface
+	DisksGetter
 	EnginesGetter
 	EngineImagesGetter
 	InstanceManagersGetter
@@ -39,6 +40,10 @@ type LonghornV1beta1Interface interface {
 // LonghornV1beta1Client is used to interact with features provided by the longhorn.io group.
 type LonghornV1beta1Client struct {
 	restClient rest.Interface
+}
+
+func (c *LonghornV1beta1Client) Disks(namespace string) DiskInterface {
+	return newDisks(c, namespace)
 }
 
 func (c *LonghornV1beta1Client) Engines(namespace string) EngineInterface {

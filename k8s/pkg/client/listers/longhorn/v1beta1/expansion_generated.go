@@ -18,6 +18,14 @@ limitations under the License.
 
 package v1beta1
 
+// DiskListerExpansion allows custom methods to be added to
+// DiskLister.
+type DiskListerExpansion interface{}
+
+// DiskNamespaceListerExpansion allows custom methods to be added to
+// DiskNamespaceLister.
+type DiskNamespaceListerExpansion interface{}
+
 // EngineListerExpansion allows custom methods to be added to
 // EngineLister.
 type EngineListerExpansion interface{}

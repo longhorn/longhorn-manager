@@ -18,6 +18,8 @@ limitations under the License.
 
 package v1beta1
 
+type DiskExpansion interface{}
+
 type EngineExpansion interface{}
 
 type EngineImageExpansion interface{}

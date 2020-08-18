@@ -24,6 +24,8 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
+	// Disks returns a DiskInformer.
+	Disks() DiskInformer
 	// Engines returns a EngineInformer.
 	Engines() EngineInformer
 	// EngineImages returns a EngineImageInformer.
@@ -49,6 +51,11 @@ type version struct {
 // New returns a new Interface.
 func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakListOptions internalinterfaces.TweakListOptionsFunc) Interface {
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
+}
+
+// Disks returns a DiskInformer.
+func (v *version) Disks() DiskInformer {
+	return &diskInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Engines returns a EngineInformer.
