@@ -34,7 +34,7 @@ rules:
     resources: ["csidrivers"]
     verbs: ["*"]
   - apiGroups: ["longhorn.io"]
-    resources: ["volumes", "engines", "replicas", "settings", "engineimages", "nodes", "instancemanagers"]
+    resources: ["volumes", "engines", "replicas", "settings", "engineimages", "nodes", "disks", "instancemanagers"]
     verbs: ["*"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

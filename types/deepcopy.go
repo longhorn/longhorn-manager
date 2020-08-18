@@ -102,54 +102,59 @@ func (e *EngineStatus) DeepCopyInto(to *EngineStatus) {
 
 func (n *NodeSpec) DeepCopyInto(to *NodeSpec) {
 	*to = *n
-	if n.Disks != nil {
-		to.Disks = make(map[string]DiskSpec)
-		for key, value := range n.Disks {
-			toDisk := value
-			if value.Tags != nil {
-				toDisk.Tags = make([]string, len(value.Tags))
-				for i := 0; i < len(value.Tags); i++ {
-					toDisk.Tags[i] = value.Tags[i]
-				}
-			}
-			to.Disks[key] = toDisk
-		}
-	}
 	if n.Tags != nil {
 		to.Tags = make([]string, len(n.Tags))
 		for i := 0; i < len(n.Tags); i++ {
 			to.Tags[i] = n.Tags[i]
 		}
 	}
+	if n.DiskPathMap != nil {
+		to.DiskPathMap = make(map[string]struct{})
+		for key, value := range n.DiskPathMap {
+			to.DiskPathMap[key] = value
+		}
+	}
 }
 
 func (n *NodeStatus) DeepCopyInto(to *NodeStatus) {
 	*to = *n
-	if n.DiskStatus == nil {
-		return
-	}
-	to.DiskStatus = make(map[string]*DiskStatus)
-	for key, value := range n.DiskStatus {
-		toDiskStatus := &DiskStatus{}
-		*toDiskStatus = *value
-		to.DiskStatus[key] = toDiskStatus
-	}
 	if n.Conditions != nil {
 		to.Conditions = make(map[string]Condition)
 		for key, value := range n.Conditions {
 			to.Conditions[key] = value
 		}
 	}
+	if n.DiskPathIDMap != nil {
+		to.DiskPathIDMap = make(map[string]string)
+		for key, value := range n.DiskPathIDMap {
+			to.DiskPathIDMap[key] = value
+		}
+	}
 }
 
-func (n *DiskStatus) DeepCopyInto(to *DiskStatus) {
-	*to = *n
-	if n.Conditions == nil {
-		return
+func (d *DiskSpec) DeepCopyInto(to *DiskSpec) {
+	*to = *d
+	if d.Tags != nil {
+		to.Tags = make([]string, len(d.Tags))
+		for i := 0; i < len(d.Tags); i++ {
+			to.Tags[i] = d.Tags[i]
+		}
 	}
-	to.Conditions = make(map[string]Condition)
-	for key, value := range n.Conditions {
-		to.Conditions[key] = value
+}
+
+func (d *DiskStatus) DeepCopyInto(to *DiskStatus) {
+	*to = *d
+	if d.Conditions != nil {
+		to.Conditions = make(map[string]Condition)
+		for key, value := range d.Conditions {
+			to.Conditions[key] = value
+		}
+	}
+	if d.ScheduledReplica != nil {
+		to.ScheduledReplica = make(map[string]int64)
+		for key, value := range d.ScheduledReplica {
+			to.ScheduledReplica[key] = value
+		}
 	}
 }
 

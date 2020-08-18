@@ -130,3 +130,21 @@ type InstanceManagerList struct {
 	metav1.ListMeta `json:"metadata"`
 	Items           []InstanceManager `json:"items"`
 }
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type Disk struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata"`
+	Spec              types.DiskSpec   `json:"spec"`
+	Status            types.DiskStatus `json:"status"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type DiskList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+	Items           []Disk `json:"items"`
+}
