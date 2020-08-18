@@ -32,18 +32,22 @@ const (
 	FlagCSIAttacherImage            = "csi-attacher-image"
 	FlagCSIProvisionerImage         = "csi-provisioner-image"
 	FlagCSIResizerImage             = "csi-resizer-image"
+	FlagCSISnapshotterImage         = "csi-snapshotter-image"
 	FlagCSINodeDriverRegistrarImage = "csi-node-driver-registrar-image"
 	EnvCSIAttacherImage             = "CSI_ATTACHER_IMAGE"
 	EnvCSIProvisionerImage          = "CSI_PROVISIONER_IMAGE"
 	EnvCSIResizerImage              = "CSI_RESIZER_IMAGE"
+	EnvCSISnapshotterImage          = "CSI_SNAPSHOTTER_IMAGE"
 	EnvCSINodeDriverRegistrarImage  = "CSI_NODE_DRIVER_REGISTRAR_IMAGE"
 
 	FlagCSIAttacherReplicaCount    = "csi-attacher-replica-count"
 	FlagCSIProvisionerReplicaCount = "csi-provisioner-replica-count"
 	FlagCSIResizerReplicaCount     = "csi-resizer-replica-count"
+	FlagCSISnapshotterReplicaCount = "csi-snapshotter-replica-count"
 	EnvCSIAttacherReplicaCount     = "CSI_ATTACHER_REPLICA_COUNT"
 	EnvCSIProvisionerReplicaCount  = "CSI_PROVISIONER_REPLICA_COUNT"
 	EnvCSIResizerReplicaCount      = "CSI_RESIZER_REPLICA_COUNT"
+	EnvCSISnapshotterReplicaCount  = "CSI_SNAPSHOTTER_REPLICA_COUNT"
 )
 
 func DeployDriverCmd() cli.Command {
@@ -98,6 +102,18 @@ func DeployDriverCmd() cli.Command {
 				Usage:  "Specify number of CSI resizer replicas",
 				EnvVar: EnvCSIResizerReplicaCount,
 				Value:  csi.DefaultCSIResizerReplicaCount,
+			},
+			cli.StringFlag{
+				Name:   FlagCSISnapshotterImage,
+				Usage:  "Specify CSI snapshotter image",
+				EnvVar: EnvCSISnapshotterImage,
+				Value:  csi.DefaultCSISnapshotterImage,
+			},
+			cli.IntFlag{
+				Name:   FlagCSISnapshotterReplicaCount,
+				Usage:  "Specify number of CSI snapshotter replicas",
+				EnvVar: EnvCSISnapshotterReplicaCount,
+				Value:  csi.DefaultCSISnapshotterReplicaCount,
 			},
 			cli.StringFlag{
 				Name:   FlagCSINodeDriverRegistrarImage,
@@ -175,9 +191,11 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 	csiAttacherImage := c.String(FlagCSIAttacherImage)
 	csiProvisionerImage := c.String(FlagCSIProvisionerImage)
 	csiResizerImage := c.String(FlagCSIResizerImage)
+	csiSnapshotterImage := c.String(FlagCSISnapshotterImage)
 	csiNodeDriverRegistrarImage := c.String(FlagCSINodeDriverRegistrarImage)
 	csiAttacherReplicaCount := c.Int(FlagCSIAttacherReplicaCount)
 	csiProvisionerReplicaCount := c.Int(FlagCSIProvisionerReplicaCount)
+	csiSnapshotterReplicaCount := c.Int(FlagCSISnapshotterReplicaCount)
 	csiResizerReplicaCount := c.Int(FlagCSIResizerReplicaCount)
 	namespace := os.Getenv(types.EnvPodNamespace)
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
@@ -221,6 +239,11 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
+	snapshotSupportEnabled, err := util.IsKubernetesVersionAtLeast(kubeClient, types.CSISnapshotterMinVersion)
+	if err != nil {
+		return err
+	}
+
 	if err := upgradeLonghornRelatedComponents(kubeClient, namespace); err != nil {
 		return err
 	}
@@ -246,6 +269,14 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 			return err
 		}
 	}
+
+	if snapshotSupportEnabled {
+		snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, tolerations, priorityClass, registrySecret)
+		if err := snapshotterDeployment.Deploy(kubeClient); err != nil {
+			return err
+		}
+	}
+
 	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, managerImage, managerURL, rootDir, tolerations, priorityClass, registrySecret)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
