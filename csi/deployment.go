@@ -21,11 +21,13 @@ const (
 	DefaultCSIAttacherImage            = "longhornio/csi-attacher:v2.0.0"
 	DefaultCSIProvisionerImage         = "longhornio/csi-provisioner:v1.4.0"
 	DefaultCSIResizerImage             = "longhornio/csi-resizer:v0.3.0"
+	DefaultCSISnapshotterImage         = "longhornio/csi-snapshotter:v2.1.1"
 	DefaultCSINodeDriverRegistrarImage = "longhornio/csi-node-driver-registrar:v1.2.0"
 
 	DefaultCSIAttacherReplicaCount    = 3
 	DefaultCSIProvisionerReplicaCount = 3
 	DefaultCSIResizerReplicaCount     = 3
+	DefaultCSISnapshotterReplicaCount = 3
 
 	DefaultInContainerKubeletRootDir       = "/var/lib/kubelet/"
 	DefaultCSISocketFileName               = "csi.sock"
@@ -224,6 +226,66 @@ func (p *ResizerDeployment) Cleanup(kubeClient *clientset.Clientset) {
 		if err := cleanup(kubeClient, p.deployment, "deployment",
 			deploymentDeleteFunc, deploymentGetFunc); err != nil {
 			logrus.Warnf("Failed to cleanup deployment in resizer deployment: %v", err)
+		}
+	})
+}
+
+type SnapshotterDeployment struct {
+	service    *v1.Service
+	deployment *appsv1.Deployment
+}
+
+func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootDir string, replicaCount int, tolerations []v1.Toleration, priorityClass, registrySecret string) *SnapshotterDeployment {
+	service := getCommonService(types.CSISnapshotterName, namespace)
+
+	deployment := getCommonDeployment(
+		types.CSISnapshotterName,
+		namespace,
+		serviceAccount,
+		snapshotterImage,
+		rootDir,
+		[]string{
+			"--v=5",
+			"--csi-address=$(ADDRESS)",
+			"--leader-election",
+			"--leader-election-namespace=$(POD_NAMESPACE)",
+		},
+		int32(replicaCount),
+		tolerations,
+		priorityClass,
+		registrySecret,
+	)
+
+	return &SnapshotterDeployment{
+		service:    service,
+		deployment: deployment,
+	}
+}
+
+func (p *SnapshotterDeployment) Deploy(kubeClient *clientset.Clientset) error {
+	if err := deploy(kubeClient, p.service, "service",
+		serviceCreateFunc, serviceDeleteFunc, serviceGetFunc); err != nil {
+		return err
+	}
+
+	return deploy(kubeClient, p.deployment, "deployment",
+		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc)
+}
+
+func (p *SnapshotterDeployment) Cleanup(kubeClient *clientset.Clientset) {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	util.RunAsync(&wg, func() {
+		if err := cleanup(kubeClient, p.service, "service",
+			serviceDeleteFunc, serviceGetFunc); err != nil {
+			logrus.Warnf("Failed to cleanup service in snapshotter deployment: %v", err)
+		}
+	})
+	util.RunAsync(&wg, func() {
+		if err := cleanup(kubeClient, p.deployment, "deployment",
+			deploymentDeleteFunc, deploymentGetFunc); err != nil {
+			logrus.Warnf("Failed to cleanup deployment in snapshotter deployment: %v", err)
 		}
 	})
 }

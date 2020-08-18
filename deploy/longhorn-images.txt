@@ -6,3 +6,4 @@ longhornio/csi-attacher:v2.0.0
 longhornio/csi-node-driver-registrar:v1.2.0
 longhornio/csi-provisioner:v1.4.0
 longhornio/csi-resizer:v0.3.0
+longhornio/csi-snapshotter:v2.1.1

@@ -73,6 +73,7 @@ const (
 const (
 	CSIMinVersion                = "v1.14.0"
 	CSIVolumeExpansionMinVersion = "v1.16.0"
+	CSISnapshotterMinVersion     = "v1.17.0"
 
 	KubernetesTopologyLabelsVersion = "v1.17.0"
 )
