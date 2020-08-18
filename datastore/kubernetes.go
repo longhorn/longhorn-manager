@@ -23,7 +23,9 @@ import (
 )
 
 const (
-	KubeStatusPollCount    = 5
+	// KubeStatusPollCount is the number of retry to validate The KubernetesStatus
+	KubeStatusPollCount = 5
+	// KubeStatusPollInterval is the waiting time between each KubeStatusPollCount
 	KubeStatusPollInterval = 1 * time.Second
 )
 
@@ -41,6 +43,8 @@ func (s *DataStore) getManagerSelector() (labels.Selector, error) {
 	})
 }
 
+// GetManagerNodeIPMap returns an object contains podIPs from list
+// of running pods with app=longhorn-manager
 func (s *DataStore) GetManagerNodeIPMap() (map[string]string, error) {
 	selector, err := s.getManagerSelector()
 	if err != nil {
@@ -83,6 +87,8 @@ func (s *DataStore) ListVolumeCronJobROs(volumeName string) (map[string]*batchv1
 	return itemMap, nil
 }
 
+// CreateVolumeCronJob sets cronjob labels in volume meta and
+// creates cronjobs for the given namespace
 func (s *DataStore) CreateVolumeCronJob(volumeName string, cronJob *batchv1beta1.CronJob) (*batchv1beta1.CronJob, error) {
 	if err := tagVolumeLabel(volumeName, cronJob); err != nil {
 		return nil, err
@@ -90,6 +96,8 @@ func (s *DataStore) CreateVolumeCronJob(volumeName string, cronJob *batchv1beta1
 	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Create(cronJob)
 }
 
+// UpdateVolumeCronJob sets cronjob labels in volume meta and
+// updates cronjobs for the given namespace
 func (s *DataStore) UpdateVolumeCronJob(volumeName string, cronJob *batchv1beta1.CronJob) (*batchv1beta1.CronJob, error) {
 	if err := tagVolumeLabel(volumeName, cronJob); err != nil {
 		return nil, err
@@ -97,6 +105,8 @@ func (s *DataStore) UpdateVolumeCronJob(volumeName string, cronJob *batchv1beta1
 	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Update(cronJob)
 }
 
+// DeleteCronJob delete cronjob for the given name and namespace.
+// The dependents will be deleted in the background
 func (s *DataStore) DeleteCronJob(cronJobName string) error {
 	propagation := metav1.DeletePropagationBackground
 	err := s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Delete(cronJobName,
@@ -109,6 +119,8 @@ func (s *DataStore) DeleteCronJob(cronJobName string) error {
 	return nil
 }
 
+// CreateEngineImageDaemonSet sets engine-image lables in daemonset label and
+// creates daemonset in the given namespace
 func (s *DataStore) CreateEngineImageDaemonSet(ds *appsv1.DaemonSet) error {
 	if ds.Labels == nil {
 		ds.Labels = map[string]string{}
@@ -122,6 +134,8 @@ func (s *DataStore) CreateEngineImageDaemonSet(ds *appsv1.DaemonSet) error {
 	return nil
 }
 
+// GetEngineImageDaemonSet get daemonset for the given name and namspace, and
+// returns a new DaemonSet object
 func (s *DataStore) GetEngineImageDaemonSet(name string) (*appsv1.DaemonSet, error) {
 	resultRO, err := s.dsLister.DaemonSets(s.namespace).Get(name)
 	if err != nil {
@@ -134,14 +148,18 @@ func (s *DataStore) GetEngineImageDaemonSet(name string) (*appsv1.DaemonSet, err
 	return resultRO.DeepCopy(), nil
 }
 
+// CreatePod creates pod for the given pod object and namespace
 func (s *DataStore) CreatePod(pod *corev1.Pod) (*corev1.Pod, error) {
 	return s.kubeClient.CoreV1().Pods(s.namespace).Create(pod)
 }
 
+// DeletePod deletes pod for the given name and namespace
 func (s *DataStore) DeletePod(name string) error {
 	return s.kubeClient.CoreV1().Pods(s.namespace).Delete(name, nil)
 }
 
+// GetInstanceManagerPod get oid for the given name and namspace, and
+// returns a new Pod object
 func (s *DataStore) GetInstanceManagerPod(name string) (*corev1.Pod, error) {
 	resultRO, err := s.pLister.Pods(s.namespace).Get(name)
 	if err != nil {
@@ -153,44 +171,57 @@ func (s *DataStore) GetInstanceManagerPod(name string) (*corev1.Pod, error) {
 	return resultRO.DeepCopy(), nil
 }
 
+// GetDaemonSet get the daemonset for the given name and namespace
 func (s *DataStore) GetDaemonSet(name string) (*appsv1.DaemonSet, error) {
 	return s.dsLister.DaemonSets(s.namespace).Get(name)
 }
 
+// ListDaemonSet get a list of all daemonset for the given namespace
 func (s *DataStore) ListDaemonSet() ([]*appsv1.DaemonSet, error) {
 	return s.dsLister.DaemonSets(s.namespace).List(labels.Everything())
 }
 
+// UpdateDaemonSet updates the daemonset for the given daemonset object and namespace
 func (s *DataStore) UpdateDaemonSet(obj *appsv1.DaemonSet) (*appsv1.DaemonSet, error) {
 	return s.kubeClient.AppsV1().DaemonSets(s.namespace).Update(obj)
 }
 
+// DeleteDaemonSet deletes daemonset for the given name and namespace.
+// The dependents will be deleted in the forground
 func (s *DataStore) DeleteDaemonSet(name string) error {
 	propagation := metav1.DeletePropagationForeground
 	return s.kubeClient.AppsV1().DaemonSets(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
 }
 
+// GetDeployment gets the deployment for the given name and namespace
 func (s *DataStore) GetDeployment(name string) (*appsv1.Deployment, error) {
 	return s.dpLister.Deployments(s.namespace).Get(name)
 }
 
+// ListDeployment get a list of all deployment for the given namespace
 func (s *DataStore) ListDeployment() ([]*appsv1.Deployment, error) {
 	return s.dpLister.Deployments(s.namespace).List(labels.Everything())
 }
 
+// UpdateDeployment updates deployment for the given deployment object and namespace
 func (s *DataStore) UpdateDeployment(obj *appsv1.Deployment) (*appsv1.Deployment, error) {
 	return s.kubeClient.AppsV1().Deployments(s.namespace).Update(obj)
 }
 
+// DeleteDeployment deletes deployment for the given name and namespace.
+// The dependents will be deleted in the forground
 func (s *DataStore) DeleteDeployment(name string) error {
 	propagation := metav1.DeletePropagationForeground
 	return s.kubeClient.AppsV1().Deployments(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
 }
 
+// DeleteCSIDriver deletes csidriver for the given name and namespace
 func (s *DataStore) DeleteCSIDriver(name string) error {
 	return s.kubeClient.StorageV1beta1().CSIDrivers().Delete(name, &metav1.DeleteOptions{})
 }
 
+// ListManagerPods returns a list of pods with app=longhorn-manager, and
+// returns a new list of v1.Pod
 func (s *DataStore) ListManagerPods() ([]*corev1.Pod, error) {
 	selector, err := s.getManagerSelector()
 	if err != nil {
@@ -215,6 +246,8 @@ func getInstanceManagerComponentSelector() (labels.Selector, error) {
 	})
 }
 
+// ListInstanceManagerPods returns a list of pod with component=instance-manager, and
+// returns a new list of v1.Pod
 func (s *DataStore) ListInstanceManagerPods() ([]*corev1.Pod, error) {
 	selector, err := getInstanceManagerComponentSelector()
 	if err != nil {
@@ -233,42 +266,61 @@ func (s *DataStore) ListInstanceManagerPods() ([]*corev1.Pod, error) {
 	return res, nil
 }
 
+// GetKubernetesNode gets the node from the index for the given name
 func (s *DataStore) GetKubernetesNode(name string) (*corev1.Node, error) {
 	return s.knLister.Get(name)
 }
 
+// CreatePersisentVolume creates persistentvolume for the given
+// persistentvolume object
 func (s *DataStore) CreatePersisentVolume(pv *corev1.PersistentVolume) (*corev1.PersistentVolume, error) {
 	return s.kubeClient.CoreV1().PersistentVolumes().Create(pv)
 }
 
+// DeletePersisentVolume deletes persistentvolumefor the given
+// persistentvolume name
 func (s *DataStore) DeletePersisentVolume(pvName string) error {
 	return s.kubeClient.CoreV1().PersistentVolumes().Delete(pvName, &metav1.DeleteOptions{})
 }
 
+// UpdatePersisentVolume updates the persistentvolume for the given
+// persistentvolume object
 func (s *DataStore) UpdatePersisentVolume(pv *corev1.PersistentVolume) (*corev1.PersistentVolume, error) {
 	return s.kubeClient.CoreV1().PersistentVolumes().Update(pv)
 }
 
+// GetPersisentVolume gets the persistentvolume from the index for the
+// given name
 func (s *DataStore) GetPersisentVolume(pvName string) (*corev1.PersistentVolume, error) {
 	return s.pvLister.Get(pvName)
 }
 
+// CreatePersisentVolumeClaim creates the persistentvolumeclaim for
+// the given persistentvolumeclaim object and namespace
 func (s *DataStore) CreatePersisentVolumeClaim(ns string, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
 	return s.kubeClient.CoreV1().PersistentVolumeClaims(ns).Create(pvc)
 }
 
+// DeletePersisentVolumeClaim deletes persistentvolumeclaim for the
+// given name and namespace
 func (s *DataStore) DeletePersisentVolumeClaim(ns, pvcName string) error {
 	return s.kubeClient.CoreV1().PersistentVolumeClaims(ns).Delete(pvcName, &metav1.DeleteOptions{})
 }
 
+// GetPersisentVolumeClaim gets the persistentvolumeclaim from the
+// index for the given name and namespace
 func (s *DataStore) GetPersisentVolumeClaim(namespace, pvcName string) (*corev1.PersistentVolumeClaim, error) {
 	return s.pvcLister.PersistentVolumeClaims(namespace).Get(pvcName)
 }
 
+// GetPriorityClass gets the priorityclass from the index for the
+// given name
 func (s *DataStore) GetPriorityClass(pcName string) (*schedulingv1.PriorityClass, error) {
 	return s.pcLister.Get(pcName)
 }
 
+// GetPodContainerLogRequest get a pod log request object for the given
+// pod name, container name and namespace
 func (s *DataStore) GetPodContainerLogRequest(podName, containerName string) *rest.Request {
 	return s.kubeClient.CoreV1().Pods(s.namespace).GetLogs(podName, &corev1.PodLogOptions{
 		Container:  containerName,
@@ -276,10 +328,12 @@ func (s *DataStore) GetPodContainerLogRequest(podName, containerName string) *re
 	})
 }
 
+// GetKubernetesVersion returns server version
 func (s *DataStore) GetKubernetesVersion() (*version.Info, error) {
 	return s.kubeClient.Discovery().ServerVersion()
 }
 
+// NewPVManifest creates new PersistentVolume object
 func NewPVManifest(v *longhorn.Volume, pvName, storageClassName, fsType string) *corev1.PersistentVolume {
 	defaultVolumeMode := corev1.PersistentVolumeFilesystem
 
@@ -321,6 +375,7 @@ func NewPVManifest(v *longhorn.Volume, pvName, storageClassName, fsType string) 
 	}
 }
 
+// NewPVCManifest creates new PersistentVolumeClaim object
 func NewPVCManifest(v *longhorn.Volume, pvName, ns, pvcName, storageClassName string) *corev1.PersistentVolumeClaim {
 	return &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
