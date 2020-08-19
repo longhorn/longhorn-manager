@@ -950,9 +950,10 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 			Name: name,
 		},
 		Spec: types.NodeSpec{
-			Name:            name,
-			AllowScheduling: true,
-			Tags:            []string{},
+			Name:              name,
+			AllowScheduling:   true,
+			EvictionRequested: false,
+			Tags:              []string{},
 		},
 	}
 

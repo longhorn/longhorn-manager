@@ -417,9 +417,10 @@ func CreateDefaultDisk(dataPath string) (map[string]DiskSpec, error) {
 	}
 	return map[string]DiskSpec{
 		DefaultDiskPrefix + diskInfo.Fsid: {
-			Path:            diskInfo.Path,
-			AllowScheduling: true,
-			StorageReserved: diskInfo.StorageMaximum * 30 / 100,
+			Path:              diskInfo.Path,
+			AllowScheduling:   true,
+			EvictionRequested: false,
+			StorageReserved:   diskInfo.StorageMaximum * 30 / 100,
 		},
 	}, nil
 }
