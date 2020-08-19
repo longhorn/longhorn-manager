@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -56,6 +56,7 @@ type ReplicaController struct {
 
 	ds *datastore.DataStore
 
+	nStoreSynced  cache.InformerSynced
 	rStoreSynced  cache.InformerSynced
 	imStoreSynced cache.InformerSynced
 
@@ -67,6 +68,7 @@ type ReplicaController struct {
 func NewReplicaController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
+	nodeInformer lhinformers.NodeInformer,
 	replicaInformer lhinformers.ReplicaInformer,
 	instanceManagerInformer lhinformers.InstanceManagerInformer,
 	kubeClient clientset.Interface,
@@ -86,6 +88,7 @@ func NewReplicaController(
 
 		ds: ds,
 
+		nStoreSynced:  nodeInformer.Informer().HasSynced,
 		rStoreSynced:  replicaInformer.Informer().HasSynced,
 		imStoreSynced: instanceManagerInformer.Informer().HasSynced,
 
@@ -122,6 +125,22 @@ func NewReplicaController(
 			rc.enqueueInstanceManagerChange(im)
 		},
 	})
+
+	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			n := obj.(*longhorn.Node)
+			rc.enqueueNodeChange(n)
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			cur := newObj.(*longhorn.Node)
+			rc.enqueueNodeChange(cur)
+		},
+		DeleteFunc: func(obj interface{}) {
+			n := obj.(*longhorn.Node)
+			rc.enqueueNodeChange(n)
+		},
+	})
+
 	return rc
 }
 
@@ -132,7 +151,7 @@ func (rc *ReplicaController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start Longhorn replica controller")
 	defer logrus.Infof("Shutting down Longhorn replica controller")
 
-	if !controller.WaitForCacheSync("longhorn replicas", stopCh, rc.rStoreSynced, rc.imStoreSynced) {
+	if !controller.WaitForCacheSync("longhorn replicas", stopCh, rc.nStoreSynced, rc.rStoreSynced, rc.imStoreSynced) {
 		return
 	}
 
@@ -177,6 +196,53 @@ func (rc *ReplicaController) handleErr(err error, key interface{}) {
 	utilruntime.HandleError(err)
 	logrus.Warnf("Dropping Longhorn replica %v out of the queue: %v", key, err)
 	rc.queue.Forget(key)
+}
+
+// From replica to check Node.Spec.EvictionRequested of the node
+// this replica first, then check Node.Spec.Disks.EvictionRequested
+func (rc *ReplicaController) isEvictionRequested(replica *longhorn.Replica) bool {
+	// Return false if this replica has not been assigned to a node.
+	if replica.Spec.NodeID == "" {
+		return false
+	}
+
+	node, err := rc.ds.GetNode(replica.Spec.NodeID)
+	if err != nil {
+		logrus.Warnf("Failed to get node %v information err %v", replica.Spec.NodeID, err)
+		return false
+	}
+
+	// Check if node has been request eviction.
+	if node.Spec.EvictionRequested == true {
+		return true
+	}
+
+	// Check if disk has been request eviction.
+	if node.Spec.Disks[replica.Spec.DiskID].EvictionRequested == true {
+		return true
+	}
+
+	return false
+}
+
+func (rc *ReplicaController) UpdateReplicaEvictionStatus(replica *longhorn.Replica) {
+	// Check if eviction has been requested on this replica
+	if rc.isEvictionRequested(replica) &&
+		(replica.Status.EvictionRequested == false) {
+		replica.Status.EvictionRequested = true
+		logrus.Debugf("Replica %v has been requested eviction.",
+			replica.Name)
+	}
+
+	// Check if eviction has been cancelled on this replica
+	if !rc.isEvictionRequested(replica) &&
+		(replica.Status.EvictionRequested == true) {
+		replica.Status.EvictionRequested = false
+		logrus.Debugf("Replica %v has been cancelled eviction.",
+			replica.Name)
+	}
+
+	return
 }
 
 func (rc *ReplicaController) syncReplica(key string) (err error) {
@@ -257,6 +323,9 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			err = nil
 		}
 	}()
+
+	// Update `Replica.Status.EvictionRequested` field
+	rc.UpdateReplicaEvictionStatus(replica)
 
 	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
 }
@@ -481,6 +550,37 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(im *longhorn.InstanceM
 			}
 		}
 	}
+	return
+}
+
+func (rc *ReplicaController) enqueueNodeChange(node *longhorn.Node) {
+
+	var evictionDisks []string
+	// If Node evition, add all the disks to evictionDisks.
+	// Otherwise add request eviction disk separately.
+	if node.Spec.EvictionRequested == true {
+		for diskName := range node.Spec.Disks {
+			evictionDisks = append(evictionDisks, diskName)
+		}
+	} else {
+		for diskName, diskSpec := range node.Spec.Disks {
+			if diskSpec.EvictionRequested == true {
+				evictionDisks = append(evictionDisks, diskName)
+			}
+		}
+	}
+
+	// Add eviction requested replicas to the workqueue
+	for _, diskName := range evictionDisks {
+		for replicaName := range node.Status.DiskStatus[diskName].ScheduledReplica {
+			replica, err := rc.ds.GetReplica(replicaName)
+			if err != nil {
+				return
+			}
+			rc.enqueueReplica(replica)
+		}
+	}
+
 	return
 }
 

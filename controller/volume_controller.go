@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"encoding/json"
+
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	batchv1 "k8s.io/api/batch/v1"
 	batchv1beta1 "k8s.io/api/batch/v1beta1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -421,6 +422,38 @@ func (vc *VolumeController) getCurrentEngine(v *longhorn.Volume, es map[string]*
 	return nil, fmt.Errorf("BUG: multiple engines detected when volume %v is detached", v.Name)
 }
 
+// EvictReplicas do creating one more replica for eviction,
+// or evicting a replica. Or do nothing.
+func (vc *VolumeController) EvictReplicas(v *longhorn.Volume,
+	e *longhorn.Engine, rs map[string]*longhorn.Replica, healthyCount int) (err error) {
+	for _, replica := range rs {
+		if replica.Status.EvictionRequested == true {
+			if healthyCount == v.Spec.NumberOfReplicas {
+				if err = vc.replenishReplicas(v, e, rs); err != nil {
+					logrus.Errorf("Failed to create new replica for replica eviction err %v", err)
+					vc.eventRecorder.Eventf(v, v1.EventTypeWarning,
+						EventReasonFailedEviction,
+						"volume %v failed to create one more replica", v.Name)
+					return err
+				}
+				logrus.Debug("Creating one more replica for eviction")
+			} else { // healthyCount > v.Spec.NumberOfReplicas case
+				if err := vc.deleteReplica(replica, rs); err != nil {
+					vc.eventRecorder.Eventf(v, v1.EventTypeWarning,
+						EventReasonFailedEviction,
+						"volume %v failed to evict replica %v",
+						v.Name, replica.Name)
+					return err
+				}
+				logrus.Debugf("Evicted replica %v", replica.Name)
+			}
+			break
+		}
+	}
+
+	return nil
+}
+
 // ReconcileEngineReplicaState will get the current main engine e.Status.ReplicaModeMap and e.Status.RestoreStatus, then update
 // v and rs accordingly.
 func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
@@ -502,6 +535,11 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		v.Status.Robustness = types.VolumeRobustnessHealthy
 		if oldRobustness == types.VolumeRobustnessDegraded {
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonHealthy, "volume %v became healthy", v.Name)
+		}
+
+		// Evict replicas for the volume
+		if err := vc.EvictReplicas(v, e, rs, healthyCount); err != nil {
+			return err
 		}
 	} else { // healthyCount < v.Spec.NumberOfReplicas
 		v.Status.Robustness = types.VolumeRobustnessDegraded
@@ -1089,7 +1127,8 @@ func getRebuildingReplicaCount(e *longhorn.Engine) int {
 func (vc *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[string]*longhorn.Replica) int {
 	usableCount := 0
 	for _, r := range rs {
-		if r.Spec.FailedAt == "" {
+		// Skip the replica has been requested eviction.
+		if r.Spec.FailedAt == "" && (!r.Status.EvictionRequested) {
 			usableCount++
 		}
 	}
