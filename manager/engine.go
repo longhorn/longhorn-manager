@@ -102,15 +102,15 @@ func (m *VolumeManager) RevertSnapshot(snapshotName, volumeName string) error {
 	if err != nil {
 		return err
 	}
-	if err := engine.SnapshotRevert(snapshotName); err != nil {
-		return err
-	}
 	snapshot, err := engine.SnapshotGet(snapshotName)
 	if err != nil {
 		return err
 	}
 	if snapshot == nil {
 		return fmt.Errorf("not found snapshot '%s', for volume '%s'", snapshotName, volumeName)
+	}
+	if err := engine.SnapshotRevert(snapshotName); err != nil {
+		return err
 	}
 	logrus.Debugf("Revert to snapshot %v for volume %v", snapshotName, volumeName)
 	return nil
