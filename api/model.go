@@ -8,7 +8,7 @@ import (
 	"github.com/rancher/go-rancher/client"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -180,14 +180,15 @@ type ExpandInput struct {
 
 type Node struct {
 	client.Resource
-	Name            string                     `json:"name"`
-	Address         string                     `json:"address"`
-	AllowScheduling bool                       `json:"allowScheduling"`
-	Disks           map[string]DiskInfo        `json:"disks"`
-	Conditions      map[string]types.Condition `json:"conditions"`
-	Tags            []string                   `json:"tags"`
-	Region          string                     `json:"region"`
-	Zone            string                     `json:"zone"`
+	Name              string                     `json:"name"`
+	Address           string                     `json:"address"`
+	AllowScheduling   bool                       `json:"allowScheduling"`
+	EvictionRequested bool                       `json:"evictionRequested"`
+	Disks             map[string]DiskInfo        `json:"disks"`
+	Conditions        map[string]types.Condition `json:"conditions"`
+	Tags              []string                   `json:"tags"`
+	Region            string                     `json:"region"`
+	Zone              string                     `json:"zone"`
 
 	Timestamp string `json:"timestamp"`
 }
@@ -371,10 +372,17 @@ func nodeSchema(node *client.Schema) {
 	allowScheduling.Required = true
 	allowScheduling.Unique = false
 	node.ResourceFields["allowScheduling"] = allowScheduling
+
+	evictionRequested := node.ResourceFields["evictionRequested"]
+	evictionRequested.Required = true
+	evictionRequested.Unique = false
+	node.ResourceFields["evictionRequested"] = evictionRequested
+
 	node.ResourceFields["disks"] = client.Field{
 		Type:     "map[diskInfo]",
 		Nullable: true,
 	}
+
 	conditions := node.ResourceFields["conditions"]
 	conditions.Type = "map[nodeCondition]"
 	node.ResourceFields["conditions"] = conditions
@@ -1009,13 +1017,14 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 			Actions: map[string]string{},
 			Links:   map[string]string{},
 		},
-		Name:            node.Name,
-		Address:         address,
-		AllowScheduling: node.Spec.AllowScheduling,
-		Conditions:      node.Status.Conditions,
-		Tags:            node.Spec.Tags,
-		Region:          node.Status.Region,
-		Zone:            node.Status.Zone,
+		Name:              node.Name,
+		Address:           address,
+		AllowScheduling:   node.Spec.AllowScheduling,
+		EvictionRequested: node.Spec.EvictionRequested,
+		Conditions:        node.Status.Conditions,
+		Tags:              node.Spec.Tags,
+		Region:            node.Status.Region,
+		Zone:              node.Status.Zone,
 
 		Timestamp: timestamp,
 	}

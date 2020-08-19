@@ -66,12 +66,20 @@ func (s *Server) NodeUpdate(rw http.ResponseWriter, req *http.Request) error {
 	if err != nil {
 		return errors.Wrap(err, "fail to get node ip")
 	}
+
+	// Only scheduling disabled node can be evicted
+	// Can not enable scheduling on an evicting node
+	if n.EvictionRequested == true && n.AllowScheduling != false {
+		return errors.Wrap(err, "Need to disable scheduling on this node for node eviction, or cancel eviction to enable scheduling on this node.")
+	}
+
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		node, err := s.m.GetNode(id)
 		if err != nil {
 			return nil, err
 		}
 		node.Spec.AllowScheduling = n.AllowScheduling
+		node.Spec.EvictionRequested = n.EvictionRequested
 		node.Spec.Tags = n.Tags
 
 		return s.m.UpdateNode(node)
@@ -100,6 +108,15 @@ func (s *Server) DiskUpdate(rw http.ResponseWriter, req *http.Request) error {
 	nodeIPMap, err := s.m.GetManagerNodeIPMap()
 	if err != nil {
 		return errors.Wrap(err, "fail to get node ip")
+	}
+
+	// Only scheduling disabled disk can be evicted
+	// Can not enable scheduling on an evicting disk
+	for _, diskSpec := range diskUpdate.Disks {
+		if diskSpec.EvictionRequested == true &&
+			diskSpec.AllowScheduling != false {
+			return errors.Wrap(err, "Need to disable scheduling on this disk for disk eviction, or cancel eviction to enable scheduling on this disk")
+		}
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
