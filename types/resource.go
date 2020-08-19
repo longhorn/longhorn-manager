@@ -211,6 +211,7 @@ type ReplicaSpec struct {
 
 type ReplicaStatus struct {
 	InstanceStatus
+	EvictionRequested bool `json:"evictionRequested"`
 }
 
 type EngineImageState string
@@ -261,10 +262,11 @@ type EngineVersionDetails struct {
 }
 
 type NodeSpec struct {
-	Name            string              `json:"name"`
-	Disks           map[string]DiskSpec `json:"disks"`
-	AllowScheduling bool                `json:"allowScheduling"`
-	Tags            []string            `json:"tags"`
+	Name              string              `json:"name"`
+	Disks             map[string]DiskSpec `json:"disks"`
+	AllowScheduling   bool                `json:"allowScheduling"`
+	EvictionRequested bool                `json:"evictionRequested"`
+	Tags              []string            `json:"tags"`
 }
 
 const (
@@ -303,10 +305,11 @@ type NodeStatus struct {
 }
 
 type DiskSpec struct {
-	Path            string   `json:"path"`
-	AllowScheduling bool     `json:"allowScheduling"`
-	StorageReserved int64    `json:"storageReserved"`
-	Tags            []string `json:"tags"`
+	Path              string   `json:"path"`
+	AllowScheduling   bool     `json:"allowScheduling"`
+	EvictionRequested bool     `json:"evictionRequested"`
+	StorageReserved   int64    `json:"storageReserved"`
+	Tags              []string `json:"tags"`
 }
 
 type DiskStatus struct {
