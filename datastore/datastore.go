@@ -20,9 +20,11 @@ import (
 )
 
 var (
+	// SkipListerCheck bypass the created longhorn resource validation
 	SkipListerCheck = false
 )
 
+// DataStore object
 type DataStore struct {
 	namespace string
 
@@ -61,6 +63,7 @@ type DataStore struct {
 	pcStoreSynced  cache.InformerSynced
 }
 
+// NewDataStore creates new DataStore object
 func NewDataStore(
 	volumeInformer lhinformers.VolumeInformer,
 	engineInformer lhinformers.EngineInformer,
@@ -122,6 +125,7 @@ func NewDataStore(
 	}
 }
 
+// Sync returns WaitForCacheSync for Longhorn DataStore
 func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 	return controller.WaitForCacheSync("longhorn datastore", stopCh,
 		s.vStoreSynced, s.eStoreSynced, s.rStoreSynced,
@@ -131,10 +135,14 @@ func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 		s.dpStoreSynced, s.knStoreSynced, s.pcStoreSynced)
 }
 
+// ErrorIsNotFound checks if given error match
+// metav1.StatusReasonNotFound
 func ErrorIsNotFound(err error) bool {
 	return apierrors.IsNotFound(err)
 }
 
+// ErrorIsConflict checks if given error match
+// metav1.StatusReasonConflict
 func ErrorIsConflict(err error) bool {
 	return apierrors.IsConflict(err)
 }
