@@ -13,6 +13,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/mount"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
@@ -64,6 +65,13 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 			return nil, errors.Wrap(err, "Invalid parameter numberOfReplicas")
 		}
 		vol.NumberOfReplicas = int64(nor)
+	}
+
+	if locality, ok := volOptions["dataLocality"]; ok {
+		if err := types.ValidateDataLocality(types.DataLocality(locality)); err != nil {
+			return nil, errors.Wrap(err, "Invalid parameter dataLocality")
+		}
+		vol.DataLocality = locality
 	}
 
 	if fromBackup, ok := volOptions["fromBackup"]; ok {
