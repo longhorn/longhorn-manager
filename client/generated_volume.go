@@ -19,6 +19,8 @@ type Volume struct {
 
 	CurrentImage string `json:"currentImage,omitempty" yaml:"current_image,omitempty"`
 
+	DataLocality string `json:"dataLocality,omitempty" yaml:"data_locality,omitempty"`
+
 	DisableFrontend bool `json:"disableFrontend,omitempty" yaml:"disable_frontend,omitempty"`
 
 	DiskSelector []string `json:"diskSelector,omitempty" yaml:"disk_selector,omitempty"`
