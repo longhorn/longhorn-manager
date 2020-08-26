@@ -1,13 +1,12 @@
 package controller
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
 	"strconv"
 	"time"
-
-	"encoding/json"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -25,7 +24,6 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/backupstore"
@@ -56,6 +54,8 @@ const (
 )
 
 type VolumeController struct {
+	*baseController
+
 	// which namespace controller is running with
 	namespace string
 	// use as the OwnerID of the controller
@@ -72,8 +72,6 @@ type VolumeController struct {
 	eStoreSynced cache.InformerSynced
 	rStoreSynced cache.InformerSynced
 
-	queue workqueue.RateLimitingInterface
-
 	scheduler *scheduler.ReplicaScheduler
 
 	// for unit test
@@ -81,6 +79,7 @@ type VolumeController struct {
 }
 
 func NewVolumeController(
+	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	volumeInformer lhinformers.VolumeInformer,
@@ -96,6 +95,8 @@ func NewVolumeController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	vc := &VolumeController{
+		baseController: newBaseController("longhorn-volume", logger),
+
 		ds:             ds,
 		namespace:      namespace,
 		controllerID:   controllerID,
@@ -108,8 +109,6 @@ func NewVolumeController(
 		vStoreSynced: volumeInformer.Informer().HasSynced,
 		eStoreSynced: engineInformer.Informer().HasSynced,
 		rStoreSynced: replicaInformer.Informer().HasSynced,
-
-		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-volume"),
 
 		nowHandler: util.Now,
 	}

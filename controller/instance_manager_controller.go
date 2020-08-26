@@ -20,7 +20,6 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-instance-manager/pkg/api"
@@ -51,6 +50,8 @@ var (
 )
 
 type InstanceManagerController struct {
+	*baseController
+
 	namespace      string
 	controllerID   string
 	serviceAccount string
@@ -62,8 +63,6 @@ type InstanceManagerController struct {
 
 	imStoreSynced cache.InformerSynced
 	pStoreSynced  cache.InformerSynced
-
-	queue workqueue.RateLimitingInterface
 
 	instanceManagerMonitorMutex *sync.RWMutex
 	instanceManagerMonitorMap   map[string]chan struct{}
@@ -108,6 +107,7 @@ func updateInstanceManagerVersion(im *longhorn.InstanceManager) error {
 }
 
 func NewInstanceManagerController(
+	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	imInformer lhinformers.InstanceManagerInformer,
@@ -120,6 +120,8 @@ func NewInstanceManagerController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	imc := &InstanceManagerController{
+		baseController: newBaseController("longhorn-instance-manager", logger),
+
 		namespace:      namespace,
 		controllerID:   controllerID,
 		serviceAccount: serviceAccount,
@@ -131,8 +133,6 @@ func NewInstanceManagerController(
 
 		imStoreSynced: imInformer.Informer().HasSynced,
 		pStoreSynced:  pInformer.Informer().HasSynced,
-
-		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-instance-manager"),
 
 		instanceManagerMonitorMutex: &sync.RWMutex{},
 		instanceManagerMonitorMap:   map[string]chan struct{}{},

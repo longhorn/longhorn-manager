@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -101,7 +103,11 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 		kubeClient, TestNamespace)
 	initSettings(ds)
 
-	vc := NewVolumeController(ds, scheme.Scheme, volumeInformer, engineInformer, replicaInformer, kubeClient, TestNamespace, controllerID, TestServiceAccount, TestManagerImage)
+	logger := logrus.StandardLogger()
+	vc := NewVolumeController(logger,
+		ds, scheme.Scheme,
+		volumeInformer, engineInformer, replicaInformer,
+		kubeClient, TestNamespace, controllerID, TestServiceAccount, TestManagerImage)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	vc.eventRecorder = fakeRecorder

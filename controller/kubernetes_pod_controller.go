@@ -18,7 +18,6 @@ import (
 	listerv1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -26,10 +25,12 @@ import (
 )
 
 const (
-	controllerAgentName = "Longhorn Kubernetes Pod Controller"
+	controllerAgentName = "longhorn-kubernetes-pod-controller"
 )
 
 type KubernetesPodController struct {
+	*baseController
+
 	// use as the OwnerID of the controller
 	controllerID string
 
@@ -45,11 +46,10 @@ type KubernetesPodController struct {
 	pStoreSynced   cache.InformerSynced
 	pvStoreSynced  cache.InformerSynced
 	pvcStoreSynced cache.InformerSynced
-
-	queue workqueue.RateLimitingInterface
 }
 
 func NewKubernetesPodController(
+	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubePodInformer coreinformers.PodInformer,
@@ -66,12 +66,14 @@ func NewKubernetesPodController(
 	})
 
 	kc := &KubernetesPodController{
+		baseController: newBaseController("longhorn-kubernetes-pod", logger),
+
 		controllerID: controllerID,
 
 		ds: ds,
 
 		kubeClient:    kubeClient,
-		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: controllerAgentName}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-kubernetes-pod-controller"}),
 
 		pLister:   kubePodInformer.Lister(),
 		pvLister:  kubePersistentVolumeInformer.Lister(),
@@ -80,8 +82,6 @@ func NewKubernetesPodController(
 		pStoreSynced:   kubePodInformer.Informer().HasSynced,
 		pvStoreSynced:  kubePersistentVolumeInformer.Informer().HasSynced,
 		pvcStoreSynced: kubePersistentVolumeClaimInformer.Informer().HasSynced,
-
-		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-kubernetes-pod"),
 	}
 
 	kubePodInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{

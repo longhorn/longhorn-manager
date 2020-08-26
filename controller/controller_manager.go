@@ -80,6 +80,8 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	volumeAttachmentInformer := kubeInformerFactory.Storage().V1beta1().VolumeAttachments()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
 
+	logger := logrus.StandardLogger()
+
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
 		engineImageInformer, nodeInformer, settingInformer, imInformer,
@@ -88,34 +90,41 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 		deploymentInformer, persistentVolumeInformer,
 		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
 		kubeClient, namespace)
-	rc := NewReplicaController(ds, scheme, nodeInformer,
-		replicaInformer, imInformer,
+	rc := NewReplicaController(logger, ds, scheme,
+		nodeInformer, replicaInformer, imInformer,
 		kubeClient, namespace, controllerID)
-	ec := NewEngineController(ds, scheme,
+	ec := NewEngineController(logger, ds, scheme,
 		engineInformer, imInformer,
 		kubeClient, &engineapi.EngineCollection{}, namespace, controllerID)
-	vc := NewVolumeController(ds, scheme,
+	vc := NewVolumeController(logger, ds, scheme,
 		volumeInformer, engineInformer, replicaInformer,
 		kubeClient, namespace, controllerID,
 		serviceAccount, managerImage)
-	ic := NewEngineImageController(ds, scheme,
+	ic := NewEngineImageController(logger, ds, scheme,
 		engineImageInformer, volumeInformer, daemonSetInformer,
 		kubeClient, namespace, controllerID, serviceAccount)
-	nc := NewNodeController(ds, scheme,
+	nc := NewNodeController(logger, ds, scheme,
 		nodeInformer, settingInformer, podInformer, replicaInformer, kubeNodeInformer,
 		kubeClient, namespace, controllerID)
-	ws := NewWebsocketController(volumeInformer, engineInformer, replicaInformer,
+	ws := NewWebsocketController(logger,
+		volumeInformer, engineInformer, replicaInformer,
 		settingInformer, engineImageInformer, nodeInformer)
-	sc := NewSettingController(ds, scheme,
+	sc := NewSettingController(logger, ds, scheme,
 		settingInformer,
 		kubeClient, version)
-	imc := NewInstanceManagerController(ds, scheme, imInformer, podInformer, kubeClient, namespace, controllerID, serviceAccount)
+	imc := NewInstanceManagerController(logger, ds, scheme,
+		imInformer, podInformer, kubeClient, namespace, controllerID, serviceAccount)
 
-	kpvc := NewKubernetesPVController(ds, scheme, volumeInformer, persistentVolumeInformer,
-		persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer, kubeClient, controllerID)
-	knc := NewKubernetesNodeController(ds, scheme, nodeInformer, settingInformer, kubeNodeInformer,
+	kpvc := NewKubernetesPVController(logger, ds, scheme,
+		volumeInformer, persistentVolumeInformer,
+		persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer,
 		kubeClient, controllerID)
-	kpc := NewKubernetesPodController(ds, scheme, podInformer, persistentVolumeInformer, persistentVolumeClaimInformer, kubeClient, controllerID)
+	knc := NewKubernetesNodeController(logger, ds, scheme,
+		nodeInformer, settingInformer, kubeNodeInformer,
+		kubeClient, controllerID)
+	kpc := NewKubernetesPodController(logger, ds, scheme,
+		podInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
+		kubeClient, controllerID)
 
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)

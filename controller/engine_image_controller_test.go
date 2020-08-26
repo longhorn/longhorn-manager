@@ -2,6 +2,9 @@ package controller
 
 import (
 	"fmt"
+
+	"github.com/sirupsen/logrus"
+
 	appv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -73,7 +76,9 @@ func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInfo
 		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
 		kubeClient, TestNamespace)
 
+	logger := logrus.StandardLogger()
 	ic := NewEngineImageController(
+		logger,
 		ds, scheme.Scheme,
 		engineImageInformer, volumeInformer, daemonSetInformer,
 		kubeClient, TestNamespace, TestNode1, TestServiceAccount)

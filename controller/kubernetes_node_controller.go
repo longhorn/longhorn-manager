@@ -18,7 +18,6 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -29,6 +28,8 @@ import (
 )
 
 type KubernetesNodeController struct {
+	*baseController
+
 	controllerID string
 
 	kubeClient    clientset.Interface
@@ -39,11 +40,10 @@ type KubernetesNodeController struct {
 	nStoreSynced  cache.InformerSynced
 	sStoreSynced  cache.InformerSynced
 	knStoreSynced cache.InformerSynced
-
-	queue workqueue.RateLimitingInterface
 }
 
 func NewKubernetesNodeController(
+	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	nodeInformer lhinformers.NodeInformer,
@@ -58,6 +58,8 @@ func NewKubernetesNodeController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	knc := &KubernetesNodeController{
+		baseController: newBaseController("longhorn-kubernetes-node", logger),
+
 		controllerID: controllerID,
 
 		kubeClient:    kubeClient,
@@ -68,8 +70,6 @@ func NewKubernetesNodeController(
 		nStoreSynced:  nodeInformer.Informer().HasSynced,
 		sStoreSynced:  settingInformer.Informer().HasSynced,
 		knStoreSynced: kubeNodeInformer.Informer().HasSynced,
-
-		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-kubernetes-node"),
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{

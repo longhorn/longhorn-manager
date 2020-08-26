@@ -19,7 +19,6 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -45,14 +44,14 @@ var (
 )
 
 type SettingController struct {
+	*baseController
+
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
 	ds *datastore.DataStore
 
 	sStoreSynced cache.InformerSynced
-
-	queue workqueue.RateLimitingInterface
 
 	// upgrade checker
 	lastUpgradeCheckedTimestamp time.Time
@@ -89,6 +88,7 @@ type CheckUpgradeResponse struct {
 }
 
 func NewSettingController(
+	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	settingInformer lhinformers.SettingInformer,
@@ -100,6 +100,8 @@ func NewSettingController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	sc := &SettingController{
+		baseController: newBaseController("longhorn-setting", logger),
+
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-setting-controller"}),
 
@@ -107,7 +109,6 @@ func NewSettingController(
 
 		sStoreSynced: settingInformer.Informer().HasSynced,
 
-		queue:   workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-setting"),
 		version: version,
 	}
 

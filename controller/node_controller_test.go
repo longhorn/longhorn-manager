@@ -3,6 +3,8 @@ package controller
 import (
 	"fmt"
 
+	"github.com/sirupsen/logrus"
+
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -75,7 +77,11 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
 		kubeClient, TestNamespace)
 
-	nc := NewNodeController(ds, scheme.Scheme, nodeInformer, settingInformer, podInformer, replicaInformer, kubeNodeInformer, kubeClient, TestNamespace, controllerID)
+	logger := logrus.StandardLogger()
+	nc := NewNodeController(logger,
+		ds, scheme.Scheme,
+		nodeInformer, settingInformer, podInformer, replicaInformer, kubeNodeInformer,
+		kubeClient, TestNamespace, controllerID)
 	fakeRecorder := record.NewFakeRecorder(100)
 	nc.eventRecorder = fakeRecorder
 	nc.getDiskInfoHandler = fakeGetDiskInfo

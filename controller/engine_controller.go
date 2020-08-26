@@ -22,7 +22,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
@@ -54,6 +53,8 @@ const (
 )
 
 type EngineController struct {
+	*baseController
+
 	// which namespace controller is running with
 	namespace string
 	// use as the OwnerID of the controller
@@ -68,7 +69,6 @@ type EngineController struct {
 	imStoreSynced cache.InformerSynced
 
 	backoff *flowcontrol.Backoff
-	queue   workqueue.RateLimitingInterface
 
 	instanceHandler *InstanceHandler
 
@@ -93,6 +93,7 @@ type EngineMonitor struct {
 }
 
 func NewEngineController(
+	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	engineInformer lhinformers.EngineInformer,
@@ -107,6 +108,8 @@ func NewEngineController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	ec := &EngineController{
+		baseController: newBaseController("longhorn-engine", logger),
+
 		ds:        ds,
 		namespace: namespace,
 
@@ -117,7 +120,6 @@ func NewEngineController(
 		imStoreSynced: instanceManagerInformer.Informer().HasSynced,
 
 		backoff: flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
-		queue:   workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-engine"),
 
 		engines:            engines,
 		engineMonitorMutex: &sync.RWMutex{},

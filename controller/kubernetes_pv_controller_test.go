@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+
 	apiv1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -242,8 +245,11 @@ func newTestKubernetesPVController(lhInformerFactory lhinformerfactory.SharedInf
 		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
 		kubeClient, TestNamespace)
 
-	kc := NewKubernetesPVController(ds, scheme.Scheme, volumeInformer, persistentVolumeInformer,
-		persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer, kubeClient, TestNode1)
+	logger := logrus.StandardLogger()
+	kc := NewKubernetesPVController(logger,
+		ds, scheme.Scheme,
+		volumeInformer, persistentVolumeInformer, persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer,
+		kubeClient, TestNode1)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	kc.eventRecorder = fakeRecorder
