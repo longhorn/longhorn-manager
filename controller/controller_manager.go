@@ -80,7 +80,7 @@ func StartControllers(stopCh chan struct{}, controllerID, serviceAccount, manage
 	volumeAttachmentInformer := kubeInformerFactory.Storage().V1beta1().VolumeAttachments()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
 
-	logger := logrus.StandardLogger()
+	logger := logrus.StandardLogger().WithField("node", controllerID)
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
