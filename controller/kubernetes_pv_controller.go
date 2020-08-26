@@ -25,7 +25,6 @@ import (
 	listerstorage "k8s.io/client-go/listers/storage/v1beta1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -36,6 +35,8 @@ import (
 )
 
 type KubernetesPVController struct {
+	*baseController
+
 	// use as the OwnerID of the controller
 	controllerID string
 
@@ -55,8 +56,6 @@ type KubernetesPVController struct {
 	pStoreSynced   cache.InformerSynced
 	vaStoreSynced  cache.InformerSynced
 
-	queue workqueue.RateLimitingInterface
-
 	// key is <PVName>, value is <VolumeName>
 	pvToVolumeCache sync.Map
 
@@ -65,6 +64,7 @@ type KubernetesPVController struct {
 }
 
 func NewKubernetesPVController(
+	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	volumeInformer lhinformers.VolumeInformer,
@@ -81,6 +81,8 @@ func NewKubernetesPVController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	kc := &KubernetesPVController{
+		baseController: newBaseController("longhorn-kubernetes-pv", logger),
+
 		controllerID: controllerID,
 
 		ds: ds,
@@ -98,8 +100,6 @@ func NewKubernetesPVController(
 		pvcStoreSynced: persistentVolumeClaimInformer.Informer().HasSynced,
 		pStoreSynced:   podInformer.Informer().HasSynced,
 		vaStoreSynced:  volumeAttachmentInformer.Informer().HasSynced,
-
-		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-kubernetes-pv"),
 
 		pvToVolumeCache: sync.Map{},
 

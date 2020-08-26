@@ -22,7 +22,6 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -41,6 +40,8 @@ var (
 )
 
 type EngineImageController struct {
+	*baseController
+
 	// which namespace controller is running with
 	namespace string
 	// use as the OwnerID of the engine image
@@ -56,8 +57,6 @@ type EngineImageController struct {
 	vStoreSynced  cache.InformerSynced
 	dsStoreSynced cache.InformerSynced
 
-	queue workqueue.RateLimitingInterface
-
 	// for unit test
 	nowHandler                func() string
 	engineBinaryChecker       func(string) bool
@@ -65,6 +64,7 @@ type EngineImageController struct {
 }
 
 func NewEngineImageController(
+	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	engineImageInformer lhinformers.EngineImageInformer,
@@ -79,6 +79,8 @@ func NewEngineImageController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	ic := &EngineImageController{
+		baseController: newBaseController("longhorn-engine-image", logger),
+
 		namespace:      namespace,
 		controllerID:   controllerID,
 		serviceAccount: serviceAccount,
@@ -91,8 +93,6 @@ func NewEngineImageController(
 		iStoreSynced:  engineImageInformer.Informer().HasSynced,
 		vStoreSynced:  volumeInformer.Informer().HasSynced,
 		dsStoreSynced: dsInformer.Informer().HasSynced,
-
-		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-engine-image"),
 
 		nowHandler:                util.Now,
 		engineBinaryChecker:       types.EngineBinaryExistOnHostForImage,

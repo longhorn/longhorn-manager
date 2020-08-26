@@ -104,8 +104,11 @@ func uninstall(c *cli.Context) error {
 		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
 		kubeClient, namespace)
 
+	logger := logrus.StandardLogger()
+
 	doneCh := make(chan struct{})
 	ctrl := controller.NewUninstallController(
+		logger,
 		namespace,
 		c.Bool(FlagForce),
 		ds,

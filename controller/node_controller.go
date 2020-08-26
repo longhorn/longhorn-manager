@@ -20,7 +20,6 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -32,11 +31,9 @@ import (
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
-var (
-	ownerKindNode = longhorn.SchemeGroupVersion.WithKind("Node").String()
-)
-
 type NodeController struct {
+	*baseController
+
 	// which namespace controller is running with
 	namespace    string
 	controllerID string
@@ -51,8 +48,6 @@ type NodeController struct {
 	sStoreSynced  cache.InformerSynced
 	rStoreSynced  cache.InformerSynced
 	knStoreSynced cache.InformerSynced
-
-	queue workqueue.RateLimitingInterface
 
 	getDiskInfoHandler    GetDiskInfoHandler
 	topologyLabelsChecker TopologyLabelsChecker
@@ -69,6 +64,7 @@ type GetDiskConfig func(string) (*util.DiskConfig, error)
 type GenerateDiskConfig func(string) (*util.DiskConfig, error)
 
 func NewNodeController(
+	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	nodeInformer lhinformers.NodeInformer,
@@ -85,6 +81,8 @@ func NewNodeController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	nc := &NodeController{
+		baseController: newBaseController("longhorn-node", logger),
+
 		namespace:    namespace,
 		controllerID: controllerID,
 
@@ -98,8 +96,6 @@ func NewNodeController(
 		sStoreSynced:  settingInformer.Informer().HasSynced,
 		rStoreSynced:  replicaInformer.Informer().HasSynced,
 		knStoreSynced: kubeNodeInformer.Informer().HasSynced,
-
-		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-node"),
 
 		getDiskInfoHandler:    util.GetDiskInfo,
 		topologyLabelsChecker: util.IsKubernetesVersionAtLeast,

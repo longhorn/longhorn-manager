@@ -20,7 +20,6 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
@@ -46,6 +45,8 @@ var (
 )
 
 type ReplicaController struct {
+	*baseController
+
 	// which namespace controller is running with
 	namespace string
 	// use as the OwnerID of replica
@@ -60,12 +61,11 @@ type ReplicaController struct {
 	rStoreSynced  cache.InformerSynced
 	imStoreSynced cache.InformerSynced
 
-	queue workqueue.RateLimitingInterface
-
 	instanceHandler *InstanceHandler
 }
 
 func NewReplicaController(
+	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	nodeInformer lhinformers.NodeInformer,
@@ -80,6 +80,8 @@ func NewReplicaController(
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
 
 	rc := &ReplicaController{
+		baseController: newBaseController("longhorn-replica", logger),
+
 		namespace:    namespace,
 		controllerID: controllerID,
 
@@ -91,8 +93,6 @@ func NewReplicaController(
 		nStoreSynced:  nodeInformer.Informer().HasSynced,
 		rStoreSynced:  replicaInformer.Informer().HasSynced,
 		imStoreSynced: instanceManagerInformer.Informer().HasSynced,
-
-		queue: workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), "longhorn-replica"),
 	}
 	rc.instanceHandler = NewInstanceHandler(ds, rc, rc.eventRecorder)
 

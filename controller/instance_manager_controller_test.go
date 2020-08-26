@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -145,7 +147,9 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
 		kubeClient, TestNamespace)
 
-	imc := NewInstanceManagerController(ds, scheme.Scheme, imInformer, podInformer, kubeClient, TestNamespace,
+	logger := logrus.StandardLogger()
+	imc := NewInstanceManagerController(logger,
+		ds, scheme.Scheme, imInformer, podInformer, kubeClient, TestNamespace,
 		controllerID, TestServiceAccount)
 	fakeRecorder := record.NewFakeRecorder(100)
 	imc.eventRecorder = fakeRecorder

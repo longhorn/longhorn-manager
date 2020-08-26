@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+	"golang.org/x/time/rate"
+
 	v1 "k8s.io/api/core/v1"
 	apiextension "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -15,15 +19,11 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
-	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-	"golang.org/x/time/rate"
+	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
-
-	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
@@ -40,17 +40,17 @@ var (
 )
 
 type UninstallController struct {
+	*baseController
 	namespace string
 	force     bool
 	ds        *datastore.DataStore
 	stopCh    chan struct{}
 
 	cacheSyncs []cache.InformerSynced
-
-	queue workqueue.RateLimitingInterface
 }
 
 func NewUninstallController(
+	logger logrus.FieldLogger,
 	namespace string,
 	force bool,
 	ds *datastore.DataStore,
@@ -65,14 +65,16 @@ func NewUninstallController(
 	daemonSetInformer appsv1.DaemonSetInformer,
 ) *UninstallController {
 	c := &UninstallController{
+		baseController: newBaseControllerWithQueue("longhorn-uninstall", logger,
+			workqueue.NewNamedRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
+				workqueue.NewItemExponentialFailureRateLimiter(500*time.Millisecond, 5*time.Second),
+				&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+			), "longhorn-uninstall"),
+		),
 		namespace: namespace,
 		force:     force,
 		ds:        ds,
 		stopCh:    stopCh,
-		queue: workqueue.NewNamedRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
-			workqueue.NewItemExponentialFailureRateLimiter(500*time.Millisecond, 5*time.Second),
-			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
-		), "longhorn-uninstall"),
 	}
 
 	cacheSyncs := []cache.InformerSynced{}

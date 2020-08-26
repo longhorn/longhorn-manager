@@ -32,6 +32,7 @@ func (w *Watcher) Close() {
 }
 
 type WebsocketController struct {
+	*baseController
 	volumeSynced      cache.InformerSynced
 	engineSynced      cache.InformerSynced
 	replicaSynced     cache.InformerSynced
@@ -44,6 +45,7 @@ type WebsocketController struct {
 }
 
 func NewWebsocketController(
+	logger logrus.FieldLogger,
 	volumeInformer lhinformers.VolumeInformer,
 	engineInformer lhinformers.EngineInformer,
 	replicaInformer lhinformers.ReplicaInformer,
@@ -53,6 +55,7 @@ func NewWebsocketController(
 ) *WebsocketController {
 
 	wc := &WebsocketController{
+		baseController:    newBaseController("longhorn-websocket", logger),
 		volumeSynced:      volumeInformer.Informer().HasSynced,
 		engineSynced:      engineInformer.Informer().HasSynced,
 		replicaSynced:     replicaInformer.Informer().HasSynced,
