@@ -278,8 +278,8 @@ var (
 		Description: "We say a Longhorn volume has data locality if there is a local replica of the volume on the same node as the pod which is using the volume.\n\n" +
 			"This setting specifies the default data locality when a volume is created from the Longhorn UI. For Kubernetes configuration, update the `dataLocality` in the StorageClass\n\n" +
 			"The available modes are: \n\n" +
-			"- **disable** is the default mode. There may be a local replica of the volume on the same node as the consuming pod or there may not be. Longhorn doesn't do anything\n" +
-			"- **best-effort** instructs Longhorn to try to keep a local replica on the same node as the consuming pod. If Longhorn cannot keep the local replica (due to not having enough disk space, incompatible disk tags, etc...), Longhorn does not stop the volume.\n",
+			"- **disabled**. This is the default option. There may or may not be a replica on the same node as the attached volume (workload)\n" +
+			"- **best-effort**. This option instructs Longhorn to try to keep a replica on the same node as the attached volume (workload). Longhorn will not stop the volume, even if it cannot keep a replica local to the attached volume (workload) due to environment limitation, e.g. not enough disk space, incompatible disk tags, etc.\n",
 		Category: SettingCategoryGeneral,
 		Type:     SettingTypeString,
 		Required: true,
