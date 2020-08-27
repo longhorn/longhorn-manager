@@ -570,13 +570,18 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 }
 
 func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
-	hasHealthyReplicas := false
+	var healthyCount int
+	hasEvictionRequestedReplicas := false
+
 	for _, r := range rs {
 		if r.Spec.FailedAt == "" && r.Spec.HealthyAt != "" {
-			hasHealthyReplicas = true
-			break
+			healthyCount++
+		}
+		if r.Status.EvictionRequested == true {
+			hasEvictionRequestedReplicas = true
 		}
 	}
+
 	cleanupLeftoverReplicas := !vc.isVolumeUpgrading(v)
 
 	for _, r := range rs {
@@ -596,8 +601,16 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 		}
 
 		if r.Spec.FailedAt == "" {
-			continue
+			// Skip running healthy replicas.
+			// Skip degraded volume.
+			// Skip if eviction is going.
+			if r.Spec.HealthyAt != "" ||
+				healthyCount < v.Spec.NumberOfReplicas ||
+				hasEvictionRequestedReplicas {
+				continue
+			}
 		}
+
 		if r.DeletionTimestamp != nil {
 			continue
 		}
@@ -611,11 +624,13 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 		// 1. failed before ever became healthy (RW), mostly failed during rebuilding
 		// 2. failed too long ago, became stale and unnecessary to keep
 		// around, unless we don't any healthy replicas
-		if r.Spec.HealthyAt == "" || (hasHealthyReplicas && staled) {
+		// 3. Clean up extra failed to scheduled replica
+		// when no eviction requested.
+		if r.Spec.HealthyAt == "" || (healthyCount != 0 && staled) {
 
-			logrus.Infof("Cleaning up corrupted or staled replica %v", r.Name)
+			logrus.Infof("Cleaning up corrupted, staled or extra failed to scheduled replica %v", r.Name)
 			if err := vc.deleteReplica(r, rs); err != nil {
-				return errors.Wrap(err, "cannot cleanup stale replicas")
+				return errors.Wrapf(err, "cannot cleanup the replica %v", r.Name)
 			}
 		}
 	}
