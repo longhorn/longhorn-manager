@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -155,7 +156,7 @@ func GetCronJobNameForVolumeAndJob(vName, job string) string {
 }
 
 func GetAPIServerAddressFromIP(ip string) string {
-	return ip + ":" + strconv.Itoa(DefaultAPIPort)
+	return net.JoinHostPort(ip, strconv.Itoa(DefaultAPIPort))
 }
 
 func GetDefaultManagerURL() string {
