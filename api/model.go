@@ -15,6 +15,7 @@ import (
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
@@ -95,6 +96,7 @@ type Instance struct {
 type Controller struct {
 	Instance
 	Size                   string `json:"size"`
+	ActualSize             string `json:"actualSize"`
 	Endpoint               string `json:"endpoint"`
 	LastRestoredBackup     string `json:"lastRestoredBackup"`
 	RequestedBackupRestore string `json:"requestedBackupRestore"`
@@ -702,6 +704,16 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	var purgeStatuses []PurgeStatus
 	rebuildStatuses := []RebuildStatus{}
 	for _, e := range ves {
+		actualSize := int64(0)
+		snapshots := e.Status.Snapshots
+		for _, snapshot := range snapshots {
+			snapshotSize, err := util.ConvertSize(snapshot.Size)
+			if err != nil {
+				logrus.WithError(err).Warnf("api: Cannot convert snapshot size %v for volume %v", snapshot.Size, v.Name)
+				continue
+			}
+			actualSize += snapshotSize
+		}
 		controllers = append(controllers, Controller{
 			Instance: Instance{
 				Name:                e.Name,
@@ -713,6 +725,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 				InstanceManagerName: e.Status.InstanceManagerName,
 			},
 			Size:                   strconv.FormatInt(e.Status.CurrentSize, 10),
+			ActualSize:             strconv.FormatInt(actualSize, 10),
 			Endpoint:               e.Status.Endpoint,
 			LastRestoredBackup:     e.Status.LastRestoredBackup,
 			RequestedBackupRestore: e.Spec.RequestedBackupRestore,
