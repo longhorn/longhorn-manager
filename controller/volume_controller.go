@@ -570,6 +570,16 @@ func (vc *VolumeController) getHealthyReplicaCount(rs map[string]*longhorn.Repli
 	return healthyCount
 }
 
+func (vc *VolumeController) hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
+	for _, r := range rs {
+		if r.Status.EvictionRequested == true {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (vc *VolumeController) cleanupReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
 	if err := vc.cleanupCorruptedOrStaleReplicas(v, rs); err != nil {
 		return err
@@ -637,13 +647,7 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 
 func (vc *VolumeController) cleanupFailedToScheduledReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (err error) {
 	healthyCount := vc.getHealthyReplicaCount(rs)
-	hasEvictionRequestedReplicas := false
-
-	for _, r := range rs {
-		if r.Status.EvictionRequested == true {
-			hasEvictionRequestedReplicas = true
-		}
-	}
+	hasEvictionRequestedReplicas := vc.hasReplicaEvictionRequested(rs)
 
 	if healthyCount >= v.Spec.NumberOfReplicas {
 		for _, r := range rs {
@@ -824,7 +828,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	if err := vc.checkForAutoAttachment(v, e, rs, allScheduled); err != nil {
 		return err
 	}
-	if err := vc.checkForAutoDetachment(v, e, allScheduled); err != nil {
+	if err := vc.checkForAutoDetachment(v, e, rs, allScheduled); err != nil {
 		return err
 	}
 
@@ -1636,8 +1640,9 @@ func (vc *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longho
 	// Do auto attachment for:
 	//   1. restoring/DR volumes.
 	//   2. offline expansion.
+	//   3. Eviction requested on this volume.
 	if v.Status.RestoreRequired || v.Status.IsStandby ||
-		v.Status.ExpansionRequired {
+		v.Status.ExpansionRequired || vc.hasReplicaEvictionRequested(rs) {
 		// Should use vc.controllerID or v.Status.OwnerID as CurrentNodeID,
 		// otherwise they may be not equal
 		v.Status.CurrentNodeID = v.Status.OwnerID
@@ -1646,12 +1651,17 @@ func (vc *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longho
 	return nil
 }
 
-func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longhorn.Engine, allScheduled bool) error {
+func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, allScheduled bool) error {
 	if v.Spec.NodeID != "" || v.Status.CurrentNodeID == "" || e == nil {
 		return nil
 	}
 
 	if v.Status.ExpansionRequired {
+		return nil
+	}
+
+	// Don't do auto-detachment if the eviction is going on.
+	if vc.hasReplicaEvictionRequested(rs) {
 		return nil
 	}
 
