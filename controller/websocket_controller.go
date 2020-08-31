@@ -90,8 +90,8 @@ func (wc *WebsocketController) NewWatcher(resources ...string) *Watcher {
 func (wc *WebsocketController) Run(stopCh <-chan struct{}) {
 	defer wc.Close()
 
-	logrus.Infof("Start Longhorn websocket controller")
-	defer logrus.Infof("Shutting down Longhorn websocket controller")
+	wc.logger.Infof("Start Longhorn websocket controller")
+	defer wc.logger.Infof("Shutting down Longhorn websocket controller")
 
 	if !controller.WaitForCacheSync("longhorn websocket", stopCh,
 		wc.volumeSynced, wc.engineSynced, wc.replicaSynced,
