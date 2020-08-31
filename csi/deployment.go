@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/sirupsen/logrus"
+
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	storagev1beta "k8s.io/api/storage/v1beta1"
@@ -245,7 +246,8 @@ func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootD
 		snapshotterImage,
 		rootDir,
 		[]string{
-			"--v=5",
+			"-v=5",
+			"-snapshot-name-prefix=csi", // unfortunately the prefix cannot be null, so csi snapshots will look different then longhorn snapshots
 			"--csi-address=$(ADDRESS)",
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
