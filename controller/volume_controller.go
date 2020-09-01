@@ -395,7 +395,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
-	if err := vc.cleanupCorruptedOrStaleReplicas(volume, replicas); err != nil {
+	if err := vc.cleanupReplicas(volume, engine, replicas); err != nil {
 		return err
 	}
 
@@ -426,31 +426,20 @@ func (vc *VolumeController) getCurrentEngine(v *longhorn.Volume, es map[string]*
 	return nil, fmt.Errorf("BUG: multiple engines detected when volume %v is detached", v.Name)
 }
 
-// EvictReplicas do creating one more replica for eviction,
-// or evicting a replica. Or do nothing.
+// EvictReplicas do creating one more replica for eviction, if requested
 func (vc *VolumeController) EvictReplicas(v *longhorn.Volume,
 	e *longhorn.Engine, rs map[string]*longhorn.Replica, healthyCount int) (err error) {
 	for _, replica := range rs {
-		if replica.Status.EvictionRequested == true {
-			if healthyCount == v.Spec.NumberOfReplicas {
-				if err = vc.replenishReplicas(v, e, rs); err != nil {
-					logrus.Errorf("Failed to create new replica for replica eviction err %v", err)
-					vc.eventRecorder.Eventf(v, v1.EventTypeWarning,
-						EventReasonFailedEviction,
-						"volume %v failed to create one more replica", v.Name)
-					return err
-				}
-				logrus.Debug("Creating one more replica for eviction")
-			} else { // healthyCount > v.Spec.NumberOfReplicas case
-				if err := vc.deleteReplica(replica, rs); err != nil {
-					vc.eventRecorder.Eventf(v, v1.EventTypeWarning,
-						EventReasonFailedEviction,
-						"volume %v failed to evict replica %v",
-						v.Name, replica.Name)
-					return err
-				}
-				logrus.Debugf("Evicted replica %v", replica.Name)
+		if replica.Status.EvictionRequested == true &&
+			healthyCount == v.Spec.NumberOfReplicas {
+			if err = vc.replenishReplicas(v, e, rs); err != nil {
+				logrus.Errorf("Failed to create new replica for replica eviction err %v", err)
+				vc.eventRecorder.Eventf(v, v1.EventTypeWarning,
+					EventReasonFailedEviction,
+					"volume %v failed to create one more replica", v.Name)
+				return err
 			}
+			logrus.Debug("Creating one more replica for eviction")
 			break
 		}
 	}
@@ -569,18 +558,35 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 	return nil
 }
 
-func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
+func (vc *VolumeController) getHealthyReplicaCount(rs map[string]*longhorn.Replica) int {
 	var healthyCount int
-	hasEvictionRequestedReplicas := false
 
 	for _, r := range rs {
 		if r.Spec.FailedAt == "" && r.Spec.HealthyAt != "" {
 			healthyCount++
 		}
-		if r.Status.EvictionRequested == true {
-			hasEvictionRequestedReplicas = true
-		}
 	}
+
+	return healthyCount
+}
+
+func (vc *VolumeController) cleanupReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
+	if err := vc.cleanupCorruptedOrStaleReplicas(v, rs); err != nil {
+		return err
+	}
+
+	if err := vc.cleanupFailedToScheduledReplicas(v, rs); err != nil {
+		return err
+	}
+
+	if err := vc.cleanupExtraHealthyReplicas(v, e, rs); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
+	healthyCount := vc.getHealthyReplicaCount(rs)
 
 	cleanupLeftoverReplicas := !vc.isVolumeUpgrading(v)
 
@@ -601,14 +607,7 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 		}
 
 		if r.Spec.FailedAt == "" {
-			// Skip running healthy replicas.
-			// Skip degraded volume.
-			// Skip if eviction is going.
-			if r.Spec.HealthyAt != "" ||
-				healthyCount < v.Spec.NumberOfReplicas ||
-				hasEvictionRequestedReplicas {
-				continue
-			}
+			continue
 		}
 
 		if r.DeletionTimestamp != nil {
@@ -624,16 +623,89 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 		// 1. failed before ever became healthy (RW), mostly failed during rebuilding
 		// 2. failed too long ago, became stale and unnecessary to keep
 		// around, unless we don't any healthy replicas
-		// 3. Clean up extra failed to scheduled replica
-		// when no eviction requested.
 		if r.Spec.HealthyAt == "" || (healthyCount != 0 && staled) {
 
-			logrus.Infof("Cleaning up corrupted, staled or extra failed to scheduled replica %v", r.Name)
+			logrus.Infof("Cleaning up corrupted, staled replica %v", r.Name)
 			if err := vc.deleteReplica(r, rs); err != nil {
-				return errors.Wrapf(err, "cannot cleanup the replica %v", r.Name)
+				return errors.Wrapf(err, "cannot cleanup staled replica %v", r.Name)
 			}
 		}
 	}
+
+	return nil
+}
+
+func (vc *VolumeController) cleanupFailedToScheduledReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (err error) {
+	healthyCount := vc.getHealthyReplicaCount(rs)
+	hasEvictionRequestedReplicas := false
+
+	for _, r := range rs {
+		if r.Status.EvictionRequested == true {
+			hasEvictionRequestedReplicas = true
+		}
+	}
+
+	if healthyCount >= v.Spec.NumberOfReplicas {
+		for _, r := range rs {
+			if !hasEvictionRequestedReplicas {
+				if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" &&
+					r.Spec.NodeID == "" {
+					logrus.Infof("Cleaning up failed to scheduled replica %v", r.Name)
+					if err := vc.deleteReplica(r, rs); err != nil {
+						return errors.Wrapf(err, "cannot cleanup failed to scheduled replica %v", r.Name)
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func (vc *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
+	healthyCount := vc.getHealthyReplicaCount(rs)
+
+	if healthyCount > v.Spec.NumberOfReplicas {
+		for _, r := range rs {
+			// Clean up eviction requested replica
+			if r.Status.EvictionRequested {
+				if err := vc.deleteReplica(r, rs); err != nil {
+					vc.eventRecorder.Eventf(v, v1.EventTypeWarning,
+						EventReasonFailedEviction,
+						"volume %v failed to evict replica %v",
+						v.Name, r.Name)
+					return err
+				}
+				logrus.Debugf("Evicted replica %v", r.Name)
+				return nil
+			}
+		}
+	}
+
+	// Clean up extra healthy replica with data-locallity finished
+	healthyCount = vc.getHealthyReplicaCount(rs)
+
+	if healthyCount > v.Spec.NumberOfReplicas &&
+		!isDataLocalityDisabled(v) &&
+		hasLocalReplicaOnSameNodeAsEngine(e, rs) {
+		rNames, err := vc.getPreferredReplicaCandidatesForDeletion(rs)
+		if err != nil {
+			return err
+		}
+
+		// Randomly delete extra non-local healthy replicas in the preferred candidate list rNames
+		// Sometime reconcileLocalReplica() is called more than once with the same input (v,e,rs).
+		// To make the deleting operation idempotent and prevent deleting more replica than needed,
+		// we always delete the replica with the smallest name.
+		sort.Strings(rNames)
+		for _, rName := range rNames {
+			r := rs[rName]
+			if r.Spec.NodeID != e.Spec.NodeID {
+				return vc.deleteReplica(r, rs)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -1105,36 +1177,6 @@ func (vc *VolumeController) reconcileLocalReplica(v *longhorn.Volume, e *longhor
 			return err
 		}
 		return nil
-	}
-
-	// check if there are too many healthy replicas
-	healthyCount := 0
-	for _, r := range rs {
-		if r.Spec.FailedAt == "" && r.Spec.HealthyAt != "" {
-			healthyCount++
-		}
-	}
-
-	if healthyCount <= v.Spec.NumberOfReplicas {
-		return nil
-	}
-
-	// we prefer to delete replicas on the same disk, then replicas on the same node, then replicas on the same zone
-	rNames, err := vc.getPreferredReplicaCandidatesForDeletion(rs)
-	if err != nil {
-		return err
-	}
-
-	// Randomly delete extra non-local healthy replicas in the preferred candidate list rNames
-	// Sometime reconcileLocalReplica() is called more than once with the same input (v,e,rs).
-	// To make the deleting operation idempotent and prevent deleting more replica than needed,
-	// we always delete the replica with the smallest name.
-	sort.Strings(rNames)
-	for _, rName := range rNames {
-		r := rs[rName]
-		if r.Spec.NodeID != e.Spec.NodeID {
-			return vc.deleteReplica(r, rs)
-		}
 	}
 
 	return nil
