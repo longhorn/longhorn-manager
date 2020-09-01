@@ -9,6 +9,8 @@ spec:
     - NET_RAW
   allowedCapabilities:
     - SYS_ADMIN
+    - DAC_READ_SEARCH
+    - SYS_RESOURCE
   hostNetwork: false
   hostIPC: false
   hostPID: true
@@ -27,6 +29,7 @@ spec:
     - secret
     - projected
     - hostPath
+    - persistentVolumeClaim
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -42,6 +45,9 @@ rules:
       - use
     resourceNames:
       - longhorn-psp
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -58,4 +64,7 @@ subjects:
     namespace: longhorn-system
   - kind: ServiceAccount
     name: default
+    namespace: longhorn-system
+  - kind: ServiceAccount
+    name: longhorn-nfs-provisioner
     namespace: longhorn-system
