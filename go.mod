@@ -45,7 +45,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
 	github.com/pborman/uuid v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.2.1 // indirect
+	github.com/prometheus/client_golang v1.2.1
 	github.com/rancher/go-rancher v0.1.1-0.20190307222549-9756097e5e4c
 	github.com/robfig/cron v1.2.0
 	github.com/satori/go.uuid v1.1.1-0.20170321230731-5bf94b69c6b6
@@ -72,6 +72,7 @@ require (
 	k8s.io/cloud-provider v0.0.0-20191004111010-9775d7be8494 // indirect
 	k8s.io/kube-openapi v0.0.0-20190918143330-0270cf2f1c1d // indirect
 	k8s.io/kubernetes v1.14.8
+	k8s.io/metrics v0.0.0-20191004105854-2e8cf7d0888c
 	k8s.io/utils v0.0.0-20191010214722-8d271d903fe4
 	sigs.k8s.io/sig-storage-lib-external-provisioner v4.0.1+incompatible
 )
