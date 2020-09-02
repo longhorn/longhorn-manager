@@ -70,7 +70,7 @@ func (s *Server) NodeUpdate(rw http.ResponseWriter, req *http.Request) error {
 	// Only scheduling disabled node can be evicted
 	// Can not enable scheduling on an evicting node
 	if n.EvictionRequested == true && n.AllowScheduling != false {
-		return errors.Wrap(err, "Need to disable scheduling on this node for node eviction, or cancel eviction to enable scheduling on this node.")
+		return fmt.Errorf("need to disable scheduling on node %v for node eviction, or cancel eviction to enable scheduling on this node", n.Name)
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
@@ -112,10 +112,10 @@ func (s *Server) DiskUpdate(rw http.ResponseWriter, req *http.Request) error {
 
 	// Only scheduling disabled disk can be evicted
 	// Can not enable scheduling on an evicting disk
-	for _, diskSpec := range diskUpdate.Disks {
+	for diskName, diskSpec := range diskUpdate.Disks {
 		if diskSpec.EvictionRequested == true &&
 			diskSpec.AllowScheduling != false {
-			return errors.Wrap(err, "Need to disable scheduling on this disk for disk eviction, or cancel eviction to enable scheduling on this disk")
+			return fmt.Errorf("need to disable scheduling on disk %v for disk eviction, or cancel eviction to enable scheduling on this disk", diskName)
 		}
 	}
 
