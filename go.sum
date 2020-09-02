@@ -362,6 +362,8 @@ k8s.io/kube-openapi v0.0.0-20190918143330-0270cf2f1c1d h1:Xpe6sK+RY4ZgCTyZ3y273U
 k8s.io/kube-openapi v0.0.0-20190918143330-0270cf2f1c1d/go.mod h1:1TqjTSzOxsLGIKfj0lK8EeCP7K1iUG65v09OM0/WG5E=
 k8s.io/kubernetes v1.14.8 h1:a+eHSdTduLhJOaqsY1Of5qXvmMkblioMea5pq89k1VU=
 k8s.io/kubernetes v1.14.8/go.mod h1:ocZa8+6APFNC2tX1DZASIbocyYT5jHzqFVsY5aoB7Jk=
+k8s.io/metrics v0.0.0-20191004105854-2e8cf7d0888c h1:qkfVb8PX30hnQXqRj6rxnMtd9GagB/e8r6E+bS651CU=
+k8s.io/metrics v0.0.0-20191004105854-2e8cf7d0888c/go.mod h1:a25VAbm3QT3xiVl1jtoF1ueAKQM149UdZ+L93ePfV3M=
 k8s.io/utils v0.0.0-20191010214722-8d271d903fe4 h1:Gi+/O1saihwDqnlmC8Vhv1M5Sp4+rbOmK9TbsLn8ZEA=
 k8s.io/utils v0.0.0-20191010214722-8d271d903fe4/go.mod h1:sZAwmy6armz5eXlNoLmJcl4F1QuKu7sr+mFQ0byX7Ew=
 sigs.k8s.io/sig-storage-lib-external-provisioner v4.0.1+incompatible h1:Wc09EvmeiMCZf7UlasU0W2Rn4GVX/b+Lus4UwmUBvD4=
