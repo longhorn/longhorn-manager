@@ -83,6 +83,7 @@ func uninstall(c *cli.Context) error {
 	volumeInformer := lhInformerFactory.Longhorn().V1beta1().Volumes()
 	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
 	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
+	diskInformer := lhInformerFactory.Longhorn().V1beta1().Disks()
 	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
 	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 
@@ -99,7 +100,7 @@ func uninstall(c *cli.Context) error {
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
-		engineImageInformer, nodeInformer, settingInformer, imInformer,
+		engineImageInformer, nodeInformer, diskInformer, settingInformer, imInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer,
@@ -123,6 +124,7 @@ func uninstall(c *cli.Context) error {
 		replicaInformer,
 		engineImageInformer,
 		nodeInformer,
+		diskInformer,
 		imInformer,
 		daemonSetInformer,
 		deploymentInformer,

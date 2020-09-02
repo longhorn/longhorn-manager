@@ -126,6 +126,7 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 	replicaInformer := lhInformerFactory.Longhorn().V1beta1().Replicas()
 	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
 	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
+	diskInformer := lhInformerFactory.Longhorn().V1beta1().Disks()
 	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
 	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 
@@ -142,7 +143,7 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
-		engineImageInformer, nodeInformer, settingInformer, imInformer,
+		engineImageInformer, nodeInformer, diskInformer, settingInformer, imInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer,
@@ -291,7 +292,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			_, err = kubeClient.CoreV1().Nodes().Create(kubeNode1)
 			c.Assert(err, IsNil)
 
-			lhNode1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
+			lhNode1 := newNode(TestNode1, TestNamespace, TestDefaultDiskUUID1, true, types.ConditionStatusTrue, "")
 			err = lhNodeIndexer.Add(lhNode1)
 			c.Assert(err, IsNil)
 			_, err = lhClient.LonghornV1beta1().Nodes(lhNode1.Namespace).Create(lhNode1)
@@ -303,7 +304,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		c.Assert(err, IsNil)
 		_, err = kubeClient.CoreV1().Nodes().Create(kubeNode2)
 
-		lhNode2 := newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
+		lhNode2 := newNode(TestNode2, TestNamespace, TestDefaultDiskUUID2, true, types.ConditionStatusTrue, "")
 		err = lhNodeIndexer.Add(lhNode2)
 		c.Assert(err, IsNil)
 		_, err = lhClient.LonghornV1beta1().Nodes(lhNode2.Namespace).Create(lhNode2)

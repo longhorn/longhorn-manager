@@ -2,6 +2,7 @@ package datastore
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -35,6 +36,9 @@ var (
 	VerificationRetryInterval = 100 * time.Millisecond
 	// VerificationRetryCounts is the number of times to retry for verification
 	VerificationRetryCounts = 20
+
+	DiskCreationWaitInterval = 1 * time.Second
+	DiskCreationRetryCounts  = 15
 )
 
 // InitSettings creates all Settings in SettingNameList if not already exist
@@ -612,6 +616,9 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {
 		return nil, err
 	}
+	if err := tagDiskLabel(r.Spec.DiskID, r); err != nil {
+		return nil, err
+	}
 
 	ret, err := s.lhClient.LonghornV1beta1().Replicas(s.namespace).Create(r)
 	if err != nil {
@@ -644,6 +651,9 @@ func (s *DataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 		return nil, err
 	}
 	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {
+		return nil, err
+	}
+	if err := tagDiskLabel(r.Spec.DiskID, r); err != nil {
 		return nil, err
 	}
 
@@ -957,6 +967,7 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 			AllowScheduling:   true,
 			EvictionRequested: false,
 			Tags:              []string{},
+			DiskPathMap:       map[string]struct{}{},
 		},
 	}
 
@@ -970,11 +981,9 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		disks, err := types.CreateDefaultDisk(dataPath)
-		if err != nil {
+		if err := s.PrepareForDefaultDiskCreation(dataPath, node); err != nil {
 			return nil, err
 		}
-		node.Spec.Disks = disks
 	}
 
 	return s.CreateNode(node)
@@ -1129,27 +1138,6 @@ func getNodeSelector(nodeName string) (labels.Selector, error) {
 	})
 }
 
-// ListReplicasByNode gets a map of Replicas on the node Name for the given namespace.
-func (s *DataStore) ListReplicasByNode(name string) (map[string][]*longhorn.Replica, error) {
-	nodeSelector, err := getNodeSelector(name)
-	if err != nil {
-		return nil, err
-	}
-	replicaList, err := s.rLister.Replicas(s.namespace).List(nodeSelector)
-	if err != nil {
-		return nil, err
-	}
-
-	replicaDiskMap := map[string][]*longhorn.Replica{}
-	for _, replica := range replicaList {
-		if _, ok := replicaDiskMap[replica.Spec.DiskID]; !ok {
-			replicaDiskMap[replica.Spec.DiskID] = []*longhorn.Replica{}
-		}
-		replicaDiskMap[replica.Spec.DiskID] = append(replicaDiskMap[replica.Spec.DiskID], replica.DeepCopy())
-	}
-	return replicaDiskMap, nil
-}
-
 // ListReplicasByNodeRO returns a list of all Replicas on node Name for the given namespace,
 // the list contains direct references to the internal cache objects and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
@@ -1190,6 +1178,302 @@ func GetOwnerReferencesForNode(node *longhorn.Node) []metav1.OwnerReference {
 			BlockOwnerDeletion: &blockOwnerDeletion,
 		},
 	}
+}
+
+// CreateDisk creates a Longhorn Disk resource and verifies creation
+func (s *DataStore) CreateDisk(disk *longhorn.Disk) (*longhorn.Disk, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, disk); err != nil {
+		return nil, err
+	}
+	ret, err := s.lhClient.LonghornV1beta1().Disks(s.namespace).Create(disk)
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(disk.Name, "disk", func(name string) (runtime.Object, error) {
+		return s.getDiskRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.Disk)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for disk")
+	}
+
+	return ret, nil
+}
+
+func (s *DataStore) WaitForDiskCreation(nodeName, diskPath string) (*longhorn.Disk, error) {
+	for count := 0; count < DiskCreationRetryCounts; count++ {
+		node, err := s.GetNode(nodeName)
+		if err != nil {
+			return nil, err
+		}
+		if node.Status.DiskPathIDMap != nil {
+			if diskName, exists := node.Status.DiskPathIDMap[diskPath]; exists {
+				disk, err := s.GetDisk(diskName)
+				if err != nil {
+					return nil, err
+				}
+				return disk, nil
+			}
+		}
+		time.Sleep(DiskCreationWaitInterval)
+	}
+	return nil, fmt.Errorf("failed to wait for disk path %v creation on node %v complete", diskPath, nodeName)
+}
+
+func (s *DataStore) PrepareForDefaultDiskCreation(dataPath string, node *longhorn.Node) error {
+	if err := util.CreateDiskPathReplicaSubdirectory(filepath.Clean(dataPath)); err != nil {
+		return err
+	}
+	node.Spec.DiskPathMap[dataPath] = struct{}{}
+	return nil
+}
+
+func (s *DataStore) CreateDisksFromAnnotation(nodeID, annotation string) error {
+	node, err := s.GetNode(nodeID)
+	if err != nil {
+		return err
+	}
+
+	validDiskInputs := map[string]types.DiskInput{}
+	existFsid := map[string]string{}
+
+	diskInputs, err := types.UnmarshalToDiskSpecs(annotation)
+	if err != nil {
+		return errors.Wrapf(err, "failed to unmarshal the default disks annotation")
+	}
+	for _, input := range diskInputs {
+		var path string
+		if input.Path != "" {
+			path = input.Path
+		} else if input.DiskSpec.Path != "" {
+			path = input.DiskSpec.Path
+		} else {
+			return fmt.Errorf("Empty path in disk annotation %+v", input)
+		}
+		path = filepath.Clean(path)
+
+		diskInfo, err := util.GetDiskInfo(path)
+		if err != nil {
+			return err
+		}
+		for _, validDiskInput := range validDiskInputs {
+			if validDiskInput.Path == path {
+				return fmt.Errorf("duplicate disk path %v", path)
+			}
+		}
+		if _, exist := existFsid[diskInfo.Fsid]; exist {
+			return fmt.Errorf(
+				"the disk %v is the same file system with %v, fsid %v",
+				path, existFsid[diskInfo.Fsid], diskInfo.Fsid)
+		}
+		existFsid[diskInfo.Fsid] = path
+
+		if input.StorageReserved < 0 || input.StorageReserved > diskInfo.StorageMaximum {
+			return fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", path)
+		}
+
+		tags, err := util.ValidateTags(input.Tags)
+		if err != nil {
+			return err
+		}
+
+		validDiskInputs[path] = types.DiskInput{
+			Path: path,
+			DiskSpec: types.DiskSpec{
+				AllowScheduling:   input.AllowScheduling,
+				EvictionRequested: input.EvictionRequested,
+				StorageReserved:   input.StorageReserved,
+				Tags:              tags,
+			},
+		}
+		node.Spec.DiskPathMap[path] = struct{}{}
+	}
+
+	if node, err = s.UpdateNode(node); err != nil {
+		return err
+	}
+
+	for _, input := range validDiskInputs {
+		disk, err := s.WaitForDiskCreation(node.Name, input.Path)
+		if err != nil {
+			return err
+		}
+		disk.Spec = input.DiskSpec
+		if _, err := s.UpdateDisk(disk); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *DataStore) getDiskRO(name string) (*longhorn.Disk, error) {
+	return s.dLister.Disks(s.namespace).Get(name)
+}
+
+// GetDisk gets Longhorn Disk for the given name and namespace
+// Returns a new Disk object
+func (s *DataStore) GetDisk(name string) (*longhorn.Disk, error) {
+	resultRO, err := s.getDiskRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// UpdateDisk updates Longhorn Disk resource and verifies update
+func (s *DataStore) UpdateDisk(disk *longhorn.Disk) (*longhorn.Disk, error) {
+	obj, err := s.lhClient.LonghornV1beta1().Disks(s.namespace).Update(disk)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(disk.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getDiskRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateDiskStatus updates Longhorn Disk status and verifies update
+func (s *DataStore) UpdateDiskStatus(disk *longhorn.Disk) (*longhorn.Disk, error) {
+	obj, err := s.lhClient.LonghornV1beta1().Disks(s.namespace).UpdateStatus(disk)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(disk.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getDiskRO(name)
+	})
+	return obj, nil
+}
+
+// ListDisks returns an object contains all Disks for the namespace
+func (s *DataStore) ListDisks() (map[string]*longhorn.Disk, error) {
+	itemMap := make(map[string]*longhorn.Disk)
+
+	diskList, err := s.dLister.Disks(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	for _, disk := range diskList {
+		// Cannot use cached object from lister
+		itemMap[disk.Name] = disk.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListDisksByNode gets a list of Disk on a node for the given namespace.
+func (s *DataStore) ListDisksByNode(name string) ([]*longhorn.Disk, error) {
+	if name == "" {
+		return nil, fmt.Errorf("empty node ID")
+	}
+	node, err := s.GetNode(name)
+	if err != nil {
+		return nil, err
+	}
+	diskList := []*longhorn.Disk{}
+	for _, diskName := range node.Status.DiskPathIDMap {
+		disk, err := s.GetDisk(diskName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get disk %v on node %v", diskName, name)
+		}
+		diskList = append(diskList, disk)
+	}
+	return diskList, nil
+}
+
+// ListExistingDisksByNode gets a list of Disk and ignore IsNotFound errors
+// on a node for the given namespace.
+func (s *DataStore) ListExistingDisksByNode(name string) ([]*longhorn.Disk, error) {
+	if name == "" {
+		return nil, fmt.Errorf("empty node ID")
+	}
+	node, err := s.GetNode(name)
+	if err != nil {
+		return nil, err
+	}
+	diskList := []*longhorn.Disk{}
+	for _, diskName := range node.Status.DiskPathIDMap {
+		disk, err := s.GetDisk(diskName)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return nil, errors.Wrapf(err, "failed to get disk %v on node %v", diskName, name)
+		}
+		diskList = append(diskList, disk)
+	}
+	return diskList, nil
+}
+
+// ListReplicasByDisk gets a list of replicas by LonghornDiskKey name for the given
+// namespace.
+func (s *DataStore) ListReplicasByDisk(name string) ([]*longhorn.Replica, error) {
+	diskSelector, err := getDiskSelector(name)
+	if err != nil {
+		return nil, err
+	}
+	replicaList, err := s.rLister.Replicas(s.namespace).List(diskSelector)
+	if err != nil {
+		return nil, err
+	}
+	return replicaList, nil
+}
+
+func getDiskSelector(diskName string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			types.LonghornDiskKey: diskName,
+		},
+	})
+}
+
+func tagDiskLabel(diskName string, obj runtime.Object) error {
+	// fix longhorndisk label for object
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[types.LonghornDiskKey] = diskName
+	metadata.SetLabels(labels)
+	return nil
+}
+
+// DeleteDisk deletes Disk for the given name and namespace
+func (s *DataStore) DeleteDisk(name string) error {
+	return s.lhClient.LonghornV1beta1().Disks(s.namespace).Delete(name, &metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForDisk will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForDisk(obj *longhorn.Disk) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta1().Disks(s.namespace).Update(obj)
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for disk %v", obj.Name)
+	}
+	return nil
 }
 
 // GetSettingAsInt gets the setting for the given name, returns as integer

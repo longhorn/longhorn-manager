@@ -284,10 +284,12 @@ func (knc *KubernetesNodeController) syncDefaultDisks(node *longhorn.Node) (err 
 	if !requireLabel {
 		return nil
 	}
-	// only apply default disks if there is no existing disk
-	if len(node.Spec.Disks) != 0 {
+
+	// only apply default disk config if the node disk map is empty
+	if len(node.Spec.DiskPathMap) != 0 {
 		return nil
 	}
+
 	kubeNode, err := knc.ds.GetKubernetesNode(node.Name)
 	if err != nil {
 		return err
@@ -298,43 +300,38 @@ func (knc *KubernetesNodeController) syncDefaultDisks(node *longhorn.Node) (err 
 	}
 	val = strings.ToLower(val)
 
-	disks := map[string]types.DiskSpec{}
 	switch val {
 	case types.NodeCreateDefaultDiskLabelValueTrue:
 		dataPath, err := knc.ds.GetSettingValueExisted(types.SettingNameDefaultDataPath)
 		if err != nil {
 			return err
 		}
-		disks, err = types.CreateDefaultDisk(dataPath)
-		if err != nil {
+		if err := knc.ds.PrepareForDefaultDiskCreation(dataPath, node); err != nil {
 			return err
 		}
+		if node, err = knc.ds.UpdateNode(node); err != nil {
+			return errors.Wrapf(err, "Kubernetes node: Failed to update node %v during the default disk auto creation", node.Name)
+		}
+		go func() {
+			if _, err := knc.ds.WaitForDiskCreation(node.Name, dataPath); err != nil {
+				logrus.Warnf("Kubernetes node: Failed to wait for the default disk creation complete: %v", err)
+			}
+		}()
 	case types.NodeCreateDefaultDiskLabelValueConfig:
 		annotation, ok := kubeNode.Annotations[types.KubeNodeDefaultDiskConfigAnnotationKey]
 		if !ok {
 			return nil
 		}
-		disks, err = types.CreateDisksFromAnnotation(annotation)
-		if err != nil {
-			logrus.Warnf("Kubernetes node: invalid annotation %v: %v: %v", types.KubeNodeDefaultDiskConfigAnnotationKey, val, err)
-			return nil
-		}
+		go func() {
+			if err = knc.ds.CreateDisksFromAnnotation(node.Name, annotation); err != nil {
+				logrus.Warnf("Kubernetes node: Failed to create disks from annotation %v: %v: %v", types.KubeNodeDefaultDiskConfigAnnotationKey, val, err)
+			}
+		}()
 	default:
 		logrus.Warnf("Kubernetes node: invalid label value: %v: %v", types.NodeCreateDefaultDiskLabelKey, val)
 		return nil
 	}
 
-	if len(disks) == 0 {
-		return nil
-	}
-
-	node.Spec.Disks = disks
-
-	updatedNode, err := knc.ds.UpdateNode(node)
-	if err != nil {
-		return err
-	}
-	node = updatedNode
 	return nil
 }
 

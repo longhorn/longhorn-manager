@@ -35,6 +35,7 @@ const (
 	EngineBinaryName                 = "longhorn"
 
 	LonghornNodeKey = "longhornnode"
+	LonghornDiskKey = "longhorndisk"
 
 	NodeCreateDefaultDiskLabelKey             = "node.longhorn.io/create-default-disk"
 	NodeCreateDefaultDiskLabelValueTrue       = "true"
@@ -63,8 +64,6 @@ const (
 	KubernetesTopologyZoneLabelKey        = "topology.kubernetes.io/zone"
 
 	LonghornDriverName = "driver.longhorn.io"
-
-	DefaultDiskPrefix = "default-disk-"
 
 	DeprecatedProvisionerName = "rancher.io/longhorn"
 	DepracatedDriverName      = "io.rancher.longhorn"
@@ -334,61 +333,6 @@ func LabelsToString(labels map[string]string) string {
 	return res
 }
 
-func CreateDisksFromAnnotation(annotation string) (map[string]DiskSpec, error) {
-	validDisks := map[string]DiskSpec{}
-	existFsid := map[string]string{}
-
-	disks, err := UnmarshalToDisks(annotation)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to unmarshal the default disks annotation")
-	}
-	for _, disk := range disks {
-		if disk.Path == "" {
-			return nil, fmt.Errorf("invalid disk %+v", disk)
-		}
-		diskInfo, err := util.GetDiskInfo(disk.Path)
-		if err != nil {
-			return nil, err
-		}
-		for _, vDisk := range validDisks {
-			if vDisk.Path == disk.Path {
-				return nil, fmt.Errorf("duplicate disk path %v", disk.Path)
-			}
-		}
-
-		// Set to default disk name
-		if disk.Name == "" {
-			disk.Name = DefaultDiskPrefix + diskInfo.Fsid
-		}
-
-		if _, exist := existFsid[diskInfo.Fsid]; exist {
-			return nil, fmt.Errorf(
-				"the disk %v is the same"+
-					"file system with %v, fsid %v",
-				disk.Path, existFsid[diskInfo.Fsid],
-				diskInfo.Fsid)
-		}
-
-		existFsid[diskInfo.Fsid] = disk.Path
-
-		if disk.StorageReserved < 0 || disk.StorageReserved > diskInfo.StorageMaximum {
-			return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
-		}
-		tags, err := util.ValidateTags(disk.Tags)
-		if err != nil {
-			return nil, err
-		}
-		disk.Tags = tags
-		_, exists := validDisks[disk.Name]
-		if exists {
-			return nil, fmt.Errorf("the disk name %v has duplicated", disk.Name)
-		}
-		validDisks[disk.Name] = disk.DiskSpec
-	}
-
-	return validDisks, nil
-}
-
 func GetNodeTagsFromAnnotation(annotation string) ([]string, error) {
 	nodeTags, err := UnmarshalToNodeTags(annotation)
 	if err != nil {
@@ -402,15 +346,15 @@ func GetNodeTagsFromAnnotation(annotation string) ([]string, error) {
 	return validNodeTags, nil
 }
 
-type DiskSpecWithName struct {
+type DiskInput struct {
+	Path string
 	DiskSpec
-	Name string `json:"name"`
 }
 
-// UnmarshalToDisks input format should be:
+// UnmarshalToDiskSpecs input format should be:
 // `[{"path":"/mnt/disk1","allowScheduling":false},
 //   {"path":"/mnt/disk2","allowScheduling":false,"storageReserved":1024,"tags":["ssd","fast"]}]`
-func UnmarshalToDisks(s string) (ret []DiskSpecWithName, err error) {
+func UnmarshalToDiskSpecs(s string) (ret []DiskInput, err error) {
 	if err := json.Unmarshal([]byte(s), &ret); err != nil {
 		return nil, err
 	}
@@ -425,22 +369,4 @@ func UnmarshalToNodeTags(s string) ([]string, error) {
 		return nil, err
 	}
 	return res, nil
-}
-
-func CreateDefaultDisk(dataPath string) (map[string]DiskSpec, error) {
-	if err := util.CreateDiskPathReplicaSubdirectory(dataPath); err != nil {
-		return nil, err
-	}
-	diskInfo, err := util.GetDiskInfo(dataPath)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]DiskSpec{
-		DefaultDiskPrefix + diskInfo.Fsid: {
-			Path:              diskInfo.Path,
-			AllowScheduling:   true,
-			EvictionRequested: false,
-			StorageReserved:   diskInfo.StorageMaximum * 30 / 100,
-		},
-	}, nil
 }

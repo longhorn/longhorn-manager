@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
+
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
-	"github.com/sirupsen/logrus"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
@@ -295,7 +298,7 @@ func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, requiredStorage int
 		(size+info.StorageScheduled) <= (info.StorageMaximum-info.StorageReserved)*(info.OverProvisioningPercentage/100)
 }
 
-func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk types.DiskSpec, diskStatus *types.DiskStatus) (*DiskSchedulingInfo, error) {
+func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk *longhorn.Disk) (*DiskSchedulingInfo, error) {
 	// get StorageOverProvisioningPercentage and StorageMinimalAvailablePercentage settings
 	overProvisioningPercentage, err := rcs.ds.GetSettingAsInt(types.SettingNameStorageOverProvisioningPercentage)
 	if err != nil {
@@ -306,12 +309,30 @@ func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk types.DiskSpec, diskStat
 		return nil, err
 	}
 	info := &DiskSchedulingInfo{
-		StorageAvailable:           diskStatus.StorageAvailable,
-		StorageScheduled:           diskStatus.StorageScheduled,
-		StorageReserved:            disk.StorageReserved,
-		StorageMaximum:             diskStatus.StorageMaximum,
+		StorageAvailable:           disk.Status.StorageAvailable,
+		StorageScheduled:           disk.Status.StorageScheduled,
+		StorageReserved:            disk.Spec.StorageReserved,
+		StorageMaximum:             disk.Status.StorageMaximum,
 		OverProvisioningPercentage: overProvisioningPercentage,
 		MinimalAvailablePercentage: minimalAvailablePercentage,
 	}
 	return info, nil
+}
+
+func UpdateReplicaDataPath(diskPath string, r *longhorn.Replica) error {
+	dirName, err := GetReplicaDirectoryName(r.Spec.DataPath)
+	if err != nil {
+		return errors.Wrapf(err, "failed to update replica %v data path", r.Name)
+	}
+	r.Spec.DataPath = filepath.Join(diskPath, "replicas", dirName)
+	return nil
+}
+
+func GetReplicaDirectoryName(dataPath string) (string, error) {
+	elements := strings.Split(filepath.Clean(dataPath), "/replicas/")
+	if len(elements) < 1 || len(elements) > 2 {
+		return "", fmt.Errorf("found invalid path %v when fetching the replica directory name", dataPath)
+	}
+
+	return elements[len(elements)-1], nil
 }

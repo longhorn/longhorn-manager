@@ -67,6 +67,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	volumeInformer := lhInformerFactory.Longhorn().V1beta1().Volumes()
 	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
 	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
+	diskInformer := lhInformerFactory.Longhorn().V1beta1().Disks()
 	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
 	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 
@@ -84,7 +85,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
-		engineImageInformer, nodeInformer, settingInformer, imInformer,
+		engineImageInformer, nodeInformer, diskInformer, settingInformer, imInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer,
@@ -93,7 +94,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		pdbInformer,
 		kubeClient, namespace)
 	rc := NewReplicaController(logger, ds, scheme,
-		nodeInformer, replicaInformer, imInformer,
+		nodeInformer, diskInformer, replicaInformer, imInformer,
 		kubeClient, namespace, controllerID)
 	ec := NewEngineController(logger, ds, scheme,
 		engineInformer, imInformer,
@@ -106,7 +107,10 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		engineImageInformer, volumeInformer, daemonSetInformer,
 		kubeClient, namespace, controllerID, serviceAccount)
 	nc := NewNodeController(logger, ds, scheme,
-		nodeInformer, settingInformer, podInformer, replicaInformer, kubeNodeInformer,
+		nodeInformer, settingInformer, podInformer, kubeNodeInformer,
+		kubeClient, namespace, controllerID)
+	dc := NewDiskController(logger, ds, scheme,
+		diskInformer, nodeInformer, replicaInformer, settingInformer,
 		kubeClient, namespace, controllerID)
 	ws := NewWebsocketController(logger,
 		volumeInformer, engineInformer, replicaInformer,
@@ -138,6 +142,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	go vc.Run(Workers, stopCh)
 	go ic.Run(Workers, stopCh)
 	go nc.Run(Workers, stopCh)
+	go dc.Run(Workers, stopCh)
 	go ws.Run(stopCh)
 	go sc.Run(stopCh)
 	go imc.Run(Workers, stopCh)
@@ -183,7 +188,17 @@ func isControllerResponsibleFor(controllerID string, ds *datastore.DataStore, na
 	if controllerID == preferredOwnerID {
 		responsible = true
 	} else if currentOwnerID == "" {
-		responsible = true
+		if preferredOwnerID == "" {
+			responsible = true
+		} else {
+			preferredDown, err := ds.IsNodeDownOrDeleted(preferredOwnerID)
+			if err != nil {
+				logrus.Warnf("Error while checking if object %v preferred owner %v is down or deleted: %v", name, preferredOwnerID, err)
+			}
+			if preferredDown {
+				responsible = true
+			}
+		}
 	} else { // currentOwnerID != ""
 		if ownerDown {
 			responsible = true

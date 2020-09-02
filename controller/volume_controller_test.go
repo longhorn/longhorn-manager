@@ -81,6 +81,7 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	replicaInformer := lhInformerFactory.Longhorn().V1beta1().Replicas()
 	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
 	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
+	diskInformer := lhInformerFactory.Longhorn().V1beta1().Disks()
 	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
 	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 
@@ -97,7 +98,7 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
-		engineImageInformer, nodeInformer, settingInformer, imInformer,
+		engineImageInformer, nodeInformer, diskInformer, settingInformer, imInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer,
@@ -129,6 +130,7 @@ type VolumeTestCase struct {
 	engines  map[string]*longhorn.Engine
 	replicas map[string]*longhorn.Replica
 	nodes    []*longhorn.Node
+	disks    []*longhorn.Disk
 
 	expectVolume   *longhorn.Volume
 	expectEngines  map[string]*longhorn.Engine
@@ -155,6 +157,10 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.State = types.VolumeStateCreating
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	for _, r := range tc.expectReplicas {
+		r.Spec.NodeID = TestNode1
+		r.Spec.DiskID = TestDefaultDiskUUID1
+	}
 	tc.volume.Status.Conditions = map[string]types.Condition{}
 	tc.engines = nil
 	tc.replicas = nil
@@ -813,7 +819,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = TestNode1
 	tc.volume.Status.CurrentNodeID = TestNode1
-	tc.nodes[1] = newNode(TestNode2, TestNamespace, false, types.ConditionStatusFalse, string(types.NodeConditionReasonKubernetesNodeGone))
+	tc.nodes[1] = newNode(TestNode2, TestNamespace, TestDefaultDiskUUID2, false, types.ConditionStatusFalse, string(types.NodeConditionReasonKubernetesNodeGone))
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
@@ -914,7 +920,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = TestNode1
 	tc.volume.Status.CurrentNodeID = TestNode1
-	tc.nodes[1] = newNode(TestNode2, TestNamespace, false, types.ConditionStatusFalse, string(types.NodeConditionReasonManagerPodDown))
+	tc.nodes[1] = newNode(TestNode2, TestNamespace, TestDefaultDiskUUID2, false, types.ConditionStatusFalse, string(types.NodeConditionReasonManagerPodDown))
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
@@ -1019,13 +1025,14 @@ func newReplicaForVolume(v *longhorn.Volume, e *longhorn.Engine, nodeID, diskID 
 			Labels: map[string]string{
 				"longhornvolume":      v.Name,
 				types.LonghornNodeKey: nodeID,
+				types.LonghornDiskKey: diskID,
 			},
 		},
 		Spec: types.ReplicaSpec{
 			InstanceSpec: types.InstanceSpec{
-				NodeID:      nodeID,
 				VolumeName:  v.Name,
 				VolumeSize:  v.Spec.Size,
+				NodeID:      nodeID,
 				EngineImage: TestEngineImage,
 				DesireState: types.InstanceStateStopped,
 			},
@@ -1037,132 +1044,15 @@ func newReplicaForVolume(v *longhorn.Volume, e *longhorn.Engine, nodeID, diskID 
 	}
 }
 
-func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string, mountpropagation *v1.MountPropagationMode) *v1.Pod {
-	podStatus := v1.ConditionFalse
-	if phase == v1.PodRunning {
-		podStatus = v1.ConditionTrue
-	}
-	return &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels: map[string]string{
-				"app": "longhorn-manager",
-			},
-		},
-		Spec: v1.PodSpec{
-			NodeName: nodeID,
-			Containers: []v1.Container{
-				{
-					Name:  "test-container",
-					Image: TestEngineImage,
-					VolumeMounts: []v1.VolumeMount{
-						{
-							Name:             "longhorn",
-							MountPath:        TestDefaultDataPath,
-							MountPropagation: mountpropagation,
-						},
-					},
-				},
-			},
-		},
-		Status: v1.PodStatus{
-			Conditions: []v1.PodCondition{
-				{
-					Type:   v1.PodReady,
-					Status: podStatus,
-				},
-			},
-			Phase: phase,
-			PodIP: podIP,
-		},
-	}
-}
-
-func newNode(name, namespace string, allowScheduling bool, status types.ConditionStatus, reason string) *longhorn.Node {
-	return &longhorn.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Spec: types.NodeSpec{
-			AllowScheduling: allowScheduling,
-			Disks: map[string]types.DiskSpec{
-				TestDiskID1: {
-					Path:            TestDefaultDataPath,
-					AllowScheduling: true,
-					StorageReserved: 0,
-				},
-			},
-		},
-		Status: types.NodeStatus{
-			Conditions: map[string]types.Condition{
-				types.NodeConditionTypeSchedulable: newNodeCondition(types.NodeConditionTypeSchedulable, status, reason),
-				types.NodeConditionTypeReady:       newNodeCondition(types.NodeConditionTypeReady, status, reason),
-			},
-			DiskStatus: map[string]*types.DiskStatus{
-				TestDiskID1: {
-					StorageAvailable: TestDiskAvailableSize,
-					StorageScheduled: 0,
-					StorageMaximum:   TestDiskSize,
-				},
-			},
-		},
-	}
-}
-
-func newNodeCondition(conditionType string, status types.ConditionStatus, reason string) types.Condition {
-	return types.Condition{
-		Type:    conditionType,
-		Status:  status,
-		Reason:  reason,
-		Message: "",
-	}
-}
-
-func newKubernetesNode(name string, readyStatus, diskPressureStatus, memoryStatus, outOfDiskStatus, pidStatus, networkStatus, kubeletStatus v1.ConditionStatus) *v1.Node {
-	return &v1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
-		Status: v1.NodeStatus{
-			Conditions: []v1.NodeCondition{
-				{
-					Type:   v1.NodeReady,
-					Status: readyStatus,
-				},
-				{
-					Type:   v1.NodeDiskPressure,
-					Status: diskPressureStatus,
-				},
-				{
-					Type:   v1.NodeMemoryPressure,
-					Status: memoryStatus,
-				},
-				{
-					Type:   v1.NodeOutOfDisk,
-					Status: outOfDiskStatus,
-				},
-				{
-					Type:   v1.NodePIDPressure,
-					Status: pidStatus,
-				},
-				{
-					Type:   v1.NodeNetworkUnavailable,
-					Status: networkStatus,
-				},
-			},
-		},
-	}
-}
-
 func generateVolumeTestCaseTemplate() *VolumeTestCase {
 	volume := newVolume(TestVolumeName, 2)
 	engine := newEngineForVolume(volume)
-	replica1 := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1)
-	replica2 := newReplicaForVolume(volume, engine, TestNode2, TestDiskID1)
-	node1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	node2 := newNode(TestNode2, TestNamespace, false, types.ConditionStatusTrue, "")
+	replica1 := newReplicaForVolume(volume, engine, TestNode1, TestDefaultDiskUUID1)
+	replica2 := newReplicaForVolume(volume, engine, TestNode2, TestDefaultDiskUUID2)
+	node1 := newNode(TestNode1, TestNamespace, TestDefaultDiskUUID1, true, types.ConditionStatusTrue, "")
+	disk1 := newDisk(TestDefaultDiskUUID1, TestNamespace, TestNode1)
+	node2 := newNode(TestNode2, TestNamespace, TestDefaultDiskUUID2, false, types.ConditionStatusTrue, "")
+	disk2 := newDisk(TestDefaultDiskUUID2, TestNamespace, TestNode2)
 
 	return &VolumeTestCase{
 		volume: volume,
@@ -1176,6 +1066,10 @@ func generateVolumeTestCaseTemplate() *VolumeTestCase {
 		nodes: []*longhorn.Node{
 			node1,
 			node2,
+		},
+		disks: []*longhorn.Disk{
+			disk1,
+			disk2,
 		},
 
 		expectVolume:   nil,
@@ -1208,6 +1102,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		eIndexer := lhInformerFactory.Longhorn().V1beta1().Engines().Informer().GetIndexer()
 		rIndexer := lhInformerFactory.Longhorn().V1beta1().Replicas().Informer().GetIndexer()
 		nIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
+		dIndexer := lhInformerFactory.Longhorn().V1beta1().Disks().Informer().GetIndexer()
 
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 		knIndexer := kubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
@@ -1252,18 +1147,9 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			c.Assert(err, IsNil)
 			sIndexer.Add(setting)
 		}
-		// need to create default node
+
+		// need to create default node and the corresponding disk
 		for _, node := range tc.nodes {
-			node.Status.DiskStatus = map[string]*types.DiskStatus{
-				TestDiskID1: {
-					StorageAvailable: TestDiskAvailableSize,
-					StorageScheduled: 0,
-					StorageMaximum:   TestDiskSize,
-					Conditions: map[string]types.Condition{
-						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
-					},
-				},
-			}
 			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(node)
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
@@ -1277,6 +1163,12 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			kn, err := kubeClient.CoreV1().Nodes().Create(knode)
 			c.Assert(err, IsNil)
 			knIndexer.Add(kn)
+		}
+		for _, disk := range tc.disks {
+			d, err := lhClient.LonghornV1beta1().Disks(TestNamespace).Create(disk)
+			c.Assert(err, IsNil)
+			c.Assert(d, NotNil)
+			dIndexer.Add(d)
 		}
 
 		// Need to put it into both fakeclientset and Indexer

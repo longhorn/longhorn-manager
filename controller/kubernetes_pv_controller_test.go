@@ -223,6 +223,7 @@ func newTestKubernetesPVController(lhInformerFactory lhinformerfactory.SharedInf
 	replicaInformer := lhInformerFactory.Longhorn().V1beta1().Replicas()
 	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
 	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
+	diskInformer := lhInformerFactory.Longhorn().V1beta1().Disks()
 	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
 	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 
@@ -240,7 +241,7 @@ func newTestKubernetesPVController(lhInformerFactory lhinformerfactory.SharedInf
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
-		engineImageInformer, nodeInformer, settingInformer, imInformer,
+		engineImageInformer, nodeInformer, diskInformer, settingInformer, imInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer,
@@ -592,7 +593,7 @@ func (s *TestSuite) TestDisasterRecovery(c *C) {
 	tc = generateDisasterRecoveryTestCaseTemplate()
 	tc.volume.Status.State = types.VolumeStateDetached
 	tc.pvc.Status.Phase = apiv1.ClaimBound
-	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeGone)
+	tc.node = newNode(TestNode1, TestNamespace, TestDefaultDiskUUID1, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeGone)
 	workloads = []types.WorkloadStatus{}
 	for _, p := range tc.pods {
 		p.Status.Phase = apiv1.PodPending
@@ -616,7 +617,7 @@ func (s *TestSuite) TestDisasterRecovery(c *C) {
 	testCases["va StatefulSet deleted"] = tc
 
 	tc = generateDisasterRecoveryTestCaseTemplate()
-	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
+	tc.node = newNode(TestNode1, TestNamespace, TestDefaultDiskUUID1, true, types.ConditionStatusTrue, "")
 	tc.pvc.Status.Phase = apiv1.ClaimBound
 	workloads = []types.WorkloadStatus{}
 	for _, p := range tc.pods {
@@ -644,7 +645,7 @@ func (s *TestSuite) TestDisasterRecovery(c *C) {
 	tc = generateDisasterRecoveryTestCaseTemplate()
 	tc.volume.Status.State = types.VolumeStateDetached
 	tc.pvc.Status.Phase = apiv1.ClaimBound
-	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeGone)
+	tc.node = newNode(TestNode1, TestNamespace, TestDefaultDiskUUID1, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeGone)
 	workloads = []types.WorkloadStatus{}
 	for _, p := range tc.pods {
 		p.DeletionTimestamp = &deleteTime
@@ -678,7 +679,7 @@ func (s *TestSuite) TestDisasterRecovery(c *C) {
 	tc = generateDisasterRecoveryTestCaseTemplate()
 	tc.volume.Status.State = types.VolumeStateDetached
 	tc.pvc.Status.Phase = apiv1.ClaimBound
-	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeGone)
+	tc.node = newNode(TestNode1, TestNamespace, TestDefaultDiskUUID1, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeGone)
 	workloads = []types.WorkloadStatus{}
 	tc.pods = append(tc.pods, newPodWithPVC(TestPod2))
 	for _, p := range tc.pods {
@@ -707,7 +708,7 @@ func (s *TestSuite) TestDisasterRecovery(c *C) {
 	tc = generateDisasterRecoveryTestCaseTemplate()
 	tc.volume.Status.State = types.VolumeStateAttached
 	tc.pvc.Status.Phase = apiv1.ClaimBound
-	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeGone)
+	tc.node = newNode(TestNode1, TestNamespace, TestDefaultDiskUUID1, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeGone)
 	workloads = []types.WorkloadStatus{}
 	for _, p := range tc.pods {
 		p.DeletionTimestamp = &deleteTime

@@ -43,6 +43,8 @@ type DataStore struct {
 	iStoreSynced  cache.InformerSynced
 	nLister       lhlisters.NodeLister
 	nStoreSynced  cache.InformerSynced
+	dLister       lhlisters.DiskLister
+	dStoreSynced  cache.InformerSynced
 	sLister       lhlisters.SettingLister
 	sStoreSynced  cache.InformerSynced
 	imLister      lhlisters.InstanceManagerLister
@@ -78,6 +80,7 @@ func NewDataStore(
 	replicaInformer lhinformers.ReplicaInformer,
 	engineImageInformer lhinformers.EngineImageInformer,
 	nodeInformer lhinformers.NodeInformer,
+	diskInformer lhinformers.DiskInformer,
 	settingInformer lhinformers.SettingInformer,
 	imInformer lhinformers.InstanceManagerInformer,
 	lhClient lhclientset.Interface,
@@ -110,6 +113,8 @@ func NewDataStore(
 		iStoreSynced:  engineImageInformer.Informer().HasSynced,
 		nLister:       nodeInformer.Lister(),
 		nStoreSynced:  nodeInformer.Informer().HasSynced,
+		dLister:       diskInformer.Lister(),
+		dStoreSynced:  diskInformer.Informer().HasSynced,
 		sLister:       settingInformer.Lister(),
 		sStoreSynced:  settingInformer.Informer().HasSynced,
 		imLister:      imInformer.Lister(),
@@ -143,10 +148,11 @@ func NewDataStore(
 func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 	return controller.WaitForCacheSync("longhorn datastore", stopCh,
 		s.vStoreSynced, s.eStoreSynced, s.rStoreSynced,
-		s.iStoreSynced, s.nStoreSynced, s.sStoreSynced,
+		s.iStoreSynced, s.nStoreSynced, s.dStoreSynced,
+		s.sStoreSynced, s.imStoreSynced,
 		s.pStoreSynced, s.cjStoreSynced, s.dsStoreSynced,
-		s.pvStoreSynced, s.pvcStoreSynced, s.imStoreSynced,
-		s.dpStoreSynced, s.knStoreSynced, s.pcStoreSynced,
+		s.pvStoreSynced, s.pvcStoreSynced, s.dpStoreSynced,
+		s.knStoreSynced, s.pcStoreSynced,
 		s.csiDriverSynced, s.pdbStoreSynced)
 }
 

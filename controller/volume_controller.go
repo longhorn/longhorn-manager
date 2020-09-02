@@ -792,7 +792,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	scheduled := true
 	for _, r := range rs {
 		// check whether the replica need to be scheduled
-		if r.Spec.NodeID != "" {
+		if r.Spec.DiskID != "" {
 			continue
 		}
 		scheduledReplica, err := vc.scheduler.ScheduleReplica(r, rs, v)
@@ -896,7 +896,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 						continue
 					}
 					dataExists = true
-					if r.Spec.NodeID == "" {
+					if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
 						continue
 					}
 					if isDownOrDeleted, err := vc.ds.IsNodeDownOrDeleted(r.Spec.NodeID); err != nil {
@@ -905,11 +905,14 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 					} else if isDownOrDeleted {
 						continue
 					}
-					node, err := vc.ds.GetNode(r.Spec.NodeID)
-					if err != nil {
+					if _, err := vc.ds.GetNode(r.Spec.NodeID); err != nil {
 						log.WithField("replica", r.Name).WithError(err).Errorf("Unable to get node %v for failed replica", r.Spec.NodeID)
 					}
-					if _, exists := node.Status.DiskStatus[r.Spec.DiskID]; !exists {
+					disk, err := vc.ds.GetDisk(r.Spec.DiskID)
+					if err != nil {
+						log.WithField("replica", r.Name).WithError(err).Errorf("Unable to get disk %v for failed replica", r.Spec.DiskID)
+					}
+					if disk.Status.State != types.DiskStateConnected {
 						continue
 					}
 					failedAt, err := util.ParseTime(r.Spec.FailedAt)
@@ -1102,7 +1105,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 		for _, r := range rs {
 			// Don't attempt to start the replica or do anything else if it hasn't been scheduled.
-			if r.Spec.NodeID == "" {
+			if r.Spec.DiskID == "" || r.Spec.NodeID == "" {
 				continue
 			}
 			nodeDown, err := vc.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
@@ -1122,7 +1125,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		replicaAddressMap := map[string]string{}
 		for _, r := range rs {
 			// Ignore unscheduled replicas
-			if r.Spec.NodeID == "" {
+			if r.Spec.DiskID == "" || r.Spec.NodeID == "" {
 				continue
 			}
 			if r.Spec.FailedAt != "" {

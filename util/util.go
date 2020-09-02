@@ -92,6 +92,10 @@ type DiskInfo struct {
 	StorageAvailable int64
 }
 
+type DiskConfigGenerator func(string) (*DiskConfig, error)
+type DiskConfigHandler func(string) (*DiskConfig, error)
+type GetDiskInfoHandler func(string) (*DiskInfo, error)
+
 func ConvertSize(size interface{}) (int64, error) {
 	switch size := size.(type) {
 	case int64:

@@ -31,6 +31,8 @@ const (
 	TestPort1                     = 9501
 	TestNode1                     = "test-node-name-1"
 	TestNode2                     = "test-node-name-2"
+	TestDefaultDiskUUID1          = "default-disk-uuid-1"
+	TestDefaultDiskUUID2          = "default-disk-uuid-2"
 	TestOwnerID1                  = TestNode1
 	TestOwnerID2                  = TestNode2
 	TestEngineImage               = "longhorn-engine:latest"
@@ -60,11 +62,12 @@ const (
 	TestTimeNow = "2015-01-02T00:00:00Z"
 
 	TestDefaultDataPath   = "/var/lib/longhorn"
+	TestInvalidDataPath   = "/invalid"
 	TestDaemon1           = "longhorn-manager-1"
 	TestDaemon2           = "longhorn-manager-2"
-	TestDiskID1           = "fsid"
 	TestDiskSize          = 5000000000
 	TestDiskAvailableSize = 3000000000
+	TestDefaultDiskFSID   = "default-disk-fsid"
 
 	TestBackupTarget     = "s3://backupbucket@us-east-1/backupstore"
 	TestBackupVolumeName = "test-backup-volume-for-restoration"
@@ -84,6 +87,149 @@ var _ = Suite(&TestSuite{})
 
 func (s *TestSuite) SetUpTest(c *C) {
 	logrus.SetLevel(logrus.DebugLevel)
+}
+
+func newNode(name, namespace, diskName string, allowScheduling bool, status types.ConditionStatus, reason string) *longhorn.Node {
+	node := &longhorn.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: types.NodeSpec{
+			AllowScheduling: allowScheduling,
+			DiskPathMap:     map[string]struct{}{},
+		},
+		Status: types.NodeStatus{
+			DiskPathIDMap: map[string]string{},
+			Conditions: map[string]types.Condition{
+				types.NodeConditionTypeSchedulable: newNodeCondition(types.NodeConditionTypeSchedulable, status, reason),
+				types.NodeConditionTypeReady:       newNodeCondition(types.NodeConditionTypeReady, status, reason),
+			},
+		},
+	}
+	if diskName != "" {
+		node.Spec.DiskPathMap[TestDefaultDataPath] = struct{}{}
+		node.Status.DiskPathIDMap[TestDefaultDataPath] = diskName
+	}
+
+	return node
+}
+
+func newNodeCondition(conditionType string, status types.ConditionStatus, reason string) types.Condition {
+	return types.Condition{
+		Type:    conditionType,
+		Status:  status,
+		Reason:  reason,
+		Message: "",
+	}
+}
+
+func newDisk(name, namespace, nodeID string) *longhorn.Disk {
+	return &longhorn.Disk{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: types.DiskSpec{
+			AllowScheduling:   true,
+			EvictionRequested: false,
+			StorageReserved:   0,
+			Tags:              []string{},
+		},
+		Status: types.DiskStatus{
+			OwnerID:          nodeID,
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: map[string]types.Condition{
+				types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
+				types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+			},
+			ScheduledReplica: map[string]int64{},
+			NodeID:           nodeID,
+			FSID:             TestDefaultDiskFSID,
+			Path:             TestDefaultDataPath,
+			State:            types.DiskStateConnected,
+		},
+	}
+}
+
+func newKubernetesNode(name string, readyStatus, diskPressureStatus, memoryStatus, outOfDiskStatus, pidStatus, networkStatus, kubeletStatus corev1.ConditionStatus) *corev1.Node {
+	return &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Status: corev1.NodeStatus{
+			Conditions: []corev1.NodeCondition{
+				{
+					Type:   corev1.NodeReady,
+					Status: readyStatus,
+				},
+				{
+					Type:   corev1.NodeDiskPressure,
+					Status: diskPressureStatus,
+				},
+				{
+					Type:   corev1.NodeMemoryPressure,
+					Status: memoryStatus,
+				},
+				{
+					Type:   corev1.NodeOutOfDisk,
+					Status: outOfDiskStatus,
+				},
+				{
+					Type:   corev1.NodePIDPressure,
+					Status: pidStatus,
+				},
+				{
+					Type:   corev1.NodeNetworkUnavailable,
+					Status: networkStatus,
+				},
+			},
+		},
+	}
+}
+
+func newDaemonPod(phase corev1.PodPhase, name, namespace, nodeID, podIP string, mountpropagation *corev1.MountPropagationMode) *corev1.Pod {
+	podStatus := corev1.ConditionFalse
+	if phase == corev1.PodRunning {
+		podStatus = corev1.ConditionTrue
+	}
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"app": "longhorn-manager",
+			},
+		},
+		Spec: corev1.PodSpec{
+			NodeName: nodeID,
+			Containers: []corev1.Container{
+				{
+					Name:  "test-container",
+					Image: TestEngineImage,
+					VolumeMounts: []corev1.VolumeMount{
+						{
+							Name:             "longhorn",
+							MountPath:        TestDefaultDataPath,
+							MountPropagation: mountpropagation,
+						},
+					},
+				},
+			},
+		},
+		Status: corev1.PodStatus{
+			Conditions: []corev1.PodCondition{
+				{
+					Type:   corev1.PodReady,
+					Status: podStatus,
+				},
+			},
+			Phase: phase,
+			PodIP: podIP,
+		},
+	}
 }
 
 func newSetting(name, value string) *longhorn.Setting {

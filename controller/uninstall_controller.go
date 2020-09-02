@@ -34,6 +34,7 @@ const (
 	CRDVolumeName          = "volumes.longhorn.io"
 	CRDEngineImageName     = "engineimages.longhorn.io"
 	CRDNodeName            = "nodes.longhorn.io"
+	CRDDiskName            = "disks.longhorn.io"
 	CRDInstanceManagerName = "instancemanagers.longhorn.io"
 
 	LonghornNamespace = "longhorn-system"
@@ -65,6 +66,7 @@ func NewUninstallController(
 	replicaInformer lhinformers.ReplicaInformer,
 	engineImageInformer lhinformers.EngineImageInformer,
 	nodeInformer lhinformers.NodeInformer,
+	diskInformer lhinformers.DiskInformer,
 	imInformer lhinformers.InstanceManagerInformer,
 	daemonSetInformer appsv1.DaemonSetInformer,
 	deploymentInformer appsv1.DeploymentInformer,
@@ -111,6 +113,10 @@ func NewUninstallController(
 	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDNodeName, metav1.GetOptions{}); err == nil {
 		nodeInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, nodeInformer.Informer().HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDDiskName, metav1.GetOptions{}); err == nil {
+		diskInformer.Informer().AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, diskInformer.Informer().HasSynced)
 	}
 
 	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDInstanceManagerName, metav1.GetOptions{}); err == nil {
@@ -314,6 +320,13 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 		return true, c.deleteNodes(nodes)
 	}
 
+	if disks, err := c.ds.ListDisks(); err != nil {
+		return true, err
+	} else if len(disks) > 0 {
+		logrus.Infof("%d disks remaining", len(disks))
+		return true, c.deleteDisks(disks)
+	}
+
 	if instanceManagers, err := c.ds.ListInstanceManagers(); err != nil {
 		return true, err
 	} else if len(instanceManagers) > 0 {
@@ -458,6 +471,32 @@ func (c *UninstallController) deleteNodes(nodes map[string]*longhorn.Node) (err 
 			logrus.WithFields(logFields).Infof("Marked for deletion")
 		} else {
 			if err = c.ds.RemoveFinalizerForNode(node); err != nil {
+				err = errors.Wrapf(err, "Failed to remove finalizer")
+				return
+			}
+			logrus.WithFields(logFields).Infof("Removed finalizer")
+		}
+	}
+	return
+}
+
+func (c *UninstallController) deleteDisks(disks map[string]*longhorn.Disk) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "Failed to delete disks")
+	}()
+	for _, disk := range disks {
+		logFields := logrus.Fields{
+			"type": "disk",
+			"name": disk.Name,
+		}
+		if disk.DeletionTimestamp == nil {
+			if err = c.ds.DeleteDisk(disk.Name); err != nil {
+				err = errors.Wrapf(err, "Failed to mark for deletion")
+				return
+			}
+			logrus.WithFields(logFields).Infof("Marked for deletion")
+		} else {
+			if err = c.ds.RemoveFinalizerForDisk(disk); err != nil {
 				err = errors.Wrapf(err, "Failed to remove finalizer")
 				return
 			}
