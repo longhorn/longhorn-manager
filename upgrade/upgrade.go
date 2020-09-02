@@ -214,6 +214,9 @@ func doCRDUpgrade(namespace string, lhClient *lhclientset.Clientset) (err error)
 	if err := v100to101.UpgradeCRDs(namespace, lhClient); err != nil {
 		return err
 	}
+	if err := v102to110.UpgradeCRDs(namespace, lhClient); err != nil {
+		return err
+	}
 	return nil
 }
 
