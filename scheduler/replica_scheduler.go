@@ -20,11 +20,6 @@ type ReplicaScheduler struct {
 	ds *datastore.DataStore
 }
 
-type Disk struct {
-	types.DiskSpec
-	NodeID string
-}
-
 type DiskSchedulingInfo struct {
 	StorageAvailable           int64
 	StorageMaximum             int64
@@ -44,8 +39,8 @@ func NewReplicaScheduler(ds *datastore.DataStore) *ReplicaScheduler {
 // ScheduleReplica will return (nil, nil) for unschedulable replica
 func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) (*longhorn.Replica, error) {
 	// only called when replica is starting for the first time
-	if replica.Spec.NodeID != "" {
-		return nil, fmt.Errorf("BUG: Replica %v has been scheduled to node %v", replica.Name, replica.Spec.NodeID)
+	if replica.Spec.DiskID != "" {
+		return nil, fmt.Errorf("BUG: Replica %v has been scheduled to disk %v on node %v", replica.Name, replica.Spec.DiskID, replica.Spec.NodeID)
 	}
 
 	// get all hosts
@@ -68,8 +63,17 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 		return nil, nil
 	}
 
+	nodeDiskMap := map[string][]*longhorn.Disk{}
+	for nodeName := range nodesInfo {
+		disks, err := rcs.ds.ListDisksByNode(nodeName)
+		if err != nil {
+			return nil, err
+		}
+		nodeDiskMap[nodeName] = disks
+	}
+
 	// find proper node and disk
-	diskCandidates := rcs.chooseDiskCandidates(nodesInfo, replicas, replica, volume)
+	diskCandidates := rcs.chooseDiskCandidates(nodesInfo, nodeDiskMap, replicas, replica, volume)
 
 	// there's no disk that fit for current replica
 	if len(diskCandidates) == 0 {
@@ -83,7 +87,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	return replica, nil
 }
 
-func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.Node, replicas map[string]*longhorn.Replica, replica *longhorn.Replica, volume *longhorn.Volume) map[string]*Disk {
+func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.Node, nodeDiskMap map[string][]*longhorn.Disk, replicas map[string]*longhorn.Replica, replica *longhorn.Replica, volume *longhorn.Volume) map[string]*longhorn.Disk {
 	nodeSoftAntiAffinity, err :=
 		rcs.ds.GetSettingAsBool(types.SettingNameReplicaSoftAntiAffinity)
 	if err != nil {
@@ -101,7 +105,7 @@ func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.
 
 	// Get current nodes and zones
 	for _, r := range replicas {
-		if r.Spec.NodeID != "" && r.DeletionTimestamp == nil && r.Spec.FailedAt == "" {
+		if r.Spec.DiskID != "" && r.DeletionTimestamp == nil && r.Spec.FailedAt == "" {
 			if node, ok := nodeInfo[r.Spec.NodeID]; ok {
 				usedNodes[r.Spec.NodeID] = node
 				// For empty zone label, we treat them as
@@ -128,11 +132,11 @@ func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.
 		}
 	}
 
-	diskCandidates := map[string]*Disk{}
+	diskCandidates := map[string]*longhorn.Disk{}
 
 	// First check if we can schedule replica on new nodes with new zone
 	for _, node := range unusedNodeWithNewZoneCandidates {
-		diskCandidates = rcs.filterNodeDisksForReplica(node, replica, replicas, volume)
+		diskCandidates = rcs.filterNodeDisksForReplica(node, nodeDiskMap[node.Name], replica, replicas, volume)
 		if len(diskCandidates) > 0 {
 			return diskCandidates
 		}
@@ -145,7 +149,7 @@ func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.
 
 	// Then check if we can schedule replica on new nodes with same zone
 	for _, node := range unusedNodeCandidates {
-		diskCandidates = rcs.filterNodeDisksForReplica(node, replica, replicas, volume)
+		diskCandidates = rcs.filterNodeDisksForReplica(node, nodeDiskMap[node.Name], replica, replicas, volume)
 		if len(diskCandidates) > 0 {
 			break
 		}
@@ -167,7 +171,7 @@ func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.
 			if !rcs.checkTagsAreFulfilled(node.Spec.Tags, volume.Spec.NodeSelector) {
 				continue
 			}
-			diskCandidates = rcs.filterNodeDisksForReplica(node, replica, replicas, volume)
+			diskCandidates = rcs.filterNodeDisksForReplica(node, nodeDiskMap[node.Name], replica, replicas, volume)
 			if len(diskCandidates) > 0 {
 				break
 			}
@@ -187,50 +191,44 @@ func (rcs *ReplicaScheduler) chooseDiskCandidates(nodeInfo map[string]*longhorn.
 	// Last check if we can schedule replica on existing node regardless the zone
 	// Soft on zone and soft on node
 	for _, node := range usedNodes {
-		diskCandidates = rcs.filterNodeDisksForReplica(node, replica, replicas, volume)
+		diskCandidates = rcs.filterNodeDisksForReplica(node, nodeDiskMap[node.Name], replica, replicas, volume)
 	}
 
 	return diskCandidates
 }
 
-func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) map[string]*Disk {
-	preferredDisk := map[string]*Disk{}
+func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disks []*longhorn.Disk, replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) map[string]*longhorn.Disk {
+	preferredDisk := map[string]*longhorn.Disk{}
 	// find disk that fit for current replica
-	disks := node.Spec.Disks
-	diskStatus := node.Status.DiskStatus
-	for fsid, disk := range disks {
-		status := diskStatus[fsid]
-		info, err := rcs.GetDiskSchedulingInfo(disk, status)
+	for _, disk := range disks {
+		info, err := rcs.GetDiskSchedulingInfo(disk)
 		if err != nil {
 			logrus.Errorf("Fail to get settings when scheduling replica: %v", err)
 			return preferredDisk
 		}
-		scheduledReplica := status.ScheduledReplica
 		// check other replicas for the same volume has been accounted on current node
 		var storageScheduled int64
 		for rName, r := range replicas {
-			if _, ok := scheduledReplica[rName]; !ok && r.Spec.NodeID != "" && r.Spec.NodeID == node.Name {
+			if _, ok := disk.Status.ScheduledReplica[rName]; !ok && r.Spec.NodeID != "" && r.Spec.NodeID == node.Name {
 				storageScheduled += r.Spec.VolumeSize
 			}
 		}
 		if storageScheduled > 0 {
 			info.StorageScheduled += storageScheduled
 		}
-		diskReadyCondition := types.GetCondition(status.Conditions, types.DiskConditionTypeReady)
-		if diskReadyCondition.Status == types.ConditionStatusFalse || !disk.AllowScheduling ||
+		diskSchedulableCondition := types.GetCondition(disk.Status.Conditions, types.DiskConditionTypeSchedulable)
+		if disk.Status.State != types.DiskStateConnected || !disk.Spec.AllowScheduling ||
+			diskSchedulableCondition.Status == types.ConditionStatusFalse ||
 			!rcs.IsSchedulableToDisk(replica.Spec.VolumeSize, volume.Status.ActualSize, info) {
 			continue
 		}
 		// Check if the Disk's Tags are valid.
-		if !rcs.checkTagsAreFulfilled(disk.Tags, volume.Spec.DiskSelector) {
+		if !rcs.checkTagsAreFulfilled(disk.Spec.Tags, volume.Spec.DiskSelector) {
 			continue
 		}
 
-		suggestDisk := &Disk{
-			DiskSpec: disk,
-			NodeID:   node.Name,
-		}
-		preferredDisk[fsid] = suggestDisk
+		suggestDisk := disk
+		preferredDisk[disk.Name] = suggestDisk
 	}
 
 	return preferredDisk
@@ -275,16 +273,16 @@ func (rcs *ReplicaScheduler) getNodeInfo() (map[string]*longhorn.Node, error) {
 	return scheduledNode, nil
 }
 
-func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, diskCandidates map[string]*Disk) {
+func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, diskCandidates map[string]*longhorn.Disk) {
 	// get a random disk from diskCandidates
-	var fsid string
-	var disk *Disk
-	for fsid, disk = range diskCandidates {
+	var diskName string
+	var disk *longhorn.Disk
+	for diskName, disk = range diskCandidates {
 		break
 	}
-	replica.Spec.NodeID = disk.NodeID
-	replica.Spec.DiskID = fsid
-	replica.Spec.DataPath = filepath.Join(disk.Path, "replicas", replica.Spec.VolumeName+"-"+util.RandomID())
+	replica.Spec.DiskID = diskName
+	replica.Spec.NodeID = disk.Status.NodeID
+	replica.Spec.DataPath = filepath.Join(disk.Status.Path, "replicas", replica.Spec.VolumeName+"-"+util.RandomID())
 	logrus.Debugf("Schedule replica %v to node %v, disk %v, datapath %v",
 		replica.Name, replica.Spec.NodeID, replica.Spec.DiskID, replica.Spec.DataPath)
 }
