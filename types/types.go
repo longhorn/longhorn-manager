@@ -138,6 +138,8 @@ const (
 	engineImagePrefix          = "ei-"
 	instanceManagerImagePrefix = "imi-"
 
+	diskNamePrefix = "disk-"
+
 	instanceManagerPrefix = "instance-manager-"
 	engineManagerPrefix   = instanceManagerPrefix + "e-"
 	replicaManagerPrefix  = instanceManagerPrefix + "r-"

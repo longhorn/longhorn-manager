@@ -232,6 +232,9 @@ func (m *VolumeManager) generateSupportBundleYAMLsForLonghorn(dir string, errLog
 	getObjectMapAndEncodeToYAML("nodes", func() (interface{}, error) {
 		return m.ds.ListNodes()
 	}, dir, errLog)
+	getObjectMapAndEncodeToYAML("disks", func() (interface{}, error) {
+		return m.ds.ListDisks()
+	}, dir, errLog)
 	getObjectMapAndEncodeToYAML("volumes", func() (interface{}, error) {
 		return m.ds.ListVolumes()
 	}, dir, errLog)

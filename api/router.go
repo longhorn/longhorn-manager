@@ -110,12 +110,12 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("GET").Path("/v1/nodes/{name}").Handler(f(schemas, s.NodeGet))
 	r.Methods("PUT").Path("/v1/nodes/{name}").Handler(f(schemas, s.NodeUpdate))
 	r.Methods("DELETE").Path("/v1/nodes/{name}").Handler(f(schemas, s.NodeDelete))
-	nodeActions := map[string]func(http.ResponseWriter, *http.Request) error{
-		"diskUpdate": s.DiskUpdate,
-	}
-	for name, action := range nodeActions {
-		r.Methods("POST").Path("/v1/nodes/{name}").Queries("action", name).Handler(f(schemas, action))
-	}
+
+	r.Methods("GET").Path("/v1/disks").Handler(f(schemas, s.DiskList))
+	r.Methods("POST").Path("/v1/disks").Handler(f(schemas, s.DiskCreate))
+	r.Methods("GET").Path("/v1/disks/{name}").Handler(f(schemas, s.DiskGet))
+	r.Methods("PUT").Path("/v1/disks/{name}").Handler(f(schemas, s.DiskUpdate))
+	r.Methods("DELETE").Path("/v1/disks/{name}").Handler(f(schemas, s.DiskDelete))
 
 	r.Methods("GET").Path("/v1/engineimages").Handler(f(schemas, s.EngineImageList))
 	r.Methods("GET").Path("/v1/engineimages/{name}").Handler(f(schemas, s.EngineImageGet))
@@ -147,6 +147,10 @@ func NewRouter(s *Server) *mux.Router {
 	nodeListStream := NewStreamHandlerFunc("nodes", s.wsc.NewWatcher("node"), s.nodeList)
 	r.Path("/v1/ws/nodes").Handler(f(schemas, nodeListStream))
 	r.Path("/v1/ws/{period}/nodes").Handler(f(schemas, nodeListStream))
+
+	diskListStream := NewStreamHandlerFunc("disks", s.wsc.NewWatcher("disk"), s.diskList)
+	r.Path("/v1/ws/disks").Handler(f(schemas, diskListStream))
+	r.Path("/v1/ws/{period}/disks").Handler(f(schemas, diskListStream))
 
 	engineImageStream := NewStreamHandlerFunc("engineimages", s.wsc.NewWatcher("engineImage"), s.engineImageList)
 	r.Path("/v1/ws/engineimages").Handler(f(schemas, engineImageStream))

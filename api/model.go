@@ -156,10 +156,6 @@ type EngineUpgradeInput struct {
 	Image string `json:"image"`
 }
 
-type NodeInput struct {
-	NodeID string `json:"nodeId"`
-}
-
 type UpdateReplicaCountInput struct {
 	ReplicaCount int `json:"replicaCount"`
 }
@@ -192,7 +188,6 @@ type Node struct {
 	Address           string                     `json:"address"`
 	AllowScheduling   bool                       `json:"allowScheduling"`
 	EvictionRequested bool                       `json:"evictionRequested"`
-	Disks             map[string]DiskInfo        `json:"disks"`
 	Conditions        map[string]types.Condition `json:"conditions"`
 	Tags              []string                   `json:"tags"`
 	Region            string                     `json:"region"`
@@ -201,13 +196,26 @@ type Node struct {
 	Timestamp string `json:"timestamp"`
 }
 
-type DiskInfo struct {
-	types.DiskSpec
-	types.DiskStatus
-}
+type Disk struct {
+	client.Resource
 
-type DiskUpdateInput struct {
-	Disks map[string]types.DiskSpec `json:"disks"`
+	Name              string   `json:"name"`
+	Path              string   `json:"path"`
+	AllowScheduling   bool     `json:"allowScheduling"`
+	EvictionRequested bool     `json:"evictionRequested"`
+	StorageReserved   int64    `json:"storageReserved"`
+	Tags              []string `json:"tags"`
+	NodeID            string   `json:"nodeID"`
+
+	Conditions       map[string]types.Condition `json:"conditions"`
+	StorageAvailable int64                      `json:"storageAvailable"`
+	StorageScheduled int64                      `json:"storageScheduled"`
+	StorageMaximum   int64                      `json:"storageMaximum"`
+	ScheduledReplica map[string]int64           `json:"scheduledReplica"`
+	DiskUUID         string                     `json:"diskUUID"`
+	State            string                     `json:"state"`
+
+	Timestamp string `json:"timestamp"`
 }
 
 type Event struct {
@@ -326,8 +334,6 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("engineUpgradeInput", EngineUpgradeInput{})
 	schemas.AddType("replica", Replica{})
 	schemas.AddType("controller", Controller{})
-	schemas.AddType("diskUpdate", types.DiskSpec{})
-	schemas.AddType("nodeInput", NodeInput{})
 	schemas.AddType("UpdateReplicaCountInput", UpdateReplicaCountInput{})
 	schemas.AddType("UpdateDataLocalityInput", UpdateDataLocalityInput{})
 	schemas.AddType("workloadStatus", types.WorkloadStatus{})
@@ -357,8 +363,8 @@ func NewSchema() *client.Schemas {
 	recurringSchema(schemas.AddType("recurringInput", RecurringInput{}))
 	engineImageSchema(schemas.AddType("engineImage", EngineImage{}))
 	nodeSchema(schemas.AddType("node", Node{}))
-	diskSchema(schemas.AddType("diskUpdateInput", DiskUpdateInput{}))
-	diskInfoSchema(schemas.AddType("diskInfo", DiskInfo{}))
+	diskSchema(schemas.AddType("disk", Disk{}))
+
 	kubernetesStatusSchema(schemas.AddType("kubernetesStatus", types.KubernetesStatus{}))
 	backupListOutputSchema(schemas.AddType("backupListOutput", BackupListOutput{}))
 	snapshotListOutputSchema(schemas.AddType("snapshotListOutput", SnapshotListOutput{}))
@@ -370,13 +376,6 @@ func nodeSchema(node *client.Schema) {
 	node.CollectionMethods = []string{"GET"}
 	node.ResourceMethods = []string{"GET", "PUT"}
 
-	node.ResourceActions = map[string]client.Action{
-		"diskUpdate": {
-			Input:  "diskUpdateInput",
-			Output: "node",
-		},
-	}
-
 	allowScheduling := node.ResourceFields["allowScheduling"]
 	allowScheduling.Required = true
 	allowScheduling.Unique = false
@@ -387,11 +386,6 @@ func nodeSchema(node *client.Schema) {
 	evictionRequested.Unique = false
 	node.ResourceFields["evictionRequested"] = evictionRequested
 
-	node.ResourceFields["disks"] = client.Field{
-		Type:     "map[diskInfo]",
-		Nullable: true,
-	}
-
 	conditions := node.ResourceFields["conditions"]
 	conditions.Type = "map[nodeCondition]"
 	node.ResourceFields["conditions"] = conditions
@@ -401,16 +395,45 @@ func nodeSchema(node *client.Schema) {
 	node.ResourceFields["tags"] = tags
 }
 
-func diskSchema(diskUpdateInput *client.Schema) {
-	disks := diskUpdateInput.ResourceFields["disks"]
-	disks.Type = "array[diskUpdate]"
-	diskUpdateInput.ResourceFields["disks"] = disks
-}
+func diskSchema(disk *client.Schema) {
+	disk.CollectionMethods = []string{"GET", "POST"}
+	disk.ResourceMethods = []string{"GET", "PUT", "DELETE"}
 
-func diskInfoSchema(diskInfo *client.Schema) {
-	conditions := diskInfo.ResourceFields["conditions"]
+	diskName := disk.ResourceFields["name"]
+	disk.ResourceFields["name"] = diskName
+
+	path := disk.ResourceFields["path"]
+	path.Required = true
+	path.Create = true
+	disk.ResourceFields["path"] = path
+
+	allowScheduling := disk.ResourceFields["allowScheduling"]
+	allowScheduling.Required = true
+	allowScheduling.Create = true
+	disk.ResourceFields["allowScheduling"] = allowScheduling
+
+	evictionRequested := disk.ResourceFields["evictionRequested"]
+	evictionRequested.Required = true
+	evictionRequested.Create = true
+	disk.ResourceFields["evictionRequested"] = evictionRequested
+
+	nodeID := disk.ResourceFields["nodeID"]
+	nodeID.Required = true
+	nodeID.Create = true
+	disk.ResourceFields["nodeID"] = nodeID
+
+	storageReserved := disk.ResourceFields["storageReserved"]
+	storageReserved.Required = true
+	storageReserved.Create = true
+	disk.ResourceFields["storageReserved"] = storageReserved
+
+	tags := disk.ResourceFields["tags"]
+	tags.Create = true
+	disk.ResourceFields["tags"] = tags
+
+	conditions := disk.ResourceFields["conditions"]
 	conditions.Type = "map[diskCondition]"
-	diskInfo.ResourceFields["conditions"] = conditions
+	disk.ResourceFields["conditions"] = conditions
 }
 
 func engineImageSchema(engineImage *client.Schema) {
@@ -1071,22 +1094,6 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 		Timestamp: timestamp,
 	}
 
-	disks := map[string]DiskInfo{}
-	for name, disk := range node.Spec.Disks {
-		di := DiskInfo{
-			DiskSpec: disk,
-		}
-		if node.Status.DiskStatus != nil && node.Status.DiskStatus[name] != nil {
-			di.DiskStatus = *node.Status.DiskStatus[name]
-		}
-		disks[name] = di
-	}
-	n.Disks = disks
-
-	n.Actions = map[string]string{
-		"diskUpdate": apiContext.UrlBuilder.ActionLink(n.Resource, "diskUpdate"),
-	}
-
 	return n
 }
 
@@ -1096,6 +1103,46 @@ func toNodeCollection(nodeList []*longhorn.Node, nodeIPMap map[string]string, ap
 		data = append(data, toNodeResource(node, nodeIPMap[node.Name], apiContext))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "node"}}
+}
+
+func toDiskResource(disk *longhorn.Disk, apiContext *api.ApiContext) *Disk {
+	timestamp := generateTimestamp()
+	res := &Disk{
+		Resource: client.Resource{
+			Id:      disk.Name,
+			Type:    "disk",
+			Actions: map[string]string{},
+			Links:   map[string]string{},
+		},
+
+		Name: disk.Name,
+
+		AllowScheduling:   disk.Spec.AllowScheduling,
+		EvictionRequested: disk.Spec.EvictionRequested,
+		StorageReserved:   disk.Spec.StorageReserved,
+		Tags:              disk.Spec.Tags,
+
+		Conditions:       disk.Status.Conditions,
+		StorageAvailable: disk.Status.StorageAvailable,
+		StorageScheduled: disk.Status.StorageScheduled,
+		StorageMaximum:   disk.Status.StorageMaximum,
+		ScheduledReplica: disk.Status.ScheduledReplica,
+		NodeID:           disk.Status.NodeID,
+		Path:             disk.Status.Path,
+		State:            string(disk.Status.State),
+
+		Timestamp: timestamp,
+	}
+
+	return res
+}
+
+func toDiskCollection(diskList []*longhorn.Disk, apiContext *api.ApiContext) *client.GenericCollection {
+	data := []interface{}{}
+	for _, disk := range diskList {
+		data = append(data, toDiskResource(disk, apiContext))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "disk"}}
 }
 
 func toEventResource(event v1.Event) *Event {

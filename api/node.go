@@ -96,43 +96,6 @@ func (s *Server) NodeUpdate(rw http.ResponseWriter, req *http.Request) error {
 	return nil
 }
 
-func (s *Server) DiskUpdate(rw http.ResponseWriter, req *http.Request) error {
-	var diskUpdate DiskUpdateInput
-	apiContext := api.GetApiContext(req)
-	if err := apiContext.Read(&diskUpdate); err != nil {
-		return err
-	}
-
-	id := mux.Vars(req)["name"]
-
-	nodeIPMap, err := s.m.GetManagerNodeIPMap()
-	if err != nil {
-		return errors.Wrap(err, "fail to get node ip")
-	}
-
-	// Only scheduling disabled disk can be evicted
-	// Can not enable scheduling on an evicting disk
-	for diskName, diskSpec := range diskUpdate.Disks {
-		if diskSpec.EvictionRequested == true &&
-			diskSpec.AllowScheduling != false {
-			return fmt.Errorf("need to disable scheduling on disk %v for disk eviction, or cancel eviction to enable scheduling on this disk", diskName)
-		}
-	}
-
-	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.DiskUpdate(id, diskUpdate.Disks)
-	})
-	if err != nil {
-		return err
-	}
-	unode, ok := obj.(*longhorn.Node)
-	if !ok {
-		return fmt.Errorf("BUG: cannot convert to node %v object", id)
-	}
-	apiContext.Write(toNodeResource(unode, nodeIPMap[id], apiContext))
-	return nil
-}
-
 func (s *Server) NodeDelete(rw http.ResponseWriter, req *http.Request) error {
 	id := mux.Vars(req)["name"]
 	if err := s.m.DeleteNode(id); err != nil {
