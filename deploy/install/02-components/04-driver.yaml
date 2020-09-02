@@ -50,7 +50,7 @@ spec:
           #- name: CSI_ATTACHER_IMAGE
           #  value: PREFIX/csi-attacher:v2.0.0
           #- name: CSI_PROVISIONER_IMAGE
-          #  value: PREFIX/csi-provisioner:v1.4.0
+          #  value: PREFIX/csi-provisioner:v1.6.0
           #- name: CSI_NODE_DRIVER_REGISTRAR_IMAGE
           #  value: PREFIX/csi-node-driver-registrar:v1.2.0
           #- name: CSI_RESIZER_IMAGE
