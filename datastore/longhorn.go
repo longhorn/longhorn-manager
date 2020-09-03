@@ -8,6 +8,8 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1030,6 +1032,20 @@ func (s *DataStore) ListNodes() (map[string]*longhorn.Node, error) {
 		itemMap[node.Name] = node.DeepCopy()
 	}
 	return itemMap, nil
+}
+
+// ListNodesRO returns a list of all Nodes for the given namespace,
+// the list contains direct references to the internal cache objects and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) ListNodesRO() ([]*longhorn.Node, error) {
+	return s.nLister.Nodes(s.namespace).List(labels.Everything())
+}
+
+// ListPodsRO returns a list of all Pods for the given namespace,
+// the list contains direct references to the internal cache objects and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) ListPodsRO() ([]*corev1.Pod, error) {
+	return s.pLister.Pods(s.namespace).List(labels.Everything())
 }
 
 // GetRandomReadyNode gets a list of all Node in the given namespace and

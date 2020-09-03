@@ -278,6 +278,16 @@ func GetInstanceManagerName(imType InstanceManagerType) (string, error) {
 	return "", fmt.Errorf("cannot generate name for unknown instance manager type %v", imType)
 }
 
+func GetInstanceManagerPrefix(imType InstanceManagerType) string {
+	switch imType {
+	case InstanceManagerTypeEngine:
+		return engineManagerPrefix
+	case InstanceManagerTypeReplica:
+		return replicaManagerPrefix
+	}
+	return ""
+}
+
 func GetReplicaMountedDataPath(dataPath string) string {
 	if !strings.HasPrefix(dataPath, ReplicaHostPrefix) {
 		return filepath.Join(ReplicaHostPrefix, dataPath)
