@@ -16,6 +16,7 @@ import (
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/manager"
+	"github.com/longhorn/longhorn-manager/monitoring"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/upgrade"
 	"github.com/longhorn/longhorn-manager/util"
@@ -117,16 +118,20 @@ func startManager(c *cli.Context) error {
 
 	done := make(chan struct{})
 
+	logger := logrus.StandardLogger().WithField("node", currentNodeID)
+
 	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID); err != nil {
 		return err
 	}
 
-	ds, wsc, err := controller.StartControllers(done, currentNodeID, serviceAccount, managerImage, kubeconfigPath, VERSION)
+	ds, wsc, err := controller.StartControllers(logger, done, currentNodeID, serviceAccount, managerImage, kubeconfigPath, VERSION)
 	if err != nil {
 		return err
 	}
 
 	m := manager.NewVolumeManager(currentNodeID, ds)
+
+	monitoring.InitMonitoringSystem(logger, currentNodeID, ds)
 
 	if err := ds.InitSettings(); err != nil {
 		return err

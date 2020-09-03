@@ -1032,6 +1032,13 @@ func (s *DataStore) ListNodes() (map[string]*longhorn.Node, error) {
 	return itemMap, nil
 }
 
+// ListNodesRO returns a list of all Nodes for the given namespace,
+// the list contains direct references to the internal cache objects and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) ListNodesRO() ([]*longhorn.Node, error) {
+	return s.nLister.Nodes(s.namespace).List(labels.Everything())
+}
+
 // GetRandomReadyNode gets a list of all Node in the given namespace and
 // returns the first Node marked with condition ready and allow scheduling
 func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
