@@ -11,6 +11,8 @@ import (
 	"github.com/sirupsen/logrus"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
+	"github.com/longhorn/longhorn-manager/monitoring"
 )
 
 var (
@@ -47,6 +49,7 @@ func NewRouter(s *Server) *mux.Router {
 	versionsHandler := api.VersionsHandler(schemas, "v1")
 	versionHandler := api.VersionHandler(schemas, "v1")
 	r.Methods("GET").Path("/").Handler(versionsHandler)
+	r.Methods("GET").Path("/metrics").Handler(monitoring.Handler())
 	r.Methods("GET").Path("/v1").Handler(versionHandler)
 	r.Methods("GET").Path("/v1/apiversions").Handler(versionsHandler)
 	r.Methods("GET").Path("/v1/apiversions/v1").Handler(versionHandler)
