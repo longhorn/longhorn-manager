@@ -71,6 +71,7 @@ const (
 	SettingNameSystemManagedPodsImagePullPolicy            = SettingName("system-managed-pods-image-pull-policy")
 	SettingNameAllowVolumeCreationWithDegradedAvailability = SettingName("allow-volume-creation-with-degraded-availability")
 	SettingNameAutoCleanupSystemGeneratedSnapshot          = SettingName("auto-cleanup-system-generated-snapshot")
+	SettingNameRetainDisksDuringNodeDeletion               = SettingName("retain-disks-during-node-deletion")
 )
 
 var (
@@ -109,6 +110,7 @@ var (
 		SettingNameSystemManagedPodsImagePullPolicy,
 		SettingNameAllowVolumeCreationWithDegradedAvailability,
 		SettingNameAutoCleanupSystemGeneratedSnapshot,
+		SettingNameRetainDisksDuringNodeDeletion,
 	}
 )
 
@@ -168,6 +170,7 @@ var (
 		SettingNameSystemManagedPodsImagePullPolicy:            SettingDefinitionSystemManagedPodsImagePullPolicy,
 		SettingNameAllowVolumeCreationWithDegradedAvailability: SettingDefinitionAllowVolumeCreationWithDegradedAvailability,
 		SettingNameAutoCleanupSystemGeneratedSnapshot:          SettingDefinitionAutoCleanupSystemGeneratedSnapshot,
+		SettingNameRetainDisksDuringNodeDeletion:               SettingDefinitionRetainDisksDuringNodeDeletion,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -526,6 +529,16 @@ var (
 	SettingDefinitionAutoCleanupSystemGeneratedSnapshot = SettingDefinition{
 		DisplayName: "Automatically Cleanup System Generated Snapshot",
 		Description: "This setting enables Longhorn to automatically cleanup the system generated snapshot after replica rebuild is done.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "true",
+	}
+
+	SettingDefinitionRetainDisksDuringNodeDeletion = SettingDefinition{
+		DisplayName: "Retain disks during node deletion",
+		Description: `Determine if both connected and disconnected disks will be cleaned up before node removal`,
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeBool,
 		Required:    true,

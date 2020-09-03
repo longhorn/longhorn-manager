@@ -101,6 +101,23 @@ func (m *VolumeManager) DeleteNode(name string) error {
 		return fmt.Errorf("Could not delete node %v with node ready condition is %v, reason is %v, node schedulable %v, and %v engine running on it", name,
 			condition.Status, condition.Reason, node.Spec.AllowScheduling, len(engines))
 	}
+
+	retainDisksEnabled, err := m.ds.GetSettingAsBool(types.SettingNameRetainDisksDuringNodeDeletion)
+	if err != nil {
+		return err
+	}
+	if !retainDisksEnabled {
+		disks, err := m.ds.ListDisksByNode(node.Name)
+		if err != nil {
+			return errors.Wrapf(err, "failed to list disks before node removal")
+		}
+		for _, disk := range disks {
+			if err := m.DeleteDisk(disk.Name); err != nil {
+				return errors.Wrapf(err, "failed to delete disk %v before node removal", disk.Name)
+			}
+		}
+	}
+
 	if err := m.ds.DeleteNode(name); err != nil {
 		return err
 	}
