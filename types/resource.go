@@ -58,9 +58,10 @@ const (
 )
 
 const (
-	VolumeConditionReasonReplicaSchedulingFailure = "ReplicaSchedulingFailure"
-	VolumeConditionReasonRestoreInProgress        = "RestoreInProgress"
-	VolumeConditionReasonRestoreFailure           = "RestoreFailure"
+	VolumeConditionReasonReplicaSchedulingFailure      = "ReplicaSchedulingFailure"
+	VolumeConditionReasonLocalReplicaSchedulingFailure = "LocalReplicaSchedulingFailure"
+	VolumeConditionReasonRestoreInProgress             = "RestoreInProgress"
+	VolumeConditionReasonRestoreFailure                = "RestoreFailure"
 )
 
 type VolumeSpec struct {
@@ -208,13 +209,14 @@ type Snapshot struct {
 
 type ReplicaSpec struct {
 	InstanceSpec
-	EngineName string `json:"engineName"`
-	HealthyAt  string `json:"healthyAt"`
-	FailedAt   string `json:"failedAt"`
-	DiskID     string `json:"diskID"`
-	DataPath   string `json:"dataPath"`
-	BaseImage  string `json:"baseImage"`
-	Active     bool   `json:"active"`
+	EngineName       string `json:"engineName"`
+	HealthyAt        string `json:"healthyAt"`
+	FailedAt         string `json:"failedAt"`
+	DiskID           string `json:"diskID"`
+	DataPath         string `json:"dataPath"`
+	BaseImage        string `json:"baseImage"`
+	Active           bool   `json:"active"`
+	HardNodeAffinity string `json:"hardNodeAffinity"`
 }
 
 type ReplicaStatus struct {
