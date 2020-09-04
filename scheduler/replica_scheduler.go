@@ -46,56 +46,31 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	}
 
 	// get all hosts
-	nodeInfo, err := rcs.getNodeInfo()
+	nodesInfo, err := rcs.getNodeInfo()
 	if err != nil {
 		return nil, err
 	}
-	if len(nodeInfo) == 0 {
+
+	if replica.Spec.HardNodeAffinity != "" {
+		node, exist := nodesInfo[replica.Spec.HardNodeAffinity]
+		if !exist {
+			return nil, nil
+		}
+		nodesInfo = make(map[string]*longhorn.Node)
+		nodesInfo[replica.Spec.HardNodeAffinity] = node
+	}
+
+	if len(nodesInfo) == 0 {
 		logrus.Errorf("There's no available node for replica %v, size %v", replica.ObjectMeta.Name, replica.Spec.VolumeSize)
 		return nil, nil
 	}
 
 	// find proper node and disk
-	diskCandidates := rcs.chooseDiskCandidates(nodeInfo, replicas, replica, volume)
+	diskCandidates := rcs.chooseDiskCandidates(nodesInfo, replicas, replica, volume)
 
 	// there's no disk that fit for current replica
 	if len(diskCandidates) == 0 {
 		logrus.Errorf("There's no available disk for replica %v, size %v", replica.ObjectMeta.Name, replica.Spec.VolumeSize)
-		return nil, nil
-	}
-
-	// schedule replica to disk
-	rcs.scheduleReplicaToDisk(replica, diskCandidates)
-
-	return replica, nil
-}
-
-// ScheduleReplicaToNode will return (nil, nil) for unschedulable replica
-func (rcs *ReplicaScheduler) ScheduleReplicaToNode(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, nodeID string) (*longhorn.Replica, error) {
-	// only called when replica is starting for the first time
-	if replica.Spec.NodeID != "" {
-		return nil, fmt.Errorf("BUG: Replica %v has been scheduled to node %v", replica.Name, replica.Spec.NodeID)
-	}
-
-	// get all hosts
-	schedulableNodesInfo, err := rcs.getNodeInfo()
-	if err != nil {
-		return nil, err
-	}
-
-	node, exist := schedulableNodesInfo[nodeID]
-	if !exist {
-		return nil, nil
-	}
-
-	nodeInfo := make(map[string]*longhorn.Node)
-	nodeInfo[nodeID] = node
-
-	// find proper disk
-	diskCandidates := rcs.chooseDiskCandidates(nodeInfo, replicas, replica, volume)
-
-	// there's no disk that fit for current replica
-	if len(diskCandidates) == 0 {
 		return nil, nil
 	}
 

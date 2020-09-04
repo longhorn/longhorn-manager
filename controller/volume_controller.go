@@ -378,10 +378,6 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			return err
 		}
 
-		if err := vc.reconcileLocalReplica(volume, engine, replicas); err != nil {
-			return err
-		}
-
 		if err := vc.updateRecurringJobs(volume); err != nil {
 			return err
 		}
@@ -432,7 +428,7 @@ func (vc *VolumeController) EvictReplicas(v *longhorn.Volume,
 	for _, replica := range rs {
 		if replica.Status.EvictionRequested == true &&
 			healthyCount == v.Spec.NumberOfReplicas {
-			if err = vc.replenishReplicas(v, e, rs); err != nil {
+			if err := vc.replenishReplicas(v, e, rs, ""); err != nil {
 				logrus.Errorf("Failed to create new replica for replica eviction err %v", err)
 				vc.eventRecorder.Eventf(v, v1.EventTypeWarning,
 					EventReasonFailedEviction,
@@ -534,6 +530,14 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		if err := vc.EvictReplicas(v, e, rs, healthyCount); err != nil {
 			return err
 		}
+
+		// Migrate local replica when Data Locality is on
+		if v.Status.State == types.VolumeStateAttached && !isDataLocalityDisabled(v) && !hasLocalReplicaOnSameNodeAsEngine(e, rs) {
+			if err := vc.replenishReplicas(v, e, rs, e.Spec.NodeID); err != nil {
+				return err
+			}
+		}
+
 	} else { // healthyCount < v.Spec.NumberOfReplicas
 		v.Status.Robustness = types.VolumeRobustnessDegraded
 		if oldRobustness != types.VolumeRobustnessDegraded {
@@ -549,7 +553,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		//   2. the volume is expanding size.
 		if !((v.Status.IsStandby || v.Status.RestoreRequired) && cliAPIVersion < engineapi.CLIVersionFour) &&
 			v.Spec.Size == e.Status.CurrentSize {
-			if err = vc.replenishReplicas(v, e, rs); err != nil {
+			if err := vc.replenishReplicas(v, e, rs, ""); err != nil {
 				return err
 			}
 		}
@@ -648,8 +652,8 @@ func (vc *VolumeController) cleanupFailedToScheduledReplicas(v *longhorn.Volume,
 	if healthyCount >= v.Spec.NumberOfReplicas {
 		for _, r := range rs {
 			if !hasEvictionRequestedReplicas {
-				if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" &&
-					r.Spec.NodeID == "" {
+				if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" && r.Spec.NodeID == "" &&
+					(isDataLocalityDisabled(v) || r.Spec.HardNodeAffinity != v.Status.CurrentNodeID) {
 					logrus.Infof("Cleaning up failed to scheduled replica %v", r.Name)
 					if err := vc.deleteReplica(r, rs); err != nil {
 						return errors.Wrapf(err, "cannot cleanup failed to scheduled replica %v", r.Name)
@@ -682,7 +686,7 @@ func (vc *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *l
 		}
 	}
 
-	// Clean up extra healthy replica with data-locallity finished
+	// Clean up extra healthy replica with data-locality finished
 	healthyCount = vc.getHealthyReplicaCount(rs)
 
 	if healthyCount > v.Spec.NumberOfReplicas &&
@@ -694,7 +698,7 @@ func (vc *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *l
 		}
 
 		// Randomly delete extra non-local healthy replicas in the preferred candidate list rNames
-		// Sometime reconcileLocalReplica() is called more than once with the same input (v,e,rs).
+		// Sometime cleanupExtraHealthyReplicas() is called more than once with the same input (v,e,rs).
 		// To make the deleting operation idempotent and prevent deleting more replica than needed,
 		// we always delete the replica with the smallest name.
 		sort.Strings(rNames)
@@ -775,7 +779,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 	if len(rs) == 0 {
 		// first time creation
-		if err = vc.replenishReplicas(v, e, rs); err != nil {
+		if err := vc.replenishReplicas(v, e, rs, ""); err != nil {
 			return err
 		}
 	}
@@ -801,16 +805,21 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			return err
 		}
 		if scheduledReplica == nil {
-			logrus.Errorf("unable to schedule replica %v of volume %v", r.Name, v.Name)
-			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-				types.VolumeConditionTypeScheduled, types.ConditionStatusFalse,
-				types.VolumeConditionReasonReplicaSchedulingFailure, "")
+			if r.Spec.HardNodeAffinity == "" {
+				logrus.Errorf("unable to schedule replica %v of volume %v", r.Name, v.Name)
+				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+					types.VolumeConditionTypeScheduled, types.ConditionStatusFalse,
+					types.VolumeConditionReasonReplicaSchedulingFailure, "")
+			} else {
+				logrus.Errorf("unable to schedule replica %v of volume %v with HardNodeAffinity = %v", r.Name, v.Name, r.Spec.HardNodeAffinity)
+				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+					types.VolumeConditionTypeScheduled, types.ConditionStatusFalse,
+					types.VolumeConditionReasonLocalReplicaSchedulingFailure, "")
+			}
 			allScheduled = false
-			// no need to continue, since we won't able to schedule
-			// more replicas if we failed this one
-			break
+		} else {
+			rs[r.Name] = scheduledReplica
 		}
-		rs[r.Name] = scheduledReplica
 	}
 	if allScheduled {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
@@ -1155,33 +1164,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	return nil
 }
 
-func (vc *VolumeController) reconcileLocalReplica(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
-	if isDataLocalityDisabled(v) {
-		return nil
-	}
-
-	if v.Status.State != types.VolumeStateAttached {
-		return nil
-	}
-
-	if e == nil {
-		return fmt.Errorf("BUG: ReconcileLocalReplica needs a valid engine")
-	}
-
-	if !vc.isSafeToModifyReplica(v, e, rs) {
-		return nil
-	}
-
-	if !hasLocalReplicaOnSameNodeAsEngine(e, rs) {
-		if _, err := vc.addLocalReplicaOnSameNodeAsEngine(v, e, rs); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	return nil
-}
-
 func (vc *VolumeController) getPreferredReplicaCandidatesForDeletion(rs map[string]*longhorn.Replica) ([]string, error) {
 	diskToReplicaMap := make(map[string][]string)
 	nodeToReplicaMap := make(map[string][]string)
@@ -1242,63 +1224,22 @@ func isDataLocalityDisabled(v *longhorn.Volume) bool {
 	return string(v.Spec.DataLocality) == "" || v.Spec.DataLocality == types.DataLocalityDisabled
 }
 
-// hasLocalReplicaOnSameNodeAsEngine returns whether there exist a replica on the same node as engine
+// hasLocalReplicaOnSameNodeAsEngine returns true if one of the following condition is satisfied:
+// 1. there exist a replica on the same node as engine
+// 2. there exist a replica with HardNodeAffinity set to engine's NodeID
 func hasLocalReplicaOnSameNodeAsEngine(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
 	for _, r := range rs {
-		if r.Spec.NodeID == e.Spec.NodeID {
+		if e.Spec.NodeID != "" && (r.Spec.NodeID == e.Spec.NodeID || r.Spec.HardNodeAffinity == e.Spec.NodeID) {
 			return true
 		}
 	}
 	return false
 }
 
-// return true if successfully added, false otherwise
-func (vc *VolumeController) addLocalReplicaOnSameNodeAsEngine(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
-	// Create a new replica struct. We don't create a replica in DS using createReplica() directly
-	// because we may need to delete the new replica if it fails to ScheduleReplicaToNode.
-	// This prevent UI from repeatedly show creating/deleting the new replica
-	replicaStruct := vc.createReplicaManifest(v, e, rs)
-
-	// attempt schedule the new replica struct to the same node as engine
-	scheduledReplica, err := vc.scheduler.ScheduleReplicaToNode(replicaStruct, rs, v, e.Spec.NodeID)
-	if err != nil {
-		return false, err
-	}
-	// fail to schedule
-	if scheduledReplica == nil {
-		return false, nil
-	}
-
-	// save the new replica to DS, the new replica will be started by ReconcileVolumeState() later
-	r, err := vc.ds.CreateReplica(scheduledReplica)
-	if err != nil {
-		return false, err
-	}
-	rs[r.Name] = r
-	logrus.Infof("Added local replica %v of volume %v on the same node %v as engine.", r.Name, v.Name, e.Spec.NodeID)
-
-	return true, nil
-}
-
-// check if it is a safe time to create/delete replicas
-func (vc *VolumeController) isSafeToModifyReplica(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
-	if vc.isVolumeUpgrading(v) {
-		return false
-	}
-	if !vc.hasEngineStatusSynced(e, rs) {
-		return false
-	}
-	currentRebuilding := getRebuildingReplicaCount(e)
-	if currentRebuilding != 0 {
-		return false
-	}
-	return true
-}
-
 // replenishReplicas will keep replicas count to v.Spec.NumberOfReplicas
 // It will count all the potentially usable replicas, since some replicas maybe
 // blank or in rebuilding state
-func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
+func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, hardNodeAffinity string) error {
 	if vc.isVolumeUpgrading(v) {
 		return nil
 	}
@@ -1317,8 +1258,16 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		return nil
 	}
 
+	if hardNodeAffinity != "" && getRebuildingReplicaCount(e) == 0 {
+		r, err := vc.createReplica(v, e, rs, hardNodeAffinity)
+		if err != nil {
+			return err
+		}
+		rs[r.Name] = r
+	}
+
 	replenishCount := vc.getReplenishReplicasCount(v, rs)
-	if len(rs) != 0 && replenishCount != 0 {
+	if len(rs) != 0 && replenishCount > 0 {
 		// For rebuild case, schedule and rebuild one replica at a time
 		replenishCount = 1
 		currentRebuilding := getRebuildingReplicaCount(e)
@@ -1327,7 +1276,7 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		}
 	}
 	for i := 0; i < replenishCount; i++ {
-		r, err := vc.createReplica(v, e, rs)
+		r, err := vc.createReplica(v, e, rs, "")
 		if err != nil {
 			return err
 		}
@@ -1358,24 +1307,32 @@ func getRebuildingReplicaCount(e *longhorn.Engine) int {
 func (vc *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[string]*longhorn.Replica) int {
 	usableCount := 0
 	for _, r := range rs {
+		// The failed to schedule local replica shouldn't be counted
+		if !isDataLocalityDisabled(v) && r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" && r.Spec.NodeID == "" &&
+			v.Status.CurrentNodeID != "" && r.Spec.HardNodeAffinity == v.Status.CurrentNodeID {
+			continue
+		}
 		// Skip the replica has been requested eviction.
 		if r.Spec.FailedAt == "" && (!r.Status.EvictionRequested) {
 			usableCount++
 		}
 	}
 
+	if v.Spec.NumberOfReplicas < usableCount {
+		return 0
+	}
 	return v.Spec.NumberOfReplicas - usableCount
 }
 
 func (vc *VolumeController) hasEngineStatusSynced(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
-	healthyCount := 0
+	connectedReplicaCount := 0
 	for _, r := range rs {
-		if r.Spec.FailedAt == "" {
-			healthyCount++
+		if r.Spec.FailedAt == "" && r.Spec.NodeID != "" {
+			connectedReplicaCount++
 		}
 	}
 
-	if len(e.Spec.ReplicaAddressMap) != healthyCount {
+	if len(e.Spec.ReplicaAddressMap) != connectedReplicaCount {
 		return false
 	}
 	if len(e.Spec.ReplicaAddressMap) != len(e.Status.ReplicaModeMap) {
@@ -1752,7 +1709,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 	return vc.ds.CreateEngine(engine)
 }
 
-func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (*longhorn.Replica, error) {
+func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, hardNodeAffinity string) (*longhorn.Replica, error) {
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            types.GenerateReplicaNameForVolume(v.Name),
@@ -1765,9 +1722,10 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 				EngineImage: v.Status.CurrentImage,
 				DesireState: types.InstanceStateStopped,
 			},
-			EngineName: e.Name,
-			Active:     true,
-			BaseImage:  v.Spec.BaseImage,
+			EngineName:       e.Name,
+			Active:           true,
+			BaseImage:        v.Spec.BaseImage,
+			HardNodeAffinity: hardNodeAffinity,
 		},
 	}
 
