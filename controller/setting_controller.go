@@ -134,8 +134,8 @@ func (sc *SettingController) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer sc.queue.ShutDown()
 
-	logrus.Infof("Start Longhorn Setting controller")
-	defer logrus.Infof("Shutting down Longhorn Setting controller")
+	sc.logger.Info("Start Longhorn Setting controller")
+	defer sc.logger.Info("Shutting down Longhorn Setting controller")
 
 	if !controller.WaitForCacheSync("longhorn settings", stopCh, sc.sStoreSynced) {
 		return
@@ -173,13 +173,13 @@ func (sc *SettingController) handleErr(err error, key interface{}) {
 	}
 
 	if sc.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn setting %v: %v", key, err)
+		sc.logger.WithError(err).Warnf("Error syncing Longhorn setting %v", key)
 		sc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Longhorn setting %v out of the queue: %v", key, err)
+	sc.logger.WithError(err).Warnf("Dropping Longhorn setting %v out of the queue", key)
 	sc.queue.Forget(key)
 }
 
@@ -488,17 +488,17 @@ func (sc *SettingController) syncUpgradeChecker() error {
 	latestLonghornVersion.Value, err = sc.CheckLatestLonghornVersion()
 	if err != nil {
 		// non-critical error, don't retry
-		logrus.Debugf("Failed to check for the latest upgrade: %v", err)
+		sc.logger.WithError(err).Debug("Failed to check for the latest upgrade")
 		return nil
 	}
 
 	sc.lastUpgradeCheckedTimestamp = now
 
 	if latestLonghornVersion.Value != oldVersion {
-		logrus.Infof("Latest Longhorn version is %v", latestLonghornVersion.Value)
+		sc.logger.Infof("Latest Longhorn version is %v", latestLonghornVersion.Value)
 		if _, err := sc.ds.UpdateSetting(latestLonghornVersion); err != nil {
 			// non-critical error, don't retry
-			logrus.Debugf("Cannot update latest Longhorn version: %v", err)
+			sc.logger.WithError(err).Debug("Cannot update latest Longhorn version")
 			return nil
 		}
 	}
@@ -588,7 +588,7 @@ func (sc *SettingController) updateGuaranteedEngineCPU() error {
 		if IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq) {
 			continue
 		}
-		logrus.Infof("Delete instance manager pod %v to refresh GuaranteedEngineCPU option", imPod.Name)
+		sc.logger.Infof("Delete instance manager pod %v to refresh GuaranteedEngineCPU option", imPod.Name)
 		if err := sc.ds.DeletePod(imPod.Name); err != nil {
 			return err
 		}
