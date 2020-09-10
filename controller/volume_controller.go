@@ -204,7 +204,7 @@ func (vc *VolumeController) handleErr(err error, key interface{}) {
 	}
 
 	utilruntime.HandleError(err)
-	vc.logger.Warnf("Dropping Longhorn volume %v out of the queue: %v", key, err)
+	vc.logger.WithError(err).Warnf("Dropping Longhorn volume %v out of the queue", key)
 	vc.queue.Forget(key)
 }
 
