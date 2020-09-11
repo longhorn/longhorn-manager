@@ -251,6 +251,7 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 			// already monitoring
 			return nil
 		}
+		sc.logger.Infof("Restarting backup store monitor because backup target changed from %v to %v", sc.bsMonitor.backupTarget, targetSetting.Value)
 		sc.bsMonitor.Stop()
 		sc.bsMonitor = nil
 		manager.SyncVolumesLastBackupWithBackupVolumes(nil,
