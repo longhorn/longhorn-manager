@@ -246,8 +246,7 @@ func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootD
 		snapshotterImage,
 		rootDir,
 		[]string{
-			"-v=5",
-			"-snapshot-name-prefix=csi", // unfortunately the prefix cannot be null, so csi snapshots will look different then longhorn snapshots
+			"--v=5",
 			"--csi-address=$(ADDRESS)",
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
