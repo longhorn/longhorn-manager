@@ -13,6 +13,8 @@ type DiskInfo struct {
 
 	DiskUUID string `json:"diskUUID,omitempty" yaml:"disk_uuid,omitempty"`
 
+	EvictionRequested bool `json:"evictionRequested,omitempty" yaml:"eviction_requested,omitempty"`
+
 	Path string `json:"path,omitempty" yaml:"path,omitempty"`
 
 	ScheduledReplica map[string]string `json:"scheduledReplica,omitempty" yaml:"scheduled_replica,omitempty"`

@@ -23,26 +23,27 @@ import (
 type Volume struct {
 	client.Resource
 
-	Name                string                 `json:"name"`
-	Size                string                 `json:"size"`
-	Frontend            types.VolumeFrontend   `json:"frontend"`
-	DisableFrontend     bool                   `json:"disableFrontend"`
-	FromBackup          string                 `json:"fromBackup"`
-	NumberOfReplicas    int                    `json:"numberOfReplicas"`
-	DataLocality        types.DataLocality     `json:"dataLocality"`
-	StaleReplicaTimeout int                    `json:"staleReplicaTimeout"`
-	State               types.VolumeState      `json:"state"`
-	Robustness          types.VolumeRobustness `json:"robustness"`
-	EngineImage         string                 `json:"engineImage"`
-	CurrentImage        string                 `json:"currentImage"`
-	BaseImage           string                 `json:"baseImage"`
-	Created             string                 `json:"created"`
-	LastBackup          string                 `json:"lastBackup"`
-	LastBackupAt        string                 `json:"lastBackupAt"`
-	Standby             bool                   `json:"standby"`
-	RestoreRequired     bool                   `json:"restoreRequired"`
-	DiskSelector        []string               `json:"diskSelector"`
-	NodeSelector        []string               `json:"nodeSelector"`
+	Name                    string                 `json:"name"`
+	Size                    string                 `json:"size"`
+	Frontend                types.VolumeFrontend   `json:"frontend"`
+	DisableFrontend         bool                   `json:"disableFrontend"`
+	FromBackup              string                 `json:"fromBackup"`
+	NumberOfReplicas        int                    `json:"numberOfReplicas"`
+	DataLocality            types.DataLocality     `json:"dataLocality"`
+	StaleReplicaTimeout     int                    `json:"staleReplicaTimeout"`
+	State                   types.VolumeState      `json:"state"`
+	Robustness              types.VolumeRobustness `json:"robustness"`
+	EngineImage             string                 `json:"engineImage"`
+	CurrentImage            string                 `json:"currentImage"`
+	BaseImage               string                 `json:"baseImage"`
+	Created                 string                 `json:"created"`
+	LastBackup              string                 `json:"lastBackup"`
+	LastBackupAt            string                 `json:"lastBackupAt"`
+	Standby                 bool                   `json:"standby"`
+	RestoreRequired         bool                   `json:"restoreRequired"`
+	RevisionCounterDisabled bool                   `json:"revisionCounterDisabled"`
+	DiskSelector            []string               `json:"diskSelector"`
+	NodeSelector            []string               `json:"nodeSelector"`
 
 	RecurringJobs    []types.RecurringJob       `json:"recurringJobs"`
 	Conditions       map[string]types.Condition `json:"conditions"`
@@ -619,6 +620,12 @@ func volumeSchema(volume *client.Schema) {
 	standby.Default = false
 	volume.ResourceFields["standby"] = standby
 
+	revisionCounterDisabled := volume.ResourceFields["revisionCounterDisabled"]
+	revisionCounterDisabled.Required = true
+	revisionCounterDisabled.Create = true
+	revisionCounterDisabled.Default = false
+	volume.ResourceFields["revisionCounterDisabled"] = revisionCounterDisabled
+
 	conditions := volume.ResourceFields["conditions"]
 	conditions.Type = "map[volumeCondition]"
 	volume.ResourceFields["conditions"] = conditions
@@ -856,13 +863,14 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		DiskSelector:        v.Spec.DiskSelector,
 		NodeSelector:        v.Spec.NodeSelector,
 
-		State:           v.Status.State,
-		Robustness:      v.Status.Robustness,
-		CurrentImage:    v.Status.CurrentImage,
-		LastBackup:      v.Status.LastBackup,
-		LastBackupAt:    v.Status.LastBackupAt,
-		RestoreRequired: v.Status.RestoreRequired,
-		Ready:           ready,
+		State:                   v.Status.State,
+		Robustness:              v.Status.Robustness,
+		CurrentImage:            v.Status.CurrentImage,
+		LastBackup:              v.Status.LastBackup,
+		LastBackupAt:            v.Status.LastBackupAt,
+		RestoreRequired:         v.Status.RestoreRequired,
+		RevisionCounterDisabled: v.Spec.RevisionCounterDisabled,
+		Ready:                   ready,
 
 		Conditions:       v.Status.Conditions,
 		KubernetesStatus: v.Status.KubernetesStatus,

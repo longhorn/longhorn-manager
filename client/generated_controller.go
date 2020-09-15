@@ -7,6 +7,8 @@ const (
 type Controller struct {
 	Resource `yaml:"-"`
 
+	ActualSize string `json:"actualSize,omitempty" yaml:"actual_size,omitempty"`
+
 	Address string `json:"address,omitempty" yaml:"address,omitempty"`
 
 	CurrentImage string `json:"currentImage,omitempty" yaml:"current_image,omitempty"`
