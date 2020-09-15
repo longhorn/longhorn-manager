@@ -15,6 +15,8 @@ type Node struct {
 
 	Disks map[string]interface{} `json:"disks,omitempty" yaml:"disks,omitempty"`
 
+	EvictionRequested bool `json:"evictionRequested,omitempty" yaml:"eviction_requested,omitempty"`
+
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	Region string `json:"region,omitempty" yaml:"region,omitempty"`

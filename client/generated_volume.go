@@ -57,6 +57,8 @@ type Volume struct {
 
 	RestoreStatus []RestoreStatus `json:"restoreStatus,omitempty" yaml:"restore_status,omitempty"`
 
+	RevisionCounterDisabled bool `json:"revisionCounterDisabled,omitempty" yaml:"revision_counter_disabled,omitempty"`
+
 	Robustness string `json:"robustness,omitempty" yaml:"robustness,omitempty"`
 
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`

@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -210,6 +211,13 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		return nil, errors.Wrapf(err, "cannot create volume with image %v", defaultEngineImage)
 	}
 
+	// Check engine version before disable revision counter
+	if spec.RevisionCounterDisabled {
+		if ok, err := m.canDisableRevisionCounter(defaultEngineImage); !ok {
+			return nil, errors.Wrapf(err, "can not create volume with current engine image that doesn't support disable revision counter")
+		}
+	}
+
 	if !spec.Standby {
 		if spec.Frontend != types.VolumeFrontendBlockDev && spec.Frontend != types.VolumeFrontendISCSI {
 			return nil, fmt.Errorf("invalid volume frontend specified: %v", spec.Frontend)
@@ -238,18 +246,19 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			Name: name,
 		},
 		Spec: types.VolumeSpec{
-			Size:                size,
-			Frontend:            spec.Frontend,
-			EngineImage:         defaultEngineImage,
-			FromBackup:          spec.FromBackup,
-			NumberOfReplicas:    spec.NumberOfReplicas,
-			DataLocality:        spec.DataLocality,
-			StaleReplicaTimeout: spec.StaleReplicaTimeout,
-			BaseImage:           spec.BaseImage,
-			RecurringJobs:       spec.RecurringJobs,
-			Standby:             spec.Standby,
-			DiskSelector:        spec.DiskSelector,
-			NodeSelector:        spec.NodeSelector,
+			Size:                    size,
+			Frontend:                spec.Frontend,
+			EngineImage:             defaultEngineImage,
+			FromBackup:              spec.FromBackup,
+			NumberOfReplicas:        spec.NumberOfReplicas,
+			DataLocality:            spec.DataLocality,
+			StaleReplicaTimeout:     spec.StaleReplicaTimeout,
+			BaseImage:               spec.BaseImage,
+			RecurringJobs:           spec.RecurringJobs,
+			Standby:                 spec.Standby,
+			DiskSelector:            spec.DiskSelector,
+			NodeSelector:            spec.NodeSelector,
+			RevisionCounterDisabled: spec.RevisionCounterDisabled,
 		},
 	}
 	v, err = m.ds.CreateVolume(v)
@@ -740,4 +749,16 @@ func (m *VolumeManager) UpdateDataLocality(name string, dataLocality types.DataL
 
 	logrus.Debugf("Updated volume %v data locality from %v to %v", v.Name, oldDataLocality, v.Spec.DataLocality)
 	return v, nil
+}
+
+func (m *VolumeManager) canDisableRevisionCounter(engineImage string) (bool, error) {
+	cliAPIVersion, err := m.ds.GetEngineImageCLIAPIVersion(engineImage)
+	if err != nil {
+		return false, err
+	}
+	if cliAPIVersion < engineapi.CLIVersionFour {
+		return false, fmt.Errorf("current engine image version %v doesn't support disable revision counter", cliAPIVersion)
+	}
+
+	return true, nil
 }

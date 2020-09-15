@@ -86,6 +86,14 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.DataLocality = locality
 	}
 
+	if revisionCounterDisabled, ok := volOptions["disableRevisionCounter"]; ok {
+		revCounterDisabled, err := strconv.ParseBool(revisionCounterDisabled)
+		if err != nil {
+			return nil, errors.Wrap(err, "Invalid parameter disableRevisionCounter")
+		}
+		vol.RevisionCounterDisabled = revCounterDisabled
+	}
+
 	if fromBackup, ok := volOptions["fromBackup"]; ok {
 		vol.FromBackup = fromBackup
 	}
