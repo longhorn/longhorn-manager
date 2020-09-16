@@ -89,7 +89,7 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *types.InstancePr
 
 }
 
-func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName, engineImage string, volumeFrontend types.VolumeFrontend, replicaAddressMap map[string]string) (*types.InstanceProcess, error) {
+func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName, engineImage string, volumeFrontend types.VolumeFrontend, replicaAddressMap map[string]string, revCounterDisabled bool, salvageRequested bool) (*types.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -98,6 +98,15 @@ func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName, engi
 		return nil, err
 	}
 	args := []string{"controller", volumeName, "--frontend", frontend}
+
+	if revCounterDisabled {
+		args = append(args, "--disableRevCounter")
+	}
+
+	if salvageRequested {
+		args = append(args, "--salvageRequested")
+	}
+
 	for _, addr := range replicaAddressMap {
 		args = append(args, "--replica", GetBackendReplicaURL(addr))
 	}
@@ -111,7 +120,7 @@ func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName, engi
 	return c.parseProcess(engineProcess), nil
 }
 
-func (c *InstanceManagerClient) ReplicaProcessCreate(replicaName, engineImage, dataPath string, size int64) (*types.InstanceProcess, error) {
+func (c *InstanceManagerClient) ReplicaProcessCreate(replicaName, engineImage, dataPath string, size int64, revCounterDisabled bool) (*types.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -119,6 +128,11 @@ func (c *InstanceManagerClient) ReplicaProcessCreate(replicaName, engineImage, d
 		"replica", types.GetReplicaMountedDataPath(dataPath),
 		"--size", strconv.FormatInt(size, 10),
 	}
+
+	if revCounterDisabled {
+		args = append(args, "--disableRevCounter")
+	}
+
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(engineImage), types.EngineBinaryName)
 
 	replicaProcess, err := c.grpcClient.ProcessCreate(
