@@ -65,20 +65,21 @@ const (
 )
 
 type VolumeSpec struct {
-	Size                int64          `json:"size,string"`
-	Frontend            VolumeFrontend `json:"frontend"`
-	FromBackup          string         `json:"fromBackup"`
-	NumberOfReplicas    int            `json:"numberOfReplicas"`
-	DataLocality        DataLocality   `json:"dataLocality"`
-	StaleReplicaTimeout int            `json:"staleReplicaTimeout"`
-	NodeID              string         `json:"nodeID"`
-	EngineImage         string         `json:"engineImage"`
-	RecurringJobs       []RecurringJob `json:"recurringJobs"`
-	BaseImage           string         `json:"baseImage"`
-	Standby             bool           `json:"Standby"`
-	DiskSelector        []string       `json:"diskSelector"`
-	NodeSelector        []string       `json:"nodeSelector"`
-	DisableFrontend     bool           `json:"disableFrontend"`
+	Size                    int64          `json:"size,string"`
+	Frontend                VolumeFrontend `json:"frontend"`
+	FromBackup              string         `json:"fromBackup"`
+	NumberOfReplicas        int            `json:"numberOfReplicas"`
+	DataLocality            DataLocality   `json:"dataLocality"`
+	StaleReplicaTimeout     int            `json:"staleReplicaTimeout"`
+	NodeID                  string         `json:"nodeID"`
+	EngineImage             string         `json:"engineImage"`
+	RecurringJobs           []RecurringJob `json:"recurringJobs"`
+	BaseImage               string         `json:"baseImage"`
+	Standby                 bool           `json:"Standby"`
+	DiskSelector            []string       `json:"diskSelector"`
+	NodeSelector            []string       `json:"nodeSelector"`
+	DisableFrontend         bool           `json:"disableFrontend"`
+	RevisionCounterDisabled bool           `json:"revisionCounterDisabled"`
 }
 
 type KubernetesStatus struct {
@@ -149,12 +150,13 @@ const (
 )
 
 type InstanceSpec struct {
-	VolumeName   string        `json:"volumeName"`
-	VolumeSize   int64         `json:"volumeSize,string"`
-	NodeID       string        `json:"nodeID"`
-	EngineImage  string        `json:"engineImage"`
-	DesireState  InstanceState `json:"desireState"`
-	LogRequested bool          `json:"logRequested"`
+	VolumeName       string        `json:"volumeName"`
+	VolumeSize       int64         `json:"volumeSize,string"`
+	NodeID           string        `json:"nodeID"`
+	EngineImage      string        `json:"engineImage"`
+	DesireState      InstanceState `json:"desireState"`
+	LogRequested     bool          `json:"logRequested"`
+	SalvageRequested bool          `json:"salvageRequested"`
 }
 
 type InstanceStatus struct {
@@ -166,6 +168,7 @@ type InstanceStatus struct {
 	Port                int           `json:"port"`
 	Started             bool          `json:"started"`
 	LogFetched          bool          `json:"logFetched"`
+	SalvageExecuted     bool          `json:"salvageExecuted"`
 }
 
 type EngineSpec struct {
@@ -176,6 +179,7 @@ type EngineSpec struct {
 	BackupVolume              string            `json:"backupVolume"`
 	RequestedBackupRestore    string            `json:"requestedBackupRestore"`
 	DisableFrontend           bool              `json:"disableFrontend"`
+	RevisionCounterDisabled   bool              `json:"revisionCounterDisabled"`
 }
 
 type EngineStatus struct {
@@ -209,14 +213,15 @@ type Snapshot struct {
 
 type ReplicaSpec struct {
 	InstanceSpec
-	EngineName       string `json:"engineName"`
-	HealthyAt        string `json:"healthyAt"`
-	FailedAt         string `json:"failedAt"`
-	DiskID           string `json:"diskID"`
-	DataPath         string `json:"dataPath"`
-	BaseImage        string `json:"baseImage"`
-	Active           bool   `json:"active"`
-	HardNodeAffinity string `json:"hardNodeAffinity"`
+	EngineName              string `json:"engineName"`
+	HealthyAt               string `json:"healthyAt"`
+	FailedAt                string `json:"failedAt"`
+	DiskID                  string `json:"diskID"`
+	DataPath                string `json:"dataPath"`
+	BaseImage               string `json:"baseImage"`
+	Active                  bool   `json:"active"`
+	HardNodeAffinity        string `json:"hardNodeAffinity"`
+	RevisionCounterDisabled bool   `json:"revisionCounterDisabled"`
 }
 
 type ReplicaStatus struct {

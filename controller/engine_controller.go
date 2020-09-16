@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -384,7 +384,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProc
 		return nil, err
 	}
 
-	return c.EngineProcessCreate(e.Name, e.Spec.VolumeName, e.Spec.EngineImage, frontend, e.Status.CurrentReplicaAddressMap)
+	return c.EngineProcessCreate(e.Name, e.Spec.VolumeName, e.Spec.EngineImage, frontend, e.Status.CurrentReplicaAddressMap, e.Spec.RevisionCounterDisabled, e.Spec.SalvageRequested)
 }
 
 func (ec *EngineController) DeleteInstance(obj interface{}) error {

@@ -370,7 +370,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 		return nil, err
 	}
 
-	return c.ReplicaProcessCreate(r.Name, r.Spec.EngineImage, r.Spec.DataPath, r.Spec.VolumeSize)
+	return c.ReplicaProcessCreate(r.Name, r.Spec.EngineImage, r.Spec.DataPath, r.Spec.VolumeSize, r.Spec.RevisionCounterDisabled)
 }
 
 func (rc *ReplicaController) DeleteInstance(obj interface{}) error {

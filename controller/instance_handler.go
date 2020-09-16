@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -218,6 +218,10 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		status.LogFetched = false
 	}
 
+	if status.SalvageExecuted && !spec.SalvageRequested {
+		status.SalvageExecuted = false
+	}
+
 	// do nothing for incompatible instance except for deleting
 	switch spec.DesireState {
 	case types.InstanceStateRunning:
@@ -240,6 +244,12 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		if err != nil {
 			return err
 		}
+
+		// Set the SalvageExecuted flag to clear the SalvageRequested flag.
+		if spec.SalvageRequested {
+			status.SalvageExecuted = true
+		}
+
 	case types.InstanceStateStopped:
 		if isCLIAPIVersionOne {
 			if err := h.deleteInstance(instanceName, runtimeObj); err != nil {

@@ -866,6 +866,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		v.Status.FrontendDisabled = v.Spec.DisableFrontend
 	}
 
+	// Clear SalvageRequested flag if SalvageExecuted flag has been set.
+	if e.Spec.SalvageRequested && e.Status.SalvageExecuted {
+		e.Spec.SalvageRequested = false
+	}
+
 	allFaulted := true
 	for _, r := range rs {
 		if r.Spec.FailedAt == "" {
@@ -885,6 +890,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			lastFailedAt := time.Time{}
 			failedUsableReplicas := map[string]*longhorn.Replica{}
 			dataExists := false
+
 			for _, r := range rs {
 				if r.Spec.HealthyAt == "" {
 					continue
@@ -904,12 +910,18 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			if !dataExists {
 				log.Warn("Cannot auto salvage volume: no data exists")
 			} else {
+				// This salvage is for revision counter enabled case
 				salvaged := false
+				// Since all replica failed, mark engine controller salvage requested
+				e.Spec.SalvageRequested = true
+				logrus.Infof("All replicas are failed, set engine salvageRequested to %v", e.Spec.SalvageRequested)
+
+				// Bring up the replicas for auto-salvage
 				for _, r := range failedUsableReplicas {
 					if util.TimestampWithinLimit(lastFailedAt, r.Spec.FailedAt, AutoSalvageTimeLimit) {
 						r.Spec.FailedAt = ""
-						log.WithField("replica", r.Name).Warn("Automatically salvaged volume replica")
-						msg := fmt.Sprintf("Replica %v of volume %v has been automatically salvaged", r.Name, v.Name)
+						log.WithField("replica", r.Name).Warn("Automatically salvaging volume replica")
+						msg := fmt.Sprintf("Replica %v of volume %v will be automatically salvaged", r.Name, v.Name)
 						vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonAutoSalvaged, msg)
 						salvaged = true
 					}
@@ -923,7 +935,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				}
 			}
 		}
-
 	} else { // !allFaulted
 		// Don't need to touch other status since it should converge naturally
 		if v.Status.Robustness == types.VolumeRobustnessFaulted {
@@ -954,7 +965,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		// the final state will be determined at the end of the clause
 		if newVolume {
 			v.Status.State = types.VolumeStateCreating
-		} else {
+		} else if v.Status.State != types.VolumeStateDetached {
 			v.Status.State = types.VolumeStateDetaching
 		}
 
@@ -1028,6 +1039,13 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonDetached, "volume %v has been detached", v.Name)
 		}
 		// Automatic reattach the volume if PendingNodeID was set
+		// TODO: need to revisit for CurrentNodeID and PendingNodeID update
+		// The reason is usually when CurrentNodeID is set, the volume
+		// should be in attaching or attached state, currently
+		// CurrentNodeID is set when volume is in detached state.
+		// Implicitly assume v.status.CurrentNodeID has been the final
+		// state of this sync loop if this code block is reached.
+		// Hence updating v.status.CurrentNodeID here is weird.
 		currentImage, err := vc.getEngineImage(v.Status.CurrentImage)
 		if err != nil {
 			log.WithError(err).Errorf("cannot access current image %v, skip auto attach", v.Status.CurrentImage)
@@ -1725,6 +1743,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 			Frontend:                  v.Spec.Frontend,
 			ReplicaAddressMap:         map[string]string{},
 			UpgradedReplicaAddressMap: map[string]string{},
+			RevisionCounterDisabled:   v.Spec.RevisionCounterDisabled,
 		},
 	}
 
@@ -1756,10 +1775,11 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 				EngineImage: v.Status.CurrentImage,
 				DesireState: types.InstanceStateStopped,
 			},
-			EngineName:       e.Name,
-			Active:           true,
-			BaseImage:        v.Spec.BaseImage,
-			HardNodeAffinity: hardNodeAffinity,
+			EngineName:              e.Name,
+			Active:                  true,
+			BaseImage:               v.Spec.BaseImage,
+			HardNodeAffinity:        hardNodeAffinity,
+			RevisionCounterDisabled: v.Spec.RevisionCounterDisabled,
 		},
 	}
 
