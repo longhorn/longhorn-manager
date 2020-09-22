@@ -7,7 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
@@ -131,6 +131,7 @@ type VolumeTestCase struct {
 	expectReplicas map[string]*longhorn.Replica
 
 	replicaNodeSoftAntiAffinity string
+	volumeAutoSalvage           string
 }
 
 func (s *TestSuite) TestVolumeLifeCycle(c *C) {
@@ -820,6 +821,88 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	tc.expectReplicas = expectRs
 	testCases["volume attaching - start replicas - node failed"] = tc
+
+	// Disable revision counter
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.NodeID = TestNode1
+	tc.volume.Status.OwnerID = TestNode1
+	tc.volume.Status.CurrentNodeID = TestNode1
+
+	// Since default node 2 is scheduling disabled,
+	// enable node soft anti-affinity for 2 replicas.
+	tc.replicaNodeSoftAntiAffinity = "true"
+	tc.volume.Spec.RevisionCounterDisabled = true
+	tc.copyCurrentToExpect()
+	tc.engines = nil
+	tc.replicas = nil
+
+	tc.expectVolume.Status.State = types.VolumeStateAttaching
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentNodeID = tc.volume.Spec.NodeID
+	expectEs := map[string]*longhorn.Engine{}
+	for _, e := range tc.expectEngines {
+		e.Spec.RevisionCounterDisabled = true
+		expectEs[e.Name] = e
+	}
+	tc.expectEngines = expectEs
+	expectRs = map[string]*longhorn.Replica{}
+	for _, r := range tc.expectReplicas {
+		r.Spec.DesireState = types.InstanceStateRunning
+		r.Spec.RevisionCounterDisabled = true
+		expectRs[r.Name] = r
+	}
+	tc.expectReplicas = expectRs
+
+	testCases["volume revision counter disabled - engine and replica revision counter disabled"] = tc
+
+	// Salvage Requested
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.NodeID = TestNode1
+	tc.volume.Spec.RevisionCounterDisabled = true
+	tc.volume.Status.State = types.VolumeStateDetached
+	tc.volume.Status.Robustness = types.VolumeRobustnessFaulted
+	tc.volume.Status.CurrentNodeID = ""
+	tc.volumeAutoSalvage = "true"
+
+	for _, e := range tc.engines {
+		e.Status.CurrentState = types.InstanceStateStopped
+		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
+		e.Status.SalvageExecuted = false
+		e.Spec.DesireState = types.InstanceStateStopped
+	}
+	for _, r := range tc.replicas {
+		r.Status.CurrentState = types.InstanceStateStopped
+		r.Spec.HealthyAt = getTestNow()
+		r.Spec.FailedAt = getTestNow()
+		r.Spec.DesireState = types.InstanceStateStopped
+	}
+
+	tc.copyCurrentToExpect()
+
+	expectEs = map[string]*longhorn.Engine{}
+	for _, e := range tc.expectEngines {
+		e.Spec.SalvageRequested = true
+		expectEs[e.Name] = e
+	}
+	tc.expectEngines = expectEs
+
+	expectRs = map[string]*longhorn.Replica{}
+	for _, r := range tc.expectReplicas {
+		r.Spec.DesireState = types.InstanceStateStopped
+		r.Spec.FailedAt = ""
+		expectRs[r.Name] = r
+	}
+	tc.expectReplicas = expectRs
+
+	tc.expectVolume.Status.State = types.VolumeStateDetached
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentNodeID = TestNode1
+	tc.expectVolume.Status.PendingNodeID = ""
+	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
+	tc.expectVolume.Status.RemountRequired = true
+
+	testCases["\n\n\nvolume salvage requested - all replica failed"] = tc
+
 	s.runTestCases(c, testCases)
 
 	// volume attaching, start replicas, manager restart
@@ -1141,6 +1224,17 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			s := initSettingsNameValue(
 				string(types.SettingNameReplicaSoftAntiAffinity),
 				tc.replicaNodeSoftAntiAffinity)
+			setting, err :=
+				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
+			c.Assert(err, IsNil)
+			sIndexer.Add(setting)
+		}
+
+		// Set auto salvage setting
+		if tc.volumeAutoSalvage != "" {
+			s := initSettingsNameValue(
+				string(types.SettingNameAutoSalvage),
+				tc.volumeAutoSalvage)
 			setting, err :=
 				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
 			c.Assert(err, IsNil)
