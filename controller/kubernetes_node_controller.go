@@ -198,11 +198,17 @@ func (knc *KubernetesNodeController) syncKubernetesNode(key string) (err error) 
 
 	kubeNode, err := knc.ds.GetKubernetesNode(name)
 	if err != nil {
-		if datastore.ErrorIsNotFound(err) {
-			logrus.Errorf("Kubernetes node %v has been deleted", key)
-			return nil
+		if !datastore.ErrorIsNotFound(err) {
+			return err
 		}
-		return err
+		logrus.Errorf("Kubernetes node %v has been deleted", key)
+	}
+
+	if kubeNode == nil {
+		if err := knc.ds.DeleteNode(name); err != nil {
+			return err
+		}
+		return nil
 	}
 
 	defer func() {
