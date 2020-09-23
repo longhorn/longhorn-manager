@@ -924,6 +924,7 @@ func syncWithRestoreStatus(log logrus.FieldLogger, engine *longhorn.Engine, rsMa
 
 	allReplicasAreRestoring := true
 	isConsensual := true
+	lastRestoredInitialized := false
 	lastRestored := ""
 	for url, status := range rsMap {
 		if !status.IsRestoring {
@@ -942,10 +943,11 @@ func syncWithRestoreStatus(log logrus.FieldLogger, engine *longhorn.Engine, rsMa
 				}
 			}
 		}
-		if lastRestored == "" {
+		if !lastRestoredInitialized {
 			lastRestored = status.LastRestored
+			lastRestoredInitialized = true
 		}
-		if lastRestored != "" && status.LastRestored != lastRestored {
+		if status.LastRestored != lastRestored {
 			isConsensual = false
 		}
 	}
