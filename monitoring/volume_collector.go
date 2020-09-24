@@ -41,8 +41,8 @@ func NewVolumeCollector(
 
 	vc.sizeMetric = metricInfo{
 		Desc: prometheus.NewDesc(
-			prometheus.BuildFQName(longhornName, subsystemVolume, "usage_bytes"),
-			"Used storage space in bytes for this volume",
+			prometheus.BuildFQName(longhornName, subsystemVolume, "actual_size_bytes"),
+			"Actual space used by each replica of the volume on the corresponding node",
 			[]string{nodeLabel, volumeLabel},
 			nil,
 		),
