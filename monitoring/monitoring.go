@@ -34,13 +34,9 @@ func Handler() http.Handler {
 
 func InitMonitoringSystem(logger logrus.FieldLogger, currentNodeID string, ds *datastore.DataStore, kubeconfigPath string) {
 	vc := NewVolumeCollector(logger, currentNodeID, ds)
-	nc := NewNodeCollector(logger, currentNodeID, ds)
 
 	if err := Register(vc); err != nil {
 		logger.WithField("collector", subsystemVolume).WithError(err).Warn("failed to register collector")
-	}
-	if err := Register(nc); err != nil {
-		logger.WithField("collector", subsystemNode).WithError(err).Warn("failed to register collector")
 	}
 
 	namespace := os.Getenv(types.EnvPodNamespace)
@@ -51,13 +47,17 @@ func InitMonitoringSystem(logger logrus.FieldLogger, currentNodeID string, ds *d
 	}
 
 	if kubeMetricsClient, err := buildMetricClientFromConfigPath(kubeconfigPath); err != nil {
-		logger.WithError(err).Warn("skip instantiating InstanceManagerCollector and ManagerCollector")
+		logger.WithError(err).Warn("skip instantiating InstanceManagerCollector, ManagerCollector, and NodeCollector")
 	} else {
 		imc := NewInstanceManagerCollector(logger, currentNodeID, ds, kubeMetricsClient, namespace)
+		nc := NewNodeCollector(logger, currentNodeID, ds, kubeMetricsClient)
 		mc := NewManagerCollector(logger, currentNodeID, ds, kubeMetricsClient, namespace)
 
 		if err := Register(imc); err != nil {
 			logger.WithField("collector", subsystemInstanceManager).WithError(err).Warn("failed to register collector")
+		}
+		if err := Register(nc); err != nil {
+			logger.WithField("collector", subsystemNode).WithError(err).Warn("failed to register collector")
 		}
 		if err := Register(mc); err != nil {
 			logger.WithField("collector", subsystemManager).WithError(err).Warn("failed to register collector")
