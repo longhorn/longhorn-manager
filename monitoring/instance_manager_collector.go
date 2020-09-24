@@ -94,16 +94,21 @@ func (imc *InstanceManagerCollector) Collect(ch chan<- prometheus.Metric) {
 	var wg sync.WaitGroup
 
 	wg.Add(1)
-	go imc.collectActualUsage(ch, &wg)
+	go func() {
+		defer wg.Done()
+		imc.collectActualUsage(ch)
+	}()
 
 	wg.Add(1)
-	go imc.collectRequestValues(ch, &wg)
+	go func() {
+		defer wg.Done()
+		imc.collectRequestValues(ch)
+	}()
 
 	wg.Wait()
 }
 
-func (imc *InstanceManagerCollector) collectActualUsage(ch chan<- prometheus.Metric, wg *sync.WaitGroup) {
-	defer wg.Done()
+func (imc *InstanceManagerCollector) collectActualUsage(ch chan<- prometheus.Metric) {
 	defer func() {
 		if err := recover(); err != nil {
 			imc.logger.WithField("error", err).Warn("panic during collecting metrics")
@@ -148,8 +153,7 @@ func getInstanceManagerTypeFromInstanceManagerName(imName string) string {
 	}
 }
 
-func (imc *InstanceManagerCollector) collectRequestValues(ch chan<- prometheus.Metric, wg *sync.WaitGroup) {
-	defer wg.Done()
+func (imc *InstanceManagerCollector) collectRequestValues(ch chan<- prometheus.Metric) {
 	defer func() {
 		if err := recover(); err != nil {
 			imc.logger.WithField("error", err).Warn("panic during collecting metrics")
