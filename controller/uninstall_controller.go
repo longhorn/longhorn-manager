@@ -11,6 +11,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apiextension "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -33,6 +34,8 @@ const (
 	CRDEngineImageName     = "engineimages.longhorn.io"
 	CRDNodeName            = "nodes.longhorn.io"
 	CRDInstanceManagerName = "instancemanagers.longhorn.io"
+
+	LonghornNamespace = "longhorn-system"
 )
 
 var (
@@ -106,7 +109,7 @@ func NewUninstallController(
 		cacheSyncs = append(cacheSyncs, imInformer.Informer().HasSynced)
 	}
 
-	daemonSetInformer.Informer().AddEventHandler(c.controlleeHandler())
+	daemonSetInformer.Informer().AddEventHandler(c.namespacedControlleeHandler())
 
 	c.cacheSyncs = cacheSyncs
 
@@ -121,8 +124,27 @@ func (c *UninstallController) controlleeHandler() cache.ResourceEventHandler {
 	}
 }
 
+func (c *UninstallController) namespacedControlleeHandler() cache.ResourceEventHandler {
+	return cache.ResourceEventHandlerFuncs{
+		AddFunc:    func(obj interface{}) { c.enqueueNamespacedControlleeChange(obj) },
+		UpdateFunc: func(old, cur interface{}) { c.enqueueNamespacedControlleeChange(cur) },
+		DeleteFunc: func(obj interface{}) { c.enqueueNamespacedControlleeChange(obj) },
+	}
+}
+
 func (c *UninstallController) enqueueControlleeChange() {
 	c.queue.AddRateLimited("uninstall")
+}
+
+func (c *UninstallController) enqueueNamespacedControlleeChange(obj interface{}) {
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("Couldn't get meta for object %#v: %v", obj, err))
+	}
+	if metadata.GetNamespace() != LonghornNamespace {
+		return
+	}
+	c.enqueueControlleeChange()
 }
 
 func (c *UninstallController) Run() error {
