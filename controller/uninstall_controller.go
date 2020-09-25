@@ -70,8 +70,8 @@ func NewUninstallController(
 	c := &UninstallController{
 		baseController: newBaseControllerWithQueue("longhorn-uninstall", logger,
 			workqueue.NewNamedRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
-				workqueue.NewItemExponentialFailureRateLimiter(500*time.Millisecond, 5*time.Second),
-				&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+				workqueue.NewItemExponentialFailureRateLimiter(100*time.Millisecond, 2*time.Second),
+				&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
 			), "longhorn-uninstall"),
 		),
 		namespace: namespace,
