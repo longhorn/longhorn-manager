@@ -276,7 +276,6 @@ func (le *LeaderElector) release() bool {
 		return true
 	}
 	leaderElectionRecord := rl.LeaderElectionRecord{
-		LeaseDurationSeconds: le.observedRecord.LeaseDurationSeconds,
 		LeaderTransitions: le.observedRecord.LeaderTransitions,
 	}
 	if err := le.config.Lock.Update(leaderElectionRecord); err != nil {
