@@ -10,6 +10,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/robfig/cron"
 
+	"golang.org/x/sys/unix"
+
 	"k8s.io/kubernetes/pkg/util/mount"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
@@ -32,6 +34,16 @@ func NewForcedParamsOsExec(cmdParamMapping map[string]string) mount.Exec {
 type forcedParamsOsExec struct {
 	osExec          mount.Exec
 	cmdParamMapping map[string]string
+}
+
+type volumeFilesystemStatistics struct {
+	availableBytes int64
+	totalBytes     int64
+	usedBytes      int64
+
+	availableInodes int64
+	totalInodes     int64
+	usedInodes      int64
 }
 
 func (e *forcedParamsOsExec) Run(cmd string, args ...string) ([]byte, error) {
@@ -151,4 +163,42 @@ func detectFileSystem(devicePath string) (string, error) {
 		return "", fmt.Errorf("failed to detect the file system from device %v, invalid output of command blkid", devicePath)
 	}
 	return strings.Trim(strings.TrimPrefix(strings.TrimSpace(items[2]), "TYPE="), "\""), nil
+}
+
+// isBlockDevice return true if volumePath file is a block device, false otherwise.
+func isBlockDevice(volumePath string) (bool, error) {
+	var stat unix.Stat_t
+	// See https://man7.org/linux/man-pages/man2/stat.2.html for details
+	err := unix.Stat(volumePath, &stat)
+	if err != nil {
+		return false, err
+	}
+
+	// See https://man7.org/linux/man-pages/man7/inode.7.html for detail
+	if (stat.Mode & unix.S_IFMT) == unix.S_IFBLK {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func getFilesystemStatistics(volumePath string) (*volumeFilesystemStatistics, error) {
+	var statfs unix.Statfs_t
+	// See http://man7.org/linux/man-pages/man2/statfs.2.html for details.
+	err := unix.Statfs(volumePath, &statfs)
+	if err != nil {
+		return nil, err
+	}
+
+	volStats := &volumeFilesystemStatistics{
+		availableBytes: int64(statfs.Bavail) * int64(statfs.Bsize),
+		totalBytes:     int64(statfs.Blocks) * int64(statfs.Bsize),
+		usedBytes:      (int64(statfs.Blocks) - int64(statfs.Bfree)) * int64(statfs.Bsize),
+
+		availableInodes: int64(statfs.Ffree),
+		totalInodes:     int64(statfs.Files),
+		usedInodes:      int64(statfs.Files) - int64(statfs.Ffree),
+	}
+
+	return volStats, nil
 }

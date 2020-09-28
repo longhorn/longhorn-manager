@@ -3,13 +3,20 @@ package csi
 import (
 	"context"
 	"fmt"
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/sirupsen/logrus"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"k8s.io/kubernetes/pkg/util/mount"
 	"os"
 	"path/filepath"
+	"strconv"
+
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+
+	"golang.org/x/sys/unix"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"k8s.io/kubernetes/pkg/util/mount"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/types"
@@ -28,6 +35,7 @@ func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) *Node
 		caps: getNodeServiceCapabilities(
 			[]csi.NodeServiceCapability_RPC_Type{
 				csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+				csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 			}),
 	}
 }
@@ -197,8 +205,73 @@ func (ns *NodeServer) NodeUnstageVolume(
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "")
+func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	existVol, err := ns.apiClient.Volume.ById(req.GetVolumeId())
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if existVol == nil {
+		msg := fmt.Sprintf("NodeGetVolumeStats: the volume %v not exists", req.GetVolumeId())
+		logrus.Warn(msg)
+		return nil, status.Error(codes.NotFound, msg)
+	}
+
+	volumePath := req.GetVolumePath()
+	if volumePath == "" {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume Volume Path cannot be empty")
+	}
+
+	isBlockVolume, err := isBlockDevice(volumePath)
+	if err != nil {
+		// ENOENT means the volumePath does not exist
+		// See https://man7.org/linux/man-pages/man2/stat.2.html for details.
+		if errors.Is(err, unix.ENOENT) {
+			return nil, status.Errorf(codes.NotFound, "volume path %v is not mounted", volumePath)
+		}
+		return nil, status.Errorf(codes.Internal, "failed to check volume mode for volume path %v: %v", volumePath, err)
+	}
+
+	if isBlockVolume {
+		volCapacity, err := strconv.ParseInt(existVol.Size, 10, 64)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to convert volume size %v: %v", existVol.Size, err)
+		}
+		return &csi.NodeGetVolumeStatsResponse{
+			Usage: []*csi.VolumeUsage{
+				&csi.VolumeUsage{
+					Total: volCapacity,
+					Unit:  csi.VolumeUsage_BYTES,
+				},
+			},
+		}, nil
+	}
+
+	stats, err := getFilesystemStatistics(volumePath)
+	if err != nil {
+		// ENOENT means the volumePath does not exist
+		// See http://man7.org/linux/man-pages/man2/statfs.2.html for details.
+		if errors.Is(err, unix.ENOENT) {
+			return nil, status.Errorf(codes.NotFound, "volume path %v is not mounted", volumePath)
+		}
+		return nil, status.Errorf(codes.Internal, "failed to retrieve capacity statistics for volume path %v: %v", volumePath, err)
+	}
+
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: []*csi.VolumeUsage{
+			&csi.VolumeUsage{
+				Available: stats.availableBytes,
+				Total:     stats.totalBytes,
+				Used:      stats.usedBytes,
+				Unit:      csi.VolumeUsage_BYTES,
+			},
+			&csi.VolumeUsage{
+				Available: stats.availableInodes,
+				Total:     stats.totalInodes,
+				Used:      stats.usedInodes,
+				Unit:      csi.VolumeUsage_INODES,
+			},
+		},
+	}, nil
 }
 
 // NodeExpandVolume is designed to expand the file system for ONLINE expansion,
