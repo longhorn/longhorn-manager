@@ -378,6 +378,20 @@ func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *lo
 		if r.Spec.VolumeName != v.Name {
 			return nil, fmt.Errorf("replica %v doesn't belong to volume %v", r.Name, v.Name)
 		}
+		isDownOrDeleted, err := m.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to check if the related node %v is still running for replica %v", r.Spec.NodeID, name)
+		}
+		if isDownOrDeleted {
+			return nil, fmt.Errorf("Unable to check if the related node %v is down or deleted for replica %v", r.Spec.NodeID, name)
+		}
+		node, err := m.ds.GetNode(r.Spec.NodeID)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to get the related node %v for replica %v", r.Spec.NodeID, name)
+		}
+		if _, exists := node.Status.DiskStatus[r.Spec.DiskID]; !exists {
+			return nil, fmt.Errorf("Cannot salvage replica %v since the related disk on node %v is not matching", name, r.Spec.NodeID)
+		}
 		if r.Spec.FailedAt == "" {
 			// already updated, ignore it for idempotency
 			continue

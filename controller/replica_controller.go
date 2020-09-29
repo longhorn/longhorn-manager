@@ -205,6 +205,12 @@ func (rc *ReplicaController) isEvictionRequested(replica *longhorn.Replica) bool
 	if replica.Spec.NodeID == "" {
 		return false
 	}
+	if isDownOrDeleted, err := rc.ds.IsNodeDownOrDeleted(replica.Spec.NodeID); err != nil {
+		logrus.Warnf("Failed to check if node %v is down or deleted, err %v", replica.Spec.NodeID, err)
+		return false
+	} else if isDownOrDeleted {
+		return false
+	}
 
 	node, err := rc.ds.GetNode(replica.Spec.NodeID)
 	if err != nil {
@@ -389,23 +395,24 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 
 	im, err := rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
-	if err != nil {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 
-	// Node down
-	if im.Spec.NodeID != im.Status.OwnerID {
-		isDown, err := rc.ds.IsNodeDownOrDeleted(im.Spec.NodeID)
-		if err != nil {
-			return err
-		}
-		if isDown {
+	// Node is down or deleted.
+	// replica.Spec.NodeID should not be empty if r.Status.InstanceManagerName is already set.
+	if r.Spec.NodeID != r.Status.OwnerID {
+		if im != nil {
 			delete(im.Status.Instances, r.Name)
 			if _, err := rc.ds.UpdateInstanceManagerStatus(im); err != nil {
 				return err
 			}
-			return nil
 		}
+		return nil
+	}
+
+	if im == nil {
+		return fmt.Errorf("cannot find instance manager %v for replica %v process deletion", r.Status.InstanceManagerName, r.Name)
 	}
 
 	c, err := engineapi.NewInstanceManagerClient(im)

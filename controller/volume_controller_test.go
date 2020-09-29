@@ -903,7 +903,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
 	tc.expectVolume.Status.RemountRequired = true
 
-	testCases["\n\n\nvolume salvage requested - all replica failed"] = tc
+	testCases["volume salvage requested - all replica failed"] = tc
 
 	s.runTestCases(c, testCases)
 
@@ -1097,6 +1097,13 @@ func newNode(name, namespace string, allowScheduling bool, status types.Conditio
 				types.NodeConditionTypeSchedulable: newNodeCondition(types.NodeConditionTypeSchedulable, status, reason),
 				types.NodeConditionTypeReady:       newNodeCondition(types.NodeConditionTypeReady, status, reason),
 			},
+			DiskStatus: map[string]*types.DiskStatus{
+				TestDiskID1: {
+					StorageAvailable: TestDiskAvailableSize,
+					StorageScheduled: 0,
+					StorageMaximum:   TestDiskSize,
+				},
+			},
 		},
 	}
 }
@@ -1149,8 +1156,8 @@ func newKubernetesNode(name string, readyStatus, diskPressureStatus, memoryStatu
 func generateVolumeTestCaseTemplate() *VolumeTestCase {
 	volume := newVolume(TestVolumeName, 2)
 	engine := newEngineForVolume(volume)
-	replica1 := newReplicaForVolume(volume, engine, TestNode1, "fsid")
-	replica2 := newReplicaForVolume(volume, engine, TestNode2, "fsid")
+	replica1 := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1)
+	replica2 := newReplicaForVolume(volume, engine, TestNode2, TestDiskID1)
 	node1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
 	node2 := newNode(TestNode2, TestNamespace, false, types.ConditionStatusTrue, "")
 
