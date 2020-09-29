@@ -404,10 +404,17 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 
 	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
 	if err != nil {
-		return err
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+		// The related node may be directly deleted.
+		logrus.Warnf("The instance manager %v is gone during the instance %v deletion. Will do nothing for the deletion", e.Status.InstanceManagerName, e.Name)
+		return nil
 	}
 
-	// Node down
+	// Node down.
+	// engine.Spec.NodeID will be unset when Longhorn prepares to stop the engine.
+	// Hence the field engine.Spec.NodeID cannot be used to check if the node is down.
 	if im.Spec.NodeID != im.Status.OwnerID {
 		isDown, err := ec.ds.IsNodeDownOrDeleted(im.Spec.NodeID)
 		if err != nil {

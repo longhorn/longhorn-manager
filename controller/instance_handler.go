@@ -204,9 +204,16 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		}
 		// There should be an available instance manager for a scheduled instance when its related engine image is compatible
 		if im == nil && spec.EngineImage != "" && spec.NodeID != "" {
-			im, err = h.ds.GetInstanceManagerByInstance(obj)
+			// The related node maybe cleaned up then there is no available instance manager for this instance (typically it's replica).
+			isNodeDownOrDeleted, err := h.ds.IsNodeDownOrDeleted(spec.NodeID)
 			if err != nil {
-				return errors.Wrapf(err, "failed to get instance manager for instance %v", instanceName)
+				return err
+			}
+			if !isNodeDownOrDeleted {
+				im, err = h.ds.GetInstanceManagerByInstance(obj)
+				if err != nil {
+					return errors.Wrapf(err, "failed to get instance manager for instance %v", instanceName)
+				}
 			}
 		}
 	}
@@ -236,6 +243,10 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 	case types.InstanceStateRunning:
 		if isCLIAPIVersionOne {
 			return nil
+		}
+
+		if im == nil {
+			break
 		}
 
 		if i, exists := im.Status.Instances[instanceName]; exists && i.Status.State == types.InstanceStateRunning {

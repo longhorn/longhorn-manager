@@ -889,51 +889,74 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 		// make sure the volume is detached before automatically salvage
 		if autoSalvage && v.Status.State == types.VolumeStateDetached && !v.Status.IsStandby && !v.Status.RestoreRequired {
-			lastFailedAt := time.Time{}
-			failedUsableReplicas := map[string]*longhorn.Replica{}
-			dataExists := false
-
-			for _, r := range rs {
-				if r.Spec.HealthyAt == "" {
-					continue
-				}
-				dataExists = true
-				failedAt, err := util.ParseTime(r.Spec.FailedAt)
-				if err != nil {
-					log.WithField("replica", r.Name).WithError(err).Error("Unable to parse FailedAt timestamp for replica")
-					continue
-				}
-				if failedAt.After(lastFailedAt) {
-					lastFailedAt = failedAt
-				}
-				// all failedUsableReplica contains data
-				failedUsableReplicas[r.Name] = r
+			// There is no need to auto salvage (and reattach) a volume on an unavailable node
+			isNodeDownOrDeleted, err := vc.ds.IsNodeDownOrDeleted(v.Spec.NodeID)
+			if err != nil {
+				return err
 			}
-			if !dataExists {
-				log.Warn("Cannot auto salvage volume: no data exists")
-			} else {
-				// This salvage is for revision counter enabled case
-				salvaged := false
-				// Since all replica failed, mark engine controller salvage requested
-				e.Spec.SalvageRequested = true
-				logrus.Infof("All replicas are failed, set engine salvageRequested to %v", e.Spec.SalvageRequested)
+			if !isNodeDownOrDeleted {
+				lastFailedAt := time.Time{}
+				failedUsableReplicas := map[string]*longhorn.Replica{}
+				dataExists := false
 
-				// Bring up the replicas for auto-salvage
-				for _, r := range failedUsableReplicas {
-					if util.TimestampWithinLimit(lastFailedAt, r.Spec.FailedAt, AutoSalvageTimeLimit) {
-						r.Spec.FailedAt = ""
-						log.WithField("replica", r.Name).Warn("Automatically salvaging volume replica")
-						msg := fmt.Sprintf("Replica %v of volume %v will be automatically salvaged", r.Name, v.Name)
-						vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonAutoSalvaged, msg)
-						salvaged = true
+				for _, r := range rs {
+					if r.Spec.HealthyAt == "" {
+						continue
 					}
+					dataExists = true
+					if r.Spec.NodeID == "" {
+						continue
+					}
+					if isDownOrDeleted, err := vc.ds.IsNodeDownOrDeleted(r.Spec.NodeID); err != nil {
+						log.WithField("replica", r.Name).WithError(err).Errorf("Unable to check if node %v is still running for failed replica", r.Spec.NodeID)
+						continue
+					} else if isDownOrDeleted {
+						continue
+					}
+					node, err := vc.ds.GetNode(r.Spec.NodeID)
+					if err != nil {
+						log.WithField("replica", r.Name).WithError(err).Errorf("Unable to get node %v for failed replica", r.Spec.NodeID)
+					}
+					if _, exists := node.Status.DiskStatus[r.Spec.DiskID]; !exists {
+						continue
+					}
+					failedAt, err := util.ParseTime(r.Spec.FailedAt)
+					if err != nil {
+						log.WithField("replica", r.Name).WithError(err).Error("Unable to parse FailedAt timestamp for replica")
+						continue
+					}
+					if failedAt.After(lastFailedAt) {
+						lastFailedAt = failedAt
+					}
+					// all failedUsableReplica contains data
+					failedUsableReplicas[r.Name] = r
 				}
-				if salvaged {
-					// remount the reattached volume later if possible
-					// For the auto-salvaged volume, `v.Status.CurrentNodeID` is empty but `v.Spec.NodeID` shouldn't be empty.
-					v.Status.PendingNodeID = v.Spec.NodeID
-					v.Status.RemountRequired = true
-					v.Status.Robustness = types.VolumeRobustnessUnknown
+				if !dataExists {
+					log.Warn("Cannot auto salvage volume: no data exists")
+				} else {
+					// This salvage is for revision counter enabled case
+					salvaged := false
+					// Since all replica failed, mark engine controller salvage requested
+					e.Spec.SalvageRequested = true
+					logrus.Infof("All replicas are failed, set engine salvageRequested to %v", e.Spec.SalvageRequested)
+
+					// Bring up the replicas for auto-salvage
+					for _, r := range failedUsableReplicas {
+						if util.TimestampWithinLimit(lastFailedAt, r.Spec.FailedAt, AutoSalvageTimeLimit) {
+							r.Spec.FailedAt = ""
+							log.WithField("replica", r.Name).Warn("Automatically salvaging volume replica")
+							msg := fmt.Sprintf("Replica %v of volume %v will be automatically salvaged", r.Name, v.Name)
+							vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonAutoSalvaged, msg)
+							salvaged = true
+						}
+					}
+					if salvaged {
+						// remount the reattached volume later if possible
+						// For the auto-salvaged volume, `v.Status.CurrentNodeID` is empty but `v.Spec.NodeID` shouldn't be empty.
+						v.Status.PendingNodeID = v.Spec.NodeID
+						v.Status.RemountRequired = true
+						v.Status.Robustness = types.VolumeRobustnessUnknown
+					}
 				}
 			}
 		}

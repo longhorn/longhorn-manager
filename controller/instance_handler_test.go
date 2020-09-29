@@ -409,6 +409,12 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			c.Assert(err, IsNil)
 		}
 
+		node, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, ""))
+		c.Assert(err, IsNil)
+		nodeIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
+		err = nodeIndexer.Add(node)
+		c.Assert(err, IsNil)
+
 		var spec *types.InstanceSpec
 		var status *types.InstanceStatus
 		if tc.imType == types.InstanceManagerTypeEngine {
