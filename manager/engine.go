@@ -150,15 +150,20 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 	if err != nil {
 		return err
 	}
-	go func() {
-		if _, err := engine.SnapshotBackup(snapshotName, backupTarget, labels, credential); err != nil {
-			logrus.Errorf("Failed to backup snapshot %v with label %v for volume %v: %v", snapshotName, labels, volumeName, err)
-		}
-		logrus.Debugf("Backup snapshot %v with label %v for volume %v", snapshotName, labels, volumeName)
 
+	// blocks till the backup creation has been started
+	backupID, err := engine.SnapshotBackup(snapshotName, backupTarget, labels, credential)
+	if err != nil {
+		logrus.WithError(err).Errorf("Failed to initiate backup for snapshot %v of volume %v with label %v", snapshotName, volumeName, labels)
+		return err
+	}
+	logrus.Debugf("Initiated Backup %v for snapshot %v of volume %v with label %v", backupID, snapshotName, volumeName, labels)
+
+	go func() {
 		target, err := GenerateBackupTarget(m.ds)
 		if err != nil {
-			logrus.Warnf("Failed to update volume LastBackup for %v due to cannot get backup target: %v", volumeName, err)
+			logrus.Warnf("Failed to update volume LastBackup %v of snapshot %v for volume %v due to cannot get backup target: %v",
+				backupID, snapshotName, volumeName, err)
 		}
 
 		bks := &types.BackupStatus{}
