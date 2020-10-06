@@ -549,7 +549,9 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		}
 
 		// Migrate local replica when Data Locality is on
-		if v.Status.State == types.VolumeStateAttached && !isDataLocalityDisabled(v) && !hasLocalReplicaOnSameNodeAsEngine(e, rs) {
+		// We turn off data locality while doing auto-attaching or restoring (e.g. frontend is disabled)
+		if v.Status.State == types.VolumeStateAttached && !v.Status.FrontendDisabled &&
+			!isDataLocalityDisabled(v) && !hasLocalReplicaOnSameNodeAsEngine(e, rs) {
 			if err := vc.replenishReplicas(v, e, rs, e.Spec.NodeID); err != nil {
 				return err
 			}
@@ -1955,10 +1957,7 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 		err = errors.Wrapf(err, "fail to update recurring jobs for %v", v.Name)
 	}()
 
-	suspended := false
-	if v.Status.State != types.VolumeStateAttached {
-		suspended = true
-	}
+	suspended := vc.shouldSuspendRecurringJobs(v)
 
 	// the cronjobs are RO in the map, but not the map itself
 	appliedCronJobROs, err := vc.ds.ListVolumeCronJobROs(v.Name)
@@ -2006,6 +2005,18 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 	}
 
 	return nil
+}
+
+func (vc *VolumeController) shouldSuspendRecurringJobs(v *longhorn.Volume) bool {
+	allowRecurringJobWhileVolumeDetached, err := vc.ds.GetSettingAsBool(types.SettingNameAllowRecurringJobWhileVolumeDetached)
+	if err != nil {
+		vc.logger.WithError(err).Warn("error getting allow-recurring-backup-while-volume-detached setting")
+	}
+
+	if v.Status.State == types.VolumeStateAttached || (v.Status.State == types.VolumeStateDetached && allowRecurringJobWhileVolumeDetached) {
+		return false
+	}
+	return true
 }
 
 func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
