@@ -216,8 +216,10 @@ func (job *Job) run() (err error) {
 	}
 
 	if job.jobType == jobTypeBackup {
+		logrus.Infof("Running recurring backup for volume %v", volumeName)
 		return job.backupAndCleanup()
 	}
+	logrus.Infof("Running recurring snapshot for volume %v", volumeName)
 	return job.snapshotAndCleanup()
 }
 
@@ -228,6 +230,15 @@ func (job *Job) snapshotAndCleanup() (err error) {
 	volume, err := volumeAPI.ById(volumeName)
 	if err != nil {
 		return errors.Wrapf(err, "could not get volume %v", volumeName)
+	}
+
+	shouldDo, err := job.shouldDoRecurringSnapshot(volume)
+	if err != nil {
+		return err
+	}
+	if !shouldDo {
+		logrus.Infof("Skipping taking snapshot because it is not triggered by recurring backup job AND the volume %v doesn't have new data in volume-head", volumeName)
+		return nil
 	}
 
 	if _, err := volumeAPI.ActionSnapshotCreate(volume, &longhornclient.SnapshotInput{
@@ -293,9 +304,69 @@ func (job *Job) snapshotAndCleanup() (err error) {
 	return nil
 }
 
+// shouldDoRecurringSnapshot return whether we should take a new snapshot in the current running of the job
+func (job *Job) shouldDoRecurringSnapshot(volume *longhornclient.Volume) (bool, error) {
+	volumeHeadSize, err := job.getVolumeHeadSize(volume)
+	if err != nil {
+		return false, err
+	}
+
+	// If volume-head has new data, we need to take snapshot, we need to take a new snapshot
+	if volumeHeadSize > 0 {
+		return true, nil
+	}
+
+	// The snapshot job is triggered by a recurring backup, we need to take a new snapshot
+	if job.jobType == jobTypeBackup {
+		return true, nil
+	}
+
+	return false, nil
+}
+
 type NameWithTimestamp struct {
 	Name      string
 	Timestamp time.Time
+}
+
+// getLastSnapshot return the last snapshot of the volume exclude the volume-head
+// return nil, nil if volume doesn't have any snapshot other than the volume-head
+func (job *Job) getLastSnapshot(volume *longhornclient.Volume) (*longhornclient.Snapshot, error) {
+	volumeHead, err := job.api.Volume.ActionSnapshotGet(volume, &longhornclient.SnapshotInput{
+		Name: engineapi.VolumeHeadName,
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not get volume-head for volume %v", job.volumeName)
+	}
+
+	if volumeHead.Parent == "" {
+		return nil, nil
+	}
+
+	lastSnapshot, err := job.api.Volume.ActionSnapshotGet(volume, &longhornclient.SnapshotInput{
+		Name: volumeHead.Parent,
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not get parent of volume-head for volume %v", job.volumeName)
+	}
+
+	return lastSnapshot, nil
+}
+
+// getVolumeHeadSize return the size of volume-head snapshot
+func (job *Job) getVolumeHeadSize(volume *longhornclient.Volume) (int64, error) {
+	volumeHead, err := job.api.Volume.ActionSnapshotGet(volume, &longhornclient.SnapshotInput{
+		Name: engineapi.VolumeHeadName,
+	})
+	if err != nil {
+		return 0, errors.Wrapf(err, "could not get volume-head for volume %v", job.volumeName)
+	}
+	volumeHeadSize, err := strconv.ParseInt(volumeHead.Size, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return volumeHeadSize, nil
 }
 
 func (job *Job) listSnapshotNamesForCleanup(snapshots []longhornclient.Snapshot) []string {
@@ -354,21 +425,12 @@ func (job *Job) backupAndCleanup() (err error) {
 		return errors.Wrapf(err, "could not get volume %v", volumeName)
 	}
 
-	// Check the size of VolumeHead, if it is empty, skip the recurring backup.
-	// We don't want to overwrite the old backups with new identical backups.
-	// This happens when the volume is detached for a long time and has no new data.
-	volumeHead, err := volumeAPI.ActionSnapshotGet(volume, &longhornclient.SnapshotInput{
-		Name: engineapi.VolumeHeadName,
-	})
-	if err != nil {
-		return errors.Wrapf(err, "could not get volume-head for volume %v", volumeName)
-	}
-	volumeHeadSize, err := strconv.ParseInt(volumeHead.Size, 10, 64)
+	shouldDo, err := job.shouldDoRecurringBackup(volume)
 	if err != nil {
 		return err
 	}
-	if volumeHeadSize == 0 {
-		logrus.Infof("Skipping the recurring backup because volume %v has no new data", volumeName)
+	if !shouldDo {
+		logrus.Infof("Skipping taking backup because volume %v is either empty or doesn't have new data since the last backup", volumeName)
 		return nil
 	}
 
@@ -443,6 +505,57 @@ func (job *Job) backupAndCleanup() (err error) {
 		logrus.Debugf("Cleaned up backup %v for %v", backup, volumeName)
 	}
 	return nil
+}
+
+// shouldDoRecurringBackup return whether the recurring backup should take place
+// We should do recurring backup if there is new data since the last backup
+func (job *Job) shouldDoRecurringBackup(volume *longhornclient.Volume) (bool, error) {
+	volumeHeadSize, err := job.getVolumeHeadSize(volume)
+	if err != nil {
+		return false, err
+	}
+
+	// If volume-head has new data, we need to do backup
+	if volumeHeadSize > 0 {
+		return true, nil
+	}
+
+	lastBackup, err := job.getLastBackup(volume)
+	if err != nil {
+		return false, err
+	}
+
+	lastSnapshot, err := job.getLastSnapshot(volume)
+	if err != nil {
+		return false, err
+	}
+
+	if lastSnapshot == nil {
+		return false, nil
+	}
+
+	if lastBackup != nil && lastBackup.SnapshotName == lastSnapshot.Name {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+// getLastBackup return the last backup of the volume
+// return nil, nil if volume doesn't have any backup
+func (job *Job) getLastBackup(volume *longhornclient.Volume) (*longhornclient.Backup, error) {
+	if volume.LastBackup == "" {
+		return nil, nil
+	}
+
+	backupVolume, err := job.api.BackupVolume.ById(job.volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	return job.api.BackupVolume.ActionBackupGet(backupVolume, &longhornclient.BackupInput{
+		Name: volume.LastBackup,
+	})
 }
 
 func (job *Job) listBackupsForCleanup(backups []longhornclient.Backup) []string {
