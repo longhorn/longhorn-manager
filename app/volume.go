@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
@@ -351,6 +352,24 @@ func (job *Job) backupAndCleanup() (err error) {
 	volume, err := volumeAPI.ById(volumeName)
 	if err != nil {
 		return errors.Wrapf(err, "could not get volume %v", volumeName)
+	}
+
+	// Check the size of VolumeHead, if it is empty, skip the recurring backup.
+	// We don't want to overwrite the old backups with new identical backups.
+	// This happens when the volume is detached for a long time and has no new data.
+	volumeHead, err := volumeAPI.ActionSnapshotGet(volume, &longhornclient.SnapshotInput{
+		Name: engineapi.VolumeHeadName,
+	})
+	if err != nil {
+		return errors.Wrapf(err, "could not get volume-head for volume %v", volumeName)
+	}
+	volumeHeadSize, err := strconv.ParseInt(volumeHead.Size, 10, 64)
+	if err != nil {
+		return err
+	}
+	if volumeHeadSize == 0 {
+		logrus.Infof("Skipping the recurring backup because volume %v has no new data", volumeName)
+		return nil
 	}
 
 	if err := job.snapshotAndCleanup(); err != nil {
