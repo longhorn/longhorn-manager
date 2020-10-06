@@ -1,7 +1,9 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"sort"
 	"time"
@@ -30,7 +32,11 @@ const (
 
 	SnapshotPurgeStatusInterval = 5 * time.Second
 
-	WaitInterval = 5 * time.Second
+	WaitInterval        = 5 * time.Second
+	VolumeAttachTimeout = 300 // 5 minutes
+
+	jobTypeSnapshot = string("snapshot")
+	jobTypeBackup   = string("backup")
 )
 
 func SnapshotCmd() cli.Command {
@@ -97,28 +103,27 @@ func snapshot(c *cli.Context) error {
 	}
 
 	backup := c.Bool(FlagBackup)
-	job, err := NewJob(managerURL, volume, snapshotName, labelMap, retain)
+	job, err := NewJob(managerURL, volume, snapshotName, labelMap, retain, backup)
 	if err != nil {
 		return err
 	}
-	if backup {
-		return job.backupAndCleanup()
-	}
-	return job.snapshotAndCleanup()
+
+	return job.run()
 }
 
 type Job struct {
 	lhClient     lhclientset.Interface
 	namespace    string
-	volume       *longhornclient.Volume
+	volumeName   string
 	snapshotName string
 	retain       int
+	jobType      string
 	labels       map[string]string
 
 	api *longhornclient.RancherClient
 }
 
-func NewJob(managerURL, volumeName, snapshotName string, labels map[string]string, retain int) (*Job, error) {
+func NewJob(managerURL, volumeName, snapshotName string, labels map[string]string, retain int, backup bool) (*Job, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		return nil, fmt.Errorf("Cannot detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
@@ -138,29 +143,92 @@ func NewJob(managerURL, volumeName, snapshotName string, labels map[string]strin
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not create longhorn-manager api client")
 	}
-	volume, err := apiClient.Volume.ById(volumeName)
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not get volume %v", volumeName)
-	}
+
 	// must at least retain 1 of course
 	if retain == 0 {
 		retain = 1
 	}
+
+	jobType := jobTypeSnapshot
+	if backup {
+		jobType = jobTypeBackup
+	}
+
 	return &Job{
 		lhClient:     lhClient,
 		namespace:    namespace,
-		volume:       volume,
+		volumeName:   volumeName,
 		snapshotName: snapshotName,
 		labels:       labels,
 		retain:       retain,
+		jobType:      jobType,
 		api:          apiClient,
 	}, nil
 }
 
+func (job *Job) run() (err error) {
+	volumeAPI := job.api.Volume
+	volumeName := job.volumeName
+
+	volume, err := volumeAPI.ById(volumeName)
+	if err != nil {
+		return errors.Wrapf(err, "could not get volume %v", volumeName)
+	}
+
+	if volume.State != string(types.VolumeStateAttached) && volume.State != string(types.VolumeStateDetached) {
+		return fmt.Errorf("volume %v is in an invalid state for recurring job: %v. Volume must be in state Attached or Detached", volumeName, volume.State)
+	}
+
+	if volume.State == string(types.VolumeStateDetached) {
+		// Find a random ready node to attach the volume
+		// For load balancing purpose, the node need to be random
+		nodeToAttach, err := job.findARandomReadyNode()
+		if err != nil {
+			return errors.Wrapf(err, "cannot do auto attaching for volume %v", volumeName)
+		}
+
+		// Automatically attach the volume
+		// Disable the volume's frontend make sure that pod cannot use the volume during the recurring job.
+		// This is necessary so that we can safely detach the volume when finishing the job.
+		logrus.Infof("Automatically attach volume %v to node %v", volumeName, nodeToAttach)
+		if volume, err = volumeAPI.ActionAttach(volume, &longhornclient.AttachInput{
+			DisableFrontend: true,
+			HostId:          nodeToAttach,
+		}); err != nil {
+			return err
+		}
+
+		volume, err = job.waitForVolumeState(string(types.VolumeStateAttached), VolumeAttachTimeout)
+		if err != nil {
+			return err
+		}
+		logrus.Infof("Volume %v is in state %v", volumeName, volume.State)
+
+		// Automatically detach the volume after finish the recurring job
+		defer func() error {
+			logrus.Infof("Automatically detach the volume %v", volumeName)
+			if _, err := volumeAPI.ActionDetach(volume); err != nil {
+				return err
+			}
+			return nil
+		}()
+	}
+
+	if job.jobType == jobTypeBackup {
+		return job.backupAndCleanup()
+	}
+	return job.snapshotAndCleanup()
+}
+
 func (job *Job) snapshotAndCleanup() (err error) {
 	volumeAPI := job.api.Volume
-	volume := job.volume
-	volumeName := volume.Name
+	volumeName := job.volumeName
+
+	volume, err := volumeAPI.ById(volumeName)
+	if err != nil {
+		return errors.Wrapf(err, "could not get volume %v", volumeName)
+	}
+
 	if _, err := volumeAPI.ActionSnapshotCreate(volume, &longhornclient.SnapshotInput{
 		Labels: job.labels,
 		Name:   job.snapshotName,
@@ -274,11 +342,16 @@ func (job *Job) backupAndCleanup() (err error) {
 	backupAPI := job.api.BackupVolume
 	volumeAPI := job.api.Volume
 	snapshot := job.snapshotName
-	volume := job.volume
-	volumeName := volume.Name
+	volumeName := job.volumeName
+
 	defer func() {
 		err = errors.Wrapf(err, "failed to complete backupAndCleanup for %v", volumeName)
 	}()
+
+	volume, err := volumeAPI.ById(volumeName)
+	if err != nil {
+		return errors.Wrapf(err, "could not get volume %v", volumeName)
+	}
 
 	if err := job.snapshotAndCleanup(); err != nil {
 		return err
@@ -385,4 +458,57 @@ func (job *Job) GetVolume(name string) (*longhorn.Volume, error) {
 
 func (job *Job) UpdateVolumeStatus(v *longhorn.Volume) (*longhorn.Volume, error) {
 	return job.lhClient.LonghornV1beta1().Volumes(job.namespace).UpdateStatus(v)
+}
+
+// waitForVolumeState timeout in second
+func (job *Job) waitForVolumeState(state string, timeout int) (*longhornclient.Volume, error) {
+	volumeAPI := job.api.Volume
+	volumeName := job.volumeName
+
+	for i := 0; i < timeout; i++ {
+		volume, err := volumeAPI.ById(volumeName)
+		if err == nil {
+			if volume.State == state {
+				return volume, nil
+			}
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	return nil, fmt.Errorf("timeout waiting for volume %v to be in state %v", volumeName, state)
+}
+
+// findARandomReadyNode return a random ready node to attach the volume
+// return error if there is no ready node
+func (job *Job) findARandomReadyNode() (string, error) {
+	nodeCollection, err := job.api.Node.List(longhornclient.NewListOpts())
+	if err != nil {
+		return "", err
+	}
+	var readyNodeList []string
+	for _, node := range nodeCollection.Data {
+		if readyConditionInterface, ok := node.Conditions[types.NodeConditionTypeReady]; ok {
+			// convert the interface to json
+			jsonString, err := json.Marshal(readyConditionInterface)
+			if err != nil {
+				return "", err
+			}
+
+			readyCondition := types.Condition{}
+
+			if err := json.Unmarshal(jsonString, &readyCondition); err != nil {
+				return "", err
+			}
+
+			if readyCondition.Status == types.ConditionStatusTrue {
+				readyNodeList = append(readyNodeList, node.Name)
+			}
+		}
+	}
+
+	if len(readyNodeList) == 0 {
+		return "", fmt.Errorf("cannot find a ready node")
+	}
+
+	return readyNodeList[rand.Intn(len(readyNodeList))], nil
 }
