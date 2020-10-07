@@ -35,6 +35,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&NodeList{},
 		&InstanceManager{},
 		&InstanceManagerList{},
+		&ShareManager{},
+		&ShareManagerList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

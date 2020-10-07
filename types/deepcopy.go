@@ -176,3 +176,23 @@ func (ei *EngineImageStatus) DeepCopyInto(to *EngineImageStatus) {
 		}
 	}
 }
+
+func (in *ShareManagerSpec) DeepCopyInto(out *ShareManagerSpec) {
+	*out = *in
+	if in.Volumes != nil {
+		out.Volumes = make(map[string]interface{})
+		for key, val := range in.Volumes {
+			out.Volumes[key] = val
+		}
+	}
+}
+
+func (in *ShareManagerStatus) DeepCopyInto(out *ShareManagerStatus) {
+	*out = *in
+	if in.Volumes != nil {
+		out.Volumes = make(map[string]Share)
+		for key, val := range in.Volumes {
+			out.Volumes[key] = val
+		}
+	}
+}

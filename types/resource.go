@@ -83,6 +83,7 @@ type VolumeSpec struct {
 	DisableFrontend         bool           `json:"disableFrontend"`
 	RevisionCounterDisabled bool           `json:"revisionCounterDisabled"`
 	LastAttachedBy          string         `json:"lastAttachedBy"`
+	Share                   bool           `json:"share"`
 }
 
 type KubernetesStatus struct {
@@ -125,6 +126,9 @@ type VolumeStatus struct {
 	IsStandby          bool                 `json:"isStandby"`
 	ActualSize         int64                `json:"actualSize"`
 	LastDegradedAt     string               `json:"lastDegradedAt"`
+	ShareManager       string               `json:"shareManager"`
+	ShareEndpoint      string               `json:"shareEndpoint"`
+	ShareState         ShareState           `json:"shareState"`
 }
 
 type RecurringJobType string
@@ -441,4 +445,46 @@ type InstanceProcessStatus struct {
 	State           InstanceState `json:"state"`
 	Type            InstanceType  `json:"type"`
 	ResourceVersion int64         `json:"resourceVersion"`
+}
+
+type ShareManagerState string
+
+const (
+	ShareManagerStateUnknown  = ShareManagerState("unknown")
+	ShareManagerStateStarting = ShareManagerState("starting")
+	ShareManagerStateRunning  = ShareManagerState("running")
+	ShareManagerStateStopping = ShareManagerState("stopping")
+	ShareManagerStateStopped  = ShareManagerState("stopped")
+	ShareManagerStateError    = ShareManagerState("error")
+)
+
+type ShareState string
+
+const (
+	ShareStateReady   = ShareState("ready")
+	ShareStateError   = ShareState("error")
+	ShareStatePending = ShareState("pending")
+	ShareStateUnknown = ShareState("unknown")
+)
+
+type ShareManagerSpec struct {
+	Image   string                 `json:"image"`
+	NodeID  string                 `json:"nodeID"`
+	Volumes map[string]interface{} `json:"volumes"`
+}
+
+type ShareManagerStatus struct {
+	OwnerID       string            `json:"ownerID"`
+	State         ShareManagerState `json:"state"`
+	Volumes       map[string]Share  `json:"volumes"`
+	IP            string            `json:"ip"`
+	APIVersion    int               `json:"apiVersion"`
+	APIMinVersion int               `json:"apiMinVersion"`
+}
+
+type Share struct {
+	Volume   string     `json:"volume"`
+	State    ShareState `json:"state"`
+	Error    string     `json:"error"`
+	Endpoint string     `json:"endpoint"`
 }

@@ -130,3 +130,21 @@ type InstanceManagerList struct {
 	metav1.ListMeta `json:"metadata"`
 	Items           []InstanceManager `json:"items"`
 }
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type ShareManager struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata"`
+	Spec              types.ShareManagerSpec   `json:"spec"`
+	Status            types.ShareManagerStatus `json:"status"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type ShareManagerList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+	Items           []ShareManager `json:"items"`
+}
