@@ -32,6 +32,7 @@ type LonghornV1beta1Interface interface {
 	NodesGetter
 	ReplicasGetter
 	SettingsGetter
+	ShareManagersGetter
 	VolumesGetter
 }
 
@@ -62,6 +63,10 @@ func (c *LonghornV1beta1Client) Replicas(namespace string) ReplicaInterface {
 
 func (c *LonghornV1beta1Client) Settings(namespace string) SettingInterface {
 	return newSettings(c, namespace)
+}
+
+func (c *LonghornV1beta1Client) ShareManagers(namespace string) ShareManagerInterface {
+	return newShareManagers(c, namespace)
 }
 
 func (c *LonghornV1beta1Client) Volumes(namespace string) VolumeInterface {

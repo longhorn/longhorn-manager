@@ -36,6 +36,8 @@ type Interface interface {
 	Replicas() ReplicaInformer
 	// Settings returns a SettingInformer.
 	Settings() SettingInformer
+	// ShareManagers returns a ShareManagerInformer.
+	ShareManagers() ShareManagerInformer
 	// Volumes returns a VolumeInformer.
 	Volumes() VolumeInformer
 }
@@ -79,6 +81,11 @@ func (v *version) Replicas() ReplicaInformer {
 // Settings returns a SettingInformer.
 func (v *version) Settings() SettingInformer {
 	return &settingInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// ShareManagers returns a ShareManagerInformer.
+func (v *version) ShareManagers() ShareManagerInformer {
+	return &shareManagerInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Volumes returns a VolumeInformer.

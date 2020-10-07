@@ -83,6 +83,7 @@ type VolumeSpec struct {
 	DisableFrontend         bool           `json:"disableFrontend"`
 	RevisionCounterDisabled bool           `json:"revisionCounterDisabled"`
 	LastAttachedBy          string         `json:"lastAttachedBy"`
+	Share                   bool           `json:"share"`
 }
 
 type KubernetesStatus struct {
@@ -125,6 +126,8 @@ type VolumeStatus struct {
 	IsStandby          bool                 `json:"isStandby"`
 	ActualSize         int64                `json:"actualSize"`
 	LastDegradedAt     string               `json:"lastDegradedAt"`
+	ShareEndpoint      string               `json:"shareEndpoint"`
+	ShareState         ShareManagerState    `json:"shareState"`
 }
 
 type RecurringJobType string
@@ -441,4 +444,24 @@ type InstanceProcessStatus struct {
 	State           InstanceState `json:"state"`
 	Type            InstanceType  `json:"type"`
 	ResourceVersion int64         `json:"resourceVersion"`
+}
+
+type ShareManagerState string
+
+const (
+	ShareManagerStateUnknown  = ShareManagerState("unknown")
+	ShareManagerStateStarting = ShareManagerState("starting")
+	ShareManagerStateRunning  = ShareManagerState("running")
+	ShareManagerStateStopped  = ShareManagerState("stopped")
+	ShareManagerStateError    = ShareManagerState("error")
+)
+
+type ShareManagerSpec struct {
+	Image string `json:"image"`
+}
+
+type ShareManagerStatus struct {
+	OwnerID  string            `json:"ownerID"`
+	State    ShareManagerState `json:"state"`
+	Endpoint string            `json:"endpoint"`
 }

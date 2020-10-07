@@ -66,6 +66,14 @@ type SettingListerExpansion interface{}
 // SettingNamespaceLister.
 type SettingNamespaceListerExpansion interface{}
 
+// ShareManagerListerExpansion allows custom methods to be added to
+// ShareManagerLister.
+type ShareManagerListerExpansion interface{}
+
+// ShareManagerNamespaceListerExpansion allows custom methods to be added to
+// ShareManagerNamespaceLister.
+type ShareManagerNamespaceListerExpansion interface{}
+
 // VolumeListerExpansion allows custom methods to be added to
 // VolumeLister.
 type VolumeListerExpansion interface{}

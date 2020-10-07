@@ -30,4 +30,6 @@ type ReplicaExpansion interface{}
 
 type SettingExpansion interface{}
 
+type ShareManagerExpansion interface{}
+
 type VolumeExpansion interface{}
