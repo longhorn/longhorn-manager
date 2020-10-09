@@ -50,8 +50,10 @@ const (
         if [ ! -f $proc/cmdline ]; then
           continue
         fi
-        if [[ "$(cat $proc/cmdline | tr '\000' '\n' | head -n1 | tr '/' '\n' | tail -n1)" == "k3s" ]]; then
-          proc_name=$(cat $proc/cmdline | tr '\000' '\n' | sed -n '2p')
+        # Before k3s v1.19, the cmdline is separated by \000. 
+        # After v1.19, it's using normal spaces, which is \040
+        if [[ "$(cat $proc/cmdline | tr '\000' '\n' | tr '\040' '\n' | head -n1 | tr '/' '\n' | tail -n1)" == "k3s" ]]; then
+          proc_name=$(cat $proc/cmdline | tr '\000' '\n' | tr '\040' '\n' | sed -n '2p')
           if [[ "$proc_name"  == "server" || "$proc_name" == "agent" ]]; then
             echo "Proc found: k3s"
             cat $proc/cmdline
