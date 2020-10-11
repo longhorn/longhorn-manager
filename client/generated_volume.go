@@ -72,6 +72,12 @@ type Volume struct {
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
 
 	Timestamp string `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
+
+	Share bool `json:"share,omitempty" yaml:"share,omitempty"`
+
+	ShareEndpoint string `json:"shareEndpoint,omitempty" yaml:"share_endpoint,omitempty"`
+
+	ShareState string `json:"shareState,omitempty" yaml:"share_state,omitempty"`
 }
 
 type VolumeCollection struct {
