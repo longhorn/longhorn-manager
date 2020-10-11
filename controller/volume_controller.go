@@ -73,9 +73,10 @@ type VolumeController struct {
 
 	ds *datastore.DataStore
 
-	vStoreSynced cache.InformerSynced
-	eStoreSynced cache.InformerSynced
-	rStoreSynced cache.InformerSynced
+	vStoreSynced  cache.InformerSynced
+	eStoreSynced  cache.InformerSynced
+	rStoreSynced  cache.InformerSynced
+	smStoreSynced cache.InformerSynced
 
 	scheduler *scheduler.ReplicaScheduler
 
@@ -92,6 +93,7 @@ func NewVolumeController(
 	volumeInformer lhinformers.VolumeInformer,
 	engineInformer lhinformers.EngineInformer,
 	replicaInformer lhinformers.ReplicaInformer,
+	shareManagerInformer lhinformers.ShareManagerInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID, serviceAccount string,
 	managerImage string) *VolumeController {
@@ -113,9 +115,10 @@ func NewVolumeController(
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-volume-controller"}),
 
-		vStoreSynced: volumeInformer.Informer().HasSynced,
-		eStoreSynced: engineInformer.Informer().HasSynced,
-		rStoreSynced: replicaInformer.Informer().HasSynced,
+		vStoreSynced:  volumeInformer.Informer().HasSynced,
+		eStoreSynced:  engineInformer.Informer().HasSynced,
+		rStoreSynced:  replicaInformer.Informer().HasSynced,
+		smStoreSynced: shareManagerInformer.Informer().HasSynced,
 
 		backoff: flowcontrol.NewBackOff(time.Minute, time.Minute*3),
 
@@ -138,6 +141,13 @@ func NewVolumeController(
 		AddFunc:    vc.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueControlleeChange(cur) },
 		DeleteFunc: vc.enqueueControlleeChange,
+	})
+	shareManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: vc.enqueueVolumesForShareManager,
+		UpdateFunc: func(old, cur interface{}) {
+			vc.enqueueVolumesForShareManager(cur)
+		},
+		DeleteFunc: vc.enqueueVolumesForShareManager,
 	})
 	return vc
 }
@@ -197,7 +207,7 @@ func (vc *VolumeController) handleErr(err error, key interface{}) {
 }
 
 func getLoggerForVolume(logger logrus.FieldLogger, v *longhorn.Volume) logrus.FieldLogger {
-	return logger.WithFields(
+	log := logger.WithFields(
 		logrus.Fields{
 			"volume":   v.Name,
 			"frontend": v.Spec.Frontend,
@@ -205,6 +215,18 @@ func getLoggerForVolume(logger logrus.FieldLogger, v *longhorn.Volume) logrus.Fi
 			"owner":    v.Status.OwnerID,
 		},
 	)
+
+	if v.Spec.Share {
+		log = log.WithFields(
+			logrus.Fields{
+				"share":         v.Spec.Share,
+				"shareState":    v.Status.ShareState,
+				"shareManager":  v.Status.ShareManager,
+				"shareEndpoint": v.Status.ShareEndpoint,
+			})
+	}
+
+	return log
 }
 
 func (vc *VolumeController) syncVolume(key string) (err error) {
@@ -386,6 +408,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		if err := vc.upgradeEngineForVolume(volume, engine, replicas); err != nil {
 			return err
 		}
+	}
+
+	if err := vc.ReconcileShareManagerState(volume); err != nil {
+		return err
 	}
 
 	if err := vc.ReconcileVolumeState(volume, engines, replicas); err != nil {
@@ -2269,4 +2295,157 @@ func (vc *VolumeController) deleteEngine(e *longhorn.Engine, es map[string]*long
 	}
 	delete(es, e.Name)
 	return nil
+}
+
+// enqueueVolumesForShareManager enqueues all volumes that are currently claimed by this share manager
+func (vc *VolumeController) enqueueVolumesForShareManager(obj interface{}) {
+	sm, isShareManager := obj.(*longhorn.ShareManager)
+	if !isShareManager {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to requeue the claimed volumes
+		sm, ok = deletedState.Obj.(*longhorn.ShareManager)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non ShareManager object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	// we can queue the key directly since a share manager only manages volumes from it's own namespace
+	// and there is no need for us to retrieve the whole object, since we already know the volume name
+	for v := range sm.Spec.Volumes {
+		key := sm.Namespace + "/" + v
+		vc.queue.AddRateLimited(key)
+	}
+}
+
+// ReconcileShareManagerState is responsible for creation and assignment of shared volumes to share managers
+// The volume controller writes the spec of ShareManagers
+func (vc *VolumeController) ReconcileShareManagerState(volume *longhorn.Volume) error {
+	// NOTE: for the moment assume we can turn a regular volume into a shared volume when accessing via a multi access mode,
+	// once turned into a shared volume for the moment it will always stay a shared volume.\
+	if !volume.Spec.Share {
+		return nil
+	}
+
+	// we wait with picking a share manager till we are attached to a node
+	if volume.Status.ShareManager == "" && volume.Spec.NodeID == "" {
+		volume.Status.ShareState = types.ShareStateUnknown
+		volume.Status.ShareEndpoint = ""
+		return nil
+	}
+
+	log := getLoggerForVolume(vc.logger, volume)
+	sm, err := vc.getShareManagerForVolume(volume)
+	if err != nil {
+		return err
+	}
+
+	// no suitable ShareManager create a new one
+	if sm == nil {
+		name := types.GetShareManagerName()
+		image, err := vc.ds.GetSettingValueExisted(types.SettingNameDefaultShareManagerImage)
+		if err != nil {
+			return err
+		}
+		if sm, err = vc.createShareManagerForVolume(name, vc.controllerID, image, volume.Name); err != nil {
+			log.WithError(err).Errorf("Failed to create share manager %v", name)
+			return err
+		}
+	}
+
+	// make the share manager desire this volume
+	if _, desiredVolume := sm.Spec.Volumes[volume.Name]; !desiredVolume {
+		if sm.Spec.Volumes == nil {
+			sm.Spec.Volumes = map[string]interface{}{}
+		}
+		sm.Spec.Volumes[volume.Name] = nil
+		smName := sm.Name
+		if sm, err = vc.ds.UpdateShareManager(sm); err != nil {
+			log.WithField("shareManager", smName).WithError(err).Errorf("Failed to update share manager %v, unable to claim volume", smName)
+			return err
+		}
+	}
+
+	// we only update the volumes share manager after we are certain that
+	// a share manager which desires this volume exists, this is so that
+	// if the update fails next time around we will retrieve a share manager
+	// that desires us and there won't be a need to create a new one
+	if volume.Status.ShareManager != sm.Name {
+		log.Infof("Volume got new share manager %v", sm.Name)
+		volume.Status.ShareManager = sm.Name
+	}
+
+	// sync the share state and endpoint
+	if share, knownVolume := sm.Status.Volumes[volume.Name]; knownVolume {
+		volume.Status.ShareState = share.State
+		volume.Status.ShareEndpoint = share.Endpoint
+	} else {
+		volume.Status.ShareState = types.ShareStateUnknown
+		volume.Status.ShareEndpoint = ""
+	}
+
+	return nil
+}
+
+// getShareManagerForVolume returns the best share manager for the volume
+// if there is no share manager available nil will be returned
+func (vc *VolumeController) getShareManagerForVolume(volume *longhorn.Volume) (*longhorn.ShareManager, error) {
+	log := getLoggerForVolume(vc.logger, volume)
+	if volume.Status.ShareManager != "" {
+		if sm, err := vc.ds.GetShareManager(volume.Status.ShareManager); err == nil {
+			return sm, nil
+		} else if !apierrors.IsNotFound(err) {
+			log.WithError(err).Error("Failed to get share manager for volume")
+			return nil, err
+		} else {
+			log.Info("The share manager for this volume has been deleted, picking new share manager")
+		}
+	}
+
+	// no share manager associated yet, return the best candidate
+	managers, err := vc.ds.ListShareManagers()
+	if err != nil {
+		log.WithError(err).Error("Failed to retrieve list of share managers")
+		return nil, err
+	}
+
+	// priorities are:
+	// 1) any share manager that desires us
+	// 2) any share manager on the desired node
+	// If there is no share manager that fulfills any of these conditions we will return nil so a new one can be created.
+	var candidate *longhorn.ShareManager
+	for _, sm := range managers {
+		if _, desiredVolume := sm.Spec.Volumes[volume.Name]; desiredVolume {
+			candidate = sm
+			break
+		}
+
+		if volume.Spec.NodeID != "" && volume.Spec.NodeID == sm.Spec.NodeID {
+			candidate = sm
+		}
+	}
+
+	return candidate, nil
+}
+
+func (vc *VolumeController) createShareManagerForVolume(name, node, image, volume string) (*longhorn.ShareManager, error) {
+	sm := &longhorn.ShareManager{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: vc.namespace,
+			Labels:    types.GetShareManagerLabels(name, node, image),
+		},
+		Spec: types.ShareManagerSpec{
+			Image:   image,
+			NodeID:  node,
+			Volumes: map[string]interface{}{volume: nil},
+		},
+	}
+
+	return vc.ds.CreateShareManager(sm)
 }

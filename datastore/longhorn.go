@@ -1671,3 +1671,158 @@ func (s *DataStore) GetEngineImageCLIAPIVersion(imageName string) (int, error) {
 
 	return ei.Status.CLIAPIVersion, nil
 }
+
+// GetOwnerReferencesForShareManager returns OwnerReference for the given share manager name and UID
+func GetOwnerReferencesForShareManager(sm *longhorn.ShareManager, isController bool) []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		{
+			APIVersion: longhorn.SchemeGroupVersion.String(),
+			Kind:       types.LonghornKindShareManager,
+			Name:       sm.Name,
+			UID:        sm.UID,
+			Controller: &isController,
+		},
+	}
+}
+
+// CreateShareManager creates a Longhorn ShareManager resource and
+// verifies creation
+func (s *DataStore) CreateShareManager(sm *longhorn.ShareManager) (*longhorn.ShareManager, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, sm); err != nil {
+		return nil, err
+	}
+	ret, err := s.lhClient.LonghornV1beta1().ShareManagers(s.namespace).Create(sm)
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(sm.Name, "share manager", func(name string) (runtime.Object, error) {
+		return s.getShareManagerRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.ShareManager)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for share manager")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// UpdateShareManager updates Longhorn ShareManager resource and verifies update
+func (s *DataStore) UpdateShareManager(sm *longhorn.ShareManager) (*longhorn.ShareManager, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, sm); err != nil {
+		return nil, err
+	}
+
+	obj, err := s.lhClient.LonghornV1beta1().ShareManagers(s.namespace).Update(sm)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(sm.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getShareManagerRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateShareManagerStatus updates Longhorn ShareManager resource status and verifies update
+func (s *DataStore) UpdateShareManagerStatus(sm *longhorn.ShareManager) (*longhorn.ShareManager, error) {
+	obj, err := s.lhClient.LonghornV1beta1().ShareManagers(s.namespace).UpdateStatus(sm)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(sm.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getShareManagerRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteShareManager won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteShareManager(name string) error {
+	return s.lhClient.LonghornV1beta1().ShareManagers(s.namespace).Delete(name, &metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForShareManager will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForShareManager(obj *longhorn.ShareManager) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	if _, err := s.lhClient.LonghornV1beta1().ShareManagers(s.namespace).Update(obj); err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for share manager %v", obj.Name)
+	}
+	return nil
+}
+
+func (s *DataStore) getShareManagerRO(name string) (*longhorn.ShareManager, error) {
+	return s.smLister.ShareManagers(s.namespace).Get(name)
+}
+
+// GetShareManager gets the ShareManager for the given name and namespace.
+// Returns a mutable ShareManager object
+func (s *DataStore) GetShareManager(name string) (*longhorn.ShareManager, error) {
+	result, err := s.getShareManagerRO(name)
+	if err != nil {
+		return nil, err
+	}
+	return result.DeepCopy(), nil
+}
+
+// ListShareManagersBySelector returns a map of ShareManagers indexed by name
+func (s *DataStore) ListShareManagersBySelector(node, image string) (map[string]*longhorn.ShareManager, error) {
+	itemMap := map[string]*longhorn.ShareManager{}
+
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetShareManagerLabels("", node, image),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	listRO, err := s.smLister.ShareManagers(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	for _, itemRO := range listRO {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListShareManagersByNode returns a map of ShareManagers indexed by name
+func (s *DataStore) ListShareManagersByNode(node string) (map[string]*longhorn.ShareManager, error) {
+	return s.ListShareManagersBySelector(node, "")
+}
+
+// ListShareManagersByImage returns a map of ShareManagers indexed by name
+func (s *DataStore) ListShareManagersByImage(image string) (map[string]*longhorn.ShareManager, error) {
+	return s.ListShareManagersBySelector("", image)
+}
+
+// ListShareManagers returns a map of ShareManagers indexed by name
+func (s *DataStore) ListShareManagers() (map[string]*longhorn.ShareManager, error) {
+	itemMap := map[string]*longhorn.ShareManager{}
+
+	list, err := s.smLister.ShareManagers(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}

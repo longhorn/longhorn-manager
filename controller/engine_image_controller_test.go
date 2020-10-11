@@ -54,6 +54,7 @@ func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInfo
 	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
 	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
 	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
+	shareManagerInformer := lhInformerFactory.Longhorn().V1beta1().ShareManagers()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
@@ -67,19 +68,22 @@ func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInfo
 	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
 	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
 	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
+	serviceInformer := kubeInformerFactory.Core().V1().Services()
 
 	// Skip the Lister check that occurs on creation of an Instance Manager.
 	datastore.SkipListerCheck = true
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
-		engineImageInformer, nodeInformer, settingInformer, imInformer,
+		engineImageInformer, nodeInformer, settingInformer,
+		imInformer, shareManagerInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
 		configMapInformer, kubeNodeInformer, priorityClassInformer,
 		csiDriverInformer, storageclassInformer,
 		pdbInformer,
+		serviceInformer,
 		kubeClient, TestNamespace)
 
 	logger := logrus.StandardLogger()

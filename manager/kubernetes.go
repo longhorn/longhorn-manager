@@ -43,7 +43,7 @@ func (m *VolumeManager) PVCreate(name, pvName, fsType string) (v *longhorn.Volum
 		fsType = "ext4"
 	}
 
-	pv := datastore.NewPVManifest(v, pvName, storageClassName, fsType)
+	pv := datastore.NewPVManifestForVolume(v, pvName, storageClassName, fsType)
 	pv, err = m.ds.CreatePersisentVolume(pv)
 	if err != nil {
 		return nil, err
@@ -102,7 +102,7 @@ func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.
 		}
 	}
 
-	pvc := datastore.NewPVCManifest(v, ks.PVName, namespace, pvcName, pv.Spec.StorageClassName)
+	pvc := datastore.NewPVCManifestForVolume(v, ks.PVName, namespace, pvcName, pv.Spec.StorageClassName)
 	pvc, err = m.ds.CreatePersisentVolumeClaim(namespace, pvc)
 	if err != nil {
 		return nil, err

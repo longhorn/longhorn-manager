@@ -20,6 +20,7 @@ const (
 	LonghornKindVolume          = "Volume"
 	LonghornKindEngineImage     = "EngineImage"
 	LonghornKindInstanceManager = "InstanceManager"
+	LonghornKindShareManager    = "ShareManager"
 
 	CRDAPIVersionV1alpha1 = "longhorn.rancher.io/v1alpha1"
 	CRDAPIVersionV1beta1  = "longhorn.io/v1beta1"
@@ -59,6 +60,8 @@ const (
 	LonghornLabelInstanceManagerType  = "instance-manager-type"
 	LonghornLabelInstanceManagerImage = "instance-manager-image"
 	LonghornLabelVolume               = "longhornvolume"
+	LognhornLabelShareManager         = "share-manager"
+	LognhornLabelShareManagerImage    = "share-manager-image"
 
 	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
@@ -143,7 +146,9 @@ const (
 
 	engineImagePrefix          = "ei-"
 	instanceManagerImagePrefix = "imi-"
+	shareManagerImagePrefix    = "smi-"
 
+	shareManagerPrefix    = "share-manager-"
 	instanceManagerPrefix = "instance-manager-"
 	engineManagerPrefix   = instanceManagerPrefix + "e-"
 	replicaManagerPrefix  = instanceManagerPrefix + "r-"
@@ -233,6 +238,35 @@ func GetInstanceManagerComponentLabel() map[string]string {
 	}
 }
 
+func GetShareManagerComponentLabel() map[string]string {
+	return map[string]string{
+		GetLonghornLabelComponentKey(): LognhornLabelShareManager,
+	}
+}
+
+func GetShareManagerInstanceLabel(name string) map[string]string {
+	return map[string]string{
+		GetLonghornLabelKey(LognhornLabelShareManager): name,
+	}
+}
+
+func GetShareManagerLabels(name, node, image string) map[string]string {
+	labels := GetShareManagerComponentLabel()
+
+	if name != "" {
+		labels[GetLonghornLabelKey(LognhornLabelShareManager)] = name
+	}
+
+	if node != "" {
+		labels[GetLonghornLabelKey(LonghornLabelNode)] = node
+	}
+	if image != "" {
+		labels[GetLonghornLabelKey(LognhornLabelShareManagerImage)] = GetInstanceManagerImageChecksumName(GetImageCanonicalName(image))
+	}
+
+	return labels
+}
+
 func GetVolumeLabels(volumeName string) map[string]string {
 	return map[string]string{
 		LonghornLabelVolume: volumeName,
@@ -266,6 +300,14 @@ func GetEngineImageChecksumName(image string) string {
 
 func GetInstanceManagerImageChecksumName(image string) string {
 	return instanceManagerImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
+}
+
+func GetShareManagerImageChecksumName(image string) string {
+	return shareManagerImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
+}
+
+func GetShareManagerName() string {
+	return shareManagerPrefix + util.RandomID()
 }
 
 func ValidateEngineImageChecksumName(name string) bool {
