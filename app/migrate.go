@@ -184,13 +184,13 @@ func migratePVAndPVCForPre070Volume(kubeClient *kubeclientset.Clientset, lhClien
 		return fmt.Errorf("failed to wait for the old PV deletion complete")
 	}
 
-	newPV := datastore.NewPVManifest(v, oldPV.Name, staticStorageClass.Value, oldPV.Spec.CSI.FSType)
+	newPV := datastore.NewPVManifestForVolume(v, oldPV.Name, staticStorageClass.Value, oldPV.Spec.CSI.FSType)
 	if newPV, err = kubeClient.CoreV1().PersistentVolumes().Create(newPV); err != nil {
 		return err
 	}
 
 	if pvcRecreationRequired {
-		pvc := datastore.NewPVCManifest(v, oldPV.Name, namespace, pvcName, staticStorageClass.Value)
+		pvc := datastore.NewPVCManifestForVolume(v, oldPV.Name, namespace, pvcName, staticStorageClass.Value)
 		if pvc, err = kubeClient.CoreV1().PersistentVolumeClaims(namespace).Create(pvc); err != nil {
 			return err
 		}
