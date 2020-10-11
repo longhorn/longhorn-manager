@@ -338,6 +338,8 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 					ServiceAccountName: serviceAccount,
 					Tolerations:        tolerations,
 					PriorityClassName:  priorityClass,
+					HostIPC:            true,
+					HostPID:            true,
 					Containers: []v1.Container{
 						{
 							Name:  "node-driver-registrar",
@@ -447,6 +449,11 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 									MountPath: "/sys",
 								},
 								{
+									Name:             "host",
+									MountPath:        "/rootfs", // path is required for namespaced mounter
+									MountPropagation: &MountPropagationBidirectional,
+								},
+								{
 									Name:      "lib-modules",
 									MountPath: "/lib/modules",
 									ReadOnly:  true,
@@ -508,6 +515,14 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 							},
 						},
 						{
+							Name: "host",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: "/",
+								},
+							},
+						},
+						{
 							Name: "lib-modules",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
@@ -551,7 +566,7 @@ type DriverObjectDeployment struct {
 }
 
 func NewCSIDriverObject() *DriverObjectDeployment {
-	falseFlag := false
+	falseFlag := true
 	obj := &storagev1beta.CSIDriver{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: types.LonghornDriverName,
