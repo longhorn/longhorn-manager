@@ -71,6 +71,14 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.StaleReplicaTimeout = defaultStaleReplicaTimeout
 	}
 
+	if share, ok := volOptions["share"]; ok {
+		isShared, err := strconv.ParseBool(share)
+		if err != nil {
+			return nil, errors.Wrap(err, "Invalid parameter share")
+		}
+		vol.Share = isShared
+	}
+
 	if numberOfReplicas, ok := volOptions["numberOfReplicas"]; ok {
 		nor, err := strconv.Atoi(numberOfReplicas)
 		if err != nil || nor < 0 {
@@ -237,4 +245,24 @@ func makeFile(pathname string) error {
 		}
 	}
 	return nil
+}
+
+//requiresSharedAccess checks if the volume is requested to be multi node capable
+// a volume that is already in shared access mode, must be used via shared access
+// even if single node access is requested.
+func requiresSharedAccess(vol *longhornclient.Volume, cap *csi.VolumeCapability) bool {
+	isSharedVolume := false
+	if vol != nil {
+		isSharedVolume = vol.Share
+	}
+
+	mode := csi.VolumeCapability_AccessMode_UNKNOWN
+	if cap != nil {
+		mode = cap.AccessMode.Mode
+	}
+
+	return isSharedVolume ||
+		mode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY ||
+		mode == csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER ||
+		mode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER
 }

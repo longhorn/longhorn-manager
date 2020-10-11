@@ -49,6 +49,7 @@ func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string)
 		accessModes: getVolumeCapabilityAccessModes(
 			[]csi.VolumeCapability_AccessMode_Mode{
 				csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+				csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
 			}),
 	}
 }
@@ -124,6 +125,15 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return rsp, nil
 	}
 
+	// irregardless of the used storage class, if this is requested in rwx mode
+	// we need to mark the volume as a shared volume
+	for _, cap := range volumeCaps {
+		if requiresSharedAccess(nil, cap) {
+			volumeParameters["share"] = "true"
+			break
+		}
+	}
+
 	vol, err := getVolumeOptions(volumeParameters)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -150,13 +160,13 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		vol.Size = fmt.Sprintf("%dMi", putil.RoundUpSize(volSizeBytes, putil.MiB))
 	}
 
-	logrus.Infof("CreateVolume: creating a volume by API client, name: %s, size: %s", vol.Name, vol.Size)
+	logrus.Infof("CreateVolume: creating a volume by API client, name: %s, size: %s share: %v", vol.Name, vol.Size, vol.Share)
 	resVol, err := cs.apiClient.Volume.Create(vol)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	if !cs.waitForVolumeState(resVol.Id, types.VolumeStateDetached, true, false) {
+	if !cs.waitForVolumeState(resVol.Id, string(types.VolumeStateDetached), isVolumeDetached, true, false) {
 		return nil, status.Error(codes.DeadlineExceeded, "cannot wait for volume creation to complete")
 	}
 
@@ -253,6 +263,11 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Error(codes.NotFound, msg)
 	}
 
+	volumeCapability := req.GetVolumeCapability()
+	if volumeCapability == nil {
+		return nil, status.Error(codes.InvalidArgument, "Volume capability not provided")
+	}
+
 	if !cs.isNodeReady(req.GetNodeId()) {
 		msg := fmt.Sprintf("ControllerPublishVolume: the volume %s cannot be attached to `NotReady` node %s",
 			req.GetVolumeId(), req.GetNodeId())
@@ -271,6 +286,40 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 	// Check volume frontend settings
 	if existVol.Frontend != string(types.VolumeFrontendBlockDev) {
 		return nil, status.Errorf(codes.InvalidArgument, "ControllerPublishVolume: there is no block device frontend for volume %s", req.GetVolumeId())
+	}
+
+	// we currently only allow creation of shared volume no switching a regular volume into a shared volume
+	if requiresSharedAccess(existVol, volumeCapability) {
+		if !existVol.Share {
+			return nil, status.Errorf(codes.FailedPrecondition, "requested multi node use for non shared volume %v", req.GetVolumeId())
+		}
+
+		if existVol.State == string(types.VolumeStateAttached) {
+			if !existVol.Ready || len(existVol.Controllers) == 0 || existVol.Controllers[0].Endpoint == "" {
+				return nil, status.Errorf(codes.Aborted,
+					"The volume %s is already attached but it is not ready for workloads", req.GetVolumeId())
+			}
+
+			logrus.Infof("ControllerPublishVolume: shared volume %s is attached to %s new workload on %s",
+				req.GetVolumeId(), existVol.Controllers[0].HostId, req.GetNodeId())
+		} else {
+			logrus.Debugf("ControllerPublishVolume: shared volume %s needs to be attached new workload on %s", req.GetVolumeId(), req.GetNodeId())
+			input := &longhornclient.AttachInput{
+				HostId:          req.GetNodeId(),
+				DisableFrontend: false,
+			}
+
+			if existVol, err = cs.apiClient.Volume.ActionAttach(existVol, input); err != nil {
+				return nil, status.Error(codes.Internal, err.Error())
+			}
+		}
+
+		if !cs.waitForVolumeState(req.GetVolumeId(), string(types.ShareStateReady), isVolumeReady, false, false) {
+			return nil, status.Errorf(codes.DeadlineExceeded, "Failed to wait for volume %v share ready", req.GetVolumeId())
+		}
+
+		logrus.Infof("Volume %s shared to %s", req.GetVolumeId(), req.GetNodeId())
+		return &csi.ControllerPublishVolumeResponse{}, nil
 	}
 
 	// the volume is already attached make sure it's to the same node as this
@@ -303,11 +352,11 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		}
 	}
 
-	if !cs.waitForVolumeState(req.GetVolumeId(), types.VolumeStateAttached, false, false) {
+	if !cs.waitForVolumeState(req.GetVolumeId(), string(types.VolumeStateAttached), isVolumeAttached, false, false) {
 		return nil, status.Errorf(codes.Aborted, "Attaching volume %s on node %s failed",
 			req.GetVolumeId(), req.GetNodeId())
 	}
-	logrus.Debugf("Volume %s attached on %s", req.GetVolumeId(), req.GetNodeId())
+	logrus.Infof("Volume %s attached on %s", req.GetVolumeId(), req.GetNodeId())
 
 	return &csi.ControllerPublishVolumeResponse{}, nil
 }
@@ -340,7 +389,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 		// irregardless of the node we are on otherwise we might end up, allowing a bugged volume to remain in the attaching state forever
 		// NOTE: this is a tradeoff and it would be better if we could verify that we are actually stuck attaching to the requested node
 		if existVol.State == string(types.VolumeStateAttaching) {
-			if cs.waitForVolumeState(req.GetVolumeId(), types.VolumeStateAttached, false, true) {
+			if cs.waitForVolumeState(req.GetVolumeId(), string(types.VolumeStateAttached), isVolumeAttached, false, true) {
 				existVol, err = cs.apiClient.Volume.ById(req.GetVolumeId())
 				if err != nil {
 					return nil, status.Error(codes.Internal, err.Error())
@@ -351,19 +400,22 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 			}
 		}
 
-		// only detach if we are actually attached to the requested node or we don't know where we are attached
-		if len(existVol.Controllers) == 0 || existVol.Controllers[0].HostId == "" {
-			logrus.Warnf("Processing volume %s detach request for node %s "+
-				"even though we don't know which node we are attached on", req.GetVolumeId(), req.GetNodeId())
+		// for shared volumes we call detach, and let the manager deal with it
+		// technically it's not necessary to do so, but we might want to trigger some action in the backend
+		if requiresSharedAccess(existVol, nil) {
+			logrus.Infof("Requesting shared volume %s detach from node %s", req.GetVolumeId(), req.GetNodeId())
 			needToDetach = true
 		} else if existVol.Controllers[0].HostId == req.GetNodeId() {
 			logrus.Infof("Requesting volume %s detach from node %s", req.GetVolumeId(), req.GetNodeId())
+			needToDetach = true
+		} else if len(existVol.Controllers) == 0 || existVol.Controllers[0].HostId == "" {
+			logrus.Warnf("Processing volume %s detach request for node %s "+
+				"even though we don't know which node we are attached on", req.GetVolumeId(), req.GetNodeId())
 			needToDetach = true
 		}
 	}
 
 	if needToDetach {
-		// detach longhorn volume
 		logrus.Debugf("requesting Volume %s detachment for %s", req.GetVolumeId(), req.GetNodeId())
 		_, err = cs.apiClient.Volume.ActionDetach(existVol)
 		if err != nil {
@@ -375,11 +427,12 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
-	if !cs.waitForVolumeState(req.GetVolumeId(), types.VolumeStateDetached, false, true) {
+	if !requiresSharedAccess(existVol, nil) &&
+		!cs.waitForVolumeState(req.GetVolumeId(), string(types.VolumeStateDetached), isVolumeDetached, false, true) {
 		return nil, status.Errorf(codes.Aborted, "Detaching volume %s failed", req.GetVolumeId())
 	}
-	logrus.Debugf("Volume %s detached on %s", req.GetVolumeId(), req.GetNodeId())
 
+	logrus.Debugf("Volume %s detached on %s", req.GetVolumeId(), req.GetNodeId())
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 
@@ -612,34 +665,48 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	}, nil
 }
 
-func (cs *ControllerServer) waitForVolumeState(volumeID string, state types.VolumeState, notFoundRetry, notFoundReturn bool) bool {
-	timeout := time.After(timeoutAttachDetach)
+func isVolumeDetached(vol *longhornclient.Volume) bool {
+	return vol.State == string(types.VolumeStateDetached)
+}
+
+func isVolumeAttached(vol *longhornclient.Volume) bool {
+	return vol.State == string(types.VolumeStateAttached) && vol.Controllers[0].Endpoint != ""
+}
+
+func isVolumeReady(vol *longhornclient.Volume) bool {
+	return vol.Ready
+}
+
+func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription string,
+	predicate func(vol *longhornclient.Volume) bool, notFoundRetry, notFoundReturn bool) bool {
+	timer := time.NewTimer(timeoutAttachDetach)
+	defer timer.Stop()
+	timeout := timer.C
+
 	ticker := time.NewTicker(tickAttachDetach)
 	defer ticker.Stop()
 	tick := ticker.C
+
 	for {
 		select {
 		case <-timeout:
-			logrus.Warnf("waitForVolumeState: timeout to wait for volume %s become %s", volumeID, state)
+			logrus.Warnf("waitForVolumeState: timeout while waiting for volume %s state %s", volumeID, stateDescription)
 			return false
 		case <-tick:
-			logrus.Debugf("Polling %s state for %s at %s", volumeID, state, time.Now().String())
+			logrus.Debugf("Polling volume %s state for %s at %s", volumeID, stateDescription, time.Now().String())
 			existVol, err := cs.apiClient.Volume.ById(volumeID)
 			if err != nil {
-				logrus.Warnf("waitForVolumeState: wait for %s state %s: %s", volumeID, state, err)
+				logrus.Warnf("waitForVolumeState: error while waiting for volume %s state %s error %s", volumeID, stateDescription, err)
 				continue
 			}
 			if existVol == nil {
-				logrus.Warnf("waitForVolumeState: volume %s not exist", volumeID)
+				logrus.Warnf("waitForVolumeState: volume %s does not exist", volumeID)
 				if notFoundRetry {
 					continue
 				}
 				return notFoundReturn
 			}
-			if existVol.State == string(state) {
-				if state == types.VolumeStateAttached && existVol.Controllers[0].Endpoint == "" {
-					continue
-				}
+			if predicate(existVol) {
 				return true
 			}
 		}
