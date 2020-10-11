@@ -73,9 +73,10 @@ type VolumeController struct {
 
 	ds *datastore.DataStore
 
-	vStoreSynced cache.InformerSynced
-	eStoreSynced cache.InformerSynced
-	rStoreSynced cache.InformerSynced
+	vStoreSynced  cache.InformerSynced
+	eStoreSynced  cache.InformerSynced
+	rStoreSynced  cache.InformerSynced
+	smStoreSynced cache.InformerSynced
 
 	scheduler *scheduler.ReplicaScheduler
 
@@ -92,6 +93,7 @@ func NewVolumeController(
 	volumeInformer lhinformers.VolumeInformer,
 	engineInformer lhinformers.EngineInformer,
 	replicaInformer lhinformers.ReplicaInformer,
+	shareManagerInformer lhinformers.ShareManagerInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID, serviceAccount string,
 	managerImage string) *VolumeController {
@@ -113,9 +115,10 @@ func NewVolumeController(
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-volume-controller"}),
 
-		vStoreSynced: volumeInformer.Informer().HasSynced,
-		eStoreSynced: engineInformer.Informer().HasSynced,
-		rStoreSynced: replicaInformer.Informer().HasSynced,
+		vStoreSynced:  volumeInformer.Informer().HasSynced,
+		eStoreSynced:  engineInformer.Informer().HasSynced,
+		rStoreSynced:  replicaInformer.Informer().HasSynced,
+		smStoreSynced: shareManagerInformer.Informer().HasSynced,
 
 		backoff: flowcontrol.NewBackOff(time.Minute, time.Minute*3),
 
@@ -138,6 +141,11 @@ func NewVolumeController(
 		AddFunc:    vc.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueControlleeChange(cur) },
 		DeleteFunc: vc.enqueueControlleeChange,
+	})
+	shareManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    vc.enqueueVolumesForShareManager,
+		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForShareManager(cur) },
+		DeleteFunc: vc.enqueueVolumesForShareManager,
 	})
 	return vc
 }
@@ -197,7 +205,7 @@ func (vc *VolumeController) handleErr(err error, key interface{}) {
 }
 
 func getLoggerForVolume(logger logrus.FieldLogger, v *longhorn.Volume) logrus.FieldLogger {
-	return logger.WithFields(
+	log := logger.WithFields(
 		logrus.Fields{
 			"volume":   v.Name,
 			"frontend": v.Spec.Frontend,
@@ -205,6 +213,17 @@ func getLoggerForVolume(logger logrus.FieldLogger, v *longhorn.Volume) logrus.Fi
 			"owner":    v.Status.OwnerID,
 		},
 	)
+
+	if v.Spec.Share {
+		log = log.WithFields(
+			logrus.Fields{
+				"share":         v.Spec.Share,
+				"shareState":    v.Status.ShareState,
+				"shareEndpoint": v.Status.ShareEndpoint,
+			})
+	}
+
+	return log
 }
 
 func (vc *VolumeController) syncVolume(key string) (err error) {
@@ -223,7 +242,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	volume, err := vc.ds.GetVolume(name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			vc.logger.WithField("volume", name).Info("Longhorn volume has been deleted")
+			vc.logger.WithField("volume", name).Debug("Longhorn volume has been deleted")
 			return nil
 		}
 		return err
@@ -266,6 +285,13 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			}
 			vc.eventRecorder.Eventf(volume, v1.EventTypeNormal, EventReasonDelete, "Deleting volume %v", volume.Name)
 		}
+
+		if volume.Spec.Share {
+			if err := vc.ds.DeleteShareManager(volume.Name); err != nil && !datastore.ErrorIsNotFound(err) {
+				return err
+			}
+		}
+
 		for _, job := range volume.Spec.RecurringJobs {
 			if err := vc.ds.DeleteCronJob(types.GetCronJobNameForVolumeAndJob(volume.Name, job.Name)); err != nil {
 				return err
@@ -284,6 +310,13 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 				if err := vc.ds.DeleteReplica(r.Name); err != nil {
 					return err
 				}
+			}
+		}
+
+		if volume.Spec.Share {
+			log.Info("Removing share manager for deleted volume")
+			if err := vc.ds.DeleteShareManager(volume.Name); err != nil && !datastore.ErrorIsNotFound(err) {
+				return err
 			}
 		}
 
@@ -386,6 +419,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		if err := vc.upgradeEngineForVolume(volume, engine, replicas); err != nil {
 			return err
 		}
+	}
+
+	if err := vc.ReconcileShareManagerState(volume); err != nil {
+		return err
 	}
 
 	if err := vc.ReconcileVolumeState(volume, engines, replicas); err != nil {
@@ -2283,4 +2320,95 @@ func (vc *VolumeController) deleteEngine(e *longhorn.Engine, es map[string]*long
 	}
 	delete(es, e.Name)
 	return nil
+}
+
+// enqueueVolumesForShareManager enqueues all volumes that are currently claimed by this share manager
+func (vc *VolumeController) enqueueVolumesForShareManager(obj interface{}) {
+	sm, isShareManager := obj.(*longhorn.ShareManager)
+	if !isShareManager {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to requeue the claimed volumes
+		sm, ok = deletedState.Obj.(*longhorn.ShareManager)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non ShareManager object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	// we can queue the key directly since a share manager only manages a single volume from it's own namespace
+	// and there is no need for us to retrieve the whole object, since we already know the volume name
+	key := sm.Namespace + "/" + sm.Name
+	vc.queue.AddRateLimited(key)
+}
+
+// ReconcileShareManagerState is responsible for syncing the state of shared volumes with their share manager
+func (vc *VolumeController) ReconcileShareManagerState(volume *longhorn.Volume) error {
+	if !volume.Spec.Share {
+		return nil
+	}
+
+	log := getLoggerForVolume(vc.logger, volume)
+	sm, err := vc.ds.GetShareManager(volume.Name)
+	if err != nil && !apierrors.IsNotFound(err) {
+		log.WithError(err).Error("Failed to get share manager for volume")
+		return err
+	}
+
+	image, err := vc.ds.GetSettingValueExisted(types.SettingNameDefaultShareManagerImage)
+	if err != nil {
+		return err
+	}
+
+	// no ShareManager create a new one
+	if sm == nil {
+		sm, err = vc.createShareManagerForVolume(volume.Name, image)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to create share manager %v", volume.Name)
+			return err
+		}
+	}
+
+	if image != "" && sm.Spec.Image != image {
+		sm.Spec.Image = image
+		sm.ObjectMeta.Labels = types.GetShareManagerLabels(volume.Name, image)
+		if sm, err = vc.ds.UpdateShareManager(sm); err != nil {
+			return err
+		}
+
+		log.Infof("Updated image for share manager from %v to %v", sm.Spec.Image, image)
+	}
+
+	// kill the workload pods, when the share manager goes into error state
+	// easiest approach is to set the RemountRequestedAt variable,
+	// since that is already responsible for killing the workload pods
+	if sm.Status.State == types.ShareManagerStateError || sm.Status.State == types.ShareManagerStateUnknown {
+		volume.Status.RemountRequestedAt = vc.nowHandler()
+		msg := fmt.Sprintf("Volume %v requested remount at %v", volume.Name, volume.Status.RemountRequestedAt)
+		vc.eventRecorder.Eventf(volume, v1.EventTypeNormal, EventReasonRemount, msg)
+	}
+
+	// sync the share state and endpoint
+	volume.Status.ShareState = sm.Status.State
+	volume.Status.ShareEndpoint = sm.Status.Endpoint
+	return nil
+}
+
+func (vc *VolumeController) createShareManagerForVolume(volume, image string) (*longhorn.ShareManager, error) {
+	sm := &longhorn.ShareManager{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      volume,
+			Namespace: vc.namespace,
+			Labels:    types.GetShareManagerLabels(volume, image),
+		},
+		Spec: types.ShareManagerSpec{
+			Image: image,
+		},
+	}
+
+	return vc.ds.CreateShareManager(sm)
 }

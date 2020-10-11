@@ -48,6 +48,8 @@ type DataStore struct {
 	sStoreSynced  cache.InformerSynced
 	imLister      lhlisters.InstanceManagerLister
 	imStoreSynced cache.InformerSynced
+	smLister      lhlisters.ShareManagerLister
+	smStoreSynced cache.InformerSynced
 
 	kubeClient         clientset.Interface
 	pLister            corelisters.PodLister
@@ -74,6 +76,8 @@ type DataStore struct {
 	storageclassSynced cache.InformerSynced
 	pdbLister          policylisters.PodDisruptionBudgetLister
 	pdbStoreSynced     cache.InformerSynced
+	svLister           corelisters.ServiceLister
+	svStoreSynced      cache.InformerSynced
 }
 
 // NewDataStore creates new DataStore object
@@ -85,6 +89,7 @@ func NewDataStore(
 	nodeInformer lhinformers.NodeInformer,
 	settingInformer lhinformers.SettingInformer,
 	imInformer lhinformers.InstanceManagerInformer,
+	smInformer lhinformers.ShareManagerInformer,
 	lhClient lhclientset.Interface,
 
 	podInformer coreinformers.PodInformer,
@@ -99,6 +104,7 @@ func NewDataStore(
 	csiDriverInformer storageinformers.CSIDriverInformer,
 	storageclassInformer storageinformers_v1.StorageClassInformer,
 	pdbInformer policyinformers.PodDisruptionBudgetInformer,
+	serviceInformer coreinformers.ServiceInformer,
 
 	kubeClient clientset.Interface,
 	namespace string) *DataStore {
@@ -121,6 +127,8 @@ func NewDataStore(
 		sStoreSynced:  settingInformer.Informer().HasSynced,
 		imLister:      imInformer.Lister(),
 		imStoreSynced: imInformer.Informer().HasSynced,
+		smLister:      smInformer.Lister(),
+		smStoreSynced: smInformer.Informer().HasSynced,
 
 		kubeClient:         kubeClient,
 		pLister:            podInformer.Lister(),
@@ -147,6 +155,8 @@ func NewDataStore(
 		storageclassSynced: storageclassInformer.Informer().HasSynced,
 		pdbLister:          pdbInformer.Lister(),
 		pdbStoreSynced:     pdbInformer.Informer().HasSynced,
+		svLister:           serviceInformer.Lister(),
+		svStoreSynced:      serviceInformer.Informer().HasSynced,
 	}
 }
 
@@ -159,7 +169,7 @@ func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 		s.pvStoreSynced, s.pvcStoreSynced, s.cfmStoreSynced,
 		s.imStoreSynced, s.dpStoreSynced, s.knStoreSynced,
 		s.pcStoreSynced, s.csiDriverSynced, s.storageclassSynced,
-		s.pdbStoreSynced)
+		s.pdbStoreSynced, s.smStoreSynced, s.svStoreSynced)
 }
 
 // ErrorIsNotFound checks if given error match

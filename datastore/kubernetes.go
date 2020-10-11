@@ -404,20 +404,42 @@ func (s *DataStore) GetKubernetesVersion() (*version.Info, error) {
 	return s.kubeClient.Discovery().ServerVersion()
 }
 
-// NewPVManifest returns a new PersistentVolume object
-func NewPVManifest(v *longhorn.Volume, pvName, storageClassName, fsType string) *corev1.PersistentVolume {
-	defaultVolumeMode := corev1.PersistentVolumeFilesystem
+// CreateService creates a Service resource
+// for the given CreateService object and namespace
+func (s *DataStore) CreateService(ns string, service *corev1.Service) (*corev1.Service, error) {
+	return s.kubeClient.CoreV1().Services(ns).Create(service)
+}
 
+// GetService gets the Service for the given name and namespace
+func (s *DataStore) GetService(namespace, name string) (*corev1.Service, error) {
+	return s.svLister.Services(namespace).Get(name)
+}
+
+// NewPVManifestForVolume returns a new PersistentVolume object for a longhorn volume
+func NewPVManifestForVolume(v *longhorn.Volume, pvName, storageClassName, fsType string) *corev1.PersistentVolume {
 	diskSelector := strings.Join(v.Spec.DiskSelector, ",")
 	nodeSelector := strings.Join(v.Spec.NodeSelector, ",")
 
+	volAttributes := map[string]string{
+		"diskSelector":        diskSelector,
+		"nodeSelector":        nodeSelector,
+		"numberOfReplicas":    strconv.Itoa(v.Spec.NumberOfReplicas),
+		"staleReplicaTimeout": strconv.Itoa(v.Spec.StaleReplicaTimeout),
+	}
+
+	return NewPVManifest(v.Spec.Size, pvName, v.Name, storageClassName, fsType, volAttributes)
+}
+
+// NewPVManifest returns a new PersistentVolume object
+func NewPVManifest(size int64, pvName, volumeName, storageClassName, fsType string, volAttributes map[string]string) *corev1.PersistentVolume {
+	defaultVolumeMode := corev1.PersistentVolumeFilesystem
 	return &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: pvName,
 		},
 		Spec: corev1.PersistentVolumeSpec{
 			Capacity: corev1.ResourceList{
-				corev1.ResourceStorage: *resource.NewQuantity(v.Spec.Size, resource.BinarySI),
+				corev1.ResourceStorage: *resource.NewQuantity(size, resource.BinarySI),
 			},
 			AccessModes: []corev1.PersistentVolumeAccessMode{
 				corev1.ReadWriteOnce,
@@ -431,23 +453,23 @@ func NewPVManifest(v *longhorn.Volume, pvName, storageClassName, fsType string) 
 
 			PersistentVolumeSource: corev1.PersistentVolumeSource{
 				CSI: &corev1.CSIPersistentVolumeSource{
-					Driver: types.LonghornDriverName,
-					FSType: fsType,
-					VolumeAttributes: map[string]string{
-						"diskSelector":        diskSelector,
-						"nodeSelector":        nodeSelector,
-						"numberOfReplicas":    strconv.Itoa(v.Spec.NumberOfReplicas),
-						"staleReplicaTimeout": strconv.Itoa(v.Spec.StaleReplicaTimeout),
-					},
-					VolumeHandle: v.Name,
+					Driver:           types.LonghornDriverName,
+					FSType:           fsType,
+					VolumeHandle:     volumeName,
+					VolumeAttributes: volAttributes,
 				},
 			},
 		},
 	}
 }
 
+// NewPVCManifestForVolume returns a new PersistentVolumeClaim object for a longhorn volume
+func NewPVCManifestForVolume(v *longhorn.Volume, pvName, ns, pvcName, storageClassName string) *corev1.PersistentVolumeClaim {
+	return NewPVCManifest(v.Spec.Size, pvName, ns, pvcName, storageClassName)
+}
+
 // NewPVCManifest returns a new PersistentVolumeClaim object
-func NewPVCManifest(v *longhorn.Volume, pvName, ns, pvcName, storageClassName string) *corev1.PersistentVolumeClaim {
+func NewPVCManifest(size int64, pvName, ns, pvcName, storageClassName string) *corev1.PersistentVolumeClaim {
 	return &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pvcName,
@@ -459,7 +481,7 @@ func NewPVCManifest(v *longhorn.Volume, pvName, ns, pvcName, storageClassName st
 			},
 			Resources: corev1.ResourceRequirements{
 				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: *resource.NewQuantity(v.Spec.Size, resource.BinarySI),
+					corev1.ResourceStorage: *resource.NewQuantity(size, resource.BinarySI),
 				},
 			},
 			StorageClassName: &storageClassName,
