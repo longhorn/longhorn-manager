@@ -308,7 +308,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		}
 	}()
 
-	pod, err := imc.ds.GetInstanceManagerPod(im.Name)
+	pod, err := imc.ds.GetPod(im.Name)
 	if err != nil {
 		return errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)
 	}
@@ -749,7 +749,7 @@ func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.Instan
 		logrus.Errorf("failed to mark existing instances to error when stopping instance manager monitor: %v", err)
 	}
 
-	pod, err := imc.ds.GetInstanceManagerPod(im.Name)
+	pod, err := imc.ds.GetPod(im.Name)
 	if err != nil {
 		return err
 	}

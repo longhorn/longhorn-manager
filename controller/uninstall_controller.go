@@ -504,7 +504,7 @@ func (c *UninstallController) deleteInstanceManagers(instanceManagers map[string
 			log.Info("Marked for deletion")
 		} else if im.DeletionTimestamp.Before(&timeout) {
 			var pod *v1.Pod
-			pod, err = c.ds.GetInstanceManagerPod(im.Name)
+			pod, err = c.ds.GetPod(im.Name)
 			if err != nil {
 				err = errors.Wrapf(err, "Could not get pod for instance manager")
 			}
