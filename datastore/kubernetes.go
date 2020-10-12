@@ -215,9 +215,8 @@ func (s *DataStore) CreateStorageClass(sc *storagev1.StorageClass) (*storagev1.S
 	return s.kubeClient.StorageV1().StorageClasses().Create(sc)
 }
 
-// GetInstanceManagerPod gets Pod for the given name and namspace, and
-// returns a new Pod object
-func (s *DataStore) GetInstanceManagerPod(name string) (*corev1.Pod, error) {
+// GetPod returns a mutable Pod object for the given name and namspace
+func (s *DataStore) GetPod(name string) (*corev1.Pod, error) {
 	resultRO, err := s.pLister.Pods(s.namespace).Get(name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
