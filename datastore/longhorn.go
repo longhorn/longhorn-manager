@@ -326,7 +326,8 @@ func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	if !ok {
 		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for volume")
 	}
-	return ret, nil
+
+	return ret.DeepCopy(), nil
 }
 
 // UpdateVolume updates Longhorn Volume and verifies update
@@ -476,7 +477,7 @@ func (s *DataStore) CreateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for engine")
 	}
 
-	return ret, nil
+	return ret.DeepCopy(), nil
 }
 
 // UpdateEngine updates Longhorn Engine and verifies update
@@ -631,7 +632,7 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for replica")
 	}
 
-	return ret, nil
+	return ret.DeepCopy(), nil
 }
 
 // UpdateReplica updates Replica and verifies update
@@ -814,7 +815,7 @@ func (s *DataStore) CreateEngineImage(img *longhorn.EngineImage) (*longhorn.Engi
 		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for engine image")
 	}
 
-	return ret, nil
+	return ret.DeepCopy(), nil
 }
 
 // UpdateEngineImage updates Longhorn EngineImage and verifies update
@@ -936,7 +937,7 @@ func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for node")
 	}
 
-	return ret, nil
+	return ret.DeepCopy(), nil
 }
 
 // CreateDefaultNode will create the default Disk at the value of the
@@ -1299,7 +1300,7 @@ func (s *DataStore) CreateInstanceManager(im *longhorn.InstanceManager) (*longho
 		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for instance manager")
 	}
 
-	return ret, nil
+	return ret.DeepCopy(), nil
 }
 
 // DeleteInstanceManager won't result in immediately deletion since finalizer
