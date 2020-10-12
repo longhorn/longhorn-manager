@@ -436,7 +436,7 @@ var (
 		ReadOnly:    false,
 	}
 	SettingDefinitionDisableRevisionCounter = SettingDefinition{
-		DisplayName: "Diable Revision Counter",
+		DisplayName: "Disable Revision Counter",
 		Description: "This setting is only for volumes created by UI. By default, this is false meaning there will be a reivision counter file to track every write to the volume. During salvage recovering Longhorn will pick the repica with largest reivision counter as candidate to recover the whole volume. If revision counter is disabled, Longhorn will not track every write to the volume. During the salvage recovering, Longhorn will use the 'volume-head-xxx.img' file last modification time and file size to pick the replica candidate to recover the whole volume.",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeBool,
