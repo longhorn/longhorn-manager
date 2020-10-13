@@ -16,6 +16,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	appsv1 "k8s.io/client-go/informers/apps/v1"
+	storagev1beta1 "k8s.io/client-go/informers/storage/v1beta1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
@@ -66,6 +67,8 @@ func NewUninstallController(
 	nodeInformer lhinformers.NodeInformer,
 	imInformer lhinformers.InstanceManagerInformer,
 	daemonSetInformer appsv1.DaemonSetInformer,
+	deploymentInformer appsv1.DeploymentInformer,
+	csiDriverInformer storagev1beta1.CSIDriverInformer,
 ) *UninstallController {
 	c := &UninstallController{
 		baseController: newBaseControllerWithQueue("longhorn-uninstall", logger,
@@ -81,7 +84,7 @@ func NewUninstallController(
 	}
 
 	cacheSyncs := []cache.InformerSynced{}
-	cacheSyncs = append(cacheSyncs, daemonSetInformer.Informer().HasSynced)
+	cacheSyncs = append(cacheSyncs, csiDriverInformer.Informer().HasSynced, daemonSetInformer.Informer().HasSynced, deploymentInformer.Informer().HasSynced)
 
 	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDEngineName, metav1.GetOptions{}); err == nil {
 		engineInformer.Informer().AddEventHandler(c.controlleeHandler())
@@ -109,7 +112,10 @@ func NewUninstallController(
 		cacheSyncs = append(cacheSyncs, imInformer.Informer().HasSynced)
 	}
 
+	csiDriverInformer.Informer().AddEventHandler(c.controlleeHandler())
+
 	daemonSetInformer.Informer().AddEventHandler(c.namespacedControlleeHandler())
+	deploymentInformer.Informer().AddEventHandler(c.namespacedControlleeHandler())
 
 	c.cacheSyncs = cacheSyncs
 

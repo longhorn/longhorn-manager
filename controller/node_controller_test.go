@@ -67,6 +67,7 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
 	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
+	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
@@ -75,6 +76,7 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer,
 		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
+		csiDriverInformer,
 		kubeClient, TestNamespace)
 
 	logger := logrus.StandardLogger()

@@ -432,6 +432,7 @@ func newTestInstanceHandler(lhInformerFactory lhinformerfactory.SharedInformerFa
 	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
+	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
@@ -440,6 +441,7 @@ func newTestInstanceHandler(lhInformerFactory lhinformerfactory.SharedInformerFa
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer,
 		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
+		csiDriverInformer,
 		kubeClient, TestNamespace)
 	fakeRecorder := record.NewFakeRecorder(100)
 
