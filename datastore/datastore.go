@@ -6,11 +6,13 @@ import (
 	batchinformers_v1beta1 "k8s.io/client-go/informers/batch/v1beta1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	schedulinginformers "k8s.io/client-go/informers/scheduling/v1"
+	storageinformers "k8s.io/client-go/informers/storage/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	batchlisters_v1beta1 "k8s.io/client-go/listers/batch/v1beta1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	schedulinglisters "k8s.io/client-go/listers/scheduling/v1"
+	storagelisters "k8s.io/client-go/listers/storage/v1beta1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/controller"
 
@@ -44,23 +46,25 @@ type DataStore struct {
 	imLister      lhlisters.InstanceManagerLister
 	imStoreSynced cache.InformerSynced
 
-	kubeClient     clientset.Interface
-	pLister        corelisters.PodLister
-	pStoreSynced   cache.InformerSynced
-	cjLister       batchlisters_v1beta1.CronJobLister
-	cjStoreSynced  cache.InformerSynced
-	dsLister       appslisters.DaemonSetLister
-	dsStoreSynced  cache.InformerSynced
-	dpLister       appslisters.DeploymentLister
-	dpStoreSynced  cache.InformerSynced
-	pvLister       corelisters.PersistentVolumeLister
-	pvStoreSynced  cache.InformerSynced
-	pvcLister      corelisters.PersistentVolumeClaimLister
-	pvcStoreSynced cache.InformerSynced
-	knLister       corelisters.NodeLister
-	knStoreSynced  cache.InformerSynced
-	pcLister       schedulinglisters.PriorityClassLister
-	pcStoreSynced  cache.InformerSynced
+	kubeClient      clientset.Interface
+	pLister         corelisters.PodLister
+	pStoreSynced    cache.InformerSynced
+	cjLister        batchlisters_v1beta1.CronJobLister
+	cjStoreSynced   cache.InformerSynced
+	dsLister        appslisters.DaemonSetLister
+	dsStoreSynced   cache.InformerSynced
+	dpLister        appslisters.DeploymentLister
+	dpStoreSynced   cache.InformerSynced
+	pvLister        corelisters.PersistentVolumeLister
+	pvStoreSynced   cache.InformerSynced
+	pvcLister       corelisters.PersistentVolumeClaimLister
+	pvcStoreSynced  cache.InformerSynced
+	knLister        corelisters.NodeLister
+	knStoreSynced   cache.InformerSynced
+	pcLister        schedulinglisters.PriorityClassLister
+	pcStoreSynced   cache.InformerSynced
+	csiDriverLister storagelisters.CSIDriverLister
+	csiDriverSynced cache.InformerSynced
 }
 
 // NewDataStore creates new DataStore object
@@ -82,6 +86,7 @@ func NewDataStore(
 	persistentVolumeClaimInformer coreinformers.PersistentVolumeClaimInformer,
 	kubeNodeInformer coreinformers.NodeInformer,
 	priorityClassInformer schedulinginformers.PriorityClassInformer,
+	csiDriverInformer storageinformers.CSIDriverInformer,
 
 	kubeClient clientset.Interface,
 	namespace string) *DataStore {
@@ -105,23 +110,25 @@ func NewDataStore(
 		imLister:      imInformer.Lister(),
 		imStoreSynced: imInformer.Informer().HasSynced,
 
-		kubeClient:     kubeClient,
-		pLister:        podInformer.Lister(),
-		pStoreSynced:   podInformer.Informer().HasSynced,
-		cjLister:       cronJobInformer.Lister(),
-		cjStoreSynced:  cronJobInformer.Informer().HasSynced,
-		dsLister:       daemonSetInformer.Lister(),
-		dsStoreSynced:  daemonSetInformer.Informer().HasSynced,
-		dpLister:       deploymentInformer.Lister(),
-		dpStoreSynced:  deploymentInformer.Informer().HasSynced,
-		pvLister:       persistentVolumeInformer.Lister(),
-		pvStoreSynced:  persistentVolumeInformer.Informer().HasSynced,
-		pvcLister:      persistentVolumeClaimInformer.Lister(),
-		pvcStoreSynced: persistentVolumeClaimInformer.Informer().HasSynced,
-		knLister:       kubeNodeInformer.Lister(),
-		knStoreSynced:  kubeNodeInformer.Informer().HasSynced,
-		pcLister:       priorityClassInformer.Lister(),
-		pcStoreSynced:  priorityClassInformer.Informer().HasSynced,
+		kubeClient:      kubeClient,
+		pLister:         podInformer.Lister(),
+		pStoreSynced:    podInformer.Informer().HasSynced,
+		cjLister:        cronJobInformer.Lister(),
+		cjStoreSynced:   cronJobInformer.Informer().HasSynced,
+		dsLister:        daemonSetInformer.Lister(),
+		dsStoreSynced:   daemonSetInformer.Informer().HasSynced,
+		dpLister:        deploymentInformer.Lister(),
+		dpStoreSynced:   deploymentInformer.Informer().HasSynced,
+		pvLister:        persistentVolumeInformer.Lister(),
+		pvStoreSynced:   persistentVolumeInformer.Informer().HasSynced,
+		pvcLister:       persistentVolumeClaimInformer.Lister(),
+		pvcStoreSynced:  persistentVolumeClaimInformer.Informer().HasSynced,
+		knLister:        kubeNodeInformer.Lister(),
+		knStoreSynced:   kubeNodeInformer.Informer().HasSynced,
+		pcLister:        priorityClassInformer.Lister(),
+		pcStoreSynced:   priorityClassInformer.Informer().HasSynced,
+		csiDriverLister: csiDriverInformer.Lister(),
+		csiDriverSynced: csiDriverInformer.Informer().HasSynced,
 	}
 }
 
@@ -132,7 +139,7 @@ func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 		s.iStoreSynced, s.nStoreSynced, s.sStoreSynced,
 		s.pStoreSynced, s.cjStoreSynced, s.dsStoreSynced,
 		s.pvStoreSynced, s.pvcStoreSynced, s.imStoreSynced,
-		s.dpStoreSynced, s.knStoreSynced, s.pcStoreSynced)
+		s.dpStoreSynced, s.knStoreSynced, s.pcStoreSynced, s.csiDriverSynced)
 }
 
 // ErrorIsNotFound checks if given error match
