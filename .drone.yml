@@ -32,7 +32,7 @@ steps:
     password:
       from_secret: docker_password
     repo: longhornio/longhorn-manager
-    tag: master
+    tag: "master-amd64"
     username:
       from_secret: docker_username
   when:
@@ -51,7 +51,7 @@ steps:
     password:
       from_secret: docker_password
     repo: longhornio/longhorn-manager
-    tag: "${DRONE_TAG}"
+    tag: "${DRONE_TAG}-amd64"
     username:
       from_secret: docker_username
   when:
