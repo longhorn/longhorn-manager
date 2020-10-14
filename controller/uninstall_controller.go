@@ -169,10 +169,14 @@ func (c *UninstallController) Run() error {
 	}
 
 	startTime := time.Now()
-	logrus.Infof("Uninstalling...")
+	c.logger.Info("Uninstalling...")
 	defer func() {
-		fields := logrus.Fields{"runtime": time.Now().Sub(startTime)}
-		logrus.WithFields(fields).Infof("Uninstallation completed.")
+		log := c.logger.WithFields(
+			logrus.Fields{
+				"runtime": time.Now().Sub(startTime),
+			},
+		)
+		log.Info("Uninstallation completed")
 	}()
 	go wait.Until(c.worker, time.Second, c.stopCh)
 
@@ -205,7 +209,7 @@ func (c *UninstallController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	logrus.Warn(errors.Wrapf(err, "worker error"))
+	c.logger.WithError(err).Warn("worker error")
 	c.queue.AddRateLimited(key)
 }
 
@@ -246,7 +250,7 @@ func (c *UninstallController) checkPreconditions() error {
 		return err
 	} else if !ready {
 		if c.force {
-			logrus.Warnf("Manager not ready, this may leave data behind.")
+			c.logger.Warn("Manager not ready, this may leave data behind")
 			gracePeriod = 0 * time.Second
 		} else {
 			return fmt.Errorf("manager not ready, set --force to continue")
@@ -258,15 +262,16 @@ func (c *UninstallController) checkPreconditions() error {
 	} else if len(vols) > 0 {
 		volumesInUse := false
 		for _, vol := range vols {
-			logFields := logrus.Fields{
-				"type": "volume",
-			}
 			if vol.Status.State == types.VolumeStateAttaching ||
 				vol.Status.State == types.VolumeStateAttached {
-
-				logFields["name"] = vol.Name
-				logFields["state"] = vol.Status.State
-				logrus.WithFields(logFields).Warnf("Volume in use")
+				log := c.logger.WithFields(
+					logrus.Fields{
+						"name":  vol.Name,
+						"type":  "volume",
+						"state": vol.Status.State,
+					},
+				)
+				log.Warn("Volume in use")
 				volumesInUse = true
 			}
 		}
@@ -282,42 +287,42 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 	if volumes, err := c.ds.ListVolumes(); err != nil {
 		return true, err
 	} else if len(volumes) > 0 {
-		logrus.Infof("%d volumes remaining", len(volumes))
+		c.logger.Infof("Found %d volumes remaining", len(volumes))
 		return true, c.deleteVolumes(volumes)
 	}
 
 	if engines, err := c.ds.ListEngines(); err != nil {
 		return true, err
 	} else if len(engines) > 0 {
-		logrus.Infof("%d engines remaining", len(engines))
+		c.logger.Infof("Found %d engines remaining", len(engines))
 		return true, c.deleteEngines(engines)
 	}
 
 	if replicas, err := c.ds.ListReplicas(); err != nil {
 		return true, err
 	} else if len(replicas) > 0 {
-		logrus.Infof("%d replicas remaining", len(replicas))
+		c.logger.Infof("Found %d replicas remaining", len(replicas))
 		return true, c.deleteReplicas(replicas)
 	}
 
 	if engineImages, err := c.ds.ListEngineImages(); err != nil {
 		return true, err
 	} else if len(engineImages) > 0 {
-		logrus.Infof("%d engineimages remaining", len(engineImages))
+		c.logger.Infof("Found %d engineimages remaining", len(engineImages))
 		return true, c.deleteEngineImages(engineImages)
 	}
 
 	if nodes, err := c.ds.ListNodes(); err != nil {
 		return true, err
 	} else if len(nodes) > 0 {
-		logrus.Infof("%d nodes remaining", len(nodes))
+		c.logger.Infof("Found %d nodes remaining", len(nodes))
 		return true, c.deleteNodes(nodes)
 	}
 
 	if instanceManagers, err := c.ds.ListInstanceManagers(); err != nil {
 		return true, err
 	} else if len(instanceManagers) > 0 {
-		logrus.Infof("%d instance managers remaining", len(instanceManagers))
+		c.logger.Infof("Found %d instance managers remaining", len(instanceManagers))
 		return true, c.deleteInstanceManagers(instanceManagers)
 	}
 
@@ -329,23 +334,25 @@ func (c *UninstallController) deleteVolumes(vols map[string]*longhorn.Volume) (e
 		err = errors.Wrapf(err, "Failed to delete volumes")
 	}()
 	for _, vol := range vols {
-		logFields := logrus.Fields{
-			"name": vol.Name,
-			"type": "volume",
-		}
+		log := c.logger.WithFields(
+			logrus.Fields{
+				"name": vol.Name,
+				"type": "volume",
+			},
+		)
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if vol.DeletionTimestamp == nil {
 			if err = c.ds.DeleteVolume(vol.Name); err != nil {
 				err = errors.Wrapf(err, "Failed to mark for deletion")
 				return
 			}
-			logrus.WithFields(logFields).Info("Marked for deletion")
+			log.Info("Marked for deletion")
 		} else if vol.DeletionTimestamp.Before(&timeout) {
 			if err = c.ds.RemoveFinalizerForVolume(vol); err != nil {
 				err = errors.Wrapf(err, "Failed to remove finalizer")
 				return
 			}
-			logrus.WithFields(logFields).Info("Removed finalizer")
+			log.Info("Removed finalizer")
 		}
 	}
 	return
@@ -356,23 +363,25 @@ func (c *UninstallController) deleteEngines(engines map[string]*longhorn.Engine)
 		err = errors.Wrapf(err, "Failed to delete engines")
 	}()
 	for _, engine := range engines {
-		logFields := logrus.Fields{
-			"name": engine.Name,
-			"type": "engine",
-		}
+		log := c.logger.WithFields(
+			logrus.Fields{
+				"name": engine.Name,
+				"type": "engine",
+			},
+		)
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if engine.DeletionTimestamp == nil {
 			if err = c.ds.DeleteEngine(engine.Name); err != nil {
 				err = errors.Wrapf(err, "Failed to mark for deletion")
 				return
 			}
-			logrus.WithFields(logFields).Infof("Marked for deletion")
+			log.Info("Marked for deletion")
 		} else if engine.DeletionTimestamp.Before(&timeout) {
 			if err = c.ds.RemoveFinalizerForEngine(engine); err != nil {
 				err = errors.Wrapf(err, "Failed to remove finalizer")
 				return
 			}
-			logrus.WithFields(logFields).Infof("Removed finalizer")
+			log.Info("Removed finalizer")
 		}
 	}
 	return
@@ -383,23 +392,25 @@ func (c *UninstallController) deleteReplicas(replicas map[string]*longhorn.Repli
 		err = errors.Wrapf(err, "Failed to delete replicas")
 	}()
 	for _, replica := range replicas {
-		logFields := logrus.Fields{
-			"name": replica.Name,
-			"type": "replica",
-		}
+		log := c.logger.WithFields(
+			logrus.Fields{
+				"name": replica.Name,
+				"type": "replica",
+			},
+		)
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if replica.DeletionTimestamp == nil {
 			if err = c.ds.DeleteReplica(replica.Name); err != nil {
 				err = errors.Wrapf(err, "Failed to mark for deletion")
 				return
 			}
-			logrus.WithFields(logFields).Infof("Marked for deletion")
+			log.Info("Marked for deletion")
 		} else if replica.DeletionTimestamp.Before(&timeout) {
 			if err = c.ds.RemoveFinalizerForReplica(replica); err != nil {
 				err = errors.Wrapf(err, "Failed to remove finalizer")
 				return
 			}
-			logrus.WithFields(logFields).Infof("Removed finalizer")
+			log.Info("Removed finalizer")
 		}
 	}
 	return
@@ -410,17 +421,19 @@ func (c *UninstallController) deleteEngineImages(engineImages map[string]*longho
 		err = errors.Wrapf(err, "Failed to delete engine images")
 	}()
 	for _, ei := range engineImages {
-		logFields := logrus.Fields{
-			"type": "engineImage",
-			"name": ei.Name,
-		}
+		log := c.logger.WithFields(
+			logrus.Fields{
+				"type": "engineImage",
+				"name": ei.Name,
+			},
+		)
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if ei.DeletionTimestamp == nil {
 			if err = c.ds.DeleteEngineImage(ei.Name); err != nil {
 				err = errors.Wrapf(err, "Failed to mark for deletion")
 				return
 			}
-			logrus.WithFields(logFields).Infof("Marked for deletion")
+			log.Info("Marked for deletion")
 		} else if ei.DeletionTimestamp.Before(&timeout) {
 			dsName := types.GetDaemonSetNameFromEngineImageName(ei.Name)
 			if err = c.ds.DeleteDaemonSet(dsName); err != nil {
@@ -428,14 +441,14 @@ func (c *UninstallController) deleteEngineImages(engineImages map[string]*longho
 					err = errors.Wrapf(err, "Failed to remove daemon set")
 					return
 				}
-				logrus.WithFields(logFields).Infof("Removed daemon set")
+				log.Info("Removed daemon set")
 				err = nil
 			}
 			if err = c.ds.RemoveFinalizerForEngineImage(ei); err != nil {
 				err = errors.Wrapf(err, "Failed to remove finalizer")
 				return
 			}
-			logrus.WithFields(logFields).Infof("Removed finalizer")
+			log.Info("Removed finalizer")
 		}
 	}
 	return
@@ -446,22 +459,24 @@ func (c *UninstallController) deleteNodes(nodes map[string]*longhorn.Node) (err 
 		err = errors.Wrapf(err, "Failed to delete nodes")
 	}()
 	for _, node := range nodes {
-		logFields := logrus.Fields{
-			"type": "node",
-			"name": node.Name,
-		}
+		log := c.logger.WithFields(
+			logrus.Fields{
+				"name": node.Name,
+				"type": "node",
+			},
+		)
 		if node.DeletionTimestamp == nil {
 			if err = c.ds.DeleteNode(node.Name); err != nil {
 				err = errors.Wrapf(err, "Failed to mark for deletion")
 				return
 			}
-			logrus.WithFields(logFields).Infof("Marked for deletion")
+			log.Info("Marked for deletion")
 		} else {
 			if err = c.ds.RemoveFinalizerForNode(node); err != nil {
 				err = errors.Wrapf(err, "Failed to remove finalizer")
 				return
 			}
-			logrus.WithFields(logFields).Infof("Removed finalizer")
+			log.Info("Removed finalizer")
 		}
 	}
 	return
@@ -472,17 +487,19 @@ func (c *UninstallController) deleteInstanceManagers(instanceManagers map[string
 		err = errors.Wrapf(err, "Failed to delete instance managers")
 	}()
 	for _, im := range instanceManagers {
-		logFields := logrus.Fields{
-			"type": "instanceManager",
-			"name": im.Name,
-		}
+		log := c.logger.WithFields(
+			logrus.Fields{
+				"name": im.Name,
+				"type": "instanceManager",
+			},
+		)
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if im.DeletionTimestamp == nil {
 			if err = c.ds.DeleteInstanceManager(im.Name); err != nil {
 				err = errors.Wrapf(err, "Failed to mark for deletion")
 				return
 			}
-			logrus.WithFields(logFields).Infof("Marked for deletion")
+			log.Info("Marked for deletion")
 		} else if im.DeletionTimestamp.Before(&timeout) {
 			var pod *v1.Pod
 			pod, err = c.ds.GetInstanceManagerPod(im.Name)
@@ -493,20 +510,26 @@ func (c *UninstallController) deleteInstanceManagers(instanceManagers map[string
 				if err = c.ds.DeletePod(pod.Name); err != nil {
 					return
 				}
-				logrus.WithFields(logFields).Infof("Removed instance manager")
+				log.Info("Removed instance manager")
 			}
 
 			if err = c.ds.RemoveFinalizerForInstanceManager(im); err != nil {
 				err = errors.Wrapf(err, "Failed to remove finalizer")
 				return
 			}
-			logrus.WithFields(logFields).Infof("Removed finalizer")
+			log.Info("Removed finalizer")
 		}
 	}
 	return
 }
 
 func (c *UninstallController) deleteManager() (bool, error) {
+	log := c.logger.WithFields(
+		logrus.Fields{
+			"type": "daemonSet",
+			"name": types.LonghornManagerDaemonSetName,
+		},
+	)
 	if ds, err := c.ds.GetDaemonSet(types.LonghornManagerDaemonSetName); err != nil {
 		if apierrors.IsNotFound(err) {
 			return false, nil
@@ -514,29 +537,35 @@ func (c *UninstallController) deleteManager() (bool, error) {
 		return true, err
 	} else if ds.DeletionTimestamp == nil {
 		if err := c.ds.DeleteDaemonSet(types.LonghornManagerDaemonSetName); err != nil {
-			logrus.Warn("failed to mark manager for deletion")
+			log.Warn("failed to mark for deletion")
 			return true, err
 		}
-		logrus.Info("marked manager for deletion")
+		log.Info("Marked for deletion")
 		return true, nil
 	}
-	logrus.Info("manager already marked for deletion")
+	log.Info("Already marked for deletion")
 	return true, nil
 }
 
 func (c *UninstallController) managerReady() (bool, error) {
+	log := c.logger.WithFields(
+		logrus.Fields{
+			"type": "daemonSet",
+			"name": types.LonghornManagerDaemonSetName,
+		},
+	)
 	if ds, err := c.ds.GetDaemonSet(types.LonghornManagerDaemonSetName); err != nil {
 		if apierrors.IsNotFound(err) {
 			return false, nil
 		}
 		return false, err
 	} else if ds.DeletionTimestamp != nil {
-		logrus.Warn("Manager marked for deletion")
+		log.Warn("Marked for deletion")
 		return false, nil
 	} else if ds.Status.NumberReady < ds.Status.DesiredNumberScheduled-1 {
 		// During upgrade, there may be at most one pod missing, so we
 		// will allow that to support uninstallation during upgrade
-		logrus.Warnf("Manager not enough ready pods (%d/%d)",
+		log.Warnf("Not enough ready pods (%d/%d)",
 			ds.Status.NumberReady, ds.Status.DesiredNumberScheduled)
 		return false, nil
 	}
@@ -553,54 +582,72 @@ func (c *UninstallController) deleteDriver() (bool, error) {
 	}
 	wait := false
 	for _, name := range deploymentsToClean {
+		log := c.logger.WithFields(
+			logrus.Fields{
+				"name": name,
+				"type": "deployment",
+			},
+		)
 		if driver, err := c.ds.GetDeployment(name); err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
 			}
-			logrus.Warnf("failed to get %v for deletion: %v", name, err)
+			log.WithError(err).Warn("Failed to get for deletion")
 			wait = true
 			continue
 		} else if driver.DeletionTimestamp == nil {
 			if err := c.ds.DeleteDeployment(name); err != nil {
-				logrus.Warnf("failed to mark %v for deletion: %v", name, err)
+				log.Warn("Failed to mark for deletion")
 				wait = true
 				continue
 			}
-			logrus.Infof("marked %v for deletion", name)
+			log.Info("Marked for deletion")
 			wait = true
 			continue
 		}
-		logrus.Infof("%v already marked for deletion", name)
+		log.Info("Already marked for deletion")
 		wait = true
 	}
 	daemonSetsToClean := []string{
 		types.CSIPluginName,
 	}
 	for _, name := range daemonSetsToClean {
+		log := c.logger.WithFields(
+			logrus.Fields{
+				"name": name,
+				"type": "daemonSet",
+			},
+		)
 		if driver, err := c.ds.GetDaemonSet(name); err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
 			}
-			logrus.Warnf("failed to get %v for deletion: %v", name, err)
+			log.WithError(err).Warn("Failed to get for deletion")
 			wait = true
 			continue
 		} else if driver.DeletionTimestamp == nil {
 			if err := c.ds.DeleteDaemonSet(name); err != nil {
-				logrus.Warnf("failed to mark %v for deletion: %v", name, err)
+				log.WithError(err).Warn("Failed to mark for deletion")
 				wait = true
 				continue
 			}
-			logrus.Infof("marked %v for deletion", name)
+			log.Info("Marked for deletion")
 			wait = true
 			continue
 		}
-		logrus.Infof("%v already marked for deletion", name)
+		log.Info("Already marked for deletion")
 		wait = true
 	}
 
 	if err := c.ds.DeleteCSIDriver(types.LonghornDriverName); err != nil {
 		if !apierrors.IsNotFound(err) {
-			logrus.Warnf("failed to delete CSIDriver object %v: %v", types.LonghornDriverName, err)
+			log := c.logger.WithFields(
+				logrus.Fields{
+					"name": types.LonghornDriverName,
+					"type": "CSIDriver",
+				},
+			)
+			log.WithError(err).Warn("Failed to delete")
 			wait = true
 		}
 	}
