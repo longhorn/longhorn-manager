@@ -465,8 +465,6 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		err = errors.Wrapf(err, "fail to reconcile engine/replica state for %v", v.Name)
 	}()
 
-	log := getLoggerForVolume(vc.logger, v)
-
 	if e == nil {
 		return nil
 	}
@@ -496,8 +494,6 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		rName := datastore.ReplicaAddressToReplicaName(addr, replicaList)
 		if _, exists := rs[rName]; exists {
 			restoreStatusMap[rName] = status
-		} else {
-			log.Warnf("Found unknown replica in the restore status map, address %v, restore status: %+v", addr, status)
 		}
 	}
 

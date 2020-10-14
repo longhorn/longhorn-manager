@@ -516,9 +516,9 @@ func (nc *NodeController) enqueueSetting(setting *longhorn.Setting) {
 func (nc *NodeController) enqueueReplica(replica *longhorn.Replica) {
 	node, err := nc.ds.GetNode(replica.Spec.NodeID)
 	if err != nil {
-		// no replica would be scheduled to the node if the node is not
-		// available. If the node was removed after being scheduled to,
-		// the replica should be removed before that.
+		if apierrors.IsNotFound(err) {
+			return
+		}
 		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v for replica %v: %v ",
 			replica.Spec.NodeID, replica.Name, err))
 		return
