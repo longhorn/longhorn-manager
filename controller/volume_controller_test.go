@@ -93,6 +93,7 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
 	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
+	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
@@ -102,6 +103,7 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 		deploymentInformer, persistentVolumeInformer,
 		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
 		csiDriverInformer,
+		pdbInformer,
 		kubeClient, TestNamespace)
 	initSettings(ds)
 

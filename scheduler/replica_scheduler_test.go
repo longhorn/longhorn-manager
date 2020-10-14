@@ -70,6 +70,7 @@ func newReplicaScheduler(lhInformerFactory lhinformerfactory.SharedInformerFacto
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
 	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
+	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
@@ -79,6 +80,7 @@ func newReplicaScheduler(lhInformerFactory lhinformerfactory.SharedInformerFacto
 		deploymentInformer, persistentVolumeInformer,
 		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
 		csiDriverInformer,
+		pdbInformer,
 		kubeClient, TestNamespace)
 
 	return NewReplicaScheduler(ds)

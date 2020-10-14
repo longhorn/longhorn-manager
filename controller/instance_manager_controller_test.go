@@ -138,6 +138,7 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
 	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
+	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
@@ -147,11 +148,12 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 		deploymentInformer, persistentVolumeInformer,
 		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
 		csiDriverInformer,
+		pdbInformer,
 		kubeClient, TestNamespace)
 
 	logger := logrus.StandardLogger()
 	imc := NewInstanceManagerController(logger,
-		ds, scheme.Scheme, imInformer, podInformer, kubeClient, TestNamespace,
+		ds, scheme.Scheme, imInformer, podInformer, kubeNodeInformer, kubeClient, TestNamespace,
 		controllerID, TestServiceAccount)
 	fakeRecorder := record.NewFakeRecorder(100)
 	imc.eventRecorder = fakeRecorder

@@ -5,12 +5,14 @@ import (
 	appsinformers "k8s.io/client-go/informers/apps/v1"
 	batchinformers_v1beta1 "k8s.io/client-go/informers/batch/v1beta1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
+	policyinformers "k8s.io/client-go/informers/policy/v1beta1"
 	schedulinginformers "k8s.io/client-go/informers/scheduling/v1"
 	storageinformers "k8s.io/client-go/informers/storage/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	batchlisters_v1beta1 "k8s.io/client-go/listers/batch/v1beta1"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	policylisters "k8s.io/client-go/listers/policy/v1beta1"
 	schedulinglisters "k8s.io/client-go/listers/scheduling/v1"
 	storagelisters "k8s.io/client-go/listers/storage/v1beta1"
 	"k8s.io/client-go/tools/cache"
@@ -65,6 +67,8 @@ type DataStore struct {
 	pcStoreSynced   cache.InformerSynced
 	csiDriverLister storagelisters.CSIDriverLister
 	csiDriverSynced cache.InformerSynced
+	pdbLister       policylisters.PodDisruptionBudgetLister
+	pdbStoreSynced  cache.InformerSynced
 }
 
 // NewDataStore creates new DataStore object
@@ -87,6 +91,7 @@ func NewDataStore(
 	kubeNodeInformer coreinformers.NodeInformer,
 	priorityClassInformer schedulinginformers.PriorityClassInformer,
 	csiDriverInformer storageinformers.CSIDriverInformer,
+	pdbInformer policyinformers.PodDisruptionBudgetInformer,
 
 	kubeClient clientset.Interface,
 	namespace string) *DataStore {
@@ -129,6 +134,8 @@ func NewDataStore(
 		pcStoreSynced:   priorityClassInformer.Informer().HasSynced,
 		csiDriverLister: csiDriverInformer.Lister(),
 		csiDriverSynced: csiDriverInformer.Informer().HasSynced,
+		pdbLister:       pdbInformer.Lister(),
+		pdbStoreSynced:  pdbInformer.Informer().HasSynced,
 	}
 }
 
@@ -139,7 +146,8 @@ func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 		s.iStoreSynced, s.nStoreSynced, s.sStoreSynced,
 		s.pStoreSynced, s.cjStoreSynced, s.dsStoreSynced,
 		s.pvStoreSynced, s.pvcStoreSynced, s.imStoreSynced,
-		s.dpStoreSynced, s.knStoreSynced, s.pcStoreSynced, s.csiDriverSynced)
+		s.dpStoreSynced, s.knStoreSynced, s.pcStoreSynced,
+		s.csiDriverSynced, s.pdbStoreSynced)
 }
 
 // ErrorIsNotFound checks if given error match
