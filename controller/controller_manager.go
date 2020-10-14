@@ -80,6 +80,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	volumeAttachmentInformer := kubeInformerFactory.Storage().V1beta1().VolumeAttachments()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
 	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
+	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
@@ -89,6 +90,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		deploymentInformer, persistentVolumeInformer,
 		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
 		csiDriverInformer,
+		pdbInformer,
 		kubeClient, namespace)
 	rc := NewReplicaController(logger, ds, scheme,
 		nodeInformer, replicaInformer, imInformer,
@@ -113,7 +115,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		settingInformer,
 		kubeClient, version)
 	imc := NewInstanceManagerController(logger, ds, scheme,
-		imInformer, podInformer, kubeClient, namespace, controllerID, serviceAccount)
+		imInformer, podInformer, kubeNodeInformer, kubeClient, namespace, controllerID, serviceAccount)
 
 	kpvc := NewKubernetesPVController(logger, ds, scheme,
 		volumeInformer, persistentVolumeInformer,

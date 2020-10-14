@@ -9,6 +9,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1beta1 "k8s.io/api/batch/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -146,6 +147,23 @@ func (s *DataStore) GetEngineImageDaemonSet(name string) (*appsv1.DaemonSet, err
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
+}
+
+// CreatePDB creates a PodDisruptionBudget resource for the given PDB object and namespace
+func (s *DataStore) CreatePDB(pdp *policyv1beta1.PodDisruptionBudget) (*policyv1beta1.PodDisruptionBudget, error) {
+	return s.kubeClient.PolicyV1beta1().PodDisruptionBudgets(s.namespace).Create(pdp)
+}
+
+// DeletePDB deletes PodDisruptionBudget for the given name and namespace
+func (s *DataStore) DeletePDB(name string) error {
+	return s.kubeClient.PolicyV1beta1().PodDisruptionBudgets(s.namespace).Delete(name, nil)
+}
+
+// GetPDBRO gets PDB for the given name and namespace.
+// This function returns direct reference to the internal cache object and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) GetPDBRO(name string) (*policyv1beta1.PodDisruptionBudget, error) {
+	return s.pdbLister.PodDisruptionBudgets(s.namespace).Get(name)
 }
 
 // CreatePod creates a Pod resource for the given pod object and namespace

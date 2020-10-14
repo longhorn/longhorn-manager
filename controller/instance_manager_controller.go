@@ -10,9 +10,11 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/api/core/v1"
+	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -63,6 +65,7 @@ type InstanceManagerController struct {
 
 	imStoreSynced cache.InformerSynced
 	pStoreSynced  cache.InformerSynced
+	knStoreSynced cache.InformerSynced
 
 	instanceManagerMonitorMutex *sync.RWMutex
 	instanceManagerMonitorMap   map[string]chan struct{}
@@ -112,6 +115,7 @@ func NewInstanceManagerController(
 	scheme *runtime.Scheme,
 	imInformer lhinformers.InstanceManagerInformer,
 	pInformer coreinformers.PodInformer,
+	kubeNodeInformer coreinformers.NodeInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID, serviceAccount string) *InstanceManagerController {
 
@@ -133,6 +137,7 @@ func NewInstanceManagerController(
 
 		imStoreSynced: imInformer.Informer().HasSynced,
 		pStoreSynced:  pInformer.Informer().HasSynced,
+		knStoreSynced: kubeNodeInformer.Informer().HasSynced,
 
 		instanceManagerMonitorMutex: &sync.RWMutex{},
 		instanceManagerMonitorMap:   map[string]chan struct{}{},
@@ -178,6 +183,17 @@ func NewInstanceManagerController(
 				pod := obj.(*v1.Pod)
 				imc.enqueueInstanceManagerPod(pod)
 			},
+		},
+	})
+
+	kubeNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(oldObj, cur interface{}) {
+			curNode := cur.(*v1.Node)
+			imc.enqueueKubernetesNode(curNode)
+		},
+		DeleteFunc: func(obj interface{}) {
+			node := obj.(*v1.Node)
+			imc.enqueueKubernetesNode(node)
 		},
 	})
 
@@ -377,6 +393,10 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		im.Status.APIMinVersion = engineapi.UnknownInstanceManagerAPIVersion
 	}
 
+	if err := imc.syncInstanceManagerPDB(im); err != nil {
+		return err
+	}
+
 	if im.Status.CurrentState == types.InstanceManagerStateRunning {
 		if err := engineapi.CheckInstanceManagerCompatibilty(im.Status.APIMinVersion, im.Status.APIVersion); err != nil {
 			if imc.isMonitoring(im.Name) {
@@ -419,6 +439,93 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	return nil
 }
 
+func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.InstanceManager) error {
+	if im.Status.CurrentState != types.InstanceManagerStateRunning {
+		return nil
+	}
+
+	// We only use PDB to protect instance manager of type engine
+	if im.Spec.Type != types.InstanceManagerTypeEngine {
+		return nil
+	}
+
+	unschedulable, err := imc.isNodeUnschedulable()
+	if err != nil {
+		return err
+	}
+
+	imPDB, err := imc.ds.GetPDBRO(imc.getPDBName(im))
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
+	// Delete the PodDisruptionBudget for the engine instance manager if all of the following conditions are meet:
+	// 1. The current node is unschedulable. This is a signal that the node is being cordoned/drained.
+	// 2. There is no engine instance process inside the engine instance manager. This means that all volumes are detached.
+	// 3. There is a PodDisruptionBudget for this engine instance manager.
+	if unschedulable && len(im.Status.Instances) == 0 {
+		if imPDB != nil {
+			return imc.deleteInstanceManagerPDB(im)
+		}
+		return nil
+	}
+
+	// Make sure that there is a PodDisruptionBudget to protect this engine instance manager in normal case.
+	// e.g. the current node is schedulable or there exist engine instance process inside the engine instance manager
+	if imPDB == nil {
+		return imc.createInstanceManagerPDB(im)
+	}
+
+	return nil
+}
+
+func (imc *InstanceManagerController) isNodeUnschedulable() (bool, error) {
+	kubeNode, err := imc.ds.GetKubernetesNode(imc.controllerID)
+	if err != nil {
+		return false, err
+	}
+	return kubeNode.Spec.Unschedulable, nil
+}
+
+func (imc *InstanceManagerController) deleteInstanceManagerPDB(im *longhorn.InstanceManager) error {
+	err := imc.ds.DeletePDB(imc.getPDBName(im))
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+	return nil
+}
+
+func (imc *InstanceManagerController) createInstanceManagerPDB(im *longhorn.InstanceManager) error {
+	instanceManagerPDB := imc.generateInstanceManagerPDBManifest(im)
+	if _, err := imc.ds.CreatePDB(instanceManagerPDB); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			imc.logger.Warn("PDB %s is already exists", instanceManagerPDB.GetName())
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func (imc *InstanceManagerController) generateInstanceManagerPDBManifest(im *longhorn.InstanceManager) *policyv1beta1.PodDisruptionBudget {
+	return &policyv1beta1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      imc.getPDBName(im),
+			Namespace: imc.namespace,
+		},
+		Spec: policyv1beta1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, im.Spec.Type),
+			},
+			MinAvailable: &intstr.IntOrString{IntVal: 1},
+		},
+	}
+}
+
+func (imc *InstanceManagerController) getPDBName(im *longhorn.InstanceManager) string {
+	return im.Name
+}
+
 func (imc *InstanceManagerController) enqueueInstanceManager(instanceManager *longhorn.InstanceManager) {
 	key, err := controller.KeyFunc(instanceManager)
 	if err != nil {
@@ -441,6 +548,34 @@ func (imc *InstanceManagerController) enqueueInstanceManagerPod(pod *v1.Pod) {
 		return
 	}
 	imc.enqueueInstanceManager(im)
+}
+
+func (imc *InstanceManagerController) enqueueKubernetesNode(n *v1.Node) {
+	node, err := imc.ds.GetNode(n.Name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// there is no Longhorn node created for the Kubernetes
+			// node (e.g. controller/etcd node). Skip it
+			return
+		}
+		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v: %v ", n.Name, err))
+		return
+	}
+
+	// We only enqueue engine instance manager for syncInstanceManagerPDB
+	ims, err := imc.ds.ListInstanceManagersByNode(node.Name, types.InstanceManagerTypeEngine)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			logrus.Warnf("Can't find instance manager for node %v, may be deleted", node.Name)
+			return
+		}
+		utilruntime.HandleError(fmt.Errorf("couldn't get instance manager: %v", err))
+		return
+	}
+
+	for _, im := range ims {
+		imc.enqueueInstanceManager(im)
+	}
 }
 
 func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.InstanceManager) error {
