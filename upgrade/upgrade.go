@@ -26,6 +26,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/upgrade/v070to080"
 	"github.com/longhorn/longhorn-manager/upgrade/v100to101"
+	"github.com/longhorn/longhorn-manager/upgrade/v102to110"
 	"github.com/longhorn/longhorn-manager/upgrade/v1alpha1"
 )
 
@@ -231,6 +232,9 @@ func doPodsUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeClient
 		err = errors.Wrap(err, "upgrade Pods failed")
 	}()
 	if err = v100to101.UpgradeInstanceManagerPods(namespace, lhClient, kubeClient); err != nil {
+		return err
+	}
+	if err = v102to110.UpgradeInstanceManagerPods(namespace, lhClient, kubeClient); err != nil {
 		return err
 	}
 	return nil
