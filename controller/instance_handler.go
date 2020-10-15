@@ -49,10 +49,26 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			status.InstanceManagerName = ""
 		}
 	}()
-	if im == nil || im.Status.CurrentState == types.InstanceManagerStateStopped || im.Status.CurrentState == types.InstanceManagerStateError || im.DeletionTimestamp != nil {
+
+	if im == nil || im.Status.CurrentState == types.InstanceManagerStateUnknown {
 		if status.Started {
-			logrus.Warnf("Cannot find the instance manager for the running instance %v, will mark the instance as state ERROR", instanceName)
-			status.CurrentState = types.InstanceStateError
+			logrus.Warnf("The related node %v of instance %v is down or deleted, will mark the instance as state UNKNOWN", spec.NodeID, instanceName)
+			status.CurrentState = types.InstanceStateUnknown
+		} else {
+			status.CurrentState = types.InstanceStateStopped
+			status.CurrentImage = ""
+		}
+		status.IP = ""
+		status.Port = 0
+		return
+	}
+
+	if im.Status.CurrentState == types.InstanceManagerStateStopped || im.Status.CurrentState == types.InstanceManagerStateError || im.DeletionTimestamp != nil {
+		if status.Started {
+			if status.CurrentState != types.InstanceStateError {
+				logrus.Warnf("Cannot find the instance manager for the running instance %v, will mark the instance as state ERROR", instanceName)
+				status.CurrentState = types.InstanceStateError
+			}
 		} else {
 			status.CurrentState = types.InstanceStateStopped
 		}
@@ -82,13 +98,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			status.CurrentState = types.InstanceStateStopped
 		}
 		status.CurrentImage = ""
-		status.IP = ""
-		status.Port = 0
-		return
-	}
-
-	if im.Status.CurrentState == types.InstanceManagerStateUnknown {
-		status.CurrentState = types.InstanceStateUnknown
 		status.IP = ""
 		status.Port = 0
 		return

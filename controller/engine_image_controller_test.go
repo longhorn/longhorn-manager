@@ -103,7 +103,7 @@ func getEngineImageControllerTestTemplate() *EngineImageControllerTestCase {
 	tc := &EngineImageControllerTestCase{
 		node:                newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, ""),
 		volume:              newVolume(TestVolumeName, 2),
-		engine:              newEngine(TestEngineName, TestEngineImage, TestEngineManagerName, TestIP1, 0, true, types.InstanceStateRunning, types.InstanceStateRunning),
+		engine:              newEngine(TestEngineName, TestEngineImage, TestEngineManagerName, TestNode1, TestIP1, 0, true, types.InstanceStateRunning, types.InstanceStateRunning),
 		upgradedEngineImage: newEngineImage(TestUpgradedEngineImage, types.EngineImageStateReady),
 
 		defaultEngineImage: TestEngineImage,
