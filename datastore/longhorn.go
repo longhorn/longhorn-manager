@@ -1265,12 +1265,16 @@ func (s *DataStore) ListEnginesByNode(name string) ([]*longhorn.Engine, error) {
 // GetOwnerReferencesForInstanceManager returns OwnerReference for the given
 // instance Manager name and UID
 func GetOwnerReferencesForInstanceManager(im *longhorn.InstanceManager) []metav1.OwnerReference {
+	controller := true
 	return []metav1.OwnerReference{
 		{
 			APIVersion: longhorn.SchemeGroupVersion.String(),
 			Kind:       types.LonghornKindInstanceManager,
 			Name:       im.Name,
 			UID:        im.UID,
+			// This field is needed so that `kubectl drain` can work without --force flag
+			// See https://github.com/longhorn/longhorn/issues/1286#issuecomment-623283028 for more details
+			Controller: &controller,
 		},
 	}
 }
