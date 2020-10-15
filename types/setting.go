@@ -65,6 +65,7 @@ const (
 	SettingNameMkfsExt4Parameters                   = SettingName("mkfs-ext4-parameters")
 	SettingNamePriorityClass                        = SettingName("priority-class")
 	SettingNameDisableRevisionCounter               = SettingName("disable-revision-counter")
+	SettingNameDisableReplicaRebuild                = SettingName("disable-replica-rebuild")
 )
 
 var (
@@ -97,6 +98,7 @@ var (
 		SettingNameMkfsExt4Parameters,
 		SettingNamePriorityClass,
 		SettingNameDisableRevisionCounter,
+		SettingNameDisableReplicaRebuild,
 	}
 )
 
@@ -150,6 +152,7 @@ var (
 		SettingNameMkfsExt4Parameters:                   SettingDefinitionMkfsExt4Parameters,
 		SettingNamePriorityClass:                        SettingDefinitionPriorityClass,
 		SettingNameDisableRevisionCounter:               SettingDefinitionDisableRevisionCounter,
+		SettingNameDisableReplicaRebuild:                SettingDefinitionDisableReplicaRebuild,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -439,6 +442,15 @@ var (
 		DisplayName: "Disable Revision Counter",
 		Description: "This setting is only for volumes created by UI. By default, this is false meaning there will be a reivision counter file to track every write to the volume. During salvage recovering Longhorn will pick the repica with largest reivision counter as candidate to recover the whole volume. If revision counter is disabled, Longhorn will not track every write to the volume. During the salvage recovering, Longhorn will use the 'volume-head-xxx.img' file last modification time and file size to pick the replica candidate to recover the whole volume.",
 		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "false",
+	}
+	SettingDefinitionDisableReplicaRebuild = SettingDefinition{
+		DisplayName: "Disable Replica Rebuild",
+		Description: "This setting disable replica rebuild cross the whole cluster, eviction and data locality feature won't work if this setting is true. But doesn't have any impact to any current replica rebuild and restore disaster recovery volume.",
+		Category:    SettingCategoryDangerZone,
 		Type:        SettingTypeBool,
 		Required:    true,
 		ReadOnly:    false,
