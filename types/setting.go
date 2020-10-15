@@ -173,7 +173,7 @@ var (
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
 		DisplayName: "Allow Recurring Job While Volume Is Detached",
 		Description: "If this setting is enabled, Longhorn will automatically attaches the volume and takes snapshot/backup when it is the time to do recurring snapshot/backup. \n\n" +
-			"Note that during the time the volume was attached automatically, the volume is not ready for workload. " +
+			"Note that the volume is not ready for workload during the period when the volume was automatically attached. " +
 			"Workload will have to wait until the recurring job finishes.",
 		Category: SettingCategoryBackup,
 		Type:     SettingTypeBool,
