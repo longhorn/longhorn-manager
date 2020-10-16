@@ -44,6 +44,7 @@ const (
 	SettingNameDefaultDataPath                             = SettingName("default-data-path")
 	SettingNameDefaultEngineImage                          = SettingName("default-engine-image")
 	SettingNameDefaultInstanceManagerImage                 = SettingName("default-instance-manager-image")
+	SettingNameDefaultShareManagerImage                    = SettingName("default-share-manager-image")
 	SettingNameReplicaSoftAntiAffinity                     = SettingName("replica-soft-anti-affinity")
 	SettingNameStorageOverProvisioningPercentage           = SettingName("storage-over-provisioning-percentage")
 	SettingNameStorageMinimalAvailablePercentage           = SettingName("storage-minimal-available-percentage")
@@ -83,6 +84,7 @@ var (
 		SettingNameDefaultDataPath,
 		SettingNameDefaultEngineImage,
 		SettingNameDefaultInstanceManagerImage,
+		SettingNameDefaultShareManagerImage,
 		SettingNameReplicaSoftAntiAffinity,
 		SettingNameStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage,
@@ -143,6 +145,7 @@ var (
 		SettingNameDefaultDataPath:                             SettingDefinitionDefaultDataPath,
 		SettingNameDefaultEngineImage:                          SettingDefinitionDefaultEngineImage,
 		SettingNameDefaultInstanceManagerImage:                 SettingDefinitionDefaultInstanceManagerImage,
+		SettingNameDefaultShareManagerImage:                    SettingDefinitionDefaultShareManagerImage,
 		SettingNameReplicaSoftAntiAffinity:                     SettingDefinitionReplicaSoftAntiAffinity,
 		SettingNameStorageOverProvisioningPercentage:           SettingDefinitionStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage:           SettingDefinitionStorageMinimalAvailablePercentage,
@@ -247,6 +250,15 @@ var (
 	SettingDefinitionDefaultInstanceManagerImage = SettingDefinition{
 		DisplayName: "Default Instance Manager Image",
 		Description: "The default instance manager image used by the manager. Can be changed on the manager starting command line only",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    true,
+	}
+
+	SettingDefinitionDefaultShareManagerImage = SettingDefinition{
+		DisplayName: "Default Share Manager Image",
+		Description: "The default share manager image used by the manager. Can be changed on the manager starting command line only",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
 		Required:    true,
