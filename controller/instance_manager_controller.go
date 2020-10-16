@@ -444,11 +444,6 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 		return nil
 	}
 
-	// We only use PDB to protect instance manager of type engine
-	if im.Spec.Type != types.InstanceManagerTypeEngine {
-		return nil
-	}
-
 	unschedulable, err := imc.isNodeUnschedulable()
 	if err != nil {
 		return err
@@ -459,19 +454,22 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 		return err
 	}
 
-	// Delete the PodDisruptionBudget for the engine instance manager if all of the following conditions are meet:
-	// 1. The current node is unschedulable. This is a signal that the node is being cordoned/drained.
-	// 2. There is no engine instance process inside the engine instance manager. This means that all volumes are detached.
-	// 3. There is a PodDisruptionBudget for this engine instance manager.
-	if unschedulable && len(im.Status.Instances) == 0 {
-		if imPDB != nil {
-			return imc.deleteInstanceManagerPDB(im)
+	// When current node is unschedulable, it is a signal that the node is being cordoned/drained.
+	if unschedulable {
+		if imPDB == nil {
+			return nil
 		}
-		return nil
+		canDelete, err := imc.canDeleteInstanceManagerPDB(im)
+		if err != nil {
+			return err
+		}
+		if !canDelete {
+			return nil
+		}
+		return imc.deleteInstanceManagerPDB(im)
 	}
 
-	// Make sure that there is a PodDisruptionBudget to protect this engine instance manager in normal case.
-	// e.g. the current node is schedulable or there exist engine instance process inside the engine instance manager
+	// Make sure that there is a PodDisruptionBudget to protect this instance manager in normal case.
 	if imPDB == nil {
 		return imc.createInstanceManagerPDB(im)
 	}
@@ -493,6 +491,94 @@ func (imc *InstanceManagerController) deleteInstanceManagerPDB(im *longhorn.Inst
 		return err
 	}
 	return nil
+}
+
+func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.InstanceManager) (bool, error) {
+	// If there is no engine instance process inside the engine instance manager,
+	// it means that all volumes are detached.
+	// We can delete the PodDisruptionBudget for the engine instance manager.
+	if im.Spec.Type == types.InstanceManagerTypeEngine {
+		if len(im.Status.Instances) == 0 {
+			return true, nil
+		}
+		return false, nil
+	}
+
+	// make sure that the instance manager is of type replica
+	if im.Spec.Type != types.InstanceManagerTypeReplica {
+		return false, fmt.Errorf("the instance manager %v has invalid type: %v ", im.Name, im.Spec.Type)
+	}
+
+	// Must wait for all volumes detached from the current node first.
+	// This also means that we must wait until the the PDB of engine instance manager on the current node is deleted
+	allVolumeDetached, err := imc.areAllVolumesDetachedFromCurrentNode()
+	if err != nil {
+		return false, err
+	}
+	if !allVolumeDetached {
+		return false, nil
+	}
+
+	allowDrainingNodeWithLastReplica, err := imc.ds.GetSettingAsBool(types.SettingNameAllowNodeDrainWithLastHealthyReplica)
+	if err != nil {
+		return false, err
+	}
+	if allowDrainingNodeWithLastReplica {
+		return true, nil
+	}
+
+	// For each replica process in the replica instance manager,
+	// find out whether there is a healthy replica of the same volume on another node
+	for replicaName := range im.Status.Instances {
+		vol, err := imc.getVolumeFromReplicaName(replicaName)
+		if err != nil {
+			return false, err
+		}
+
+		replicas, err := imc.ds.ListVolumeReplicas(vol.Name)
+		if err != nil {
+			return false, err
+		}
+
+		hasHealthyReplicaOnAnotherNode := false
+		for _, r := range replicas {
+			if r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" && r.Name != replicaName {
+				hasHealthyReplicaOnAnotherNode = true
+				break
+			}
+		}
+
+		if !hasHealthyReplicaOnAnotherNode {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func (imc *InstanceManagerController) getVolumeFromReplicaName(replicaName string) (*longhorn.Volume, error) {
+	replica, err := imc.ds.GetReplica(replicaName)
+	if err != nil {
+		return nil, err
+	}
+	return imc.ds.GetVolume(replica.Spec.VolumeName)
+}
+
+func (imc *InstanceManagerController) areAllVolumesDetachedFromCurrentNode() (bool, error) {
+	engineIMs, err := imc.ds.ListInstanceManagersByNode(imc.controllerID, types.InstanceManagerTypeEngine)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return true, nil
+		}
+		return false, err
+	}
+	for _, engineIM := range engineIMs {
+		if len(engineIM.Status.Instances) > 0 {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 func (imc *InstanceManagerController) createInstanceManagerPDB(im *longhorn.InstanceManager) error {
@@ -562,19 +648,20 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(n *v1.Node) {
 		return
 	}
 
-	// We only enqueue engine instance manager for syncInstanceManagerPDB
-	ims, err := imc.ds.ListInstanceManagersByNode(node.Name, types.InstanceManagerTypeEngine)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			logrus.Warnf("Can't find instance manager for node %v, may be deleted", node.Name)
+	for _, imType := range []types.InstanceManagerType{types.InstanceManagerTypeEngine, types.InstanceManagerTypeReplica} {
+		ims, err := imc.ds.ListInstanceManagersByNode(node.Name, imType)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				logrus.Warnf("Can't find instance manager for node %v, may be deleted", node.Name)
+				return
+			}
+			utilruntime.HandleError(fmt.Errorf("couldn't get instance manager: %v", err))
 			return
 		}
-		utilruntime.HandleError(fmt.Errorf("couldn't get instance manager: %v", err))
-		return
-	}
 
-	for _, im := range ims {
-		imc.enqueueInstanceManager(im)
+		for _, im := range ims {
+			imc.enqueueInstanceManager(im)
+		}
 	}
 }
 

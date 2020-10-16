@@ -27,4 +27,5 @@ data:
     replica-zone-soft-anti-affinity:
     volume-attachment-recovery-policy:
     node-down-pod-deletion-policy:
+    allow-node-drain-with-last-healthy-replica:
     mkfs-ext4-parameters:

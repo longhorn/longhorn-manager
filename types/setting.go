@@ -62,6 +62,7 @@ const (
 	SettingNameReplicaZoneSoftAntiAffinity          = SettingName("replica-zone-soft-anti-affinity")
 	SettingNameVolumeAttachmentRecoveryPolicy       = SettingName("volume-attachment-recovery-policy")
 	SettingNameNodeDownPodDeletionPolicy            = SettingName("node-down-pod-deletion-policy")
+	SettingNameAllowNodeDrainWithLastHealthyReplica = SettingName("allow-node-drain-with-last-healthy-replica")
 	SettingNameMkfsExt4Parameters                   = SettingName("mkfs-ext4-parameters")
 	SettingNamePriorityClass                        = SettingName("priority-class")
 	SettingNameDisableRevisionCounter               = SettingName("disable-revision-counter")
@@ -95,6 +96,7 @@ var (
 		SettingNameReplicaZoneSoftAntiAffinity,
 		SettingNameVolumeAttachmentRecoveryPolicy,
 		SettingNameNodeDownPodDeletionPolicy,
+		SettingNameAllowNodeDrainWithLastHealthyReplica,
 		SettingNameMkfsExt4Parameters,
 		SettingNamePriorityClass,
 		SettingNameDisableRevisionCounter,
@@ -149,6 +151,7 @@ var (
 		SettingNameReplicaZoneSoftAntiAffinity:          SettingDefinitionReplicaZoneSoftAntiAffinity,
 		SettingNameVolumeAttachmentRecoveryPolicy:       SettingDefinitionVolumeAttachmentRecoveryPolicy,
 		SettingNameNodeDownPodDeletionPolicy:            SettingDefinitionNodeDownPodDeletionPolicy,
+		SettingNameAllowNodeDrainWithLastHealthyReplica: SettingDefinitionAllowNodeDrainWithLastHealthyReplica,
 		SettingNameMkfsExt4Parameters:                   SettingDefinitionMkfsExt4Parameters,
 		SettingNamePriorityClass:                        SettingDefinitionPriorityClass,
 		SettingNameDisableRevisionCounter:               SettingDefinitionDisableRevisionCounter,
@@ -423,6 +426,18 @@ var (
 			string(NodeDownPodDeletionPolicyDeleteBothStatefulsetAndDeploymentPod),
 		},
 	}
+
+	SettingDefinitionAllowNodeDrainWithLastHealthyReplica = SettingDefinition{
+		DisplayName: "Allow Node Drain with the Last Healthy Replica",
+		Description: "By default, Longhorn will block `kubectl drain` action on a node if the node contains the last healthy replica of a volume.\n\n" +
+			"If this setting is enabled, Longhorn will **not** block `kubectl drain` action on a node even if the node contains the last healthy replica of a volume.",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
+	}
+
 	SettingDefinitionMkfsExt4Parameters = SettingDefinition{
 		DisplayName: "Custom mkfs.ext4 parameters",
 		Description: "Allows setting additional filesystem creation parameters for ext4. For older host kernels it might be necessary to disable the optional ext4 metadata_csum feature by specifying `-O ^64bit,^metadata_csum`",
@@ -507,6 +522,8 @@ func ValidateInitSetting(name, value string) (err error) {
 	case SettingNameDisableSchedulingOnCordonedNode:
 		fallthrough
 	case SettingNameReplicaZoneSoftAntiAffinity:
+		fallthrough
+	case SettingNameAllowNodeDrainWithLastHealthyReplica:
 		fallthrough
 	case SettingNameUpgradeChecker:
 		if value != "true" && value != "false" {
