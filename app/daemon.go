@@ -27,6 +27,7 @@ var VERSION = "VERSION_PLACEHOLDER"
 const (
 	FlagEngineImage          = "engine-image"
 	FlagInstanceManagerImage = "instance-manager-image"
+	FlagShareManagerImage    = "share-manager-image"
 	FlagManagerImage         = "manager-image"
 	FlagServiceAccount       = "service-account"
 	FlagKubeConfig           = "kube-config"
@@ -43,6 +44,10 @@ func DaemonCmd() cli.Command {
 			cli.StringFlag{
 				Name:  FlagInstanceManagerImage,
 				Usage: "Specify Longhorn instance manager image",
+			},
+			cli.StringFlag{
+				Name:  FlagShareManagerImage,
+				Usage: "Specify Longhorn share manager image",
 			},
 			cli.StringFlag{
 				Name:  FlagManagerImage,
@@ -78,6 +83,10 @@ func startManager(c *cli.Context) error {
 	instanceManagerImage := c.String(FlagInstanceManagerImage)
 	if instanceManagerImage == "" {
 		return fmt.Errorf("require %v", FlagInstanceManagerImage)
+	}
+	shareManagerImage := c.String(FlagShareManagerImage)
+	if shareManagerImage == "" {
+		return fmt.Errorf("require %v", FlagShareManagerImage)
 	}
 	managerImage := c.String(FlagManagerImage)
 	if managerImage == "" {
@@ -137,11 +146,15 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	if err := updateSettingDefaultEngineImage(m, engineImage); err != nil {
+	if err := updateDefaultImageSetting(m, types.SettingNameDefaultEngineImage, engineImage); err != nil {
 		return err
 	}
 
-	if err := updateSettingDefaultInstanceManagerImage(m, instanceManagerImage); err != nil {
+	if err := updateDefaultImageSetting(m, types.SettingNameDefaultInstanceManagerImage, instanceManagerImage); err != nil {
+		return err
+	}
+
+	if err := updateDefaultImageSetting(m, types.SettingNameDefaultShareManagerImage, shareManagerImage); err != nil {
 		return err
 	}
 	if err := updateRegistrySecretName(m); err != nil {
@@ -192,28 +205,14 @@ func environmentCheck() error {
 	return nil
 }
 
-func updateSettingDefaultEngineImage(m *manager.VolumeManager, engineImage string) error {
-	settingDefaultEngineImage, err := m.GetSetting(types.SettingNameDefaultEngineImage)
+func updateDefaultImageSetting(m *manager.VolumeManager, settingName types.SettingName, image string) error {
+	settingDefaultImage, err := m.GetSetting(settingName)
 	if err != nil {
 		return err
 	}
-	if settingDefaultEngineImage.Value != engineImage {
-		settingDefaultEngineImage.Value = engineImage
-		if _, err := m.CreateOrUpdateSetting(settingDefaultEngineImage); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func updateSettingDefaultInstanceManagerImage(m *manager.VolumeManager, instanceManagerImage string) error {
-	settingDefaultInstanceManagerImage, err := m.GetSetting(types.SettingNameDefaultInstanceManagerImage)
-	if err != nil {
-		return err
-	}
-	if settingDefaultInstanceManagerImage.Value != instanceManagerImage {
-		settingDefaultInstanceManagerImage.Value = instanceManagerImage
-		if _, err := m.CreateOrUpdateSetting(settingDefaultInstanceManagerImage); err != nil {
+	if settingDefaultImage.Value != image {
+		settingDefaultImage.Value = image
+		if _, err := m.CreateOrUpdateSetting(settingDefaultImage); err != nil {
 			return err
 		}
 	}
