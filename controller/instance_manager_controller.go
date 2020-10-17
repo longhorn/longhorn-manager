@@ -504,7 +504,7 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 		return false, nil
 	}
 
-	// make sure that the instance manager is of type replica
+	// Make sure that the instance manager is of type replica
 	if im.Spec.Type != types.InstanceManagerTypeReplica {
 		return false, fmt.Errorf("the instance manager %v has invalid type: %v ", im.Name, im.Spec.Type)
 	}
@@ -527,10 +527,18 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 		return true, nil
 	}
 
-	// For each replica process in the replica instance manager,
+	replicasOnCurrentNode, err := imc.ds.ListReplicasByNodeRO(imc.controllerID)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return true, nil
+		}
+		return false, err
+	}
+
+	// For each replica process in the current node,
 	// find out whether there is a healthy replica of the same volume on another node
-	for replicaName := range im.Status.Instances {
-		vol, err := imc.getVolumeFromReplicaName(replicaName)
+	for _, replica := range replicasOnCurrentNode {
+		vol, err := imc.ds.GetVolume(replica.Spec.VolumeName)
 		if err != nil {
 			return false, err
 		}
@@ -542,7 +550,7 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 
 		hasHealthyReplicaOnAnotherNode := false
 		for _, r := range replicas {
-			if r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" && r.Name != replicaName {
+			if r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" && r.Spec.NodeID != imc.controllerID {
 				hasHealthyReplicaOnAnotherNode = true
 				break
 			}
@@ -554,14 +562,6 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 	}
 
 	return true, nil
-}
-
-func (imc *InstanceManagerController) getVolumeFromReplicaName(replicaName string) (*longhorn.Volume, error) {
-	replica, err := imc.ds.GetReplica(replicaName)
-	if err != nil {
-		return nil, err
-	}
-	return imc.ds.GetVolume(replica.Spec.VolumeName)
 }
 
 func (imc *InstanceManagerController) areAllVolumesDetachedFromCurrentNode() (bool, error) {

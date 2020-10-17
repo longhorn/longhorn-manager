@@ -1129,8 +1129,7 @@ func getNodeSelector(nodeName string) (labels.Selector, error) {
 	})
 }
 
-// ListReplicasByNode gets a list of Node by LonghornNodeKey name for the given
-// namespace. Returns an object maps to the DiskID
+// ListReplicasByNode gets a map of Replicas on the node Name for the given namespace.
 func (s *DataStore) ListReplicasByNode(name string) (map[string][]*longhorn.Replica, error) {
 	nodeSelector, err := getNodeSelector(name)
 	if err != nil {
@@ -1149,6 +1148,17 @@ func (s *DataStore) ListReplicasByNode(name string) (map[string][]*longhorn.Repl
 		replicaDiskMap[replica.Spec.DiskID] = append(replicaDiskMap[replica.Spec.DiskID], replica.DeepCopy())
 	}
 	return replicaDiskMap, nil
+}
+
+// ListReplicasByNodeRO returns a list of all Replicas on node Name for the given namespace,
+// the list contains direct references to the internal cache objects and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) ListReplicasByNodeRO(name string) ([]*longhorn.Replica, error) {
+	nodeSelector, err := getNodeSelector(name)
+	if err != nil {
+		return nil, err
+	}
+	return s.rLister.Replicas(s.namespace).List(nodeSelector)
 }
 
 func tagNodeLabel(nodeID string, obj runtime.Object) error {
