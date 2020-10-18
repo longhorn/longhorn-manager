@@ -51,6 +51,11 @@ type Volume struct {
 	KubernetesStatus types.KubernetesStatus     `json:"kubernetesStatus"`
 	Ready            bool                       `json:"ready"`
 
+	Share         bool             `json:"share"`
+	ShareManager  string           `json:"shareManager"`
+	ShareEndpoint string           `json:"shareEndpoint"`
+	ShareState    types.ShareState `json:"shareState"`
+
 	Replicas      []Replica       `json:"replicas"`
 	Controllers   []Controller    `json:"controllers"`
 	BackupStatus  []BackupStatus  `json:"backupStatus"`
@@ -830,6 +835,9 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		})
 	}
 
+	requiresSharedAccess := v.Spec.Share
+	isShareReady := v.Status.ShareState == types.ShareStateReady && v.Status.ShareEndpoint != ""
+
 	// The volume is not ready for workloads if:
 	//   1. It's auto attached.
 	//   2. It fails to schedule replicas during the volume creation,
@@ -837,12 +845,14 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	//      In other cases, scheduling failure only happens when the volume is attached.
 	//   3. It's faulted.
 	//   4. It's restore pending.
+	//   5. It's a shared volume, where the share is not yet available
 	ready := true
 	scheduledCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled)
 	if (v.Spec.NodeID == "" && v.Status.State != types.VolumeStateDetached) ||
 		(v.Status.State == types.VolumeStateDetached && scheduledCondition.Status != types.ConditionStatusTrue) ||
 		v.Status.Robustness == types.VolumeRobustnessFaulted ||
-		v.Status.RestoreRequired {
+		v.Status.RestoreRequired ||
+		(requiresSharedAccess && !isShareReady) {
 		ready = false
 	}
 
@@ -878,6 +888,11 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		RestoreRequired:         v.Status.RestoreRequired,
 		RevisionCounterDisabled: v.Spec.RevisionCounterDisabled,
 		Ready:                   ready,
+
+		Share:         v.Spec.Share,
+		ShareManager:  v.Status.ShareManager,
+		ShareEndpoint: v.Status.ShareEndpoint,
+		ShareState:    v.Status.ShareState,
 
 		Conditions:       v.Status.Conditions,
 		KubernetesStatus: v.Status.KubernetesStatus,
