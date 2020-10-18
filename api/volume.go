@@ -155,6 +155,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 
 	v, err := s.m.Create(volume.Name, &types.VolumeSpec{
 		Size:                    size,
+		Share:                   volume.Share,
 		Frontend:                volume.Frontend,
 		FromBackup:              volume.FromBackup,
 		NumberOfReplicas:        volume.NumberOfReplicas,
