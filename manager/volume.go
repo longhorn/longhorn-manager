@@ -247,6 +247,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		},
 		Spec: types.VolumeSpec{
 			Size:                    size,
+			Share:                   spec.Share,
 			Frontend:                spec.Frontend,
 			EngineImage:             defaultEngineImage,
 			FromBackup:              spec.FromBackup,
@@ -336,6 +337,11 @@ func (m *VolumeManager) Detach(name string) (v *longhorn.Volume, err error) {
 	}
 	if v.Status.State != types.VolumeStateAttached && v.Status.State != types.VolumeStateAttaching {
 		return nil, fmt.Errorf("invalid state to detach %v: %v", v.Name, v.Status.State)
+	}
+
+	// don't detach shared volumes, let the share manager deal with that
+	if v.Spec.Share {
+		return v, nil
 	}
 
 	oldNodeID := v.Spec.NodeID
