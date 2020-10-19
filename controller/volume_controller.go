@@ -864,7 +864,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 	}
 
-	if err := vc.reconcileVolumeSize(v, e, rs, allScheduled); err != nil {
+	if err := vc.reconcileVolumeSize(v, e, rs); err != nil {
 		return err
 	}
 
@@ -1638,7 +1638,7 @@ func (vc *VolumeController) checkAndInitVolumeRestore(v *longhorn.Volume) error 
 	return nil
 }
 
-func (vc *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, allScheduled bool) error {
+func (vc *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
 	log := getLoggerForVolume(vc.logger, v)
 
 	if e == nil || rs == nil {
