@@ -29,3 +29,4 @@ data:
     node-down-pod-deletion-policy:
     allow-node-drain-with-last-healthy-replica:
     mkfs-ext4-parameters:
+    disable-replica-rebuild:
