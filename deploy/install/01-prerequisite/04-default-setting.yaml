@@ -32,3 +32,4 @@ data:
     disable-replica-rebuild:
     disable-revision-counter:
     system-managed-pods-image-pull-policy:
+    allow-volume-creation-with-degraded-availability:
