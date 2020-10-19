@@ -302,6 +302,10 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool) (v *lo
 		return nil, fmt.Errorf("volume %v is restoring data", name)
 	}
 
+	if v.Status.RestoreRequired {
+		return nil, fmt.Errorf("volume %v is pending restoring", name)
+	}
+
 	// already desired to be attached
 	if v.Spec.NodeID != "" {
 		if v.Spec.NodeID != nodeID {
