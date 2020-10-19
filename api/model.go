@@ -832,11 +832,13 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	//      in which case scheduling failure will happen when the volume is detached.
 	//      In other cases, scheduling failure only happens when the volume is attached.
 	//   3. It's faulted.
+	//   4. It's restore pending.
 	ready := true
 	scheduledCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled)
 	if (v.Spec.NodeID == "" && v.Status.State != types.VolumeStateDetached) ||
 		(v.Status.State == types.VolumeStateDetached && scheduledCondition.Status != types.ConditionStatusTrue) ||
-		v.Status.Robustness == types.VolumeRobustnessFaulted {
+		v.Status.Robustness == types.VolumeRobustnessFaulted ||
+		v.Status.RestoreRequired {
 		ready = false
 	}
 
