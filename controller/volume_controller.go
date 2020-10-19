@@ -843,6 +843,25 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	if allScheduled {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			types.VolumeConditionTypeScheduled, types.ConditionStatusTrue, "", "")
+	} else if v.Status.CurrentNodeID == "" {
+		allowCreateDegraded, err := vc.ds.GetSettingAsBool(types.SettingNameAllowVolumeCreationWithDegradedAvailability)
+		if err != nil {
+			return err
+		}
+		if allowCreateDegraded {
+			atLeastOneReplicaAvailable := false
+			for _, r := range rs {
+				if r.Spec.NodeID != "" && r.Spec.FailedAt == "" {
+					atLeastOneReplicaAvailable = true
+					break
+				}
+			}
+			if atLeastOneReplicaAvailable {
+				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+					types.VolumeConditionTypeScheduled, types.ConditionStatusTrue, "",
+					"Reset schedulable due to allow volume creation with degraded availability")
+			}
+		}
 	}
 
 	if err := vc.reconcileVolumeSize(v, e, rs, allScheduled); err != nil {
@@ -1152,7 +1171,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 		}
 		if len(replicaAddressMap) == 0 {
-			return fmt.Errorf("no healthy replica for starting")
+			return fmt.Errorf("no healthy or scheduled replica for starting")
 		}
 
 		if e.Spec.NodeID != "" && e.Spec.NodeID != v.Status.CurrentNodeID {
