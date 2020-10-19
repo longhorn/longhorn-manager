@@ -30,3 +30,4 @@ data:
     allow-node-drain-with-last-healthy-replica:
     mkfs-ext4-parameters:
     disable-replica-rebuild:
+    disable-revision-counter:
