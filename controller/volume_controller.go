@@ -813,7 +813,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		rs[r.Name] = r
 	}
 
-	allScheduled := true
+	scheduled := true
 	for _, r := range rs {
 		// check whether the replica need to be scheduled
 		if r.Spec.NodeID != "" {
@@ -835,12 +835,12 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 					types.VolumeConditionTypeScheduled, types.ConditionStatusFalse,
 					types.VolumeConditionReasonLocalReplicaSchedulingFailure, "")
 			}
-			allScheduled = false
+			scheduled = false
 		} else {
 			rs[r.Name] = scheduledReplica
 		}
 	}
-	if allScheduled {
+	if scheduled {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			types.VolumeConditionTypeScheduled, types.ConditionStatusTrue, "", "")
 	} else if v.Status.CurrentNodeID == "" {
@@ -860,6 +860,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 					types.VolumeConditionTypeScheduled, types.ConditionStatusTrue, "",
 					"Reset schedulable due to allow volume creation with degraded availability")
+				scheduled = true
 			}
 		}
 	}
@@ -868,7 +869,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		return err
 	}
 
-	if err := vc.checkForAutoAttachment(v, e, rs, allScheduled); err != nil {
+	if err := vc.checkForAutoAttachment(v, e, rs, scheduled); err != nil {
 		return err
 	}
 	if err := vc.checkForAutoDetachment(v, e, rs); err != nil {
@@ -1666,7 +1667,7 @@ func (vc *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.
 	return nil
 }
 
-func (vc *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, allScheduled bool) error {
+func (vc *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, scheduled bool) error {
 	if v.Spec.NodeID != "" || v.Status.CurrentNodeID != "" {
 		return nil
 	}
@@ -1678,7 +1679,7 @@ func (vc *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longho
 		return nil
 	}
 	// It's meaningless to do auto attachment if the volume scheduling fails
-	if !allScheduled {
+	if !scheduled {
 		return nil
 	}
 
