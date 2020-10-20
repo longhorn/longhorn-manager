@@ -67,6 +67,7 @@ const (
 	SettingNamePriorityClass                        = SettingName("priority-class")
 	SettingNameDisableRevisionCounter               = SettingName("disable-revision-counter")
 	SettingNameDisableReplicaRebuild                = SettingName("disable-replica-rebuild")
+	SettingNameSystemManagedPodsImagePullPolicy     = SettingName("system-managed-pods-image-pull-policy")
 )
 
 var (
@@ -101,6 +102,7 @@ var (
 		SettingNamePriorityClass,
 		SettingNameDisableRevisionCounter,
 		SettingNameDisableReplicaRebuild,
+		SettingNameSystemManagedPodsImagePullPolicy,
 	}
 )
 
@@ -156,6 +158,7 @@ var (
 		SettingNamePriorityClass:                        SettingDefinitionPriorityClass,
 		SettingNameDisableRevisionCounter:               SettingDefinitionDisableRevisionCounter,
 		SettingNameDisableReplicaRebuild:                SettingDefinitionDisableReplicaRebuild,
+		SettingNameSystemManagedPodsImagePullPolicy:     SettingDefinitionSystemManagedPodsImagePullPolicy,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -471,6 +474,22 @@ var (
 		ReadOnly:    false,
 		Default:     "false",
 	}
+
+	SettingDefinitionSystemManagedPodsImagePullPolicy = SettingDefinition{
+		DisplayName: "System Pod Image Pull Policy",
+		Description: "This setting defines the Image Pull Policy of Longhorn system managed pods, e.g. instance manager, engine image, CSI driver, etc. " +
+			"The new Image Pull Policy will only apply after the system managed pods restart.",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		Default:  string(SystemManagedPodsImagePullPolicyIfNotPresent),
+		Choices: []string{
+			string(SystemManagedPodsImagePullPolicyIfNotPresent),
+			string(SystemManagedPodsImagePullPolicyNever),
+			string(SystemManagedPodsImagePullPolicyAlways),
+		},
+	}
 )
 
 type VolumeAttachmentRecoveryPolicy string
@@ -488,6 +507,14 @@ const (
 	NodeDownPodDeletionPolicyDeleteStatefulSetPod                  = NodeDownPodDeletionPolicy("delete-statefulset-pod")
 	NodeDownPodDeletionPolicyDeleteDeploymentPod                   = NodeDownPodDeletionPolicy("delete-deployment-pod")
 	NodeDownPodDeletionPolicyDeleteBothStatefulsetAndDeploymentPod = NodeDownPodDeletionPolicy("delete-both-statefulset-and-deployment-pod")
+)
+
+type SystemManagedPodsImagePullPolicy string
+
+const (
+	SystemManagedPodsImagePullPolicyNever        = SystemManagedPodsImagePullPolicy("never")
+	SystemManagedPodsImagePullPolicyIfNotPresent = SystemManagedPodsImagePullPolicy("if-not-present")
+	SystemManagedPodsImagePullPolicyAlways       = SystemManagedPodsImagePullPolicy("always")
 )
 
 func ValidateInitSetting(name, value string) (err error) {
@@ -513,6 +540,8 @@ func ValidateInitSetting(name, value string) (err error) {
 		if len(findStr) != 0 {
 			return fmt.Errorf("value %s, contains %v", value, strings.Join(findStr, " or "))
 		}
+
+	// boolean
 	case SettingNameCreateDefaultDiskLabeledNodes:
 		fallthrough
 	case SettingNameAllowRecurringJobWhileVolumeDetached:
@@ -529,6 +558,7 @@ func ValidateInitSetting(name, value string) (err error) {
 		if value != "true" && value != "false" {
 			return fmt.Errorf("value %v of setting %v should be true or false", value, sName)
 		}
+
 	case SettingNameStorageOverProvisioningPercentage:
 		if _, err := strconv.Atoi(value); err != nil {
 			return fmt.Errorf("value %v is not a number", value)
@@ -571,18 +601,16 @@ func ValidateInitSetting(name, value string) (err error) {
 		if _, err = UnmarshalTolerations(value); err != nil {
 			return fmt.Errorf("the value of %v is invalid: %v", sName, err)
 		}
+
+	// multi-choices
 	case SettingNameVolumeAttachmentRecoveryPolicy:
-		var choices = SettingDefinitions[SettingNameVolumeAttachmentRecoveryPolicy].Choices
-		if !isValidChoice(choices, value) {
-			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, choices)
-		}
+		fallthrough
 	case SettingNameNodeDownPodDeletionPolicy:
-		var choices = SettingDefinitions[SettingNameNodeDownPodDeletionPolicy].Choices
-		if !isValidChoice(choices, value) {
-			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, choices)
-		}
+		fallthrough
 	case SettingNameDefaultDataLocality:
-		var choices = SettingDefinitions[SettingNameDefaultDataLocality].Choices
+		fallthrough
+	case SettingNameSystemManagedPodsImagePullPolicy:
+		choices := SettingDefinitions[sName].Choices
 		if !isValidChoice(choices, value) {
 			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, choices)
 		}

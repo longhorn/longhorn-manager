@@ -53,7 +53,9 @@ func getCommonService(commonName, namespace string) *v1.Service {
 	}
 }
 
-func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32, tolerations []v1.Toleration, priorityClass, registrySecret string) *appsv1.Deployment {
+func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32,
+	tolerations []v1.Toleration, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *appsv1.Deployment {
+
 	labels := map[string]string{
 		"app": commonName,
 	}
@@ -81,7 +83,7 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 							Name:            commonName,
 							Image:           image,
 							Args:            args,
-							ImagePullPolicy: v1.PullIfNotPresent,
+							ImagePullPolicy: imagePullPolicy,
 							Env: []v1.EnvVar{
 								{
 									Name:  "ADDRESS",

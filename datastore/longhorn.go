@@ -1240,6 +1240,24 @@ func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error
 	return false, fmt.Errorf("The %v setting value couldn't be converted to bool, value is %v ", string(settingName), value)
 }
 
+// GetSettingImagePullPolicy get the setting and return one of Kubernetes ImagePullPolicy definition
+// Returns error if the ImagePullPolicy is invalid
+func (s *DataStore) GetSettingImagePullPolicy() (corev1.PullPolicy, error) {
+	ipp, err := s.GetSetting(types.SettingNameSystemManagedPodsImagePullPolicy)
+	if err != nil {
+		return "", err
+	}
+	switch ipp.Value {
+	case string(types.SystemManagedPodsImagePullPolicyNever):
+		return corev1.PullNever, nil
+	case string(types.SystemManagedPodsImagePullPolicyIfNotPresent):
+		return corev1.PullIfNotPresent, nil
+	case string(types.SystemManagedPodsImagePullPolicyAlways):
+		return corev1.PullAlways, nil
+	}
+	return "", fmt.Errorf("invalid image pull policy %v", ipp.Value)
+}
+
 // ResetMonitoringEngineStatus clean and update Engine status
 func (s *DataStore) ResetMonitoringEngineStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
 	e.Status.Endpoint = ""

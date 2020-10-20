@@ -31,3 +31,4 @@ data:
     mkfs-ext4-parameters:
     disable-replica-rebuild:
     disable-revision-counter:
+    system-managed-pods-image-pull-policy:
