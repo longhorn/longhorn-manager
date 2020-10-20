@@ -9,6 +9,7 @@ import (
 	"github.com/urfave/cli"
 
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/version"
@@ -222,6 +223,23 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 	}
 	registrySecret := registrySecretSetting.Value
 
+	imagePullPolicySetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameSystemManagedPodsImagePullPolicy), metav1.GetOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to get image pull policy setting before starting CSI driver")
+	}
+
+	var imagePullPolicy v1.PullPolicy
+	switch imagePullPolicySetting.Value {
+	case string(types.SystemManagedPodsImagePullPolicyNever):
+		imagePullPolicy = v1.PullNever
+	case string(types.SystemManagedPodsImagePullPolicyIfNotPresent):
+		imagePullPolicy = v1.PullIfNotPresent
+	case string(types.SystemManagedPodsImagePullPolicyAlways):
+		imagePullPolicy = v1.PullAlways
+	default:
+		return fmt.Errorf("invalid image pull policy %v", imagePullPolicySetting.Value)
+	}
+
 	if rootDir == "" {
 		var err error
 		rootDir, err = getProcArg(kubeClient, managerImage, serviceAccountName, ArgKubeletRootDir, tolerations, priorityClass, registrySecret)
@@ -253,31 +271,31 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount, tolerations, priorityClass, registrySecret)
+	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount, tolerations, priorityClass, registrySecret, imagePullPolicy)
 	if err := attacherDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, rootDir, csiProvisionerReplicaCount, tolerations, priorityClass, registrySecret)
+	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, rootDir, csiProvisionerReplicaCount, tolerations, priorityClass, registrySecret, imagePullPolicy)
 	if err := provisionerDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
 	if volumeExpansionEnabled {
-		resizerDeployment := csi.NewResizerDeployment(namespace, serviceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, tolerations, priorityClass, registrySecret)
+		resizerDeployment := csi.NewResizerDeployment(namespace, serviceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, tolerations, priorityClass, registrySecret, imagePullPolicy)
 		if err := resizerDeployment.Deploy(kubeClient); err != nil {
 			return err
 		}
 	}
 
 	if snapshotSupportEnabled {
-		snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, tolerations, priorityClass, registrySecret)
+		snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, tolerations, priorityClass, registrySecret, imagePullPolicy)
 		if err := snapshotterDeployment.Deploy(kubeClient); err != nil {
 			return err
 		}
 	}
 
-	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, managerImage, managerURL, rootDir, tolerations, priorityClass, registrySecret)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, managerImage, managerURL, rootDir, tolerations, priorityClass, registrySecret, imagePullPolicy)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}

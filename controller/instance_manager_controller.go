@@ -731,6 +731,11 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		return nil, err
 	}
 
+	imagePullPolicy, err := imc.ds.GetSettingImagePullPolicy()
+	if err != nil {
+		return nil, err
+	}
+
 	privileged := true
 	podSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -745,7 +750,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 			Containers: []v1.Container{
 				{
 					Image:           im.Spec.Image,
-					ImagePullPolicy: v1.PullIfNotPresent,
+					ImagePullPolicy: imagePullPolicy,
 					LivenessProbe: &v1.Probe{
 						Handler: v1.Handler{
 							Exec: &v1.ExecAction{

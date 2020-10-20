@@ -55,7 +55,9 @@ type AttacherDeployment struct {
 	deployment *appsv1.Deployment
 }
 
-func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string, replicaCount int, tolerations []v1.Toleration, priorityClass, registrySecret string) *AttacherDeployment {
+func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string, replicaCount int, tolerations []v1.Toleration,
+	priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *AttacherDeployment {
+
 	service := getCommonService(types.CSIAttacherName, namespace)
 
 	deployment := getCommonDeployment(
@@ -74,6 +76,7 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 		tolerations,
 		priorityClass,
 		registrySecret,
+		imagePullPolicy,
 	)
 
 	return &AttacherDeployment{
@@ -115,7 +118,9 @@ type ProvisionerDeployment struct {
 	deployment *appsv1.Deployment
 }
 
-func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootDir string, replicaCount int, tolerations []v1.Toleration, priorityClass, registrySecret string) *ProvisionerDeployment {
+func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootDir string, replicaCount int, tolerations []v1.Toleration,
+	priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *ProvisionerDeployment {
+
 	service := getCommonService(types.CSIProvisionerName, namespace)
 
 	deployment := getCommonDeployment(
@@ -135,6 +140,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 		tolerations,
 		priorityClass,
 		registrySecret,
+		imagePullPolicy,
 	)
 
 	return &ProvisionerDeployment{
@@ -176,7 +182,9 @@ type ResizerDeployment struct {
 	deployment *appsv1.Deployment
 }
 
-func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir string, replicaCount int, tolerations []v1.Toleration, priorityClass, registrySecret string) *ResizerDeployment {
+func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir string, replicaCount int, tolerations []v1.Toleration,
+	priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *ResizerDeployment {
+
 	service := getCommonService(types.CSIResizerName, namespace)
 
 	deployment := getCommonDeployment(
@@ -195,6 +203,7 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 		tolerations,
 		priorityClass,
 		registrySecret,
+		imagePullPolicy,
 	)
 
 	return &ResizerDeployment{
@@ -236,7 +245,8 @@ type SnapshotterDeployment struct {
 	deployment *appsv1.Deployment
 }
 
-func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootDir string, replicaCount int, tolerations []v1.Toleration, priorityClass, registrySecret string) *SnapshotterDeployment {
+func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootDir string, replicaCount int, tolerations []v1.Toleration,
+	priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *SnapshotterDeployment {
 	service := getCommonService(types.CSISnapshotterName, namespace)
 
 	deployment := getCommonDeployment(
@@ -255,6 +265,7 @@ func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootD
 		tolerations,
 		priorityClass,
 		registrySecret,
+		imagePullPolicy,
 	)
 
 	return &SnapshotterDeployment{
@@ -295,7 +306,9 @@ type PluginDeployment struct {
 	daemonSet *appsv1.DaemonSet
 }
 
-func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, managerImage, managerURL, rootDir string, tolerations []v1.Toleration, priorityClass, registrySecret string) *PluginDeployment {
+func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, managerImage, managerURL, rootDir string,
+	tolerations []v1.Toleration, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *PluginDeployment {
+
 	daemonSet := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      types.CSIPluginName,
@@ -346,7 +359,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 									Value: GetInContainerCSISocketFilePath(),
 								},
 							},
-							ImagePullPolicy: v1.PullIfNotPresent,
+							ImagePullPolicy: imagePullPolicy,
 							VolumeMounts: []v1.VolumeMount{
 								{
 									Name:      "socket-dir",

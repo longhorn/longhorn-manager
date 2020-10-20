@@ -296,7 +296,12 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		}
 		registrySecret := registrySecretSetting.Value
 
-		dsSpec := ic.createEngineImageDaemonSetSpec(engineImage, tolerations, priorityClass, registrySecret)
+		imagePullPolicy, err := ic.ds.GetSettingImagePullPolicy()
+		if err != nil {
+			return errors.Wrapf(err, "failed to get system pods image pull policy before creating engine image daemonset")
+		}
+
+		dsSpec := ic.createEngineImageDaemonSetSpec(engineImage, tolerations, priorityClass, registrySecret, imagePullPolicy)
 
 		if err = ic.ds.CreateEngineImageDaemonSet(dsSpec); err != nil {
 			return errors.Wrapf(err, "fail to create daemonset for engine image %v", engineImage.Name)
@@ -549,7 +554,9 @@ func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *met
 	ic.enqueueEngineImage(engineImage)
 }
 
-func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []v1.Toleration, priorityClass, registrySecret string) *appsv1.DaemonSet {
+func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []v1.Toleration,
+	priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *appsv1.DaemonSet {
+
 	dsName := types.GetDaemonSetNameFromEngineImageName(ei.Name)
 	image := ei.Spec.Image
 	cmd := []string{
@@ -593,7 +600,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 							Image:           image,
 							Command:         cmd,
 							Args:            args,
-							ImagePullPolicy: v1.PullIfNotPresent,
+							ImagePullPolicy: imagePullPolicy,
 							VolumeMounts: []v1.VolumeMount{
 								{
 									Name:      "data",
