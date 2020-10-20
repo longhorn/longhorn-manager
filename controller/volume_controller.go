@@ -871,7 +871,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	if err := vc.checkForAutoAttachment(v, e, rs, allScheduled); err != nil {
 		return err
 	}
-	if err := vc.checkForAutoDetachment(v, e, rs, allScheduled); err != nil {
+	if err := vc.checkForAutoDetachment(v, e, rs); err != nil {
 		return err
 	}
 
@@ -1696,7 +1696,7 @@ func (vc *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longho
 	return nil
 }
 
-func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, allScheduled bool) error {
+func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
 	log := getLoggerForVolume(vc.logger, v)
 
 	if v.Spec.NodeID != "" || v.Status.CurrentNodeID == "" || e == nil {
@@ -1731,7 +1731,7 @@ func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longho
 	//   3.1) using the old engine image. And it's still running.
 	//	 3.2) or using the latest engine image without purging snapshots. And
 	//	   3.2.1) it's state `Healthy`;
-	//	   3.2.2) or it's state `Degraded` with schedule failure.
+	//	   3.2.2) or it's state `Degraded` with all the scheduled replica included in the engine
 	cliAPIVersion, err := vc.ds.GetEngineImageCLIAPIVersion(v.Status.CurrentImage)
 	if err != nil {
 		return err
@@ -1743,10 +1743,23 @@ func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longho
 			break
 		}
 	}
-	if e.Spec.RequestedBackupRestore != "" && e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup &&
-		!v.Spec.Standby &&
-		((cliAPIVersion >= engineapi.CLIVersionFour && !isPurging && (v.Status.Robustness == types.VolumeRobustnessHealthy || (v.Status.Robustness == types.VolumeRobustnessDegraded && !allScheduled))) ||
-			(cliAPIVersion < engineapi.CLIVersionFour && (v.Status.Robustness == types.VolumeRobustnessHealthy || v.Status.Robustness == types.VolumeRobustnessDegraded))) {
+	if !(e.Spec.RequestedBackupRestore != "" && e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup &&
+		!v.Spec.Standby) {
+		return nil
+	}
+	allScheduledReplicasIncluded := true
+	for _, r := range rs {
+		// skip unscheduled replicas
+		if r.Spec.NodeID == "" {
+			continue
+		}
+		if mode := e.Status.ReplicaModeMap[r.Name]; mode != types.ReplicaModeRW {
+			allScheduledReplicasIncluded = false
+			break
+		}
+	}
+	if (cliAPIVersion >= engineapi.CLIVersionFour && !isPurging && (v.Status.Robustness == types.VolumeRobustnessHealthy || v.Status.Robustness == types.VolumeRobustnessDegraded) && allScheduledReplicasIncluded) ||
+		(cliAPIVersion < engineapi.CLIVersionFour && (v.Status.Robustness == types.VolumeRobustnessHealthy || v.Status.Robustness == types.VolumeRobustnessDegraded)) {
 		log.Info("Prepare to do auto detachment for restore/DR volume")
 		v.Status.CurrentNodeID = ""
 		v.Status.IsStandby = false

@@ -554,6 +554,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		break
 	}
 	for name, r := range tc.replicas {
+		r.Spec.NodeID = TestNode1
 		r.Spec.HealthyAt = getTestNow()
 		r.Spec.DesireState = types.InstanceStateRunning
 		if name != failedReplicaName {
