@@ -1302,11 +1302,18 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 		ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilded,
 			"Replica %v with Address %v has been rebuilded for volume %v", replica, addr, e.Spec.VolumeName)
 
-		// Call snapshotpurge to clean up system generated snapshot.
-		if err := client.SnapshotPurge(); err != nil {
-			log.WithError(err).Errorf("Failed to start snapshot purge for volume %v", e.Spec.VolumeName)
-			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedStartingSnapshotPurge, "Failed to start snapshot purge for volume %v: %v", e.Spec.VolumeName, err)
-		} else {
+		autoCleanupSystemGeneratedSnapshot, err := ec.ds.GetSettingAsBool(types.SettingNameAutoCleanupSystemGeneratedSnapshot)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get %v setting", types.SettingDefinitionAutoCleanupSystemGeneratedSnapshot)
+			return
+		}
+		// If enabled, call SnapshotPurge to clean up system generated snapshot.
+		if autoCleanupSystemGeneratedSnapshot {
+			if err := client.SnapshotPurge(); err != nil {
+				log.WithError(err).Errorf("Failed to start snapshot purge for volume %v", e.Spec.VolumeName)
+				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedStartingSnapshotPurge, "Failed to start snapshot purge for volume %v: %v", e.Spec.VolumeName, err)
+				return
+			}
 			logrus.Debugf("Started snapshot purge for volume %v after rebuild is done", e.Spec.VolumeName)
 		}
 	}()

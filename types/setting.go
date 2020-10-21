@@ -69,6 +69,7 @@ const (
 	SettingNameDisableReplicaRebuild                       = SettingName("disable-replica-rebuild")
 	SettingNameSystemManagedPodsImagePullPolicy            = SettingName("system-managed-pods-image-pull-policy")
 	SettingNameAllowVolumeCreationWithDegradedAvailability = SettingName("allow-volume-creation-with-degraded-availability")
+	SettingNameAutoCleanupSystemGeneratedSnapshot          = SettingName("auto-cleanup-system-generated-snapshot")
 )
 
 var (
@@ -105,6 +106,7 @@ var (
 		SettingNameDisableReplicaRebuild,
 		SettingNameSystemManagedPodsImagePullPolicy,
 		SettingNameAllowVolumeCreationWithDegradedAvailability,
+		SettingNameAutoCleanupSystemGeneratedSnapshot,
 	}
 )
 
@@ -162,6 +164,7 @@ var (
 		SettingNameDisableReplicaRebuild:                       SettingDefinitionDisableReplicaRebuild,
 		SettingNameSystemManagedPodsImagePullPolicy:            SettingDefinitionSystemManagedPodsImagePullPolicy,
 		SettingNameAllowVolumeCreationWithDegradedAvailability: SettingDefinitionAllowVolumeCreationWithDegradedAvailability,
+		SettingNameAutoCleanupSystemGeneratedSnapshot:          SettingDefinitionAutoCleanupSystemGeneratedSnapshot,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -503,6 +506,16 @@ var (
 		ReadOnly:    false,
 		Default:     "true",
 	}
+
+	SettingDefinitionAutoCleanupSystemGeneratedSnapshot = SettingDefinition{
+		DisplayName: "Automatically Cleanup System Generated Snapshot",
+		Description: "This setting enables Longhorn to automatically cleanup the system generated snapshot after replica rebuild is done.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "true",
+	}
 )
 
 type VolumeAttachmentRecoveryPolicy string
@@ -568,6 +581,8 @@ func ValidateInitSetting(name, value string) (err error) {
 	case SettingNameAllowNodeDrainWithLastHealthyReplica:
 		fallthrough
 	case SettingNameAllowVolumeCreationWithDegradedAvailability:
+		fallthrough
+	case SettingNameAutoCleanupSystemGeneratedSnapshot:
 		fallthrough
 	case SettingNameUpgradeChecker:
 		if value != "true" && value != "false" {

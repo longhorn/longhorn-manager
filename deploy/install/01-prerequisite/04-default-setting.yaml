@@ -33,3 +33,4 @@ data:
     disable-revision-counter:
     system-managed-pods-image-pull-policy:
     allow-volume-creation-with-degraded-availability:
+    auto-cleanup-system-generated-snapshot:
