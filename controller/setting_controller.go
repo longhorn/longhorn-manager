@@ -27,7 +27,6 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
@@ -36,8 +35,6 @@ const (
 )
 
 var (
-	ownerKindSetting = longhorn.SchemeGroupVersion.WithKind("Setting").String()
-
 	upgradeCheckInterval          = time.Hour
 	settingControllerResyncPeriod = time.Hour
 	checkUpgradeURL               = "https://longhorn-upgrade-responder.rancher.io/v1/checkupgrade"
@@ -113,18 +110,9 @@ func NewSettingController(
 	}
 
 	settingInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			setting := obj.(*longhorn.Setting)
-			sc.enqueueSetting(setting)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			curSetting := cur.(*longhorn.Setting)
-			sc.enqueueSetting(curSetting)
-		},
-		DeleteFunc: func(obj interface{}) {
-			setting := obj.(*longhorn.Setting)
-			sc.enqueueSetting(setting)
-		},
+		AddFunc:    sc.enqueueSetting,
+		UpdateFunc: func(old, cur interface{}) { sc.enqueueSetting(cur) },
+		DeleteFunc: sc.enqueueSetting,
 	}, settingControllerResyncPeriod)
 
 	return sc
@@ -563,10 +551,10 @@ func (sc *SettingController) CheckLatestLonghornVersion() (string, error) {
 	return latestVersion, nil
 }
 
-func (sc *SettingController) enqueueSetting(setting *longhorn.Setting) {
-	key, err := controller.KeyFunc(setting)
+func (sc *SettingController) enqueueSetting(obj interface{}) {
+	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", setting, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
 		return
 	}
 

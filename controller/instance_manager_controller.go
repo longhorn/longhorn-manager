@@ -146,70 +146,49 @@ func NewInstanceManagerController(
 	}
 
 	imInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			im := obj.(*longhorn.InstanceManager)
-			imc.enqueueInstanceManager(im)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			curIM := cur.(*longhorn.InstanceManager)
-			imc.enqueueInstanceManager(curIM)
-		},
-		DeleteFunc: func(obj interface{}) {
-			im := obj.(*longhorn.InstanceManager)
-			imc.enqueueInstanceManager(im)
-		},
+		AddFunc:    imc.enqueueInstanceManager,
+		UpdateFunc: func(old, cur interface{}) { imc.enqueueInstanceManager(cur) },
+		DeleteFunc: imc.enqueueInstanceManager,
 	})
 
 	pInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-		FilterFunc: func(obj interface{}) bool {
-			switch t := obj.(type) {
-			case *v1.Pod:
-				return imc.filterInstanceManagerPod(t)
-			default:
-				utilruntime.HandleError(fmt.Errorf("unable to handle object in %T: %T", imc, obj))
-				return false
-			}
-		},
+		FilterFunc: isInstanceManagerPod,
 		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
-				pod := obj.(*v1.Pod)
-				imc.enqueueInstanceManagerPod(pod)
-			},
-			UpdateFunc: func(old, cur interface{}) {
-				newPod := cur.(*v1.Pod)
-				imc.enqueueInstanceManagerPod(newPod)
-			},
-			DeleteFunc: func(obj interface{}) {
-				pod := obj.(*v1.Pod)
-				imc.enqueueInstanceManagerPod(pod)
-			},
+			AddFunc:    imc.enqueueInstanceManagerPod,
+			UpdateFunc: func(old, cur interface{}) { imc.enqueueInstanceManagerPod(cur) },
+			DeleteFunc: imc.enqueueInstanceManagerPod,
 		},
 	})
 
 	kubeNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(oldObj, cur interface{}) {
-			curNode := cur.(*v1.Node)
-			imc.enqueueKubernetesNode(curNode)
-		},
-		DeleteFunc: func(obj interface{}) {
-			node := obj.(*v1.Node)
-			imc.enqueueKubernetesNode(node)
-		},
+		UpdateFunc: func(oldObj, cur interface{}) { imc.enqueueKubernetesNode(cur) },
+		DeleteFunc: imc.enqueueKubernetesNode,
 	})
 
 	return imc
 }
 
-func (imc *InstanceManagerController) filterInstanceManagerPod(obj *v1.Pod) bool {
-	isInstanceManager := false
-	podContainers := obj.Spec.Containers
-	for _, con := range podContainers {
-		if con.Name == "engine-manager" || con.Name == "replica-manager" {
-			isInstanceManager = true
-			break
+func isInstanceManagerPod(obj interface{}) bool {
+	pod, ok := obj.(*v1.Pod)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			return false
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		pod, ok = deletedState.Obj.(*v1.Pod)
+		if !ok {
+			return false
 		}
 	}
-	return isInstanceManager
+
+	for _, con := range pod.Spec.Containers {
+		if con.Name == "engine-manager" || con.Name == "replica-manager" {
+			return true
+		}
+	}
+	return false
 }
 
 func (imc *InstanceManagerController) Run(workers int, stopCh <-chan struct{}) {
@@ -612,7 +591,7 @@ func (imc *InstanceManagerController) getPDBName(im *longhorn.InstanceManager) s
 	return im.Name
 }
 
-func (imc *InstanceManagerController) enqueueInstanceManager(instanceManager *longhorn.InstanceManager) {
+func (imc *InstanceManagerController) enqueueInstanceManager(instanceManager interface{}) {
 	key, err := controller.KeyFunc(instanceManager)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", instanceManager, err))
@@ -622,9 +601,24 @@ func (imc *InstanceManagerController) enqueueInstanceManager(instanceManager *lo
 	imc.queue.AddRateLimited(key)
 }
 
-func (imc *InstanceManagerController) enqueueInstanceManagerPod(pod *v1.Pod) {
-	im, err := imc.ds.GetInstanceManager(pod.Name)
+func (imc *InstanceManagerController) enqueueInstanceManagerPod(obj interface{}) {
+	pod, ok := obj.(*v1.Pod)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
 
+		// use the last known state, to enqueue, dependent objects
+		pod, ok = deletedState.Obj.(*v1.Pod)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	im, err := imc.ds.GetInstanceManager(pod.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			logrus.Warnf("Can't find instance manager for pod %v, may be deleted", pod.Name)
@@ -636,15 +630,31 @@ func (imc *InstanceManagerController) enqueueInstanceManagerPod(pod *v1.Pod) {
 	imc.enqueueInstanceManager(im)
 }
 
-func (imc *InstanceManagerController) enqueueKubernetesNode(n *v1.Node) {
-	node, err := imc.ds.GetNode(n.Name)
+func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
+	kubernetesNode, ok := obj.(*v1.Node)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		kubernetesNode, ok = deletedState.Obj.(*v1.Node)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	node, err := imc.ds.GetNode(kubernetesNode.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// there is no Longhorn node created for the Kubernetes
 			// node (e.g. controller/etcd node). Skip it
 			return
 		}
-		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v: %v ", n.Name, err))
+		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v: %v ", kubernetesNode.Name, err))
 		return
 	}
 

@@ -130,32 +130,14 @@ func NewEngineController(
 	ec.instanceHandler = NewInstanceHandler(ds, ec, ec.eventRecorder)
 
 	engineInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			e := obj.(*longhorn.Engine)
-			ec.enqueueEngine(e)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			curE := cur.(*longhorn.Engine)
-			ec.enqueueEngine(curE)
-		},
-		DeleteFunc: func(obj interface{}) {
-			e := obj.(*longhorn.Engine)
-			ec.enqueueEngine(e)
-		},
+		AddFunc:    ec.enqueueEngine,
+		UpdateFunc: func(old, cur interface{}) { ec.enqueueEngine(cur) },
+		DeleteFunc: ec.enqueueEngine,
 	})
 	instanceManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			im := obj.(*longhorn.InstanceManager)
-			ec.enqueueInstanceManagerChange(im)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			curIM := cur.(*longhorn.InstanceManager)
-			ec.enqueueInstanceManagerChange(curIM)
-		},
-		DeleteFunc: func(obj interface{}) {
-			im := obj.(*longhorn.InstanceManager)
-			ec.enqueueInstanceManagerChange(im)
-		},
+		AddFunc:    ec.enqueueInstanceManagerChange,
+		UpdateFunc: func(old, cur interface{}) { ec.enqueueInstanceManagerChange(cur) },
+		DeleteFunc: ec.enqueueInstanceManagerChange,
 	})
 
 	return ec
@@ -324,17 +306,33 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	return nil
 }
 
-func (ec *EngineController) enqueueEngine(e *longhorn.Engine) {
-	key, err := controller.KeyFunc(e)
+func (ec *EngineController) enqueueEngine(obj interface{}) {
+	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", e, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
 		return
 	}
 
 	ec.queue.AddRateLimited(key)
 }
 
-func (ec *EngineController) enqueueInstanceManagerChange(im *longhorn.InstanceManager) {
+func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
+	im, isInstanceManager := obj.(*longhorn.InstanceManager)
+	if !isInstanceManager {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		im, ok = deletedState.Obj.(*longhorn.InstanceManager)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
 	imType, err := datastore.CheckInstanceManagerType(im)
 	if err != nil || imType != types.InstanceManagerTypeEngine {
 		return

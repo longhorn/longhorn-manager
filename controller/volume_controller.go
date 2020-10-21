@@ -116,40 +116,19 @@ func NewVolumeController(
 	vc.scheduler = scheduler.NewReplicaScheduler(ds)
 
 	volumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			v := obj.(*longhorn.Volume)
-			vc.enqueueVolume(v)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			curV := cur.(*longhorn.Volume)
-			vc.enqueueVolume(curV)
-		},
-		DeleteFunc: func(obj interface{}) {
-			v := obj.(*longhorn.Volume)
-			vc.enqueueVolume(v)
-		},
+		AddFunc:    vc.enqueueVolume,
+		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolume(cur) },
+		DeleteFunc: vc.enqueueVolume,
 	})
 	engineInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			vc.enqueueControlleeChange(obj)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			vc.enqueueControlleeChange(cur)
-		},
-		DeleteFunc: func(obj interface{}) {
-			vc.enqueueControlleeChange(obj)
-		},
+		AddFunc:    vc.enqueueControlleeChange,
+		UpdateFunc: func(old, cur interface{}) { vc.enqueueControlleeChange(cur) },
+		DeleteFunc: vc.enqueueControlleeChange,
 	})
 	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			vc.enqueueControlleeChange(obj)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			vc.enqueueControlleeChange(cur)
-		},
-		DeleteFunc: func(obj interface{}) {
-			vc.enqueueControlleeChange(obj)
-		},
+		AddFunc:    vc.enqueueControlleeChange,
+		UpdateFunc: func(old, cur interface{}) { vc.enqueueControlleeChange(cur) },
+		DeleteFunc: vc.enqueueControlleeChange,
 	})
 	return vc
 }
@@ -1872,10 +1851,10 @@ func (vc *VolumeController) duplicateReplica(r *longhorn.Replica, v *longhorn.Vo
 	return replica
 }
 
-func (vc *VolumeController) enqueueVolume(v *longhorn.Volume) {
-	key, err := controller.KeyFunc(v)
+func (vc *VolumeController) enqueueVolume(obj interface{}) {
+	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", v, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
 		return
 	}
 
@@ -1883,9 +1862,13 @@ func (vc *VolumeController) enqueueVolume(v *longhorn.Volume) {
 }
 
 func (vc *VolumeController) enqueueControlleeChange(obj interface{}) {
+	if deletedState, ok := obj.(*cache.DeletedFinalStateUnknown); ok {
+		obj = deletedState.Obj
+	}
+
 	metaObj, err := meta.Accessor(obj)
 	if err != nil {
-		vc.logger.WithError(err).Warnf("BUG: %v cannot be convert to metav1.Object", obj)
+		vc.logger.WithError(err).Warnf("BUG: cannot convert obj %v to metav1.Object", obj)
 		return
 	}
 	ownerRefs := metaObj.GetOwnerReferences()
