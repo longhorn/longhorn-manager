@@ -107,42 +107,23 @@ func NewKubernetesPVController(
 	}
 
 	persistentVolumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			pv := obj.(*v1.PersistentVolume)
-			kc.enqueuePersistentVolume(pv)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			curPV := cur.(*v1.PersistentVolume)
-			kc.enqueuePersistentVolume(curPV)
-		},
+		AddFunc:    kc.enqueuePersistentVolume,
+		UpdateFunc: func(old, cur interface{}) { kc.enqueuePersistentVolume(cur) },
 		DeleteFunc: func(obj interface{}) {
-			pv := obj.(*v1.PersistentVolume)
-			kc.enqueuePersistentVolume(pv)
-			kc.enqueuePVDeletion(pv)
+			kc.enqueuePersistentVolume(obj)
+			kc.enqueuePVDeletion(obj)
 		},
 	})
 
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			pod := obj.(*v1.Pod)
-			kc.enqueuePodChange(pod)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			curPod := cur.(*v1.Pod)
-			kc.enqueuePodChange(curPod)
-		},
-		DeleteFunc: func(obj interface{}) {
-			pod := obj.(*v1.Pod)
-			kc.enqueuePodChange(pod)
-		},
+		AddFunc:    kc.enqueuePodChange,
+		UpdateFunc: func(old, cur interface{}) { kc.enqueuePodChange(cur) },
+		DeleteFunc: kc.enqueuePodChange,
 	})
 
 	// after volume becomes detached, try to delete the VA of lost node
 	volumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(old, cur interface{}) {
-			curVolume := cur.(*longhorn.Volume)
-			kc.enqueueVolumeChange(curVolume)
-		},
+		UpdateFunc: func(old, cur interface{}) { kc.enqueueVolumeChange(cur) },
 	})
 
 	return kc
@@ -331,46 +312,72 @@ func (kc *KubernetesPVController) getCSIVolumeHandleFromPV(pv *v1.PersistentVolu
 	return pv.Spec.CSI.VolumeHandle
 }
 
-func (kc *KubernetesPVController) enqueuePersistentVolume(pv *v1.PersistentVolume) {
-	key, err := controller.KeyFunc(pv)
+func (kc *KubernetesPVController) enqueuePersistentVolume(obj interface{}) {
+	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", pv, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
 		return
 	}
 	kc.queue.AddRateLimited(key)
 	return
 }
 
-func (kc *KubernetesPVController) enqueuePodChange(pod *v1.Pod) {
-	if _, err := controller.KeyFunc(pod); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", pod, err))
-		return
+func (kc *KubernetesPVController) enqueuePodChange(obj interface{}) {
+	pod, ok := obj.(*v1.Pod)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		pod, ok = deletedState.Obj.(*v1.Pod)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
 	}
 
 	for _, v := range pod.Spec.Volumes {
-		if v.VolumeSource.PersistentVolumeClaim != nil {
-			pvc, err := kc.pvcLister.PersistentVolumeClaims(pod.Namespace).Get(v.VolumeSource.PersistentVolumeClaim.ClaimName)
-			if datastore.ErrorIsNotFound(err) {
-				continue
-			}
-			if err != nil {
-				utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", pvc, err))
+		claim := v.VolumeSource.PersistentVolumeClaim
+		if claim == nil {
+			continue
+		}
+
+		pvc, err := kc.pvcLister.PersistentVolumeClaims(pod.Namespace).Get(claim.ClaimName)
+		if err != nil {
+			if !datastore.ErrorIsNotFound(err) {
+				utilruntime.HandleError(fmt.Errorf("couldn't get pvc %#v: %v", claim.ClaimName, err))
 				return
 			}
-			pvName := pvc.Spec.VolumeName
-			if pvName != "" {
-				kc.queue.AddRateLimited(pvName)
-			}
+			continue
+		}
+
+		if pvName := pvc.Spec.VolumeName; pvName != "" {
+			kc.queue.AddRateLimited(pvName)
 		}
 	}
 	return
 }
 
-func (kc *KubernetesPVController) enqueueVolumeChange(volume *longhorn.Volume) {
-	if _, err := controller.KeyFunc(volume); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", volume, err))
-		return
+func (kc *KubernetesPVController) enqueueVolumeChange(obj interface{}) {
+	volume, ok := obj.(*longhorn.Volume)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		volume, ok = deletedState.Obj.(*longhorn.Volume)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
 	}
+
 	if volume.Status.State != types.VolumeStateDetached {
 		return
 	}
@@ -382,11 +389,23 @@ func (kc *KubernetesPVController) enqueueVolumeChange(volume *longhorn.Volume) {
 	return
 }
 
-func (kc *KubernetesPVController) enqueuePVDeletion(pv *v1.PersistentVolume) {
-	if _, err := controller.KeyFunc(pv); err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", pv, err))
-		return
+func (kc *KubernetesPVController) enqueuePVDeletion(obj interface{}) {
+	pv, ok := obj.(*v1.PersistentVolume)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		pv, ok = deletedState.Obj.(*v1.PersistentVolume)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
 	}
+
 	if pv.Spec.CSI != nil && pv.Spec.CSI.VolumeHandle != "" {
 		kc.pvToVolumeCache.Store(pv.Name, pv.Spec.CSI.VolumeHandle)
 	}

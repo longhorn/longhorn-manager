@@ -97,48 +97,21 @@ func NewReplicaController(
 	rc.instanceHandler = NewInstanceHandler(ds, rc, rc.eventRecorder)
 
 	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			r := obj.(*longhorn.Replica)
-			rc.enqueueReplica(r)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			curR := cur.(*longhorn.Replica)
-			rc.enqueueReplica(curR)
-		},
-		DeleteFunc: func(obj interface{}) {
-			r := obj.(*longhorn.Replica)
-			rc.enqueueReplica(r)
-		},
+		AddFunc:    rc.enqueueReplica,
+		UpdateFunc: func(old, cur interface{}) { rc.enqueueReplica(cur) },
+		DeleteFunc: rc.enqueueReplica,
 	})
 
 	instanceManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			im := obj.(*longhorn.InstanceManager)
-			rc.enqueueInstanceManagerChange(im)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			curIM := cur.(*longhorn.InstanceManager)
-			rc.enqueueInstanceManagerChange(curIM)
-		},
-		DeleteFunc: func(obj interface{}) {
-			im := obj.(*longhorn.InstanceManager)
-			rc.enqueueInstanceManagerChange(im)
-		},
+		AddFunc:    rc.enqueueInstanceManagerChange,
+		UpdateFunc: func(old, cur interface{}) { rc.enqueueInstanceManagerChange(cur) },
+		DeleteFunc: rc.enqueueInstanceManagerChange,
 	})
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			n := obj.(*longhorn.Node)
-			rc.enqueueNodeChange(n)
-		},
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			cur := newObj.(*longhorn.Node)
-			rc.enqueueNodeChange(cur)
-		},
-		DeleteFunc: func(obj interface{}) {
-			n := obj.(*longhorn.Node)
-			rc.enqueueNodeChange(n)
-		},
+		AddFunc:    rc.enqueueNodeChange,
+		UpdateFunc: func(old, cur interface{}) { rc.enqueueNodeChange(cur) },
+		DeleteFunc: rc.enqueueNodeChange,
 	})
 
 	return rc
@@ -336,10 +309,10 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
 }
 
-func (rc *ReplicaController) enqueueReplica(replica *longhorn.Replica) {
-	key, err := controller.KeyFunc(replica)
+func (rc *ReplicaController) enqueueReplica(obj interface{}) {
+	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", replica, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
 		return
 	}
 
@@ -539,7 +512,23 @@ func (rc *ReplicaController) LogInstance(obj interface{}) (*imapi.LogStream, err
 	return c.ProcessLog(r.Name)
 }
 
-func (rc *ReplicaController) enqueueInstanceManagerChange(im *longhorn.InstanceManager) {
+func (rc *ReplicaController) enqueueInstanceManagerChange(obj interface{}) {
+	im, isInstanceManager := obj.(*longhorn.InstanceManager)
+	if !isInstanceManager {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		im, ok = deletedState.Obj.(*longhorn.InstanceManager)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
 	imType, err := datastore.CheckInstanceManagerType(im)
 	if err != nil || imType != types.InstanceManagerTypeReplica {
 		return
@@ -549,7 +538,9 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(im *longhorn.InstanceM
 	rs, err := rc.ds.ListReplicasByNode(im.Spec.NodeID)
 	if err != nil {
 		logrus.Warnf("Failed to list replicas on node %v", im.Spec.NodeID)
+		return
 	}
+
 	for _, rList := range rs {
 		for _, r := range rList {
 			if r.Status.OwnerID == rc.controllerID {
@@ -560,20 +551,29 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(im *longhorn.InstanceM
 	return
 }
 
-func (rc *ReplicaController) enqueueNodeChange(node *longhorn.Node) {
-
-	var evictionDisks []string
-	// If Node evition, add all the disks to evictionDisks.
-	// Otherwise add request eviction disk separately.
-	if node.Spec.EvictionRequested == true {
-		for diskName := range node.Spec.Disks {
-			evictionDisks = append(evictionDisks, diskName)
+func (rc *ReplicaController) enqueueNodeChange(obj interface{}) {
+	node, ok := obj.(*longhorn.Node)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
 		}
-	} else {
-		for diskName, diskSpec := range node.Spec.Disks {
-			if diskSpec.EvictionRequested == true {
-				evictionDisks = append(evictionDisks, diskName)
-			}
+
+		// use the last known state, to enqueue, dependent objects
+		node, ok = deletedState.Obj.(*longhorn.Node)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	// If Node eviction, add all the disks to evictionDisks.
+	// Otherwise add request eviction disk separately.
+	var evictionDisks []string
+	for diskName, diskSpec := range node.Spec.Disks {
+		if node.Spec.EvictionRequested || diskSpec.EvictionRequested {
+			evictionDisks = append(evictionDisks, diskName)
 		}
 	}
 

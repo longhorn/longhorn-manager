@@ -73,63 +73,45 @@ func NewKubernetesNodeController(
 	}
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			n := obj.(*longhorn.Node)
-			knc.enqueueLonghornNode(n)
-		},
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			cur := newObj.(*longhorn.Node)
-			knc.enqueueLonghornNode(cur)
-		},
-		DeleteFunc: func(obj interface{}) {
-			n := obj.(*longhorn.Node)
-			knc.enqueueLonghornNode(n)
-		},
+		AddFunc:    knc.enqueueLonghornNode,
+		UpdateFunc: func(old, cur interface{}) { knc.enqueueLonghornNode(cur) },
+		DeleteFunc: knc.enqueueLonghornNode,
 	})
 
 	settingInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
-				switch t := obj.(type) {
-				case *longhorn.Setting:
-					return knc.filterSettings(t)
-				default:
-					utilruntime.HandleError(fmt.Errorf("unable to handle object in %T: %T", knc, obj))
-					return false
-				}
-			},
+			FilterFunc: isSettingCreateDefaultDiskLabeledNodes,
 			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc: func(obj interface{}) {
-					s := obj.(*longhorn.Setting)
-					knc.enqueueSetting(s)
-				},
-				UpdateFunc: func(oldObj, newObj interface{}) {
-					cur := newObj.(*longhorn.Setting)
-					knc.enqueueSetting(cur)
-				},
+				AddFunc:    knc.enqueueSetting,
+				UpdateFunc: func(old, cur interface{}) { knc.enqueueSetting(cur) },
 			},
 		},
 	)
 
 	kubeNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			cur := newObj.(*v1.Node)
-			knc.enqueueKubernetesNode(cur)
-		},
-		DeleteFunc: func(obj interface{}) {
-			n := obj.(*v1.Node)
-			knc.enqueueKubernetesNode(n)
-		},
+		UpdateFunc: func(old, cur interface{}) { knc.enqueueKubernetesNode(cur) },
+		DeleteFunc: knc.enqueueKubernetesNode,
 	})
 
 	return knc
 }
 
-func (knc *KubernetesNodeController) filterSettings(s *longhorn.Setting) bool {
-	if types.SettingName(s.Name) == types.SettingNameCreateDefaultDiskLabeledNodes {
-		return true
+func isSettingCreateDefaultDiskLabeledNodes(obj interface{}) bool {
+	setting, ok := obj.(*longhorn.Setting)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			return false
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		setting, ok = deletedState.Obj.(*longhorn.Setting)
+		if !ok {
+			return false
+		}
 	}
-	return false
+
+	return types.SettingName(setting.Name) == types.SettingNameCreateDefaultDiskLabeledNodes
 }
 
 func (knc *KubernetesNodeController) Run(workers int, stopCh <-chan struct{}) {
@@ -244,28 +226,44 @@ func (knc *KubernetesNodeController) syncKubernetesNode(key string) (err error) 
 	return nil
 }
 
-func (knc *KubernetesNodeController) enqueueSetting(setting *longhorn.Setting) {
+func (knc *KubernetesNodeController) enqueueSetting(obj interface{}) {
 	node, err := knc.ds.GetKubernetesNode(knc.controllerID)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get nodes %v: %v ", knc.controllerID, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get kubernetes node %v: %v ", knc.controllerID, err))
 		return
 	}
 	knc.enqueueKubernetesNode(node)
 }
 
-func (knc *KubernetesNodeController) enqueueLonghornNode(lhNode *longhorn.Node) {
+func (knc *KubernetesNodeController) enqueueLonghornNode(obj interface{}) {
+	lhNode, ok := obj.(*longhorn.Node)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		lhNode, ok = deletedState.Obj.(*longhorn.Node)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
 	if lhNode.Name != knc.controllerID {
 		return
 	}
 	node, err := knc.ds.GetKubernetesNode(lhNode.Name)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get nodes %v: %v ", knc.controllerID, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get kubernetes node %v: %v ", knc.controllerID, err))
 		return
 	}
 	knc.enqueueKubernetesNode(node)
 }
 
-func (knc *KubernetesNodeController) enqueueKubernetesNode(node *v1.Node) {
+func (knc *KubernetesNodeController) enqueueKubernetesNode(node interface{}) {
 	key, err := controller.KeyFunc(node)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", node, err))

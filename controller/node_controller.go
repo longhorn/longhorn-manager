@@ -106,142 +106,108 @@ func NewNodeController(
 	nc.scheduler = scheduler.NewReplicaScheduler(ds)
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			n := obj.(*longhorn.Node)
-			nc.enqueueNode(n)
-		},
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			cur := newObj.(*longhorn.Node)
-			nc.enqueueNode(cur)
-		},
-		DeleteFunc: func(obj interface{}) {
-			n := obj.(*longhorn.Node)
-			nc.enqueueNode(n)
-		},
+		AddFunc:    nc.enqueueNode,
+		UpdateFunc: func(old, cur interface{}) { nc.enqueueNode(cur) },
+		DeleteFunc: nc.enqueueNode,
 	})
 
 	settingInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
-				switch t := obj.(type) {
-				case *longhorn.Setting:
-					return nc.filterSettings(t)
-				default:
-					utilruntime.HandleError(fmt.Errorf("unable to handle object in %T: %T", nc, obj))
-					return false
-				}
-			},
+			FilterFunc: isSettingStorageMinimalAvailablePercentage,
 			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc: func(obj interface{}) {
-					s := obj.(*longhorn.Setting)
-					nc.enqueueSetting(s)
-				},
-				UpdateFunc: func(oldObj, newObj interface{}) {
-					cur := newObj.(*longhorn.Setting)
-					nc.enqueueSetting(cur)
-				},
+				AddFunc:    nc.enqueueSetting,
+				UpdateFunc: func(old, cur interface{}) { nc.enqueueSetting(cur) },
 			},
 		},
 	)
 
 	replicaInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
-				switch t := obj.(type) {
-				case *longhorn.Replica:
-					return nc.filterReplica(t)
-				default:
-					utilruntime.HandleError(fmt.Errorf("unable to handle object in %T: %T", nc, obj))
-					return false
-				}
-			},
+			FilterFunc: nc.isResponsibleForReplica,
 			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc: func(obj interface{}) {
-					r := obj.(*longhorn.Replica)
-					nc.enqueueReplica(r)
-				},
-				UpdateFunc: func(oldObj, newObj interface{}) {
-					cur := newObj.(*longhorn.Replica)
-					nc.enqueueReplica(cur)
-				},
-				DeleteFunc: func(obj interface{}) {
-					r := obj.(*longhorn.Replica)
-					nc.enqueueReplica(r)
-				},
+				AddFunc:    nc.enqueueReplica,
+				UpdateFunc: func(old, cur interface{}) { nc.enqueueReplica(cur) },
+				DeleteFunc: nc.enqueueReplica,
 			},
 		},
 	)
 
 	podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
-				switch t := obj.(type) {
-				case *v1.Pod:
-					return nc.filterManagerPod(t)
-				default:
-					utilruntime.HandleError(fmt.Errorf("unable to handle object in %T: %T", nc, obj))
-					return false
-				}
-			},
+			FilterFunc: isManagerPod,
 			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc: func(obj interface{}) {
-					pod := obj.(*v1.Pod)
-					nc.enqueueManagerPod(pod)
-				},
-				UpdateFunc: func(oldObj, newObj interface{}) {
-					cur := newObj.(*v1.Pod)
-					nc.enqueueManagerPod(cur)
-				},
-				DeleteFunc: func(obj interface{}) {
-					pod := obj.(*v1.Pod)
-					nc.enqueueManagerPod(pod)
-				},
+				AddFunc:    nc.enqueueManagerPod,
+				UpdateFunc: func(old, cur interface{}) { nc.enqueueManagerPod(cur) },
+				DeleteFunc: nc.enqueueManagerPod,
 			},
 		},
 	)
 
 	kubeNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			cur := newObj.(*v1.Node)
-			nc.enqueueKubernetesNode(cur)
-		},
-		DeleteFunc: func(obj interface{}) {
-			n := obj.(*v1.Node)
-			nc.enqueueKubernetesNode(n)
-		},
+		UpdateFunc: func(old, cur interface{}) { nc.enqueueKubernetesNode(cur) },
+		DeleteFunc: nc.enqueueKubernetesNode,
 	})
 
 	return nc
 }
 
-func (nc *NodeController) filterSettings(s *longhorn.Setting) bool {
-	// filter that only StorageMinimalAvailablePercentage will impact disk status
-	if types.SettingName(s.Name) == types.SettingNameStorageMinimalAvailablePercentage {
-		return true
-	}
-	return false
-}
+func isSettingStorageMinimalAvailablePercentage(obj interface{}) bool {
+	setting, ok := obj.(*longhorn.Setting)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			return false
+		}
 
-func (nc *NodeController) filterReplica(r *longhorn.Replica) bool {
-	// only sync replica running on current node
-	if r.Spec.NodeID == nc.controllerID {
-		return true
-	}
-	return false
-}
-
-func (nc *NodeController) filterManagerPod(obj *v1.Pod) bool {
-	// only filter pod that control by manager
-	controlByManager := false
-	podContainers := obj.Spec.Containers
-	for _, con := range podContainers {
-		if con.Name == "longhorn-manager" {
-			controlByManager = true
-			break
+		// use the last known state, to enqueue, dependent objects
+		setting, ok = deletedState.Obj.(*longhorn.Setting)
+		if !ok {
+			return false
 		}
 	}
 
-	return controlByManager
+	return types.SettingName(setting.Name) == types.SettingNameStorageMinimalAvailablePercentage
+}
+
+func (nc *NodeController) isResponsibleForReplica(obj interface{}) bool {
+	replica, ok := obj.(*longhorn.Replica)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			return false
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		replica, ok = deletedState.Obj.(*longhorn.Replica)
+		if !ok {
+			return false
+		}
+	}
+
+	return replica.Spec.NodeID == nc.controllerID
+}
+
+func isManagerPod(obj interface{}) bool {
+	pod, ok := obj.(*v1.Pod)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			return false
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		pod, ok = deletedState.Obj.(*v1.Pod)
+		if !ok {
+			return false
+		}
+	}
+
+	for _, con := range pod.Spec.Containers {
+		if con.Name == "longhorn-manager" {
+			return true
+		}
+	}
+	return false
 }
 
 func (nc *NodeController) Run(workers int, stopCh <-chan struct{}) {
@@ -491,20 +457,20 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	return nil
 }
 
-func (nc *NodeController) enqueueNode(node *longhorn.Node) {
-	key, err := controller.KeyFunc(node)
+func (nc *NodeController) enqueueNode(obj interface{}) {
+	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", node, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
 		return
 	}
 
 	nc.queue.AddRateLimited(key)
 }
 
-func (nc *NodeController) enqueueSetting(setting *longhorn.Setting) {
+func (nc *NodeController) enqueueSetting(obj interface{}) {
 	nodeList, err := nc.ds.ListNodes()
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get all nodes: %v ", err))
+		utilruntime.HandleError(fmt.Errorf("couldn't list nodes: %v ", err))
 		return
 	}
 
@@ -513,23 +479,38 @@ func (nc *NodeController) enqueueSetting(setting *longhorn.Setting) {
 	}
 }
 
-func (nc *NodeController) enqueueReplica(replica *longhorn.Replica) {
-	node, err := nc.ds.GetNode(replica.Spec.NodeID)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
+func (nc *NodeController) enqueueReplica(obj interface{}) {
+	replica, ok := obj.(*longhorn.Replica)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
 		}
-		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v for replica %v: %v ",
-			replica.Spec.NodeID, replica.Name, err))
+
+		// use the last known state, to enqueue, dependent objects
+		replica, ok = deletedState.Obj.(*longhorn.Replica)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	node, err := nc.ds.GetNode(replica.Spec.NodeID)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			utilruntime.HandleError(fmt.Errorf("couldn't get node %v for replica %v: %v ",
+				replica.Spec.NodeID, replica.Name, err))
+		}
 		return
 	}
 	nc.enqueueNode(node)
 }
 
-func (nc *NodeController) enqueueManagerPod(pod *v1.Pod) {
+func (nc *NodeController) enqueueManagerPod(obj interface{}) {
 	nodeList, err := nc.ds.ListNodes()
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get all nodes: %v ", err))
+		utilruntime.HandleError(fmt.Errorf("couldn't list nodes: %v ", err))
 		return
 	}
 	for _, node := range nodeList {
@@ -537,15 +518,28 @@ func (nc *NodeController) enqueueManagerPod(pod *v1.Pod) {
 	}
 }
 
-func (nc *NodeController) enqueueKubernetesNode(n *v1.Node) {
-	node, err := nc.ds.GetNode(n.Name)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			// there is no Longhorn node created for the Kubernetes
-			// node (e.g. controller/etcd node). Skip it
+func (nc *NodeController) enqueueKubernetesNode(obj interface{}) {
+	kubernetesNode, ok := obj.(*v1.Node)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
 		}
-		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v: %v ", n.Name, err))
+
+		// use the last known state, to enqueue, dependent objects
+		kubernetesNode, ok = deletedState.Obj.(*v1.Node)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	node, err := nc.ds.GetNode(kubernetesNode.Name)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			utilruntime.HandleError(fmt.Errorf("couldn't get longhorn node %v: %v ", kubernetesNode.Name, err))
+		}
 		return
 	}
 	nc.enqueueNode(node)

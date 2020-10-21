@@ -87,18 +87,9 @@ func NewKubernetesPodController(
 	}
 
 	kubePodInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			pod := obj.(*v1.Pod)
-			kc.enqueuePodChange(pod)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			curPod := cur.(*v1.Pod)
-			kc.enqueuePodChange(curPod)
-		},
-		DeleteFunc: func(obj interface{}) {
-			pod := obj.(*v1.Pod)
-			kc.enqueuePodChange(pod)
-		},
+		AddFunc:    kc.enqueuePodChange,
+		UpdateFunc: func(old, cur interface{}) { kc.enqueuePodChange(cur) },
+		DeleteFunc: kc.enqueuePodChange,
 	})
 
 	return kc
@@ -305,11 +296,27 @@ func isOwnedByDeployment(pod *v1.Pod) bool {
 }
 
 // enqueuePodChange determines if the pod requires processing based on whether the pod has a PV created by us (driver.longhorn.io)
-func (kc *KubernetesPodController) enqueuePodChange(pod *v1.Pod) {
-	key, err := controller.KeyFunc(pod)
+func (kc *KubernetesPodController) enqueuePodChange(obj interface{}) {
+	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", pod, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
 		return
+	}
+
+	pod, ok := obj.(*v1.Pod)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		pod, ok = deletedState.Obj.(*v1.Pod)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
 	}
 
 	for _, v := range pod.Spec.Volumes {
@@ -339,7 +346,6 @@ func (kc *KubernetesPodController) enqueuePodChange(pod *v1.Pod) {
 			kc.queue.AddRateLimited(key)
 			break
 		}
-
 	}
 }
 

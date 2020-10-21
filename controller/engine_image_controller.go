@@ -100,46 +100,21 @@ func NewEngineImageController(
 	}
 
 	engineImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			img := obj.(*longhorn.EngineImage)
-			ic.enqueueEngineImage(img)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			curImg := cur.(*longhorn.EngineImage)
-			ic.enqueueEngineImage(curImg)
-		},
-		DeleteFunc: func(obj interface{}) {
-			img := obj.(*longhorn.EngineImage)
-			ic.enqueueEngineImage(img)
-		},
+		AddFunc:    ic.enqueueEngineImage,
+		UpdateFunc: func(old, cur interface{}) { ic.enqueueEngineImage(cur) },
+		DeleteFunc: ic.enqueueEngineImage,
 	})
 
 	volumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			v := obj.(*longhorn.Volume)
-			ic.enqueueVolumes(v)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			oldV := old.(*longhorn.Volume)
-			curV := cur.(*longhorn.Volume)
-			ic.enqueueVolumes(oldV, curV)
-		},
-		DeleteFunc: func(obj interface{}) {
-			v := obj.(*longhorn.Volume)
-			ic.enqueueVolumes(v)
-		},
+		AddFunc:    func(obj interface{}) { ic.enqueueVolumes(obj) },
+		UpdateFunc: func(old, cur interface{}) { ic.enqueueVolumes(old, cur) },
+		DeleteFunc: func(obj interface{}) { ic.enqueueVolumes(obj) },
 	})
 
 	dsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			ic.enqueueControlleeChange(obj)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			ic.enqueueControlleeChange(cur)
-		},
-		DeleteFunc: func(obj interface{}) {
-			ic.enqueueControlleeChange(obj)
-		},
+		AddFunc:    ic.enqueueControlleeChange,
+		UpdateFunc: func(old, cur interface{}) { ic.enqueueControlleeChange(cur) },
+		DeleteFunc: ic.enqueueControlleeChange,
 	})
 
 	return ic
@@ -481,19 +456,35 @@ func (ic *EngineImageController) cleanupExpiredEngineImage(ei *longhorn.EngineIm
 	return nil
 }
 
-func (ic *EngineImageController) enqueueEngineImage(engineImage *longhorn.EngineImage) {
-	key, err := controller.KeyFunc(engineImage)
+func (ic *EngineImageController) enqueueEngineImage(obj interface{}) {
+	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", engineImage, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
 		return
 	}
 
 	ic.queue.AddRateLimited(key)
 }
 
-func (ic *EngineImageController) enqueueVolumes(volumes ...*longhorn.Volume) {
+func (ic *EngineImageController) enqueueVolumes(volumes ...interface{}) {
 	images := map[string]struct{}{}
-	for _, v := range volumes {
+	for _, obj := range volumes {
+		v, isVolume := obj.(*longhorn.Volume)
+		if !isVolume {
+			deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+			if !ok {
+				utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+				continue
+			}
+
+			// use the last known state, to enqueue, dependent objects
+			v, ok = deletedState.Obj.(*longhorn.Volume)
+			if !ok {
+				utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+				continue
+			}
+		}
+
 		if _, ok := images[v.Spec.EngineImage]; !ok {
 			images[v.Spec.EngineImage] = struct{}{}
 		}
@@ -518,6 +509,10 @@ func (ic *EngineImageController) enqueueVolumes(volumes ...*longhorn.Volume) {
 }
 
 func (ic *EngineImageController) enqueueControlleeChange(obj interface{}) {
+	if deletedState, ok := obj.(*cache.DeletedFinalStateUnknown); ok {
+		obj = deletedState.Obj
+	}
+
 	metaObj, err := meta.Accessor(obj)
 	if err != nil {
 		logrus.Warnf("BUG: %v cannot be convert to metav1.Object: %v", obj, err)
