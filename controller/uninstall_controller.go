@@ -83,8 +83,14 @@ func NewUninstallController(
 		stopCh:    stopCh,
 	}
 
-	cacheSyncs := []cache.InformerSynced{}
-	cacheSyncs = append(cacheSyncs, csiDriverInformer.Informer().HasSynced, daemonSetInformer.Informer().HasSynced, deploymentInformer.Informer().HasSynced)
+	csiDriverInformer.Informer().AddEventHandler(c.controlleeHandler())
+	daemonSetInformer.Informer().AddEventHandler(c.namespacedControlleeHandler())
+	deploymentInformer.Informer().AddEventHandler(c.namespacedControlleeHandler())
+	cacheSyncs := []cache.InformerSynced{
+		csiDriverInformer.Informer().HasSynced,
+		daemonSetInformer.Informer().HasSynced,
+		deploymentInformer.Informer().HasSynced,
+	}
 
 	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDEngineName, metav1.GetOptions{}); err == nil {
 		engineInformer.Informer().AddEventHandler(c.controlleeHandler())
@@ -111,11 +117,6 @@ func NewUninstallController(
 		imInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, imInformer.Informer().HasSynced)
 	}
-
-	csiDriverInformer.Informer().AddEventHandler(c.controlleeHandler())
-
-	daemonSetInformer.Informer().AddEventHandler(c.namespacedControlleeHandler())
-	deploymentInformer.Informer().AddEventHandler(c.namespacedControlleeHandler())
 
 	c.cacheSyncs = cacheSyncs
 
@@ -145,12 +146,13 @@ func (c *UninstallController) enqueueControlleeChange() {
 func (c *UninstallController) enqueueNamespacedControlleeChange(obj interface{}) {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get meta for object %#v: %v", obj, err))
-	}
-	if metadata.GetNamespace() != LonghornNamespace {
+		utilruntime.HandleError(fmt.Errorf("couldn't get meta for object %#v: %v", obj, err))
 		return
 	}
-	c.enqueueControlleeChange()
+
+	if metadata.GetNamespace() == LonghornNamespace {
+		c.enqueueControlleeChange()
+	}
 }
 
 func (c *UninstallController) Run() error {
