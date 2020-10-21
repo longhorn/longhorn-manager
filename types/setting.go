@@ -498,7 +498,7 @@ var (
 	}
 
 	SettingDefinitionSystemManagedPodsImagePullPolicy = SettingDefinition{
-		DisplayName: "System Pod Image Pull Policy",
+		DisplayName: "System Managed Pod Image Pull Policy",
 		Description: "This setting defines the Image Pull Policy of Longhorn system managed pods, e.g. instance manager, engine image, CSI driver, etc. " +
 			"The new Image Pull Policy will only apply after the system managed pods restart.",
 		Category: SettingCategoryGeneral,
