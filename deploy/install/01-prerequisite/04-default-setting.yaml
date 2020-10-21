@@ -23,6 +23,7 @@ data:
     priority-class:
     registry-secret:
     auto-salvage:
+    auto-delete-pod-when-volume-detached-unexpectedly:
     disable-scheduling-on-cordoned-node:
     replica-zone-soft-anti-affinity:
     volume-attachment-recovery-policy:

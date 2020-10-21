@@ -57,6 +57,7 @@ const (
 	SettingNameTaintToleration                             = SettingName("taint-toleration")
 	SettingNameCRDAPIVersion                               = SettingName("crd-api-version")
 	SettingNameAutoSalvage                                 = SettingName("auto-salvage")
+	SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly = SettingName("auto-delete-pod-when-volume-detached-unexpectedly")
 	SettingNameRegistrySecret                              = SettingName("registry-secret")
 	SettingNameDisableSchedulingOnCordonedNode             = SettingName("disable-scheduling-on-cordoned-node")
 	SettingNameReplicaZoneSoftAntiAffinity                 = SettingName("replica-zone-soft-anti-affinity")
@@ -94,6 +95,7 @@ var (
 		SettingNameTaintToleration,
 		SettingNameCRDAPIVersion,
 		SettingNameAutoSalvage,
+		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly,
 		SettingNameRegistrySecret,
 		SettingNameDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity,
@@ -152,6 +154,7 @@ var (
 		SettingNameTaintToleration:                             SettingDefinitionTaintToleration,
 		SettingNameCRDAPIVersion:                               SettingDefinitionCRDAPIVersion,
 		SettingNameAutoSalvage:                                 SettingDefinitionAutoSalvage,
+		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly: SettingDefinitionAutoDeletePodWhenVolumeDetachedUnexpectedly,
 		SettingNameRegistrySecret:                              SettingDefinitionRegistrySecret,
 		SettingNameDisableSchedulingOnCordonedNode:             SettingDefinitionDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity:                 SettingDefinitionReplicaZoneSoftAntiAffinity,
@@ -372,6 +375,19 @@ var (
 		Default:     "true",
 	}
 
+	SettingDefinitionAutoDeletePodWhenVolumeDetachedUnexpectedly = SettingDefinition{
+		DisplayName: "Automatically Delete Workload Pod when The Volume Is Detached Unexpectedly",
+		Description: "If enabled, Longhorn will automatically delete the workload pod that is managed by a controller (e.g. deployment, statefulset, daemonset, etc...) when Longhorn volume is detached unexpectedly (e.g. during Kubernetes upgrade, Docker reboot, or network disconnect). " +
+			"By deleting the pod, its controller restarts the pod and Kubernetes handles volume reattachment and remount. \n\n" +
+			"If disabled, Longhorn will not delete the workload pod that is managed by a controller. You will have to manually restart the pod to reattach and remount the volume. \n\n" +
+			"**Note:** This setting doesn't apply to the workload pods that don't have a controller. Longhorn never deletes them.",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "true",
+	}
+
 	SettingDefinitionRegistrySecret = SettingDefinition{
 		DisplayName: "Registry secret",
 		Description: "The Kubernetes Secret name",
@@ -583,6 +599,8 @@ func ValidateInitSetting(name, value string) (err error) {
 	case SettingNameAllowVolumeCreationWithDegradedAvailability:
 		fallthrough
 	case SettingNameAutoCleanupSystemGeneratedSnapshot:
+		fallthrough
+	case SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly:
 		fallthrough
 	case SettingNameUpgradeChecker:
 		if value != "true" && value != "false" {
