@@ -14,6 +14,8 @@ const (
 	EventReasonRebuilding       = "Rebuilding"
 	EventReasonFailedRebuilding = "FailedRebuilding"
 
+	EventReasonFailedStartingSnapshotPurge = "FailedStartingSnapshotPurge"
+
 	EventReasonFailedRestore = "FailedRestore"
 
 	EventReasonFailedExpansion    = "FailedExpansion"
