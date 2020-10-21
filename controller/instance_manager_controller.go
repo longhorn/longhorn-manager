@@ -248,7 +248,12 @@ func (imc *InstanceManagerController) handleErr(err error, key interface{}) {
 }
 
 func getLoggerForInstanceManager(logger logrus.FieldLogger, im *longhorn.InstanceManager) *logrus.Entry {
-	return logger.WithField("instanceManager", im.Name)
+	return logger.WithFields(
+		logrus.Fields{
+			"instanceManager": im.Name,
+			"nodeID":          im.Spec.NodeID,
+		},
+	)
 }
 
 func (imc *InstanceManagerController) syncInstanceManager(key string) (err error) {

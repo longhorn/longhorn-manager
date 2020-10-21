@@ -121,8 +121,8 @@ func (rc *ReplicaController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer rc.queue.ShutDown()
 
-	logrus.Infof("Start Longhorn replica controller")
-	defer logrus.Infof("Shutting down Longhorn replica controller")
+	rc.logger.Info("Start Longhorn replica controller")
+	defer rc.logger.Info("Shutting down Longhorn replica controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn replicas", stopCh, rc.nStoreSynced, rc.rStoreSynced, rc.imStoreSynced) {
 		return
@@ -161,18 +161,25 @@ func (rc *ReplicaController) handleErr(err error, key interface{}) {
 	}
 
 	if rc.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn replica %v: %v", key, err)
+		rc.logger.WithError(err).Warnf("Error syncing Longhorn replica %v", key)
 		rc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Longhorn replica %v out of the queue: %v", key, err)
+	rc.logger.WithError(err).Warnf("Dropping Longhorn replica %v out of the queue", key)
 	rc.queue.Forget(key)
 }
 
 func getLoggerForReplica(logger logrus.FieldLogger, r *longhorn.Replica) *logrus.Entry {
-	return logger.WithField("replica", r.Name)
+	return logger.WithFields(
+		logrus.Fields{
+			"replica":  r.Name,
+			"nodeID":   r.Spec.NodeID,
+			"dataPath": r.Spec.DataPath,
+			"ownerID":  r.Status.OwnerID,
+		},
+	)
 }
 
 // From replica to check Node.Spec.EvictionRequested of the node
@@ -182,8 +189,11 @@ func (rc *ReplicaController) isEvictionRequested(replica *longhorn.Replica) bool
 	if replica.Spec.NodeID == "" {
 		return false
 	}
+
+	log := getLoggerForReplica(rc.logger, replica)
+
 	if isDownOrDeleted, err := rc.ds.IsNodeDownOrDeleted(replica.Spec.NodeID); err != nil {
-		logrus.Warnf("Failed to check if node %v is down or deleted, err %v", replica.Spec.NodeID, err)
+		log.WithError(err).Warn("Failed to check if node is down or deleted")
 		return false
 	} else if isDownOrDeleted {
 		return false
@@ -191,7 +201,7 @@ func (rc *ReplicaController) isEvictionRequested(replica *longhorn.Replica) bool
 
 	node, err := rc.ds.GetNode(replica.Spec.NodeID)
 	if err != nil {
-		logrus.Warnf("Failed to get node %v information err %v", replica.Spec.NodeID, err)
+		log.WithError(err).Warn("Failed to get node information")
 		return false
 	}
 
@@ -209,20 +219,20 @@ func (rc *ReplicaController) isEvictionRequested(replica *longhorn.Replica) bool
 }
 
 func (rc *ReplicaController) UpdateReplicaEvictionStatus(replica *longhorn.Replica) {
+	log := getLoggerForReplica(rc.logger, replica)
+
 	// Check if eviction has been requested on this replica
 	if rc.isEvictionRequested(replica) &&
 		(replica.Status.EvictionRequested == false) {
 		replica.Status.EvictionRequested = true
-		logrus.Debugf("Replica %v has been requested eviction.",
-			replica.Name)
+		log.Debug("Replica has requested eviction")
 	}
 
 	// Check if eviction has been cancelled on this replica
 	if !rc.isEvictionRequested(replica) &&
 		(replica.Status.EvictionRequested == true) {
 		replica.Status.EvictionRequested = false
-		logrus.Debugf("Replica %v has been cancelled eviction.",
-			replica.Name)
+		log.Debug("Replica has cancelled eviction")
 	}
 
 	return
@@ -244,12 +254,15 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	replica, err := rc.ds.GetReplica(name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			logrus.Infof("Longhorn replica %v has been deleted", key)
+			log := rc.logger.WithField("replica", name)
+			log.Info("Replica has been deleted")
 			return nil
 		}
 		return err
 	}
 	dataPath := types.GetReplicaDataPath(replica.Spec.DiskPath, replica.Spec.DataDirectoryName)
+
+	log := getLoggerForReplica(rc.logger, replica)
 
 	if replica.Status.OwnerID != rc.controllerID {
 		if !rc.isResponsibleFor(replica) {
@@ -265,7 +278,9 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			}
 			return err
 		}
-		logrus.Debugf("Replica controller %v picked up %v", rc.controllerID, replica.Name)
+		log.WithField(
+			"controllerID", rc.controllerID,
+		).Debug("Replica controller picked up")
 	}
 
 	if replica.DeletionTimestamp != nil {
@@ -274,8 +289,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 
 		if replica.Spec.NodeID != "" && replica.Spec.NodeID != replica.Status.OwnerID {
-			logrus.Warnf("Node %v down or deleted, can't cleanup replica %v data at %v",
-				replica.Spec.NodeID, replica.Name, dataPath)
+			log.Warn("Node down or deleted, can't cleanup replica data")
 		} else if replica.Spec.NodeID != "" {
 			if replica.Spec.Active && dataPath != "" {
 				// prevent accidentally deletion
@@ -285,9 +299,9 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 				if err := util.RemoveHostDirectoryContent(dataPath); err != nil {
 					return errors.Wrapf(err, "cannot cleanup after replica %v at %v", replica.Name, dataPath)
 				}
-				logrus.Debugf("Cleanup replica %v at %v:%v completed", replica.Name, replica.Spec.NodeID, dataPath)
+				log.Debug("Cleanup replica completed")
 			} else {
-				logrus.Debugf("Didn't cleanup replica %v since it's not the active one for the path %v or the path is empty", replica.Name, dataPath)
+				log.Debug("Didn't cleanup replica since it's not the active one for the path or the path is empty")
 			}
 		}
 
@@ -302,7 +316,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
-			logrus.Debugf("Requeue %v due to conflict: %v", key, err)
+			log.WithError(err).Debugf("Requeue %v due to conflict", key)
 			rc.enqueueReplica(replica)
 			err = nil
 		}
@@ -431,7 +445,8 @@ func (rc *ReplicaController) deleteInstanceWithCLIAPIVersionOne(r *longhorn.Repl
 			pod = nil
 		}
 
-		logrus.Debugf("Prepared to delete old version replica %v with running pod", r.Name)
+		log := getLoggerForReplica(rc.logger, r)
+		log.Debug("Prepared to delete old version replica with running pod")
 		if err := rc.deleteOldReplicaPod(pod, r); err != nil {
 			return err
 		}
@@ -451,11 +466,12 @@ func (rc *ReplicaController) deleteOldReplicaPod(pod *v1.Pod, r *longhorn.Replic
 			deletionDeadline := pod.DeletionTimestamp.Add(time.Duration(*pod.DeletionGracePeriodSeconds) * time.Second)
 			now := time.Now().UTC()
 			if now.After(deletionDeadline) {
-				logrus.Debugf("replica pod %v still exists after grace period %v passed, force deletion: now %v, deadline %v",
-					pod.Name, pod.DeletionGracePeriodSeconds, now, deletionDeadline)
+				log := rc.logger.WithField("pod", pod.Name)
+				log.Debugf("Replica pod still exists after grace period %v passed, force deletion: now %v, deadline %v",
+					pod.DeletionGracePeriodSeconds, now, deletionDeadline)
 				gracePeriod := int64(0)
 				if err := rc.kubeClient.CoreV1().Pods(rc.namespace).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod}); err != nil {
-					logrus.Debugf("failed to force deleting replica pod %v: %v ", pod.Name, err)
+					log.WithError(err).Debug("Failed to force deleting replica pod")
 					return nil
 				}
 			}
@@ -543,7 +559,8 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(obj interface{}) {
 	// replica's NodeID won't change, don't need to check instance manager
 	rs, err := rc.ds.ListReplicasByNode(im.Spec.NodeID)
 	if err != nil {
-		logrus.Warnf("Failed to list replicas on node %v", im.Spec.NodeID)
+		log := getLoggerForInstanceManager(rc.logger, im)
+		log.Warn("Failed to list replicas on node")
 		return
 	}
 
