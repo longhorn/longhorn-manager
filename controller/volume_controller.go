@@ -767,9 +767,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			if v.Spec.NodeID != v.Status.CurrentNodeID {
 				return fmt.Errorf("volume %v has already attached to node %v, but asked to attach to node %v", v.Name, v.Status.CurrentNodeID, v.Spec.NodeID)
 			}
-		} else { // v.Spec.NodeID == ""
-			// users can manually remount the volume and they won't be blocked by this field if remount fails
-			v.Status.RemountRequired = false
 		}
 	}
 
@@ -970,7 +967,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 						// remount the reattached volume later if possible
 						// For the auto-salvaged volume, `v.Status.CurrentNodeID` is empty but `v.Spec.NodeID` shouldn't be empty.
 						v.Status.PendingNodeID = v.Spec.NodeID
-						v.Status.RemountRequired = true
+						v.Status.RemountRequestedAt = vc.nowHandler()
+						msg := fmt.Sprintf("Volume %v requested remount at %v", v.Name, v.Status.RemountRequestedAt)
+						vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonRemount, msg)
 						v.Status.Robustness = types.VolumeRobustnessUnknown
 					}
 				}
@@ -986,9 +985,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		if e.Status.CurrentState == types.InstanceStateError && v.Status.CurrentNodeID != "" {
 			v.Status.PendingNodeID = v.Status.CurrentNodeID
 			// remount the reattached volumes later if necessary
-			v.Status.RemountRequired = true
+			v.Status.RemountRequestedAt = vc.nowHandler()
+			msg := fmt.Sprintf("Volume %v requested remount at %v", v.Name, v.Status.RemountRequestedAt)
+			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonRemount, msg)
 			log.Warn("Engine of volume dead unexpectedly, reattach the volume")
-			msg := fmt.Sprintf("Engine of volume %v dead unexpectedly, reattach the volume", v.Name)
+			msg = fmt.Sprintf("Engine of volume %v dead unexpectedly, reattach the volume", v.Name)
 			vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonDetachedUnexpectly, msg)
 			e.Spec.LogRequested = true
 			for _, r := range rs {
@@ -1220,18 +1221,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				}
 				vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonSucceededExpansion,
 					"Succeeds to expand the volume %v to size %v, will automatically detach it if it's not DR volume", v.Name, e.Status.CurrentSize)
-			}
-		}
-
-		if v.Status.RemountRequired {
-			if err := util.RemountVolume(v.Name); err != nil {
-				msg := fmt.Sprintf("cannot proceed to remount %v on %v: %v", v.Name, v.Spec.NodeID, err)
-				vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonRemount, msg)
-			} else {
-				v.Status.RemountRequired = false
-				log.Infof("Volume remounted on node %v", v.Status.CurrentNodeID)
-				msg := fmt.Sprintf("Volume %v has been remounted on node %v", v.Name, v.Status.CurrentNodeID)
-				vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonRemount, msg)
 			}
 		}
 

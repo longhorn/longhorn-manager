@@ -22,6 +22,8 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 const (
@@ -172,6 +174,10 @@ func (kc *KubernetesPodController) syncHandler(key string) (err error) {
 		return err
 	}
 
+	if err := kc.handlePodDeletionIfVolumeRequestRemount(pod); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -223,6 +229,55 @@ func (kc *KubernetesPodController) handlePodDeletionIfNodeDown(pod *v1.Pod, node
 		return errors.Wrapf(err, "failed to forcefully delete Pod %v on the downed Node %v in handlePodDeletionIfNodeDown", pod.Name, nodeID)
 	}
 	logrus.Infof("%v: Forcefully deleted pod %v on downed node %v", controllerAgentName, pod.Name, nodeID)
+
+	return nil
+}
+
+// handlePodDeletionIfVolumeRequestRemount will delete the pod which is using a volume that has requested remount.
+// By deleting the consuming pod, Kubernetes will recreated them, reattaches, and remounts the volume.
+func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *v1.Pod) error {
+	// Only delete pod which has controller to make sure that the pod will be recreated by its controller
+	if metav1.GetControllerOf(pod) == nil {
+		return nil
+	}
+
+	volumeList, err := kc.getAssociatedVolumes(pod)
+	if err != nil {
+		return err
+	}
+
+	// Only delete pod which has startTime < vol.Status.RemountRequestAt AND timeNow > vol.Status.RemountRequestAt + delayDuration
+	// The delayDuration is to make sure that we don't repeatedly delete the pod too fast
+	// when vol.Status.RemountRequestAt is updated too quickly by volumeController
+	if pod.Status.StartTime == nil {
+		return nil
+	}
+	podStartTime := pod.Status.StartTime.Time
+	for _, vol := range volumeList {
+		if vol.Status.RemountRequestedAt == "" {
+			continue
+		}
+		remountRequestedAt, err := time.Parse(time.RFC3339, vol.Status.RemountRequestedAt)
+		if err != nil {
+			return err
+		}
+
+		timeNow := time.Now()
+		delayDuration := time.Duration(int64(5)) * time.Second
+
+		if podStartTime.Before(remountRequestedAt) && timeNow.After(remountRequestedAt.Add(delayDuration)) {
+			gracePeriod := int64(30)
+			err := kc.kubeClient.CoreV1().Pods(pod.Namespace).Delete(pod.GetName(), &metav1.DeleteOptions{
+				GracePeriodSeconds: &gracePeriod,
+			})
+			if err != nil && !datastore.ErrorIsNotFound(err) {
+				return err
+			}
+			kc.logger.Infof("Deleted pod %v so that Kubernetes will handle remounting volume %v", pod.GetName(), vol.GetName())
+			return nil
+		}
+
+	}
 
 	return nil
 }
@@ -283,4 +338,39 @@ func (kc *KubernetesPodController) enqueuePodChange(pod *v1.Pod) {
 func (kc *KubernetesPodController) getAssociatedPersistentVolume(pvc *v1.PersistentVolumeClaim) (*v1.PersistentVolume, error) {
 	pvName := pvc.Spec.VolumeName
 	return kc.pvLister.Get(pvName)
+}
+
+func (kc *KubernetesPodController) getAssociatedVolumes(pod *v1.Pod) ([]*longhorn.Volume, error) {
+	var volumeList []*longhorn.Volume
+	for _, v := range pod.Spec.Volumes {
+		if v.VolumeSource.PersistentVolumeClaim == nil {
+			continue
+		}
+
+		pvc, err := kc.pvcLister.PersistentVolumeClaims(pod.Namespace).Get(v.VolumeSource.PersistentVolumeClaim.ClaimName)
+		if datastore.ErrorIsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		pv, err := kc.getAssociatedPersistentVolume(pvc)
+		if datastore.ErrorIsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == types.LonghornDriverName {
+			vol, err := kc.ds.GetVolume(pv.GetName())
+			if err != nil {
+				return nil, err
+			}
+			volumeList = append(volumeList, vol)
+		}
+	}
+
+	return volumeList, nil
 }
