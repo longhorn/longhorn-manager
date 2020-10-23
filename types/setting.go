@@ -68,6 +68,7 @@ const (
 	SettingNamePriorityClass                               = SettingName("priority-class")
 	SettingNameDisableRevisionCounter                      = SettingName("disable-revision-counter")
 	SettingNameDisableReplicaRebuild                       = SettingName("disable-replica-rebuild")
+	SettingNameReplicaReplenishmentWaitInterval            = SettingName("replica-replenishment-wait-interval")
 	SettingNameSystemManagedPodsImagePullPolicy            = SettingName("system-managed-pods-image-pull-policy")
 	SettingNameAllowVolumeCreationWithDegradedAvailability = SettingName("allow-volume-creation-with-degraded-availability")
 	SettingNameAutoCleanupSystemGeneratedSnapshot          = SettingName("auto-cleanup-system-generated-snapshot")
@@ -106,6 +107,7 @@ var (
 		SettingNamePriorityClass,
 		SettingNameDisableRevisionCounter,
 		SettingNameDisableReplicaRebuild,
+		SettingNameReplicaReplenishmentWaitInterval,
 		SettingNameSystemManagedPodsImagePullPolicy,
 		SettingNameAllowVolumeCreationWithDegradedAvailability,
 		SettingNameAutoCleanupSystemGeneratedSnapshot,
@@ -165,6 +167,7 @@ var (
 		SettingNamePriorityClass:                               SettingDefinitionPriorityClass,
 		SettingNameDisableRevisionCounter:                      SettingDefinitionDisableRevisionCounter,
 		SettingNameDisableReplicaRebuild:                       SettingDefinitionDisableReplicaRebuild,
+		SettingNameReplicaReplenishmentWaitInterval:            SettingDefinitionReplicaReplenishmentWaitInterval,
 		SettingNameSystemManagedPodsImagePullPolicy:            SettingDefinitionSystemManagedPodsImagePullPolicy,
 		SettingNameAllowVolumeCreationWithDegradedAvailability: SettingDefinitionAllowVolumeCreationWithDegradedAvailability,
 		SettingNameAutoCleanupSystemGeneratedSnapshot:          SettingDefinitionAutoCleanupSystemGeneratedSnapshot,
@@ -497,6 +500,17 @@ var (
 		Default:     "false",
 	}
 
+	SettingDefinitionReplicaReplenishmentWaitInterval = SettingDefinition{
+		DisplayName: "Replica Replenishment Wait Interval",
+		Description: "In seconds. The interval determines how long Longhorn will wait at least in order to reuse the existing data on a failed replica rather than directly creating a new replica for a degraded volume.\n" +
+			"Warning: This option works only when there is a failed replica in the volume. And this option may block the rebuilding for a while in the case.",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeInt,
+		Required: true,
+		ReadOnly: false,
+		Default:  "600",
+	}
+
 	SettingDefinitionSystemManagedPodsImagePullPolicy = SettingDefinition{
 		DisplayName: "System Managed Pod Image Pull Policy",
 		Description: "This setting defines the Image Pull Policy of Longhorn system managed pods, e.g. instance manager, engine image, CSI driver, etc. " +
@@ -637,13 +651,15 @@ func ValidateInitSetting(name, value string) (err error) {
 		if _, err := resource.ParseQuantity(value); err != nil {
 			return errors.Wrapf(err, "invalid value %v as CPU resource", value)
 		}
+	case SettingNameReplicaReplenishmentWaitInterval:
+		fallthrough
 	case SettingNameBackupstorePollInterval:
 		interval, err := strconv.Atoi(value)
 		if err != nil {
-			return fmt.Errorf("value of %v is not int: %v", SettingNameBackupstorePollInterval, err)
+			return fmt.Errorf("value is not int: %v", err)
 		}
 		if interval < 0 {
-			return fmt.Errorf("backupstore poll interval %v shouldn't be less than 0", value)
+			return fmt.Errorf("the value %v shouldn't be less than 0", value)
 		}
 	case SettingNameTaintToleration:
 		if _, err = UnmarshalTolerations(value); err != nil {
