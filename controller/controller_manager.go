@@ -74,12 +74,14 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
 	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
+	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1().DaemonSets()
 	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
 	volumeAttachmentInformer := kubeInformerFactory.Storage().V1beta1().VolumeAttachments()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
 	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
+	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
 	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 
 	ds := datastore.NewDataStore(
@@ -87,9 +89,9 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		engineImageInformer, nodeInformer, settingInformer, imInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
-		deploymentInformer, persistentVolumeInformer,
-		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
-		csiDriverInformer,
+		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
+		configMapInformer, kubeNodeInformer, priorityClassInformer,
+		csiDriverInformer, storageclassInformer,
 		pdbInformer,
 		kubeClient, namespace)
 	rc := NewReplicaController(logger, ds, scheme,
@@ -127,6 +129,9 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	kpc := NewKubernetesPodController(logger, ds, scheme,
 		podInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
 		kubeClient, controllerID)
+	kcfmc := NewKubernetesConfigMapController(logger, ds, scheme,
+		configMapInformer,
+		kubeClient, controllerID, namespace)
 
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
@@ -145,6 +150,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	go kpvc.Run(Workers, stopCh)
 	go knc.Run(Workers, stopCh)
 	go kpc.Run(Workers, stopCh)
+	go kcfmc.Run(Workers, stopCh)
 
 	return ds, ws, nil
 }

@@ -236,6 +236,11 @@ func (c *UninstallController) uninstall() error {
 		return err
 	}
 
+	// Delete Longhorn storageclass
+	if err := c.deleteStorageClass(); err != nil {
+		return err
+	}
+
 	// Success
 	close(c.stopCh)
 	return nil
@@ -275,6 +280,14 @@ func (c *UninstallController) checkPreconditions() error {
 		}
 	}
 
+	return nil
+}
+
+func (c *UninstallController) deleteStorageClass() error {
+	err := c.ds.DeleteStorageClass(types.DefaultStorageClassName)
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return err
+	}
 	return nil
 }
 

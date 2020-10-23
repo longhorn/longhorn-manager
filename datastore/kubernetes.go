@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -176,6 +177,23 @@ func (s *DataStore) DeletePod(name string) error {
 	return s.kubeClient.CoreV1().Pods(s.namespace).Delete(name, nil)
 }
 
+// GetStorageClassRO gets StorageClass with the given name
+// This function returns direct reference to the internal cache object and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) GetStorageClassRO(scName string) (*storagev1.StorageClass, error) {
+	return s.storageclassLister.Get(scName)
+}
+
+// DeleteStorageClass deletes StorageClass with the given name
+func (s *DataStore) DeleteStorageClass(scName string) error {
+	return s.kubeClient.StorageV1().StorageClasses().Delete(scName, nil)
+}
+
+// CreateStorageClass creates StorageClass with the given object
+func (s *DataStore) CreateStorageClass(sc *storagev1.StorageClass) (*storagev1.StorageClass, error) {
+	return s.kubeClient.StorageV1().StorageClasses().Create(sc)
+}
+
 // GetInstanceManagerPod gets Pod for the given name and namspace, and
 // returns a new Pod object
 func (s *DataStore) GetInstanceManagerPod(name string) (*corev1.Pod, error) {
@@ -327,6 +345,23 @@ func (s *DataStore) DeletePersisentVolumeClaim(ns, pvcName string) error {
 // index for the given name and namespace
 func (s *DataStore) GetPersisentVolumeClaim(namespace, pvcName string) (*corev1.PersistentVolumeClaim, error) {
 	return s.pvcLister.PersistentVolumeClaims(namespace).Get(pvcName)
+}
+
+// GetConfigMapRO gets ConfigMap with the given name in s.namespace
+// This function returns direct reference to the internal cache object and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) GetConfigMapRO(namespace, name string) (*corev1.ConfigMap, error) {
+	return s.cfmLister.ConfigMaps(namespace).Get(name)
+}
+
+// GetConfigMap return a new ConfigMap object for the given namespace and name
+func (s *DataStore) GetConfigMap(namespace, name string) (*corev1.ConfigMap, error) {
+	resultRO, err := s.cfmLister.ConfigMaps(namespace).Get(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
 }
 
 // GetPriorityClass gets the PriorityClass from the index for the

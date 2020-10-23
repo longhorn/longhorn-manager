@@ -135,9 +135,11 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
 	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
 	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
+	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
 	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
+	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
 	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 
 	ds := datastore.NewDataStore(
@@ -145,9 +147,9 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 		engineImageInformer, nodeInformer, settingInformer, imInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
-		deploymentInformer, persistentVolumeInformer,
-		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
-		csiDriverInformer,
+		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
+		configMapInformer, kubeNodeInformer, priorityClassInformer,
+		csiDriverInformer, storageclassInformer,
 		pdbInformer,
 		kubeClient, TestNamespace)
 

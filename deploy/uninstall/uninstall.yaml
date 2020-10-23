@@ -31,7 +31,7 @@ rules:
     resources: ["priorityclasses"]
     verbs: ["watch", "list"]
   - apiGroups: ["storage.k8s.io"]
-    resources: ["csidrivers"]
+    resources: ["csidrivers", "storageclasses"]
     verbs: ["*"]
   - apiGroups: ["longhorn.io"]
     resources: ["volumes", "engines", "replicas", "settings", "engineimages", "nodes", "instancemanagers"]
