@@ -131,12 +131,24 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	vol.Name = req.Name
 
-	volSizeBytes := int64(putil.GiB)
+	volSizeBytes := int64(util.MinimalVolumeSize)
 	if req.GetCapacityRange() != nil {
 		volSizeBytes = int64(req.GetCapacityRange().GetRequiredBytes())
 	}
-	volSizeGiB := putil.RoundUpToGiB(volSizeBytes)
-	vol.Size = fmt.Sprintf("%dGi", volSizeGiB)
+
+	if volSizeBytes < util.MinimalVolumeSize {
+		logrus.Warnf("Request volume %v size %v is smaller than minimal size %v, set it to minimal size.", vol.Name, volSizeBytes, util.MinimalVolumeSize)
+		volSizeBytes = util.MinimalVolumeSize
+	}
+
+	// Round up to multiple of 2 * 1024 * 1024
+	volSizeBytes = util.RoundUpSize(volSizeBytes)
+
+	if volSizeBytes >= putil.GiB {
+		vol.Size = fmt.Sprintf("%.2fGi", float64(volSizeBytes)/float64(putil.GiB))
+	} else {
+		vol.Size = fmt.Sprintf("%dMi", putil.RoundUpSize(volSizeBytes, putil.MiB))
+	}
 
 	logrus.Infof("CreateVolume: creating a volume by API client, name: %s, size: %s", vol.Name, vol.Size)
 	resVol, err := cs.apiClient.Volume.Create(vol)
@@ -151,7 +163,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			VolumeId:      resVol.Id,
-			CapacityBytes: int64(volSizeGiB * putil.GiB),
+			CapacityBytes: volSizeBytes,
 			VolumeContext: volumeParameters,
 			ContentSource: req.VolumeContentSource,
 		},

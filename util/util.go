@@ -63,7 +63,8 @@ const (
 
 	DiskConfigFile = "longhorn-disk.cfg"
 
-	SizeAlignment = 2 * 1024 * 1024
+	SizeAlignment     = 2 * 1024 * 1024
+	MinimalVolumeSize = 10 * 1024 * 1024
 )
 
 var (
