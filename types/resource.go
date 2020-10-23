@@ -121,6 +121,7 @@ type VolumeStatus struct {
 	ExpansionRequired  bool                 `json:"expansionRequired"`
 	IsStandby          bool                 `json:"isStandby"`
 	ActualSize         int64                `json:"actualSize"`
+	LastDegradedAt     string               `json:"lastDegradedAt"`
 }
 
 type RecurringJobType string
@@ -222,6 +223,7 @@ type ReplicaSpec struct {
 	Active                  bool   `json:"active"`
 	HardNodeAffinity        string `json:"hardNodeAffinity"`
 	RevisionCounterDisabled bool   `json:"revisionCounterDisabled"`
+	RebuildRetryCount       int    `json:"rebuildRetryCount"`
 }
 
 type ReplicaStatus struct {

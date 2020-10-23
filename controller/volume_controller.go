@@ -442,6 +442,9 @@ func (vc *VolumeController) EvictReplicas(v *longhorn.Volume,
 func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to reconcile engine/replica state for %v", v.Name)
+		if v.Status.Robustness != types.VolumeRobustnessDegraded {
+			v.Status.LastDegradedAt = ""
+		}
 	}()
 
 	if e == nil {
@@ -501,6 +504,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 				// from replica failed during rebuilding
 				if r.Spec.HealthyAt == "" {
 					r.Spec.HealthyAt = vc.nowHandler()
+					r.Spec.RebuildRetryCount = 0
 					rs[rName] = r
 				}
 				healthyCount++
@@ -535,6 +539,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 	} else { // healthyCount < v.Spec.NumberOfReplicas
 		v.Status.Robustness = types.VolumeRobustnessDegraded
 		if oldRobustness != types.VolumeRobustnessDegraded {
+			v.Status.LastDegradedAt = vc.nowHandler()
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonDegraded, "volume %v became degraded", v.Name)
 		}
 
@@ -1115,7 +1120,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				}
 				r.Spec.DesireState = types.InstanceStateStopped
 			} else if r.Spec.FailedAt == "" && r.Spec.EngineImage == v.Status.CurrentImage {
-				r.Spec.DesireState = types.InstanceStateRunning
+				if r.Status.CurrentState == types.InstanceStateStopped {
+					r.Spec.DesireState = types.InstanceStateRunning
+				}
 			}
 			rs[r.Name] = r
 		}
@@ -1315,29 +1322,39 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		return nil
 	}
 
-	if hardNodeAffinity != "" && getRebuildingReplicaCount(e) == 0 {
-		r, err := vc.createReplica(v, e, rs, hardNodeAffinity)
-		if err != nil {
-			return err
-		}
-		rs[r.Name] = r
+	if currentRebuilding := getRebuildingReplicaCount(e); currentRebuilding != 0 {
+		return nil
 	}
 
+	log := getLoggerForVolume(vc.logger, v)
+
 	replenishCount := vc.getReplenishReplicasCount(v, rs)
-	if len(rs) != 0 && replenishCount > 0 {
-		// For rebuild case, schedule and rebuild one replica at a time
+	// For regular rebuild case or data locality case, rebuild one replica at a time
+	if (len(rs) != 0 && replenishCount > 0) || hardNodeAffinity != "" {
 		replenishCount = 1
-		currentRebuilding := getRebuildingReplicaCount(e)
-		if currentRebuilding != 0 {
-			return nil
-		}
 	}
+
 	for i := 0; i < replenishCount; i++ {
-		r, err := vc.createReplica(v, e, rs, "")
+		reusableFailedReplica, err := vc.scheduler.CheckAndReuseFailedReplica(rs, v, hardNodeAffinity)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
 		}
-		rs[r.Name] = r
+		if reusableFailedReplica != nil {
+			log.Debugf("Failed replica %v will be reused during rebuilding", reusableFailedReplica.Name)
+			reusableFailedReplica.Spec.FailedAt = ""
+			reusableFailedReplica.Spec.HealthyAt = ""
+			reusableFailedReplica.Spec.RebuildRetryCount++
+			rs[reusableFailedReplica.Name] = reusableFailedReplica
+			continue
+		}
+		if vc.scheduler.RequireNewReplica(rs, v, hardNodeAffinity) {
+			log.Debugf("A new replica will be replenished during rebuilding")
+			r, err := vc.createReplica(v, e, rs, hardNodeAffinity)
+			if err != nil {
+				return err
+			}
+			rs[r.Name] = r
+		}
 	}
 	return nil
 }

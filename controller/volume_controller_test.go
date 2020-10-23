@@ -2,7 +2,9 @@ package controller
 
 import (
 	"fmt"
+	"math"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -134,8 +136,9 @@ type VolumeTestCase struct {
 	expectEngines  map[string]*longhorn.Engine
 	expectReplicas map[string]*longhorn.Replica
 
-	replicaNodeSoftAntiAffinity string
-	volumeAutoSalvage           string
+	replicaNodeSoftAntiAffinity      string
+	volumeAutoSalvage                string
+	replicaReplenishmentWaitInterval string
 }
 
 func (s *TestSuite) TestVolumeLifeCycle(c *C) {
@@ -200,6 +203,9 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	// volume attaching, start replicas
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = TestNode1
+	for _, r := range tc.replicas {
+		r.Status.CurrentState = types.InstanceStateStopped
+	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
@@ -587,6 +593,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Spec.LogRequested = true
 	}
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessDegraded
+	tc.expectVolume.Status.LastDegradedAt = getTestNow()
 	testCases["the restored volume keeps and wait for the rebuild after the restoration completed"] = tc
 
 	// try to update the volume as Faulted if all replicas failed to restore data
@@ -680,6 +687,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	for _, r := range tc.replicas {
 		r.Spec.HealthyAt = ""
+		r.Status.CurrentState = types.InstanceStateStopped
 	}
 	tc.copyCurrentToExpect()
 	for _, e := range tc.expectEngines {
@@ -814,6 +822,9 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.NodeID = TestNode1
 	tc.volume.Status.CurrentNodeID = TestNode1
 	tc.nodes[1] = newNode(TestNode2, TestNamespace, false, types.ConditionStatusFalse, string(types.NodeConditionReasonKubernetesNodeGone))
+	for _, r := range tc.replicas {
+		r.Status.CurrentState = types.InstanceStateStopped
+	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
@@ -908,13 +919,14 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 
 	testCases["volume salvage requested - all replica failed"] = tc
 
-	s.runTestCases(c, testCases)
-
 	// volume attaching, start replicas, manager restart
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = TestNode1
 	tc.volume.Status.CurrentNodeID = TestNode1
 	tc.nodes[1] = newNode(TestNode2, TestNamespace, false, types.ConditionStatusFalse, string(types.NodeConditionReasonManagerPodDown))
+	for _, r := range tc.replicas {
+		r.Status.CurrentState = types.InstanceStateStopped
+	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
@@ -955,6 +967,102 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		r.Spec.DesireState = types.InstanceStateStopped
 	}
 	testCases["restoring volume reattaching - stop replicas"] = tc
+
+	// replica rebuilding - reuse failed replica
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.NodeID = TestNode1
+	tc.volume.Status.CurrentImage = TestEngineImage
+	tc.volume.Status.CurrentNodeID = TestNode1
+	tc.volume.Status.State = types.VolumeStateAttached
+	tc.volume.Status.Robustness = types.VolumeRobustnessDegraded
+	tc.volume.Status.LastDegradedAt = "2014-01-02T00:00:00Z"
+	for _, e := range tc.engines {
+		e.Spec.NodeID = TestNode1
+		e.Spec.DesireState = types.InstanceStateRunning
+		e.Spec.EngineImage = TestEngineImage
+		e.Status.CurrentState = types.InstanceStateRunning
+		e.Status.CurrentImage = TestEngineImage
+		e.Status.CurrentSize = TestVolumeSize
+		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
+	}
+	var failedReplica *longhorn.Replica
+	for name, r := range tc.replicas {
+		if r.Spec.NodeID == TestNode1 {
+			r.Spec.DesireState = types.InstanceStateStopped
+			r.Status.CurrentState = types.InstanceStateStopped
+			r.Spec.FailedAt = getTestNow()
+			failedReplica = r
+		} else {
+			r.Spec.DesireState = types.InstanceStateRunning
+			r.Status.CurrentState = types.InstanceStateRunning
+			r.Status.IP = randomIP()
+			r.Status.Port = randomPort()
+		}
+		r.Spec.HealthyAt = getTestNow()
+		for _, e := range tc.engines {
+			if r.Spec.FailedAt == "" {
+				e.Status.ReplicaModeMap[name] = "RW"
+				e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.IP, r.Status.Port)
+			}
+		}
+	}
+	tc.copyCurrentToExpect()
+	for _, r := range tc.expectReplicas {
+		if r.Name == failedReplica.Name {
+			r.Spec.DesireState = types.InstanceStateRunning
+			r.Spec.FailedAt = ""
+			r.Spec.HealthyAt = ""
+			r.Spec.RebuildRetryCount = 1
+			break
+		}
+	}
+	testCases["replica rebuilding - reuse failed replica"] = tc
+
+	// replica rebuilding - delay replica replenishment
+	tc = generateVolumeTestCaseTemplate()
+	tc.volume.Spec.NodeID = TestNode1
+	tc.volume.Status.CurrentImage = TestEngineImage
+	tc.volume.Status.CurrentNodeID = TestNode1
+	tc.volume.Status.State = types.VolumeStateAttached
+	tc.volume.Status.Robustness = types.VolumeRobustnessDegraded
+	tc.volume.Status.LastDegradedAt = getTestNow()
+	for _, e := range tc.engines {
+		e.Spec.NodeID = TestNode1
+		e.Spec.DesireState = types.InstanceStateRunning
+		e.Spec.EngineImage = TestEngineImage
+		e.Status.CurrentState = types.InstanceStateRunning
+		e.Status.CurrentImage = TestEngineImage
+		e.Status.CurrentSize = TestVolumeSize
+		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
+	}
+	failedReplica = nil
+	for name, r := range tc.replicas {
+		// The node of the failed node scheduling is disabled.
+		// Hence the failed replica cannot reused.
+		if r.Spec.NodeID == TestNode2 {
+			r.Spec.DesireState = types.InstanceStateStopped
+			r.Status.CurrentState = types.InstanceStateStopped
+			r.Spec.FailedAt = time.Now().UTC().Format(time.RFC3339)
+			failedReplica = r
+		} else {
+			r.Spec.DesireState = types.InstanceStateRunning
+			r.Status.CurrentState = types.InstanceStateRunning
+			r.Status.IP = randomIP()
+			r.Status.Port = randomPort()
+		}
+		r.Spec.HealthyAt = getTestNow()
+		for _, e := range tc.engines {
+			if r.Spec.FailedAt == "" {
+				e.Status.ReplicaModeMap[name] = "RW"
+				e.Spec.ReplicaAddressMap[name] = imutil.GetURL(r.Status.IP, r.Status.Port)
+			}
+		}
+	}
+	tc.replicaReplenishmentWaitInterval = strconv.Itoa(math.MaxInt32)
+	tc.copyCurrentToExpect()
+	testCases["replica rebuilding - delay replica replenishment"] = tc
+
+	s.runTestCases(c, testCases)
 }
 
 func newVolume(name string, replicaCount int) *longhorn.Volume {
@@ -1105,6 +1213,10 @@ func newNode(name, namespace string, allowScheduling bool, status types.Conditio
 					StorageAvailable: TestDiskAvailableSize,
 					StorageScheduled: 0,
 					StorageMaximum:   TestDiskSize,
+					Conditions: map[string]types.Condition{
+						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
+						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
+					},
 				},
 			},
 		},
@@ -1181,6 +1293,8 @@ func generateVolumeTestCaseTemplate() *VolumeTestCase {
 		expectVolume:   nil,
 		expectEngines:  map[string]*longhorn.Engine{},
 		expectReplicas: map[string]*longhorn.Replica{},
+
+		replicaReplenishmentWaitInterval: "0",
 	}
 }
 
@@ -1241,7 +1355,6 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			c.Assert(err, IsNil)
 			sIndexer.Add(setting)
 		}
-
 		// Set auto salvage setting
 		if tc.volumeAutoSalvage != "" {
 			s := initSettingsNameValue(
@@ -1252,18 +1365,18 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			c.Assert(err, IsNil)
 			sIndexer.Add(setting)
 		}
+		// Set New Replica Replenishment Wait Interval
+		if tc.replicaReplenishmentWaitInterval != "" {
+			s := initSettingsNameValue(
+				string(types.SettingNameReplicaReplenishmentWaitInterval), tc.replicaReplenishmentWaitInterval)
+			setting, err :=
+				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
+			c.Assert(err, IsNil)
+			sIndexer.Add(setting)
+		}
+
 		// need to create default node
 		for _, node := range tc.nodes {
-			node.Status.DiskStatus = map[string]*types.DiskStatus{
-				TestDiskID1: {
-					StorageAvailable: TestDiskAvailableSize,
-					StorageScheduled: 0,
-					StorageMaximum:   TestDiskSize,
-					Conditions: map[string]types.Condition{
-						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
-					},
-				},
-			}
 			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(node)
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
