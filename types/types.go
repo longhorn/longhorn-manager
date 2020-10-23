@@ -66,8 +66,10 @@ const (
 
 	DefaultDiskPrefix = "default-disk-"
 
-	DeprecatedProvisionerName = "rancher.io/longhorn"
-	DepracatedDriverName      = "io.rancher.longhorn"
+	DeprecatedProvisionerName        = "rancher.io/longhorn"
+	DepracatedDriverName             = "io.rancher.longhorn"
+	DefaultStorageClassConfigMapName = "longhorn-storageclass"
+	DefaultStorageClassName          = "longhorn"
 )
 
 const (
