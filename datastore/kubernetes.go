@@ -176,6 +176,11 @@ func (s *DataStore) DeletePod(name string) error {
 	return s.kubeClient.CoreV1().Pods(s.namespace).Delete(name, nil)
 }
 
+// DeleteStorageClass deletes StorageClass for the given name
+func (s *DataStore) DeleteStorageClass(name string) error {
+	return s.kubeClient.StorageV1().StorageClasses().Delete(name, nil)
+}
+
 // GetInstanceManagerPod gets Pod for the given name and namspace, and
 // returns a new Pod object
 func (s *DataStore) GetInstanceManagerPod(name string) (*corev1.Pod, error) {

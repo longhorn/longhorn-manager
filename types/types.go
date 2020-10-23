@@ -68,6 +68,7 @@ const (
 
 	DeprecatedProvisionerName = "rancher.io/longhorn"
 	DepracatedDriverName      = "io.rancher.longhorn"
+	DefaultStorageClassName   = "longhorn"
 )
 
 const (

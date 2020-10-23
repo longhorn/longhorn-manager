@@ -51,6 +51,8 @@ spec:
           mountPropagation: Bidirectional
         - name: longhorn-default-setting
           mountPath: /var/lib/longhorn-setting/
+        - name: longhorn-storageclass
+          mountPath: /var/lib/longhorn-storageclass/
         env:
         - name: POD_NAMESPACE
           valueFrom:
@@ -67,6 +69,8 @@ spec:
         # Should be: mount path of the volume longhorn-default-setting + the key of the configmap data in 04-default-setting.yaml
         - name: DEFAULT_SETTING_PATH
           value: /var/lib/longhorn-setting/default-setting.yaml
+        - name: LONGHORN_STORAGECLASS_SETTING_PATH
+          value: /var/lib/longhorn-storageclass/storageclass.yaml
       volumes:
       - name: dev
         hostPath:
@@ -83,6 +87,9 @@ spec:
       - name: longhorn-default-setting
         configMap:
           name: longhorn-default-setting
+      - name: longhorn-storageclass
+        configMap:
+          name: longhorn-storageclass
 #      imagePullSecrets:
 #      - name: ""
       serviceAccountName: longhorn-service-account

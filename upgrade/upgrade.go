@@ -114,6 +114,9 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 				if err = doCRDUpgrade(namespace, lhClient); err != nil {
 					return
 				}
+				if err = doLonghornStorageClassUpgrade(namespace, kubeClient); err != nil {
+					return
+				}
 			},
 			OnStoppedLeading: func() {
 				logrus.Infof("Upgrade leader lost: %s", currentNodeID)
