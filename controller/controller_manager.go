@@ -74,12 +74,14 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
 	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
+	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1().DaemonSets()
 	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
 	volumeAttachmentInformer := kubeInformerFactory.Storage().V1beta1().VolumeAttachments()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
 	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
+	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
 	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 
 	ds := datastore.NewDataStore(
@@ -87,9 +89,9 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		engineImageInformer, nodeInformer, settingInformer, imInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
-		deploymentInformer, persistentVolumeInformer,
-		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
-		csiDriverInformer,
+		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
+		configMapInformer, kubeNodeInformer, priorityClassInformer,
+		csiDriverInformer, storageclassInformer,
 		pdbInformer,
 		kubeClient, namespace)
 	rc := NewReplicaController(logger, ds, scheme,
@@ -112,8 +114,8 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		volumeInformer, engineInformer, replicaInformer,
 		settingInformer, engineImageInformer, nodeInformer)
 	sc := NewSettingController(logger, ds, scheme,
-		settingInformer,
-		kubeClient, version)
+		settingInformer, configMapInformer,
+		kubeClient, version, namespace)
 	imc := NewInstanceManagerController(logger, ds, scheme,
 		imInformer, podInformer, kubeNodeInformer, kubeClient, namespace, controllerID, serviceAccount)
 

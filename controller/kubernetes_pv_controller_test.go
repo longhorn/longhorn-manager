@@ -229,6 +229,7 @@ func newTestKubernetesPVController(lhInformerFactory lhinformerfactory.SharedInf
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
 	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
+	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1().DaemonSets()
 	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
@@ -236,6 +237,7 @@ func newTestKubernetesPVController(lhInformerFactory lhinformerfactory.SharedInf
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
 	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
+	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
 	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 
 	ds := datastore.NewDataStore(
@@ -243,9 +245,9 @@ func newTestKubernetesPVController(lhInformerFactory lhinformerfactory.SharedInf
 		engineImageInformer, nodeInformer, settingInformer, imInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
-		deploymentInformer, persistentVolumeInformer,
-		persistentVolumeClaimInformer, kubeNodeInformer, priorityClassInformer,
-		csiDriverInformer,
+		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
+		configMapInformer, kubeNodeInformer, priorityClassInformer,
+		csiDriverInformer, storageclassInformer,
 		pdbInformer,
 		kubeClient, TestNamespace)
 

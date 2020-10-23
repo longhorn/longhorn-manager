@@ -37,6 +37,9 @@ const (
 type SettingName string
 
 const (
+	// SettingNameDefaultStorageClassConfigMap is not exposed to users
+	SettingNameDefaultStorageClassConfigMap = SettingName("default-storageclass-configmap")
+
 	SettingNameBackupTarget                                = SettingName("backup-target")
 	SettingNameBackupTargetCredentialSecret                = SettingName("backup-target-credential-secret")
 	SettingNameAllowRecurringJobWhileVolumeDetached        = SettingName("allow-recurring-job-while-volume-detached")

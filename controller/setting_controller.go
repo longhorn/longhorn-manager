@@ -6,16 +6,22 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"reflect"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -43,12 +49,15 @@ var (
 type SettingController struct {
 	*baseController
 
+	namespace string
+
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
 	ds *datastore.DataStore
 
-	sStoreSynced cache.InformerSynced
+	sStoreSynced   cache.InformerSynced
+	cfmStoreSynced cache.InformerSynced
 
 	// upgrade checker
 	lastUpgradeCheckedTimestamp time.Time
@@ -89,7 +98,10 @@ func NewSettingController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	settingInformer lhinformers.SettingInformer,
-	kubeClient clientset.Interface, version string) *SettingController {
+	configMapInformer coreinformers.ConfigMapInformer,
+	kubeClient clientset.Interface,
+	version string,
+	namespace string) *SettingController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -99,12 +111,15 @@ func NewSettingController(
 	sc := &SettingController{
 		baseController: newBaseController("longhorn-setting", logger),
 
+		namespace: namespace,
+
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-setting-controller"}),
 
 		ds: ds,
 
-		sStoreSynced: settingInformer.Informer().HasSynced,
+		sStoreSynced:   settingInformer.Informer().HasSynced,
+		cfmStoreSynced: configMapInformer.Informer().HasSynced,
 
 		version: version,
 	}
@@ -114,6 +129,12 @@ func NewSettingController(
 		UpdateFunc: func(old, cur interface{}) { sc.enqueueSetting(cur) },
 		DeleteFunc: sc.enqueueSetting,
 	}, settingControllerResyncPeriod)
+
+	configMapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.enqueueConfigMapChange,
+		UpdateFunc: func(old, cur interface{}) { sc.enqueueConfigMapChange(cur) },
+		DeleteFunc: sc.enqueueConfigMapChange,
+	})
 
 	return sc
 }
@@ -125,7 +146,7 @@ func (sc *SettingController) Run(stopCh <-chan struct{}) {
 	sc.logger.Info("Start Longhorn Setting controller")
 	defer sc.logger.Info("Shutting down Longhorn Setting controller")
 
-	if !controller.WaitForCacheSync("longhorn settings", stopCh, sc.sStoreSynced) {
+	if !controller.WaitForCacheSync("longhorn settings", stopCh, sc.sStoreSynced, sc.cfmStoreSynced) {
 		return
 	}
 
@@ -205,6 +226,10 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		}
 	case string(types.SettingNamePriorityClass):
 		if err := sc.updatePriorityClass(); err != nil {
+			return err
+		}
+	case string(types.SettingNameDefaultStorageClassConfigMap):
+		if err := sc.updateDefaultStorageClass(); err != nil {
 			return err
 		}
 	default:
@@ -403,6 +428,90 @@ func (sc *SettingController) updatePriorityClass() error {
 	return nil
 }
 
+func (sc *SettingController) updateDefaultStorageClass() error {
+	storageConfigMap, err := sc.ds.GetConfigMapRO(types.DefaultStorageClassConfigMapName)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			// The storageclass configmap is deleted therefore we delete the actual storageclass
+			err := sc.ds.DeleteStorageClass(types.DefaultStorageClassName)
+			if err != nil && !datastore.ErrorIsNotFound(err) {
+				return nil
+			}
+			return nil
+		}
+		return err
+	}
+
+	storageclass, err := buildStorageClassManifestFromConfigMap(storageConfigMap)
+	if err != nil {
+		return err
+	}
+
+	existingSC, err := sc.ds.GetStorageClassRO(types.DefaultStorageClassName)
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
+	if storageclassesHaveSameValues(existingSC, storageclass) {
+		return nil
+	}
+
+	err = sc.ds.DeleteStorageClass(types.DefaultStorageClassName)
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
+	storageclass, err = sc.ds.CreateStorageClass(storageclass)
+	if err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			return nil
+		}
+		return err
+	}
+
+	sc.logger.Infof("Updated Longhorn storagecclass: %v", storageclass)
+
+	return nil
+}
+
+func buildStorageClassManifestFromConfigMap(cfm *v1.ConfigMap) (*storagev1.StorageClass, error) {
+	data, ok := cfm.Data["storageclass.yaml"]
+	if !ok {
+		return nil, fmt.Errorf("cannot find storageclass.yaml inside the default storageclass configmap")
+	}
+
+	decode := scheme.Codecs.UniversalDeserializer().Decode
+	obj, _, err := decode([]byte(data), nil, nil)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error while decoding YAML object")
+	}
+
+	storageclass, ok := obj.(*storagev1.StorageClass)
+	if !ok {
+		return nil, fmt.Errorf("invalid storageclass.yaml: %v", data)
+	}
+	return storageclass, nil
+}
+
+// storageclassesHaveSameValues compare the values of SC1 and SC2,
+// ignoring fields in their ObjectMeta and TypeMeta expect for Labels and Annotations
+func storageclassesHaveSameValues(sc1, sc2 *storagev1.StorageClass) bool {
+	if sc1 == nil || sc2 == nil {
+		return false
+	}
+
+	sc1Copy := sc1.DeepCopy()
+	sc2Copy := sc2.DeepCopy()
+	sc1Copy.ObjectMeta = metav1.ObjectMeta{}
+	sc1Copy.TypeMeta = metav1.TypeMeta{}
+	sc2Copy.ObjectMeta = metav1.ObjectMeta{}
+	sc2Copy.TypeMeta = metav1.TypeMeta{}
+
+	return reflect.DeepEqual(sc1.Labels, sc2.Labels) &&
+		reflect.DeepEqual(sc1.Annotations, sc2.Annotations) &&
+		reflect.DeepEqual(sc1Copy, sc2Copy)
+}
+
 func getFinalTolerations(oldTolerations, newTolerations map[string]v1.Toleration) []v1.Toleration {
 	res := []v1.Toleration{}
 	// Combine Kubernetes default tolerations with new Longhorn toleration setting
@@ -559,6 +668,29 @@ func (sc *SettingController) enqueueSetting(obj interface{}) {
 	}
 
 	sc.queue.AddRateLimited(key)
+}
+
+func (sc *SettingController) enqueueConfigMapChange(obj interface{}) {
+	cfm, ok := obj.(*v1.ConfigMap)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		cfm, ok = deletedState.Obj.(*v1.ConfigMap)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	if cfm.GetNamespace() == sc.namespace && cfm.GetName() == types.DefaultStorageClassConfigMapName {
+		key := fmt.Sprintf("%s/%s", sc.namespace, types.SettingNameDefaultStorageClassConfigMap)
+		sc.queue.AddRateLimited(key)
+	}
 }
 
 func (sc *SettingController) updateGuaranteedEngineCPU() error {
