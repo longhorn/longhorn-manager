@@ -494,7 +494,7 @@ func buildStorageClassManifestFromConfigMap(cfm *v1.ConfigMap) (*storagev1.Stora
 }
 
 // storageclassesHaveSameValues compare the values of SC1 and SC2,
-// ignoring fields in their ObjectMeta and TypeMeta expect for Labels and Annotations
+// ignoring fields in their ObjectMeta and TypeMeta except for Labels and Annotations
 func storageclassesHaveSameValues(sc1, sc2 *storagev1.StorageClass) bool {
 	if sc1 == nil || sc2 == nil {
 		return false
