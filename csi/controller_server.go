@@ -268,8 +268,13 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Errorf(codes.Aborted, "The volume %s is %s", req.GetVolumeId(), existVol.State)
 	}
 
+	// Check volume frontend settings
+	if existVol.DisableFrontend || existVol.Frontend != string(types.VolumeFrontendBlockDev) {
+		return nil, status.Errorf(codes.InvalidArgument, "ControllerPublishVolume: there is no block device frontend for volume %s", req.GetVolumeId())
+	}
+
 	// the volume is already attached make sure it's to the same node as this
-	if existVol.State == string(types.VolumeStateAttached) {
+	if existVol.State == string(types.VolumeStateAttached) && existVol.Controllers[0].Endpoint != "" {
 		if !existVol.Ready || len(existVol.Controllers) == 0 {
 			return nil, status.Errorf(codes.Aborted,
 				"The volume %s is already attached but it is not ready for workloads", req.GetVolumeId())
@@ -632,6 +637,9 @@ func (cs *ControllerServer) waitForVolumeState(volumeID string, state types.Volu
 				return notFoundReturn
 			}
 			if existVol.State == string(state) {
+				if state == types.VolumeStateAttached && existVol.Controllers[0].Endpoint == "" {
+					continue
+				}
 				return true
 			}
 		}

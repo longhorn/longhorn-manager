@@ -57,10 +57,17 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if len(existVol.Controllers) != 1 {
 		return nil, status.Errorf(codes.InvalidArgument, "There should be only one controller for volume %s", req.GetVolumeId())
 	}
-	if existVol.State != string(types.VolumeStateAttached) || existVol.DisableFrontend ||
-		existVol.Frontend != string(types.VolumeFrontendBlockDev) || existVol.Controllers[0].Endpoint == "" {
+
+	// Check volume frontend settings
+	if existVol.DisableFrontend || existVol.Frontend != string(types.VolumeFrontendBlockDev) {
 		return nil, status.Errorf(codes.InvalidArgument, "There is no block device frontend for volume %s", req.GetVolumeId())
 	}
+
+	// Check volume attachment status
+	if existVol.State != string(types.VolumeStateAttached) || existVol.Controllers[0].Endpoint == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Volume %s hasn't been attached yet", req.GetVolumeId())
+	}
+
 	if !existVol.Ready {
 		return nil, status.Errorf(codes.Aborted, "The attached volume %s should be ready for workloads before the mount", req.GetVolumeId())
 	}
