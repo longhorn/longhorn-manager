@@ -352,9 +352,12 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 
 			if im.Status.CurrentState == types.InstanceManagerStateStarting || im.Status.CurrentState == types.InstanceManagerStateUnknown {
 				im.Status.CurrentState = types.InstanceManagerStateRunning
-				im.Status.IP = pod.Status.PodIP
 			} else if im.Status.CurrentState != types.InstanceManagerStateRunning {
 				im.Status.CurrentState = types.InstanceManagerStateError
+			}
+
+			if im.Status.CurrentState == types.InstanceManagerStateRunning {
+				im.Status.IP = pod.Status.PodIP
 			}
 		default:
 			im.Status.CurrentState = types.InstanceManagerStateError
