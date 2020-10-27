@@ -50,7 +50,8 @@ var (
 )
 
 const (
-	CronJobBackoffLimit = 3
+	CronJobBackoffLimit               = 3
+	CronJobSuccessfulJobsHistoryLimit = 1
 )
 
 type VolumeController struct {
@@ -1921,6 +1922,7 @@ func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 
 func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.RecurringJob, suspend bool) (*batchv1beta1.CronJob, error) {
 	backoffLimit := int32(CronJobBackoffLimit)
+	successfulJobsHistoryLimit := int32(CronJobSuccessfulJobsHistoryLimit)
 	cmd := []string{
 		"longhorn-manager", "-d",
 		"snapshot", v.Name,
@@ -1935,6 +1937,10 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 	if job.Task == types.RecurringJobTypeBackup {
 		cmd = append(cmd, "--backup")
 	}
+	tolerations, err := vc.ds.GetSettingTaintToleration()
+	if err != nil {
+		return nil, err
+	}
 	// for mounting inside container
 	privilege := true
 	cronJob := &batchv1beta1.CronJob{
@@ -1944,9 +1950,10 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: batchv1beta1.CronJobSpec{
-			Schedule:          job.Cron,
-			ConcurrencyPolicy: batchv1beta1.ForbidConcurrent,
-			Suspend:           &suspend,
+			Schedule:                   job.Cron,
+			ConcurrencyPolicy:          batchv1beta1.ForbidConcurrent,
+			Suspend:                    &suspend,
+			SuccessfulJobsHistoryLimit: &successfulJobsHistoryLimit,
 			JobTemplate: batchv1beta1.JobTemplateSpec{
 				Spec: batchv1.JobSpec{
 					BackoffLimit: &backoffLimit,
@@ -1955,7 +1962,6 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 							Name: types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
 						},
 						Spec: v1.PodSpec{
-							NodeName: v.Status.CurrentNodeID,
 							Containers: []v1.Container{
 								{
 									Name:    types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
@@ -1994,6 +2000,7 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 							},
 							ServiceAccountName: vc.ServiceAccount,
 							RestartPolicy:      v1.RestartPolicyOnFailure,
+							Tolerations:        tolerations,
 						},
 					},
 				},
