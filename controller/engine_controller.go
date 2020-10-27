@@ -267,12 +267,18 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	}
 
+	syncReplicaAddressMap := false
 	if len(engine.Spec.UpgradedReplicaAddressMap) != 0 && engine.Status.CurrentImage != engine.Spec.EngineImage {
 		if err := ec.Upgrade(engine); err != nil {
-			return err
+			// Engine live upgrade failure shouldn't block the following engine state update.
+			log.Error(err)
+			// Sync replica address map as usual when the upgrade fails.
+			syncReplicaAddressMap = true
 		}
+	} else if len(engine.Spec.UpgradedReplicaAddressMap) == 0 {
+		syncReplicaAddressMap = true
 	}
-	if len(engine.Spec.UpgradedReplicaAddressMap) == 0 {
+	if syncReplicaAddressMap {
 		engine.Status.CurrentReplicaAddressMap = engine.Spec.ReplicaAddressMap
 	}
 
