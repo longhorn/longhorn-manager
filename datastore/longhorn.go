@@ -1258,6 +1258,18 @@ func (s *DataStore) GetSettingImagePullPolicy() (corev1.PullPolicy, error) {
 	return "", fmt.Errorf("invalid image pull policy %v", ipp.Value)
 }
 
+func (s *DataStore) GetSettingTaintToleration() ([]corev1.Toleration, error) {
+	setting, err := s.GetSetting(types.SettingNameTaintToleration)
+	if err != nil {
+		return nil, err
+	}
+	tolerationList, err := types.UnmarshalTolerations(setting.Value)
+	if err != nil {
+		return nil, err
+	}
+	return tolerationList, nil
+}
+
 // ResetMonitoringEngineStatus clean and update Engine status
 func (s *DataStore) ResetMonitoringEngineStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
 	e.Status.Endpoint = ""
