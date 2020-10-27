@@ -1091,6 +1091,10 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 					Type:   string(types.VolumeConditionTypeRestore),
 					Status: types.ConditionStatusFalse,
 				},
+				types.VolumeConditionTypeTooManySnapshots: {
+					Type:   string(types.VolumeConditionTypeTooManySnapshots),
+					Status: types.ConditionStatusFalse,
+				},
 			},
 		},
 	}

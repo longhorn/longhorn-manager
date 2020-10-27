@@ -53,8 +53,9 @@ type Condition struct {
 }
 
 const (
-	VolumeConditionTypeScheduled = "scheduled"
-	VolumeConditionTypeRestore   = "restore"
+	VolumeConditionTypeScheduled        = "scheduled"
+	VolumeConditionTypeRestore          = "restore"
+	VolumeConditionTypeTooManySnapshots = "toomanysnapshots"
 )
 
 const (
@@ -62,6 +63,7 @@ const (
 	VolumeConditionReasonLocalReplicaSchedulingFailure = "LocalReplicaSchedulingFailure"
 	VolumeConditionReasonRestoreInProgress             = "RestoreInProgress"
 	VolumeConditionReasonRestoreFailure                = "RestoreFailure"
+	VolumeConditionReasonTooManySnapshots              = "TooManySnapshots"
 )
 
 type VolumeSpec struct {
