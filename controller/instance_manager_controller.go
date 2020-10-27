@@ -704,13 +704,9 @@ func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.Instan
 }
 
 func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.InstanceManager) error {
-	setting, err := imc.ds.GetSetting(types.SettingNameTaintToleration)
+	tolerations, err := imc.ds.GetSettingTaintToleration()
 	if err != nil {
 		return errors.Wrapf(err, "failed to get taint toleration setting before creating instance manager pod")
-	}
-	tolerations, err := types.UnmarshalTolerations(setting.Value)
-	if err != nil {
-		return errors.Wrapf(err, "failed to unmarshal taint toleration setting before creating instance manager pod")
 	}
 
 	registrySecretSetting, err := imc.ds.GetSetting(types.SettingNameRegistrySecret)

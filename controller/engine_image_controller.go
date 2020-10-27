@@ -250,13 +250,9 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return errors.Wrapf(err, "cannot get daemonset for engine image %v", engineImage.Name)
 	}
 	if ds == nil {
-		setting, err := ic.ds.GetSetting(types.SettingNameTaintToleration)
+		tolerations, err := ic.ds.GetSettingTaintToleration()
 		if err != nil {
 			return errors.Wrapf(err, "failed to get taint toleration setting before creating engine image daemonset")
-		}
-		tolerations, err := types.UnmarshalTolerations(setting.Value)
-		if err != nil {
-			return errors.Wrapf(err, "failed to unmarshal taint toleration setting before creating engine image daemonset")
 		}
 
 		priorityClassSetting, err := ic.ds.GetSetting(types.SettingNamePriorityClass)
