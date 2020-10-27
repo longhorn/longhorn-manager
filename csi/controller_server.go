@@ -274,8 +274,8 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 	}
 
 	// the volume is already attached make sure it's to the same node as this
-	if existVol.State == string(types.VolumeStateAttached) && existVol.Controllers[0].Endpoint != "" {
-		if !existVol.Ready || len(existVol.Controllers) == 0 {
+	if existVol.State == string(types.VolumeStateAttached) {
+		if !existVol.Ready || len(existVol.Controllers) == 0 || existVol.Controllers[0].Endpoint == "" {
 			return nil, status.Errorf(codes.Aborted,
 				"The volume %s is already attached but it is not ready for workloads", req.GetVolumeId())
 		}
