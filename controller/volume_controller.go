@@ -52,6 +52,7 @@ var (
 const (
 	CronJobBackoffLimit               = 3
 	CronJobSuccessfulJobsHistoryLimit = 1
+	VolumeSnapshotsWarningThreshold   = 100
 )
 
 type VolumeController struct {
@@ -776,6 +777,16 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			actualSize += size
 		}
 		v.Status.ActualSize = actualSize
+	}
+
+	if len(e.Status.Snapshots) > VolumeSnapshotsWarningThreshold {
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			types.VolumeConditionTypeTooManySnapshots, types.ConditionStatusTrue,
+			types.VolumeConditionReasonTooManySnapshots, fmt.Sprintf("Snapshots count is %v over the warning threshold %v", len(e.Status.Snapshots), VolumeSnapshotsWarningThreshold))
+	} else {
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			types.VolumeConditionTypeTooManySnapshots, types.ConditionStatusFalse,
+			"", "")
 	}
 
 	if len(rs) == 0 {
