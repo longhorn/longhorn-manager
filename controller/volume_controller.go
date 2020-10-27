@@ -1095,6 +1095,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		if e.Status.CurrentState != types.InstanceStateRunning && e.Status.CurrentState != types.InstanceStateUnknown {
 			// the final state will be determined at the end of the clause
 			v.Status.State = types.VolumeStateAttaching
+			e.Spec.UpgradedReplicaAddressMap = map[string]string{}
 		}
 
 		isCLIAPIVersionOne := false
@@ -1436,14 +1437,22 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		return nil
 	}
 
+	// If volume is detached accidentally during the live upgrade,
+	// the live upgrade info and the inactive replicas are meaningless.
 	if v.Status.State == types.VolumeStateDetached {
 		if e.Spec.EngineImage != v.Spec.EngineImage {
 			e.Spec.EngineImage = v.Spec.EngineImage
+			e.Spec.UpgradedReplicaAddressMap = map[string]string{}
 		}
 		for _, r := range rs {
 			if r.Spec.EngineImage != v.Spec.EngineImage {
 				r.Spec.EngineImage = v.Spec.EngineImage
 				rs[r.Name] = r
+			}
+			if !r.Spec.Active {
+				if err := vc.deleteReplica(r, rs); err != nil {
+					return err
+				}
 			}
 		}
 		// TODO current replicas should be calculated by checking if there is
