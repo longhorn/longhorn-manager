@@ -171,11 +171,7 @@ func (c *UninstallController) Run() error {
 	startTime := time.Now()
 	c.logger.Info("Uninstalling...")
 	defer func() {
-		log := c.logger.WithFields(
-			logrus.Fields{
-				"runtime": time.Now().Sub(startTime),
-			},
-		)
+		log := c.logger.WithField("runtime", time.Now().Sub(startTime))
 		log.Info("Uninstallation completed")
 	}()
 	go wait.Until(c.worker, time.Second, c.stopCh)
@@ -211,6 +207,18 @@ func (c *UninstallController) handleErr(err error, key interface{}) {
 
 	c.logger.WithError(err).Warn("worker error")
 	c.queue.AddRateLimited(key)
+}
+
+func getLoggerForUninstallCSIDriver(logger logrus.FieldLogger, name string) logrus.FieldLogger {
+	return logger.WithField("CSIDriver", name)
+}
+
+func getLoggerForUninstallDaemonSet(logger logrus.FieldLogger, name string) logrus.FieldLogger {
+	return logger.WithField("daemonSet", name)
+}
+
+func getLoggerForUninstallDeployment(logger logrus.FieldLogger, name string) logrus.FieldLogger {
+	return logger.WithField("deployment", name)
 }
 
 func (c *UninstallController) uninstall() error {
@@ -264,13 +272,7 @@ func (c *UninstallController) checkPreconditions() error {
 		for _, vol := range vols {
 			if vol.Status.State == types.VolumeStateAttaching ||
 				vol.Status.State == types.VolumeStateAttached {
-				log := c.logger.WithFields(
-					logrus.Fields{
-						"name":  vol.Name,
-						"type":  "volume",
-						"state": vol.Status.State,
-					},
-				)
+				log := getLoggerForVolume(c.logger, vol)
 				log.Warn("Volume in use")
 				volumesInUse = true
 			}
@@ -334,12 +336,8 @@ func (c *UninstallController) deleteVolumes(vols map[string]*longhorn.Volume) (e
 		err = errors.Wrapf(err, "Failed to delete volumes")
 	}()
 	for _, vol := range vols {
-		log := c.logger.WithFields(
-			logrus.Fields{
-				"name": vol.Name,
-				"type": "volume",
-			},
-		)
+		log := getLoggerForVolume(c.logger, vol)
+
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if vol.DeletionTimestamp == nil {
 			if err = c.ds.DeleteVolume(vol.Name); err != nil {
@@ -363,12 +361,8 @@ func (c *UninstallController) deleteEngines(engines map[string]*longhorn.Engine)
 		err = errors.Wrapf(err, "Failed to delete engines")
 	}()
 	for _, engine := range engines {
-		log := c.logger.WithFields(
-			logrus.Fields{
-				"name": engine.Name,
-				"type": "engine",
-			},
-		)
+		log := getLoggerForEngine(c.logger, engine)
+
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if engine.DeletionTimestamp == nil {
 			if err = c.ds.DeleteEngine(engine.Name); err != nil {
@@ -392,12 +386,8 @@ func (c *UninstallController) deleteReplicas(replicas map[string]*longhorn.Repli
 		err = errors.Wrapf(err, "Failed to delete replicas")
 	}()
 	for _, replica := range replicas {
-		log := c.logger.WithFields(
-			logrus.Fields{
-				"name": replica.Name,
-				"type": "replica",
-			},
-		)
+		log := getLoggerForReplica(c.logger, replica)
+
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if replica.DeletionTimestamp == nil {
 			if err = c.ds.DeleteReplica(replica.Name); err != nil {
@@ -421,12 +411,8 @@ func (c *UninstallController) deleteEngineImages(engineImages map[string]*longho
 		err = errors.Wrapf(err, "Failed to delete engine images")
 	}()
 	for _, ei := range engineImages {
-		log := c.logger.WithFields(
-			logrus.Fields{
-				"type": "engineImage",
-				"name": ei.Name,
-			},
-		)
+		log := getLoggerForEngineImage(c.logger, ei)
+
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if ei.DeletionTimestamp == nil {
 			if err = c.ds.DeleteEngineImage(ei.Name); err != nil {
@@ -459,12 +445,8 @@ func (c *UninstallController) deleteNodes(nodes map[string]*longhorn.Node) (err 
 		err = errors.Wrapf(err, "Failed to delete nodes")
 	}()
 	for _, node := range nodes {
-		log := c.logger.WithFields(
-			logrus.Fields{
-				"name": node.Name,
-				"type": "node",
-			},
-		)
+		log := getLoggerForNode(c.logger, node)
+
 		if node.DeletionTimestamp == nil {
 			if err = c.ds.DeleteNode(node.Name); err != nil {
 				err = errors.Wrapf(err, "Failed to mark for deletion")
@@ -487,12 +469,8 @@ func (c *UninstallController) deleteInstanceManagers(instanceManagers map[string
 		err = errors.Wrapf(err, "Failed to delete instance managers")
 	}()
 	for _, im := range instanceManagers {
-		log := c.logger.WithFields(
-			logrus.Fields{
-				"name": im.Name,
-				"type": "instanceManager",
-			},
-		)
+		log := getLoggerForInstanceManager(c.logger, im)
+
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if im.DeletionTimestamp == nil {
 			if err = c.ds.DeleteInstanceManager(im.Name); err != nil {
@@ -524,12 +502,8 @@ func (c *UninstallController) deleteInstanceManagers(instanceManagers map[string
 }
 
 func (c *UninstallController) deleteManager() (bool, error) {
-	log := c.logger.WithFields(
-		logrus.Fields{
-			"type": "daemonSet",
-			"name": types.LonghornManagerDaemonSetName,
-		},
-	)
+	log := getLoggerForUninstallDaemonSet(c.logger, types.LonghornManagerDaemonSetName)
+
 	if ds, err := c.ds.GetDaemonSet(types.LonghornManagerDaemonSetName); err != nil {
 		if apierrors.IsNotFound(err) {
 			return false, nil
@@ -548,12 +522,8 @@ func (c *UninstallController) deleteManager() (bool, error) {
 }
 
 func (c *UninstallController) managerReady() (bool, error) {
-	log := c.logger.WithFields(
-		logrus.Fields{
-			"type": "daemonSet",
-			"name": types.LonghornManagerDaemonSetName,
-		},
-	)
+	log := getLoggerForUninstallDaemonSet(c.logger, types.LonghornManagerDaemonSetName)
+
 	if ds, err := c.ds.GetDaemonSet(types.LonghornManagerDaemonSetName); err != nil {
 		if apierrors.IsNotFound(err) {
 			return false, nil
@@ -582,12 +552,8 @@ func (c *UninstallController) deleteDriver() (bool, error) {
 	}
 	wait := false
 	for _, name := range deploymentsToClean {
-		log := c.logger.WithFields(
-			logrus.Fields{
-				"name": name,
-				"type": "deployment",
-			},
-		)
+		log := getLoggerForUninstallDeployment(c.logger, name)
+
 		if driver, err := c.ds.GetDeployment(name); err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
@@ -612,12 +578,8 @@ func (c *UninstallController) deleteDriver() (bool, error) {
 		types.CSIPluginName,
 	}
 	for _, name := range daemonSetsToClean {
-		log := c.logger.WithFields(
-			logrus.Fields{
-				"name": name,
-				"type": "daemonSet",
-			},
-		)
+		log := getLoggerForUninstallDaemonSet(c.logger, name)
+
 		if driver, err := c.ds.GetDaemonSet(name); err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
@@ -641,12 +603,7 @@ func (c *UninstallController) deleteDriver() (bool, error) {
 
 	if err := c.ds.DeleteCSIDriver(types.LonghornDriverName); err != nil {
 		if !apierrors.IsNotFound(err) {
-			log := c.logger.WithFields(
-				logrus.Fields{
-					"name": types.LonghornDriverName,
-					"type": "CSIDriver",
-				},
-			)
+			log := getLoggerForUninstallCSIDriver(c.logger, types.LonghornDriverName)
 			log.WithError(err).Warn("Failed to delete")
 			wait = true
 		}

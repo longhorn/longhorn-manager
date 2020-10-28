@@ -171,6 +171,10 @@ func (rc *ReplicaController) handleErr(err error, key interface{}) {
 	rc.queue.Forget(key)
 }
 
+func getLoggerForReplica(logger logrus.FieldLogger, r *longhorn.Replica) logrus.FieldLogger {
+	return logger.WithField("replica", r.Name)
+}
+
 // From replica to check Node.Spec.EvictionRequested of the node
 // this replica first, then check Node.Spec.Disks.EvictionRequested
 func (rc *ReplicaController) isEvictionRequested(replica *longhorn.Replica) bool {

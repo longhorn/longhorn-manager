@@ -198,6 +198,10 @@ func (ec *EngineController) handleErr(err error, key interface{}) {
 	ec.queue.Forget(key)
 }
 
+func getLoggerForEngine(logger logrus.FieldLogger, e *longhorn.Engine) logrus.FieldLogger {
+	return logger.WithField("engine", e.Name)
+}
+
 func (ec *EngineController) syncEngine(key string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to sync engine for %v", key)

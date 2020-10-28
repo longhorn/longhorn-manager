@@ -245,6 +245,10 @@ func (imc *InstanceManagerController) handleErr(err error, key interface{}) {
 	imc.queue.Forget(key)
 }
 
+func getLoggerForInstanceManager(logger logrus.FieldLogger, im *longhorn.InstanceManager) logrus.FieldLogger {
+	return logger.WithField("instanceManager", im.Name)
+}
+
 func (imc *InstanceManagerController) syncInstanceManager(key string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to sync instance manager for %v", key)

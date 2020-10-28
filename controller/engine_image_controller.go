@@ -174,6 +174,10 @@ func (ic *EngineImageController) handleErr(err error, key interface{}) {
 	ic.queue.Forget(key)
 }
 
+func getLoggerForEngineImage(logger logrus.FieldLogger, ei *longhorn.EngineImage) logrus.FieldLogger {
+	return logger.WithField("engineImage", ei.Name)
+}
+
 func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to sync engine image for %v", key)
