@@ -640,10 +640,10 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 			staled = true
 		}
 
-		// 1. failed before ever became healthy (RW), mostly failed during rebuilding
+		// 1. failed before ever became healthy (RW), except for replica reuse failure during rebuilding
 		// 2. failed too long ago, became stale and unnecessary to keep
 		// around, unless we don't any healthy replicas
-		if r.Spec.HealthyAt == "" || (healthyCount != 0 && staled) {
+		if (r.Spec.HealthyAt == "" && r.Spec.RebuildRetryCount == 0) || (healthyCount != 0 && staled) {
 			log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
 			if err := vc.deleteReplica(r, rs); err != nil {
 				return errors.Wrapf(err, "cannot cleanup staled replica %v", r.Name)
