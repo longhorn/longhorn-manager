@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	FailedReplicaMaxRetryCount = 3
+	FailedReplicaMaxRetryCount = 5
 )
 
 type ReplicaScheduler struct {
