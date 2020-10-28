@@ -24,6 +24,7 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/backupstore"
@@ -76,6 +77,8 @@ type VolumeController struct {
 
 	scheduler *scheduler.ReplicaScheduler
 
+	backoff *flowcontrol.Backoff
+
 	// for unit test
 	nowHandler func() string
 }
@@ -111,6 +114,8 @@ func NewVolumeController(
 		vStoreSynced: volumeInformer.Informer().HasSynced,
 		eStoreSynced: engineInformer.Informer().HasSynced,
 		rStoreSynced: replicaInformer.Informer().HasSynced,
+
+		backoff: flowcontrol.NewBackOff(time.Minute, time.Minute*3),
 
 		nowHandler: util.Now,
 	}
@@ -505,6 +510,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 				// failed in the future, we can tell it apart
 				// from replica failed during rebuilding
 				if r.Spec.HealthyAt == "" {
+					vc.backoff.DeleteEntry(r.Name)
 					r.Spec.HealthyAt = vc.nowHandler()
 					r.Spec.RebuildRetryCount = 0
 					rs[rName] = r
@@ -1353,10 +1359,16 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 			return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
 		}
 		if reusableFailedReplica != nil {
+			if vc.backoff.IsInBackOffSinceUpdate(reusableFailedReplica.Name, time.Now()) {
+				log.Debugf("Cannot reuse failed replica %v immediately, backoff period is %v now",
+					reusableFailedReplica.Name, vc.backoff.Get(reusableFailedReplica.Name).Seconds())
+				continue
+			}
 			log.Debugf("Failed replica %v will be reused during rebuilding", reusableFailedReplica.Name)
 			reusableFailedReplica.Spec.FailedAt = ""
 			reusableFailedReplica.Spec.HealthyAt = ""
 			reusableFailedReplica.Spec.RebuildRetryCount++
+			vc.backoff.Next(reusableFailedReplica.Name, time.Now())
 			rs[reusableFailedReplica.Name] = reusableFailedReplica
 			continue
 		}
