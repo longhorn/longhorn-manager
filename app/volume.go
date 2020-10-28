@@ -33,8 +33,9 @@ const (
 
 	SnapshotPurgeStatusInterval = 5 * time.Second
 
-	WaitInterval        = 5 * time.Second
-	VolumeAttachTimeout = 300 // 5 minutes
+	WaitInterval              = 5 * time.Second
+	VolumeAttachTimeout       = 300 // 5 minutes
+	BackupProcessStartTimeout = 90  // 1.5 minutes
 
 	jobTypeSnapshot = string("snapshot")
 	jobTypeBackup   = string("backup")
@@ -445,6 +446,10 @@ func (job *Job) backupAndCleanup() (err error) {
 		return err
 	}
 
+	if err := job.waitForBackupProcessStart(BackupProcessStartTimeout); err != nil {
+		return err
+	}
+
 	// Wait for backup creation complete
 	for {
 		volume, err := volumeAPI.ById(volumeName)
@@ -459,19 +464,22 @@ func (job *Job) backupAndCleanup() (err error) {
 			}
 		}
 
+		if info == nil {
+			return fmt.Errorf("cannot find the status of the backup for snapshot %v. It might because the engine has restarted", snapshot)
+		}
+
 		complete := false
-		if info != nil {
-			switch info.State {
-			case engineapi.BackupStateComplete:
-				complete = true
-				logrus.Debugf("Complete creating backup %v", info.BackupURL)
-			case engineapi.BackupStateInProgress:
-				logrus.Debugf("Creating backup %v, current progress %v", info.BackupURL, info.Progress)
-			case engineapi.BackupStateError:
-				return fmt.Errorf("failed to create backup %v: %v", info.BackupURL, info.Error)
-			default:
-				return fmt.Errorf("invalid state %v for backup %v", info.State, info.BackupURL)
-			}
+
+		switch info.State {
+		case engineapi.BackupStateComplete:
+			complete = true
+			logrus.Debugf("Complete creating backup %v", info.BackupURL)
+		case engineapi.BackupStateInProgress:
+			logrus.Debugf("Creating backup %v, current progress %v", info.BackupURL, info.Progress)
+		case engineapi.BackupStateError:
+			return fmt.Errorf("failed to create backup %v: %v", info.BackupURL, info.Error)
+		default:
+			return fmt.Errorf("invalid state %v for backup %v", info.State, info.BackupURL)
 		}
 
 		if complete {
@@ -505,6 +513,29 @@ func (job *Job) backupAndCleanup() (err error) {
 		logrus.Debugf("Cleaned up backup %v for %v", backup, volumeName)
 	}
 	return nil
+}
+
+// waitForBackupProcessStart timeout in second
+// Return nil if the backup progress has started; error if error or timeout
+func (job *Job) waitForBackupProcessStart(timeout int) error {
+	volumeAPI := job.api.Volume
+	volumeName := job.volumeName
+	snapshot := job.snapshotName
+
+	for i := 0; i < timeout; i++ {
+		volume, err := volumeAPI.ById(volumeName)
+		if err != nil {
+			return err
+		}
+
+		for _, status := range volume.BackupStatus {
+			if status.Snapshot == snapshot {
+				return nil
+			}
+		}
+		time.Sleep(WaitInterval)
+	}
+	return fmt.Errorf("timeout waiting for the backup of the snapshot %v of volume %v to start", snapshot, volumeName)
 }
 
 // shouldDoRecurringBackup return whether the recurring backup should take place
