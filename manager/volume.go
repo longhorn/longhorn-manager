@@ -295,7 +295,7 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool) (v *lo
 
 	scheduleCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled)
 	if scheduleCondition.Status != types.ConditionStatusTrue {
-		return nil, fmt.Errorf("volume %v not scheduled", name)
+		return nil, fmt.Errorf("volume %v cannot be scheduled due to lack of nodes or disks satisfied the space requirement", name)
 	}
 	restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
 	if restoreCondition.Status == types.ConditionStatusTrue {
