@@ -265,6 +265,10 @@ func (nc *NodeController) handleErr(err error, key interface{}) {
 	nc.queue.Forget(key)
 }
 
+func getLoggerForNode(logger logrus.FieldLogger, n *longhorn.Node) logrus.FieldLogger {
+	return logger.WithField("node", n.Name)
+}
+
 func (nc *NodeController) syncNode(key string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to sync node for %v", key)
