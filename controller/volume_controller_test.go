@@ -1351,6 +1351,20 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
 
+		rm1, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(
+			newInstanceManager(TestReplicaManagerName+"-"+TestNode1, types.InstanceManagerTypeReplica, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
+		)
+		c.Assert(err, IsNil)
+		rm2, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(
+			newInstanceManager(TestReplicaManagerName+"-"+TestNode2, types.InstanceManagerTypeReplica, types.InstanceManagerStateRunning, TestOwnerID2, TestNode2, TestIP1, map[string]types.InstanceProcess{}, false),
+		)
+		c.Assert(err, IsNil)
+		imIndexer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers().Informer().GetIndexer()
+		err = imIndexer.Add(rm1)
+		c.Assert(err, IsNil)
+		err = imIndexer.Add(rm2)
+		c.Assert(err, IsNil)
+
 		// Set replica node soft anti-affinity setting
 		if tc.replicaNodeSoftAntiAffinity != "" {
 			s := initSettingsNameValue(
@@ -1380,6 +1394,13 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			c.Assert(err, IsNil)
 			sIndexer.Add(setting)
 		}
+		// Set Default Engine Image
+		s := initSettingsNameValue(
+			string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage)
+		setting, err :=
+			lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
+		c.Assert(err, IsNil)
+		sIndexer.Add(setting)
 
 		// need to create default node
 		for _, node := range tc.nodes {

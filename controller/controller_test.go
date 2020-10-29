@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -176,6 +177,41 @@ func newEngineImageDaemonSet() *appsv1.DaemonSet {
 			NumberAvailable:        1,
 		},
 	}
+}
+
+func newInstanceManager(
+	name string,
+	imType types.InstanceManagerType,
+	currentState types.InstanceManagerState,
+	currentOwnerID, nodeID, ip string,
+	instances map[string]types.InstanceProcess,
+	isDeleting bool) *longhorn.InstanceManager {
+
+	im := &longhorn.InstanceManager{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+			UID:       uuid.NewUUID(),
+			Labels:    types.GetInstanceManagerLabels(nodeID, TestInstanceManagerImage, imType),
+		},
+		Spec: types.InstanceManagerSpec{
+			Image:  TestInstanceManagerImage,
+			NodeID: nodeID,
+			Type:   imType,
+		},
+		Status: types.InstanceManagerStatus{
+			OwnerID:      currentOwnerID,
+			CurrentState: currentState,
+			IP:           ip,
+			Instances:    instances,
+		},
+	}
+
+	if isDeleting {
+		now := metav1.NewTime(time.Now())
+		im.DeletionTimestamp = &now
+	}
+	return im
 }
 
 func getKey(obj interface{}, c *C) string {
