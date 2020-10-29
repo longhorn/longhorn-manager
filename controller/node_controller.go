@@ -269,6 +269,10 @@ func getLoggerForNode(logger logrus.FieldLogger, n *longhorn.Node) logrus.FieldL
 	return logger.WithField("node", n.Name)
 }
 
+func (nc *NodeController) isResponsibleFor(n *longhorn.Node) bool {
+	return isControllerResponsibleFor(nc.controllerID, nc.ds, n.Name, n.Name, n.Status.OwnerID)
+}
+
 func (nc *NodeController) syncNode(key string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to sync node for %v", key)
@@ -289,6 +293,23 @@ func (nc *NodeController) syncNode(key string) (err error) {
 			return nil
 		}
 		return err
+	}
+
+	if node.Status.OwnerID != nc.controllerID {
+		if !nc.isResponsibleFor(node) {
+			// Not ours
+			return nil
+		}
+		node.Status.OwnerID = nc.controllerID
+		node, err = nc.ds.UpdateNodeStatus(node)
+		if err != nil {
+			// we don't mind others coming first
+			if apierrors.IsConflict(errors.Cause(err)) {
+				return nil
+			}
+			return err
+		}
+		logrus.Infof("Node got new owner %v", nc.controllerID)
 	}
 
 	if node.DeletionTimestamp != nil {
