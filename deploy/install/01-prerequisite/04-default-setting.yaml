@@ -31,6 +31,7 @@ data:
     allow-node-drain-with-last-healthy-replica:
     mkfs-ext4-parameters:
     disable-replica-rebuild:
+    replica-replenishment-wait-interval:
     disable-revision-counter:
     system-managed-pods-image-pull-policy:
     allow-volume-creation-with-degraded-availability:
