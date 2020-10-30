@@ -13,6 +13,7 @@ import (
 
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 // This upgrade is needed because we add one more field `controller: true`
@@ -76,5 +77,30 @@ func upgradeInstanceMangerPodOwnerRef(pod *v1.Pod, kubeClient *clientset.Clients
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to update the owner reference for instance manager pod %v during the instance managers pods upgrade", pod.GetName())
 	}
 
+	return nil
+}
+
+func UpgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade volume failed")
+	}()
+
+	volumeList, err := lhClient.LonghornV1beta1().Volumes(namespace).List(metav1.ListOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn volumes during the volume upgrade")
+	}
+
+	for _, v := range volumeList.Items {
+		if v.Status.Robustness != types.VolumeRobustnessDegraded {
+			continue
+		}
+		v.Status.LastDegradedAt = util.Now()
+		if _, err := lhClient.LonghornV1beta1().Volumes(namespace).UpdateStatus(&v); err != nil {
+			return err
+		}
+	}
 	return nil
 }

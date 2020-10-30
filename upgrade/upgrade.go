@@ -237,5 +237,8 @@ func doPodsUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeClient
 	if err = v102to110.UpgradeInstanceManagerPods(namespace, lhClient, kubeClient); err != nil {
 		return err
 	}
+	if err = v102to110.UpgradeVolumes(namespace, lhClient); err != nil {
+		return err
+	}
 	return nil
 }
