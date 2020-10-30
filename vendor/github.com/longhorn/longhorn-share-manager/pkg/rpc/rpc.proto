@@ -1,0 +1,60 @@
+syntax="proto3";
+
+service ShareManagerService {
+	rpc ShareCreate(ShareCreateRequest) returns (ShareResponse) {}
+	rpc ShareDelete(ShareDeleteRequest) returns (ShareResponse) {}
+	rpc ShareGet(ShareGetRequest) returns (ShareResponse) {}
+	rpc ShareList(ShareListRequest) returns (ShareListResponse) {}
+	rpc ShareWatch(ShareWatchRequest) returns (stream ShareResponse) {}
+
+	rpc LogWatch(LogWatchRequest) returns (stream LogResponse) {}
+	rpc VersionGet(VersionRequest) returns(VersionResponse);
+}
+
+message ShareCreateRequest {
+	string volume = 1;
+}
+
+message ShareDeleteRequest {
+	string volume = 1;
+}
+
+message ShareGetRequest {
+	string volume = 1;
+}
+
+message ShareWatchRequest {
+}
+
+message ShareResponse {
+	string volume = 1;
+	string export_id = 2;
+	string state = 3;
+	string error = 4;
+}
+
+message ShareListRequest{
+}
+
+message ShareListResponse{
+	map<string, ShareResponse> shares = 1;
+}
+
+message LogWatchRequest{
+}
+
+message LogResponse{
+	string line = 2;
+}
+
+message VersionRequest {
+}
+
+message VersionResponse {
+    string version = 1;
+    string gitCommit = 2;
+    string buildDate = 3;
+
+    int64 apiVersion = 4;
+    int64 apiMinVersion = 5;
+}

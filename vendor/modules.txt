@@ -84,7 +84,7 @@ github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-iscsi-helper v0.0.0-20200724233216-c35d2e7ee6b6
+# github.com/longhorn/go-iscsi-helper v0.0.0-20201111045018-ee87992ec536
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
@@ -95,6 +95,12 @@ github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/rpc
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
+# github.com/longhorn/longhorn-share-manager v0.0.0-00010101000000-000000000000 => /home/jmoody/go/src/github.com/longhorn/longhorn-share-manager
+github.com/longhorn/longhorn-share-manager/pkg/client
+github.com/longhorn/longhorn-share-manager/pkg/meta
+github.com/longhorn/longhorn-share-manager/pkg/rpc
+github.com/longhorn/longhorn-share-manager/pkg/types
+github.com/longhorn/longhorn-share-manager/pkg/util
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/miekg/dns v1.1.22
@@ -153,12 +159,12 @@ github.com/tinylib/msgp/msgp
 github.com/urfave/cli
 # github.com/willf/bitset v1.1.10
 github.com/willf/bitset
-# golang.org/x/crypto v0.0.0-20200220183623-bac4c82f6975
+# golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
 golang.org/x/crypto/pbkdf2
 golang.org/x/crypto/ssh/terminal
-# golang.org/x/net v0.0.0-20191004110552-13f9640d40b9
+# golang.org/x/net v0.0.0-20200707034311-ab3426394381
 golang.org/x/net/bpf
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
@@ -177,7 +183,7 @@ golang.org/x/net/trace
 # golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sys v0.0.0-20191010194322-b09406accb47
+# golang.org/x/sys v0.0.0-20200323222414-85ca7c5b95cd
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 # golang.org/x/text v0.3.2
@@ -596,6 +602,7 @@ k8s.io/utils/integer
 k8s.io/utils/io
 k8s.io/utils/keymutex
 k8s.io/utils/net
+k8s.io/utils/nsenter
 k8s.io/utils/path
 k8s.io/utils/pointer
 k8s.io/utils/trace
