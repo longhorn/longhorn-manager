@@ -1359,18 +1359,17 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 			return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
 		}
 		if reusableFailedReplica != nil {
-			if vc.backoff.IsInBackOffSinceUpdate(reusableFailedReplica.Name, time.Now()) {
-				log.Debugf("Cannot reuse failed replica %v immediately, backoff period is %v now",
-					reusableFailedReplica.Name, vc.backoff.Get(reusableFailedReplica.Name).Seconds())
+			if !vc.backoff.IsInBackOffSinceUpdate(reusableFailedReplica.Name, time.Now()) {
+				log.Debugf("Failed replica %v will be reused during rebuilding", reusableFailedReplica.Name)
+				reusableFailedReplica.Spec.FailedAt = ""
+				reusableFailedReplica.Spec.HealthyAt = ""
+				reusableFailedReplica.Spec.RebuildRetryCount++
+				vc.backoff.Next(reusableFailedReplica.Name, time.Now())
+				rs[reusableFailedReplica.Name] = reusableFailedReplica
 				continue
 			}
-			log.Debugf("Failed replica %v will be reused during rebuilding", reusableFailedReplica.Name)
-			reusableFailedReplica.Spec.FailedAt = ""
-			reusableFailedReplica.Spec.HealthyAt = ""
-			reusableFailedReplica.Spec.RebuildRetryCount++
-			vc.backoff.Next(reusableFailedReplica.Name, time.Now())
-			rs[reusableFailedReplica.Name] = reusableFailedReplica
-			continue
+			log.Debugf("Cannot reuse failed replica %v immediately, backoff period is %v now",
+				reusableFailedReplica.Name, vc.backoff.Get(reusableFailedReplica.Name).Seconds())
 		}
 		if vc.scheduler.RequireNewReplica(rs, v, hardNodeAffinity) {
 			log.Debugf("A new replica will be replenished during rebuilding")
