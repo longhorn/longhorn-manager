@@ -269,7 +269,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 	}
 
 	// Check volume frontend settings
-	if existVol.DisableFrontend || existVol.Frontend != string(types.VolumeFrontendBlockDev) {
+	if existVol.Frontend != string(types.VolumeFrontendBlockDev) {
 		return nil, status.Errorf(codes.InvalidArgument, "ControllerPublishVolume: there is no block device frontend for volume %s", req.GetVolumeId())
 	}
 
