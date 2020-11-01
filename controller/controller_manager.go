@@ -10,6 +10,7 @@ import (
 	"golang.org/x/time/rate"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
@@ -174,15 +175,39 @@ func GetGuaranteedResourceRequirement(ds *datastore.DataStore) (*corev1.Resource
 	}, nil
 }
 
-func isControllerResponsibleFor(controllerID string, ds *datastore.DataStore, name, preferredOwnerID, currentOwnerID string) bool {
+func isControllerResponsibleFor(controllerID string, ds *datastore.DataStore, name, preferredOwnerID, currentOwnerID string, getKubeNode bool) bool {
 	var err error
 	responsible := false
 
 	ownerDown := false
 	if currentOwnerID != "" {
-		ownerDown, err = ds.IsNodeDownOrDeleted(currentOwnerID)
-		if err != nil {
-			logrus.Warnf("Error while checking if object %v owner is down or deleted: %v", name, err)
+		if getKubeNode {
+			kubeNode, err := ds.GetKubernetesNode(currentOwnerID)
+			if err != nil {
+				// Kubernetes node has been removed from cluster.
+				if apierrors.IsNotFound(err) {
+					logrus.Warnf("Kubernetes node %v is not found", name)
+					ownerDown = true
+				} else {
+					// For other error don't trade as node down.
+					// Be consistent with ds.IsNodeDownOrDeleted.
+					logrus.Warnf("Kubernetes get node %v failed: %v, don't mark as node down", name, err)
+				}
+			} else {
+				kubeConditions := kubeNode.Status.Conditions
+				for _, con := range kubeConditions {
+					if con.Type == corev1.NodeReady {
+						if con.Status != corev1.ConditionTrue {
+							ownerDown = true
+						}
+					}
+				}
+			}
+		} else {
+			ownerDown, err = ds.IsNodeDownOrDeleted(currentOwnerID)
+			if err != nil {
+				logrus.Warnf("Error while checking if object %v owner is down or deleted: %v", name, err)
+			}
 		}
 	}
 

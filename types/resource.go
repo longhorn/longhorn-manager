@@ -321,6 +321,7 @@ type NodeStatus struct {
 	DiskStatus map[string]*DiskStatus `json:"diskStatus"`
 	Region     string                 `json:"region"`
 	Zone       string                 `json:"zone"`
+	OwnerID    string                 `json:"ownerID"`
 }
 
 type DiskSpec struct {

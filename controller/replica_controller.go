@@ -596,5 +596,5 @@ func (rc *ReplicaController) enqueueNodeChange(obj interface{}) {
 }
 
 func (rc *ReplicaController) isResponsibleFor(r *longhorn.Replica) bool {
-	return isControllerResponsibleFor(rc.controllerID, rc.ds, r.Name, r.Spec.NodeID, r.Status.OwnerID)
+	return isControllerResponsibleFor(rc.controllerID, rc.ds, r.Name, r.Spec.NodeID, r.Status.OwnerID, false)
 }

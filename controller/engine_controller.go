@@ -1394,5 +1394,5 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine) error {
 }
 
 func (ec *EngineController) isResponsibleFor(e *longhorn.Engine) bool {
-	return isControllerResponsibleFor(ec.controllerID, ec.ds, e.Name, e.Spec.NodeID, e.Status.OwnerID)
+	return isControllerResponsibleFor(ec.controllerID, ec.ds, e.Name, e.Spec.NodeID, e.Status.OwnerID, false)
 }

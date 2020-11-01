@@ -2205,7 +2205,7 @@ func (vc *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica
 }
 
 func (vc *VolumeController) isResponsibleFor(v *longhorn.Volume) bool {
-	return isControllerResponsibleFor(vc.controllerID, vc.ds, v.Name, v.Spec.NodeID, v.Status.OwnerID)
+	return isControllerResponsibleFor(vc.controllerID, vc.ds, v.Name, v.Spec.NodeID, v.Status.OwnerID, false)
 }
 
 func (vc *VolumeController) deleteReplica(r *longhorn.Replica, rs map[string]*longhorn.Replica) error {
