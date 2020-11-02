@@ -34,6 +34,7 @@ const (
 	SnapshotPurgeStatusInterval = 5 * time.Second
 
 	WaitInterval              = 5 * time.Second
+	DetachingWaitInterval     = 30 * time.Second
 	VolumeAttachTimeout       = 300 // 5 minutes
 	BackupProcessStartTimeout = 90  // 1.5 minutes
 
@@ -212,6 +213,7 @@ func (job *Job) run() (err error) {
 			if _, err := volumeAPI.ActionDetach(volume); err != nil {
 				return err
 			}
+			time.Sleep(DetachingWaitInterval)
 			return nil
 		}()
 	}
@@ -456,6 +458,18 @@ func (job *Job) backupAndCleanup() (err error) {
 		if err != nil {
 			return err
 		}
+
+		hasRunningController := false // controller is the engine process
+		for _, controller := range volume.Controllers {
+			if controller.Running {
+				hasRunningController = true
+				break
+			}
+		}
+		if !hasRunningController {
+			return fmt.Errorf("the volume %v is detached on the middle of the backup process", volumeName)
+		}
+
 		var info *longhornclient.BackupStatus
 		for _, status := range volume.BackupStatus {
 			if status.Snapshot == snapshot {
