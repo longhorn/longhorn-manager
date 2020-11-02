@@ -927,7 +927,7 @@ func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	}
 
 	obj, err := verifyCreation(node.Name, "node", func(name string) (runtime.Object, error) {
-		return s.getNodeRO(name)
+		return s.GetNodeRO(name)
 	})
 	if err != nil {
 		return nil, err
@@ -980,14 +980,14 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 	return s.CreateNode(node)
 }
 
-func (s *DataStore) getNodeRO(name string) (*longhorn.Node, error) {
+func (s *DataStore) GetNodeRO(name string) (*longhorn.Node, error) {
 	return s.nLister.Nodes(s.namespace).Get(name)
 }
 
 // GetNode gets Longhorn Node for the given name and namespace
 // Returns a new Node object
 func (s *DataStore) GetNode(name string) (*longhorn.Node, error) {
-	resultRO, err := s.getNodeRO(name)
+	resultRO, err := s.GetNodeRO(name)
 	if err != nil {
 		return nil, err
 	}
@@ -1002,7 +1002,7 @@ func (s *DataStore) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) {
 		return nil, err
 	}
 	verifyUpdate(node.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getNodeRO(name)
+		return s.GetNodeRO(name)
 	})
 	return obj, nil
 }
@@ -1014,7 +1014,7 @@ func (s *DataStore) UpdateNodeStatus(node *longhorn.Node) (*longhorn.Node, error
 		return nil, err
 	}
 	verifyUpdate(node.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getNodeRO(name)
+		return s.GetNodeRO(name)
 	})
 	return obj, nil
 }
@@ -1105,7 +1105,7 @@ func (s *DataStore) IsNodeDownOrDeleted(name string) (bool, error) {
 	if name == "" {
 		return false, errors.New("no node name provided to check node down or deleted")
 	}
-	node, err := s.getNodeRO(name)
+	node, err := s.GetNodeRO(name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return true, nil

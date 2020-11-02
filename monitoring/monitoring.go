@@ -34,9 +34,14 @@ func Handler() http.Handler {
 
 func InitMonitoringSystem(logger logrus.FieldLogger, currentNodeID string, ds *datastore.DataStore, kubeconfigPath string) {
 	vc := NewVolumeCollector(logger, currentNodeID, ds)
+	dc := NewDiskCollector(logger, currentNodeID, ds)
 
 	if err := Register(vc); err != nil {
 		logger.WithField("collector", subsystemVolume).WithError(err).Warn("failed to register collector")
+	}
+
+	if err := Register(dc); err != nil {
+		logger.WithField("collector", subsystemDisk).WithError(err).Warn("failed to register collector")
 	}
 
 	namespace := os.Getenv(types.EnvPodNamespace)

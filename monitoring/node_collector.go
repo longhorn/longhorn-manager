@@ -26,6 +26,9 @@ type NodeCollector struct {
 	cpuCapacityMetric        metricInfo
 	memoryUsageMetric        metricInfo
 	memoryCapacityMetric     metricInfo
+	storageCapacityMetric    metricInfo
+	storageUsageMetric       metricInfo
+	storageReservationMetric metricInfo
 }
 
 func NewNodeCollector(
@@ -99,6 +102,36 @@ func NewNodeCollector(
 		Type: prometheus.GaugeValue,
 	}
 
+	nc.storageCapacityMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemNode, "storage_capacity_bytes"),
+			"The storage capacity of this node",
+			[]string{nodeLabel},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
+	}
+
+	nc.storageUsageMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemNode, "storage_usage_bytes"),
+			"The used storage of this node",
+			[]string{nodeLabel},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
+	}
+
+	nc.storageReservationMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemNode, "storage_reservation_bytes"),
+			"The reserved storage for other applications and system on this node",
+			[]string{nodeLabel},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
+	}
+
 	return nc
 }
 
@@ -109,6 +142,9 @@ func (nc *NodeCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- nc.cpuCapacityMetric.Desc
 	ch <- nc.memoryUsageMetric.Desc
 	ch <- nc.memoryCapacityMetric.Desc
+	ch <- nc.storageCapacityMetric.Desc
+	ch <- nc.storageUsageMetric.Desc
+	ch <- nc.storageReservationMetric.Desc
 }
 
 func (nc *NodeCollector) Collect(ch chan<- prometheus.Metric) {
@@ -136,6 +172,12 @@ func (nc *NodeCollector) Collect(ch chan<- prometheus.Metric) {
 	go func() {
 		defer wg.Done()
 		nc.collectNodeCPUMemoryCapacity(ch)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		nc.collectNodeStorage(ch)
 	}()
 
 	wg.Wait()
@@ -237,4 +279,32 @@ func (nc *NodeCollector) collectNodeCPUMemoryCapacity(ch chan<- prometheus.Metri
 		ch <- prometheus.MustNewConstMetric(nc.cpuCapacityMetric.Desc, nc.cpuCapacityMetric.Type, cpuCapacityMilicpu, nc.currentNodeID)
 		ch <- prometheus.MustNewConstMetric(nc.memoryCapacityMetric.Desc, nc.memoryCapacityMetric.Type, memoryCapacityBytes, nc.currentNodeID)
 	}
+}
+
+func (nc *NodeCollector) collectNodeStorage(ch chan<- prometheus.Metric) {
+	defer func() {
+		if err := recover(); err != nil {
+			nc.logger.WithField("error", err).Warn("panic during collecting metrics")
+		}
+	}()
+
+	node, err := nc.ds.GetNodeRO(nc.currentNodeID)
+	if err != nil {
+		nc.logger.WithError(err).Warn("error during scrape")
+		return
+	}
+
+	disks := getDiskListFromNode(node)
+	var storageCapacity int64 = 0
+	var storageUsage int64 = 0
+	var storageReservation int64 = 0
+	for _, disk := range disks {
+		storageCapacity += disk.StorageMaximum
+		storageUsage += disk.StorageMaximum - disk.StorageAvailable
+		storageReservation += disk.StorageReserved
+	}
+
+	ch <- prometheus.MustNewConstMetric(nc.storageCapacityMetric.Desc, nc.storageCapacityMetric.Type, float64(storageCapacity), nc.currentNodeID)
+	ch <- prometheus.MustNewConstMetric(nc.storageUsageMetric.Desc, nc.storageUsageMetric.Type, float64(storageUsage), nc.currentNodeID)
+	ch <- prometheus.MustNewConstMetric(nc.storageReservationMetric.Desc, nc.storageReservationMetric.Type, float64(storageReservation), nc.currentNodeID)
 }
