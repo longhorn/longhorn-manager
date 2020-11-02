@@ -29,11 +29,10 @@ type InstanceManagerTestCase struct {
 	nodeDown     bool
 	nodeID       string
 
-	currentPodPhase v1.PodPhase
-	currentOwnerID  string
-	currentState    types.InstanceManagerState
+	currentPodStatus *v1.PodStatus
+	currentOwnerID   string
+	currentState     types.InstanceManagerState
 
-	expectedOwnerID  string
 	expectedPodCount int
 	expectedStatus   types.InstanceManagerStatus
 	expectedType     types.InstanceManagerType
@@ -56,13 +55,9 @@ func fakeInstanceManagerVersionUpdater(im *longhorn.InstanceManager) error {
 	return nil
 }
 
-func newPod(phase v1.PodPhase, name, namespace, nodeID string) *v1.Pod {
-	if phase == "" {
+func newPod(status *v1.PodStatus, name, namespace, nodeID string) *v1.Pod {
+	if status == nil {
 		return nil
-	}
-	ip := ""
-	if phase == v1.PodRunning {
-		ip = TestIP1
 	}
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -73,10 +68,7 @@ func newPod(phase v1.PodPhase, name, namespace, nodeID string) *v1.Pod {
 			ServiceAccountName: TestServiceAccount,
 			NodeName:           nodeID,
 		},
-		Status: v1.PodStatus{
-			Phase: phase,
-			PodIP: ip,
-		},
+		Status: *status,
 	}
 }
 
@@ -135,8 +127,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 	testCases := map[string]InstanceManagerTestCase{
 		"instance manager change ownership": {
 			TestNode1, false, TestNode1,
-			v1.PodRunning, TestNode2, types.InstanceManagerStateUnknown,
-			TestNode1, 1,
+			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
+			TestNode2, types.InstanceManagerStateUnknown, 1,
 			types.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  types.InstanceManagerStateRunning,
@@ -148,8 +140,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		},
 		"instance manager error then restart immediately": {
 			TestNode1, false, TestNode1,
-			v1.PodFailed, TestNode1, types.InstanceManagerStateRunning,
-			TestNode1, 1,
+			&v1.PodStatus{PodIP: "", Phase: v1.PodFailed},
+			TestNode1, types.InstanceManagerStateRunning, 1,
 			types.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  types.InstanceManagerStateStarting,
@@ -160,8 +152,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		},
 		"instance manager node down": {
 			TestNode2, true, TestNode1,
-			v1.PodRunning, TestNode1, types.InstanceManagerStateRunning,
-			TestNode2, 0,
+			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
+			TestNode1, types.InstanceManagerStateRunning, 0,
 			types.InstanceManagerStatus{
 				OwnerID:       TestNode2,
 				CurrentState:  types.InstanceManagerStateUnknown,
@@ -172,8 +164,9 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		},
 		"instance manager restarting after error": {
 			TestNode1, false, TestNode1,
-			v1.PodRunning, TestNode1, types.InstanceManagerStateError,
-			TestNode1, 1, types.InstanceManagerStatus{
+			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
+			TestNode1, types.InstanceManagerStateError, 1,
+			types.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  types.InstanceManagerStateStarting,
 				APIMinVersion: 0,
@@ -183,8 +176,9 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		},
 		"instance manager running": {
 			TestNode1, false, TestNode1,
-			v1.PodRunning, TestNode1, types.InstanceManagerStateStarting,
-			TestNode1, 1, types.InstanceManagerStatus{
+			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
+			TestNode1, types.InstanceManagerStateStarting, 1,
+			types.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  types.InstanceManagerStateRunning,
 				IP:            TestIP1,
@@ -195,8 +189,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		},
 		"instance manager starting engine": {
 			TestNode1, false, TestNode1,
-			"", TestNode1, types.InstanceManagerStateStopped,
-			TestNode1, 1,
+			nil,
+			TestNode1, types.InstanceManagerStateStopped, 1,
 			types.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  types.InstanceManagerStateStarting,
@@ -207,13 +201,26 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		},
 		"instance manager starting replica": {
 			TestNode1, false, TestNode1,
-			"", TestNode1, types.InstanceManagerStateStopped,
-			TestNode1, 1,
+			nil,
+			TestNode1, types.InstanceManagerStateStopped, 1,
 			types.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  types.InstanceManagerStateStarting,
 				APIMinVersion: 0,
 				APIVersion:    0,
+			},
+			types.InstanceManagerTypeReplica,
+		},
+		"instance manager sync IP": {
+			TestNode1, false, TestNode1,
+			&v1.PodStatus{PodIP: TestIP2, Phase: v1.PodRunning},
+			TestNode1, types.InstanceManagerStateRunning, 1,
+			types.InstanceManagerStatus{
+				OwnerID:       TestNode1,
+				CurrentState:  types.InstanceManagerStateRunning,
+				IP:            TestIP2,
+				APIMinVersion: 1,
+				APIVersion:    1,
 			},
 			types.InstanceManagerTypeReplica,
 		},
@@ -274,14 +281,18 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		_, err = lhClient.LonghornV1beta1().Nodes(lhNode2.Namespace).Create(lhNode2)
 		c.Assert(err, IsNil)
 
-		im := newInstanceManager(TestInstanceManagerName1, tc.expectedType, tc.currentState, tc.currentOwnerID, tc.nodeID, "", nil, false)
+		currentIP := ""
+		if tc.currentState == types.InstanceManagerStateRunning || tc.currentState == types.InstanceManagerStateStarting {
+			currentIP = TestIP1
+		}
+		im := newInstanceManager(TestInstanceManagerName1, tc.expectedType, tc.currentState, tc.currentOwnerID, tc.nodeID, currentIP, nil, false)
 		err = imIndexer.Add(im)
 		c.Assert(err, IsNil)
 		_, err = lhClient.LonghornV1beta1().InstanceManagers(im.Namespace).Create(im)
 		c.Assert(err, IsNil)
 
-		if tc.currentPodPhase != "" {
-			pod := newPod(tc.currentPodPhase, im.Name, im.Namespace, im.Spec.NodeID)
+		if tc.currentPodStatus != nil {
+			pod := newPod(tc.currentPodStatus, im.Name, im.Namespace, im.Spec.NodeID)
 			err = pIndexer.Add(pod)
 			c.Assert(err, IsNil)
 			_, err = kubeClient.CoreV1().Pods(im.Namespace).Create(pod)
@@ -295,7 +306,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		c.Assert(podList.Items, HasLen, tc.expectedPodCount)
 
 		// Check the Pod that was created by the Instance Manager.
-		if tc.currentPodPhase == "" {
+		if tc.currentPodStatus == nil {
 			pod, err := kubeClient.CoreV1().Pods(im.Namespace).Get(im.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			switch im.Spec.Type {
