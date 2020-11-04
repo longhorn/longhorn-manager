@@ -43,8 +43,8 @@ const (
 	TestDaemon2 = "longhorn-manager-2"
 	TestDaemon3 = "longhorn-manager-3"
 
-	TestDiskID1           = "diskID1"
-	TestDiskID2           = "diskID2"
+	// TestDiskID1           = "diskID1"
+	// TestDiskID2           = "diskID2"
 	TestDiskSize          = 5000000000
 	TestDiskAvailableSize = 3000000000
 )
@@ -186,6 +186,10 @@ func newReplicaForVolume(v *longhorn.Volume) *longhorn.Replica {
 	}
 }
 
+func getDiskID(nodeID, index string) string {
+	return fmt.Sprintf("%s-disk%s", nodeID, index)
+}
+
 func initSettings(name, value string) *longhorn.Setting {
 	setting := &longhorn.Setting{
 		ObjectMeta: metav1.ObjectMeta{
@@ -254,40 +258,43 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	node1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
 	disk := newDisk(TestDefaultDataPath, true, 0)
 	node1.Spec.Disks = map[string]types.DiskSpec{
-		TestDiskID1: disk,
+		getDiskID(TestNode1, "1"): disk,
 	}
 	node1.Status.DiskStatus = map[string]*types.DiskStatus{
-		TestDiskID1: {
+		getDiskID(TestNode1, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
 			Conditions: map[string]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
 			},
+			DiskUUID: getDiskID(TestNode1, "1"),
 		},
 	}
 	node2 := newNode(TestNode2, TestNamespace, false, types.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	node2.Spec.Disks = map[string]types.DiskSpec{
-		TestDiskID1: disk,
+		getDiskID(TestNode2, "1"): disk,
 	}
 	node2.Status.DiskStatus = map[string]*types.DiskStatus{
-		TestDiskID1: {
+		getDiskID(TestNode2, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
+			DiskUUID:         getDiskID(TestNode2, "1"),
 		},
 	}
 	node3 := newNode(TestNode3, TestNamespace, true, types.ConditionStatusFalse)
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	node3.Spec.Disks = map[string]types.DiskSpec{
-		TestDiskID1: disk,
+		getDiskID(TestNode3, "1"): disk,
 	}
 	node3.Status.DiskStatus = map[string]*types.DiskStatus{
-		TestDiskID1: {
+		getDiskID(TestNode3, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
+			DiskUUID:         getDiskID(TestNode3, "1"),
 		},
 	}
 	nodes := map[string]*longhorn.Node{
@@ -339,60 +346,64 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 := newDisk(TestDefaultDataPath, true, TestDiskSize)
 	node1.Spec.Disks = map[string]types.DiskSpec{
-		TestDiskID1: disk,
-		TestDiskID2: disk2,
+		getDiskID(TestNode1, "1"): disk,
+		getDiskID(TestNode1, "2"): disk2,
 	}
 
 	node1.Status.DiskStatus = map[string]*types.DiskStatus{
-		TestDiskID1: {
+		getDiskID(TestNode1, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
 			Conditions: map[string]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
 			},
+			DiskUUID: getDiskID(TestNode1, "1"),
 		},
-		TestDiskID2: {
+		getDiskID(TestNode1, "2"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
 			Conditions: map[string]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
 			},
+			DiskUUID: getDiskID(TestNode1, "2"),
 		},
 	}
 	expectNode1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
 	expectNode1.Spec.Disks = map[string]types.DiskSpec{
-		TestDiskID1: disk,
+		getDiskID(TestNode1, "1"): disk,
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, 0)
 	node2.Spec.Disks = map[string]types.DiskSpec{
-		TestDiskID1: disk,
-		TestDiskID2: disk2,
+		getDiskID(TestNode2, "1"): disk,
+		getDiskID(TestNode2, "2"): disk2,
 	}
 	node2.Status.DiskStatus = map[string]*types.DiskStatus{
-		TestDiskID1: {
+		getDiskID(TestNode2, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
 			Conditions: map[string]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
 			},
+			DiskUUID: getDiskID(TestNode2, "1"),
 		},
-		TestDiskID2: {
+		getDiskID(TestNode2, "2"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
 			Conditions: map[string]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse),
 			},
+			DiskUUID: getDiskID(TestNode2, "2"),
 		},
 	}
 	expectNode2 := newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
 	expectNode2.Spec.Disks = map[string]types.DiskSpec{
-		TestDiskID1: disk,
+		getDiskID(TestNode2, "1"): disk,
 	}
 	nodes = map[string]*longhorn.Node{
 		TestNode1: node1,
@@ -429,41 +440,44 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, TestDiskSize)
 	node1.Spec.Disks = map[string]types.DiskSpec{
-		TestDiskID1: disk,
+		getDiskID(TestNode1, "1"): disk,
 	}
 	node1.Status.DiskStatus = map[string]*types.DiskStatus{
-		TestDiskID1: {
+		getDiskID(TestNode1, "1"): {
 			StorageAvailable: 0,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
 			Conditions: map[string]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
 			},
+			DiskUUID: getDiskID(TestNode1, "1"),
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, 0)
 	node2.Spec.Disks = map[string]types.DiskSpec{
-		TestDiskID1: disk,
-		TestDiskID2: disk2,
+		getDiskID(TestNode2, "1"): disk,
+		getDiskID(TestNode2, "2"): disk2,
 	}
 	node2.Status.DiskStatus = map[string]*types.DiskStatus{
-		TestDiskID1: {
+		getDiskID(TestNode2, "1"): {
 			StorageAvailable: 0,
 			StorageScheduled: TestDiskAvailableSize,
 			StorageMaximum:   TestDiskSize,
 			Conditions: map[string]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
 			},
+			DiskUUID: getDiskID(TestNode2, "1"),
 		},
-		TestDiskID2: {
+		getDiskID(TestNode2, "2"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
 			Conditions: map[string]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse),
 			},
+			DiskUUID: getDiskID(TestNode2, "2"),
 		},
 	}
 	nodes = map[string]*longhorn.Node{
@@ -490,41 +504,44 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, TestDiskSize)
 	node1.Spec.Disks = map[string]types.DiskSpec{
-		TestDiskID1: disk,
+		getDiskID(TestNode1, "1"): disk,
 	}
 	node1.Status.DiskStatus = map[string]*types.DiskStatus{
-		TestDiskID1: {
+		getDiskID(TestNode1, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
 			Conditions: map[string]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
 			},
+			DiskUUID: getDiskID(TestNode1, "1"),
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, 0)
 	node2.Spec.Disks = map[string]types.DiskSpec{
-		TestDiskID1: disk,
-		TestDiskID2: disk2,
+		getDiskID(TestNode2, "1"): disk,
+		getDiskID(TestNode2, "2"): disk2,
 	}
 	node2.Status.DiskStatus = map[string]*types.DiskStatus{
-		TestDiskID1: {
+		getDiskID(TestNode2, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
 			Conditions: map[string]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
 			},
+			DiskUUID: getDiskID(TestNode2, "1"),
 		},
-		TestDiskID2: {
+		getDiskID(TestNode2, "2"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
 			Conditions: map[string]types.Condition{
 				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
 			},
+			DiskUUID: getDiskID(TestNode2, "2"),
 		},
 	}
 	nodes = map[string]*longhorn.Node{

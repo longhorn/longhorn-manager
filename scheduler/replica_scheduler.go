@@ -24,6 +24,7 @@ type ReplicaScheduler struct {
 
 type Disk struct {
 	types.DiskSpec
+	*types.DiskStatus
 	NodeID string
 }
 
@@ -84,7 +85,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 			if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status != types.ConditionStatusTrue {
 				continue
 			}
-			disks[fsid] = struct{}{}
+			disks[diskStatus.DiskUUID] = struct{}{}
 		}
 		nodeDisksMap[node.Name] = disks
 	}
@@ -217,9 +218,23 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disks map[string]struct{}, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, requireSchedulingCheck bool) map[string]*Disk {
 	preferredDisk := map[string]*Disk{}
 	// find disk that fit for current replica
-	for fsid := range disks {
-		diskSpec := node.Spec.Disks[fsid]
-		diskStatus := node.Status.DiskStatus[fsid]
+	for diskUUID := range disks {
+		var fsid string
+		var diskSpec types.DiskSpec
+		var diskStatus *types.DiskStatus
+		diskFound := false
+		for fsid, diskStatus = range node.Status.DiskStatus {
+			if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status == types.ConditionStatusTrue &&
+				diskStatus.DiskUUID == diskUUID {
+				diskFound = true
+				diskSpec = node.Spec.Disks[fsid]
+				break
+			}
+		}
+		if !diskFound {
+			logrus.Errorf("Cannot find the spec or the status for disk %v when scheduling replica", diskUUID)
+			continue
+		}
 		if requireSchedulingCheck {
 			info, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
 			if err != nil {
@@ -248,10 +263,11 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 		}
 
 		suggestDisk := &Disk{
-			DiskSpec: diskSpec,
-			NodeID:   node.Name,
+			DiskSpec:   diskSpec,
+			DiskStatus: diskStatus,
+			NodeID:     node.Name,
 		}
-		preferredDisk[fsid] = suggestDisk
+		preferredDisk[diskUUID] = suggestDisk
 	}
 
 	return preferredDisk
@@ -298,14 +314,12 @@ func (rcs *ReplicaScheduler) getNodeInfo() (map[string]*longhorn.Node, error) {
 
 func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, diskCandidates map[string]*Disk) {
 	// get a random disk from diskCandidates
-	var fsid string
-	var disk *Disk
-	for fsid, disk = range diskCandidates {
+	for _, disk := range diskCandidates {
+		replica.Spec.NodeID = disk.NodeID
+		replica.Spec.DiskID = disk.DiskUUID
+		replica.Spec.DiskPath = disk.Path
 		break
 	}
-	replica.Spec.NodeID = disk.NodeID
-	replica.Spec.DiskID = fsid
-	replica.Spec.DiskPath = disk.Path
 	replica.Spec.DataDirectoryName = replica.Spec.VolumeName + "-" + util.RandomID()
 	logrus.Debugf("Schedule replica %v to node %v, disk %v, diskPath %v, dataDirectoryName %v",
 		replica.Name, replica.Spec.NodeID, replica.Spec.DiskID, replica.Spec.DiskPath, replica.Spec.DataDirectoryName)
@@ -344,9 +358,9 @@ func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*lon
 	diskCandidates := rcs.getDiskCandidates(availableNodesInfo, availableNodeDisksMap, replicas, volume, false)
 
 	var reusedReplica *longhorn.Replica
-	for fsid, suggestDisk := range diskCandidates {
+	for _, suggestDisk := range diskCandidates {
 		for _, r := range reusableNodeReplicasMap[suggestDisk.NodeID] {
-			if r.Spec.DiskID != fsid {
+			if r.Spec.DiskID != suggestDisk.DiskUUID {
 				continue
 			}
 			if reusedReplica == nil {
@@ -431,21 +445,29 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 	if !exists {
 		return false
 	}
-	diskSpec, exists := node.Spec.Disks[r.Spec.DiskID]
-	if !exists {
-		return false
+	diskFound := false
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeReady).Status != types.ConditionStatusTrue {
+			continue
+		}
+		if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status != types.ConditionStatusTrue {
+			continue
+		}
+		if diskStatus.DiskUUID == r.Spec.DiskID {
+			diskFound = true
+			diskSpec, exists := node.Spec.Disks[diskName]
+			if !exists {
+				return false
+			}
+			if !diskSpec.AllowScheduling || diskSpec.EvictionRequested {
+				return false
+			}
+			if !rcs.checkTagsAreFulfilled(diskSpec.Tags, v.Spec.DiskSelector) {
+				return false
+			}
+		}
 	}
-	if !diskSpec.AllowScheduling || diskSpec.EvictionRequested {
-		return false
-	}
-	diskStatus, exists := node.Status.DiskStatus[r.Spec.DiskID]
-	if !exists {
-		return false
-	}
-	if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status != types.ConditionStatusTrue {
-		return false
-	}
-	if !rcs.checkTagsAreFulfilled(diskSpec.Tags, v.Spec.DiskSelector) {
+	if !diskFound {
 		return false
 	}
 

@@ -131,7 +131,7 @@ func UpgradeReplicas(namespace string, lhClient *lhclientset.Clientset) (err err
 			logrus.Errorf("%vFailed to get node %v during the replica %v upgrade: %v", upgradeLogPrefix, r.Spec.NodeID, r.Name, err)
 			isFailedReplica = true
 		} else {
-			if _, exists := node.Status.DiskStatus[r.Spec.DiskID]; !exists {
+			if diskStatus, exists := node.Status.DiskStatus[r.Spec.DiskID]; !exists {
 				logrus.Errorf("%vCannot find disk status during the replica %v upgrade", upgradeLogPrefix, r.Name)
 				isFailedReplica = true
 			} else {
@@ -144,6 +144,8 @@ func UpgradeReplicas(namespace string, lhClient *lhclientset.Clientset) (err err
 						logrus.Errorf("%vFound invalid data path %v during the replica %v upgrade", upgradeLogPrefix, r.Spec.DataPath, r.Name)
 						isFailedReplica = true
 					} else {
+						r.Labels[types.LonghornDiskUUIDKey] = diskStatus.DiskUUID
+						r.Spec.DiskID = diskStatus.DiskUUID
 						// The disk path will be synced by node controller later.
 						r.Spec.DiskPath = pathElements[0]
 						r.Spec.DataDirectoryName = pathElements[1]

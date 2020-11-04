@@ -34,7 +34,8 @@ const (
 	ReplicaHostPrefix                = "/host"
 	EngineBinaryName                 = "longhorn"
 
-	LonghornNodeKey = "longhornnode"
+	LonghornNodeKey     = "longhornnode"
+	LonghornDiskUUIDKey = "longhorndiskuuid"
 
 	NodeCreateDefaultDiskLabelKey             = "node.longhorn.io/create-default-disk"
 	NodeCreateDefaultDiskLabelValueTrue       = "true"

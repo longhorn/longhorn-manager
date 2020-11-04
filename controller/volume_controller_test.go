@@ -1131,8 +1131,9 @@ func newReplicaForVolume(v *longhorn.Volume, e *longhorn.Engine, nodeID, diskID 
 		ObjectMeta: metav1.ObjectMeta{
 			Name: replicaName,
 			Labels: map[string]string{
-				"longhornvolume":      v.Name,
-				types.LonghornNodeKey: nodeID,
+				"longhornvolume":          v.Name,
+				types.LonghornNodeKey:     nodeID,
+				types.LonghornDiskUUIDKey: diskID,
 			},
 		},
 		Spec: types.ReplicaSpec{
@@ -1224,6 +1225,7 @@ func newNode(name, namespace string, allowScheduling bool, status types.Conditio
 						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
 						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
 					},
+					DiskUUID: TestDiskID1,
 				},
 			},
 		},
