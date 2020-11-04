@@ -614,13 +614,14 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 					c.Assert(err, IsNil)
 					c.Assert(sr, NotNil)
 					c.Assert(sr.Spec.NodeID, Not(Equals), "")
-					c.Assert(sr.Spec.DataPath, Not(Equals), "")
 					c.Assert(sr.Spec.DiskID, Not(Equals), "")
+					c.Assert(sr.Spec.DiskPath, Not(Equals), "")
+					c.Assert(sr.Spec.DataDirectoryName, Not(Equals), "")
 					tc.replicas[sr.Name] = sr
 					// check expected node
 					for nname, node := range tc.expectedNodes {
 						if sr.Spec.NodeID == nname {
-							c.Assert(sr.Spec.DataPath, Matches, node.Spec.Disks[sr.Spec.DiskID].Path+"/.*")
+							c.Assert(sr.Spec.DiskPath, Equals, node.Spec.Disks[sr.Spec.DiskID].Path)
 							delete(tc.expectedNodes, nname)
 						}
 					}

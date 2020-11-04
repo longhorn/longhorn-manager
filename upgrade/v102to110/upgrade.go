@@ -2,8 +2,11 @@ package v102to110
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -99,6 +102,60 @@ func UpgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err erro
 		}
 		v.Status.LastDegradedAt = util.Now()
 		if _, err := lhClient.LonghornV1beta1().Volumes(namespace).UpdateStatus(&v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func UpgradeReplicas(namespace string, lhClient *lhclientset.Clientset) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade replica failed")
+	}()
+
+	replicaList, err := lhClient.LonghornV1beta1().Replicas(namespace).List(metav1.ListOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn replicas during the replica upgrade")
+	}
+
+	for _, r := range replicaList.Items {
+		if r.Spec.DataPath == "" || r.Spec.NodeID == "" {
+			continue
+		}
+		isFailedReplica := false
+		node, err := lhClient.LonghornV1beta1().Nodes(namespace).Get(r.Spec.NodeID, metav1.GetOptions{})
+		if err != nil {
+			logrus.Errorf("%vFailed to get node %v during the replica %v upgrade: %v", upgradeLogPrefix, r.Spec.NodeID, r.Name, err)
+			isFailedReplica = true
+		} else {
+			if _, exists := node.Status.DiskStatus[r.Spec.DiskID]; !exists {
+				logrus.Errorf("%vCannot find disk status during the replica %v upgrade", upgradeLogPrefix, r.Name)
+				isFailedReplica = true
+			} else {
+				if _, exists := node.Spec.Disks[r.Spec.DiskID]; !exists {
+					logrus.Errorf("%vCannot find disk spec during the replica %v upgrade", upgradeLogPrefix, r.Name)
+					isFailedReplica = true
+				} else {
+					pathElements := strings.Split(filepath.Clean(r.Spec.DataPath), "/replicas/")
+					if len(pathElements) != 2 {
+						logrus.Errorf("%vFound invalid data path %v during the replica %v upgrade", upgradeLogPrefix, r.Spec.DataPath, r.Name)
+						isFailedReplica = true
+					} else {
+						// The disk path will be synced by node controller later.
+						r.Spec.DiskPath = pathElements[0]
+						r.Spec.DataDirectoryName = pathElements[1]
+					}
+				}
+			}
+		}
+		if isFailedReplica && r.Spec.FailedAt == "" {
+			r.Spec.FailedAt = util.Now()
+		}
+		r.Spec.DataPath = ""
+		if _, err := lhClient.LonghornV1beta1().Replicas(namespace).Update(&r); err != nil {
 			return err
 		}
 	}

@@ -220,12 +220,16 @@ type ReplicaSpec struct {
 	HealthyAt               string `json:"healthyAt"`
 	FailedAt                string `json:"failedAt"`
 	DiskID                  string `json:"diskID"`
-	DataPath                string `json:"dataPath"`
+	DiskPath                string `json:"diskPath"`
+	DataDirectoryName       string `json:"dataDirectoryName"`
 	BaseImage               string `json:"baseImage"`
 	Active                  bool   `json:"active"`
 	HardNodeAffinity        string `json:"hardNodeAffinity"`
 	RevisionCounterDisabled bool   `json:"revisionCounterDisabled"`
 	RebuildRetryCount       int    `json:"rebuildRetryCount"`
+
+	// Deprecated
+	DataPath string `json:"dataPath"`
 }
 
 type ReplicaStatus struct {

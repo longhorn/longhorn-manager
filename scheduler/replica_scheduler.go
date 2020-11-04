@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"fmt"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -306,9 +305,10 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, di
 	}
 	replica.Spec.NodeID = disk.NodeID
 	replica.Spec.DiskID = fsid
-	replica.Spec.DataPath = filepath.Join(disk.Path, "replicas", replica.Spec.VolumeName+"-"+util.RandomID())
-	logrus.Debugf("Schedule replica %v to node %v, disk %v, datapath %v",
-		replica.Name, replica.Spec.NodeID, replica.Spec.DiskID, replica.Spec.DataPath)
+	replica.Spec.DiskPath = disk.Path
+	replica.Spec.DataDirectoryName = replica.Spec.VolumeName + "-" + util.RandomID()
+	logrus.Debugf("Schedule replica %v to node %v, disk %v, diskPath %v, dataDirectoryName %v",
+		replica.Name, replica.Spec.NodeID, replica.Spec.DiskID, replica.Spec.DiskPath, replica.Spec.DataDirectoryName)
 }
 
 func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*longhorn.Replica, volume *longhorn.Volume, hardNodeAffinity string) (*longhorn.Replica, error) {

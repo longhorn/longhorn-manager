@@ -249,6 +249,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 		return err
 	}
+	dataPath := types.GetReplicaDataPath(replica.Spec.DiskPath, replica.Spec.DataDirectoryName)
 
 	if replica.Status.OwnerID != rc.controllerID {
 		if !rc.isResponsibleFor(replica) {
@@ -274,19 +275,19 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 
 		if replica.Spec.NodeID != "" && replica.Spec.NodeID != replica.Status.OwnerID {
 			logrus.Warnf("Node %v down or deleted, can't cleanup replica %v data at %v",
-				replica.Spec.NodeID, replica.Name, replica.Spec.DataPath)
+				replica.Spec.NodeID, replica.Name, dataPath)
 		} else if replica.Spec.NodeID != "" {
-			if replica.Spec.Active {
+			if replica.Spec.Active && dataPath != "" {
 				// prevent accidentally deletion
-				if !strings.Contains(filepath.Base(filepath.Clean(replica.Spec.DataPath)), "-") {
-					return fmt.Errorf("%v doesn't look like a replica data path", replica.Spec.DataPath)
+				if !strings.Contains(filepath.Base(filepath.Clean(dataPath)), "-") {
+					return fmt.Errorf("%v doesn't look like a replica data path", dataPath)
 				}
-				if err := util.RemoveHostDirectoryContent(replica.Spec.DataPath); err != nil {
-					return errors.Wrapf(err, "cannot cleanup after replica %v at %v", replica.Name, replica.Spec.DataPath)
+				if err := util.RemoveHostDirectoryContent(dataPath); err != nil {
+					return errors.Wrapf(err, "cannot cleanup after replica %v at %v", replica.Name, dataPath)
 				}
-				logrus.Debugf("Cleanup replica %v at %v:%v completed", replica.Name, replica.Spec.NodeID, replica.Spec.DataPath)
+				logrus.Debugf("Cleanup replica %v at %v:%v completed", replica.Name, replica.Spec.NodeID, dataPath)
 			} else {
-				logrus.Debugf("Didn't cleanup replica %v since it's not the active one for the path %v", replica.Name, replica.Spec.DataPath)
+				logrus.Debugf("Didn't cleanup replica %v since it's not the active one for the path %v or the path is empty", replica.Name, dataPath)
 			}
 		}
 
@@ -340,7 +341,8 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for replica process creation: %v", obj)
 	}
-	if r.Spec.NodeID == "" || r.Spec.DataPath == "" || r.Spec.DiskID == "" || r.Spec.VolumeSize == 0 {
+	dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
+	if r.Spec.NodeID == "" || dataPath == "" || r.Spec.DiskID == "" || r.Spec.VolumeSize == 0 {
 		return nil, fmt.Errorf("missing parameters for replica process creation: %v", r)
 	}
 
@@ -353,7 +355,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 		return nil, err
 	}
 
-	return c.ReplicaProcessCreate(r.Name, r.Spec.EngineImage, r.Spec.DataPath, r.Spec.VolumeSize, r.Spec.RevisionCounterDisabled)
+	return c.ReplicaProcessCreate(r.Name, r.Spec.EngineImage, dataPath, r.Spec.VolumeSize, r.Spec.RevisionCounterDisabled)
 }
 
 func (rc *ReplicaController) DeleteInstance(obj interface{}) error {

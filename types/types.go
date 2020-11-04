@@ -290,6 +290,10 @@ func GetInstanceManagerPrefix(imType InstanceManagerType) string {
 	return ""
 }
 
+func GetReplicaDataPath(diskPath, dataDirectoryName string) string {
+	return filepath.Join(diskPath, "replicas", dataDirectoryName)
+}
+
 func GetReplicaMountedDataPath(dataPath string) string {
 	if !strings.HasPrefix(dataPath, ReplicaHostPrefix) {
 		return filepath.Join(ReplicaHostPrefix, dataPath)
