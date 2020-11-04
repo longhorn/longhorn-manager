@@ -3,7 +3,6 @@ package controller
 import (
 	"fmt"
 	"math"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -179,7 +178,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for _, r := range tc.expectReplicas {
 		r.Spec.NodeID = ""
 		r.Spec.DiskID = ""
-		r.Spec.DataPath = ""
+		r.Spec.DiskPath = ""
+		r.Spec.DataDirectoryName = ""
 	}
 	tc.expectVolume.Status.State = types.VolumeStateCreating
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
@@ -1143,10 +1143,11 @@ func newReplicaForVolume(v *longhorn.Volume, e *longhorn.Engine, nodeID, diskID 
 				EngineImage: TestEngineImage,
 				DesireState: types.InstanceStateStopped,
 			},
-			EngineName: e.Name,
-			DiskID:     diskID,
-			DataPath:   filepath.Join(TestDefaultDataPath, "/replicas", replicaName),
-			Active:     true,
+			EngineName:        e.Name,
+			DiskID:            diskID,
+			DiskPath:          TestDefaultDataPath,
+			DataDirectoryName: replicaName,
+			Active:            true,
 		},
 	}
 }
@@ -1486,15 +1487,17 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				}
 				if expectR.Spec.NodeID != "" {
 					// validate DataPath and NodeID of replica have been set in scheduler
-					c.Assert(retR.Spec.DataPath, Not(Equals), "")
 					c.Assert(retR.Spec.NodeID, Not(Equals), "")
 					c.Assert(retR.Spec.DiskID, Not(Equals), "")
+					c.Assert(retR.Spec.DiskPath, Not(Equals), "")
+					c.Assert(retR.Spec.DataDirectoryName, Not(Equals), "")
 					c.Assert(retR.Spec.NodeID, Equals, TestNode1)
 				} else {
 					// not schedulable
-					c.Assert(retR.Spec.DataPath, Equals, "")
 					c.Assert(retR.Spec.NodeID, Equals, "")
 					c.Assert(retR.Spec.DiskID, Equals, "")
+					c.Assert(retR.Spec.DiskPath, Equals, "")
+					c.Assert(retR.Spec.DataDirectoryName, Equals, "")
 				}
 				c.Assert(retR.Status, DeepEquals, expectR.Status)
 			} else {

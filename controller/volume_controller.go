@@ -1528,10 +1528,11 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 	dataPathToOldReplica := map[string]*longhorn.Replica{}
 	dataPathToNewReplica := map[string]*longhorn.Replica{}
 	for _, r := range rs {
+		dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
 		if r.Spec.EngineImage == v.Status.CurrentImage {
-			dataPathToOldReplica[r.Spec.DataPath] = r
+			dataPathToOldReplica[dataPath] = r
 		} else if r.Spec.EngineImage == v.Spec.EngineImage {
-			dataPathToNewReplica[r.Spec.DataPath] = r
+			dataPathToNewReplica[dataPath] = r
 		} else {
 			log.Warnf("Found unknown replica with image %v for live upgrade", r.Spec.EngineImage)
 			unknownReplicas[r.Name] = r

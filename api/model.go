@@ -110,6 +110,7 @@ type Replica struct {
 	Instance
 
 	DiskID   string `json:"diskID"`
+	DiskPath string `json:"diskPath"`
 	DataPath string `json:"dataPath"`
 	Mode     string `json:"mode"`
 	FailedAt string `json:"failedAt"`
@@ -820,7 +821,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 				InstanceManagerName: r.Status.InstanceManagerName,
 			},
 			DiskID:   r.Spec.DiskID,
-			DataPath: r.Spec.DataPath,
+			DiskPath: r.Spec.DiskPath,
+			DataPath: types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName),
 			Mode:     mode,
 			FailedAt: r.Spec.FailedAt,
 		})
