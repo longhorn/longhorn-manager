@@ -1156,6 +1156,23 @@ func (s *DataStore) ListReplicasByNode(name string) (map[string][]*longhorn.Repl
 	return replicaDiskMap, nil
 }
 
+func getDiskUUIDSelector(uuid string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			types.LonghornDiskUUIDKey: uuid,
+		},
+	})
+}
+
+// ListReplicasByDiskUUID gets a list of Replicas on a specific disk the given namespace.
+func (s *DataStore) ListReplicasByDiskUUID(uuid string) ([]*longhorn.Replica, error) {
+	diskSelector, err := getDiskUUIDSelector(uuid)
+	if err != nil {
+		return nil, err
+	}
+	return s.rLister.Replicas(s.namespace).List(diskSelector)
+}
+
 // ListReplicasByNodeRO returns a list of all Replicas on node Name for the given namespace,
 // the list contains direct references to the internal cache objects and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
