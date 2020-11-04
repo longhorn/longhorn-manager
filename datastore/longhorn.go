@@ -612,6 +612,9 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {
 		return nil, err
 	}
+	if err := tagDiskUUIDLabel(r.Spec.DiskID, r); err != nil {
+		return nil, err
+	}
 
 	ret, err := s.lhClient.LonghornV1beta1().Replicas(s.namespace).Create(r)
 	if err != nil {
@@ -644,6 +647,9 @@ func (s *DataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 		return nil, err
 	}
 	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {
+		return nil, err
+	}
+	if err := tagDiskUUIDLabel(r.Spec.DiskID, r); err != nil {
 		return nil, err
 	}
 
@@ -1173,6 +1179,22 @@ func tagNodeLabel(nodeID string, obj runtime.Object) error {
 		labels = map[string]string{}
 	}
 	labels[types.LonghornNodeKey] = nodeID
+	metadata.SetLabels(labels)
+	return nil
+}
+
+func tagDiskUUIDLabel(diskUUID string, obj runtime.Object) error {
+	// fix longhorndiskuuid label for object
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[types.LonghornDiskUUIDKey] = diskUUID
 	metadata.SetLabels(labels)
 	return nil
 }

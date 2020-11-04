@@ -64,6 +64,7 @@ const (
 	TestDaemon1           = "longhorn-manager-1"
 	TestDaemon2           = "longhorn-manager-2"
 	TestDiskID1           = "fsid"
+	TestDiskID2           = "fsid-2"
 	TestDiskSize          = 5000000000
 	TestDiskAvailableSize = 3000000000
 

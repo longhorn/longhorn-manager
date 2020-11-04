@@ -30,8 +30,6 @@ const (
 	ManagerPodDown   = "managerPodDown"
 	KubeNodeDown     = "kubeNodeDown"
 	KubeNodePressure = "kubeNodePressure"
-
-	defaultDiskUUID = "default-disk-uuid"
 )
 
 var MountPropagationBidirectional = v1.MountPropagationBidirectional
@@ -121,13 +119,13 @@ func fakeTopologyLabelsChecker(kubeClient clientset.Interface, vers string) (boo
 
 func fakeGetDiskConfig(path string) (*util.DiskConfig, error) {
 	return &util.DiskConfig{
-		DiskUUID: defaultDiskUUID,
+		DiskUUID: TestDiskID1,
 	}, nil
 }
 
 func fakeGenerateDiskConfig(path string) (*util.DiskConfig, error) {
 	return &util.DiskConfig{
-		DiskUUID: defaultDiskUUID,
+		DiskUUID: TestDiskID1,
 	}, nil
 }
 
@@ -284,7 +282,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	volume := newVolume(TestVolumeName, 2)
 	engine := newEngineForVolume(volume)
 	replica1 := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1)
-	replica2 := newReplicaForVolume(volume, engine, TestNode2, TestDiskID1)
+	replica2 := newReplicaForVolume(volume, engine, TestNode2, TestDiskID2)
 	replicas := []*longhorn.Replica{replica1, replica2}
 	tc.replicas = replicas
 
@@ -305,7 +303,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					ScheduledReplica: map[string]int64{
 						replica1.Name: replica1.Spec.VolumeSize,
 					},
-					DiskUUID: defaultDiskUUID,
+					DiskUUID: TestDiskID1,
 				},
 			},
 		},
@@ -374,7 +372,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
 					},
 					ScheduledReplica: map[string]int64{},
-					DiskUUID:         defaultDiskUUID,
+					DiskUUID:         TestDiskID1,
 				},
 			},
 		},
@@ -494,7 +492,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
 					},
 					ScheduledReplica: map[string]int64{},
-					DiskUUID:         defaultDiskUUID,
+					DiskUUID:         TestDiskID1,
 				},
 			},
 		},
@@ -539,7 +537,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
 					},
 					ScheduledReplica: map[string]int64{},
-					DiskUUID:         defaultDiskUUID,
+					DiskUUID:         TestDiskID1,
 				},
 			},
 		},
