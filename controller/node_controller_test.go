@@ -437,7 +437,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
 					Conditions: map[string]types.Condition{
-						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse, string(types.DiskConditionReasonDiskPressure)),
+						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse, string(types.DiskConditionReasonDiskNotReady)),
 						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusFalse, string(types.DiskConditionReasonDiskFilesystemChanged)),
 					},
 					ScheduledReplica: map[string]int64{},

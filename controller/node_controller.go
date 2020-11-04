@@ -3,7 +3,6 @@ package controller
 import (
 	"fmt"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -712,10 +711,6 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 	}
 
 	// update Schedulable condition
-	replicaDiskMap, err := nc.ds.ListReplicasByNode(node.Name)
-	if err != nil {
-		return err
-	}
 	minimalAvailablePercentage, err := nc.ds.GetSettingAsInt(types.SettingNameStorageMinimalAvailablePercentage)
 	if err != nil {
 		return err
@@ -724,48 +719,57 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 	for id, disk := range node.Spec.Disks {
 		diskStatus := diskStatusMap[id]
 
-		// calculate storage scheduled
-		scheduledReplica := map[string]int64{}
-		storageScheduled := int64(0)
-		for _, replica := range replicaDiskMap[id] {
-			storageScheduled += replica.Spec.VolumeSize
-			scheduledReplica[replica.Name] = replica.Spec.VolumeSize
-		}
-		diskStatus.StorageScheduled = storageScheduled
-		diskStatus.ScheduledReplica = scheduledReplica
-		delete(replicaDiskMap, id)
-
-		// check disk pressure
-		info, err := nc.scheduler.GetDiskSchedulingInfo(disk, diskStatus)
-		if err != nil {
-			return err
-		}
-		if !nc.scheduler.IsSchedulableToDisk(0, 0, info) {
+		if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeReady).Status != types.ConditionStatusTrue {
+			diskStatus.StorageScheduled = 0
+			diskStatus.ScheduledReplica = map[string]int64{}
 			diskStatus.Conditions = types.SetConditionAndRecord(diskStatus.Conditions,
 				types.DiskConditionTypeSchedulable, types.ConditionStatusFalse,
-				string(types.DiskConditionReasonDiskPressure),
-				fmt.Sprintf("the disk %v(%v) on the node %v has %v available, but requires reserved %v, minimal %v%s to schedule more replicas",
-					id, disk.Path, node.Name, diskStatus.StorageAvailable, disk.StorageReserved, minimalAvailablePercentage, "%"),
+				string(types.DiskConditionReasonDiskNotReady),
+				fmt.Sprintf("the disk %v(%v) on the node %v is not ready", id, disk.Path, node.Name),
 				nc.eventRecorder, node, v1.EventTypeWarning)
-
 		} else {
-			diskStatus.Conditions = types.SetConditionAndRecord(diskStatus.Conditions,
-				types.DiskConditionTypeSchedulable, types.ConditionStatusTrue,
-				"", fmt.Sprintf("Disk %v(%v) on node %v is schedulable", id, disk.Path, node.Name),
-				nc.eventRecorder, node, v1.EventTypeNormal)
-		}
-		diskStatusMap[id] = diskStatus
-	}
-
-	// if there's some replicas scheduled to wrong disks, write them to log
-	if len(replicaDiskMap) > 0 {
-		eReplicas := []string{}
-		for _, replicas := range replicaDiskMap {
+			replicas, err := nc.ds.ListReplicasByDiskUUID(diskStatus.DiskUUID)
+			if err != nil {
+				return err
+			}
+			// sync replicas as well as calculate storage scheduled
+			scheduledReplica := map[string]int64{}
+			storageScheduled := int64(0)
 			for _, replica := range replicas {
-				eReplicas = append(eReplicas, replica.Name)
+				if replica.Spec.NodeID != node.Name || replica.Spec.DiskPath != disk.Path {
+					replica.Spec.NodeID = node.Name
+					replica.Spec.DiskPath = disk.Path
+					if _, err := nc.ds.UpdateReplica(replica); err != nil {
+						logrus.Errorf("Failed to update replica %v when syncing disk %v(%v) for node %v", replica.Name, id, diskStatus.DiskUUID, node.Name)
+						continue
+					}
+				}
+				storageScheduled += replica.Spec.VolumeSize
+				scheduledReplica[replica.Name] = replica.Spec.VolumeSize
+			}
+			diskStatus.StorageScheduled = storageScheduled
+			diskStatus.ScheduledReplica = scheduledReplica
+			// check disk pressure
+			info, err := nc.scheduler.GetDiskSchedulingInfo(disk, diskStatus)
+			if err != nil {
+				return err
+			}
+			if !nc.scheduler.IsSchedulableToDisk(0, 0, info) {
+				diskStatus.Conditions = types.SetConditionAndRecord(diskStatus.Conditions,
+					types.DiskConditionTypeSchedulable, types.ConditionStatusFalse,
+					string(types.DiskConditionReasonDiskPressure),
+					fmt.Sprintf("the disk %v(%v) on the node %v has %v available, but requires reserved %v, minimal %v%s to schedule more replicas",
+						id, disk.Path, node.Name, diskStatus.StorageAvailable, disk.StorageReserved, minimalAvailablePercentage, "%"),
+					nc.eventRecorder, node, v1.EventTypeWarning)
+			} else {
+				diskStatus.Conditions = types.SetConditionAndRecord(diskStatus.Conditions,
+					types.DiskConditionTypeSchedulable, types.ConditionStatusTrue,
+					"", fmt.Sprintf("Disk %v(%v) on node %v is schedulable", id, disk.Path, node.Name),
+					nc.eventRecorder, node, v1.EventTypeNormal)
 			}
 		}
-		logrus.Errorf("Warning: These replicas have been assigned to a disk no longer exist: %v", strings.Join(eReplicas, ", "))
+
+		diskStatusMap[id] = diskStatus
 	}
 
 	return nil
