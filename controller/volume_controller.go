@@ -978,20 +978,20 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			}
 		}
 	} else { // !allFaulted
-		// Don't need to touch other status since it should converge naturally
 		if v.Status.Robustness == types.VolumeRobustnessFaulted {
 			v.Status.Robustness = types.VolumeRobustnessUnknown
+			// The volume was faulty and there are usable replicas.
+			// Therefore, we set RemountRequestedAt so that KubernetesPodController restarts the workload pod
+			v.Status.RemountRequestedAt = vc.nowHandler()
+			msg := fmt.Sprintf("Volume %v requested remount at %v", v.Name, v.Status.RemountRequestedAt)
+			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonRemount, msg)
 		}
 
 		// reattach volume if detached unexpected and there are still healthy replicas
 		if e.Status.CurrentState == types.InstanceStateError && v.Status.CurrentNodeID != "" {
 			v.Status.PendingNodeID = v.Status.CurrentNodeID
-			// remount the reattached volumes later if necessary
-			v.Status.RemountRequestedAt = vc.nowHandler()
-			msg := fmt.Sprintf("Volume %v requested remount at %v", v.Name, v.Status.RemountRequestedAt)
-			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonRemount, msg)
 			log.Warn("Engine of volume dead unexpectedly, reattach the volume")
-			msg = fmt.Sprintf("Engine of volume %v dead unexpectedly, reattach the volume", v.Name)
+			msg := fmt.Sprintf("Engine of volume %v dead unexpectedly, reattach the volume", v.Name)
 			vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonDetachedUnexpectly, msg)
 			e.Spec.LogRequested = true
 			for _, r := range rs {
@@ -1000,6 +1000,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 					rs[r.Name] = r
 				}
 			}
+			v.Status.Robustness = types.VolumeRobustnessFaulted
 			v.Status.CurrentNodeID = ""
 		}
 	}
