@@ -125,14 +125,13 @@ func (n *NodeSpec) DeepCopyInto(to *NodeSpec) {
 
 func (n *NodeStatus) DeepCopyInto(to *NodeStatus) {
 	*to = *n
-	if n.DiskStatus == nil {
-		return
-	}
-	to.DiskStatus = make(map[string]*DiskStatus)
-	for key, value := range n.DiskStatus {
-		toDiskStatus := &DiskStatus{}
-		*toDiskStatus = *value
-		to.DiskStatus[key] = toDiskStatus
+	if n.DiskStatus != nil {
+		to.DiskStatus = make(map[string]*DiskStatus)
+		for key, value := range n.DiskStatus {
+			toDiskStatus := &DiskStatus{}
+			value.DeepCopyInto(toDiskStatus)
+			to.DiskStatus[key] = toDiskStatus
+		}
 	}
 	if n.Conditions != nil {
 		to.Conditions = make(map[string]Condition)
@@ -144,12 +143,17 @@ func (n *NodeStatus) DeepCopyInto(to *NodeStatus) {
 
 func (n *DiskStatus) DeepCopyInto(to *DiskStatus) {
 	*to = *n
-	if n.Conditions == nil {
-		return
+	if n.Conditions != nil {
+		to.Conditions = make(map[string]Condition)
+		for key, value := range n.Conditions {
+			to.Conditions[key] = value
+		}
 	}
-	to.Conditions = make(map[string]Condition)
-	for key, value := range n.Conditions {
-		to.Conditions[key] = value
+	if n.ScheduledReplica != nil {
+		to.ScheduledReplica = make(map[string]int64)
+		for key, value := range n.ScheduledReplica {
+			to.ScheduledReplica[key] = value
+		}
 	}
 }
 
