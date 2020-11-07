@@ -33,6 +33,8 @@ type Volume struct {
 
 	KubernetesStatus KubernetesStatus `json:"kubernetesStatus,omitempty" yaml:"kubernetes_status,omitempty"`
 
+	LastAttachedBy string `json:"lastAttachedBy,omitempty" yaml:"last_attached_by,omitempty"`
+
 	LastBackup string `json:"lastBackup,omitempty" yaml:"last_backup,omitempty"`
 
 	LastBackupAt string `json:"lastBackupAt,omitempty" yaml:"last_backup_at,omitempty"`
