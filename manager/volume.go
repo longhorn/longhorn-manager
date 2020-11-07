@@ -277,7 +277,7 @@ func (m *VolumeManager) Delete(name string) error {
 	return nil
 }
 
-func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool) (v *longhorn.Volume, err error) {
+func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attachedBy string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to attach volume %v to %v", name, nodeID)
 	}()
@@ -315,6 +315,7 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool) (v *lo
 	}
 	v.Spec.NodeID = nodeID
 	v.Spec.DisableFrontend = disableFrontend
+	v.Spec.LastAttachedBy = attachedBy
 
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
