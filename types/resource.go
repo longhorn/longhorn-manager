@@ -82,6 +82,7 @@ type VolumeSpec struct {
 	NodeSelector            []string       `json:"nodeSelector"`
 	DisableFrontend         bool           `json:"disableFrontend"`
 	RevisionCounterDisabled bool           `json:"revisionCounterDisabled"`
+	LastAttachedBy          string         `json:"lastAttachedBy"`
 }
 
 type KubernetesStatus struct {

@@ -39,6 +39,7 @@ type Volume struct {
 	Created                 string                 `json:"created"`
 	LastBackup              string                 `json:"lastBackup"`
 	LastBackupAt            string                 `json:"lastBackupAt"`
+	LastAttachedBy          string                 `json:"lastAttachedBy"`
 	Standby                 bool                   `json:"standby"`
 	RestoreRequired         bool                   `json:"restoreRequired"`
 	RevisionCounterDisabled bool                   `json:"revisionCounterDisabled"`
@@ -130,6 +131,7 @@ type EngineImage struct {
 type AttachInput struct {
 	HostID          string `json:"hostId"`
 	DisableFrontend bool   `json:"disableFrontend"`
+	AttachedBy      string `json:"attachedBy"`
 }
 
 type SnapshotInput struct {
@@ -855,6 +857,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		Size:                strconv.FormatInt(v.Spec.Size, 10),
 		Frontend:            v.Spec.Frontend,
 		DisableFrontend:     v.Spec.DisableFrontend,
+		LastAttachedBy:      v.Spec.LastAttachedBy,
 		FromBackup:          v.Spec.FromBackup,
 		NumberOfReplicas:    v.Spec.NumberOfReplicas,
 		DataLocality:        v.Spec.DataLocality,
