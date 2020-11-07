@@ -7,6 +7,8 @@ const (
 type AttachInput struct {
 	Resource `yaml:"-"`
 
+	AttachedBy string `json:"attachedBy,omitempty" yaml:"attached_by,omitempty"`
+
 	DisableFrontend bool `json:"disableFrontend,omitempty" yaml:"disable_frontend,omitempty"`
 
 	HostId string `json:"hostId,omitempty" yaml:"host_id,omitempty"`
