@@ -34,7 +34,7 @@ const (
 	SnapshotPurgeStatusInterval = 5 * time.Second
 
 	WaitInterval              = 5 * time.Second
-	DetachingWaitInterval     = 30 * time.Second
+	DetachingWaitInterval     = 10 * time.Second
 	VolumeAttachTimeout       = 300 // 5 minutes
 	BackupProcessStartTimeout = 90  // 1.5 minutes
 
@@ -169,14 +169,59 @@ func NewJob(managerURL, volumeName, snapshotName string, labels map[string]strin
 	}, nil
 }
 
+// handleVolumeDetachment decides whether the current recurring job should detach the volume.
+// It should detach the volume when:
+// 1. The volume is attached by this recurring job
+// 2. The volume state is VolumeStateAttached
+func (job *Job) handleVolumeDetachment() {
+	volumeAPI := job.api.Volume
+	volumeName := job.volumeName
+	jobName, _ := job.labels[types.RecurringJobLabel]
+	if jobName == "" {
+		logrus.Warn("Missing RecurringJob label")
+		return
+	}
+
+	logrus.Infof("Handling volume detachment for volume %v", volumeName)
+	for {
+		volume, err := volumeAPI.ById(volumeName)
+		if err == nil {
+			if volume.LastAttachedBy != jobName {
+				return
+			}
+			// !volume.DisableFrontend condition makes sure that volume is detached by this recurring job,
+			// not by the auto-reattachment feature.
+			if volume.State == string(types.VolumeStateDetached) && !volume.DisableFrontend {
+				logrus.Infof("Volume %v is detached", volumeName)
+				return
+			}
+			if volume.State == string(types.VolumeStateAttached) {
+				logrus.Infof("Attempting to detach volume %v ", volumeName)
+				if _, err := volumeAPI.ActionDetach(volume); err != nil {
+					logrus.Infof("%v ", err)
+				}
+			}
+
+		} else {
+			logrus.Infof("%v ", err)
+		}
+		time.Sleep(DetachingWaitInterval)
+	}
+}
+
 func (job *Job) run() (err error) {
 	volumeAPI := job.api.Volume
 	volumeName := job.volumeName
-
+	jobName, _ := job.labels[types.RecurringJobLabel]
+	if jobName == "" {
+		return fmt.Errorf("missing RecurringJob label")
+	}
 	volume, err := volumeAPI.ById(volumeName)
 	if err != nil {
 		return errors.Wrapf(err, "could not get volume %v", volumeName)
 	}
+
+	defer job.handleVolumeDetachment()
 
 	if volume.State != string(types.VolumeStateAttached) && volume.State != string(types.VolumeStateDetached) {
 		return fmt.Errorf("volume %v is in an invalid state for recurring job: %v. Volume must be in state Attached or Detached", volumeName, volume.State)
@@ -197,6 +242,7 @@ func (job *Job) run() (err error) {
 		if volume, err = volumeAPI.ActionAttach(volume, &longhornclient.AttachInput{
 			DisableFrontend: true,
 			HostId:          nodeToAttach,
+			AttachedBy:      jobName,
 		}); err != nil {
 			return err
 		}
@@ -206,16 +252,6 @@ func (job *Job) run() (err error) {
 			return err
 		}
 		logrus.Infof("Volume %v is in state %v", volumeName, volume.State)
-
-		// Automatically detach the volume after finish the recurring job
-		defer func() error {
-			logrus.Infof("Automatically detach the volume %v", volumeName)
-			if _, err := volumeAPI.ActionDetach(volume); err != nil {
-				return err
-			}
-			time.Sleep(DetachingWaitInterval)
-			return nil
-		}()
 	}
 
 	if job.jobType == jobTypeBackup {
