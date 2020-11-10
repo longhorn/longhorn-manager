@@ -59,6 +59,12 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		return nil, nil, errors.Wrap(err, "unable to create scheme")
 	}
 
+	// TODO: there shouldn't be a need for a 30s resync period unless our code is buggy and our controllers aren't really
+	//  level based. What we are effectively doing with this is hiding faulty logic in production.
+	//  Another reason for increasing this substantially, is that it introduces a lot of unnecessary work and will
+	//  lead to scalability problems, since we dump the whole cache of each object back in to the reconciler every 30 seconds.
+	//  if a specifc controller requires a periodic resync, one enable it only for that informer, add a resync to the event handler, go routine, etc.
+	//  some refs to look at: https://github.com/kubernetes-sigs/controller-runtime/issues/521
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
 	lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, time.Second*30)
 

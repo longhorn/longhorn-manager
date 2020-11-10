@@ -81,8 +81,19 @@ func (m *ShareManagerMonitor) syncShares() error {
 		return err
 	}
 
-	// new information, request a resync for this share Manager
-	if !reflect.DeepEqual(m.shares, rsp) || m.stale {
+	// if there are failed shares we want to requeue the share manager so it can try to fix them
+	// the goal is to get into a stable running state at which point we don't need to keep queuing,
+	// but any failure scenarios require system interaction to get them fixed.
+	hasFailedShares := false
+	for _, share := range rsp {
+		if share.State == types.ShareStateError {
+			hasFailedShares = true
+			break
+		}
+	}
+
+	if equal := reflect.DeepEqual(m.shares, rsp); !equal || hasFailedShares {
+		m.logger.Infof("Enqueuing share manager, received state is equal: %v has failed shares: %v", equal, hasFailedShares)
 		m.shares = rsp
 		m.stale = false
 		key := m.namespace + "/" + m.Manager
@@ -105,7 +116,7 @@ func (m *ShareManagerMonitor) monitorShares() {
 			if timeSinceLastSync > ShareManagerMonitorSyncPeriod || m.stale {
 				timeSinceLastSync = 0
 				if err := m.syncShares(); err != nil {
-					// TODO: add error handling, log, etc
+					m.logger.WithError(err).Warn("Failed to sync shares with server")
 					// we set stale to be guaranteed to retry this next tick
 					m.stale = true
 				}

@@ -143,10 +143,8 @@ func NewVolumeController(
 		DeleteFunc: vc.enqueueControlleeChange,
 	})
 	shareManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: vc.enqueueVolumesForShareManager,
-		UpdateFunc: func(old, cur interface{}) {
-			vc.enqueueVolumesForShareManager(cur)
-		},
+		AddFunc:    vc.enqueueVolumesForShareManager,
+		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForShareManager(cur) },
 		DeleteFunc: vc.enqueueVolumesForShareManager,
 	})
 	return vc
@@ -245,7 +243,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	volume, err := vc.ds.GetVolume(name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			vc.logger.WithField("volume", name).Info("Longhorn volume has been deleted")
+			vc.logger.WithField("volume", name).Debug("Longhorn volume has been deleted")
 			return nil
 		}
 		return err
@@ -304,6 +302,21 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		for _, r := range replicas {
 			if r.DeletionTimestamp == nil {
 				if err := vc.ds.DeleteReplica(r.Name); err != nil {
+					return err
+				}
+			}
+		}
+
+		if volume.Status.ShareManager != "" {
+			sm, err := vc.ds.GetShareManager(volume.Status.ShareManager)
+			if err != nil && !datastore.ErrorIsNotFound(err) {
+				return err
+			}
+
+			if sm != nil {
+				log.Info("Removing deleted volume from share manager")
+				delete(sm.Spec.Volumes, volume.Name)
+				if _, err := vc.ds.UpdateShareManager(sm); err != nil && !datastore.ErrorIsNotFound(err) {
 					return err
 				}
 			}

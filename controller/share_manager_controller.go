@@ -205,6 +205,7 @@ func (c *ShareManagerController) enqueueShareManagerForVolume(obj interface{}) {
 	if volume.Status.ShareManager != "" {
 		// we can queue the key directly since a share manager only manages volumes from it's own namespace
 		// and there is no need for us to retrieve the whole object, since we already know the share manager name
+		getLoggerForVolume(c.logger, volume).Debug("Enqueuing share manager for volume")
 		key := volume.Namespace + "/" + volume.Status.ShareManager
 		c.queue.AddRateLimited(key)
 		return
@@ -230,6 +231,7 @@ func (c *ShareManagerController) enqueueShareManagerForPod(obj interface{}) {
 
 	// we can queue the key directly since a share manager only manages pods from it's own namespace
 	// and there is no need for us to retrieve the whole object, since we already know the share manager name
+	c.logger.WithField("pod", pod.Name).WithField("shareManager", pod.Name).Debug("Enqueuing share manager for pod")
 	key := pod.Namespace + "/" + pod.Name
 	c.queue.AddRateLimited(key)
 	return
@@ -266,7 +268,7 @@ func (c *ShareManagerController) Run(workers int, stopCh <-chan struct{}) {
 	c.logger.Infof("Start Longhorn share manager controller")
 	defer c.logger.Infof("Shutting down Longhorn share manager controller")
 
-	if !controller.WaitForCacheSync("longhorn-share-manager-controller", stopCh,
+	if !cache.WaitForNamedCacheSync("longhorn-share-manager-controller", stopCh,
 		c.smStoreSynced, c.vStoreSynced, c.pStoreSynced) {
 		return
 	}
@@ -368,6 +370,7 @@ func (c *ShareManagerController) syncShareManager(key string) (err error) {
 			return err
 		}
 		log.Infof("Share manager got new owner %v", c.controllerID)
+		log = getLoggerForShareManager(c.logger, sm)
 	}
 
 	if sm.DeletionTimestamp != nil {
@@ -495,7 +498,13 @@ func (c *ShareManagerController) syncShare(sm *longhorn.ShareManager, monitor *s
 	case types.ShareManagerStateRunning:
 		if share.State == types.ShareStateReady {
 			share.Error = ""
-			share.Endpoint = fmt.Sprintf("nfs4://%v/%v", sm.Name, share.Volume)
+			if share.Endpoint == "" {
+				service, err := c.ds.GetService(sm.Namespace, sm.Name)
+				if err != nil {
+					return err
+				}
+				share.Endpoint = fmt.Sprintf("nfs4://%v/%v", service.Spec.ClusterIP, share.Volume)
+			}
 		}
 	default:
 		share.State = types.ShareStateUnknown
@@ -549,9 +558,25 @@ func (c *ShareManagerController) syncShareManagerVolumes(sm *longhorn.ShareManag
 			continue
 		}
 
-		// TODO: ensure that each desired and controlled volume is attached to this share manager node.
-		if volume.Spec.NodeID != sm.Spec.NodeID && sm.Status.State == types.ShareManagerStateRunning {
-			volume.Spec.NodeID = sm.Spec.NodeID
+		// ensure each shared volume is attached to this share managers node, if the share manager
+		// switches nodes this will ensure, that the volumes will travel with the manager
+		// TODO: only testing ownerID we need a different way of tracking current node,
+		//  since we don't want service distributions, once the failed node is back.
+		if sm.Status.State == types.ShareManagerStateRunning && volume.Spec.NodeID != sm.Status.OwnerID {
+
+			// HACK: at the moment the consumer needs to control the state transitions of the volume
+			//  since it's not possible to just specify the desired state, we should fix that down the line.
+			//  for the actual state transition we need to request detachment then wait for detachment
+			//  afterwards we can request attachment to the new node.
+			if volume.Status.State == types.VolumeStateAttached || volume.Status.State == types.VolumeStateAttaching {
+				log.WithField("volume", v).Infof("Requesting Volume detach from previous node %v", volume.Spec.NodeID)
+				volume.Spec.NodeID = ""
+			}
+
+			if volume.Status.State == types.VolumeStateDetached {
+				log.WithField("volume", v).Info("Requesting Volume attach to share manager node")
+				volume.Spec.NodeID = sm.Status.OwnerID
+			}
 
 			if _, err := c.ds.UpdateVolume(volume); err != nil {
 				volErrors[v] = err
@@ -612,10 +637,20 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		sm.Status.State = types.ShareManagerStateStarting
 	}
 
+	// TODO: compare pod image via label and recreate if share manager has different image (i.e. updated image)
 	if pod.DeletionTimestamp != nil {
 		if sm.Status.State != types.ShareManagerStateError {
 			sm.Status.State = types.ShareManagerStateStopping
 		}
+
+		if nodeFailed, _ := c.ds.IsNodeDownOrDeleted(pod.Spec.NodeName); nodeFailed {
+			log.Debug("node of share manager pod is down, force deleting pod to allow fail over")
+			gracePeriod := int64(0)
+			if err := c.kubeClient.CoreV1().Pods(pod.Namespace).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod}); err != nil {
+				log.WithError(err).Debugf("failed to force delete share manager pod")
+			}
+		}
+
 		return nil
 	}
 
@@ -847,7 +882,7 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, to
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            sm.Name,
 			Namespace:       sm.Namespace,
-			Labels:          types.GetShareManagerLabels(sm.Name, c.controllerID, sm.Spec.Image),
+			Labels:          types.GetShareManagerLabels(sm.Name, sm.Status.OwnerID, sm.Spec.Image),
 			OwnerReferences: datastore.GetOwnerReferencesForShareManager(sm, true),
 		},
 		Spec: v1.PodSpec{
@@ -898,7 +933,7 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, to
 					},
 				},
 			},
-			NodeName:      c.controllerID,
+			NodeName:      sm.Status.OwnerID, // TODO: using ownerID as current nodeID for testing
 			RestartPolicy: v1.RestartPolicyNever,
 		},
 	}
