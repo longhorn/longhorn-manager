@@ -26,7 +26,7 @@ const (
 // NewForcedParamsOsExec creates a osExecutor that allows for adding additional params to later occurring Run calls
 func NewForcedParamsOsExec(cmdParamMapping map[string]string) mount.Exec {
 	return &forcedParamsOsExec{
-		osExec:          mount.NewOsExec(),
+		osExec:          mount.NewOSExec(),
 		cmdParamMapping: cmdParamMapping,
 	}
 }
@@ -161,7 +161,7 @@ func isLikelyNotMountPointDetach(targetpath string) (bool, error) {
 // Should be similar to the detect function in `util` package
 // For csi plugins, util.DetectFileSystem is not available since we cannot use NSExecutor in the workloads
 func detectFileSystem(devicePath string) (string, error) {
-	mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOsExec()}
+	mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOSExec()}
 	output, err := mounter.Run("blkid", devicePath)
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to get the file system info from device %v, maybe there is no Linux file system on the volume", devicePath)
@@ -209,4 +209,32 @@ func getFilesystemStatistics(volumePath string) (*volumeFilesystemStatistics, er
 	}
 
 	return volStats, nil
+}
+
+// makeDir creates a new directory.
+// If pathname already exists as a directory, no error is returned.
+// If pathname already exists as a file, an error is returned.
+func makeDir(pathname string) error {
+	err := os.MkdirAll(pathname, os.FileMode(0755))
+	if err != nil {
+		if !os.IsExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+// makeFile creates an empty file.
+// If pathname already exists, whether a file or directory, no error is returned.
+func makeFile(pathname string) error {
+	f, err := os.OpenFile(pathname, os.O_CREATE, os.FileMode(0644))
+	if f != nil {
+		f.Close()
+	}
+	if err != nil {
+		if !os.IsExist(err) {
+			return err
+		}
+	}
+	return nil
 }

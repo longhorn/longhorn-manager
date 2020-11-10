@@ -6,7 +6,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/kubernetes/pkg/controller"
 
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
@@ -93,7 +92,7 @@ func (wc *WebsocketController) Run(stopCh <-chan struct{}) {
 	wc.logger.Infof("Start Longhorn websocket controller")
 	defer wc.logger.Infof("Shutting down Longhorn websocket controller")
 
-	if !controller.WaitForCacheSync("longhorn websocket", stopCh,
+	if !cache.WaitForNamedCacheSync("longhorn websocket", stopCh,
 		wc.volumeSynced, wc.engineSynced, wc.replicaSynced,
 		wc.settingSynced, wc.engineImageSynced, wc.nodeSynced) {
 		return

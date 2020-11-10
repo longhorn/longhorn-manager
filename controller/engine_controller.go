@@ -150,7 +150,7 @@ func (ec *EngineController) Run(workers int, stopCh <-chan struct{}) {
 	ec.logger.Info("Start Longhorn engine controller")
 	defer ec.logger.Info("Shutting down Longhorn engine controller")
 
-	if !controller.WaitForCacheSync("longhorn engines", stopCh, ec.eStoreSynced, ec.imStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn engines", stopCh, ec.eStoreSynced, ec.imStoreSynced) {
 		return
 	}
 

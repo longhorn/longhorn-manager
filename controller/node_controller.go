@@ -216,7 +216,7 @@ func (nc *NodeController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start Longhorn node controller")
 	defer logrus.Infof("Shutting down Longhorn node controller")
 
-	if !controller.WaitForCacheSync("longhorn node", stopCh,
+	if !cache.WaitForNamedCacheSync("longhorn node", stopCh,
 		nc.nStoreSynced, nc.pStoreSynced, nc.sStoreSynced, nc.rStoreSynced, nc.knStoreSynced) {
 		return
 	}
@@ -374,8 +374,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 						nc.eventRecorder, node, v1.EventTypeWarning)
 					break
 				}
-			case v1.NodeOutOfDisk,
-				v1.NodeDiskPressure,
+			case v1.NodeDiskPressure,
 				v1.NodePIDPressure,
 				v1.NodeMemoryPressure,
 				v1.NodeNetworkUnavailable:

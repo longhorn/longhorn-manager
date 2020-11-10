@@ -102,7 +102,7 @@ func (kc *KubernetesPodController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start %v", controllerAgentName)
 	defer logrus.Infof("Shutting down %v", controllerAgentName)
 
-	if !controller.WaitForCacheSync(controllerAgentName, stopCh, kc.pStoreSynced, kc.pvStoreSynced, kc.pvcStoreSynced) {
+	if !cache.WaitForNamedCacheSync(controllerAgentName, stopCh, kc.pStoreSynced, kc.pvStoreSynced, kc.pvcStoreSynced) {
 		return
 	}
 	for i := 0; i < workers; i++ {

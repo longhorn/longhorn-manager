@@ -19,7 +19,6 @@ import (
 	storagev1beta1 "k8s.io/client-go/informers/storage/v1beta1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -159,7 +158,7 @@ func (c *UninstallController) Run() error {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
-	if !controller.WaitForCacheSync("longhorn uninstall", c.stopCh, c.cacheSyncs...) {
+	if !cache.WaitForNamedCacheSync("longhorn uninstall", c.stopCh, c.cacheSyncs...) {
 		return fmt.Errorf("Failed to sync informers")
 	}
 

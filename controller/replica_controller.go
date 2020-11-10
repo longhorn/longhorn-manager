@@ -124,7 +124,7 @@ func (rc *ReplicaController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start Longhorn replica controller")
 	defer logrus.Infof("Shutting down Longhorn replica controller")
 
-	if !controller.WaitForCacheSync("longhorn replicas", stopCh, rc.nStoreSynced, rc.rStoreSynced, rc.imStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn replicas", stopCh, rc.nStoreSynced, rc.rStoreSynced, rc.imStoreSynced) {
 		return
 	}
 

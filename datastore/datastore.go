@@ -18,7 +18,6 @@ import (
 	storagelisters_v1 "k8s.io/client-go/listers/storage/v1"
 	storagelisters "k8s.io/client-go/listers/storage/v1beta1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/kubernetes/pkg/controller"
 
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
@@ -153,7 +152,7 @@ func NewDataStore(
 
 // Sync returns WaitForCacheSync for Longhorn DataStore
 func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
-	return controller.WaitForCacheSync("longhorn datastore", stopCh,
+	return cache.WaitForNamedCacheSync("longhorn datastore", stopCh,
 		s.vStoreSynced, s.eStoreSynced, s.rStoreSynced,
 		s.iStoreSynced, s.nStoreSynced, s.sStoreSynced,
 		s.pStoreSynced, s.cjStoreSynced, s.dsStoreSynced,
