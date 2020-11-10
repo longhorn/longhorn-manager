@@ -1261,10 +1261,6 @@ func newKubernetesNode(name string, readyStatus, diskPressureStatus, memoryStatu
 					Status: memoryStatus,
 				},
 				{
-					Type:   v1.NodeOutOfDisk,
-					Status: outOfDiskStatus,
-				},
-				{
 					Type:   v1.NodePIDPressure,
 					Status: pidStatus,
 				},

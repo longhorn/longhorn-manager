@@ -84,7 +84,7 @@ func (in *EngineImage) DeepCopyObject() runtime.Object {
 func (in *EngineImageList) DeepCopyInto(out *EngineImageList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]EngineImage, len(*in))
@@ -117,7 +117,7 @@ func (in *EngineImageList) DeepCopyObject() runtime.Object {
 func (in *EngineList) DeepCopyInto(out *EngineList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]Engine, len(*in))
@@ -178,7 +178,7 @@ func (in *InstanceManager) DeepCopyObject() runtime.Object {
 func (in *InstanceManagerList) DeepCopyInto(out *InstanceManagerList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]InstanceManager, len(*in))
@@ -239,7 +239,7 @@ func (in *Node) DeepCopyObject() runtime.Object {
 func (in *NodeList) DeepCopyInto(out *NodeList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]Node, len(*in))
@@ -300,7 +300,7 @@ func (in *Replica) DeepCopyObject() runtime.Object {
 func (in *ReplicaList) DeepCopyInto(out *ReplicaList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]Replica, len(*in))
@@ -360,7 +360,7 @@ func (in *Setting) DeepCopyObject() runtime.Object {
 func (in *SettingList) DeepCopyInto(out *SettingList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]Setting, len(*in))
@@ -421,7 +421,7 @@ func (in *Volume) DeepCopyObject() runtime.Object {
 func (in *VolumeList) DeepCopyInto(out *VolumeList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]Volume, len(*in))

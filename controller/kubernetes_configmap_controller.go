@@ -89,7 +89,7 @@ func (kc *KubernetesConfigMapController) Run(workers int, stopCh <-chan struct{}
 	kc.logger.Infof("Start")
 	defer kc.logger.Infof("Shutting down")
 
-	if !controller.WaitForCacheSync(kc.name, stopCh, kc.cfmStoreSynced) {
+	if !cache.WaitForNamedCacheSync(kc.name, stopCh, kc.cfmStoreSynced) {
 		return
 	}
 	for i := 0; i < workers; i++ {

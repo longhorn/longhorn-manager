@@ -136,7 +136,7 @@ func (kc *KubernetesPVController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start kubernetes controller")
 	defer logrus.Infof("Shutting down kubernetes controller")
 
-	if !controller.WaitForCacheSync("kubernetes", stopCh,
+	if !cache.WaitForNamedCacheSync("kubernetes", stopCh,
 		kc.vStoreSynced, kc.pvStoreSynced, kc.pvcStoreSynced, kc.pStoreSynced, kc.vaStoreSynced) {
 		return
 	}

@@ -125,7 +125,7 @@ func (sc *SettingController) Run(stopCh <-chan struct{}) {
 	sc.logger.Info("Start Longhorn Setting controller")
 	defer sc.logger.Info("Shutting down Longhorn Setting controller")
 
-	if !controller.WaitForCacheSync("longhorn settings", stopCh, sc.sStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn settings", stopCh, sc.sStoreSynced) {
 		return
 	}
 

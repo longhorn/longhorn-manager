@@ -17,10 +17,13 @@ import (
 	"google.golang.org/grpc/status"
 
 	"k8s.io/kubernetes/pkg/util/mount"
+	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/types"
 )
+
+var hostUtil = hostutil.NewHostUtil()
 
 type NodeServer struct {
 	apiClient *longhornclient.RancherClient
@@ -79,7 +82,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	targetPath := req.GetTargetPath()
 	devicePath := existVol.Controllers[0].Endpoint
-	diskMounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOsExec()}
+	diskMounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOSExec()}
 	vc := req.GetVolumeCapability()
 	if vc == nil {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not provided")
@@ -136,16 +139,16 @@ func (ns *NodeServer) nodePublishMountVolume(volumeName, devicePath, targetPath,
 
 func (ns *NodeServer) nodePublishBlockVolume(volumeName, devicePath, targetPath string, mounter *mount.SafeFormatAndMount) (*csi.NodePublishVolumeResponse, error) {
 	targetDir := filepath.Dir(targetPath)
-	exists, err := mounter.ExistsPath(targetDir)
+	exists, err := hostUtil.PathExists(targetDir)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	if !exists {
-		if err := mounter.MakeDir(targetDir); err != nil {
+		if err := makeDir(targetDir); err != nil {
 			return nil, status.Errorf(codes.Internal, "Could not create dir %q: %v", targetDir, err)
 		}
 	}
-	if err = mounter.MakeFile(targetPath); err != nil {
+	if err = makeFile(targetPath); err != nil {
 		return nil, status.Errorf(codes.Internal, "Error in making file %v", err)
 	}
 
