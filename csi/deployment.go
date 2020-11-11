@@ -69,6 +69,7 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 		[]string{
 			"--v=5",
 			"--csi-address=$(ADDRESS)",
+			"--timeout=2m5s",
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 		},
@@ -133,6 +134,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 		[]string{
 			"--v=5",
 			"--csi-address=$(ADDRESS)",
+			"--timeout=2m5s",
 			"--enable-leader-election",
 			"--leader-election-type=leases",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
