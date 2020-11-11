@@ -167,6 +167,22 @@ func (s *DataStore) GetPDBRO(name string) (*policyv1beta1.PodDisruptionBudget, e
 	return s.pdbLister.PodDisruptionBudgets(s.namespace).Get(name)
 }
 
+// ListPDBs gets a map of PDB in s.namespace
+func (s *DataStore) ListPDBs() (map[string]*policyv1beta1.PodDisruptionBudget, error) {
+	itemMap := map[string]*policyv1beta1.PodDisruptionBudget{}
+
+	list, err := s.pdbLister.PodDisruptionBudgets(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
 // CreatePod creates a Pod resource for the given pod object and namespace
 func (s *DataStore) CreatePod(pod *corev1.Pod) (*corev1.Pod, error) {
 	return s.kubeClient.CoreV1().Pods(s.namespace).Create(pod)

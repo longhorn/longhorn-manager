@@ -426,6 +426,10 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 }
 
 func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.InstanceManager) error {
+	if err := imc.cleanUpPDBOfNonExistingIMPod(); err != nil {
+		return err
+	}
+
 	if im.Status.CurrentState != types.InstanceManagerStateRunning {
 		return nil
 	}
@@ -458,6 +462,47 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 	// Make sure that there is a PodDisruptionBudget to protect this instance manager in normal case.
 	if imPDB == nil {
 		return imc.createInstanceManagerPDB(im)
+	}
+
+	return nil
+}
+
+func (imc *InstanceManagerController) cleanUpPDBOfNonExistingIMPod() error {
+	ims, err := imc.ds.ListInstanceManagers()
+	if err != nil {
+		if !datastore.ErrorIsNotFound(err) {
+			return err
+		}
+		ims = make(map[string]*longhorn.InstanceManager)
+	}
+
+	imPDBs, err := imc.ds.ListPDBs()
+	if err != nil {
+		if !datastore.ErrorIsNotFound(err) {
+			return err
+		}
+		imPDBs = make(map[string]*policyv1beta1.PodDisruptionBudget)
+	}
+
+	for pdbName, pdb := range imPDBs {
+		if pdb.Spec.Selector == nil || pdb.Spec.Selector.MatchLabels == nil {
+			continue
+		}
+		labelValue, ok := pdb.Spec.Selector.MatchLabels[types.GetLonghornLabelComponentKey()]
+		if !ok {
+			continue
+		}
+		if labelValue != types.LonghornLabelInstanceManager {
+			continue
+		}
+		if _, ok := ims[getIMNameFromPDBName(pdbName)]; ok {
+			continue
+		}
+		if err := imc.ds.DeletePDB(pdbName); err != nil {
+			if !datastore.ErrorIsNotFound(err) {
+				return err
+			}
+		}
 	}
 
 	return nil
@@ -595,7 +640,15 @@ func (imc *InstanceManagerController) generateInstanceManagerPDBManifest(im *lon
 }
 
 func (imc *InstanceManagerController) getPDBName(im *longhorn.InstanceManager) string {
-	return im.Name
+	return getPDBNameFromIMName(im.Name)
+}
+
+func getPDBNameFromIMName(imName string) string {
+	return imName
+}
+
+func getIMNameFromPDBName(pdbName string) string {
+	return pdbName
 }
 
 func (imc *InstanceManagerController) enqueueInstanceManager(instanceManager interface{}) {
