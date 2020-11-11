@@ -56,7 +56,7 @@ spec:
           #- name: CSI_RESIZER_IMAGE
           #  value: PREFIX/csi-resizer:v0.5.1-lh1
           #- name: CSI_SNAPSHOTTER_IMAGE
-          #  value: PREFIX/csi-snapshotter:v2.1.1
+          #  value: PREFIX/csi-snapshotter:v2.1.1-lh1
           # Manually specify number of CSI attacher replicas
           #- name: CSI_ATTACHER_REPLICA_COUNT
           #  value: "3"
