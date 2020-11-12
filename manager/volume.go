@@ -394,8 +394,17 @@ func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *lo
 		if err != nil {
 			return nil, fmt.Errorf("Failed to get the related node %v for replica %v", r.Spec.NodeID, name)
 		}
-		if _, exists := node.Status.DiskStatus[r.Spec.DiskID]; !exists {
-			return nil, fmt.Errorf("Cannot salvage replica %v since the related disk on node %v is not matching", name, r.Spec.NodeID)
+		diskSchedulable := false
+		for _, diskStatus := range node.Status.DiskStatus {
+			if diskStatus.DiskUUID == r.Spec.DiskID {
+				if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status == types.ConditionStatusTrue {
+					diskSchedulable = true
+					break
+				}
+			}
+		}
+		if !diskSchedulable {
+			return nil, fmt.Errorf("Disk with UUID %v on node %v is unschedulable for replica %v", r.Spec.DiskID, r.Spec.NodeID, name)
 		}
 		if r.Spec.FailedAt == "" {
 			// already updated, ignore it for idempotency

@@ -919,7 +919,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 						continue
 					}
 					dataExists = true
-					if r.Spec.NodeID == "" {
+					if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
 						continue
 					}
 					if isDownOrDeleted, err := vc.ds.IsNodeDownOrDeleted(r.Spec.NodeID); err != nil {
@@ -932,7 +932,16 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 					if err != nil {
 						log.WithField("replica", r.Name).WithError(err).Errorf("Unable to get node %v for failed replica", r.Spec.NodeID)
 					}
-					if _, exists := node.Status.DiskStatus[r.Spec.DiskID]; !exists {
+					diskSchedulable := false
+					for _, diskStatus := range node.Status.DiskStatus {
+						if diskStatus.DiskUUID == r.Spec.DiskID {
+							if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status == types.ConditionStatusTrue {
+								diskSchedulable = true
+								break
+							}
+						}
+					}
+					if !diskSchedulable {
 						continue
 					}
 					failedAt, err := util.ParseTime(r.Spec.FailedAt)
