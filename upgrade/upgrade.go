@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	leaseLockName = "longhorn-manager-upgrade-lock"
+	LeaseLockName = "longhorn-manager-upgrade-lock"
 )
 
 func Upgrade(kubeconfigPath, currentNodeID string) error {
@@ -79,7 +79,7 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 
 	lock := &resourcelock.LeaseLock{
 		LeaseMeta: metav1.ObjectMeta{
-			Name:      leaseLockName,
+			Name:      LeaseLockName,
 			Namespace: namespace,
 		},
 		Client: kubeClient.CoordinationV1(),

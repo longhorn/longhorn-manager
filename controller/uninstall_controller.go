@@ -22,6 +22,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/upgrade"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
@@ -247,8 +248,11 @@ func (c *UninstallController) uninstall() error {
 		return err
 	}
 
-	// Delete Longhorn storageclass
 	if err := c.deleteStorageClass(); err != nil {
+		return err
+	}
+
+	if err := c.deleteLease(); err != nil {
 		return err
 	}
 
@@ -291,6 +295,14 @@ func (c *UninstallController) checkPreconditions() error {
 
 func (c *UninstallController) deleteStorageClass() error {
 	err := c.ds.DeleteStorageClass(types.DefaultStorageClassName)
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+	return nil
+}
+
+func (c *UninstallController) deleteLease() error {
+	err := c.ds.DeleteLease(upgrade.LeaseLockName)
 	if err != nil && !datastore.ErrorIsNotFound(err) {
 		return err
 	}
