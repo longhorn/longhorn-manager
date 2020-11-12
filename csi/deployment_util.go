@@ -3,6 +3,7 @@ package csi
 import (
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"time"
 
 	"github.com/pkg/errors"
@@ -186,7 +187,8 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 		existingAnnos := existingMeta.GetAnnotations()
 		if annos[AnnotationCSIVersion] == existingAnnos[AnnotationCSIVersion] &&
 			annos[AnnotationKubernetesVersion] == existingAnnos[AnnotationKubernetesVersion] &&
-			existingMeta.GetDeletionTimestamp() == nil {
+			existingMeta.GetDeletionTimestamp() == nil &&
+			!needToUpdateImage(existing, obj) {
 			// deployment of correct version already deployed
 			logrus.Debugf("Detected %v %v CSI version %v Kubernetes version %v has already been deployed",
 				resource, name, annos[AnnotationCSIVersion], annos[AnnotationKubernetesVersion])
@@ -203,6 +205,30 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 	}
 	logrus.Debugf("Created %s %s", resource, name)
 	return nil
+}
+
+func needToUpdateImage(existingObj, newObj runtime.Object) bool {
+	existingDeployment, ok := existingObj.(*appsv1.Deployment)
+	if !ok {
+		return false
+	}
+
+	newDeployment, ok := newObj.(*appsv1.Deployment)
+	if !ok {
+		return false
+	}
+
+	existingImages := make(map[string]bool)
+	for _, container := range existingDeployment.Spec.Template.Spec.Containers {
+		existingImages[container.Image] = true
+	}
+
+	newImages := make(map[string]bool)
+	for _, container := range newDeployment.Spec.Template.Spec.Containers {
+		newImages[container.Image] = true
+	}
+
+	return !reflect.DeepEqual(existingImages, newImages)
 }
 
 func cleanup(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
