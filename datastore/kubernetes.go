@@ -193,6 +193,11 @@ func (s *DataStore) DeletePod(name string) error {
 	return s.kubeClient.CoreV1().Pods(s.namespace).Delete(name, nil)
 }
 
+// DeleteLease deletes Lease with the given name in s.namespace
+func (s *DataStore) DeleteLease(name string) error {
+	return s.kubeClient.CoordinationV1().Leases(s.namespace).Delete(name, nil)
+}
+
 // GetStorageClassRO gets StorageClass with the given name
 // This function returns direct reference to the internal cache object and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
