@@ -338,18 +338,18 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 		return true, c.deleteEngineImages(engineImages)
 	}
 
-	if nodes, err := c.ds.ListNodes(); err != nil {
-		return true, err
-	} else if len(nodes) > 0 {
-		c.logger.Infof("Found %d nodes remaining", len(nodes))
-		return true, c.deleteNodes(nodes)
-	}
-
 	if instanceManagers, err := c.ds.ListInstanceManagers(); err != nil {
 		return true, err
 	} else if len(instanceManagers) > 0 {
 		c.logger.Infof("Found %d instance managers remaining", len(instanceManagers))
 		return true, c.deleteInstanceManagers(instanceManagers)
+	}
+
+	if nodes, err := c.ds.ListNodes(); err != nil {
+		return true, err
+	} else if len(nodes) > 0 {
+		c.logger.Infof("Found %d nodes remaining", len(nodes))
+		return true, c.deleteNodes(nodes)
 	}
 
 	return false, nil
