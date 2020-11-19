@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sync"
@@ -28,10 +29,9 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
-	"github.com/longhorn/longhorn-manager/types"
-
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
@@ -792,6 +792,11 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 }
 
 func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string) (*v1.Pod, error) {
+	tolerationsByte, err := json.Marshal(tolerations)
+	if err != nil {
+		return nil, err
+	}
+
 	priorityClass, err := imc.ds.GetSetting(types.SettingNamePriorityClass)
 	if err != nil {
 		return nil, err
@@ -808,6 +813,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 			Name:            im.Name,
 			Namespace:       imc.namespace,
 			OwnerReferences: datastore.GetOwnerReferencesForInstanceManager(im),
+			Annotations:     map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): string(tolerationsByte)},
 		},
 		Spec: v1.PodSpec{
 			ServiceAccountName: imc.serviceAccount,

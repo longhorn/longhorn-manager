@@ -54,6 +54,8 @@ const (
 	CronJobBackoffLimit               = 3
 	CronJobSuccessfulJobsHistoryLimit = 1
 	VolumeSnapshotsWarningThreshold   = 100
+
+	LastAppliedCronJobSpecAnnotationKeySuffix = "last-applied-cronjob-spec"
 )
 
 type VolumeController struct {
@@ -2075,18 +2077,36 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 	}
 
 	for name, cronJob := range currentCronJobs {
-		if appliedCronJobROs[name] == nil {
+		appliedCronJob := appliedCronJobROs[name]
+		cronJobSpecB, err := json.Marshal(cronJob)
+		if err != nil {
+			return errors.Wrapf(err, "fail to updateRecurringJobs %v", cronJob.GetName())
+		}
+		cronJobSpec := string(cronJobSpecB)
+
+		if appliedCronJob == nil {
+			util.SetAnnotation(cronJob, types.GetLonghornLabelKey(LastAppliedCronJobSpecAnnotationKeySuffix), cronJobSpec)
 			_, err := vc.ds.CreateVolumeCronJob(v.Name, cronJob)
 			if err != nil {
 				return err
 			}
-		} else if !reflect.DeepEqual(appliedCronJobROs[name].Spec, cronJob) {
-			_, err := vc.ds.UpdateVolumeCronJob(v.Name, cronJob)
-			if err != nil {
-				return err
-			}
+			continue
+		}
+
+		lastAppliedSpec, err := util.GetAnnotation(appliedCronJob, types.GetLonghornLabelKey(LastAppliedCronJobSpecAnnotationKeySuffix))
+		if err != nil {
+			return err
+		}
+		if lastAppliedSpec == cronJobSpec {
+			continue
+		}
+
+		util.SetAnnotation(cronJob, types.GetLonghornLabelKey(LastAppliedCronJobSpecAnnotationKeySuffix), cronJobSpec)
+		if _, err := vc.ds.UpdateVolumeCronJob(v.Name, cronJob); err != nil {
+			return err
 		}
 	}
+
 	for name, job := range appliedCronJobROs {
 		if currentCronJobs[name] == nil {
 			if err := vc.ds.DeleteCronJob(name); err != nil {

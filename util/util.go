@@ -14,7 +14,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -29,7 +28,9 @@ import (
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/version"
 	clientset "k8s.io/client-go/kubernetes"
@@ -685,29 +686,48 @@ func IsKubernetesDefaultToleration(toleration v1.Toleration) bool {
 	return false
 }
 
-func AreIdenticalTolerations(oldTolerations, newTolerations map[string]v1.Toleration) bool {
-	// modified existing tolerations
-	for name := range oldTolerations {
-		if !IsKubernetesDefaultToleration(oldTolerations[name]) && !reflect.DeepEqual(newTolerations[name], oldTolerations[name]) {
-			return false
-		}
-	}
-	// appended new tolerations
-	for name := range newTolerations {
-		if _, exist := oldTolerations[name]; !exist {
-			return false
-		}
+func GetAnnotation(obj runtime.Object, annotationKey string) (string, error) {
+	objMeta, err := meta.Accessor(obj)
+	if err != nil {
+		return "", fmt.Errorf("cannot get annotation of invalid object %v: %v", obj, err)
 	}
 
-	return true
+	annos := objMeta.GetAnnotations()
+	if annos == nil {
+		return "", nil
+	}
+
+	return annos[annotationKey], nil
+}
+
+func SetAnnotation(obj runtime.Object, annotationKey, annotationValue string) error {
+	objMeta, err := meta.Accessor(obj)
+	if err != nil {
+		return fmt.Errorf("cannot set annotation for invalid object %v: %v", obj, err)
+	}
+
+	annos := objMeta.GetAnnotations()
+	if annos == nil {
+		annos = map[string]string{}
+	}
+
+	annos[annotationKey] = annotationValue
+	objMeta.SetAnnotations(annos)
+	return nil
 }
 
 func TolerationListToMap(tolerationList []v1.Toleration) map[string]v1.Toleration {
 	res := map[string]v1.Toleration{}
 	for _, t := range tolerationList {
-		res[t.Key] = t
+		// We use checksum of the toleration to separate 2 tolerations
+		// with the same t.Key but different operator/effect/value
+		res[GetTolerationChecksum(t)] = t
 	}
 	return res
+}
+
+func GetTolerationChecksum(t v1.Toleration) string {
+	return GetStringChecksum(string(t.Key) + string(t.Operator) + string(t.Value) + string(t.Effect))
 }
 
 func ExpandFileSystem(volumeName string) (err error) {

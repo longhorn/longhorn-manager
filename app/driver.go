@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -210,6 +211,10 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 	if err != nil {
 		return errors.Wrapf(err, "failed to unmarshal taint toleration setting before starting CSI driver")
 	}
+	tolerationsByte, err := json.Marshal(tolerations)
+	if err != nil {
+		return errors.Wrapf(err, "failed to marshal taint toleration list before starting CSI driver")
+	}
 
 	priorityClassSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNamePriorityClass), metav1.GetOptions{})
 	if err != nil {
@@ -271,31 +276,31 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount, tolerations, priorityClass, registrySecret, imagePullPolicy)
+	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy)
 	if err := attacherDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, rootDir, csiProvisionerReplicaCount, tolerations, priorityClass, registrySecret, imagePullPolicy)
+	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, rootDir, csiProvisionerReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy)
 	if err := provisionerDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
 	if volumeExpansionEnabled {
-		resizerDeployment := csi.NewResizerDeployment(namespace, serviceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, tolerations, priorityClass, registrySecret, imagePullPolicy)
+		resizerDeployment := csi.NewResizerDeployment(namespace, serviceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy)
 		if err := resizerDeployment.Deploy(kubeClient); err != nil {
 			return err
 		}
 	}
 
 	if snapshotSupportEnabled {
-		snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, tolerations, priorityClass, registrySecret, imagePullPolicy)
+		snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy)
 		if err := snapshotterDeployment.Deploy(kubeClient); err != nil {
 			return err
 		}
 	}
 
-	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, managerImage, managerURL, rootDir, tolerations, priorityClass, registrySecret, imagePullPolicy)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, managerImage, managerURL, rootDir, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}

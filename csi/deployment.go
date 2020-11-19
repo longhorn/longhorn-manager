@@ -56,7 +56,7 @@ type AttacherDeployment struct {
 }
 
 func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string, replicaCount int, tolerations []v1.Toleration,
-	priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *AttacherDeployment {
+	tolerationsString, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *AttacherDeployment {
 
 	service := getCommonService(types.CSIAttacherName, namespace)
 
@@ -74,6 +74,7 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 		},
 		int32(replicaCount),
 		tolerations,
+		tolerationsString,
 		priorityClass,
 		registrySecret,
 		imagePullPolicy,
@@ -119,7 +120,7 @@ type ProvisionerDeployment struct {
 }
 
 func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootDir string, replicaCount int, tolerations []v1.Toleration,
-	priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *ProvisionerDeployment {
+	tolerationsString, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *ProvisionerDeployment {
 
 	service := getCommonService(types.CSIProvisionerName, namespace)
 
@@ -138,6 +139,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 		},
 		int32(replicaCount),
 		tolerations,
+		tolerationsString,
 		priorityClass,
 		registrySecret,
 		imagePullPolicy,
@@ -183,7 +185,7 @@ type ResizerDeployment struct {
 }
 
 func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir string, replicaCount int, tolerations []v1.Toleration,
-	priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *ResizerDeployment {
+	tolerationsString, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *ResizerDeployment {
 
 	service := getCommonService(types.CSIResizerName, namespace)
 
@@ -201,6 +203,7 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 		},
 		int32(replicaCount),
 		tolerations,
+		tolerationsString,
 		priorityClass,
 		registrySecret,
 		imagePullPolicy,
@@ -246,7 +249,7 @@ type SnapshotterDeployment struct {
 }
 
 func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootDir string, replicaCount int, tolerations []v1.Toleration,
-	priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *SnapshotterDeployment {
+	tolerationsString, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *SnapshotterDeployment {
 	service := getCommonService(types.CSISnapshotterName, namespace)
 
 	deployment := getCommonDeployment(
@@ -263,6 +266,7 @@ func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootD
 		},
 		int32(replicaCount),
 		tolerations,
+		tolerationsString,
 		priorityClass,
 		registrySecret,
 		imagePullPolicy,
@@ -307,12 +311,13 @@ type PluginDeployment struct {
 }
 
 func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, managerImage, managerURL, rootDir string,
-	tolerations []v1.Toleration, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *PluginDeployment {
+	tolerations []v1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *PluginDeployment {
 
 	daemonSet := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      types.CSIPluginName,
-			Namespace: namespace,
+			Name:        types.CSIPluginName,
+			Namespace:   namespace,
+			Annotations: map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): tolerationsString},
 		},
 
 		Spec: appsv1.DaemonSetSpec{
