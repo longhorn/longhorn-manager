@@ -352,11 +352,19 @@ var (
 
 	SettingDefinitionTaintToleration = SettingDefinition{
 		DisplayName: "Kubernetes Taint Toleration",
-		Description: "To dedicate nodes to store Longhorn replicas and reject other general workloads, set tolerations for Longhorn and add taints for the storage nodes. All Longhorn volumes should be detached before modifying toleration settings. We recommend setting tolerations during Longhorn deployment because the Longhorn system cannot be operated during the update. Multiple tolerations can be set here, and these tolerations are separated by semicolon. For example, `key1=value1:NoSchedule; key2:NoExecute`. Because `kubernetes.io` is used as the key of all Kubernetes default tolerations, it should not be used in the toleration settings.\nWARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES.",
-		Category:    SettingCategoryDangerZone,
-		Type:        SettingTypeString,
-		Required:    false,
-		ReadOnly:    false,
+		Description: "To dedicate nodes to store Longhorn replicas and reject other general workloads, set tolerations for Longhorn and add taints for the storage nodes. " +
+			"All Longhorn volumes should be detached before modifying toleration settings. " +
+			"We recommend setting tolerations during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
+			"Multiple tolerations can be set here, and these tolerations are separated by semicolon. For example: \n\n" +
+			"* `key1=value1:NoSchedule; key2:NoExecute` \n\n" +
+			"* `:` this toleration tolerates everything because an empty key with operator `Exists` matches all keys, values and effects \n\n" +
+			"* `key1=value1:`  this toleration has empty effect. It matches all effects with key `key1` \n\n" +
+			"Because `kubernetes.io` is used as the key of all Kubernetes default tolerations, it should not be used in the toleration settings.\n\n " +
+			"WARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES!",
+		Category: SettingCategoryDangerZone,
+		Type:     SettingTypeString,
+		Required: false,
+		ReadOnly: false,
 	}
 
 	SettingDefinitionCRDAPIVersion = SettingDefinition{
@@ -778,7 +786,7 @@ func ValidateAndUnmarshalToleration(s string) (*v1.Toleration, error) {
 	}
 
 	effect := v1.TaintEffect(strings.Trim(parts[1], " "))
-	if effect != v1.TaintEffectNoExecute && effect != v1.TaintEffectNoSchedule && effect != v1.TaintEffectPreferNoSchedule {
+	if effect != v1.TaintEffectNoExecute && effect != v1.TaintEffectNoSchedule && effect != v1.TaintEffectPreferNoSchedule && effect != v1.TaintEffect("") {
 		return nil, fmt.Errorf("invalid toleration setting %v: invalid effect", parts[1])
 	}
 	toleration.Effect = effect
@@ -794,11 +802,6 @@ func ValidateAndUnmarshalToleration(s string) (*v1.Toleration, error) {
 	} else {
 		toleration.Key = strings.Trim(parts[0], " ")
 		toleration.Operator = v1.TolerationOpExists
-	}
-
-	if strings.Contains(toleration.Key, util.DefaultKubernetesTolerationKey) {
-		return nil, fmt.Errorf("the key of Longhorn toleration setting cannot contain \"%s\" "+
-			"since this substring is considered as the key of Kubernetes default tolerations", util.DefaultKubernetesTolerationKey)
 	}
 
 	return toleration, nil

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
@@ -276,7 +277,10 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			return errors.Wrapf(err, "failed to get system pods image pull policy before creating engine image daemonset")
 		}
 
-		dsSpec := ic.createEngineImageDaemonSetSpec(engineImage, tolerations, priorityClass, registrySecret, imagePullPolicy)
+		dsSpec, err := ic.createEngineImageDaemonSetSpec(engineImage, tolerations, priorityClass, registrySecret, imagePullPolicy)
+		if err != nil {
+			return errors.Wrapf(err, "fail to create daemonset spec for engine image %v", engineImage.Name)
+		}
 
 		if err = ic.ds.CreateEngineImageDaemonSet(dsSpec); err != nil {
 			return errors.Wrapf(err, "fail to create daemonset for engine image %v", engineImage.Name)
@@ -550,7 +554,7 @@ func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *met
 }
 
 func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []v1.Toleration,
-	priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *appsv1.DaemonSet {
+	priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) (*appsv1.DaemonSet, error) {
 
 	dsName := types.GetDaemonSetNameFromEngineImageName(ei.Name)
 	image := ei.Spec.Image
@@ -565,9 +569,15 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 	}
 	maxUnavailable := intstr.FromString(`100%`)
 	privileged := true
+	tolerationsByte, err := json.Marshal(tolerations)
+	if err != nil {
+		return nil, err
+	}
+
 	d := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: dsName,
+			Name:        dsName,
+			Annotations: map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): string(tolerationsByte)},
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
@@ -642,5 +652,5 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 		}
 	}
 
-	return d
+	return d, nil
 }

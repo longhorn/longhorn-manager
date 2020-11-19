@@ -55,7 +55,7 @@ func getCommonService(commonName, namespace string) *v1.Service {
 }
 
 func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32,
-	tolerations []v1.Toleration, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *appsv1.Deployment {
+	tolerations []v1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *appsv1.Deployment {
 
 	labels := map[string]string{
 		"app": commonName,
@@ -63,8 +63,9 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 
 	commonDeploymentSpec := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      commonName,
-			Namespace: namespace,
+			Name:        commonName,
+			Namespace:   namespace,
+			Annotations: map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): tolerationsString},
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{

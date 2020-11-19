@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"reflect"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -300,11 +302,12 @@ func (sc *SettingController) updateTaintToleration() error {
 	if err != nil {
 		return err
 	}
-	tolerationList, err := types.UnmarshalTolerations(setting.Value)
+	newTolerations := setting.Value
+	newTolerationsList, err := types.UnmarshalTolerations(newTolerations)
 	if err != nil {
 		return err
 	}
-	newTolerations := util.TolerationListToMap(tolerationList)
+	newTolerationsMap := util.TolerationListToMap(newTolerationsList)
 
 	daemonsetList, err := sc.ds.ListDaemonSet()
 	if err != nil {
@@ -322,33 +325,100 @@ func (sc *SettingController) updateTaintToleration() error {
 	}
 
 	for _, dp := range deploymentList {
-		if util.AreIdenticalTolerations(util.TolerationListToMap(dp.Spec.Template.Spec.Tolerations), newTolerations) {
+		lastAppliedTolerationsList, err := getLastAppliedTolerationsList(dp)
+		if err != nil {
+			return err
+		}
+		if reflect.DeepEqual(util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap) {
 			continue
 		}
-		dp.Spec.Template.Spec.Tolerations = getFinalTolerations(util.TolerationListToMap(dp.Spec.Template.Spec.Tolerations), newTolerations)
+		if err := updateTolerationForDeployment(dp, lastAppliedTolerationsList, newTolerationsList); err != nil {
+			return err
+		}
 		if _, err := sc.ds.UpdateDeployment(dp); err != nil {
 			return err
 		}
 	}
+
 	for _, ds := range daemonsetList {
-		if util.AreIdenticalTolerations(util.TolerationListToMap(ds.Spec.Template.Spec.Tolerations), newTolerations) {
+		lastAppliedTolerationsList, err := getLastAppliedTolerationsList(ds)
+		if err != nil {
+			return err
+		}
+		if reflect.DeepEqual(util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap) {
 			continue
 		}
-		ds.Spec.Template.Spec.Tolerations = getFinalTolerations(util.TolerationListToMap(ds.Spec.Template.Spec.Tolerations), newTolerations)
+		if err := updateTolerationForDaemonset(ds, lastAppliedTolerationsList, newTolerationsList); err != nil {
+			return err
+		}
 		if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
 			return err
 		}
 	}
+
 	for _, imPod := range imPodList {
-		if util.AreIdenticalTolerations(util.TolerationListToMap(imPod.Spec.Tolerations), newTolerations) {
+		lastAppliedTolerationsList, err := getLastAppliedTolerationsList(imPod)
+		if err != nil {
+			return err
+		}
+		if reflect.DeepEqual(util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap) {
 			continue
 		}
+
 		if err := sc.ds.DeletePod(imPod.Name); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func updateTolerationForDeployment(ds *appsv1.Deployment, lastAppliedTolerations, newTolerations []v1.Toleration) error {
+	existingTolerationsMap := util.TolerationListToMap(ds.Spec.Template.Spec.Tolerations)
+	lastAppliedTolerationsMap := util.TolerationListToMap(lastAppliedTolerations)
+	newTolerationsMap := util.TolerationListToMap(newTolerations)
+	ds.Spec.Template.Spec.Tolerations = getFinalTolerations(existingTolerationsMap, lastAppliedTolerationsMap, newTolerationsMap)
+	newTolerationsByte, err := json.Marshal(newTolerations)
+	if err != nil {
+		return err
+	}
+	if err := util.SetAnnotation(ds, types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix), string(newTolerationsByte)); err != nil {
+		return err
+	}
+	return nil
+}
+
+func updateTolerationForDaemonset(ds *appsv1.DaemonSet, lastAppliedTolerations, newTolerations []v1.Toleration) error {
+	existingTolerationsMap := util.TolerationListToMap(ds.Spec.Template.Spec.Tolerations)
+	lastAppliedTolerationsMap := util.TolerationListToMap(lastAppliedTolerations)
+	newTolerationsMap := util.TolerationListToMap(newTolerations)
+	ds.Spec.Template.Spec.Tolerations = getFinalTolerations(existingTolerationsMap, lastAppliedTolerationsMap, newTolerationsMap)
+	newTolerationsByte, err := json.Marshal(newTolerations)
+	if err != nil {
+		return err
+	}
+	if err := util.SetAnnotation(ds, types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix), string(newTolerationsByte)); err != nil {
+		return err
+	}
+	return nil
+}
+
+func getLastAppliedTolerationsList(obj runtime.Object) ([]v1.Toleration, error) {
+	lastAppliedTolerations, err := util.GetAnnotation(obj, types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix))
+	if err != nil {
+		return nil, err
+	}
+
+	if lastAppliedTolerations == "" {
+		lastAppliedTolerations = "[]"
+	}
+
+	lastAppliedTolerationsList := []v1.Toleration{}
+	if err := json.Unmarshal([]byte(lastAppliedTolerations), &lastAppliedTolerationsList); err != nil {
+		return nil, err
+	}
+
+	return lastAppliedTolerationsList, nil
 }
 
 func (sc *SettingController) updatePriorityClass() error {
@@ -403,19 +473,27 @@ func (sc *SettingController) updatePriorityClass() error {
 	return nil
 }
 
-func getFinalTolerations(oldTolerations, newTolerations map[string]v1.Toleration) []v1.Toleration {
-	res := []v1.Toleration{}
-	// Combine Kubernetes default tolerations with new Longhorn toleration setting
-	for _, t := range oldTolerations {
-		if util.IsKubernetesDefaultToleration(t) {
-			res = append(res, t)
-		}
-	}
-	for _, t := range newTolerations {
-		res = append(res, t)
+func getFinalTolerations(existingTolerations, lastAppliedTolerations, newTolerations map[string]v1.Toleration) []v1.Toleration {
+	resultMap := make(map[string]v1.Toleration)
+
+	for k, v := range existingTolerations {
+		resultMap[k] = v
 	}
 
-	return res
+	for k := range lastAppliedTolerations {
+		delete(resultMap, k)
+	}
+
+	for k, v := range newTolerations {
+		resultMap[k] = v
+	}
+
+	resultSlice := []v1.Toleration{}
+	for _, v := range resultMap {
+		resultSlice = append(resultSlice, v)
+	}
+
+	return resultSlice
 }
 
 func (bm *BackupStoreMonitor) Start() {
