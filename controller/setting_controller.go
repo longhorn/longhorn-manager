@@ -332,10 +332,7 @@ func (sc *SettingController) updateTaintToleration() error {
 		if reflect.DeepEqual(util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap) {
 			continue
 		}
-		if err := updateTolerationForDeployment(dp, lastAppliedTolerationsList, newTolerationsList); err != nil {
-			return err
-		}
-		if _, err := sc.ds.UpdateDeployment(dp); err != nil {
+		if err := sc.updateTolerationForDeployment(dp, lastAppliedTolerationsList, newTolerationsList); err != nil {
 			return err
 		}
 	}
@@ -348,10 +345,7 @@ func (sc *SettingController) updateTaintToleration() error {
 		if reflect.DeepEqual(util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap) {
 			continue
 		}
-		if err := updateTolerationForDaemonset(ds, lastAppliedTolerationsList, newTolerationsList); err != nil {
-			return err
-		}
-		if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
+		if err := sc.updateTolerationForDaemonset(ds, lastAppliedTolerationsList, newTolerationsList); err != nil {
 			return err
 		}
 	}
@@ -373,22 +367,25 @@ func (sc *SettingController) updateTaintToleration() error {
 	return nil
 }
 
-func updateTolerationForDeployment(ds *appsv1.Deployment, lastAppliedTolerations, newTolerations []v1.Toleration) error {
-	existingTolerationsMap := util.TolerationListToMap(ds.Spec.Template.Spec.Tolerations)
+func (sc *SettingController) updateTolerationForDeployment(dp *appsv1.Deployment, lastAppliedTolerations, newTolerations []v1.Toleration) error {
+	existingTolerationsMap := util.TolerationListToMap(dp.Spec.Template.Spec.Tolerations)
 	lastAppliedTolerationsMap := util.TolerationListToMap(lastAppliedTolerations)
 	newTolerationsMap := util.TolerationListToMap(newTolerations)
-	ds.Spec.Template.Spec.Tolerations = getFinalTolerations(existingTolerationsMap, lastAppliedTolerationsMap, newTolerationsMap)
+	dp.Spec.Template.Spec.Tolerations = getFinalTolerations(existingTolerationsMap, lastAppliedTolerationsMap, newTolerationsMap)
 	newTolerationsByte, err := json.Marshal(newTolerations)
 	if err != nil {
 		return err
 	}
-	if err := util.SetAnnotation(ds, types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix), string(newTolerationsByte)); err != nil {
+	if err := util.SetAnnotation(dp, types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix), string(newTolerationsByte)); err != nil {
+		return err
+	}
+	if _, err := sc.ds.UpdateDeployment(dp); err != nil {
 		return err
 	}
 	return nil
 }
 
-func updateTolerationForDaemonset(ds *appsv1.DaemonSet, lastAppliedTolerations, newTolerations []v1.Toleration) error {
+func (sc *SettingController) updateTolerationForDaemonset(ds *appsv1.DaemonSet, lastAppliedTolerations, newTolerations []v1.Toleration) error {
 	existingTolerationsMap := util.TolerationListToMap(ds.Spec.Template.Spec.Tolerations)
 	lastAppliedTolerationsMap := util.TolerationListToMap(lastAppliedTolerations)
 	newTolerationsMap := util.TolerationListToMap(newTolerations)
@@ -398,6 +395,9 @@ func updateTolerationForDaemonset(ds *appsv1.DaemonSet, lastAppliedTolerations, 
 		return err
 	}
 	if err := util.SetAnnotation(ds, types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix), string(newTolerationsByte)); err != nil {
+		return err
+	}
+	if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
 		return err
 	}
 	return nil

@@ -243,5 +243,8 @@ func doPodsUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeClient
 	if err = v102to110.UpgradeReplicas(namespace, lhClient); err != nil {
 		return err
 	}
+	if err = v102to110.UpdateDeploymentAndDaemonset(namespace, kubeClient); err != nil {
+		return err
+	}
 	return nil
 }
