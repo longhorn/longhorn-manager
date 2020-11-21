@@ -144,6 +144,9 @@ func startManager(c *cli.Context) error {
 	if err := updateSettingDefaultInstanceManagerImage(m, instanceManagerImage); err != nil {
 		return err
 	}
+	if err := updateRegistrySecretName(m); err != nil {
+		return err
+	}
 
 	if err := initDaemonNode(ds); err != nil {
 		return err
@@ -211,6 +214,28 @@ func updateSettingDefaultInstanceManagerImage(m *manager.VolumeManager, instance
 	if settingDefaultInstanceManagerImage.Value != instanceManagerImage {
 		settingDefaultInstanceManagerImage.Value = instanceManagerImage
 		if _, err := m.CreateOrUpdateSetting(settingDefaultInstanceManagerImage); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func updateRegistrySecretName(m *manager.VolumeManager) error {
+	settingRegistrySecret, err := m.GetSetting(types.SettingNameRegistrySecret)
+	if err != nil {
+		return err
+	}
+	managerDaemonSet, err := m.GetDaemonSetRO(types.LonghornManagerDaemonSetName)
+	if err != nil {
+		return err
+	}
+	registrySecretName := ""
+	if len(managerDaemonSet.Spec.Template.Spec.ImagePullSecrets) > 0 {
+		registrySecretName = managerDaemonSet.Spec.Template.Spec.ImagePullSecrets[0].Name
+	}
+	if settingRegistrySecret.Value != registrySecretName {
+		settingRegistrySecret.Value = registrySecretName
+		if _, err := m.CreateOrUpdateSetting(settingRegistrySecret); err != nil {
 			return err
 		}
 	}
