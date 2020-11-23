@@ -21,6 +21,7 @@ import (
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
+	"github.com/longhorn/longhorn-manager/csi/nfs"
 	"github.com/longhorn/longhorn-manager/types"
 )
 
@@ -95,8 +96,16 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	devicePath := existVol.Controllers[0].Endpoint
 	diskMounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOSExec()}
 
+	// namespace mounter that operates in the host namespace
+	// nsExec, err := util.NewNamespaceExecutor(util.GetHostNamespacePath("/rootfs"))
+	nse, err := nfs.NewNsEnter("/rootfs")
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create nsenter executor, err: %v", err))
+	}
+	nfsMounter := nfs.NewMounter("/rootfs/var/lib/kubelet", nse)
+
 	if requiresSharedAccess {
-		return ns.nodePublishSharedVolume(req.GetVolumeId(), existVol.ShareEndpoint, targetPath, diskMounter)
+		return ns.nodePublishSharedVolume(req.GetVolumeId(), existVol.ShareEndpoint, targetPath, nfsMounter)
 	} else if blkCapability := volumeCapability.GetBlock(); blkCapability != nil {
 		return ns.nodePublishBlockVolume(req.GetVolumeId(), devicePath, targetPath, diskMounter)
 	} else if mntCapability := volumeCapability.GetMount(); mntCapability != nil {
@@ -127,7 +136,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	return nil, status.Error(codes.InvalidArgument, "Invalid volume capability, neither Mount nor Block")
 }
 
-func (ns *NodeServer) nodePublishSharedVolume(volumeName, shareEndpoint, targetPath string, mounter *mount.SafeFormatAndMount) (*csi.NodePublishVolumeResponse, error) {
+func (ns *NodeServer) nodePublishSharedVolume(volumeName, shareEndpoint, targetPath string, mounter mount.Interface) (*csi.NodePublishVolumeResponse, error) {
 	// It's used to check if a directory is a mount point and it will create the directory if not exist. Hence this target path cannot be used for block volume.
 	notMnt, err := isLikelyNotMountPointAttach(targetPath)
 	if err != nil {
@@ -154,8 +163,16 @@ func (ns *NodeServer) nodePublishSharedVolume(volumeName, shareEndpoint, targetP
 	export := fmt.Sprintf("%s:%s", server, exportPath)
 	mountOptions := []string{
 		"vers=4.1",
+		// TODO: investigate why the fsid param lead to invalid mount option.
 		"noresvport",
+		"hard",
+		"sync",
+		"intr",
+		"timeo=7",
+		"retrans=3",
+		//		"clientaddr=" // TODO: try to set the client adress of the mount to the ip of the pod that is consuming the volume
 	}
+
 	if err := mounter.Mount(export, targetPath, fsType, mountOptions); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
