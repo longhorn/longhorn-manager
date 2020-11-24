@@ -904,7 +904,20 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		if err != nil {
 			return err
 		}
-		// make sure the volume is detached before automatically salvage
+		// To make sure that we don't miss the `allFaulted` event, This IF statement makes sure the `e.Spec.SalvageRequested=true`
+		// persist in ETCD before Longhorn salvages the failed replicas in the IF statement below it.
+		// More explanation: when all replicas fails, Longhorn tries to set `e.Spec.SalvageRequested=true`
+		// and try to detach the volume by setting `v.Status.CurrentNodeID = ""`.
+		// Because at the end of volume syncVolume(), Longhorn updates CRs in the order: replicas, engine, volume,
+		// when volume changes from v.Status.State == types.VolumeStateAttached to v.Status.State == types.VolumeStateDetached,
+		// we know that volume RS has been updated and therefore the engine RS also has been updated and persisted in ETCD.
+		// At this moment, Longhorn goes into the IF statement below this IF statement and salvage all replicas.
+		if autoSalvage && !v.Status.IsStandby && !v.Status.RestoreRequired {
+			// Since all replica failed and autoSalvage is enable, mark engine controller salvage requested
+			e.Spec.SalvageRequested = true
+			vc.logger.Infof("All replicas are failed, set engine salvageRequested to %v", e.Spec.SalvageRequested)
+		}
+		// make sure the volume is detached before automatically salvage replicas
 		if autoSalvage && v.Status.State == types.VolumeStateDetached && !v.Status.IsStandby && !v.Status.RestoreRequired {
 			// There is no need to auto salvage (and reattach) a volume on an unavailable node
 			isNodeDownOrDeleted, err := vc.ds.IsNodeDownOrDeleted(v.Spec.NodeID)
@@ -962,10 +975,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				} else {
 					// This salvage is for revision counter enabled case
 					salvaged := false
-					// Since all replica failed, mark engine controller salvage requested
-					e.Spec.SalvageRequested = true
-					logrus.Infof("All replicas are failed, set engine salvageRequested to %v", e.Spec.SalvageRequested)
-
 					// Bring up the replicas for auto-salvage
 					for _, r := range failedUsableReplicas {
 						if util.TimestampWithinLimit(lastFailedAt, r.Spec.FailedAt, AutoSalvageTimeLimit) {
