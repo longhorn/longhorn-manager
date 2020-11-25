@@ -2053,7 +2053,7 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 							},
 							ServiceAccountName: vc.ServiceAccount,
 							RestartPolicy:      v1.RestartPolicyOnFailure,
-							Tolerations:        tolerations,
+							Tolerations:        util.GetDistinctTolerations(tolerations),
 						},
 					},
 				},
