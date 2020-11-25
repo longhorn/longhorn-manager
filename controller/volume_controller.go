@@ -521,6 +521,17 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 			}
 		}
 	}
+	// If a replica failed at attaching stage,
+	// there is no record in e.Status.ReplicaModeMap
+	for rName, r := range rs {
+		if r.Spec.FailedAt == "" && r.Status.CurrentState == types.InstanceStateError {
+			e.Spec.LogRequested = true
+			r.Spec.LogRequested = true
+			r.Spec.FailedAt = vc.nowHandler()
+			r.Spec.DesireState = types.InstanceStateStopped
+			rs[rName] = r
+		}
+	}
 
 	oldRobustness := v.Status.Robustness
 	if healthyCount == 0 { // no healthy replica exists, going to faulted
@@ -1172,13 +1183,16 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			if r.Spec.NodeID == "" {
 				continue
 			}
-			if r.Spec.FailedAt != "" {
-				continue
-			}
 			if r.Spec.EngineImage != v.Status.CurrentImage {
 				continue
 			}
 			if r.Spec.EngineName != e.Name {
+				continue
+			}
+			if r.Spec.FailedAt != "" {
+				continue
+			}
+			if r.Status.CurrentState == types.InstanceStateError {
 				continue
 			}
 			// wait for all potentially healthy replicas become running
