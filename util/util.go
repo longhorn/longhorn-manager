@@ -716,6 +716,15 @@ func SetAnnotation(obj runtime.Object, annotationKey, annotationValue string) er
 	return nil
 }
 
+func GetDistinctTolerations(tolerationList []v1.Toleration) []v1.Toleration {
+	res := []v1.Toleration{}
+	tolerationMap := TolerationListToMap(tolerationList)
+	for _, t := range tolerationMap {
+		res = append(res, t)
+	}
+	return res
+}
+
 func TolerationListToMap(tolerationList []v1.Toleration) map[string]v1.Toleration {
 	res := map[string]v1.Toleration{}
 	for _, t := range tolerationList {

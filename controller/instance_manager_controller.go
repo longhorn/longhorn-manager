@@ -29,9 +29,11 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
-	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
@@ -817,7 +819,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		},
 		Spec: v1.PodSpec{
 			ServiceAccountName: imc.serviceAccount,
-			Tolerations:        tolerations,
+			Tolerations:        util.GetDistinctTolerations(tolerations),
 			PriorityClassName:  priorityClass.Value,
 			Containers: []v1.Container{
 				{
