@@ -36,25 +36,41 @@ func UpgradeInstanceManagerPods(namespace string, lhClient *lhclientset.Clientse
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance manager pods failed")
 	}()
 
-	imPodsList, err := kubeClient.CoreV1().Pods(namespace).List(metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("%s=%s", types.GetLonghornLabelComponentKey(), types.LonghornLabelInstanceManager),
-	})
+	imPods, err := listIMPods(namespace, kubeClient)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing instance manager pods during the instance managers pods upgrade")
+		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing instance manager pods before updating Pod's owner reference")
 	}
-
-	for _, pod := range imPodsList.Items {
+	for _, pod := range imPods {
 		if err := upgradeInstanceMangerPodOwnerRef(&pod, kubeClient, namespace); err != nil {
 			return err
 		}
+	}
+
+	imPods, err = listIMPods(namespace, kubeClient)
+	if err != nil {
+		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing instance manager pods before updating Pod's toleration annotation")
+	}
+	for _, pod := range imPods {
 		if err := updateIMPodLastAppliedTolerationsAnnotation(&pod, kubeClient, namespace); err != nil {
 			return err
 		}
 	}
+
 	return nil
+}
+
+func listIMPods(namespace string, kubeClient *clientset.Clientset) ([]v1.Pod, error) {
+	imPodsList, err := kubeClient.CoreV1().Pods(namespace).List(metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("%s=%s", types.GetLonghornLabelComponentKey(), types.LonghornLabelInstanceManager),
+	})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return nil, err
+	}
+
+	if imPodsList != nil {
+		return imPodsList.Items, nil
+	}
+	return []v1.Pod{}, nil
 }
 
 func upgradeInstanceMangerPodOwnerRef(pod *v1.Pod, kubeClient *clientset.Clientset, namespace string) (err error) {
