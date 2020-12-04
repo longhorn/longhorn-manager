@@ -1597,12 +1597,14 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 	}
 
 	unknownReplicas := map[string]*longhorn.Replica{}
-	dataPathToOldReplica := map[string]*longhorn.Replica{}
+	dataPathToOldRunningReplica := map[string]*longhorn.Replica{}
 	dataPathToNewReplica := map[string]*longhorn.Replica{}
 	for _, r := range rs {
 		dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
-		if r.Spec.EngineImage == v.Status.CurrentImage {
-			dataPathToOldReplica[dataPath] = r
+		if r.Spec.EngineImage == v.Status.CurrentImage && r.Status.CurrentState == types.InstanceStateRunning {
+			if mode, exists := e.Status.ReplicaModeMap[r.Name]; exists && mode == types.ReplicaModeRW {
+				dataPathToOldRunningReplica[dataPath] = r
+			}
 		} else if r.Spec.EngineImage == v.Spec.EngineImage {
 			dataPathToNewReplica[dataPath] = r
 		} else {
@@ -1611,7 +1613,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		}
 	}
 
-	if err := vc.createAndStartMatchingReplicas(v, rs, dataPathToOldReplica, dataPathToNewReplica, func(r *longhorn.Replica, engineImage string) {
+	if err := vc.createAndStartMatchingReplicas(v, rs, dataPathToOldRunningReplica, dataPathToNewReplica, func(r *longhorn.Replica, engineImage string) {
 		r.Spec.EngineImage = engineImage
 	}, v.Spec.EngineImage); err != nil {
 		return err
@@ -2248,7 +2250,7 @@ func (vc *VolumeController) getCurrentEngineAndCleanupOthers(v *longhorn.Volume,
 }
 
 func (vc *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
-	rs, pathToOldRs, pathToNewRs map[string]*longhorn.Replica,
+	rs, pathToOldRunnngRs, pathToNewRs map[string]*longhorn.Replica,
 	fixupFunc func(r *longhorn.Replica, obj string), obj string) error {
 	log := getLoggerForVolume(vc.logger, v)
 
@@ -2256,12 +2258,13 @@ func (vc *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 		return nil
 	}
 
-	if len(pathToOldRs) != v.Spec.NumberOfReplicas {
-		log.Debug("Volume healthy replica counts doesn't match")
+	if len(pathToOldRunnngRs) != v.Spec.NumberOfReplicas {
+		log.Debug("Volume old healthy replica count %v doesn't match the desired replica count %v",
+			len(pathToOldRunnngRs), v.Spec.NumberOfReplicas)
 		return nil
 	}
 
-	for path, r := range pathToOldRs {
+	for path, r := range pathToOldRunnngRs {
 		if pathToNewRs[path] != nil {
 			continue
 		}
