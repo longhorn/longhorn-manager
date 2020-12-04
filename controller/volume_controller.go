@@ -2228,16 +2228,16 @@ func (vc *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 		if pathToNewRs[path] != nil {
 			continue
 		}
-		nr := vc.duplicateReplica(r, v)
-		nr.Spec.DesireState = types.InstanceStateRunning
-		nr.Spec.Active = false
-		fixupFunc(nr, obj)
-		nr, err := vc.ds.CreateReplica(nr)
+		clone := vc.duplicateReplica(r, v)
+		clone.Spec.DesireState = types.InstanceStateRunning
+		clone.Spec.Active = false
+		fixupFunc(clone, obj)
+		newReplica, err := vc.ds.CreateReplica(clone)
 		if err != nil {
-			return errors.Wrapf(err, "cannot create matching replica %v for volume %v", nr.Name, v.Name)
+			return errors.Wrapf(err, "cannot create matching replica %v for volume %v", clone.Name, v.Name)
 		}
-		pathToNewRs[path] = nr
-		rs[nr.Name] = nr
+		pathToNewRs[path] = newReplica
+		rs[newReplica.Name] = newReplica
 	}
 	return nil
 }
