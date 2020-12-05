@@ -1358,10 +1358,6 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		return nil
 	}
 
-	if vc.isVolumeUpgrading(v) {
-		return nil
-	}
-
 	if e == nil {
 		return fmt.Errorf("BUG: replenishReplica needs a valid engine")
 	}
