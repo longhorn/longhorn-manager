@@ -227,6 +227,11 @@ func (kc *KubernetesPodController) handlePodDeletionIfNodeDown(pod *v1.Pod, node
 // handlePodDeletionIfVolumeRequestRemount will delete the pod which is using a volume that has requested remount.
 // By deleting the consuming pod, Kubernetes will recreated them, reattaches, and remounts the volume.
 func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *v1.Pod) error {
+	// Only handle pod that is on the same node as this manager
+	if pod.Spec.NodeName != kc.controllerID {
+		return nil
+	}
+
 	autoDeletePodWhenVolumeDetachedUnexpectedly, err := kc.ds.GetSettingAsBool(types.SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly)
 	if err != nil {
 		return err
