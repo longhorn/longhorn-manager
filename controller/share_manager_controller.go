@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
@@ -482,6 +483,16 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		return nil, errors.Wrapf(err, "failed to unmarshal taint toleration setting before creating share manager pod")
 	}
 
+	var annotations map[string]string
+	if len(tolerations) > 0 {
+		tolerationsByte, err := json.Marshal(tolerations)
+		if err != nil {
+			return nil, err
+		}
+
+		annotations = map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): string(tolerationsByte)}
+	}
+
 	imagePullPolicy, err := c.ds.GetSettingImagePullPolicy()
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get image pull policy before creating share manager pod")
@@ -510,7 +521,7 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		}
 	}
 
-	pod, err := c.ds.CreatePod(c.createPodManifest(sm, tolerations, imagePullPolicy, nil, registrySecret, priorityClass))
+	pod, err := c.ds.CreatePod(c.createPodManifest(sm, annotations, tolerations, imagePullPolicy, nil, registrySecret, priorityClass))
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create pod for share manager %v", sm.Name)
 	}
@@ -543,14 +554,15 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 	return service
 }
 
-func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, tolerations []v1.Toleration, pullPolicy v1.PullPolicy,
-	resourceReq *v1.ResourceRequirements, registrySecret string, priorityClass string) *v1.Pod {
+func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, annotations map[string]string, tolerations []v1.Toleration,
+	pullPolicy v1.PullPolicy, resourceReq *v1.ResourceRequirements, registrySecret string, priorityClass string) *v1.Pod {
 	privileged := true
 	podSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            sm.Name,
 			Namespace:       sm.Namespace,
 			Labels:          types.GetShareManagerLabels(sm.Name, sm.Spec.Image),
+			Annotations:     annotations,
 			OwnerReferences: datastore.GetOwnerReferencesForShareManager(sm, true),
 		},
 		Spec: v1.PodSpec{

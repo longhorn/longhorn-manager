@@ -282,17 +282,7 @@ func (s *DataStore) ListManagerPods() ([]*corev1.Pod, error) {
 	if err != nil {
 		return nil, err
 	}
-	podList, err := s.pLister.Pods(s.namespace).List(selector)
-	if err != nil {
-		return nil, err
-	}
-
-	pList := []*corev1.Pod{}
-	for _, item := range podList {
-		pList = append(pList, item.DeepCopy())
-	}
-
-	return pList, nil
+	return s.ListPodsBySelector(selector)
 }
 
 func getInstanceManagerComponentSelector() (labels.Selector, error) {
@@ -307,7 +297,24 @@ func (s *DataStore) ListInstanceManagerPods() ([]*corev1.Pod, error) {
 	if err != nil {
 		return nil, err
 	}
+	return s.ListPodsBySelector(selector)
+}
 
+func getShareManagerComponentSelector() (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetShareManagerComponentLabel(),
+	})
+}
+
+func (s *DataStore) ListShareManagerPods() ([]*corev1.Pod, error) {
+	selector, err := getShareManagerComponentSelector()
+	if err != nil {
+		return nil, err
+	}
+	return s.ListPodsBySelector(selector)
+}
+
+func (s *DataStore) ListPodsBySelector(selector labels.Selector) ([]*corev1.Pod, error) {
 	podList, err := s.pLister.Pods(s.namespace).List(selector)
 	if err != nil {
 		return nil, err

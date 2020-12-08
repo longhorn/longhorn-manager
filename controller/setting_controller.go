@@ -324,6 +324,11 @@ func (sc *SettingController) updateTaintToleration() error {
 		return errors.Wrapf(err, "failed to list instance manager pods for toleration update")
 	}
 
+	smPodList, err := sc.ds.ListShareManagerPods()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list share manager pods for toleration update")
+	}
+
 	for _, dp := range deploymentList {
 		lastAppliedTolerationsList, err := getLastAppliedTolerationsList(dp)
 		if err != nil {
@@ -350,16 +355,17 @@ func (sc *SettingController) updateTaintToleration() error {
 		}
 	}
 
-	for _, imPod := range imPodList {
-		lastAppliedTolerationsList, err := getLastAppliedTolerationsList(imPod)
+	pods := append(imPodList, smPodList...)
+	for _, pod := range pods {
+		lastAppliedTolerations, err := getLastAppliedTolerationsList(pod)
 		if err != nil {
 			return err
 		}
-		if reflect.DeepEqual(util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap) {
+		if reflect.DeepEqual(util.TolerationListToMap(lastAppliedTolerations), newTolerationsMap) {
 			continue
 		}
 
-		if err := sc.ds.DeletePod(imPod.Name); err != nil {
+		if err := sc.ds.DeletePod(pod.Name); err != nil {
 			return err
 		}
 	}
@@ -443,6 +449,11 @@ func (sc *SettingController) updatePriorityClass() error {
 		return errors.Wrapf(err, "failed to list instance manager pods for priority class update")
 	}
 
+	smPodList, err := sc.ds.ListShareManagerPods()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list share manager pods for toleration update")
+	}
+
 	for _, dp := range deploymentList {
 		if dp.Spec.Template.Spec.PriorityClassName == newPriorityClass {
 			continue
@@ -461,11 +472,13 @@ func (sc *SettingController) updatePriorityClass() error {
 			return err
 		}
 	}
-	for _, imPod := range imPodList {
-		if imPod.Spec.PriorityClassName == newPriorityClass {
+
+	pods := append(imPodList, smPodList...)
+	for _, pod := range pods {
+		if pod.Spec.PriorityClassName == newPriorityClass {
 			continue
 		}
-		if err := sc.ds.DeletePod(imPod.Name); err != nil {
+		if err := sc.ds.DeletePod(pod.Name); err != nil {
 			return err
 		}
 	}
