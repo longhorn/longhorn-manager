@@ -344,12 +344,18 @@ var (
 
 	SettingDefinitionGuaranteedEngineCPU = SettingDefinition{
 		DisplayName: "Guaranteed Engine CPU",
-		Description: "Allow Longhorn Instance Managers to have guaranteed CPU allocation. The value is how many CPUs should be reserved for each Engine/Replica Instance Manager Pod created by Longhorn. For example, 0.1 means one-tenth of a CPU. This will help maintain engine stability during high node workload. It only applies to the Engine/Replica Manager Pods created after the setting took effect. WARNING: After this setting is changed, all the instance managers on all the nodes will be automatically restarted. \nWARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES.",
-		Category:    SettingCategoryDangerZone,
-		Type:        SettingTypeString,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "0.25",
+		Description: "Allow Longhorn Instance Managers to have guaranteed CPU allocation. The value is how many CPUs should be reserved for each Engine/Replica Instance Manager Pod created by Longhorn. For example, 0.1 means one-tenth of a CPU. This will help maintain engine stability during high node workload. It only applies to the Engine/Replica Instance Manager Pods created after the setting took effect.  \n" +
+			"In order to prevent unexpected volume crash, you can use the following formula to calculate an appropriate value for this setting:  \n" +
+			"Guaranteed Engine CPU = The estimated max Longhorn volume/replica count on a node * 0.1  \n" +
+			"The result of above calculation doesn't mean that's the maximum CPU resources the Longhorn workloads require. To fully exploit the Longhorn volume I/O performance, you can allocate/guarantee more CPU resources via this setting.  \n" +
+			"If it's hard to estimate the volume/replica count now, you can leave it with the default value, or allocate 1/8 of total CPU of a node. Then you can tune it when there is no running workload using Longhorn volumes.  \n" +
+			"WARNING: After this setting is changed, all the instance managers on all the nodes will be automatically restarted.  \n" +
+			"WARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES.",
+		Category: SettingCategoryDangerZone,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		Default:  "0.25",
 	}
 
 	SettingDefinitionDefaultLonghornStaticStorageClass = SettingDefinition{
