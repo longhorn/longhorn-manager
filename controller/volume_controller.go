@@ -207,17 +207,17 @@ func (vc *VolumeController) handleErr(err error, key interface{}) {
 func getLoggerForVolume(logger logrus.FieldLogger, v *longhorn.Volume) logrus.FieldLogger {
 	log := logger.WithFields(
 		logrus.Fields{
-			"volume":   v.Name,
-			"frontend": v.Spec.Frontend,
-			"state":    v.Status.State,
-			"owner":    v.Status.OwnerID,
+			"volume":     v.Name,
+			"frontend":   v.Spec.Frontend,
+			"state":      v.Status.State,
+			"owner":      v.Status.OwnerID,
+			"accessMode": v.Spec.AccessMode,
 		},
 	)
 
-	if v.Spec.Share {
+	if v.Spec.AccessMode == types.AccessModeReadWriteMany {
 		log = log.WithFields(
 			logrus.Fields{
-				"share":         v.Spec.Share,
 				"shareState":    v.Status.ShareState,
 				"shareEndpoint": v.Status.ShareEndpoint,
 			})
@@ -286,7 +286,8 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			vc.eventRecorder.Eventf(volume, v1.EventTypeNormal, EventReasonDelete, "Deleting volume %v", volume.Name)
 		}
 
-		if volume.Spec.Share {
+		if volume.Spec.AccessMode == types.AccessModeReadWriteMany {
+			log.Info("Removing share manager for deleted volume")
 			if err := vc.ds.DeleteShareManager(volume.Name); err != nil && !datastore.ErrorIsNotFound(err) {
 				return err
 			}
@@ -310,13 +311,6 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 				if err := vc.ds.DeleteReplica(r.Name); err != nil {
 					return err
 				}
-			}
-		}
-
-		if volume.Spec.Share {
-			log.Info("Removing share manager for deleted volume")
-			if err := vc.ds.DeleteShareManager(volume.Name); err != nil && !datastore.ErrorIsNotFound(err) {
-				return err
 			}
 		}
 
@@ -2347,15 +2341,21 @@ func (vc *VolumeController) enqueueVolumesForShareManager(obj interface{}) {
 
 // ReconcileShareManagerState is responsible for syncing the state of shared volumes with their share manager
 func (vc *VolumeController) ReconcileShareManagerState(volume *longhorn.Volume) error {
-	if !volume.Spec.Share {
-		return nil
-	}
-
 	log := getLoggerForVolume(vc.logger, volume)
 	sm, err := vc.ds.GetShareManager(volume.Name)
 	if err != nil && !apierrors.IsNotFound(err) {
 		log.WithError(err).Error("Failed to get share manager for volume")
 		return err
+	}
+
+	if volume.Spec.AccessMode != types.AccessModeReadWriteMany {
+		if sm != nil {
+			log.Info("Removing share manager for non shared volume")
+			if err := vc.ds.DeleteShareManager(volume.Name); err != nil && !datastore.ErrorIsNotFound(err) {
+				return err
+			}
+		}
+		return nil
 	}
 
 	image, err := vc.ds.GetSettingValueExisted(types.SettingNameDefaultShareManagerImage)

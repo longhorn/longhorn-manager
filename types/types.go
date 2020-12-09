@@ -365,6 +365,13 @@ func ValidateDataLocality(mode DataLocality) error {
 	return nil
 }
 
+func ValidateAccessMode(mode AccessMode) error {
+	if mode != AccessModeReadWriteMany && mode != AccessModeReadWriteOnce {
+		return fmt.Errorf("invalid access mode: %v", mode)
+	}
+	return nil
+}
+
 func GetDaemonSetNameFromEngineImageName(engineImageName string) string {
 	return "engine-image-" + engineImageName
 }

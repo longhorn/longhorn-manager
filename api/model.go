@@ -51,8 +51,7 @@ type Volume struct {
 	KubernetesStatus types.KubernetesStatus     `json:"kubernetesStatus"`
 	Ready            bool                       `json:"ready"`
 
-	Share         bool                    `json:"share"`
-	ShareManager  string                  `json:"shareManager"`
+	AccessMode    types.AccessMode        `json:"accessMode"`
 	ShareEndpoint string                  `json:"shareEndpoint"`
 	ShareState    types.ShareManagerState `json:"shareState"`
 
@@ -174,6 +173,10 @@ type UpdateReplicaCountInput struct {
 
 type UpdateDataLocalityInput struct {
 	DataLocality string `json:"dataLocality"`
+}
+
+type UpdateAccessModeInput struct {
+	AccessMode string `json:"accessMode"`
 }
 
 type PVCreateInput struct {
@@ -338,6 +341,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("nodeInput", NodeInput{})
 	schemas.AddType("UpdateReplicaCountInput", UpdateReplicaCountInput{})
 	schemas.AddType("UpdateDataLocalityInput", UpdateDataLocalityInput{})
+	schemas.AddType("UpdateAccessModeInput", UpdateAccessModeInput{})
 	schemas.AddType("workloadStatus", types.WorkloadStatus{})
 
 	schemas.AddType("PVCreateInput", PVCreateInput{})
@@ -548,6 +552,10 @@ func volumeSchema(volume *client.Schema) {
 			Input: "UpdateDataLocalityInput",
 		},
 
+		"updateAccessMode": {
+			Input: "UpdateAccessModeInput",
+		},
+
 		"pvCreate": {
 			Input:  "PVCreateInput",
 			Output: "volume",
@@ -603,6 +611,11 @@ func volumeSchema(volume *client.Schema) {
 	volumeDataLocality.Create = true
 	volumeDataLocality.Default = types.DataLocalityDisabled
 	volume.ResourceFields["dataLocality"] = volumeDataLocality
+
+	volumeAccessMode := volume.ResourceFields["accessMode"]
+	volumeAccessMode.Create = true
+	volumeAccessMode.Default = types.AccessModeReadWriteOnce
+	volume.ResourceFields["accessMode"] = volumeAccessMode
 
 	volumeStaleReplicaTimeout := volume.ResourceFields["staleReplicaTimeout"]
 	volumeStaleReplicaTimeout.Create = true
@@ -835,7 +848,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		})
 	}
 
-	requiresSharedAccess := v.Spec.Share
+	requiresSharedAccess := v.Spec.AccessMode == types.AccessModeReadWriteMany
 	isShareReady := v.Status.ShareState == types.ShareManagerStateRunning && v.Status.ShareEndpoint != ""
 
 	// The volume is not ready for workloads if:
@@ -889,7 +902,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		RevisionCounterDisabled: v.Spec.RevisionCounterDisabled,
 		Ready:                   ready,
 
-		Share:         v.Spec.Share,
+		AccessMode:    v.Spec.AccessMode,
 		ShareEndpoint: v.Status.ShareEndpoint,
 		ShareState:    v.Status.ShareState,
 
@@ -923,6 +936,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 			actions["updateDataLocality"] = struct{}{}
+			actions["updateAccessMode"] = struct{}{}
 		case types.VolumeStateAttaching:
 			actions["detach"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}

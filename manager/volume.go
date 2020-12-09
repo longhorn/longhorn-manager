@@ -203,6 +203,10 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		return nil, errors.Wrapf(err, "cannot create volume with data locality %v", spec.DataLocality)
 	}
 
+	if string(spec.AccessMode) == "" {
+		spec.AccessMode = types.AccessModeReadWriteOnce
+	}
+
 	defaultEngineImage, err := m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if defaultEngineImage == "" {
 		return nil, fmt.Errorf("BUG: Invalid empty Setting.EngineImage")
@@ -247,7 +251,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		},
 		Spec: types.VolumeSpec{
 			Size:                    size,
-			Share:                   spec.Share,
+			AccessMode:              spec.AccessMode,
 			Frontend:                spec.Frontend,
 			EngineImage:             defaultEngineImage,
 			FromBackup:              spec.FromBackup,
@@ -777,6 +781,40 @@ func (m *VolumeManager) UpdateDataLocality(name string, dataLocality types.DataL
 	}
 
 	logrus.Debugf("Updated volume %v data locality from %v to %v", v.Name, oldDataLocality, v.Spec.DataLocality)
+	return v, nil
+}
+
+func (m *VolumeManager) UpdateAccessMode(name string, accessMode types.AccessMode) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update access mode for volume %v", name)
+	}()
+
+	if err := types.ValidateAccessMode(accessMode); err != nil {
+		return nil, err
+	}
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.AccessMode == accessMode {
+		logrus.Debugf("Volume %v already has access mode %v", v.Name, accessMode)
+		return v, nil
+	}
+
+	if v.Spec.NodeID != "" || v.Status.State != types.VolumeStateDetached {
+		return nil, fmt.Errorf("can only update volume access mode while volume is detached")
+	}
+
+	oldAccessMode := v.Spec.AccessMode
+	v.Spec.AccessMode = accessMode
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Updated volume %v access mode from %v to %v", v.Name, oldAccessMode, accessMode)
 	return v, nil
 }
 

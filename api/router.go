@@ -72,6 +72,7 @@ func NewRouter(s *Server) *mux.Router {
 		"recurringUpdate":    s.VolumeRecurringUpdate,
 		"updateReplicaCount": s.VolumeUpdateReplicaCount,
 		"updateDataLocality": s.VolumeUpdateDataLocality,
+		"updateAccessMode":   s.VolumeUpdateAccessMode,
 		"activate":           s.VolumeActivate,
 		"expand":             s.VolumeExpand,
 		"cancelExpansion":    s.VolumeCancelExpansion,
