@@ -25,14 +25,12 @@ import (
 
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
-	utilpath "k8s.io/utils/path"
 )
 
 const (
-	// hostProcMountsPath is the default mount path for rootfs
-	hostProcMountsPath = "/rootfs/proc/1/mounts"
-	// hostProcMountinfoPath is the default mount info path for rootfs
-	hostProcMountinfoPath = "/rootfs/proc/1/mountinfo"
+	// requires that container is run with hostPid = true
+	hostProcMountsPath    = "/proc/1/mounts"
+	hostProcMountinfoPath = "/proc/1/mountinfo"
 )
 
 // Mounter implements mount.Interface
@@ -41,15 +39,12 @@ const (
 // the host's mount namespace.
 type Mounter struct {
 	ne *NsEnter
-	// rootDir is location of /var/lib/kubelet directory.
-	rootDir string
 }
 
-// NewMounter creates a new mounter for kubelet that runs as a container.
-func NewMounter(rootDir string, ne *NsEnter) *Mounter {
+// NewMounter creates a new nsenter mounter that operates in the host namespace
+func NewMounter(ne *NsEnter) *Mounter {
 	return &Mounter{
-		rootDir: rootDir,
-		ne:      ne,
+		ne: ne,
 	}
 }
 
@@ -163,7 +158,7 @@ func (n *Mounter) IsLikelyNotMountPoint(file string) (bool, error) {
 	}
 
 	// Resolve any symlinks in file, kernel would do the same and use the resolved path in /proc/mounts
-	hu := NewHostUtil(n.ne, n.rootDir)
+	hu := NewHostUtil(n.ne)
 	resolvedFile, err := hu.EvalHostSymlinks(file)
 	if err != nil {
 		return true, err
@@ -229,8 +224,7 @@ func (n *Mounter) GetMountRefs(pathname string) ([]string, error) {
 
 type hostUtil struct {
 	*hostutil.HostUtil
-	ne      *NsEnter
-	rootDir string
+	ne *NsEnter
 }
 
 // hostUtil implements mount.HostUtils
@@ -238,8 +232,8 @@ var _ = hostutil.HostUtils(&hostUtil{})
 
 // NewHostUtil returns a new mount.HostUtils implementation that works
 // for kubelet running in a container
-func NewHostUtil(ne *NsEnter, rootDir string) hostutil.HostUtils {
-	return &hostUtil{ne: ne, rootDir: rootDir}
+func NewHostUtil(ne *NsEnter) hostutil.HostUtils {
+	return &hostUtil{ne: ne}
 }
 
 // DeviceOpened checks if block device in use by calling Open with O_EXCL flag.
@@ -316,16 +310,9 @@ func (hu *hostUtil) MakeFile(pathname string) error {
 }
 
 // PathExists checks if pathname exists.
-// Error is returned on any other error than "file not found".
 func (hu *hostUtil) PathExists(pathname string) (bool, error) {
-	// Resolve the symlinks but allow the target not to exist. EvalSymlinks
-	// would return an generic error when the target does not exist.
-	hostPath, err := hu.ne.EvalSymlinks(pathname, false /* mustExist */)
-	if err != nil {
-		return false, err
-	}
-	kubeletpath := hu.ne.KubeletPath(hostPath)
-	return utilpath.Exists(utilpath.CheckFollowSymlink, kubeletpath)
+	_, err := hu.ne.EvalSymlinks(pathname, true)
+	return err == nil, err
 }
 
 // EvalHostSymlinks returns the path name after evaluating symlinks.
@@ -339,8 +326,9 @@ func (hu *hostUtil) GetOwner(pathname string) (int64, int64, error) {
 	if err != nil {
 		return -1, -1, err
 	}
-	kubeletpath := hu.ne.KubeletPath(hostPath)
-	return hostutil.GetOwnerLinux(kubeletpath)
+	// TODO: replace this with namespaced stat invocation
+	containerPath := hu.ne.ContainerPath(hostPath)
+	return hostutil.GetOwnerLinux(containerPath)
 }
 
 // GetSELinuxSupport tests if pathname is on a mount that supports SELinux.
@@ -354,6 +342,7 @@ func (hu *hostUtil) GetMode(pathname string) (os.FileMode, error) {
 	if err != nil {
 		return 0, err
 	}
-	kubeletpath := hu.ne.KubeletPath(hostPath)
-	return hostutil.GetModeLinux(kubeletpath)
+	// TODO: replace this with namespaced stat invocation
+	containerPath := hu.ne.ContainerPath(hostPath)
+	return hostutil.GetModeLinux(containerPath)
 }

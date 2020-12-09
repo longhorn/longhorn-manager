@@ -95,20 +95,17 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	targetPath := req.GetTargetPath()
 	devicePath := existVol.Controllers[0].Endpoint
-	diskMounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOSExec()}
-
-	// namespace mounter that operates in the host namespace
-	// nsExec, err := util.NewNamespaceExecutor(util.GetHostNamespacePath("/rootfs"))
-	nse, err := nfs.NewNsEnter("/rootfs")
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create nsenter executor, err: %v", err))
-	}
-	nfsMounter := nfs.NewMounter("/rootfs/var/lib/kubelet", nse)
-
 	if requiresSharedAccess {
+		// namespace mounter that operates in the host namespace
+		nse, err := nfs.NewNsEnter()
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create nsenter executor, err: %v", err))
+		}
+		nfsMounter := nfs.NewMounter(nse)
 		return ns.nodePublishSharedVolume(req.GetVolumeId(), existVol.ShareEndpoint, targetPath, nfsMounter)
 	} else if blkCapability := volumeCapability.GetBlock(); blkCapability != nil {
-		return ns.nodePublishBlockVolume(req.GetVolumeId(), devicePath, targetPath, diskMounter)
+		mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOSExec()}
+		return ns.nodePublishBlockVolume(req.GetVolumeId(), devicePath, targetPath, mounter)
 	} else if mntCapability := volumeCapability.GetMount(); mntCapability != nil {
 		userExt4Params, _ := ns.apiClient.Setting.ById(string(types.SettingNameMkfsExt4Parameters))
 
@@ -118,20 +115,21 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 			fsType = "ext4"
 		}
 
+		mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOSExec()}
 		// we allow the user to provide additional params for ext4 filesystem creation.
 		// this allows an ext4 fs to be mounted on older kernels, see https://github.com/longhorn/longhorn/issues/1208
 		if fsType == "ext4" && userExt4Params != nil && userExt4Params.Value != "" {
 			ext4Params := userExt4Params.Value
 			logrus.Infof("enabling user provided ext4 fs creation params: %s for volume: %s", ext4Params, req.GetVolumeId())
 			cmdParamMapping := map[string]string{"mkfs." + fsType: ext4Params}
-			diskMounter = &mount.SafeFormatAndMount{
+			mounter = &mount.SafeFormatAndMount{
 				Interface: mount.New(""),
 				Exec:      NewForcedParamsOsExec(cmdParamMapping),
 			}
 		}
 
 		return ns.nodePublishMountVolume(req.GetVolumeId(), devicePath, targetPath,
-			fsType, volumeCapability.GetMount().GetMountFlags(), diskMounter)
+			fsType, volumeCapability.GetMount().GetMountFlags(), mounter)
 	}
 
 	return nil, status.Error(codes.InvalidArgument, "Invalid volume capability, neither Mount nor Block")
