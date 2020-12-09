@@ -145,7 +145,7 @@ func (c *ShareManagerController) enqueueShareManagerForVolume(obj interface{}) {
 		}
 	}
 
-	if volume.Spec.Share {
+	if volume.Spec.AccessMode == types.AccessModeReadWriteMany {
 		// we can queue the key directly since a share manager only manages a single volume from it's own namespace
 		// and there is no need for us to retrieve the whole object, since we already know the volume name
 		getLoggerForVolume(c.logger, volume).Debug("Enqueuing share manager for volume")

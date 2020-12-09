@@ -155,7 +155,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 
 	v, err := s.m.Create(volume.Name, &types.VolumeSpec{
 		Size:                    size,
-		Share:                   volume.Share,
+		AccessMode:              volume.AccessMode,
 		Frontend:                volume.Frontend,
 		FromBackup:              volume.FromBackup,
 		NumberOfReplicas:        volume.NumberOfReplicas,
@@ -323,6 +323,28 @@ func (s *Server) VolumeUpdateDataLocality(rw http.ResponseWriter, req *http.Requ
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.UpdateDataLocality(id, types.DataLocality(input.DataLocality))
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateAccessMode(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateAccessModeInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrapf(err, "error reading access mode")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateAccessMode(id, types.AccessMode(input.AccessMode))
 	})
 	if err != nil {
 		return err

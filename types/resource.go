@@ -35,6 +35,13 @@ const (
 	DataLocalityBestEffort = DataLocality("best-effort")
 )
 
+type AccessMode string
+
+const (
+	AccessModeReadWriteOnce = AccessMode("rwo")
+	AccessModeReadWriteMany = AccessMode("rwx")
+)
+
 type ConditionStatus string
 
 const (
@@ -83,7 +90,7 @@ type VolumeSpec struct {
 	DisableFrontend         bool           `json:"disableFrontend"`
 	RevisionCounterDisabled bool           `json:"revisionCounterDisabled"`
 	LastAttachedBy          string         `json:"lastAttachedBy"`
-	Share                   bool           `json:"share"`
+	AccessMode              AccessMode     `json:"accessMode"`
 }
 
 type KubernetesStatus struct {
