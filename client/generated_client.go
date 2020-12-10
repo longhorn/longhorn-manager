@@ -25,6 +25,7 @@ type RancherClient struct {
 	NodeInput                 NodeInputOperations
 	UpdateReplicaCountInput   UpdateReplicaCountInputOperations
 	UpdateDataLocalityInput   UpdateDataLocalityInputOperations
+	UpdateAccessModeInput     UpdateAccessModeInputOperations
 	WorkloadStatus            WorkloadStatusOperations
 	PVCreateInput             PVCreateInputOperations
 	PVCCreateInput            PVCCreateInputOperations
@@ -77,6 +78,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.NodeInput = newNodeInputClient(client)
 	client.UpdateReplicaCountInput = newUpdateReplicaCountInputClient(client)
 	client.UpdateDataLocalityInput = newUpdateDataLocalityInputClient(client)
+	client.UpdateAccessModeInput = newUpdateAccessModeInputClient(client)
 	client.WorkloadStatus = newWorkloadStatusClient(client)
 	client.PVCreateInput = newPVCreateInputClient(client)
 	client.PVCCreateInput = newPVCCreateInputClient(client)

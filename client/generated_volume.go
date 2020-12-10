@@ -7,6 +7,8 @@ const (
 type Volume struct {
 	Resource `yaml:"-"`
 
+	AccessMode string `json:"accessMode,omitempty" yaml:"access_mode,omitempty"`
+
 	BackupStatus []BackupStatus `json:"backupStatus,omitempty" yaml:"backup_status,omitempty"`
 
 	BaseImage string `json:"baseImage,omitempty" yaml:"base_image,omitempty"`
@@ -63,6 +65,10 @@ type Volume struct {
 
 	Robustness string `json:"robustness,omitempty" yaml:"robustness,omitempty"`
 
+	ShareEndpoint string `json:"shareEndpoint,omitempty" yaml:"share_endpoint,omitempty"`
+
+	ShareState string `json:"shareState,omitempty" yaml:"share_state,omitempty"`
+
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
 
 	StaleReplicaTimeout int64 `json:"staleReplicaTimeout,omitempty" yaml:"stale_replica_timeout,omitempty"`
@@ -72,12 +78,6 @@ type Volume struct {
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
 
 	Timestamp string `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
-
-	Share bool `json:"share,omitempty" yaml:"share,omitempty"`
-
-	ShareEndpoint string `json:"shareEndpoint,omitempty" yaml:"share_endpoint,omitempty"`
-
-	ShareState string `json:"shareState,omitempty" yaml:"share_state,omitempty"`
 }
 
 type VolumeCollection struct {
@@ -128,6 +128,8 @@ type VolumeOperations interface {
 	ActionSnapshotPurge(*Volume) (*Volume, error)
 
 	ActionSnapshotRevert(*Volume, *SnapshotInput) (*Snapshot, error)
+
+	ActionUpdateAccessMode(*Volume, *UpdateAccessModeInput) (*Volume, error)
 }
 
 func newVolumeClient(rancherClient *RancherClient) *VolumeClient {
@@ -320,6 +322,15 @@ func (c *VolumeClient) ActionSnapshotRevert(resource *Volume, input *SnapshotInp
 	resp := &Snapshot{}
 
 	err := c.rancherClient.doAction(VOLUME_TYPE, "snapshotRevert", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionUpdateAccessMode(resource *Volume, input *UpdateAccessModeInput) (*Volume, error) {
+
+	resp := &Volume{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "updateAccessMode", &resource.Resource, input, resp)
 
 	return resp, err
 }
