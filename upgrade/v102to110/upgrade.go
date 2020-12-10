@@ -118,12 +118,23 @@ func UpgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err erro
 	}
 
 	for _, v := range volumeList.Items {
-		if v.Status.Robustness != types.VolumeRobustnessDegraded {
-			continue
+		// in pr https://github.com/longhorn/longhorn-manager/pull/789
+		// we added a new access mode field, that is exposed to the ui
+		// so we add the previously only supported rwo access mode
+		if v.Spec.AccessMode == "" {
+			v.Spec.AccessMode = types.AccessModeReadWriteOnce
+			updatedVolume, err := lhClient.LonghornV1beta1().Volumes(namespace).Update(&v)
+			if err != nil {
+				return err
+			}
+			v = *updatedVolume
 		}
-		v.Status.LastDegradedAt = util.Now()
-		if _, err := lhClient.LonghornV1beta1().Volumes(namespace).UpdateStatus(&v); err != nil {
-			return err
+
+		if v.Status.Robustness == types.VolumeRobustnessDegraded {
+			v.Status.LastDegradedAt = util.Now()
+			if _, err := lhClient.LonghornV1beta1().Volumes(namespace).UpdateStatus(&v); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
