@@ -290,7 +290,7 @@ func (c *ShareManagerController) syncShareManager(key string) (err error) {
 
 	// check if we need to claim ownership
 	if sm.Status.OwnerID != c.controllerID {
-		if !c.isResponsibleFor(sm) {
+		if !c.shouldClaimOwnership(sm) {
 			return nil
 		}
 
@@ -413,6 +413,23 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	}
 
 	if pod == nil {
+		// in a single node cluster, there is no other manager that can claim ownership so we are prevented from creation
+		// of the share manager pod and need to ensure that the volume gets detached, so that the engine can be stopped as well
+		if !isNodeSchedulable(c.ds, sm.Status.OwnerID) {
+			log.Debug("cannot create new pod for share manager, node is not schedulable")
+			sm.Status.State = types.ShareManagerStateError
+			isVolumeAttached := volume.Spec.NodeID == sm.Status.OwnerID && !volume.Status.FrontendDisabled
+			if isVolumeAttached {
+				log.WithField("volume", volume.Name).Infof("cannot schedule new pod for share manager node "+
+					"is not schedulable, requesting Volume detach from node %v", volume.Spec.NodeID)
+				volume.Spec.NodeID = ""
+				if volume, err = c.ds.UpdateVolume(volume); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+
 		if pod, err = c.createShareManagerPod(sm); err != nil {
 			sm.Status.State = types.ShareManagerStateError
 			log.WithError(err).Error("failed to create pod for share manager")
@@ -641,6 +658,36 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 	return podSpec
 }
 
-func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) bool {
-	return isControllerResponsibleFor(c.controllerID, c.ds, sm.Name, "", sm.Status.OwnerID)
+// shouldClaimOwnership in most controllers we only checks if the node of the current owner is down
+// but in the case where the node is unschedulable and the sharemanager is in error state
+// we want to transfer ownership, since otherwise we would keep creating a share manager pod on the
+// unschedulable node which would force the engine to also be created on this node
+// this scenario would lead to the node no longer being able ot be drained
+// since the volume would never be unattached which prevents the engine from being removed
+func (c *ShareManagerController) shouldClaimOwnership(sm *longhorn.ShareManager) bool {
+	shouldClaim := isControllerResponsibleFor(c.controllerID, c.ds, sm.Name, "", sm.Status.OwnerID)
+	isCurrentNodeSchedulable := isNodeSchedulable(c.ds, c.controllerID)
+	if shouldClaim {
+		return isCurrentNodeSchedulable
+	}
+
+	// in the case where we shouldn't claim this,
+	// we need to check if the owner allows for new pod creation
+	// we only transfer ownership if it's in error state, since we don't want to move running or stopped pods
+	isOwnersNodeSchedulable := isNodeSchedulable(c.ds, sm.Status.OwnerID)
+	if !isOwnersNodeSchedulable && sm.Status.State == types.ShareManagerStateError && isCurrentNodeSchedulable {
+		getLoggerForShareManager(c.logger, sm).Debugf("suggesting ownership transfer to %v because current node %v "+
+			"is no longer schedulable and share manager is in error", c.controllerID, sm.Status.OwnerID)
+		return true
+	}
+
+	return false
+}
+
+func isNodeSchedulable(ds *datastore.DataStore, node string) bool {
+	kubeNode, err := ds.GetKubernetesNode(node)
+	if err != nil {
+		return false
+	}
+	return !kubeNode.Spec.Unschedulable
 }
