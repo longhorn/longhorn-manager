@@ -77,7 +77,12 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		if err != nil {
 			return nil, errors.Wrap(err, "Invalid parameter share")
 		}
-		vol.Share = isShared
+
+		if isShared {
+			vol.AccessMode = string(types.AccessModeReadWriteMany)
+		} else {
+			vol.AccessMode = string(types.AccessModeReadWriteOnce)
+		}
 	}
 
 	if numberOfReplicas, ok := volOptions["numberOfReplicas"]; ok {
@@ -254,7 +259,7 @@ func makeFile(pathname string) error {
 func requiresSharedAccess(vol *longhornclient.Volume, cap *csi.VolumeCapability) bool {
 	isSharedVolume := false
 	if vol != nil {
-		isSharedVolume = vol.Share
+		isSharedVolume = vol.AccessMode == string(types.AccessModeReadWriteMany)
 	}
 
 	mode := csi.VolumeCapability_AccessMode_UNKNOWN

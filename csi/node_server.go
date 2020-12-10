@@ -66,7 +66,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	requiresSharedAccess := requiresSharedAccess(existVol, volumeCapability)
-	if requiresSharedAccess && !existVol.Share {
+	if requiresSharedAccess && existVol.AccessMode != string(types.AccessModeReadWriteMany) {
 		return nil, status.Errorf(codes.FailedPrecondition, "The volume requires shared access but is not marked for shared use %s", req.GetVolumeId())
 	}
 

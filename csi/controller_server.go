@@ -160,7 +160,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		vol.Size = fmt.Sprintf("%dMi", putil.RoundUpSize(volSizeBytes, putil.MiB))
 	}
 
-	logrus.Infof("CreateVolume: creating a volume by API client, name: %s, size: %s share: %v", vol.Name, vol.Size, vol.Share)
+	logrus.Infof("CreateVolume: creating a volume by API client, name: %s, size: %s accessMode: %v", vol.Name, vol.Size, vol.AccessMode)
 	resVol, err := cs.apiClient.Volume.Create(vol)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -288,10 +288,18 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Errorf(codes.InvalidArgument, "ControllerPublishVolume: there is no block device frontend for volume %s", req.GetVolumeId())
 	}
 
-	// we currently only allow creation of shared volume no switching a regular volume into a shared volume
 	if requiresSharedAccess(existVol, volumeCapability) {
-		if !existVol.Share {
-			return nil, status.Errorf(codes.FailedPrecondition, "requested multi node use for non shared volume %v", req.GetVolumeId())
+		if existVol.AccessMode != string(types.AccessModeReadWriteMany) {
+			input := &longhornclient.UpdateAccessModeInput{
+				AccessMode: string(types.AccessModeReadWriteMany),
+			}
+
+			if existVol, err = cs.apiClient.Volume.ActionUpdateAccessMode(existVol, input); err != nil {
+				logrus.WithError(err).Errorf("Failed to change Volume %s access mode to RWX", req.GetVolumeId())
+				return nil, status.Error(codes.Internal, err.Error())
+			}
+
+			logrus.Infof("Changed Volume %s access mode to RWX", req.GetVolumeId())
 		}
 
 		if existVol.State == string(types.VolumeStateAttached) {
