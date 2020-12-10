@@ -338,7 +338,6 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 					ServiceAccountName: serviceAccount,
 					Tolerations:        tolerations,
 					PriorityClassName:  priorityClass,
-					HostIPC:            true,
 					HostPID:            true,
 					Containers: []v1.Container{
 						{
