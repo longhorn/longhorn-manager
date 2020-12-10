@@ -2380,7 +2380,7 @@ func (vc *VolumeController) ReconcileShareManagerState(volume *longhorn.Volume) 
 
 	// no ShareManager create a new one
 	if sm == nil {
-		sm, err = vc.createShareManagerForVolume(volume.Name, image)
+		sm, err = vc.createShareManagerForVolume(volume, image)
 		if err != nil {
 			log.WithError(err).Errorf("Failed to create share manager %v", volume.Name)
 			return err
@@ -2412,12 +2412,13 @@ func (vc *VolumeController) ReconcileShareManagerState(volume *longhorn.Volume) 
 	return nil
 }
 
-func (vc *VolumeController) createShareManagerForVolume(volume, image string) (*longhorn.ShareManager, error) {
+func (vc *VolumeController) createShareManagerForVolume(volume *longhorn.Volume, image string) (*longhorn.ShareManager, error) {
 	sm := &longhorn.ShareManager{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      volume,
-			Namespace: vc.namespace,
-			Labels:    types.GetShareManagerLabels(volume, image),
+			Name:            volume.Name,
+			Namespace:       vc.namespace,
+			Labels:          types.GetShareManagerLabels(volume.Name, image),
+			OwnerReferences: datastore.GetOwnerReferencesForVolume(volume),
 		},
 		Spec: types.ShareManagerSpec{
 			Image: image,
