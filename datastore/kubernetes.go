@@ -434,11 +434,16 @@ func NewPVManifestForVolume(v *longhorn.Volume, pvName, storageClassName, fsType
 		"staleReplicaTimeout": strconv.Itoa(v.Spec.StaleReplicaTimeout),
 	}
 
-	return NewPVManifest(v.Spec.Size, pvName, v.Name, storageClassName, fsType, volAttributes)
+	accessMode := corev1.ReadWriteOnce
+	if v.Spec.AccessMode == types.AccessModeReadWriteMany {
+		accessMode = corev1.ReadWriteMany
+	}
+
+	return NewPVManifest(v.Spec.Size, pvName, v.Name, storageClassName, fsType, volAttributes, accessMode)
 }
 
 // NewPVManifest returns a new PersistentVolume object
-func NewPVManifest(size int64, pvName, volumeName, storageClassName, fsType string, volAttributes map[string]string) *corev1.PersistentVolume {
+func NewPVManifest(size int64, pvName, volumeName, storageClassName, fsType string, volAttributes map[string]string, accessMode corev1.PersistentVolumeAccessMode) *corev1.PersistentVolume {
 	defaultVolumeMode := corev1.PersistentVolumeFilesystem
 	return &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
@@ -449,7 +454,7 @@ func NewPVManifest(size int64, pvName, volumeName, storageClassName, fsType stri
 				corev1.ResourceStorage: *resource.NewQuantity(size, resource.BinarySI),
 			},
 			AccessModes: []corev1.PersistentVolumeAccessMode{
-				corev1.ReadWriteOnce,
+				accessMode,
 			},
 
 			PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimRetain,
@@ -472,11 +477,16 @@ func NewPVManifest(size int64, pvName, volumeName, storageClassName, fsType stri
 
 // NewPVCManifestForVolume returns a new PersistentVolumeClaim object for a longhorn volume
 func NewPVCManifestForVolume(v *longhorn.Volume, pvName, ns, pvcName, storageClassName string) *corev1.PersistentVolumeClaim {
-	return NewPVCManifest(v.Spec.Size, pvName, ns, pvcName, storageClassName)
+	accessMode := corev1.ReadWriteOnce
+	if v.Spec.AccessMode == types.AccessModeReadWriteMany {
+		accessMode = corev1.ReadWriteMany
+	}
+
+	return NewPVCManifest(v.Spec.Size, pvName, ns, pvcName, storageClassName, accessMode)
 }
 
 // NewPVCManifest returns a new PersistentVolumeClaim object
-func NewPVCManifest(size int64, pvName, ns, pvcName, storageClassName string) *corev1.PersistentVolumeClaim {
+func NewPVCManifest(size int64, pvName, ns, pvcName, storageClassName string, accessMode corev1.PersistentVolumeAccessMode) *corev1.PersistentVolumeClaim {
 	return &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pvcName,
@@ -484,7 +494,7 @@ func NewPVCManifest(size int64, pvName, ns, pvcName, storageClassName string) *c
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{
-				corev1.ReadWriteOnce,
+				accessMode,
 			},
 			Resources: corev1.ResourceRequirements{
 				Requests: corev1.ResourceList{
