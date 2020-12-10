@@ -388,6 +388,12 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		return err
 	}
 
+	// no need to expose standby volumes via a share manager
+	if volume.Spec.Standby || volume.Status.IsStandby {
+		sm.Status.State = types.ShareManagerStateStopped
+		return c.cleanupShareManagerPod(sm)
+	}
+
 	// no active workload, there is no need to keep the share manager around and the volume can be detached
 	if volume.Status.KubernetesStatus.LastPodRefAt != "" || volume.Status.KubernetesStatus.LastPVCRefAt != "" {
 		isVolumeAttached := volume.Status.State == types.VolumeStateAttached || volume.Status.State == types.VolumeStateAttaching
