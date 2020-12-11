@@ -258,7 +258,7 @@ func GetShareManagerLabels(name, image string) map[string]string {
 	}
 
 	if image != "" {
-		labels[GetLonghornLabelKey(LognhornLabelShareManagerImage)] = GetInstanceManagerImageChecksumName(GetImageCanonicalName(image))
+		labels[GetLonghornLabelKey(LognhornLabelShareManagerImage)] = GetShareManagerImageChecksumName(GetImageCanonicalName(image))
 	}
 
 	return labels
