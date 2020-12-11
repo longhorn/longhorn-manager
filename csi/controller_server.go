@@ -302,26 +302,6 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 			logrus.Infof("Changed Volume %s access mode to RWX", req.GetVolumeId())
 		}
 
-		if existVol.State == string(types.VolumeStateAttached) {
-			if !existVol.Ready || len(existVol.Controllers) == 0 || existVol.Controllers[0].Endpoint == "" {
-				return nil, status.Errorf(codes.Aborted,
-					"The volume %s is already attached but it is not ready for workloads", req.GetVolumeId())
-			}
-
-			logrus.Infof("ControllerPublishVolume: shared volume %s is attached to %s new workload on %s",
-				req.GetVolumeId(), existVol.Controllers[0].HostId, req.GetNodeId())
-		} else {
-			logrus.Debugf("ControllerPublishVolume: shared volume %s needs to be attached new workload on %s", req.GetVolumeId(), req.GetNodeId())
-			input := &longhornclient.AttachInput{
-				HostId:          req.GetNodeId(),
-				DisableFrontend: false,
-			}
-
-			if existVol, err = cs.apiClient.Volume.ActionAttach(existVol, input); err != nil {
-				return nil, status.Error(codes.Internal, err.Error())
-			}
-		}
-
 		if !cs.waitForVolumeState(req.GetVolumeId(), string(types.ShareManagerStateRunning), isVolumeReady, false, false) {
 			return nil, status.Errorf(codes.DeadlineExceeded, "Failed to wait for volume %v share ready", req.GetVolumeId())
 		}
@@ -429,15 +409,17 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
+	} else if requiresSharedAccess(existVol, nil) {
+		logrus.Infof("don't need to detach shared Volume %s from node %s", req.GetVolumeId(), req.GetNodeId())
+		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	} else {
 		logrus.Infof("don't need to detach Volume %s since we are already detached from node %s",
 			req.GetVolumeId(), req.GetNodeId())
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
-	if !requiresSharedAccess(existVol, nil) &&
-		!cs.waitForVolumeState(req.GetVolumeId(), string(types.VolumeStateDetached), isVolumeDetached, false, true) {
-		return nil, status.Errorf(codes.Aborted, "Detaching volume %s failed", req.GetVolumeId())
+	if !cs.waitForVolumeState(req.GetVolumeId(), string(types.VolumeStateDetached), isVolumeDetached, false, true) {
+		return nil, status.Errorf(codes.Aborted, "Failed to detach volume %s from node %s", req.GetVolumeId(), req.GetNodeId())
 	}
 
 	logrus.Debugf("Volume %s detached on %s", req.GetVolumeId(), req.GetNodeId())
