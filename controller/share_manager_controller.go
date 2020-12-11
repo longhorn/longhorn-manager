@@ -26,6 +26,7 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 type ShareManagerController struct {
@@ -491,15 +492,11 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		return nil, errors.Wrapf(err, "failed to unmarshal taint toleration setting before creating share manager pod")
 	}
 
-	var annotations map[string]string
-	if len(tolerations) > 0 {
-		tolerationsByte, err := json.Marshal(tolerations)
-		if err != nil {
-			return nil, err
-		}
-
-		annotations = map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): string(tolerationsByte)}
+	tolerationsByte, err := json.Marshal(tolerations)
+	if err != nil {
+		return nil, err
 	}
+	annotations := map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): string(tolerationsByte)}
 
 	imagePullPolicy, err := c.ds.GetSettingImagePullPolicy()
 	if err != nil {
@@ -575,7 +572,7 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 		},
 		Spec: v1.PodSpec{
 			ServiceAccountName: c.serviceAccount,
-			Tolerations:        tolerations,
+			Tolerations:        util.GetDistinctTolerations(tolerations),
 			PriorityClassName:  priorityClass,
 			NodeName:           sm.Status.OwnerID,
 			Containers: []v1.Container{
