@@ -383,6 +383,8 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 		// stop updating if engines and replicas weren't fully updated
 		if lastErr == nil {
+			// Make sure that we don't update condition's LastTransitionTime if the condition's values hasn't changed
+			handleConditionLastTransitionTime(&existingVolume.Status, &volume.Status)
 			if !reflect.DeepEqual(existingVolume.Status, volume.Status) {
 				// reuse err
 				_, err = vc.ds.UpdateVolumeStatus(volume)
@@ -428,6 +430,19 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	}
 
 	return nil
+}
+
+// handleConditionLastTransitionTime rollback to the existing condition object if condition's values hasn't changed
+func handleConditionLastTransitionTime(existingStatus, newStatus *types.VolumeStatus) {
+	for conditionType, condition := range newStatus.Conditions {
+		existingCondition, ok := existingStatus.Conditions[conditionType]
+		if ok &&
+			existingCondition.Status == condition.Status &&
+			existingCondition.Reason == condition.Reason &&
+			existingCondition.Message == condition.Message {
+			newStatus.Conditions[conditionType] = existingCondition
+		}
+	}
 }
 
 func (vc *VolumeController) getCurrentEngine(v *longhorn.Volume, es map[string]*longhorn.Engine) (*longhorn.Engine, error) {
