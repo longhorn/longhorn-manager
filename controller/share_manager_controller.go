@@ -395,7 +395,9 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	}
 
 	// no active workload, there is no need to keep the share manager around and the volume can be detached
-	if volume.Status.KubernetesStatus.LastPodRefAt != "" || volume.Status.KubernetesStatus.LastPVCRefAt != "" {
+	hasActiveWorkload := volume.Status.KubernetesStatus.LastPodRefAt == "" && volume.Status.KubernetesStatus.LastPVCRefAt == "" &&
+		len(volume.Status.KubernetesStatus.WorkloadsStatus) > 0
+	if !hasActiveWorkload {
 		isVolumeAttached := volume.Status.State == types.VolumeStateAttached || volume.Status.State == types.VolumeStateAttaching
 		if sm.Status.State != types.ShareManagerStateStopped && isVolumeAttached && !volume.Status.FrontendDisabled {
 			log.WithField("volume", volume.Name).Infof("Stopping share manager, requesting Volume detach from node %v", volume.Spec.NodeID)
