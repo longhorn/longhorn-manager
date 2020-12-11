@@ -174,9 +174,10 @@ func (c *ShareManagerController) enqueueShareManagerForPod(obj interface{}) {
 	}
 
 	// we can queue the key directly since a share manager only manages pods from it's own namespace
-	// and there is no need for us to retrieve the whole object, since we already know the share manager name
-	c.logger.WithField("pod", pod.Name).WithField("shareManager", pod.Name).Debug("Enqueuing share manager for pod")
-	key := pod.Namespace + "/" + pod.Name
+	// and there is no need for us to retrieve the whole object, since the share manager name is stored in the label
+	smName := pod.Labels[types.GetLonghornLabelKey(types.LonghornLabelShareManager)]
+	c.logger.WithField("pod", pod.Name).WithField("shareManager", smName).Debug("Enqueuing share manager for pod")
+	key := pod.Namespace + "/" + smName
 	c.queue.AddRateLimited(key)
 	return
 }
@@ -198,7 +199,7 @@ func isShareManagerPod(obj interface{}) bool {
 
 	podContainers := pod.Spec.Containers
 	for _, con := range podContainers {
-		if con.Name == types.LognhornLabelShareManager {
+		if con.Name == types.LonghornLabelShareManager {
 			return true
 		}
 	}
@@ -356,7 +357,7 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	log := getLoggerForShareManager(c.logger, sm)
 	var pod *v1.Pod
 	var err error
-	if pod, err = c.ds.GetPod(sm.Name); err != nil && !apierrors.IsNotFound(err) {
+	if pod, err = c.ds.GetPod(getPodNameForShareManager(sm)); err != nil && !apierrors.IsNotFound(err) {
 		log.WithError(err).Error("failed to retrieve pod for share manager from datastore")
 		return err
 	}
@@ -559,12 +560,16 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 	return service
 }
 
+func getPodNameForShareManager(sm *longhorn.ShareManager) string {
+	return types.LonghornLabelShareManager + "-" + sm.Name
+}
+
 func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, annotations map[string]string, tolerations []v1.Toleration,
 	pullPolicy v1.PullPolicy, resourceReq *v1.ResourceRequirements, registrySecret string, priorityClass string) *v1.Pod {
 	privileged := true
 	podSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            sm.Name,
+			Name:            getPodNameForShareManager(sm),
 			Namespace:       sm.Namespace,
 			Labels:          types.GetShareManagerLabels(sm.Name, sm.Spec.Image),
 			Annotations:     annotations,
@@ -577,7 +582,7 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 			NodeName:           sm.Status.OwnerID,
 			Containers: []v1.Container{
 				{
-					Name:            types.LognhornLabelShareManager,
+					Name:            types.LonghornLabelShareManager,
 					Image:           sm.Spec.Image,
 					ImagePullPolicy: pullPolicy,
 					// Command: []string{"longhorn-share-manager"},
