@@ -60,8 +60,8 @@ const (
 	LonghornLabelInstanceManagerType  = "instance-manager-type"
 	LonghornLabelInstanceManagerImage = "instance-manager-image"
 	LonghornLabelVolume               = "longhornvolume"
-	LognhornLabelShareManager         = "share-manager"
-	LognhornLabelShareManagerImage    = "share-manager-image"
+	LonghornLabelShareManager         = "share-manager"
+	LonghornLabelShareManagerImage    = "share-manager-image"
 
 	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
@@ -240,13 +240,13 @@ func GetInstanceManagerComponentLabel() map[string]string {
 
 func GetShareManagerComponentLabel() map[string]string {
 	return map[string]string{
-		GetLonghornLabelComponentKey(): LognhornLabelShareManager,
+		GetLonghornLabelComponentKey(): LonghornLabelShareManager,
 	}
 }
 
 func GetShareManagerInstanceLabel(name string) map[string]string {
 	return map[string]string{
-		GetLonghornLabelKey(LognhornLabelShareManager): name,
+		GetLonghornLabelKey(LonghornLabelShareManager): name,
 	}
 }
 
@@ -254,11 +254,11 @@ func GetShareManagerLabels(name, image string) map[string]string {
 	labels := GetShareManagerComponentLabel()
 
 	if name != "" {
-		labels[GetLonghornLabelKey(LognhornLabelShareManager)] = name
+		labels[GetLonghornLabelKey(LonghornLabelShareManager)] = name
 	}
 
 	if image != "" {
-		labels[GetLonghornLabelKey(LognhornLabelShareManagerImage)] = GetShareManagerImageChecksumName(GetImageCanonicalName(image))
+		labels[GetLonghornLabelKey(LonghornLabelShareManagerImage)] = GetShareManagerImageChecksumName(GetImageCanonicalName(image))
 	}
 
 	return labels
@@ -301,10 +301,6 @@ func GetInstanceManagerImageChecksumName(image string) string {
 
 func GetShareManagerImageChecksumName(image string) string {
 	return shareManagerImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
-}
-
-func GetShareManagerName() string {
-	return shareManagerPrefix + util.RandomID()
 }
 
 func ValidateEngineImageChecksumName(name string) bool {
