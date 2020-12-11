@@ -348,7 +348,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		logrus.Infof("ControllerPublishVolume: no need to attach volume %s since it's already attached to the correct node %s",
 			req.GetVolumeId(), req.GetNodeId())
 	} else {
-		logrus.Debugf("ControllerPublishVolume: current nodeID %s", req.GetNodeId())
+		logrus.Debugf("ControllerPublishVolume: volume %s is ready to be attached, and the preferred nodeID is %s", req.GetVolumeId(), req.GetNodeId())
 		// attach longhorn volume with frontend enabled
 		input := &longhornclient.AttachInput{
 			HostId:          req.GetNodeId(),
@@ -358,6 +358,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
+		logrus.Debugf("ControllerPublishVolume: succeed to send an attach request for volume %s", req.GetVolumeId())
 	}
 
 	if !cs.waitForVolumeState(req.GetVolumeId(), string(types.VolumeStateAttached), isVolumeAttached, false, false) {
