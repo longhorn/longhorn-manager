@@ -73,8 +73,10 @@ func (n *Mounter) doNsenterMount(source, target, fstype string, options []string
 	logrus.Debugf("nsenter mount %s %s %s %v", source, target, fstype, options)
 	cmd, args := n.makeNsenterArgs(source, target, fstype, options)
 	outputBytes, err := n.ne.Exec(cmd, args).CombinedOutput()
-	if len(outputBytes) != 0 {
-		logrus.Debugf("Output of mounting %s to %s: %v", source, target, string(outputBytes))
+	logrus.Debugf("Output of mounting %s to %s: %v", source, target, string(outputBytes))
+	if err != nil {
+		return fmt.Errorf("mount failed: %v\nMounting command: %s\nMounting arguments: %s\nOutput: %s",
+			err, cmd, args, string(outputBytes))
 	}
 	return err
 }
