@@ -289,6 +289,13 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 	}
 
 	if requiresSharedAccess(existVol, volumeCapability) {
+
+		// we check for volume readiness before potentially messing with the access mode
+		if !existVol.Ready || len(existVol.Controllers) == 0 || existVol.Controllers[0].Endpoint == "" {
+			return nil, status.Errorf(codes.Aborted,
+				"The volume %s is not ready for workloads", req.GetVolumeId())
+		}
+
 		if existVol.AccessMode != string(types.AccessModeReadWriteMany) {
 			input := &longhornclient.UpdateAccessModeInput{
 				AccessMode: string(types.AccessModeReadWriteMany),
@@ -302,8 +309,8 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 			logrus.Infof("Changed Volume %s access mode to RWX", req.GetVolumeId())
 		}
 
-		if !cs.waitForVolumeState(req.GetVolumeId(), string(types.ShareManagerStateRunning), isVolumeReady, false, false) {
-			return nil, status.Errorf(codes.DeadlineExceeded, "Failed to wait for volume %v share ready", req.GetVolumeId())
+		if !cs.waitForVolumeState(req.GetVolumeId(), "share available", isVolumeShareAvailable, false, false) {
+			return nil, status.Errorf(codes.DeadlineExceeded, "Failed to wait for volume %v share available", req.GetVolumeId())
 		}
 
 		logrus.Infof("Volume %s shared to %s", req.GetVolumeId(), req.GetNodeId())
@@ -663,8 +670,8 @@ func isVolumeAttached(vol *longhornclient.Volume) bool {
 	return vol.State == string(types.VolumeStateAttached) && vol.Controllers[0].Endpoint != ""
 }
 
-func isVolumeReady(vol *longhornclient.Volume) bool {
-	return vol.Ready
+func isVolumeShareAvailable(vol *longhornclient.Volume) bool {
+	return vol.ShareState == string(types.ShareManagerStateRunning) && vol.ShareEndpoint != ""
 }
 
 func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription string,

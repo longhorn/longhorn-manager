@@ -65,11 +65,6 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.InvalidArgument, "Volume capability not provided")
 	}
 
-	requiresSharedAccess := requiresSharedAccess(existVol, volumeCapability)
-	if requiresSharedAccess && existVol.AccessMode != string(types.AccessModeReadWriteMany) {
-		return nil, status.Errorf(codes.FailedPrecondition, "The volume %s requires shared access but is not marked for shared use", req.GetVolumeId())
-	}
-
 	if len(existVol.Controllers) != 1 {
 		return nil, status.Errorf(codes.InvalidArgument, "There should be only one controller for volume %s", req.GetVolumeId())
 	}
@@ -95,7 +90,16 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	targetPath := req.GetTargetPath()
 	devicePath := existVol.Controllers[0].Endpoint
-	if requiresSharedAccess {
+	if requiresSharedAccess(existVol, volumeCapability) {
+
+		if existVol.AccessMode != string(types.AccessModeReadWriteMany) {
+			return nil, status.Errorf(codes.FailedPrecondition, "The volume %s requires shared access but is not marked for shared use", req.GetVolumeId())
+		}
+
+		if !isVolumeShareAvailable(existVol) {
+			return nil, status.Errorf(codes.Aborted, "The volume %s share should be available before the mount", req.GetVolumeId())
+		}
+
 		// namespace mounter that operates in the host namespace
 		nse, err := nfs.NewNsEnter()
 		if err != nil {
