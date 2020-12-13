@@ -264,7 +264,7 @@ func (nc *NodeController) handleErr(err error, key interface{}) {
 	nc.queue.Forget(key)
 }
 
-func getLoggerForNode(logger logrus.FieldLogger, n *longhorn.Node) logrus.FieldLogger {
+func getLoggerForNode(logger logrus.FieldLogger, n *longhorn.Node) *logrus.Entry {
 	return logger.WithField("node", n.Name)
 }
 

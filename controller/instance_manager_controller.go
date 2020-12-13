@@ -247,7 +247,7 @@ func (imc *InstanceManagerController) handleErr(err error, key interface{}) {
 	imc.queue.Forget(key)
 }
 
-func getLoggerForInstanceManager(logger logrus.FieldLogger, im *longhorn.InstanceManager) logrus.FieldLogger {
+func getLoggerForInstanceManager(logger logrus.FieldLogger, im *longhorn.InstanceManager) *logrus.Entry {
 	return logger.WithField("instanceManager", im.Name)
 }
 

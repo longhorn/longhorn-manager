@@ -198,7 +198,7 @@ func (ec *EngineController) handleErr(err error, key interface{}) {
 	ec.queue.Forget(key)
 }
 
-func getLoggerForEngine(logger logrus.FieldLogger, e *longhorn.Engine) logrus.FieldLogger {
+func getLoggerForEngine(logger logrus.FieldLogger, e *longhorn.Engine) *logrus.Entry {
 	return logger.WithField("engine", e.Name)
 }
 

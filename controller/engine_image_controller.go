@@ -175,7 +175,7 @@ func (ic *EngineImageController) handleErr(err error, key interface{}) {
 	ic.queue.Forget(key)
 }
 
-func getLoggerForEngineImage(logger logrus.FieldLogger, ei *longhorn.EngineImage) logrus.FieldLogger {
+func getLoggerForEngineImage(logger logrus.FieldLogger, ei *longhorn.EngineImage) *logrus.Entry {
 	return logger.WithField("engineImage", ei.Name)
 }
 
