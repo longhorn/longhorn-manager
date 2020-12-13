@@ -149,7 +149,7 @@ func (c *ShareManagerController) enqueueShareManagerForVolume(obj interface{}) {
 	if volume.Spec.AccessMode == types.AccessModeReadWriteMany {
 		// we can queue the key directly since a share manager only manages a single volume from it's own namespace
 		// and there is no need for us to retrieve the whole object, since we already know the volume name
-		getLoggerForVolume(c.logger, volume).Debug("Enqueuing share manager for volume")
+		getLoggerForVolume(c.logger, volume).Trace("Enqueuing share manager for volume")
 		key := volume.Namespace + "/" + volume.Name
 		c.queue.AddRateLimited(key)
 		return
@@ -176,7 +176,7 @@ func (c *ShareManagerController) enqueueShareManagerForPod(obj interface{}) {
 	// we can queue the key directly since a share manager only manages pods from it's own namespace
 	// and there is no need for us to retrieve the whole object, since the share manager name is stored in the label
 	smName := pod.Labels[types.GetLonghornLabelKey(types.LonghornLabelShareManager)]
-	c.logger.WithField("pod", pod.Name).WithField("shareManager", smName).Debug("Enqueuing share manager for pod")
+	c.logger.WithField("pod", pod.Name).WithField("shareManager", smName).Trace("Enqueuing share manager for pod")
 	key := pod.Namespace + "/" + smName
 	c.queue.AddRateLimited(key)
 	return

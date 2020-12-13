@@ -204,7 +204,7 @@ func (vc *VolumeController) handleErr(err error, key interface{}) {
 	vc.queue.Forget(key)
 }
 
-func getLoggerForVolume(logger logrus.FieldLogger, v *longhorn.Volume) logrus.FieldLogger {
+func getLoggerForVolume(logger logrus.FieldLogger, v *longhorn.Volume) *logrus.Entry {
 	log := logger.WithFields(
 		logrus.Fields{
 			"volume":     v.Name,
