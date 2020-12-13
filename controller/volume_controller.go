@@ -2264,7 +2264,7 @@ func (vc *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 	}
 
 	if len(pathToOldRunnngRs) != v.Spec.NumberOfReplicas {
-		log.Debug("Volume old healthy replica count %v doesn't match the desired replica count %v",
+		log.Debugf("Volume old healthy replica count %v doesn't match the desired replica count %v",
 			len(pathToOldRunnngRs), v.Spec.NumberOfReplicas)
 		return nil
 	}
