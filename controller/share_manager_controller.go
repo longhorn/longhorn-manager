@@ -110,7 +110,7 @@ func NewShareManagerController(
 	return c
 }
 
-func getLoggerForShareManager(logger logrus.FieldLogger, sm *longhorn.ShareManager) logrus.FieldLogger {
+func getLoggerForShareManager(logger logrus.FieldLogger, sm *longhorn.ShareManager) *logrus.Entry {
 	return logger.WithFields(
 		logrus.Fields{
 			"shareManager": sm.Name,

@@ -209,15 +209,15 @@ func (c *UninstallController) handleErr(err error, key interface{}) {
 	c.queue.AddRateLimited(key)
 }
 
-func getLoggerForUninstallCSIDriver(logger logrus.FieldLogger, name string) logrus.FieldLogger {
+func getLoggerForUninstallCSIDriver(logger logrus.FieldLogger, name string) *logrus.Entry {
 	return logger.WithField("CSIDriver", name)
 }
 
-func getLoggerForUninstallDaemonSet(logger logrus.FieldLogger, name string) logrus.FieldLogger {
+func getLoggerForUninstallDaemonSet(logger logrus.FieldLogger, name string) *logrus.Entry {
 	return logger.WithField("daemonSet", name)
 }
 
-func getLoggerForUninstallDeployment(logger logrus.FieldLogger, name string) logrus.FieldLogger {
+func getLoggerForUninstallDeployment(logger logrus.FieldLogger, name string) *logrus.Entry {
 	return logger.WithField("deployment", name)
 }
 

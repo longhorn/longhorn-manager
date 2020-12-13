@@ -171,7 +171,7 @@ func (rc *ReplicaController) handleErr(err error, key interface{}) {
 	rc.queue.Forget(key)
 }
 
-func getLoggerForReplica(logger logrus.FieldLogger, r *longhorn.Replica) logrus.FieldLogger {
+func getLoggerForReplica(logger logrus.FieldLogger, r *longhorn.Replica) *logrus.Entry {
 	return logger.WithField("replica", r.Name)
 }
 
