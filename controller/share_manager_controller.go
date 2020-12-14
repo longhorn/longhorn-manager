@@ -114,7 +114,9 @@ func getLoggerForShareManager(logger logrus.FieldLogger, sm *longhorn.ShareManag
 	return logger.WithFields(
 		logrus.Fields{
 			"shareManager": sm.Name,
+			"volume":       sm.Name,
 			"owner":        sm.Status.OwnerID,
+			"state":        sm.Status.State,
 		},
 	)
 }
@@ -256,14 +258,6 @@ func (c *ShareManagerController) handleErr(err error, key interface{}) {
 	utilruntime.HandleError(err)
 }
 
-func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManager) error {
-	if err := c.ds.DeletePod(sm.Name); err != nil && !apierrors.IsNotFound(err) {
-		return err
-	}
-
-	return nil
-}
-
 func (c *ShareManagerController) syncShareManager(key string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to sync %v", key)
@@ -333,116 +327,270 @@ func (c *ShareManagerController) syncShareManager(key string) (err error) {
 		}
 	}()
 
+	if err = c.syncShareManagerVolume(sm); err != nil {
+		return err
+	}
+
 	if err = c.syncShareManagerPod(sm); err != nil {
 		return err
 	}
 
-	if sm.Status.State == types.ShareManagerStateRunning {
-		// running is once the pod is in ready state
-		// which means the nfs server is up and running with the volume attached
-		// the cluster service ip doesn't change for the lifetime of the volume
-		service, err := c.ds.GetService(sm.Namespace, sm.Name)
-		if err != nil {
-			return err
-		}
-		sm.Status.Endpoint = fmt.Sprintf("nfs://%v/%v", service.Spec.ClusterIP, sm.Name)
-	} else {
-		sm.Status.Endpoint = ""
+	if err = c.syncShareManagerEndpoint(sm); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) error {
-	log := getLoggerForShareManager(c.logger, sm)
-	var pod *v1.Pod
-	var err error
-	if pod, err = c.ds.GetPod(getPodNameForShareManager(sm)); err != nil && !apierrors.IsNotFound(err) {
-		log.WithError(err).Error("failed to retrieve pod for share manager from datastore")
+func (c *ShareManagerController) syncShareManagerEndpoint(sm *longhorn.ShareManager) error {
+	// running is once the pod is in ready state
+	// which means the nfs server is up and running with the volume attached
+	// the cluster service ip doesn't change for the lifetime of the volume
+	if sm.Status.State != types.ShareManagerStateRunning {
+		sm.Status.Endpoint = ""
+		return nil
+	}
+
+	service, err := c.ds.GetService(sm.Namespace, sm.Name)
+	if err != nil {
 		return err
 	}
 
-	// TODO: compare pod image via label and recreate if share manager has different image (i.e. updated image)
-	if pod != nil && pod.DeletionTimestamp != nil {
+	sm.Status.Endpoint = fmt.Sprintf("nfs://%v/%v", service.Spec.ClusterIP, sm.Name)
+	return nil
+}
+
+// isShareManagerRequiredForVolume checks if a share manager should export a volume
+// a nil volume does not require a share manager
+func (c *ShareManagerController) isShareManagerRequiredForVolume(volume *longhorn.Volume) bool {
+	if volume == nil {
+		return false
+	}
+
+	if volume.Spec.AccessMode != types.AccessModeReadWriteMany {
+		return false
+	}
+
+	// let the auto salvage take care of it
+	if volume.Status.Robustness == types.VolumeRobustnessFaulted {
+		return false
+	}
+
+	// let the normal restore process take care of it
+	if volume.Status.RestoreRequired {
+		return false
+	}
+
+	// volume is used in maintenance mode
+	if volume.Spec.DisableFrontend || volume.Status.FrontendDisabled {
+		return false
+	}
+
+	// no need to expose (DR) standby volumes via a share manager
+	if volume.Spec.Standby || volume.Status.IsStandby {
+		return false
+	}
+
+	// no active workload, there is no need to keep the share manager around
+	hasActiveWorkload := volume.Status.KubernetesStatus.LastPodRefAt == "" && volume.Status.KubernetesStatus.LastPVCRefAt == "" &&
+		len(volume.Status.KubernetesStatus.WorkloadsStatus) > 0
+	if !hasActiveWorkload {
+		return false
+	}
+
+	return true
+}
+
+func (c ShareManagerController) detachShareManagerVolume(sm *longhorn.ShareManager) error {
+	log := getLoggerForShareManager(c.logger, sm)
+	volume, err := c.ds.GetVolume(sm.Name)
+	if err != nil && !apierrors.IsNotFound(err) {
+		log.WithError(err).Error("failed to retrieve volume for share manager from datastore")
+		return err
+	} else if volume == nil {
+		return nil
+	}
+
+	// we don't want to detach volumes that we don't control
+	isMaintenanceMode := volume.Spec.DisableFrontend || volume.Status.FrontendDisabled
+	shouldDetach := !isMaintenanceMode && volume.Spec.AccessMode == types.AccessModeReadWriteMany && volume.Spec.NodeID != ""
+	if shouldDetach {
+		log.Infof("requesting Volume detach from node %v", volume.Spec.NodeID)
+		volume.Spec.NodeID = ""
+		volume, err = c.ds.UpdateVolume(volume)
+		return err
+	}
+
+	return nil
+}
+
+// syncShareManagerVolume controls volume attachment and provides the following state transitions
+// running -> running (do nothing)
+// stopped -> stopped (rest state)
+// starting, stopped, error -> starting (requires pod, volume attachment)
+// starting, running, error -> stopped (no longer required, volume detachment)
+// controls transitions to starting, stopped
+func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManager) (err error) {
+	var isNotNeeded bool
+	defer func() {
+		// ensure volume gets detached if share manager needs to be cleaned up and hasn't stopped yet
+		// we need the isNotNeeded var so we don't accidentally detach manually attached volumes,
+		// while the share manager is no longer running (only run cleanup once)
+		if isNotNeeded && sm.Status.State != types.ShareManagerStateStopped {
+			getLoggerForShareManager(c.logger, sm).Info("stopping share manager")
+			if err = c.detachShareManagerVolume(sm); err == nil {
+				sm.Status.State = types.ShareManagerStateStopped
+			}
+		}
+	}()
+
+	log := getLoggerForShareManager(c.logger, sm)
+	volume, err := c.ds.GetVolume(sm.Name)
+	if err != nil && !apierrors.IsNotFound(err) {
+		log.WithError(err).Error("failed to retrieve volume for share manager from datastore")
+		return err
+	}
+
+	if !c.isShareManagerRequiredForVolume(volume) {
 		if sm.Status.State != types.ShareManagerStateStopped {
-			sm.Status.State = types.ShareManagerStateError
+			log.Info("share manager is no longer required")
+			isNotNeeded = true
+		}
+		return nil
+	} else if sm.Status.State == types.ShareManagerStateRunning {
+		return nil
+	}
+
+	// in a single node cluster, there is no other manager that can claim ownership so we are prevented from creation
+	// of the share manager pod and need to ensure that the volume gets detached, so that the engine can be stopped as well
+	// we only check for running, since we don't want to nuke valid pods, not schedulable only means no new pods.
+	// in the case of a drain kubernetes will terminate the running pod, which we will mark as error in the sync pod method
+	if !isNodeSchedulable(c.ds, sm.Status.OwnerID) {
+		if sm.Status.State != types.ShareManagerStateStopped {
+			log.Info("cannot start share manager, node is not schedulable")
+			isNotNeeded = true
+		}
+		return nil
+	}
+
+	// we manage volume auto detach/attach in the starting state, once the pod is running
+	// the volume health check will be responsible for failing the pod which will lead to error state
+	if sm.Status.State != types.ShareManagerStateStarting {
+		log.Debug("starting share manager")
+		sm.Status.State = types.ShareManagerStateStarting
+	}
+
+	if volume.Spec.NodeID != sm.Status.OwnerID || volume.Status.CurrentNodeID != sm.Status.OwnerID {
+		// HACK: at the moment the consumer needs to control the state transitions of the volume
+		//  since it's not possible to just specify the desired state, we should fix that down the line.
+		//  for the actual state transition we need to request detachment then wait for detachment
+		//  afterwards we can request attachment to the new node.
+		shouldDetach := volume.Status.State == types.VolumeStateAttached ||
+			(volume.Status.State == types.VolumeStateAttaching && volume.Spec.NodeID != sm.Status.OwnerID)
+		if shouldDetach {
+			log.WithField("volume", volume.Name).Infof("Requesting Volume detach from previous node %v", volume.Status.CurrentNodeID)
+			volume.Spec.NodeID = ""
 		}
 
-		if nodeFailed, _ := c.ds.IsNodeDownOrDeleted(pod.Spec.NodeName); nodeFailed {
+		if volume.Status.State == types.VolumeStateDetached {
+			log.WithField("volume", volume.Name).Info("Requesting Volume attach to share manager node")
+			volume.Spec.NodeID = sm.Status.OwnerID
+		}
+
+		if volume, err = c.ds.UpdateVolume(volume); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManager) error {
+	log := getLoggerForShareManager(c.logger, sm)
+
+	podName := getPodNameForShareManager(sm)
+	pod, err := c.ds.GetPod(podName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		log.WithError(err).WithField("pod", podName).Error("failed to retrieve pod for share manager from datastore")
+		return err
+	} else if pod == nil {
+		return nil
+	}
+
+	if err := c.ds.DeletePod(podName); err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	if nodeFailed, _ := c.ds.IsNodeDownOrDeleted(pod.Spec.NodeName); nodeFailed {
+		log.Debug("node of share manager pod is down, force deleting pod to allow fail over")
+		gracePeriod := int64(0)
+		err := c.kubeClient.CoreV1().Pods(pod.Namespace).Delete(podName, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod})
+		if err != nil && !apierrors.IsNotFound(err) {
+			log.WithError(err).Debugf("failed to force delete share manager pod")
+			return err
+		}
+	}
+
+	return nil
+}
+
+// syncShareManagerPod controls pod existence and provides the following state transitions
+// stopped -> stopped (rest state)
+// starting -> starting (pending, volume attachment)
+// starting ,running, error -> error (restart, remount volumes)
+// starting, running -> running (share ready to use)
+// controls transitions to running, error
+func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) (err error) {
+	defer func() {
+		if sm.Status.State == types.ShareManagerStateError || sm.Status.State == types.ShareManagerStateStopped {
+			err = c.cleanupShareManagerPod(sm)
+		}
+	}()
+
+	// if we are in stopped state there is nothing to do but cleanup any outstanding pods
+	// no need for remount, since we don't have any active workloads in this state
+	if sm.Status.State == types.ShareManagerStateStopped {
+		return nil
+	}
+
+	log := getLoggerForShareManager(c.logger, sm)
+	pod, err := c.ds.GetPod(getPodNameForShareManager(sm))
+	if err != nil && !apierrors.IsNotFound(err) {
+		log.WithError(err).Error("failed to retrieve pod for share manager from datastore")
+		return err
+	} else if pod == nil {
+
+		// there should only ever be no pod if we are in pending state
+		// if there is no pod in any other state transition to error so we start over
+		if sm.Status.State != types.ShareManagerStateStarting {
+			log.Debug("Share Manager has no pod but is not in starting state, requires cleanup with remount")
 			sm.Status.State = types.ShareManagerStateError
-			log.Debug("node of share manager pod is down, force deleting pod to allow fail over")
-			gracePeriod := int64(0)
-			if err := c.kubeClient.CoreV1().Pods(pod.Namespace).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod}); err != nil {
-				log.WithError(err).Debugf("failed to force delete share manager pod")
-			}
+			return nil
+		}
+
+		if pod, err = c.createShareManagerPod(sm); err != nil {
+			log.WithError(err).Error("failed to create pod for share manager")
+			return err
+		}
+	}
+
+	// in the case where the node name and the controller don't fit it means that there was an ownership transfer of the share manager
+	// so we need to cleanup the old pod, most likely it's on a now defective node, in the case where the share manager fails
+	// for whatever reason we just delete and recreate it.
+	if pod.DeletionTimestamp != nil || pod.Spec.NodeName != sm.Status.OwnerID {
+		if sm.Status.State != types.ShareManagerStateStopped {
+			log.Debug("Share Manager pod requires cleanup with remount")
+			sm.Status.State = types.ShareManagerStateError
 		}
 
 		return nil
 	}
 
-	// no point in starting a pod if we don't have the associated volume anymore
-	volume, err := c.ds.GetVolume(sm.Name)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			sm.Status.State = types.ShareManagerStateStopped
-			return c.cleanupShareManagerPod(sm)
-		}
-		return err
-	}
-
-	// no need to expose standby volumes via a share manager
-	if volume.Spec.Standby || volume.Status.IsStandby {
-		sm.Status.State = types.ShareManagerStateStopped
-		return c.cleanupShareManagerPod(sm)
-	}
-
-	// no active workload, there is no need to keep the share manager around and the volume can be detached
-	hasActiveWorkload := volume.Status.KubernetesStatus.LastPodRefAt == "" && volume.Status.KubernetesStatus.LastPVCRefAt == "" &&
-		len(volume.Status.KubernetesStatus.WorkloadsStatus) > 0
-	if !hasActiveWorkload {
-		isVolumeAttached := volume.Status.State == types.VolumeStateAttached || volume.Status.State == types.VolumeStateAttaching
-		if sm.Status.State != types.ShareManagerStateStopped && isVolumeAttached && !volume.Status.FrontendDisabled {
-			log.WithField("volume", volume.Name).Infof("Stopping share manager, requesting Volume detach from node %v", volume.Spec.NodeID)
-			volume.Spec.NodeID = ""
-			if volume, err = c.ds.UpdateVolume(volume); err != nil {
-				return err
-			}
-		}
-		sm.Status.State = types.ShareManagerStateStopped
-		return c.cleanupShareManagerPod(sm)
-	}
-
-	if pod == nil {
-		// in a single node cluster, there is no other manager that can claim ownership so we are prevented from creation
-		// of the share manager pod and need to ensure that the volume gets detached, so that the engine can be stopped as well
-		if !isNodeSchedulable(c.ds, sm.Status.OwnerID) {
-			log.Debug("cannot create new pod for share manager, node is not schedulable")
-			sm.Status.State = types.ShareManagerStateError
-			isVolumeAttached := volume.Spec.NodeID == sm.Status.OwnerID && !volume.Status.FrontendDisabled
-			if isVolumeAttached {
-				log.WithField("volume", volume.Name).Infof("cannot schedule new pod for share manager node "+
-					"is not schedulable, requesting Volume detach from node %v", volume.Spec.NodeID)
-				volume.Spec.NodeID = ""
-				if volume, err = c.ds.UpdateVolume(volume); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-
-		if pod, err = c.createShareManagerPod(sm); err != nil {
-			sm.Status.State = types.ShareManagerStateError
-			log.WithError(err).Error("failed to create pod for share manager")
-			return err
-		}
-		sm.Status.State = types.ShareManagerStateStarting
-	}
-
 	switch pod.Status.Phase {
 	case v1.PodPending:
 		if sm.Status.State != types.ShareManagerStateStarting {
-			sm.Status.State = types.ShareManagerStateError
 			log.Errorf("Share Manager has state %v but the related pod is pending.", sm.Status.State)
+			sm.Status.State = types.ShareManagerStateError
 		}
 	case v1.PodRunning:
 		// pod readiness is based on the availability of the nfs server
@@ -453,31 +601,8 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		}
 
 		if !allContainersReady {
-			// ensure that the shared volume is attached to this share managers node, if the share manager
-			// switches nodes this will ensure, that the volumes will travel with the manager
-			if volume.Spec.NodeID != sm.Status.OwnerID {
-				// HACK: at the moment the consumer needs to control the state transitions of the volume
-				//  since it's not possible to just specify the desired state, we should fix that down the line.
-				//  for the actual state transition we need to request detachment then wait for detachment
-				//  afterwards we can request attachment to the new node.
-				if volume.Status.State == types.VolumeStateAttached || volume.Status.State == types.VolumeStateAttaching {
-					log.WithField("volume", volume.Name).Infof("Requesting Volume detach from previous node %v", volume.Spec.NodeID)
-					volume.Spec.NodeID = ""
-				}
-
-				if volume.Status.State == types.VolumeStateDetached {
-					log.WithField("volume", volume.Name).Info("Requesting Volume attach to share manager node")
-					volume.Spec.NodeID = sm.Status.OwnerID
-				}
-
-				if volume, err = c.ds.UpdateVolume(volume); err != nil {
-					return err
-				}
-			} else {
-				// manually requeue the share manager so we can check again for container ready just in case
-				key := volume.Namespace + "/" + volume.Name
-				c.queue.AddRateLimited(key)
-			}
+			key := sm.Namespace + "/" + sm.Name
+			c.queue.AddRateLimited(key)
 		} else if sm.Status.State == types.ShareManagerStateStarting {
 			sm.Status.State = types.ShareManagerStateRunning
 		} else if sm.Status.State != types.ShareManagerStateRunning {
@@ -486,14 +611,6 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 
 	default:
 		sm.Status.State = types.ShareManagerStateError
-	}
-
-	// in the case where the node name and the controller don't fit it means that there was an ownership transfer of the share manager
-	// so we need to cleanup the old pod, most likely it's on a now defective node, in the case where the share manager fails
-	// for whatever reason we just delete and recreate it.
-	if pod.Spec.NodeName != sm.Status.OwnerID || sm.Status.State == types.ShareManagerStateError {
-		sm.Status.State = types.ShareManagerStateError
-		return c.cleanupShareManagerPod(sm)
 	}
 
 	return nil
