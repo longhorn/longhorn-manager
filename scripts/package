@@ -19,6 +19,10 @@ fi
 
 trap 'rm -rf ./package/bin' exit
 
+# update base image to get latest changes
+BASE_IMAGE=`grep FROM package/Dockerfile  | awk '{print $2}'`
+docker pull ${BASE_IMAGE}
+
 docker build -t ${IMAGE} -f package/Dockerfile .
 
 echo Built ${IMAGE}
