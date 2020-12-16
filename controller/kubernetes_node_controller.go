@@ -89,8 +89,8 @@ func NewKubernetesNodeController(
 	)
 
 	kubeNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(old, cur interface{}) { knc.enqueueKubernetesNode(cur) },
-		DeleteFunc: knc.enqueueKubernetesNode,
+		UpdateFunc: func(old, cur interface{}) { knc.enqueueNode(cur) },
+		DeleteFunc: knc.enqueueNode,
 	})
 
 	return knc
@@ -187,6 +187,7 @@ func (knc *KubernetesNodeController) syncKubernetesNode(key string) (err error) 
 	}
 
 	if kubeNode == nil {
+		logrus.Debugf("Cannot find the related kube node for Longhorn node %v, will do cleanup", name)
 		if err := knc.ds.DeleteNode(name); err != nil {
 			return err
 		}
@@ -197,7 +198,7 @@ func (knc *KubernetesNodeController) syncKubernetesNode(key string) (err error) 
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
 			logrus.Debugf("Requeue %v due to conflict: %v", key, err)
-			knc.enqueueKubernetesNode(kubeNode)
+			knc.enqueueNode(kubeNode)
 			err = nil
 		}
 	}()
@@ -232,7 +233,7 @@ func (knc *KubernetesNodeController) enqueueSetting(obj interface{}) {
 		utilruntime.HandleError(fmt.Errorf("couldn't get kubernetes node %v: %v ", knc.controllerID, err))
 		return
 	}
-	knc.enqueueKubernetesNode(node)
+	knc.enqueueNode(node)
 }
 
 func (knc *KubernetesNodeController) enqueueLonghornNode(obj interface{}) {
@@ -252,18 +253,10 @@ func (knc *KubernetesNodeController) enqueueLonghornNode(obj interface{}) {
 		}
 	}
 
-	if lhNode.Name != knc.controllerID {
-		return
-	}
-	node, err := knc.ds.GetKubernetesNode(lhNode.Name)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get kubernetes node %v: %v ", knc.controllerID, err))
-		return
-	}
-	knc.enqueueKubernetesNode(node)
+	knc.enqueueNode(lhNode)
 }
 
-func (knc *KubernetesNodeController) enqueueKubernetesNode(node interface{}) {
+func (knc *KubernetesNodeController) enqueueNode(node interface{}) {
 	key, err := controller.KeyFunc(node)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", node, err))
