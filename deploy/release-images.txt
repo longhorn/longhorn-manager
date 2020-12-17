@@ -1,5 +1,5 @@
 longhornio/longhorn-engine:master
-longhornio/longhorn-instance-manager:v1_20201021
+longhornio/longhorn-instance-manager:v1_20201216
 longhornio/longhorn-share-manager:v1_20201204
 longhornio/longhorn-manager:master
 longhornio/longhorn-ui:master
