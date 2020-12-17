@@ -221,6 +221,10 @@ func getLoggerForUninstallDeployment(logger logrus.FieldLogger, name string) *lo
 	return logger.WithField("deployment", name)
 }
 
+func getLoggerForUninstallService(logger logrus.FieldLogger, name string) *logrus.Entry {
+	return logger.WithField("service", name)
+}
+
 func (c *UninstallController) uninstall() error {
 	if ready, err := c.managerReady(); err != nil {
 		return err
@@ -598,6 +602,37 @@ func (c *UninstallController) deleteDriver() (bool, error) {
 		log.Info("Already marked for deletion")
 		wait = true
 	}
+
+	servicesToClean := []string{
+		types.CSIAttacherName,
+		types.CSIProvisionerName,
+		types.CSIResizerName,
+		types.CSISnapshotterName,
+	}
+	for _, name := range servicesToClean {
+		log := getLoggerForUninstallService(c.logger, name)
+
+		if service, err := c.ds.GetService(c.namespace, name); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			log.WithError(err).Warn("Failed to get for deletion")
+			wait = true
+			continue
+		} else if service.DeletionTimestamp == nil {
+			if err := c.ds.DeleteService(c.namespace, name); err != nil {
+				log.Warn("Failed to mark for deletion")
+				wait = true
+				continue
+			}
+			log.Info("Marked for deletion")
+			wait = true
+			continue
+		}
+		log.Info("Already marked for deletion")
+		wait = true
+	}
+
 	daemonSetsToClean := []string{
 		types.CSIPluginName,
 	}

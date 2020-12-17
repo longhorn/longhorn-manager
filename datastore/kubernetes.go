@@ -422,6 +422,11 @@ func (s *DataStore) GetService(namespace, name string) (*corev1.Service, error) 
 	return s.svLister.Services(namespace).Get(name)
 }
 
+// DeleteService deletes the Service for the given name and namespace
+func (s *DataStore) DeleteService(namespace, name string) error {
+	return s.kubeClient.CoreV1().Services(namespace).Delete(name, nil)
+}
+
 // NewPVManifestForVolume returns a new PersistentVolume object for a longhorn volume
 func NewPVManifestForVolume(v *longhorn.Volume, pvName, storageClassName, fsType string) *corev1.PersistentVolume {
 	diskSelector := strings.Join(v.Spec.DiskSelector, ",")
