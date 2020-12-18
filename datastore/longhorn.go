@@ -54,7 +54,7 @@ func (s *DataStore) InitSettings() error {
 						Value: definition.Default,
 					},
 				}
-				if _, err := s.CreateSetting(setting); err != nil {
+				if _, err := s.CreateSetting(setting); err != nil && !apierrors.IsAlreadyExists(err) {
 					return err
 				}
 			} else {
