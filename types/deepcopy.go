@@ -176,3 +176,29 @@ func (ei *EngineImageStatus) DeepCopyInto(to *EngineImageStatus) {
 		}
 	}
 }
+
+func (bi *BackingImageSpec) DeepCopyInto(to *BackingImageSpec) {
+	*to = *bi
+	if bi.Disks != nil {
+		to.Disks = map[string]struct{}{}
+		for key, value := range bi.Disks {
+			to.Disks[key] = value
+		}
+	}
+}
+
+func (bi *BackingImageStatus) DeepCopyInto(to *BackingImageStatus) {
+	*to = *bi
+	if bi.DiskDownloadStateMap != nil {
+		to.DiskDownloadStateMap = make(map[string]BackingImageDownloadState)
+		for key, value := range bi.DiskDownloadStateMap {
+			to.DiskDownloadStateMap[key] = value
+		}
+	}
+	if bi.DiskLastRefAtMap != nil {
+		to.DiskLastRefAtMap = make(map[string]string)
+		for key, value := range bi.DiskLastRefAtMap {
+			to.DiskLastRefAtMap[key] = value
+		}
+	}
+}
