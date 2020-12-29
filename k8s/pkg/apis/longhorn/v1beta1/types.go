@@ -148,3 +148,21 @@ type ShareManagerList struct {
 	metav1.ListMeta `json:"metadata"`
 	Items           []ShareManager `json:"items"`
 }
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type BackingImage struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata"`
+	Spec              types.BackingImageSpec   `json:"spec"`
+	Status            types.BackingImageStatus `json:"status"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type BackingImageList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+	Items           []BackingImage `json:"items"`
+}

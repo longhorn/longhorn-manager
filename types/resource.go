@@ -472,3 +472,23 @@ type ShareManagerStatus struct {
 	State    ShareManagerState `json:"state"`
 	Endpoint string            `json:"endpoint"`
 }
+
+type BackingImageDownloadState string
+
+const (
+	BackingImageDownloadStateDownloaded  = BackingImageDownloadState("downloaded")
+	BackingImageDownloadStateDownloading = BackingImageDownloadState("downloading")
+	BackingImageDownloadStateFailed      = BackingImageDownloadState("failed")
+	BackingImageDownloadStateTerminating = BackingImageDownloadState("terminating")
+)
+
+type BackingImageSpec struct {
+	ImageURL string              `json:"imageURL"`
+	Disks    map[string]struct{} `json:"disks"`
+}
+
+type BackingImageStatus struct {
+	OwnerID              string                               `json:"ownerID"`
+	DiskDownloadStateMap map[string]BackingImageDownloadState `json:"diskDownloadStateMap"`
+	DiskLastRefAtMap     map[string]string                    `json:"diskLastRefAtMap"`
+}

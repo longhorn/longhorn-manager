@@ -18,6 +18,14 @@ limitations under the License.
 
 package v1beta1
 
+// BackingImageListerExpansion allows custom methods to be added to
+// BackingImageLister.
+type BackingImageListerExpansion interface{}
+
+// BackingImageNamespaceListerExpansion allows custom methods to be added to
+// BackingImageNamespaceLister.
+type BackingImageNamespaceListerExpansion interface{}
+
 // EngineListerExpansion allows custom methods to be added to
 // EngineLister.
 type EngineListerExpansion interface{}

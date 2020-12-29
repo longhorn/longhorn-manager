@@ -34,7 +34,7 @@ rules:
     resources: ["csidrivers", "storageclasses"]
     verbs: ["*"]
   - apiGroups: ["longhorn.io"]
-    resources: ["volumes", "engines", "replicas", "settings", "engineimages", "nodes", "instancemanagers", "sharemanagers"]
+    resources: ["volumes", "engines", "replicas", "settings", "engineimages", "nodes", "instancemanagers", "sharemanagers", "backingimages"]
     verbs: ["*"]
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
