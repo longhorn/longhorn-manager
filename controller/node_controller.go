@@ -112,7 +112,7 @@ func NewNodeController(
 
 	settingInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
-			FilterFunc: isSettingStorageMinimalAvailablePercentage,
+			FilterFunc: nc.isResponsibleForSetting,
 			Handler: cache.ResourceEventHandlerFuncs{
 				AddFunc:    nc.enqueueSetting,
 				UpdateFunc: func(old, cur interface{}) { nc.enqueueSetting(cur) },
@@ -150,7 +150,7 @@ func NewNodeController(
 	return nc
 }
 
-func isSettingStorageMinimalAvailablePercentage(obj interface{}) bool {
+func (nc *NodeController) isResponsibleForSetting(obj interface{}) bool {
 	setting, ok := obj.(*longhorn.Setting)
 	if !ok {
 		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
@@ -165,7 +165,8 @@ func isSettingStorageMinimalAvailablePercentage(obj interface{}) bool {
 		}
 	}
 
-	return types.SettingName(setting.Name) == types.SettingNameStorageMinimalAvailablePercentage
+	return types.SettingName(setting.Name) == types.SettingNameStorageMinimalAvailablePercentage ||
+		types.SettingName(setting.Name) == types.SettingNameBackingImageCleanupWaitInterval
 }
 
 func (nc *NodeController) isResponsibleForReplica(obj interface{}) bool {
@@ -453,6 +454,10 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 
 	if err := nc.syncInstanceManagers(node); err != nil {
+		return err
+	}
+
+	if err := nc.cleanUpBackingImagesInDisks(node); err != nil {
 		return err
 	}
 
@@ -886,4 +891,54 @@ func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, ima
 	}
 
 	return nc.ds.CreateInstanceManager(instanceManager)
+}
+
+func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error {
+	settingValue, err := nc.ds.GetSettingAsInt(types.SettingNameBackingImageCleanupWaitInterval)
+	if err != nil {
+		logrus.Errorf("failed to get Setting BackingImageCleanupWaitInterval, won't do cleanup for backing images: %v", err)
+		return nil
+	}
+	waitInterval := time.Duration(settingValue) * time.Minute
+
+	backingImages, err := nc.ds.ListBackingImages()
+	if err != nil {
+		return err
+	}
+	for _, bi := range backingImages {
+		if bi.Status.DiskLastRefAtMap == nil {
+			continue
+		}
+		log := getLoggerForBackingImage(nc.logger, bi).WithField("node", node.Name)
+		existingBackingImage := bi.DeepCopy()
+		for _, diskStatus := range node.Status.DiskStatus {
+			uuid := diskStatus.DiskUUID
+			if _, exists := bi.Spec.Disks[uuid]; !exists {
+				continue
+			}
+			lastRefAtStr, exists := bi.Status.DiskLastRefAtMap[uuid]
+			if !exists {
+				continue
+			}
+			lastRefAt, err := util.ParseTime(lastRefAtStr)
+			if err != nil {
+				log.Errorf("Unable to parse LastRefAt timestamp %v", lastRefAtStr)
+				continue
+			}
+			if time.Now().After(lastRefAt.Add(waitInterval)) {
+				log.Debugf("Start to cleanup the unused backing image in disk %v", uuid)
+				delete(bi.Spec.Disks, uuid)
+			}
+		}
+		if !reflect.DeepEqual(existingBackingImage.Spec, bi.Spec) {
+			if _, err := nc.ds.UpdateBackingImage(bi); err != nil {
+				log.WithError(err).Error("Failed to update backing image when cleaning up the images in disks")
+				// Requeue the node but do not fail the whole sync function
+				nc.enqueueNode(node)
+				continue
+			}
+		}
+	}
+
+	return nil
 }

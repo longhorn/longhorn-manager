@@ -727,9 +727,9 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 								Command: []string{"cat", "/var/run/ganesha.pid"},
 							},
 						},
-						InitialDelaySeconds: managerProbeInitialDelay,
-						PeriodSeconds:       managerProbePeriodSeconds,
-						FailureThreshold:    managerLivenessProbeFailureThreshold,
+						InitialDelaySeconds: datastore.PodProbeInitialDelay,
+						PeriodSeconds:       datastore.PodProbePeriodSeconds,
+						FailureThreshold:    datastore.PodLivenessProbeFailureThreshold,
 					},
 					SecurityContext: &v1.SecurityContext{
 						Privileged: &privileged,

@@ -35,6 +35,7 @@ const (
 	CRDEngineImageName     = "engineimages.longhorn.io"
 	CRDNodeName            = "nodes.longhorn.io"
 	CRDInstanceManagerName = "instancemanagers.longhorn.io"
+	CRDBackingImageName    = "backingimages.longhorn.io"
 
 	LonghornNamespace = "longhorn-system"
 )
@@ -66,6 +67,7 @@ func NewUninstallController(
 	engineImageInformer lhinformers.EngineImageInformer,
 	nodeInformer lhinformers.NodeInformer,
 	imInformer lhinformers.InstanceManagerInformer,
+	backingImageInformer lhinformers.BackingImageInformer,
 	daemonSetInformer appsv1.DaemonSetInformer,
 	deploymentInformer appsv1.DeploymentInformer,
 	csiDriverInformer storagev1beta1.CSIDriverInformer,
@@ -112,10 +114,13 @@ func NewUninstallController(
 		nodeInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, nodeInformer.Informer().HasSynced)
 	}
-
 	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDInstanceManagerName, metav1.GetOptions{}); err == nil {
 		imInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, imInformer.Informer().HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDBackingImageName, metav1.GetOptions{}); err == nil {
+		backingImageInformer.Informer().AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, backingImageInformer.Informer().HasSynced)
 	}
 
 	c.cacheSyncs = cacheSyncs
@@ -349,6 +354,13 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 		return true, c.deleteInstanceManagers(instanceManagers)
 	}
 
+	if backingImages, err := c.ds.ListBackingImages(); err != nil {
+		return true, err
+	} else if len(backingImages) > 0 {
+		c.logger.Infof("Found %d backingimages remaining", len(backingImages))
+		return true, c.deleteBackingImages(backingImages)
+	}
+
 	if nodes, err := c.ds.ListNodes(); err != nil {
 		return true, err
 	} else if len(nodes) > 0 {
@@ -527,6 +539,39 @@ func (c *UninstallController) deleteInstanceManagers(instanceManagers map[string
 		}
 	}
 	return
+}
+
+func (c *UninstallController) deleteBackingImages(backingImages map[string]*longhorn.BackingImage) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "Failed to delete backing images")
+	}()
+	for _, bi := range backingImages {
+		log := getLoggerForBackingImage(c.logger, bi)
+
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if bi.DeletionTimestamp == nil {
+			if err = c.ds.DeleteBackingImage(bi.Name); err != nil {
+				return errors.Wrapf(err, "Failed to mark for deletion")
+			}
+			log.Info("Marked for deletion")
+		} else if bi.DeletionTimestamp.Before(&timeout) {
+			pods, err := c.ds.ListBackingImageRelatedPods(bi.Name)
+			if err != nil {
+				return err
+			}
+			for _, pod := range pods {
+				if err = c.ds.DeletePod(pod.Name); err != nil {
+					return err
+				}
+				log.Infof("Removing backing image related pod %v", pod.Name)
+			}
+			if err = c.ds.RemoveFinalizerForBackingImage(bi); err != nil {
+				return errors.Wrapf(err, "Failed to remove finalizer")
+			}
+			log.Info("Removed finalizer")
+		}
+	}
+	return nil
 }
 
 func (c *UninstallController) deleteManager() (bool, error) {

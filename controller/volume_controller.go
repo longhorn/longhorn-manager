@@ -1962,7 +1962,7 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 			},
 			EngineName:              e.Name,
 			Active:                  true,
-			BaseImage:               v.Spec.BaseImage,
+			BackingImage:            v.Spec.BackingImage,
 			HardNodeAffinity:        hardNodeAffinity,
 			RevisionCounterDisabled: v.Spec.RevisionCounterDisabled,
 		},
@@ -1984,9 +1984,9 @@ func (vc *VolumeController) createReplicaManifest(v *longhorn.Volume, e *longhor
 				EngineImage: v.Status.CurrentImage,
 				DesireState: types.InstanceStateStopped,
 			},
-			EngineName: e.Name,
-			Active:     true,
-			BaseImage:  v.Spec.BaseImage,
+			EngineName:   e.Name,
+			Active:       true,
+			BackingImage: v.Spec.BackingImage,
 		},
 	}
 

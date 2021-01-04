@@ -615,6 +615,9 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err := tagDiskUUIDLabel(r.Spec.DiskID, r); err != nil {
 		return nil, err
 	}
+	if err := tagBackingImageLabel(r.Spec.BackingImage, r); err != nil {
+		return nil, err
+	}
 
 	ret, err := s.lhClient.LonghornV1beta1().Replicas(s.namespace).Create(r)
 	if err != nil {
@@ -650,6 +653,9 @@ func (s *DataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 		return nil, err
 	}
 	if err := tagDiskUUIDLabel(r.Spec.DiskID, r); err != nil {
+		return nil, err
+	}
+	if err := tagBackingImageLabel(r.Spec.BackingImage, r); err != nil {
 		return nil, err
 	}
 
@@ -919,6 +925,155 @@ func (s *DataStore) ListEngineImages() (map[string]*longhorn.EngineImage, error)
 	return itemMap, nil
 }
 
+// CreateBackingImage creates a Longhorn BackingImage resource and verifies
+// creation
+func (s *DataStore) CreateBackingImage(backingImage *longhorn.BackingImage) (*longhorn.BackingImage, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, backingImage); err != nil {
+		return nil, err
+	}
+	ret, err := s.lhClient.LonghornV1beta1().BackingImages(s.namespace).Create(backingImage)
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(backingImage.Name, "backing image", func(name string) (runtime.Object, error) {
+		return s.getBackingImageRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.BackingImage)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for backing image")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// UpdateBackingImage updates Longhorn BackingImage and verifies update
+func (s *DataStore) UpdateBackingImage(backingImage *longhorn.BackingImage) (*longhorn.BackingImage, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, backingImage); err != nil {
+		return nil, err
+	}
+
+	obj, err := s.lhClient.LonghornV1beta1().BackingImages(s.namespace).Update(backingImage)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(backingImage.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getBackingImageRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateBackingImageStatus updates Longhorn BackingImage resource status and
+// verifies update
+func (s *DataStore) UpdateBackingImageStatus(backingImage *longhorn.BackingImage) (*longhorn.BackingImage, error) {
+	obj, err := s.lhClient.LonghornV1beta1().BackingImages(s.namespace).UpdateStatus(backingImage)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(backingImage.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getBackingImageRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteBackingImage won't result in immediately deletion since finalizer was
+// set by default
+func (s *DataStore) DeleteBackingImage(name string) error {
+	propagation := metav1.DeletePropagationForeground
+	return s.lhClient.LonghornV1beta1().BackingImages(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
+}
+
+// RemoveFinalizerForBackingImage will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForBackingImage(obj *longhorn.BackingImage) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta1().BackingImages(s.namespace).Update(obj)
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for backing image %v", obj.Name)
+	}
+	return nil
+}
+
+func (s *DataStore) getBackingImageRO(name string) (*longhorn.BackingImage, error) {
+	return s.biLister.BackingImages(s.namespace).Get(name)
+}
+
+// GetBackingImage returns a new BackingImage object for the given name and
+// namespace
+func (s *DataStore) GetBackingImage(name string) (*longhorn.BackingImage, error) {
+	resultRO, err := s.getBackingImageRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// GetBackingImageByURL returns BackingImage object with matching ImageURL
+func (s *DataStore) GetBackingImageByURL(url string) (*longhorn.BackingImage, error) {
+	list, err := s.ListBackingImages()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, bi := range list {
+		if bi.Spec.ImageURL == url && bi.DeletionTimestamp == nil {
+			return bi, nil
+		}
+	}
+	return nil, fmt.Errorf("cannot find backing image with image URL %v", url)
+}
+
+// ListBackingImages returns object includes all BackingImage in namespace
+func (s *DataStore) ListBackingImages() (map[string]*longhorn.BackingImage, error) {
+	itemMap := map[string]*longhorn.BackingImage{}
+
+	list, err := s.biLister.BackingImages(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// GetOwnerReferencesForBackingImage returns OwnerReference for the given
+// backing image name and UID
+func GetOwnerReferencesForBackingImage(backingImage *longhorn.BackingImage) []metav1.OwnerReference {
+	controller := true
+	blockOwnerDeletion := true
+	return []metav1.OwnerReference{
+		{
+			APIVersion: longhorn.SchemeGroupVersion.String(),
+			Kind:       types.LonghornKindBackingImage,
+			Name:       backingImage.Name,
+			UID:        backingImage.UID,
+			// This field is needed so that `kubectl drain` can work without --force flag
+			// See https://github.com/longhorn/longhorn/issues/1286#issuecomment-623283028 for more details
+			Controller:         &controller,
+			BlockOwnerDeletion: &blockOwnerDeletion,
+		},
+	}
+}
+
 // CreateNode creates a Longhorn Node resource and verifies creation
 func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	if err := util.AddFinalizer(longhornFinalizerKey, node); err != nil {
@@ -999,6 +1154,30 @@ func (s *DataStore) GetNode(name string) (*longhorn.Node, error) {
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
+}
+
+// GetReadyDiskNode find the corresponding ready Longhorn Node for a given disk
+// Returns a Node object and the disk name
+func (s *DataStore) GetReadyDiskNode(diskUUID string) (*longhorn.Node, string, error) {
+	nodes, err := s.ListNodes()
+	if err != nil {
+		return nil, "", err
+	}
+	for _, node := range nodes {
+		if types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady).Status == types.ConditionStatusTrue {
+			for diskName, diskStatus := range node.Status.DiskStatus {
+				if diskStatus.DiskUUID == diskUUID {
+					if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeReady).Status == types.ConditionStatusTrue {
+						if _, exists := node.Spec.Disks[diskName]; exists {
+							return node, diskName, nil
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nil, "", fmt.Errorf("cannot find the corresponding ready node and disk with disk UUID %v", diskUUID)
 }
 
 // UpdateNode updates Longhorn Node resource and verifies update
@@ -1173,6 +1352,23 @@ func (s *DataStore) ListReplicasByDiskUUID(uuid string) ([]*longhorn.Replica, er
 	return s.rLister.Replicas(s.namespace).List(diskSelector)
 }
 
+func getBackingImageSelector(backingImageName string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			types.GetLonghornLabelKey(types.LonghornLabelBackingImage): backingImageName,
+		},
+	})
+}
+
+// ListReplicasByBackingImage gets a list of Replicas using a specific backing image the given namespace.
+func (s *DataStore) ListReplicasByBackingImage(backingImageName string) ([]*longhorn.Replica, error) {
+	backingImageSelector, err := getBackingImageSelector(backingImageName)
+	if err != nil {
+		return nil, err
+	}
+	return s.rLister.Replicas(s.namespace).List(backingImageSelector)
+}
+
 // ListReplicasByNodeRO returns a list of all Replicas on node Name for the given namespace,
 // the list contains direct references to the internal cache objects and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
@@ -1212,6 +1408,22 @@ func tagDiskUUIDLabel(diskUUID string, obj runtime.Object) error {
 		labels = map[string]string{}
 	}
 	labels[types.LonghornDiskUUIDKey] = diskUUID
+	metadata.SetLabels(labels)
+	return nil
+}
+
+func tagBackingImageLabel(backingImageName string, obj runtime.Object) error {
+	// fix longhorn.io/backing-image label for object
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[types.GetLonghornLabelKey(types.LonghornLabelBackingImage)] = backingImageName
 	metadata.SetLabels(labels)
 	return nil
 }

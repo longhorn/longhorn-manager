@@ -86,6 +86,7 @@ func uninstall(c *cli.Context) error {
 	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
 	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 	smInformer := lhInformerFactory.Longhorn().V1beta1().ShareManagers()
+	backingImageInformer := lhInformerFactory.Longhorn().V1beta1().BackingImages()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
@@ -104,7 +105,7 @@ func uninstall(c *cli.Context) error {
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
 		engineImageInformer, nodeInformer, settingInformer, imInformer,
-		smInformer,
+		smInformer, backingImageInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
@@ -130,6 +131,7 @@ func uninstall(c *cli.Context) error {
 		engineImageInformer,
 		nodeInformer,
 		imInformer,
+		backingImageInformer,
 		daemonSetInformer,
 		deploymentInformer,
 		csiDriverInformer,

@@ -60,6 +60,7 @@ type ReplicaController struct {
 	nStoreSynced  cache.InformerSynced
 	rStoreSynced  cache.InformerSynced
 	imStoreSynced cache.InformerSynced
+	biStoreSynced cache.InformerSynced
 
 	instanceHandler *InstanceHandler
 }
@@ -71,6 +72,7 @@ func NewReplicaController(
 	nodeInformer lhinformers.NodeInformer,
 	replicaInformer lhinformers.ReplicaInformer,
 	instanceManagerInformer lhinformers.InstanceManagerInformer,
+	backingImageInformer lhinformers.BackingImageInformer,
 	kubeClient clientset.Interface,
 	namespace string, controllerID string) *ReplicaController {
 
@@ -93,6 +95,7 @@ func NewReplicaController(
 		nStoreSynced:  nodeInformer.Informer().HasSynced,
 		rStoreSynced:  replicaInformer.Informer().HasSynced,
 		imStoreSynced: instanceManagerInformer.Informer().HasSynced,
+		biStoreSynced: backingImageInformer.Informer().HasSynced,
 	}
 	rc.instanceHandler = NewInstanceHandler(ds, rc, rc.eventRecorder)
 
@@ -114,6 +117,12 @@ func NewReplicaController(
 		DeleteFunc: rc.enqueueNodeChange,
 	})
 
+	backingImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    rc.enqueueBackingImageChange,
+		UpdateFunc: func(old, cur interface{}) { rc.enqueueBackingImageChange(cur) },
+		DeleteFunc: rc.enqueueBackingImageChange,
+	})
+
 	return rc
 }
 
@@ -124,7 +133,7 @@ func (rc *ReplicaController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start Longhorn replica controller")
 	defer logrus.Infof("Shutting down Longhorn replica controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn replicas", stopCh, rc.nStoreSynced, rc.rStoreSynced, rc.imStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn replicas", stopCh, rc.nStoreSynced, rc.rStoreSynced, rc.imStoreSynced, rc.biStoreSynced) {
 		return
 	}
 
@@ -346,6 +355,30 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 		return nil, fmt.Errorf("missing parameters for replica process creation: %v", r)
 	}
 
+	backingImagePath := ""
+	if r.Spec.BackingImage != "" {
+		bi, err := rc.ds.GetBackingImage(r.Spec.BackingImage)
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := bi.Spec.Disks[r.Spec.DiskID]; !exists {
+			bi.Spec.Disks[r.Spec.DiskID] = struct{}{}
+			logrus.Debugf("Replica %v will ask backing image %v to download file to node %v disk %v from URL %v",
+				r.Name, bi.Name, r.Spec.NodeID, r.Spec.DiskID, bi.Spec.ImageURL)
+			if _, err := rc.ds.UpdateBackingImage(bi); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		}
+		// bi.Spec.Disks[r.Spec.DiskID] exists
+		if state, exists := bi.Status.DiskDownloadStateMap[r.Spec.DiskID]; !exists || state != types.BackingImageDownloadStateDownloaded {
+			logrus.Debugf("Replica %v is waiting for backing image %v downloading file to node %v disk %v from URL %v, the current state is %v",
+				r.Name, bi.Name, r.Spec.NodeID, r.Spec.DiskID, bi.Spec.ImageURL, state)
+			return nil, nil
+		}
+		backingImagePath = types.GetBackingImagePathForReplicaManagerContainer(r.Spec.DiskPath, r.Spec.BackingImage)
+	}
+
 	im, err := rc.ds.GetInstanceManagerByInstance(obj)
 	if err != nil {
 		return nil, err
@@ -355,7 +388,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 		return nil, err
 	}
 
-	return c.ReplicaProcessCreate(r.Name, r.Spec.EngineImage, dataPath, r.Spec.VolumeSize, r.Spec.RevisionCounterDisabled)
+	return c.ReplicaProcessCreate(r.Name, r.Spec.EngineImage, dataPath, backingImagePath, r.Spec.VolumeSize, r.Spec.RevisionCounterDisabled)
 }
 
 func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
@@ -583,6 +616,37 @@ func (rc *ReplicaController) enqueueNodeChange(obj interface{}) {
 					rc.enqueueReplica(replica)
 				}
 			}
+		}
+	}
+
+	return
+}
+
+func (rc *ReplicaController) enqueueBackingImageChange(obj interface{}) {
+	backingImage, ok := obj.(*longhorn.BackingImage)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		backingImage, ok = deletedState.Obj.(*longhorn.BackingImage)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	for diskUUID := range backingImage.Status.DiskDownloadStateMap {
+		replicas, err := rc.ds.ListReplicasByDiskUUID(diskUUID)
+		if err != nil {
+			utilruntime.HandleError(fmt.Errorf("failed to list replicas in disk %v for backing image %v: %v", diskUUID, backingImage.Name, err))
+			continue
+		}
+		for _, r := range replicas {
+			rc.enqueueReplica(r)
 		}
 	}
 
