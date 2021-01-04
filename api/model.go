@@ -35,7 +35,7 @@ type Volume struct {
 	Robustness              types.VolumeRobustness `json:"robustness"`
 	EngineImage             string                 `json:"engineImage"`
 	CurrentImage            string                 `json:"currentImage"`
-	BaseImage               string                 `json:"baseImage"`
+	BackingImage            string                 `json:"backingImage"`
 	Created                 string                 `json:"created"`
 	LastBackup              string                 `json:"lastBackup"`
 	LastBackupAt            string                 `json:"lastBackupAt"`
@@ -622,9 +622,9 @@ func volumeSchema(volume *client.Schema) {
 	volumeStaleReplicaTimeout.Default = 2880
 	volume.ResourceFields["staleReplicaTimeout"] = volumeStaleReplicaTimeout
 
-	volumeBaseImage := volume.ResourceFields["baseImage"]
-	volumeBaseImage.Create = true
-	volume.ResourceFields["baseImage"] = volumeBaseImage
+	volumeBackingImage := volume.ResourceFields["backingImage"]
+	volumeBackingImage.Create = true
+	volume.ResourceFields["backingImage"] = volumeBackingImage
 
 	replicas := volume.ResourceFields["replicas"]
 	replicas.Type = "array[replica]"
@@ -883,7 +883,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
 		Created:             v.CreationTimestamp.String(),
 		EngineImage:         v.Spec.EngineImage,
-		BaseImage:           v.Spec.BaseImage,
+		BackingImage:        v.Spec.BackingImage,
 		Standby:             v.Spec.Standby,
 		DiskSelector:        v.Spec.DiskSelector,
 		NodeSelector:        v.Spec.NodeSelector,

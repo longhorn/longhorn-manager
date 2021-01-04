@@ -228,16 +228,9 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		}
 	}
 
-	if spec.BaseImage != "" {
-		nodes, err := m.ListNodes()
-		if err != nil {
-			return nil, fmt.Errorf("couldn't list nodes")
-		}
-		for _, node := range nodes {
-			conditions := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeMountPropagation)
-			if conditions.Status != types.ConditionStatusTrue {
-				return nil, fmt.Errorf("cannot support BaseImage, node doesn't support mount propagation: %v", node)
-			}
+	if spec.BackingImage != "" {
+		if _, err := m.ds.GetBackingImage(spec.BackingImage); err != nil {
+			return nil, err
 		}
 	}
 
@@ -258,7 +251,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			NumberOfReplicas:        spec.NumberOfReplicas,
 			DataLocality:            spec.DataLocality,
 			StaleReplicaTimeout:     spec.StaleReplicaTimeout,
-			BaseImage:               spec.BaseImage,
+			BackingImage:            spec.BackingImage,
 			RecurringJobs:           spec.RecurringJobs,
 			Standby:                 spec.Standby,
 			DiskSelector:            spec.DiskSelector,

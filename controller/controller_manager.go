@@ -76,6 +76,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
 	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 	shareManagerInformer := lhInformerFactory.Longhorn().V1beta1().ShareManagers()
+	backingImageInformer := lhInformerFactory.Longhorn().V1beta1().BackingImages()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
@@ -95,7 +96,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
 		engineImageInformer, nodeInformer, settingInformer,
-		imInformer, shareManagerInformer,
+		imInformer, shareManagerInformer, backingImageInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
@@ -105,7 +106,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		serviceInformer,
 		kubeClient, namespace)
 	rc := NewReplicaController(logger, ds, scheme,
-		nodeInformer, replicaInformer, imInformer,
+		nodeInformer, replicaInformer, imInformer, backingImageInformer,
 		kubeClient, namespace, controllerID)
 	ec := NewEngineController(logger, ds, scheme,
 		engineInformer, imInformer,
@@ -131,6 +132,9 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		imInformer, podInformer, kubeNodeInformer, kubeClient, namespace, controllerID, serviceAccount)
 	smc := NewShareManagerController(logger, ds, scheme,
 		shareManagerInformer, volumeInformer, podInformer,
+		kubeClient, namespace, controllerID, serviceAccount)
+	bic := NewBackingImageController(logger, ds, scheme,
+		backingImageInformer, replicaInformer, podInformer,
 		kubeClient, namespace, controllerID, serviceAccount)
 	kpvc := NewKubernetesPVController(logger, ds, scheme,
 		volumeInformer, persistentVolumeInformer,
@@ -160,6 +164,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	go sc.Run(stopCh)
 	go imc.Run(Workers, stopCh)
 	go smc.Run(Workers, stopCh)
+	go bic.Run(Workers, stopCh)
 
 	go kpvc.Run(Workers, stopCh)
 	go knc.Run(Workers, stopCh)

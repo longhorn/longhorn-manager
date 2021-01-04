@@ -21,6 +21,7 @@ const (
 	LonghornKindEngineImage     = "EngineImage"
 	LonghornKindInstanceManager = "InstanceManager"
 	LonghornKindShareManager    = "ShareManager"
+	LonghornKindBackingImage    = "BackingImage"
 
 	CRDAPIVersionV1alpha1 = "longhorn.rancher.io/v1alpha1"
 	CRDAPIVersionV1beta1  = "longhorn.io/v1beta1"
@@ -35,6 +36,10 @@ const (
 	ReplicaHostPrefix                = "/host"
 	EngineBinaryName                 = "longhorn"
 
+	BackingImagesDirectory           = "/backing-images/"
+	BackingImageDirectoryInContainer = "/backing-image/"
+	BackingImageFileName             = "backing"
+
 	LonghornNodeKey     = "longhornnode"
 	LonghornDiskUUIDKey = "longhorndiskuuid"
 
@@ -46,7 +51,6 @@ const (
 
 	LastAppliedTolerationAnnotationKeySuffix = "last-applied-tolerations"
 
-	BaseImageLabel        = "ranchervm-base-image"
 	KubernetesStatusLabel = "KubernetesStatus"
 	KubernetesReplicaSet  = "ReplicaSet"
 	KubernetesStatefulSet = "StatefulSet"
@@ -62,6 +66,7 @@ const (
 	LonghornLabelVolume               = "longhornvolume"
 	LonghornLabelShareManager         = "share-manager"
 	LonghornLabelShareManagerImage    = "share-manager-image"
+	LonghornLabelBackingImage         = "backing-image"
 
 	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
@@ -200,6 +205,14 @@ func EngineBinaryExistOnHostForImage(image string) bool {
 	return err == nil && !st.IsDir()
 }
 
+func GetBackingImageDirectoryOnHost(diskPath, backingImageName string) string {
+	return filepath.Join(diskPath, BackingImagesDirectory, backingImageName)
+}
+
+func GetBackingImagePathForReplicaManagerContainer(diskPath, backingImageName string) string {
+	return filepath.Join(ReplicaHostPrefix, GetBackingImageDirectoryOnHost(diskPath, backingImageName), BackingImageFileName)
+}
+
 var (
 	LonghornSystemKey = "longhorn"
 )
@@ -263,6 +276,19 @@ func GetShareManagerLabels(name, image string) map[string]string {
 		labels[GetLonghornLabelKey(LonghornLabelShareManagerImage)] = GetShareManagerImageChecksumName(GetImageCanonicalName(image))
 	}
 
+	return labels
+}
+
+func GetBackingImageLabels(backingImageName, diskUUID string) map[string]string {
+	labels := map[string]string{
+		GetLonghornLabelComponentKey(): LonghornLabelBackingImage,
+	}
+	if backingImageName != "" {
+		labels[GetLonghornLabelKey(LonghornLabelBackingImage)] = backingImageName
+	}
+	if diskUUID != "" {
+		labels[LonghornDiskUUIDKey] = backingImageName
+	}
 	return labels
 }
 

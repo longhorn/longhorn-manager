@@ -83,7 +83,7 @@ type VolumeSpec struct {
 	NodeID                  string         `json:"nodeID"`
 	EngineImage             string         `json:"engineImage"`
 	RecurringJobs           []RecurringJob `json:"recurringJobs"`
-	BaseImage               string         `json:"baseImage"`
+	BackingImage            string         `json:"backingImage"`
 	Standby                 bool           `json:"Standby"`
 	DiskSelector            []string       `json:"diskSelector"`
 	NodeSelector            []string       `json:"nodeSelector"`
@@ -91,6 +91,9 @@ type VolumeSpec struct {
 	RevisionCounterDisabled bool           `json:"revisionCounterDisabled"`
 	LastAttachedBy          string         `json:"lastAttachedBy"`
 	AccessMode              AccessMode     `json:"accessMode"`
+
+	// Deprecated. Rename to BackingImage
+	BaseImage string `json:"baseImage"`
 }
 
 type KubernetesStatus struct {
@@ -233,7 +236,7 @@ type ReplicaSpec struct {
 	DiskID                  string `json:"diskID"`
 	DiskPath                string `json:"diskPath"`
 	DataDirectoryName       string `json:"dataDirectoryName"`
-	BaseImage               string `json:"baseImage"`
+	BackingImage            string `json:"backingImage"`
 	Active                  bool   `json:"active"`
 	HardNodeAffinity        string `json:"hardNodeAffinity"`
 	RevisionCounterDisabled bool   `json:"revisionCounterDisabled"`
@@ -241,6 +244,8 @@ type ReplicaSpec struct {
 
 	// Deprecated
 	DataPath string `json:"dataPath"`
+	// Deprecated. Rename to BackingImage
+	BaseImage string `json:"baseImage"`
 }
 
 type ReplicaStatus struct {

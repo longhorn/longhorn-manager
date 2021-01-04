@@ -247,6 +247,9 @@ func (m *VolumeManager) generateSupportBundleYAMLsForLonghorn(dir string, errLog
 	getObjectMapAndEncodeToYAML("sharemanagers", func() (interface{}, error) {
 		return m.ds.ListShareManagers()
 	}, dir, errLog)
+	getObjectMapAndEncodeToYAML("backingimages", func() (interface{}, error) {
+		return m.ds.ListBackingImages()
+	}, dir, errLog)
 }
 
 func writeErrorToFile(path string, errorMessage error) error {

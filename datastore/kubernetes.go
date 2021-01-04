@@ -29,6 +29,10 @@ const (
 	KubeStatusPollCount = 5
 	// KubeStatusPollInterval is the waiting time between each KubeStatusPollCount
 	KubeStatusPollInterval = 1 * time.Second
+
+	PodProbeInitialDelay             = 3
+	PodProbePeriodSeconds            = 5
+	PodLivenessProbeFailureThreshold = 3
 )
 
 func (s *DataStore) getManagerLabel() map[string]string {
@@ -308,6 +312,20 @@ func getShareManagerComponentSelector() (labels.Selector, error) {
 
 func (s *DataStore) ListShareManagerPods() ([]*corev1.Pod, error) {
 	selector, err := getShareManagerComponentSelector()
+	if err != nil {
+		return nil, err
+	}
+	return s.ListPodsBySelector(selector)
+}
+
+func getBackingImageInstanceSelector(backingImageName string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetBackingImageLabels(backingImageName, ""),
+	})
+}
+
+func (s *DataStore) ListBackingImageRelatedPods(backingImageName string) ([]*corev1.Pod, error) {
+	selector, err := getBackingImageInstanceSelector(backingImageName)
 	if err != nil {
 		return nil, err
 	}

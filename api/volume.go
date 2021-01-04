@@ -107,10 +107,6 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		return err
 	}
 
-	if volume.BaseImage != "" {
-		return fmt.Errorf("BaseImage feature is currently unsupported")
-	}
-
 	if volume.Standby {
 		if volume.Frontend != "" {
 			return fmt.Errorf("cannot set frontend for standby volume: %v", volume.Name)
@@ -161,7 +157,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		NumberOfReplicas:        volume.NumberOfReplicas,
 		DataLocality:            volume.DataLocality,
 		StaleReplicaTimeout:     volume.StaleReplicaTimeout,
-		BaseImage:               volume.BaseImage,
+		BackingImage:            volume.BackingImage,
 		RecurringJobs:           volume.RecurringJobs,
 		Standby:                 volume.Standby,
 		RevisionCounterDisabled: volume.RevisionCounterDisabled,

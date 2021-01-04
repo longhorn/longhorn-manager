@@ -120,7 +120,7 @@ func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName, engi
 	return c.parseProcess(engineProcess), nil
 }
 
-func (c *InstanceManagerClient) ReplicaProcessCreate(replicaName, engineImage, dataPath string, size int64, revCounterDisabled bool) (*types.InstanceProcess, error) {
+func (c *InstanceManagerClient) ReplicaProcessCreate(replicaName, engineImage, dataPath, backingImagePath string, size int64, revCounterDisabled bool) (*types.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -128,7 +128,9 @@ func (c *InstanceManagerClient) ReplicaProcessCreate(replicaName, engineImage, d
 		"replica", types.GetReplicaMountedDataPath(dataPath),
 		"--size", strconv.FormatInt(size, 10),
 	}
-
+	if backingImagePath != "" {
+		args = append(args, "--backing-file", backingImagePath)
+	}
 	if revCounterDisabled {
 		args = append(args, "--disableRevCounter")
 	}

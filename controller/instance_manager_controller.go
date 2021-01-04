@@ -37,11 +37,6 @@ import (
 )
 
 const (
-	managerProbeInitialDelay  = 3
-	managerProbePeriodSeconds = 5
-
-	managerLivenessProbeFailureThreshold = 3
-
 	// MaxPollCount, MinPollCount, PollInterval determines how often we sync instance map
 
 	MaxPollCount = 60
@@ -831,9 +826,9 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 								Command: []string{"/usr/local/bin/grpc_health_probe", "-addr=:8500"},
 							},
 						},
-						InitialDelaySeconds: managerProbeInitialDelay,
-						PeriodSeconds:       managerProbePeriodSeconds,
-						FailureThreshold:    managerLivenessProbeFailureThreshold,
+						InitialDelaySeconds: datastore.PodProbeInitialDelay,
+						PeriodSeconds:       datastore.PodProbePeriodSeconds,
+						FailureThreshold:    datastore.PodLivenessProbeFailureThreshold,
 					},
 					SecurityContext: &v1.SecurityContext{
 						Privileged: &privileged,
