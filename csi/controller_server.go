@@ -61,42 +61,40 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	// Check request parameters like Name and Volume Capabilities
-	volumeParameters := req.GetParameters()
 	if len(req.GetName()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume Name cannot be empty")
 	}
 	volumeCaps := req.GetVolumeCapabilities()
-	if volumeCaps == nil {
-		return nil, status.Error(codes.InvalidArgument, "Volume Capabilities cannot be empty")
-	}
-
-	if err := cs.validateVolumeCapabilities(req.GetVolumeCapabilities()); err != nil {
+	if err := cs.validateVolumeCapabilities(volumeCaps); err != nil {
 		return nil, err
 	}
+	volumeParameters := req.GetParameters()
 
 	// check if we need to restore from a csi snapshot
 	// we don't support volume cloning at the moment
-	if req.VolumeContentSource != nil {
-		if snapshot := req.VolumeContentSource.GetSnapshot(); snapshot != nil {
-			_, volumeName, backupName := decodeSnapshotID(snapshot.SnapshotId)
-			bv, err := cs.apiClient.BackupVolume.ById(volumeName)
-			if err != nil {
-				msg := fmt.Sprintf("CreateVolume: cannot restore snapshot %v backupvolume not available", snapshot.SnapshotId)
-				logrus.Error(msg)
-				return nil, status.Error(codes.NotFound, msg)
-			}
-
-			backup, err := cs.apiClient.BackupVolume.ActionBackupGet(bv, &longhornclient.BackupInput{Name: backupName})
-			if err != nil {
-				msg := fmt.Sprintf("CreateVolume: cannot restore snapshot %v backup not available", snapshot.SnapshotId)
-				logrus.Error(msg)
-				return nil, status.Error(codes.NotFound, msg)
-			}
-
-			// use the fromBackup method for the csi snapshot restores as well
-			// the same parameter was previously only used for restores based on the storage class
-			volumeParameters["fromBackup"] = backup.Url
+	if req.VolumeContentSource != nil && req.VolumeContentSource.GetSnapshot() != nil {
+		snapshot := req.VolumeContentSource.GetSnapshot()
+		_, volumeName, backupName := decodeSnapshotID(snapshot.SnapshotId)
+		bv, err := cs.apiClient.BackupVolume.ById(volumeName)
+		if err != nil {
+			msg := fmt.Sprintf("CreateVolume: cannot restore snapshot %v backupvolume not available", snapshot.SnapshotId)
+			logrus.Error(msg)
+			return nil, status.Error(codes.NotFound, msg)
 		}
+
+		backup, err := cs.apiClient.BackupVolume.ActionBackupGet(bv, &longhornclient.BackupInput{Name: backupName})
+		if err != nil {
+			msg := fmt.Sprintf("CreateVolume: cannot restore snapshot %v backup not available", snapshot.SnapshotId)
+			logrus.Error(msg)
+			return nil, status.Error(codes.NotFound, msg)
+		}
+
+		// use the fromBackup method for the csi snapshot restores as well
+		// the same parameter was previously only used for restores based on the storage class
+		if volumeParameters == nil {
+			volumeParameters = map[string]string{}
+		}
+		volumeParameters["fromBackup"] = backup.Url
 	}
 
 	// check for already existing volume name
@@ -129,6 +127,9 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	// we need to mark the volume as a shared volume
 	for _, cap := range volumeCaps {
 		if requiresSharedAccess(nil, cap) {
+			if volumeParameters == nil {
+				volumeParameters = map[string]string{}
+			}
 			volumeParameters["share"] = "true"
 			break
 		}
