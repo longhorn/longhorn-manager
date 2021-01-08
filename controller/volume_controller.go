@@ -492,8 +492,8 @@ func (vc *VolumeController) EvictReplicas(v *longhorn.Volume,
 	return nil
 }
 
-// ReconcileEngineReplicaState will get the current main engine e.Status.ReplicaModeMap and e.Status.RestoreStatus, then update
-// v and rs accordingly.
+// ReconcileEngineReplicaState will get the current main engine e.Status.ReplicaModeMap, e.Status.RestoreStatus,
+// and e.Status.purgeStatus then update v and rs accordingly.
 func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to reconcile engine/replica state for %v", v.Name)
@@ -522,15 +522,24 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		return nil
 	}
 
-	restoreStatusMap := map[string]*types.RestoreStatus{}
 	replicaList := []*longhorn.Replica{}
 	for _, r := range rs {
 		replicaList = append(replicaList, r)
 	}
+
+	restoreStatusMap := map[string]*types.RestoreStatus{}
 	for addr, status := range e.Status.RestoreStatus {
 		rName := datastore.ReplicaAddressToReplicaName(addr, replicaList)
 		if _, exists := rs[rName]; exists {
 			restoreStatusMap[rName] = status
+		}
+	}
+
+	purgeStatusMap := map[string]*types.PurgeStatus{}
+	for addr, status := range e.Status.PurgeStatus {
+		rName := datastore.ReplicaAddressToReplicaName(addr, replicaList)
+		if _, exists := rs[rName]; exists {
+			purgeStatusMap[rName] = status
 		}
 	}
 
@@ -539,32 +548,36 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 	healthyCount := 0
 	for rName, mode := range e.Status.ReplicaModeMap {
 		r := rs[rName]
+		if r == nil {
+			continue
+		}
 		restoreStatus := restoreStatusMap[rName]
+		purgeStatus := purgeStatusMap[rName]
 		if mode == types.ReplicaModeERR ||
-			(restoreStatus != nil && restoreStatus.Error != "") {
-			if r != nil {
-				if restoreStatus != nil && restoreStatus.Error != "" {
-					vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFailedRestore, "replica %v failed the restore: %s", r.Name, restoreStatus.Error)
-				}
-				e.Spec.LogRequested = true
-				r.Spec.LogRequested = true
-				r.Spec.FailedAt = vc.nowHandler()
-				r.Spec.DesireState = types.InstanceStateStopped
+			(restoreStatus != nil && restoreStatus.Error != "") ||
+			(purgeStatus != nil && purgeStatus.Error != "") {
+			if restoreStatus != nil && restoreStatus.Error != "" {
+				vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFailedRestore, "replica %v failed the restore: %s", r.Name, restoreStatus.Error)
+			}
+			if purgeStatus != nil && purgeStatus.Error != "" {
+				vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFailedSnapshotPurge, "replica %v failed the snapshot purge: %s", r.Name, purgeStatus.Error)
+			}
+			e.Spec.LogRequested = true
+			r.Spec.LogRequested = true
+			r.Spec.FailedAt = vc.nowHandler()
+			r.Spec.DesireState = types.InstanceStateStopped
+			rs[rName] = r
+		} else if mode == types.ReplicaModeRW {
+			// record once replica became healthy, so if it
+			// failed in the future, we can tell it apart
+			// from replica failed during rebuilding
+			if r.Spec.HealthyAt == "" {
+				vc.backoff.DeleteEntry(r.Name)
+				r.Spec.HealthyAt = vc.nowHandler()
+				r.Spec.RebuildRetryCount = 0
 				rs[rName] = r
 			}
-		} else if mode == types.ReplicaModeRW {
-			if r != nil {
-				// record once replica became healthy, so if it
-				// failed in the future, we can tell it apart
-				// from replica failed during rebuilding
-				if r.Spec.HealthyAt == "" {
-					vc.backoff.DeleteEntry(r.Name)
-					r.Spec.HealthyAt = vc.nowHandler()
-					r.Spec.RebuildRetryCount = 0
-					rs[rName] = r
-				}
-				healthyCount++
-			}
+			healthyCount++
 		}
 	}
 	// If a replica failed at attaching stage,
