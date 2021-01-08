@@ -74,6 +74,7 @@ const (
 	SettingNameAllowVolumeCreationWithDegradedAvailability  = SettingName("allow-volume-creation-with-degraded-availability")
 	SettingNameAutoCleanupSystemGeneratedSnapshot           = SettingName("auto-cleanup-system-generated-snapshot")
 	SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit = SettingName("concurrent-automatic-engine-upgrade-per-node-limit")
+	SettingNameBackingImageCleanupWaitInterval              = SettingName("backing-image-cleanup-wait-interval")
 )
 
 var (
@@ -115,6 +116,7 @@ var (
 		SettingNameAllowVolumeCreationWithDegradedAvailability,
 		SettingNameAutoCleanupSystemGeneratedSnapshot,
 		SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit,
+		SettingNameBackingImageCleanupWaitInterval,
 	}
 )
 
@@ -177,6 +179,7 @@ var (
 		SettingNameAllowVolumeCreationWithDegradedAvailability:  SettingDefinitionAllowVolumeCreationWithDegradedAvailability,
 		SettingNameAutoCleanupSystemGeneratedSnapshot:           SettingDefinitionAutoCleanupSystemGeneratedSnapshot,
 		SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit: SettingDefinitionConcurrentAutomaticEngineUpgradePerNodeLimit,
+		SettingNameBackingImageCleanupWaitInterval:              SettingDefinitionBackingImageCleanupWaitInterval,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -587,6 +590,16 @@ var (
 		ReadOnly: false,
 		Default:  "0",
 	}
+
+	SettingDefinitionBackingImageCleanupWaitInterval = SettingDefinition{
+		DisplayName: "Backing Image Cleanup Wait Interval",
+		Description: "In minutes. The interval determines how long Longhorn will wait before cleaning up the backing image file when there is no replica in the disk using it.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "60",
+	}
 )
 
 type VolumeAttachmentRecoveryPolicy string
@@ -692,6 +705,8 @@ func ValidateInitSetting(name, value string) (err error) {
 		if _, err := resource.ParseQuantity(value); err != nil {
 			return errors.Wrapf(err, "invalid value %v as CPU resource", value)
 		}
+	case SettingNameBackingImageCleanupWaitInterval:
+		fallthrough
 	case SettingNameReplicaReplenishmentWaitInterval:
 		fallthrough
 	case SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit:
