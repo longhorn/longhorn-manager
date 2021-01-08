@@ -36,3 +36,4 @@ data:
     allow-volume-creation-with-degraded-availability:
     auto-cleanup-system-generated-snapshot:
     concurrent-automatic-engine-upgrade-per-node-limit:
+    backing-image-cleanup-wait-interval:
