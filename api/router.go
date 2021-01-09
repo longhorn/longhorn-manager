@@ -131,6 +131,17 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("GET").Path("/v1/instancemanagers").Handler(f(schemas, s.InstanceManagerList))
 	r.Methods("GET").Path("/v1/instancemanagers/{name}").Handler(f(schemas, s.InstanceManagerGet))
 
+	r.Methods("GET").Path("/v1/backingimages").Handler(f(schemas, s.BackingImageList))
+	r.Methods("GET").Path("/v1/backingimages/{name}").Handler(f(schemas, s.BackingImageGet))
+	r.Methods("POST").Path("/v1/backingimages").Handler(f(schemas, s.BackingImageCreate))
+	r.Methods("DELETE").Path("/v1/backingimages/{name}").Handler(f(schemas, s.BackingImageDelete))
+	backingImageActions := map[string]func(http.ResponseWriter, *http.Request) error{
+		"backingImageCleanup": s.BackingImageCleanup,
+	}
+	for name, action := range backingImageActions {
+		r.Methods("POST").Path("/v1/backingimages/{name}").Queries("action", name).Handler(f(schemas, action))
+	}
+
 	r.Methods("POST").Path("/v1/supportbundles").Handler(f(schemas, s.InitiateSupportBundle))
 	r.Methods("GET").Path("/v1/supportbundles/{name}/{bundleName}").Handler(f(schemas,
 		s.fwd.Handler(OwnerIDFromNode(s.m), s.QuerySupportBundle)))
@@ -152,6 +163,10 @@ func NewRouter(s *Server) *mux.Router {
 	engineImageStream := NewStreamHandlerFunc("engineimages", s.wsc.NewWatcher("engineImage"), s.engineImageList)
 	r.Path("/v1/ws/engineimages").Handler(f(schemas, engineImageStream))
 	r.Path("/v1/ws/{period}/engineimages").Handler(f(schemas, engineImageStream))
+
+	backingImageStream := NewStreamHandlerFunc("backingimages", s.wsc.NewWatcher("backingImage"), s.backingImageList)
+	r.Path("/v1/ws/backingimages").Handler(f(schemas, backingImageStream))
+	r.Path("/v1/ws/{period}/backingimages").Handler(f(schemas, backingImageStream))
 
 	eventListStream := NewStreamHandlerFunc("events", s.wsc.NewWatcher("event"), s.eventList)
 	r.Path("/v1/ws/events").Handler(f(schemas, eventListStream))

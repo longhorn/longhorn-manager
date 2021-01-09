@@ -132,6 +132,21 @@ type EngineImage struct {
 	Timestamp string `json:"timestamp"`
 }
 
+type BackingImage struct {
+	client.Resource
+
+	Name         string            `json:"name"`
+	ImageURL     string            `json:"imageURL"`
+	DiskStateMap map[string]string `json:"diskStateMap"`
+
+	Timestamp         string `json:"timestamp"`
+	DeletionTimestamp string `json:"deletionTimestamp"`
+}
+
+type BackingImageCleanupInput struct {
+	Disks []string `json:"disks"`
+}
+
 type AttachInput struct {
 	HostID          string `json:"hostId"`
 	DisableFrontend bool   `json:"disableFrontend"`
@@ -362,12 +377,15 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("instanceManager", InstanceManager{})
 	schemas.AddType("instanceProcess", types.InstanceProcess{})
 
+	schemas.AddType("backingImageCleanupInput", BackingImageCleanupInput{})
+
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	snapshotSchema(schemas.AddType("snapshot", Snapshot{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
 	recurringSchema(schemas.AddType("recurringInput", RecurringInput{}))
 	engineImageSchema(schemas.AddType("engineImage", EngineImage{}))
+	backingImageSchema(schemas.AddType("backingImage", BackingImage{}))
 	nodeSchema(schemas.AddType("node", Node{}))
 	diskSchema(schemas.AddType("diskUpdateInput", DiskUpdateInput{}))
 	diskInfoSchema(schemas.AddType("diskInfo", DiskInfo{}))
@@ -434,6 +452,34 @@ func engineImageSchema(engineImage *client.Schema) {
 	image.Required = true
 	image.Unique = true
 	engineImage.ResourceFields["image"] = image
+}
+
+func backingImageSchema(backingImage *client.Schema) {
+	backingImage.CollectionMethods = []string{"GET", "POST"}
+	backingImage.ResourceMethods = []string{"GET", "DELETE"}
+
+	backingImage.ResourceActions = map[string]client.Action{
+		"backingImageCleanup": {
+			Input:  "backingImageCleanupInput",
+			Output: "backingImage",
+		},
+	}
+
+	name := backingImage.ResourceFields["name"]
+	name.Required = true
+	name.Unique = true
+	name.Create = true
+	backingImage.ResourceFields["name"] = name
+
+	imageURL := backingImage.ResourceFields["imageURL"]
+	imageURL.Required = true
+	imageURL.Unique = true
+	imageURL.Create = true
+	backingImage.ResourceFields["imageURL"] = imageURL
+
+	diskStateMap := backingImage.ResourceFields["diskStateMap"]
+	diskStateMap.Type = "map[string]string"
+	backingImage.ResourceFields["diskStateMap"] = diskStateMap
 }
 
 func recurringSchema(recurring *client.Schema) {
@@ -1061,6 +1107,48 @@ func toEngineImageCollection(eis []*longhorn.EngineImage, defaultImage string) *
 		data = append(data, toEngineImageResource(ei, isDefault))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "engineImage"}}
+}
+
+func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContext) *BackingImage {
+	timestamp := generateTimestamp()
+	deletionTimestamp := ""
+	if bi.DeletionTimestamp != nil {
+		deletionTimestamp = bi.DeletionTimestamp.String()
+	}
+	diskStateMap := make(map[string]string)
+	for diskID, state := range bi.Status.DiskDownloadStateMap {
+		diskStateMap[diskID] = string(state)
+	}
+	for diskID := range bi.Spec.Disks {
+		if _, exists := bi.Status.DiskDownloadStateMap[diskID]; !exists {
+			diskStateMap[diskID] = ""
+		}
+	}
+	res := &BackingImage{
+		Resource: client.Resource{
+			Id:    bi.Name,
+			Type:  "backingImage",
+			Links: map[string]string{},
+		},
+		Name:         bi.Name,
+		ImageURL:     bi.Spec.ImageURL,
+		DiskStateMap: diskStateMap,
+
+		Timestamp:         timestamp,
+		DeletionTimestamp: deletionTimestamp,
+	}
+	res.Actions = map[string]string{
+		"backingImageCleanup": apiContext.UrlBuilder.ActionLink(res.Resource, "backingImageCleanup"),
+	}
+	return res
+}
+
+func toBackingImageCollection(bis map[string]*longhorn.BackingImage, apiContext *api.ApiContext) *client.GenericCollection {
+	data := []interface{}{}
+	for _, bi := range bis {
+		data = append(data, toBackingImageResource(bi, apiContext))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backingImage"}}
 }
 
 type Server struct {
