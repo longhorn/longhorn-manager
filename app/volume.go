@@ -221,6 +221,10 @@ func (job *Job) run() (err error) {
 		return errors.Wrapf(err, "could not get volume %v", volumeName)
 	}
 
+	if volume.MigrationNodeID != "" {
+		return fmt.Errorf("cannot run job for volume %v during migration", volume.Name)
+	}
+
 	defer job.handleVolumeDetachment()
 
 	if volume.State != string(types.VolumeStateAttached) && volume.State != string(types.VolumeStateDetached) {

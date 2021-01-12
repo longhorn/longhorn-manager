@@ -524,3 +524,57 @@ func (s *Server) EngineUpgrade(rw http.ResponseWriter, req *http.Request) error 
 
 	return s.responseWithVolume(rw, req, id, v)
 }
+
+func (s *Server) MigrationStart(rw http.ResponseWriter, req *http.Request) error {
+	var input NodeInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrapf(err, "error read nodeInput")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.MigrationStart(id, input.NodeID)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, id, v)
+}
+
+func (s *Server) MigrationConfirm(rw http.ResponseWriter, req *http.Request) error {
+	id := mux.Vars(req)["name"]
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.MigrationConfirm(id)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, id, v)
+}
+
+func (s *Server) MigrationRollback(rw http.ResponseWriter, req *http.Request) error {
+	id := mux.Vars(req)["name"]
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.MigrationRollback(id)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, id, v)
+}

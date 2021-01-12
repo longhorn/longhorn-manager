@@ -41,6 +41,8 @@ type Volume struct {
 
 	LastBackupAt string `json:"lastBackupAt,omitempty" yaml:"last_backup_at,omitempty"`
 
+	MigrationNodeID string `json:"migrationNodeID,omitempty" yaml:"migration_node_id,omitempty"`
+
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	NodeSelector []string `json:"nodeSelector,omitempty" yaml:"node_selector,omitempty"`
