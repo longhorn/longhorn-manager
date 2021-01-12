@@ -80,6 +80,10 @@ func NewRouter(s *Server) *mux.Router {
 		"replicaRemove": s.ReplicaRemove,
 		"engineUpgrade": s.EngineUpgrade,
 
+		"migrationStart":    s.MigrationStart,
+		"migrationConfirm":  s.MigrationConfirm,
+		"migrationRollback": s.MigrationRollback,
+
 		"snapshotPurge":  s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotPurge),
 		"snapshotCreate": s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotCreate),
 		"snapshotList":   s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotList),
