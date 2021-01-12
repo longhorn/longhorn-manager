@@ -37,6 +37,7 @@ type Volume struct {
 	CurrentImage            string                 `json:"currentImage"`
 	BackingImage            string                 `json:"backingImage"`
 	Created                 string                 `json:"created"`
+	MigrationNodeID         string                 `json:"migrationNodeID"`
 	LastBackup              string                 `json:"lastBackup"`
 	LastBackupAt            string                 `json:"lastBackupAt"`
 	LastAttachedBy          string                 `json:"lastAttachedBy"`
@@ -637,6 +638,12 @@ func volumeSchema(volume *client.Schema) {
 		"engineUpgrade": {
 			Input: "engineUpgradeInput",
 		},
+
+		"migrationStart": {
+			Input: "nodeInput",
+		},
+		"migrationConfirm":  {},
+		"migrationRollback": {},
 	}
 	volume.ResourceFields["controllers"] = client.Field{
 		Type:     "array[controller]",
@@ -1014,6 +1021,9 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
+			actions["migrationStart"] = struct{}{}
+			actions["migrationConfirm"] = struct{}{}
+			actions["migrationRollback"] = struct{}{}
 		}
 	}
 
