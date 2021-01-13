@@ -23,14 +23,16 @@ type BackupTarget struct {
 }
 
 type backupVolume struct {
-	Name           string
-	Size           string
-	Created        string
-	LastBackupName string
-	LastBackupAt   string
-	DataStored     string
-	Messages       map[backupstore.MessageType]string
-	Backups        map[string]interface{}
+	Name             string
+	Size             string
+	Created          string
+	LastBackupName   string
+	LastBackupAt     string
+	BackingImageName string
+	BackingImageURL  string
+	DataStored       string
+	Messages         map[backupstore.MessageType]string
+	Backups          map[string]interface{}
 }
 
 func NewBackupTarget(backupTarget, engineImage string, credential map[string]string) *BackupTarget {
@@ -134,13 +136,15 @@ func parseBackupVolumesList(output string) (map[string]*BackupVolume, error) {
 			}
 		}
 		volumes[name] = &BackupVolume{
-			Name:           name,
-			Size:           v.Size,
-			Created:        v.Created,
-			LastBackupName: v.LastBackupName,
-			LastBackupAt:   v.LastBackupAt,
-			DataStored:     v.DataStored,
-			Messages:       v.Messages,
+			Name:             name,
+			Size:             v.Size,
+			Created:          v.Created,
+			LastBackupName:   v.LastBackupName,
+			LastBackupAt:     v.LastBackupAt,
+			BackingImageName: v.BackingImageName,
+			BackingImageURL:  v.BackingImageURL,
+			DataStored:       v.DataStored,
+			Messages:         v.Messages,
 		}
 	}
 
@@ -235,7 +239,7 @@ func GetBackupURL(backupTarget, backupName, volName string) string {
 	return fmt.Sprintf("%s?backup=%s&volume=%s", backupTarget, backupName, volName)
 }
 
-func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string]string, credential map[string]string) (string, error) {
+func (e *Engine) SnapshotBackup(snapName, backupTarget, backingImageName, backingImageURL string, labels map[string]string, credential map[string]string) (string, error) {
 	if snapName == VolumeHeadName {
 		return "", fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)
 	}
@@ -246,7 +250,13 @@ func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string
 	if snap == nil {
 		return "", errors.Errorf("could not find snapshot '%s' to backup, volume '%s'", snapName, e.name)
 	}
+	if (backingImageName == "" && backingImageURL != "") || (backingImageName != "" && backingImageURL == "") {
+		return "", errors.Errorf("invalid backing image name %v and URL %v for backup creation", backingImageName, backingImageURL)
+	}
 	args := []string{"backup", "create", "--dest", backupTarget}
+	if backingImageName != "" {
+		args = append(args, "--backing-image-name", backingImageName, "--backing-image-url", backingImageURL)
+	}
 	for k, v := range labels {
 		args = append(args, "--label", k+"="+v)
 	}

@@ -67,7 +67,7 @@ type EngineClient interface {
 	SnapshotRevert(name string) error
 	SnapshotPurge() error
 	SnapshotPurgeStatus() (map[string]*types.PurgeStatus, error)
-	SnapshotBackup(snapName, backupTarget string, labels map[string]string, credential map[string]string) (string, error)
+	SnapshotBackup(snapName, backupTarget, backingImageName, backingImageURL string, labels map[string]string, credential map[string]string) (string, error)
 	SnapshotBackupStatus() (map[string]*types.BackupStatus, error)
 
 	BackupRestore(backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error
@@ -106,21 +106,28 @@ type BackupVolume struct {
 	DataStored     string                             `json:"dataStored"`
 	Messages       map[backupstore.MessageType]string `json:"messages"`
 	Backups        map[string]*Backup                 `json:"backups"`
-	BaseImage      string                             `json:"baseImage"`
+
+	BackingImageName string `json:"backingImageName"`
+	BackingImageURL  string `json:"backingImageURL"`
+
+	// Deprecated
+	BaseImage string `json:"baseImage"`
 }
 
 type Backup struct {
-	Name            string                             `json:"name"`
-	URL             string                             `json:"url"`
-	SnapshotName    string                             `json:"snapshotName"`
-	SnapshotCreated string                             `json:"snapshotCreated"`
-	Created         string                             `json:"created"`
-	Size            string                             `json:"size"`
-	Labels          map[string]string                  `json:"labels"`
-	VolumeName      string                             `json:"volumeName"`
-	VolumeSize      string                             `json:"volumeSize"`
-	VolumeCreated   string                             `json:"volumeCreated"`
-	Messages        map[backupstore.MessageType]string `json:"messages"`
+	Name                   string                             `json:"name"`
+	URL                    string                             `json:"url"`
+	SnapshotName           string                             `json:"snapshotName"`
+	SnapshotCreated        string                             `json:"snapshotCreated"`
+	Created                string                             `json:"created"`
+	Size                   string                             `json:"size"`
+	Labels                 map[string]string                  `json:"labels"`
+	VolumeName             string                             `json:"volumeName"`
+	VolumeSize             string                             `json:"volumeSize"`
+	VolumeCreated          string                             `json:"volumeCreated"`
+	VolumeBackingImageName string                             `json:"volumeBackingImageName"`
+	VolumeBackingImageURL  string                             `json:"volumeBackingImageURL"`
+	Messages               map[backupstore.MessageType]string `json:"messages"`
 }
 
 type BackupCreateInfo struct {

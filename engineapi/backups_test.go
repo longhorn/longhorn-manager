@@ -16,7 +16,9 @@ const oneBackupText = `
 	"Size": "169869312",
 	"VolumeName": "qq",
 	"VolumeSize": "10737418240",
-	"VolumeCreated": "2017-03-25T02:25:53Z"
+	"VolumeCreated": "2017-03-25T02:25:53Z",
+	"VolumeBackingImageName": "",
+	"VolumeBackingImageURL":  ""
 }
 `
 
@@ -28,6 +30,8 @@ const backupsListText = `
 		"Created": "2017-03-25T02:25:53Z",
 		"LastBackupName": "backup-072d7a718f854328",
 		"LastBackupAt": "2017-03-25T02:26:59Z",
+		"BackingImageName": "",
+		"BackingImageURL":  "",
 		"DataStored": "41943040",
 		"Backups": {
 			"vfs:///var/lib/longhorn/backups/default?backup=backup-072d7a718f854328\u0026volume=qq": {
@@ -57,15 +61,17 @@ func TestParseOneBackup(t *testing.T) {
 	b, err := parseOneBackup(oneBackupText)
 	assert.Nil(err)
 	assert.Equal(Backup{
-		Name:            "backup-072d7a718f854328",
-		URL:             "vfs:///var/lib/longhorn/backups/default?backup=backup-072d7a718f854328\u0026volume=qq",
-		SnapshotName:    "volume-snap-snap4.img",
-		SnapshotCreated: "2017-03-25T02:26:59Z",
-		Created:         "2017-03-25T02:27:00Z",
-		Size:            "169869312",
-		VolumeName:      "qq",
-		VolumeSize:      "10737418240",
-		VolumeCreated:   "2017-03-25T02:25:53Z",
+		Name:                   "backup-072d7a718f854328",
+		URL:                    "vfs:///var/lib/longhorn/backups/default?backup=backup-072d7a718f854328\u0026volume=qq",
+		SnapshotName:           "volume-snap-snap4.img",
+		SnapshotCreated:        "2017-03-25T02:26:59Z",
+		Created:                "2017-03-25T02:27:00Z",
+		Size:                   "169869312",
+		VolumeName:             "qq",
+		VolumeSize:             "10737418240",
+		VolumeCreated:          "2017-03-25T02:25:53Z",
+		VolumeBackingImageName: "",
+		VolumeBackingImageURL:  "",
 	}, *b)
 }
 
