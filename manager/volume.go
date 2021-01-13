@@ -11,6 +11,8 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/backupstore"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -168,12 +170,28 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		if err != nil {
 			return nil, err
 		}
+		bvName, err := backupstore.GetVolumeFromBackupURL(spec.FromBackup)
+		if err != nil {
+			return nil, fmt.Errorf("cannot unmarshal backup volume name from backup URL %v: %v", spec.FromBackup, err)
+		}
+		backupVolume, err := backupTarget.GetVolume(bvName)
+		if err != nil {
+			return nil, fmt.Errorf("cannot get backup volume %v from backup URL %v: %v", bvName, spec.FromBackup, err)
+		}
+		if backupVolume.BackingImageName != "" {
+			if spec.BackingImage == "" {
+				spec.BackingImage = backupVolume.BackingImageName
+				logrus.Debugf("Since the backing image is not specified during the restore, "+
+					"the previous backing image %v used by backup volume %v will be set for volume %v creation",
+					backupVolume.BackingImageName, bvName, name)
+			}
+		}
+
 		backup, err := backupTarget.GetBackup(spec.FromBackup)
 		if err != nil {
 			return nil, fmt.Errorf("cannot get backup %v: %v", spec.FromBackup, err)
 		}
 		logrus.Infof("Override size of volume %v to %v because it's from backup", name, backup.VolumeSize)
-
 		// formalize the final size to the unit in bytes
 		size, err = util.ConvertSize(backup.VolumeSize)
 		if err != nil {

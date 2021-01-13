@@ -133,7 +133,7 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 	return nil
 }
 
-func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]string, volumeName string) error {
+func (m *VolumeManager) BackupSnapshot(volumeName, snapshotName, backingImageName, backingImageURL string, labels map[string]string) error {
 	if volumeName == "" || snapshotName == "" {
 		return fmt.Errorf("volume and snapshot name required")
 	}
@@ -152,7 +152,7 @@ func (m *VolumeManager) BackupSnapshot(snapshotName string, labels map[string]st
 	}
 
 	// blocks till the backup creation has been started
-	backupID, err := engine.SnapshotBackup(snapshotName, backupTarget, labels, credential)
+	backupID, err := engine.SnapshotBackup(snapshotName, backupTarget, backingImageName, backingImageURL, labels, credential)
 	if err != nil {
 		logrus.WithError(err).Errorf("Failed to initiate backup for snapshot %v of volume %v with label %v", snapshotName, volumeName, labels)
 		return err
