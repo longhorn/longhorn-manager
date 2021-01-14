@@ -41,6 +41,8 @@ type Volume struct {
 
 	LastBackupAt string `json:"lastBackupAt,omitempty" yaml:"last_backup_at,omitempty"`
 
+	Migratable bool `json:"migratable,omitempty" yaml:"migratable,omitempty"`
+
 	MigrationNodeID string `json:"migrationNodeID,omitempty" yaml:"migration_node_id,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
@@ -105,7 +107,7 @@ type VolumeOperations interface {
 
 	ActionCancelExpansion(*Volume) (*Volume, error)
 
-	ActionDetach(*Volume) (*Volume, error)
+	ActionDetach(*Volume, *DetachInput) (*Volume, error)
 
 	ActionExpand(*Volume, *ExpandInput) (*Volume, error)
 
@@ -211,11 +213,11 @@ func (c *VolumeClient) ActionCancelExpansion(resource *Volume) (*Volume, error) 
 	return resp, err
 }
 
-func (c *VolumeClient) ActionDetach(resource *Volume) (*Volume, error) {
+func (c *VolumeClient) ActionDetach(resource *Volume, input *DetachInput) (*Volume, error) {
 
 	resp := &Volume{}
 
-	err := c.rancherClient.doAction(VOLUME_TYPE, "detach", &resource.Resource, nil, resp)
+	err := c.rancherClient.doAction(VOLUME_TYPE, "detach", &resource.Resource, input, resp)
 
 	return resp, err
 }

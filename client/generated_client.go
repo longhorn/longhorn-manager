@@ -6,6 +6,7 @@ type RancherClient struct {
 	ApiVersion                ApiVersionOperations
 	Error                     ErrorOperations
 	AttachInput               AttachInputOperations
+	DetachInput               DetachInputOperations
 	SnapshotInput             SnapshotInputOperations
 	Backup                    BackupOperations
 	BackupInput               BackupInputOperations
@@ -22,7 +23,6 @@ type RancherClient struct {
 	Replica                   ReplicaOperations
 	Controller                ControllerOperations
 	DiskUpdate                DiskUpdateOperations
-	NodeInput                 NodeInputOperations
 	UpdateReplicaCountInput   UpdateReplicaCountInputOperations
 	UpdateDataLocalityInput   UpdateDataLocalityInputOperations
 	UpdateAccessModeInput     UpdateAccessModeInputOperations
@@ -61,6 +61,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.ApiVersion = newApiVersionClient(client)
 	client.Error = newErrorClient(client)
 	client.AttachInput = newAttachInputClient(client)
+	client.DetachInput = newDetachInputClient(client)
 	client.SnapshotInput = newSnapshotInputClient(client)
 	client.Backup = newBackupClient(client)
 	client.BackupInput = newBackupInputClient(client)
@@ -77,7 +78,6 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.Replica = newReplicaClient(client)
 	client.Controller = newControllerClient(client)
 	client.DiskUpdate = newDiskUpdateClient(client)
-	client.NodeInput = newNodeInputClient(client)
 	client.UpdateReplicaCountInput = newUpdateReplicaCountInputClient(client)
 	client.UpdateDataLocalityInput = newUpdateDataLocalityInputClient(client)
 	client.UpdateAccessModeInput = newUpdateAccessModeInputClient(client)
