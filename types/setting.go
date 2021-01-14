@@ -37,42 +37,43 @@ const (
 type SettingName string
 
 const (
-	SettingNameBackupTarget                                = SettingName("backup-target")
-	SettingNameBackupTargetCredentialSecret                = SettingName("backup-target-credential-secret")
-	SettingNameAllowRecurringJobWhileVolumeDetached        = SettingName("allow-recurring-job-while-volume-detached")
-	SettingNameCreateDefaultDiskLabeledNodes               = SettingName("create-default-disk-labeled-nodes")
-	SettingNameDefaultDataPath                             = SettingName("default-data-path")
-	SettingNameDefaultEngineImage                          = SettingName("default-engine-image")
-	SettingNameDefaultInstanceManagerImage                 = SettingName("default-instance-manager-image")
-	SettingNameDefaultShareManagerImage                    = SettingName("default-share-manager-image")
-	SettingNameReplicaSoftAntiAffinity                     = SettingName("replica-soft-anti-affinity")
-	SettingNameStorageOverProvisioningPercentage           = SettingName("storage-over-provisioning-percentage")
-	SettingNameStorageMinimalAvailablePercentage           = SettingName("storage-minimal-available-percentage")
-	SettingNameUpgradeChecker                              = SettingName("upgrade-checker")
-	SettingNameLatestLonghornVersion                       = SettingName("latest-longhorn-version")
-	SettingNameDefaultReplicaCount                         = SettingName("default-replica-count")
-	SettingNameDefaultDataLocality                         = SettingName("default-data-locality")
-	SettingNameGuaranteedEngineCPU                         = SettingName("guaranteed-engine-cpu")
-	SettingNameDefaultLonghornStaticStorageClass           = SettingName("default-longhorn-static-storage-class")
-	SettingNameBackupstorePollInterval                     = SettingName("backupstore-poll-interval")
-	SettingNameTaintToleration                             = SettingName("taint-toleration")
-	SettingNameCRDAPIVersion                               = SettingName("crd-api-version")
-	SettingNameAutoSalvage                                 = SettingName("auto-salvage")
-	SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly = SettingName("auto-delete-pod-when-volume-detached-unexpectedly")
-	SettingNameRegistrySecret                              = SettingName("registry-secret")
-	SettingNameDisableSchedulingOnCordonedNode             = SettingName("disable-scheduling-on-cordoned-node")
-	SettingNameReplicaZoneSoftAntiAffinity                 = SettingName("replica-zone-soft-anti-affinity")
-	SettingNameVolumeAttachmentRecoveryPolicy              = SettingName("volume-attachment-recovery-policy")
-	SettingNameNodeDownPodDeletionPolicy                   = SettingName("node-down-pod-deletion-policy")
-	SettingNameAllowNodeDrainWithLastHealthyReplica        = SettingName("allow-node-drain-with-last-healthy-replica")
-	SettingNameMkfsExt4Parameters                          = SettingName("mkfs-ext4-parameters")
-	SettingNamePriorityClass                               = SettingName("priority-class")
-	SettingNameDisableRevisionCounter                      = SettingName("disable-revision-counter")
-	SettingNameDisableReplicaRebuild                       = SettingName("disable-replica-rebuild")
-	SettingNameReplicaReplenishmentWaitInterval            = SettingName("replica-replenishment-wait-interval")
-	SettingNameSystemManagedPodsImagePullPolicy            = SettingName("system-managed-pods-image-pull-policy")
-	SettingNameAllowVolumeCreationWithDegradedAvailability = SettingName("allow-volume-creation-with-degraded-availability")
-	SettingNameAutoCleanupSystemGeneratedSnapshot          = SettingName("auto-cleanup-system-generated-snapshot")
+	SettingNameBackupTarget                                 = SettingName("backup-target")
+	SettingNameBackupTargetCredentialSecret                 = SettingName("backup-target-credential-secret")
+	SettingNameAllowRecurringJobWhileVolumeDetached         = SettingName("allow-recurring-job-while-volume-detached")
+	SettingNameCreateDefaultDiskLabeledNodes                = SettingName("create-default-disk-labeled-nodes")
+	SettingNameDefaultDataPath                              = SettingName("default-data-path")
+	SettingNameDefaultEngineImage                           = SettingName("default-engine-image")
+	SettingNameDefaultInstanceManagerImage                  = SettingName("default-instance-manager-image")
+	SettingNameDefaultShareManagerImage                     = SettingName("default-share-manager-image")
+	SettingNameReplicaSoftAntiAffinity                      = SettingName("replica-soft-anti-affinity")
+	SettingNameStorageOverProvisioningPercentage            = SettingName("storage-over-provisioning-percentage")
+	SettingNameStorageMinimalAvailablePercentage            = SettingName("storage-minimal-available-percentage")
+	SettingNameUpgradeChecker                               = SettingName("upgrade-checker")
+	SettingNameLatestLonghornVersion                        = SettingName("latest-longhorn-version")
+	SettingNameDefaultReplicaCount                          = SettingName("default-replica-count")
+	SettingNameDefaultDataLocality                          = SettingName("default-data-locality")
+	SettingNameGuaranteedEngineCPU                          = SettingName("guaranteed-engine-cpu")
+	SettingNameDefaultLonghornStaticStorageClass            = SettingName("default-longhorn-static-storage-class")
+	SettingNameBackupstorePollInterval                      = SettingName("backupstore-poll-interval")
+	SettingNameTaintToleration                              = SettingName("taint-toleration")
+	SettingNameCRDAPIVersion                                = SettingName("crd-api-version")
+	SettingNameAutoSalvage                                  = SettingName("auto-salvage")
+	SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly  = SettingName("auto-delete-pod-when-volume-detached-unexpectedly")
+	SettingNameRegistrySecret                               = SettingName("registry-secret")
+	SettingNameDisableSchedulingOnCordonedNode              = SettingName("disable-scheduling-on-cordoned-node")
+	SettingNameReplicaZoneSoftAntiAffinity                  = SettingName("replica-zone-soft-anti-affinity")
+	SettingNameVolumeAttachmentRecoveryPolicy               = SettingName("volume-attachment-recovery-policy")
+	SettingNameNodeDownPodDeletionPolicy                    = SettingName("node-down-pod-deletion-policy")
+	SettingNameAllowNodeDrainWithLastHealthyReplica         = SettingName("allow-node-drain-with-last-healthy-replica")
+	SettingNameMkfsExt4Parameters                           = SettingName("mkfs-ext4-parameters")
+	SettingNamePriorityClass                                = SettingName("priority-class")
+	SettingNameDisableRevisionCounter                       = SettingName("disable-revision-counter")
+	SettingNameDisableReplicaRebuild                        = SettingName("disable-replica-rebuild")
+	SettingNameReplicaReplenishmentWaitInterval             = SettingName("replica-replenishment-wait-interval")
+	SettingNameSystemManagedPodsImagePullPolicy             = SettingName("system-managed-pods-image-pull-policy")
+	SettingNameAllowVolumeCreationWithDegradedAvailability  = SettingName("allow-volume-creation-with-degraded-availability")
+	SettingNameAutoCleanupSystemGeneratedSnapshot           = SettingName("auto-cleanup-system-generated-snapshot")
+	SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit = SettingName("concurrent-automatic-engine-upgrade-per-node-limit")
 )
 
 var (
@@ -113,6 +114,7 @@ var (
 		SettingNameSystemManagedPodsImagePullPolicy,
 		SettingNameAllowVolumeCreationWithDegradedAvailability,
 		SettingNameAutoCleanupSystemGeneratedSnapshot,
+		SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit,
 	}
 )
 
@@ -138,42 +140,43 @@ type SettingDefinition struct {
 
 var (
 	SettingDefinitions = map[SettingName]SettingDefinition{
-		SettingNameBackupTarget:                                SettingDefinitionBackupTarget,
-		SettingNameBackupTargetCredentialSecret:                SettingDefinitionBackupTargetCredentialSecret,
-		SettingNameAllowRecurringJobWhileVolumeDetached:        SettingDefinitionAllowRecurringJobWhileVolumeDetached,
-		SettingNameCreateDefaultDiskLabeledNodes:               SettingDefinitionCreateDefaultDiskLabeledNodes,
-		SettingNameDefaultDataPath:                             SettingDefinitionDefaultDataPath,
-		SettingNameDefaultEngineImage:                          SettingDefinitionDefaultEngineImage,
-		SettingNameDefaultInstanceManagerImage:                 SettingDefinitionDefaultInstanceManagerImage,
-		SettingNameDefaultShareManagerImage:                    SettingDefinitionDefaultShareManagerImage,
-		SettingNameReplicaSoftAntiAffinity:                     SettingDefinitionReplicaSoftAntiAffinity,
-		SettingNameStorageOverProvisioningPercentage:           SettingDefinitionStorageOverProvisioningPercentage,
-		SettingNameStorageMinimalAvailablePercentage:           SettingDefinitionStorageMinimalAvailablePercentage,
-		SettingNameUpgradeChecker:                              SettingDefinitionUpgradeChecker,
-		SettingNameLatestLonghornVersion:                       SettingDefinitionLatestLonghornVersion,
-		SettingNameDefaultReplicaCount:                         SettingDefinitionDefaultReplicaCount,
-		SettingNameDefaultDataLocality:                         SettingDefinitionDefaultDataLocality,
-		SettingNameGuaranteedEngineCPU:                         SettingDefinitionGuaranteedEngineCPU,
-		SettingNameDefaultLonghornStaticStorageClass:           SettingDefinitionDefaultLonghornStaticStorageClass,
-		SettingNameBackupstorePollInterval:                     SettingDefinitionBackupstorePollInterval,
-		SettingNameTaintToleration:                             SettingDefinitionTaintToleration,
-		SettingNameCRDAPIVersion:                               SettingDefinitionCRDAPIVersion,
-		SettingNameAutoSalvage:                                 SettingDefinitionAutoSalvage,
-		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly: SettingDefinitionAutoDeletePodWhenVolumeDetachedUnexpectedly,
-		SettingNameRegistrySecret:                              SettingDefinitionRegistrySecret,
-		SettingNameDisableSchedulingOnCordonedNode:             SettingDefinitionDisableSchedulingOnCordonedNode,
-		SettingNameReplicaZoneSoftAntiAffinity:                 SettingDefinitionReplicaZoneSoftAntiAffinity,
-		SettingNameVolumeAttachmentRecoveryPolicy:              SettingDefinitionVolumeAttachmentRecoveryPolicy,
-		SettingNameNodeDownPodDeletionPolicy:                   SettingDefinitionNodeDownPodDeletionPolicy,
-		SettingNameAllowNodeDrainWithLastHealthyReplica:        SettingDefinitionAllowNodeDrainWithLastHealthyReplica,
-		SettingNameMkfsExt4Parameters:                          SettingDefinitionMkfsExt4Parameters,
-		SettingNamePriorityClass:                               SettingDefinitionPriorityClass,
-		SettingNameDisableRevisionCounter:                      SettingDefinitionDisableRevisionCounter,
-		SettingNameDisableReplicaRebuild:                       SettingDefinitionDisableReplicaRebuild,
-		SettingNameReplicaReplenishmentWaitInterval:            SettingDefinitionReplicaReplenishmentWaitInterval,
-		SettingNameSystemManagedPodsImagePullPolicy:            SettingDefinitionSystemManagedPodsImagePullPolicy,
-		SettingNameAllowVolumeCreationWithDegradedAvailability: SettingDefinitionAllowVolumeCreationWithDegradedAvailability,
-		SettingNameAutoCleanupSystemGeneratedSnapshot:          SettingDefinitionAutoCleanupSystemGeneratedSnapshot,
+		SettingNameBackupTarget:                                 SettingDefinitionBackupTarget,
+		SettingNameBackupTargetCredentialSecret:                 SettingDefinitionBackupTargetCredentialSecret,
+		SettingNameAllowRecurringJobWhileVolumeDetached:         SettingDefinitionAllowRecurringJobWhileVolumeDetached,
+		SettingNameCreateDefaultDiskLabeledNodes:                SettingDefinitionCreateDefaultDiskLabeledNodes,
+		SettingNameDefaultDataPath:                              SettingDefinitionDefaultDataPath,
+		SettingNameDefaultEngineImage:                           SettingDefinitionDefaultEngineImage,
+		SettingNameDefaultInstanceManagerImage:                  SettingDefinitionDefaultInstanceManagerImage,
+		SettingNameDefaultShareManagerImage:                     SettingDefinitionDefaultShareManagerImage,
+		SettingNameReplicaSoftAntiAffinity:                      SettingDefinitionReplicaSoftAntiAffinity,
+		SettingNameStorageOverProvisioningPercentage:            SettingDefinitionStorageOverProvisioningPercentage,
+		SettingNameStorageMinimalAvailablePercentage:            SettingDefinitionStorageMinimalAvailablePercentage,
+		SettingNameUpgradeChecker:                               SettingDefinitionUpgradeChecker,
+		SettingNameLatestLonghornVersion:                        SettingDefinitionLatestLonghornVersion,
+		SettingNameDefaultReplicaCount:                          SettingDefinitionDefaultReplicaCount,
+		SettingNameDefaultDataLocality:                          SettingDefinitionDefaultDataLocality,
+		SettingNameGuaranteedEngineCPU:                          SettingDefinitionGuaranteedEngineCPU,
+		SettingNameDefaultLonghornStaticStorageClass:            SettingDefinitionDefaultLonghornStaticStorageClass,
+		SettingNameBackupstorePollInterval:                      SettingDefinitionBackupstorePollInterval,
+		SettingNameTaintToleration:                              SettingDefinitionTaintToleration,
+		SettingNameCRDAPIVersion:                                SettingDefinitionCRDAPIVersion,
+		SettingNameAutoSalvage:                                  SettingDefinitionAutoSalvage,
+		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly:  SettingDefinitionAutoDeletePodWhenVolumeDetachedUnexpectedly,
+		SettingNameRegistrySecret:                               SettingDefinitionRegistrySecret,
+		SettingNameDisableSchedulingOnCordonedNode:              SettingDefinitionDisableSchedulingOnCordonedNode,
+		SettingNameReplicaZoneSoftAntiAffinity:                  SettingDefinitionReplicaZoneSoftAntiAffinity,
+		SettingNameVolumeAttachmentRecoveryPolicy:               SettingDefinitionVolumeAttachmentRecoveryPolicy,
+		SettingNameNodeDownPodDeletionPolicy:                    SettingDefinitionNodeDownPodDeletionPolicy,
+		SettingNameAllowNodeDrainWithLastHealthyReplica:         SettingDefinitionAllowNodeDrainWithLastHealthyReplica,
+		SettingNameMkfsExt4Parameters:                           SettingDefinitionMkfsExt4Parameters,
+		SettingNamePriorityClass:                                SettingDefinitionPriorityClass,
+		SettingNameDisableRevisionCounter:                       SettingDefinitionDisableRevisionCounter,
+		SettingNameDisableReplicaRebuild:                        SettingDefinitionDisableReplicaRebuild,
+		SettingNameReplicaReplenishmentWaitInterval:             SettingDefinitionReplicaReplenishmentWaitInterval,
+		SettingNameSystemManagedPodsImagePullPolicy:             SettingDefinitionSystemManagedPodsImagePullPolicy,
+		SettingNameAllowVolumeCreationWithDegradedAvailability:  SettingDefinitionAllowVolumeCreationWithDegradedAvailability,
+		SettingNameAutoCleanupSystemGeneratedSnapshot:           SettingDefinitionAutoCleanupSystemGeneratedSnapshot,
+		SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit: SettingDefinitionConcurrentAutomaticEngineUpgradePerNodeLimit,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -572,6 +575,18 @@ var (
 		ReadOnly:    false,
 		Default:     "true",
 	}
+
+	SettingDefinitionConcurrentAutomaticEngineUpgradePerNodeLimit = SettingDefinition{
+		DisplayName: "Concurrent Automatic Engine Upgrade Per Node Limit",
+		Description: "This setting controls how Longhorn automatically upgrades volumes' engines after upgrading Longhorn manager." +
+			"The value of this setting specifies the maximum number of engines per node that are allowed to upgrade to the default engine image at the same time." +
+			"If the value is 0, Longhorn will not automatically upgrade volumes' engines to default version.",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeInt,
+		Required: true,
+		ReadOnly: false,
+		Default:  "0",
+	}
 )
 
 type VolumeAttachmentRecoveryPolicy string
@@ -678,6 +693,8 @@ func ValidateInitSetting(name, value string) (err error) {
 			return errors.Wrapf(err, "invalid value %v as CPU resource", value)
 		}
 	case SettingNameReplicaReplenishmentWaitInterval:
+		fallthrough
+	case SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit:
 		fallthrough
 	case SettingNameBackupstorePollInterval:
 		interval, err := strconv.Atoi(value)
