@@ -2357,8 +2357,13 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 	defer func() {
 		err = errors.Wrapf(err, "fail to process migration for %v", v.Name)
 	}()
+
+	if !v.Spec.Migratable || v.Spec.AccessMode != types.AccessModeReadWriteMany {
+		return nil
+	}
+
 	// only process if volume is attached
-	if v.Spec.NodeID == "" {
+	if v.Spec.NodeID == "" || len(es) == 0 {
 		return nil
 	}
 
@@ -2367,50 +2372,47 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		return nil
 	}
 
-	if len(es) > 2 {
-		return fmt.Errorf("BUG: volume %v: more than two engines exists", v.Name)
-	}
-
+	// the only time there should be more then 1 engines is when we are migrating or upgrading
+	// if there are more then 1 and we no longer have a migration id set we can cleanup the extra engine
 	if !vc.isVolumeMigrating(v) {
-		if len(es) != 2 {
+		if len(es) < 2 {
 			return nil
 		}
 
-		// rollback migration
-		if _, err := vc.getCurrentEngineAndCleanupOthers(v, es); err != nil {
-			return err
+		// in the case of a confirmation we need to switch the v.Status.CurrentNodeID to v.Spec.NodeID
+		// so that currentEngine becomes the migration engine
+		if v.Status.CurrentNodeID != v.Spec.NodeID {
+			vc.logger.Infof("volume migration complete switching current node id from %v to %v", v.Status.CurrentNodeID, v.Spec.NodeID)
+			v.Status.CurrentNodeID = v.Spec.NodeID
 		}
-		return nil
-	}
 
-	// confirm migration
-	if v.Spec.MigrationNodeID == v.Spec.NodeID {
-		// must be set after migration preparation done
+		// current engine is based on the v.Status.CurrentNodeID
+		// so in the case of a rollback all we have to do is cleanup the migration engine
 		currentEngine, err := vc.getCurrentEngineAndCleanupOthers(v, es)
 		if err != nil {
 			return err
 		}
 
+		// cleanupCorruptedOrStaleReplicas() will take care of old replicas
 		if err := vc.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
 			return r.Spec.EngineName == engineName
 		}, currentEngine.Name); err != nil {
 			return err
 		}
 
-		v.Status.OwnerID = v.Spec.NodeID
-		v.Spec.MigrationNodeID = ""
-		if _, err := vc.ds.UpdateVolume(v); err != nil {
-			return err
-		}
-
-		// cleanupCorruptedOrStaleReplicas() will take care of old replicas
-		vc.logger.Infof("Migration to node %v has been confirmed", v.Spec.NodeID)
 		return nil
 	}
 
-	currentEngine, migrationEngine, err := vc.getCurrentEngineAndExtra(v, es)
+	// volume is migrating
+	currentEngine, extras, err := vc.getCurrentEngineAndExtras(v, es)
 	if err != nil {
 		return err
+	}
+
+	var migrationEngine *longhorn.Engine
+	for _, extra := range extras {
+		migrationEngine = extra
+		break
 	}
 
 	if migrationEngine == nil {
@@ -2469,10 +2471,6 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		migrationEngine.Spec.NodeID = v.Spec.MigrationNodeID
 		migrationEngine.Spec.ReplicaAddressMap = replicaAddressMap
 		migrationEngine.Spec.DesireState = types.InstanceStateRunning
-		migrationEngine, err := vc.ds.UpdateEngine(migrationEngine)
-		if err != nil {
-			return err
-		}
 		es[migrationEngine.Name] = migrationEngine
 	}
 
@@ -2545,7 +2543,7 @@ func (vc *VolumeController) ReconcileShareManagerState(volume *longhorn.Volume) 
 		return err
 	}
 
-	if volume.Spec.AccessMode != types.AccessModeReadWriteMany {
+	if volume.Spec.AccessMode != types.AccessModeReadWriteMany || volume.Spec.Migratable {
 		if sm != nil {
 			log.Info("Removing share manager for non shared volume")
 			if err := vc.ds.DeleteShareManager(volume.Name); err != nil && !datastore.ErrorIsNotFound(err) {

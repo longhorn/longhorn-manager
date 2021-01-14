@@ -56,6 +56,8 @@ type Volume struct {
 	ShareEndpoint string                  `json:"shareEndpoint"`
 	ShareState    types.ShareManagerState `json:"shareState"`
 
+	Migratable bool `json:"migratable"`
+
 	Replicas      []Replica       `json:"replicas"`
 	Controllers   []Controller    `json:"controllers"`
 	BackupStatus  []BackupStatus  `json:"backupStatus"`
@@ -154,6 +156,10 @@ type AttachInput struct {
 	AttachedBy      string `json:"attachedBy"`
 }
 
+type DetachInput struct {
+	HostID string `json:"hostId"`
+}
+
 type SnapshotInput struct {
 	Name   string            `json:"name"`
 	Labels map[string]string `json:"labels"`
@@ -177,10 +183,6 @@ type SalvageInput struct {
 
 type EngineUpgradeInput struct {
 	Image string `json:"image"`
-}
-
-type NodeInput struct {
-	NodeID string `json:"nodeId"`
 }
 
 type UpdateReplicaCountInput struct {
@@ -338,6 +340,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("schema", client.Schema{})
 	schemas.AddType("error", client.ServerApiError{})
 	schemas.AddType("attachInput", AttachInput{})
+	schemas.AddType("detachInput", DetachInput{})
 	schemas.AddType("snapshotInput", SnapshotInput{})
 	schemas.AddType("backup", Backup{})
 	schemas.AddType("backupInput", BackupInput{})
@@ -354,7 +357,6 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("replica", Replica{})
 	schemas.AddType("controller", Controller{})
 	schemas.AddType("diskUpdate", types.DiskSpec{})
-	schemas.AddType("nodeInput", NodeInput{})
 	schemas.AddType("UpdateReplicaCountInput", UpdateReplicaCountInput{})
 	schemas.AddType("UpdateDataLocalityInput", UpdateDataLocalityInput{})
 	schemas.AddType("UpdateAccessModeInput", UpdateAccessModeInput{})
@@ -542,6 +544,7 @@ func volumeSchema(volume *client.Schema) {
 			Output: "volume",
 		},
 		"detach": {
+			Input:  "detachInput",
 			Output: "volume",
 		},
 		"salvage": {
@@ -623,12 +626,6 @@ func volumeSchema(volume *client.Schema) {
 		"engineUpgrade": {
 			Input: "engineUpgradeInput",
 		},
-
-		"migrationStart": {
-			Input: "nodeInput",
-		},
-		"migrationConfirm":  {},
-		"migrationRollback": {},
 	}
 	volume.ResourceFields["controllers"] = client.Field{
 		Type:     "array[controller]",
@@ -954,6 +951,9 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		ShareEndpoint: v.Status.ShareEndpoint,
 		ShareState:    v.Status.ShareState,
 
+		Migratable:      v.Spec.Migratable,
+		MigrationNodeID: v.Spec.MigrationNodeID,
+
 		Conditions:       v.Status.Conditions,
 		KubernetesStatus: v.Status.KubernetesStatus,
 
@@ -989,6 +989,14 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["detach"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
 		case types.VolumeStateAttached:
+			// We allow calling attach on an already attached volume in the case
+			// where the volume is migratable, we should consider exposing all the actions
+			// all the time and have the backend deal with when which action is valid
+			// this would simplify the csi driver down to just being a caller of the api
+			// instead of having all kinds of knowledge about the states itself
+			if r.AccessMode == types.AccessModeReadWriteMany && r.Migratable {
+				actions["attach"] = struct{}{}
+			}
 			actions["detach"] = struct{}{}
 			actions["activate"] = struct{}{}
 			actions["snapshotPurge"] = struct{}{}
@@ -1006,9 +1014,6 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
-			actions["migrationStart"] = struct{}{}
-			actions["migrationConfirm"] = struct{}{}
-			actions["migrationRollback"] = struct{}{}
 		}
 	}
 

@@ -220,6 +220,17 @@ func (m *VolumeManager) BackupSnapshot(volumeName, snapshotName, backingImageNam
 	return nil
 }
 
+func (m *VolumeManager) checkVolumeNotInMigration(volumeName string) error {
+	v, err := m.ds.GetVolume(volumeName)
+	if err != nil {
+		return err
+	}
+	if v.Spec.MigrationNodeID != "" {
+		return fmt.Errorf("cannot operate during migration")
+	}
+	return nil
+}
+
 func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.EngineClient, err error) {
 	var e *longhorn.Engine
 

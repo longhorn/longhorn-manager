@@ -92,6 +92,7 @@ type VolumeSpec struct {
 	RevisionCounterDisabled bool           `json:"revisionCounterDisabled"`
 	LastAttachedBy          string         `json:"lastAttachedBy"`
 	AccessMode              AccessMode     `json:"accessMode"`
+	Migratable              bool           `json:"migratable"`
 
 	// Deprecated. Rename to BackingImage
 	BaseImage string `json:"baseImage"`

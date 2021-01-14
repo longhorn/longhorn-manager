@@ -85,6 +85,16 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		}
 	}
 
+	// migratable volumes can only be used in RWX access mode
+	if migratable, ok := volOptions["migratable"]; ok {
+		isMigratable, err := strconv.ParseBool(migratable)
+		if err != nil {
+			return nil, errors.Wrap(err, "Invalid parameter migratable")
+		}
+
+		vol.Migratable = isMigratable && vol.AccessMode == string(types.AccessModeReadWriteMany)
+	}
+
 	if numberOfReplicas, ok := volOptions["numberOfReplicas"]; ok {
 		nor, err := strconv.Atoi(numberOfReplicas)
 		if err != nil || nor < 0 {
@@ -259,7 +269,7 @@ func makeFile(pathname string) error {
 func requiresSharedAccess(vol *longhornclient.Volume, cap *csi.VolumeCapability) bool {
 	isSharedVolume := false
 	if vol != nil {
-		isSharedVolume = vol.AccessMode == string(types.AccessModeReadWriteMany)
+		isSharedVolume = vol.AccessMode == string(types.AccessModeReadWriteMany) || vol.Migratable
 	}
 
 	mode := csi.VolumeCapability_AccessMode_UNKNOWN

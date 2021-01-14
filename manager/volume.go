@@ -225,6 +225,10 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		spec.AccessMode = types.AccessModeReadWriteOnce
 	}
 
+	if spec.Migratable && spec.AccessMode != types.AccessModeReadWriteMany {
+		return nil, fmt.Errorf("migratable volumes are only supported in ReadWriteMany (rwx) access mode")
+	}
+
 	defaultEngineImage, err := m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if defaultEngineImage == "" {
 		return nil, fmt.Errorf("BUG: Invalid empty Setting.EngineImage")
@@ -263,6 +267,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		Spec: types.VolumeSpec{
 			Size:                    size,
 			AccessMode:              spec.AccessMode,
+			Migratable:              spec.Migratable,
 			Frontend:                spec.Frontend,
 			EngineImage:             defaultEngineImage,
 			FromBackup:              spec.FromBackup,
@@ -298,11 +303,20 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		err = errors.Wrapf(err, "unable to attach volume %v to %v", name, nodeID)
 	}()
 
+	node, err := m.ds.GetNode(nodeID)
+	if err != nil {
+		return nil, err
+	}
+	readyCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
+	if readyCondition.Status != types.ConditionStatusTrue {
+		return nil, fmt.Errorf("node %v is not ready, couldn't attach volume %v to it", node.Name, name)
+	}
+
 	v, err = m.ds.GetVolume(name)
 	if err != nil {
 		return nil, err
 	}
-	if v.Status.State != types.VolumeStateDetached {
+	if !v.Spec.Migratable && v.Status.State != types.VolumeStateDetached {
 		return nil, fmt.Errorf("invalid state to attach %v: %v", name, v.Status.State)
 	}
 	if err := m.CheckEngineImageReadiness(v.Spec.EngineImage); err != nil {
@@ -322,26 +336,59 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return nil, fmt.Errorf("volume %v is pending restoring", name)
 	}
 
-	// already desired to be attached
-	if v.Spec.NodeID != "" {
-		if v.Spec.NodeID != nodeID {
-			return nil, fmt.Errorf("Node to be attached %v is different from previous spec %v", nodeID, v.Spec.NodeID)
-		}
+	if v.Spec.NodeID == nodeID {
+		logrus.Debugf("Volume %v is already attached to node %v", v.Name, v.Spec.NodeID)
 		return v, nil
 	}
-	v.Spec.NodeID = nodeID
+
+	if v.Spec.MigrationNodeID == nodeID {
+		logrus.Debugf("Volume %v is already migrating to node %v from node %v", v.Name, nodeID, v.Spec.NodeID)
+		return v, nil
+	}
+
+	if v.Spec.NodeID != "" {
+		if !v.Spec.Migratable {
+			return nil, fmt.Errorf("non migratable volume %v cannot attach to node %v is already attached to node %v", v.Name, nodeID, v.Spec.NodeID)
+		}
+		if v.Spec.MigrationNodeID != "" && v.Spec.MigrationNodeID != nodeID {
+			return nil, fmt.Errorf("unable to migrate volume %v from %v to %v since it's already migrating to %v",
+				v.Name, v.Spec.NodeID, nodeID, v.Spec.MigrationNodeID)
+		}
+		if v.Status.State != types.VolumeStateAttached {
+			return nil, fmt.Errorf("invalid volume state to start migration %v", v.Status.State)
+		}
+		if v.Status.Robustness != types.VolumeRobustnessHealthy {
+			return nil, fmt.Errorf("volume must be healthy to start migration")
+		}
+		if v.Spec.EngineImage != v.Status.CurrentImage {
+			return nil, fmt.Errorf("upgrading in process for volume, cannot start migration")
+		}
+		if v.Spec.Standby || v.Status.IsStandby {
+			return nil, fmt.Errorf("dr volume migration is not supported")
+		}
+		if v.Status.ExpansionRequired {
+			return nil, fmt.Errorf("cannot migrate volume while an expansion is required")
+		}
+
+		v.Spec.MigrationNodeID = nodeID
+		logrus.Infof("Volume %v migration from %v to %v requested", v.Name, v.Spec.NodeID, nodeID)
+	} else {
+		v.Spec.NodeID = nodeID
+		logrus.Infof("Volume %v attachment to %v with disableFrontend %v requested", v.Name, v.Spec.NodeID, disableFrontend)
+	}
+
 	v.Spec.DisableFrontend = disableFrontend
 	v.Spec.LastAttachedBy = attachedBy
-
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Attaching volume %v to %v with disableFrontend set %v", v.Name, v.Spec.NodeID, disableFrontend)
 	return v, nil
 }
 
-func (m *VolumeManager) Detach(name string) (v *longhorn.Volume, err error) {
+// Detach will handle regular detachment as well as volume migration confirmation/rollback
+// if nodeID is not specified, the volume will be detached from all nodes
+func (m *VolumeManager) Detach(name, nodeID string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to detach volume %v", name)
 	}()
@@ -350,24 +397,64 @@ func (m *VolumeManager) Detach(name string) (v *longhorn.Volume, err error) {
 	if err != nil {
 		return nil, err
 	}
-	if v.Status.State != types.VolumeStateAttached && v.Status.State != types.VolumeStateAttaching {
-		return nil, fmt.Errorf("invalid state to detach %v: %v", v.Name, v.Status.State)
+
+	if v.Status.IsStandby {
+		return nil, fmt.Errorf("cannot detach standby volume %v", v.Name)
 	}
 
-	oldNodeID := v.Spec.NodeID
-	if oldNodeID == "" {
+	if v.Spec.NodeID == "" && v.Spec.MigrationNodeID == "" {
+		logrus.Debugf("No need to detach volume %v is already detached from all nodes", v.Name)
 		return v, nil
 	}
 
-	v.Spec.NodeID = ""
-	v.Spec.DisableFrontend = false
+	if nodeID != "" && nodeID != v.Spec.NodeID && nodeID != v.Spec.MigrationNodeID {
+		logrus.Debugf("No need to detach volume %v since it's not attached to node %v", v.Name, nodeID)
+		return v, nil
+	}
 
+	// if the detach request doesn't specify a node to detach from
+	// we detach from all nodes, which is the same behavior as we previously had
+	if nodeID == "" {
+		v.Spec.NodeID = ""
+		v.Spec.MigrationNodeID = ""
+		logrus.Infof("Volume %v detachment from all nodes requested", v.Name)
+	} else if nodeID == v.Spec.NodeID {
+		if v.Spec.MigrationNodeID != "" && v.Spec.Migratable {
+			// migration confirmation, since detach is requested from the old node
+			// the engine must be running on the new node in order to be confirmed
+			if !m.isVolumeAvailableOnNode(name, v.Spec.MigrationNodeID) {
+				return nil, fmt.Errorf("migration is not ready yet")
+			}
+			v.Spec.NodeID = v.Spec.MigrationNodeID
+			v.Spec.MigrationNodeID = ""
+			logrus.Infof("Volume %v migration from %v to %v confirmed", v.Name, nodeID, v.Spec.NodeID)
+		} else {
+			v.Spec.NodeID = ""
+			v.Spec.MigrationNodeID = ""
+			logrus.Infof("Volume %v detachment from node %v requested", v.Name, nodeID)
+		}
+	} else if nodeID == v.Spec.MigrationNodeID {
+		v.Spec.MigrationNodeID = ""
+		logrus.Infof("Volume %v migration from %v to %v rollback", v.Name, nodeID, v.Spec.NodeID)
+	}
+
+	v.Spec.DisableFrontend = false
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Detaching volume %v from %v", v.Name, oldNodeID)
 	return v, nil
+}
+
+func (m *VolumeManager) isVolumeAvailableOnNode(volume, node string) bool {
+	es, _ := m.ds.ListVolumeEngines(volume)
+	for _, e := range es {
+		if e.Spec.NodeID == node && e.Status.CurrentState == types.InstanceStateRunning {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *longhorn.Volume, err error) {
@@ -754,120 +841,6 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 		logrus.Debugf("Rolling back volume %v engine image to %v", v.Name, v.Status.CurrentImage)
 	}
 
-	return v, nil
-}
-
-func (m *VolumeManager) checkVolumeNotInMigration(volumeName string) error {
-	v, err := m.Get(volumeName)
-	if err != nil {
-		return err
-	}
-	if v.Spec.MigrationNodeID != "" {
-		return fmt.Errorf("cannot operate during migration")
-	}
-	return nil
-}
-
-func (m *VolumeManager) MigrationStart(name, nodeID string) (v *longhorn.Volume, err error) {
-	defer func() {
-		err = errors.Wrapf(err, "unable to start migration for volume %v to %v", name, nodeID)
-	}()
-
-	v, err = m.ds.GetVolume(name)
-	if err != nil {
-		return nil, err
-	}
-	if v.Spec.NodeID == "" || v.Status.State != types.VolumeStateAttached {
-		return nil, fmt.Errorf("invalid volume state to start migration %v", v.Status.State)
-	}
-	if v.Status.Robustness != types.VolumeRobustnessHealthy {
-		return nil, fmt.Errorf("volume must be healthy to start migration")
-	}
-	if v.Spec.EngineImage != v.Status.CurrentImage {
-		return nil, fmt.Errorf("upgrading in process for volume, cannot start migration")
-	}
-	if v.Spec.MigrationNodeID != "" {
-		return nil, fmt.Errorf("migration already started")
-	}
-	if v.Spec.NodeID == nodeID {
-		return nil, fmt.Errorf("cannot migrate to the same node as volume currently attached to")
-	}
-
-	if nodeID == "" {
-		return nil, fmt.Errorf("empty migration destination")
-	}
-	if _, err := m.Node2APIAddress(nodeID); err != nil {
-		return nil, err
-	}
-
-	v.Spec.MigrationNodeID = nodeID
-	v, err = m.ds.UpdateVolume(v)
-	if err != nil {
-		return nil, err
-	}
-	logrus.Debugf("Migration started for volume %v from %v to %v", v.Name, v.Spec.NodeID, nodeID)
-	return v, nil
-}
-
-func (m *VolumeManager) MigrationConfirm(name string) (v *longhorn.Volume, err error) {
-	defer func() {
-		err = errors.Wrapf(err, "unable to confirm migration for volume %v", name)
-	}()
-
-	v, err = m.ds.GetVolume(name)
-	if err != nil {
-		return nil, err
-	}
-	if v.Spec.NodeID == "" || v.Status.State != types.VolumeStateAttached {
-		return nil, fmt.Errorf("invalid volume state to confirm migration %v", v.Status.State)
-	}
-	if v.Spec.MigrationNodeID == "" {
-		return nil, fmt.Errorf("no migration in process to be confirm")
-	}
-
-	// the engine must be running in order to be confirmed
-	es, err := m.ds.ListVolumeEngines(name)
-	attached := false
-	for _, e := range es {
-		if e.Spec.NodeID == v.Spec.MigrationNodeID &&
-			e.Status.CurrentState == types.InstanceStateRunning {
-			attached = true
-			break
-		}
-	}
-	if !attached {
-		return nil, fmt.Errorf("migration is not ready yet")
-	}
-
-	oldNodeID := v.Spec.NodeID
-	v.Spec.NodeID = v.Spec.MigrationNodeID
-	v, err = m.ds.UpdateVolume(v)
-	if err != nil {
-		return nil, err
-	}
-	logrus.Debugf("Start migration confirming for volume %v from %v to %v", v.Name, oldNodeID, v.Spec.NodeID)
-	return v, nil
-}
-
-func (m *VolumeManager) MigrationRollback(name string) (v *longhorn.Volume, err error) {
-	defer func() {
-		err = errors.Wrapf(err, "unable to rollback migration for volume %v", name)
-	}()
-
-	v, err = m.ds.GetVolume(name)
-	if err != nil {
-		return nil, err
-	}
-	if v.Spec.MigrationNodeID == "" {
-		return nil, fmt.Errorf("no migration in process to be rollback")
-	}
-
-	v.Spec.MigrationNodeID = ""
-	v, err = m.ds.UpdateVolume(v)
-	if err != nil {
-		return nil, err
-	}
-	logrus.Debugf("Start rolling back migration for volume %v", v.Name)
 	return v, nil
 }
 
