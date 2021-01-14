@@ -196,8 +196,8 @@ func (job *Job) handleVolumeDetachment() {
 				return
 			}
 			if volume.State == string(types.VolumeStateAttached) {
-				logrus.Infof("Attempting to detach volume %v ", volumeName)
-				if _, err := volumeAPI.ActionDetach(volume); err != nil {
+				logrus.Infof("Attempting to detach volume %v from all nodes", volumeName)
+				if _, err := volumeAPI.ActionDetach(volume, &longhornclient.DetachInput{HostId: ""}); err != nil {
 					logrus.Infof("%v ", err)
 				}
 			}

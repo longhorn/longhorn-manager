@@ -73,7 +73,12 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.NotFound, msg)
 	}
 
-	if len(existVol.Controllers) != 1 {
+	if len(existVol.Controllers) == 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "There should be a controller for volume %s", req.GetVolumeId())
+	}
+
+	// For mount volumes, we don't want multiple controllers for a volume, since the filesystem could get messed up
+	if len(existVol.Controllers) > 1 && volumeCapability.GetBlock() == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "There should be only one controller for volume %s", req.GetVolumeId())
 	}
 
@@ -97,7 +102,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	devicePath := existVol.Controllers[0].Endpoint
-	if requiresSharedAccess(existVol, volumeCapability) {
+	if requiresSharedAccess(existVol, volumeCapability) && !existVol.Migratable {
 
 		if existVol.AccessMode != string(types.AccessModeReadWriteMany) {
 			return nil, status.Errorf(codes.FailedPrecondition, "The volume %s requires shared access but is not marked for shared use", req.GetVolumeId())
@@ -114,10 +119,10 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		}
 		nfsMounter := nfs.NewMounter(nse)
 		return ns.nodePublishSharedVolume(req.GetVolumeId(), existVol.ShareEndpoint, targetPath, nfsMounter)
-	} else if blkCapability := volumeCapability.GetBlock(); blkCapability != nil {
+	} else if volumeCapability.GetBlock() != nil {
 		mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOSExec()}
 		return ns.nodePublishBlockVolume(req.GetVolumeId(), devicePath, targetPath, mounter)
-	} else if mntCapability := volumeCapability.GetMount(); mntCapability != nil {
+	} else if volumeCapability.GetMount() != nil {
 		userExt4Params, _ := ns.apiClient.Setting.ById(string(types.SettingNameMkfsExt4Parameters))
 
 		// mounter assumes ext4 by default

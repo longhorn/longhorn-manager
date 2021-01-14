@@ -10,6 +10,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pkg/errors"
 	"github.com/robfig/cron"
+	"github.com/sirupsen/logrus"
 
 	"golang.org/x/sys/unix"
 
@@ -83,6 +84,21 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		} else {
 			vol.AccessMode = string(types.AccessModeReadWriteOnce)
 		}
+	}
+
+	if migratable, ok := volOptions["migratable"]; ok {
+		isMigratable, err := strconv.ParseBool(migratable)
+		if err != nil {
+			return nil, errors.Wrap(err, "Invalid parameter migratable")
+		}
+
+		if isMigratable && vol.AccessMode != string(types.AccessModeReadWriteMany) {
+			logrus.Infof("Cannot mark volume %v as migratable, "+
+				"since access mode is not RWX proceeding with RWO non migratable volume creation.", vol.Name)
+			volOptions["migratable"] = strconv.FormatBool(false)
+			isMigratable = false
+		}
+		vol.Migratable = isMigratable
 	}
 
 	if numberOfReplicas, ok := volOptions["numberOfReplicas"]; ok {
@@ -259,7 +275,7 @@ func makeFile(pathname string) error {
 func requiresSharedAccess(vol *longhornclient.Volume, cap *csi.VolumeCapability) bool {
 	isSharedVolume := false
 	if vol != nil {
-		isSharedVolume = vol.AccessMode == string(types.AccessModeReadWriteMany)
+		isSharedVolume = vol.AccessMode == string(types.AccessModeReadWriteMany) || vol.Migratable
 	}
 
 	mode := csi.VolumeCapability_AccessMode_UNKNOWN

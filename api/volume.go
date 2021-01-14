@@ -152,6 +152,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 	v, err := s.m.Create(volume.Name, &types.VolumeSpec{
 		Size:                    size,
 		AccessMode:              volume.AccessMode,
+		Migratable:              volume.Migratable,
 		Frontend:                volume.Frontend,
 		FromBackup:              volume.FromBackup,
 		NumberOfReplicas:        volume.NumberOfReplicas,
@@ -187,17 +188,7 @@ func (s *Server) VolumeAttach(rw http.ResponseWriter, req *http.Request) error {
 	if err := apiContext.Read(&input); err != nil {
 		return err
 	}
-
 	id := mux.Vars(req)["name"]
-	// check attach node state
-	node, err := s.m.GetNode(input.HostID)
-	if err != nil {
-		return err
-	}
-	readyCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
-	if readyCondition.Status != types.ConditionStatusTrue {
-		return fmt.Errorf("Node %v is not ready, couldn't attach volume %v to it", node.Name, id)
-	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.Attach(id, input.HostID, input.DisableFrontend, input.AttachedBy)
@@ -214,18 +205,16 @@ func (s *Server) VolumeAttach(rw http.ResponseWriter, req *http.Request) error {
 }
 
 func (s *Server) VolumeDetach(rw http.ResponseWriter, req *http.Request) error {
+	var input DetachInput
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
 	id := mux.Vars(req)["name"]
 
-	vol, err := s.m.Get(id)
-	if err != nil {
-		return errors.Wrap(err, "unable to get volume")
-	}
-	if vol.Status.IsStandby {
-		return fmt.Errorf("cannot detach standby volume %v", vol.Name)
-	}
-
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.Detach(id)
+		return s.m.Detach(id, input.HostID)
 	})
 	if err != nil {
 		return err
@@ -522,59 +511,5 @@ func (s *Server) EngineUpgrade(rw http.ResponseWriter, req *http.Request) error 
 		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
 	}
 
-	return s.responseWithVolume(rw, req, id, v)
-}
-
-func (s *Server) MigrationStart(rw http.ResponseWriter, req *http.Request) error {
-	var input NodeInput
-	id := mux.Vars(req)["name"]
-
-	apiContext := api.GetApiContext(req)
-	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error read nodeInput")
-	}
-
-	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.MigrationStart(id, input.NodeID)
-	})
-	if err != nil {
-		return err
-	}
-	v, ok := obj.(*longhorn.Volume)
-	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
-	}
-	return s.responseWithVolume(rw, req, id, v)
-}
-
-func (s *Server) MigrationConfirm(rw http.ResponseWriter, req *http.Request) error {
-	id := mux.Vars(req)["name"]
-
-	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.MigrationConfirm(id)
-	})
-	if err != nil {
-		return err
-	}
-	v, ok := obj.(*longhorn.Volume)
-	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
-	}
-	return s.responseWithVolume(rw, req, id, v)
-}
-
-func (s *Server) MigrationRollback(rw http.ResponseWriter, req *http.Request) error {
-	id := mux.Vars(req)["name"]
-
-	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.MigrationRollback(id)
-	})
-	if err != nil {
-		return err
-	}
-	v, ok := obj.(*longhorn.Volume)
-	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
-	}
 	return s.responseWithVolume(rw, req, id, v)
 }

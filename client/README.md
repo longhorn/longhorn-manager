@@ -19,3 +19,9 @@ Just use cp to copy these code is fine, but you should update package name in `l
 cd longhorn-manager/client
 sed -i -e 's/package longhorn/package client/g' *.go
 ```
+
+## Notes:
+
+The generator currently no longer generates actions, so you need to ensure not to overwrite the `ActionUpdateAccessMode`
+in `generated_volume.go`. I currently don't have the time to look into this and since we are planning on reworking the api
+down the line, this is a low priority issue for now.
