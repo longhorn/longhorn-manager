@@ -2318,10 +2318,7 @@ func (vc *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica
 	// delete the volume data on the disk.
 	// Set `active` at last to prevent data loss
 	for _, r := range rs {
-		if activeCondFunc(r, obj) != r.Spec.Active {
-			r.Spec.Active = activeCondFunc(r, obj)
-			rs[r.Name] = r
-		}
+		r.Spec.Active = activeCondFunc(r, obj)
 	}
 	return nil
 }
