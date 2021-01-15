@@ -2243,17 +2243,14 @@ func (vc *VolumeController) getEngineImage(image string) (*longhorn.EngineImage,
 	return img, nil
 }
 
-func (vc *VolumeController) getCurrentEngineAndExtra(v *longhorn.Volume, es map[string]*longhorn.Engine) (currentEngine, otherEngine *longhorn.Engine, err error) {
-	if len(es) > 2 {
-		return nil, nil, fmt.Errorf("more than two engines exists")
-	}
+func (vc *VolumeController) getCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.Engine) (currentEngine *longhorn.Engine, otherEngines []*longhorn.Engine, err error) {
 	for _, e := range es {
 		if e.Spec.NodeID == v.Status.CurrentNodeID &&
 			e.Spec.DesireState == types.InstanceStateRunning &&
 			e.Status.CurrentState == types.InstanceStateRunning {
 			currentEngine = e
 		} else {
-			otherEngine = e
+			otherEngines = append(otherEngines, e)
 		}
 	}
 	if currentEngine == nil {
@@ -2264,15 +2261,18 @@ func (vc *VolumeController) getCurrentEngineAndExtra(v *longhorn.Volume, es map[
 
 func (vc *VolumeController) getCurrentEngineAndCleanupOthers(v *longhorn.Volume, es map[string]*longhorn.Engine) (current *longhorn.Engine, err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to clean up the extra engine for %v", v.Name)
+		err = errors.Wrapf(err, "fail to clean up the extra engines for %v", v.Name)
 	}()
-	current, extra, err := vc.getCurrentEngineAndExtra(v, es)
+	current, extras, err := vc.getCurrentEngineAndExtras(v, es)
 	if err != nil {
 		return nil, err
 	}
-	if extra != nil && extra.DeletionTimestamp == nil {
-		if err := vc.deleteEngine(extra, es); err != nil {
-			return nil, err
+
+	for _, extra := range extras {
+		if extra.DeletionTimestamp == nil {
+			if err := vc.deleteEngine(extra, es); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return current, nil
