@@ -9,9 +9,9 @@ type Volume struct {
 
 	AccessMode string `json:"accessMode,omitempty" yaml:"access_mode,omitempty"`
 
-	BackupStatus []BackupStatus `json:"backupStatus,omitempty" yaml:"backup_status,omitempty"`
+	BackingImage string `json:"backingImage,omitempty" yaml:"backing_image,omitempty"`
 
-	BaseImage string `json:"baseImage,omitempty" yaml:"base_image,omitempty"`
+	BackupStatus []BackupStatus `json:"backupStatus,omitempty" yaml:"backup_status,omitempty"`
 
 	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
