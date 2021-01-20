@@ -23,6 +23,10 @@ type Backup struct {
 
 	Url string `json:"url,omitempty" yaml:"url,omitempty"`
 
+	VolumeBackingImageName string `json:"volumeBackingImageName,omitempty" yaml:"volume_backing_image_name,omitempty"`
+
+	VolumeBackingImageURL string `json:"volumeBackingImageURL,omitempty" yaml:"volume_backing_image_url,omitempty"`
+
 	VolumeCreated string `json:"volumeCreated,omitempty" yaml:"volume_created,omitempty"`
 
 	VolumeName string `json:"volumeName,omitempty" yaml:"volume_name,omitempty"`

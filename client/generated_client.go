@@ -37,12 +37,14 @@ type RancherClient struct {
 	SupportBundleInitateInput SupportBundleInitateInputOperations
 	Tag                       TagOperations
 	InstanceManager           InstanceManagerOperations
+	BackingImageCleanupInput  BackingImageCleanupInputOperations
 	Volume                    VolumeOperations
 	Snapshot                  SnapshotOperations
 	BackupVolume              BackupVolumeOperations
 	Setting                   SettingOperations
 	RecurringInput            RecurringInputOperations
 	EngineImage               EngineImageOperations
+	BackingImage              BackingImageOperations
 	Node                      NodeOperations
 	DiskUpdateInput           DiskUpdateInputOperations
 	DiskInfo                  DiskInfoOperations
@@ -90,12 +92,14 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.SupportBundleInitateInput = newSupportBundleInitateInputClient(client)
 	client.Tag = newTagClient(client)
 	client.InstanceManager = newInstanceManagerClient(client)
+	client.BackingImageCleanupInput = newBackingImageCleanupInputClient(client)
 	client.Volume = newVolumeClient(client)
 	client.Snapshot = newSnapshotClient(client)
 	client.BackupVolume = newBackupVolumeClient(client)
 	client.Setting = newSettingClient(client)
 	client.RecurringInput = newRecurringInputClient(client)
 	client.EngineImage = newEngineImageClient(client)
+	client.BackingImage = newBackingImageClient(client)
 	client.Node = newNodeClient(client)
 	client.DiskUpdateInput = newDiskUpdateInputClient(client)
 	client.DiskInfo = newDiskInfoClient(client)

@@ -7,6 +7,10 @@ const (
 type BackupVolume struct {
 	Resource `yaml:"-"`
 
+	BackingImageName string `json:"backingImageName,omitempty" yaml:"backing_image_name,omitempty"`
+
+	BackingImageURL string `json:"backingImageURL,omitempty" yaml:"backing_image_url,omitempty"`
+
 	Backups map[string]string `json:"backups,omitempty" yaml:"backups,omitempty"`
 
 	BaseImage string `json:"baseImage,omitempty" yaml:"base_image,omitempty"`
