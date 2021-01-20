@@ -112,8 +112,8 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.FromBackup = fromBackup
 	}
 
-	if baseImage, ok := volOptions["baseImage"]; ok {
-		vol.BaseImage = baseImage
+	if backingImage, ok := volOptions["backingImage"]; ok {
+		vol.BackingImage = backingImage
 	}
 
 	if jsonRecurringJobs, ok := volOptions["recurringJobs"]; ok {

@@ -139,6 +139,13 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	if vol.BackingImage != "" {
+		if _, err := cs.apiClient.BackingImage.ById(vol.BackingImage); err != nil {
+			msg := fmt.Sprintf("CreateVolume: cannot find backing image %v for volume %v", vol.BackingImage, req.Name)
+			logrus.Error(msg)
+			return nil, status.Error(codes.NotFound, msg)
+		}
+	}
 
 	vol.Name = req.Name
 
