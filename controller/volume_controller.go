@@ -1654,8 +1654,19 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 			}
 			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
 		}
-		e.Spec.UpgradedReplicaAddressMap = replicaAddressMap
-		e.Spec.EngineImage = v.Spec.EngineImage
+		// Only upgrade e.Spec.EngineImage if there are enough new upgraded replica.
+		// This prevent the deadlock in the case that an upgrade from engine image
+		// is followed immediately by an other upgrade.
+		// More specifically, after the 1st upgrade, e.Status.ReplicaModeMap empty.
+		// Therefore, dataPathToOldRunningReplica, dataPathToOldRunningReplica, and replicaAddressMap are also empty.
+		// Now, if we set e.Spec.UpgradedReplicaAddressMap to an empty map in the second upgrade,
+		// the second engine upgrade will be blocked since len(e.Spec.UpgradedReplicaAddressMap) == 0.
+		// On the other hand, the engine controller blocks the engine's status from being refreshed
+		// and keep the e.Status.ReplicaModeMap to be empty map. The system enter a deadlock for the volume.
+		if len(replicaAddressMap) == v.Spec.NumberOfReplicas {
+			e.Spec.UpgradedReplicaAddressMap = replicaAddressMap
+			e.Spec.EngineImage = v.Spec.EngineImage
+		}
 	}
 	if e.Status.CurrentImage != v.Spec.EngineImage ||
 		e.Status.CurrentState != types.InstanceStateRunning {
