@@ -682,6 +682,25 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 	defer func() {
 		err = errors.Wrapf(err, "cannot upgrade engine for volume %v using image %v", volumeName, image)
 	}()
+
+	// Only allow to upgrade to the default engine image if the setting `Automatically upgrade volumes' engine to the default engine image` is enabled
+	concurrentAutomaticEngineUpgradePerNodeLimit, err := m.ds.GetSettingAsInt(types.SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit)
+	if err != nil {
+		return nil, err
+	}
+	if concurrentAutomaticEngineUpgradePerNodeLimit > 0 {
+		defaultEngineImage, err := m.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+		if err != nil {
+			return nil, err
+		}
+		if image != defaultEngineImage {
+			return nil, fmt.Errorf("updrading to %v is not allowed. "+
+				"Only allow to upgrade to the default engine image %v because the setting "+
+				"`Concurrent Automatic Engine Upgrade Per Node Limit` is greater than 0",
+				image, defaultEngineImage)
+		}
+	}
+
 	if err := m.CheckEngineImageReadiness(image); err != nil {
 		return nil, err
 	}
