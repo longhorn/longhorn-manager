@@ -69,6 +69,9 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, err
 	}
 	volumeParameters := req.GetParameters()
+	if volumeParameters == nil {
+		volumeParameters = map[string]string{}
+	}
 
 	// check if we need to restore from a csi snapshot
 	// we don't support volume cloning at the moment
@@ -91,9 +94,6 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 		// use the fromBackup method for the csi snapshot restores as well
 		// the same parameter was previously only used for restores based on the storage class
-		if volumeParameters == nil {
-			volumeParameters = map[string]string{}
-		}
 		volumeParameters["fromBackup"] = backup.Url
 	}
 
@@ -127,9 +127,6 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	// we need to mark the volume as a shared volume
 	for _, cap := range volumeCaps {
 		if requiresSharedAccess(nil, cap) {
-			if volumeParameters == nil {
-				volumeParameters = map[string]string{}
-			}
 			volumeParameters["share"] = "true"
 			break
 		}
@@ -140,10 +137,34 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	if vol.BackingImage != "" {
-		if _, err := cs.apiClient.BackingImage.ById(vol.BackingImage); err != nil {
-			msg := fmt.Sprintf("CreateVolume: cannot find backing image %v for volume %v", vol.BackingImage, req.Name)
+		// There will be an empty BackingImage object rather than nil returned even if there is an error
+		existingBackingImage, err := cs.apiClient.BackingImage.ById(vol.BackingImage)
+		if err != nil && !strings.Contains(err.Error(), "not found") {
+			msg := fmt.Sprintf("CreateVolume: failed to find backing image %v for volume %v: %v", vol.BackingImage, req.Name, err)
 			logrus.Error(msg)
-			return nil, status.Error(codes.NotFound, msg)
+			return nil, status.Error(codes.Internal, msg)
+		}
+		// A new backing image will be created automatically only if:
+		//   1. there is no existing backing image named `backingImage`
+		//   2. volumeParameters["backingImageURL"] is set
+		if existingBackingImage == nil || existingBackingImage.Name == "" {
+			if volumeParameters["backingImageURL"] == "" {
+				msg := fmt.Sprintf("CreateVolume: backing image %v doesn't exist during the volume %v creation", vol.BackingImage, req.Name)
+				logrus.Error(msg)
+				return nil, status.Error(codes.NotFound, msg)
+			}
+
+			if _, err := cs.apiClient.BackingImage.Create(&longhornclient.BackingImage{
+				Name:     vol.BackingImage,
+				ImageURL: volumeParameters["backingImageURL"],
+			}); err != nil {
+				return nil, status.Error(codes.Internal, err.Error())
+			}
+		} else if volumeParameters["backingImageURL"] != "" && volumeParameters["backingImageURL"] != existingBackingImage.ImageURL {
+			msg := fmt.Sprintf("CreateVolume: the backing image URL %v in backing image %v doesn't match the URL %v in the volume parameters during the volume %v creation",
+				existingBackingImage.ImageURL, vol.BackingImage, volumeParameters["backingImageURL"], req.Name)
+			logrus.Error(msg)
+			return nil, status.Error(codes.Internal, msg)
 		}
 	}
 
