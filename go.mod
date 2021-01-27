@@ -47,7 +47,7 @@ require (
 	github.com/imdario/mergo v0.3.8 // indirect
 	github.com/jinzhu/copier v0.0.0-20190924061706-b57f9002281a
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/longhorn/backupstore v0.0.0-20201203004625-fdbdd88b09d6
+	github.com/longhorn/backupstore v0.0.0-20210129022100-0d3b318cbc8c
 	github.com/longhorn/go-iscsi-helper v0.0.0-20201111045018-ee87992ec536
 	github.com/longhorn/longhorn-instance-manager v0.0.0-20201016215346-d8437b4e156e
 	github.com/miekg/dns v1.1.22 // indirect
