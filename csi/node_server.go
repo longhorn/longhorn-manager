@@ -49,6 +49,20 @@ func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) *Node
 func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	logrus.Infof("NodeServer NodePublishVolume req: %v", req)
 
+	targetPath := req.GetTargetPath()
+	if targetPath == "" {
+		msg := fmt.Sprint("NodePublishVolume: missing target path in request")
+		logrus.Warn(msg)
+		return nil, status.Error(codes.InvalidArgument, msg)
+	}
+
+	volumeCapability := req.GetVolumeCapability()
+	if volumeCapability == nil {
+		msg := fmt.Sprint("NodePublishVolume: missing volume capability in request")
+		logrus.Warn(msg)
+		return nil, status.Error(codes.InvalidArgument, msg)
+	}
+
 	existVol, err := ns.apiClient.Volume.ById(req.GetVolumeId())
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -57,11 +71,6 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		msg := fmt.Sprintf("NodePublishVolume: the volume %s not exists", req.GetVolumeId())
 		logrus.Warn(msg)
 		return nil, status.Error(codes.NotFound, msg)
-	}
-
-	volumeCapability := req.GetVolumeCapability()
-	if volumeCapability == nil {
-		return nil, status.Error(codes.InvalidArgument, "Volume capability not provided")
 	}
 
 	if len(existVol.Controllers) != 1 {
@@ -87,7 +96,6 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.FailedPrecondition, "Not support readOnly")
 	}
 
-	targetPath := req.GetTargetPath()
 	devicePath := existVol.Controllers[0].Endpoint
 	if requiresSharedAccess(existVol, volumeCapability) {
 
