@@ -282,24 +282,33 @@ func (cs *ControllerServer) isNodeReady(nodeID string) bool {
 // ControllerPublishVolume will attach the volume to the specified node
 func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
 	logrus.Infof("ControllerServer ControllerPublishVolume req: %v", req)
+
+	if req.GetNodeId() == "" {
+		msg := "ControllerPublishVolume: missing node id in request"
+		logrus.Warn(msg)
+		return nil, status.Error(codes.InvalidArgument, msg)
+	}
+
+	volumeCapability := req.GetVolumeCapability()
+	if volumeCapability == nil {
+		msg := fmt.Sprint("ControllerPublishVolume: missing volume capability in request")
+		logrus.Warn(msg)
+		return nil, status.Error(codes.InvalidArgument, msg)
+	}
+
+	if !cs.isNodeReady(req.GetNodeId()) {
+		msg := fmt.Sprintf("ControllerPublishVolume: the volume %s cannot be attached to `NotReady` node %s",
+			req.GetVolumeId(), req.GetNodeId())
+		logrus.Warn(msg)
+		return nil, status.Error(codes.NotFound, msg)
+	}
+
 	existVol, err := cs.apiClient.Volume.ById(req.GetVolumeId())
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	if existVol == nil {
 		msg := fmt.Sprintf("ControllerPublishVolume: the volume %s not exists", req.GetVolumeId())
-		logrus.Warn(msg)
-		return nil, status.Error(codes.NotFound, msg)
-	}
-
-	volumeCapability := req.GetVolumeCapability()
-	if volumeCapability == nil {
-		return nil, status.Error(codes.InvalidArgument, "Volume capability not provided")
-	}
-
-	if !cs.isNodeReady(req.GetNodeId()) {
-		msg := fmt.Sprintf("ControllerPublishVolume: the volume %s cannot be attached to `NotReady` node %s",
-			req.GetVolumeId(), req.GetNodeId())
 		logrus.Warn(msg)
 		return nil, status.Error(codes.NotFound, msg)
 	}
