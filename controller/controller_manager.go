@@ -194,27 +194,21 @@ func GetGuaranteedResourceRequirement(ds *datastore.DataStore) (*corev1.Resource
 }
 
 func isControllerResponsibleFor(controllerID string, ds *datastore.DataStore, name, preferredOwnerID, currentOwnerID string) bool {
-	var err error
-	responsible := false
 
-	ownerDown := false
-	if currentOwnerID != "" {
-		ownerDown, err = ds.IsNodeDownOrDeleted(currentOwnerID)
-		if err != nil {
-			logrus.Warnf("Error while checking if object %v owner is down or deleted: %v", name, err)
+	// we use this approach so that if there is an issue with the data store
+	// we don't accidentally transfer ownership
+	isOwnerUnavailable := func(node string) bool {
+		nodeDown, err := ds.IsNodeDownOrDeleted(node)
+		if node != "" && err != nil {
+			logrus.Errorf("Error while checking if object %v node %v is down or deleted: %v", name, node, err)
 		}
+		return node == "" || nodeDown
 	}
 
-	if controllerID == preferredOwnerID {
-		responsible = true
-	} else if currentOwnerID == "" {
-		responsible = true
-	} else { // currentOwnerID != ""
-		if ownerDown {
-			responsible = true
-		}
-	}
-	return responsible
+	isPreferredOwner := controllerID == preferredOwnerID
+	continueToBeOwner := currentOwnerID == controllerID && isOwnerUnavailable(preferredOwnerID)
+	requiresNewOwner := isOwnerUnavailable(currentOwnerID) && isOwnerUnavailable(preferredOwnerID)
+	return isPreferredOwner || continueToBeOwner || requiresNewOwner
 }
 
 // EnhancedDefaultControllerRateLimiter is an enhanced version of workqueue.DefaultControllerRateLimiter()

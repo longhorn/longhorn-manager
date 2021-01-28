@@ -250,11 +250,17 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 
 	log := getLoggerForVolume(vc.logger, volume)
 
+	// we want to always check whether we should be the owner of this volume
+	// otherwise we might end up doing an iteration while we are in the process of
+	// an ownership transfer (v.Spec.NodeID != v.Status.CurrentOwnerID)
+	// this will lead to 2 controllers fighting about the same object and a couple of conflicts on the volume updates.
+	// The real problem could be the updates that are run on the dependent components (engine, replicas, etc)
+	// by the no longer valid owner of this volume
+	if !vc.isResponsibleFor(volume) {
+		return nil
+	}
+
 	if volume.Status.OwnerID != vc.controllerID {
-		if !vc.isResponsibleFor(volume) {
-			// Not mines
-			return nil
-		}
 		volume.Status.OwnerID = vc.controllerID
 		volume, err = vc.ds.UpdateVolumeStatus(volume)
 		if err != nil {
