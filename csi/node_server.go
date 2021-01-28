@@ -40,7 +40,6 @@ func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) *Node
 		nodeID:    nodeID,
 		caps: getNodeServiceCapabilities(
 			[]csi.NodeServiceCapability_RPC_Type{
-				csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 				csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 			}),
 	}
