@@ -238,7 +238,19 @@ func (ns *NodeServer) nodePublishBlockVolume(volumeName, devicePath, targetPath 
 func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	logrus.Infof("NodeServer NodeUnpublishVolume req: %v", req)
 
+	if req.GetVolumeId() == "" {
+		msg := fmt.Sprint("NodeUnpublishVolume: missing volume id in request")
+		logrus.Warn(msg)
+		return nil, status.Error(codes.InvalidArgument, msg)
+	}
+
 	targetPath := req.GetTargetPath()
+	if targetPath == "" {
+		msg := fmt.Sprint("NodeUnpublishVolume: missing target path in request")
+		logrus.Warn(msg)
+		return nil, status.Error(codes.InvalidArgument, msg)
+	}
+
 	mounter := mount.New("")
 	for {
 		if err := mounter.Unmount(targetPath); err != nil {
