@@ -247,6 +247,17 @@ func (cs *ControllerServer) ControllerGetCapabilities(ctx context.Context, req *
 
 func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	logrus.Infof("ControllerServer ValidateVolumeCapabilities req: %v", req)
+
+	existVol, err := cs.apiClient.Volume.ById(req.GetVolumeId())
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if existVol == nil {
+		msg := fmt.Sprintf("ValidateVolumeCapabilities: the volume %s not exists", req.GetVolumeId())
+		logrus.Warn(msg)
+		return nil, status.Error(codes.NotFound, msg)
+	}
+
 	if err := cs.validateVolumeCapabilities(req.GetVolumeCapabilities()); err != nil {
 		return nil, err
 	}
