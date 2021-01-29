@@ -410,6 +410,12 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
 	logrus.Infof("ControllerServer ControllerUnpublishVolume req: %v", req)
 
+	if req.GetVolumeId() == "" {
+		msg := "ControllerUnpublishVolume: missing volume id in request"
+		logrus.Warn(msg)
+		return nil, status.Error(codes.InvalidArgument, msg)
+	}
+
 	existVol, err := cs.apiClient.Volume.ById(req.GetVolumeId())
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
