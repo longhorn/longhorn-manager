@@ -295,6 +295,18 @@ func (ns *NodeServer) NodeUnstageVolume(
 }
 
 func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	if req.GetVolumeId() == "" {
+		msg := "NodeGetVolumeStats: missing volume id in request"
+		logrus.Warn(msg)
+		return nil, status.Error(codes.InvalidArgument, msg)
+	}
+
+	if req.GetVolumePath() == "" {
+		msg := "NodeGetVolumeStats: missing volume path in request"
+		logrus.Warn(msg)
+		return nil, status.Error(codes.InvalidArgument, msg)
+	}
+
 	existVol, err := ns.apiClient.Volume.ById(req.GetVolumeId())
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
