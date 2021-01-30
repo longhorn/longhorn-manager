@@ -425,7 +425,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
-	if err := vc.cleanupReplicas(volume, engine, replicas); err != nil {
+	if err := vc.cleanupReplicas(volume, engines, replicas); err != nil {
 		return err
 	}
 
@@ -663,7 +663,19 @@ func (vc *VolumeController) hasReplicaEvictionRequested(rs map[string]*longhorn.
 	return false
 }
 
-func (vc *VolumeController) cleanupReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
+func (vc *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) error {
+	// TODO: I don't think it's a good idea to cleanup replicas during a migration or engine image update
+	// 	the healthy replica count doesn't differentiate between replicas of different engines
+	// 	so this can end being really messy
+	if vc.isVolumeMigrating(v) || vc.isVolumeUpgrading(v) {
+		return nil
+	}
+
+	e, err := vc.getCurrentEngine(v, es)
+	if err != nil {
+		return err
+	}
+
 	if err := vc.cleanupCorruptedOrStaleReplicas(v, rs); err != nil {
 		return err
 	}
