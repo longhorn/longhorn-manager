@@ -13,7 +13,6 @@ import (
 	"gopkg.in/yaml.v2"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/longhorn/longhorn-manager/util"
 )
@@ -29,9 +28,10 @@ type Setting struct {
 type SettingType string
 
 const (
-	SettingTypeString = SettingType("string")
-	SettingTypeInt    = SettingType("int")
-	SettingTypeBool   = SettingType("bool")
+	SettingTypeString     = SettingType("string")
+	SettingTypeInt        = SettingType("int")
+	SettingTypeBool       = SettingType("bool")
+	SettingTypeDeprecated = SettingType("deprecated")
 )
 
 type SettingName string
@@ -75,6 +75,8 @@ const (
 	SettingNameAutoCleanupSystemGeneratedSnapshot           = SettingName("auto-cleanup-system-generated-snapshot")
 	SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit = SettingName("concurrent-automatic-engine-upgrade-per-node-limit")
 	SettingNameBackingImageCleanupWaitInterval              = SettingName("backing-image-cleanup-wait-interval")
+	SettingNameGuaranteedEngineManagerCPU                   = SettingName("guaranteed-engine-manager-cpu")
+	SettingNameGuaranteedReplicaManagerCPU                  = SettingName("guaranteed-replica-manager-cpu")
 )
 
 var (
@@ -117,6 +119,8 @@ var (
 		SettingNameAutoCleanupSystemGeneratedSnapshot,
 		SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit,
 		SettingNameBackingImageCleanupWaitInterval,
+		SettingNameGuaranteedEngineManagerCPU,
+		SettingNameGuaranteedReplicaManagerCPU,
 	}
 )
 
@@ -180,6 +184,8 @@ var (
 		SettingNameAutoCleanupSystemGeneratedSnapshot:           SettingDefinitionAutoCleanupSystemGeneratedSnapshot,
 		SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit: SettingDefinitionConcurrentAutomaticEngineUpgradePerNodeLimit,
 		SettingNameBackingImageCleanupWaitInterval:              SettingDefinitionBackingImageCleanupWaitInterval,
+		SettingNameGuaranteedEngineManagerCPU:                   SettingDefinitionGuaranteedEngineManagerCPU,
+		SettingNameGuaranteedReplicaManagerCPU:                  SettingDefinitionGuaranteedReplicaManagerCPU,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -349,19 +355,14 @@ var (
 	}
 
 	SettingDefinitionGuaranteedEngineCPU = SettingDefinition{
-		DisplayName: "Guaranteed Engine CPU",
-		Description: "Allow Longhorn Instance Managers to have guaranteed CPU allocation. The value is how many CPUs should be reserved for each Engine/Replica Instance Manager Pod created by Longhorn. For example, 0.1 means one-tenth of a CPU. This will help maintain engine stability during high node workload. It only applies to the Engine/Replica Instance Manager Pods created after the setting took effect.  \n" +
-			"In order to prevent unexpected volume crash, you can use the following formula to calculate an appropriate value for this setting:  \n" +
-			"Guaranteed Engine CPU = The estimated max Longhorn volume/replica count on a node * 0.1  \n" +
-			"The result of above calculation doesn't mean that's the maximum CPU resources the Longhorn workloads require. To fully exploit the Longhorn volume I/O performance, you can allocate/guarantee more CPU resources via this setting.  \n" +
-			"If it's hard to estimate the volume/replica count now, you can leave it with the default value, or allocate 1/8 of total CPU of a node. Then you can tune it when there is no running workload using Longhorn volumes.  \n" +
-			"WARNING: After this setting is changed, all the instance managers on all the nodes will be automatically restarted.  \n" +
-			"WARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES.",
+		DisplayName: "Guaranteed Engine CPU (Deprecated)",
+		Description: "This setting is replaced by 2 new settings \"Guaranteed Engine Manager CPU\" and \"Guaranteed Replica Manager CPU\" since Longhorn version v1.1.1. \n" +
+			"This setting was used to control the CPU requests of all Longhorn Instance Manager pods. \n",
 		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeString,
-		Required: true,
-		ReadOnly: false,
-		Default:  "0.25",
+		Type:     SettingTypeDeprecated,
+		Required: false,
+		ReadOnly: true,
+		Default:  "",
 	}
 
 	SettingDefinitionDefaultLonghornStaticStorageClass = SettingDefinition{
@@ -600,6 +601,46 @@ var (
 		ReadOnly:    false,
 		Default:     "60",
 	}
+
+	SettingDefinitionGuaranteedEngineManagerCPU = SettingDefinition{
+		DisplayName: "Guaranteed Engine Manager CPU",
+		Description: "This integer value indicates how many percentage of the total allocatable CPU on each node will be reserved for each engine manager Pod. For example, 10 means 10% of the total CPU on a node will be allocated to each engine manager pod on this node. This will help maintain engine stability during high node workload. \n\n" +
+			"In order to prevent unexpected volume engine crash as well as guarantee a relative acceptable IO performance, you can use the following formula to calculate a value for this setting: \n\n" +
+			"Guaranteed Engine Manager CPU = The estimated max Longhorn volume engine count on a node * 0.1 / The total allocatable CPUs on the node * 100. \n\n" +
+			"The result of above calculation doesn't mean that's the maximum CPU resources the Longhorn workloads require. To fully exploit the Longhorn volume I/O performance, you can allocate/guarantee more CPU resources via this setting. \n\n" +
+			"If it's hard to estimate the usage now, you can leave it with the default value, which is 12%. Then you can tune it when there is no running workload using Longhorn volumes. \n\n" +
+			"WARNING: \n\n" +
+			"  - Value 0 means unsetting CPU requests for engine manager pods. \n\n" +
+			"  - Considering the possible new instance manager pods in the further system upgrade, this integer value is range from 0 to 40. And the sum with setting 'Guaranteed Engine Manager CPU' should not be greater than 40. \n\n" +
+			"  - One more set of instance manager pods may need to be deployed when the Longhorn system is upgraded. If current available CPUs of the nodes are not enough for the new instance manager pods, you need to detach the volumes using the oldest instance manager pods so that Longhorn can clean up the old pods automatically and release the CPU resources. And the new pods with the latest instance manager image will be launched then. \n\n" +
+			"  - This global setting will be ignored for a node if the field \"EngineManagerCPURequest\" on the node is set. \n\n" +
+			"  - After this setting is changed, all engine manager pods using this global setting on all the nodes will be automatically restarted. In other words, DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. \n\n",
+		Category: SettingCategoryDangerZone,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		Default:  "12",
+	}
+
+	SettingDefinitionGuaranteedReplicaManagerCPU = SettingDefinition{
+		DisplayName: "Guaranteed Replica Manager CPU",
+		Description: "This integer value indicates how many percentage of the total allocatable CPU on each node will be reserved for each replica manager Pod. 10 means 10% of the total CPU on a node will be allocated to each replica manager pod on this node. This will help maintain replica stability during high node workload. \n\n" +
+			"In order to prevent unexpected volume replica crash as well as guarantee a relative acceptable IO performance, you can use the following formula to calculate a value for this setting: \n\n" +
+			"Guaranteed Replica Manager CPU = The estimated max Longhorn volume replica count on a node * 0.1 / The total allocatable CPUs on the node * 100. \n\n" +
+			"The result of above calculation doesn't mean that's the maximum CPU resources the Longhorn workloads require. To fully exploit the Longhorn volume I/O performance, you can allocate/guarantee more CPU resources via this setting. \n\n" +
+			"If it's hard to estimate the usage now, you can leave it with the default value, which is 12%. Then you can tune it when there is no running workload using Longhorn volumes. \n\n" +
+			"WARNING: \n\n" +
+			"  - Value 0 means unsetting CPU requests for replica manager pods. \n\n" +
+			"  - Considering the possible new instance manager pods in the further system upgrade, this integer value is range from 0 to 40. And the sum with setting 'Guaranteed Replica Manager CPU' should not be greater than 40. \n\n" +
+			"  - One more set of instance manager pods may need to be deployed when the Longhorn system is upgraded. If current available CPUs of the nodes are not enough for the new instance manager pods, you need to detach the volumes using the oldest instance manager pods so that Longhorn can clean up the old pods automatically and release the CPU resources. And the new pods with the latest instance manager image will be launched then. \n\n" +
+			"  - This global setting will be ignored for a node if the field \"ReplicaManagerCPURequest\" on the node is set. \n\n" +
+			"  - After this setting is changed, all replica manager pods using this global setting on all the nodes will be automatically restarted. In other words, DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. \n\n",
+		Category: SettingCategoryDangerZone,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		Default:  "12",
+	}
 )
 
 type VolumeAttachmentRecoveryPolicy string
@@ -702,8 +743,8 @@ func ValidateInitSetting(name, value string) (err error) {
 			return fmt.Errorf("value %v: %v", c, err)
 		}
 	case SettingNameGuaranteedEngineCPU:
-		if _, err := resource.ParseQuantity(value); err != nil {
-			return errors.Wrapf(err, "invalid value %v as CPU resource", value)
+		if value != "" {
+			return errors.Wrapf(err, "Cannot set a value %v for the deprecated CPU resource settings", value)
 		}
 	case SettingNameBackingImageCleanupWaitInterval:
 		fallthrough
@@ -735,6 +776,16 @@ func ValidateInitSetting(name, value string) (err error) {
 		choices := SettingDefinitions[sName].Choices
 		if !isValidChoice(choices, value) {
 			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, choices)
+		}
+	case SettingNameGuaranteedEngineManagerCPU:
+		fallthrough
+	case SettingNameGuaranteedReplicaManagerCPU:
+		i, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("guaranteed engine/replica cpu value %v is not a valid integer: %v", value, err)
+		}
+		if i < 0 || i > 40 {
+			return fmt.Errorf("guaranteed engine/replica cpu value %v should be between 0 to 40", value)
 		}
 	}
 
@@ -797,6 +848,19 @@ func GetCustomizedDefaultSettings() (map[string]string, error) {
 			break
 		}
 		defaultSettings[name] = value
+	}
+
+	guaranteedEngineManagerCPU := SettingDefinitionGuaranteedEngineManagerCPU.Default
+	if defaultSettings[string(SettingNameGuaranteedEngineManagerCPU)] != "" {
+		guaranteedEngineManagerCPU = defaultSettings[string(SettingNameGuaranteedEngineManagerCPU)]
+	}
+	guaranteedReplicaManagerCPU := SettingDefinitionGuaranteedReplicaManagerCPU.Default
+	if defaultSettings[string(SettingNameGuaranteedReplicaManagerCPU)] != "" {
+		guaranteedReplicaManagerCPU = defaultSettings[string(SettingNameGuaranteedReplicaManagerCPU)]
+	}
+	if err := ValidateCPUReservationValues(guaranteedEngineManagerCPU, guaranteedReplicaManagerCPU); err != nil {
+		logrus.Errorf("Customized settings GuaranteedEngineManagerCPU and GuaranteedReplicaManagerCPU are invalid, will give up using them: %v", err)
+		defaultSettings = map[string]string{}
 	}
 
 	return defaultSettings, nil
