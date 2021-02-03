@@ -664,7 +664,7 @@ func (cs *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	if backupVolume != nil {
+	if backupVolume != nil && backupVolume.Name != "" {
 		backupVolume, err = cs.apiClient.BackupVolume.ActionBackupDelete(backupVolume, &longhornclient.BackupInput{Name: backupName})
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
