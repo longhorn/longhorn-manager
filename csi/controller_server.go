@@ -236,6 +236,10 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	if !cs.waitForVolumeState(req.GetVolumeId(), "deleted", isVolumeDeleted, false, true) {
+		return nil, status.Errorf(codes.Aborted, "Failed to delete volume %s", req.GetVolumeId())
+	}
+
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
@@ -715,6 +719,10 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 		CapacityBytes:         req.CapacityRange.GetRequiredBytes(),
 		NodeExpansionRequired: false,
 	}, nil
+}
+
+func isVolumeDeleted(vol *longhornclient.Volume) bool {
+	return vol == nil
 }
 
 func isVolumeDetached(vol *longhornclient.Volume) bool {
