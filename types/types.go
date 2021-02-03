@@ -523,3 +523,18 @@ func CreateDefaultDisk(dataPath string) (map[string]DiskSpec, error) {
 		},
 	}, nil
 }
+
+func ValidateCPUReservationValues(engineManagerCPUStr, replicaManagerCPUStr string) error {
+	engineManagerCPU, err := strconv.Atoi(engineManagerCPUStr)
+	if err != nil {
+		return fmt.Errorf("guaranteed/requested engine manager CPU value %v is not int: %v", engineManagerCPUStr, err)
+	}
+	replicaManagerCPU, err := strconv.Atoi(replicaManagerCPUStr)
+	if err != nil {
+		return fmt.Errorf("guaranteed/requested replica manager CPU value %v is not int: %v", replicaManagerCPUStr, err)
+	}
+	if engineManagerCPU+replicaManagerCPU < 0 || engineManagerCPU+replicaManagerCPU > 40 {
+		return fmt.Errorf("the sum of the engine manager CPU value %v and the replica manager CPU value %v should not be greater than 40%% or smaller than 0%%", engineManagerCPU, replicaManagerCPU)
+	}
+	return nil
+}
