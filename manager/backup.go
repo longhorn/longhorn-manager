@@ -9,10 +9,9 @@ import (
 	"github.com/longhorn/backupstore"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
-
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 var (
@@ -137,7 +136,7 @@ func GetBackupCredentialConfig(ds *datastore.DataStore) (map[string]string, erro
 	if err != nil {
 		return nil, err
 	}
-	if backupType == util.BackupStoreTypeS3 {
+	if backupType == types.BackupStoreTypeS3 {
 		secretName, err := ds.GetSettingValueExisted(types.SettingNameBackupTargetCredentialSecret)
 		if err != nil {
 			return nil, fmt.Errorf("cannot backup: unable to get settings %v",

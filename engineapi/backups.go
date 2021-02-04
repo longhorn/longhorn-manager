@@ -3,6 +3,7 @@ package engineapi
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -44,20 +45,44 @@ func (b *BackupTarget) LonghornEngineBinary() string {
 	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(b.Image), "longhorn")
 }
 
+// getBackupCredentialEnv returns the environment variables as KEY=VALUE in string slice
+func getBackupCredentialEnv(backupTarget string, credential map[string]string) ([]string, error) {
+	envs := []string{}
+	backupType, err := util.CheckBackupType(backupTarget)
+	if err != nil {
+		return envs, err
+	}
+	if backupType == types.BackupStoreTypeS3 {
+		if credential != nil && credential[types.AWSAccessKey] != "" && credential[types.AWSSecretKey] != "" {
+			envs = append(envs, fmt.Sprintf("%s=%s", types.AWSAccessKey, credential[types.AWSAccessKey]))
+			envs = append(envs, fmt.Sprintf("%s=%s", types.AWSSecretKey, credential[types.AWSSecretKey]))
+			envs = append(envs, fmt.Sprintf("%s=%s", types.AWSEndPoint, credential[types.AWSEndPoint]))
+			envs = append(envs, fmt.Sprintf("%s=%s", types.AWSCert, credential[types.AWSCert]))
+			envs = append(envs, fmt.Sprintf("%s=%s", types.HTTPSProxy, credential[types.HTTPSProxy]))
+			envs = append(envs, fmt.Sprintf("%s=%s", types.HTTPProxy, credential[types.HTTPProxy]))
+			envs = append(envs, fmt.Sprintf("%s=%s", types.NOProxy, credential[types.NOProxy]))
+			envs = append(envs, fmt.Sprintf("%s=%s", types.VirtualHostedStyle, credential[types.VirtualHostedStyle]))
+		} else if os.Getenv(types.AWSAccessKey) == "" || os.Getenv(types.AWSSecretKey) == "" {
+			return envs, fmt.Errorf("Could not backup for %s without credential secret", backupType)
+		}
+	}
+	return envs, nil
+}
+
 func (b *BackupTarget) ExecuteEngineBinary(args ...string) (string, error) {
-	err := util.ConfigBackupCredential(b.URL, b.Credential)
+	envs, err := getBackupCredentialEnv(b.URL, b.Credential)
 	if err != nil {
 		return "", err
 	}
-	return util.Execute(b.LonghornEngineBinary(), args...)
+	return util.Execute(envs, b.LonghornEngineBinary(), args...)
 }
 
 func (b *BackupTarget) ExecuteEngineBinaryWithoutTimeout(args ...string) (string, error) {
-	err := util.ConfigBackupCredential(b.URL, b.Credential)
+	envs, err := getBackupCredentialEnv(b.URL, b.Credential)
 	if err != nil {
 		return "", err
 	}
-	return util.ExecuteWithoutTimeout(b.LonghornEngineBinary(), args...)
+	return util.ExecuteWithoutTimeout(envs, b.LonghornEngineBinary(), args...)
 }
 
 func parseBackup(v interface{}) (*Backup, error) {
@@ -226,12 +251,13 @@ func (e *Engine) SnapshotBackup(snapName, backupTarget string, labels map[string
 		args = append(args, "--label", k+"="+v)
 	}
 	args = append(args, snapName)
-	// set credential if backup for s3
-	err = util.ConfigBackupCredential(backupTarget, credential)
+
+	// get environement variables if backup for s3
+	envs, err := getBackupCredentialEnv(backupTarget, credential)
 	if err != nil {
 		return "", err
 	}
-	output, err := e.ExecuteEngineBinaryWithoutTimeout(args...)
+	output, err := e.ExecuteEngineBinaryWithoutTimeout(envs, args...)
 	if err != nil {
 		return "", err
 	}
@@ -260,8 +286,9 @@ func (e *Engine) SnapshotBackupStatus() (map[string]*types.BackupStatus, error) 
 func (e *Engine) BackupRestore(backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error {
 	backup := GetBackupURL(backupTarget, backupName, backupVolume)
 
-	// set credential if backup for s3
-	if err := util.ConfigBackupCredential(backupTarget, credential); err != nil {
+	// get environement variables if backup for s3
+	envs, err := getBackupCredentialEnv(backupTarget, credential)
+	if err != nil {
 		return err
 	}
 
@@ -272,7 +299,7 @@ func (e *Engine) BackupRestore(backupTarget, backupName, backupVolume, lastResto
 		args = append(args, "--incrementally", "--last-restored", lastRestored)
 	}
 
-	if output, err := e.ExecuteEngineBinaryWithoutTimeout(args...); err != nil {
+	if output, err := e.ExecuteEngineBinaryWithoutTimeout(envs, args...); err != nil {
 		var taskErr TaskError
 		if jsonErr := json.Unmarshal([]byte(output), &taskErr); jsonErr != nil {
 			logrus.Warnf("Cannot unmarshal the restore error, maybe it's not caused by the replica restore failure: %v", jsonErr)

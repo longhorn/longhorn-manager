@@ -53,17 +53,17 @@ func (e *Engine) LonghornEngineBinary() string {
 
 func (e *Engine) ExecuteEngineBinary(args ...string) (string, error) {
 	args = append([]string{"--url", e.cURL}, args...)
-	return util.Execute(e.LonghornEngineBinary(), args...)
+	return util.Execute([]string{}, e.LonghornEngineBinary(), args...)
 }
 
 func (e *Engine) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...string) (string, error) {
 	args = append([]string{"--url", e.cURL}, args...)
-	return util.ExecuteWithTimeout(timeout, e.LonghornEngineBinary(), args...)
+	return util.ExecuteWithTimeout(timeout, []string{}, e.LonghornEngineBinary(), args...)
 }
 
-func (e *Engine) ExecuteEngineBinaryWithoutTimeout(args ...string) (string, error) {
+func (e *Engine) ExecuteEngineBinaryWithoutTimeout(envs []string, args ...string) (string, error) {
 	args = append([]string{"--url", e.cURL}, args...)
-	return util.ExecuteWithoutTimeout(e.LonghornEngineBinary(), args...)
+	return util.ExecuteWithoutTimeout(envs, e.LonghornEngineBinary(), args...)
 }
 
 func parseReplica(s string) (*Replica, error) {
@@ -113,7 +113,7 @@ func (e *Engine) ReplicaAdd(url string, isRestoreVolume bool) error {
 	if isRestoreVolume {
 		cmd = append(cmd, "--restore")
 	}
-	if _, err := e.ExecuteEngineBinaryWithoutTimeout(cmd...); err != nil {
+	if _, err := e.ExecuteEngineBinaryWithoutTimeout([]string{}, cmd...); err != nil {
 		return errors.Wrapf(err, "failed to add replica address='%s' to controller '%s'", url, e.name)
 	}
 	return nil
@@ -168,7 +168,7 @@ func (e *Engine) Version(clientOnly bool) (*EngineVersion, error) {
 	} else {
 		cmdline = append([]string{"--url", e.cURL}, cmdline...)
 	}
-	output, err := util.Execute(e.LonghornEngineBinary(), cmdline...)
+	output, err := util.Execute([]string{}, e.LonghornEngineBinary(), cmdline...)
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot get volume version")
 	}
@@ -231,7 +231,7 @@ func (e *Engine) ReplicaRebuildVerify(url string) error {
 		return err
 	}
 	cmd := []string{"verify-rebuild-replica", url}
-	if _, err := e.ExecuteEngineBinaryWithoutTimeout(cmd...); err != nil {
+	if _, err := e.ExecuteEngineBinaryWithoutTimeout([]string{}, cmd...); err != nil {
 		return errors.Wrapf(err, "failed to verify rebuilding for the replica from address %s", url)
 	}
 	return nil
