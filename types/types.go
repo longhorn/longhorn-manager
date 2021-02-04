@@ -98,6 +98,8 @@ const (
 	EnvPodIP          = "POD_IP"
 	EnvServiceAccount = "SERVICE_ACCOUNT"
 
+	BackupStoreTypeS3 = "s3"
+
 	AWSAccessKey = "AWS_ACCESS_KEY_ID"
 	AWSSecretKey = "AWS_SECRET_ACCESS_KEY"
 	AWSEndPoint  = "AWS_ENDPOINTS"
