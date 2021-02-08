@@ -618,9 +618,13 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 		return nil, fmt.Errorf("cannot expand volume before replica scheduling success")
 	}
 
+	// volume shrinking is not supported the volume is already bigger then the requested size
 	if v.Spec.Size >= size {
-		return nil, fmt.Errorf("cannot expand volume %v with current size %v to a smaller or the same size %v", v.Name, v.Spec.Size, size)
+		logrus.Infof("Volume %v expansion is not necessary since current size %v >= %v", v.Name, v.Spec.Size, size)
+		return v, nil
 	}
+
+	logrus.Infof("Volume %v expandsion from %v to %v requested", v.Name, v.Spec.Size, size)
 	v.Spec.Size = size
 
 	// Support off-line expansion only.
@@ -631,7 +635,6 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 		return nil, err
 	}
 
-	logrus.Debugf("Expanding volume %v to size %v", v.Name, size)
 	return v, nil
 }
 

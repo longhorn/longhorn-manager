@@ -708,23 +708,41 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	if existVol.State != string(types.VolumeStateDetached) {
 		return nil, status.Errorf(codes.FailedPrecondition, "Invalid volume state %v for expansion", existVol.State)
 	}
-	volumeSize, err := strconv.ParseInt(existVol.Size, 10, 64)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-	requestedSize := req.CapacityRange.GetRequiredBytes()
-	if requestedSize <= volumeSize {
-		return nil, status.Errorf(codes.OutOfRange, "The requested size %v is smaller than or the same as the size %v of volume %v", requestedSize, volumeSize, existVol.Name)
-	}
 
-	if _, err = cs.apiClient.Volume.ActionExpand(existVol, &longhornclient.ExpandInput{
+	originalSize := existVol.Size
+	requestedSize := req.CapacityRange.GetRequiredBytes()
+	if existVol, err = cs.apiClient.Volume.ActionExpand(existVol, &longhornclient.ExpandInput{
 		Size: strconv.FormatInt(requestedSize, 10),
 	}); err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
+	// kubernetes doesn't support volume shrinking and the csi spec specifies to return true
+	// in the case where the current capacity is bigger or equal to the requested capacity
+	// that's why we return the volumeSize below instead of the requested capacity
+	volumeExpansionComplete := func(vol *longhornclient.Volume) bool {
+		engineReady := false
+		if len(vol.Controllers) > 0 {
+			engine := vol.Controllers[0]
+			engineSize, _ := strconv.ParseInt(engine.Size, 10, 64)
+			engineReady = engineSize >= requestedSize && !engine.IsExpanding
+		}
+		size, _ := strconv.ParseInt(vol.Size, 10, 64)
+		return size >= requestedSize && engineReady
+	}
+
+	if !cs.waitForVolumeState(req.VolumeId, "volume expansion", volumeExpansionComplete, false, false) {
+		return nil, status.Errorf(codes.DeadlineExceeded, "Expanding volume %s existing capacity %s requested capacity %v failed",
+			req.GetVolumeId(), originalSize, requestedSize)
+	}
+
+	volumeSize, err := strconv.ParseInt(existVol.Size, 10, 64)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+
 	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes:         req.CapacityRange.GetRequiredBytes(),
+		CapacityBytes:         volumeSize,
 		NodeExpansionRequired: false,
 	}, nil
 }
