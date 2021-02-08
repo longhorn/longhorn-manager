@@ -81,6 +81,8 @@ func (s *Server) NodeUpdate(rw http.ResponseWriter, req *http.Request) error {
 		node.Spec.AllowScheduling = n.AllowScheduling
 		node.Spec.EvictionRequested = n.EvictionRequested
 		node.Spec.Tags = n.Tags
+		node.Spec.EngineManagerCPURequest = n.EngineManagerCPURequest
+		node.Spec.ReplicaManagerCPURequest = n.ReplicaManagerCPURequest
 
 		return s.m.UpdateNode(node)
 	})

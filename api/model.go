@@ -214,15 +214,17 @@ type ExpandInput struct {
 
 type Node struct {
 	client.Resource
-	Name              string                     `json:"name"`
-	Address           string                     `json:"address"`
-	AllowScheduling   bool                       `json:"allowScheduling"`
-	EvictionRequested bool                       `json:"evictionRequested"`
-	Disks             map[string]DiskInfo        `json:"disks"`
-	Conditions        map[string]types.Condition `json:"conditions"`
-	Tags              []string                   `json:"tags"`
-	Region            string                     `json:"region"`
-	Zone              string                     `json:"zone"`
+	Name                     string                     `json:"name"`
+	Address                  string                     `json:"address"`
+	AllowScheduling          bool                       `json:"allowScheduling"`
+	EvictionRequested        bool                       `json:"evictionRequested"`
+	Disks                    map[string]DiskInfo        `json:"disks"`
+	Conditions               map[string]types.Condition `json:"conditions"`
+	Tags                     []string                   `json:"tags"`
+	Region                   string                     `json:"region"`
+	Zone                     string                     `json:"zone"`
+	EngineManagerCPURequest  int                        `json:"engineManagerCPURequest"`
+	ReplicaManagerCPURequest int                        `json:"replicaManagerCPURequest"`
 
 	Timestamp string `json:"timestamp"`
 }
@@ -429,6 +431,19 @@ func nodeSchema(node *client.Schema) {
 	tags := node.ResourceFields["tags"]
 	tags.Create = true
 	node.ResourceFields["tags"] = tags
+
+	engineManagerCPURequest := node.ResourceFields["engineManagerCPURequest"]
+	engineManagerCPURequest.Required = true
+	engineManagerCPURequest.Unique = false
+	engineManagerCPURequest.Default = -1
+	node.ResourceFields["engineManagerCPURequest"] = engineManagerCPURequest
+
+	replicaManagerCPURequest := node.ResourceFields["replicaManagerCPURequest"]
+	replicaManagerCPURequest.Required = true
+	replicaManagerCPURequest.Unique = false
+	replicaManagerCPURequest.Default = -1
+	node.ResourceFields["replicaManagerCPURequest"] = replicaManagerCPURequest
+
 }
 
 func diskSchema(diskUpdateInput *client.Schema) {
@@ -1175,14 +1190,16 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 			Actions: map[string]string{},
 			Links:   map[string]string{},
 		},
-		Name:              node.Name,
-		Address:           address,
-		AllowScheduling:   node.Spec.AllowScheduling,
-		EvictionRequested: node.Spec.EvictionRequested,
-		Conditions:        node.Status.Conditions,
-		Tags:              node.Spec.Tags,
-		Region:            node.Status.Region,
-		Zone:              node.Status.Zone,
+		Name:                     node.Name,
+		Address:                  address,
+		AllowScheduling:          node.Spec.AllowScheduling,
+		EvictionRequested:        node.Spec.EvictionRequested,
+		Conditions:               node.Status.Conditions,
+		Tags:                     node.Spec.Tags,
+		Region:                   node.Status.Region,
+		Zone:                     node.Status.Zone,
+		EngineManagerCPURequest:  node.Spec.EngineManagerCPURequest,
+		ReplicaManagerCPURequest: node.Spec.ReplicaManagerCPURequest,
 
 		Timestamp: timestamp,
 	}
