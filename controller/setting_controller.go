@@ -29,6 +29,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
@@ -45,12 +46,15 @@ var (
 type SettingController struct {
 	*baseController
 
+	namespace string
+
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
 	ds *datastore.DataStore
 
 	sStoreSynced cache.InformerSynced
+	nStoreSynced cache.InformerSynced
 
 	// upgrade checker
 	lastUpgradeCheckedTimestamp time.Time
@@ -91,7 +95,8 @@ func NewSettingController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	settingInformer lhinformers.SettingInformer,
-	kubeClient clientset.Interface, version string) *SettingController {
+	nodeInformer lhinformers.NodeInformer,
+	kubeClient clientset.Interface, namespace, version string) *SettingController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -101,12 +106,15 @@ func NewSettingController(
 	sc := &SettingController{
 		baseController: newBaseController("longhorn-setting", logger),
 
+		namespace: namespace,
+
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-setting-controller"}),
 
 		ds: ds,
 
 		sStoreSynced: settingInformer.Informer().HasSynced,
+		nStoreSynced: nodeInformer.Informer().HasSynced,
 
 		version: version,
 	}
@@ -116,6 +124,11 @@ func NewSettingController(
 		UpdateFunc: func(old, cur interface{}) { sc.enqueueSetting(cur) },
 		DeleteFunc: sc.enqueueSetting,
 	}, settingControllerResyncPeriod)
+
+	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.enqueueSettingForNode,
+		UpdateFunc: func(old, cur interface{}) { sc.enqueueSettingForNode(cur) },
+	})
 
 	return sc
 }
@@ -127,7 +140,7 @@ func (sc *SettingController) Run(stopCh <-chan struct{}) {
 	sc.logger.Info("Start Longhorn Setting controller")
 	defer sc.logger.Info("Shutting down Longhorn Setting controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn settings", stopCh, sc.sStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn settings", stopCh, sc.sStoreSynced, sc.nStoreSynced) {
 		return
 	}
 
@@ -201,8 +214,9 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.updateTaintToleration(); err != nil {
 			return err
 		}
-	case string(types.SettingNameGuaranteedEngineCPU):
-		if err := sc.updateGuaranteedEngineCPU(); err != nil {
+	case string(types.SettingNameGuaranteedEngineManagerCPU):
+	case string(types.SettingNameGuaranteedReplicaManagerCPU):
+		if err := sc.updateInstanceManagerCPURequest(); err != nil {
 			return err
 		}
 	case string(types.SettingNamePriorityClass):
@@ -652,23 +666,46 @@ func (sc *SettingController) enqueueSetting(obj interface{}) {
 	sc.queue.AddRateLimited(key)
 }
 
-func (sc *SettingController) updateGuaranteedEngineCPU() error {
-	resourceReq, err := GetGuaranteedResourceRequirement(sc.ds)
-	if err != nil {
-		return err
+func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
+	if _, ok := obj.(*longhorn.Node); !ok {
+		// Ignore deleted node
+		return
 	}
 
+	sc.queue.AddRateLimited(sc.namespace + "/" + string(types.SettingNameGuaranteedEngineManagerCPU))
+	sc.queue.AddRateLimited(sc.namespace + "/" + string(types.SettingNameGuaranteedReplicaManagerCPU))
+}
+
+func (sc *SettingController) updateInstanceManagerCPURequest() error {
 	imPodList, err := sc.ds.ListInstanceManagerPods()
 	if err != nil {
 		return errors.Wrapf(err, "failed to list instance manager pods for toleration update")
 	}
-
+	imMap, err := sc.ds.ListInstanceManagers()
+	if err != nil {
+		return err
+	}
 	for _, imPod := range imPodList {
+		if _, exists := imMap[imPod.Name]; !exists {
+			continue
+		}
+		lhNode, err := sc.ds.GetNode(imPod.Spec.NodeName)
+		if err != nil {
+			return err
+		}
+		if types.GetCondition(lhNode.Status.Conditions, types.NodeConditionTypeReady).Status != types.ConditionStatusTrue {
+			continue
+		}
+
+		resourceReq, err := GetInstanceManagerCPURequirement(sc.ds, imPod.Name)
+		if err != nil {
+			return err
+		}
 		podResourceReq := imPod.Spec.Containers[0].Resources
 		if IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq) {
 			continue
 		}
-		sc.logger.Infof("Delete instance manager pod %v to refresh GuaranteedEngineCPU option", imPod.Name)
+		sc.logger.Infof("Delete instance manager pod %v to refresh CPU request option", imPod.Name)
 		if err := sc.ds.DeletePod(imPod.Name); err != nil {
 			return err
 		}

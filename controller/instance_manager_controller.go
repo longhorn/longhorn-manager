@@ -849,12 +849,13 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 	}
 
 	// Apply resource requirements to newly created Instance Manager Pods.
-	resourceReq, err := GetGuaranteedResourceRequirement(imc.ds)
+	cpuResourceReq, err := GetInstanceManagerCPURequirement(imc.ds, im.Name)
 	if err != nil {
 		return nil, err
 	}
-	if resourceReq != nil {
-		podSpec.Spec.Containers[0].Resources = *resourceReq
+	// Do nothing for the CPU requests if the value is 0.
+	if cpuResourceReq != nil {
+		podSpec.Spec.Containers[0].Resources = *cpuResourceReq
 	}
 
 	return podSpec, nil
