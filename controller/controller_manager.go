@@ -2,7 +2,9 @@ package controller
 
 import (
 	"fmt"
+	"math"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
@@ -126,8 +128,8 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		volumeInformer, engineInformer, replicaInformer,
 		settingInformer, engineImageInformer, nodeInformer)
 	sc := NewSettingController(logger, ds, scheme,
-		settingInformer,
-		kubeClient, version)
+		settingInformer, nodeInformer,
+		kubeClient, namespace, version)
 	imc := NewInstanceManagerController(logger, ds, scheme,
 		imInformer, podInformer, kubeNodeInformer, kubeClient, namespace, controllerID, serviceAccount)
 	smc := NewShareManagerController(logger, ds, scheme,
@@ -174,12 +176,8 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	return ds, ws, nil
 }
 
-func GetGuaranteedResourceRequirement(ds *datastore.DataStore) (*corev1.ResourceRequirements, error) {
-	guaranteedCPU, err := ds.GetSetting(types.SettingNameGuaranteedEngineCPU)
-	if err != nil {
-		return nil, err
-	}
-	quantity, err := resource.ParseQuantity(guaranteedCPU.Value)
+func ParseResourceRequirement(val string) (*corev1.ResourceRequirements, error) {
+	quantity, err := resource.ParseQuantity(val)
 	if err != nil {
 		return nil, err
 	}
@@ -191,6 +189,56 @@ func GetGuaranteedResourceRequirement(ds *datastore.DataStore) (*corev1.Resource
 			corev1.ResourceCPU: quantity,
 		},
 	}, nil
+}
+
+func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*corev1.ResourceRequirements, error) {
+	im, err := ds.GetInstanceManager(imName)
+	if err != nil {
+		return nil, err
+	}
+
+	lhNode, err := ds.GetNode(im.Spec.NodeID)
+	if err != nil {
+		return nil, err
+	}
+	kubeNode, err := ds.GetKubernetesNode(im.Spec.NodeID)
+	if err != nil {
+		return nil, err
+	}
+
+	allocatableMilliCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
+	switch im.Spec.Type {
+	case types.InstanceManagerTypeEngine:
+		emCPURequest := lhNode.Spec.EngineManagerCPURequest
+		if emCPURequest == 0 {
+			emCPUSetting, err := ds.GetSetting(types.SettingNameGuaranteedEngineManagerCPU)
+			if err != nil {
+				return nil, err
+			}
+			emCPUPercentage, err := strconv.ParseFloat(emCPUSetting.Value, 64)
+			if err != nil {
+				return nil, err
+			}
+			emCPURequest = int(math.Round(allocatableMilliCPU * emCPUPercentage / 100.0))
+		}
+		return ParseResourceRequirement(fmt.Sprintf("%dm", emCPURequest))
+	case types.InstanceManagerTypeReplica:
+		rmCPURequest := lhNode.Spec.ReplicaManagerCPURequest
+		if rmCPURequest == 0 {
+			rmCPUSetting, err := ds.GetSetting(types.SettingNameGuaranteedReplicaManagerCPU)
+			if err != nil {
+				return nil, err
+			}
+			rmCPUPercentage, err := strconv.ParseFloat(rmCPUSetting.Value, 64)
+			if err != nil {
+				return nil, err
+			}
+			rmCPURequest = int(math.Round(allocatableMilliCPU * rmCPUPercentage / 100.0))
+		}
+		return ParseResourceRequirement(fmt.Sprintf("%dm", rmCPURequest))
+	default:
+		return nil, fmt.Errorf("instance manager %v has unknown type %v", im.Name, im.Spec.Type)
+	}
 }
 
 func isControllerResponsibleFor(controllerID string, ds *datastore.DataStore, name, preferredOwnerID, currentOwnerID string) bool {
