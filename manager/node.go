@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -70,6 +71,36 @@ func (m *VolumeManager) UpdateNode(n *longhorn.Node) (*longhorn.Node, error) {
 		return nil, err
 	}
 	n.Spec.Tags = tags
+
+	if n.Spec.EngineManagerCPURequest < 0 || n.Spec.ReplicaManagerCPURequest < 0 {
+		return nil, fmt.Errorf("found invalid EngineManagerCPURequest %v or ReplicaManagerCPURequest %v during node %v update", n.Spec.EngineManagerCPURequest, n.Spec.ReplicaManagerCPURequest, n.Name)
+	}
+	if n.Spec.EngineManagerCPURequest != 0 || n.Spec.ReplicaManagerCPURequest != 0 {
+		kubeNode, err := m.ds.GetKubernetesNode(n.Name)
+		if err != nil {
+			return nil, err
+		}
+		allocatableCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
+		engineManagerCPUSetting, err := m.ds.GetSetting(types.SettingNameGuaranteedEngineManagerCPU)
+		if err != nil {
+			return nil, err
+		}
+		engineManagerCPUInPercentage := engineManagerCPUSetting.Value
+		if n.Spec.EngineManagerCPURequest > 0 {
+			engineManagerCPUInPercentage = fmt.Sprintf("%.0f", math.Round(float64(n.Spec.EngineManagerCPURequest)/allocatableCPU*100.0))
+		}
+		replicaManagerCPUSetting, err := m.ds.GetSetting(types.SettingNameGuaranteedReplicaManagerCPU)
+		if err != nil {
+			return nil, err
+		}
+		replicaManagerCPUInPercentage := replicaManagerCPUSetting.Value
+		if n.Spec.ReplicaManagerCPURequest > 0 {
+			replicaManagerCPUInPercentage = fmt.Sprintf("%.0f", math.Round(float64(n.Spec.ReplicaManagerCPURequest)/allocatableCPU*100.0))
+		}
+		if err := types.ValidateCPUReservationValues(engineManagerCPUInPercentage, replicaManagerCPUInPercentage); err != nil {
+			return nil, err
+		}
+	}
 
 	node, err := m.ds.UpdateNode(n)
 	if err != nil {

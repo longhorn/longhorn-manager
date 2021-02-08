@@ -301,11 +301,13 @@ type EngineVersionDetails struct {
 }
 
 type NodeSpec struct {
-	Name              string              `json:"name"`
-	Disks             map[string]DiskSpec `json:"disks"`
-	AllowScheduling   bool                `json:"allowScheduling"`
-	EvictionRequested bool                `json:"evictionRequested"`
-	Tags              []string            `json:"tags"`
+	Name                     string              `json:"name"`
+	Disks                    map[string]DiskSpec `json:"disks"`
+	AllowScheduling          bool                `json:"allowScheduling"`
+	EvictionRequested        bool                `json:"evictionRequested"`
+	Tags                     []string            `json:"tags"`
+	EngineManagerCPURequest  int                 `json:"engineManagerCPURequest"`
+	ReplicaManagerCPURequest int                 `json:"replicaManagerCPURequest"`
 }
 
 const (
