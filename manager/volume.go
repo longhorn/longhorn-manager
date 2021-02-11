@@ -348,7 +348,24 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return v, nil
 	}
 
-	if v.Spec.NodeID != "" {
+	if v.Status.State != types.VolumeStateDetached && !v.Spec.Migratable {
+		return nil, fmt.Errorf("invalid state %v to attach volume %v is migratable %v", name, v.Status.State, v.Spec.Migratable)
+	}
+
+	isVolumeShared := v.Spec.AccessMode == types.AccessModeReadWriteMany && !v.Spec.Migratable
+	isVolumeDetached := v.Spec.NodeID == ""
+	if isVolumeDetached {
+		if !isVolumeShared || disableFrontend {
+			v.Spec.NodeID = nodeID
+			logrus.Infof("Volume %v attachment to %v with disableFrontend %v requested", v.Name, v.Spec.NodeID, disableFrontend)
+		}
+	} else if isVolumeShared {
+		// shared volumes only need to be attached if maintenance mode is requested
+		// otherwise we just set the disabled frontend and last attached by states
+		logrus.Debugf("No need to attach volume %v since it's shared via %v", v.Name, v.Status.ShareEndpoint)
+	} else {
+		// non shared volume that is already attached needs to be migratable
+		// to be able to attach to a new node, without detaching from the previous node
 		if !v.Spec.Migratable {
 			return nil, fmt.Errorf("non migratable volume %v cannot attach to node %v is already attached to node %v", v.Name, nodeID, v.Spec.NodeID)
 		}
@@ -374,9 +391,6 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 
 		v.Spec.MigrationNodeID = nodeID
 		logrus.Infof("Volume %v migration from %v to %v requested", v.Name, v.Spec.NodeID, nodeID)
-	} else {
-		v.Spec.NodeID = nodeID
-		logrus.Infof("Volume %v attachment to %v with disableFrontend %v requested", v.Name, v.Spec.NodeID, disableFrontend)
 	}
 
 	v.Spec.DisableFrontend = disableFrontend
@@ -405,39 +419,40 @@ func (m *VolumeManager) Detach(name, nodeID string) (v *longhorn.Volume, err err
 	}
 
 	if v.Spec.NodeID == "" && v.Spec.MigrationNodeID == "" {
-		logrus.Debugf("No need to detach volume %v is already detached from all nodes", v.Name)
+		logrus.Infof("No need to detach volume %v is already detached from all nodes", v.Name)
+		return v, nil
+	}
+
+	// shared volumes only need to be detached if they are attached in maintenance mode
+	if v.Spec.AccessMode == types.AccessModeReadWriteMany && !v.Spec.Migratable && !v.Spec.DisableFrontend {
+		logrus.Infof("No need to detach volume %v since it's shared via %v", v.Name, v.Status.ShareEndpoint)
 		return v, nil
 	}
 
 	if nodeID != "" && nodeID != v.Spec.NodeID && nodeID != v.Spec.MigrationNodeID {
-		logrus.Debugf("No need to detach volume %v since it's not attached to node %v", v.Name, nodeID)
+		logrus.Infof("No need to detach volume %v since it's not attached to node %v", v.Name, nodeID)
 		return v, nil
 	}
 
-	// if the detach request doesn't specify a node to detach from
-	// we detach from all nodes, which is the same behavior as we previously had
-	if nodeID == "" {
-		v.Spec.NodeID = ""
-		v.Spec.MigrationNodeID = ""
-		logrus.Infof("Volume %v detachment from all nodes requested", v.Name)
-	} else if nodeID == v.Spec.NodeID {
-		if v.Spec.MigrationNodeID != "" && v.Spec.Migratable {
-			// migration confirmation, since detach is requested from the old node
-			// the engine must be running on the new node in order to be confirmed
-			if !m.isVolumeAvailableOnNode(name, v.Spec.MigrationNodeID) {
-				return nil, fmt.Errorf("migration is not ready yet")
-			}
-			v.Spec.NodeID = v.Spec.MigrationNodeID
-			v.Spec.MigrationNodeID = ""
-			logrus.Infof("Volume %v migration from %v to %v confirmed", v.Name, nodeID, v.Spec.NodeID)
-		} else {
-			v.Spec.NodeID = ""
-			v.Spec.MigrationNodeID = ""
-			logrus.Infof("Volume %v detachment from node %v requested", v.Name, nodeID)
+	isMigratingVolume := v.Spec.Migratable && v.Spec.MigrationNodeID != "" && v.Spec.NodeID != ""
+	isMigrationConfirmation := isMigratingVolume && nodeID == v.Spec.NodeID
+	isMigrationRollback := isMigratingVolume && nodeID == v.Spec.MigrationNodeID
+
+	// Since all invalid/unexcepted cases have been handled above, we only need to take care of regular detach or migration here.
+	if isMigrationConfirmation {
+		if !m.isVolumeAvailableOnNode(name, v.Spec.MigrationNodeID) {
+			return nil, fmt.Errorf("migration is not ready yet")
 		}
-	} else if nodeID == v.Spec.MigrationNodeID {
+		v.Spec.NodeID = v.Spec.MigrationNodeID
+		v.Spec.MigrationNodeID = ""
+		logrus.Infof("Volume %v migration from %v to %v confirmed", v.Name, nodeID, v.Spec.NodeID)
+	} else if isMigrationRollback {
 		v.Spec.MigrationNodeID = ""
 		logrus.Infof("Volume %v migration from %v to %v rollback", v.Name, nodeID, v.Spec.NodeID)
+	} else {
+		v.Spec.NodeID = ""
+		v.Spec.MigrationNodeID = ""
+		logrus.Infof("Volume %v detachment from node %v requested", v.Name, nodeID)
 	}
 
 	v.Spec.DisableFrontend = false
