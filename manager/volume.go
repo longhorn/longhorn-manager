@@ -346,7 +346,16 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return v, nil
 	}
 
-	if v.Spec.NodeID != "" {
+	// shared volumes only need to be attached if maintenance mode is requested
+	// otherwise we just set the disabled frontend and last attached by states
+	if v.Spec.AccessMode == types.AccessModeReadWriteMany && !v.Spec.Migratable {
+		if disableFrontend {
+			logrus.Infof("Shared volume %v attachment to %v in maintenance mode requested", v.Name, v.Spec.NodeID)
+			v.Spec.NodeID = nodeID
+		} else if !v.Spec.DisableFrontend {
+			logrus.Debugf("No need to attach volume %v since it's shared via %v", v.Name, v.Status.ShareEndpoint)
+		}
+	} else if v.Spec.NodeID != "" {
 		if !v.Spec.Migratable {
 			return nil, fmt.Errorf("non migratable volume %v cannot attach to node %v is already attached to node %v", v.Name, nodeID, v.Spec.NodeID)
 		}
@@ -404,6 +413,12 @@ func (m *VolumeManager) Detach(name, nodeID string) (v *longhorn.Volume, err err
 
 	if v.Spec.NodeID == "" && v.Spec.MigrationNodeID == "" {
 		logrus.Debugf("No need to detach volume %v is already detached from all nodes", v.Name)
+		return v, nil
+	}
+
+	// shared volumes only need to be detached if they are attached in maintenance mode
+	if v.Spec.AccessMode == types.AccessModeReadWriteMany && !v.Spec.Migratable && !v.Spec.DisableFrontend {
+		logrus.Debugf("No need to detach volume %v since it's shared via %v", v.Name, v.Status.ShareEndpoint)
 		return v, nil
 	}
 
