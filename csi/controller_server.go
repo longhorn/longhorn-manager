@@ -321,8 +321,9 @@ func (cs *ControllerServer) publishMigratableVolume(req *csi.ControllerPublishVo
 		}
 	}
 
+	checkVolumeAttached := func(vol *longhornclient.Volume) bool { return isVolumeAvailableOn(vol, req.NodeId) }
 	return cs.publishVolume(volume, req.NodeId, func() error {
-		if !cs.waitForVolumeState(req.GetVolumeId(), "volume migration available", isVolumeMigrationAvailable, false, false) {
+		if !cs.waitForVolumeState(req.GetVolumeId(), "volume available on", checkVolumeAttached, false, false) {
 			return status.Errorf(codes.DeadlineExceeded, "Attaching volume %s on node %s failed", req.GetVolumeId(), req.GetNodeId())
 		}
 		return nil
@@ -733,12 +734,12 @@ func isVolumeDetached(vol *longhornclient.Volume) bool {
 }
 
 func isVolumeAttached(vol *longhornclient.Volume) bool {
-	return vol.State == string(types.VolumeStateAttached) && vol.Controllers[0].Endpoint != ""
+	return vol.State == string(types.VolumeStateAttached) && len(vol.Controllers) > 0 && vol.Controllers[0].Endpoint != ""
 }
 
-// isVolumeMigrationAvailable checks that the volume is attached and if a migration has been requested whether it has been started
-func isVolumeMigrationAvailable(vol *longhornclient.Volume) bool {
-	return isVolumeAttached(vol) && (vol.MigrationNodeID == "" || isEngineOnNodeAvailable(vol, vol.MigrationNodeID))
+// isVolumeAvailableOn checks that the volume is attached and that an engine is running on the requested node
+func isVolumeAvailableOn(vol *longhornclient.Volume, node string) bool {
+	return isVolumeAttached(vol) && isEngineOnNodeAvailable(vol, node)
 }
 
 // isVolumeMigrationComplete checks that the volume is either detached or is attached on a different node

@@ -43,8 +43,6 @@ type Volume struct {
 
 	Migratable bool `json:"migratable,omitempty" yaml:"migratable,omitempty"`
 
-	MigrationNodeID string `json:"migrationNodeID,omitempty" yaml:"migration_node_id,omitempty"`
-
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	NodeSelector []string `json:"nodeSelector,omitempty" yaml:"node_selector,omitempty"`

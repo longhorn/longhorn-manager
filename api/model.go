@@ -37,7 +37,6 @@ type Volume struct {
 	CurrentImage            string                 `json:"currentImage"`
 	BackingImage            string                 `json:"backingImage"`
 	Created                 string                 `json:"created"`
-	MigrationNodeID         string                 `json:"migrationNodeID"`
 	LastBackup              string                 `json:"lastBackup"`
 	LastBackupAt            string                 `json:"lastBackupAt"`
 	LastAttachedBy          string                 `json:"lastAttachedBy"`
@@ -951,8 +950,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		ShareEndpoint: v.Status.ShareEndpoint,
 		ShareState:    v.Status.ShareState,
 
-		Migratable:      v.Spec.Migratable,
-		MigrationNodeID: v.Spec.MigrationNodeID,
+		Migratable: v.Spec.Migratable,
 
 		Conditions:       v.Status.Conditions,
 		KubernetesStatus: v.Status.KubernetesStatus,

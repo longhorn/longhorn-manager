@@ -221,8 +221,8 @@ func (job *Job) run() (err error) {
 		return errors.Wrapf(err, "could not get volume %v", volumeName)
 	}
 
-	if volume.MigrationNodeID != "" {
-		return fmt.Errorf("cannot run job for volume %v during migration", volume.Name)
+	if len(volume.Controllers) > 1 {
+		return fmt.Errorf("cannot run job for volume %v that is using %v engines", volume.Name, len(volume.Controllers))
 	}
 
 	defer job.handleVolumeDetachment()
