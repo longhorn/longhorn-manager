@@ -209,7 +209,9 @@ func (s *Server) VolumeDetach(rw http.ResponseWriter, req *http.Request) error {
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return err
+		// HACK: for ui detach requests that don't send a body
+		// This is the same as previous behavior where detach is requested from all nodes
+		input.HostID = ""
 	}
 	id := mux.Vars(req)["name"]
 
