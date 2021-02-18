@@ -585,12 +585,14 @@ func (rc *ReplicaController) enqueueNodeChange(obj interface{}) {
 
 	// Add eviction requested replicas to the workqueue
 	for _, diskName := range evictionDisks {
-		for replicaName := range node.Status.DiskStatus[diskName].ScheduledReplica {
-			replica, err := rc.ds.GetReplica(replicaName)
-			if err != nil {
-				return
+		if diskStatus, existed := node.Status.DiskStatus[diskName]; existed {
+			for replicaName := range diskStatus.ScheduledReplica {
+				replica, err := rc.ds.GetReplica(replicaName)
+				if err != nil {
+					return
+				}
+				rc.enqueueReplica(replica)
 			}
-			rc.enqueueReplica(replica)
 		}
 	}
 
