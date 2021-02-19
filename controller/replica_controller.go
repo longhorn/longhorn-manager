@@ -587,11 +587,9 @@ func (rc *ReplicaController) enqueueNodeChange(obj interface{}) {
 	for _, diskName := range evictionDisks {
 		if diskStatus, existed := node.Status.DiskStatus[diskName]; existed {
 			for replicaName := range diskStatus.ScheduledReplica {
-				replica, err := rc.ds.GetReplica(replicaName)
-				if err != nil {
-					return
+				if replica, err := rc.ds.GetReplica(replicaName); err == nil {
+					rc.enqueueReplica(replica)
 				}
-				rc.enqueueReplica(replica)
 			}
 		}
 	}
