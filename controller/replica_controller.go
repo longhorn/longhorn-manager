@@ -574,18 +574,10 @@ func (rc *ReplicaController) enqueueNodeChange(obj interface{}) {
 		}
 	}
 
-	// If Node eviction, add all the disks to evictionDisks.
-	// Otherwise add request eviction disk separately.
-	var evictionDisks []string
-	for diskName, diskSpec := range node.Spec.Disks {
-		if node.Spec.EvictionRequested || diskSpec.EvictionRequested {
-			evictionDisks = append(evictionDisks, diskName)
-		}
-	}
-
 	// Add eviction requested replicas to the workqueue
-	for _, diskName := range evictionDisks {
-		if diskStatus, existed := node.Status.DiskStatus[diskName]; existed {
+	for diskName, diskSpec := range node.Spec.Disks {
+		evictionRequested := node.Spec.EvictionRequested || diskSpec.EvictionRequested
+		if diskStatus, existed := node.Status.DiskStatus[diskName]; existed && evictionRequested {
 			for replicaName := range diskStatus.ScheduledReplica {
 				if replica, err := rc.ds.GetReplica(replicaName); err == nil {
 					rc.enqueueReplica(replica)
