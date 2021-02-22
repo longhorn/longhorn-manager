@@ -386,6 +386,57 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.isNilReplica = true
 	testCases["there's no disk for replica"] = tc
 
+	// Test engine image is not deployed on any node
+	tc = generateSchedulerTestCase()
+	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	tc.daemons = []*v1.Pod{
+		daemon1,
+		daemon2,
+	}
+	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	node1.Spec.Disks = map[string]types.DiskSpec{
+		getDiskID(TestNode1, "1"): disk,
+	}
+	node1.Status.DiskStatus = map[string]*types.DiskStatus{
+		getDiskID(TestNode1, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: map[string]types.Condition{
+				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			},
+			DiskUUID: getDiskID(TestNode1, "1"),
+		},
+	}
+	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	node2.Spec.Disks = map[string]types.DiskSpec{
+		getDiskID(TestNode2, "1"): disk,
+	}
+	node2.Status.DiskStatus = map[string]*types.DiskStatus{
+		getDiskID(TestNode2, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: map[string]types.Condition{
+				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			},
+			DiskUUID: getDiskID(TestNode2, "1"),
+		},
+	}
+	nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+		TestNode2: node2,
+	}
+	tc.nodes = nodes
+	expectedNodes = map[string]*longhorn.Node{}
+	tc.expectedNodes = expectedNodes
+	tc.err = false
+	tc.isNilReplica = true
+	testCases["there's no engine image deployed on any node"] = tc
+
 	// Test anti affinity nodes, replica should schedule to both node1 and node2
 	tc = generateSchedulerTestCase()
 	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
