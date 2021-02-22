@@ -225,11 +225,20 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return err
 	}
 
+	defaultEngineImage, err := ec.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+	if err != nil {
+		return err
+	}
+
+	isResponsible, err := ec.isResponsibleFor(engine, defaultEngineImage)
+	if err != nil {
+		return err
+	}
+	if !isResponsible {
+		// Not ours
+		return nil
+	}
 	if engine.Status.OwnerID != ec.controllerID {
-		if !ec.isResponsibleFor(engine) {
-			// Not ours
-			return nil
-		}
 		engine.Status.OwnerID = ec.controllerID
 		engine, err = ec.ds.UpdateEngineStatus(engine)
 		if err != nil {
@@ -670,7 +679,7 @@ func (m *EngineMonitor) sync() bool {
 
 		// when engine stopped, nodeID will be empty as well
 		if engine.Status.OwnerID != m.controllerID {
-			m.logger.Info("stop monitoring because the engine is no longer running on node")
+			m.logger.Info("stop monitoring because the engine no longer has this node as ownerID: engine.Status.OwnerID=%v; m.controllerID=%v", engine.Status.OwnerID, m.controllerID)
 			m.stop(engine)
 			return true
 		}
@@ -1393,6 +1402,33 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine) error {
 	return nil
 }
 
-func (ec *EngineController) isResponsibleFor(e *longhorn.Engine) bool {
-	return isControllerResponsibleFor(ec.controllerID, ec.ds, e.Name, e.Spec.NodeID, e.Status.OwnerID)
+func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineImage string) (bool, error) {
+	var err error
+	defer func() {
+		err = errors.Wrap(err, "error while checking isResponsibleFor")
+	}()
+	readyNodesWithDefaultEI, err := ec.ds.ListReadyNodesWithEngineImage(defaultEngineImage)
+	if err != nil {
+		return false, err
+	}
+
+	isResponsible := isControllerResponsibleFor(ec.controllerID, ec.ds, e.Name, e.Spec.NodeID, e.Status.OwnerID)
+
+	if len(readyNodesWithDefaultEI) == 0 {
+		return isResponsible, nil
+	}
+
+	preferredOwnerEngineAvailable, err := ec.ds.CheckEngineImageReadiness(defaultEngineImage, e.Spec.NodeID)
+	if err != nil {
+		return false, err
+	}
+	currentOwnerEngineAvailable, err := ec.ds.CheckEngineImageReadiness(defaultEngineImage, e.Status.OwnerID)
+	if err != nil {
+		return false, err
+	}
+	currentNodeEngineAvailable, err := ec.ds.CheckEngineImageReadiness(defaultEngineImage, ec.controllerID)
+	if err != nil {
+		return false, err
+	}
+	return (isResponsible && currentNodeEngineAvailable) || (!preferredOwnerEngineAvailable && !currentOwnerEngineAvailable && currentNodeEngineAvailable), nil
 }

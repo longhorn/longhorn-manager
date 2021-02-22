@@ -165,7 +165,7 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	if err := m.DeployAndWaitForEngineImage(engineImage); err != nil {
+	if err := m.DeployEngineImage(engineImage); err != nil {
 		return err
 	}
 

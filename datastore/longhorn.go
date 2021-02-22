@@ -945,6 +945,43 @@ func (s *DataStore) ListEngineImages() (map[string]*longhorn.EngineImage, error)
 	return itemMap, nil
 }
 
+// CheckEngineImageReadiness return true if the engine IMAGE is deployed on all nodes in the NODES list
+func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (isReady bool, err error) {
+	nodesHaveEngineImage, err := s.ListNodesWithEngineImage(image)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed CheckEngineImageReadiness for nodes %v", nodes)
+	}
+	undeployedNodes := []string{}
+	for _, node := range nodes {
+		if _, ok := nodesHaveEngineImage[node]; !ok {
+			undeployedNodes = append(undeployedNodes, node)
+		}
+	}
+	if len(undeployedNodes) > 0 {
+		logrus.Debugf("CheckEngineImageReadiness: nodes %v don't have the engine image %v", undeployedNodes, image)
+		return false, nil
+	}
+	return true, nil
+}
+
+// CheckEngineImageReadinessForVolume checks if the IMAGE is deployed on the NODEID as well as all the volume's replicas
+func (s *DataStore) CheckEngineImageReadinessForVolume(image, volumeName, nodeID string) (isReady bool, err error) {
+	replicas, err := s.ListVolumeReplicas(volumeName)
+	if err != nil {
+		return false, fmt.Errorf("cannot get replicas for volume %v: %w", volumeName, err)
+	}
+	nodes := []string{}
+	if nodeID != "" {
+		nodes = append(nodes, nodeID)
+	}
+	for _, r := range replicas {
+		if r.Spec.NodeID != "" {
+			nodes = append(nodes, r.Spec.NodeID)
+		}
+	}
+	return s.CheckEngineImageReadiness(image, nodes...)
+}
+
 // CreateBackingImage creates a Longhorn BackingImage resource and verifies
 // creation
 func (s *DataStore) CreateBackingImage(backingImage *longhorn.BackingImage) (*longhorn.BackingImage, error) {
@@ -1247,6 +1284,57 @@ func (s *DataStore) ListNodes() (map[string]*longhorn.Node, error) {
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
 func (s *DataStore) ListNodesRO() ([]*longhorn.Node, error) {
 	return s.nLister.Nodes(s.namespace).List(labels.Everything())
+}
+
+func (s *DataStore) ListNodesWithEngineImage(image string) (map[string]*longhorn.Node, error) {
+	nodes, err := s.ListNodes()
+	if err != nil {
+		return nil, err
+	}
+	eiName := types.GetEngineImageChecksumName(image)
+	ei, err := s.GetEngineImage(eiName)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get engine image %v: %v", image, err)
+	}
+	if ei.Status.State != types.EngineImageStateDeployed && ei.Status.State != types.EngineImageStateDeploying {
+		return map[string]*longhorn.Node{}, nil
+	}
+
+	for nodeID := range nodes {
+		if !ei.Status.NodeDeploymentMap[nodeID] {
+			delete(nodes, nodeID)
+		}
+	}
+	return nodes, nil
+}
+
+func (s *DataStore) ListReadyNodes() (map[string]*longhorn.Node, error) {
+	nodes, err := s.ListNodes()
+	if err != nil {
+		return nil, err
+	}
+	for nodeID, node := range nodes {
+		nodeReadyCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
+		if nodeReadyCondition.Status != types.ConditionStatusTrue {
+			delete(nodes, nodeID)
+		}
+	}
+	return nodes, nil
+}
+
+// ListReadyNodesWithEngineImage returns list of ready nodes that have the corresponding engine image deployed
+func (s *DataStore) ListReadyNodesWithEngineImage(image string) (map[string]*longhorn.Node, error) {
+	nodes, err := s.ListNodesWithEngineImage(image)
+	if err != nil {
+		return nil, err
+	}
+	for nodeID, node := range nodes {
+		nodeReadyCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
+		if nodeReadyCondition.Status != types.ConditionStatusTrue {
+			delete(nodes, nodeID)
+		}
+	}
+	return nodes, nil
 }
 
 // ListKubeNodesRO returns a list of all Kubernetes Nodes for the given namespace,

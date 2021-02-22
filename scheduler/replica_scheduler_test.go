@@ -6,6 +6,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/kubernetes/pkg/controller"
@@ -48,6 +49,8 @@ const (
 	TestDiskSize          = 5000000000
 	TestDiskAvailableSize = 3000000000
 )
+
+var longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 
 func newReplicaScheduler(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *ReplicaScheduler {
@@ -126,6 +129,42 @@ func newNode(name, namespace string, allowScheduling bool, status types.Conditio
 				types.NodeConditionTypeSchedulable: newCondition(types.NodeConditionTypeSchedulable, status),
 				types.NodeConditionTypeReady:       newCondition(types.NodeConditionTypeReady, status),
 			},
+		},
+	}
+}
+
+func newEngineImage(image string, state types.EngineImageState) *longhorn.EngineImage {
+	return &longhorn.EngineImage{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       types.GetEngineImageChecksumName(image),
+			Namespace:  TestNamespace,
+			UID:        uuid.NewUUID(),
+			Finalizers: []string{longhornFinalizerKey},
+		},
+		Spec: types.EngineImageSpec{
+			Image: image,
+		},
+		Status: types.EngineImageStatus{
+			OwnerID: TestNode1,
+			State:   state,
+			EngineVersionDetails: types.EngineVersionDetails{
+				Version:   "latest",
+				GitCommit: "latest",
+
+				CLIAPIVersion:           4,
+				CLIAPIMinVersion:        3,
+				ControllerAPIVersion:    3,
+				ControllerAPIMinVersion: 3,
+				DataFormatVersion:       1,
+				DataFormatMinVersion:    1,
+			},
+			Conditions: map[string]types.Condition{
+				types.EngineImageConditionTypeReady: {
+					Type:   types.EngineImageConditionTypeReady,
+					Status: types.ConditionStatusTrue,
+				},
+			},
+			NodeDeploymentMap: map[string]bool{},
 		},
 	}
 }
@@ -222,6 +261,7 @@ type ReplicaSchedulerTestCase struct {
 	replicas                          map[string]*longhorn.Replica
 	daemons                           []*v1.Pod
 	nodes                             map[string]*longhorn.Node
+	engineImage                       *longhorn.EngineImage
 	storageOverProvisioningPercentage string
 	storageMinimalAvailablePercentage string
 	replicaNodeSoftAntiAffinity       string
@@ -242,9 +282,11 @@ func generateSchedulerTestCase() *ReplicaSchedulerTestCase {
 		replica1.Name: replica1,
 		replica2.Name: replica2,
 	}
+	engineImage := newEngineImage(TestEngineImage, types.EngineImageStateDeployed)
 	return &ReplicaSchedulerTestCase{
-		volume:   v,
-		replicas: replicas,
+		volume:      v,
+		replicas:    replicas,
+		engineImage: engineImage,
 	}
 }
 
@@ -276,6 +318,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			DiskUUID: getDiskID(TestNode1, "1"),
 		},
 	}
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	node2 := newNode(TestNode2, TestNamespace, false, types.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	node2.Spec.Disks = map[string]types.DiskSpec{
@@ -289,6 +332,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			DiskUUID:         getDiskID(TestNode2, "1"),
 		},
 	}
+	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
 	node3 := newNode(TestNode3, TestNamespace, true, types.ConditionStatusFalse)
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	node3.Spec.Disks = map[string]types.DiskSpec{
@@ -302,6 +346,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			DiskUUID:         getDiskID(TestNode3, "1"),
 		},
 	}
+	tc.engineImage.Status.NodeDeploymentMap[node3.Name] = true
 	nodes := map[string]*longhorn.Node{
 		TestNode1: node1,
 		TestNode2: node2,
@@ -327,7 +372,9 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon2,
 	}
 	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
 	nodes = map[string]*longhorn.Node{
 		TestNode1: node1,
 		TestNode2: node2,
@@ -348,6 +395,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon2,
 	}
 	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 := newDisk(TestDefaultDataPath, true, TestDiskSize)
 	node1.Spec.Disks = map[string]types.DiskSpec{
@@ -380,6 +428,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		getDiskID(TestNode1, "1"): disk,
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, 0)
 	node2.Spec.Disks = map[string]types.DiskSpec{
@@ -443,6 +492,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon2,
 	}
 	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, TestDiskSize)
 	node1.Spec.Disks = map[string]types.DiskSpec{
 		getDiskID(TestNode1, "1"): disk,
@@ -459,6 +509,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, 0)
 	node2.Spec.Disks = map[string]types.DiskSpec{
@@ -507,6 +558,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon2,
 	}
 	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, TestDiskSize)
 	node1.Spec.Disks = map[string]types.DiskSpec{
 		getDiskID(TestNode1, "1"): disk,
@@ -523,6 +575,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, 0)
 	node2.Spec.Disks = map[string]types.DiskSpec{
@@ -575,6 +628,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		vIndexer := lhInformerFactory.Longhorn().V1beta1().Volumes().Informer().GetIndexer()
 		rIndexer := lhInformerFactory.Longhorn().V1beta1().Replicas().Informer().GetIndexer()
 		nIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
+		eiIndexer := lhInformerFactory.Longhorn().V1beta1().EngineImages().Informer().GetIndexer()
 		sIndexer := lhInformerFactory.Longhorn().V1beta1().Settings().Informer().GetIndexer()
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
@@ -592,6 +646,11 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			c.Assert(n, NotNil)
 			nIndexer.Add(n)
 		}
+		// Create engine image
+		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(tc.engineImage)
+		c.Assert(err, IsNil)
+		c.Assert(ei, NotNil)
+		eiIndexer.Add(ei)
 		// create volume
 		volume, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(tc.volume)
 		c.Assert(err, IsNil)

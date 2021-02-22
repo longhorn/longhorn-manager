@@ -118,6 +118,10 @@ func (m *VolumeManager) ListNodes() (map[string]*longhorn.Node, error) {
 	return nodeList, nil
 }
 
+func (m *VolumeManager) ListReadyNodesWithEngineImage(image string) (map[string]*longhorn.Node, error) {
+	return m.ds.ListReadyNodesWithEngineImage(image)
+}
+
 func (m *VolumeManager) ListNodesSorted() ([]*longhorn.Node, error) {
 	nodeMap, err := m.ListNodes()
 	if err != nil {

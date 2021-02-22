@@ -229,9 +229,6 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 	if defaultEngineImage == "" {
 		return nil, fmt.Errorf("BUG: Invalid empty Setting.EngineImage")
 	}
-	if err := m.CheckEngineImageReadiness(defaultEngineImage); err != nil {
-		return nil, errors.Wrapf(err, "cannot create volume with image %v", defaultEngineImage)
-	}
 
 	// Check engine version before disable revision counter
 	if spec.RevisionCounterDisabled {
@@ -305,8 +302,12 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 	if v.Status.State != types.VolumeStateDetached {
 		return nil, fmt.Errorf("invalid state to attach %v: %v", name, v.Status.State)
 	}
-	if err := m.CheckEngineImageReadiness(v.Spec.EngineImage); err != nil {
-		return nil, errors.Wrapf(err, "cannot attach volume %v with image %v", v.Name, v.Spec.EngineImage)
+
+	if isReady, err := m.CheckEngineImageReadinessForVolume(v.Spec.EngineImage, v.Name, nodeID); !isReady {
+		if err != nil {
+			return nil, fmt.Errorf("cannot attach volume %v with image %v: %v", v.Name, v.Spec.EngineImage, err)
+		}
+		return nil, fmt.Errorf("cannot attach volume %v with image %v because the engine image %v is not deployed on the replicas' nodes or the node that the volume is going to attach to", v.Name, v.Spec.EngineImage, v.Spec.EngineImage)
 	}
 
 	scheduleCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled)
@@ -712,13 +713,16 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 		}
 	}
 
-	if err := m.CheckEngineImageReadiness(image); err != nil {
-		return nil, err
-	}
-
 	v, err = m.ds.GetVolume(volumeName)
 	if err != nil {
 		return nil, err
+	}
+
+	if isReady, err := m.CheckEngineImageReadinessForVolume(image, v.Name, v.Status.CurrentNodeID); !isReady {
+		if err != nil {
+			return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v: %v", v.Name, v.Spec.EngineImage, image, err)
+		}
+		return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v because the engine image %v is not deployed on the replicas' nodes or the node that the volume is attaching to", v.Name, v.Spec.EngineImage, image, image)
 	}
 
 	if v.Spec.EngineImage == image {

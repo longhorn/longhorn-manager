@@ -191,25 +191,27 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		// Not ours, don't do anything
 		return nil
 	}
-
 	engineImage, err := ic.ds.GetEngineImage(name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			logrus.Infof("Longhorn engine image %v has been deleted", key)
+			ic.logger.WithField("engineImage", name).Debugf("Longhorn engine image %v has been deleted", key)
 			return nil
 		}
 		return err
 	}
+	log := getLoggerForEngineImage(ic.logger, engineImage)
 
-	nodeStatusDown := false
-	if engineImage.Status.OwnerID != "" {
-		nodeStatusDown, err = ic.ds.IsNodeDownOrDeleted(engineImage.Status.OwnerID)
-		if err != nil {
-			logrus.Warnf("Found error while checking ownerID is down or deleted:%v", err)
-		}
+	// check isResponsibleFor here
+	isResponsible, err := ic.isResponsibleFor(engineImage)
+	if err != nil {
+		return err
+	}
+	if !isResponsible {
+		// Not ours
+		return nil
 	}
 
-	if engineImage.Status.OwnerID == "" || nodeStatusDown {
+	if engineImage.Status.OwnerID != ic.controllerID {
 		// Claim it
 		engineImage.Status.OwnerID = ic.controllerID
 		engineImage, err = ic.ds.UpdateEngineImageStatus(engineImage)
@@ -220,10 +222,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			}
 			return err
 		}
-		logrus.Debugf("Engine Image Controller %v picked up %v (%v)", ic.controllerID, engineImage.Name, engineImage.Spec.Image)
-	} else if engineImage.Status.OwnerID != ic.controllerID {
-		// Not ours
-		return nil
+		log.Debugf("Engine Image Controller %v picked up %v (%v)", ic.controllerID, engineImage.Name, engineImage.Spec.Image)
 	}
 
 	checksumName := types.GetEngineImageChecksumName(engineImage.Spec.Image)
@@ -234,7 +233,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	dsName := types.GetDaemonSetNameFromEngineImageName(engineImage.Name)
 	if engineImage.DeletionTimestamp != nil {
 		// Will use the foreground deletion to implicitly clean up the related DaemonSet.
-		logrus.Infof("Removing engine image %v (%v)", engineImage.Name, engineImage.Spec.Image)
+		log.Infof("Removing engine image %v (%v)", engineImage.Name, engineImage.Spec.Image)
 		return ic.ds.RemoveFinalizerForEngineImage(engineImage)
 	}
 
@@ -244,7 +243,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			_, err = ic.ds.UpdateEngineImageStatus(engineImage)
 		}
 		if apierrors.IsConflict(errors.Cause(err)) {
-			logrus.Debugf("Requeue %v due to conflict: %v", key, err)
+			log.Debugf("Requeue %v due to conflict: %v", key, err)
 			ic.enqueueEngineImage(engineImage)
 			err = nil
 		}
@@ -285,7 +284,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		if err = ic.ds.CreateEngineImageDaemonSet(dsSpec); err != nil {
 			return errors.Wrapf(err, "fail to create daemonset for engine image %v", engineImage.Name)
 		}
-		logrus.Infof("Created daemon set %v for engine image %v (%v)", dsSpec.Name, engineImage.Name, engineImage.Spec.Image)
+		log.Infof("Created daemon set %v for engine image %v (%v)", dsSpec.Name, engineImage.Name, engineImage.Spec.Image)
 		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions,
 			types.EngineImageConditionTypeReady, types.ConditionStatusFalse,
 			types.EngineImageConditionTypeReadyReasonDaemonSet, fmt.Sprintf("creating daemon set %v for %v", dsSpec.Name, engineImage.Spec.Image))
@@ -302,32 +301,16 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		}
 	}
 
-	if ds.Status.DesiredNumberScheduled == 0 {
-		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions,
-			types.EngineImageConditionTypeReady, types.ConditionStatusFalse,
-			types.EngineImageConditionTypeReadyReasonDaemonSet, "no pod scheduled")
-		engineImage.Status.State = types.EngineImageStateDeploying
-		return nil
+	if err := ic.updateEngineImageRefCount(engineImage); err != nil {
+		return errors.Wrapf(err, "failed to update RefCount for engine image %v(%v)", engineImage.Name, engineImage.Spec.Image)
 	}
 
-	nodes, err := ic.ds.ListNodes()
-	if err != nil {
+	if err := ic.cleanupExpiredEngineImage(engineImage); err != nil {
 		return err
 	}
-	readyNodeCount := int32(0)
-	readyNodeList := []*longhorn.Node{}
-	for _, node := range nodes {
-		condition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
-		if condition.Status == types.ConditionStatusTrue {
-			readyNodeCount++
-			readyNodeList = append(readyNodeList, node)
-		}
-	}
-	if ds.Status.NumberAvailable < readyNodeCount {
-		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, types.EngineImageConditionTypeReady, types.ConditionStatusFalse,
-			types.EngineImageConditionTypeReadyReasonDaemonSet, fmt.Sprintf("no enough pods are ready: %v vs %v", ds.Status.NumberAvailable, readyNodeCount))
-		engineImage.Status.State = types.EngineImageStateDeploying
-		return nil
+
+	if err := ic.syncNodeDeploymentMap(engineImage); err != nil {
+		return err
 	}
 
 	if !ic.engineBinaryChecker(engineImage.Spec.Image) {
@@ -340,47 +323,71 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return err
 	}
 
-	// will only become ready for the first time if all the following functions succeed
-	engineImage.Status.State = types.EngineImageStateReady
-
 	if err := engineapi.CheckCLICompatibilty(engineImage.Status.CLIAPIVersion, engineImage.Status.CLIAPIMinVersion); err != nil {
 		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, types.EngineImageConditionTypeReady, types.ConditionStatusFalse, types.EngineImageConditionTypeReadyReasonBinary, "incompatible")
 		engineImage.Status.State = types.EngineImageStateIncompatible
-		// Allow update reference count and clean up even it's incompatible since engines may have been upgraded
+		return nil
 	}
 
-	if err := ic.updateEngineImageRefCount(engineImage); err != nil {
-		return errors.Wrapf(err, "failed to update RefCount for engine image %v(%v)", engineImage.Name, engineImage.Spec.Image)
+	deployedNodeCount := 0
+	for _, isDeployed := range engineImage.Status.NodeDeploymentMap {
+		if isDeployed {
+			deployedNodeCount++
+		}
 	}
 
-	if err := ic.cleanupExpiredEngineImage(engineImage); err != nil {
+	readyNodes, err := ic.ds.ListReadyNodes()
+	if err != nil {
 		return err
 	}
 
-	if engineImage.Status.State != types.EngineImageStateIncompatible && !reflect.DeepEqual(types.GetEngineImageLabels(engineImage.Name), ds.Labels) {
+	if deployedNodeCount < len(readyNodes) {
+		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, types.EngineImageConditionTypeReady, types.ConditionStatusFalse,
+			types.EngineImageConditionTypeReadyReasonDaemonSet, fmt.Sprintf("Engine image is not fully deployed on all nodes: %v of %v", deployedNodeCount, len(engineImage.Status.NodeDeploymentMap)))
 		engineImage.Status.State = types.EngineImageStateDeploying
-		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions,
-			types.EngineImageConditionTypeReady, types.ConditionStatusFalse,
-			types.EngineImageConditionTypeReadyReasonDaemonSet, fmt.Sprintf("Correcting the DaemonSet pod label for Engine image %v (%v)", engineImage.Name, engineImage.Spec.Image))
-		// Cannot use update to correct the labels. The label update for the DaemonSet won’t be applied to the its pods.
-		// The related issue: https://github.com/longhorn/longhorn/issues/769
-		if err := ic.ds.DeleteDaemonSet(dsName); err != nil && !datastore.ErrorIsNotFound(err) {
-			return errors.Wrapf(err, "cannot delete the DaemonSet with mismatching labels for engine image %v", engineImage.Name)
-		}
-		logrus.Infof("Removed DaemonSet %v with mismatching labels for engine image %v (%v). The DaemonSet with correct labels will be recreated automatically after deletion",
-			dsName, engineImage.Name, engineImage.Spec.Image)
-	}
-
-	if engineImage.Status.State == types.EngineImageStateReady {
+	} else {
 		engineImage.Status.Conditions = types.SetConditionAndRecord(engineImage.Status.Conditions,
 			types.EngineImageConditionTypeReady, types.ConditionStatusTrue,
-			"", fmt.Sprintf("Engine image %v (%v) become ready", engineImage.Name, engineImage.Spec.Image),
+			"", fmt.Sprintf("Engine image %v (%v) is fully deployed on all ready nodes", engineImage.Name, engineImage.Spec.Image),
 			ic.eventRecorder, engineImage, v1.EventTypeNormal)
+		engineImage.Status.State = types.EngineImageStateDeployed
 	}
 
 	if err := ic.handleAutoUpgradeEngineImageToDefaultEngineImage(); err != nil {
-		ic.logger.WithError(err).Warn("error when handleAutoUpgradeEngineImageToDefaultEngineImage")
+		log.WithError(err).Warn("error when handleAutoUpgradeEngineImageToDefaultEngineImage")
 	}
+
+	return nil
+}
+
+func (ic *EngineImageController) syncNodeDeploymentMap(engineImage *longhorn.EngineImage) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "cannot sync NodeDeploymenMap for engine image %v", engineImage.Name)
+	}()
+
+	nodeDeploymentMap := map[string]bool{}
+
+	nodes, err := ic.ds.ListNodes()
+	if err != nil {
+		return err
+	}
+	for _, node := range nodes {
+		nodeDeploymentMap[node.Name] = false
+	}
+
+	eiDaemonSetPods, err := ic.ds.ListEngineImageDaemonSetPodsFromEngineImageName(engineImage.Name)
+	if err != nil {
+		return err
+	}
+	for _, pod := range eiDaemonSetPods {
+		allContainerReady := true
+		for _, containerStatus := range pod.Status.ContainerStatuses {
+			allContainerReady = allContainerReady && containerStatus.Ready
+		}
+		nodeDeploymentMap[pod.Spec.NodeName] = allContainerReady
+	}
+
+	engineImage.Status.NodeDeploymentMap = nodeDeploymentMap
 
 	return nil
 }
@@ -395,7 +402,6 @@ func (ic *EngineImageController) handleAutoUpgradeEngineImageToDefaultEngineImag
 		return nil
 	}
 
-	// Check if the new default engine image is ready.
 	defaultEngineImage, err := ic.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if err != nil {
 		return err
@@ -403,9 +409,6 @@ func (ic *EngineImageController) handleAutoUpgradeEngineImageToDefaultEngineImag
 	defaultEngineImageResource, err := ic.ds.GetEngineImage(types.GetEngineImageChecksumName(defaultEngineImage))
 	if err != nil {
 		return err
-	}
-	if defaultEngineImageResource.Status.State != types.EngineImageStateReady {
-		return nil
 	}
 
 	// List all volumes and select a set of volume for upgrading.
@@ -460,9 +463,11 @@ func limitAutomaticEngineUpgradePerNode(volumes map[string]*longhorn.Volume, upg
 // A volume is qualified for engine image upgrading if it meets one of the following case:
 // Case 1:
 //   1. Volume is in detached state
+//   2. newEngineImageResource is deployed on the all volume's replicas' nodes
 // Case 2:
 //   1. Volume is not in engine upgrading process
-//   2. Volume is in attached state and it is able to do live upgrade
+//   2. newEngineImageResource is deployed on attaching node and the all volume's replicas' nodes
+//   3. Volume is in attached state and it is able to do live upgrade
 func (ic *EngineImageController) getVolumesForEngineImageUpgrading(volumes map[string]*longhorn.Volume, newEngineImageResource *longhorn.EngineImage) ([]*longhorn.Volume, error) {
 	candiates := []*longhorn.Volume{}
 
@@ -475,6 +480,9 @@ func (ic *EngineImageController) getVolumesForEngineImageUpgrading(volumes map[s
 		if v.Spec.EngineImage != v.Status.CurrentImage {
 			continue
 		}
+		if isReady, _ := ic.ds.CheckEngineImageReadinessForVolume(newEngineImageResource.Spec.Image, v.Name, v.Status.CurrentNodeID); !isReady {
+			continue
+		}
 		if !ic.canDoOfflineEngineImageUpgrade(v, newEngineImageResource) && !ic.canDoLiveEngineImageUpgrade(v, newEngineImageResource) {
 			continue
 		}
@@ -485,7 +493,7 @@ func (ic *EngineImageController) getVolumesForEngineImageUpgrading(volumes map[s
 }
 
 func (ic *EngineImageController) canDoOfflineEngineImageUpgrade(v *longhorn.Volume, newEngineImageResource *longhorn.EngineImage) bool {
-	return v.Status.State == types.VolumeStateDetached && newEngineImageResource.Status.State == types.EngineImageStateReady
+	return v.Status.State == types.VolumeStateDetached
 }
 
 // canDoLiveEngineImageUpgrade check if it is possible to do live engine upgrade for a volume
@@ -506,9 +514,6 @@ func (ic *EngineImageController) canDoLiveEngineImageUpgrade(v *longhorn.Volume,
 		return false
 	}
 	if v.Status.ExpansionRequired {
-		return false
-	}
-	if newEngineImageResource.Status.State != types.EngineImageStateReady {
 		return false
 	}
 	// We don't need the oldEngineImageResource to be ready
@@ -796,4 +801,32 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 	}
 
 	return d, nil
+}
+
+func (ic *EngineImageController) isResponsibleFor(ei *longhorn.EngineImage) (bool, error) {
+	var err error
+	defer func() {
+		err = errors.Wrap(err, "error while checking isResponsibleFor")
+	}()
+
+	readyNodesWithDefaultEI, err := ic.ds.ListReadyNodesWithEngineImage(ei.Spec.Image)
+	if err != nil {
+		return false, err
+	}
+	isResponsible := isControllerResponsibleFor(ic.controllerID, ic.ds, ei.Name, "", ei.Status.OwnerID)
+
+	if len(readyNodesWithDefaultEI) == 0 {
+		return isResponsible, nil
+	}
+
+	currentOwnerEngineAvailable, err := ic.ds.CheckEngineImageReadiness(ei.Spec.Image, ei.Status.OwnerID)
+	if err != nil {
+		return false, err
+	}
+	currentNodeEngineAvailable, err := ic.ds.CheckEngineImageReadiness(ei.Spec.Image, ic.controllerID)
+	if err != nil {
+		return false, err
+	}
+
+	return (isResponsible && currentNodeEngineAvailable) || (!currentOwnerEngineAvailable && currentNodeEngineAvailable), nil
 }

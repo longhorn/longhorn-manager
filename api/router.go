@@ -63,7 +63,7 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("GET").Path("/v1/volumes").Handler(f(schemas, s.VolumeList))
 	r.Methods("GET").Path("/v1/volumes/{name}").Handler(f(schemas, s.VolumeGet))
 	r.Methods("DELETE").Path("/v1/volumes/{name}").Handler(f(schemas, s.VolumeDelete))
-	r.Methods("POST").Path("/v1/volumes").Handler(f(schemas, s.VolumeCreate))
+	r.Methods("POST").Path("/v1/volumes").Handler(f(schemas, s.fwd.Handler(NodeHasDefaultEngineImage(s.m), s.VolumeCreate)))
 
 	volumeActions := map[string]func(http.ResponseWriter, *http.Request) error{
 		"attach":             s.VolumeAttach,
@@ -95,13 +95,13 @@ func NewRouter(s *Server) *mux.Router {
 		r.Methods("POST").Path("/v1/volumes/{name}").Queries("action", name).Handler(f(schemas, action))
 	}
 
-	r.Methods("GET").Path("/v1/backupvolumes").Handler(f(schemas, s.BackupVolumeList))
-	r.Methods("GET").Path("/v1/backupvolumes/{volName}").Handler(f(schemas, s.BackupVolumeGet))
-	r.Methods("DELETE").Path("/v1/backupvolumes/{volName}").Handler(f(schemas, s.BackupVolumeDelete))
+	r.Methods("GET").Path("/v1/backupvolumes").Handler(f(schemas, s.fwd.Handler(NodeHasDefaultEngineImage(s.m), s.BackupVolumeList)))
+	r.Methods("GET").Path("/v1/backupvolumes/{volName}").Handler(f(schemas, s.fwd.Handler(NodeHasDefaultEngineImage(s.m), s.BackupVolumeGet)))
+	r.Methods("DELETE").Path("/v1/backupvolumes/{volName}").Handler(f(schemas, s.fwd.Handler(NodeHasDefaultEngineImage(s.m), s.BackupVolumeDelete)))
 	backupActions := map[string]func(http.ResponseWriter, *http.Request) error{
-		"backupList":   s.BackupList,
-		"backupGet":    s.BackupGet,
-		"backupDelete": s.BackupDelete,
+		"backupList":   s.fwd.Handler(NodeHasDefaultEngineImage(s.m), s.BackupList),
+		"backupGet":    s.fwd.Handler(NodeHasDefaultEngineImage(s.m), s.BackupGet),
+		"backupDelete": s.fwd.Handler(NodeHasDefaultEngineImage(s.m), s.BackupDelete),
 	}
 	for name, action := range backupActions {
 		r.Methods("POST").Path("/v1/backupvolumes/{volName}").Queries("action", name).Handler(f(schemas, action))

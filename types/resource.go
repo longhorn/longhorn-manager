@@ -257,7 +257,7 @@ type EngineImageState string
 
 const (
 	EngineImageStateDeploying    = "deploying"
-	EngineImageStateReady        = "ready"
+	EngineImageStateDeployed     = "deployed"
 	EngineImageStateIncompatible = "incompatible"
 	EngineImageStateError        = "error"
 )
@@ -274,11 +274,12 @@ const (
 )
 
 type EngineImageStatus struct {
-	OwnerID    string               `json:"ownerID"`
-	State      EngineImageState     `json:"state"`
-	RefCount   int                  `json:"refCount"`
-	NoRefSince string               `json:"noRefSince"`
-	Conditions map[string]Condition `json:"conditions"`
+	OwnerID           string               `json:"ownerID"`
+	State             EngineImageState     `json:"state"`
+	RefCount          int                  `json:"refCount"`
+	NoRefSince        string               `json:"noRefSince"`
+	Conditions        map[string]Condition `json:"conditions"`
+	NodeDeploymentMap map[string]bool      `json:"nodeDeploymentMap"`
 
 	EngineVersionDetails
 }

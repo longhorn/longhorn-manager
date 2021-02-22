@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httputil"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/longhorn-manager/manager"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 type OwnerIDFunc func(req *http.Request) (string, error)
@@ -24,6 +26,29 @@ func OwnerIDFromVolume(m *manager.VolumeManager) func(req *http.Request) (string
 			return "", nil
 		}
 		return volume.Status.OwnerID, nil
+	}
+}
+
+// NodeHasDefaultEngineImage picks a node that is ready and has default engine image deployed.
+// To prevent the repeatedly forwarding the request around, prioritize the current node if it meets the requirement.
+func NodeHasDefaultEngineImage(m *manager.VolumeManager) func(req *http.Request) (string, error) {
+	return func(req *http.Request) (string, error) {
+		engineImage, err := m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+		if err != nil {
+			return "", err
+		}
+		nodes, err := m.ListReadyNodesWithEngineImage(engineImage)
+		if err != nil {
+			return "", err
+		}
+		if _, ok := nodes[m.GetCurrentNodeID()]; ok {
+			return m.GetCurrentNodeID(), nil
+		}
+
+		for nodeID := range nodes {
+			return nodeID, nil
+		}
+		return "", fmt.Errorf("cannot find a node that is ready and has the default engine image %v deployed", engineImage)
 	}
 }
 

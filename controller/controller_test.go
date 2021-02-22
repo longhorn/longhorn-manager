@@ -142,6 +142,7 @@ func newEngineImage(image string, state types.EngineImageState) *longhorn.Engine
 					Status: types.ConditionStatusTrue,
 				},
 			},
+			NodeDeploymentMap: map[string]bool{},
 		},
 	}
 }
@@ -177,6 +178,23 @@ func newEngineImageDaemonSet() *appsv1.DaemonSet {
 			DesiredNumberScheduled: 1,
 			NumberAvailable:        1,
 		},
+	}
+}
+
+func newPod(status *corev1.PodStatus, name, namespace, nodeID string) *corev1.Pod {
+	if status == nil {
+		return nil
+	}
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: corev1.PodSpec{
+			ServiceAccountName: TestServiceAccount,
+			NodeName:           nodeID,
+		},
+		Status: *status,
 	}
 }
 
