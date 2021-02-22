@@ -47,7 +47,7 @@ func (m *VolumeManager) GetEngineImageByName(name string) (*longhorn.EngineImage
 	return m.ds.GetEngineImage(name)
 }
 
-func (m *VolumeManager) GetEngineImage(image string) (*longhorn.EngineImage, error) {
+func (m *VolumeManager) GetEngineImageByImage(image string) (*longhorn.EngineImage, error) {
 	name := types.GetEngineImageChecksumName(image)
 	return m.ds.GetEngineImage(name)
 }
@@ -100,45 +100,22 @@ func (m *VolumeManager) DeleteEngineImageByName(name string) error {
 	return nil
 }
 
-func (m *VolumeManager) DeployAndWaitForEngineImage(image string) error {
-	if _, err := m.GetEngineImage(image); err != nil {
-		if datastore.ErrorIsNotFound(err) {
-			if _, err = m.CreateEngineImage(image); err != nil {
-				return errors.Wrapf(err, "cannot create engine image for %v", image)
-			}
-		} else {
+func (m *VolumeManager) DeployEngineImage(image string) error {
+	if _, err := m.GetEngineImageByImage(image); err != nil {
+		if !datastore.ErrorIsNotFound(err) {
 			return errors.Wrapf(err, "cannot get engine image %v", image)
 		}
-	}
-	if err := m.WaitForEngineImage(image); err != nil {
-		return errors.Wrapf(err, "failed to wait for engine image %v", image)
+		if _, err = m.CreateEngineImage(image); err != nil {
+			return errors.Wrapf(err, "cannot create engine image for %v", image)
+		}
 	}
 	return nil
 }
 
-func (m *VolumeManager) WaitForEngineImage(image string) error {
-	for i := 0; i < WaitForEngineImageCount; i++ {
-		ei, err := m.GetEngineImage(image)
-		if err != nil {
-			return errors.Wrapf(err, "cannot get engine image %v", image)
-		}
-		if ei.Status.State == types.EngineImageStateReady {
-			logrus.Debugf("Engine image %v is ready", image)
-			return nil
-		}
-		logrus.Debugf("Waiting for engine image %v to be ready", image)
-		time.Sleep(WaitForEngineImageInterval)
-	}
-	return fmt.Errorf("Wait for engine image %v timed out", image)
+func (m *VolumeManager) CheckEngineImageReadiness(image string, nodes ...string) (isReady bool, err error) {
+	return m.ds.CheckEngineImageReadiness(image, nodes...)
 }
 
-func (m *VolumeManager) CheckEngineImageReadiness(image string) error {
-	ei, err := m.GetEngineImage(image)
-	if err != nil {
-		return errors.Wrapf(err, "unable to get engine image %v", image)
-	}
-	if ei.Status.State != types.EngineImageStateReady {
-		return fmt.Errorf("engine image %v (%v) is not ready, it's %v", ei.Name, image, ei.Status.State)
-	}
-	return nil
+func (m *VolumeManager) CheckEngineImageReadinessForVolume(image, volumeName, nodeID string) (isReady bool, err error) {
+	return m.ds.CheckEngineImageReadinessForVolume(image, volumeName, nodeID)
 }

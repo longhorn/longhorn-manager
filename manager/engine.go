@@ -222,8 +222,11 @@ func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.Eng
 	if e.Status.CurrentState != types.InstanceStateRunning {
 		return nil, fmt.Errorf("engine is not running")
 	}
-	if err := m.CheckEngineImageReadiness(e.Status.CurrentImage); err != nil {
-		return nil, errors.Wrapf(err, "cannot get engine client with image %v", e.Status.CurrentImage)
+	if isReady, err := m.CheckEngineImageReadiness(e.Status.CurrentImage, m.currentNodeID); !isReady {
+		if err != nil {
+			return nil, fmt.Errorf("cannot get engine client with image %v: %v", e.Status.CurrentImage, err)
+		}
+		return nil, fmt.Errorf("cannot get engine client with image %v because it isn't deployed on this node", e.Status.CurrentImage)
 	}
 
 	engineCollection := &engineapi.EngineCollection{}

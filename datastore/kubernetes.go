@@ -154,6 +154,16 @@ func (s *DataStore) GetEngineImageDaemonSet(name string) (*appsv1.DaemonSet, err
 	return resultRO.DeepCopy(), nil
 }
 
+func (s *DataStore) ListEngineImageDaemonSetPodsFromEngineImageName(EIName string) ([]*corev1.Pod, error) {
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetEngineImageLabels(EIName),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.ListPodsBySelector(selector)
+}
+
 // CreatePDB creates a PodDisruptionBudget resource for the given PDB object and namespace
 func (s *DataStore) CreatePDB(pdp *policyv1beta1.PodDisruptionBudget) (*policyv1beta1.PodDisruptionBudget, error) {
 	return s.kubeClient.PolicyV1beta1().PodDisruptionBudgets(s.namespace).Create(pdp)

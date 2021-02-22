@@ -6,6 +6,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
@@ -37,8 +38,9 @@ type EngineImageControllerTestCase struct {
 	// For expired engine image cleanup
 	defaultEngineImage string
 
-	currentEngineImage *longhorn.EngineImage
-	currentDaemonSet   *appv1.DaemonSet
+	currentEngineImage  *longhorn.EngineImage
+	currentDaemonSet    *appv1.DaemonSet
+	currentDaemonSetPod *corev1.Pod
 
 	expectedEngineImage *longhorn.EngineImage
 	expectedDaemonSet   *appv1.DaemonSet
@@ -113,11 +115,11 @@ func getEngineImageControllerTestTemplate() *EngineImageControllerTestCase {
 		node:                newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, ""),
 		volume:              newVolume(TestVolumeName, 2),
 		engine:              newEngine(TestEngineName, TestEngineImage, TestEngineManagerName, TestNode1, TestIP1, 0, true, types.InstanceStateRunning, types.InstanceStateRunning),
-		upgradedEngineImage: newEngineImage(TestUpgradedEngineImage, types.EngineImageStateReady),
+		upgradedEngineImage: newEngineImage(TestUpgradedEngineImage, types.EngineImageStateDeployed),
 
 		defaultEngineImage: TestEngineImage,
 
-		currentEngineImage: newEngineImage(TestEngineImage, types.EngineImageStateReady),
+		currentEngineImage: newEngineImage(TestEngineImage, types.EngineImageStateDeployed),
 		currentDaemonSet:   newEngineImageDaemonSet(),
 	}
 
@@ -138,6 +140,17 @@ func (tc *EngineImageControllerTestCase) copyCurrentToExpected() {
 	}
 }
 
+func createEngineImageDaemonSetPod(name string, containerReadyStatus bool, nodeID string) *corev1.Pod {
+	pod := newPod(
+		&corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{Ready: containerReadyStatus}}},
+		name,
+		TestNamespace,
+		nodeID,
+	)
+	pod.Labels = types.GetEngineImageLabels(getTestEngineImageName())
+	return pod
+}
+
 func generateEngineImageControllerTestCases() map[string]*EngineImageControllerTestCase {
 	var tc *EngineImageControllerTestCase
 	testCases := map[string]*EngineImageControllerTestCase{}
@@ -145,9 +158,10 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	// The TestNode2 is a non-existing node and is just used for node down test.
 	tc = getEngineImageControllerTestTemplate()
 	tc.currentEngineImage.Status.OwnerID = TestNode2
+	tc.currentDaemonSetPod = createEngineImageDaemonSetPod(getTestEngineImageDaemonSetName()+TestPod1, true, TestNode1)
 	tc.copyCurrentToExpected()
 	tc.expectedEngineImage.Status.OwnerID = TestNode1
-
+	tc.expectedEngineImage.Status.NodeDeploymentMap = map[string]bool{TestNode1: true}
 	testCases["Engine image ownerID node is down"] = tc
 
 	tc = getEngineImageControllerTestTemplate()
@@ -173,41 +187,30 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 		Status: types.ConditionStatusFalse,
 		Reason: types.EngineImageConditionTypeReadyReasonDaemonSet,
 	}
+	tc.expectedEngineImage.Status.NodeDeploymentMap = map[string]bool{TestNode1: false}
 	testCases["Engine Image DaemonSet pods are suddenly removed"] = tc
 
 	// `ei.Status.refCount` should become 1 and `Status.NoRefSince` should be unset
 	tc = getEngineImageControllerTestTemplate()
 	tc.currentEngineImage.Status.RefCount = 0
 	tc.currentEngineImage.Status.NoRefSince = getTestNow()
+	tc.currentDaemonSetPod = createEngineImageDaemonSetPod(getTestEngineImageDaemonSetName()+TestPod1, true, TestNode1)
 	tc.copyCurrentToExpected()
 	tc.expectedEngineImage.Status.RefCount = 1
 	tc.expectedEngineImage.Status.NoRefSince = ""
+	tc.expectedEngineImage.Status.NodeDeploymentMap = map[string]bool{TestNode1: true}
 	testCases["One volume starts to use the engine image"] = tc
 
 	// No volume is using the current engine image.
 	tc = getEngineImageControllerTestTemplate()
 	tc.volume = nil
 	tc.engine = nil
+	tc.currentDaemonSetPod = createEngineImageDaemonSetPod(getTestEngineImageDaemonSetName()+TestPod1, true, TestNode1)
 	tc.copyCurrentToExpected()
 	tc.expectedEngineImage.Status.RefCount = 0
 	tc.expectedEngineImage.Status.NoRefSince = getTestNow()
+	tc.expectedEngineImage.Status.NodeDeploymentMap = map[string]bool{TestNode1: true}
 	testCases["The default engine image won't be cleaned up even if there is no volume using it"] = tc
-
-	tc = getEngineImageControllerTestTemplate()
-	deprecatedLabels := map[string]string{
-		"longhorn": "engine-image",
-	}
-	tc.currentDaemonSet.Labels = deprecatedLabels
-	tc.currentDaemonSet.Spec.Template.Labels = deprecatedLabels
-	tc.copyCurrentToExpected()
-	tc.expectedEngineImage.Status.State = types.EngineImageStateDeploying
-	tc.expectedDaemonSet = nil
-	tc.expectedEngineImage.Status.Conditions[types.EngineImageConditionTypeReady] = types.Condition{
-		Type:   types.EngineImageConditionTypeReady,
-		Status: types.ConditionStatusFalse,
-		Reason: types.EngineImageConditionTypeReadyReasonDaemonSet,
-	}
-	testCases["DaemonSet with deprecated labels is found"] = tc
 
 	tc = getEngineImageControllerTestTemplate()
 	incompatibleVersion := types.EngineVersionDetails{
@@ -222,6 +225,7 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 		DataFormatMinVersion:    types.InvalidEngineVersion,
 	}
 	tc.currentEngineImage.Status.EngineVersionDetails = incompatibleVersion
+	tc.currentDaemonSetPod = createEngineImageDaemonSetPod(getTestEngineImageDaemonSetName()+TestPod1, true, TestNode1)
 	tc.copyCurrentToExpected()
 	tc.expectedEngineImage.Status.State = types.EngineImageStateIncompatible
 	tc.expectedEngineImage.Status.Conditions[types.EngineImageConditionTypeReady] = types.Condition{
@@ -229,6 +233,7 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 		Status: types.ConditionStatusFalse,
 		Reason: types.EngineImageConditionTypeReadyReasonBinary,
 	}
+	tc.expectedEngineImage.Status.NodeDeploymentMap = map[string]bool{TestNode1: true}
 	testCases["Incompatible engine image"] = tc
 
 	return testCases
@@ -247,6 +252,7 @@ func (s *TestSuite) TestEngineImage(c *C) {
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 
 		dsIndexer := kubeInformerFactory.Apps().V1().DaemonSets().Informer().GetIndexer()
+		podIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
 		nodeIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
 		settingIndexer := lhInformerFactory.Longhorn().V1beta1().Settings().Informer().GetIndexer()
@@ -298,7 +304,12 @@ func (s *TestSuite) TestEngineImage(c *C) {
 			err = dsIndexer.Add(ds)
 			c.Assert(err, IsNil)
 		}
-
+		if tc.currentDaemonSetPod != nil {
+			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(tc.currentDaemonSetPod)
+			c.Assert(err, IsNil)
+			err = podIndexer.Add(p)
+			c.Assert(err, IsNil)
+		}
 		engineImageControllerKey := fmt.Sprintf("%s/%s", TestNamespace, getTestEngineImageName())
 		err = ic.syncEngineImage(engineImageControllerKey)
 		c.Assert(err, IsNil)

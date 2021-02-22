@@ -61,18 +61,6 @@ func initSettingsNameValue(name, value string) *longhorn.Setting {
 	return setting
 }
 
-func initSettings(ds *datastore.DataStore) {
-	settingDefaultEngineImage := &longhorn.Setting{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: string(types.SettingNameDefaultEngineImage),
-		},
-		Setting: types.Setting{
-			Value: TestEngineImage,
-		},
-	}
-	ds.CreateSetting(settingDefaultEngineImage)
-}
-
 func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
 	controllerID string) *VolumeController {
@@ -113,7 +101,6 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 		pdbInformer,
 		serviceInformer,
 		kubeClient, TestNamespace)
-	initSettings(ds)
 
 	logger := logrus.StandardLogger()
 	vc := NewVolumeController(logger,
@@ -133,10 +120,11 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 }
 
 type VolumeTestCase struct {
-	volume   *longhorn.Volume
-	engines  map[string]*longhorn.Engine
-	replicas map[string]*longhorn.Replica
-	nodes    []*longhorn.Node
+	volume      *longhorn.Volume
+	engines     map[string]*longhorn.Engine
+	replicas    map[string]*longhorn.Replica
+	nodes       []*longhorn.Node
+	engineImage *longhorn.EngineImage
 
 	expectVolume   *longhorn.Volume
 	expectEngines  map[string]*longhorn.Engine
@@ -1281,16 +1269,20 @@ func newKubernetesNode(name string, readyStatus, diskPressureStatus, memoryStatu
 func generateVolumeTestCaseTemplate() *VolumeTestCase {
 	volume := newVolume(TestVolumeName, 2)
 	engine := newEngineForVolume(volume)
+	engineImage := newEngineImage(TestEngineImage, types.EngineImageStateDeployed)
 	replica1 := newReplicaForVolume(volume, engine, TestNode1, TestDiskID1)
 	replica2 := newReplicaForVolume(volume, engine, TestNode2, TestDiskID1)
 	node1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
+	engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	node2 := newNode(TestNode2, TestNamespace, false, types.ConditionStatusTrue, "")
+	engineImage.Status.NodeDeploymentMap[node2.Name] = true
 
 	return &VolumeTestCase{
 		volume: volume,
 		engines: map[string]*longhorn.Engine{
 			engine.Name: engine,
 		},
+		engineImage: engineImage,
 		replicas: map[string]*longhorn.Replica{
 			replica1.Name: replica1,
 			replica2.Name: replica2,
@@ -1319,6 +1311,7 @@ func (tc *VolumeTestCase) copyCurrentToExpect() {
 }
 
 func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
+	//testCases = map[string]*VolumeTestCase{}
 	for name, tc := range testCases {
 		var err error
 		fmt.Printf("testing %v\n", name)
@@ -1349,7 +1342,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		c.Assert(err, IsNil)
 		pIndexer.Add(p)
 
-		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(newEngineImage(TestEngineImage, types.EngineImageStateReady))
+		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(tc.engineImage)
 		c.Assert(err, IsNil)
 		eiIndexer := lhInformerFactory.Longhorn().V1beta1().EngineImages().Informer().GetIndexer()
 		err = eiIndexer.Add(ei)
@@ -1400,8 +1393,15 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		}
 		// Set Default Engine Image
 		s := initSettingsNameValue(
-			string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage)
+			string(types.SettingNameDefaultEngineImage), TestEngineImage)
 		setting, err :=
+			lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
+		c.Assert(err, IsNil)
+		sIndexer.Add(setting)
+		// Set Default Instance Manager Image
+		s = initSettingsNameValue(
+			string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage)
+		setting, err =
 			lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
 		c.Assert(err, IsNil)
 		sIndexer.Add(setting)

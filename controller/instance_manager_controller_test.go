@@ -55,23 +55,6 @@ func fakeInstanceManagerVersionUpdater(im *longhorn.InstanceManager) error {
 	return nil
 }
 
-func newPod(status *v1.PodStatus, name, namespace, nodeID string) *v1.Pod {
-	if status == nil {
-		return nil
-	}
-	return &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Spec: v1.PodSpec{
-			ServiceAccountName: TestServiceAccount,
-			NodeName:           nodeID,
-		},
-		Status: *status,
-	}
-}
-
 func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.SharedInformerFactory,
 	kubeInformerFactory informers.SharedInformerFactory, lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
 	controllerID string) *InstanceManagerController {

@@ -250,11 +250,20 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 
 	log := getLoggerForVolume(vc.logger, volume)
 
+	defaultEngineImage, err := vc.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+	if err != nil {
+		return err
+	}
+	isResponsible, err := vc.isResponsibleFor(volume, defaultEngineImage)
+	if err != nil {
+		return err
+	}
+	if !isResponsible {
+		// Not mines
+		return nil
+	}
+
 	if volume.Status.OwnerID != vc.controllerID {
-		if !vc.isResponsibleFor(volume) {
-			// Not mines
-			return nil
-		}
 		volume.Status.OwnerID = vc.controllerID
 		volume, err = vc.ds.UpdateVolumeStatus(volume)
 		if err != nil {
@@ -1181,13 +1190,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		// Implicitly assume v.status.CurrentNodeID has been the final
 		// state of this sync loop if this code block is reached.
 		// Hence updating v.status.CurrentNodeID here is weird.
-		currentImage, err := vc.getEngineImage(v.Status.CurrentImage)
-		if err != nil {
-			log.WithError(err).Errorf("cannot access current image %v, skip auto attach", v.Status.CurrentImage)
-		} else {
-			if currentImage.Status.State != types.EngineImageStateReady {
-				log.Warnf("current image %v is not ready, skip auto attach", v.Status.CurrentImage)
-			} else if v.Status.PendingNodeID != "" {
+		if v.Status.PendingNodeID != "" {
+			if isReady, err := vc.ds.CheckEngineImageReadiness(v.Status.CurrentImage, v.Status.PendingNodeID); !isReady {
+				log.WithError(err).Warnf("skip auto attach because current image %v is not ready", v.Status.CurrentImage)
+			} else {
 				v.Status.CurrentNodeID = v.Status.PendingNodeID
 				v.Status.PendingNodeID = ""
 			}
@@ -1581,13 +1587,19 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 
 	log := getLoggerForVolume(vc.logger, v)
 
+	volumeAndReplicaNodes := []string{v.Status.CurrentNodeID}
+	for _, r := range rs {
+		volumeAndReplicaNodes = append(volumeAndReplicaNodes, r.Spec.NodeID)
+	}
+
 	oldImage, err := vc.getEngineImage(v.Status.CurrentImage)
 	if err != nil {
 		log.WithError(err).Warnf("Cannot get engine image %v for live upgrade", v.Status.CurrentImage)
 		return nil
 	}
-	if oldImage.Status.State != types.EngineImageStateReady {
-		log.Warnf("Requested for volume engine live upgrade from %v, but the image wasn't ready", oldImage.Spec.Image)
+
+	if isReady, err := vc.ds.CheckEngineImageReadiness(oldImage.Spec.Image, volumeAndReplicaNodes...); !isReady {
+		log.WithError(err).Warnf("Engine live upgrade from %v, but the image wasn't ready", oldImage.Spec.Image)
 		return nil
 	}
 	newImage, err := vc.getEngineImage(v.Spec.EngineImage)
@@ -1595,8 +1607,8 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		log.WithError(err).Warnf("Cannot get engine image %v for live upgrade", v.Spec.EngineImage)
 		return nil
 	}
-	if newImage.Status.State != types.EngineImageStateReady {
-		log.Warnf("Requested for volume engine live upgrade from %v, but the image wasn't ready", newImage.Spec.Image)
+	if isReady, err := vc.ds.CheckEngineImageReadiness(newImage.Spec.Image, volumeAndReplicaNodes...); !isReady {
+		log.WithError(err).Warnf("Engine live upgrade to %v, but the image wasn't ready", newImage.Spec.Image)
 		return nil
 	}
 
@@ -2326,8 +2338,37 @@ func (vc *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica
 	return nil
 }
 
-func (vc *VolumeController) isResponsibleFor(v *longhorn.Volume) bool {
-	return isControllerResponsibleFor(vc.controllerID, vc.ds, v.Name, v.Spec.NodeID, v.Status.OwnerID)
+func (vc *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineImage string) (bool, error) {
+	var err error
+	defer func() {
+		err = errors.Wrap(err, "error while checking isResponsibleFor")
+	}()
+
+	readyNodesWithDefaultEI, err := vc.ds.ListReadyNodesWithEngineImage(defaultEngineImage)
+	if err != nil {
+		return false, err
+	}
+
+	isResponsible := isControllerResponsibleFor(vc.controllerID, vc.ds, v.Name, v.Spec.NodeID, v.Status.OwnerID)
+
+	if len(readyNodesWithDefaultEI) == 0 {
+		return isResponsible, nil
+	}
+
+	preferredOwnerEngineAvailable, err := vc.ds.CheckEngineImageReadiness(defaultEngineImage, v.Spec.NodeID)
+	if err != nil {
+		return false, err
+	}
+	currentOwnerEngineAvailable, err := vc.ds.CheckEngineImageReadiness(defaultEngineImage, v.Status.OwnerID)
+	if err != nil {
+		return false, err
+	}
+	currentNodeEngineAvailable, err := vc.ds.CheckEngineImageReadiness(defaultEngineImage, vc.controllerID)
+	if err != nil {
+		return false, err
+	}
+
+	return (isResponsible && currentNodeEngineAvailable) || (!preferredOwnerEngineAvailable && !currentOwnerEngineAvailable && currentNodeEngineAvailable), nil
 }
 
 func (vc *VolumeController) deleteReplica(r *longhorn.Replica, rs map[string]*longhorn.Replica) error {

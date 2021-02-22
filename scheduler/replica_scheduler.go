@@ -57,22 +57,15 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 		return nil, err
 	}
 
-	if replica.Spec.HardNodeAffinity != "" {
-		node, exist := nodesInfo[replica.Spec.HardNodeAffinity]
-		if !exist {
-			return nil, nil
-		}
-		nodesInfo = make(map[string]*longhorn.Node)
-		nodesInfo[replica.Spec.HardNodeAffinity] = node
-	}
+	nodeCandidates := rcs.getNodeCandidates(nodesInfo, replica)
 
-	if len(nodesInfo) == 0 {
+	if len(nodeCandidates) == 0 {
 		logrus.Errorf("There's no available node for replica %v, size %v", replica.ObjectMeta.Name, replica.Spec.VolumeSize)
 		return nil, nil
 	}
 
 	nodeDisksMap := map[string]map[string]struct{}{}
-	for _, node := range nodesInfo {
+	for _, node := range nodeCandidates {
 		disks := map[string]struct{}{}
 		for fsid, diskStatus := range node.Status.DiskStatus {
 			diskSpec, exists := node.Spec.Disks[fsid]
@@ -90,8 +83,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 		nodeDisksMap[node.Name] = disks
 	}
 
-	// find proper node and disk
-	diskCandidates := rcs.getDiskCandidates(nodesInfo, nodeDisksMap, replicas, volume, true)
+	diskCandidates := rcs.getDiskCandidates(nodeCandidates, nodeDisksMap, replicas, volume, true)
 
 	// there's no disk that fit for current replica
 	if len(diskCandidates) == 0 {
@@ -103,6 +95,27 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	rcs.scheduleReplicaToDisk(replica, diskCandidates)
 
 	return replica, nil
+}
+
+func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.Node, schedulingReplica *longhorn.Replica) map[string]*longhorn.Node {
+	if schedulingReplica.Spec.HardNodeAffinity != "" {
+		node, exist := nodesInfo[schedulingReplica.Spec.HardNodeAffinity]
+		if !exist {
+			return nil
+		}
+		nodesInfo = map[string]*longhorn.Node{}
+		nodesInfo[schedulingReplica.Spec.HardNodeAffinity] = node
+	}
+
+	nodeCandidates := map[string]*longhorn.Node{}
+
+	for _, node := range nodesInfo {
+		if isReady, _ := rcs.ds.CheckEngineImageReadiness(schedulingReplica.Spec.EngineImage, node.Name); isReady {
+			nodeCandidates[node.Name] = node
+		}
+	}
+
+	return nodeCandidates
 }
 
 func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Node, nodeDisksMap map[string]map[string]struct{}, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, requireSchedulingCheck bool) map[string]*Disk {
@@ -438,6 +451,9 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 		return false
 	}
 	if hardNodeAffinity != "" && r.Spec.NodeID != hardNodeAffinity {
+		return false
+	}
+	if isReady, _ := rcs.ds.CheckEngineImageReadiness(r.Spec.EngineImage, r.Spec.NodeID); !isReady {
 		return false
 	}
 
