@@ -267,8 +267,8 @@ func checkVolume(v *longhorn.Volume) error {
 		return fmt.Errorf("Invalid volume name: %+v", errs)
 	}
 	if len(v.Name) > NameMaximumLength {
-		return fmt.Errorf("Volume name is too long %v, must be less than %v characters",
-			v.Name, NameMaximumLength)
+		logrus.Warnf("Volume name is too long %v, auto-correct to %v characters", v.Name, NameMaximumLength)
+		v.Name = strings.TrimRight(v.Name[:NameMaximumLength], "-")
 	}
 	return nil
 }
