@@ -25,6 +25,7 @@ type BackupTarget struct {
 type backupVolume struct {
 	Name             string
 	Size             string
+	Labels           map[string]string
 	Created          string
 	LastBackupName   string
 	LastBackupAt     string
@@ -138,6 +139,7 @@ func parseBackupVolumesList(output string) (map[string]*BackupVolume, error) {
 		volumes[name] = &BackupVolume{
 			Name:             name,
 			Size:             v.Size,
+			Labels:           v.Labels,
 			Created:          v.Created,
 			LastBackupName:   v.LastBackupName,
 			LastBackupAt:     v.LastBackupAt,
