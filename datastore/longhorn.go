@@ -262,13 +262,13 @@ func checkVolume(v *longhorn.Volume) error {
 	if v.Name == "" || size == 0 || v.Spec.NumberOfReplicas == 0 {
 		return fmt.Errorf("BUG: missing required field %+v", v)
 	}
-	if len(v.Name) > NameMaximumLength {
-		logrus.Warnf("Volume name is too long %v, auto-correct to %v characters", v.Name, NameMaximumLength)
-		v.Name = strings.TrimRight(v.Name[:NameMaximumLength], "-")
-	}
 	errs := validation.IsDNS1123Label(v.Name)
 	if len(errs) != 0 {
 		return fmt.Errorf("Invalid volume name: %+v", errs)
+	}
+	if len(v.Name) > NameMaximumLength {
+		return fmt.Errorf("Volume name is too long %v, must be less than %v characters",
+			v.Name, NameMaximumLength)
 	}
 	return nil
 }

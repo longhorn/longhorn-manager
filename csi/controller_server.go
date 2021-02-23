@@ -98,14 +98,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		volumeParameters["fromBackup"] = backup.Url
 	}
 
-	// Check for already existing volume name ID and name are same in longhorn API
-	// Ensure auto-corrected volume name not missed:
-	// - Convert to lower case of the definition of a label in DNS (RFC 1123)
-	// - Trim volume name of max name length limitation
-	volName := strings.ToLower(req.GetName())
-	if len(volName) > datastore.NameMaximumLength {
-		volName = strings.TrimRight(volName[:datastore.NameMaximumLength], "-")
-	}
+	// check for already existing volume name ID and name are same in longhorn API
+	volName := util.AutoCorrectName(req.GetName(), datastore.NameMaximumLength)
 	existVol, err := cs.apiClient.Volume.ById(volName)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())

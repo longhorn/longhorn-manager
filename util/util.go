@@ -347,6 +347,23 @@ func SplitStringToMap(str, separator string) map[string]struct{} {
 	return ret
 }
 
+// AutoCorrectName converts name to lowercase, and correct overlength name by
+// replaces the name suffix with 8 char from its checksum to ensure uniquenedoss.
+func AutoCorrectName(name string, maxLength int) string {
+	newName := strings.ToLower(name)
+	if len(name) > maxLength {
+		logrus.Warnf("Name %v is too long, auto-correct to fit %v characters", name, maxLength)
+		checksum := GetStringChecksum(name)
+		newNameSuffix := "-" + checksum[:8]
+		newNamePrefix := strings.TrimRight(name[:maxLength-len(newNameSuffix)], "-")
+		newName = newNamePrefix + newNameSuffix
+	}
+	if newName != name {
+		logrus.Warnf("Name auto-corrected from %v to %v", name, newName)
+	}
+	return newName
+}
+
 func GetStringChecksum(data string) string {
 	return GetChecksumSHA512([]byte(data))
 }
