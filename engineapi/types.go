@@ -100,6 +100,7 @@ type Volume struct {
 type BackupVolume struct {
 	Name           string                             `json:"name"`
 	Size           string                             `json:"size"`
+	Labels         map[string]string                  `json:"labels"`
 	Created        string                             `json:"created"`
 	LastBackupName string                             `json:"lastBackupName"`
 	LastBackupAt   string                             `json:"lastBackupAt"`
