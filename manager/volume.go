@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/robfig/cron"
@@ -258,7 +259,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 
 	v = &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name: strings.ToLower(name),
 		},
 		Spec: types.VolumeSpec{
 			Size:                    size,
