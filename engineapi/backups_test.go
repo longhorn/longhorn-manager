@@ -55,6 +55,23 @@ const backupsListText = `
 }
 `
 
+const backupVolumesListText = `
+{
+	"pvc-1": {
+		"Name": "pvc-1",
+		"Size": "1073741824",
+		"Labels":{
+			"KubernetesStatus": "{\"pvName\":\"pvc-1\",\"namespace\":\"default\",\"pvcName\":\"longhorn-1-volv-pvc\",\"workloadsStatus\":[{\"podName\":\"volume-test-2\",\"workloadType\":\"\"}]}",
+			"foo": "bar"
+		},
+		"Created": "2017-03-25T02:26:59Z",
+		"LastBackupName": "backup-1",
+		"LastBackupAt": "2017-03-25T02:27:00Z",
+		"DataStored": "1163919360"
+	}
+}
+`
+
 func TestParseOneBackup(t *testing.T) {
 	assert := require.New(t)
 
@@ -88,4 +105,25 @@ func TestParseBackupsList(t *testing.T) {
 	}
 	assert.NotNil(snapshots["volume-snap-snap1.img"])
 	assert.NotNil(snapshots["volume-snap-snap4.img"])
+}
+
+func TestParseBackupVolumesList(t *testing.T) {
+	assert := require.New(t)
+
+	bvl, err := parseBackupVolumesList(backupVolumesListText)
+	assert.Nil(err)
+	assert.Equal(map[string]*BackupVolume{
+		"pvc-1": {
+			Name: "pvc-1",
+			Size: "1073741824",
+			Labels: map[string]string{
+				"KubernetesStatus": "{\"pvName\":\"pvc-1\",\"namespace\":\"default\",\"pvcName\":\"longhorn-1-volv-pvc\",\"workloadsStatus\":[{\"podName\":\"volume-test-2\",\"workloadType\":\"\"}]}",
+				"foo":              "bar",
+			},
+			Created:        "2017-03-25T02:26:59Z",
+			LastBackupName: "backup-1",
+			LastBackupAt:   "2017-03-25T02:27:00Z",
+			DataStored:     "1163919360",
+		},
+	}, bvl)
 }
