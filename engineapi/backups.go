@@ -22,20 +22,6 @@ type BackupTarget struct {
 	Credential map[string]string
 }
 
-type backupVolume struct {
-	Name             string
-	Size             string
-	Labels           map[string]string
-	Created          string
-	LastBackupName   string
-	LastBackupAt     string
-	BackingImageName string
-	BackingImageURL  string
-	DataStored       string
-	Messages         map[backupstore.MessageType]string
-	Backups          map[string]interface{}
-}
-
 func NewBackupTarget(backupTarget, engineImage string, credential map[string]string) *BackupTarget {
 	return &BackupTarget{
 		URL:        backupTarget,
@@ -97,7 +83,7 @@ func parseBackup(v interface{}) (*Backup, error) {
 }
 
 func parseBackupsList(output, volumeName string) ([]*Backup, error) {
-	data := map[string]*backupVolume{}
+	data := map[string]*BackupVolume{}
 	if err := json.Unmarshal([]byte(output), &data); err != nil {
 		return nil, errors.Wrapf(err, "error parsing BackupsList: \n%s", output)
 	}
@@ -118,7 +104,7 @@ func parseBackupsList(output, volumeName string) ([]*Backup, error) {
 }
 
 func parseBackupVolumesList(output string) (map[string]*BackupVolume, error) {
-	data := map[string]*backupVolume{}
+	data := map[string]*BackupVolume{}
 	if err := json.Unmarshal([]byte(output), &data); err != nil {
 		return nil, errors.Wrapf(err, "error parsing BackupVolumesList: \n%s", output)
 	}

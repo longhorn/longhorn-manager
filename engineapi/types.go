@@ -98,18 +98,17 @@ type Volume struct {
 }
 
 type BackupVolume struct {
-	Name           string                             `json:"name"`
-	Size           string                             `json:"size"`
-	Labels         map[string]string                  `json:"labels"`
-	Created        string                             `json:"created"`
-	LastBackupName string                             `json:"lastBackupName"`
-	LastBackupAt   string                             `json:"lastBackupAt"`
-	DataStored     string                             `json:"dataStored"`
-	Messages       map[backupstore.MessageType]string `json:"messages"`
-	Backups        map[string]*Backup                 `json:"backups"`
-
-	BackingImageName string `json:"backingImageName"`
-	BackingImageURL  string `json:"backingImageURL"`
+	Name             string                             `json:"name"`
+	Size             string                             `json:"size"`
+	Labels           map[string]string                  `json:"labels"`
+	Created          string                             `json:"created"`
+	LastBackupName   string                             `json:"lastBackupName"`
+	LastBackupAt     string                             `json:"lastBackupAt"`
+	DataStored       string                             `json:"dataStored"`
+	Messages         map[backupstore.MessageType]string `json:"messages"`
+	Backups          map[string]*Backup                 `json:"backups"`
+	BackingImageName string                             `json:"backingImageName"`
+	BackingImageURL  string                             `json:"backingImageURL"`
 
 	// Deprecated
 	BaseImage string `json:"baseImage"`
