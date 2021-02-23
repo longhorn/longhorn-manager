@@ -17,6 +17,7 @@ import (
 	putil "sigs.k8s.io/sig-storage-lib-external-provisioner/util"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 )
@@ -97,17 +98,31 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		volumeParameters["fromBackup"] = backup.Url
 	}
 
-	// check for already existing volume name
-	// ID and name are same in longhorn API
-	existVol, err := cs.apiClient.Volume.ById(req.GetName())
+	// Check for already existing volume name ID and name are same in longhorn API
+	// Ensure auto-corrected volume name not missed:
+	// - Convert to lower case of the definition of a label in DNS (RFC 1123)
+	// - Trim volume name of max name length limitation
+	volName := strings.ToLower(req.GetName())
+	if len(volName) > datastore.NameMaximumLength {
+		volName = strings.TrimRight(volName[:datastore.NameMaximumLength], "-")
+	}
+	existVol, err := cs.apiClient.Volume.ById(volName)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	if existVol != nil && existVol.Name == req.GetName() {
+	if existVol != nil {
 		logrus.Debugf("CreateVolume: got an exist volume: %s", existVol.Name)
+
 		exVolSize, err := util.ConvertSize(existVol.Size)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
+		}
+
+		reqVolSize := req.GetCapacityRange().GetRequiredBytes()
+		if exVolSize != reqVolSize {
+			msg := fmt.Sprintf("CreateVolume: cannot change volume size from %v to %v", exVolSize, reqVolSize)
+			logrus.Error(msg)
+			return nil, status.Error(codes.AlreadyExists, msg)
 		}
 
 		// pass through the volume content source in case this volume is in the process of being created
