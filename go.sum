@@ -362,8 +362,8 @@ github.com/libopenstorage/openstorage v1.0.0/go.mod h1:Sp1sIObHjat1BeXhfMqLZ14wn
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
 github.com/lithammer/dedent v1.1.0/go.mod h1:jrXYCQtgg0nJiN+StA2KgR7w6CiQNv9Fd/Z9BP0jIOc=
 github.com/logrusorgru/aurora v0.0.0-20181002194514-a7b3b318ed4e/go.mod h1:7rIyQOR62GCctdiQpZ/zOJlFyk6y+94wXzv6RNZgaR4=
-github.com/longhorn/backupstore v0.0.0-20210202195444-e3b5c5a6d3ae h1:UL9KjJB5GqC4b83rbPZukW+vP+2b/NNF7pLU+L4J2jI=
-github.com/longhorn/backupstore v0.0.0-20210202195444-e3b5c5a6d3ae/go.mod h1:9O5tXHnI0KfLXHl+YVey17h9DNq6EIJmBCnNfZH1e18=
+github.com/longhorn/backupstore v0.0.0-20210226025431-845d80a9292c h1:rWPYE7lzP0n1fj9/vuQxnz9t6hrki+Tc7VCMelugCOI=
+github.com/longhorn/backupstore v0.0.0-20210226025431-845d80a9292c/go.mod h1:9O5tXHnI0KfLXHl+YVey17h9DNq6EIJmBCnNfZH1e18=
 github.com/longhorn/go-iscsi-helper v0.0.0-20201111045018-ee87992ec536 h1:+Z/mGnoCdY+YCX+y4X19E2YT4FsVA3aVm7uLj1tg/wM=
 github.com/longhorn/go-iscsi-helper v0.0.0-20201111045018-ee87992ec536/go.mod h1:9z/y9glKmWEdV50tjlUPxFwi1goQfIrrsoZbnMyIZbY=
 github.com/longhorn/longhorn-instance-manager v0.0.0-20201016215346-d8437b4e156e h1:4cCwm8nlmqaS0aaJWb13gUa2xOxGSI3xrNcQq/dHEZo=
