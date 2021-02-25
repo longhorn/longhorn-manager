@@ -230,7 +230,7 @@ func (job *Job) run() (err error) {
 	if volume.State == string(types.VolumeStateDetached) {
 		// Find a random ready node to attach the volume
 		// For load balancing purpose, the node need to be random
-		nodeToAttach, err := job.findARandomReadyNode()
+		nodeToAttach, err := job.findARandomReadyNode(volume)
 		if err != nil {
 			return errors.Wrapf(err, "cannot do auto attaching for volume %v", volumeName)
 		}
@@ -693,11 +693,20 @@ func (job *Job) waitForVolumeState(state string, timeout int) (*longhornclient.V
 
 // findARandomReadyNode return a random ready node to attach the volume
 // return error if there is no ready node
-func (job *Job) findARandomReadyNode() (string, error) {
+func (job *Job) findARandomReadyNode(v *longhornclient.Volume) (string, error) {
 	nodeCollection, err := job.api.Node.List(longhornclient.NewListOpts())
 	if err != nil {
 		return "", err
 	}
+
+	engineImage, err := job.api.EngineImage.ById(types.GetEngineImageChecksumName(v.CurrentImage))
+	if err != nil {
+		return "", err
+	}
+	if engineImage.State != types.EngineImageStateDeployed && engineImage.State != types.EngineImageStateDeploying {
+		return "", fmt.Errorf("error: the volume's engine image %v is in state: %v", engineImage.Name, engineImage.State)
+	}
+
 	var readyNodeList []string
 	for _, node := range nodeCollection.Data {
 		if readyConditionInterface, ok := node.Conditions[types.NodeConditionTypeReady]; ok {
@@ -713,7 +722,7 @@ func (job *Job) findARandomReadyNode() (string, error) {
 				return "", err
 			}
 
-			if readyCondition.Status == types.ConditionStatusTrue {
+			if readyCondition.Status == types.ConditionStatusTrue && engineImage.NodeDeploymentMap[node.Name] {
 				readyNodeList = append(readyNodeList, node.Name)
 			}
 		}
@@ -722,6 +731,5 @@ func (job *Job) findARandomReadyNode() (string, error) {
 	if len(readyNodeList) == 0 {
 		return "", fmt.Errorf("cannot find a ready node")
 	}
-
 	return readyNodeList[rand.Intn(len(readyNodeList))], nil
 }

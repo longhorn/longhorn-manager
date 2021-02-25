@@ -13,7 +13,7 @@ type EngineImage struct {
 
 	CliAPIVersion int64 `json:"cliAPIVersion,omitempty" yaml:"cli_apiversion,omitempty"`
 
-	Conditions map[string]string `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
 	ControllerAPIMinVersion int64 `json:"controllerAPIMinVersion,omitempty" yaml:"controller_apimin_version,omitempty"`
 
@@ -32,6 +32,8 @@ type EngineImage struct {
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	NoRefSince string `json:"noRefSince,omitempty" yaml:"no_ref_since,omitempty"`
+
+	NodeDeploymentMap map[string]bool `json:"nodeDeploymentMap,omitempty" yaml:"node_deployment_map,omitempty"`
 
 	OwnerID string `json:"ownerID,omitempty" yaml:"owner_id,omitempty"`
 
