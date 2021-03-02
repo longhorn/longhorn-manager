@@ -47,7 +47,7 @@ require (
 	github.com/imdario/mergo v0.3.8 // indirect
 	github.com/jinzhu/copier v0.0.0-20190924061706-b57f9002281a
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/longhorn/backupstore v0.0.0-20210226025431-845d80a9292c
+	github.com/longhorn/backupstore v0.0.0-20210302061525-eb790e398638
 	github.com/longhorn/go-iscsi-helper v0.0.0-20201111045018-ee87992ec536
 	github.com/longhorn/longhorn-instance-manager v0.0.0-20201016215346-d8437b4e156e
 	github.com/miekg/dns v1.1.22 // indirect
@@ -59,7 +59,7 @@ require (
 	github.com/satori/go.uuid v1.2.0
 	github.com/sirupsen/logrus v1.4.2
 	github.com/soheilhy/cmux v0.1.4 // indirect
-	github.com/stretchr/testify v1.4.0
+	github.com/stretchr/testify v1.7.0
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/urfave/cli v1.22.1
 	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
