@@ -947,6 +947,9 @@ func (s *DataStore) ListEngineImages() (map[string]*longhorn.EngineImage, error)
 
 // CheckEngineImageReadiness return true if the engine IMAGE is deployed on all nodes in the NODES list
 func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (isReady bool, err error) {
+	if len(nodes) == 0 || (len(nodes) == 1 && nodes[0] == "") {
+		return false, nil
+	}
 	nodesHaveEngineImage, err := s.ListNodesWithEngineImage(image)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed CheckEngineImageReadiness for nodes %v", nodes)
