@@ -69,7 +69,7 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 		[]string{
 			"--v=5",
 			"--csi-address=$(ADDRESS)",
-			"--timeout=2m5s",
+			"--timeout=2m5s", // we wait for 2 minutes for an attach/detach operation to complete
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 		},
@@ -134,7 +134,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 		[]string{
 			"--v=5",
 			"--csi-address=$(ADDRESS)",
-			"--timeout=2m5s",
+			"--timeout=2m5s", // we wait for 2 minutes, for the initial detach after creation to complete
 			"--enable-leader-election",
 			"--leader-election-type=leases",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
@@ -200,6 +200,7 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 		[]string{
 			"--v=5",
 			"--csi-address=$(ADDRESS)",
+			"--timeout=2m5s", // we wait for 2 minutes for an expansion operation to complete
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 		},
