@@ -175,6 +175,12 @@ func (ei *EngineImageStatus) DeepCopyInto(to *EngineImageStatus) {
 			to.Conditions[key] = value
 		}
 	}
+	if ei.NodeDeploymentMap != nil {
+		to.NodeDeploymentMap = make(map[string]bool)
+		for key, value := range ei.NodeDeploymentMap {
+			to.NodeDeploymentMap[key] = value
+		}
+	}
 }
 
 func (bi *BackingImageSpec) DeepCopyInto(to *BackingImageSpec) {
