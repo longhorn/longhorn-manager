@@ -732,23 +732,52 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	if existVol.State != string(types.VolumeStateDetached) {
 		return nil, status.Errorf(codes.FailedPrecondition, "Invalid volume state %v for expansion", existVol.State)
 	}
+	existingSize, err := strconv.ParseInt(existVol.Size, 10, 64)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+
+	// we can only call the longhorn expansion api if the requested size is larger than the volume size
+	// since longhorn treats the size differently than kubernetes, in kubernetes capacity is a request
+	// to ensure that the volume has at least that amount of capacity.
+	requestedSize := req.CapacityRange.GetRequiredBytes()
+	if requestedSize > existingSize {
+		if existVol, err = cs.apiClient.Volume.ActionExpand(existVol, &longhornclient.ExpandInput{
+			Size: strconv.FormatInt(requestedSize, 10),
+		}); err != nil {
+			return nil, status.Errorf(codes.Internal, err.Error())
+		}
+	}
+
+	// kubernetes doesn't support volume shrinking and the csi spec specifies to return true
+	// in the case where the current capacity is bigger or equal to the requested capacity
+	// that's why we return the volumeSize below instead of the requested capacity
+	volumeExpansionComplete := func(vol *longhornclient.Volume) bool {
+		engineReady := false
+		if len(vol.Controllers) > 0 {
+			engine := vol.Controllers[0]
+			engineSize, _ := strconv.ParseInt(engine.Size, 10, 64)
+			engineReady = engineSize >= requestedSize && !engine.IsExpanding
+		}
+		size, _ := strconv.ParseInt(vol.Size, 10, 64)
+		return size >= requestedSize && engineReady
+	}
+
+	// we wait for completion of the expansion, to ensure that longhorn and kubernetes state are in sync
+	// should this time out kubernetes will retry the expansion call since the call is idempotent
+	// we will exit early if the volume already has the requested size
+	if !cs.waitForVolumeState(req.VolumeId, "volume expansion", volumeExpansionComplete, false, false) {
+		return nil, status.Errorf(codes.DeadlineExceeded, "Expanding volume %s existing capacity %v requested capacity %v failed",
+			req.GetVolumeId(), existingSize, requestedSize)
+	}
+
 	volumeSize, err := strconv.ParseInt(existVol.Size, 10, 64)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
-	requestedSize := req.CapacityRange.GetRequiredBytes()
-	if requestedSize <= volumeSize {
-		return nil, status.Errorf(codes.OutOfRange, "The requested size %v is smaller than or the same as the size %v of volume %v", requestedSize, volumeSize, existVol.Name)
-	}
-
-	if _, err = cs.apiClient.Volume.ActionExpand(existVol, &longhornclient.ExpandInput{
-		Size: strconv.FormatInt(requestedSize, 10),
-	}); err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
 
 	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes:         req.CapacityRange.GetRequiredBytes(),
+		CapacityBytes:         volumeSize,
 		NodeExpansionRequired: false,
 	}, nil
 }
