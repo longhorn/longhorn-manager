@@ -153,6 +153,10 @@ func (b *BackupTarget) ListVolumes() (map[string]*BackupVolume, error) {
 		if strings.Contains(err.Error(), "msg=\"cannot find ") {
 			return nil, nil
 		}
+		// NFS error handling
+		if strings.Contains(err.Error(), "No such file or directory") {
+			return nil, nil
+		}
 		return nil, errors.Wrapf(err, "error listing backup volumes")
 	}
 	return parseBackupVolumesList(output)
