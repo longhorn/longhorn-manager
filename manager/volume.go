@@ -314,9 +314,6 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 	if err != nil {
 		return nil, err
 	}
-	if !v.Spec.Migratable && v.Status.State != types.VolumeStateDetached {
-		return nil, fmt.Errorf("invalid state to attach %v: %v", name, v.Status.State)
-	}
 
 	if isReady, err := m.CheckEngineImageReadinessForVolume(v.Spec.EngineImage, v.Name, nodeID); !isReady {
 		if err != nil {
@@ -348,8 +345,8 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return v, nil
 	}
 
-	if v.Status.State != types.VolumeStateDetached && !v.Spec.Migratable {
-		return nil, fmt.Errorf("invalid state %v to attach volume %v is migratable %v", name, v.Status.State, v.Spec.Migratable)
+	if v.Spec.AccessMode != types.AccessModeReadWriteMany && v.Status.State != types.VolumeStateDetached {
+		return nil, fmt.Errorf("invalid state %v to attach RWO volume %v", v.Status.State, name)
 	}
 
 	isVolumeShared := v.Spec.AccessMode == types.AccessModeReadWriteMany && !v.Spec.Migratable
