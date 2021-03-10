@@ -325,10 +325,6 @@ func (cs *ControllerServer) publishVolume(volume *longhornclient.Volume, nodeID 
 }
 
 func (cs *ControllerServer) publishSharedVolume(req *csi.ControllerPublishVolumeRequest, volume *longhornclient.Volume) (*csi.ControllerPublishVolumeResponse, error) {
-	if !volume.Ready || len(volume.Controllers) == 0 || volume.Controllers[0].Endpoint == "" {
-		return nil, status.Errorf(codes.Aborted, "The volume %s is not ready for workloads", req.GetVolumeId())
-	}
-
 	return cs.publishVolume(volume, req.NodeId, func() error {
 		if !cs.waitForVolumeState(volume.Name, "share available", isVolumeShareAvailable, false, false) {
 			return status.Errorf(codes.DeadlineExceeded, "Failed to wait for volume %v share available", req.GetVolumeId())
@@ -338,13 +334,6 @@ func (cs *ControllerServer) publishSharedVolume(req *csi.ControllerPublishVolume
 }
 
 func (cs *ControllerServer) publishMigratableVolume(req *csi.ControllerPublishVolumeRequest, volume *longhornclient.Volume) (*csi.ControllerPublishVolumeResponse, error) {
-	if volume.State == string(types.VolumeStateAttached) {
-		if !volume.Ready || len(volume.Controllers) == 0 || volume.Controllers[0].Endpoint == "" {
-			return nil, status.Errorf(codes.Aborted,
-				"The volume %s is already attached but it is not ready for workloads", req.GetVolumeId())
-		}
-	}
-
 	checkVolumeAttached := func(vol *longhornclient.Volume) bool { return isVolumeAvailableOn(vol, req.NodeId) }
 	return cs.publishVolume(volume, req.NodeId, func() error {
 		if !cs.waitForVolumeState(req.GetVolumeId(), "volume available on", checkVolumeAttached, false, false) {
@@ -355,13 +344,7 @@ func (cs *ControllerServer) publishMigratableVolume(req *csi.ControllerPublishVo
 }
 
 func (cs *ControllerServer) publishReadWriteOnceVolume(req *csi.ControllerPublishVolumeRequest, volume *longhornclient.Volume) (*csi.ControllerPublishVolumeResponse, error) {
-	// the volume is already attached make sure it's to the same node as this
 	if volume.State == string(types.VolumeStateAttached) {
-		if !volume.Ready || len(volume.Controllers) == 0 || volume.Controllers[0].Endpoint == "" {
-			return nil, status.Errorf(codes.Aborted,
-				"The volume %s is already attached but it is not ready for workloads", req.GetVolumeId())
-		}
-
 		if volume.Controllers[0].HostId != req.GetNodeId() {
 			return nil, status.Errorf(codes.FailedPrecondition,
 				"The volume %s cannot be attached to the node %s since it is already attached to the node %s",
@@ -423,13 +406,15 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Errorf(codes.Aborted, "The volume %s is %s", req.GetVolumeId(), existVol.State)
 	}
 
-	// Check volume frontend settings
 	if existVol.Frontend != string(types.VolumeFrontendBlockDev) {
 		return nil, status.Errorf(codes.InvalidArgument, "ControllerPublishVolume: there is no block device frontend for volume %s", req.GetVolumeId())
 	}
 
-	if !existVol.Ready {
-		return nil, status.Errorf(codes.Aborted, "The volume %s is not ready for workloads", req.GetVolumeId())
+	isAttached := existVol.State == string(types.VolumeStateAttached)
+	waitForController := isAttached && (len(existVol.Controllers) == 0 || existVol.Controllers[0].Endpoint == "")
+	if !existVol.Ready || waitForController {
+		return nil, status.Errorf(codes.Aborted, "The volume %s in state %v is not ready for workloads, is waiting on controller %v",
+			req.GetVolumeId(), existVol.State, waitForController)
 	}
 
 	if requiresSharedAccess(existVol, volumeCapability) {
