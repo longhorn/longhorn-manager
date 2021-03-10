@@ -3,7 +3,6 @@ package engineapi
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -41,20 +40,32 @@ func getBackupCredentialEnv(backupTarget string, credential map[string]string) (
 	if err != nil {
 		return envs, err
 	}
-	if backupType == types.BackupStoreTypeS3 {
-		if credential != nil && credential[types.AWSAccessKey] != "" && credential[types.AWSSecretKey] != "" {
-			envs = append(envs, fmt.Sprintf("%s=%s", types.AWSAccessKey, credential[types.AWSAccessKey]))
-			envs = append(envs, fmt.Sprintf("%s=%s", types.AWSSecretKey, credential[types.AWSSecretKey]))
-			envs = append(envs, fmt.Sprintf("%s=%s", types.AWSEndPoint, credential[types.AWSEndPoint]))
-			envs = append(envs, fmt.Sprintf("%s=%s", types.AWSCert, credential[types.AWSCert]))
-			envs = append(envs, fmt.Sprintf("%s=%s", types.HTTPSProxy, credential[types.HTTPSProxy]))
-			envs = append(envs, fmt.Sprintf("%s=%s", types.HTTPProxy, credential[types.HTTPProxy]))
-			envs = append(envs, fmt.Sprintf("%s=%s", types.NOProxy, credential[types.NOProxy]))
-			envs = append(envs, fmt.Sprintf("%s=%s", types.VirtualHostedStyle, credential[types.VirtualHostedStyle]))
-		} else if os.Getenv(types.AWSAccessKey) == "" || os.Getenv(types.AWSSecretKey) == "" {
-			return envs, fmt.Errorf("Could not backup for %s without credential secret", backupType)
-		}
+
+	if backupType != types.BackupStoreTypeS3 || credential == nil {
+		return envs, nil
 	}
+
+	var missingKeys []string
+	if credential[types.AWSAccessKey] == "" {
+		missingKeys = append(missingKeys, types.AWSAccessKey)
+	}
+	if credential[types.AWSSecretKey] == "" {
+		missingKeys = append(missingKeys, types.AWSSecretKey)
+	}
+	// If AWS IAM Role not present, then the AWS credentials must be exists
+	if credential[types.AWSIAMRole] == "" && len(missingKeys) > 0 {
+		return nil, fmt.Errorf("Could not backup to %s, missing %v in the secret", backupType, missingKeys)
+	}
+	if len(missingKeys) == 0 {
+		envs = append(envs, fmt.Sprintf("%s=%s", types.AWSAccessKey, credential[types.AWSAccessKey]))
+		envs = append(envs, fmt.Sprintf("%s=%s", types.AWSSecretKey, credential[types.AWSSecretKey]))
+	}
+	envs = append(envs, fmt.Sprintf("%s=%s", types.AWSEndPoint, credential[types.AWSEndPoint]))
+	envs = append(envs, fmt.Sprintf("%s=%s", types.AWSCert, credential[types.AWSCert]))
+	envs = append(envs, fmt.Sprintf("%s=%s", types.HTTPSProxy, credential[types.HTTPSProxy]))
+	envs = append(envs, fmt.Sprintf("%s=%s", types.HTTPProxy, credential[types.HTTPProxy]))
+	envs = append(envs, fmt.Sprintf("%s=%s", types.NOProxy, credential[types.NOProxy]))
+	envs = append(envs, fmt.Sprintf("%s=%s", types.VirtualHostedStyle, credential[types.VirtualHostedStyle]))
 	return envs, nil
 }
 
