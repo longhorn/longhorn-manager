@@ -17,10 +17,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
 
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
-
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 const (
@@ -233,6 +232,52 @@ func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, err
 	return itemMap, nil
 }
 
+// annotateAWSIAMRole ensures that the running pods of the manager as well as the replica instance managers.
+// have the correct AWS IAM role assigned to them based on the passed `awsIAMRole`
+func (s *DataStore) annotateAWSIAMRole(awsIAMRole string) error {
+	selector, err := s.getManagerSelector()
+	if err != nil {
+		return err
+	}
+	managerPods, err := s.pLister.Pods(s.namespace).List(selector)
+	if err != nil {
+		return err
+	}
+
+	selector, err = metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetInstanceManagerLabels("", "", types.InstanceManagerTypeReplica),
+	})
+	if err != nil {
+		return err
+	}
+	imPods, err := s.pLister.Pods(s.namespace).List(selector)
+	if err != nil {
+		return err
+	}
+
+	var pods []*corev1.Pod
+	pods = append(pods, managerPods...)
+	pods = append(pods, imPods...)
+
+	for _, pod := range pods {
+		val, exist := pod.Annotations[types.AWSIAMRroleAnnotation]
+		updateAnnotation := awsIAMRole != "" && awsIAMRole != val
+		deleteAnnotation := awsIAMRole == "" && exist
+		if updateAnnotation {
+			pod.Annotations[types.AWSIAMRroleAnnotation] = awsIAMRole
+		} else if deleteAnnotation {
+			delete(pod.Annotations, types.AWSIAMRroleAnnotation)
+		} else {
+			continue
+		}
+
+		if _, err = s.kubeClient.CoreV1().Pods(s.namespace).Update(pod); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // GetCredentialFromSecret gets the Secret of the given name and namespace
 // Returns a new credential object or error
 func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]string, error) {
@@ -242,6 +287,11 @@ func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]strin
 	}
 	credentialSecret := make(map[string]string)
 	if secret.Data != nil {
+		if err := s.annotateAWSIAMRole(string(secret.Data[types.AWSIAMRole])); err != nil {
+			return nil, err
+		}
+
+		credentialSecret[types.AWSIAMRole] = string(secret.Data[types.AWSIAMRole])
 		credentialSecret[types.AWSAccessKey] = string(secret.Data[types.AWSAccessKey])
 		credentialSecret[types.AWSSecretKey] = string(secret.Data[types.AWSSecretKey])
 		credentialSecret[types.AWSEndPoint] = string(secret.Data[types.AWSEndPoint])
