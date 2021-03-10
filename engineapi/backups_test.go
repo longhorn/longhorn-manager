@@ -1,6 +1,7 @@
 package engineapi
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -71,6 +72,89 @@ const backupVolumesListText = `
 	}
 }
 `
+
+func TestGetBackupCredentialEnv(t *testing.T) {
+	tests := []struct {
+		name         string
+		backupTarget string
+		credential   map[string]string
+		expectError  bool
+	}{
+		{
+			name:         "unsupported backup target",
+			backupTarget: "http://localhost",
+			credential:   map[string]string{},
+		},
+		{
+			name:         "provides only AWS access key",
+			backupTarget: "s3://backupbucket@us-east-1/",
+			credential: map[string]string{
+				"AWS_ACCESS_KEY_ID": "my-aws-access-key-id",
+			},
+			expectError: true,
+		},
+		{
+			name:         "provides only AWS secret access key",
+			backupTarget: "s3://backupbucket@us-east-1/",
+			credential: map[string]string{
+				"AWS_SECRET_ACCESS_KEY": "my-aws-secret-access-key",
+			},
+			expectError: true,
+		},
+		{
+			name:         "either AWS credentials nor AWS IAM role provided",
+			backupTarget: "s3://backupbucket@us-east-1/",
+			credential:   map[string]string{},
+			expectError:  true,
+		},
+		{
+			name:         "provides AWS credential",
+			backupTarget: "s3://backupbucket@us-east-1/",
+			credential: map[string]string{
+				"AWS_ACCESS_KEY_ID":     "my-aws-access-key-id",
+				"AWS_SECRET_ACCESS_KEY": "my-aws-secret-access-key",
+			},
+		},
+		{
+			name:         "provides AWS IAM role",
+			backupTarget: "s3://backupbucket@us-east-1/",
+			credential: map[string]string{
+				"AWS_IAM_ROLE": "AWS_IAM_ARN: arn:aws:iam::013456789:role/longhorn",
+			},
+		},
+		{
+			name:         "provides both AWS credential and AWS IAM role",
+			backupTarget: "s3://backupbucket@us-east-1/",
+			credential: map[string]string{
+				"AWS_ACCESS_KEY_ID":     "my-aws-access-key-id",
+				"AWS_SECRET_ACCESS_KEY": "my-aws-secret-access-key",
+				"AWS_IAM_ROLE":          "AWS_IAM_ARN: arn:aws:iam::013456789:role/longhorn",
+			},
+		},
+		{
+			name:         "provides nfs backup target",
+			backupTarget: "nfs://longhorn-test-nfs-svc.default:/opt/backupstore",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert := require.New(t)
+
+			envs, err := getBackupCredentialEnv(tt.backupTarget, tt.credential)
+			if tt.expectError {
+				assert.NotNil(err)
+			} else {
+				assert.Nil(err)
+
+				for _, env := range envs {
+					ss := strings.SplitN(env, "=", 2)
+					assert.Equal(tt.credential[ss[0]], ss[1])
+				}
+			}
+		})
+	}
+}
 
 func TestParseOneBackup(t *testing.T) {
 	assert := require.New(t)

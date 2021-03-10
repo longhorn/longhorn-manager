@@ -107,6 +107,7 @@ const (
 
 	BackupStoreTypeS3 = "s3"
 
+	AWSIAMRole   = "AWS_IAM_ROLE"
 	AWSAccessKey = "AWS_ACCESS_KEY_ID"
 	AWSSecretKey = "AWS_SECRET_ACCESS_KEY"
 	AWSEndPoint  = "AWS_ENDPOINTS"
