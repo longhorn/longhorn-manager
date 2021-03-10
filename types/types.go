@@ -534,7 +534,7 @@ func ValidateCPUReservationValues(engineManagerCPUStr, replicaManagerCPUStr stri
 		return fmt.Errorf("guaranteed/requested replica manager CPU value %v is not int: %v", replicaManagerCPUStr, err)
 	}
 	if engineManagerCPU+replicaManagerCPU < 0 || engineManagerCPU+replicaManagerCPU > 40 {
-		return fmt.Errorf("the sum of the engine manager CPU value %v and the replica manager CPU value %v should not be greater than 40%% or smaller than 0%%", engineManagerCPU, replicaManagerCPU)
+		return fmt.Errorf("the requested engine manager CPU and replica manager CPU are %v%% and %v%% of a node total CPU, respectively. The sum should not be smaller than 0%% or greater than 40%%", engineManagerCPU, replicaManagerCPU)
 	}
 	return nil
 }
