@@ -320,6 +320,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 			Name:        types.CSIPluginName,
 			Namespace:   namespace,
 			Annotations: map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): tolerationsString},
+			Labels:      types.GetBaseLabelsForSystemManagedComponent(),
 		},
 
 		Spec: appsv1.DaemonSetSpec{

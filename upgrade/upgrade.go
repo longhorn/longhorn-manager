@@ -109,10 +109,16 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 				if err = doAPIVersionUpgrade(namespace, config, lhClient); err != nil {
 					return
 				}
+				if err = doCRDUpgrade(namespace, lhClient); err != nil {
+					return
+				}
 				if err = doPodsUpgrade(namespace, lhClient, kubeClient); err != nil {
 					return
 				}
-				if err = doCRDUpgrade(namespace, lhClient); err != nil {
+				if err = doServicesUpgrade(namespace, kubeClient); err != nil {
+					return
+				}
+				if err = doDeploymentAndDaemonSetUpgrade(namespace, kubeClient); err != nil {
 					return
 				}
 			},
@@ -247,7 +253,27 @@ func doPodsUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeClient
 	if err = v102to110.UpgradeReplicas(namespace, lhClient); err != nil {
 		return err
 	}
-	if err = v102to110.UpdateDeploymentAndDaemonset(namespace, kubeClient); err != nil {
+	if err = v110to111.UpgradePods(namespace, lhClient, kubeClient); err != nil {
+		return err
+	}
+	return nil
+}
+
+func doServicesUpgrade(namespace string, kubeClient *clientset.Clientset) (err error) {
+	defer func() {
+		err = errors.Wrap(err, "doServicesUpgrade failed")
+	}()
+	if err = v110to111.UpgradeServices(namespace, kubeClient); err != nil {
+		return err
+	}
+	return nil
+}
+
+func doDeploymentAndDaemonSetUpgrade(namespace string, kubeClient *clientset.Clientset) (err error) {
+	defer func() {
+		err = errors.Wrap(err, "doDeploymentAndDaemonSetUpgrade failed")
+	}()
+	if err = v110to111.UpgradeDeploymentAndDaemonSet(namespace, kubeClient); err != nil {
 		return err
 	}
 	return nil
