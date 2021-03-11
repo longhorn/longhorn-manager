@@ -67,6 +67,7 @@ const (
 	LonghornLabelShareManager         = "share-manager"
 	LonghornLabelShareManagerImage    = "share-manager-image"
 	LonghornLabelBackingImage         = "backing-image"
+	LonghornLabelManagedBy            = "managed-by"
 
 	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
@@ -81,6 +82,7 @@ const (
 	DepracatedDriverName             = "io.rancher.longhorn"
 	DefaultStorageClassConfigMapName = "longhorn-storageclass"
 	DefaultStorageClassName          = "longhorn"
+	ControlPlaneName                 = "longhorn-manager"
 )
 
 const (
@@ -221,22 +223,31 @@ func GetLonghornLabelKey(name string) string {
 	return fmt.Sprintf("%s/%s", LonghornLabelKeyPrefix, name)
 }
 
+func GetBaseLabelsForSystemManagedComponent() map[string]string {
+	return map[string]string{GetLonghornLabelKey(LonghornLabelManagedBy): ControlPlaneName}
+}
+
 func GetLonghornLabelComponentKey() string {
 	return GetLonghornLabelKey("component")
 }
 
 func GetEngineImageLabels(engineImageName string) map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelEngineImage
+	labels[GetLonghornLabelKey(LonghornLabelEngineImage)] = engineImageName
+	return labels
+}
+
+func GetEngineImageComponentLabel() map[string]string {
 	return map[string]string{
-		GetLonghornLabelComponentKey():                LonghornLabelEngineImage,
-		GetLonghornLabelKey(LonghornLabelEngineImage): engineImageName,
+		GetLonghornLabelComponentKey(): LonghornLabelEngineImage,
 	}
 }
 
 func GetInstanceManagerLabels(node, instanceManagerImage string, managerType InstanceManagerType) map[string]string {
-	labels := map[string]string{
-		GetLonghornLabelComponentKey():                        LonghornLabelInstanceManager,
-		GetLonghornLabelKey(LonghornLabelInstanceManagerType): string(managerType),
-	}
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelInstanceManager
+	labels[GetLonghornLabelKey(LonghornLabelInstanceManagerType)] = string(managerType)
 	if node != "" {
 		labels[GetLonghornLabelKey(LonghornLabelNode)] = node
 	}
@@ -260,13 +271,14 @@ func GetShareManagerComponentLabel() map[string]string {
 }
 
 func GetShareManagerInstanceLabel(name string) map[string]string {
-	return map[string]string{
-		GetLonghornLabelKey(LonghornLabelShareManager): name,
-	}
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelKey(LonghornLabelShareManager)] = name
+	return labels
 }
 
 func GetShareManagerLabels(name, image string) map[string]string {
-	labels := GetShareManagerComponentLabel()
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelShareManager
 
 	if name != "" {
 		labels[GetLonghornLabelKey(LonghornLabelShareManager)] = name
@@ -280,9 +292,8 @@ func GetShareManagerLabels(name, image string) map[string]string {
 }
 
 func GetBackingImageLabels(backingImageName, diskUUID string) map[string]string {
-	labels := map[string]string{
-		GetLonghornLabelComponentKey(): LonghornLabelBackingImage,
-	}
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelBackingImage
 	if backingImageName != "" {
 		labels[GetLonghornLabelKey(LonghornLabelBackingImage)] = backingImageName
 	}
@@ -329,6 +340,14 @@ func GetInstanceManagerImageChecksumName(image string) string {
 
 func GetShareManagerImageChecksumName(image string) string {
 	return shareManagerImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
+}
+
+func GetShareManagerPodNameFromShareManagerName(smName string) string {
+	return LonghornLabelShareManager + "-" + smName
+}
+
+func GetShareManagerNameFromShareManagerPodName(podName string) string {
+	return strings.TrimPrefix(podName, LonghornLabelShareManager+"-")
 }
 
 func ValidateEngineImageChecksumName(name string) bool {

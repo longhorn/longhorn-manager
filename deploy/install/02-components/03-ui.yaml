@@ -28,7 +28,13 @@ spec:
           - name: LONGHORN_MANAGER_IP
             value: "http://longhorn-backend:9500"
 #      imagePullSecrets:
-#      - name:
+#        - name: ""
+#      priorityClassName:
+#      tolerations:
+#      - key: "key"
+#        operator: "Equal"
+#        value: "value"
+#        effect: "NoSchedule"
 ---
 kind: Service
 apiVersion: v1

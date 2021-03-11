@@ -507,8 +507,7 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 
 func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManager) error {
 	log := getLoggerForShareManager(c.logger, sm)
-
-	podName := getPodNameForShareManager(sm)
+	podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
 	pod, err := c.ds.GetPod(podName)
 	if err != nil && !apierrors.IsNotFound(err) {
 		log.WithError(err).WithField("pod", podName).Error("failed to retrieve pod for share manager from datastore")
@@ -554,7 +553,7 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	}
 
 	log := getLoggerForShareManager(c.logger, sm)
-	pod, err := c.ds.GetPod(getPodNameForShareManager(sm))
+	pod, err := c.ds.GetPod(types.GetShareManagerPodNameFromShareManagerName(sm.Name))
 	if err != nil && !apierrors.IsNotFound(err) {
 		log.WithError(err).Error("failed to retrieve pod for share manager from datastore")
 		return err
@@ -694,16 +693,12 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 	return service
 }
 
-func getPodNameForShareManager(sm *longhorn.ShareManager) string {
-	return types.LonghornLabelShareManager + "-" + sm.Name
-}
-
 func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, annotations map[string]string, tolerations []v1.Toleration,
 	pullPolicy v1.PullPolicy, resourceReq *v1.ResourceRequirements, registrySecret string, priorityClass string) *v1.Pod {
 	privileged := true
 	podSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            getPodNameForShareManager(sm),
+			Name:            types.GetShareManagerPodNameFromShareManagerName(sm.Name),
 			Namespace:       sm.Namespace,
 			Labels:          types.GetShareManagerLabels(sm.Name, sm.Spec.Image),
 			Annotations:     annotations,

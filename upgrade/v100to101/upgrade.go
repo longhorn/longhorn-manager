@@ -2,6 +2,7 @@ package v100to101
 
 import (
 	"github.com/pkg/errors"
+	"reflect"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -9,9 +10,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
+	"github.com/longhorn/longhorn-manager/types"
+	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	"github.com/longhorn/longhorn-manager/types"
 )
 
 // This upgrade is needed because we changed from using full image name (in v1.0.0)
@@ -62,24 +65,12 @@ func upgradeInstanceMangerPodLabel(pod *v1.Pod, im *longhorn.InstanceManager, ku
 		return err
 	}
 	podLabels := metadata.GetLabels()
-	newInstanceManagerLabels := types.GetInstanceManagerLabels(im.Spec.NodeID, im.Spec.Image, im.Spec.Type)
-	imImageLabelKey := types.GetLonghornLabelKey(types.LonghornLabelInstanceManagerImage)
-
-	if podLabels != nil && podLabels[imImageLabelKey] == newInstanceManagerLabels[imImageLabelKey] {
+	newPodLabels := upgradeutil.MergeStringMaps(podLabels, types.GetInstanceManagerLabels(im.Spec.NodeID, im.Spec.Image, im.Spec.Type))
+	if reflect.DeepEqual(podLabels, newPodLabels) {
 		return nil
 	}
-
-	if podLabels == nil {
-		podLabels = map[string]string{}
-	}
-
-	for k, v := range newInstanceManagerLabels {
-		podLabels[k] = v
-	}
-
-	metadata.SetLabels(podLabels)
-
-	if pod, err = kubeClient.CoreV1().Pods(namespace).Update(pod); err != nil {
+	metadata.SetLabels(newPodLabels)
+	if _, err := kubeClient.CoreV1().Pods(namespace).Update(pod); err != nil {
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to update the spec for instance manager pod %v during the instance managers upgrade", pod.Name)
 	}
 	return nil

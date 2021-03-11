@@ -35,6 +35,12 @@ const (
 	PodLivenessProbeFailureThreshold = 3
 )
 
+func labelMapToLabelSelector(labels map[string]string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: labels,
+	})
+}
+
 func (s *DataStore) getManagerLabel() map[string]string {
 	return map[string]string{
 		//TODO standardize key
@@ -251,6 +257,14 @@ func (s *DataStore) ListDaemonSet() ([]*appsv1.DaemonSet, error) {
 	return s.dsLister.DaemonSets(s.namespace).List(labels.Everything())
 }
 
+func (s *DataStore) ListDaemonSetWithLabels(labels map[string]string) ([]*appsv1.DaemonSet, error) {
+	selector, err := labelMapToLabelSelector(labels)
+	if err != nil {
+		return nil, err
+	}
+	return s.dsLister.DaemonSets(s.namespace).List(selector)
+}
+
 // UpdateDaemonSet updates the DaemonSet for the given DaemonSet object and namespace
 func (s *DataStore) UpdateDaemonSet(obj *appsv1.DaemonSet) (*appsv1.DaemonSet, error) {
 	return s.kubeClient.AppsV1().DaemonSets(s.namespace).Update(obj)
@@ -271,6 +285,14 @@ func (s *DataStore) GetDeployment(name string) (*appsv1.Deployment, error) {
 // ListDeployment gets a list of all Deployment for the given namespace
 func (s *DataStore) ListDeployment() ([]*appsv1.Deployment, error) {
 	return s.dpLister.Deployments(s.namespace).List(labels.Everything())
+}
+
+func (s *DataStore) ListDeploymentWithLabels(labels map[string]string) ([]*appsv1.Deployment, error) {
+	selector, err := labelMapToLabelSelector(labels)
+	if err != nil {
+		return nil, err
+	}
+	return s.dpLister.Deployments(s.namespace).List(selector)
 }
 
 // UpdateDeployment updates Deployment for the given Deployment object and namespace

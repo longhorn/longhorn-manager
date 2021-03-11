@@ -61,7 +61,8 @@ func (m *VolumeManager) CreateEngineImage(image string) (*longhorn.EngineImage, 
 	name := types.GetEngineImageChecksumName(image)
 	ei := &longhorn.EngineImage{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:   name,
+			Labels: types.GetEngineImageLabels(name),
 		},
 		Spec: types.EngineImageSpec{
 			Image: image,

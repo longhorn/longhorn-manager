@@ -377,7 +377,10 @@ var (
 
 	SettingDefinitionTaintToleration = SettingDefinition{
 		DisplayName: "Kubernetes Taint Toleration",
-		Description: "To dedicate nodes to store Longhorn replicas and reject other general workloads, set tolerations for Longhorn and add taints for the storage nodes. " +
+		Description: "If you want to dedicate nodes to store Longhorn replicas and reject other general workloads, you can set toleration for *all* Longhorn components and add taints for the storage nodes. " +
+			"Longhorn system contains user deployed components (e.g, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (e.g, instance manager, engine image, CSI driver, etc.) " +
+			"This setting only sets taint toleration for system managed components. " +
+			"Depend on how you deployed Longhorn, you need to set taint toleration for user deployed components in Helm chart or deployment YAML file. " +
 			"All Longhorn volumes should be detached before modifying toleration settings. " +
 			"We recommend setting tolerations during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
 			"Multiple tolerations can be set here, and these tolerations are separated by semicolon. For example: \n\n" +
@@ -385,7 +388,7 @@ var (
 			"* `:` this toleration tolerates everything because an empty key with operator `Exists` matches all keys, values and effects \n\n" +
 			"* `key1=value1:`  this toleration has empty effect. It matches all effects with key `key1` \n\n" +
 			"Because `kubernetes.io` is used as the key of all Kubernetes default tolerations, it should not be used in the toleration settings.\n\n " +
-			"WARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES!",
+			"WARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES! ",
 		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeString,
 		Required: false,

@@ -333,12 +333,12 @@ func (sc *SettingController) updateTaintToleration() error {
 	}
 	newTolerationsMap := util.TolerationListToMap(newTolerationsList)
 
-	daemonsetList, err := sc.ds.ListDaemonSet()
+	daemonsetList, err := sc.ds.ListDaemonSetWithLabels(types.GetBaseLabelsForSystemManagedComponent())
 	if err != nil {
 		return errors.Wrapf(err, "failed to list Longhorn daemonsets for toleration update")
 	}
 
-	deploymentList, err := sc.ds.ListDeployment()
+	deploymentList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
 	if err != nil {
 		return errors.Wrapf(err, "failed to list Longhorn deployments for toleration update")
 	}
@@ -458,12 +458,12 @@ func (sc *SettingController) updatePriorityClass() error {
 	}
 	newPriorityClass := setting.Value
 
-	daemonsetList, err := sc.ds.ListDaemonSet()
+	daemonsetList, err := sc.ds.ListDaemonSetWithLabels(types.GetBaseLabelsForSystemManagedComponent())
 	if err != nil {
 		return errors.Wrapf(err, "failed to list Longhorn daemonsets for priority class update")
 	}
 
-	deploymentList, err := sc.ds.ListDeployment()
+	deploymentList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
 	if err != nil {
 		return errors.Wrapf(err, "failed to list Longhorn deployments for priority class update")
 	}

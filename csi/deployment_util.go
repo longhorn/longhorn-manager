@@ -32,13 +32,13 @@ const (
 )
 
 func getCommonService(commonName, namespace string) *v1.Service {
+	serviceLabels := types.GetBaseLabelsForSystemManagedComponent()
+	serviceLabels["app"] = commonName
 	return &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      commonName,
 			Namespace: namespace,
-			Labels: map[string]string{
-				"app": commonName,
-			},
+			Labels:    serviceLabels,
 		},
 		Spec: v1.ServiceSpec{
 			Selector: map[string]string{
@@ -57,24 +57,24 @@ func getCommonService(commonName, namespace string) *v1.Service {
 func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32,
 	tolerations []v1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *appsv1.Deployment {
 
-	labels := map[string]string{
-		"app": commonName,
-	}
+	deploymentLabels := types.GetBaseLabelsForSystemManagedComponent()
+	deploymentLabels["app"] = commonName
 
 	commonDeploymentSpec := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        commonName,
 			Namespace:   namespace,
 			Annotations: map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): tolerationsString},
+			Labels:      deploymentLabels,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
-				MatchLabels: labels,
+				MatchLabels: map[string]string{"app": commonName},
 			},
 			Replicas: &replicaCount,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
+					Labels: map[string]string{"app": commonName},
 				},
 				Spec: v1.PodSpec{
 					ServiceAccountName: serviceAccount,

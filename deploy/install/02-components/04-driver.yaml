@@ -67,8 +67,14 @@ spec:
           #  value: "3"
           #- name: CSI_SNAPSHOTTER_REPLICA_COUNT
           #  value: "3"
-      #imagePullSecrets:
-      #- name:
+#      imagePullSecrets:
+#        - name: ""
+#      priorityClassName:
+#      tolerations:
+#      - key: "key"
+#        operator: "Equal"
+#        value: "value"
+#        effect: "NoSchedule"
       serviceAccountName: longhorn-service-account
       securityContext:
         runAsUser: 0
