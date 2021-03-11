@@ -744,7 +744,7 @@ func ValidateInitSetting(name, value string) (err error) {
 		}
 	case SettingNameGuaranteedEngineCPU:
 		if value != "" {
-			return errors.Wrapf(err, "Cannot set a value %v for the deprecated CPU resource settings", value)
+			return fmt.Errorf("cannot set a value %v for the deprecated setting %v", value, sName)
 		}
 	case SettingNameBackingImageCleanupWaitInterval:
 		fallthrough
