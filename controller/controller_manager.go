@@ -179,7 +179,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 func ParseResourceRequirement(val string) (*corev1.ResourceRequirements, error) {
 	quantity, err := resource.ParseQuantity(val)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to parse value %v to a quantity", val)
 	}
 	if quantity.IsZero() {
 		return nil, nil
