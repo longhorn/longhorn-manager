@@ -1311,18 +1311,32 @@ func (s *DataStore) ListNodesWithEngineImage(image string) (map[string]*longhorn
 	return nodes, nil
 }
 
+// filterNodes returns only the nodes where the passed predicate returns true
+func filterNodes(nodes map[string]*longhorn.Node, predicate func(node *longhorn.Node) bool) map[string]*longhorn.Node {
+	filtered := make(map[string]*longhorn.Node)
+	for nodeID, node := range nodes {
+		if predicate(node) {
+			filtered[nodeID] = node
+		}
+	}
+	return filtered
+}
+
+// filterReadyNodes returns only the nodes that are ready
+func filterReadyNodes(nodes map[string]*longhorn.Node) map[string]*longhorn.Node {
+	return filterNodes(nodes, func(node *longhorn.Node) bool {
+		nodeReadyCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
+		return nodeReadyCondition.Status == types.ConditionStatusTrue
+	})
+}
+
 func (s *DataStore) ListReadyNodes() (map[string]*longhorn.Node, error) {
 	nodes, err := s.ListNodes()
 	if err != nil {
 		return nil, err
 	}
-	for nodeID, node := range nodes {
-		nodeReadyCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
-		if nodeReadyCondition.Status != types.ConditionStatusTrue {
-			delete(nodes, nodeID)
-		}
-	}
-	return nodes, nil
+	readyNodes := filterReadyNodes(nodes)
+	return readyNodes, nil
 }
 
 // ListReadyNodesWithEngineImage returns list of ready nodes that have the corresponding engine image deployed
@@ -1331,13 +1345,8 @@ func (s *DataStore) ListReadyNodesWithEngineImage(image string) (map[string]*lon
 	if err != nil {
 		return nil, err
 	}
-	for nodeID, node := range nodes {
-		nodeReadyCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
-		if nodeReadyCondition.Status != types.ConditionStatusTrue {
-			delete(nodes, nodeID)
-		}
-	}
-	return nodes, nil
+	readyNodes := filterReadyNodes(nodes)
+	return readyNodes, nil
 }
 
 // ListKubeNodesRO returns a list of all Kubernetes Nodes for the given namespace,
