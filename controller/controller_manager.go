@@ -129,7 +129,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		settingInformer, engineImageInformer, nodeInformer)
 	sc := NewSettingController(logger, ds, scheme,
 		settingInformer, nodeInformer,
-		kubeClient, namespace, version)
+		kubeClient, namespace, controllerID, version)
 	imc := NewInstanceManagerController(logger, ds, scheme,
 		imInformer, podInformer, kubeNodeInformer, kubeClient, namespace, controllerID, serviceAccount)
 	smc := NewShareManagerController(logger, ds, scheme,

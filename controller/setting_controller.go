@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"reflect"
+	"sort"
 	"time"
 
 	"github.com/pkg/errors"
@@ -46,7 +47,8 @@ var (
 type SettingController struct {
 	*baseController
 
-	namespace string
+	namespace    string
+	controllerID string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -65,6 +67,9 @@ type SettingController struct {
 }
 
 type BackupStoreMonitor struct {
+	logger       logrus.FieldLogger
+	controllerID string
+
 	backupTarget                 string
 	backupTargetCredentialSecret string
 
@@ -96,7 +101,8 @@ func NewSettingController(
 	scheme *runtime.Scheme,
 	settingInformer lhinformers.SettingInformer,
 	nodeInformer lhinformers.NodeInformer,
-	kubeClient clientset.Interface, namespace, version string) *SettingController {
+	kubeClient clientset.Interface,
+	namespace, controllerID, version string) *SettingController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -106,7 +112,8 @@ func NewSettingController(
 	sc := &SettingController{
 		baseController: newBaseController("longhorn-setting", logger),
 
-		namespace: namespace,
+		namespace:    namespace,
+		controllerID: controllerID,
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-setting-controller"}),
@@ -271,6 +278,9 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 		return err
 	}
 	sc.bsMonitor = &BackupStoreMonitor{
+		logger:       sc.logger.WithField("component", "backup-store-monitor"),
+		controllerID: sc.controllerID,
+
 		backupTarget:                 targetSetting.Value,
 		backupTargetCredentialSecret: secretSetting.Value,
 
@@ -524,22 +534,71 @@ func getFinalTolerations(existingTolerations, lastAppliedTolerations, newTolerat
 }
 
 func (bm *BackupStoreMonitor) Start() {
+	log := bm.logger.WithFields(logrus.Fields{
+		"backupTarget": bm.target.URL,
+		"pollInterval": bm.pollInterval,
+	})
 	if bm.pollInterval == time.Duration(0) {
-		logrus.Infof("Backup store polling has been disabled for %v", bm.target.URL)
+		log.Info("Disabling backup store monitoring")
 		return
 	}
-	logrus.Debugf("Start backup store monitoring for %v", bm.target.URL)
+	log.Debug("Start backup store monitoring")
 	defer func() {
-		logrus.Debugf("Stop backup store monitoring %v", bm.target.URL)
+		log.Debug("Stop backup store monitoring")
 	}()
 
+	// since this is run on each node, but we only need a single update
+	// we pick a consistent random ready node for each poll run
+	shouldProcess := func() (bool, error) {
+		defaultEngineImage, err := bm.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+		if err != nil {
+			return false, err
+		}
+
+		nodes, err := bm.ds.ListReadyNodesWithEngineImage(defaultEngineImage)
+		if err != nil {
+			return false, err
+		}
+
+		// for the random ready evaluation
+		// we sort the candidate list (this will normalize the list across nodes)
+		var candidates []string
+		for node := range nodes {
+			candidates = append(candidates, node)
+		}
+
+		if len(candidates) == 0 {
+			return false, fmt.Errorf("no ready nodes with engine image %v available", defaultEngineImage)
+		}
+		sort.Strings(candidates)
+
+		// we use a time index to derive an index into the candidate list (normalizes time differences across nodes)
+		// we arbitrarily choose the pollInterval as your time normalization factor, since this also has the benefit of
+		// doing round robin across the at the time available candidate nodes.
+		interval := int64(bm.pollInterval.Seconds())
+		midPoint := interval / 2
+		timeIndex := int((time.Now().UTC().Unix() + midPoint) / interval)
+		candidateIndex := timeIndex % len(candidates)
+		responsibleNode := candidates[candidateIndex]
+		return bm.controllerID == responsibleNode, nil
+	}
+
 	wait.Until(func() {
+		if isResponsible, err := shouldProcess(); err != nil || !isResponsible {
+			if err != nil {
+				log.WithError(err).Warn("Failed to select node for backup store monitoring, will try again next poll interval")
+			}
+			return
+		}
+
+		bm.logger.Debug("Polling backup store for new volume backups")
 		backupVolumes, err := bm.target.ListVolumes()
 		if err != nil {
-			logrus.Warnf("backup store monitor: failed to list backup volumes in %v: %v", bm.target.URL, err)
+			bm.logger.WithError(err).Warn("Failed to list backup volumes, cannot update volumes last backup")
 		}
 		manager.SyncVolumesLastBackupWithBackupVolumes(backupVolumes,
 			bm.ds.ListVolumes, bm.ds.GetVolume, bm.ds.UpdateVolumeStatus)
+		bm.logger.Debug("Refreshed all volumes last backup based on backup store information")
 	}, bm.pollInterval, bm.stopCh)
 }
 
