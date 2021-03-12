@@ -355,7 +355,7 @@ func AutoCorrectName(name string, maxLength int) string {
 		logrus.Warnf("Name %v is too long, auto-correct to fit %v characters", name, maxLength)
 		checksum := GetStringChecksum(name)
 		newNameSuffix := "-" + checksum[:8]
-		newNamePrefix := strings.TrimRight(name[:maxLength-len(newNameSuffix)], "-")
+		newNamePrefix := strings.TrimRight(newName[:maxLength-len(newNameSuffix)], "-")
 		newName = newNamePrefix + newNameSuffix
 	}
 	if newName != name {
