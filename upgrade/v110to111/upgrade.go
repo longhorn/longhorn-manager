@@ -33,7 +33,10 @@ const (
 // deprecating the old setting automatically:
 // https://github.com/longhorn/longhorn/issues/2207
 
-func UpgradeCRs(namespace string, lhClient *lhclientset.Clientset) error {
+func UpgradeCRs(namespace string, lhClient *lhclientset.Clientset) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"UpgradeCRs failed")
+	}()
 	if err := upgradeLonghornNodes(namespace, lhClient); err != nil {
 		return err
 	}
@@ -51,6 +54,9 @@ func UpgradeCRs(namespace string, lhClient *lhclientset.Clientset) error {
 }
 
 func UpgradePods(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"UpgradePods failed")
+	}()
 	if err := upgradeInstanceManagerPods(namespace, kubeClient); err != nil {
 		return err
 	}
@@ -95,7 +101,7 @@ func UpgradeDeploymentAndDaemonSet(namespace string, kubeClient *clientset.Clien
 
 func upgradeLonghornNodes(namespace string, lhClient *lhclientset.Clientset) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade longhorn node failed")
+		err = errors.Wrapf(err, "upgrade longhorn node failed")
 	}()
 
 	deprecatedCPUSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameGuaranteedEngineCPU), metav1.GetOptions{})
@@ -151,7 +157,7 @@ func upgradeLonghornNodes(namespace string, lhClient *lhclientset.Clientset) (er
 
 func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance manager failed")
+		err = errors.Wrapf(err, "upgrade instance manager failed")
 	}()
 
 	imList, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).List(metav1.ListOptions{})
@@ -167,6 +173,9 @@ func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset) 
 	return nil
 }
 func upgradeLabelsForInstanceManager(im *longhorn.InstanceManager, lhClient *lhclientset.Clientset, namespace string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "upgradeLabelsForInstanceManager failed")
+	}()
 	metadata, err := meta.Accessor(im)
 	if err != nil {
 		return err
@@ -186,7 +195,7 @@ func upgradeLabelsForInstanceManager(im *longhorn.InstanceManager, lhClient *lhc
 
 func upgradeShareManagers(namespace string, lhClient *lhclientset.Clientset) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade share manager failed")
+		err = errors.Wrapf(err, "upgrade share manager failed")
 	}()
 	smList, err := lhClient.LonghornV1beta1().ShareManagers(namespace).List(metav1.ListOptions{})
 	if err != nil {
@@ -201,6 +210,9 @@ func upgradeShareManagers(namespace string, lhClient *lhclientset.Clientset) (er
 }
 
 func upgradeLabelsForShareManager(sm *longhorn.ShareManager, lhClient *lhclientset.Clientset, namespace string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "upgradeLabelsForShareManager failed")
+	}()
 	metadata, err := meta.Accessor(sm)
 	if err != nil {
 		return err
@@ -219,7 +231,7 @@ func upgradeLabelsForShareManager(sm *longhorn.ShareManager, lhClient *lhclients
 
 func upgradeEngineImages(namespace string, lhClient *lhclientset.Clientset) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade engine image failed")
+		err = errors.Wrapf(err, "upgrade engine image failed")
 	}()
 
 	eiList, err := lhClient.LonghornV1beta1().EngineImages(namespace).List(metav1.ListOptions{})
@@ -235,6 +247,9 @@ func upgradeEngineImages(namespace string, lhClient *lhclientset.Clientset) (err
 }
 
 func upgradeLabelsForEngineImage(ei *longhorn.EngineImage, lhClient *lhclientset.Clientset, namespace string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "upgradeLabelsForEngineImage failed")
+	}()
 	metadata, err := meta.Accessor(ei)
 	if err != nil {
 		return err
@@ -253,7 +268,7 @@ func upgradeLabelsForEngineImage(ei *longhorn.EngineImage, lhClient *lhclientset
 
 func upgradeShareManagerPods(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade share manager pods failed")
+		err = errors.Wrapf(err, "upgrade share manager pods failed")
 	}()
 	smPods, err := upgradeutil.ListShareManagerPods(namespace, kubeClient)
 	if err != nil {
@@ -275,6 +290,9 @@ func upgradeShareManagerPods(namespace string, lhClient *lhclientset.Clientset, 
 }
 
 func upgradeShareManagerPodsLabels(pod *v1.Pod, sm *longhorn.ShareManager, kubeClient *clientset.Clientset, namespace string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "upgradeShareManagerPodsLabels failed")
+	}()
 	metadata, err := meta.Accessor(pod)
 	if err != nil {
 		return err
@@ -293,7 +311,7 @@ func upgradeShareManagerPodsLabels(pod *v1.Pod, sm *longhorn.ShareManager, kubeC
 
 func upgradeInstanceManagerPods(namespace string, kubeClient *clientset.Clientset) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance manager pods failed")
+		err = errors.Wrapf(err, "upgrade instance manager pods failed")
 	}()
 	imPods, err := upgradeutil.ListIMPods(namespace, kubeClient)
 	if err != nil {
@@ -309,6 +327,9 @@ func upgradeInstanceManagerPods(namespace string, kubeClient *clientset.Clientse
 }
 
 func updateIMPodLastAppliedTolerationsAnnotation(pod *v1.Pod, kubeClient *clientset.Clientset, namespace string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "updateIMPodLastAppliedTolerationsAnnotation failed")
+	}()
 	needToUpdate, err := needToUpdateTolerationAnnotation(pod)
 	if err != nil {
 		return err
@@ -331,6 +352,9 @@ func updateIMPodLastAppliedTolerationsAnnotation(pod *v1.Pod, kubeClient *client
 }
 
 func upgradeCSIDeploymentsLabels(kubeClient *clientset.Clientset, namespace string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "upgradeCSIDeploymentsLabels failed")
+	}()
 	for _, dpName := range []string{types.CSIAttacherName, types.CSIProvisionerName, types.CSIResizerName, types.CSISnapshotterName} {
 		dp, err := kubeClient.AppsV1().Deployments(namespace).Get(dpName, metav1.GetOptions{})
 		if err != nil {
@@ -347,6 +371,9 @@ func upgradeCSIDeploymentsLabels(kubeClient *clientset.Clientset, namespace stri
 }
 
 func upgradeLabelsForDeployment(dp *appsv1.Deployment, kubeClient *clientset.Clientset, namespace string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "upgradeLabelsForDeployment failed")
+	}()
 	metadata, err := meta.Accessor(dp)
 	if err != nil {
 		return err
@@ -364,6 +391,9 @@ func upgradeLabelsForDeployment(dp *appsv1.Deployment, kubeClient *clientset.Cli
 }
 
 func upgradeCSIDaemonSetsLabels(kubeClient *clientset.Clientset, namespace string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "upgradeCSIDaemonSetsLabels failed")
+	}()
 	dsList := []*appsv1.DaemonSet{}
 
 	eiDaemonSetList, err := kubeClient.AppsV1().DaemonSets(namespace).List(metav1.ListOptions{
@@ -380,7 +410,7 @@ func upgradeCSIDaemonSetsLabels(kubeClient *clientset.Clientset, namespace strin
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
-	if csiPluginDaemonSet != nil {
+	if err == nil {
 		dsList = append(dsList, csiPluginDaemonSet)
 	}
 
@@ -393,6 +423,9 @@ func upgradeCSIDaemonSetsLabels(kubeClient *clientset.Clientset, namespace strin
 }
 
 func upgradeLabelsForDaemonSet(ds *appsv1.DaemonSet, kubeClient *clientset.Clientset, namespace string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "upgradeLabelsForDaemonSet failed")
+	}()
 	metadata, err := meta.Accessor(ds)
 	if err != nil {
 		return err
@@ -410,6 +443,9 @@ func upgradeLabelsForDaemonSet(ds *appsv1.DaemonSet, kubeClient *clientset.Clien
 }
 
 func upgradeCSIServicesLabels(kubeClient *clientset.Clientset, namespace string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "upgradeCSIServicesLabels failed")
+	}()
 	for _, svName := range []string{types.CSIAttacherName, types.CSIProvisionerName, types.CSIResizerName, types.CSISnapshotterName} {
 		sv, err := kubeClient.CoreV1().Services(namespace).Get(svName, metav1.GetOptions{})
 		if err != nil {
@@ -426,6 +462,9 @@ func upgradeCSIServicesLabels(kubeClient *clientset.Clientset, namespace string)
 }
 
 func upgradeShareManagerServicesLabels(kubeClient *clientset.Clientset, namespace string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "upgradeShareManagerServicesLabels failed")
+	}()
 	svList, err := kubeClient.CoreV1().Services(namespace).List(metav1.ListOptions{
 		LabelSelector: types.GetLonghornLabelKey(types.LonghornLabelShareManager),
 	})
@@ -458,6 +497,9 @@ func upgradeLabelsForService(sv *v1.Service, kubeClient *clientset.Clientset, na
 }
 
 func updateCSIDaemonSetsLastAppliedTolerationsAnnotation(kubeClient *clientset.Clientset, namespace string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "updateCSIDaemonSetsLastAppliedTolerationsAnnotation failed")
+	}()
 	daemonsetList, err := kubeClient.AppsV1().DaemonSets(namespace).List(metav1.ListOptions{
 		LabelSelector: labels.Set(types.GetBaseLabelsForSystemManagedComponent()).String(),
 	})
@@ -492,6 +534,9 @@ func updateCSIDaemonSetsLastAppliedTolerationsAnnotation(kubeClient *clientset.C
 }
 
 func updateCSIDeploymentsLastAppliedTolerationsAnnotation(kubeClient *clientset.Clientset, namespace string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "updateCSIDeploymentsLastAppliedTolerationsAnnotation failed")
+	}()
 	deploymentList, err := kubeClient.AppsV1().Deployments(namespace).List(metav1.ListOptions{
 		LabelSelector: labels.Set(types.GetBaseLabelsForSystemManagedComponent()).String(),
 	})
