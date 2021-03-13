@@ -36,7 +36,7 @@ func UpgradeLocalNode() error {
 	return nil
 }
 
-func UpgradeCRDs(namespace string, lhClient *lhclientset.Clientset) error {
+func UpgradeCRs(namespace string, lhClient *lhclientset.Clientset) error {
 	if err := doInstanceManagerUpgrade(namespace, lhClient); err != nil {
 		return err
 	}
