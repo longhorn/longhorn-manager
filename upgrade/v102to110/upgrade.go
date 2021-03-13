@@ -30,7 +30,24 @@ const (
 	upgradeLogPrefix = "upgrade from v1.0.2 to v1.1.0: "
 )
 
-func UpgradeInstanceManagerPods(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
+func UpgradeCRs(namespace string, lhClient *lhclientset.Clientset) error {
+	if err := upgradeVolumes(namespace, lhClient); err != nil {
+		return err
+	}
+	if err := upgradeReplicas(namespace, lhClient); err != nil {
+		return err
+	}
+	return nil
+}
+
+func UpgradePods(namespace string, kubeClient *clientset.Clientset) (err error) {
+	if err := upgradeInstanceManagerPods(namespace, kubeClient); err != nil {
+		return err
+	}
+	return nil
+}
+
+func upgradeInstanceManagerPods(namespace string, kubeClient *clientset.Clientset) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance manager pods failed")
 	}()
@@ -78,7 +95,7 @@ func upgradeInstanceMangerPodOwnerRef(pod *v1.Pod, kubeClient *clientset.Clients
 	return nil
 }
 
-func UpgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err error) {
+func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade volume failed")
 	}()
@@ -114,7 +131,7 @@ func UpgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err erro
 	return nil
 }
 
-func UpgradeReplicas(namespace string, lhClient *lhclientset.Clientset) (err error) {
+func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade replica failed")
 	}()

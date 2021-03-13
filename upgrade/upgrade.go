@@ -109,7 +109,7 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 				if err = doAPIVersionUpgrade(namespace, config, lhClient); err != nil {
 					return
 				}
-				if err = doCRDUpgrade(namespace, lhClient); err != nil {
+				if err = doCRUpgrade(namespace, lhClient); err != nil {
 					return
 				}
 				if err = doPodsUpgrade(namespace, lhClient, kubeClient); err != nil {
@@ -211,27 +211,30 @@ func doAPIVersionUpgrade(namespace string, config *restclient.Config, lhClient *
 	return nil
 }
 
-func doCRDUpgrade(namespace string, lhClient *lhclientset.Clientset) (err error) {
-	defer func() {
-		err = errors.Wrap(err, "upgrade CRD failed")
-	}()
-	if err := v070to080.UpgradeCRDs(namespace, lhClient); err != nil {
-		return err
-	}
-	if err := v100to101.UpgradeCRDs(namespace, lhClient); err != nil {
-		return err
-	}
-	if err := v110to111.UpgradeCRs(namespace, lhClient); err != nil {
-		return err
-	}
-	return nil
-}
-
 func upgradeLocalNode() (err error) {
 	defer func() {
 		err = errors.Wrap(err, "upgrade local node failed")
 	}()
 	if err := v070to080.UpgradeLocalNode(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func doCRUpgrade(namespace string, lhClient *lhclientset.Clientset) (err error) {
+	defer func() {
+		err = errors.Wrap(err, "upgrade CRD failed")
+	}()
+	if err := v070to080.UpgradeCRs(namespace, lhClient); err != nil {
+		return err
+	}
+	if err := v100to101.UpgradeCRs(namespace, lhClient); err != nil {
+		return err
+	}
+	if err := v102to110.UpgradeCRs(namespace, lhClient); err != nil {
+		return err
+	}
+	if err := v110to111.UpgradeCRs(namespace, lhClient); err != nil {
 		return err
 	}
 	return nil
@@ -244,13 +247,7 @@ func doPodsUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeClient
 	if err = v100to101.UpgradeInstanceManagerPods(namespace, lhClient, kubeClient); err != nil {
 		return err
 	}
-	if err = v102to110.UpgradeInstanceManagerPods(namespace, lhClient, kubeClient); err != nil {
-		return err
-	}
-	if err = v102to110.UpgradeVolumes(namespace, lhClient); err != nil {
-		return err
-	}
-	if err = v102to110.UpgradeReplicas(namespace, lhClient); err != nil {
+	if err = v102to110.UpgradePods(namespace, kubeClient); err != nil {
 		return err
 	}
 	if err = v110to111.UpgradePods(namespace, lhClient, kubeClient); err != nil {
