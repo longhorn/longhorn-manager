@@ -377,10 +377,10 @@ var (
 
 	SettingDefinitionTaintToleration = SettingDefinition{
 		DisplayName: "Kubernetes Taint Toleration",
-		Description: "If you want to dedicate nodes to store Longhorn replicas and reject other general workloads, you can set toleration for *all* Longhorn components and add taints for the storage nodes. " +
+		Description: "If you want to dedicate nodes to just store Longhorn replicas and reject other general workloads, you can set tolerations for **all** Longhorn components and add taints to the nodes dedicated for storage. " +
 			"Longhorn system contains user deployed components (e.g, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (e.g, instance manager, engine image, CSI driver, etc.) " +
-			"This setting only sets taint toleration for system managed components. " +
-			"Depend on how you deployed Longhorn, you need to set taint toleration for user deployed components in Helm chart or deployment YAML file. " +
+			"This setting only sets taint tolerations for system managed components. " +
+			"Depending on how you deployed Longhorn, you need to set taint tolerations for user deployed components in Helm chart or deployment YAML file. " +
 			"All Longhorn volumes should be detached before modifying toleration settings. " +
 			"We recommend setting tolerations during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
 			"Multiple tolerations can be set here, and these tolerations are separated by semicolon. For example: \n\n" +
@@ -512,10 +512,14 @@ var (
 	}
 	SettingDefinitionPriorityClass = SettingDefinition{
 		DisplayName: "Priority Class",
-		Description: "The name of the Priority Class to set on the Longhorn workloads. This can help prevent Longhorn workloads from being evicted under Node Pressure.\nWARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES.",
-		Category:    SettingCategoryDangerZone,
-		Required:    false,
-		ReadOnly:    false,
+		Description: "The name of the Priority Class to set on the Longhorn components. This can help prevent Longhorn components from being evicted under Node Pressure. \n" +
+			"Longhorn system contains user deployed components (e.g, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (e.g, instance manager, engine image, CSI driver, etc.) " +
+			"Note that this setting only sets Priority Class for system managed components. " +
+			"Depending on how you deployed Longhorn, you need to set Priority Class for user deployed components in Helm chart or deployment YAML file. \n" +
+			"WARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES.",
+		Category: SettingCategoryDangerZone,
+		Required: false,
+		ReadOnly: false,
 	}
 	SettingDefinitionDisableRevisionCounter = SettingDefinition{
 		DisplayName: "Disable Revision Counter",
