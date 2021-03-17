@@ -679,7 +679,7 @@ func (m *EngineMonitor) sync() bool {
 
 		// when engine stopped, nodeID will be empty as well
 		if engine.Status.OwnerID != m.controllerID {
-			m.logger.Info("stop monitoring because the engine no longer has this node as ownerID: engine.Status.OwnerID=%v; m.controllerID=%v", engine.Status.OwnerID, m.controllerID)
+			m.logger.Infof("stop monitoring because the engine no longer has this node as ownerID: engine.Status.OwnerID=%v; m.controllerID=%v", engine.Status.OwnerID, m.controllerID)
 			m.stop(engine)
 			return true
 		}
