@@ -201,10 +201,36 @@ func (bi *BackingImageStatus) DeepCopyInto(to *BackingImageStatus) {
 			to.DiskDownloadStateMap[key] = value
 		}
 	}
+	if bi.DiskDownloadProgressMap != nil {
+		to.DiskDownloadProgressMap = make(map[string]int)
+		for key, value := range bi.DiskDownloadProgressMap {
+			to.DiskDownloadProgressMap[key] = value
+		}
+	}
 	if bi.DiskLastRefAtMap != nil {
 		to.DiskLastRefAtMap = make(map[string]string)
 		for key, value := range bi.DiskLastRefAtMap {
 			to.DiskLastRefAtMap[key] = value
+		}
+	}
+}
+
+func (bim *BackingImageManagerSpec) DeepCopyInto(to *BackingImageManagerSpec) {
+	*to = *bim
+	if bim.BackingImages != nil {
+		to.BackingImages = make(map[string]string)
+		for key, value := range bim.BackingImages {
+			to.BackingImages[key] = value
+		}
+	}
+}
+
+func (bim *BackingImageManagerStatus) DeepCopyInto(to *BackingImageManagerStatus) {
+	*to = *bim
+	if bim.BackingImageFileMap != nil {
+		to.BackingImageFileMap = make(map[string]BackingImageFileInfo)
+		for key, value := range bim.BackingImageFileMap {
+			to.BackingImageFileMap[key] = value
 		}
 	}
 }

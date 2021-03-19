@@ -486,10 +486,11 @@ type ShareManagerStatus struct {
 type BackingImageDownloadState string
 
 const (
+	BackingImageDownloadStatePending     = BackingImageDownloadState("pending")
 	BackingImageDownloadStateDownloaded  = BackingImageDownloadState("downloaded")
 	BackingImageDownloadStateDownloading = BackingImageDownloadState("downloading")
 	BackingImageDownloadStateFailed      = BackingImageDownloadState("failed")
-	BackingImageDownloadStateTerminating = BackingImageDownloadState("terminating")
+	BackingImageDownloadStateUnknown     = BackingImageDownloadState("unknown")
 )
 
 type BackingImageSpec struct {
@@ -498,8 +499,51 @@ type BackingImageSpec struct {
 }
 
 type BackingImageStatus struct {
-	OwnerID              string                               `json:"ownerID"`
-	UUID                 string                               `json:"uuid"`
-	DiskDownloadStateMap map[string]BackingImageDownloadState `json:"diskDownloadStateMap"`
-	DiskLastRefAtMap     map[string]string                    `json:"diskLastRefAtMap"`
+	OwnerID                 string                               `json:"ownerID"`
+	UUID                    string                               `json:"uuid"`
+	Size                    int64                                `json:"size"`
+	DiskDownloadStateMap    map[string]BackingImageDownloadState `json:"diskDownloadStateMap"`
+	DiskDownloadProgressMap map[string]int                       `json:"diskDownloadProgressMap"`
+	DiskLastRefAtMap        map[string]string                    `json:"diskLastRefAtMap"`
+}
+
+type BackingImageManagerState string
+
+const (
+	BackingImageManagerStateError    = BackingImageManagerState("error")
+	BackingImageManagerStateRunning  = BackingImageManagerState("running")
+	BackingImageManagerStateStopped  = BackingImageManagerState("stopped")
+	BackingImageManagerStateStarting = BackingImageManagerState("starting")
+	BackingImageManagerStateUnknown  = BackingImageManagerState("unknown")
+)
+
+type BackingImageManagerSpec struct {
+	Image         string            `json:"image"`
+	NodeID        string            `json:"nodeID"`
+	DiskUUID      string            `json:"diskUUID"`
+	DiskPath      string            `json:"diskPath"`
+	BackingImages map[string]string `json:"backingImages"`
+}
+
+type BackingImageManagerStatus struct {
+	OwnerID             string                          `json:"ownerID"`
+	CurrentState        BackingImageManagerState        `json:"currentState"`
+	BackingImageFileMap map[string]BackingImageFileInfo `json:"backingImageFileMap"`
+	IP                  string                          `json:"ip"`
+	APIMinVersion       int                             `json:"apiMinVersion"`
+	APIVersion          int                             `json:"apiVersion"`
+}
+
+type BackingImageFileInfo struct {
+	Name      string `json:"name"`
+	URL       string `json:"url"`
+	UUID      string `json:"uuid"`
+	Size      int64  `json:"size"`
+	Directory string `json:"directory"`
+
+	State                BackingImageDownloadState `json:"state"`
+	Message              string                    `json:"message"`
+	SendingReference     int                       `json:"sendingReference"`
+	SenderManagerAddress string                    `json:"senderManagerAddress"`
+	DownloadProgress     int                       `json:"downloadProgress"`
 }
