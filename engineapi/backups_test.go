@@ -119,7 +119,7 @@ func TestGetBackupCredentialEnv(t *testing.T) {
 			name:         "provides AWS IAM role",
 			backupTarget: "s3://backupbucket@us-east-1/",
 			credential: map[string]string{
-				"AWS_IAM_ROLE": "AWS_IAM_ARN: arn:aws:iam::013456789:role/longhorn",
+				"AWS_IAM_ROLE_ARN": "AWS_IAM_ARN: arn:aws:iam::013456789:role/longhorn",
 			},
 		},
 		{
@@ -128,7 +128,7 @@ func TestGetBackupCredentialEnv(t *testing.T) {
 			credential: map[string]string{
 				"AWS_ACCESS_KEY_ID":     "my-aws-access-key-id",
 				"AWS_SECRET_ACCESS_KEY": "my-aws-secret-access-key",
-				"AWS_IAM_ROLE":          "AWS_IAM_ARN: arn:aws:iam::013456789:role/longhorn",
+				"AWS_IAM_ROLE_ARN":      "AWS_IAM_ARN: arn:aws:iam::013456789:role/longhorn",
 			},
 		},
 		{

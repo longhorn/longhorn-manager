@@ -287,11 +287,11 @@ func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]strin
 	}
 	credentialSecret := make(map[string]string)
 	if secret.Data != nil {
-		if err := s.annotateAWSIAMRole(string(secret.Data[types.AWSIAMRole])); err != nil {
+		if err := s.annotateAWSIAMRole(string(secret.Data[types.AWSIAMRoleArn])); err != nil {
 			return nil, err
 		}
 
-		credentialSecret[types.AWSIAMRole] = string(secret.Data[types.AWSIAMRole])
+		credentialSecret[types.AWSIAMRoleArn] = string(secret.Data[types.AWSIAMRoleArn])
 		credentialSecret[types.AWSAccessKey] = string(secret.Data[types.AWSAccessKey])
 		credentialSecret[types.AWSSecretKey] = string(secret.Data[types.AWSSecretKey])
 		credentialSecret[types.AWSEndPoint] = string(secret.Data[types.AWSEndPoint])

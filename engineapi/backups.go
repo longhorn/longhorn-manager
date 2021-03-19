@@ -53,7 +53,7 @@ func getBackupCredentialEnv(backupTarget string, credential map[string]string) (
 		missingKeys = append(missingKeys, types.AWSSecretKey)
 	}
 	// If AWS IAM Role not present, then the AWS credentials must be exists
-	if credential[types.AWSIAMRole] == "" && len(missingKeys) > 0 {
+	if credential[types.AWSIAMRoleArn] == "" && len(missingKeys) > 0 {
 		return nil, fmt.Errorf("Could not backup to %s, missing %v in the secret", backupType, missingKeys)
 	}
 	if len(missingKeys) == 0 {
