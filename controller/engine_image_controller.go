@@ -353,7 +353,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		engineImage.Status.State = types.EngineImageStateDeployed
 	}
 
-	if err := ic.handleAutoUpgradeEngineImageToDefaultEngineImage(); err != nil {
+	if err := ic.handleAutoUpgradeEngineImageToDefaultEngineImage(engineImage.Spec.Image); err != nil {
 		log.WithError(err).Warn("error when handleAutoUpgradeEngineImageToDefaultEngineImage")
 	}
 
@@ -393,7 +393,23 @@ func (ic *EngineImageController) syncNodeDeploymentMap(engineImage *longhorn.Eng
 }
 
 // handleAutoUpgradeEngineImageToDefaultEngineImage automatically upgrades volume's engine image to default engine image when it is applicable
-func (ic *EngineImageController) handleAutoUpgradeEngineImageToDefaultEngineImage() error {
+func (ic *EngineImageController) handleAutoUpgradeEngineImageToDefaultEngineImage(currentProcessingImage string) error {
+	defaultEngineImage, err := ic.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+	if err != nil {
+		return err
+	}
+
+	// To avoid multiple managers doing upgrade at the same time, only allow the
+	// manager that is responsible for the default engine image to do the upgrade
+	if currentProcessingImage != defaultEngineImage {
+		return nil
+	}
+
+	defaultEngineImageResource, err := ic.ds.GetEngineImage(types.GetEngineImageChecksumName(defaultEngineImage))
+	if err != nil {
+		return err
+	}
+
 	concurrentAutomaticEngineUpgradePerNodeLimit, err := ic.ds.GetSettingAsInt(types.SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit)
 	if err != nil {
 		return err
@@ -402,64 +418,45 @@ func (ic *EngineImageController) handleAutoUpgradeEngineImageToDefaultEngineImag
 		return nil
 	}
 
-	defaultEngineImage, err := ic.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
-	if err != nil {
-		return err
-	}
-	defaultEngineImageResource, err := ic.ds.GetEngineImage(types.GetEngineImageChecksumName(defaultEngineImage))
-	if err != nil {
-		return err
-	}
-
 	// List all volumes and select a set of volume for upgrading.
 	volumes, err := ic.ds.ListVolumes()
 	if err != nil {
 		return err
 	}
-	upgradingCandidates, err := ic.getVolumesForEngineImageUpgrading(volumes, defaultEngineImageResource)
-	if err != nil {
-		return err
-	}
 
-	// Make sure not to upgrade too many volumes on the same node at the same time.
-	upgradingCandidates = limitAutomaticEngineUpgradePerNode(volumes, upgradingCandidates, concurrentAutomaticEngineUpgradePerNodeLimit)
+	candidates, inProgress := ic.getVolumesForEngineImageUpgrading(volumes, defaultEngineImageResource)
 
-	// Upgrade engine image for volume
-	for _, v := range upgradingCandidates {
-		oldEngineImage := v.Spec.EngineImage
-		v.Spec.EngineImage = defaultEngineImage
-		v, err = ic.ds.UpdateVolume(v)
-		if err != nil {
-			return err
+	limitedCandidates := limitAutomaticEngineUpgradePerNode(candidates, inProgress, int(concurrentAutomaticEngineUpgradePerNodeLimit))
+
+	for _, vs := range limitedCandidates {
+		for _, v := range vs {
+			ic.logger.WithFields(logrus.Fields{"volume": v.Name, "engineImage": v.Spec.EngineImage}).Infof("automatically upgrade volume engine image to the default engine image %v", defaultEngineImage)
+			v.Spec.EngineImage = defaultEngineImage
+			v, err = ic.ds.UpdateVolume(v)
+			if err != nil {
+				return err
+			}
 		}
-		ic.logger.Infof("automatically upgrades volume's engine image from %v to the default engine image %v for volume %v", oldEngineImage, defaultEngineImage, v.Name)
 	}
 
 	return nil
 }
 
-func limitAutomaticEngineUpgradePerNode(volumes map[string]*longhorn.Volume, upgradingCandidates []*longhorn.Volume, concurrentAutomaticEngineUpgradePerNodeLimit int64) []*longhorn.Volume {
-	finalCandidates := []*longhorn.Volume{}
-	candidatePerNode := map[string]int64{}
-	// Count number of volumes per node that are upgrading engine
-	for _, v := range volumes {
-		if v.Spec.EngineImage != v.Status.CurrentImage {
-			nodeName := v.Status.OwnerID
-			candidatePerNode[nodeName] = candidatePerNode[nodeName] + 1
+func limitAutomaticEngineUpgradePerNode(candidates, inProgress map[string][]*longhorn.Volume, maxLimit int) (limitedCandidates map[string][]*longhorn.Volume) {
+	limitedCandidates = make(map[string][]*longhorn.Volume)
+	for node := range candidates {
+		currentUpgrading := len(inProgress[node])
+		if currentUpgrading >= maxLimit {
+			continue
 		}
+		upperBound := util.MinInt(maxLimit-currentUpgrading, len(candidates[node]))
+		limitedCandidates[node] = candidates[node][:upperBound]
 	}
-	// Only allow concurrentAutomaticEngineUpgradePerNodeLimit engines to be automatically upgraded at a time
-	for _, v := range upgradingCandidates {
-		node := v.Status.OwnerID
-		if candidatePerNode[node] < concurrentAutomaticEngineUpgradePerNodeLimit {
-			candidatePerNode[node] = candidatePerNode[node] + 1
-			finalCandidates = append(finalCandidates, v)
-		}
-	}
-	return finalCandidates
+	return limitedCandidates
 }
 
-// getVolumesForEngineImageUpgrading returns a list of volumes that are qualified for engine image upgrading
+// getVolumesForEngineImageUpgrading returns 2 maps: map of volumes that are qualified for engine image upgrading
+// and map of volumes that are upgrading engine image
 // A volume is qualified for engine image upgrading if it meets one of the following case:
 // Case 1:
 //   1. Volume is in detached state
@@ -468,28 +465,25 @@ func limitAutomaticEngineUpgradePerNode(volumes map[string]*longhorn.Volume, upg
 //   1. Volume is not in engine upgrading process
 //   2. newEngineImageResource is deployed on attaching node and the all volume's replicas' nodes
 //   3. Volume is in attached state and it is able to do live upgrade
-func (ic *EngineImageController) getVolumesForEngineImageUpgrading(volumes map[string]*longhorn.Volume, newEngineImageResource *longhorn.EngineImage) ([]*longhorn.Volume, error) {
-	candiates := []*longhorn.Volume{}
+func (ic *EngineImageController) getVolumesForEngineImageUpgrading(volumes map[string]*longhorn.Volume, newEngineImageResource *longhorn.EngineImage) (candidates, inProgress map[string][]*longhorn.Volume) {
+	candidates = make(map[string][]*longhorn.Volume)
+	inProgress = make(map[string][]*longhorn.Volume)
 
 	for _, v := range volumes {
-		// Already attempted to upgrade volume's engine image
-		if v.Spec.EngineImage == newEngineImageResource.Spec.Image {
-			continue
-		}
-		// Volume is in upgrading process. Need to wait for the upgrade to finish.
 		if v.Spec.EngineImage != v.Status.CurrentImage {
+			inProgress[v.Status.OwnerID] = append(inProgress[v.Status.OwnerID], v)
 			continue
 		}
-		if isReady, _ := ic.ds.CheckEngineImageReadinessForVolume(newEngineImageResource.Spec.Image, v.Name, v.Status.CurrentNodeID); !isReady {
-			continue
+		canBeUpgraded := ic.canDoOfflineEngineImageUpgrade(v, newEngineImageResource) || ic.canDoLiveEngineImageUpgrade(v, newEngineImageResource)
+		isCurrentEIAvailable, _ := ic.ds.CheckEngineImageReadinessForVolume(v.Status.CurrentImage, v.Name, v.Status.CurrentNodeID)
+		isNewEIAvailable, _ := ic.ds.CheckEngineImageReadinessForVolume(newEngineImageResource.Spec.Image, v.Name, v.Status.CurrentNodeID)
+		validCandidate := v.Spec.EngineImage != newEngineImageResource.Spec.Image && canBeUpgraded && isCurrentEIAvailable && isNewEIAvailable
+		if validCandidate {
+			candidates[v.Status.OwnerID] = append(candidates[v.Status.OwnerID], v)
 		}
-		if !ic.canDoOfflineEngineImageUpgrade(v, newEngineImageResource) && !ic.canDoLiveEngineImageUpgrade(v, newEngineImageResource) {
-			continue
-		}
-		candiates = append(candiates, v)
 	}
 
-	return candiates, nil
+	return candidates, inProgress
 }
 
 func (ic *EngineImageController) canDoOfflineEngineImageUpgrade(v *longhorn.Volume, newEngineImageResource *longhorn.EngineImage) bool {
@@ -516,7 +510,6 @@ func (ic *EngineImageController) canDoLiveEngineImageUpgrade(v *longhorn.Volume,
 	if v.Status.ExpansionRequired {
 		return false
 	}
-	// We don't need the oldEngineImageResource to be ready
 	oldEngineImageResource, err := ic.ds.GetEngineImage(types.GetEngineImageChecksumName(v.Status.CurrentImage))
 	if err != nil {
 		ic.logger.WithError(err).Warnf("canDoLiveEngineImageUpgrade: cannot get engine image resource for engine image %v ", v.Status.CurrentImage)

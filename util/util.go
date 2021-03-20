@@ -843,3 +843,10 @@ func GenerateDiskConfig(path string) (*DiskConfig, error) {
 
 	return cfg, nil
 }
+
+func MinInt(a, b int) int {
+	if a <= b {
+		return a
+	}
+	return b
+}
