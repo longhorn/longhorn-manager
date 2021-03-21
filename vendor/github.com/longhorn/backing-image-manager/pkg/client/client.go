@@ -184,12 +184,15 @@ func (cli *BackingImageManagerClient) OwnershipTransferStart() (map[string]*api.
 	}
 
 	resp := map[string]*api.BackingImage{}
-	for biName, biSpec := range transferResp.ReadyBackingImages {
+	for biName, biResp := range transferResp.ReadyBackingImages {
 		resp[biName] = &api.BackingImage{
-			Name: biSpec.Name,
-			URL:  biSpec.Url,
-			UUID: biSpec.Uuid,
-			Size: biSpec.Size,
+			Name: biResp.Spec.Name,
+			URL:  biResp.Spec.Url,
+			UUID: biResp.Spec.Uuid,
+			Size: biResp.Spec.Size,
+			Status: api.BackingImageStatus{
+				State: biResp.Status.State,
+			},
 		}
 	}
 
@@ -207,13 +210,18 @@ func (cli *BackingImageManagerClient) OwnershipTransferConfirm(transferringBacki
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
-	input := map[string]*rpc.BackingImageSpec{}
+	input := map[string]*rpc.BackingImageResponse{}
 	for biName, bi := range transferringBackingImages {
-		input[biName] = &rpc.BackingImageSpec{
-			Name: bi.Name,
-			Url:  bi.URL,
-			Uuid: bi.UUID,
-			Size: bi.Size,
+		input[biName] = &rpc.BackingImageResponse{
+			Spec: &rpc.BackingImageSpec{
+				Name: bi.Name,
+				Url:  bi.URL,
+				Uuid: bi.UUID,
+				Size: bi.Size,
+			},
+			Status: &rpc.BackingImageStatus{
+				State: bi.Status.State,
+			},
 		}
 	}
 
