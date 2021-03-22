@@ -74,6 +74,7 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 	shareManagerInformer := lhInformerFactory.Longhorn().V1beta1().ShareManagers()
 	backingImageInformer := lhInformerFactory.Longhorn().V1beta1().BackingImages()
+	backingImageManagerInformer := lhInformerFactory.Longhorn().V1beta1().BackingImageManagers()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
@@ -93,7 +94,8 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
 		engineImageInformer, nodeInformer, settingInformer,
-		imInformer, shareManagerInformer, backingImageInformer,
+		imInformer, shareManagerInformer,
+		backingImageInformer, backingImageManagerInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,

@@ -70,6 +70,7 @@ func NewUninstallController(
 	imInformer lhinformers.InstanceManagerInformer,
 	smInformer lhinformers.ShareManagerInformer,
 	backingImageInformer lhinformers.BackingImageInformer,
+	backingImageManagerInformer lhinformers.BackingImageManagerInformer,
 	daemonSetInformer appsv1.DaemonSetInformer,
 	deploymentInformer appsv1.DeploymentInformer,
 	csiDriverInformer storagev1beta1.CSIDriverInformer,
