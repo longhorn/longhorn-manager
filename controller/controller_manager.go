@@ -79,6 +79,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
 	shareManagerInformer := lhInformerFactory.Longhorn().V1beta1().ShareManagers()
 	backingImageInformer := lhInformerFactory.Longhorn().V1beta1().BackingImages()
+	backingImageManagerInformer := lhInformerFactory.Longhorn().V1beta1().BackingImageManagers()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
@@ -99,7 +100,8 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
 		engineImageInformer, nodeInformer, settingInformer,
-		imInformer, shareManagerInformer, backingImageInformer,
+		imInformer, shareManagerInformer,
+		backingImageInformer, backingImageManagerInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
