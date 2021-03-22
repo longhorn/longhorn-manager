@@ -45,6 +45,7 @@ const (
 	SettingNameDefaultEngineImage                           = SettingName("default-engine-image")
 	SettingNameDefaultInstanceManagerImage                  = SettingName("default-instance-manager-image")
 	SettingNameDefaultShareManagerImage                     = SettingName("default-share-manager-image")
+	SettingNameDefaultBackingImageManagerImage              = SettingName("default-backing-image-manager-image")
 	SettingNameReplicaSoftAntiAffinity                      = SettingName("replica-soft-anti-affinity")
 	SettingNameStorageOverProvisioningPercentage            = SettingName("storage-over-provisioning-percentage")
 	SettingNameStorageMinimalAvailablePercentage            = SettingName("storage-minimal-available-percentage")
@@ -89,6 +90,7 @@ var (
 		SettingNameDefaultEngineImage,
 		SettingNameDefaultInstanceManagerImage,
 		SettingNameDefaultShareManagerImage,
+		SettingNameDefaultBackingImageManagerImage,
 		SettingNameReplicaSoftAntiAffinity,
 		SettingNameStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage,
@@ -154,6 +156,7 @@ var (
 		SettingNameDefaultEngineImage:                           SettingDefinitionDefaultEngineImage,
 		SettingNameDefaultInstanceManagerImage:                  SettingDefinitionDefaultInstanceManagerImage,
 		SettingNameDefaultShareManagerImage:                     SettingDefinitionDefaultShareManagerImage,
+		SettingNameDefaultBackingImageManagerImage:              SettingDefinitionDefaultBackingImageManagerImage,
 		SettingNameReplicaSoftAntiAffinity:                      SettingDefinitionReplicaSoftAntiAffinity,
 		SettingNameStorageOverProvisioningPercentage:            SettingDefinitionStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage:            SettingDefinitionStorageMinimalAvailablePercentage,
@@ -271,6 +274,15 @@ var (
 	SettingDefinitionDefaultShareManagerImage = SettingDefinition{
 		DisplayName: "Default Share Manager Image",
 		Description: "The default share manager image used by the manager. Can be changed on the manager starting command line only",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    true,
+	}
+
+	SettingDefinitionDefaultBackingImageManagerImage = SettingDefinition{
+		DisplayName: "Default Backing Image Manager Image",
+		Description: "The default backing image manager image used by the manager. Can be changed on the manager starting command line only",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
 		Required:    true,
