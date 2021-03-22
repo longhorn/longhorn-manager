@@ -1206,6 +1206,218 @@ func GetOwnerReferencesForBackingImage(backingImage *longhorn.BackingImage) []me
 	}
 }
 
+// CreateBackingImageManager creates a Longhorn BackingImageManager resource and verifies
+// creation
+func (s *DataStore) CreateBackingImageManager(backingImageManager *longhorn.BackingImageManager) (*longhorn.BackingImageManager, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, backingImageManager); err != nil {
+		return nil, err
+	}
+	if err := tagNodeLabel(backingImageManager.Spec.NodeID, backingImageManager); err != nil {
+		return nil, err
+	}
+	if err := tagDiskUUIDLabel(backingImageManager.Spec.DiskUUID, backingImageManager); err != nil {
+		return nil, err
+	}
+
+	ret, err := s.lhClient.LonghornV1beta1().BackingImageManagers(s.namespace).Create(backingImageManager)
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(backingImageManager.Name, "backing image manager", func(name string) (runtime.Object, error) {
+		return s.getBackingImageManagerRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.BackingImageManager)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for backing image manager")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// UpdateBackingImageManager updates Longhorn BackingImageManager and verifies update
+func (s *DataStore) UpdateBackingImageManager(backingImageManager *longhorn.BackingImageManager) (*longhorn.BackingImageManager, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, backingImageManager); err != nil {
+		return nil, err
+	}
+	if err := tagNodeLabel(backingImageManager.Spec.NodeID, backingImageManager); err != nil {
+		return nil, err
+	}
+	if err := tagDiskUUIDLabel(backingImageManager.Spec.DiskUUID, backingImageManager); err != nil {
+		return nil, err
+	}
+
+	obj, err := s.lhClient.LonghornV1beta1().BackingImageManagers(s.namespace).Update(backingImageManager)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(backingImageManager.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getBackingImageManagerRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateBackingImageManagerStatus updates Longhorn BackingImageManager resource status and
+// verifies update
+func (s *DataStore) UpdateBackingImageManagerStatus(backingImageManager *longhorn.BackingImageManager) (*longhorn.BackingImageManager, error) {
+	obj, err := s.lhClient.LonghornV1beta1().BackingImageManagers(s.namespace).UpdateStatus(backingImageManager)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(backingImageManager.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getBackingImageManagerRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteBackingImageManager won't result in immediately deletion since finalizer was
+// set by default
+func (s *DataStore) DeleteBackingImageManager(name string) error {
+	propagation := metav1.DeletePropagationForeground
+	return s.lhClient.LonghornV1beta1().BackingImageManagers(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
+}
+
+// RemoveFinalizerForBackingImageManager will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForBackingImageManager(obj *longhorn.BackingImageManager) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta1().BackingImageManagers(s.namespace).Update(obj)
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for backing image manager %v", obj.Name)
+	}
+	return nil
+}
+
+func (s *DataStore) getBackingImageManagerRO(name string) (*longhorn.BackingImageManager, error) {
+	return s.bimLister.BackingImageManagers(s.namespace).Get(name)
+}
+
+// GetBackingImageManager returns a new BackingImageManager object for the given name and
+// namespace
+func (s *DataStore) GetBackingImageManager(name string) (*longhorn.BackingImageManager, error) {
+	resultRO, err := s.getBackingImageManagerRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// ListBackingImageManagers returns object includes all BackingImageManager in namespace
+func (s *DataStore) ListBackingImageManagers() (map[string]*longhorn.BackingImageManager, error) {
+	itemMap := map[string]*longhorn.BackingImageManager{}
+
+	list, err := s.bimLister.BackingImageManagers(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListBackingImageManagersByNode gets a list of BackingImageManager
+// on a specific node with the given namespace.
+func (s *DataStore) ListBackingImageManagersByNode(nodeName string) (map[string]*longhorn.BackingImageManager, error) {
+	nodeSelector, err := getNodeSelector(nodeName)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.BackingImageManager{}
+	list, err := s.bimLister.BackingImageManagers(s.namespace).List(nodeSelector)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListBackingImageManagersByDiskUUID gets a list of BackingImageManager
+// in a specific disk with the given namespace.
+func (s *DataStore) ListBackingImageManagersByDiskUUID(diskUUID string) (map[string]*longhorn.BackingImageManager, error) {
+	diskSelector, err := getDiskUUIDSelector(diskUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.BackingImageManager{}
+	list, err := s.bimLister.BackingImageManagers(s.namespace).List(diskSelector)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListDefaultBackingImageManagers gets a list of BackingImageManager
+// using default image with the given namespace.
+func (s *DataStore) ListDefaultBackingImageManagers() (map[string]*longhorn.BackingImageManager, error) {
+	defaultImage, err := s.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.BackingImageManager{}
+	list, err := s.bimLister.BackingImageManagers(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	for _, itemRO := range list {
+		if itemRO.Spec.Image != defaultImage {
+			continue
+		}
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// GetOwnerReferencesForBackingImageManager returns OwnerReference for the given
+// // backing image manager name and UID
+func GetOwnerReferencesForBackingImageManager(backingImageManager *longhorn.BackingImageManager) []metav1.OwnerReference {
+	controller := true
+	blockOwnerDeletion := true
+	return []metav1.OwnerReference{
+		{
+			APIVersion: longhorn.SchemeGroupVersion.String(),
+			Kind:       types.LonghornKindBackingImageManager,
+			Name:       backingImageManager.Name,
+			UID:        backingImageManager.UID,
+			// This field is needed so that `kubectl drain` can work without --force flag
+			// See https://github.com/longhorn/longhorn/issues/1286#issuecomment-623283028 for more details
+			Controller:         &controller,
+			BlockOwnerDeletion: &blockOwnerDeletion,
+		},
+	}
+}
+
 // CreateNode creates a Longhorn Node resource and verifies creation
 func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	if err := util.AddFinalizer(longhornFinalizerKey, node); err != nil {

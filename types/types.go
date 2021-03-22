@@ -16,12 +16,13 @@ import (
 )
 
 const (
-	LonghornKindNode            = "Node"
-	LonghornKindVolume          = "Volume"
-	LonghornKindEngineImage     = "EngineImage"
-	LonghornKindInstanceManager = "InstanceManager"
-	LonghornKindShareManager    = "ShareManager"
-	LonghornKindBackingImage    = "BackingImage"
+	LonghornKindNode                = "Node"
+	LonghornKindVolume              = "Volume"
+	LonghornKindEngineImage         = "EngineImage"
+	LonghornKindInstanceManager     = "InstanceManager"
+	LonghornKindShareManager        = "ShareManager"
+	LonghornKindBackingImage        = "BackingImage"
+	LonghornKindBackingImageManager = "BackingImageManager"
 
 	CRDAPIVersionV1alpha1 = "longhorn.rancher.io/v1alpha1"
 	CRDAPIVersionV1beta1  = "longhorn.io/v1beta1"
