@@ -25,12 +25,13 @@ import (
 var VERSION = "VERSION_PLACEHOLDER"
 
 const (
-	FlagEngineImage          = "engine-image"
-	FlagInstanceManagerImage = "instance-manager-image"
-	FlagShareManagerImage    = "share-manager-image"
-	FlagManagerImage         = "manager-image"
-	FlagServiceAccount       = "service-account"
-	FlagKubeConfig           = "kube-config"
+	FlagEngineImage              = "engine-image"
+	FlagInstanceManagerImage     = "instance-manager-image"
+	FlagShareManagerImage        = "share-manager-image"
+	FlagBackingImageManagerImage = "backing-image-manager-image"
+	FlagManagerImage             = "manager-image"
+	FlagServiceAccount           = "service-account"
+	FlagKubeConfig               = "kube-config"
 )
 
 func DaemonCmd() cli.Command {
@@ -48,6 +49,10 @@ func DaemonCmd() cli.Command {
 			cli.StringFlag{
 				Name:  FlagShareManagerImage,
 				Usage: "Specify Longhorn share manager image",
+			},
+			cli.StringFlag{
+				Name:  FlagBackingImageManagerImage,
+				Usage: "Specify Longhorn backing image manager image",
 			},
 			cli.StringFlag{
 				Name:  FlagManagerImage,
@@ -87,6 +92,10 @@ func startManager(c *cli.Context) error {
 	shareManagerImage := c.String(FlagShareManagerImage)
 	if shareManagerImage == "" {
 		return fmt.Errorf("require %v", FlagShareManagerImage)
+	}
+	backingImageManagerImage := c.String(FlagBackingImageManagerImage)
+	if backingImageManagerImage == "" {
+		return fmt.Errorf("require %v", FlagBackingImageManagerImage)
 	}
 	managerImage := c.String(FlagManagerImage)
 	if managerImage == "" {
@@ -157,6 +166,11 @@ func startManager(c *cli.Context) error {
 	if err := updateDefaultImageSetting(m, types.SettingNameDefaultShareManagerImage, shareManagerImage); err != nil {
 		return err
 	}
+
+	if err := updateDefaultImageSetting(m, types.SettingNameDefaultBackingImageManagerImage, backingImageManagerImage); err != nil {
+		return err
+	}
+
 	if err := updateRegistrySecretName(m); err != nil {
 		return err
 	}

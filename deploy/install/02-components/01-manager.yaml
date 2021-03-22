@@ -30,6 +30,8 @@ spec:
         - longhornio/longhorn-instance-manager:v1_20201216
         - --share-manager-image
         - longhornio/longhorn-share-manager:v1_20210406
+        - --backing-image-manager-image
+        - longhornio/backing-image-manager:master
         - --manager-image
         - longhornio/longhorn-manager:master
         - --service-account
