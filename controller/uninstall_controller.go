@@ -600,16 +600,6 @@ func (c *UninstallController) deleteBackingImages(backingImages map[string]*long
 			}
 			log.Info("Marked for deletion")
 		} else if bi.DeletionTimestamp.Before(&timeout) {
-			pods, err := c.ds.ListBackingImageRelatedPods(bi.Name)
-			if err != nil {
-				return err
-			}
-			for _, pod := range pods {
-				if err = c.ds.DeletePod(pod.Name); err != nil {
-					return err
-				}
-				log.Infof("Removing backing image related pod %v", pod.Name)
-			}
 			if err = c.ds.RemoveFinalizerForBackingImage(bi); err != nil {
 				return errors.Wrapf(err, "Failed to remove finalizer")
 			}
