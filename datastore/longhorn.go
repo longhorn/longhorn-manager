@@ -232,50 +232,57 @@ func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, err
 	return itemMap, nil
 }
 
-// annotateAWSIAMRole ensures that the running pods of the manager as well as the replica instance managers.
-// have the correct AWS IAM role assigned to them based on the passed `awsIAMRole`
-func (s *DataStore) annotateAWSIAMRole(awsIAMRole string) error {
+// AnnotateAWSIAMRoleArn ensures that the running pods of the manager as well as the replica instance managers.
+// have the correct AWS IAM role arn assigned to them based on the passed `awsIAMRoleArn`
+func (s *DataStore) AnnotateAWSIAMRoleArn(controllerID, awsIAMRoleArn string) (bool, error) {
+	update := false
+
 	selector, err := s.getManagerSelector()
 	if err != nil {
-		return err
+		return update, err
 	}
 	managerPods, err := s.pLister.Pods(s.namespace).List(selector)
 	if err != nil {
-		return err
+		return update, err
 	}
 
 	selector, err = metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: types.GetInstanceManagerLabels("", "", types.InstanceManagerTypeReplica),
 	})
 	if err != nil {
-		return err
+		return update, err
 	}
 	imPods, err := s.pLister.Pods(s.namespace).List(selector)
 	if err != nil {
-		return err
+		return update, err
 	}
 
-	var pods []*corev1.Pod
-	pods = append(pods, managerPods...)
-	pods = append(pods, imPods...)
-
+	pods := append(managerPods, imPods...)
 	for _, pod := range pods {
+		if pod.Spec.NodeName != controllerID {
+			continue
+		}
+
 		val, exist := pod.Annotations[types.AWSIAMRroleAnnotation]
-		updateAnnotation := awsIAMRole != "" && awsIAMRole != val
-		deleteAnnotation := awsIAMRole == "" && exist
+		updateAnnotation := awsIAMRoleArn != "" && awsIAMRoleArn != val
+		deleteAnnotation := awsIAMRoleArn == "" && exist
 		if updateAnnotation {
-			pod.Annotations[types.AWSIAMRroleAnnotation] = awsIAMRole
+			if pod.Annotations == nil {
+				pod.Annotations = make(map[string]string)
+			}
+			pod.Annotations[types.AWSIAMRroleAnnotation] = awsIAMRoleArn
 		} else if deleteAnnotation {
 			delete(pod.Annotations, types.AWSIAMRroleAnnotation)
 		} else {
 			continue
 		}
 
+		update = update || true
 		if _, err = s.kubeClient.CoreV1().Pods(s.namespace).Update(pod); err != nil {
-			return err
+			return update, err
 		}
 	}
-	return nil
+	return update, nil
 }
 
 // GetCredentialFromSecret gets the Secret of the given name and namespace
@@ -287,10 +294,6 @@ func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]strin
 	}
 	credentialSecret := make(map[string]string)
 	if secret.Data != nil {
-		if err := s.annotateAWSIAMRole(string(secret.Data[types.AWSIAMRoleArn])); err != nil {
-			return nil, err
-		}
-
 		credentialSecret[types.AWSIAMRoleArn] = string(secret.Data[types.AWSIAMRoleArn])
 		credentialSecret[types.AWSAccessKey] = string(secret.Data[types.AWSAccessKey])
 		credentialSecret[types.AWSSecretKey] = string(secret.Data[types.AWSSecretKey])

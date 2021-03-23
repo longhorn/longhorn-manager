@@ -441,6 +441,23 @@ func (s *DataStore) GetConfigMap(namespace, name string) (*corev1.ConfigMap, err
 	return resultRO.DeepCopy(), nil
 }
 
+// GetSecretRO gets Secret with the given namespace and name
+// This function returns direct reference to the internal cache object and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) GetSecretRO(namespace, name string) (*corev1.Secret, error) {
+	return s.secretLister.Secrets(namespace).Get(name)
+}
+
+// GetSecret return a new Secret object with the given namespace and name
+func (s *DataStore) GetSecret(namespace, name string) (*corev1.Secret, error) {
+	resultRO, err := s.secretLister.Secrets(namespace).Get(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
 // GetPriorityClass gets the PriorityClass from the index for the
 // given name
 func (s *DataStore) GetPriorityClass(pcName string) (*schedulingv1.PriorityClass, error) {

@@ -68,6 +68,8 @@ type DataStore struct {
 	pvcStoreSynced     cache.InformerSynced
 	cfmLister          corelisters.ConfigMapLister
 	cfmStoreSynced     cache.InformerSynced
+	secretLister       corelisters.SecretLister
+	secretStoreSynced  cache.InformerSynced
 	knLister           corelisters.NodeLister
 	knStoreSynced      cache.InformerSynced
 	pcLister           schedulinglisters.PriorityClassLister
@@ -102,6 +104,7 @@ func NewDataStore(
 	persistentVolumeInformer coreinformers.PersistentVolumeInformer,
 	persistentVolumeClaimInformer coreinformers.PersistentVolumeClaimInformer,
 	configMapInformer coreinformers.ConfigMapInformer,
+	secretInformer coreinformers.SecretInformer,
 	kubeNodeInformer coreinformers.NodeInformer,
 	priorityClassInformer schedulinginformers.PriorityClassInformer,
 	csiDriverInformer storageinformers.CSIDriverInformer,
@@ -150,6 +153,8 @@ func NewDataStore(
 		pvcStoreSynced:     persistentVolumeClaimInformer.Informer().HasSynced,
 		cfmLister:          configMapInformer.Lister(),
 		cfmStoreSynced:     configMapInformer.Informer().HasSynced,
+		secretLister:       secretInformer.Lister(),
+		secretStoreSynced:  secretInformer.Informer().HasSynced,
 		knLister:           kubeNodeInformer.Lister(),
 		knStoreSynced:      kubeNodeInformer.Informer().HasSynced,
 		pcLister:           priorityClassInformer.Lister(),
