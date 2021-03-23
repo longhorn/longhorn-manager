@@ -36,14 +36,6 @@ import (
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
-const (
-	// MaxPollCount, MinPollCount, PollInterval determines how often we sync instance map
-
-	MaxPollCount = 60
-	MinPollCount = 1
-	PollInterval = 1 * time.Second
-)
-
 var (
 	hostToContainer = v1.MountPropagationHostToContainer
 )
@@ -1112,7 +1104,7 @@ func (m *InstanceManagerMonitor) Run() {
 
 			if _, err := m.instanceManagerNotifier.Recv(); err != nil {
 				m.logger.Errorf("error receiving next item in engine watch: %v", err)
-				time.Sleep(MinPollCount * PollInterval)
+				time.Sleep(engineapi.MinPollCount * engineapi.PollInterval)
 			} else {
 				m.lock.Lock()
 				m.updateNotification = true
@@ -1122,7 +1114,7 @@ func (m *InstanceManagerMonitor) Run() {
 	}()
 
 	timer := 0
-	ticker := time.NewTicker(MinPollCount * PollInterval)
+	ticker := time.NewTicker(engineapi.MinPollCount * engineapi.PollInterval)
 	defer ticker.Stop()
 	tick := ticker.C
 	for {
@@ -1132,7 +1124,7 @@ func (m *InstanceManagerMonitor) Run() {
 
 			m.lock.Lock()
 			timer++
-			if timer >= MaxPollCount || m.updateNotification {
+			if timer >= engineapi.MaxPollCount || m.updateNotification {
 				needUpdate = true
 				m.updateNotification = false
 				timer = 0

@@ -374,6 +374,10 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 		if err != nil {
 			return nil, err
 		}
+		if bi.Status.UUID == "" {
+			logrus.Debugf("The requested backing image %v has not been initialized, UUID is empty", bi.Name)
+			return nil, nil
+		}
 		if _, exists := bi.Spec.Disks[r.Spec.DiskID]; !exists {
 			bi.Spec.Disks[r.Spec.DiskID] = struct{}{}
 			logrus.Debugf("Replica %v will ask backing image %v to download file to node %v disk %v from URL %v",
@@ -389,7 +393,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 				r.Name, bi.Name, r.Spec.NodeID, r.Spec.DiskID, bi.Spec.ImageURL, state)
 			return nil, nil
 		}
-		backingImagePath = types.GetBackingImagePathForReplicaManagerContainer(r.Spec.DiskPath, r.Spec.BackingImage)
+		backingImagePath = types.GetBackingImagePathForReplicaManagerContainer(r.Spec.DiskPath, r.Spec.BackingImage, bi.Status.UUID)
 	}
 
 	im, err := rc.ds.GetInstanceManagerByInstance(obj)

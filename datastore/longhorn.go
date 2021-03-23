@@ -1187,25 +1187,6 @@ func (s *DataStore) ListBackingImages() (map[string]*longhorn.BackingImage, erro
 	return itemMap, nil
 }
 
-// GetOwnerReferencesForBackingImage returns OwnerReference for the given
-// backing image name and UID
-func GetOwnerReferencesForBackingImage(backingImage *longhorn.BackingImage) []metav1.OwnerReference {
-	controller := true
-	blockOwnerDeletion := true
-	return []metav1.OwnerReference{
-		{
-			APIVersion: longhorn.SchemeGroupVersion.String(),
-			Kind:       types.LonghornKindBackingImage,
-			Name:       backingImage.Name,
-			UID:        backingImage.UID,
-			// This field is needed so that `kubectl drain` can work without --force flag
-			// See https://github.com/longhorn/longhorn/issues/1286#issuecomment-623283028 for more details
-			Controller:         &controller,
-			BlockOwnerDeletion: &blockOwnerDeletion,
-		},
-	}
-}
-
 // CreateBackingImageManager creates a Longhorn BackingImageManager resource and verifies
 // creation
 func (s *DataStore) CreateBackingImageManager(backingImageManager *longhorn.BackingImageManager) (*longhorn.BackingImageManager, error) {

@@ -589,6 +589,8 @@ func (nc *NodeController) isFSIDDuplicatedWithExistingReadyDisk(name string, dis
 }
 
 func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
+	log := getLoggerForNode(nc.logger, node)
+
 	// sync the disks between node.Spec.Disks and node.Status.DiskStatus
 	if node.Status.DiskStatus == nil {
 		node.Status.DiskStatus = map[string]*types.DiskStatus{}
@@ -732,11 +734,29 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 				fmt.Sprintf("the disk %v(%v) on the node %v is not ready", id, disk.Path, node.Name),
 				nc.eventRecorder, node, v1.EventTypeWarning)
 		} else {
+			// sync backing image managers
+			list, err := nc.ds.ListBackingImageManagersByDiskUUID(diskStatus.DiskUUID)
+			if err != nil {
+				return err
+			}
+			for _, bim := range list {
+				if bim.Spec.NodeID != node.Name || bim.Spec.DiskPath != disk.Path {
+					log.Infof("Node Controller: Node & disk info in backing image manager %v need to be updated", bim.Name)
+					bim.Spec.NodeID = node.Name
+					bim.Spec.DiskPath = disk.Path
+					if _, err := nc.ds.UpdateBackingImageManager(bim); err != nil {
+						log.WithError(err).Errorf("Failed to update node & disk info for backing image manager %v when syncing disk %v(%v), will enqueue then resync node", bim.Name, id, diskStatus.DiskUUID)
+						nc.enqueueNode(node)
+						continue
+					}
+				}
+			}
+
+			// sync replicas as well as calculate storage scheduled
 			replicas, err := nc.ds.ListReplicasByDiskUUID(diskStatus.DiskUUID)
 			if err != nil {
 				return err
 			}
-			// sync replicas as well as calculate storage scheduled
 			scheduledReplica := map[string]int64{}
 			storageScheduled := int64(0)
 			for _, replica := range replicas {
@@ -744,7 +764,8 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 					replica.Spec.NodeID = node.Name
 					replica.Spec.DiskPath = disk.Path
 					if _, err := nc.ds.UpdateReplica(replica); err != nil {
-						logrus.Errorf("Failed to update replica %v when syncing disk %v(%v) for node %v", replica.Name, id, diskStatus.DiskUUID, node.Name)
+						log.Errorf("Failed to update node & disk info for replica %v when syncing disk %v(%v), will enqueue then resync node", replica.Name, id, diskStatus.DiskUUID)
+						nc.enqueueNode(node)
 						continue
 					}
 				}
