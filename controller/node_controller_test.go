@@ -67,6 +67,7 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
 	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
 	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
+	secretInformer := kubeInformerFactory.Core().V1().Secrets()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
 	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
 	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
@@ -80,7 +81,7 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
-		configMapInformer, kubeNodeInformer, priorityClassInformer,
+		configMapInformer, secretInformer, kubeNodeInformer, priorityClassInformer,
 		csiDriverInformer, storageclassInformer,
 		pdbInformer,
 		serviceInformer,
