@@ -350,20 +350,6 @@ func (s *DataStore) ListShareManagerPods() ([]*corev1.Pod, error) {
 	return s.ListPodsBySelector(selector)
 }
 
-func getBackingImageInstanceSelector(backingImageName string) (labels.Selector, error) {
-	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: types.GetBackingImageLabels(backingImageName, ""),
-	})
-}
-
-func (s *DataStore) ListBackingImageRelatedPods(backingImageName string) ([]*corev1.Pod, error) {
-	selector, err := getBackingImageInstanceSelector(backingImageName)
-	if err != nil {
-		return nil, err
-	}
-	return s.ListPodsBySelector(selector)
-}
-
 func (s *DataStore) ListPodsBySelector(selector labels.Selector) ([]*corev1.Pod, error) {
 	podList, err := s.pLister.Pods(s.namespace).List(selector)
 	if err != nil {
