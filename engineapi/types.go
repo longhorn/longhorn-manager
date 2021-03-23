@@ -31,6 +31,15 @@ const (
 	BackupStateComplete   = "complete"
 	BackupStateError      = "error"
 	BackupStateInProgress = "in_progress"
+
+	// MaxPollCount, MinPollCount, PollInterval determines how often
+	// we sync with others
+
+	MaxPollCount = 60
+	MinPollCount = 1
+	PollInterval = 1 * time.Second
+
+	MaxStreamingRecvRetryCount = 10
 )
 
 type Replica struct {

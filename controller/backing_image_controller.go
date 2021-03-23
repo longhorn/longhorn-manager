@@ -1,9 +1,7 @@
 package controller
 
 import (
-	"encoding/json"
 	"fmt"
-	"path"
 	"reflect"
 	"time"
 
@@ -16,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	typedv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -24,6 +21,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -45,9 +43,9 @@ type BackingImageController struct {
 
 	ds *datastore.DataStore
 
-	biStoreSynced cache.InformerSynced
-	rStoreSynced  cache.InformerSynced
-	pStoreSynced  cache.InformerSynced
+	biStoreSynced  cache.InformerSynced
+	bimStoreSynced cache.InformerSynced
+	rStoreSynced   cache.InformerSynced
 }
 
 func NewBackingImageController(
@@ -55,8 +53,8 @@ func NewBackingImageController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	backingImageInformer lhinformers.BackingImageInformer,
+	backingImageManagerInformer lhinformers.BackingImageManagerInformer,
 	replicaInformer lhinformers.ReplicaInformer,
-	podInformer coreinformers.PodInformer,
 	kubeClient clientset.Interface,
 	namespace string, controllerID, serviceAccount string) *BackingImageController {
 
@@ -77,9 +75,9 @@ func NewBackingImageController(
 
 		ds: ds,
 
-		biStoreSynced: backingImageInformer.Informer().HasSynced,
-		rStoreSynced:  replicaInformer.Informer().HasSynced,
-		pStoreSynced:  podInformer.Informer().HasSynced,
+		biStoreSynced:  backingImageInformer.Informer().HasSynced,
+		bimStoreSynced: backingImageManagerInformer.Informer().HasSynced,
+		rStoreSynced:   replicaInformer.Informer().HasSynced,
 	}
 
 	backingImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -88,16 +86,16 @@ func NewBackingImageController(
 		DeleteFunc: bic.enqueueBackingImage,
 	})
 
+	backingImageManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    bic.enqueueBackingImageForBackingImageManager,
+		UpdateFunc: func(old, cur interface{}) { bic.enqueueBackingImageForBackingImageManager(cur) },
+		DeleteFunc: bic.enqueueBackingImageForBackingImageManager,
+	})
+
 	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    bic.enqueueBackingImageForReplica,
 		UpdateFunc: func(old, cur interface{}) { bic.enqueueBackingImageForReplica(cur) },
 		DeleteFunc: bic.enqueueBackingImageForReplica,
-	})
-
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    bic.enqueueBackingImageForPod,
-		UpdateFunc: func(old, cur interface{}) { bic.enqueueBackingImageForPod(cur) },
-		DeleteFunc: bic.enqueueBackingImageForPod,
 	})
 
 	return bic
@@ -110,7 +108,7 @@ func (bic *BackingImageController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start Longhorn Backing Image controller")
 	defer logrus.Infof("Shutting down Longhorn Backing Image controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn backing images", stopCh, bic.biStoreSynced, bic.rStoreSynced, bic.pStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn backing images", stopCh, bic.biStoreSynced, bic.bimStoreSynced, bic.rStoreSynced) {
 		return
 	}
 
@@ -207,20 +205,19 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 	}
 
 	if backingImage.DeletionTimestamp != nil {
-		pods, err := bic.ds.ListBackingImageRelatedPods(backingImage.Name)
-		if err != nil {
-			return err
-		}
 		replicas, err := bic.ds.ListReplicasByBackingImage(backingImage.Name)
 		if err != nil {
 			return err
 		}
-		// Rely on the foreground delete propagation to clean up all pods
-		if len(pods) == 0 && len(replicas) == 0 {
-			log.Info("The data in all disks is removed and no replica is using the backing image, then the finalizer will be removed")
-			return bic.ds.RemoveFinalizerForBackingImage(backingImage)
+		if len(replicas) != 0 {
+			log.Info("Need to wait for all replicas stopping using this backing image before removing the finalizer")
+			return nil
 		}
-		return nil
+		log.Info("No replica is using this backing image, will clean up the record for backing image managers and remove the finalizer then")
+		if err := bic.cleanupBackingImageManagers(backingImage); err != nil {
+			return err
+		}
+		return bic.ds.RemoveFinalizerForBackingImage(backingImage)
 	}
 
 	// UUID is immutable once it's set.
@@ -235,21 +232,38 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 			bic.enqueueBackingImage(backingImage)
 			return nil
 		}
+		bic.eventRecorder.Eventf(backingImage, corev1.EventTypeNormal, EventReasonUpdate, "Initialized UUID to %v", backingImage.Status.UUID)
 	}
 
 	existingBackingImage := backingImage.DeepCopy()
 	defer func() {
-		if err == nil && !reflect.DeepEqual(existingBackingImage.Status, backingImage.Status) {
-			_, err = bic.ds.UpdateBackingImageStatus(backingImage)
+		if err != nil {
+			return
 		}
-		if apierrors.IsConflict(errors.Cause(err)) {
+		if reflect.DeepEqual(existingBackingImage.Status, backingImage.Status) {
+			return
+		}
+		if _, err := bic.ds.UpdateBackingImageStatus(backingImage); err != nil && apierrors.IsConflict(errors.Cause(err)) {
 			log.WithError(err).Debugf("Requeue %v due to conflict", key)
 			bic.enqueueBackingImage(backingImage)
-			err = nil
 		}
 	}()
 
-	if err := bic.syncBackingImageWithDownloadPods(backingImage); err != nil {
+	if backingImage.Status.DiskDownloadStateMap == nil {
+		backingImage.Status.DiskDownloadStateMap = map[string]types.BackingImageDownloadState{}
+	}
+	if backingImage.Status.DiskDownloadProgressMap == nil {
+		backingImage.Status.DiskDownloadProgressMap = map[string]int{}
+	}
+	if backingImage.Status.DiskLastRefAtMap == nil {
+		backingImage.Status.DiskLastRefAtMap = map[string]string{}
+	}
+
+	if err := bic.handleBackingImageManagers(backingImage); err != nil {
+		return err
+	}
+
+	if err := bic.syncBackingImageDownloadInfo(backingImage); err != nil {
 		return err
 	}
 
@@ -260,136 +274,191 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 	return nil
 }
 
-func getDownloadPodName(biName, diskUUID string) string {
-	return fmt.Sprintf("%s-download-%s", biName, diskUUID[:8])
-}
-
-// syncBackingImageWithDownloadPods controls pod existence/cleanup and provides the following state transitions
-//   Pod is no longer needed:
-//     downloading, downloaded, terminating, failed -> terminating (pod terminating)
-//     downloading, downloaded, terminating, failed -> empty (pod removed)
-//   Pod is requested:
-//     empty, failed -> downloading (no pod and pod creation success)
-//     empty, downloading, downloaded, terminating, failed -> failed (no pod and pod creation failure; pod terminating; pod not pending or running)
-//     empty, downloading, terminating -> downloading (pod pending)
-//     downloaded -> failed (pod pending/pod not ready)
-//     downloading -> downloaded (pod running and ready)
-func (bic *BackingImageController) syncBackingImageWithDownloadPods(backingImage *longhorn.BackingImage) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "failed to sync backing image with download pods")
-	}()
-	log := getLoggerForBackingImage(bic.logger, backingImage)
-
-	if backingImage.Status.DiskDownloadStateMap == nil {
-		backingImage.Status.DiskDownloadStateMap = map[string]types.BackingImageDownloadState{}
+func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.BackingImage) (err error) {
+	defaultImage, err := bic.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
+	if err != nil {
+		return err
 	}
 
-	// Check the records exist only in backingImage.Status.DiskDownloadStateMap
-	for uuid := range backingImage.Status.DiskDownloadStateMap {
-		if _, exists := backingImage.Spec.Disks[uuid]; exists {
-			continue
-		}
-		downloadPodName := getDownloadPodName(backingImage.Name, uuid)
-		downloadPod, err := bic.ds.GetPod(downloadPodName)
-		if err != nil {
-			return err
-		}
-		if downloadPod == nil {
-			log.WithField("diskUUID", uuid).Debugf("Cleaned up the backing image in disk")
-			delete(backingImage.Status.DiskDownloadStateMap, uuid)
-			continue
-		}
-		if downloadPod.DeletionTimestamp == nil {
-			log.WithFields(logrus.Fields{"diskUUID": uuid, "pod": downloadPodName}).Debugf("Deleting pod")
-			if err := bic.ds.DeletePod(downloadPodName); err != nil {
-				return err
-			}
-		}
-		backingImage.Status.DiskDownloadStateMap[uuid] = types.BackingImageDownloadStateTerminating
+	log := getLoggerForBackingImage(bic.logger, bi)
+
+	bimMap, err := bic.ds.ListBackingImageManagers()
+	if err != nil {
+		return err
 	}
-
-	for diskUUID := range backingImage.Spec.Disks {
-		downloadPodName := getDownloadPodName(backingImage.Name, diskUUID)
-		downloadPod, err := bic.ds.GetPod(downloadPodName)
-		if err != nil {
-			return err
+	for _, bim := range bimMap {
+		if bim.DeletionTimestamp != nil {
+			continue
 		}
 
-		// Create/Recreate the download pod for a disk if the old pod is gone
-		// and the disk on the node are ready
-		if downloadPod == nil {
-			if state, exists := backingImage.Status.DiskDownloadStateMap[diskUUID]; exists {
-				log.WithField("diskUUID", diskUUID).Warnf("The disk download state is %v but the download pod is nil, will directly create a new pod then",
-					state)
-			}
-			if downloadPod, err = bic.createDownloadPod(downloadPodName, diskUUID, backingImage); err != nil || downloadPod == nil {
-				log.WithFields(logrus.Fields{"diskUUID": diskUUID, "pod": downloadPodName}).WithError(err).Errorf("The download state becomes %v due to the download pod creation failure",
-					types.BackingImageDownloadStateFailed)
-				bic.enqueueBackingImage(backingImage)
-				backingImage.Status.DiskDownloadStateMap[diskUUID] = types.BackingImageDownloadStateFailed
+		// Directly clean up incompatible backing image managers since there is no way to do file ownership transferring.
+		if bim.Status.APIVersion != engineapi.UnknownBackingImageManagerAPIVersion {
+			if err := engineapi.CheckBackingImageManagerCompatibilty(bim.Status.APIMinVersion, bim.Status.APIVersion); err != nil {
+				log.WithField("backingImageManager", bim.Name).Info("Start to delete incompatible backing image manager")
+				if err := bic.ds.DeleteBackingImageManager(bim.Name); err != nil && !apierrors.IsNotFound(err) {
+					return err
+				}
+				log.WithField("backingImageManager", bim.Name).Info("Deleting incompatible image manager")
+				bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonDelete, "delete incompatible backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
 				continue
 			}
-			// The download state will be updated based on the pod phase later.
 		}
 
-		if downloadPod.DeletionTimestamp != nil {
-			log.WithFields(logrus.Fields{"diskUUID": diskUUID, "pod": downloadPodName}).Warnf("The disk download state becomes %v due to the terminating pod",
-				types.BackingImageDownloadStateFailed)
-			backingImage.Status.DiskDownloadStateMap[diskUUID] = types.BackingImageDownloadStateFailed
+		// Directly clean up error empty old managers
+		if bim.Spec.Image != defaultImage && (bim.Status.CurrentState == types.BackingImageManagerStateError || len(bim.Status.BackingImageFileMap) == 0) {
+			log.WithField("backingImageManager", bim.Name).Info("Start to delete old backing image manager")
+			if err := bic.ds.DeleteBackingImageManager(bim.Name); err != nil && !apierrors.IsNotFound(err) {
+				return err
+			}
+			log.WithField("backingImageManager", bim.Name).Info("Deleting old backing image manager")
+			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonDelete, "delete old backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
 			continue
 		}
 
-		switch downloadPod.Status.Phase {
-		case corev1.PodPending:
-			if state, exists := backingImage.Status.DiskDownloadStateMap[diskUUID]; exists && state == types.BackingImageDownloadStateDownloaded {
-				backingImage.Status.DiskDownloadStateMap[diskUUID] = types.BackingImageDownloadStateFailed
-			} else {
-				backingImage.Status.DiskDownloadStateMap[diskUUID] = types.BackingImageDownloadStateDownloading
-			}
-		case corev1.PodRunning:
-			isReady := false
-			for _, cond := range downloadPod.Status.Conditions {
-				if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
-					isReady = true
-				}
-			}
-			downloadComplete := backingImage.Status.DiskDownloadStateMap[diskUUID] == types.BackingImageDownloadStateDownloaded
-			if !downloadComplete && isReady {
-				log.WithFields(logrus.Fields{"diskUUID": diskUUID, "pod": downloadPodName}).Infof("The download state becomes %v from %v since the download pod is ready",
-					types.BackingImageDownloadStateDownloaded, backingImage.Status.DiskDownloadStateMap[diskUUID])
-				backingImage.Status.DiskDownloadStateMap[diskUUID] = types.BackingImageDownloadStateDownloaded
-			}
-
-			if downloadComplete && !isReady {
-				log.WithFields(logrus.Fields{"diskUUID": diskUUID, "pod": downloadPodName}).Warnf("The download state becomes %v from %v since the download pod suddenly becomes unavailable",
-					types.BackingImageDownloadStateFailed, types.BackingImageDownloadStateDownloaded)
-				backingImage.Status.DiskDownloadStateMap[diskUUID] = types.BackingImageDownloadStateFailed
-			}
-		default:
-			if backingImage.Status.DiskDownloadStateMap[diskUUID] != types.BackingImageDownloadStateFailed {
-				log.WithFields(logrus.Fields{"diskUUID": diskUUID, "pod": downloadPodName}).Warnf("The download state becomes %v from %v due to the download pod phase %v",
-					types.BackingImageDownloadStateFailed, backingImage.Status.DiskDownloadStateMap[diskUUID], downloadPod.Status.Phase)
-				backingImage.Status.DiskDownloadStateMap[diskUUID] = types.BackingImageDownloadStateFailed
+		// This sync loop cares about the backing image managers related to the current backing image only.
+		// The backing image manager doesn't contain the current backing image.
+		if _, isRelatedToCurrentBI := bim.Spec.BackingImages[bi.Name]; !isRelatedToCurrentBI {
+			continue
+		}
+		// The entry in the backing image manager matches the current backing image.
+		if _, isStillRequiredByCurrentBI := bi.Spec.Disks[bim.Spec.DiskUUID]; isStillRequiredByCurrentBI && bi.DeletionTimestamp == nil {
+			if bim.Spec.BackingImages[bi.Name] == bi.Status.UUID {
+				continue
 			}
 		}
 
-		// Clean up the failed pod first then recreate it later
-		if backingImage.Status.DiskDownloadStateMap[diskUUID] == types.BackingImageDownloadStateFailed {
-			log.WithFields(logrus.Fields{"diskUUID": diskUUID, "pod": downloadPodName}).Infof("Deleting the pod since the downloading state is %v", types.BackingImageDownloadStateFailed)
-			if err := bic.ds.DeletePod(downloadPodName); err != nil {
+		// The current backing image doesn't require this manager any longer, or the entry in backing image manager doesn't match the backing image uuid.
+
+		// If the current backing image will be the last removed one for the backing image manager, directly delete the manager instead.
+		if len(bim.Spec.BackingImages) == 1 {
+			log.WithField("backingImageManager", bim.Name).Info("Start to delete unused backing image manager")
+			if err := bic.ds.DeleteBackingImageManager(bim.Name); err != nil && !apierrors.IsNotFound(err) {
 				return err
 			}
+			log.WithField("backingImageManager", bim.Name).Info("Deleting unused backing image manager")
+			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonDelete, "delete unused backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
+			continue
+		}
+		// Otherwise removing the current backing image from this backing image manager.
+		delete(bim.Spec.BackingImages, bi.Name)
+		if bim, err = bic.ds.UpdateBackingImageManager(bim); err != nil {
+			return err
 		}
 	}
 
 	return nil
 }
 
-func (bic *BackingImageController) updateDiskLastReferenceMap(backingImage *longhorn.BackingImage) error {
-	if backingImage.Status.DiskLastRefAtMap == nil {
-		backingImage.Status.DiskLastRefAtMap = map[string]string{}
+func (bic *BackingImageController) handleBackingImageManagers(bi *longhorn.BackingImage) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to handle backing image managers")
+	}()
+
+	log := getLoggerForBackingImage(bic.logger, bi)
+
+	if err := bic.cleanupBackingImageManagers(bi); err != nil {
+		return err
 	}
 
+	defaultImage, err := bic.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
+	if err != nil {
+		return err
+	}
+
+	for diskUUID := range bi.Spec.Disks {
+		noDefaultBIM := true
+		requiredBIs := map[string]string{}
+
+		bimMap, err := bic.ds.ListBackingImageManagersByDiskUUID(diskUUID)
+		if err != nil {
+			return err
+		}
+		for _, bim := range bimMap {
+			if bim.Spec.Image == defaultImage {
+				if uuidInManager, exists := bim.Spec.BackingImages[bi.Name]; !exists || uuidInManager != bi.Status.UUID {
+					bim.Spec.BackingImages[bi.Name] = bi.Status.UUID
+					if bim, err = bic.ds.UpdateBackingImageManager(bim); err != nil {
+						return err
+					}
+				}
+				noDefaultBIM = false
+				break
+			}
+			for biName, uuid := range bim.Spec.BackingImages {
+				requiredBIs[biName] = uuid
+			}
+		}
+
+		if noDefaultBIM {
+			log.Infof("Cannot find default backing image manager for disk %v, will create it", diskUUID)
+
+			node, diskName, err := bic.ds.GetReadyDiskNode(diskUUID)
+			if err != nil {
+				if types.ErrorIsNotFound(err) {
+					log.WithField("diskUUID", diskUUID).WithError(err).Warnf("Disk is not ready hence there is no way to create backing image manager then")
+					continue
+				}
+				return err
+			}
+			requiredBIs[bi.Name] = bi.Status.UUID
+			manifest := bic.generateBackingImageManagerManifest(node, diskName, defaultImage, requiredBIs)
+			bim, err := bic.ds.CreateBackingImageManager(manifest)
+			if err != nil {
+				return err
+			}
+
+			log.WithFields(logrus.Fields{"backingImageManager": bim.Name, "diskUUID": diskUUID}).Infof("Created default backing image manager")
+			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonCreate, "created default backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
+		}
+	}
+
+	return nil
+}
+
+// syncBackingImageDownloadInfo blindly updates the disk download info based on the results of backing image managers.
+func (bic *BackingImageController) syncBackingImageDownloadInfo(bi *longhorn.BackingImage) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to sync backing image download state")
+	}()
+
+	diskDownloadStateMap := map[string]types.BackingImageDownloadState{}
+	diskDownloadProgressMap := map[string]int{}
+	bimMap, err := bic.ds.ListBackingImageManagers()
+	if err != nil {
+		return err
+	}
+	for _, bim := range bimMap {
+		if bim.DeletionTimestamp != nil {
+			continue
+		}
+		info, exists := bim.Status.BackingImageFileMap[bi.Name]
+		if !exists {
+			continue
+		}
+		if info.UUID != bi.Status.UUID {
+			continue
+		}
+		diskDownloadStateMap[bim.Spec.DiskUUID] = info.State
+		diskDownloadProgressMap[bim.Spec.DiskUUID] = info.DownloadProgress
+
+		if info.Size > 0 {
+			if bi.Status.Size == 0 {
+				bi.Status.Size = info.Size
+				bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonUpdate, "Set size to %v", bi.Status.Size)
+			}
+			if bi.Status.Size != info.Size {
+				return fmt.Errorf("BUG: found mismatching size %v in disk %v, the current size is %v", info.Size, bim.Spec.DiskUUID, bi.Status.Size)
+			}
+		}
+	}
+
+	bi.Status.DiskDownloadStateMap = diskDownloadStateMap
+	bi.Status.DiskDownloadProgressMap = diskDownloadProgressMap
+
+	return nil
+}
+
+func (bic *BackingImageController) updateDiskLastReferenceMap(backingImage *longhorn.BackingImage) error {
 	replicas, err := bic.ds.ListReplicasByBackingImage(backingImage.Name)
 	if err != nil {
 		return err
@@ -406,171 +475,32 @@ func (bic *BackingImageController) updateDiskLastReferenceMap(backingImage *long
 	}
 	for diskUUID := range backingImage.Spec.Disks {
 		_, isActiveDisk := disksInUse[diskUUID]
-		_, isHistoricDisk := backingImage.Status.DiskLastRefAtMap[diskUUID]
-		if !isActiveDisk && !isHistoricDisk {
+		_, isRecordedHistoricDisk := backingImage.Status.DiskLastRefAtMap[diskUUID]
+		if !isActiveDisk && !isRecordedHistoricDisk {
 			backingImage.Status.DiskLastRefAtMap[diskUUID] = util.Now()
 		}
 	}
 	return nil
 }
 
-func (bic *BackingImageController) createDownloadPod(podName, diskUUID string, backingImage *longhorn.BackingImage) (*corev1.Pod, error) {
-	tolerations, err := bic.ds.GetSettingTaintToleration()
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get taint toleration setting before creating instance manager pod")
-	}
-
-	registrySecretSetting, err := bic.ds.GetSetting(types.SettingNameRegistrySecret)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get registry secret setting before creating instance manager pod")
-	}
-	registrySecret := registrySecretSetting.Value
-
-	tolerationsByte, err := json.Marshal(tolerations)
-	if err != nil {
-		return nil, err
-	}
-
-	priorityClass, err := bic.ds.GetSetting(types.SettingNamePriorityClass)
-	if err != nil {
-		return nil, err
-	}
-
-	imagePullPolicy, err := bic.ds.GetSettingImagePullPolicy()
-	if err != nil {
-		return nil, err
-	}
-
-	node, _, err := bic.ds.GetReadyDiskNode(diskUUID)
-	if err != nil {
-		return nil, err
-	}
-
-	diskPath := ""
-	for id, diskStatus := range node.Status.DiskStatus {
-		if diskStatus.DiskUUID != diskUUID {
-			continue
-		}
-		if diskSpec, exists := node.Spec.Disks[id]; exists {
-			diskPath = diskSpec.Path
-		}
-		break
-	}
-	if diskPath == "" {
-		return nil, fmt.Errorf("cannot find the disk path with UUID %v on node %v", diskUUID, node.Name)
-	}
-
-	// The image is not important.
-	// As long as the image is a Linux distribution with wget installed, it can be used in the download pod.
-	// We choose the default engine image here so that users don't need to fetch on extra image in the air-gaped environment.
-	defaultEngineImage, err := bic.ds.GetSetting(types.SettingNameDefaultEngineImage)
-	if err != nil || defaultEngineImage.Value == "" {
-		return nil, fmt.Errorf("failed to retrieve default engine image: %v", err)
-	}
-
-	filePathInContainer := path.Join(types.BackingImageDirectoryInContainer, types.BackingImageFileName)
-	downloadedNotificationFlag := path.Join(types.BackingImageDirectoryInContainer, "downloaded")
-	cmdArgs := []string{
-		"/bin/bash", "-c",
-		"rm " + filePathInContainer + " " + downloadedNotificationFlag + "; " +
-			"wget --no-check-certificate -c " + backingImage.Spec.ImageURL + " -O " + filePathInContainer + " > /dev/null 2>&1; " +
-			"if [ $? -eq 0 ]; then touch " + downloadedNotificationFlag + " && sync && echo downloaded; fi && " +
-			"trap 'rm " + filePathInContainer + " " + downloadedNotificationFlag + " && echo cleaned up' EXIT && sleep infinity"}
-
-	privileged := true
-	hostToContainerPropagation := corev1.MountPropagationHostToContainer
-	podManifest := &corev1.Pod{
+func (bic *BackingImageController) generateBackingImageManagerManifest(node *longhorn.Node, diskName, defaultImage string, requiredBackingImages map[string]string) *longhorn.BackingImageManager {
+	return &longhorn.BackingImageManager{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            podName,
-			Namespace:       bic.namespace,
-			OwnerReferences: datastore.GetOwnerReferencesForBackingImage(backingImage),
-			Labels:          types.GetBackingImageLabels(backingImage.Name, diskUUID),
-			Annotations:     map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): string(tolerationsByte)},
+			Labels: types.GetBackingImageManagerLabels(node.Name, node.Status.DiskStatus[diskName].DiskUUID),
+			Name:   generateBackingImageManagerName(defaultImage, node.Status.DiskStatus[diskName].DiskUUID),
 		},
-		Spec: corev1.PodSpec{
-			ServiceAccountName: bic.serviceAccount,
-			Tolerations:        util.GetDistinctTolerations(tolerations),
-			PriorityClassName:  priorityClass.Value,
-			Containers: []corev1.Container{
-				{
-					Name:            podName,
-					Image:           defaultEngineImage.Value,
-					ImagePullPolicy: imagePullPolicy,
-					Command:         cmdArgs,
-					SecurityContext: &corev1.SecurityContext{
-						Privileged: &privileged,
-					},
-					VolumeMounts: []corev1.VolumeMount{
-						{
-							MountPath:        types.BackingImageDirectoryInContainer,
-							Name:             "backing-image",
-							MountPropagation: &hostToContainerPropagation,
-						},
-					},
-					StartupProbe: &corev1.Probe{
-						Handler: corev1.Handler{
-							Exec: &corev1.ExecAction{
-								Command: []string{
-									"bash", "-c",
-									"ls " + filePathInContainer + " && ls " + downloadedNotificationFlag,
-								},
-							},
-						},
-						// Wait up to 3 hours for the backing image downloading.
-						FailureThreshold:    2160,
-						PeriodSeconds:       5,
-						InitialDelaySeconds: 5,
-					},
-					// Choose ReadinessProbe rather than LivenessProbe due to this Kubernetes bug:
-					// https://github.com/kubernetes/kubernetes/issues/95140
-					ReadinessProbe: &corev1.Probe{
-						Handler: corev1.Handler{
-							Exec: &corev1.ExecAction{
-								Command: []string{
-									"bash", "-c",
-									"ls " + filePathInContainer + " && ls " + downloadedNotificationFlag,
-								},
-							},
-						},
-						PeriodSeconds:       5,
-						InitialDelaySeconds: 5,
-					},
-				},
-			},
-			Volumes: []corev1.Volume{
-				{
-					Name: "backing-image",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: types.GetBackingImageDirectoryOnHost(diskPath, backingImage.Name),
-						},
-					},
-				},
-			},
-			NodeName:      node.Name,
-			RestartPolicy: corev1.RestartPolicyNever,
+		Spec: types.BackingImageManagerSpec{
+			Image:         defaultImage,
+			NodeID:        node.Name,
+			DiskUUID:      node.Status.DiskStatus[diskName].DiskUUID,
+			DiskPath:      node.Spec.Disks[diskName].Path,
+			BackingImages: requiredBackingImages,
 		},
 	}
+}
 
-	if registrySecret != "" {
-		podManifest.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
-			{
-				Name: registrySecret,
-			},
-		}
-	}
-
-	pod, err := bic.ds.CreatePod(podManifest)
-	if err != nil {
-		if apierrors.IsAlreadyExists(err) {
-			return bic.ds.GetPod(podName)
-		}
-		return nil, err
-	}
-	log := getLoggerForBackingImage(bic.logger, backingImage)
-	log.WithFields(logrus.Fields{"node": node.Name, "diskUUID": diskUUID, "pod": podName}).Infof("Creating download pod for backing image")
-
-	return pod, nil
+func generateBackingImageManagerName(image, diskUUID string) string {
+	return fmt.Sprintf("backing-image-manager-%s-%s", util.GetStringChecksum(image)[:4], diskUUID[:4])
 }
 
 func (bic *BackingImageController) enqueueBackingImage(obj interface{}) {
@@ -581,6 +511,32 @@ func (bic *BackingImageController) enqueueBackingImage(obj interface{}) {
 	}
 
 	bic.queue.AddRateLimited(key)
+}
+
+func (bic *BackingImageController) enqueueBackingImageForBackingImageManager(obj interface{}) {
+	bim, isBIM := obj.(*longhorn.BackingImageManager)
+	if !isBIM {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		bim, ok = deletedState.Obj.(*longhorn.BackingImageManager)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non BackingImageManager object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	for biName := range bim.Spec.BackingImages {
+		key := bim.Namespace + "/" + biName
+		bic.queue.AddRateLimited(key)
+	}
+	for biName := range bim.Status.BackingImageFileMap {
+		key := bim.Namespace + "/" + biName
+		bic.queue.AddRateLimited(key)
+	}
 }
 
 func (bic *BackingImageController) enqueueBackingImageForReplica(obj interface{}) {
@@ -602,30 +558,6 @@ func (bic *BackingImageController) enqueueBackingImageForReplica(obj interface{}
 	if replica.Spec.BackingImage != "" {
 		bic.logger.WithField("replica", replica.Name).WithField("backingImage", replica.Spec.BackingImage).Trace("Enqueuing backing image for replica")
 		key := replica.Namespace + "/" + replica.Spec.BackingImage
-		bic.queue.AddRateLimited(key)
-		return
-	}
-}
-
-func (bic *BackingImageController) enqueueBackingImageForPod(obj interface{}) {
-	pod, isPod := obj.(*corev1.Pod)
-	if !isPod {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
-			return
-		}
-
-		pod, ok = deletedState.Obj.(*corev1.Pod)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non Pod object: %#v", deletedState.Obj))
-			return
-		}
-	}
-
-	if biName, exists := pod.Labels[types.GetLonghornLabelKey(types.LonghornLabelBackingImage)]; exists {
-		bic.logger.WithField("pod", pod.Name).WithField("backingImage", biName).Trace("Enqueuing backing image for pod")
-		key := pod.Namespace + "/" + biName
 		bic.queue.AddRateLimited(key)
 		return
 	}

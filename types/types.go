@@ -37,9 +37,8 @@ const (
 	ReplicaHostPrefix                = "/host"
 	EngineBinaryName                 = "longhorn"
 
-	BackingImagesDirectory           = "/backing-images/"
-	BackingImageDirectoryInContainer = "/backing-image/"
-	BackingImageFileName             = "backing"
+	BackingImagesManagerDirectory = "/backing-images/"
+	BackingImageFileName          = "backing"
 
 	LonghornNodeKey     = "longhornnode"
 	LonghornDiskUUIDKey = "longhorndiskuuid"
@@ -68,7 +67,9 @@ const (
 	LonghornLabelShareManager         = "share-manager"
 	LonghornLabelShareManagerImage    = "share-manager-image"
 	LonghornLabelBackingImage         = "backing-image"
-	LonghornLabelManagedBy            = "managed-by"
+	LonghornLabelBackingImageManager  = "backing-image-manager"
+
+	LonghornLabelManagedBy = "managed-by"
 
 	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
@@ -210,12 +211,20 @@ func EngineBinaryExistOnHostForImage(image string) bool {
 	return err == nil && !st.IsDir()
 }
 
-func GetBackingImageDirectoryOnHost(diskPath, backingImageName string) string {
-	return filepath.Join(diskPath, BackingImagesDirectory, backingImageName)
+func GetBackingImageDirectoryName(backingImageName, backingImageUUID string) string {
+	return fmt.Sprintf("%s-%s", backingImageName, backingImageUUID)
 }
 
-func GetBackingImagePathForReplicaManagerContainer(diskPath, backingImageName string) string {
-	return filepath.Join(ReplicaHostPrefix, GetBackingImageDirectoryOnHost(diskPath, backingImageName), BackingImageFileName)
+func GetBackingImageManagerDirectoryOnHost(diskPath string) string {
+	return filepath.Join(diskPath, BackingImagesManagerDirectory)
+}
+
+func GetBackingImageDirectoryOnHost(diskPath, backingImageName, backingImageUUID string) string {
+	return filepath.Join(GetBackingImageManagerDirectoryOnHost(diskPath), GetBackingImageDirectoryName(backingImageName, backingImageUUID))
+}
+
+func GetBackingImagePathForReplicaManagerContainer(diskPath, backingImageName, backingImageUUID string) string {
+	return filepath.Join(ReplicaHostPrefix, GetBackingImageDirectoryOnHost(diskPath, backingImageName, backingImageUUID), BackingImageFileName)
 }
 
 var (
@@ -302,14 +311,15 @@ func GetShareManagerLabels(name, image string) map[string]string {
 	return labels
 }
 
-func GetBackingImageLabels(backingImageName, diskUUID string) map[string]string {
-	labels := GetBaseLabelsForSystemManagedComponent()
-	labels[GetLonghornLabelComponentKey()] = LonghornLabelBackingImage
-	if backingImageName != "" {
-		labels[GetLonghornLabelKey(LonghornLabelBackingImage)] = backingImageName
+func GetBackingImageManagerLabels(nodeID, diskUUID string) map[string]string {
+	labels := map[string]string{
+		GetLonghornLabelComponentKey(): LonghornLabelBackingImageManager,
 	}
 	if diskUUID != "" {
-		labels[LonghornDiskUUIDKey] = backingImageName
+		labels[LonghornDiskUUIDKey] = diskUUID
+	}
+	if nodeID != "" {
+		labels[LonghornNodeKey] = nodeID
 	}
 	return labels
 }

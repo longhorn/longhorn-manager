@@ -9,6 +9,7 @@ const (
 	EventReasonFailedStarting = "FailedStarting"
 	EventReasonStop           = "Stop"
 	EventReasonFailedStopping = "FailedStopping"
+	EventReasonUpdate         = "Update"
 
 	EventReasonRebuilded        = "Rebuilded"
 	EventReasonRebuilding       = "Rebuilding"
@@ -35,4 +36,7 @@ const (
 	EventReasonDetachedUnexpectly = "DetachedUnexpectly"
 	EventReasonRemount            = "Remount"
 	EventReasonAutoSalvaged       = "AutoSalvaged"
+
+	EventReasonPulling = "Pulling"
+	EventReasonSyncing = "Syncing"
 )
