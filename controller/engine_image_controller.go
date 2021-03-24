@@ -722,7 +722,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
-				MatchLabels: types.GetEngineImageLabels(ei.Name),
+				MatchLabels: types.GetEIDaemonSetLabelSelector(ei.Name),
 			},
 			UpdateStrategy: appsv1.DaemonSetUpdateStrategy{
 				Type: appsv1.RollingUpdateDaemonSetStrategyType,
@@ -733,7 +733,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            dsName,
-					Labels:          types.GetEngineImageLabels(ei.Name),
+					Labels:          types.GetEIDaemonSetLabelSelector(ei.Name),
 					OwnerReferences: datastore.GetOwnerReferencesForEngineImage(ei),
 				},
 				Spec: v1.PodSpec{

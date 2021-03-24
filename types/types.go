@@ -238,6 +238,14 @@ func GetEngineImageLabels(engineImageName string) map[string]string {
 	return labels
 }
 
+// GetEIDaemonSetLabelSelector returns labels for engine image daemonset's Spec.Selector.MatchLabels
+func GetEIDaemonSetLabelSelector(engineImageName string) map[string]string {
+	labels := make(map[string]string)
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelEngineImage
+	labels[GetLonghornLabelKey(LonghornLabelEngineImage)] = engineImageName
+	return labels
+}
+
 func GetEngineImageComponentLabel() map[string]string {
 	return map[string]string{
 		GetLonghornLabelComponentKey(): LonghornLabelEngineImage,

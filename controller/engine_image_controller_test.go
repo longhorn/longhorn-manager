@@ -147,7 +147,7 @@ func createEngineImageDaemonSetPod(name string, containerReadyStatus bool, nodeI
 		TestNamespace,
 		nodeID,
 	)
-	pod.Labels = types.GetEngineImageLabels(getTestEngineImageName())
+	pod.Labels = types.GetEIDaemonSetLabelSelector(getTestEngineImageName())
 	return pod
 }
 

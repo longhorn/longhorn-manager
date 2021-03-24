@@ -156,12 +156,12 @@ func newEngineImageDaemonSet() *appsv1.DaemonSet {
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
-				MatchLabels: types.GetEngineImageLabels(getTestEngineImageName()),
+				MatchLabels: types.GetEIDaemonSetLabelSelector(getTestEngineImageName()),
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   getTestEngineImageDaemonSetName(),
-					Labels: types.GetEngineImageLabels(getTestEngineImageName()),
+					Labels: types.GetEIDaemonSetLabelSelector(getTestEngineImageName()),
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: TestServiceAccount,
