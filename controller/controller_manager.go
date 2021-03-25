@@ -250,11 +250,11 @@ func isControllerResponsibleFor(controllerID string, ds *datastore.DataStore, na
 	// we use this approach so that if there is an issue with the data store
 	// we don't accidentally transfer ownership
 	isOwnerUnavailable := func(node string) bool {
-		nodeDown, err := ds.IsNodeDownOrDeleted(node)
+		isUnavailable, err := ds.IsNodeDownOrDeletedOrMissingManager(node)
 		if node != "" && err != nil {
-			logrus.Errorf("Error while checking if object %v node %v is down or deleted: %v", name, node, err)
+			logrus.Errorf("Error while checking IsNodeDownOrDeletedOrMissingManager for object %v, node %v: %v", name, node, err)
 		}
-		return node == "" || nodeDown
+		return node == "" || isUnavailable
 	}
 
 	isPreferredOwner := controllerID == preferredOwnerID

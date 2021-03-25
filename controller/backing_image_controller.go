@@ -190,10 +190,10 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 
 	log := getLoggerForBackingImage(bic.logger, backingImage)
 
+	if !bic.isResponsibleFor(backingImage) {
+		return nil
+	}
 	if backingImage.Status.OwnerID != bic.controllerID {
-		if !bic.isResponsibleFor(backingImage) {
-			return nil
-		}
 		backingImage.Status.OwnerID = bic.controllerID
 		backingImage, err = bic.ds.UpdateBackingImageStatus(backingImage)
 		if err != nil {

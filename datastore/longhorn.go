@@ -1382,6 +1382,14 @@ func filterReadyNodes(nodes map[string]*longhorn.Node) map[string]*longhorn.Node
 	})
 }
 
+// filterSchedulableNodes returns only the nodes that are ready
+func filterSchedulableNodes(nodes map[string]*longhorn.Node) map[string]*longhorn.Node {
+	return filterNodes(nodes, func(node *longhorn.Node) bool {
+		nodeSchedulableCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeSchedulable)
+		return nodeSchedulableCondition.Status == types.ConditionStatusTrue
+	})
+}
+
 func (s *DataStore) ListReadyNodes() (map[string]*longhorn.Node, error) {
 	nodes, err := s.ListNodes()
 	if err != nil {
@@ -1389,6 +1397,14 @@ func (s *DataStore) ListReadyNodes() (map[string]*longhorn.Node, error) {
 	}
 	readyNodes := filterReadyNodes(nodes)
 	return readyNodes, nil
+}
+
+func (s *DataStore) ListReadyAndSchedulableNodes() (map[string]*longhorn.Node, error) {
+	nodes, err := s.ListNodes()
+	if err != nil {
+		return nil, err
+	}
+	return filterSchedulableNodes(filterReadyNodes(nodes)), nil
 }
 
 // ListReadyNodesWithEngineImage returns list of ready nodes that have the corresponding engine image deployed
@@ -1458,6 +1474,27 @@ func (s *DataStore) RemoveFinalizerForNode(obj *longhorn.Node) error {
 	return nil
 }
 
+func (s *DataStore) IsNodeDownOrDeletedOrMissingManager(name string) (bool, error) {
+	if name == "" {
+		return false, errors.New("no node name provided to IsNodeDownOrDeletedOrMissingManager")
+	}
+	node, err := s.GetNodeRO(name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return true, nil
+		}
+		return false, err
+	}
+	cond := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
+	if cond.Status == types.ConditionStatusFalse &&
+		(cond.Reason == string(types.NodeConditionReasonKubernetesNodeGone) ||
+			cond.Reason == string(types.NodeConditionReasonKubernetesNodeNotReady) ||
+			cond.Reason == string(types.NodeConditionReasonManagerPodMissing)) {
+		return true, nil
+	}
+	return false, nil
+}
+
 // IsNodeDownOrDeleted gets Node for the given name and namespace and checks
 // if the Node condition is gone or not ready
 func (s *DataStore) IsNodeDownOrDeleted(name string) (bool, error) {
@@ -1478,6 +1515,15 @@ func (s *DataStore) IsNodeDownOrDeleted(name string) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+func (s *DataStore) IsNodeSchedulable(name string) bool {
+	node, err := s.GetNodeRO(name)
+	if err != nil {
+		return false
+	}
+	nodeSchedulableCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeSchedulable)
+	return nodeSchedulableCondition.Status == types.ConditionStatusTrue
 }
 
 func getNodeSelector(nodeName string) (labels.Selector, error) {

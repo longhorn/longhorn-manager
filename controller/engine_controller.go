@@ -91,7 +91,7 @@ type EngineMonitor struct {
 
 	controllerID string
 	// used to notify the controller that monitoring has stopped
-	monitoringRemoveCh chan string
+	monitorVoluntaryStopCh chan struct{}
 }
 
 func NewEngineController(
@@ -235,7 +235,6 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return err
 	}
 	if !isResponsible {
-		// Not ours
 		return nil
 	}
 	if engine.Status.OwnerID != ec.controllerID {
@@ -319,7 +318,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	} else if ec.isMonitoring(engine) {
 		// engine is not running
-		ec.stopMonitoring(engine)
+		ec.resetAndStopMonitoring(engine)
 	}
 
 	return nil
@@ -372,9 +371,7 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 	}
 
 	for _, e := range engineMap {
-		if e.Status.OwnerID == ec.controllerID {
-			ec.enqueueEngine(e)
-		}
+		ec.enqueueEngine(e)
 	}
 	return
 }
@@ -409,6 +406,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 	if !ok {
 		return fmt.Errorf("BUG: invalid object for engine process deletion: %v", obj)
 	}
+	log := getLoggerForEngine(ec.logger, e)
 
 	if err := ec.deleteInstanceWithCLIAPIVersionOne(e); err != nil {
 		return err
@@ -425,25 +423,12 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 			return err
 		}
 		// The related node may be directly deleted.
-		logrus.Warnf("The instance manager %v is gone during the instance %v deletion. Will do nothing for the deletion", e.Status.InstanceManagerName, e.Name)
+		log.Warnf("The engine instance manager %v is gone during the engine instance %v deletion. Will do nothing for the deletion", e.Status.InstanceManagerName, e.Name)
 		return nil
 	}
 
-	// Node down.
-	// engine.Spec.NodeID will be unset when Longhorn prepares to stop the engine.
-	// Hence the field engine.Spec.NodeID cannot be used to check if the node is down.
-	if im.Spec.NodeID != im.Status.OwnerID {
-		isDown, err := ec.ds.IsNodeDownOrDeleted(im.Spec.NodeID)
-		if err != nil {
-			return err
-		}
-		if isDown {
-			delete(im.Status.Instances, e.Name)
-			if _, err := ec.ds.UpdateInstanceManagerStatus(im); err != nil {
-				return err
-			}
-			return nil
-		}
+	if im.Status.CurrentState != types.InstanceManagerStateRunning {
+		return nil
 	}
 
 	// For the engine process in instance manager v0.7.0, we need to use the cmdline to delete the process
@@ -590,16 +575,18 @@ func (ec *EngineController) isMonitoring(e *longhorn.Engine) bool {
 
 func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
 	stopCh := make(chan struct{})
+	monitorVoluntaryStopCh := make(chan struct{})
 	monitor := &EngineMonitor{
-		logger:           ec.logger.WithField("engine", e.Name),
-		Name:             e.Name,
-		namespace:        e.Namespace,
-		ds:               ec.ds,
-		eventRecorder:    ec.eventRecorder,
-		engines:          ec.engines,
-		stopCh:           stopCh,
-		expansionBackoff: flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
-		controllerID:     ec.controllerID,
+		logger:                 ec.logger.WithField("engine", e.Name),
+		Name:                   e.Name,
+		namespace:              e.Namespace,
+		ds:                     ec.ds,
+		eventRecorder:          ec.eventRecorder,
+		engines:                ec.engines,
+		stopCh:                 stopCh,
+		monitorVoluntaryStopCh: monitorVoluntaryStopCh,
+		expansionBackoff:       flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
+		controllerID:           ec.controllerID,
 	}
 
 	ec.engineMonitorMutex.Lock()
@@ -612,33 +599,54 @@ func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
 	ec.engineMonitorMap[e.Name] = stopCh
 
 	go monitor.Run()
+
+	go func() {
+		<-monitorVoluntaryStopCh
+		ec.engineMonitorMutex.Lock()
+		delete(ec.engineMonitorMap, e.Name)
+		ec.logger.WithField("engine", e.Name).Debug("removed the engine from ec.engineMonitorMap")
+		ec.engineMonitorMutex.Unlock()
+	}()
 }
 
-func (ec *EngineController) stopMonitoring(e *longhorn.Engine) {
+func (ec *EngineController) resetAndStopMonitoring(e *longhorn.Engine) {
 	if _, err := ec.ds.ResetMonitoringEngineStatus(e); err != nil {
 		utilruntime.HandleError(errors.Wrapf(err, "failed to update engine %v to stop monitoring", e.Name))
 		// better luck next time
 		return
 	}
 
+	ec.stopMonitoring(e.Name)
+
+	return
+}
+
+func (ec *EngineController) stopMonitoring(engineName string) {
 	ec.engineMonitorMutex.Lock()
 	defer ec.engineMonitorMutex.Unlock()
 
-	stopCh, ok := ec.engineMonitorMap[e.Name]
+	stopCh, ok := ec.engineMonitorMap[engineName]
 	if !ok {
-		ec.logger.WithField("engine", e.Name).Warn("Stop monitoring engine called even though there is no monitoring")
+		ec.logger.WithField("engine", engineName).Warn("Stop monitoring engine called even though there is no monitoring")
 		return
 	}
-	close(stopCh)
 
-	delete(ec.engineMonitorMap, e.Name)
+	select {
+	case <-stopCh:
+		// stopCh channel is already closed
+	default:
+		close(stopCh)
+	}
 
 	return
 }
 
 func (m *EngineMonitor) Run() {
 	m.logger.Debug("Start monitoring engine")
-	defer m.logger.Debug("Stop monitoring engine")
+	defer func() {
+		m.logger.Debug("Stop monitoring engine")
+		close(m.monitorVoluntaryStopCh)
+	}()
 
 	ticker := time.NewTicker(EnginePollInterval)
 	defer ticker.Stop()
@@ -654,33 +662,20 @@ func (m *EngineMonitor) Run() {
 	}
 }
 
-func (m *EngineMonitor) stop(e *longhorn.Engine) {
-	if e != nil {
-		if _, err := m.ds.ResetMonitoringEngineStatus(e); err != nil {
-			utilruntime.HandleError(errors.Wrapf(err, "failed to update engine %v to stop monitoring", m.Name))
-			// better luck next time
-			return
-		}
-	}
-}
-
 func (m *EngineMonitor) sync() bool {
 	for count := 0; count < EngineMonitorConflictRetryCount; count++ {
 		engine, err := m.ds.GetEngine(m.Name)
 		if err != nil {
 			if datastore.ErrorIsNotFound(err) {
 				m.logger.Info("stop monitoring because the engine no longer exists")
-				m.stop(engine)
 				return true
 			}
 			utilruntime.HandleError(errors.Wrapf(err, "fail to get engine %v for monitoring", m.Name))
 			return false
 		}
 
-		// when engine stopped, nodeID will be empty as well
 		if engine.Status.OwnerID != m.controllerID {
-			m.logger.Infof("stop monitoring because the engine no longer has this node as ownerID: engine.Status.OwnerID=%v; m.controllerID=%v", engine.Status.OwnerID, m.controllerID)
-			m.stop(engine)
+			m.logger.Infof("stop monitoring the engine on this node (%v) because the engine has new ownerID %v", m.controllerID, engine.Status.OwnerID)
 			return true
 		}
 
@@ -1402,33 +1397,49 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine) error {
 	return nil
 }
 
+// isResponsibleFor picks a running node that has e.Status.CurrentImage deployed.
+// We need e.Status.CurrentImage deployed on the node to make request to the corresponding engine process.
+// Prefer picking the node e.Spec.NodeID if it meet the above requirement.
 func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineImage string) (bool, error) {
 	var err error
 	defer func() {
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
-	readyNodesWithDefaultEI, err := ec.ds.ListReadyNodesWithEngineImage(defaultEngineImage)
-	if err != nil {
-		return false, err
-	}
 
 	isResponsible := isControllerResponsibleFor(ec.controllerID, ec.ds, e.Name, e.Spec.NodeID, e.Status.OwnerID)
 
-	if len(readyNodesWithDefaultEI) == 0 {
+	// The engine is not running, the owner node doesn't need to have e.Status.CurrentImage
+	// Fall back to the default logic where we pick a running node to be the owner
+	if e.Status.CurrentImage == "" {
 		return isResponsible, nil
 	}
 
-	preferredOwnerEngineAvailable, err := ec.ds.CheckEngineImageReadiness(defaultEngineImage, e.Spec.NodeID)
+	readyNodesWithEI, err := ec.ds.ListReadyNodesWithEngineImage(e.Status.CurrentImage)
 	if err != nil {
 		return false, err
 	}
-	currentOwnerEngineAvailable, err := ec.ds.CheckEngineImageReadiness(defaultEngineImage, e.Status.OwnerID)
+	// No node in the system has the e.Status.CurrentImage,
+	// Fall back to the default logic where we pick a running node to be the owner
+	if len(readyNodesWithEI) == 0 {
+		return isResponsible, nil
+	}
+
+	preferredOwnerEngineAvailable, err := ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, e.Spec.NodeID)
 	if err != nil {
 		return false, err
 	}
-	currentNodeEngineAvailable, err := ec.ds.CheckEngineImageReadiness(defaultEngineImage, ec.controllerID)
+	currentOwnerEngineAvailable, err := ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, e.Status.OwnerID)
 	if err != nil {
 		return false, err
 	}
-	return (isResponsible && currentNodeEngineAvailable) || (!preferredOwnerEngineAvailable && !currentOwnerEngineAvailable && currentNodeEngineAvailable), nil
+	currentNodeEngineAvailable, err := ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, ec.controllerID)
+	if err != nil {
+		return false, err
+	}
+
+	isPreferredOwner := currentNodeEngineAvailable && isResponsible
+	continueToBeOwner := currentNodeEngineAvailable && !preferredOwnerEngineAvailable && ec.controllerID == e.Status.OwnerID
+	requiresNewOwner := currentNodeEngineAvailable && !preferredOwnerEngineAvailable && !currentOwnerEngineAvailable
+
+	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
 }

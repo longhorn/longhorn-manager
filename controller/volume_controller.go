@@ -260,7 +260,6 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 	if !isResponsible {
-		// Not mines
 		return nil
 	}
 
@@ -412,7 +411,6 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	if err != nil {
 		return err
 	}
-
 	if len(engines) <= 1 {
 		if err := vc.ReconcileEngineReplicaState(volume, engine, replicas); err != nil {
 			return err
@@ -515,7 +513,6 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 			v.Status.LastDegradedAt = ""
 		}
 	}()
-
 	if e == nil {
 		return nil
 	}
@@ -604,7 +601,6 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 			r.Spec.DesireState = types.InstanceStateStopped
 		}
 	}
-
 	oldRobustness := v.Status.Robustness
 	if healthyCount == 0 { // no healthy replica exists, going to faulted
 		// ReconcileVolumeState() will deal with the faulted case
@@ -2526,6 +2522,9 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 	return nil
 }
 
+// isResponsibleFor picks a running node that has the default engine image deployed.
+// We need the default engine image deployed on the node to perform operation like backup operations.
+// Prefer picking the node v.Spec.NodeID if it meet the above requirement.
 func (vc *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineImage string) (bool, error) {
 	var err error
 	defer func() {
@@ -2539,6 +2538,8 @@ func (vc *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIm
 
 	isResponsible := isControllerResponsibleFor(vc.controllerID, vc.ds, v.Name, v.Spec.NodeID, v.Status.OwnerID)
 
+	// No node in the system has the default engine image,
+	// Fall back to the default logic where we pick a running node to be the owner
 	if len(readyNodesWithDefaultEI) == 0 {
 		return isResponsible, nil
 	}
@@ -2556,7 +2557,11 @@ func (vc *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIm
 		return false, err
 	}
 
-	return (isResponsible && currentNodeEngineAvailable) || (!preferredOwnerEngineAvailable && !currentOwnerEngineAvailable && currentNodeEngineAvailable), nil
+	isPreferredOwner := currentNodeEngineAvailable && isResponsible
+	continueToBeOwner := currentNodeEngineAvailable && !preferredOwnerEngineAvailable && vc.controllerID == v.Status.OwnerID
+	requiresNewOwner := currentNodeEngineAvailable && !preferredOwnerEngineAvailable && !currentOwnerEngineAvailable
+
+	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
 }
 
 func (vc *VolumeController) deleteReplica(r *longhorn.Replica, rs map[string]*longhorn.Replica) error {

@@ -282,16 +282,16 @@ func (c *ShareManagerController) syncShareManager(key string) (err error) {
 	}
 	log := getLoggerForShareManager(c.logger, sm)
 
-	// check if we need to claim ownership
-	if sm.Status.OwnerID != c.controllerID {
-		if !c.shouldClaimOwnership(sm) {
-			return nil
-		}
+	isResponsible, err := c.isResponsibleFor(sm)
+	if err != nil {
+		return err
+	}
+	if !isResponsible {
+		return nil
+	}
 
-		// on owner ship transfer we set the state to unknown,
-		// which leads to cleaning up any of the old pods
+	if sm.Status.OwnerID != c.controllerID {
 		sm.Status.OwnerID = c.controllerID
-		sm.Status.State = types.ShareManagerStateUnknown
 		sm, err = c.ds.UpdateShareManagerStatus(sm)
 		if err != nil {
 			if apierrors.IsConflict(errors.Cause(err)) {
@@ -465,7 +465,7 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 	// of the share manager pod and need to ensure that the volume gets detached, so that the engine can be stopped as well
 	// we only check for running, since we don't want to nuke valid pods, not schedulable only means no new pods.
 	// in the case of a drain kubernetes will terminate the running pod, which we will mark as error in the sync pod method
-	if !isNodeSchedulable(c.ds, sm.Status.OwnerID) {
+	if !c.ds.IsNodeSchedulable(sm.Status.OwnerID) {
 		if sm.Status.State != types.ShareManagerStateStopped {
 			log.Info("cannot start share manager, node is not schedulable")
 			isNotNeeded = true
@@ -480,23 +480,26 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		sm.Status.State = types.ShareManagerStateStarting
 	}
 
-	if volume.Spec.NodeID != sm.Status.OwnerID || volume.Status.CurrentNodeID != sm.Status.OwnerID {
-		// HACK: at the moment the consumer needs to control the state transitions of the volume
-		//  since it's not possible to just specify the desired state, we should fix that down the line.
-		//  for the actual state transition we need to request detachment then wait for detachment
-		//  afterwards we can request attachment to the new node.
-		shouldDetach := volume.Status.State == types.VolumeStateAttached ||
-			(volume.Status.State == types.VolumeStateAttaching && volume.Spec.NodeID != sm.Status.OwnerID)
-		if shouldDetach {
-			log.WithField("volume", volume.Name).Infof("Requesting Volume detach from previous node %v", volume.Status.CurrentNodeID)
-			volume.Spec.NodeID = ""
+	// HACK: at the moment the consumer needs to control the state transitions of the volume
+	//  since it's not possible to just specify the desired state, we should fix that down the line.
+	//  for the actual state transition we need to request detachment then wait for detachment
+	//  afterwards we can request attachment to the new node.
+	isDown, err := c.ds.IsNodeDownOrDeleted(volume.Spec.NodeID)
+	if volume.Spec.NodeID != "" && err != nil {
+		log.WithError(err).Warnf("cannot check IsNodeDownOrDeleted(%v) when syncShareManagerVolume", volume.Spec.NodeID)
+	}
+	shouldDetach := isDown && (volume.Status.State == types.VolumeStateAttached || volume.Status.State == types.VolumeStateAttaching)
+	if shouldDetach {
+		log.WithField("volume", volume.Name).Infof("Requesting Volume detach from previous node %v", volume.Status.CurrentNodeID)
+		volume.Spec.NodeID = ""
+		if volume, err = c.ds.UpdateVolume(volume); err != nil {
+			return err
 		}
+	}
 
-		if volume.Status.State == types.VolumeStateDetached {
-			log.WithField("volume", volume.Name).Info("Requesting Volume attach to share manager node")
-			volume.Spec.NodeID = sm.Status.OwnerID
-		}
-
+	if volume.Status.State == types.VolumeStateDetached && volume.Spec.NodeID == "" {
+		log.WithField("volume", volume.Name).Info("Requesting Volume attach to share manager node")
+		volume.Spec.NodeID = sm.Status.OwnerID
 		if volume, err = c.ds.UpdateVolume(volume); err != nil {
 			return err
 		}
@@ -573,10 +576,13 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		}
 	}
 
-	// in the case where the node name and the controller don't fit it means that there was an ownership transfer of the share manager
-	// so we need to cleanup the old pod, most likely it's on a now defective node, in the case where the share manager fails
-	// for whatever reason we just delete and recreate it.
-	if pod.DeletionTimestamp != nil || pod.Spec.NodeName != sm.Status.OwnerID {
+	// If the node where the pod is running on become defective, we clean up the pod by setting sm.Status.State to STOPPED or ERROR
+	// A new pod will be recreated by the share manager controller.
+	isDown, err := c.ds.IsNodeDownOrDeleted(pod.Spec.NodeName)
+	if err != nil {
+		log.WithError(err).Warnf("cannot check IsNodeDownOrDeleted(%v) when syncShareManagerPod", pod.Spec.NodeName)
+	}
+	if pod.DeletionTimestamp != nil || isDown {
 		if sm.Status.State != types.ShareManagerStateStopped {
 			log.Debug("Share Manager pod requires cleanup with remount")
 			sm.Status.State = types.ShareManagerStateError
@@ -770,36 +776,35 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 	return podSpec
 }
 
-// shouldClaimOwnership in most controllers we only checks if the node of the current owner is down
-// but in the case where the node is unschedulable and the sharemanager is in error state
-// we want to transfer ownership, since otherwise we would keep creating a share manager pod on the
-// unschedulable node which would force the engine to also be created on this node
-// this scenario would lead to the node no longer being able ot be drained
-// since the volume would never be unattached which prevents the engine from being removed
-func (c *ShareManagerController) shouldClaimOwnership(sm *longhorn.ShareManager) bool {
-	shouldClaim := isControllerResponsibleFor(c.controllerID, c.ds, sm.Name, "", sm.Status.OwnerID)
-	isCurrentNodeSchedulable := isNodeSchedulable(c.ds, c.controllerID)
-	if shouldClaim {
-		return isCurrentNodeSchedulable
+// isResponsibleFor in most controllers we only checks if the node of the current owner is down
+// but in the case where the node is unschedulable we want to transfer ownership,
+// since we will create sm pod on the sm.Status.OwnerID when the sm starts
+func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) (bool, error) {
+	// We prefer keeping the owner of the share manager CR to be the same node
+	// where the share manager pod is running on.
+	preferredOwnerID := ""
+	pod, err := c.ds.GetPod(types.GetShareManagerPodNameFromShareManagerName(sm.Name))
+	if err == nil && pod != nil {
+		preferredOwnerID = pod.Spec.NodeName
 	}
 
-	// in the case where we shouldn't claim this,
-	// we need to check if the owner allows for new pod creation
-	// we only transfer ownership if it's in error state, since we don't want to move running or stopped pods
-	isOwnersNodeSchedulable := isNodeSchedulable(c.ds, sm.Status.OwnerID)
-	if !isOwnersNodeSchedulable && sm.Status.State == types.ShareManagerStateError && isCurrentNodeSchedulable {
-		getLoggerForShareManager(c.logger, sm).Debugf("suggesting ownership transfer to %v because current node %v "+
-			"is no longer schedulable and share manager is in error", c.controllerID, sm.Status.OwnerID)
-		return true
-	}
+	isResponsible := isControllerResponsibleFor(c.controllerID, c.ds, sm.Name, preferredOwnerID, sm.Status.OwnerID)
 
-	return false
-}
-
-func isNodeSchedulable(ds *datastore.DataStore, node string) bool {
-	kubeNode, err := ds.GetKubernetesNode(node)
+	readyAndSchedulableNodes, err := c.ds.ListReadyAndSchedulableNodes()
 	if err != nil {
-		return false
+		return false, err
 	}
-	return !kubeNode.Spec.Unschedulable
+	if len(readyAndSchedulableNodes) == 0 {
+		return isResponsible, nil
+	}
+
+	preferredOwnerSchedulable := c.ds.IsNodeSchedulable(preferredOwnerID)
+	currentOwnerSchedulable := c.ds.IsNodeSchedulable(sm.Status.OwnerID)
+	currentNodeSchedulable := c.ds.IsNodeSchedulable(c.controllerID)
+
+	isPreferredOwner := currentNodeSchedulable && isResponsible
+	continueToBeOwner := currentNodeSchedulable && !preferredOwnerSchedulable && c.controllerID == sm.Status.OwnerID
+	requiresNewOwner := currentNodeSchedulable && !preferredOwnerSchedulable && !currentOwnerSchedulable
+
+	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
 }
