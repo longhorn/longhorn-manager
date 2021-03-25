@@ -204,7 +204,6 @@ func (knc *KubernetesNodeController) syncKubernetesNode(key string) (err error) 
 	}()
 
 	if knc.controllerID != kubeNode.Name {
-		// not our's
 		return nil
 	}
 

@@ -273,11 +273,10 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 
 	log := getLoggerForReplica(rc.logger, replica)
 
+	if !rc.isResponsibleFor(replica) {
+		return nil
+	}
 	if replica.Status.OwnerID != rc.controllerID {
-		if !rc.isResponsibleFor(replica) {
-			// Not ours
-			return nil
-		}
 		replica.Status.OwnerID = rc.controllerID
 		replica, err = rc.ds.UpdateReplicaStatus(replica)
 		if err != nil {
@@ -297,8 +296,8 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			return errors.Wrapf(err, "failed to cleanup the related replica process before deleting replica %v", replica.Name)
 		}
 
-		if replica.Spec.NodeID != "" && replica.Spec.NodeID != replica.Status.OwnerID {
-			log.Warn("Node down or deleted, can't cleanup replica data")
+		if replica.Spec.NodeID != "" && replica.Spec.NodeID != rc.controllerID {
+			log.Warn("can't cleanup replica's data because the replica's data is not on this node")
 		} else if replica.Spec.NodeID != "" {
 			if replica.Spec.Active && dataPath != "" {
 				// prevent accidentally deletion
@@ -410,6 +409,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	if !ok {
 		return fmt.Errorf("BUG: invalid object for replica process deletion: %v", obj)
 	}
+	log := getLoggerForReplica(rc.logger, r)
 
 	if err := rc.deleteInstanceWithCLIAPIVersionOne(r); err != nil {
 		return err
@@ -421,24 +421,17 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 
 	im, err := rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return err
-	}
-
-	// Node is down or deleted.
-	// replica.Spec.NodeID should not be empty if r.Status.InstanceManagerName is already set.
-	if r.Spec.NodeID != r.Status.OwnerID {
-		if im != nil {
-			delete(im.Status.Instances, r.Name)
-			if _, err := rc.ds.UpdateInstanceManagerStatus(im); err != nil {
-				return err
-			}
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return err
 		}
+		// The related node may be directly deleted.
+		log.Warnf("The replica instance manager %v is gone during the replica instance %v deletion. Will do nothing for the deletion", r.Status.InstanceManagerName, r.Name)
 		return nil
 	}
 
-	if im == nil {
-		return fmt.Errorf("cannot find instance manager %v for replica %v process deletion", r.Status.InstanceManagerName, r.Name)
+	if im.Status.CurrentState != types.InstanceManagerStateRunning {
+		return nil
 	}
 
 	c, err := engineapi.NewInstanceManagerClient(im)
@@ -599,9 +592,7 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(obj interface{}) {
 
 	for _, rList := range rs {
 		for _, r := range rList {
-			if r.Status.OwnerID == rc.controllerID {
-				rc.enqueueReplica(r)
-			}
+			rc.enqueueReplica(r)
 		}
 	}
 	return

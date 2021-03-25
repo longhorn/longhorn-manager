@@ -223,7 +223,6 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 	}
 
 	if volume.Status.OwnerID != kc.controllerID {
-		// Not ours
 		return nil
 	}
 

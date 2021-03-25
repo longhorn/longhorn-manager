@@ -72,6 +72,8 @@ type InstanceManagerController struct {
 }
 
 type InstanceManagerMonitor struct {
+	logger logrus.FieldLogger
+
 	Name         string
 	controllerID string
 
@@ -82,6 +84,8 @@ type InstanceManagerMonitor struct {
 	updateNotification      bool
 	stopCh                  chan struct{}
 	done                    bool
+	// used to notify the controller that monitoring has stopped
+	monitorVoluntaryStopCh chan struct{}
 }
 
 type InstanceManagerUpdater struct {
@@ -272,11 +276,13 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		return err
 	}
 
+	log := getLoggerForInstanceManager(imc.logger, im)
+
+	if !imc.isResponsibleFor(im) {
+		return nil
+	}
+
 	if im.Status.OwnerID != imc.controllerID {
-		if !imc.isResponsibleFor(im) {
-			// Not ours
-			return nil
-		}
 		im.Status.OwnerID = imc.controllerID
 		im, err = imc.ds.UpdateInstanceManagerStatus(im)
 		if err != nil {
@@ -286,7 +292,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 			}
 			return err
 		}
-		logrus.Debugf("Instance Manager Controller %v picked up %v", imc.controllerID, im.Name)
+		log.Debugf("Instance Manager Controller %v picked up %v", imc.controllerID, im.Name)
 	}
 
 	if im.DeletionTimestamp != nil {
@@ -302,7 +308,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 			_, err = imc.ds.UpdateInstanceManagerStatus(im)
 		}
 		if apierrors.IsConflict(errors.Cause(err)) {
-			logrus.Debugf("Requeue %v due to conflict: %v", key, err)
+			log.Debugf("Requeue %v due to conflict: %v", key, err)
 			imc.enqueueInstanceManager(im)
 			err = nil
 		}
@@ -313,9 +319,11 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		return errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)
 	}
 
-	// We're handling the Instance Manager from a Node that isn't supposed to be responsible for it. This could mean
-	// that the Node it belongs to went down, or its newly scheduled.
-	if im.Spec.NodeID != imc.controllerID {
+	isDown, err := imc.ds.IsNodeDownOrDeleted(im.Spec.NodeID)
+	if err != nil {
+		log.WithError(err).Warnf("cannot check IsNodeDownOrDeleted(%v) when syncInstanceManager ", im.Spec.NodeID)
+	}
+	if isDown {
 		im.Status.CurrentState = types.InstanceManagerStateUnknown
 		if err := imc.cleanupInstanceManager(im); err != nil {
 			return err
@@ -325,8 +333,8 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 
 	// Sync instance manager status with related pod
 	if pod == nil {
-		if im.Status.CurrentState != types.InstanceManagerStateError {
-			im.Status.CurrentState = types.InstanceManagerStateStopped
+		if im.Status.CurrentState != types.InstanceManagerStateStopped {
+			im.Status.CurrentState = types.InstanceManagerStateError
 		}
 	} else if pod.DeletionTimestamp != nil {
 		if im.Status.CurrentState != types.InstanceManagerStateError {
@@ -345,7 +353,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		switch pod.Status.Phase {
 		case v1.PodPending:
 			if im.Status.CurrentState != types.InstanceManagerStateStarting {
-				logrus.Errorf("Instance Manager %v is state %v but the related pod is pending.", im.Name, im.Status.CurrentState)
+				log.Errorf("Instance Manager %v is state %v but the related pod is pending.", im.Name, im.Status.CurrentState)
 				im.Status.CurrentState = types.InstanceManagerStateError
 			}
 		case v1.PodRunning:
@@ -388,7 +396,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	if im.Status.CurrentState == types.InstanceManagerStateRunning {
 		if err := engineapi.CheckInstanceManagerCompatibilty(im.Status.APIMinVersion, im.Status.APIVersion); err != nil {
 			if imc.isMonitoring(im.Name) {
-				logrus.Infof("Instance manager controller will stop monitoring the incompatible instance manager %v", im.Name)
+				log.Infof("Instance manager controller will stop monitoring the incompatible instance manager %v", im.Name)
 				imc.stopMonitoring(im)
 			}
 		} else {
@@ -399,7 +407,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 				case types.InstanceManagerTypeReplica:
 					imc.startMonitoring(im, NewInstanceManagerUpdater(im))
 				default:
-					logrus.Errorf("BUG: instance manager %v has invalid type %v", im.Name, im.Spec.Type)
+					log.Errorf("BUG: instance manager %v has invalid type %v", im.Name, im.Spec.Type)
 					im.Status.CurrentState = types.InstanceManagerStateError
 				}
 			}
@@ -409,19 +417,22 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	// Restart instance manager automatically. Otherwise users need to take care of it then we need to expose API
 	// for operating instance manager.
 	if im.Status.CurrentState == types.InstanceManagerStateError || im.Status.CurrentState == types.InstanceManagerStateStopped {
-		logrus.Warnf("Starts to clean up then recreates pod for instance manager %v with state %v", im.Name, im.Status.CurrentState)
 		if err := imc.cleanupInstanceManager(im); err != nil {
 			return err
 		}
-		if err := imc.createInstanceManagerPod(im); err != nil {
-			if !types.ErrorAlreadyExists(errors.Cause(err)) {
-				return err
+		// When user taints a node with NoExecute effect and doesn't set the corresponding toleration for Longhorn,
+		// both Longhorn manager and IM pod are evicted. In this case we shouldn't repeatedly create the IM pod on that node.
+		// In order to do so, we make sure that only create the IM pod if this controller is the same as the im.Spec.NodeID
+		if imc.controllerID == im.Spec.NodeID {
+			if err := imc.createInstanceManagerPod(im); err != nil {
+				if !types.ErrorAlreadyExists(errors.Cause(err)) {
+					return err
+				}
+				return nil
 			}
+			im.Status.CurrentState = types.InstanceManagerStateStarting
 			return nil
 		}
-
-		im.Status.CurrentState = types.InstanceManagerStateStarting
-		return nil
 	}
 
 	return nil
@@ -738,8 +749,8 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 }
 
 func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.InstanceManager) error {
+	log := getLoggerForInstanceManager(imc.logger, im)
 	im.Status.IP = ""
-
 	if imc.isMonitoring(im.Name) {
 		imc.stopMonitoring(im)
 	}
@@ -753,10 +764,11 @@ func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.Instan
 	if err != nil {
 		return err
 	}
-	if pod != nil {
+	if pod != nil && pod.DeletionTimestamp == nil {
 		if err := imc.ds.DeletePod(pod.Name); err != nil {
 			return err
 		}
+		log.Warnf("Deleted instance manager pod %v for instance manager %v", im.Name, im.Status.CurrentState)
 	}
 
 	return nil
@@ -840,7 +852,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 					},
 				},
 			},
-			NodeName:      imc.controllerID,
+			NodeName:      im.Spec.NodeID,
 			RestartPolicy: v1.RestartPolicyNever,
 		},
 	}
@@ -1005,7 +1017,9 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 	}
 
 	stopCh := make(chan struct{}, 1)
+	monitorVoluntaryStopCh := make(chan struct{})
 	monitor := &InstanceManagerMonitor{
+		logger:                  imc.logger.WithField("instance manager", im.Name),
 		Name:                    im.Name,
 		controllerID:            imc.controllerID,
 		ds:                      imc.ds,
@@ -1014,6 +1028,7 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		lock:                    &sync.Mutex{},
 		stopCh:                  stopCh,
 		done:                    false,
+		monitorVoluntaryStopCh:  monitorVoluntaryStopCh,
 		// notify monitor to update the instance map
 		updateNotification: false,
 	}
@@ -1028,6 +1043,14 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 	imc.instanceManagerMonitorMap[im.Name] = stopCh
 
 	go monitor.Run()
+
+	go func() {
+		<-monitorVoluntaryStopCh
+		imc.instanceManagerMonitorMutex.Lock()
+		delete(imc.instanceManagerMonitorMap, im.Name)
+		imc.logger.WithField("instance manager", im.Name).Debug("removed the engine from imc.instanceManagerMonitorMap")
+		imc.instanceManagerMonitorMutex.Unlock()
+	}()
 }
 
 func (imc *InstanceManagerController) stopMonitoring(im *longhorn.InstanceManager) {
@@ -1039,9 +1062,13 @@ func (imc *InstanceManagerController) stopMonitoring(im *longhorn.InstanceManage
 		logrus.Warnf("instance manager %v: stop monitoring called when there is no monitoring", im.Name)
 		return
 	}
-	stopCh <- struct{}{}
 
-	delete(imc.instanceManagerMonitorMap, im.Name)
+	select {
+	case <-stopCh:
+		// stopCh channel is already closed
+	default:
+		close(stopCh)
+	}
 
 	return
 }
@@ -1059,12 +1086,7 @@ func (imc *InstanceManagerController) updateInstanceMapForCleanup(imName string)
 	if err != nil {
 		return fmt.Errorf("failed to get instance manager %v to cleanup instance map: %v", imName, err)
 	}
-
-	for name, instance := range im.Status.Instances {
-		instance.Status.State = types.InstanceStateError
-		instance.Status.ErrorMsg = "Instance Manager errored"
-		im.Status.Instances[name] = instance
-	}
+	im.Status.Instances = map[string]types.InstanceProcess{}
 
 	if _, err := imc.ds.UpdateInstanceManagerStatus(im); err != nil {
 		return fmt.Errorf("failed to update instance map for instance manager %v: %v", imName, err)
@@ -1074,12 +1096,12 @@ func (imc *InstanceManagerController) updateInstanceMapForCleanup(imName string)
 }
 
 func (m *InstanceManagerMonitor) Run() {
-	logrus.Debugf("Start monitoring instance manager %v", m.Name)
+	m.logger.Debugf("Start monitoring instance manager %v", m.Name)
 	defer func() {
-		logrus.Debugf("Stop monitoring instance manager %v", m.Name)
+		m.logger.Debugf("Stop monitoring instance manager %v", m.Name)
 		m.instanceManagerNotifier.Close()
 		m.done = true
-		close(m.stopCh)
+		close(m.monitorVoluntaryStopCh)
 	}()
 
 	go func() {
@@ -1089,7 +1111,7 @@ func (m *InstanceManagerMonitor) Run() {
 			}
 
 			if _, err := m.instanceManagerNotifier.Recv(); err != nil {
-				logrus.Errorf("error receiving next item in engine watch: %v", err)
+				m.logger.Errorf("error receiving next item in engine watch: %v", err)
 				time.Sleep(MinPollCount * PollInterval)
 			} else {
 				m.lock.Lock()
@@ -1117,10 +1139,11 @@ func (m *InstanceManagerMonitor) Run() {
 			}
 			m.lock.Unlock()
 
-			if needUpdate {
-				if err := m.pollAndUpdateInstanceMap(); err != nil {
-					logrus.Error(err)
-				}
+			if !needUpdate {
+				continue
+			}
+			if needStop := m.pollAndUpdateInstanceMap(); needStop {
+				return
 			}
 		case <-m.stopCh:
 			return
@@ -1128,26 +1151,38 @@ func (m *InstanceManagerMonitor) Run() {
 	}
 }
 
-func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() error {
-	resp, err := m.instanceManagerUpdater.Poll()
-	if err != nil {
-		return fmt.Errorf("failed to poll instance info to update instance manager %v: %v", m.Name, err)
-	}
-
+func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 	im, err := m.ds.GetInstanceManager(m.Name)
 	if err != nil {
-		return fmt.Errorf("failed to list processes to update instance manager %v: %v", m.Name, err)
+		if datastore.ErrorIsNotFound(err) {
+			m.logger.Info("stop monitoring because the instance manager no longer exists")
+			return true
+		}
+		utilruntime.HandleError(errors.Wrapf(err, "fail to get instance manager %v for monitoring", m.Name))
+		return false
+	}
+
+	if im.Status.OwnerID != m.controllerID {
+		m.logger.Infof("stop monitoring the instance manager on this node (%v) because the instance manager has new ownerID %v", m.controllerID, im.Status.OwnerID)
+		return true
+	}
+
+	resp, err := m.instanceManagerUpdater.Poll()
+	if err != nil {
+		utilruntime.HandleError(errors.Wrapf(err, "failed to poll instance info to update instance manager %v", m.Name))
+		return false
 	}
 
 	if reflect.DeepEqual(im.Status.Instances, resp) {
-		return nil
+		return false
 	}
 	im.Status.Instances = resp
 	if _, err := m.ds.UpdateInstanceManagerStatus(im); err != nil {
-		return fmt.Errorf("failed to update instance map for instance manager %v: %v", m.Name, err)
+		utilruntime.HandleError(errors.Wrapf(err, "failed to update instance map for instance manager %v", m.Name))
+		return false
 	}
 
-	return nil
+	return false
 }
 
 func (imc *InstanceManagerController) isResponsibleFor(im *longhorn.InstanceManager) bool {

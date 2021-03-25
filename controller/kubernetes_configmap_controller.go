@@ -32,7 +32,6 @@ const (
 type KubernetesConfigMapController struct {
 	*baseController
 
-	// use as the OwnerID of the controller
 	namespace    string
 	controllerID string
 

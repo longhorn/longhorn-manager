@@ -207,12 +207,10 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return err
 	}
 	if !isResponsible {
-		// Not ours
 		return nil
 	}
 
 	if engineImage.Status.OwnerID != ic.controllerID {
-		// Claim it
 		engineImage.Status.OwnerID = ic.controllerID
 		engineImage, err = ic.ds.UpdateEngineImageStatus(engineImage)
 		if err != nil {
@@ -645,10 +643,6 @@ func (ic *EngineImageController) enqueueVolumes(volumes ...interface{}) {
 		if err != nil {
 			continue
 		}
-		// Not ours
-		if engineImage.Status.OwnerID != ic.controllerID {
-			continue
-		}
 		ic.enqueueEngineImage(engineImage)
 	}
 }
@@ -685,10 +679,6 @@ func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *met
 	if engineImage.UID != ref.UID {
 		// The controller we found with this Name is not the same one that the
 		// OwnerRef points to.
-		return
-	}
-	// Not ours
-	if engineImage.Status.OwnerID != ic.controllerID {
 		return
 	}
 	ic.enqueueEngineImage(engineImage)
@@ -821,5 +811,8 @@ func (ic *EngineImageController) isResponsibleFor(ei *longhorn.EngineImage) (boo
 		return false, err
 	}
 
-	return (isResponsible && currentNodeEngineAvailable) || (!currentOwnerEngineAvailable && currentNodeEngineAvailable), nil
+	isPreferredOwner := currentNodeEngineAvailable && isResponsible
+	continueToBeOwner := currentNodeEngineAvailable && ic.controllerID == ei.Status.OwnerID
+	requiresNewOwner := currentNodeEngineAvailable && !currentOwnerEngineAvailable
+	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
 }
