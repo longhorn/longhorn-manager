@@ -626,7 +626,7 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 		return v, nil
 	}
 
-	logrus.Infof("Volume %v expandsion from %v to %v requested", v.Name, v.Spec.Size, size)
+	logrus.Infof("Volume %v expansion from %v to %v requested", v.Name, v.Spec.Size, size)
 	v.Spec.Size = size
 
 	// Support off-line expansion only.
