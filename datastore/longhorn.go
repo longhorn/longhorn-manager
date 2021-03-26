@@ -263,16 +263,16 @@ func (s *DataStore) AnnotateAWSIAMRoleArn(controllerID, awsIAMRoleArn string) (b
 			continue
 		}
 
-		val, exist := pod.Annotations[types.AWSIAMRroleAnnotation]
+		val, exist := pod.Annotations[types.AWSIAMRoleAnnotation]
 		updateAnnotation := awsIAMRoleArn != "" && awsIAMRoleArn != val
 		deleteAnnotation := awsIAMRoleArn == "" && exist
 		if updateAnnotation {
 			if pod.Annotations == nil {
 				pod.Annotations = make(map[string]string)
 			}
-			pod.Annotations[types.AWSIAMRroleAnnotation] = awsIAMRoleArn
+			pod.Annotations[types.AWSIAMRoleAnnotation] = awsIAMRoleArn
 		} else if deleteAnnotation {
-			delete(pod.Annotations, types.AWSIAMRroleAnnotation)
+			delete(pod.Annotations, types.AWSIAMRoleAnnotation)
 		} else {
 			continue
 		}
