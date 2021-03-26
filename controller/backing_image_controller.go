@@ -223,6 +223,20 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 		return nil
 	}
 
+	// UUID is immutable once it's set.
+	// Should make sure UUID is not empty before syncing with other resources.
+	if backingImage.Status.UUID == "" {
+		backingImage.Status.UUID = util.RandomID()
+		if backingImage, err = bic.ds.UpdateBackingImageStatus(backingImage); err != nil {
+			if !apierrors.IsConflict(errors.Cause(err)) {
+				return err
+			}
+			log.WithError(err).Debugf("Requeue %v due to conflict", key)
+			bic.enqueueBackingImage(backingImage)
+			return nil
+		}
+	}
+
 	existingBackingImage := backingImage.DeepCopy()
 	defer func() {
 		if err == nil && !reflect.DeepEqual(existingBackingImage.Status, backingImage.Status) {

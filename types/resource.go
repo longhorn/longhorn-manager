@@ -499,6 +499,7 @@ type BackingImageSpec struct {
 
 type BackingImageStatus struct {
 	OwnerID              string                               `json:"ownerID"`
+	UUID                 string                               `json:"uuid"`
 	DiskDownloadStateMap map[string]BackingImageDownloadState `json:"diskDownloadStateMap"`
 	DiskLastRefAtMap     map[string]string                    `json:"diskLastRefAtMap"`
 }
