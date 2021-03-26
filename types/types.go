@@ -107,12 +107,12 @@ const (
 
 	BackupStoreTypeS3 = "s3"
 
-	AWSIAMRroleAnnotation = "iam.amazonaws.com/role"
-	AWSIAMRoleArn         = "AWS_IAM_ROLE_ARN"
-	AWSAccessKey          = "AWS_ACCESS_KEY_ID"
-	AWSSecretKey          = "AWS_SECRET_ACCESS_KEY"
-	AWSEndPoint           = "AWS_ENDPOINTS"
-	AWSCert               = "AWS_CERT"
+	AWSIAMRoleAnnotation = "iam.amazonaws.com/role"
+	AWSIAMRoleArn        = "AWS_IAM_ROLE_ARN"
+	AWSAccessKey         = "AWS_ACCESS_KEY_ID"
+	AWSSecretKey         = "AWS_SECRET_ACCESS_KEY"
+	AWSEndPoint          = "AWS_ENDPOINTS"
+	AWSCert              = "AWS_CERT"
 
 	HTTPSProxy = "HTTPS_PROXY"
 	HTTPProxy  = "HTTP_PROXY"
