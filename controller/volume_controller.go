@@ -523,7 +523,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 	if e.Status.CurrentState == types.InstanceStateUnknown {
 		if v.Status.Robustness != types.VolumeRobustnessUnknown {
 			v.Status.Robustness = types.VolumeRobustnessUnknown
-			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonUnknown, "volume %v is unknown", v.Name)
+			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonUnknown, "volume %v robustness is unknown", v.Name)
 		}
 		return nil
 	}
@@ -578,9 +578,10 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 			}
 			e.Spec.LogRequested = true
 			r.Spec.LogRequested = true
-			r.Spec.FailedAt = vc.nowHandler()
+			if r.Spec.FailedAt == "" {
+				r.Spec.FailedAt = vc.nowHandler()
+			}
 			r.Spec.DesireState = types.InstanceStateStopped
-			rs[rName] = r
 		} else if mode == types.ReplicaModeRW {
 			// record once replica became healthy, so if it
 			// failed in the future, we can tell it apart
@@ -589,20 +590,18 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 				vc.backoff.DeleteEntry(r.Name)
 				r.Spec.HealthyAt = vc.nowHandler()
 				r.Spec.RebuildRetryCount = 0
-				rs[rName] = r
 			}
 			healthyCount++
 		}
 	}
 	// If a replica failed at attaching stage,
 	// there is no record in e.Status.ReplicaModeMap
-	for rName, r := range rs {
+	for _, r := range rs {
 		if r.Spec.FailedAt == "" && r.Status.CurrentState == types.InstanceStateError {
 			e.Spec.LogRequested = true
 			r.Spec.LogRequested = true
 			r.Spec.FailedAt = vc.nowHandler()
 			r.Spec.DesireState = types.InstanceStateStopped
-			rs[rName] = r
 		}
 	}
 
