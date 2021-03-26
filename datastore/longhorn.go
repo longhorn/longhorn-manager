@@ -236,7 +236,6 @@ func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, err
 // have the correct AWS IAM role arn assigned to them based on the passed `awsIAMRoleArn`
 func (s *DataStore) AnnotateAWSIAMRoleArn(controllerID, awsIAMRoleArn string) (bool, error) {
 	update := false
-
 	selector, err := s.getManagerSelector()
 	if err != nil {
 		return update, err
@@ -277,10 +276,10 @@ func (s *DataStore) AnnotateAWSIAMRoleArn(controllerID, awsIAMRoleArn string) (b
 			continue
 		}
 
-		update = update || true
 		if _, err = s.kubeClient.CoreV1().Pods(s.namespace).Update(pod); err != nil {
 			return update, err
 		}
+		update = true
 	}
 	return update, nil
 }
