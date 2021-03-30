@@ -315,11 +315,11 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return nil, err
 	}
 
-	if isReady, err := m.CheckEngineImageReadinessForVolume(v.Spec.EngineImage, v.Name, nodeID); !isReady {
+	if isReady, err := m.ds.CheckEngineImageReadyOnAtLeastOneVolumeReplica(v.Spec.EngineImage, v.Name, nodeID); !isReady {
 		if err != nil {
 			return nil, fmt.Errorf("cannot attach volume %v with image %v: %v", v.Name, v.Spec.EngineImage, err)
 		}
-		return nil, fmt.Errorf("cannot attach volume %v with image %v because the engine image %v is not deployed on the replicas' nodes or the node that the volume is going to attach to", v.Name, v.Spec.EngineImage, v.Spec.EngineImage)
+		return nil, fmt.Errorf("cannot attach volume %v because the engine image %v is not deployed on at least one of the the replicas' nodes or the node that the volume is going to attach to", v.Name, v.Spec.EngineImage)
 	}
 
 	scheduleCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled)
@@ -824,7 +824,7 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 		return nil, err
 	}
 
-	if isReady, err := m.CheckEngineImageReadinessForVolume(image, v.Name, v.Status.CurrentNodeID); !isReady {
+	if isReady, err := m.ds.CheckEngineImageReadyOnAllVolumeReplicas(image, v.Name, v.Status.CurrentNodeID); !isReady {
 		if err != nil {
 			return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v: %v", v.Name, v.Spec.EngineImage, image, err)
 		}

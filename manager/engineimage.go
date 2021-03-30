@@ -112,11 +112,3 @@ func (m *VolumeManager) DeployEngineImage(image string) error {
 	}
 	return nil
 }
-
-func (m *VolumeManager) CheckEngineImageReadiness(image string, nodes ...string) (isReady bool, err error) {
-	return m.ds.CheckEngineImageReadiness(image, nodes...)
-}
-
-func (m *VolumeManager) CheckEngineImageReadinessForVolume(image, volumeName, nodeID string) (isReady bool, err error) {
-	return m.ds.CheckEngineImageReadinessForVolume(image, volumeName, nodeID)
-}

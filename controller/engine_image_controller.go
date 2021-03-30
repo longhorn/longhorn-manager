@@ -473,8 +473,8 @@ func (ic *EngineImageController) getVolumesForEngineImageUpgrading(volumes map[s
 			continue
 		}
 		canBeUpgraded := ic.canDoOfflineEngineImageUpgrade(v, newEngineImageResource) || ic.canDoLiveEngineImageUpgrade(v, newEngineImageResource)
-		isCurrentEIAvailable, _ := ic.ds.CheckEngineImageReadinessForVolume(v.Status.CurrentImage, v.Name, v.Status.CurrentNodeID)
-		isNewEIAvailable, _ := ic.ds.CheckEngineImageReadinessForVolume(newEngineImageResource.Spec.Image, v.Name, v.Status.CurrentNodeID)
+		isCurrentEIAvailable, _ := ic.ds.CheckEngineImageReadyOnAllVolumeReplicas(v.Status.CurrentImage, v.Name, v.Status.CurrentNodeID)
+		isNewEIAvailable, _ := ic.ds.CheckEngineImageReadyOnAllVolumeReplicas(newEngineImageResource.Spec.Image, v.Name, v.Status.CurrentNodeID)
 		validCandidate := v.Spec.EngineImage != newEngineImageResource.Spec.Image && canBeUpgraded && isCurrentEIAvailable && isNewEIAvailable
 		if validCandidate {
 			candidates[v.Status.OwnerID] = append(candidates[v.Status.OwnerID], v)
