@@ -253,7 +253,7 @@ func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.Eng
 	if e.Status.CurrentState != types.InstanceStateRunning {
 		return nil, fmt.Errorf("engine is not running")
 	}
-	if isReady, err := m.CheckEngineImageReadiness(e.Status.CurrentImage, m.currentNodeID); !isReady {
+	if isReady, err := m.ds.CheckEngineImageReadiness(e.Status.CurrentImage, m.currentNodeID); !isReady {
 		if err != nil {
 			return nil, fmt.Errorf("cannot get engine client with image %v: %v", e.Status.CurrentImage, err)
 		}

@@ -1019,8 +1019,28 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 	return true, nil
 }
 
-// CheckEngineImageReadinessForVolume checks if the IMAGE is deployed on the NODEID as well as all the volume's replicas
-func (s *DataStore) CheckEngineImageReadinessForVolume(image, volumeName, nodeID string) (isReady bool, err error) {
+// CheckEngineImageReadyOnAtLeastOneVolumeReplica checks if the IMAGE is deployed on the NODEID and on at least one of the the volume's replicas
+func (s *DataStore) CheckEngineImageReadyOnAtLeastOneVolumeReplica(image, volumeName, nodeID string) (bool, error) {
+	replicas, err := s.ListVolumeReplicas(volumeName)
+	if err != nil {
+		return false, fmt.Errorf("cannot get replicas for volume %v: %w", volumeName, err)
+	}
+
+	isReady, err := s.CheckEngineImageReadiness(image, nodeID)
+	if nodeID != "" && !isReady {
+		return isReady, err
+	}
+	for _, r := range replicas {
+		isReady, err := s.CheckEngineImageReadiness(image, r.Spec.NodeID)
+		if err != nil || isReady {
+			return isReady, err
+		}
+	}
+	return false, nil
+}
+
+// CheckEngineImageReadyOnAllVolumeReplicas checks if the IMAGE is deployed on the NODEID as well as all the volume's replicas
+func (s *DataStore) CheckEngineImageReadyOnAllVolumeReplicas(image, volumeName, nodeID string) (bool, error) {
 	replicas, err := s.ListVolumeReplicas(volumeName)
 	if err != nil {
 		return false, fmt.Errorf("cannot get replicas for volume %v: %w", volumeName, err)
