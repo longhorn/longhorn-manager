@@ -1029,11 +1029,17 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		// make sure the volume is detached before automatically salvage replicas
 		if autoSalvage && v.Status.State == types.VolumeStateDetached && !v.Status.IsStandby && !v.Status.RestoreRequired {
 			// There is no need to auto salvage (and reattach) a volume on an unavailable node
+			// If we return error we will loop forever, instead we can do auto salvage even if the volume should be detached
+			// since all auto salvage does is unset the failure state for the replicas
+			// on a single replica volume, if the replica is on a failed node, it will be skipped below
+			// and the volume will remain in the faulted state but as soon as the node of the replica comes back
+			// we can do the auto salvage operation and set the Robustness to Unknown.
+			shouldBeAttached := v.Spec.NodeID != ""
 			isNodeDownOrDeleted, err := vc.ds.IsNodeDownOrDeleted(v.Spec.NodeID)
-			if err != nil {
+			if err != nil && shouldBeAttached {
 				return err
 			}
-			if !isNodeDownOrDeleted {
+			if !isNodeDownOrDeleted || !shouldBeAttached {
 				lastFailedAt := time.Time{}
 				failedUsableReplicas := map[string]*longhorn.Replica{}
 				dataExists := false
@@ -1097,6 +1103,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 					if salvaged {
 						// remount the reattached volume later if possible
 						// For the auto-salvaged volume, `v.Status.CurrentNodeID` is empty but `v.Spec.NodeID` shouldn't be empty.
+						// There shouldn't be any problems if v.Spec.NodeID is empty, since the volume is desired to be detached
+						// so we just unset PendingNodeID.
 						v.Status.PendingNodeID = v.Spec.NodeID
 						v.Status.RemountRequestedAt = vc.nowHandler()
 						msg := fmt.Sprintf("Volume %v requested remount at %v", v.Name, v.Status.RemountRequestedAt)
