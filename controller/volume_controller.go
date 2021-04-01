@@ -2502,7 +2502,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		}
 		if migrationEngine.Spec.NodeID != "" && migrationEngine.Spec.NodeID != v.Spec.MigrationNodeID {
 			return fmt.Errorf("volume %v: engine is on node %v vs volume migration on %v",
-				v.Name, migrationEngine.Spec.NodeID, v.Spec.NodeID)
+				v.Name, migrationEngine.Spec.NodeID, v.Spec.MigrationNodeID)
 		}
 		migrationEngine.Spec.NodeID = v.Spec.MigrationNodeID
 		migrationEngine.Spec.ReplicaAddressMap = replicaAddressMap
