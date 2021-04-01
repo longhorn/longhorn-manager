@@ -35,6 +35,7 @@ const (
 	CRDEngineImageName     = "engineimages.longhorn.io"
 	CRDNodeName            = "nodes.longhorn.io"
 	CRDInstanceManagerName = "instancemanagers.longhorn.io"
+	CRDShareManagerName    = "sharemanagers.longhorn.io"
 	CRDBackingImageName    = "backingimages.longhorn.io"
 
 	LonghornNamespace = "longhorn-system"
@@ -67,6 +68,7 @@ func NewUninstallController(
 	engineImageInformer lhinformers.EngineImageInformer,
 	nodeInformer lhinformers.NodeInformer,
 	imInformer lhinformers.InstanceManagerInformer,
+	smInformer lhinformers.ShareManagerInformer,
 	backingImageInformer lhinformers.BackingImageInformer,
 	daemonSetInformer appsv1.DaemonSetInformer,
 	deploymentInformer appsv1.DeploymentInformer,
@@ -117,6 +119,10 @@ func NewUninstallController(
 	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDInstanceManagerName, metav1.GetOptions{}); err == nil {
 		imInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, imInformer.Informer().HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDShareManagerName, metav1.GetOptions{}); err == nil {
+		smInformer.Informer().AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, smInformer.Informer().HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDBackingImageName, metav1.GetOptions{}); err == nil {
 		backingImageInformer.Informer().AddEventHandler(c.controlleeHandler())
@@ -319,6 +325,13 @@ func (c *UninstallController) deleteLease() error {
 }
 
 func (c *UninstallController) deleteCRDs() (bool, error) {
+	if shareManagers, err := c.ds.ListShareManagers(); err != nil {
+		return true, err
+	} else if len(shareManagers) > 0 {
+		c.logger.Infof("Found %d share managers remaining", len(shareManagers))
+		return true, c.deleteShareManagers(shareManagers)
+	}
+
 	if volumes, err := c.ds.ListVolumes(); err != nil {
 		return true, err
 	} else if len(volumes) > 0 {
@@ -532,6 +545,37 @@ func (c *UninstallController) deleteInstanceManagers(instanceManagers map[string
 			}
 
 			if err = c.ds.RemoveFinalizerForInstanceManager(im); err != nil {
+				err = errors.Wrapf(err, "Failed to remove finalizer")
+				return
+			}
+			log.Info("Removed finalizer")
+		}
+	}
+	return
+}
+
+func (c *UninstallController) deleteShareManagers(shareManagers map[string]*longhorn.ShareManager) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "Failed to delete share managers")
+	}()
+	for _, sm := range shareManagers {
+		log := getLoggerForShareManager(c.logger, sm)
+
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if sm.DeletionTimestamp == nil {
+			if err = c.ds.DeleteShareManager(sm.Name); err != nil {
+				err = errors.Wrapf(err, "Failed to mark for deletion")
+				return
+			}
+			log.Info("Marked for deletion")
+		} else if sm.DeletionTimestamp.Before(&timeout) {
+			podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
+			if err = c.ds.DeletePod(podName); err != nil {
+				return err
+			}
+			log.Infof("Removing share manager related pod %v", podName)
+
+			if err = c.ds.RemoveFinalizerForShareManager(sm); err != nil {
 				err = errors.Wrapf(err, "Failed to remove finalizer")
 				return
 			}
