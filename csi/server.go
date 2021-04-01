@@ -114,13 +114,25 @@ func parseEndpoint(ep string) (string, string, error) {
 }
 
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	logrus.Infof("GRPC call: %s", info.FullMethod)
-	logrus.Infof("GRPC request: %+v", protosanitizer.StripSecrets(req))
+	log := logrus.StandardLogger()
+	logLevel := logrus.InfoLevel
+	switch info.FullMethod {
+	case "/csi.v1.Node/NodeGetCapabilities", "/csi.v1.Node/NodeGetVolumeStats":
+		logLevel = logrus.TraceLevel
+	default:
+		logLevel = logrus.InfoLevel
+	}
+
+	log.Logf(logLevel, "GRPC call: %s request: %+v", info.FullMethod, protosanitizer.StripSecrets(req))
 	resp, err := handler(ctx, req)
 	if err != nil {
-		logrus.Errorf("GRPC error: %v", err)
+		if logLevel == logrus.TraceLevel {
+			log.Errorf("GRPC call: %s request: %+v failed with error: %v", info.FullMethod, protosanitizer.StripSecrets(req), err)
+		} else {
+			log.Errorf("GRPC error: %v", err)
+		}
 	} else {
-		logrus.Infof("GRPC response: %+v", protosanitizer.StripSecrets(resp))
+		log.Logf(logLevel, "GRPC response: %+v", protosanitizer.StripSecrets(resp))
 	}
 	return resp, err
 }
