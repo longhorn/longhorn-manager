@@ -98,21 +98,25 @@ func writeList(conn *websocket.Conn, oldResp *client.GenericCollection, listFunc
 		return oldResp, err
 	}
 
+	resp := newResp
 	if oldResp != nil && reflect.DeepEqual(oldResp, newResp) {
-		return oldResp, nil
+		resp = &client.GenericCollection{}
 	}
-
-	conn.SetWriteDeadline(time.Now().Add(writeWait))
-	data, err := apiContext.PopulateCollection(newResp)
+	data, err := apiContext.PopulateCollection(resp)
 	if err != nil {
 		return oldResp, err
 	}
+
+	conn.SetWriteDeadline(time.Now().Add(writeWait))
 	err = conn.WriteJSON(data)
 	if err != nil {
 		return oldResp, err
 	}
 
-	return newResp, nil
+	if resp == newResp {
+		return newResp, nil
+	}
+	return oldResp, nil
 }
 
 func maybeNewTicker(d time.Duration) *time.Ticker {

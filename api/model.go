@@ -2,7 +2,6 @@ package api
 
 import (
 	"strconv"
-	"time"
 
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
@@ -63,8 +62,6 @@ type Volume struct {
 	RestoreStatus []RestoreStatus `json:"restoreStatus"`
 	PurgeStatus   []PurgeStatus   `json:"purgeStatus"`
 	RebuildStatus []RebuildStatus `json:"rebuildStatus"`
-
-	Timestamp string `json:"timestamp"`
 }
 
 type Snapshot struct {
@@ -87,8 +84,6 @@ type Setting struct {
 	Name       string                  `json:"name"`
 	Value      string                  `json:"value"`
 	Definition types.SettingDefinition `json:"definition"`
-
-	Timestamp string `json:"timestamp"`
 }
 
 type Instance struct {
@@ -130,8 +125,6 @@ type EngineImage struct {
 	Image   string `json:"image"`
 	Default bool   `json:"default"`
 	types.EngineImageStatus
-
-	Timestamp string `json:"timestamp"`
 }
 
 type BackingImage struct {
@@ -141,7 +134,6 @@ type BackingImage struct {
 	ImageURL     string            `json:"imageURL"`
 	DiskStateMap map[string]string `json:"diskStateMap"`
 
-	Timestamp         string `json:"timestamp"`
 	DeletionTimestamp string `json:"deletionTimestamp"`
 }
 
@@ -227,8 +219,6 @@ type Node struct {
 	Zone                     string                     `json:"zone"`
 	EngineManagerCPURequest  int                        `json:"engineManagerCPURequest"`
 	ReplicaManagerCPURequest int                        `json:"replicaManagerCPURequest"`
-
-	Timestamp string `json:"timestamp"`
 }
 
 type DiskInfo struct {
@@ -244,8 +234,6 @@ type Event struct {
 	client.Resource
 	Event     v1.Event `json:"event"`
 	EventType string   `json:"eventType"`
-
-	Timestamp string `json:"timestamp"`
 }
 
 type SupportBundle struct {
@@ -308,10 +296,6 @@ type RebuildStatus struct {
 	Replica      string `json:"replica"`
 	State        string `json:"state"`
 	FromReplica  string `json:"fromReplica"`
-}
-
-func generateTimestamp() string {
-	return time.Now().UTC().Format(time.RFC3339Nano)
 }
 
 type InstanceManager struct {
@@ -763,7 +747,6 @@ func snapshotListOutputSchema(snapshotList *client.Schema) {
 }
 
 func toSettingResource(setting *longhorn.Setting) *Setting {
-	timestamp := generateTimestamp()
 	return &Setting{
 		Resource: client.Resource{
 			Id:    setting.Name,
@@ -774,8 +757,6 @@ func toSettingResource(setting *longhorn.Setting) *Setting {
 		Value: setting.Value,
 
 		Definition: types.SettingDefinitions[types.SettingName(setting.Name)],
-
-		Timestamp: timestamp,
 	}
 }
 
@@ -788,7 +769,6 @@ func toSettingCollection(settings []*longhorn.Setting) *client.GenericCollection
 }
 
 func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, apiContext *api.ApiContext) *Volume {
-	timestamp := time.Now().UTC().Format(time.RFC3339Nano)
 	var ve *longhorn.Engine
 	controllers := []Controller{}
 	backups := []BackupStatus{}
@@ -976,8 +956,6 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		RestoreStatus: restoreStatus,
 		PurgeStatus:   purgeStatuses,
 		RebuildStatus: rebuildStatuses,
-
-		Timestamp: timestamp,
 	}
 
 	actions := map[string]struct{}{}
@@ -1112,7 +1090,6 @@ func toBackupCollection(bs []*engineapi.Backup) *client.GenericCollection {
 }
 
 func toEngineImageResource(ei *longhorn.EngineImage, isDefault bool) *EngineImage {
-	timestamp := generateTimestamp()
 	return &EngineImage{
 		Resource: client.Resource{
 			Id:    ei.Name,
@@ -1123,8 +1100,6 @@ func toEngineImageResource(ei *longhorn.EngineImage, isDefault bool) *EngineImag
 		Image:             ei.Spec.Image,
 		Default:           isDefault,
 		EngineImageStatus: ei.Status,
-
-		Timestamp: timestamp,
 	}
 }
 
@@ -1138,7 +1113,6 @@ func toEngineImageCollection(eis []*longhorn.EngineImage, defaultImage string) *
 }
 
 func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContext) *BackingImage {
-	timestamp := generateTimestamp()
 	deletionTimestamp := ""
 	if bi.DeletionTimestamp != nil {
 		deletionTimestamp = bi.DeletionTimestamp.String()
@@ -1162,7 +1136,6 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 		ImageURL:     bi.Spec.ImageURL,
 		DiskStateMap: diskStateMap,
 
-		Timestamp:         timestamp,
 		DeletionTimestamp: deletionTimestamp,
 	}
 	res.Actions = map[string]string{
@@ -1195,7 +1168,6 @@ func NewServer(m *manager.VolumeManager, wsc *controller.WebsocketController) *S
 }
 
 func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiContext) *Node {
-	timestamp := generateTimestamp()
 	n := &Node{
 		Resource: client.Resource{
 			Id:      node.Name,
@@ -1213,8 +1185,6 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 		Zone:                     node.Status.Zone,
 		EngineManagerCPURequest:  node.Spec.EngineManagerCPURequest,
 		ReplicaManagerCPURequest: node.Spec.ReplicaManagerCPURequest,
-
-		Timestamp: timestamp,
 	}
 
 	disks := map[string]DiskInfo{}
@@ -1245,7 +1215,6 @@ func toNodeCollection(nodeList []*longhorn.Node, nodeIPMap map[string]string, ap
 }
 
 func toEventResource(event v1.Event) *Event {
-	timestamp := generateTimestamp()
 	e := &Event{
 		Resource: client.Resource{
 			Id:    event.Name,
@@ -1254,8 +1223,6 @@ func toEventResource(event v1.Event) *Event {
 		},
 		Event:     event,
 		EventType: event.Type,
-
-		Timestamp: timestamp,
 	}
 	return e
 }
