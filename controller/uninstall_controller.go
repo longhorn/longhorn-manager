@@ -325,13 +325,6 @@ func (c *UninstallController) deleteLease() error {
 }
 
 func (c *UninstallController) deleteCRDs() (bool, error) {
-	if shareManagers, err := c.ds.ListShareManagers(); err != nil {
-		return true, err
-	} else if len(shareManagers) > 0 {
-		c.logger.Infof("Found %d share managers remaining", len(shareManagers))
-		return true, c.deleteShareManagers(shareManagers)
-	}
-
 	if volumes, err := c.ds.ListVolumes(); err != nil {
 		return true, err
 	} else if len(volumes) > 0 {
@@ -372,6 +365,13 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 	} else if len(backingImages) > 0 {
 		c.logger.Infof("Found %d backingimages remaining", len(backingImages))
 		return true, c.deleteBackingImages(backingImages)
+	}
+
+	if shareManagers, err := c.ds.ListShareManagers(); err != nil {
+		return true, err
+	} else if len(shareManagers) > 0 {
+		c.logger.Infof("Found %d share managers remaining", len(shareManagers))
+		return true, c.deleteShareManagers(shareManagers)
 	}
 
 	if nodes, err := c.ds.ListNodes(); err != nil {
