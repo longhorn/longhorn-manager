@@ -132,6 +132,7 @@ func uninstall(c *cli.Context) error {
 		engineImageInformer,
 		nodeInformer,
 		imInformer,
+		smInformer,
 		backingImageInformer,
 		daemonSetInformer,
 		deploymentInformer,
