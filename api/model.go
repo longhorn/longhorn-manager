@@ -130,9 +130,10 @@ type EngineImage struct {
 type BackingImage struct {
 	client.Resource
 
-	Name         string            `json:"name"`
-	ImageURL     string            `json:"imageURL"`
-	DiskStateMap map[string]string `json:"diskStateMap"`
+	Name                string            `json:"name"`
+	ImageURL            string            `json:"imageURL"`
+	DiskStateMap        map[string]string `json:"diskStateMap"`
+	DownloadProgressMap map[string]int    `json:"downloadProgressMap"`
 
 	DeletionTimestamp string `json:"deletionTimestamp"`
 }
@@ -1126,9 +1127,10 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 			Type:  "backingImage",
 			Links: map[string]string{},
 		},
-		Name:         bi.Name,
-		ImageURL:     bi.Spec.ImageURL,
-		DiskStateMap: diskStateMap,
+		Name:                bi.Name,
+		ImageURL:            bi.Spec.ImageURL,
+		DiskStateMap:        diskStateMap,
+		DownloadProgressMap: bi.Status.DiskDownloadProgressMap,
 
 		DeletionTimestamp: deletionTimestamp,
 	}
