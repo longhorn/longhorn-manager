@@ -100,7 +100,10 @@ func writeList(conn *websocket.Conn, oldResp *client.GenericCollection, listFunc
 
 	resp := newResp
 	if oldResp != nil && reflect.DeepEqual(oldResp, newResp) {
-		resp = &client.GenericCollection{}
+		resp = &client.GenericCollection{
+			Data:       nil,
+			Collection: client.Collection{ResourceType: "websocket"},
+		}
 	}
 	data, err := apiContext.PopulateCollection(resp)
 	if err != nil {
