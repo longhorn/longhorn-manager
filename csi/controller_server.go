@@ -309,8 +309,12 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Error(codes.InvalidArgument, msg)
 	}
 
-	// TODO: JM if the node is not ready we need to return `codes.NotFound`
-	//  should be handled by the processing of the api return codes
+	_, err := cs.apiClient.Node.ById(req.GetNodeId())
+	if err != nil {
+		msg := fmt.Sprintf("ControllerPublishVolume: the node %s does not exist", req.GetNodeId())
+		logrus.Warn(msg)
+		return nil, status.Error(codes.NotFound, msg)
+	}
 
 	volume, err := cs.apiClient.Volume.ById(req.GetVolumeId())
 	if err != nil {
