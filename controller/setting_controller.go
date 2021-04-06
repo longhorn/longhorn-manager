@@ -353,6 +353,11 @@ func (sc *SettingController) updateTaintToleration() error {
 		return errors.Wrapf(err, "failed to list share manager pods for toleration update")
 	}
 
+	bimPodList, err := sc.ds.ListBackingImageManagerPods()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list backing image manager pods for toleration update")
+	}
+
 	for _, dp := range deploymentList {
 		lastAppliedTolerationsList, err := getLastAppliedTolerationsList(dp)
 		if err != nil {
@@ -380,6 +385,7 @@ func (sc *SettingController) updateTaintToleration() error {
 	}
 
 	pods := append(imPodList, smPodList...)
+	pods = append(pods, bimPodList...)
 	for _, pod := range pods {
 		lastAppliedTolerations, err := getLastAppliedTolerationsList(pod)
 		if err != nil {
@@ -475,7 +481,12 @@ func (sc *SettingController) updatePriorityClass() error {
 
 	smPodList, err := sc.ds.ListShareManagerPods()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list share manager pods for toleration update")
+		return errors.Wrapf(err, "failed to list share manager pods for priority class update")
+	}
+
+	bimPodList, err := sc.ds.ListBackingImageManagerPods()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list backing image manager pods for priority class update")
 	}
 
 	for _, dp := range deploymentList {
@@ -498,6 +509,7 @@ func (sc *SettingController) updatePriorityClass() error {
 	}
 
 	pods := append(imPodList, smPodList...)
+	pods = append(pods, bimPodList...)
 	for _, pod := range pods {
 		if pod.Spec.PriorityClassName == newPriorityClass {
 			continue
