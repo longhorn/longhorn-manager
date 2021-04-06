@@ -23,8 +23,6 @@ type Node struct {
 
 	Tags []string `json:"tags,omitempty" yaml:"tags,omitempty"`
 
-	Timestamp string `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
-
 	Zone string `json:"zone,omitempty" yaml:"zone,omitempty"`
 }
 

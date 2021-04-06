@@ -14,8 +14,6 @@ type BackingImage struct {
 	ImageURL string `json:"imageURL,omitempty" yaml:"image_url,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
-
-	Timestamp string `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
 }
 
 type BackingImageCollection struct {
