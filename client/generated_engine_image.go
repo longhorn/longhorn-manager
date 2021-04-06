@@ -41,8 +41,6 @@ type EngineImage struct {
 
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
 
-	Timestamp string `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
-
 	Version string `json:"version,omitempty" yaml:"version,omitempty"`
 }
 

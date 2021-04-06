@@ -78,8 +78,6 @@ type Volume struct {
 	Standby bool `json:"standby,omitempty" yaml:"standby,omitempty"`
 
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
-
-	Timestamp string `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
 }
 
 type VolumeCollection struct {
