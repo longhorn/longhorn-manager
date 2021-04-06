@@ -19,6 +19,8 @@ type BackupVolume struct {
 
 	DataStored string `json:"dataStored,omitempty" yaml:"data_stored,omitempty"`
 
+	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+
 	LastBackupAt string `json:"lastBackupAt,omitempty" yaml:"last_backup_at,omitempty"`
 
 	LastBackupName string `json:"lastBackupName,omitempty" yaml:"last_backup_name,omitempty"`
