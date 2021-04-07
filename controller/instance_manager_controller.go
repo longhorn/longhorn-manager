@@ -743,13 +743,11 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.InstanceManager) error {
 	log := getLoggerForInstanceManager(imc.logger, im)
 	im.Status.IP = ""
+	if len(im.Status.Instances) > 0 {
+		im.Status.Instances = map[string]types.InstanceProcess{}
+	}
 	if imc.isMonitoring(im.Name) {
 		imc.stopMonitoring(im)
-	}
-
-	// Need to update the instances before deleting pod.
-	if err := imc.updateInstanceMapForCleanup(im.Name); err != nil {
-		logrus.Errorf("failed to mark existing instances to error when stopping instance manager monitor: %v", err)
 	}
 
 	pod, err := imc.ds.GetPod(im.Name)
@@ -760,7 +758,7 @@ func (imc *InstanceManagerController) cleanupInstanceManager(im *longhorn.Instan
 		if err := imc.ds.DeletePod(pod.Name); err != nil {
 			return err
 		}
-		log.Warnf("Deleted instance manager pod %v for instance manager %v", im.Name, im.Status.CurrentState)
+		log.Warnf("Deleted instance manager pod %v because the instance manager has CurrentState %v", pod.Name, im.Status.CurrentState)
 	}
 
 	return nil
@@ -1071,20 +1069,6 @@ func (imc *InstanceManagerController) isMonitoring(imName string) bool {
 
 	_, ok := imc.instanceManagerMonitorMap[imName]
 	return ok
-}
-
-func (imc *InstanceManagerController) updateInstanceMapForCleanup(imName string) error {
-	im, err := imc.ds.GetInstanceManager(imName)
-	if err != nil {
-		return fmt.Errorf("failed to get instance manager %v to cleanup instance map: %v", imName, err)
-	}
-	im.Status.Instances = map[string]types.InstanceProcess{}
-
-	if _, err := imc.ds.UpdateInstanceManagerStatus(im); err != nil {
-		return fmt.Errorf("failed to update instance map for instance manager %v: %v", imName, err)
-	}
-
-	return nil
 }
 
 func (m *InstanceManagerMonitor) Run() {
