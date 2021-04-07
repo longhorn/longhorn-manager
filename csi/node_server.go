@@ -184,7 +184,7 @@ func (ns *NodeServer) nodePublishSharedVolume(volumeName, shareEndpoint, targetP
 		"intr",
 		"timeo=7",
 		"retrans=3",
-		// "clientaddr=" // TODO: try to set the client adress of the mount to the ip of the pod that is consuming the volume
+		// "clientaddr=" // TODO: try to set the client address of the mount to the ip of the pod that is consuming the volume
 	}
 
 	if err := mounter.Mount(export, targetPath, fsType, mountOptions); err != nil {

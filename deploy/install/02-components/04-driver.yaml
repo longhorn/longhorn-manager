@@ -46,7 +46,7 @@ spec:
           #- name: KUBELET_ROOT_DIR
           #  value: /var/lib/rancher/k3s/agent/kubelet
           # For AirGap Installation
-          # Replace PREFIX with your private registery
+          # Replace PREFIX with your private registry
           #- name: CSI_ATTACHER_IMAGE
           #  value: PREFIX/csi-attacher:v2.2.1-lh1
           #- name: CSI_PROVISIONER_IMAGE

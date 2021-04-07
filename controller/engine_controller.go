@@ -738,7 +738,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 				case types.ReplicaModeWO:
 					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilding, "Detected rebuilding replica %v (%v)", replica, addr)
 				case types.ReplicaModeRW:
-					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilded, "Detected replica %v (%v) has been rebuilded", replica, addr)
+					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilded, "Detected replica %v (%v) has been rebuilt", replica, addr)
 				default:
 					m.logger.Errorf("Invalid engine replica mode %v", r.Mode)
 				}
@@ -1312,7 +1312,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 		// Replica rebuild succeeded, clear Backoff.
 		ec.backoff.DeleteEntry(e.Name)
 		ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilded,
-			"Replica %v with Address %v has been rebuilded for volume %v", replica, addr, e.Spec.VolumeName)
+			"Replica %v with Address %v has been rebuilt for volume %v", replica, addr, e.Spec.VolumeName)
 
 		autoCleanupSystemGeneratedSnapshot, err := ec.ds.GetSettingAsBool(types.SettingNameAutoCleanupSystemGeneratedSnapshot)
 		if err != nil {

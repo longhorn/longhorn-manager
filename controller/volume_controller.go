@@ -1340,7 +1340,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			if v.Spec.Size == e.Status.CurrentSize {
 				if v.Spec.Frontend == types.VolumeFrontendBlockDev {
 					log.Info("Prepare to start frontend and expand the file system for volume")
-					// Here is the exception that the fronend is enabled but the volume is auto attached.
+					// Here is the exception that the frontend is enabled but the volume is auto attached.
 					v.Status.FrontendDisabled = false
 					e.Spec.DisableFrontend = false
 					// Wait for the frontend to be up after e.Spec.DisableFrontend getting changed.

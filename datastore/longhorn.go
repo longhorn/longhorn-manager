@@ -2041,7 +2041,7 @@ func verifyCreation(name, kind string, getMethod func(name string) (runtime.Obje
 		time.Sleep(VerificationRetryInterval)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("Unable to verify the existance of newly created %s %s: %v", kind, name, err)
+		return nil, fmt.Errorf("Unable to verify the existence of newly created %s %s: %v", kind, name, err)
 	}
 	return ret, nil
 }
@@ -2076,7 +2076,7 @@ func verifyUpdate(name string, obj runtime.Object, getMethod func(name string) (
 	}
 }
 
-// resourceVersionAtLeast depends on the Kubernetes internal resource version implmentation
+// resourceVersionAtLeast depends on the Kubernetes internal resource version implementation
 // See https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
 func resourceVersionAtLeast(curr, min string) bool {
 	// skip unit testing code

@@ -261,7 +261,7 @@ func (e *Engine) SnapshotBackup(snapName, backupTarget, backingImageName, backin
 	}
 	args = append(args, snapName)
 
-	// get environement variables if backup for s3
+	// get environment variables if backup for s3
 	envs, err := getBackupCredentialEnv(backupTarget, credential)
 	if err != nil {
 		return "", err
@@ -295,7 +295,7 @@ func (e *Engine) SnapshotBackupStatus() (map[string]*types.BackupStatus, error) 
 func (e *Engine) BackupRestore(backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error {
 	backup := GetBackupURL(backupTarget, backupName, backupVolume)
 
-	// get environement variables if backup for s3
+	// get environment variables if backup for s3
 	envs, err := getBackupCredentialEnv(backupTarget, credential)
 	if err != nil {
 		return err

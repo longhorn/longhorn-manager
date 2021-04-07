@@ -132,7 +132,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return rsp, nil
 	}
 
-	// irregardless of the used storage class, if this is requested in rwx mode
+	// regardless of the used storage class, if this is requested in rwx mode
 	// we need to mark the volume as a shared volume
 	for _, cap := range volumeCaps {
 		if requiresSharedAccess(nil, cap) {
