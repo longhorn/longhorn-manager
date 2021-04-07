@@ -271,7 +271,7 @@ func (s *DataStore) UpdateDaemonSet(obj *appsv1.DaemonSet) (*appsv1.DaemonSet, e
 }
 
 // DeleteDaemonSet deletes DaemonSet for the given name and namespace.
-// The dependents will be deleted in the forground
+// The dependents will be deleted in the foreground
 func (s *DataStore) DeleteDaemonSet(name string) error {
 	propagation := metav1.DeletePropagationForeground
 	return s.kubeClient.AppsV1().DaemonSets(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
@@ -301,7 +301,7 @@ func (s *DataStore) UpdateDeployment(obj *appsv1.Deployment) (*appsv1.Deployment
 }
 
 // DeleteDeployment deletes Deployment for the given name and namespace.
-// The dependents will be deleted in the forground
+// The dependents will be deleted in the foreground
 func (s *DataStore) DeleteDeployment(name string) error {
 	propagation := metav1.DeletePropagationForeground
 	return s.kubeClient.AppsV1().Deployments(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
