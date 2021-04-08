@@ -768,7 +768,7 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 					VolumeMounts: []v1.VolumeMount{
 						{
 							Name:      "disk-path",
-							MountPath: bimtypes.DiskPath,
+							MountPath: bimtypes.DiskPathInContainer,
 						},
 					},
 				},

@@ -6,8 +6,7 @@ import (
 
 const (
 	BackingImageDirectoryName = "backing-images"
-	DiskPath                  = "/data/"
-	WorkDirectory             = DiskPath + BackingImageDirectoryName + "/"
+	DiskPathInContainer       = "/data/"
 
 	DefaultPort = 8000
 
