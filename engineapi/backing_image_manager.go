@@ -124,41 +124,6 @@ func (c *BackingImageManagerClient) List() (map[string]types.BackingImageFileInf
 	return result, nil
 }
 
-func (c *BackingImageManagerClient) StartOwnershipTransfer() (map[string]types.BackingImageFileInfo, error) {
-	if err := CheckBackingImageManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
-		return nil, err
-	}
-	resp, err := c.grpcClient.OwnershipTransferStart()
-	if err != nil {
-		return nil, err
-	}
-
-	readyBackingImages := map[string]types.BackingImageFileInfo{}
-	for biName, biInfo := range resp {
-		readyBackingImages[biName] = *c.parseBackingImageFileInfo(biInfo)
-	}
-	return readyBackingImages, nil
-}
-
-func (c *BackingImageManagerClient) ConfirmOwnershipTransfer(readyBackingImages map[string]types.BackingImageFileInfo) error {
-	if err := CheckBackingImageManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
-		return err
-	}
-	input := map[string]*bimapi.BackingImage{}
-	for biName, biInfo := range readyBackingImages {
-		input[biName] = &bimapi.BackingImage{
-			Name: biName,
-			URL:  biInfo.URL,
-			UUID: biInfo.UUID,
-			Size: biInfo.Size,
-			Status: bimapi.BackingImageStatus{
-				State: string(biInfo.State),
-			},
-		}
-	}
-	return c.grpcClient.OwnershipTransferConfirm(input)
-}
-
 func (c *BackingImageManagerClient) Watch() (*bimapi.BackingImageStream, error) {
 	if err := CheckBackingImageManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
