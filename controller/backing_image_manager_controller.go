@@ -467,18 +467,20 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 		bim.Status.APIMinVersion = engineapi.UnknownBackingImageManagerAPIVersion
 	}
 
-	if bim.Status.CurrentState == types.BackingImageManagerStateRunning {
-		if err := engineapi.CheckBackingImageManagerCompatibilty(bim.Status.APIMinVersion, bim.Status.APIVersion); err != nil {
-			log.Debug("BackingImageManagerController will skip monitoring incompatible backing image manager")
-			return nil
-		}
-		if !c.isMonitoring(bim.Name) {
-			c.startMonitoring(bim)
-		}
-	} else {
-		if c.isMonitoring(bim.Name) {
-			c.stopMonitoring(bim.Name)
-		}
+	// It's meaningless to start or monitor a pod for an old manager
+	// since it will cleaned up immediately.
+	defaultImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
+	if err != nil {
+		return err
+	}
+	if bim.Spec.Image != defaultImage {
+		return nil
+	}
+
+	if bim.Status.CurrentState == types.BackingImageManagerStateRunning && !c.isMonitoring(bim.Name) {
+		c.startMonitoring(bim)
+	} else if bim.Status.CurrentState != types.BackingImageManagerStateRunning && c.isMonitoring(bim.Name) {
+		c.stopMonitoring(bim.Name)
 	}
 
 	// Delete and restart backing image manager pod.
@@ -490,16 +492,6 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 			file.State = types.BackingImageDownloadStateUnknown
 			file.Message = "Backing image manager pod is not running"
 			bim.Status.BackingImageFileMap[name] = file
-		}
-
-		// It's meaningless to start a pod for an old manager.
-		// Since there won't be pull or sync calls sent to the old pod, the pod always contains no file and handle nothing.
-		defaultImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
-		if err != nil {
-			return err
-		}
-		if bim.Spec.Image != defaultImage {
-			return nil
 		}
 
 		pod, err := c.ds.GetPod(bim.Name)
@@ -552,12 +544,6 @@ func (c *BackingImageManagerController) handleBackingImageFiles(bim *longhorn.Ba
 		return err
 	}
 
-	// The default manager will take over
-	// the existing file ownerships from old managers.
-	if err := c.transferBackingImageOwnerships(bim, cli, log); err != nil {
-		return err
-	}
-
 	if err := c.downloadBackingImages(bim, cli, log); err != nil {
 		return err
 	}
@@ -587,83 +573,6 @@ func (c *BackingImageManagerController) deleteInvalidBackingImages(bim *longhorn
 		delete(bim.Status.BackingImageFileMap, biName)
 		log.Debugf("Deleted the file for invalid backing image %v", biName)
 		c.eventRecorder.Eventf(bim, v1.EventTypeNormal, EventReasonDelete, "Deleted backing image %v in disk %v on node %v", biName, bim.Spec.DiskUUID, bim.Spec.NodeID)
-	}
-
-	return nil
-}
-
-func (c *BackingImageManagerController) transferBackingImageOwnerships(currentBIM *longhorn.BackingImageManager, cli *engineapi.BackingImageManagerClient, log logrus.FieldLogger) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "failed to transfer backing image ownerships to default manager")
-	}()
-
-	bimMap, err := c.ds.ListBackingImageManagersByDiskUUID(currentBIM.Spec.DiskUUID)
-	if err != nil {
-		return err
-	}
-	if len(bimMap) <= 1 {
-		return nil
-	}
-
-	// Need to refresh the status after the ownership transferring.
-	// Otherwise, the controller will wrongly send pull or sync requests based on
-	// the expired backing image file map in the status.
-	// But to make sure the previous modifications in the current sync loop won't be overwritten,
-	// the controller needs to flush the modifications before the ownership transferring.
-	currentBIM, err = c.ds.UpdateBackingImageManagerStatus(currentBIM)
-	if err != nil {
-		return errors.Wrapf(err, "failed to update status before transferring")
-	}
-	existingBIM := currentBIM.DeepCopy()
-
-	for _, bim := range bimMap {
-		if bim.Name == currentBIM.Name {
-			continue
-		}
-		if bim.DeletionTimestamp != nil {
-			continue
-		}
-		if bim.Status.CurrentState != types.BackingImageManagerStateRunning || bim.Status.IP == "" {
-			continue
-		}
-		if err := engineapi.CheckBackingImageManagerCompatibilty(bim.Status.APIMinVersion, bim.Status.APIVersion); err != nil {
-			continue
-		}
-		if len(bim.Status.BackingImageFileMap) == 0 {
-			continue
-		}
-
-		oldCli, err := engineapi.NewBackingImageManagerClient(bim)
-		if err != nil {
-			return err
-		}
-		log.Infof("Start to transfer backing image ownerships from old manager %v, BackingImageFileMap: %+v", bim.Name, bim.Status.BackingImageFileMap)
-		resp, err := oldCli.StartOwnershipTransfer()
-		if err != nil {
-			return err
-		}
-		if len(resp) == 0 {
-			log.Infof("Skip transferring backing image ownerships since old manager %v is empty", bim.Name)
-			continue
-		}
-		if err := cli.ConfirmOwnershipTransfer(resp); err != nil {
-			return err
-		}
-		if err := oldCli.ConfirmOwnershipTransfer(map[string]types.BackingImageFileInfo{}); err != nil {
-			return err
-		}
-		log.Infof("Transferred backing image ownerships from old manager %v, transferred backing images: %+v", bim.Name, resp)
-	}
-
-	resp, err := cli.List()
-	if err != nil {
-		return err
-	}
-	currentBIM.Status.BackingImageFileMap = resp
-	if !reflect.DeepEqual(existingBIM.Status, currentBIM.Status) {
-		if currentBIM, err = c.ds.UpdateBackingImageManagerStatus(currentBIM); err != nil {
-			return errors.Wrapf(err, "failed to update status after transferring")
-		}
 	}
 
 	return nil

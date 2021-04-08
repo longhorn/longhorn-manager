@@ -21,7 +21,6 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -291,21 +290,9 @@ func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.Back
 			continue
 		}
 
-		// Directly clean up incompatible backing image managers since there is no way to do file ownership transferring.
-		if bim.Status.APIVersion != engineapi.UnknownBackingImageManagerAPIVersion {
-			if err := engineapi.CheckBackingImageManagerCompatibilty(bim.Status.APIMinVersion, bim.Status.APIVersion); err != nil {
-				log.WithField("backingImageManager", bim.Name).Info("Start to delete incompatible backing image manager")
-				if err := bic.ds.DeleteBackingImageManager(bim.Name); err != nil && !apierrors.IsNotFound(err) {
-					return err
-				}
-				log.WithField("backingImageManager", bim.Name).Info("Deleting incompatible image manager")
-				bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonDelete, "delete incompatible backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
-				continue
-			}
-		}
-
-		// Directly clean up error empty old managers
-		if bim.Spec.Image != defaultImage && (bim.Status.CurrentState == types.BackingImageManagerStateError || len(bim.Status.BackingImageFileMap) == 0) {
+		// Directly clean up old backing image managers (including incompatible managers).
+		// New backing image managers can detect and reuse the existing backing image files if necessary.
+		if bim.Spec.Image != defaultImage {
 			log.WithField("backingImageManager", bim.Name).Info("Start to delete old backing image manager")
 			if err := bic.ds.DeleteBackingImageManager(bim.Name); err != nil && !apierrors.IsNotFound(err) {
 				return err
@@ -328,9 +315,11 @@ func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.Back
 		}
 
 		// The current backing image doesn't require this manager any longer, or the entry in backing image manager doesn't match the backing image uuid.
-
-		// If the current backing image will be the last removed one for the backing image manager, directly delete the manager instead.
-		if len(bim.Spec.BackingImages) == 1 {
+		delete(bim.Spec.BackingImages, bi.Name)
+		if bim, err = bic.ds.UpdateBackingImageManager(bim); err != nil {
+			return err
+		}
+		if len(bim.Spec.BackingImages) == 0 {
 			log.WithField("backingImageManager", bim.Name).Info("Start to delete unused backing image manager")
 			if err := bic.ds.DeleteBackingImageManager(bim.Name); err != nil && !apierrors.IsNotFound(err) {
 				return err
@@ -338,11 +327,6 @@ func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.Back
 			log.WithField("backingImageManager", bim.Name).Info("Deleting unused backing image manager")
 			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonDelete, "delete unused backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
 			continue
-		}
-		// Otherwise removing the current backing image from this backing image manager.
-		delete(bim.Spec.BackingImages, bi.Name)
-		if bim, err = bic.ds.UpdateBackingImageManager(bim); err != nil {
-			return err
 		}
 	}
 
