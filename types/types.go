@@ -311,10 +311,15 @@ func GetShareManagerLabels(name, image string) map[string]string {
 	return labels
 }
 
+func GetBackingImageLabels() map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelBackingImage
+	return labels
+}
+
 func GetBackingImageManagerLabels(nodeID, diskUUID string) map[string]string {
-	labels := map[string]string{
-		GetLonghornLabelComponentKey(): LonghornLabelBackingImageManager,
-	}
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelBackingImageManager
 	if diskUUID != "" {
 		labels[LonghornDiskUUIDKey] = diskUUID
 	}

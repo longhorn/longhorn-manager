@@ -41,7 +41,8 @@ func (m *VolumeManager) CreateBackingImage(name, url string) (*longhorn.BackingI
 
 	bi := &longhorn.BackingImage{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:   name,
+			Labels: types.GetBackingImageLabels(),
 		},
 		Spec: types.BackingImageSpec{
 			ImageURL: url,
