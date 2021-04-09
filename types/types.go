@@ -61,6 +61,7 @@ const (
 	LonghornLabelEngineImage          = "engine-image"
 	LonghornLabelInstanceManager      = "instance-manager"
 	LonghornLabelNode                 = "node"
+	LonghornLabelDiskUUID             = "disk-uuid"
 	LonghornLabelInstanceManagerType  = "instance-manager-type"
 	LonghornLabelInstanceManagerImage = "instance-manager-image"
 	LonghornLabelVolume               = "longhornvolume"
@@ -321,10 +322,10 @@ func GetBackingImageManagerLabels(nodeID, diskUUID string) map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelBackingImageManager
 	if diskUUID != "" {
-		labels[LonghornDiskUUIDKey] = diskUUID
+		labels[GetLonghornLabelKey(LonghornLabelDiskUUID)] = diskUUID
 	}
 	if nodeID != "" {
-		labels[LonghornNodeKey] = nodeID
+		labels[GetLonghornLabelKey(LonghornLabelNode)] = nodeID
 	}
 	return labels
 }
