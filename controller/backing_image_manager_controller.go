@@ -433,7 +433,7 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 				log.Errorf("Backing image manager is state %v but the related pod container not ready, will update to state %v", types.BackingImageManagerStateRunning, types.BackingImageManagerStateError)
 				c.eventRecorder.Eventf(bim, v1.EventTypeWarning, EventReasonUpdate, "Backing image manager is state %v but the related pod container not ready, will update to state %v", types.BackingImageManagerStateRunning, types.BackingImageManagerStateError)
 				bim.Status.CurrentState = types.BackingImageManagerStateError
-			} else if bim.Status.CurrentState != types.BackingImageManagerStateRunning {
+			} else if isReady && bim.Status.CurrentState != types.BackingImageManagerStateRunning {
 				log.Infof("Backing image manager becomes state %v", types.BackingImageManagerStateRunning)
 				c.eventRecorder.Eventf(bim, v1.EventTypeNormal, EventReasonUpdate, "Backing image manager becomes state %v", types.BackingImageManagerStateRunning)
 				bim.Status.CurrentState = types.BackingImageManagerStateRunning
