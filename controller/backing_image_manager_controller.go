@@ -271,13 +271,6 @@ func (c *BackingImageManagerController) syncBackingImageManager(key string) (err
 		if err := c.cleanupBackingImageManager(bim); err != nil {
 			return err
 		}
-		pod, err := c.ds.GetPod(bim.Name)
-		if err != nil {
-			return err
-		}
-		if pod != nil {
-			return nil
-		}
 		return c.ds.RemoveFinalizerForBackingImageManager(bim)
 	}
 
