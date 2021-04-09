@@ -1193,10 +1193,10 @@ func (s *DataStore) CreateBackingImageManager(backingImageManager *longhorn.Back
 	if err := util.AddFinalizer(longhornFinalizerKey, backingImageManager); err != nil {
 		return nil, err
 	}
-	if err := tagNodeLabel(backingImageManager.Spec.NodeID, backingImageManager); err != nil {
+	if err := tagLonghornNodeLabel(backingImageManager.Spec.NodeID, backingImageManager); err != nil {
 		return nil, err
 	}
-	if err := tagDiskUUIDLabel(backingImageManager.Spec.DiskUUID, backingImageManager); err != nil {
+	if err := tagLonghornDiskUUIDLabel(backingImageManager.Spec.DiskUUID, backingImageManager); err != nil {
 		return nil, err
 	}
 
@@ -1339,7 +1339,11 @@ func (s *DataStore) ListBackingImageManagersByNode(nodeName string) (map[string]
 // ListBackingImageManagersByDiskUUID gets a list of BackingImageManager
 // in a specific disk with the given namespace.
 func (s *DataStore) ListBackingImageManagersByDiskUUID(diskUUID string) (map[string]*longhorn.BackingImageManager, error) {
-	diskSelector, err := getDiskUUIDSelector(diskUUID)
+	diskSelector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			types.GetLonghornLabelKey(types.LonghornLabelDiskUUID): diskUUID,
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1768,17 +1772,13 @@ func (s *DataStore) ListReplicasByNode(name string) (map[string][]*longhorn.Repl
 	return replicaDiskMap, nil
 }
 
-func getDiskUUIDSelector(uuid string) (labels.Selector, error) {
-	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+// ListReplicasByDiskUUID gets a list of Replicas on a specific disk the given namespace.
+func (s *DataStore) ListReplicasByDiskUUID(uuid string) ([]*longhorn.Replica, error) {
+	diskSelector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: map[string]string{
 			types.LonghornDiskUUIDKey: uuid,
 		},
 	})
-}
-
-// ListReplicasByDiskUUID gets a list of Replicas on a specific disk the given namespace.
-func (s *DataStore) ListReplicasByDiskUUID(uuid string) ([]*longhorn.Replica, error) {
-	diskSelector, err := getDiskUUIDSelector(uuid)
 	if err != nil {
 		return nil, err
 	}
@@ -1841,6 +1841,42 @@ func tagDiskUUIDLabel(diskUUID string, obj runtime.Object) error {
 		labels = map[string]string{}
 	}
 	labels[types.LonghornDiskUUIDKey] = diskUUID
+	metadata.SetLabels(labels)
+	return nil
+}
+
+// tagLonghornNodeLabel fixes the new label `longhorn.io/node` for object.
+// It can replace func `tagNodeLabel` if the old label `longhornnode` is
+// deprecated.
+func tagLonghornNodeLabel(nodeID string, obj runtime.Object) error {
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[types.GetLonghornLabelKey(types.LonghornLabelNode)] = nodeID
+	metadata.SetLabels(labels)
+	return nil
+}
+
+// tagLonghornDiskUUIDLabel fixes the new label `longhorn.io/disk-uuid` for
+// object. It can replace func `tagDiskUUIDLabel` if the old label
+// `longhorndiskuuid` is deprecated.
+func tagLonghornDiskUUIDLabel(diskUUID string, obj runtime.Object) error {
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[types.GetLonghornLabelKey(types.LonghornLabelDiskUUID)] = diskUUID
 	metadata.SetLabels(labels)
 	return nil
 }
