@@ -821,10 +821,8 @@ func isBackingImageManagerPod(obj interface{}) bool {
 		}
 	}
 
-	for _, con := range pod.Spec.Containers {
-		if con.Name == BackingImageManagerPodContainerName {
-			return true
-		}
+	if pod.Labels[types.GetLonghornLabelComponentKey()] == types.LonghornLabelBackingImageManager {
+		return true
 	}
 	return false
 }

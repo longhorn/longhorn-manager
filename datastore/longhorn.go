@@ -1227,10 +1227,10 @@ func (s *DataStore) UpdateBackingImageManager(backingImageManager *longhorn.Back
 	if err := util.AddFinalizer(longhornFinalizerKey, backingImageManager); err != nil {
 		return nil, err
 	}
-	if err := tagNodeLabel(backingImageManager.Spec.NodeID, backingImageManager); err != nil {
+	if err := tagLonghornNodeLabel(backingImageManager.Spec.NodeID, backingImageManager); err != nil {
 		return nil, err
 	}
-	if err := tagDiskUUIDLabel(backingImageManager.Spec.DiskUUID, backingImageManager); err != nil {
+	if err := tagLonghornDiskUUIDLabel(backingImageManager.Spec.DiskUUID, backingImageManager); err != nil {
 		return nil, err
 	}
 
