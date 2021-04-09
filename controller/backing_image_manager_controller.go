@@ -670,7 +670,9 @@ func (c *BackingImageManagerController) isEligibleForPulling(currentBIM *longhor
 	if err != nil {
 		return false, err
 	}
-	readyCandidateNames := []string{}
+
+	candidateChecksumMap := map[string]string{}
+	candidateChecksumList := []string{}
 	for bimName, bim := range defaultBIMs {
 		if _, exists := bim.Spec.BackingImages[biName]; !exists {
 			continue
@@ -682,10 +684,12 @@ func (c *BackingImageManagerController) isEligibleForPulling(currentBIM *longhor
 		if isDownOrDeleted {
 			continue
 		}
-		readyCandidateNames = append(readyCandidateNames, bimName)
+		cksum := util.GetStringChecksum(biName + bimName)
+		candidateChecksumMap[cksum] = bimName
+		candidateChecksumList = append(candidateChecksumList, cksum)
 	}
-	sort.Strings(readyCandidateNames)
-	if len(readyCandidateNames) > 0 && currentBIM.Name == readyCandidateNames[0] {
+	sort.Strings(candidateChecksumList)
+	if len(candidateChecksumList) > 0 && currentBIM.Name == candidateChecksumMap[candidateChecksumList[0]] {
 		return true, nil
 	}
 	return false, nil
