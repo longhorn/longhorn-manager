@@ -497,11 +497,15 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 			}
 			log.Info("Deleting pod before recreation")
 		} else if pod == nil {
-			if err := c.createBackingImageManagerPod(bim); err != nil {
-				return err
+			// Similar to InstanceManagerController.
+			// Longhorn shouldn't create the pod when users set taints with NoExecute effect on a node the bim is preferred.
+			if c.controllerID == bim.Spec.NodeID {
+				if err := c.createBackingImageManagerPod(bim); err != nil {
+					return err
+				}
+				bim.Status.CurrentState = types.BackingImageManagerStateStarting
+				c.eventRecorder.Eventf(bim, v1.EventTypeNormal, EventReasonCreate, "Creating backing image manager pod %v for disk %v on node %v. Backing image manager state will become %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID, types.BackingImageManagerStateStarting)
 			}
-			bim.Status.CurrentState = types.BackingImageManagerStateStarting
-			c.eventRecorder.Eventf(bim, v1.EventTypeNormal, EventReasonCreate, "Creating backing image manager pod %v for disk %v on node %v. Backing image manager state will become %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID, types.BackingImageManagerStateStarting)
 		}
 	}
 
@@ -776,7 +780,7 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 					},
 				},
 			},
-			NodeName:      c.controllerID,
+			NodeName:      bim.Spec.NodeID,
 			RestartPolicy: v1.RestartPolicyNever,
 		},
 	}
