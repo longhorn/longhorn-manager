@@ -608,9 +608,6 @@ func (c *BackingImageManagerController) downloadBackingImages(currentBIM *longho
 		pullRequired := true
 		var senderCandidate *longhorn.BackingImageManager
 		for _, bim := range bims {
-			if bim.Name == currentBIM.Name {
-				continue
-			}
 			if bim.Status.CurrentState != types.BackingImageManagerStateRunning {
 				continue
 			}
