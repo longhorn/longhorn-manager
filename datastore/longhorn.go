@@ -1490,18 +1490,16 @@ func (s *DataStore) GetNode(name string) (*longhorn.Node, error) {
 // GetReadyDiskNode find the corresponding ready Longhorn Node for a given disk
 // Returns a Node object and the disk name
 func (s *DataStore) GetReadyDiskNode(diskUUID string) (*longhorn.Node, string, error) {
-	nodes, err := s.ListNodes()
+	nodes, err := s.ListReadyNodes()
 	if err != nil {
 		return nil, "", err
 	}
 	for _, node := range nodes {
-		if types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady).Status == types.ConditionStatusTrue {
-			for diskName, diskStatus := range node.Status.DiskStatus {
-				if diskStatus.DiskUUID == diskUUID {
-					if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeReady).Status == types.ConditionStatusTrue {
-						if _, exists := node.Spec.Disks[diskName]; exists {
-							return node, diskName, nil
-						}
+		for diskName, diskStatus := range node.Status.DiskStatus {
+			if diskStatus.DiskUUID == diskUUID {
+				if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeReady).Status == types.ConditionStatusTrue {
+					if _, exists := node.Spec.Disks[diskName]; exists {
+						return node, diskName, nil
 					}
 				}
 			}
