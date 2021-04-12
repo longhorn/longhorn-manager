@@ -471,7 +471,7 @@ func (bic *BackingImageController) generateBackingImageManagerManifest(node *lon
 	return &longhorn.BackingImageManager{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: types.GetBackingImageManagerLabels(node.Name, node.Status.DiskStatus[diskName].DiskUUID),
-			Name:   generateBackingImageManagerName(defaultImage, node.Status.DiskStatus[diskName].DiskUUID),
+			Name:   types.GetBackingImageManagerName(defaultImage, node.Status.DiskStatus[diskName].DiskUUID),
 		},
 		Spec: types.BackingImageManagerSpec{
 			Image:         defaultImage,
@@ -481,10 +481,6 @@ func (bic *BackingImageController) generateBackingImageManagerManifest(node *lon
 			BackingImages: requiredBackingImages,
 		},
 	}
-}
-
-func generateBackingImageManagerName(image, diskUUID string) string {
-	return fmt.Sprintf("backing-image-manager-%s-%s", util.GetStringChecksum(image)[:4], diskUUID[:4])
 }
 
 func (bic *BackingImageController) enqueueBackingImage(obj interface{}) {
