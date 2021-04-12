@@ -212,6 +212,10 @@ func EngineBinaryExistOnHostForImage(image string) bool {
 	return err == nil && !st.IsDir()
 }
 
+func GetBackingImageManagerName(image, diskUUID string) string {
+	return fmt.Sprintf("backing-image-manager-%s-%s", util.GetStringChecksum(image)[:4], diskUUID[:4])
+}
+
 func GetBackingImageDirectoryName(backingImageName, backingImageUUID string) string {
 	return fmt.Sprintf("%s-%s", backingImageName, backingImageUUID)
 }
