@@ -257,6 +257,11 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			return errors.Wrapf(err, "failed to get taint toleration setting before creating engine image daemonset")
 		}
 
+		nodeSelector, err := ic.ds.GetSettingSystemManagedComponentsNodeSelector()
+		if err != nil {
+			return err
+		}
+
 		priorityClassSetting, err := ic.ds.GetSetting(types.SettingNamePriorityClass)
 		if err != nil {
 			return errors.Wrapf(err, "failed to get priority class setting before creating engine image daemonset")
@@ -274,7 +279,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			return errors.Wrapf(err, "failed to get system pods image pull policy before creating engine image daemonset")
 		}
 
-		dsSpec, err := ic.createEngineImageDaemonSetSpec(engineImage, tolerations, priorityClass, registrySecret, imagePullPolicy)
+		dsSpec, err := ic.createEngineImageDaemonSetSpec(engineImage, tolerations, priorityClass, registrySecret, imagePullPolicy, nodeSelector)
 		if err != nil {
 			return errors.Wrapf(err, "fail to create daemonset spec for engine image %v", engineImage.Name)
 		}
@@ -685,7 +690,7 @@ func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *met
 }
 
 func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []v1.Toleration,
-	priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) (*appsv1.DaemonSet, error) {
+	priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy, nodeSelector map[string]string) (*appsv1.DaemonSet, error) {
 
 	dsName := types.GetDaemonSetNameFromEngineImageName(ei.Name)
 	image := ei.Spec.Image
@@ -729,6 +734,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 				Spec: v1.PodSpec{
 					ServiceAccountName: ic.serviceAccount,
 					Tolerations:        tolerations,
+					NodeSelector:       nodeSelector,
 					PriorityClassName:  priorityClass,
 					Containers: []v1.Container{
 						{

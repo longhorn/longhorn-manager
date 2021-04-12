@@ -117,6 +117,16 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 				return fmt.Errorf("cannot modify toleration setting before all volumes are detached")
 			}
 		}
+	case types.SettingNameSystemManagedComponentsNodeSelector:
+		list, err := s.ListVolumesRO()
+		if err != nil {
+			return errors.Wrapf(err, "failed to list volumes before modifying node selector for managed components setting")
+		}
+		for _, v := range list {
+			if v.Status.State != types.VolumeStateDetached {
+				return fmt.Errorf("cannot modify node selector for managed components setting before all volumes are detached")
+			}
+		}
 	case types.SettingNamePriorityClass:
 		if value != "" {
 			if _, err := s.GetPriorityClass(value); err != nil {
@@ -1971,6 +1981,18 @@ func (s *DataStore) GetSettingTaintToleration() ([]corev1.Toleration, error) {
 		return nil, err
 	}
 	return tolerationList, nil
+}
+
+func (s *DataStore) GetSettingSystemManagedComponentsNodeSelector() (map[string]string, error) {
+	setting, err := s.GetSetting(types.SettingNameSystemManagedComponentsNodeSelector)
+	if err != nil {
+		return nil, err
+	}
+	nodeSelector, err := types.UnmarshalNodeSelector(setting.Value)
+	if err != nil {
+		return nil, err
+	}
+	return nodeSelector, nil
 }
 
 // ResetMonitoringEngineStatus clean and update Engine status

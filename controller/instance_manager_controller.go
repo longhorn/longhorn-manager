@@ -769,6 +769,10 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	if err != nil {
 		return errors.Wrapf(err, "failed to get taint toleration setting before creating instance manager pod")
 	}
+	nodeSelector, err := imc.ds.GetSettingSystemManagedComponentsNodeSelector()
+	if err != nil {
+		return errors.Wrapf(err, "failed to get node selector setting before creating instance manager pod")
+	}
 
 	registrySecretSetting, err := imc.ds.GetSetting(types.SettingNameRegistrySecret)
 	if err != nil {
@@ -779,9 +783,9 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	var podSpec *v1.Pod
 	switch im.Spec.Type {
 	case types.InstanceManagerTypeEngine:
-		podSpec, err = imc.createEngineManagerPodSpec(im, tolerations, registrySecret)
+		podSpec, err = imc.createEngineManagerPodSpec(im, tolerations, registrySecret, nodeSelector)
 	case types.InstanceManagerTypeReplica:
-		podSpec, err = imc.createReplicaManagerPodSpec(im, tolerations, registrySecret)
+		podSpec, err = imc.createReplicaManagerPodSpec(im, tolerations, registrySecret, nodeSelector)
 	}
 	if err != nil {
 		return err
@@ -795,7 +799,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	return nil
 }
 
-func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string) (*v1.Pod, error) {
+func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string, nodeSelector map[string]string) (*v1.Pod, error) {
 	tolerationsByte, err := json.Marshal(tolerations)
 	if err != nil {
 		return nil, err
@@ -822,6 +826,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		Spec: v1.PodSpec{
 			ServiceAccountName: imc.serviceAccount,
 			Tolerations:        util.GetDistinctTolerations(tolerations),
+			NodeSelector:       nodeSelector,
 			PriorityClassName:  priorityClass.Value,
 			Containers: []v1.Container{
 				{
@@ -868,8 +873,8 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 	return podSpec, nil
 }
 
-func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string) (*v1.Pod, error) {
-	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret)
+func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string, nodeSelector map[string]string) (*v1.Pod, error) {
+	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret, nodeSelector)
 	if err != nil {
 		return nil, err
 	}
@@ -923,8 +928,8 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 	return podSpec, nil
 }
 
-func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string) (*v1.Pod, error) {
-	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret)
+func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string, nodeSelector map[string]string) (*v1.Pod, error) {
+	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret, nodeSelector)
 	if err != nil {
 		return nil, err
 	}

@@ -631,6 +631,10 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal taint toleration setting before creating share manager pod")
 	}
+	nodeSelector, err := c.ds.GetSettingSystemManagedComponentsNodeSelector()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get node selector setting before creating share manager pod")
+	}
 
 	tolerationsByte, err := json.Marshal(tolerations)
 	if err != nil {
@@ -666,7 +670,7 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		}
 	}
 
-	pod, err := c.ds.CreatePod(c.createPodManifest(sm, annotations, tolerations, imagePullPolicy, nil, registrySecret, priorityClass))
+	pod, err := c.ds.CreatePod(c.createPodManifest(sm, annotations, tolerations, imagePullPolicy, nil, registrySecret, priorityClass, nodeSelector))
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create pod for share manager %v", sm.Name)
 	}
@@ -700,7 +704,7 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 }
 
 func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, annotations map[string]string, tolerations []v1.Toleration,
-	pullPolicy v1.PullPolicy, resourceReq *v1.ResourceRequirements, registrySecret string, priorityClass string) *v1.Pod {
+	pullPolicy v1.PullPolicy, resourceReq *v1.ResourceRequirements, registrySecret string, priorityClass string, nodeSelector map[string]string) *v1.Pod {
 	privileged := true
 	podSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -713,6 +717,7 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 		Spec: v1.PodSpec{
 			ServiceAccountName: c.serviceAccount,
 			Tolerations:        util.GetDistinctTolerations(tolerations),
+			NodeSelector:       nodeSelector,
 			PriorityClassName:  priorityClass,
 			NodeName:           sm.Status.OwnerID,
 			Containers: []v1.Container{

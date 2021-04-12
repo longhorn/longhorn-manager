@@ -700,7 +700,7 @@ func (c *BackingImageManagerController) isEligibleForPulling(currentBIM *longhor
 
 func (c *BackingImageManagerController) createBackingImageManagerPod(bim *longhorn.BackingImageManager) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "failed to create backing image manager pod")
+		err = errors.Wrap(err, "failed to create backing image manager pod")
 	}()
 
 	log := getLoggerForBackingImageManager(c.logger, bim)
@@ -711,13 +711,17 @@ func (c *BackingImageManagerController) createBackingImageManagerPod(bim *longho
 	if err != nil {
 		return err
 	}
+	nodeSelector, err := c.ds.GetSettingSystemManagedComponentsNodeSelector()
+	if err != nil {
+		return err
+	}
 	registrySecretSetting, err := c.ds.GetSetting(types.SettingNameRegistrySecret)
 	if err != nil {
 		return err
 	}
 	registrySecret := registrySecretSetting.Value
 
-	podManifest, err := c.generateBackingImageManagerPodManifest(bim, tolerations, registrySecret)
+	podManifest, err := c.generateBackingImageManagerPodManifest(bim, tolerations, registrySecret, nodeSelector)
 	if err != nil {
 		return err
 	}
@@ -730,7 +734,7 @@ func (c *BackingImageManagerController) createBackingImageManagerPod(bim *longho
 	return nil
 }
 
-func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(bim *longhorn.BackingImageManager, tolerations []v1.Toleration, registrySecret string) (*v1.Pod, error) {
+func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(bim *longhorn.BackingImageManager, tolerations []v1.Toleration, registrySecret string, nodeSelector map[string]string) (*v1.Pod, error) {
 	tolerationsByte, err := json.Marshal(tolerations)
 	if err != nil {
 		return nil, err
@@ -757,6 +761,7 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 		Spec: v1.PodSpec{
 			ServiceAccountName: c.serviceAccount,
 			Tolerations:        util.GetDistinctTolerations(tolerations),
+			NodeSelector:       nodeSelector,
 			PriorityClassName:  priorityClass.Value,
 			Containers: []v1.Container{
 				{

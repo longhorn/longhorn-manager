@@ -2122,6 +2122,10 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 	if err != nil {
 		return nil, err
 	}
+	nodeSelector, err := vc.ds.GetSettingSystemManagedComponentsNodeSelector()
+	if err != nil {
+		return nil, err
+	}
 	// for mounting inside container
 	privilege := true
 	cronJob := &batchv1beta1.CronJob{
@@ -2182,6 +2186,7 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 							ServiceAccountName: vc.ServiceAccount,
 							RestartPolicy:      v1.RestartPolicyOnFailure,
 							Tolerations:        util.GetDistinctTolerations(tolerations),
+							NodeSelector:       nodeSelector,
 						},
 					},
 				},

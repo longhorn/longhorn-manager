@@ -57,6 +57,7 @@ const (
 	SettingNameDefaultLonghornStaticStorageClass            = SettingName("default-longhorn-static-storage-class")
 	SettingNameBackupstorePollInterval                      = SettingName("backupstore-poll-interval")
 	SettingNameTaintToleration                              = SettingName("taint-toleration")
+	SettingNameSystemManagedComponentsNodeSelector          = SettingName("system-managed-components-node-selector")
 	SettingNameCRDAPIVersion                                = SettingName("crd-api-version")
 	SettingNameAutoSalvage                                  = SettingName("auto-salvage")
 	SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly  = SettingName("auto-delete-pod-when-volume-detached-unexpectedly")
@@ -102,6 +103,7 @@ var (
 		SettingNameDefaultLonghornStaticStorageClass,
 		SettingNameBackupstorePollInterval,
 		SettingNameTaintToleration,
+		SettingNameSystemManagedComponentsNodeSelector,
 		SettingNameCRDAPIVersion,
 		SettingNameAutoSalvage,
 		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly,
@@ -168,6 +170,7 @@ var (
 		SettingNameDefaultLonghornStaticStorageClass:            SettingDefinitionDefaultLonghornStaticStorageClass,
 		SettingNameBackupstorePollInterval:                      SettingDefinitionBackupstorePollInterval,
 		SettingNameTaintToleration:                              SettingDefinitionTaintToleration,
+		SettingNameSystemManagedComponentsNodeSelector:          SettingDefinitionSystemManagedComponentsNodeSelector,
 		SettingNameCRDAPIVersion:                                SettingDefinitionCRDAPIVersion,
 		SettingNameAutoSalvage:                                  SettingDefinitionAutoSalvage,
 		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly:  SettingDefinitionAutoDeletePodWhenVolumeDetachedUnexpectedly,
@@ -401,6 +404,25 @@ var (
 			"* `key1=value1:`  this toleration has empty effect. It matches all effects with key `key1` \n\n" +
 			"Because `kubernetes.io` is used as the key of all Kubernetes default tolerations, it should not be used in the toleration settings.\n\n " +
 			"WARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES! ",
+		Category: SettingCategoryDangerZone,
+		Type:     SettingTypeString,
+		Required: false,
+		ReadOnly: false,
+	}
+
+	SettingDefinitionSystemManagedComponentsNodeSelector = SettingDefinition{
+		DisplayName: "System Managed Components Node Selector",
+		Description: "If you want to restrict Longhorn components to only run on particular set of nodes, you can set node selector for **all** Longhorn components. " +
+			"Longhorn system contains user deployed components (e.g, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (e.g, instance manager, engine image, CSI driver, etc.) " +
+			"You must follow the below order when set the node selector:\n\n" +
+			"1. Set node selector for user deployed components in Helm chart or deployment YAML file depending on how you deployed Longhorn.\n\n" +
+			"2. Set node selector for system managed components in here.\n\n" +
+			"All Longhorn volumes should be detached before modifying node selector settings. " +
+			"We recommend setting node selector during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
+			"Multiple label key-value pairs are separated by semicolon. For example: \n\n" +
+			"* `label-key1=label-value1; label-key2=label-value2` \n\n" +
+			"WARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES! \n\n" +
+			"Please see the documentation at https://longhorn.io for more detailed instructions about changing node selector",
 		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeString,
 		Required: false,
@@ -783,6 +805,10 @@ func ValidateInitSetting(name, value string) (err error) {
 		if _, err = UnmarshalTolerations(value); err != nil {
 			return fmt.Errorf("the value of %v is invalid: %v", sName, err)
 		}
+	case SettingNameSystemManagedComponentsNodeSelector:
+		if _, err = UnmarshalNodeSelector(value); err != nil {
+			return fmt.Errorf("the value of %v is invalid: %v", sName, err)
+		}
 
 	// multi-choices
 	case SettingNameVolumeAttachmentRecoveryPolicy:
@@ -956,4 +982,30 @@ func UnmarshalTolerations(tolerationSetting string) ([]v1.Toleration, error) {
 	}
 
 	return res, nil
+}
+
+func validateAndUnmarshalLabel(label string) (key, value string, err error) {
+	label = strings.Trim(label, " ")
+	parts := strings.Split(label, ":")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid label %v: should contain the seprator ':'", label)
+	}
+	return strings.Trim(parts[0], " "), strings.Trim(parts[1], " "), nil
+}
+
+func UnmarshalNodeSelector(nodeSelectorSetting string) (map[string]string, error) {
+	nodeSelector := map[string]string{}
+
+	nodeSelectorSetting = strings.Trim(nodeSelectorSetting, " ")
+	if nodeSelectorSetting != "" {
+		labelList := strings.Split(nodeSelectorSetting, ";")
+		for _, label := range labelList {
+			key, value, err := validateAndUnmarshalLabel(label)
+			if err != nil {
+				return nil, errors.Wrap(err, "Error while unmarshal node selector")
+			}
+			nodeSelector[key] = value
+		}
+	}
+	return nodeSelector, nil
 }

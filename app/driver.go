@@ -189,7 +189,10 @@ func checkKubernetesVersion(kubeClient *clientset.Clientset) error {
 	return nil
 }
 
-func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clientset, c *cli.Context, managerImage, managerURL string) error {
+func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clientset, c *cli.Context, managerImage, managerURL string) (err error) {
+	defer func() {
+		err = errors.Wrap(err, "failed to start CSI driver")
+	}()
 	csiAttacherImage := c.String(FlagCSIAttacherImage)
 	csiProvisionerImage := c.String(FlagCSIProvisionerImage)
 	csiResizerImage := c.String(FlagCSIResizerImage)
@@ -203,34 +206,43 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
 	rootDir := c.String(FlagKubeletRootDir)
 
-	setting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameTaintToleration), metav1.GetOptions{})
+	tolerationSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameTaintToleration), metav1.GetOptions{})
 	if err != nil {
-		return errors.Wrapf(err, "failed to get taint toleration setting before starting CSI driver")
+		return err
 	}
-	tolerations, err := types.UnmarshalTolerations(setting.Value)
+	tolerations, err := types.UnmarshalTolerations(tolerationSetting.Value)
 	if err != nil {
-		return errors.Wrapf(err, "failed to unmarshal taint toleration setting before starting CSI driver")
+		return err
 	}
 	tolerationsByte, err := json.Marshal(tolerations)
 	if err != nil {
-		return errors.Wrapf(err, "failed to marshal taint toleration list before starting CSI driver")
+		return err
+	}
+
+	nodeSelectorSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameSystemManagedComponentsNodeSelector), metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	nodeSelector, err := types.UnmarshalNodeSelector(nodeSelectorSetting.Value)
+	if err != nil {
+		return err
 	}
 
 	priorityClassSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNamePriorityClass), metav1.GetOptions{})
 	if err != nil {
-		return errors.Wrapf(err, "failed to get priority class setting before starting CSI driver")
+		return err
 	}
 	priorityClass := priorityClassSetting.Value
 
 	registrySecretSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameRegistrySecret), metav1.GetOptions{})
 	if err != nil {
-		return errors.Wrapf(err, "failed to get registry secret setting before starting CSI driver")
+		return err
 	}
 	registrySecret := registrySecretSetting.Value
 
 	imagePullPolicySetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameSystemManagedPodsImagePullPolicy), metav1.GetOptions{})
 	if err != nil {
-		return errors.Wrapf(err, "failed to get image pull policy setting before starting CSI driver")
+		return err
 	}
 
 	var imagePullPolicy v1.PullPolicy
@@ -247,7 +259,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 
 	if rootDir == "" {
 		var err error
-		rootDir, err = getProcArg(kubeClient, managerImage, serviceAccountName, ArgKubeletRootDir, tolerations, priorityClass, registrySecret)
+		rootDir, err = getProcArg(kubeClient, managerImage, serviceAccountName, ArgKubeletRootDir, tolerations, priorityClass, registrySecret, nodeSelector)
 		if err != nil {
 			logrus.Error(err)
 			return err
@@ -276,31 +288,31 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy)
+	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
 	if err := attacherDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, rootDir, csiProvisionerReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy)
+	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, rootDir, csiProvisionerReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
 	if err := provisionerDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
 	if volumeExpansionEnabled {
-		resizerDeployment := csi.NewResizerDeployment(namespace, serviceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy)
+		resizerDeployment := csi.NewResizerDeployment(namespace, serviceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
 		if err := resizerDeployment.Deploy(kubeClient); err != nil {
 			return err
 		}
 	}
 
 	if snapshotSupportEnabled {
-		snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy)
+		snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
 		if err := snapshotterDeployment.Deploy(kubeClient); err != nil {
 			return err
 		}
 	}
 
-	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, managerImage, managerURL, rootDir, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, managerImage, managerURL, rootDir, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
