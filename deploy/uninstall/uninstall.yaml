@@ -114,3 +114,14 @@ spec:
           value: longhorn-system
       restartPolicy: OnFailure
       serviceAccountName: longhorn-uninstall-service-account
+#      imagePullSecrets:
+#      - name: ""
+#      priorityClassName:
+#      tolerations:
+#        - key: "key"
+#          operator: "Equal"
+#          value: "value"
+#          effect: "NoSchedule"
+#      nodeSelector:
+#        label-key1: "label-value1"
+#        label-key2: "label-value2"

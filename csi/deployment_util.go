@@ -55,7 +55,7 @@ func getCommonService(commonName, namespace string) *v1.Service {
 }
 
 func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32,
-	tolerations []v1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy) *appsv1.Deployment {
+	tolerations []v1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy, nodeSelector map[string]string) *appsv1.Deployment {
 
 	deploymentLabels := types.GetBaseLabelsForSystemManagedComponent()
 	deploymentLabels["app"] = commonName
@@ -79,6 +79,7 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 				Spec: v1.PodSpec{
 					ServiceAccountName: serviceAccount,
 					Tolerations:        tolerations,
+					NodeSelector:       nodeSelector,
 					PriorityClassName:  priorityClass,
 					Containers: []v1.Container{
 						{

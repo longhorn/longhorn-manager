@@ -221,6 +221,10 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.updateTaintToleration(); err != nil {
 			return err
 		}
+	case string(types.SettingNameSystemManagedComponentsNodeSelector):
+		if err := sc.updateNodeSelector(); err != nil {
+			return err
+		}
 	case string(types.SettingNameGuaranteedEngineManagerCPU):
 	case string(types.SettingNameGuaranteedReplicaManagerCPU):
 		if err := sc.updateInstanceManagerCPURequest(); err != nil {
@@ -543,6 +547,68 @@ func getFinalTolerations(existingTolerations, lastAppliedTolerations, newTolerat
 	}
 
 	return resultSlice
+}
+
+func (sc *SettingController) updateNodeSelector() error {
+	setting, err := sc.ds.GetSetting(types.SettingNameSystemManagedComponentsNodeSelector)
+	if err != nil {
+		return err
+	}
+	newNodeSelector, err := types.UnmarshalNodeSelector(setting.Value)
+	if err != nil {
+		return err
+	}
+	deploymentList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	if err != nil {
+		return errors.Wrapf(err, "failed to list Longhorn deployments for node selector update")
+	}
+	daemonsetList, err := sc.ds.ListDaemonSetWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	if err != nil {
+		return errors.Wrapf(err, "failed to list Longhorn daemonsets for node selector update")
+	}
+	imPodList, err := sc.ds.ListInstanceManagerPods()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list instance manager pods for node selector update")
+	}
+	smPodList, err := sc.ds.ListShareManagerPods()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list share manager pods for node selector update")
+	}
+	bimPodList, err := sc.ds.ListBackingImageManagerPods()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list backing image manager pods for node selector update")
+	}
+	for _, dp := range deploymentList {
+		if reflect.DeepEqual(dp.Spec.Template.Spec.NodeSelector, newNodeSelector) {
+			continue
+		}
+		dp.Spec.Template.Spec.NodeSelector = newNodeSelector
+		if _, err := sc.ds.UpdateDeployment(dp); err != nil {
+			return err
+		}
+	}
+	for _, ds := range daemonsetList {
+		if reflect.DeepEqual(ds.Spec.Template.Spec.NodeSelector, newNodeSelector) {
+			continue
+		}
+		ds.Spec.Template.Spec.NodeSelector = newNodeSelector
+		if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
+			return err
+		}
+	}
+	pods := append(imPodList, smPodList...)
+	pods = append(pods, bimPodList...)
+	for _, pod := range pods {
+		if reflect.DeepEqual(pod.Spec.NodeSelector, newNodeSelector) {
+			continue
+		}
+		if pod.DeletionTimestamp == nil {
+			if err := sc.ds.DeletePod(pod.Name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (bm *BackupStoreMonitor) Start() {

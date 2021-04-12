@@ -35,6 +35,9 @@ spec:
 #        operator: "Equal"
 #        value: "value"
 #        effect: "NoSchedule"
+#      nodeSelector:
+#        label-key1: "label-value1"
+#        label-key2: "label-value2"
 ---
 kind: Service
 apiVersion: v1
