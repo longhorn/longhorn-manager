@@ -33,12 +33,6 @@ func (m *VolumeManager) CreateBackingImage(name, url string) (*longhorn.BackingI
 		return nil, fmt.Errorf("invalid name %v", name)
 	}
 
-	if existingBackingImage, err := m.ds.GetBackingImageByURL(url); existingBackingImage != nil {
-		return nil, fmt.Errorf("backing image %v is already created based on URL %v", existingBackingImage.Name, url)
-	} else if err != nil && !types.ErrorIsNotFound(err) {
-		return nil, err
-	}
-
 	bi := &longhorn.BackingImage{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,

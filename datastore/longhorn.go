@@ -1156,21 +1156,6 @@ func (s *DataStore) GetBackingImage(name string) (*longhorn.BackingImage, error)
 	return resultRO.DeepCopy(), nil
 }
 
-// GetBackingImageByURL returns BackingImage object with matching ImageURL
-func (s *DataStore) GetBackingImageByURL(url string) (*longhorn.BackingImage, error) {
-	list, err := s.ListBackingImages()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, bi := range list {
-		if bi.Spec.ImageURL == url && bi.DeletionTimestamp == nil {
-			return bi, nil
-		}
-	}
-	return nil, fmt.Errorf("cannot find backing image with image URL %v", url)
-}
-
 // ListBackingImages returns object includes all BackingImage in namespace
 func (s *DataStore) ListBackingImages() (map[string]*longhorn.BackingImage, error) {
 	itemMap := map[string]*longhorn.BackingImage{}
