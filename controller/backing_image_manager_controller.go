@@ -677,11 +677,14 @@ func (c *BackingImageManagerController) isEligibleForPulling(currentBIM *longhor
 		if _, exists := bim.Spec.BackingImages[biName]; !exists {
 			continue
 		}
-		isDownOrDeleted, err := c.ds.IsNodeDownOrDeleted(bim.Spec.NodeID)
-		if err != nil {
-			return false, err
+		if bim.Status.CurrentState == types.BackingImageManagerStateError {
+			continue
 		}
-		if isDownOrDeleted {
+		_, _, err := c.ds.GetReadyDiskNode(bim.Spec.DiskUUID)
+		if err != nil {
+			if !types.ErrorIsNotFound(err) {
+				return false, err
+			}
 			continue
 		}
 		cksum := util.GetStringChecksum(biName + bimName)
