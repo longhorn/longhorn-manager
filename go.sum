@@ -353,8 +353,8 @@ github.com/libopenstorage/openstorage v1.0.0/go.mod h1:Sp1sIObHjat1BeXhfMqLZ14wn
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
 github.com/lithammer/dedent v1.1.0/go.mod h1:jrXYCQtgg0nJiN+StA2KgR7w6CiQNv9Fd/Z9BP0jIOc=
 github.com/logrusorgru/aurora v0.0.0-20181002194514-a7b3b318ed4e/go.mod h1:7rIyQOR62GCctdiQpZ/zOJlFyk6y+94wXzv6RNZgaR4=
-github.com/longhorn/backing-image-manager v0.0.0-20210412054623-112fe50a4314 h1:WMXiHO6eibc8747F3ImL8Y1fb3DN+8lkIhSgbo5yakk=
-github.com/longhorn/backing-image-manager v0.0.0-20210412054623-112fe50a4314/go.mod h1:r7a2SSRpYpzjnDj43onamZAHDtDLVJ0sUcX82kjbDgc=
+github.com/longhorn/backing-image-manager v0.0.0-20210414111715-b47b3f36375e h1:8xlJvNsFYVqV+4HCaKVQKvwtqAo21vYh6l+nDb8E2/8=
+github.com/longhorn/backing-image-manager v0.0.0-20210414111715-b47b3f36375e/go.mod h1:OojNn6R/pm3gagcAxzAY9C/muTENB3ep28A4zyFBajE=
 github.com/longhorn/backupstore v0.0.0-20210413103305-10466b9f5adf h1:eGhWHzU4wtQxO0sagKzHyn6a2pjIF+C+dx0g/acObHw=
 github.com/longhorn/backupstore v0.0.0-20210413103305-10466b9f5adf/go.mod h1:UOpvZ/qRS2G8BBSybHuS/c4h1P21XTEnL2hoJz2JUuo=
 github.com/longhorn/go-iscsi-helper v0.0.0-20201111045018-ee87992ec536 h1:+Z/mGnoCdY+YCX+y4X19E2YT4FsVA3aVm7uLj1tg/wM=
@@ -362,7 +362,7 @@ github.com/longhorn/go-iscsi-helper v0.0.0-20201111045018-ee87992ec536/go.mod h1
 github.com/longhorn/longhorn-instance-manager v0.0.0-20201016215346-d8437b4e156e h1:4cCwm8nlmqaS0aaJWb13gUa2xOxGSI3xrNcQq/dHEZo=
 github.com/longhorn/longhorn-instance-manager v0.0.0-20201016215346-d8437b4e156e/go.mod h1:SfnIsnFj+HdmRiyF2buQ6+CB1WTD1pDQ4zEE6lBLs4s=
 github.com/longhorn/nsfilelock v0.0.0-20200723175406-fa7c83ad0003/go.mod h1:0CLeXlf59Lg6C0kjLSDf47ft73Dh37CwymYRKWwAn04=
-github.com/longhorn/sparse-tools v0.0.0-20210325035544-deeff402e893/go.mod h1:1WSSJRDNret4VKADAzvD49oaVt1/idYVWBL8TiyevRk=
+github.com/longhorn/sparse-tools v0.0.0-20210414083048-58c725efe143/go.mod h1:1WSSJRDNret4VKADAzvD49oaVt1/idYVWBL8TiyevRk=
 github.com/lpabon/godbc v0.1.1/go.mod h1:Jo9QV0cf3U6jZABgiJ2skINAXb9j8m51r07g4KI92ZA=
 github.com/lucas-clemente/aes12 v0.0.0-20171027163421-cd47fb39b79f/go.mod h1:JpH9J1c9oX6otFSgdUHwUBUizmKlrMjxWnIAjff4m04=
 github.com/lucas-clemente/quic-clients v0.1.0/go.mod h1:y5xVIEoObKqULIKivu+gD/LU90pL73bTdtQjPBvtCBk=

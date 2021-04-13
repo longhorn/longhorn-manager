@@ -5,8 +5,8 @@ import (
 )
 
 const (
-	BackingImageDirectoryName = "backing-images"
-	DiskPathInContainer       = "/data/"
+	BackingImageManagerDirectoryName = "backing-images"
+	DiskPathInContainer              = "/data/"
 
 	DefaultPort = 8000
 
