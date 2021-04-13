@@ -750,6 +750,11 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 		return nil, err
 	}
 
+	node, diskName, err := c.ds.GetReadyDiskNode(bim.Spec.DiskUUID)
+	if err != nil {
+		return nil, err
+	}
+
 	podSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            bim.Name,
@@ -769,7 +774,10 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 					Image:           bim.Spec.Image,
 					ImagePullPolicy: imagePullPolicy,
 					Command: []string{
-						"backing-image-manager", "--debug", "daemon", "--listen", fmt.Sprintf("%s:%d", "0.0.0.0", engineapi.BackingImageManagerDefaultPort),
+						"backing-image-manager", "--debug",
+						"daemon",
+						"--listen", fmt.Sprintf("%s:%d", "0.0.0.0", engineapi.BackingImageManagerDefaultPort),
+						"--disk-path", node.Spec.Disks[diskName].Path,
 					},
 					VolumeMounts: []v1.VolumeMount{
 						{
