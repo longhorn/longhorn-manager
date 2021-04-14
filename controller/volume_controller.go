@@ -1264,7 +1264,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			if err != nil {
 				return errors.Wrapf(err, "cannot find node %v", r.Spec.NodeID)
 			}
-			if nodeDown {
+			canIMLaunchReplica, err := vc.canInstanceManagerLaunchReplica(r)
+			if err != nil {
+				return err
+			}
+			if nodeDown || !canIMLaunchReplica {
 				if r.Spec.FailedAt == "" {
 					r.Spec.FailedAt = vc.nowHandler()
 				}
@@ -1369,6 +1373,19 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 	}
 	return nil
+}
+
+func (vc *VolumeController) canInstanceManagerLaunchReplica(r *longhorn.Replica) (bool, error) {
+	// Replica already had IM
+	if r.Status.InstanceManagerName != "" {
+		return true, nil
+	}
+	defaultIM, err := vc.ds.GetInstanceManagerByInstance(r)
+	if err != nil {
+		return false, errors.Wrapf(err, "cannot find instance manager for replica %v", r.Name)
+	}
+	return defaultIM.Status.CurrentState == types.InstanceManagerStateRunning ||
+		defaultIM.Status.CurrentState == types.InstanceManagerStateStarting, nil
 }
 
 func (vc *VolumeController) getPreferredReplicaCandidatesForDeletion(rs map[string]*longhorn.Replica) ([]string, error) {
