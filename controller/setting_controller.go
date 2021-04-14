@@ -579,6 +579,11 @@ func (sc *SettingController) updateNodeSelector() error {
 		return errors.Wrapf(err, "failed to list backing image manager pods for node selector update")
 	}
 	for _, dp := range deploymentList {
+		if dp.Spec.Template.Spec.NodeSelector == nil {
+			if len(newNodeSelector) == 0 {
+				continue
+			}
+		}
 		if reflect.DeepEqual(dp.Spec.Template.Spec.NodeSelector, newNodeSelector) {
 			continue
 		}
@@ -588,6 +593,11 @@ func (sc *SettingController) updateNodeSelector() error {
 		}
 	}
 	for _, ds := range daemonsetList {
+		if ds.Spec.Template.Spec.NodeSelector == nil {
+			if len(newNodeSelector) == 0 {
+				continue
+			}
+		}
 		if reflect.DeepEqual(ds.Spec.Template.Spec.NodeSelector, newNodeSelector) {
 			continue
 		}
@@ -599,6 +609,11 @@ func (sc *SettingController) updateNodeSelector() error {
 	pods := append(imPodList, smPodList...)
 	pods = append(pods, bimPodList...)
 	for _, pod := range pods {
+		if pod.Spec.NodeSelector == nil {
+			if len(newNodeSelector) == 0 {
+				continue
+			}
+		}
 		if reflect.DeepEqual(pod.Spec.NodeSelector, newNodeSelector) {
 			continue
 		}
