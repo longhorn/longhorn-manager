@@ -322,10 +322,6 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return nil, fmt.Errorf("cannot attach volume %v because the engine image %v is not deployed on at least one of the the replicas' nodes or the node that the volume is going to attach to", v.Name, v.Spec.EngineImage)
 	}
 
-	scheduleCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled)
-	if scheduleCondition.Status != types.ConditionStatusTrue {
-		return nil, fmt.Errorf("volume %v cannot be scheduled due to lack of nodes or disks satisfied the space requirement", name)
-	}
 	restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
 	if restoreCondition.Status == types.ConditionStatusTrue {
 		return nil, fmt.Errorf("volume %v is restoring data", name)
