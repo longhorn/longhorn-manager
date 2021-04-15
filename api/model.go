@@ -134,6 +134,7 @@ type BackingImage struct {
 	ImageURL            string            `json:"imageURL"`
 	DiskStateMap        map[string]string `json:"diskStateMap"`
 	DownloadProgressMap map[string]int    `json:"downloadProgressMap"`
+	Size                int64             `json:"size"`
 
 	DeletionTimestamp string `json:"deletionTimestamp"`
 }
@@ -1131,6 +1132,7 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 		ImageURL:            bi.Spec.ImageURL,
 		DiskStateMap:        diskStateMap,
 		DownloadProgressMap: bi.Status.DiskDownloadProgressMap,
+		Size:                bi.Status.Size,
 
 		DeletionTimestamp: deletionTimestamp,
 	}
