@@ -15,6 +15,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -778,6 +779,15 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 						"daemon",
 						"--listen", fmt.Sprintf("%s:%d", "0.0.0.0", engineapi.BackingImageManagerDefaultPort),
 						"--disk-path", node.Spec.Disks[diskName].Path,
+					},
+					ReadinessProbe: &v1.Probe{
+						Handler: v1.Handler{
+							TCPSocket: &v1.TCPSocketAction{
+								Port: intstr.FromInt(engineapi.BackingImageManagerDefaultPort),
+							},
+						},
+						InitialDelaySeconds: datastore.PodProbeInitialDelay,
+						PeriodSeconds:       datastore.PodProbePeriodSeconds,
 					},
 					VolumeMounts: []v1.VolumeMount{
 						{
