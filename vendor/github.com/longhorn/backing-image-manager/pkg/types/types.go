@@ -17,6 +17,7 @@ const (
 	SendingLimit = 3
 
 	DownloadStatePending     = "pending"
+	DownloadStateStarting    = "starting"
 	DownloadStateDownloading = "downloading"
 	DownloadStateDownloaded  = "downloaded"
 	DownloadStateFailed      = "failed"
