@@ -487,6 +487,7 @@ type BackingImageDownloadState string
 
 const (
 	BackingImageDownloadStatePending     = BackingImageDownloadState("pending")
+	BackingImageDownloadStateStarting    = BackingImageDownloadState("starting")
 	BackingImageDownloadStateDownloaded  = BackingImageDownloadState("downloaded")
 	BackingImageDownloadStateDownloading = BackingImageDownloadState("downloading")
 	BackingImageDownloadStateFailed      = BackingImageDownloadState("failed")
