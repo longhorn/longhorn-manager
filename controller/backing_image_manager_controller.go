@@ -688,7 +688,11 @@ func (c *BackingImageManagerController) isEligibleForPulling(currentBIM *longhor
 			}
 			continue
 		}
-		cksum := util.GetStringChecksum(biName + bimName)
+		// Cannot use backing image manager name to calculate the checksum here.
+		// For a backing image, Longhorn needs to make sure the pull-eligible BIM is always in the same disk regardless of the backing image manager version.
+		// Otherwise, when the BIM upgrade happens when the 1st file is just pulled from the remote,
+		// the downloaded file cannot be reused if the pull-eligible BIM for the new managers is not in the disk containing the file.
+		cksum := util.GetStringChecksum(biName + bim.Spec.DiskUUID)
 		candidateChecksumMap[cksum] = bimName
 		candidateChecksumList = append(candidateChecksumList, cksum)
 	}
