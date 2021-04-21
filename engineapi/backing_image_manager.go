@@ -2,17 +2,19 @@ package engineapi
 
 import (
 	"fmt"
+
 	bimapi "github.com/longhorn/backing-image-manager/api"
 	bimclient "github.com/longhorn/backing-image-manager/pkg/client"
-	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
 	BackingImageManagerDefaultPort = 8000
 
 	CurrentBackingImageManagerAPIVersion = 1
+	MinBackingImageManagerAPIVersion     = 1
 	UnknownBackingImageManagerAPIVersion = 0
 )
 
@@ -25,9 +27,9 @@ type BackingImageManagerClient struct {
 }
 
 func CheckBackingImageManagerCompatibilty(bimMinVersion, bimVersion int) error {
-	if CurrentBackingImageManagerAPIVersion > bimVersion || CurrentBackingImageManagerAPIVersion < bimMinVersion {
-		return fmt.Errorf("current BackingImageManager version %v is not compatible with BackingImageManagerAPIVersion %v and BackingImageManagerAPIMinVersion %v",
-			CurrentBackingImageManagerAPIVersion, bimVersion, bimMinVersion)
+	if MinBackingImageManagerAPIVersion > bimVersion || CurrentBackingImageManagerAPIVersion < bimMinVersion {
+		return fmt.Errorf("current-min API version used by longhorn manager %v-%v is not compatible with BackingImageManager current-min APIVersion %v-%v",
+			CurrentBackingImageManagerAPIVersion, MinBackingImageManagerAPIVersion, bimVersion, bimMinVersion)
 	}
 	return nil
 }
