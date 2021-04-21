@@ -32,12 +32,13 @@ func (w *Watcher) Close() {
 
 type WebsocketController struct {
 	*baseController
-	volumeSynced      cache.InformerSynced
-	engineSynced      cache.InformerSynced
-	replicaSynced     cache.InformerSynced
-	settingSynced     cache.InformerSynced
-	engineImageSynced cache.InformerSynced
-	nodeSynced        cache.InformerSynced
+	volumeSynced       cache.InformerSynced
+	engineSynced       cache.InformerSynced
+	replicaSynced      cache.InformerSynced
+	settingSynced      cache.InformerSynced
+	engineImageSynced  cache.InformerSynced
+	backingImageSynced cache.InformerSynced
+	nodeSynced         cache.InformerSynced
 
 	watchers    []*Watcher
 	watcherLock sync.Mutex
@@ -50,17 +51,19 @@ func NewWebsocketController(
 	replicaInformer lhinformers.ReplicaInformer,
 	settingInformer lhinformers.SettingInformer,
 	engineImageInformer lhinformers.EngineImageInformer,
+	backingImageInformer lhinformers.BackingImageInformer,
 	nodeInformer lhinformers.NodeInformer,
 ) *WebsocketController {
 
 	wc := &WebsocketController{
-		baseController:    newBaseController("longhorn-websocket", logger),
-		volumeSynced:      volumeInformer.Informer().HasSynced,
-		engineSynced:      engineInformer.Informer().HasSynced,
-		replicaSynced:     replicaInformer.Informer().HasSynced,
-		settingSynced:     settingInformer.Informer().HasSynced,
-		engineImageSynced: engineImageInformer.Informer().HasSynced,
-		nodeSynced:        nodeInformer.Informer().HasSynced,
+		baseController:     newBaseController("longhorn-websocket", logger),
+		volumeSynced:       volumeInformer.Informer().HasSynced,
+		engineSynced:       engineInformer.Informer().HasSynced,
+		replicaSynced:      replicaInformer.Informer().HasSynced,
+		settingSynced:      settingInformer.Informer().HasSynced,
+		engineImageSynced:  engineImageInformer.Informer().HasSynced,
+		backingImageSynced: backingImageInformer.Informer().HasSynced,
+		nodeSynced:         nodeInformer.Informer().HasSynced,
 	}
 
 	volumeInformer.Informer().AddEventHandler(wc.notifyWatchersHandler("volume"))
@@ -68,6 +71,7 @@ func NewWebsocketController(
 	replicaInformer.Informer().AddEventHandler(wc.notifyWatchersHandler("replica"))
 	settingInformer.Informer().AddEventHandler(wc.notifyWatchersHandler("setting"))
 	engineImageInformer.Informer().AddEventHandler(wc.notifyWatchersHandler("engineImage"))
+	backingImageInformer.Informer().AddEventHandler(wc.notifyWatchersHandler("backingImage"))
 	nodeInformer.Informer().AddEventHandler(wc.notifyWatchersHandler("node"))
 
 	return wc
@@ -94,7 +98,7 @@ func (wc *WebsocketController) Run(stopCh <-chan struct{}) {
 
 	if !cache.WaitForNamedCacheSync("longhorn websocket", stopCh,
 		wc.volumeSynced, wc.engineSynced, wc.replicaSynced,
-		wc.settingSynced, wc.engineImageSynced, wc.nodeSynced) {
+		wc.settingSynced, wc.engineImageSynced, wc.backingImageSynced, wc.nodeSynced) {
 		return
 	}
 
