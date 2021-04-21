@@ -89,7 +89,7 @@ const (
 )
 
 const (
-	// Minimum support Kubernetes version.
+	// CSIMinVersion indicates minimum support Kubernetes version.
 	CSIMinVersion            = "v1.16.0"
 	CSISnapshotterMinVersion = "v1.17.0"
 
