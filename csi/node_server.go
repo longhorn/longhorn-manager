@@ -182,8 +182,8 @@ func (ns *NodeServer) nodePublishSharedVolume(volumeName, shareEndpoint, targetP
 		"soft", // for this release we use soft mode, so we can always cleanup mount points
 		"sync",
 		"intr",
-		"timeo=7",
-		"retrans=3",
+		"timeo=30",  // This is tenths of a second, so a 3 second timeout, each retrans the timeout will be linearly increased, 3s, 6s, 9s
+		"retrans=3", // We try the io operation for a total of 3 times, before failing, max runtime of 18s
 		// "clientaddr=" // TODO: try to set the client address of the mount to the ip of the pod that is consuming the volume
 	}
 
