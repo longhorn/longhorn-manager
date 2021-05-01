@@ -2139,6 +2139,10 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 	if err != nil {
 		return nil, err
 	}
+	priorityClass, err := vc.ds.GetSetting(types.SettingNamePriorityClass)
+	if err != nil {
+		return nil, err
+	}
 	nodeSelector, err := vc.ds.GetSettingSystemManagedComponentsNodeSelector()
 	if err != nil {
 		return nil, err
@@ -2204,6 +2208,7 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 							RestartPolicy:      v1.RestartPolicyOnFailure,
 							Tolerations:        util.GetDistinctTolerations(tolerations),
 							NodeSelector:       nodeSelector,
+							PriorityClassName:  priorityClass.Value,
 						},
 					},
 				},
