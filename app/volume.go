@@ -31,6 +31,8 @@ const (
 	FlagRetain       = "retain"
 	FlagBackup       = "backup"
 
+	HTTPClientTimout = 1 * time.Minute
+
 	SnapshotPurgeStatusInterval = 5 * time.Second
 
 	WaitInterval              = 5 * time.Second
@@ -141,7 +143,10 @@ func NewJob(managerURL, volumeName, snapshotName string, labels map[string]strin
 		return nil, errors.Wrap(err, "unable to get clientset")
 	}
 
-	clientOpts := &longhornclient.ClientOpts{Url: managerURL}
+	clientOpts := &longhornclient.ClientOpts{
+		Url:     managerURL,
+		Timeout: HTTPClientTimout,
+	}
 	apiClient, err := longhornclient.NewRancherClient(clientOpts)
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not create longhorn-manager api client")
