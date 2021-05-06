@@ -9,6 +9,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -29,6 +30,7 @@ func (m *VolumeManager) CreateBackingImage(name, url string) (*longhorn.BackingI
 		return nil, fmt.Errorf("cannot create backing image with empty image URL")
 	}
 
+	name = util.AutoCorrectName(name, datastore.NameMaximumLength)
 	if !util.ValidateName(name) {
 		return nil, fmt.Errorf("invalid name %v", name)
 	}
