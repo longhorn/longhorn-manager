@@ -99,8 +99,8 @@ func (kc *KubernetesPodController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer kc.queue.ShutDown()
 
-	kpc.logger.Infof("Start %v", controllerAgentName)
-	defer kpc.logger.Infof("Shutting down %v", controllerAgentName)
+	kc.logger.Infof("Start %v", controllerAgentName)
+	defer kc.logger.Infof("Shutting down %v", controllerAgentName)
 
 	if !cache.WaitForNamedCacheSync(controllerAgentName, stopCh, kc.pStoreSynced, kc.pvStoreSynced, kc.pvcStoreSynced) {
 		return
@@ -134,12 +134,12 @@ func (kc *KubernetesPodController) handleErr(err error, key interface{}) {
 	}
 
 	if kc.queue.NumRequeues(key) < maxRetries {
-		kpc.logger.WithError(err).Warnf("%v: Error syncing Longhorn kubernetes pod %v", controllerAgentName, key)
+		kc.logger.WithError(err).Warnf("%v: Error syncing Longhorn kubernetes pod %v", controllerAgentName, key)
 		kc.queue.AddRateLimited(key)
 		return
 	}
 
-	kpc.logger.WithError(err).Warnf("%v: Dropping Longhorn kubernetes pod %v out of the queue", controllerAgentName, key)
+	kc.logger.WithError(err).Warnf("%v: Dropping Longhorn kubernetes pod %v out of the queue", controllerAgentName, key)
 	kc.queue.Forget(key)
 	utilruntime.HandleError(err)
 }
@@ -219,7 +219,7 @@ func (kc *KubernetesPodController) handlePodDeletionIfNodeDown(pod *v1.Pod, node
 	if err != nil {
 		return errors.Wrapf(err, "failed to forcefully delete Pod %v on the downed Node %v in handlePodDeletionIfNodeDown", pod.Name, nodeID)
 	}
-	kpc.logger.Infof("%v: Forcefully deleted pod %v on downed node %v", controllerAgentName, pod.Name, nodeID)
+	kc.logger.Infof("%v: Forcefully deleted pod %v on downed node %v", controllerAgentName, pod.Name, nodeID)
 
 	return nil
 }
