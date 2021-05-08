@@ -139,7 +139,7 @@ func (kc *KubernetesPodController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	kpc.logger.WithError(err).Warnf("%v: Dropping Longhorn kubernetes pod %v out of the queue, controllerAgentName, key)
+	kpc.logger.WithError(err).Warnf("%v: Dropping Longhorn kubernetes pod %v out of the queue", controllerAgentName, key)
 	kc.queue.Forget(key)
 	utilruntime.HandleError(err)
 }
