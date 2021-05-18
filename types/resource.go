@@ -496,29 +496,44 @@ type ShareManagerStatus struct {
 	Endpoint string            `json:"endpoint"`
 }
 
+// BackingImageDownloadState is replaced by BackingImageState.
 type BackingImageDownloadState string
 
+type BackingImageState string
+
 const (
-	BackingImageDownloadStatePending     = BackingImageDownloadState("pending")
-	BackingImageDownloadStateStarting    = BackingImageDownloadState("starting")
-	BackingImageDownloadStateDownloaded  = BackingImageDownloadState("downloaded")
-	BackingImageDownloadStateDownloading = BackingImageDownloadState("downloading")
-	BackingImageDownloadStateFailed      = BackingImageDownloadState("failed")
-	BackingImageDownloadStateUnknown     = BackingImageDownloadState("unknown")
+	BackingImageStatePending    = BackingImageState("pending")
+	BackingImageStateStarting   = BackingImageState("starting")
+	BackingImageStateReady      = BackingImageState("ready")
+	BackingImageStateInProgress = BackingImageState("in_progress")
+	BackingImageStateFailed     = BackingImageState("failed")
+	BackingImageStateUnknown    = BackingImageState("unknown")
 )
 
 type BackingImageSpec struct {
-	ImageURL string              `json:"imageURL"`
-	Disks    map[string]struct{} `json:"disks"`
+	Disks map[string]struct{} `json:"disks"`
+
+	// Deprecated: This kind of info will be included in the related BackingImageDataSource.
+	ImageURL string `json:"imageURL"`
 }
 
 type BackingImageStatus struct {
-	OwnerID                 string                               `json:"ownerID"`
-	UUID                    string                               `json:"uuid"`
-	Size                    int64                                `json:"size"`
-	DiskDownloadStateMap    map[string]BackingImageDownloadState `json:"diskDownloadStateMap"`
-	DiskDownloadProgressMap map[string]int                       `json:"diskDownloadProgressMap"`
-	DiskLastRefAtMap        map[string]string                    `json:"diskLastRefAtMap"`
+	OwnerID           string                                 `json:"ownerID"`
+	UUID              string                                 `json:"uuid"`
+	Size              int64                                  `json:"size"`
+	DiskFileStatusMap map[string]*BackingImageDiskFileStatus `json:"diskFileStatusMap"`
+	DiskLastRefAtMap  map[string]string                      `json:"diskLastRefAtMap"`
+
+	// Deprecated: Replaced by field `State` in `DiskFileStatusMap`.
+	DiskDownloadStateMap map[string]BackingImageDownloadState `json:"diskDownloadStateMap"`
+	// Deprecated: Replaced by field `Progress` in `DiskFileStatusMap`.
+	DiskDownloadProgressMap map[string]int `json:"diskDownloadProgressMap"`
+}
+
+type BackingImageDiskFileStatus struct {
+	State    BackingImageState `json:"state"`
+	Progress int               `json:"progress"`
+	Message  string            `json:"message"`
 }
 
 type BackingImageManagerState string
@@ -549,15 +564,19 @@ type BackingImageManagerStatus struct {
 }
 
 type BackingImageFileInfo struct {
-	Name      string `json:"name"`
-	URL       string `json:"url"`
-	UUID      string `json:"uuid"`
-	Size      int64  `json:"size"`
-	Directory string `json:"directory"`
+	Name                 string            `json:"name"`
+	UUID                 string            `json:"uuid"`
+	Size                 int64             `json:"size"`
+	State                BackingImageState `json:"state"`
+	Message              string            `json:"message"`
+	SendingReference     int               `json:"sendingReference"`
+	SenderManagerAddress string            `json:"senderManagerAddress"`
+	Progress             int               `json:"progress"`
 
-	State                BackingImageDownloadState `json:"state"`
-	Message              string                    `json:"message"`
-	SendingReference     int                       `json:"sendingReference"`
-	SenderManagerAddress string                    `json:"senderManagerAddress"`
-	DownloadProgress     int                       `json:"downloadProgress"`
+	// Deprecated: This field is useless now. The manager of backing image files doesn't care if a file is downloaded and how.
+	URL string `json:"url"`
+	// Deprecated: This field is useless.
+	Directory string `json:"directory"`
+	// Deprecated: This field is renamed to `Progress`.
+	DownloadProgress int `json:"downloadProgress"`
 }
