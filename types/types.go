@@ -432,6 +432,18 @@ func ValidateReplicaCount(count int) error {
 	return nil
 }
 
+func ValidateReplicaAutoBalance(option ReplicaAutoBalance) error {
+	switch option {
+	case ReplicaAutoBalanceIgnored,
+		ReplicaAutoBalanceDisabled,
+		ReplicaAutoBalanceLeastEffort,
+		ReplicaAutoBalanceBestEffort:
+		return nil
+	default:
+		return fmt.Errorf("invalid replica auto-balance option: %v", option)
+	}
+}
+
 func ValidateDataLocality(mode DataLocality) error {
 	if mode != DataLocalityDisabled && mode != DataLocalityBestEffort {
 		return fmt.Errorf("invalid data locality mode: %v", mode)

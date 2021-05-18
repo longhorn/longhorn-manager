@@ -28,6 +28,15 @@ const (
 	VolumeFrontendEmpty    = VolumeFrontend("")
 )
 
+type ReplicaAutoBalance string
+
+const (
+	ReplicaAutoBalanceIgnored     = ReplicaAutoBalance("ignored")
+	ReplicaAutoBalanceDisabled    = ReplicaAutoBalance("disabled")
+	ReplicaAutoBalanceLeastEffort = ReplicaAutoBalance("least-effort")
+	ReplicaAutoBalanceBestEffort  = ReplicaAutoBalance("best-effort")
+)
+
 type DataLocality string
 
 const (
