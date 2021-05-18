@@ -47,6 +47,7 @@ const (
 	SettingNameDefaultShareManagerImage                     = SettingName("default-share-manager-image")
 	SettingNameDefaultBackingImageManagerImage              = SettingName("default-backing-image-manager-image")
 	SettingNameReplicaSoftAntiAffinity                      = SettingName("replica-soft-anti-affinity")
+	SettingNameReplicaAutoBalance                           = SettingName("replica-auto-balance")
 	SettingNameStorageOverProvisioningPercentage            = SettingName("storage-over-provisioning-percentage")
 	SettingNameStorageMinimalAvailablePercentage            = SettingName("storage-minimal-available-percentage")
 	SettingNameUpgradeChecker                               = SettingName("upgrade-checker")
@@ -93,6 +94,7 @@ var (
 		SettingNameDefaultShareManagerImage,
 		SettingNameDefaultBackingImageManagerImage,
 		SettingNameReplicaSoftAntiAffinity,
+		SettingNameReplicaAutoBalance,
 		SettingNameStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage,
 		SettingNameUpgradeChecker,
@@ -160,6 +162,7 @@ var (
 		SettingNameDefaultShareManagerImage:                     SettingDefinitionDefaultShareManagerImage,
 		SettingNameDefaultBackingImageManagerImage:              SettingDefinitionDefaultBackingImageManagerImage,
 		SettingNameReplicaSoftAntiAffinity:                      SettingDefinitionReplicaSoftAntiAffinity,
+		SettingNameReplicaAutoBalance:                           SettingDefinitionReplicaAutoBalance,
 		SettingNameStorageOverProvisioningPercentage:            SettingDefinitionStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage:            SettingDefinitionStorageMinimalAvailablePercentage,
 		SettingNameUpgradeChecker:                               SettingDefinitionUpgradeChecker,
@@ -300,6 +303,31 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "false",
+	}
+
+	SettingDefinitionReplicaAutoBalance = SettingDefinition{
+		DisplayName: "Replica Auto Balance",
+		Description: "Enable this setting automatically rebalances replicas when discovered an available node.\n\n" +
+			"The available global options are: \n\n" +
+			"- **disabled**. This is the default option. No replica auto-balance will be done.\n" +
+			"- **least-effort**. This option instructs Longhorn to balance replicas for minimal redundancy.\n" +
+			"- **best-effort**. This option instructs Longhorn to balance replicas for even redundancy.\n" +
+			"Longhorn also support individual volume setting. The setting can be specified in volume.spec.replicaAutoBalance, this overrules the global setting.\n" +
+			"The available volume spec options are: \n\n" +
+			"- **ignored**. This is the default option that instructs Longhorn to inherit from the global setting.\n" +
+			"- **disabled**. This option instructs Longhorn no replica auto-balance should be done.\n" +
+			"- **least-effort**. This option instructs Longhorn to balance replicas for minimal redundancy.\n" +
+			"- **best-effort**. This option instructs Longhorn to balance replicas for even redundancy.\n",
+		Category: SettingCategoryScheduling,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		Default:  string(ReplicaAutoBalanceDisabled),
+		Choices: []string{
+			string(ReplicaAutoBalanceDisabled),
+			string(ReplicaAutoBalanceLeastEffort),
+			string(ReplicaAutoBalanceBestEffort),
+		},
 	}
 
 	SettingDefinitionStorageOverProvisioningPercentage = SettingDefinition{
@@ -782,6 +810,10 @@ func ValidateInitSetting(name, value string) (err error) {
 		}
 		if err := ValidateReplicaCount(c); err != nil {
 			return fmt.Errorf("value %v: %v", c, err)
+		}
+	case SettingNameReplicaAutoBalance:
+		if err := ValidateReplicaAutoBalance(ReplicaAutoBalance(value)); err != nil {
+			return fmt.Errorf("value %v: %v", value, err)
 		}
 	case SettingNameGuaranteedEngineCPU:
 		if value != "" {
