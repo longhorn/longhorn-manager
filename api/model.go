@@ -134,11 +134,10 @@ type EngineImage struct {
 type BackingImage struct {
 	client.Resource
 
-	Name                string            `json:"name"`
-	ImageURL            string            `json:"imageURL"`
-	DiskStateMap        map[string]string `json:"diskStateMap"`
-	DownloadProgressMap map[string]int    `json:"downloadProgressMap"`
-	Size                int64             `json:"size"`
+	Name              string                                      `json:"name"`
+	ImageURL          string                                      `json:"imageURL"`
+	DiskFileStatusMap map[string]types.BackingImageDiskFileStatus `json:"diskFileStatusMap"`
+	Size              int64                                       `json:"size"`
 
 	DeletionTimestamp string `json:"deletionTimestamp"`
 }
@@ -379,6 +378,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("instanceManager", InstanceManager{})
 	schemas.AddType("instanceProcess", types.InstanceProcess{})
 
+	schemas.AddType("backingImageDiskFileStatus", types.BackingImageDiskFileStatus{})
 	schemas.AddType("backingImageCleanupInput", BackingImageCleanupInput{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
@@ -492,9 +492,9 @@ func backingImageSchema(backingImage *client.Schema) {
 	imageURL.Create = true
 	backingImage.ResourceFields["imageURL"] = imageURL
 
-	diskStateMap := backingImage.ResourceFields["diskStateMap"]
-	diskStateMap.Type = "map[string]string"
-	backingImage.ResourceFields["diskStateMap"] = diskStateMap
+	diskFileStatusMap := backingImage.ResourceFields["diskFileStatusMap"]
+	diskFileStatusMap.Type = "map[backingImageDiskFileStatus]"
+	backingImage.ResourceFields["diskFileStatusMap"] = diskFileStatusMap
 }
 
 func recurringSchema(recurring *client.Schema) {
@@ -1138,13 +1138,15 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 	if bi.DeletionTimestamp != nil {
 		deletionTimestamp = bi.DeletionTimestamp.String()
 	}
-	diskStateMap := make(map[string]string)
-	for diskID, state := range bi.Status.DiskDownloadStateMap {
-		diskStateMap[diskID] = string(state)
+	diskFileStatusMap := make(map[string]types.BackingImageDiskFileStatus)
+	for diskUUID, diskStatus := range bi.Status.DiskFileStatusMap {
+		diskFileStatusMap[diskUUID] = *diskStatus
 	}
-	for diskID := range bi.Spec.Disks {
-		if _, exists := bi.Status.DiskDownloadStateMap[diskID]; !exists {
-			diskStateMap[diskID] = ""
+	for diskUUID := range bi.Spec.Disks {
+		if _, exists := bi.Status.DiskFileStatusMap[diskUUID]; !exists {
+			diskFileStatusMap[diskUUID] = types.BackingImageDiskFileStatus{
+				Message: "File processing is not started",
+			}
 		}
 	}
 	res := &BackingImage{
@@ -1153,11 +1155,10 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 			Type:  "backingImage",
 			Links: map[string]string{},
 		},
-		Name:                bi.Name,
-		ImageURL:            bi.Spec.ImageURL,
-		DiskStateMap:        diskStateMap,
-		DownloadProgressMap: bi.Status.DiskDownloadProgressMap,
-		Size:                bi.Status.Size,
+		Name:              bi.Name,
+		ImageURL:          bi.Spec.ImageURL,
+		DiskFileStatusMap: diskFileStatusMap,
+		Size:              bi.Status.Size,
 
 		DeletionTimestamp: deletionTimestamp,
 	}
