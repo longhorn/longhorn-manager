@@ -834,14 +834,14 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 		if err != nil {
 			return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v: %v", v.Name, v.Spec.EngineImage, image, err)
 		}
-		return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v because the engine image %v is not deployed on the replicas' nodes or the node that the volume is attaching to", v.Name, v.Spec.EngineImage, image, image)
+		return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v because the engine image %v is not deployed on the replicas' nodes or the node that the volume is attached to", v.Name, v.Spec.EngineImage, image, image)
 	}
 
 	if isReady, err := m.ds.CheckEngineImageReadyOnAllVolumeReplicas(v.Status.CurrentImage, v.Name, v.Status.CurrentNodeID); !isReady {
 		if err != nil {
 			return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v: %v", v.Name, v.Spec.EngineImage, image, err)
 		}
-		return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v because the volume's current engine image %v is not deployed on the replicas' nodes or the node that the volume is attaching to", v.Name, v.Spec.EngineImage, image, v.Status.CurrentImage)
+		return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v because the volume's current engine image %v is not deployed on the replicas' nodes or the node that the volume is attached to", v.Name, v.Spec.EngineImage, image, v.Status.CurrentImage)
 	}
 
 	if v.Spec.MigrationNodeID != "" {
@@ -851,7 +851,7 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 	// Note: Rebuild is not supported for old DR volumes and the handling of a degraded DR volume live upgrade will get stuck.
 	//  Hence if you modify this part, the live upgrade should be prevented in API level for all old DR volumes.
 	if v.Status.State == types.VolumeStateAttached && v.Status.Robustness != types.VolumeRobustnessHealthy {
-		return nil, fmt.Errorf("cannot do live upgrade for a non-healthy volume %v", v.Name)
+		return nil, fmt.Errorf("cannot do live upgrade for a unhealthy volume %v", v.Name)
 	}
 
 	oldImage := v.Spec.EngineImage
