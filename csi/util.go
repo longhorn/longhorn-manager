@@ -109,6 +109,14 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.NumberOfReplicas = int64(nor)
 	}
 
+	if replicaAutoBalance, ok := volOptions["replicaAutoBalance"]; ok {
+		err := types.ValidateReplicaAutoBalance(types.ReplicaAutoBalance(replicaAutoBalance))
+		if err != nil {
+			return nil, errors.Wrap(err, "Invalid parameter replicaAutoBalance")
+		}
+		vol.ReplicaAutoBalance = replicaAutoBalance
+	}
+
 	if locality, ok := volOptions["dataLocality"]; ok {
 		if err := types.ValidateDataLocality(types.DataLocality(locality)); err != nil {
 			return nil, errors.Wrap(err, "Invalid parameter dataLocality")
