@@ -259,15 +259,11 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 			ks.PVCName = pv.Spec.ClaimRef.Name
 			ks.Namespace = pv.Spec.ClaimRef.Namespace
 			ks.LastPVCRefAt = ""
-		} else {
-			// PVC is no longer bound with PV. indicating history data by setting <LastPVCRefAt>
-			if lastPVStatus == string(v1.VolumeBound) {
-				if ks.LastPVCRefAt == "" {
-					ks.LastPVCRefAt = kc.nowHandler()
-					if len(ks.WorkloadsStatus) != 0 && ks.LastPodRefAt == "" {
-						ks.LastPodRefAt = kc.nowHandler()
-					}
-				}
+		} else if lastPVStatus == string(v1.VolumeBound) && ks.LastPVCRefAt == "" {
+			// PVC is no longer bound with PV. indicate historic data by setting <LastPVCRefAt>
+			ks.LastPVCRefAt = kc.nowHandler()
+			if len(ks.WorkloadsStatus) != 0 && ks.LastPodRefAt == "" {
+				ks.LastPodRefAt = kc.nowHandler()
 			}
 		}
 	} else {
