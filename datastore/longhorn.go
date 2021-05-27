@@ -242,58 +242,6 @@ func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, err
 	return itemMap, nil
 }
 
-// AnnotateAWSIAMRoleArn ensures that the running pods of the manager as well as the replica instance managers.
-// have the correct AWS IAM role arn assigned to them based on the passed `awsIAMRoleArn`
-func (s *DataStore) AnnotateAWSIAMRoleArn(controllerID, awsIAMRoleArn string) (bool, error) {
-	update := false
-	selector, err := s.getManagerSelector()
-	if err != nil {
-		return update, err
-	}
-	managerPods, err := s.pLister.Pods(s.namespace).List(selector)
-	if err != nil {
-		return update, err
-	}
-
-	selector, err = metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: types.GetInstanceManagerLabels("", "", types.InstanceManagerTypeReplica),
-	})
-	if err != nil {
-		return update, err
-	}
-	imPods, err := s.pLister.Pods(s.namespace).List(selector)
-	if err != nil {
-		return update, err
-	}
-
-	pods := append(managerPods, imPods...)
-	for _, pod := range pods {
-		if pod.Spec.NodeName != controllerID {
-			continue
-		}
-
-		val, exist := pod.Annotations[types.AWSIAMRoleAnnotation]
-		updateAnnotation := awsIAMRoleArn != "" && awsIAMRoleArn != val
-		deleteAnnotation := awsIAMRoleArn == "" && exist
-		if updateAnnotation {
-			if pod.Annotations == nil {
-				pod.Annotations = make(map[string]string)
-			}
-			pod.Annotations[types.AWSIAMRoleAnnotation] = awsIAMRoleArn
-		} else if deleteAnnotation {
-			delete(pod.Annotations, types.AWSIAMRoleAnnotation)
-		} else {
-			continue
-		}
-
-		if _, err = s.kubeClient.CoreV1().Pods(s.namespace).Update(pod); err != nil {
-			return update, err
-		}
-		update = true
-	}
-	return update, nil
-}
-
 // GetCredentialFromSecret gets the Secret of the given name and namespace
 // Returns a new credential object or error
 func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]string, error) {

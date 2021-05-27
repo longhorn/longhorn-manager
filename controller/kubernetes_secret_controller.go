@@ -179,15 +179,7 @@ func (ks *KubernetesSecretController) reconcileSecret(namespace, secretName stri
 
 	// Annotates AWS IAM role arn to the manager as well as the replica instance managers
 	awsIAMRoleArn := string(secret.Data[types.AWSIAMRoleArn])
-	update, err := ks.ds.AnnotateAWSIAMRoleArn(ks.controllerID, awsIAMRoleArn)
-	if err != nil {
-		return err
-	}
-
-	if update {
-		ks.logger.Infof("Annotates the AWS IAM role succeeded")
-	}
-	return nil
+	return ks.annotateAWSIAMRoleArn(awsIAMRoleArn)
 }
 
 func (ks *KubernetesSecretController) enqueueSecretChange(obj interface{}) {
@@ -198,4 +190,47 @@ func (ks *KubernetesSecretController) enqueueSecretChange(obj interface{}) {
 	}
 
 	ks.queue.AddRateLimited(key)
+}
+
+// annotateAWSIAMRoleArn ensures that the running pods of the manager as well as the replica instance managers.
+// have the correct AWS IAM role arn assigned to them based on the passed `awsIAMRoleArn`
+func (ks *KubernetesSecretController) annotateAWSIAMRoleArn(awsIAMRoleArn string) error {
+	managerPods, err := ks.ds.ListManagerPods()
+	if err != nil {
+		return err
+	}
+
+	imPods, err := ks.ds.ListInstanceManagerPodsBy(ks.controllerID, "", types.InstanceManagerTypeReplica)
+	if err != nil {
+		return err
+	}
+
+	pods := append(managerPods, imPods...)
+	for _, pod := range pods {
+		if pod.Spec.NodeName != ks.controllerID {
+			continue
+		}
+
+		val, exist := pod.Annotations[types.AWSIAMRoleAnnotation]
+		updateAnnotation := awsIAMRoleArn != "" && awsIAMRoleArn != val
+		deleteAnnotation := awsIAMRoleArn == "" && exist
+		if updateAnnotation {
+			if pod.Annotations == nil {
+				pod.Annotations = make(map[string]string)
+			}
+			pod.Annotations[types.AWSIAMRoleAnnotation] = awsIAMRoleArn
+		} else if deleteAnnotation {
+			delete(pod.Annotations, types.AWSIAMRoleAnnotation)
+		} else {
+			continue
+		}
+
+		if _, err = ks.kubeClient.CoreV1().Pods(pod.Namespace).Update(pod); err != nil {
+			return err
+		}
+
+		ks.logger.Infof("AWS IAM role for pod %v/%v updated", pod.Namespace, pod.Name)
+	}
+
+	return nil
 }
