@@ -57,6 +57,8 @@ type Volume struct {
 
 	RecurringJobs []RecurringJob `json:"recurringJobs,omitempty" yaml:"recurring_jobs,omitempty"`
 
+	ReplicaAutoBalance string `json:"replicaAutoBalance,omitempty" yaml:"replica_auto_balance,omitempty"`
+
 	Replicas []Replica `json:"replicas,omitempty" yaml:"replicas,omitempty"`
 
 	RestoreRequired bool `json:"restoreRequired,omitempty" yaml:"restore_required,omitempty"`
