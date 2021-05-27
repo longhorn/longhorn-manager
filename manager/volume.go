@@ -214,6 +214,14 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		logrus.Infof("Use the default number of replicas %v", spec.NumberOfReplicas)
 	}
 
+	if string(spec.ReplicaAutoBalance) == "" {
+		spec.ReplicaAutoBalance = types.ReplicaAutoBalanceIgnored
+		logrus.Infof("Use the %v to inherit global replicas auto-balance setting", spec.ReplicaAutoBalance)
+	}
+	if err := types.ValidateReplicaAutoBalance(spec.ReplicaAutoBalance); err != nil {
+		return nil, errors.Wrapf(err, "cannot create volume with replica auto-balance %v", spec.ReplicaAutoBalance)
+	}
+
 	if string(spec.DataLocality) == "" {
 		defaultDataLocality, err := m.GetSettingValueExisted(types.SettingNameDefaultDataLocality)
 		if err != nil {
@@ -273,6 +281,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			EngineImage:             defaultEngineImage,
 			FromBackup:              spec.FromBackup,
 			NumberOfReplicas:        spec.NumberOfReplicas,
+			ReplicaAutoBalance:      spec.ReplicaAutoBalance,
 			DataLocality:            spec.DataLocality,
 			StaleReplicaTimeout:     spec.StaleReplicaTimeout,
 			BackingImage:            spec.BackingImage,
