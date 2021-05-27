@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"sync"
 	"time"
 
@@ -462,22 +463,30 @@ func filterPods(pods []*v1.Pod, predicate func(pod *v1.Pod) bool) (filtered []*v
 	return filtered
 }
 
+// getAssociatedPods returns all pods using this pvc in sorted order based on pod name
 func (kc *KubernetesPVController) getAssociatedPods(ks *types.KubernetesStatus) ([]*v1.Pod, error) {
-	var pods []*v1.Pod
 	if ks.PVStatus != string(v1.VolumeBound) {
-		return pods, nil
+		return nil, nil
 	}
 	ps, err := kc.pLister.Pods(ks.Namespace).List(labels.Everything())
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to list pods in getAssociatedPod")
 	}
-	for _, p := range ps {
-		for _, v := range p.Spec.Volumes {
+
+	pods := filterPods(ps, func(pod *v1.Pod) bool {
+		for _, v := range pod.Spec.Volumes {
 			if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == ks.PVCName {
-				pods = append(pods, p)
+				return true
 			}
 		}
-	}
+		return false
+	})
+
+	// we sort the pods to normalize their order based on pod name
+	sort.Slice(pods, func(i, j int) bool {
+		return pods[i].Name < pods[j].Name
+	})
+
 	return pods, nil
 }
 
