@@ -86,7 +86,6 @@ type VolumeSpec struct {
 	Size                    int64          `json:"size,string"`
 	Frontend                VolumeFrontend `json:"frontend"`
 	FromBackup              string         `json:"fromBackup"`
-	NumberOfReplicas        int            `json:"numberOfReplicas"`
 	DataLocality            DataLocality   `json:"dataLocality"`
 	StaleReplicaTimeout     int            `json:"staleReplicaTimeout"`
 	NodeID                  string         `json:"nodeID"`
@@ -102,6 +101,9 @@ type VolumeSpec struct {
 	LastAttachedBy          string         `json:"lastAttachedBy"`
 	AccessMode              AccessMode     `json:"accessMode"`
 	Migratable              bool           `json:"migratable"`
+
+	NumberOfReplicas   int                `json:"numberOfReplicas"`
+	ReplicaAutoBalance ReplicaAutoBalance `json:"replicaAutoBalance"`
 
 	// Deprecated. Rename to BackingImage
 	BaseImage string `json:"baseImage"`

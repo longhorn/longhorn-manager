@@ -27,7 +27,6 @@ type Volume struct {
 	Frontend                types.VolumeFrontend   `json:"frontend"`
 	DisableFrontend         bool                   `json:"disableFrontend"`
 	FromBackup              string                 `json:"fromBackup"`
-	NumberOfReplicas        int                    `json:"numberOfReplicas"`
 	DataLocality            types.DataLocality     `json:"dataLocality"`
 	StaleReplicaTimeout     int                    `json:"staleReplicaTimeout"`
 	State                   types.VolumeState      `json:"state"`
@@ -44,6 +43,9 @@ type Volume struct {
 	RevisionCounterDisabled bool                   `json:"revisionCounterDisabled"`
 	DiskSelector            []string               `json:"diskSelector"`
 	NodeSelector            []string               `json:"nodeSelector"`
+
+	NumberOfReplicas   int                      `json:"numberOfReplicas"`
+	ReplicaAutoBalance types.ReplicaAutoBalance `json:"replicaAutoBalance"`
 
 	RecurringJobs    []types.RecurringJob       `json:"recurringJobs"`
 	Conditions       map[string]types.Condition `json:"conditions"`
@@ -180,6 +182,10 @@ type EngineUpgradeInput struct {
 
 type UpdateReplicaCountInput struct {
 	ReplicaCount int `json:"replicaCount"`
+}
+
+type UpdateReplicaAutoBalanceInput struct {
+	ReplicaAutoBalance string `json:"replicaAutoBalance"`
 }
 
 type UpdateDataLocalityInput struct {
@@ -345,6 +351,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("controller", Controller{})
 	schemas.AddType("diskUpdate", types.DiskSpec{})
 	schemas.AddType("UpdateReplicaCountInput", UpdateReplicaCountInput{})
+	schemas.AddType("UpdateReplicaAutoBalanceInput", UpdateReplicaAutoBalanceInput{})
 	schemas.AddType("UpdateDataLocalityInput", UpdateDataLocalityInput{})
 	schemas.AddType("UpdateAccessModeInput", UpdateAccessModeInput{})
 	schemas.AddType("workloadStatus", types.WorkloadStatus{})
@@ -596,6 +603,10 @@ func volumeSchema(volume *client.Schema) {
 
 		"updateReplicaCount": {
 			Input: "UpdateReplicaCountInput",
+		},
+
+		"updateReplicaAutoBalance": {
+			Input: "ReplicaAutoBalance",
 		},
 
 		"updateDataLocality": {
@@ -928,6 +939,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		LastAttachedBy:      v.Spec.LastAttachedBy,
 		FromBackup:          v.Spec.FromBackup,
 		NumberOfReplicas:    v.Spec.NumberOfReplicas,
+		ReplicaAutoBalance:  v.Spec.ReplicaAutoBalance,
 		DataLocality:        v.Spec.DataLocality,
 		RecurringJobs:       v.Spec.RecurringJobs,
 		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
@@ -986,6 +998,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["pvcCreate"] = struct{}{}
 			actions["updateDataLocality"] = struct{}{}
 			actions["updateAccessMode"] = struct{}{}
+			actions["updateReplicaAutoBalance"] = struct{}{}
 		case types.VolumeStateAttaching:
 			actions["cancelExpansion"] = struct{}{}
 		case types.VolumeStateAttached:
@@ -1002,6 +1015,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["engineUpgrade"] = struct{}{}
 			actions["updateReplicaCount"] = struct{}{}
 			actions["updateDataLocality"] = struct{}{}
+			actions["updateReplicaAutoBalance"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
