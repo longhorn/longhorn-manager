@@ -946,6 +946,36 @@ func (m *VolumeManager) UpdateReplicaCount(name string, count int) (v *longhorn.
 	return v, nil
 }
 
+func (m *VolumeManager) UpdateReplicaAutoBalance(name string, inputSpec types.ReplicaAutoBalance) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update replica auto-balance for volume %v", name)
+	}()
+
+	if err = types.ValidateReplicaAutoBalance(inputSpec); err != nil {
+		return nil, err
+	}
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.ReplicaAutoBalance == inputSpec {
+		logrus.Debugf("Volume %v already has replica auto-balance set to %v", v.Name, inputSpec)
+		return v, nil
+	}
+
+	oldSpec := v.Spec.ReplicaAutoBalance
+	v.Spec.ReplicaAutoBalance = inputSpec
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Debugf("Updated volume %v replica auto-balance spec from %v to %v", v.Name, oldSpec, v.Spec.ReplicaAutoBalance)
+	return v, nil
+}
+
 func (m *VolumeManager) UpdateDataLocality(name string, dataLocality types.DataLocality) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to update data locality for volume %v", name)

@@ -156,6 +156,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		Frontend:                volume.Frontend,
 		FromBackup:              volume.FromBackup,
 		NumberOfReplicas:        volume.NumberOfReplicas,
+		ReplicaAutoBalance:      volume.ReplicaAutoBalance,
 		DataLocality:            volume.DataLocality,
 		StaleReplicaTimeout:     volume.StaleReplicaTimeout,
 		BackingImage:            volume.BackingImage,
@@ -282,11 +283,34 @@ func (s *Server) VolumeUpdateReplicaCount(rw http.ResponseWriter, req *http.Requ
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error reading recurringInput")
+		return errors.Wrapf(err, "error reading replicaCount")
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.UpdateReplicaCount(id, input.ReplicaCount)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	}
+
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateReplicaAutoBalance(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateReplicaAutoBalanceInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrapf(err, "error reading replicaAutoBalance")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateReplicaAutoBalance(id, types.ReplicaAutoBalance(input.ReplicaAutoBalance))
 	})
 	if err != nil {
 		return err

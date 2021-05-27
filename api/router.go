@@ -70,14 +70,16 @@ func NewRouter(s *Server) *mux.Router {
 		"detach":             s.VolumeDetach,
 		"salvage":            s.VolumeSalvage,
 		"recurringUpdate":    s.VolumeRecurringUpdate,
-		"updateReplicaCount": s.VolumeUpdateReplicaCount,
 		"updateDataLocality": s.VolumeUpdateDataLocality,
 		"updateAccessMode":   s.VolumeUpdateAccessMode,
 		"activate":           s.VolumeActivate,
 		"expand":             s.VolumeExpand,
 		"cancelExpansion":    s.VolumeCancelExpansion,
 
-		"replicaRemove": s.ReplicaRemove,
+		"updateReplicaCount":       s.VolumeUpdateReplicaCount,
+		"updateReplicaAutoBalance": s.VolumeUpdateReplicaAutoBalance,
+		"replicaRemove":            s.ReplicaRemove,
+
 		"engineUpgrade": s.EngineUpgrade,
 
 		"snapshotPurge":  s.fwd.Handler(OwnerIDFromVolume(s.m), s.SnapshotPurge),
