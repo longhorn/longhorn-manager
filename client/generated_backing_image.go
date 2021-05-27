@@ -11,9 +11,13 @@ type BackingImage struct {
 
 	DiskStateMap map[string]string `json:"diskStateMap,omitempty" yaml:"disk_state_map,omitempty"`
 
+	DownloadProgressMap map[string]string `json:"downloadProgressMap,omitempty" yaml:"download_progress_map,omitempty"`
+
 	ImageURL string `json:"imageURL,omitempty" yaml:"image_url,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	Size int64 `json:"size,omitempty" yaml:"size,omitempty"`
 }
 
 type BackingImageCollection struct {
