@@ -37,6 +37,11 @@ func (v *VolumeStatus) DeepCopyInto(to *VolumeStatus) {
 			to.Conditions[key] = value
 		}
 	}
+
+	if v.KubernetesStatus.WorkloadsStatus != nil {
+		to.KubernetesStatus.WorkloadsStatus = make([]WorkloadStatus, len(v.KubernetesStatus.WorkloadsStatus))
+		copy(to.KubernetesStatus.WorkloadsStatus, v.KubernetesStatus.WorkloadsStatus)
+	}
 }
 
 func (e *EngineSpec) DeepCopyInto(to *EngineSpec) {
