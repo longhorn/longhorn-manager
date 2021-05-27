@@ -336,6 +336,17 @@ func (s *DataStore) ListInstanceManagerPods() ([]*corev1.Pod, error) {
 	return s.ListPodsBySelector(selector)
 }
 
+// ListInstanceManagerPodsBy returns a list of instance manager pods that fullfill the below conditions
+func (s *DataStore) ListInstanceManagerPodsBy(node string, image string, imType types.InstanceManagerType) ([]*corev1.Pod, error) {
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetInstanceManagerLabels(node, image, imType),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.ListPodsBySelector(selector)
+}
+
 func getShareManagerComponentSelector() (labels.Selector, error) {
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: types.GetShareManagerComponentLabel(),
