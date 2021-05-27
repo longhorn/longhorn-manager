@@ -625,6 +625,16 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 			}
 		}
 
+		setting, err := vc.getAutoBalancedReplicasSetting(v)
+		if err != nil {
+			vc.logger.Warnf(err.Error())
+		}
+		if setting != types.ReplicaAutoBalanceDisabled {
+			if err := vc.replenishReplicas(v, e, rs, ""); err != nil {
+				return err
+			}
+		}
+
 	} else { // healthyCount < v.Spec.NumberOfReplicas
 		v.Status.Robustness = types.VolumeRobustnessDegraded
 		if oldRobustness != types.VolumeRobustnessDegraded {
@@ -697,6 +707,7 @@ func (vc *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*l
 	if err := vc.cleanupExtraHealthyReplicas(v, e, rs); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -771,33 +782,90 @@ func (vc *VolumeController) cleanupFailedToScheduledReplicas(v *longhorn.Volume,
 
 func (vc *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	healthyCount := vc.getHealthyReplicaCount(rs)
-
-	if healthyCount > v.Spec.NumberOfReplicas {
-		for _, r := range rs {
-			// Clean up eviction requested replica
-			if r.Status.EvictionRequested {
-				if err := vc.deleteReplica(r, rs); err != nil {
-					vc.eventRecorder.Eventf(v, v1.EventTypeWarning,
-						EventReasonFailedEviction,
-						"volume %v failed to evict replica %v",
-						v.Name, r.Name)
-					return err
-				}
-				logrus.Debugf("Evicted replica %v", r.Name)
-				return nil
-			}
-		}
+	if healthyCount <= v.Spec.NumberOfReplicas {
+		return nil
 	}
 
-	// Clean up extra healthy replica with data-locality finished
-	healthyCount = vc.getHealthyReplicaCount(rs)
+	var cleaned bool
+	if cleaned, err = vc.cleanupEvictionRequestedReplicas(v, rs); err != nil || cleaned {
+		return err
+	}
 
-	if healthyCount > v.Spec.NumberOfReplicas &&
-		!isDataLocalityDisabled(v) &&
+	if cleaned, err = vc.cleanupAutoBalancedReplicas(v, e, rs); err != nil || cleaned {
+		return err
+	}
+
+	if cleaned, err = vc.cleanupDataLocalityReplicas(v, e, rs); err != nil || cleaned {
+		return err
+	}
+
+	return nil
+}
+
+func (vc *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
+	for _, r := range rs {
+		if r.Status.EvictionRequested {
+			if err := vc.deleteReplica(r, rs); err != nil {
+				vc.eventRecorder.Eventf(v, v1.EventTypeWarning,
+					EventReasonFailedEviction,
+					"volume %v failed to evict replica %v",
+					v.Name, r.Name)
+				return false, err
+			}
+			logrus.Debugf("Evicted replica %v", r.Name)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (vc *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
+	log := getLoggerForVolume(vc.logger, v).WithField("replicaAutoBalanceType", "delete")
+
+	setting, err := vc.getAutoBalancedReplicasSetting(v)
+	if err != nil {
+		log.Warnf(err.Error())
+	}
+	if setting == types.ReplicaAutoBalanceDisabled {
+		return false, nil
+	}
+
+	var rNames []string
+	if setting == types.ReplicaAutoBalanceBestEffort {
+		_, rNames, _ = vc.getReplicaCountForAutoBalanceBestEffort(v, e, rs, vc.getReplicaCountForAutoBalanceNode)
+		if len(rNames) == 0 {
+			_, rNames, _ = vc.getReplicaCountForAutoBalanceBestEffort(v, e, rs, vc.getReplicaCountForAutoBalanceZone)
+		}
+	}
+	if len(rNames) == 0 {
+		rNames, err = vc.getPreferredReplicaCandidatesForDeletion(rs)
+		if err != nil {
+			return false, err
+		}
+		log.Debugf("Found replica deletion candidates %v", rNames)
+	} else {
+		log.Debugf("Found replica deletion candidates %v with best-effort", rNames)
+	}
+
+	// Randomly delete extra non-local healthy replicas in the preferred candidate list rNames
+	// Sometime cleanupExtraHealthyReplicas() is called more than once with the same input (v,e,rs).
+	// To make the deleting operation idempotent and prevent deleting more replica than needed,
+	// we always delete the replica with the smallest name.
+	sort.Strings(rNames)
+	r := rs[rNames[0]]
+	if err := vc.deleteReplica(r, rs); err != nil {
+		return false, err
+	}
+	log.Debugf("Deleted replica %v", r.Name)
+	return true, nil
+}
+
+func (vc *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
+	if !isDataLocalityDisabled(v) &&
 		hasLocalReplicaOnSameNodeAsEngine(e, rs) {
 		rNames, err := vc.getPreferredReplicaCandidatesForDeletion(rs)
 		if err != nil {
-			return err
+			return false, err
 		}
 
 		// Randomly delete extra non-local healthy replicas in the preferred candidate list rNames
@@ -808,12 +876,40 @@ func (vc *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *l
 		for _, rName := range rNames {
 			r := rs[rName]
 			if r.Spec.NodeID != e.Spec.NodeID {
-				return vc.deleteReplica(r, rs)
+				if err := vc.deleteReplica(r, rs); err != nil {
+					return false, err
+				}
+				return true, nil
 			}
 		}
 	}
+	return false, nil
+}
 
-	return nil
+func (vc *VolumeController) getAutoBalancedReplicasSetting(v *longhorn.Volume) (types.ReplicaAutoBalance, error) {
+	var setting types.ReplicaAutoBalance
+
+	volumeSetting := v.Spec.ReplicaAutoBalance
+	if volumeSetting != types.ReplicaAutoBalanceIgnored {
+		setting = volumeSetting
+	}
+
+	var err error
+	if setting == "" {
+		globalSetting, _ := vc.ds.GetSettingValueExisted(types.SettingNameReplicaAutoBalance)
+
+		if globalSetting == string(types.ReplicaAutoBalanceIgnored) {
+			globalSetting = string(types.ReplicaAutoBalanceDisabled)
+		}
+
+		setting = types.ReplicaAutoBalance(globalSetting)
+	}
+
+	err = types.ValidateReplicaAutoBalance(types.ReplicaAutoBalance(setting))
+	if err != nil {
+		setting = types.ReplicaAutoBalanceDisabled
+	}
+	return setting, errors.Wrapf(err, "replica auto-balance is disabled")
 }
 
 // ReconcileVolumeState handles the attaching and detaching of volume
@@ -1470,7 +1566,7 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 	}
 
 	// If disabled replica rebuild, skip all the rebuild except first time creation.
-	if (len(rs) != 0) && (disableReplicaRebuild == true) {
+	if (len(rs) != 0) && disableReplicaRebuild {
 		return nil
 	}
 
@@ -1498,7 +1594,10 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 
 	log := getLoggerForVolume(vc.logger, v)
 
-	replenishCount := vc.getReplenishReplicasCount(v, rs)
+	replenishCount, updateNodeAffinity := vc.getReplenishReplicasCount(v, rs, e)
+	if hardNodeAffinity == "" && updateNodeAffinity != "" {
+		hardNodeAffinity = updateNodeAffinity
+	}
 	// For regular rebuild case or data locality case, rebuild one replica at a time
 	if (len(rs) != 0 && replenishCount > 0) || hardNodeAffinity != "" {
 		replenishCount = 1
@@ -1553,7 +1652,288 @@ func getRebuildingReplicaCount(e *longhorn.Engine) int {
 	return rebuilding
 }
 
-func (vc *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[string]*longhorn.Replica) int {
+type replicaAutoBalanceCount func(*longhorn.Volume, *longhorn.Engine, map[string]*longhorn.Replica) (int, map[string][]string, error)
+
+func (vc *VolumeController) getReplicaCountForAutoBalanceLeastEffort(v *longhorn.Volume, e *longhorn.Engine,
+	rs map[string]*longhorn.Replica, fnCount replicaAutoBalanceCount) int {
+	log := getLoggerForVolume(vc.logger, v).WithField("replicaAutoBalanceOption", types.ReplicaAutoBalanceLeastEffort)
+
+	var err error
+	defer func() {
+		if err != nil {
+			log.WithError(err).Warn("Skip replica auto-balance")
+		}
+	}()
+
+	setting, err := vc.getAutoBalancedReplicasSetting(v)
+	// Verifying `least-effort` and `best-effort` here because we've set
+	// replica auto-balance to always try adjusting replica count with
+	// `least-effort` first to achieve minimal redundancy.
+	enabled := []string{
+		string(types.ReplicaAutoBalanceLeastEffort),
+		string(types.ReplicaAutoBalanceBestEffort),
+	}
+	if err != nil || !util.Contains(enabled, string(setting)) {
+		return 0
+	}
+
+	if v.Status.Robustness != types.VolumeRobustnessHealthy {
+		log.Debugf("Cannot auto-balance volume in %s state", v.Status.Robustness)
+		return 0
+	}
+
+	var adjustCount int
+	adjustCount, _, err = fnCount(v, e, rs)
+	if err != nil {
+		return 0
+	}
+	log.Debugf("Found %v replica candidate for auto-balance", adjustCount)
+	return adjustCount
+}
+
+func (vc *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.Volume, e *longhorn.Engine,
+	rs map[string]*longhorn.Replica,
+	fnCount replicaAutoBalanceCount) (int, []string, []string) {
+	log := getLoggerForVolume(vc.logger, v).WithField("replicaAutoBalanceOption", types.ReplicaAutoBalanceBestEffort)
+
+	var err error
+	defer func() {
+		if err != nil {
+			log.WithError(err).Warn("Skip replica auto-balance")
+		}
+	}()
+
+	setting, err := vc.getAutoBalancedReplicasSetting(v)
+	if err != nil || setting != types.ReplicaAutoBalanceBestEffort {
+		return 0, nil, []string{}
+	}
+
+	if v.Status.Robustness != types.VolumeRobustnessHealthy {
+		log.Debugf("Cannot auto-balance volume in %s state", v.Status.Robustness)
+		return 0, nil, []string{}
+	}
+
+	var unusedCount int
+	unusedCount, extraRNames, err := fnCount(v, e, rs)
+	if unusedCount == 0 && len(extraRNames) <= 1 {
+		return 0, nil, []string{}
+	}
+
+	var mostExtraRList []string
+	var mostExtraRCount int
+	var leastExtraROwners []string
+	var leastExtraRCount int
+	for owner, rNames := range extraRNames {
+		rNameCount := len(rNames)
+		if leastExtraRCount == 0 || rNameCount < leastExtraRCount {
+			leastExtraRCount = rNameCount
+			leastExtraROwners = []string{}
+			leastExtraROwners = append(leastExtraROwners, owner)
+		} else if rNameCount == leastExtraRCount {
+			leastExtraROwners = append(leastExtraROwners, owner)
+		}
+		if rNameCount > mostExtraRCount {
+			mostExtraRList = rNames
+			mostExtraRCount = rNameCount
+		}
+	}
+
+	if mostExtraRCount == 0 || mostExtraRCount == leastExtraRCount {
+		return 0, nil, []string{}
+	}
+
+	adjustCount := mostExtraRCount - leastExtraRCount - 1
+	log.Debugf("Found %v replicas from %v to balance to one of node in %v", adjustCount, mostExtraRList, leastExtraROwners)
+	return adjustCount, mostExtraRList, leastExtraROwners
+}
+
+func (vc *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (int, map[string][]string, error) {
+	log := getLoggerForVolume(vc.logger, v).WithField("replicaAutoBalanceType", "zone")
+
+	readyNodes, err := vc.ds.ListReadyAndSchedulableNodes()
+	if err != nil {
+		return 0, nil, err
+	}
+
+	var usedZones []string
+	var usedNodes []string
+	zoneExtraRs := make(map[string][]string)
+	// Count the engine node replica first so it doesn't get included in the
+	// duplicates list.
+	for _, r := range rs {
+		node, exist := readyNodes[r.Spec.NodeID]
+		if !exist {
+			continue
+		}
+		if r.Spec.NodeID == e.Spec.NodeID {
+			nZone := node.Status.Zone
+			zoneExtraRs[nZone] = []string{}
+			usedZones = append(usedZones, nZone)
+			break
+		}
+	}
+	for _, r := range rs {
+		if r.Status.CurrentState != types.InstanceStateRunning {
+			continue
+		}
+
+		node, exist := readyNodes[r.Spec.NodeID]
+		if !exist {
+			// replica on node not count for auto-balance, could get evicted
+			continue
+		}
+
+		if r.Spec.NodeID == e.Spec.NodeID {
+			// replica on engine node not count for auto-balance
+			continue
+		}
+
+		nZone := node.Status.Zone
+		_, exist = zoneExtraRs[nZone]
+		if exist {
+			zoneExtraRs[nZone] = append(zoneExtraRs[nZone], r.Name)
+		} else {
+			zoneExtraRs[nZone] = []string{}
+			usedZones = append(usedZones, nZone)
+		}
+		if !util.Contains(usedNodes, r.Spec.NodeID) {
+			usedNodes = append(usedNodes, r.Spec.NodeID)
+		}
+	}
+	log.Debugf("Found %v use zones %v", len(usedZones), usedZones)
+	log.Debugf("Found %v use nodes %v", len(usedNodes), usedNodes)
+	if v.Spec.NumberOfReplicas == len(zoneExtraRs) {
+		log.Debugf("Balanced, %v volume replicas are running on different zones", v.Spec.NumberOfReplicas)
+		return 0, zoneExtraRs, nil
+	}
+
+	ei, err := vc.getEngineImage(v.Status.CurrentImage)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	unusedZone := make(map[string][]string)
+	for nodeName, node := range readyNodes {
+		if util.Contains(usedZones, node.Status.Zone) {
+			// cannot use node in zone because have running replica
+			continue
+		}
+
+		if util.Contains(usedNodes, nodeName) {
+			// cannot use node because have running replica
+			continue
+		}
+
+		if !node.Spec.AllowScheduling {
+			log.Debugf("Cannot use node %v, does not allow scheduling", nodeName)
+			continue
+		}
+
+		if isReady, _ := vc.ds.CheckEngineImageReadiness(ei.Spec.Image, nodeName); !isReady {
+			log.Debugf("Cannot use node %v, engine image is not ready", nodeName)
+			continue
+		}
+
+		unusedZone[node.Status.Zone] = append(unusedZone[node.Status.Zone], nodeName)
+	}
+	if len(unusedZone) == 0 {
+		log.Debug("Balanced, all ready zones are used by this volume")
+		return 0, zoneExtraRs, err
+	}
+
+	unevenCount := v.Spec.NumberOfReplicas - len(zoneExtraRs)
+	unusedCount := len(unusedZone)
+	adjustCount := 0
+	if unusedCount < unevenCount {
+		adjustCount = unusedCount
+	} else {
+		adjustCount = unevenCount
+	}
+	log.Debugf("Found %v zone available for auto-balance duplicates in %v", adjustCount, zoneExtraRs)
+
+	return adjustCount, zoneExtraRs, err
+}
+
+func (vc *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (int, map[string][]string, error) {
+	log := getLoggerForVolume(vc.logger, v).WithField("replicaAutoBalanceType", "node")
+
+	readyNodes, err := vc.ds.ListReadyAndSchedulableNodes()
+	if err != nil {
+		return 0, nil, err
+	}
+	nodeExtraRs := make(map[string][]string)
+	for _, r := range rs {
+		if r.Status.CurrentState != types.InstanceStateRunning {
+			continue
+		}
+
+		_, exist := readyNodes[r.Spec.NodeID]
+		if !exist {
+			log.Debugf("Node %v is not ready or schedulable, replica %v could get evicted", r.Spec.NodeID, r.Name)
+			continue
+		}
+
+		nodeID := r.Spec.NodeID
+		_, isDuplicate := nodeExtraRs[nodeID]
+		if isDuplicate {
+			nodeExtraRs[nodeID] = append(nodeExtraRs[nodeID], r.Name)
+		} else {
+			nodeExtraRs[nodeID] = []string{}
+		}
+
+		if len(nodeExtraRs[nodeID]) > v.Spec.NumberOfReplicas {
+			msg := fmt.Sprintf("Too many replicas running on node %v", nodeExtraRs[nodeID])
+			log.WithField("nodeID", nodeID).Debugf(msg)
+			return 0, nil, nil
+		}
+	}
+
+	if v.Spec.NumberOfReplicas == len(nodeExtraRs) {
+		log.Debug("Balanced, volume replicas are running on different nodes")
+		return 0, nodeExtraRs, nil
+	}
+
+	ei, err := vc.getEngineImage(v.Status.CurrentImage)
+	if err != nil {
+		return 0, nodeExtraRs, err
+	}
+	for nodeName, node := range readyNodes {
+		_, exist := nodeExtraRs[nodeName]
+		if exist {
+			continue
+		}
+
+		if !node.Spec.AllowScheduling {
+			log.Debugf("Cannot use node %v, does not allow scheduling", nodeName)
+			delete(readyNodes, nodeName)
+			continue
+		}
+
+		if isReady, _ := vc.ds.CheckEngineImageReadiness(ei.Spec.Image, node.Name); !isReady {
+			log.Debugf("Cannot use node %v, engine image is not ready", nodeName)
+			delete(readyNodes, nodeName)
+			continue
+		}
+	}
+	if len(nodeExtraRs) == len(readyNodes) {
+		log.Debug("Balanced, all ready nodes are used by this volume")
+		return 0, nodeExtraRs, nil
+	}
+
+	unevenCount := v.Spec.NumberOfReplicas - len(nodeExtraRs)
+	unusedCount := len(readyNodes) - len(nodeExtraRs)
+	adjustCount := 0
+	if unusedCount < unevenCount {
+		adjustCount = unusedCount
+	} else {
+		adjustCount = unevenCount
+	}
+	log.Debugf("Found %v node available for auto-balance duplicates in %v", adjustCount, nodeExtraRs)
+
+	return adjustCount, nodeExtraRs, err
+}
+
+func (vc *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[string]*longhorn.Replica, e *longhorn.Engine) (int, string) {
 	usableCount := 0
 	for _, r := range rs {
 		// The failed to schedule local replica shouldn't be counted
@@ -1567,10 +1947,157 @@ func (vc *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map
 		}
 	}
 
-	if v.Spec.NumberOfReplicas < usableCount {
-		return 0
+	switch {
+	case v.Spec.NumberOfReplicas < usableCount:
+		return 0, ""
+	case v.Spec.NumberOfReplicas > usableCount:
+		return v.Spec.NumberOfReplicas - usableCount, ""
+	case v.Spec.NumberOfReplicas == usableCount:
+		if adjustCount := vc.getReplicaCountForAutoBalanceLeastEffort(v, e, rs, vc.getReplicaCountForAutoBalanceZone); adjustCount != 0 {
+			return adjustCount, ""
+		}
+		if adjustCount := vc.getReplicaCountForAutoBalanceLeastEffort(v, e, rs, vc.getReplicaCountForAutoBalanceNode); adjustCount != 0 {
+			return adjustCount, ""
+		}
+		adjustNodeAffinity := ""
+		var nCandidates []string
+		adjustCount, _, nCandidates := vc.getReplicaCountForAutoBalanceBestEffort(v, e, rs, vc.getReplicaCountForAutoBalanceNode)
+		if adjustCount == 0 {
+			_, _, zCandidates := vc.getReplicaCountForAutoBalanceBestEffort(v, e, rs, vc.getReplicaCountForAutoBalanceZone)
+			nCandidates = vc.getNodeCandidatesForAutoBalanceZone(v, e, rs, zCandidates)
+		}
+		// TODO: remove checking and let schedular handle this part after
+		// https://github.com/longhorn/longhorn/issues/2667
+		schedulableCandidates := vc.getIsSchedulableToDiskNodes(v, nCandidates)
+		if len(schedulableCandidates) != 0 {
+			// TODO: select replica auto-balance best-effort node from candidate list.
+			// https://github.com/longhorn/longhorn/issues/2667
+			adjustNodeAffinity = schedulableCandidates[0]
+		}
+		return adjustCount, adjustNodeAffinity
 	}
-	return v.Spec.NumberOfReplicas - usableCount
+	return 0, ""
+}
+
+func (vc *VolumeController) getIsSchedulableToDiskNodes(v *longhorn.Volume, nodeNames []string) (schedulableNodeNames []string) {
+	log := getLoggerForVolume(vc.logger, v)
+	defer func() {
+		if len(schedulableNodeNames) == 0 {
+			log.Debugf("Found 0 node has at least one schedulable disk")
+		} else {
+			log.Debugf("Found node %v has at least one schedulable disk", schedulableNodeNames)
+		}
+	}()
+
+	if len(nodeNames) == 0 {
+		return schedulableNodeNames
+	}
+
+	for _, nodeName := range nodeNames {
+		scheduleNode := false
+		node, err := vc.ds.GetNode(nodeName)
+		if err != nil {
+			continue
+		}
+		for fsid, diskStatus := range node.Status.DiskStatus {
+			diskSpec, exists := node.Spec.Disks[fsid]
+			if !exists {
+				continue
+			}
+
+			if !diskSpec.AllowScheduling || diskSpec.EvictionRequested {
+				continue
+			}
+
+			if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status != types.ConditionStatusTrue {
+				continue
+			}
+
+			diskInfo, err := vc.scheduler.GetDiskSchedulingInfo(diskSpec, diskStatus)
+			if err != nil {
+				continue
+			}
+
+			if vc.scheduler.IsSchedulableToDisk(v.Spec.Size, v.Status.ActualSize, diskInfo) {
+				scheduleNode = true
+				break
+			}
+		}
+		if scheduleNode {
+			schedulableNodeNames = append(schedulableNodeNames, nodeName)
+		}
+	}
+	return schedulableNodeNames
+}
+
+func (vc *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, zones []string) (candidateNames []string) {
+	log := getLoggerForVolume(vc.logger, v).WithFields(
+		logrus.Fields{
+			"replicaAutoBalanceOption": types.ReplicaAutoBalanceBestEffort,
+			"replicaAutoBalanceType":   "zone",
+		},
+	)
+
+	var err error
+	defer func() {
+		if err != nil {
+			log.WithError(err).Warn("Skip replica zone auto-balance")
+		}
+	}()
+
+	if len(zones) == 0 {
+		return candidateNames
+	}
+
+	if v.Status.Robustness != types.VolumeRobustnessHealthy {
+		log.Debugf("Cannot auto-balance volume in %s state", v.Status.Robustness)
+		return candidateNames
+	}
+
+	readyNodes, err := vc.ds.ListReadyAndSchedulableNodes()
+	if err != nil {
+		return candidateNames
+	}
+
+	ei, err := vc.getEngineImage(v.Status.CurrentImage)
+	if err != nil {
+		return candidateNames
+	}
+	for nName, n := range readyNodes {
+		for _, zone := range zones {
+			if n.Status.Zone != zone {
+				delete(readyNodes, nName)
+				continue
+			}
+		}
+
+		if !n.Spec.AllowScheduling {
+			// cannot use node, does not allow scheduling.
+			delete(readyNodes, nName)
+			continue
+		}
+
+		if isReady, _ := vc.ds.CheckEngineImageReadiness(ei.Spec.Image, nName); !isReady {
+			// cannot use node, engine image is not ready
+			delete(readyNodes, nName)
+			continue
+		}
+
+		for _, r := range rs {
+			if r.Spec.NodeID == nName {
+				delete(readyNodes, nName)
+				break
+			}
+		}
+	}
+
+	for nName := range readyNodes {
+		candidateNames = append(candidateNames, nName)
+	}
+	if len(candidateNames) != 0 {
+		log.Debugf("Found node candidates: %v ", candidateNames)
+	}
+	return candidateNames
 }
 
 func (vc *VolumeController) hasEngineStatusSynced(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {

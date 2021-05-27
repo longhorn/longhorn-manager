@@ -865,3 +865,12 @@ func MinInt(a, b int) int {
 	}
 	return b
 }
+
+func Contains(list []string, item string) bool {
+	for _, i := range list {
+		if i == item {
+			return true
+		}
+	}
+	return false
+}
