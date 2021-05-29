@@ -29,6 +29,9 @@ type LonghornV1beta1Interface interface {
 	BackingImagesGetter
 	BackingImageDataSourcesGetter
 	BackingImageManagersGetter
+	BackupsGetter
+	BackupTargetsGetter
+	BackupVolumesGetter
 	EnginesGetter
 	EngineImagesGetter
 	InstanceManagersGetter
@@ -54,6 +57,18 @@ func (c *LonghornV1beta1Client) BackingImageDataSources(namespace string) Backin
 
 func (c *LonghornV1beta1Client) BackingImageManagers(namespace string) BackingImageManagerInterface {
 	return newBackingImageManagers(c, namespace)
+}
+
+func (c *LonghornV1beta1Client) Backups(namespace string) BackupInterface {
+	return newBackups(c, namespace)
+}
+
+func (c *LonghornV1beta1Client) BackupTargets(namespace string) BackupTargetInterface {
+	return newBackupTargets(c, namespace)
+}
+
+func (c *LonghornV1beta1Client) BackupVolumes(namespace string) BackupVolumeInterface {
+	return newBackupVolumes(c, namespace)
 }
 
 func (c *LonghornV1beta1Client) Engines(namespace string) EngineInterface {

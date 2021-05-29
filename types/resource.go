@@ -1,5 +1,9 @@
 package types
 
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
 type VolumeState string
 
 const (
@@ -615,4 +619,73 @@ type BackingImageDataSourceStatus struct {
 	Progress     int               `json:"progress"`
 	Checksum     string            `json:"checksum"`
 	Message      string            `json:"message"`
+}
+
+type BackupTargetSpec struct {
+	BackupTargetURL  string          `json:"backupTargetURL"`
+	CredentialSecret string          `json:"credentialSecret"`
+	PollInterval     metav1.Duration `json:"pollInterval"`
+	SyncRequestedAt  *metav1.Time    `json:"syncRequestedAt"`
+}
+
+type BackupTargetStatus struct {
+	OwnerID      string       `json:"ownerID"`
+	Available    bool         `json:"available"`
+	LastSyncedAt *metav1.Time `json:"lastSyncedAt"`
+}
+
+type BackupVolumeSpec struct {
+	SyncRequestedAt     *metav1.Time `json:"syncRequestedAt"`
+	FileCleanupRequired bool         `json:"fileCleanupRequired"`
+}
+
+type BackupVolumeStatus struct {
+	OwnerID              string            `json:"ownerID"`
+	LastModificationTime *metav1.Time      `json:"lastModificationTime"`
+	Size                 string            `json:"size"`
+	Labels               map[string]string `json:"labels"`
+	CreatedAt            string            `json:"createdAt"`
+	LastBackupName       string            `json:"lastBackupName"`
+	LastBackupAt         string            `json:"lastBackupAt"`
+	DataStored           string            `json:"dataStored"`
+	Messages             map[string]string `json:"messages"`
+	BackingImageName     string            `json:"backingImageName"`
+	BackingImageURL      string            `json:"backingImageURL"`
+	LastSyncedAt         *metav1.Time      `json:"lastSyncedAt"`
+}
+
+type SnapshotBackupSpec struct {
+	SyncRequestedAt     *metav1.Time      `json:"syncRequestedAt"`
+	FileCleanupRequired bool              `json:"fileCleanupRequired"`
+	SnapshotName        string            `json:"snapshotName"`
+	Labels              map[string]string `json:"labels"`
+	BackingImage        string            `json:"backingImage"`
+	BackingImageURL     string            `json:"backingImageURL"`
+}
+
+type BackupState string
+
+const (
+	BackupStatePending    = BackupState("pending")
+	BackupStateInProgress = BackupState("inprogress")
+	BackupStateCompleted  = BackupState("completed")
+	BackupStateError      = BackupState("error")
+	BackupStateUnknown    = BackupState("unknown")
+)
+
+type SnapshotBackupStatus struct {
+	OwnerID                string            `json:"ownerID"`
+	State                  BackupState       `json:"state"`
+	URL                    string            `json:"url"`
+	SnapshotName           string            `json:"snapshotName"`
+	SnapshotCreatedAt      string            `json:"snapshotCreatedAt"`
+	BackupCreatedAt        string            `json:"backupCreatedAt"`
+	Size                   string            `json:"size"`
+	Labels                 map[string]string `json:"labels"`
+	Messages               map[string]string `json:"messages"`
+	VolumeName             string            `json:"volumeName"`
+	VolumeSize             string            `json:"volumeSize"`
+	VolumeCreated          string            `json:"volumeCreated"`
+	VolumeBackingImageName string            `json:"volumeBackingImageName"`
+	LastSyncedAt           *metav1.Time      `json:"lastSyncedAt"`
 }
