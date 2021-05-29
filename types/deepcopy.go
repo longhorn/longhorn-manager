@@ -275,3 +275,97 @@ func (from *BackingImageDataSourceSpec) DeepCopyInto(to *BackingImageDataSourceS
 func (from *BackingImageDataSourceStatus) DeepCopyInto(to *BackingImageDataSourceStatus) {
 	*to = *from
 }
+
+func (in *BackupTargetSpec) DeepCopyInto(out *BackupTargetSpec) {
+	*out = *in
+	out.PollInterval = in.PollInterval
+	if in.SyncRequestedAt != nil {
+		in, out := &in.SyncRequestedAt, &out.SyncRequestedAt
+		*out = (*in).DeepCopy()
+	}
+	return
+}
+
+func (in *BackupTargetStatus) DeepCopyInto(out *BackupTargetStatus) {
+	*out = *in
+	if in.LastSyncedAt != nil {
+		in, out := &in.LastSyncedAt, &out.LastSyncedAt
+		*out = (*in).DeepCopy()
+	}
+	return
+}
+
+func (in *BackupVolumeSpec) DeepCopyInto(out *BackupVolumeSpec) {
+	*out = *in
+	if in.SyncRequestedAt != nil {
+		in, out := &in.SyncRequestedAt, &out.SyncRequestedAt
+		*out = (*in).DeepCopy()
+	}
+	return
+}
+
+func (in *BackupVolumeStatus) DeepCopyInto(out *BackupVolumeStatus) {
+	*out = *in
+	if in.LastModificationTime != nil {
+		in, out := &in.LastModificationTime, &out.LastModificationTime
+		*out = (*in).DeepCopy()
+	}
+	if in.Labels != nil {
+		in, out := &in.Labels, &out.Labels
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
+	if in.Messages != nil {
+		in, out := &in.Messages, &out.Messages
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
+	if in.LastSyncedAt != nil {
+		in, out := &in.LastSyncedAt, &out.LastSyncedAt
+		*out = (*in).DeepCopy()
+	}
+	return
+}
+
+func (in *SnapshotBackupSpec) DeepCopyInto(out *SnapshotBackupSpec) {
+	*out = *in
+	if in.SyncRequestedAt != nil {
+		in, out := &in.SyncRequestedAt, &out.SyncRequestedAt
+		*out = (*in).DeepCopy()
+	}
+	if in.Labels != nil {
+		in, out := &in.Labels, &out.Labels
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
+	return
+}
+
+func (in *SnapshotBackupStatus) DeepCopyInto(out *SnapshotBackupStatus) {
+	*out = *in
+	if in.Labels != nil {
+		in, out := &in.Labels, &out.Labels
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
+	if in.Messages != nil {
+		in, out := &in.Messages, &out.Messages
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
+	if in.LastSyncedAt != nil {
+		in, out := &in.LastSyncedAt, &out.LastSyncedAt
+		*out = (*in).DeepCopy()
+	}
+	return
+}
