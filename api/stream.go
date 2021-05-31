@@ -81,7 +81,7 @@ func NewStreamHandlerFunc(streamType string, watcher *controller.Watcher, listFu
 			case <-keepAliveTicker.C:
 				err = conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(writeWait))
 				if !recentWrite {
-					resp, err = writeList(conn, nil, listFunc, apiContext)
+					resp, err = writeList(conn, resp, listFunc, apiContext)
 				}
 				recentWrite = !recentWrite
 			}
