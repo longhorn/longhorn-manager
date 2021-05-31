@@ -812,59 +812,63 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		}
 		backupStatus := e.Status.BackupStatus
 		if backupStatus != nil {
-			for id, status := range backupStatus {
+			ids := util.GetSortedKeysFromMap(backupStatus)
+			for _, id := range ids {
 				backups = append(backups, BackupStatus{
 					Resource:  client.Resource{},
 					Name:      id,
-					Snapshot:  status.SnapshotName,
-					Progress:  status.Progress,
-					BackupURL: status.BackupURL,
-					Error:     status.Error,
-					State:     status.State,
-					Replica:   datastore.ReplicaAddressToReplicaName(status.ReplicaAddress, vrs),
+					Snapshot:  backupStatus[id].SnapshotName,
+					Progress:  backupStatus[id].Progress,
+					BackupURL: backupStatus[id].BackupURL,
+					Error:     backupStatus[id].Error,
+					State:     backupStatus[id].State,
+					Replica:   datastore.ReplicaAddressToReplicaName(backupStatus[id].ReplicaAddress, vrs),
 				})
 			}
 		}
 		rs := e.Status.RestoreStatus
 		if rs != nil {
-			for replica, status := range rs {
+			replicas := util.GetSortedKeysFromMap(rs)
+			for _, replica := range replicas {
 				restoreStatus = append(restoreStatus, RestoreStatus{
 					Resource:     client.Resource{},
 					Replica:      datastore.ReplicaAddressToReplicaName(replica, vrs),
-					IsRestoring:  status.IsRestoring,
-					LastRestored: status.LastRestored,
-					Progress:     status.Progress,
-					Error:        status.Error,
-					Filename:     status.Filename,
-					State:        status.State,
-					BackupURL:    status.BackupURL,
+					IsRestoring:  rs[replica].IsRestoring,
+					LastRestored: rs[replica].LastRestored,
+					Progress:     rs[replica].Progress,
+					Error:        rs[replica].Error,
+					Filename:     rs[replica].Filename,
+					State:        rs[replica].State,
+					BackupURL:    rs[replica].BackupURL,
 				})
 			}
 		}
 		purgeStatus := e.Status.PurgeStatus
 		if purgeStatus != nil {
-			for replica, status := range purgeStatus {
+			replicas := util.GetSortedKeysFromMap(purgeStatus)
+			for _, replica := range replicas {
 				purgeStatuses = append(purgeStatuses, PurgeStatus{
 					Resource:  client.Resource{},
 					Replica:   datastore.ReplicaAddressToReplicaName(replica, vrs),
-					Error:     status.Error,
-					IsPurging: status.IsPurging,
-					Progress:  status.Progress,
-					State:     status.State,
+					Error:     purgeStatus[replica].Error,
+					IsPurging: purgeStatus[replica].IsPurging,
+					Progress:  purgeStatus[replica].Progress,
+					State:     purgeStatus[replica].State,
 				})
 			}
 		}
 		rebuildStatus := e.Status.RebuildStatus
 		if rebuildStatus != nil {
-			for replica, status := range rebuildStatus {
+			replicas := util.GetSortedKeysFromMap(rebuildStatus)
+			for _, replica := range replicas {
 				rebuildStatuses = append(rebuildStatuses, RebuildStatus{
 					Resource:     client.Resource{},
 					Replica:      datastore.ReplicaAddressToReplicaName(replica, vrs),
-					Error:        status.Error,
-					IsRebuilding: status.IsRebuilding,
-					Progress:     status.Progress,
-					State:        status.State,
-					FromReplica:  datastore.ReplicaAddressToReplicaName(status.FromReplicaAddress, vrs),
+					Error:        rebuildStatus[replica].Error,
+					IsRebuilding: rebuildStatus[replica].IsRebuilding,
+					Progress:     rebuildStatus[replica].Progress,
+					State:        rebuildStatus[replica].State,
+					FromReplica:  datastore.ReplicaAddressToReplicaName(rebuildStatus[replica].FromReplicaAddress, vrs),
 				})
 			}
 		}
