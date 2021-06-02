@@ -204,8 +204,26 @@ func (ns *NodeServer) nodePublishMountVolume(volumeName, devicePath, targetPath,
 	}
 	if !notMnt {
 		if _, err := ioutil.ReadDir(targetPath); err != nil {
-			logrus.Errorf("NodePublishVolume: the volume mount %s exists but is not healthy", volumeName)
-			return nil, status.Error(codes.Internal, err.Error())
+			logrus.Errorf("NodePublishVolume: the volume mount %s exists but is not healthy, unmounting", volumeName)
+			mounter := mount.New("")
+			for {
+				if err := mounter.Unmount(targetPath); err != nil {
+					if strings.Contains(err.Error(), "not mounted") ||
+						strings.Contains(err.Error(), "no mount point specified") {
+						break
+					}
+					return nil, status.Error(codes.Internal, err.Error())
+				}
+				notMnt, err := mounter.IsLikelyNotMountPoint(targetPath)
+				if err != nil {
+					return nil, status.Error(codes.Internal, err.Error())
+				}
+				if notMnt {
+					break
+				}
+				logrus.Debugf("NodePublishVolume: There are multiple mount layers on mount point %v, will unmount all mount layers for this mount point", targetPath)
+			}
+			return nil, status.Error(codes.Internal, "unmounted unhealthy mount point")
 		}
 		logrus.Debugf("NodePublishVolume: the volume %s has been mounted", volumeName)
 		return &csi.NodePublishVolumeResponse{}, nil
