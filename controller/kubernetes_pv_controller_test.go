@@ -10,7 +10,6 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 
 	apiv1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -27,17 +26,8 @@ import (
 )
 
 const (
-	TestWorkloadName       = "test-statefulset"
-	TestWorkloadKind       = "StatefulSet"
-	TestWorkloadReplicaSet = "test-replicaset"
-	TestReplicaSetKind     = "ReplicaSet"
-
-	TestStatusDeleted = "Deleted"
-)
-
-var (
-	storageClassName = "longhorn"
-	pvcVolumeMode    = apiv1.PersistentVolumeFilesystem
+	TestWorkloadName = "test-statefulset"
+	TestWorkloadKind = "StatefulSet"
 )
 
 type KubernetesTestCase struct {
@@ -47,17 +37,6 @@ type KubernetesTestCase struct {
 	pods   []*apiv1.Pod
 
 	expectVolume *longhorn.Volume
-}
-
-type DisasterRecoveryTestCase struct {
-	volume *longhorn.Volume
-	pv     *apiv1.PersistentVolume
-	pvc    *apiv1.PersistentVolumeClaim
-	pods   []*apiv1.Pod
-	node   *longhorn.Node
-	va     *storagev1.VolumeAttachment
-
-	vaShouldExist bool
 }
 
 func generateKubernetesTestCaseTemplate() *KubernetesTestCase {
@@ -76,28 +55,12 @@ func generateKubernetesTestCaseTemplate() *KubernetesTestCase {
 	}
 }
 
-func generateDisasterRecoveryTestCaseTemplate() *DisasterRecoveryTestCase {
-	volume := newVolume(TestVolumeName, 2)
-	pv := newPV()
-	pvc := newPVC()
-	pods := []*apiv1.Pod{newPodWithPVC(TestPod1)}
-	va := newVA(TestVAName, TestNode1, TestPVName)
-
-	return &DisasterRecoveryTestCase{
-		volume: volume,
-		pv:     pv,
-		pvc:    pvc,
-		pods:   pods,
-		node:   nil,
-		va:     va,
-	}
-}
-
 func (tc *KubernetesTestCase) copyCurrentToExpect() {
 	tc.expectVolume = tc.volume.DeepCopy()
 }
 
 func newPV() *apiv1.PersistentVolume {
+	pvcFilesystemMode := apiv1.PersistentVolumeFilesystem
 	return &apiv1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: TestPVName,
@@ -106,7 +69,7 @@ func newPV() *apiv1.PersistentVolume {
 			Capacity: apiv1.ResourceList{
 				apiv1.ResourceStorage: *resource.NewQuantity(1, resource.BinarySI),
 			},
-			VolumeMode: &pvcVolumeMode,
+			VolumeMode: &pvcFilesystemMode,
 			PersistentVolumeSource: apiv1.PersistentVolumeSource{
 				CSI: &apiv1.CSIPersistentVolumeSource{
 					Driver: types.LonghornDriverName,
@@ -196,25 +159,6 @@ func newPodWithPVC(podName string) *apiv1.Pod {
 	}
 }
 
-func newVA(vaName, nodeName, pvName string) *storagev1.VolumeAttachment {
-	return &storagev1.VolumeAttachment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:              vaName,
-			CreationTimestamp: metav1.Now(),
-		},
-		Spec: storagev1.VolumeAttachmentSpec{
-			Attacher: types.LonghornDriverName,
-			NodeName: nodeName,
-			Source: storagev1.VolumeAttachmentSource{
-				PersistentVolumeName: &pvName,
-			},
-		},
-		Status: storagev1.VolumeAttachmentStatus{
-			Attached: true,
-		},
-	}
-}
-
 func newTestKubernetesPVController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *KubernetesPVController {
 
@@ -237,7 +181,6 @@ func newTestKubernetesPVController(lhInformerFactory lhinformerfactory.SharedInf
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1().DaemonSets()
 	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
-	volumeAttachmentInformer := kubeInformerFactory.Storage().V1beta1().VolumeAttachments()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
 	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
@@ -262,7 +205,7 @@ func newTestKubernetesPVController(lhInformerFactory lhinformerfactory.SharedInf
 	logger := logrus.StandardLogger()
 	kc := NewKubernetesPVController(logger,
 		ds, scheme.Scheme,
-		volumeInformer, persistentVolumeInformer, persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer,
+		volumeInformer, persistentVolumeInformer, persistentVolumeClaimInformer, podInformer,
 		kubeClient, TestNode1)
 
 	fakeRecorder := record.NewFakeRecorder(100)
@@ -590,253 +533,5 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 			c.Assert(retV.Status.KubernetesStatus, DeepEquals, tc.expectVolume.Status.KubernetesStatus)
 		}
 
-	}
-}
-
-func (s *TestSuite) TestDisasterRecovery(c *C) {
-	deleteTime := metav1.Now()
-	var workloads []types.WorkloadStatus
-	var tc *DisasterRecoveryTestCase
-	testCases := map[string]*DisasterRecoveryTestCase{}
-
-	tc = generateDisasterRecoveryTestCaseTemplate()
-	tc.volume.Status.State = types.VolumeStateDetached
-	tc.pvc.Status.Phase = apiv1.ClaimBound
-	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeGone)
-	workloads = []types.WorkloadStatus{}
-	for _, p := range tc.pods {
-		p.Status.Phase = apiv1.PodPending
-		ws := types.WorkloadStatus{
-			PodName:      p.Name,
-			PodStatus:    string(p.Status.Phase),
-			WorkloadName: TestWorkloadName,
-			WorkloadType: TestWorkloadKind,
-		}
-		workloads = append(workloads, ws)
-	}
-	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
-		PVName:          TestPVName,
-		PVStatus:        string(apiv1.VolumeBound),
-		Namespace:       TestNamespace,
-		PVCName:         TestPVCName,
-		WorkloadsStatus: workloads,
-		LastPodRefAt:    getTestNow(),
-	}
-	tc.vaShouldExist = false
-	testCases["va StatefulSet deleted"] = tc
-
-	tc = generateDisasterRecoveryTestCaseTemplate()
-	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
-	tc.pvc.Status.Phase = apiv1.ClaimBound
-	workloads = []types.WorkloadStatus{}
-	for _, p := range tc.pods {
-		p.Status.Phase = apiv1.PodPending
-		ws := types.WorkloadStatus{
-			PodName:      p.Name,
-			PodStatus:    string(p.Status.Phase),
-			WorkloadName: TestWorkloadName,
-			WorkloadType: TestWorkloadKind,
-		}
-		workloads = append(workloads, ws)
-	}
-	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
-		PVName:          TestPVName,
-		PVStatus:        string(apiv1.VolumeBound),
-		Namespace:       TestNamespace,
-		PVCName:         TestPVCName,
-		WorkloadsStatus: workloads,
-		LastPodRefAt:    getTestNow(),
-	}
-	tc.vaShouldExist = true
-	testCases["va unchanged when node is Ready"] = tc
-
-	// the associated 2 pods become Terminating. And user forces deleting one pod.
-	tc = generateDisasterRecoveryTestCaseTemplate()
-	tc.volume.Status.State = types.VolumeStateDetached
-	tc.pvc.Status.Phase = apiv1.ClaimBound
-	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeGone)
-	workloads = []types.WorkloadStatus{}
-	for _, p := range tc.pods {
-		p.DeletionTimestamp = &deleteTime
-
-	}
-	pod2 := newPodWithPVC(TestPod2)
-	pod2.Status.Phase = apiv1.PodPending
-	tc.pods = append(tc.pods, pod2)
-	for _, p := range tc.pods {
-		if p.DeletionTimestamp == nil {
-			ws := types.WorkloadStatus{
-				PodName:      p.Name,
-				PodStatus:    string(p.Status.Phase),
-				WorkloadName: TestWorkloadName,
-				WorkloadType: TestWorkloadKind,
-			}
-			workloads = append(workloads, ws)
-		}
-	}
-	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
-		PVName:          TestPVName,
-		PVStatus:        string(apiv1.VolumeBound),
-		Namespace:       TestNamespace,
-		PVCName:         TestPVCName,
-		WorkloadsStatus: workloads,
-	}
-	tc.vaShouldExist = true
-	testCases["va StatefulSet retained when one terminating pod is not cleared"] = tc
-
-	// the associated 2 pods become Terminating. And user forces deleting all pods.
-	tc = generateDisasterRecoveryTestCaseTemplate()
-	tc.volume.Status.State = types.VolumeStateDetached
-	tc.pvc.Status.Phase = apiv1.ClaimBound
-	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeGone)
-	workloads = []types.WorkloadStatus{}
-	tc.pods = append(tc.pods, newPodWithPVC(TestPod2))
-	for _, p := range tc.pods {
-		p.Status.Phase = apiv1.PodPending
-	}
-	for _, p := range tc.pods {
-		ws := types.WorkloadStatus{
-			PodName:      p.Name,
-			PodStatus:    string(p.Status.Phase),
-			WorkloadName: TestWorkloadName,
-			WorkloadType: TestWorkloadKind,
-		}
-		workloads = append(workloads, ws)
-	}
-	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
-		PVName:          TestPVName,
-		PVStatus:        string(apiv1.VolumeBound),
-		Namespace:       TestNamespace,
-		PVCName:         TestPVCName,
-		WorkloadsStatus: workloads,
-	}
-	tc.vaShouldExist = false
-	testCases["va StatefulSet deleted when all terminating pods are cleared"] = tc
-
-	// ReplicaSet allows for VA deletion while the pods are stuck in the terminating state
-	tc = generateDisasterRecoveryTestCaseTemplate()
-	tc.volume.Status.State = types.VolumeStateAttached
-	tc.pvc.Status.Phase = apiv1.ClaimBound
-	tc.node = newNode(TestNode1, TestNamespace, true, types.ConditionStatusFalse, types.NodeConditionReasonKubernetesNodeGone)
-	workloads = []types.WorkloadStatus{}
-	for _, p := range tc.pods {
-		p.DeletionTimestamp = &deleteTime
-	}
-
-	pod2 = newPodWithPVC(TestPod2)
-	pod2.Status.Phase = apiv1.PodPending
-	tc.pods = append(tc.pods, pod2)
-	for _, p := range tc.pods {
-
-		// Change the pods to ReplicaSet before running
-		var ref = p.OwnerReferences[0]
-		ref.Name = TestWorkloadReplicaSet
-		ref.Kind = TestReplicaSetKind
-		p.OwnerReferences[0] = ref
-
-		if p.DeletionTimestamp == nil {
-			ws := types.WorkloadStatus{
-				PodName:      p.Name,
-				PodStatus:    string(p.Status.Phase),
-				WorkloadName: TestWorkloadReplicaSet,
-				WorkloadType: TestReplicaSetKind,
-			}
-			workloads = append(workloads, ws)
-		}
-	}
-	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
-		PVName:          TestPVName,
-		PVStatus:        string(apiv1.VolumeBound),
-		Namespace:       TestNamespace,
-		PVCName:         TestPVCName,
-		WorkloadsStatus: workloads,
-	}
-	tc.vaShouldExist = false
-	testCases["va ReplicaSet deleted when one terminating pod is not cleared"] = tc
-
-	s.runDisasterRecoveryTestCases(c, testCases)
-}
-
-func (s *TestSuite) runDisasterRecoveryTestCases(c *C, testCases map[string]*DisasterRecoveryTestCase) {
-	for name, tc := range testCases {
-		var err error
-		fmt.Printf("testing %v\n", name)
-
-		kubeClient := fake.NewSimpleClientset()
-		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
-
-		lhClient := lhfake.NewSimpleClientset()
-		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
-		vIndexer := lhInformerFactory.Longhorn().V1beta1().Volumes().Informer().GetIndexer()
-		nodeIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
-
-		pvIndexer := kubeInformerFactory.Core().V1().PersistentVolumes().Informer().GetIndexer()
-		pvcIndexer := kubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
-		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
-		vaIndexer := kubeInformerFactory.Storage().V1beta1().VolumeAttachments().Informer().GetIndexer()
-
-		kc := newTestKubernetesPVController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
-
-		if tc.node != nil {
-			node, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(tc.node)
-			c.Assert(err, IsNil)
-			nodeIndexer.Add(node)
-		}
-
-		var v *longhorn.Volume
-		if tc.volume != nil {
-			v, err = lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(tc.volume)
-			c.Assert(err, IsNil)
-			err = vIndexer.Add(v)
-			c.Assert(err, IsNil)
-		}
-
-		var pv *apiv1.PersistentVolume
-		if tc.pv != nil {
-			pv, err = kubeClient.CoreV1().PersistentVolumes().Create(tc.pv)
-			c.Assert(err, IsNil)
-			pvIndexer.Add(pv)
-			c.Assert(err, IsNil)
-			if pv.DeletionTimestamp != nil {
-				kc.enqueuePVDeletion(pv)
-			}
-		}
-
-		if tc.pvc != nil {
-			pvc, err := kubeClient.CoreV1().PersistentVolumeClaims(TestNamespace).Create(tc.pvc)
-			c.Assert(err, IsNil)
-			pvcIndexer.Add(pvc)
-		}
-
-		if tc.va != nil {
-			va, err := kubeClient.StorageV1beta1().VolumeAttachments().Create(tc.va)
-			c.Assert(err, IsNil)
-			vaIndexer.Add(va)
-		}
-
-		if len(tc.pods) != 0 {
-			for _, p := range tc.pods {
-				p, err = kubeClient.CoreV1().Pods(TestNamespace).Create(p)
-				c.Assert(err, IsNil)
-				pIndexer.Add(p)
-			}
-		}
-
-		if pv != nil {
-			err = kc.syncKubernetesStatus(getKey(pv, c))
-			c.Assert(err, IsNil)
-		}
-
-		va, err := kubeClient.StorageV1beta1().VolumeAttachments().Get(TestVAName, metav1.GetOptions{})
-		if tc.vaShouldExist {
-			c.Assert(err, IsNil)
-			c.Assert(va, DeepEquals, tc.va)
-		} else {
-			if err != nil {
-				c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
-			} else {
-				c.Assert(va.DeletionTimestamp, NotNil)
-			}
-		}
 	}
 }
