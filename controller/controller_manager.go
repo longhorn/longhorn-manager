@@ -90,7 +90,6 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
 	daemonSetInformer := kubeInformerFactory.Apps().V1().DaemonSets()
 	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
-	volumeAttachmentInformer := kubeInformerFactory.Storage().V1beta1().VolumeAttachments()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
 	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
 	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
@@ -147,7 +146,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		kubeClient, namespace, controllerID, serviceAccount)
 	kpvc := NewKubernetesPVController(logger, ds, scheme,
 		volumeInformer, persistentVolumeInformer,
-		persistentVolumeClaimInformer, podInformer, volumeAttachmentInformer,
+		persistentVolumeClaimInformer, podInformer,
 		kubeClient, controllerID)
 	knc := NewKubernetesNodeController(logger, ds, scheme,
 		nodeInformer, settingInformer, kubeNodeInformer,
