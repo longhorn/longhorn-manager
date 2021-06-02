@@ -3,6 +3,7 @@ package csi
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -202,6 +203,10 @@ func (ns *NodeServer) nodePublishMountVolume(volumeName, devicePath, targetPath,
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	if !notMnt {
+		if _, err := ioutil.ReadDir(targetPath); err != nil {
+			logrus.Errorf("NodePublishVolume: the volume mount %s exists but is not healthy", volumeName)
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 		logrus.Debugf("NodePublishVolume: the volume %s has been mounted", volumeName)
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
