@@ -11,19 +11,15 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
-	"k8s.io/client-go/informers/storage/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	listerv1 "k8s.io/client-go/listers/core/v1"
-	listerstorage "k8s.io/client-go/listers/storage/v1beta1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
@@ -49,13 +45,11 @@ type KubernetesPVController struct {
 	pvLister  listerv1.PersistentVolumeLister
 	pvcLister listerv1.PersistentVolumeClaimLister
 	pLister   listerv1.PodLister
-	vaLister  listerstorage.VolumeAttachmentLister
 
 	vStoreSynced   cache.InformerSynced
 	pvStoreSynced  cache.InformerSynced
 	pvcStoreSynced cache.InformerSynced
 	pStoreSynced   cache.InformerSynced
-	vaStoreSynced  cache.InformerSynced
 
 	// key is <PVName>, value is <VolumeName>
 	pvToVolumeCache sync.Map
@@ -72,7 +66,6 @@ func NewKubernetesPVController(
 	persistentVolumeInformer coreinformers.PersistentVolumeInformer,
 	persistentVolumeClaimInformer coreinformers.PersistentVolumeClaimInformer,
 	podInformer coreinformers.PodInformer,
-	volumeAttachmentInformer v1beta1.VolumeAttachmentInformer,
 	kubeClient clientset.Interface,
 	controllerID string) *KubernetesPVController {
 
@@ -94,13 +87,11 @@ func NewKubernetesPVController(
 		pvLister:  persistentVolumeInformer.Lister(),
 		pvcLister: persistentVolumeClaimInformer.Lister(),
 		pLister:   podInformer.Lister(),
-		vaLister:  volumeAttachmentInformer.Lister(),
 
 		vStoreSynced:   volumeInformer.Informer().HasSynced,
 		pvStoreSynced:  persistentVolumeInformer.Informer().HasSynced,
 		pvcStoreSynced: persistentVolumeClaimInformer.Informer().HasSynced,
 		pStoreSynced:   podInformer.Informer().HasSynced,
-		vaStoreSynced:  volumeAttachmentInformer.Informer().HasSynced,
 
 		pvToVolumeCache: sync.Map{},
 
@@ -138,7 +129,7 @@ func (kc *KubernetesPVController) Run(workers int, stopCh <-chan struct{}) {
 	defer logrus.Infof("Shutting down kubernetes controller")
 
 	if !cache.WaitForNamedCacheSync("kubernetes", stopCh,
-		kc.vStoreSynced, kc.pvStoreSynced, kc.pvcStoreSynced, kc.pStoreSynced, kc.vaStoreSynced) {
+		kc.vStoreSynced, kc.pvStoreSynced, kc.pvcStoreSynced, kc.pStoreSynced) {
 		return
 	}
 
@@ -286,13 +277,11 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 		return err
 	}
 
-	// for the workloads we only consider active pods
+	// for the workloads we only track non terminating pods
 	activePods := filterPods(pods, func(p *v1.Pod) bool {
 		return p.DeletionTimestamp == nil
 	})
 	kc.setWorkloads(ks, activePods)
-
-	defer kc.cleanupVolumeAttachment(pods, volume, ks)
 
 	return nil
 }
@@ -516,103 +505,4 @@ func (kc *KubernetesPVController) detectWorkload(p *v1.Pod) (string, string) {
 		}
 	}
 	return "", ""
-}
-
-func (kc *KubernetesPVController) cleanupVolumeAttachment(pods []*v1.Pod, volume *longhorn.Volume, ks *types.KubernetesStatus) {
-	terminatingPods := filterPods(pods, func(p *v1.Pod) bool {
-		return p.DeletionTimestamp != nil
-	})
-
-	// by default we wait for deletion
-	var deletionStrategy types.VolumeAttachmentRecoveryPolicy
-	if deletionSetting, err := kc.ds.GetSettingValueExisted(types.SettingNameVolumeAttachmentRecoveryPolicy); err != nil {
-		deletionStrategy = types.VolumeAttachmentRecoveryPolicyWait
-	} else {
-		deletionStrategy = types.VolumeAttachmentRecoveryPolicy(deletionSetting)
-	}
-
-	var waitingForPodDeletion bool
-	switch deletionStrategy {
-	case types.VolumeAttachmentRecoveryPolicyNever:
-		// Kubernetes default is to never remove a volume attachment from a downed node
-		waitingForPodDeletion = len(terminatingPods) > 0
-	case types.VolumeAttachmentRecoveryPolicyWait:
-		// in the Longhorn default mode for safety reasons we wait till the deletion time has passed
-		// this should lead to a force delete by the kubelet, but since the pod is still available
-		// we know that the kubelet failed to cleanup the pod resource.
-		for _, p := range terminatingPods {
-			waitingForPodDeletion = waitingForPodDeletion || p.DeletionTimestamp.After(time.Now())
-		}
-	case types.VolumeAttachmentRecoveryPolicyImmediate:
-		// immediately delete as soon as we have terminating and pending workloads
-		waitingForPodDeletion = false
-	default:
-		// don't delete the volume attachment if we don't have a known deletion strategy
-		waitingForPodDeletion = len(terminatingPods) > 0
-		logrus.Errorf("Invalid VolumeAttachmentRecoveryPolicy [%v] for Volume %v proceeding with safest never policy",
-			string(deletionStrategy), volume.Name)
-	}
-
-	// we only want to delete the volume attachment for pods of a ReplicaSet
-	// we only want to delete the volume attachment if there are replacement pods pending
-	workloadsAllowDeletion := len(ks.WorkloadsStatus) > 0
-	workloadsPending := len(ks.WorkloadsStatus) > 0
-	for _, ws := range ks.WorkloadsStatus {
-		workloadsAllowDeletion = workloadsAllowDeletion && ws.WorkloadType == types.KubernetesReplicaSet
-		workloadsPending = workloadsPending && ws.PodStatus == string(v1.PodPending)
-	}
-
-	// We make an exception for StatefulSet pods if there are no terminating pods
-	workloadsAllowDeletion = workloadsAllowDeletion || len(terminatingPods) == 0
-
-	// PV and PVC should exist and be in active use
-	cleanup := ks.PVStatus == string(v1.VolumeBound) && ks.PVCName != "" && ks.LastPVCRefAt == "" &&
-		!waitingForPodDeletion && workloadsPending && workloadsAllowDeletion && ks.LastPodRefAt == ""
-	if !cleanup {
-		return
-	}
-
-	va, err := kc.getVolumeAttachment(ks)
-	if err != nil {
-		logrus.Errorf("failed to get VolumeAttachment for volume %v in cleanupVolumeAttachment: %v",
-			volume.Name, err)
-		return
-	}
-	if va == nil {
-		return
-	}
-
-	// cleanup if the node is declared `NotReady` or doesn't exist.
-	cleanup, err = kc.ds.IsNodeDownOrDeleted(va.Spec.NodeName)
-	if err != nil {
-		logrus.Errorf("failed to evaluate Node %v for Volume %v VolumeAttachment %v in cleanupVolumeAttachment: %v",
-			va.Spec.NodeName, volume.Name, va.Name, err)
-		return
-	}
-	if !cleanup {
-		return
-	}
-
-	err = kc.kubeClient.StorageV1beta1().VolumeAttachments().Delete(va.Name, &metav1.DeleteOptions{})
-	if err != nil {
-		logrus.Errorf("failed to delete VolumeAttachment %v for Volume %v for Node %v in cleanupVolumeAttachment: %v",
-			va.Name, volume.Name, va.Spec.NodeName, err)
-		return
-	}
-	kc.eventRecorder.Eventf(volume, v1.EventTypeNormal, EventReasonDelete,
-		"Cleanup VolumeAttachment %v for Volume %v on 'NotReady' Node %v", va.Name, volume.Name, va.Spec.NodeName)
-	return
-}
-
-func (kc *KubernetesPVController) getVolumeAttachment(ks *types.KubernetesStatus) (*storagev1.VolumeAttachment, error) {
-	vas, err := kc.vaLister.List(labels.Everything())
-	if err != nil {
-		return nil, err
-	}
-	for _, va := range vas {
-		if *va.Spec.Source.PersistentVolumeName == ks.PVName {
-			return va, nil
-		}
-	}
-	return nil, nil
 }
