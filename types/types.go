@@ -24,6 +24,8 @@ const (
 	LonghornKindBackingImage        = "BackingImage"
 	LonghornKindBackingImageManager = "BackingImageManager"
 
+	LonghornKindBackingImageDataSource = "BackingImageDataSource"
+
 	CRDAPIVersionV1alpha1 = "longhorn.rancher.io/v1alpha1"
 	CRDAPIVersionV1beta1  = "longhorn.io/v1beta1"
 	CurrentCRDAPIVersion  = CRDAPIVersionV1beta1
@@ -71,6 +73,8 @@ const (
 	LonghornLabelBackingImageManager  = "backing-image-manager"
 	LonghornLabelManagedBy            = "managed-by"
 	LonghornLabelCronJobTask          = "job-task"
+
+	LonghornLabelBackingImageDataSource = "backing-image-data-source"
 
 	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
@@ -339,6 +343,21 @@ func GetBackingImageLabels() map[string]string {
 func GetBackingImageManagerLabels(nodeID, diskUUID string) map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelBackingImageManager
+	if diskUUID != "" {
+		labels[GetLonghornLabelKey(LonghornLabelDiskUUID)] = diskUUID
+	}
+	if nodeID != "" {
+		labels[GetLonghornLabelKey(LonghornLabelNode)] = nodeID
+	}
+	return labels
+}
+
+func GetBackingImageDataSourceLabels(name, nodeID, diskUUID string) map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelBackingImageDataSource
+	if name != "" {
+		labels[GetLonghornLabelKey(LonghornLabelBackingImageDataSource)] = name
+	}
 	if diskUUID != "" {
 		labels[GetLonghornLabelKey(LonghornLabelDiskUUID)] = diskUUID
 	}

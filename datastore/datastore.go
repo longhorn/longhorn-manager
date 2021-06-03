@@ -55,6 +55,9 @@ type DataStore struct {
 	bimLister      lhlisters.BackingImageManagerLister
 	bimStoreSynced cache.InformerSynced
 
+	bidsLister      lhlisters.BackingImageDataSourceLister
+	bidsStoreSynced cache.InformerSynced
+
 	kubeClient         clientset.Interface
 	pLister            corelisters.PodLister
 	pStoreSynced       cache.InformerSynced
@@ -98,6 +101,7 @@ func NewDataStore(
 	smInformer lhinformers.ShareManagerInformer,
 	biInformer lhinformers.BackingImageInformer,
 	bimInformer lhinformers.BackingImageManagerInformer,
+	bidsInformer lhinformers.BackingImageDataSourceInformer,
 	lhClient lhclientset.Interface,
 
 	podInformer coreinformers.PodInformer,
@@ -143,6 +147,9 @@ func NewDataStore(
 		bimLister:      bimInformer.Lister(),
 		bimStoreSynced: bimInformer.Informer().HasSynced,
 
+		bidsLister:      bidsInformer.Lister(),
+		bidsStoreSynced: bidsInformer.Informer().HasSynced,
+
 		kubeClient:         kubeClient,
 		pLister:            podInformer.Lister(),
 		pStoreSynced:       podInformer.Informer().HasSynced,
@@ -185,7 +192,7 @@ func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 		s.imStoreSynced, s.dpStoreSynced, s.knStoreSynced,
 		s.pcStoreSynced, s.csiDriverSynced, s.storageclassSynced,
 		s.pdbStoreSynced, s.smStoreSynced, s.svStoreSynced,
-		s.biStoreSynced, s.bimStoreSynced)
+		s.biStoreSynced, s.bimStoreSynced, s.bidsStoreSynced)
 }
 
 // ErrorIsNotFound checks if given error match

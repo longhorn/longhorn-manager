@@ -611,4 +611,5 @@ type BackingImageDataSourceStatus struct {
 	Size         int64             `json:"size"`
 	Progress     int               `json:"progress"`
 	Checksum     string            `json:"checksum"`
+	Message      string            `json:"message"`
 }
