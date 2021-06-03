@@ -389,45 +389,51 @@ func (s *DataStore) GetKubernetesNode(name string) (*corev1.Node, error) {
 	return s.knLister.Get(name)
 }
 
-// CreatePersisentVolume creates a PersistentVolume resource for the given
+// CreatePersistentVolume creates a PersistentVolume resource for the given
 // PersistentVolume object
-func (s *DataStore) CreatePersisentVolume(pv *corev1.PersistentVolume) (*corev1.PersistentVolume, error) {
+func (s *DataStore) CreatePersistentVolume(pv *corev1.PersistentVolume) (*corev1.PersistentVolume, error) {
 	return s.kubeClient.CoreV1().PersistentVolumes().Create(pv)
 }
 
-// DeletePersisentVolume deletes the PersistentVolume for the given
+// DeletePersistentVolume deletes the PersistentVolume for the given
 // PersistentVolume name
-func (s *DataStore) DeletePersisentVolume(pvName string) error {
+func (s *DataStore) DeletePersistentVolume(pvName string) error {
 	return s.kubeClient.CoreV1().PersistentVolumes().Delete(pvName, &metav1.DeleteOptions{})
 }
 
-// UpdatePersisentVolume updates the PersistentVolume for the given
+// UpdatePersistentVolume updates the PersistentVolume for the given
 // PersistentVolume object
-func (s *DataStore) UpdatePersisentVolume(pv *corev1.PersistentVolume) (*corev1.PersistentVolume, error) {
+func (s *DataStore) UpdatePersistentVolume(pv *corev1.PersistentVolume) (*corev1.PersistentVolume, error) {
 	return s.kubeClient.CoreV1().PersistentVolumes().Update(pv)
 }
 
-// GetPersisentVolume gets the PersistentVolume from the index for the
+// GetPersistentVolume gets the PersistentVolume from the index for the
 // given name
-func (s *DataStore) GetPersisentVolume(pvName string) (*corev1.PersistentVolume, error) {
+func (s *DataStore) GetPersistentVolume(pvName string) (*corev1.PersistentVolume, error) {
 	return s.pvLister.Get(pvName)
 }
 
-// CreatePersisentVolumeClaim creates a PersistentVolumeClaim resource
+// CreatePersistentVolumeClaim creates a PersistentVolumeClaim resource
 // for the given PersistentVolumeclaim object and namespace
-func (s *DataStore) CreatePersisentVolumeClaim(ns string, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
+func (s *DataStore) CreatePersistentVolumeClaim(ns string, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
 	return s.kubeClient.CoreV1().PersistentVolumeClaims(ns).Create(pvc)
 }
 
-// DeletePersisentVolumeClaim deletes the PersistentVolumeClaim for the
+// DeletePersistentVolumeClaim deletes the PersistentVolumeClaim for the
 // given name and namespace
-func (s *DataStore) DeletePersisentVolumeClaim(ns, pvcName string) error {
+func (s *DataStore) DeletePersistentVolumeClaim(ns, pvcName string) error {
 	return s.kubeClient.CoreV1().PersistentVolumeClaims(ns).Delete(pvcName, &metav1.DeleteOptions{})
 }
 
-// GetPersisentVolumeClaim gets the PersistentVolumeClaim from the
+// UpdatePersistentVolumeClaim expand the PersistentVolumeClaim from the
 // index for the given name and namespace
-func (s *DataStore) GetPersisentVolumeClaim(namespace, pvcName string) (*corev1.PersistentVolumeClaim, error) {
+func (s *DataStore) UpdatePersistentVolumeClaim(namespace string, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
+	return s.kubeClient.CoreV1().PersistentVolumeClaims(namespace).Update(pvc)
+}
+
+// GetPersistentVolumeClaim gets the PersistentVolumeClaim from the
+// index for the given name and namespace
+func (s *DataStore) GetPersistentVolumeClaim(namespace, pvcName string) (*corev1.PersistentVolumeClaim, error) {
 	return s.pvcLister.PersistentVolumeClaims(namespace).Get(pvcName)
 }
 
