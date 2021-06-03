@@ -669,16 +669,11 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
-	// we can only call the longhorn expansion api if the requested size is larger than the volume size
-	// since longhorn treats the size differently than kubernetes, in kubernetes capacity is a request
-	// to ensure that the volume has at least that amount of capacity.
 	requestedSize := req.CapacityRange.GetRequiredBytes()
-	if requestedSize > existingSize {
-		if existVol, err = cs.apiClient.Volume.ActionExpand(existVol, &longhornclient.ExpandInput{
-			Size: strconv.FormatInt(requestedSize, 10),
-		}); err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
-		}
+	if existVol, err = cs.apiClient.Volume.ActionExpand(existVol, &longhornclient.ExpandInput{
+		Size: strconv.FormatInt(requestedSize, 10),
+	}); err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
 	// kubernetes doesn't support volume shrinking and the csi spec specifies to return true
