@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strconv"
 
 	"github.com/pkg/errors"
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/backupstore"
@@ -613,12 +616,50 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 		return nil, fmt.Errorf("cannot expand volume before replica scheduling success")
 	}
 
-	if v.Spec.Size > size {
-		return nil, fmt.Errorf("cannot expand volume %v with current size %v to a smaller size %v", v.Name, v.Spec.Size, size)
+	size = util.RoundUpSize(size)
+
+	kubernetesStatus := &v.Status.KubernetesStatus
+	if kubernetesStatus.PVCName != "" && kubernetesStatus.LastPVCRefAt == "" {
+		pvc, err := m.ds.GetPersistentVolumeClaim(kubernetesStatus.Namespace, kubernetesStatus.PVCName)
+		if err != nil {
+			return nil, err
+		}
+
+		requestedSize := resource.MustParse(strconv.FormatInt(size, 10))
+
+		// TODO: Should check for pvc.Spec.Resources.Requests.Storage() here, once upgrade API to v0.18.x.
+		pvcSpecValue, ok := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+		if !ok {
+			return nil, fmt.Errorf("cannot get request storage")
+		}
+
+		if pvcSpecValue.Cmp(requestedSize) < 0 {
+			pvc.Spec.Resources = corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: requestedSize,
+				},
+			}
+
+			logrus.Infof("Persistent Volume Claim %v expansion from %v to %v requested", v.Name, v.Spec.Size, size)
+			_, err = m.ds.UpdatePersistentVolumeClaim(kubernetesStatus.Namespace, pvc)
+			if err != nil {
+				return nil, err
+			}
+
+			// return and CSI plugin call this API later for Longhorn volume expansion
+			return v, nil
+		}
+
+		// all other case belong to the CSI plugin call
+		logrus.Infof("CSI plugin call to expand volume %v", v.Name)
+
+		if pvcSpecValue.Cmp(requestedSize) > 0 {
+			size = util.RoundUpSize(pvcSpecValue.Value())
+		}
 	}
 
-	if v.Spec.Size == size {
-		logrus.Infof("Volume %v expansion is not necessary since current size %v == %v", v.Name, v.Spec.Size, size)
+	if v.Spec.Size >= size {
+		logrus.Infof("Volume %v expansion is not necessary since current size %v >= %v", v.Name, v.Spec.Size, size)
 		return v, nil
 	}
 

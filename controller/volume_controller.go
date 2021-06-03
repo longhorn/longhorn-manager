@@ -326,7 +326,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		kubeStatus := volume.Status.KubernetesStatus
 
 		if kubeStatus.PVName != "" {
-			if err := vc.ds.DeletePersisentVolume(kubeStatus.PVName); err != nil {
+			if err := vc.ds.DeletePersistentVolume(kubeStatus.PVName); err != nil {
 				if !datastore.ErrorIsNotFound(err) {
 					return err
 				}
@@ -334,7 +334,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 
 		if kubeStatus.PVCName != "" && kubeStatus.LastPVCRefAt == "" {
-			if err := vc.ds.DeletePersisentVolumeClaim(kubeStatus.Namespace, kubeStatus.PVCName); err != nil {
+			if err := vc.ds.DeletePersistentVolumeClaim(kubeStatus.Namespace, kubeStatus.PVCName); err != nil {
 				if !datastore.ErrorIsNotFound(err) {
 					return err
 				}

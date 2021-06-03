@@ -44,7 +44,7 @@ func (m *VolumeManager) PVCreate(name, pvName, fsType string) (v *longhorn.Volum
 	}
 
 	pv := datastore.NewPVManifestForVolume(v, pvName, storageClassName, fsType)
-	pv, err = m.ds.CreatePersisentVolume(pv)
+	pv, err = m.ds.CreatePersistentVolume(pv)
 	if err != nil {
 		return nil, err
 	}
@@ -89,21 +89,21 @@ func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.
 		return nil, fmt.Errorf("cannot found PV %v or the PV status %v is invalid for PVC creation", ks.PVName, ks.PVStatus)
 	}
 
-	pv, err := m.ds.GetPersisentVolume(ks.PVName)
+	pv, err := m.ds.GetPersistentVolume(ks.PVName)
 	if err != nil {
 		return nil, err
 	}
 	// cleanup ClaimRef of PV. Otherwise the existing PV cannot be reused.
 	if pv.Spec.ClaimRef != nil {
 		pv.Spec.ClaimRef = nil
-		pv, err = m.ds.UpdatePersisentVolume(pv)
+		pv, err = m.ds.UpdatePersistentVolume(pv)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	pvc := datastore.NewPVCManifestForVolume(v, ks.PVName, namespace, pvcName, pv.Spec.StorageClassName)
-	pvc, err = m.ds.CreatePersisentVolumeClaim(namespace, pvc)
+	pvc, err = m.ds.CreatePersistentVolumeClaim(namespace, pvc)
 	if err != nil {
 		return nil, err
 	}
