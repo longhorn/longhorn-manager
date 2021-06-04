@@ -7,6 +7,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
+	"github.com/sirupsen/logrus"
+
+	"github.com/longhorn/longhorn-manager/util"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 func (s *Server) BackingImageList(rw http.ResponseWriter, req *http.Request) (err error) {
@@ -21,11 +26,21 @@ func (s *Server) BackingImageList(rw http.ResponseWriter, req *http.Request) (er
 }
 
 func (s *Server) backingImageList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
-	list, err := s.m.ListBackingImagesSorted()
+	biList, err := s.m.ListBackingImagesSorted()
 	if err != nil {
 		return nil, errors.Wrap(err, "error listing backing image")
 	}
-	return toBackingImageCollection(list, apiContext), nil
+	bidsMap, err := s.m.ListBackingImageDataSources()
+	if err != nil {
+		return nil, errors.Wrap(err, "error listing backing image")
+	}
+	for _, bi := range biList {
+		if _, exists := bidsMap[bi.Name]; exists {
+			continue
+		}
+		bidsMap[bi.Name] = s.prepareBackingImageDataSource(bi)
+	}
+	return toBackingImageCollection(biList, bidsMap, apiContext), nil
 }
 
 func (s *Server) BackingImageGet(rw http.ResponseWriter, req *http.Request) error {
@@ -35,9 +50,11 @@ func (s *Server) BackingImageGet(rw http.ResponseWriter, req *http.Request) erro
 
 	bi, err := s.m.GetBackingImage(id)
 	if err != nil {
-		return errors.Wrapf(err, "error get engine image '%s'", id)
+		return errors.Wrapf(err, "error get backing image '%s'", id)
 	}
-	apiContext.Write(toBackingImageResource(bi, apiContext))
+	bids := s.prepareBackingImageDataSource(bi)
+
+	apiContext.Write(toBackingImageResource(bi, bids, apiContext))
 	return nil
 }
 
@@ -49,11 +66,11 @@ func (s *Server) BackingImageCreate(rw http.ResponseWriter, req *http.Request) e
 		return err
 	}
 
-	bi, err := s.m.CreateBackingImage(input.Name, input.ImageURL)
+	bi, bids, err := s.m.CreateBackingImage(input.Name, input.ExpectedChecksum, input.SourceType, input.Parameters)
 	if err != nil {
-		return errors.Wrapf(err, "unable to create backing image %v for URL %v", input.Name, input.ImageURL)
+		return errors.Wrapf(err, "unable to create backing image %v from source type %v with parameters %+v", input.Name, input.SourceType, input.Parameters)
 	}
-	apiContext.Write(toBackingImageResource(bi, apiContext))
+	apiContext.Write(toBackingImageResource(bi, bids, apiContext))
 	return nil
 }
 
@@ -79,6 +96,27 @@ func (s *Server) BackingImageCleanup(rw http.ResponseWriter, req *http.Request) 
 	if err != nil {
 		return errors.Wrapf(err, "unable to cleanup backing image %v for disk %+v", id, input.Disks)
 	}
-	apiContext.Write(toBackingImageResource(bi, apiContext))
+	bids := s.prepareBackingImageDataSource(bi)
+	apiContext.Write(toBackingImageResource(bi, bids, apiContext))
 	return nil
+}
+
+func (s *Server) prepareBackingImageDataSource(bi *longhorn.BackingImage) *longhorn.BackingImageDataSource {
+	// For deleting backing image, the related data source object may be cleaned up.
+	if bi.DeletionTimestamp != nil {
+		return nil
+	}
+	obj, err := util.RetryOnNotFoundCause(func() (interface{}, error) {
+		return s.m.GetBackingImageDataSource(bi.Name)
+	})
+	if err != nil {
+		logrus.Errorf("failed to prepare backing image data source for backing image %v: %v", bi.Name, err)
+		return nil
+	}
+	bids, ok := obj.(*longhorn.BackingImageDataSource)
+	if !ok {
+		logrus.Errorf("BUG: cannot convert to backing image data source %v object", bi.Name)
+		return nil
+	}
+	return bids
 }
