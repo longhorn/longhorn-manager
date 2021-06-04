@@ -310,10 +310,15 @@ func (job *Job) doRecurringSnapshot() (err error) {
 		return nil
 	}
 
-	return job.snapshotAndCleanup()
+	err = job.doSnapshot()
+	if err != nil {
+		return err
+	}
+
+	return job.doSnapshotCleanup(false)
 }
 
-func (job *Job) snapshotAndCleanup() (err error) {
+func (job *Job) doSnapshot() (err error) {
 	volumeAPI := job.api.Volume
 	volumeName := job.volumeName
 	volume, err := volumeAPI.ById(volumeName)
@@ -328,20 +333,25 @@ func (job *Job) snapshotAndCleanup() (err error) {
 		return err
 	}
 
-	defer func() {
-		if err != nil {
-			job.logger.WithError(err).Warn("Created snapshot successfully but errored on cleanup")
-			err = nil
-		}
-	}()
+	job.logger.Infof("Created the snapshot %v", job.snapshotName)
+
+	return nil
+}
+
+func (job *Job) doSnapshotCleanup(backupDone bool) (err error) {
+	volumeAPI := job.api.Volume
+	volumeName := job.volumeName
+	volume, err := volumeAPI.ById(volumeName)
+	if err != nil {
+		return errors.Wrapf(err, "could not get volume %v", volumeName)
+	}
 
 	collection, err := volumeAPI.ActionSnapshotList(volume)
 	if err != nil {
 		return err
 	}
-	job.logger.Infof("Created the snapshot %v", job.snapshotName)
 
-	cleanupSnapshotNames := job.listSnapshotNamesForCleanup(collection.Data)
+	cleanupSnapshotNames := job.listSnapshotNamesForCleanup(collection.Data, backupDone)
 	for _, snapshot := range cleanupSnapshotNames {
 		if _, err := volumeAPI.ActionSnapshotDelete(volume, &longhornclient.SnapshotInput{
 			Name: snapshot,
@@ -444,7 +454,7 @@ func (job *Job) getVolumeHeadSize(volume *longhornclient.Volume) (int64, error) 
 	return volumeHeadSize, nil
 }
 
-func (job *Job) listSnapshotNamesForCleanup(snapshots []longhornclient.Snapshot) []string {
+func (job *Job) listSnapshotNamesForCleanup(snapshots []longhornclient.Snapshot, backupDone bool) []string {
 	jobLabel, found := job.labels[types.RecurringJobLabel]
 	if !found {
 		return []string{}
@@ -459,9 +469,11 @@ func (job *Job) listSnapshotNamesForCleanup(snapshots []longhornclient.Snapshot)
 
 	// For the recurring backup job, only keep the snapshot of the last backup and the current snapshot
 	retainingSnapshots := map[string]struct{}{job.snapshotName: struct{}{}}
-	lastBackup, err := job.getLastBackup()
-	if err == nil && lastBackup != nil {
-		retainingSnapshots[lastBackup.SnapshotName] = struct{}{}
+	if !backupDone {
+		lastBackup, err := job.getLastBackup()
+		if err == nil && lastBackup != nil {
+			retainingSnapshots[lastBackup.SnapshotName] = struct{}{}
+		}
 	}
 	return snapshotsToNames(filterSnapshotsNotInTargets(snapshots, retainingSnapshots))
 }
@@ -495,7 +507,11 @@ func (job *Job) doRecurringBackup() (err error) {
 		return nil
 	}
 
-	if err := job.snapshotAndCleanup(); err != nil {
+	if err := job.doSnapshot(); err != nil {
+		return err
+	}
+
+	if err := job.doSnapshotCleanup(false); err != nil {
 		return err
 	}
 
@@ -583,6 +599,10 @@ func (job *Job) doRecurringBackup() (err error) {
 			return fmt.Errorf("Cleaned up backup %v failed for %v: %v", backup, volumeName, err)
 		}
 		job.logger.Debugf("Cleaned up backup %v for %v", backup, volumeName)
+	}
+
+	if err := job.doSnapshotCleanup(true); err != nil {
+		return err
 	}
 	return nil
 }
