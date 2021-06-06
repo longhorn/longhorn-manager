@@ -166,6 +166,8 @@ const (
 	instanceManagerImagePrefix = "imi-"
 	shareManagerImagePrefix    = "smi-"
 
+	BackingImageDataSourcePodNamePrefix = "backing-image-ds-"
+
 	shareManagerPrefix    = "share-manager-"
 	instanceManagerPrefix = "instance-manager-"
 	engineManagerPrefix   = instanceManagerPrefix + "e-"
@@ -437,6 +439,10 @@ func GetInstanceManagerPrefix(imType InstanceManagerType) string {
 		return replicaManagerPrefix
 	}
 	return ""
+}
+
+func GetBackingImageDataSourcePodName(bidsName string) string {
+	return fmt.Sprintf("%s%s", BackingImageDataSourcePodNamePrefix, bidsName)
 }
 
 func GetReplicaDataPath(diskPath, dataDirectoryName string) string {
