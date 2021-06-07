@@ -593,28 +593,29 @@ func (bic *BackingImageController) updateStatusWithFileInfo(bi *longhorn.Backing
 	return nil
 }
 
-func (bic *BackingImageController) updateDiskLastReferenceMap(backingImage *longhorn.BackingImage) error {
-	replicas, err := bic.ds.ListReplicasByBackingImage(backingImage.Name)
+func (bic *BackingImageController) updateDiskLastReferenceMap(bi *longhorn.BackingImage) error {
+	replicas, err := bic.ds.ListReplicasByBackingImage(bi.Name)
 	if err != nil {
 		return err
 	}
-	disksInUse := map[string]struct{}{}
+	filesInUse := map[string]struct{}{}
 	for _, replica := range replicas {
-		disksInUse[replica.Spec.DiskID] = struct{}{}
-		delete(backingImage.Status.DiskLastRefAtMap, replica.Spec.DiskID)
+		filesInUse[replica.Spec.DiskID] = struct{}{}
+		delete(bi.Status.DiskLastRefAtMap, replica.Spec.DiskID)
 	}
-	for diskUUID := range backingImage.Status.DiskLastRefAtMap {
-		if _, exists := backingImage.Spec.Disks[diskUUID]; !exists {
-			delete(backingImage.Status.DiskLastRefAtMap, diskUUID)
+	for diskUUID := range bi.Status.DiskLastRefAtMap {
+		if _, exists := bi.Spec.Disks[diskUUID]; !exists {
+			delete(bi.Status.DiskLastRefAtMap, diskUUID)
 		}
 	}
-	for diskUUID := range backingImage.Spec.Disks {
-		_, isActiveDisk := disksInUse[diskUUID]
-		_, isRecordedHistoricDisk := backingImage.Status.DiskLastRefAtMap[diskUUID]
-		if !isActiveDisk && !isRecordedHistoricDisk {
-			backingImage.Status.DiskLastRefAtMap[diskUUID] = util.Now()
+	for diskUUID := range bi.Spec.Disks {
+		_, isActiveFile := filesInUse[diskUUID]
+		_, isRecordedHistoricFile := bi.Status.DiskLastRefAtMap[diskUUID]
+		if !isActiveFile && !isRecordedHistoricFile {
+			bi.Status.DiskLastRefAtMap[diskUUID] = util.Now()
 		}
 	}
+
 	return nil
 }
 

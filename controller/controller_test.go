@@ -41,6 +41,8 @@ const (
 	TestManagerImage              = "longhorn-manager:latest"
 	TestServiceAccount            = "longhorn-service-account"
 
+	TestBackingImage = "test-backing-image"
+
 	TestInstanceManagerName1 = "instance-manager-engine-image-name-1"
 	TestEngineManagerName    = "instance-manager-e-test-name"
 	TestReplicaManagerName   = "instance-manager-r-test-name"
@@ -65,6 +67,7 @@ const (
 	TestDaemon2           = "longhorn-manager-2"
 	TestDiskID1           = "fsid"
 	TestDiskID2           = "fsid-2"
+	TestDiskID3           = "fsid-3"
 	TestDiskSize          = 5000000000
 	TestDiskAvailableSize = 3000000000
 

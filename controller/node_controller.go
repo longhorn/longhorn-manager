@@ -931,30 +931,14 @@ func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error
 		return err
 	}
 	for _, bi := range backingImages {
-		if bi.Status.DiskLastRefAtMap == nil {
+		log := getLoggerForBackingImage(nc.logger, bi).WithField("node", node.Name)
+		bids, err := nc.ds.GetBackingImageDataSource(bi.Name)
+		if err != nil && !apierrors.IsNotFound(err) {
+			log.WithError(err).Error("Failed to get the backing image data source when cleaning up the images in disks")
 			continue
 		}
-		log := getLoggerForBackingImage(nc.logger, bi).WithField("node", node.Name)
 		existingBackingImage := bi.DeepCopy()
-		for _, diskStatus := range node.Status.DiskStatus {
-			uuid := diskStatus.DiskUUID
-			if _, exists := bi.Spec.Disks[uuid]; !exists {
-				continue
-			}
-			lastRefAtStr, exists := bi.Status.DiskLastRefAtMap[uuid]
-			if !exists {
-				continue
-			}
-			lastRefAt, err := util.ParseTime(lastRefAtStr)
-			if err != nil {
-				log.Errorf("Unable to parse LastRefAt timestamp %v", lastRefAtStr)
-				continue
-			}
-			if time.Now().After(lastRefAt.Add(waitInterval)) {
-				log.Debugf("Start to cleanup the unused backing image in disk %v", uuid)
-				delete(bi.Spec.Disks, uuid)
-			}
-		}
+		BackingImageDiskFileCleanup(node, bi, bids, waitInterval, 1)
 		if !reflect.DeepEqual(existingBackingImage.Spec, bi.Spec) {
 			if _, err := nc.ds.UpdateBackingImage(bi); err != nil {
 				log.WithError(err).Error("Failed to update backing image when cleaning up the images in disks")
@@ -966,4 +950,85 @@ func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error
 	}
 
 	return nil
+}
+
+func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage, bids *longhorn.BackingImageDataSource, waitInterval time.Duration, haRequirement int) {
+	if bi.Status.DiskLastRefAtMap == nil {
+		return
+	}
+
+	if haRequirement < 1 {
+		haRequirement = 1
+	}
+
+	var readyDiskFileCount, handlingDiskFileCount, failedDiskFileCount int
+	for diskUUID := range bi.Spec.Disks {
+		// Consider non-existing files as pending/handling backing image files.
+		fileStatus, exists := bi.Status.DiskFileStatusMap[diskUUID]
+		if !exists {
+			handlingDiskFileCount++
+			continue
+		}
+		switch fileStatus.State {
+		case types.BackingImageStateReady:
+			readyDiskFileCount++
+		case types.BackingImageStateFailed:
+			failedDiskFileCount++
+		default:
+			handlingDiskFileCount++
+		}
+	}
+
+	for _, diskStatus := range node.Status.DiskStatus {
+		diskUUID := diskStatus.DiskUUID
+		if _, exists := bi.Spec.Disks[diskUUID]; !exists {
+			continue
+		}
+		isFirstFile := bids != nil && !bids.Spec.FileTransferred && diskUUID == bids.Spec.DiskUUID
+		if isFirstFile {
+			continue
+		}
+		lastRefAtStr, exists := bi.Status.DiskLastRefAtMap[diskUUID]
+		if !exists {
+			continue
+		}
+		lastRefAt, err := util.ParseTime(lastRefAtStr)
+		if err != nil {
+			logrus.Errorf("Unable to parse LastRefAt timestamp %v for backing image %v", lastRefAtStr, bi.Name)
+			continue
+		}
+		if !time.Now().After(lastRefAt.Add(waitInterval)) {
+			continue
+		}
+
+		// The cleanup strategy:
+		//  1. If there are enough ready files for a backing image, it's fine to do cleanup.
+		//  2. If there are no enough ready files, try to retain handling(state pending/starting/in-progress/unknown) files to guarantee the HA requirement.
+		//  3. If there are no enough ready & handling files, try to retain failed files to guarantee the HA requirement.
+		//  4. If there are no enough files including failed ones, skip cleanup.
+		fileStatus, exists := bi.Status.DiskFileStatusMap[diskUUID]
+		if !exists {
+			fileStatus.State = types.BackingImageStatePending
+		}
+		switch fileStatus.State {
+		case types.BackingImageStateFailed:
+			if haRequirement >= readyDiskFileCount+handlingDiskFileCount+failedDiskFileCount {
+				continue
+			}
+			failedDiskFileCount--
+		case types.BackingImageStateReady:
+			if haRequirement >= readyDiskFileCount {
+				continue
+			}
+			readyDiskFileCount--
+		default:
+			if haRequirement >= readyDiskFileCount+handlingDiskFileCount {
+				continue
+			}
+			handlingDiskFileCount--
+		}
+
+		logrus.Debugf("Start to cleanup the unused file in disk %v for backing image %v", diskUUID, bi.Name)
+		delete(bi.Spec.Disks, diskUUID)
+	}
 }
