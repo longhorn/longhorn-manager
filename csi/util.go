@@ -165,6 +165,52 @@ func parseJSONRecurringJobs(jsonRecurringJobs string) ([]longhornclient.Recurrin
 	return recurringJobs, nil
 }
 
+// ensureMountPoint evaluates whether a path is a valid mountPoint
+// in case the targetPath does not exists it will create a path and return false
+// in case where the mount point exists but is corrupt, the mount point will be cleaned up and a error is returned
+// the underlying implementation utilizes mounter.IsLikelyNotMountPoint so it cannot detect bind mounts
+func ensureMountPoint(targetPath string, mounter mount.Interface) (bool, error) {
+	notMnt, err := mounter.IsLikelyNotMountPoint(targetPath)
+	if os.IsNotExist(err) {
+		return false, os.MkdirAll(targetPath, 0750)
+	}
+
+	if mount.IsCorruptedMnt(err) {
+		cleanupErr := cleanupMountPoint(targetPath, mounter)
+		if cleanupErr != nil {
+			return true, fmt.Errorf("failed to cleanup corrupt mount point %v cleanup error %v", targetPath, err)
+		}
+
+		return true, fmt.Errorf("cleaned up existing corrupt mount point %v", targetPath)
+	}
+
+	return !notMnt, err
+}
+
+// cleanupMountPoint ensures all mount layers for the targetPath are unmounted and the mount directory is removed
+// the underlying implementation utilizes mounter.IsLikelyNotMountPoint so it cannot detect multiple layers of bind mounts
+func cleanupMountPoint(targetPath string, mounter mount.Interface) error {
+	for {
+		if err := mounter.Unmount(targetPath); err != nil {
+			if strings.Contains(err.Error(), "not mounted") ||
+				strings.Contains(err.Error(), "no mount point specified") {
+				break
+			}
+			return err
+		}
+		notMnt, err := mounter.IsLikelyNotMountPoint(targetPath)
+		if err != nil {
+			return err
+		}
+
+		if notMnt {
+			break
+		}
+	}
+
+	return mount.CleanupMountPoint(targetPath, mounter, false)
+}
+
 func isLikelyNotMountPointAttach(targetpath string) (bool, error) {
 	notMnt, err := mount.New("").IsLikelyNotMountPoint(targetpath)
 	if err != nil {
