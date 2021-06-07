@@ -178,31 +178,6 @@ func isLikelyNotMountPointAttach(targetpath string) (bool, error) {
 	return notMnt, err
 }
 
-func isLikelyNotMountPointDetach(targetpath string) (bool, error) {
-	notMnt, err := mount.New("").IsLikelyNotMountPoint(targetpath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return notMnt, fmt.Errorf("targetpath not found")
-		}
-	}
-	return notMnt, err
-}
-
-// Should be similar to the detect function in `util` package
-// For csi plugins, util.DetectFileSystem is not available since we cannot use NSExecutor in the workloads
-func detectFileSystem(devicePath string) (string, error) {
-	mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOSExec()}
-	output, err := mounter.Run("blkid", devicePath)
-	if err != nil {
-		return "", errors.Wrapf(err, "failed to get the file system info from device %v, maybe there is no Linux file system on the volume", devicePath)
-	}
-	items := strings.Split(string(output), " ")
-	if len(items) < 3 {
-		return "", fmt.Errorf("failed to detect the file system from device %v, invalid output of command blkid", devicePath)
-	}
-	return strings.Trim(strings.TrimPrefix(strings.TrimSpace(items[2]), "TYPE="), "\""), nil
-}
-
 // isBlockDevice return true if volumePath file is a block device, false otherwise.
 func isBlockDevice(volumePath string) (bool, error) {
 	var stat unix.Stat_t
