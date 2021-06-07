@@ -3,12 +3,10 @@ package csi
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pkg/errors"
@@ -20,14 +18,11 @@ import (
 	"google.golang.org/grpc/status"
 
 	"k8s.io/kubernetes/pkg/util/mount"
-	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/csi/nfs"
 	"github.com/longhorn/longhorn-manager/types"
 )
-
-var hostUtil = hostutil.NewHostUtil()
 
 type NodeServer struct {
 	apiClient *longhornclient.RancherClient
@@ -197,35 +192,15 @@ func (ns *NodeServer) nodePublishSharedVolume(volumeName, shareEndpoint, targetP
 }
 
 func (ns *NodeServer) nodePublishMountVolume(volumeName, devicePath, targetPath, fsType string, mountFlags []string, mounter *mount.SafeFormatAndMount) (*csi.NodePublishVolumeResponse, error) {
-	// It's used to check if a directory is a mount point and it will create the directory if not exist. Hence this target path cannot be used for block volume.
-	notMnt, err := isLikelyNotMountPointAttach(targetPath)
+	isMnt, err := ensureMountPoint(targetPath, mounter)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		msg := fmt.Sprintf("NodePublishVolume: failed to prepare mount point for volume %v error %v", volumeName, err)
+		logrus.Error(msg)
+		return nil, status.Error(codes.Internal, msg)
 	}
-	if !notMnt {
-		if _, err := ioutil.ReadDir(targetPath); err != nil {
-			logrus.Errorf("NodePublishVolume: the volume mount %s exists but is not healthy, unmounting", volumeName)
-			mounter := mount.New("")
-			for {
-				if err := mounter.Unmount(targetPath); err != nil {
-					if strings.Contains(err.Error(), "not mounted") ||
-						strings.Contains(err.Error(), "no mount point specified") {
-						break
-					}
-					return nil, status.Error(codes.Internal, err.Error())
-				}
-				notMnt, err := mounter.IsLikelyNotMountPoint(targetPath)
-				if err != nil {
-					return nil, status.Error(codes.Internal, err.Error())
-				}
-				if notMnt {
-					break
-				}
-				logrus.Debugf("NodePublishVolume: There are multiple mount layers on mount point %v, will unmount all mount layers for this mount point", targetPath)
-			}
-			return nil, status.Error(codes.Internal, "unmounted unhealthy mount point")
-		}
-		logrus.Debugf("NodePublishVolume: the volume %s has been mounted", volumeName)
+
+	if isMnt {
+		logrus.Debugf("NodePublishVolume: found existing healthy mount point for volume %v skipping mount", volumeName)
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
 
@@ -238,17 +213,13 @@ func (ns *NodeServer) nodePublishMountVolume(volumeName, devicePath, targetPath,
 }
 
 func (ns *NodeServer) nodePublishBlockVolume(volumeName, devicePath, targetPath string, mounter *mount.SafeFormatAndMount) (*csi.NodePublishVolumeResponse, error) {
-	targetDir := filepath.Dir(targetPath)
-	exists, err := hostUtil.PathExists(targetDir)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+	// we ensure the parent directory exists and is valid
+	if _, err := ensureMountPoint(filepath.Dir(targetPath), mounter); err != nil {
+		return nil, status.Errorf(codes.Internal, "Failed to prepare mount point for block device %v error %v", devicePath, err)
 	}
-	if !exists {
-		if err := makeDir(targetDir); err != nil {
-			return nil, status.Errorf(codes.Internal, "Could not create dir %q: %v", targetDir, err)
-		}
-	}
-	if err = makeFile(targetPath); err != nil {
+
+	// create file where we can bind mount the device to
+	if err := makeFile(targetPath); err != nil {
 		return nil, status.Errorf(codes.Internal, "Error in making file %v", err)
 	}
 
@@ -279,27 +250,10 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Error(codes.InvalidArgument, msg)
 	}
 
-	mounter := mount.New("")
-	for {
-		if err := mounter.Unmount(targetPath); err != nil {
-			if strings.Contains(err.Error(), "not mounted") ||
-				strings.Contains(err.Error(), "no mount point specified") {
-				break
-			}
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		notMnt, err := mounter.IsLikelyNotMountPoint(targetPath)
-		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		if notMnt {
-			break
-		}
-		logrus.Debugf("There are multiple mount layers on mount point %v, will unmount all mount layers for this mount point", targetPath)
-	}
-
-	if err := mount.CleanupMountPoint(targetPath, mounter, false); err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+	if err := cleanupMountPoint(targetPath, mount.New("")); err != nil {
+		msg := fmt.Sprintf("NodeUnpublishVolume: failed to cleanup mount point %v error %v", targetPath, err)
+		logrus.Warn(msg)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("NodeUnpublishVolume: failed to cleanup mount point %v error %v", targetPath, err))
 	}
 	logrus.Infof("NodeUnpublishVolume: unmounted volume %s from path %s", req.GetVolumeId(), targetPath)
 
