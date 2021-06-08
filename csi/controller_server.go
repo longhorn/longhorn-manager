@@ -14,8 +14,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	putil "sigs.k8s.io/sig-storage-lib-external-provisioner/util"
-
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -73,6 +71,16 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if volumeParameters == nil {
 		volumeParameters = map[string]string{}
 	}
+	reqVolSizeBytes := int64(util.MinimalVolumeSize)
+	if req.GetCapacityRange() != nil {
+		reqVolSizeBytes = req.GetCapacityRange().GetRequiredBytes()
+	}
+	if reqVolSizeBytes < util.MinimalVolumeSize {
+		logrus.Warnf("Request volume %v size %v is smaller than minimal size %v, set it to minimal size.", req.GetName(), reqVolSizeBytes, util.MinimalVolumeSize)
+		reqVolSizeBytes = util.MinimalVolumeSize
+	}
+	// Round up to multiple of 2 * 1024 * 1024
+	reqVolSizeBytes = util.RoundUpSize(reqVolSizeBytes)
 
 	// check if we need to restore from a csi snapshot
 	// we don't support volume cloning at the moment
@@ -112,9 +120,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 
-		reqVolSize := req.GetCapacityRange().GetRequiredBytes()
-		if exVolSize != reqVolSize {
-			msg := fmt.Sprintf("CreateVolume: cannot change volume size from %v to %v", exVolSize, reqVolSize)
+		if exVolSize != reqVolSizeBytes {
+			msg := fmt.Sprintf("CreateVolume: cannot change volume size from %v to %v", exVolSize, reqVolSizeBytes)
 			logrus.Error(msg)
 			return nil, status.Error(codes.AlreadyExists, msg)
 		}
@@ -178,25 +185,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	vol.Name = req.Name
-
-	volSizeBytes := int64(util.MinimalVolumeSize)
-	if req.GetCapacityRange() != nil {
-		volSizeBytes = int64(req.GetCapacityRange().GetRequiredBytes())
-	}
-
-	if volSizeBytes < util.MinimalVolumeSize {
-		logrus.Warnf("Request volume %v size %v is smaller than minimal size %v, set it to minimal size.", vol.Name, volSizeBytes, util.MinimalVolumeSize)
-		volSizeBytes = util.MinimalVolumeSize
-	}
-
-	// Round up to multiple of 2 * 1024 * 1024
-	volSizeBytes = util.RoundUpSize(volSizeBytes)
-
-	if volSizeBytes >= putil.GiB {
-		vol.Size = fmt.Sprintf("%.2fGi", float64(volSizeBytes)/float64(putil.GiB))
-	} else {
-		vol.Size = fmt.Sprintf("%dMi", putil.RoundUpSize(volSizeBytes, putil.MiB))
-	}
+	vol.Size = fmt.Sprintf("%d", reqVolSizeBytes)
 
 	logrus.Infof("CreateVolume: creating a volume by API client, name: %s, size: %s accessMode: %v", vol.Name, vol.Size, vol.AccessMode)
 	resVol, err := cs.apiClient.Volume.Create(vol)
@@ -216,7 +205,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			VolumeId:      resVol.Id,
-			CapacityBytes: volSizeBytes,
+			CapacityBytes: reqVolSizeBytes,
 			VolumeContext: volumeParameters,
 			ContentSource: req.VolumeContentSource,
 		},
