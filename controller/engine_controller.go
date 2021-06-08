@@ -24,17 +24,16 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
 
-	"github.com/longhorn/backupstore"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
-	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 const (
@@ -1023,17 +1022,11 @@ func syncWithRestoreStatusForCompatibleEngine(log logrus.FieldLogger, engine *lo
 }
 
 func checkSizeBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine, ds *datastore.DataStore) (bool, error) {
-	backupTarget, err := manager.GenerateBackupTarget(ds)
-	if err != nil {
-		return false, errors.Wrapf(err, "engine monitor: Cannot generate BackupTarget for expansion check of the DR volume engine %v", engine.Name)
-	}
-
-	backupVolumeMetadataURL := backupstore.EncodeMetadataURL("", engine.Spec.BackupVolume, backupTarget.URL)
-	bv, err := backupTarget.InspectBackupVolumeConfig(backupVolumeMetadataURL)
+	bv, err := ds.GetBackupVolumeRO(engine.Spec.BackupVolume)
 	if err != nil {
 		return false, err
 	}
-	bvSize, err := strconv.ParseInt(bv.Size, 10, 64)
+	bvSize, err := strconv.ParseInt(bv.Status.Size, 10, 64)
 	if err != nil {
 		return false, err
 	}

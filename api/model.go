@@ -1072,7 +1072,7 @@ func toSnapshotCollection(ss map[string]*types.Snapshot) *client.GenericCollecti
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshot"}}
 }
 
-func toBackupVolumeResource(bv *engineapi.BackupVolume, apiContext *api.ApiContext) *BackupVolume {
+func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContext) *BackupVolume {
 	if bv == nil {
 		logrus.Warnf("weird: nil backupVolume")
 		return nil
@@ -1083,7 +1083,17 @@ func toBackupVolumeResource(bv *engineapi.BackupVolume, apiContext *api.ApiConte
 			Type:  "backupVolume",
 			Links: map[string]string{},
 		},
-		BackupVolume: *bv,
+		BackupVolume: engineapi.BackupVolume{
+			Name:             bv.Name,
+			Size:             bv.Status.Size,
+			Labels:           bv.Status.Labels,
+			Created:          bv.Status.CreatedAt,
+			LastBackupName:   bv.Status.LastBackupName,
+			LastBackupAt:     bv.Status.LastBackupAt,
+			DataStored:       bv.Status.DataStored,
+			Messages:         bv.Status.Messages,
+			BackingImageName: bv.Status.BackingImageName,
+		},
 	}
 	b.Actions = map[string]string{
 		"backupList":   apiContext.UrlBuilder.ActionLink(b.Resource, "backupList"),
@@ -1093,7 +1103,7 @@ func toBackupVolumeResource(bv *engineapi.BackupVolume, apiContext *api.ApiConte
 	return b
 }
 
-func toBackupVolumeCollection(bv map[string]*engineapi.BackupVolume, apiContext *api.ApiContext) *client.GenericCollection {
+func toBackupVolumeCollection(bv map[string]*longhorn.BackupVolume, apiContext *api.ApiContext) *client.GenericCollection {
 	data := []interface{}{}
 	for _, v := range bv {
 		data = append(data, toBackupVolumeResource(v, apiContext))
@@ -1101,7 +1111,7 @@ func toBackupVolumeCollection(bv map[string]*engineapi.BackupVolume, apiContext 
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backupVolume"}}
 }
 
-func toBackupResource(b *engineapi.Backup) *Backup {
+func toBackupResource(b *longhorn.Backup) *Backup {
 	if b == nil {
 		logrus.Warnf("weird: nil backup")
 		return nil
@@ -1112,11 +1122,24 @@ func toBackupResource(b *engineapi.Backup) *Backup {
 			Type:  "backup",
 			Links: map[string]string{},
 		},
-		Backup: *b,
+		Backup: engineapi.Backup{
+			Name:                   b.Name,
+			URL:                    b.Status.URL,
+			SnapshotName:           b.Status.SnapshotName,
+			SnapshotCreated:        b.Status.SnapshotCreatedAt,
+			Created:                b.Status.BackupCreatedAt,
+			Size:                   b.Status.Size,
+			Labels:                 b.Status.Labels,
+			VolumeName:             b.Status.VolumeName,
+			VolumeSize:             b.Status.VolumeSize,
+			VolumeCreated:          b.Status.VolumeCreated,
+			VolumeBackingImageName: b.Status.VolumeBackingImageName,
+			Messages:               b.Status.Messages,
+		},
 	}
 }
 
-func toBackupCollection(bs []*engineapi.Backup) *client.GenericCollection {
+func toBackupCollection(bs map[string]*longhorn.Backup) *client.GenericCollection {
 	data := []interface{}{}
 	for _, v := range bs {
 		data = append(data, toBackupResource(v))
