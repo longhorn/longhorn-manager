@@ -171,26 +171,21 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 
 	size := spec.Size
 	if spec.FromBackup != "" {
-		backupTarget, err := GenerateBackupTarget(m.ds)
-		if err != nil {
-			return nil, err
-		}
-		backupName, volumeName, destURL, err := backupstore.DecodeMetadataURL(spec.FromBackup)
+		bName, bvName, _, err := backupstore.DecodeBackupURL(spec.FromBackup)
 		if err != nil {
 			return nil, fmt.Errorf("cannot get backup and volume name from backup URL %v: %v", spec.FromBackup, err)
 		}
 
-		backupVolumeMetadataURL := backupstore.EncodeMetadataURL("", volumeName, destURL)
-		backupVolume, err := backupTarget.InspectBackupVolumeConfig(backupVolumeMetadataURL)
+		bv, err := m.ds.GetBackupVolumeRO(bvName)
 		if err != nil {
-			return nil, fmt.Errorf("cannot inspect backup volume metadata %v from backup URL %v: %v", backupName, spec.FromBackup, err)
+			return nil, fmt.Errorf("cannot get backup volume %s: %v", bvName, err)
 		}
-		if backupVolume != nil && backupVolume.BackingImageName != "" {
+		if bv != nil && bv.Status.BackingImageName != "" {
 			if spec.BackingImage == "" {
-				spec.BackingImage = backupVolume.BackingImageName
+				spec.BackingImage = bv.Status.BackingImageName
 				logrus.Debugf("Since the backing image is not specified during the restore, "+
 					"the previous backing image %v used by backup volume %v will be set for volume %v creation",
-					backupVolume.BackingImageName, backupName, name)
+					bv.Status.BackingImageName, bvName, name)
 			}
 			bi, err := m.GetBackingImage(spec.BackingImage)
 			if err != nil {
@@ -198,27 +193,24 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			}
 			// Validate the checksum only when the chosen backing image name is the same as the record in the backup volume.
 			// If user picks up a backing image different from `backupVolume.BackingImageName`, there is no need to do verification.
-			if spec.BackingImage == backupVolume.BackingImageName {
-				if backupVolume.BackingImageChecksum != "" && bi.Status.Checksum != "" &&
-					backupVolume.BackingImageChecksum != bi.Status.Checksum {
+			if spec.BackingImage == bv.Status.BackingImageName {
+				if bv.Status.BackingImageChecksum != "" && bi.Status.Checksum != "" &&
+					bv.Status.BackingImageChecksum != bi.Status.Checksum {
 					return nil, fmt.Errorf("backing image %v current checksum doesn't match the recoreded checksum in backup volume", spec.BackingImage)
 				}
 			}
 		}
 
-		backup, err := backupTarget.InspectBackupConfig(spec.FromBackup)
+		backup, err := m.ds.GetBackupRO(bName)
 		if err != nil {
-			return nil, fmt.Errorf("cannot get backup %v: %v", spec.FromBackup, err)
-		}
-		if backup == nil {
-			return nil, fmt.Errorf("cannot find backup %v of volume %v", v.Spec.FromBackup, v.Name)
+			return nil, fmt.Errorf("cannot get backup %s: %v", bName, err)
 		}
 
-		logrus.Infof("Override size of volume %v to %v because it's from backup", name, backup.VolumeSize)
+		logrus.Infof("Override size of volume %v to %v because it's from backup", name, backup.Status.VolumeSize)
 		// formalize the final size to the unit in bytes
-		size, err = util.ConvertSize(backup.VolumeSize)
+		size, err = util.ConvertSize(backup.Status.VolumeSize)
 		if err != nil {
-			return nil, fmt.Errorf("get invalid size for volume %v: %v", backup.VolumeSize, err)
+			return nil, fmt.Errorf("get invalid size for volume %v: %v", backup.Status.VolumeSize, err)
 		}
 	}
 

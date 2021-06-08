@@ -235,7 +235,7 @@ func (b *BackupTarget) DeleteBackup(backupURL string) error {
 	return nil
 }
 
-func (e *Engine) SnapshotBackup(snapName, backupTarget, backingImageName, backingImageChecksum string, labels map[string]string, credential map[string]string) (string, error) {
+func (e *Engine) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels map[string]string, credential map[string]string) (string, error) {
 	if snapName == VolumeHeadName {
 		return "", fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)
 	}
@@ -259,6 +259,9 @@ func (e *Engine) SnapshotBackup(snapName, backupTarget, backingImageName, backin
 		} else if backingImageChecksum != "" {
 			args = append(args, "--backing-image-checksum", backingImageChecksum)
 		}
+	}
+	if backupName != "" {
+		args = append(args, "--backup-name", backupName)
 	}
 	for k, v := range labels {
 		args = append(args, "--label", k+"="+v)

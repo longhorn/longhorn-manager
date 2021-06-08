@@ -95,7 +95,6 @@ func (s *Server) BackupDelete(w http.ResponseWriter, req *http.Request) error {
 	if err := s.m.DeleteBackup(input.Name, volName); err != nil {
 		return errors.Wrapf(err, "error deleting backup %v of volume %v", input.Name, volName)
 	}
-	logrus.Debugf("Removed backup %v of volume %v", input.Name, volName)
 
 	bv, err := s.m.GetBackupVolume(volName)
 	if err != nil {

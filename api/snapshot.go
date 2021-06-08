@@ -10,6 +10,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
 
+	bsutil "github.com/longhorn/backupstore/util"
+
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 )
@@ -179,7 +181,7 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 		labels[types.KubernetesStatusLabel] = string(kubeStatus)
 	}
 
-	if err := s.m.BackupSnapshot(volName, input.Name, vol.Spec.BackingImage, labels); err != nil {
+	if err := s.m.BackupSnapshot(bsutil.GenerateName("backup"), volName, input.Name, vol.Spec.BackingImage, labels); err != nil {
 		return err
 	}
 
