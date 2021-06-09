@@ -2118,7 +2118,7 @@ func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 	vc.enqueueVolume(volume)
 }
 
-func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.RecurringJob, suspend bool) (*batchv1beta1.CronJob, error) {
+func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.RecurringJob) (*batchv1beta1.CronJob, error) {
 	backoffLimit := int32(CronJobBackoffLimit)
 	successfulJobsHistoryLimit := int32(CronJobSuccessfulJobsHistoryLimit)
 	cmd := []string{
@@ -2158,7 +2158,6 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 		Spec: batchv1beta1.CronJobSpec{
 			Schedule:                   job.Cron,
 			ConcurrencyPolicy:          batchv1beta1.ForbidConcurrent,
-			Suspend:                    &suspend,
 			SuccessfulJobsHistoryLimit: &successfulJobsHistoryLimit,
 			JobTemplate: batchv1beta1.JobTemplateSpec{
 				Spec: batchv1.JobSpec{
@@ -2223,24 +2222,24 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 		err = errors.Wrapf(err, "fail to update recurring jobs for %v", v.Name)
 	}()
 
-	suspended := vc.shouldSuspendRecurringJobs(v)
-
 	// the cronjobs are RO in the map, but not the map itself
 	appliedCronJobROs, err := vc.ds.ListVolumeCronJobROs(v.Name)
 	if err != nil {
 		return err
 	}
 
-	currentCronJobs := make(map[string]*batchv1beta1.CronJob)
-	for _, job := range v.Spec.RecurringJobs {
-		cronJob, err := vc.createCronJob(v, &job, suspended)
-		if err != nil {
-			return err
+	desiredCronJobs := make(map[string]*batchv1beta1.CronJob)
+	if !vc.shouldDeleteRecurringJobs(v) {
+		for _, job := range v.Spec.RecurringJobs {
+			cronJob, err := vc.createCronJob(v, &job)
+			if err != nil {
+				return err
+			}
+			desiredCronJobs[cronJob.Name] = cronJob
 		}
-		currentCronJobs[cronJob.Name] = cronJob
 	}
 
-	for name, cronJob := range currentCronJobs {
+	for name, cronJob := range desiredCronJobs {
 		appliedCronJob := appliedCronJobROs[name]
 		cronJobSpecB, err := json.Marshal(cronJob)
 		if err != nil {
@@ -2272,10 +2271,11 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 	}
 
 	for name, job := range appliedCronJobROs {
-		if currentCronJobs[name] == nil {
+		if desiredCronJobs[name] == nil {
 			if err := vc.ds.DeleteCronJob(name); err != nil {
 				return err
 			}
+			continue
 		}
 
 		// TODO: Will Remove this reference kind correcting after all Longhorn components having used the new kinds
@@ -2291,13 +2291,13 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 	return nil
 }
 
-func (vc *VolumeController) shouldSuspendRecurringJobs(v *longhorn.Volume) bool {
+func (vc *VolumeController) shouldDeleteRecurringJobs(v *longhorn.Volume) bool {
 	allowRecurringJobWhileVolumeDetached, err := vc.ds.GetSettingAsBool(types.SettingNameAllowRecurringJobWhileVolumeDetached)
 	if err != nil {
 		vc.logger.WithError(err).Warn("error getting allow-recurring-backup-while-volume-detached setting")
 	}
 
-	if v.Status.State == types.VolumeStateAttached || (v.Status.State == types.VolumeStateDetached && allowRecurringJobWhileVolumeDetached) {
+	if v.Status.State == types.VolumeStateAttached || allowRecurringJobWhileVolumeDetached {
 		return false
 	}
 	return true
