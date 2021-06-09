@@ -40,6 +40,7 @@ const (
 	SettingNameBackupTarget                                 = SettingName("backup-target")
 	SettingNameBackupTargetCredentialSecret                 = SettingName("backup-target-credential-secret")
 	SettingNameAllowRecurringJobWhileVolumeDetached         = SettingName("allow-recurring-job-while-volume-detached")
+	SettingNameDefaultCronJobStartingDeadlineSeconds        = SettingName("default-cronjob-starting-deadline-seconds")
 	SettingNameCreateDefaultDiskLabeledNodes                = SettingName("create-default-disk-labeled-nodes")
 	SettingNameDefaultDataPath                              = SettingName("default-data-path")
 	SettingNameDefaultEngineImage                           = SettingName("default-engine-image")
@@ -86,6 +87,7 @@ var (
 		SettingNameBackupTarget,
 		SettingNameBackupTargetCredentialSecret,
 		SettingNameAllowRecurringJobWhileVolumeDetached,
+		SettingNameDefaultCronJobStartingDeadlineSeconds,
 		SettingNameCreateDefaultDiskLabeledNodes,
 		SettingNameDefaultDataPath,
 		SettingNameDefaultEngineImage,
@@ -153,6 +155,7 @@ var (
 		SettingNameBackupTarget:                                 SettingDefinitionBackupTarget,
 		SettingNameBackupTargetCredentialSecret:                 SettingDefinitionBackupTargetCredentialSecret,
 		SettingNameAllowRecurringJobWhileVolumeDetached:         SettingDefinitionAllowRecurringJobWhileVolumeDetached,
+		SettingNameDefaultCronJobStartingDeadlineSeconds:        SettingDefinitionDefaultCronJobStartingDeadlineSeconds,
 		SettingNameCreateDefaultDiskLabeledNodes:                SettingDefinitionCreateDefaultDiskLabeledNodes,
 		SettingNameDefaultDataPath:                              SettingDefinitionDefaultDataPath,
 		SettingNameDefaultEngineImage:                           SettingDefinitionDefaultEngineImage,
@@ -222,6 +225,20 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "false",
+	}
+
+	SettingDefinitionDefaultCronJobStartingDeadlineSeconds = SettingDefinition{
+		DisplayName: "Default Starting Deadline Seconds For CronJob",
+		Description: "This setting specifies the default startingDeadlineSeconds value for all CronJobs (recurring backup jobs and recurring snapshot jobs). \n\n" +
+			"The startingDeadlineSeconds value helps to prevent Kubernetes from permanently stopping the CronJob if it hasn't been running for a long time " +
+			"(this could happen to the recurring backup jobs and recurring snapshot jobs if Longhorn volumes are detached for long time.) " +
+			"See more at https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/ " +
+			"and https://github.com/longhorn/longhorn/issues/2513.",
+		Category: SettingCategoryBackup,
+		Type:     SettingTypeInt,
+		Required: true,
+		ReadOnly: false,
+		Default:  "3600",
 	}
 
 	SettingDefinitionBackupstorePollInterval = SettingDefinition{
@@ -738,6 +755,14 @@ func ValidateInitSetting(name, value string) (err error) {
 		fallthrough
 	case SettingNameAllowRecurringJobWhileVolumeDetached:
 		fallthrough
+	case SettingNameDefaultCronJobStartingDeadlineSeconds:
+		interval, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("value is not int: %v", err)
+		}
+		if interval < 0 {
+			return fmt.Errorf("the value %v shouldn't be less than 0", value)
+		}
 	case SettingNameReplicaSoftAntiAffinity:
 		fallthrough
 	case SettingNameDisableSchedulingOnCordonedNode:

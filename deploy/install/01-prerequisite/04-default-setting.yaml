@@ -8,6 +8,7 @@ data:
     backup-target:
     backup-target-credential-secret:
     allow-recurring-job-while-volume-detached:
+    default-cronjob-starting-deadline-seconds:
     create-default-disk-labeled-nodes:
     default-data-path:
     replica-soft-anti-affinity:

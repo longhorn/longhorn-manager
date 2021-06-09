@@ -150,11 +150,12 @@ const (
 )
 
 type RecurringJob struct {
-	Name   string            `json:"name"`
-	Task   RecurringJobType  `json:"task"`
-	Cron   string            `json:"cron"`
-	Retain int               `json:"retain"`
-	Labels map[string]string `json:"labels"`
+	Name                    string            `json:"name"`
+	Task                    RecurringJobType  `json:"task"`
+	Cron                    string            `json:"cron"`
+	Retain                  int               `json:"retain"`
+	StartingDeadlineSeconds int64             `json:"startingDeadlineSeconds"`
+	Labels                  map[string]string `json:"labels"`
 }
 
 type InstanceState string

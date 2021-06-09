@@ -2147,6 +2147,13 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 	if err != nil {
 		return nil, err
 	}
+	startingDeadlineSeconds, err := vc.ds.GetSettingAsInt(types.SettingNameDefaultCronJobStartingDeadlineSeconds)
+	if err != nil {
+		return nil, err
+	}
+	if job.StartingDeadlineSeconds > 0 {
+		startingDeadlineSeconds = job.StartingDeadlineSeconds
+	}
 	// for mounting inside container
 	privilege := true
 	cronJob := &batchv1beta1.CronJob{
@@ -2160,6 +2167,7 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 			ConcurrencyPolicy:          batchv1beta1.ForbidConcurrent,
 			Suspend:                    &suspend,
 			SuccessfulJobsHistoryLimit: &successfulJobsHistoryLimit,
+			StartingDeadlineSeconds:    &startingDeadlineSeconds,
 			JobTemplate: batchv1beta1.JobTemplateSpec{
 				Spec: batchv1.JobSpec{
 					BackoffLimit: &backoffLimit,
