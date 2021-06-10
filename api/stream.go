@@ -67,7 +67,6 @@ func NewStreamHandlerFunc(streamType string, watcher *controller.Watcher, listFu
 		}
 		keepAliveTicker := time.NewTicker(keepAlivePeriod)
 		defer keepAliveTicker.Stop()
-		recentWrite := false
 		for {
 			if rateLimitTicker != nil {
 				<-rateLimitTicker.C
@@ -77,13 +76,13 @@ func NewStreamHandlerFunc(streamType string, watcher *controller.Watcher, listFu
 				return nil
 			case <-watcher.Events():
 				resp, err = writeList(conn, resp, listFunc, apiContext)
-				recentWrite = true
 			case <-keepAliveTicker.C:
 				err = conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(writeWait))
-				if !recentWrite {
+				// WebsocketController doesn't include eventInformer so it only
+				// gets triggered here.
+				if streamType == "events" {
 					resp, err = writeList(conn, resp, listFunc, apiContext)
 				}
-				recentWrite = !recentWrite
 			}
 			if err != nil {
 				return err
@@ -98,11 +97,10 @@ func writeList(conn *websocket.Conn, oldResp *client.GenericCollection, listFunc
 		return oldResp, err
 	}
 
-	resp := newResp
 	if oldResp != nil && reflect.DeepEqual(oldResp, newResp) {
-		resp = &client.GenericCollection{}
+		return oldResp, nil
 	}
-	data, err := apiContext.PopulateCollection(resp)
+	data, err := apiContext.PopulateCollection(newResp)
 	if err != nil {
 		return oldResp, err
 	}
@@ -113,10 +111,7 @@ func writeList(conn *websocket.Conn, oldResp *client.GenericCollection, listFunc
 		return oldResp, err
 	}
 
-	if resp == newResp {
-		return newResp, nil
-	}
-	return oldResp, nil
+	return newResp, nil
 }
 
 func maybeNewTicker(d time.Duration) *time.Ticker {
