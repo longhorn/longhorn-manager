@@ -21,7 +21,7 @@ func (s *Server) BackingImageList(rw http.ResponseWriter, req *http.Request) (er
 }
 
 func (s *Server) backingImageList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
-	list, err := s.m.ListBackingImages()
+	list, err := s.m.ListBackingImagesSorted()
 	if err != nil {
 		return nil, errors.Wrap(err, "error listing backing image")
 	}
