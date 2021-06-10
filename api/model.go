@@ -1146,7 +1146,7 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 	return res
 }
 
-func toBackingImageCollection(bis map[string]*longhorn.BackingImage, apiContext *api.ApiContext) *client.GenericCollection {
+func toBackingImageCollection(bis []*longhorn.BackingImage, apiContext *api.ApiContext) *client.GenericCollection {
 	data := []interface{}{}
 	for _, bi := range bis {
 		data = append(data, toBackingImageResource(bi, apiContext))

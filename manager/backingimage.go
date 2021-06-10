@@ -20,6 +20,23 @@ func (m *VolumeManager) ListBackingImages() (map[string]*longhorn.BackingImage, 
 	return m.ds.ListBackingImages()
 }
 
+func (m *VolumeManager) ListBackingImagesSorted() ([]*longhorn.BackingImage, error) {
+	backingImageMap, err := m.ds.ListBackingImages()
+	if err != nil {
+		return []*longhorn.BackingImage{}, err
+	}
+
+	backingImages := make([]*longhorn.BackingImage, len(backingImageMap))
+	backingImageNames, err := sortKeys(backingImageMap)
+	if err != nil {
+		return []*longhorn.BackingImage{}, err
+	}
+	for i, backingImageName := range backingImageNames {
+		backingImages[i] = backingImageMap[backingImageName]
+	}
+	return backingImages, nil
+}
+
 func (m *VolumeManager) GetBackingImage(name string) (*longhorn.BackingImage, error) {
 	return m.ds.GetBackingImage(name)
 }
