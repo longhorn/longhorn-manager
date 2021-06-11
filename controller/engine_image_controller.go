@@ -368,14 +368,17 @@ func (ic *EngineImageController) syncNodeDeploymentMap(engineImage *longhorn.Eng
 		err = errors.Wrapf(err, "cannot sync NodeDeploymenMap for engine image %v", engineImage.Name)
 	}()
 
-	nodeDeploymentMap := map[string]bool{}
-
-	nodes, err := ic.ds.ListNodes()
+	// initialize deployment map for all known nodes
+	nodeDeploymentMap, err := func() (map[string]bool, error) {
+		deployed := map[string]bool{}
+		nodesRO, err := ic.ds.ListNodesRO()
+		for _, node := range nodesRO {
+			deployed[node.Name] = false
+		}
+		return deployed, err
+	}()
 	if err != nil {
 		return err
-	}
-	for _, node := range nodes {
-		nodeDeploymentMap[node.Name] = false
 	}
 
 	eiDaemonSetPods, err := ic.ds.ListEngineImageDaemonSetPodsFromEngineImageName(engineImage.Name)
