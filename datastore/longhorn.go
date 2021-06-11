@@ -1691,7 +1691,7 @@ func (s *DataStore) ListReplicasByNode(name string) (map[string][]*longhorn.Repl
 }
 
 // ListReplicasByDiskUUID gets a list of Replicas on a specific disk the given namespace.
-func (s *DataStore) ListReplicasByDiskUUID(uuid string) ([]*longhorn.Replica, error) {
+func (s *DataStore) ListReplicasByDiskUUID(uuid string) (map[string]*longhorn.Replica, error) {
 	diskSelector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: map[string]string{
 			types.LonghornDiskUUIDKey: uuid,
@@ -1700,7 +1700,7 @@ func (s *DataStore) ListReplicasByDiskUUID(uuid string) ([]*longhorn.Replica, er
 	if err != nil {
 		return nil, err
 	}
-	return s.rLister.Replicas(s.namespace).List(diskSelector)
+	return s.listReplicas(diskSelector)
 }
 
 func getBackingImageSelector(backingImageName string) (labels.Selector, error) {
