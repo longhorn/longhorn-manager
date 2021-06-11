@@ -1242,20 +1242,23 @@ func (s *DataStore) GetBackingImageManager(name string) (*longhorn.BackingImageM
 	return resultRO.DeepCopy(), nil
 }
 
-// ListBackingImageManagers returns object includes all BackingImageManager in namespace
-func (s *DataStore) ListBackingImageManagers() (map[string]*longhorn.BackingImageManager, error) {
+func (s *DataStore) listBackingImageManagers(selector labels.Selector) (map[string]*longhorn.BackingImageManager, error) {
 	itemMap := map[string]*longhorn.BackingImageManager{}
 
-	list, err := s.bimLister.BackingImageManagers(s.namespace).List(labels.Everything())
+	list, err := s.bimLister.BackingImageManagers(s.namespace).List(selector)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, itemRO := range list {
-		// Cannot use cached object from lister
 		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
+}
+
+// ListBackingImageManagers returns object includes all BackingImageManager in namespace
+func (s *DataStore) ListBackingImageManagers() (map[string]*longhorn.BackingImageManager, error) {
+	return s.listBackingImageManagers(labels.Everything())
 }
 
 // ListBackingImageManagersByNode gets a list of BackingImageManager
@@ -1265,18 +1268,7 @@ func (s *DataStore) ListBackingImageManagersByNode(nodeName string) (map[string]
 	if err != nil {
 		return nil, err
 	}
-
-	itemMap := map[string]*longhorn.BackingImageManager{}
-	list, err := s.bimLister.BackingImageManagers(s.namespace).List(nodeSelector)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, itemRO := range list {
-		// Cannot use cached object from lister
-		itemMap[itemRO.Name] = itemRO.DeepCopy()
-	}
-	return itemMap, nil
+	return s.listBackingImageManagers(nodeSelector)
 }
 
 // ListBackingImageManagersByDiskUUID gets a list of BackingImageManager
@@ -1290,18 +1282,7 @@ func (s *DataStore) ListBackingImageManagersByDiskUUID(diskUUID string) (map[str
 	if err != nil {
 		return nil, err
 	}
-
-	itemMap := map[string]*longhorn.BackingImageManager{}
-	list, err := s.bimLister.BackingImageManagers(s.namespace).List(diskSelector)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, itemRO := range list {
-		// Cannot use cached object from lister
-		itemMap[itemRO.Name] = itemRO.DeepCopy()
-	}
-	return itemMap, nil
+	return s.listBackingImageManagers(diskSelector)
 }
 
 // ListDefaultBackingImageManagers gets a list of BackingImageManager
