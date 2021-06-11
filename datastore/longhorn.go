@@ -1480,7 +1480,7 @@ func (s *DataStore) UpdateNodeStatus(node *longhorn.Node) (*longhorn.Node, error
 func (s *DataStore) ListNodes() (map[string]*longhorn.Node, error) {
 	itemMap := make(map[string]*longhorn.Node)
 
-	nodeList, err := s.nLister.Nodes(s.namespace).List(labels.Everything())
+	nodeList, err := s.ListNodesRO()
 	if err != nil {
 		return nil, err
 	}
@@ -1593,23 +1593,19 @@ func (s *DataStore) ListPodsRO() ([]*corev1.Pod, error) {
 // returns the first Node marked with condition ready and allow scheduling
 func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
 	logrus.Debugf("Prepare to find a random ready node")
-	nodeList, err := s.ListNodes()
+	nodesRO, err := s.ListNodesRO()
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get random ready node")
 	}
-	var usableNode *longhorn.Node
-	for name := range nodeList {
-		node := nodeList[name]
+
+	for _, node := range nodesRO {
 		readyCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
 		if readyCondition.Status == types.ConditionStatusTrue && node.Spec.AllowScheduling == true {
-			usableNode = node
-			break
+			return node.DeepCopy(), nil
 		}
 	}
-	if usableNode == nil {
-		return nil, fmt.Errorf("unable to get a ready node")
-	}
-	return usableNode, nil
+
+	return nil, fmt.Errorf("unable to get a ready node")
 }
 
 // RemoveFinalizerForNode will result in deletion if DeletionTimestamp was set
