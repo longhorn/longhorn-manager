@@ -587,17 +587,14 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(obj interface{}) {
 	}
 
 	// replica's NodeID won't change, don't need to check instance manager
-	rs, err := rc.ds.ListReplicasByNode(im.Spec.NodeID)
+	replicasRO, err := rc.ds.ListReplicasByNodeRO(im.Spec.NodeID)
 	if err != nil {
-		log := getLoggerForInstanceManager(rc.logger, im)
-		log.Warn("Failed to list replicas on node")
+		getLoggerForInstanceManager(rc.logger, im).Warn("Failed to list replicas on node")
 		return
 	}
 
-	for _, rList := range rs {
-		for _, r := range rList {
-			rc.enqueueReplica(r)
-		}
+	for _, r := range replicasRO {
+		rc.enqueueReplica(r)
 	}
 	return
 }

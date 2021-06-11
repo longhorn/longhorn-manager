@@ -1670,24 +1670,12 @@ func getNodeSelector(nodeName string) (labels.Selector, error) {
 }
 
 // ListReplicasByNode gets a map of Replicas on the node Name for the given namespace.
-func (s *DataStore) ListReplicasByNode(name string) (map[string][]*longhorn.Replica, error) {
+func (s *DataStore) ListReplicasByNode(name string) (map[string]*longhorn.Replica, error) {
 	nodeSelector, err := getNodeSelector(name)
 	if err != nil {
 		return nil, err
 	}
-	replicaList, err := s.rLister.Replicas(s.namespace).List(nodeSelector)
-	if err != nil {
-		return nil, err
-	}
-
-	replicaDiskMap := map[string][]*longhorn.Replica{}
-	for _, replica := range replicaList {
-		if _, ok := replicaDiskMap[replica.Spec.DiskID]; !ok {
-			replicaDiskMap[replica.Spec.DiskID] = []*longhorn.Replica{}
-		}
-		replicaDiskMap[replica.Spec.DiskID] = append(replicaDiskMap[replica.Spec.DiskID], replica.DeepCopy())
-	}
-	return replicaDiskMap, nil
+	return s.listReplicas(nodeSelector)
 }
 
 // ListReplicasByDiskUUID gets a list of Replicas on a specific disk the given namespace.
@@ -1941,9 +1929,10 @@ func (s *DataStore) DeleteNode(name string) error {
 	return s.lhClient.LonghornV1beta1().Nodes(s.namespace).Delete(name, &metav1.DeleteOptions{})
 }
 
-// ListEnginesByNode returns a list of Engines by LonghornNodeKey for the given
-// name and namespace
-func (s *DataStore) ListEnginesByNode(name string) ([]*longhorn.Engine, error) {
+// ListEnginesByNodeRO returns a list of all Engines on node Name for the given namespace,
+// the list contains direct references to the internal cache objects and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) ListEnginesByNodeRO(name string) ([]*longhorn.Engine, error) {
 	nodeSelector, err := getNodeSelector(name)
 	engineList, err := s.eLister.Engines(s.namespace).List(nodeSelector)
 	if err != nil {
