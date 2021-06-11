@@ -475,13 +475,13 @@ func (nc *NodeController) enqueueNode(obj interface{}) {
 }
 
 func (nc *NodeController) enqueueSetting(obj interface{}) {
-	nodeList, err := nc.ds.ListNodes()
+	nodesRO, err := nc.ds.ListNodesRO()
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("couldn't list nodes: %v ", err))
 		return
 	}
 
-	for _, node := range nodeList {
+	for _, node := range nodesRO {
 		nc.enqueueNode(node)
 	}
 }
@@ -515,12 +515,12 @@ func (nc *NodeController) enqueueReplica(obj interface{}) {
 }
 
 func (nc *NodeController) enqueueManagerPod(obj interface{}) {
-	nodeList, err := nc.ds.ListNodes()
+	nodesRO, err := nc.ds.ListNodesRO()
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("couldn't list nodes: %v ", err))
 		return
 	}
-	for _, node := range nodeList {
+	for _, node := range nodesRO {
 		nc.enqueueNode(node)
 	}
 }
@@ -542,14 +542,14 @@ func (nc *NodeController) enqueueKubernetesNode(obj interface{}) {
 		}
 	}
 
-	node, err := nc.ds.GetNode(kubernetesNode.Name)
+	nodeRO, err := nc.ds.GetNodeRO(kubernetesNode.Name)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get longhorn node %v: %v ", kubernetesNode.Name, err))
 		}
 		return
 	}
-	nc.enqueueNode(node)
+	nc.enqueueNode(nodeRO)
 }
 
 type diskInfo struct {
