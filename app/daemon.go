@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"os"
 
+	_ "net/http/pprof" // for runtime profiling
+
 	"github.com/gorilla/handlers"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
@@ -185,7 +187,6 @@ func startManager(c *cli.Context) error {
 
 	server := api.NewServer(m, wsc)
 	router := http.Handler(api.NewRouter(server))
-
 	router = util.FilteredLoggingHandler(map[string]struct{}{
 		"/v1/apiversions":  {},
 		"/v1/schemas":      {},
@@ -198,9 +199,18 @@ func startManager(c *cli.Context) error {
 	router = handlers.ProxyHeaders(router)
 
 	listen := types.GetAPIServerAddressFromIP(currentIP)
-	logrus.Infof("Listening on %s", listen)
+	logger.Infof("Listening on %s", listen)
 
 	go http.ListenAndServe(listen, router)
+
+	go func() {
+		debugAddress := "127.0.0.1:6060"
+		debugHandler := http.DefaultServeMux
+		logger.Infof("Debug Server listening on %s", debugAddress)
+		if err := http.ListenAndServe(debugAddress, debugHandler); err != nil && err != http.ErrServerClosed {
+			logger.Errorf(fmt.Sprintf("ListenAndServe: %s", err))
+		}
+	}()
 
 	util.RegisterShutdownChannel(done)
 	<-done
