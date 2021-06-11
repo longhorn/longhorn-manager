@@ -184,11 +184,11 @@ func (m *VolumeManager) DeleteNode(name string) error {
 		return err
 	}
 	// only remove node from longhorn without any volumes on it
-	replicas, err := m.ds.ListReplicasByNode(name)
+	replicas, err := m.ds.ListReplicasByNodeRO(name)
 	if err != nil {
 		return err
 	}
-	engines, err := m.ds.ListEnginesByNode(name)
+	engines, err := m.ds.ListEnginesByNodeRO(name)
 	if err != nil {
 		return err
 	}
