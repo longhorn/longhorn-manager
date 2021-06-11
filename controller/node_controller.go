@@ -704,8 +704,12 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 			}
 
 			if diskStatus.DiskUUID == diskUUID {
+				// on the default disks this will be updated constantly since there is always something generating new disk usage (logs, etc)
+				// We also don't need byte/block precisions for this instead we can round down to the next 10/100mb
+				const truncateTo = 100 * 1024 * 1024
+				usableStorage := (diskInfoMap[id].entry.StorageAvailable / truncateTo) * truncateTo
+				diskStatus.StorageAvailable = usableStorage
 				diskStatus.StorageMaximum = diskInfoMap[id].entry.StorageMaximum
-				diskStatus.StorageAvailable = diskInfoMap[id].entry.StorageAvailable
 				diskStatusMap[id].Conditions = types.SetConditionAndRecord(diskStatusMap[id].Conditions,
 					types.DiskConditionTypeReady, types.ConditionStatusTrue,
 					"", fmt.Sprintf("Disk %v(%v) on node %v is ready", id, disk.Path, node.Name),
