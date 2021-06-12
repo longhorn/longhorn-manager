@@ -116,23 +116,26 @@ func parseEndpoint(ep string) (string, string, error) {
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	log := logrus.StandardLogger()
 	logLevel := logrus.InfoLevel
-	switch info.FullMethod {
-	case "/csi.v1.Node/NodeGetCapabilities", "/csi.v1.Node/NodeGetVolumeStats":
+
+	cut := strings.LastIndex(info.FullMethod, "/") + 1
+	method := info.FullMethod[cut:]
+	switch method {
+	case "NodeGetCapabilities", "NodeGetVolumeStats":
 		logLevel = logrus.TraceLevel
 	default:
 		logLevel = logrus.InfoLevel
 	}
 
-	log.Logf(logLevel, "GRPC call: %s request: %+v", info.FullMethod, protosanitizer.StripSecrets(req))
+	log.Logf(logLevel, "%s: req: %+v", method, protosanitizer.StripSecrets(req))
 	resp, err := handler(ctx, req)
 	if err != nil {
 		if logLevel == logrus.TraceLevel {
-			log.Errorf("GRPC call: %s request: %+v failed with error: %v", info.FullMethod, protosanitizer.StripSecrets(req), err)
+			log.Errorf("%s: req: %+v err: %v", method, protosanitizer.StripSecrets(req), err)
 		} else {
-			log.Errorf("GRPC error: %v", err)
+			log.Errorf("%s: err: %v", method, err)
 		}
 	} else {
-		log.Logf(logLevel, "GRPC response: %+v", protosanitizer.StripSecrets(resp))
+		log.Logf(logLevel, "%s: rsp: %+v", method, protosanitizer.StripSecrets(resp))
 	}
 	return resp, err
 }
