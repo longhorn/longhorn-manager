@@ -27,6 +27,7 @@ import (
 type NodeServer struct {
 	apiClient *longhornclient.RancherClient
 	nodeID    string
+	locks     *OperationLocks
 	caps      []*csi.NodeServiceCapability
 }
 
@@ -34,6 +35,7 @@ func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) *Node
 	return &NodeServer{
 		apiClient: apiClient,
 		nodeID:    nodeID,
+		locks:     NewOperationLocks(),
 		caps: getNodeServiceCapabilities(
 			[]csi.NodeServiceCapability_RPC_Type{
 				csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
@@ -61,6 +63,12 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if req.GetReadonly() {
 		return nil, status.Errorf(codes.FailedPrecondition, "volume %s does not support readonly mode", volumeID)
 	}
+
+	logrus.Debugf(OperationTryLockFMT, "NodePublishVolume", volumeID)
+	if !ns.locks.TryAcquire(volumeID) {
+		return nil, status.Errorf(codes.Aborted, OperationPendingFMT, volumeID)
+	}
+	defer ns.locks.Release(volumeID)
 
 	volume, err := ns.apiClient.Volume.ById(volumeID)
 	if err != nil {
@@ -236,6 +244,12 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
 
+	logrus.Debugf(OperationTryLockFMT, "NodeUnpublishVolume", volumeID)
+	if !ns.locks.TryAcquire(volumeID) {
+		return nil, status.Errorf(codes.Aborted, OperationPendingFMT, volumeID)
+	}
+	defer ns.locks.Release(volumeID)
+
 	if err := cleanupMountPoint(targetPath, mount.New("")); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to cleanup volume %s mount point %v error %v", volumeID, targetPath, err))
 	}
@@ -270,6 +284,12 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
+
+	logrus.Debugf(OperationTryLockFMT, "NodeGetVolumeStats", volumeID)
+	if !ns.locks.TryAcquire(volumeID) {
+		return nil, status.Errorf(codes.Aborted, OperationPendingFMT, volumeID)
+	}
+	defer ns.locks.Release(volumeID)
 
 	existVol, err := ns.apiClient.Volume.ById(volumeID)
 	if err != nil {
@@ -344,6 +364,12 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
+
+	logrus.Debugf(OperationTryLockFMT, "NodeExpandVolume", volumeID)
+	if !ns.locks.TryAcquire(volumeID) {
+		return nil, status.Errorf(codes.Aborted, OperationPendingFMT, volumeID)
+	}
+	defer ns.locks.Release(volumeID)
 
 	return nil, status.Errorf(codes.Unimplemented, "volume %s cannot be expanded driver only supports offline expansion", volumeID)
 }

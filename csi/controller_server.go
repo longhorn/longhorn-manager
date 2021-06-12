@@ -30,6 +30,7 @@ const (
 type ControllerServer struct {
 	apiClient   *longhornclient.RancherClient
 	nodeID      string
+	locks       *OperationLocks
 	caps        []*csi.ControllerServiceCapability
 	accessModes []*csi.VolumeCapability_AccessMode
 }
@@ -38,6 +39,7 @@ func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string)
 	return &ControllerServer{
 		apiClient: apiClient,
 		nodeID:    nodeID,
+		locks:     NewOperationLocks(),
 		caps: getControllerServiceCapabilities(
 			[]csi.ControllerServiceCapability_RPC_Type{
 				csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
@@ -77,6 +79,12 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 	// Round up to multiple of 2 * 1024 * 1024
 	reqVolSizeBytes = util.RoundUpSize(reqVolSizeBytes)
+
+	logrus.Debugf(OperationTryLockFMT, "CreateVolume", volumeID)
+	if !cs.locks.TryAcquire(volumeID) {
+		return nil, status.Errorf(codes.Aborted, OperationPendingFMT, volumeID)
+	}
+	defer cs.locks.Release(volumeID)
 
 	// check if we need to restore from a csi snapshot
 	// we don't support volume cloning at the moment
@@ -205,6 +213,12 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
 
+	logrus.Debugf(OperationTryLockFMT, "DeleteVolume", volumeID)
+	if !cs.locks.TryAcquire(volumeID) {
+		return nil, status.Errorf(codes.Aborted, OperationPendingFMT, volumeID)
+	}
+	defer cs.locks.Release(volumeID)
+
 	existVol, err := cs.apiClient.Volume.ById(volumeID)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -241,6 +255,12 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
+
+	logrus.Debugf(OperationTryLockFMT, "ValidateVolumeCapabilities", volumeID)
+	if !cs.locks.TryAcquire(volumeID) {
+		return nil, status.Errorf(codes.Aborted, OperationPendingFMT, volumeID)
+	}
+	defer cs.locks.Release(volumeID)
 
 	existVol, err := cs.apiClient.Volume.ById(volumeID)
 	if err != nil {
@@ -279,6 +299,12 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 	if volumeCapability == nil {
 		return nil, status.Error(codes.InvalidArgument, "volume capability missing in request")
 	}
+
+	logrus.Debugf(OperationTryLockFMT, "ControllerPublishVolume", volumeID)
+	if !cs.locks.TryAcquire(volumeID) {
+		return nil, status.Errorf(codes.Aborted, OperationPendingFMT, volumeID)
+	}
+	defer cs.locks.Release(volumeID)
 
 	// TODO: #1875 API returns error instead of not found, so we cannot differenciate between a retrieval failure and non existing resource
 	if _, err := cs.apiClient.Node.ById(nodeID); err != nil {
@@ -383,6 +409,12 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 	// if nodeID == "" means to detach from all nodes
 	nodeID := req.GetNodeId()
 
+	logrus.Debugf(OperationTryLockFMT, "ControllerUnpublishVolume", volumeID)
+	if !cs.locks.TryAcquire(volumeID) {
+		return nil, status.Errorf(codes.Aborted, OperationPendingFMT, volumeID)
+	}
+	defer cs.locks.Release(volumeID)
+
 	volume, err := cs.apiClient.Volume.ById(volumeID)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -441,6 +473,12 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	} else if len(csiSnapshotName) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Snapshot name must be provided")
 	}
+
+	logrus.Debugf(OperationTryLockFMT, "CreateSnapshot", csiVolumeName)
+	if !cs.locks.TryAcquire(csiVolumeName) {
+		return nil, status.Errorf(codes.Aborted, OperationPendingFMT, csiVolumeName)
+	}
+	defer cs.locks.Release(csiVolumeName)
 
 	// we check for backup existence first, since it's possible that
 	// the actual volume is no longer available but the backup still is.
@@ -594,6 +632,12 @@ func (cs *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 	}
 
 	_, backupVolumeName, backupName := decodeSnapshotID(snapshotID)
+	logrus.Debugf(OperationTryLockFMT, "DeleteSnapshot", backupVolumeName)
+	if !cs.locks.TryAcquire(backupVolumeName) {
+		return nil, status.Errorf(codes.Aborted, OperationPendingFMT, backupVolumeName)
+	}
+	defer cs.locks.Release(backupVolumeName)
+
 	backupVolume, err := cs.apiClient.BackupVolume.ById(backupVolumeName)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -623,6 +667,12 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 		return nil, status.Error(codes.InvalidArgument, "capacity range missing in request")
 	}
 	requestedSize := req.CapacityRange.GetRequiredBytes()
+
+	logrus.Debugf(OperationTryLockFMT, "ControllerExpandVolume", volumeID)
+	if !cs.locks.TryAcquire(volumeID) {
+		return nil, status.Errorf(codes.Aborted, OperationPendingFMT, volumeID)
+	}
+	defer cs.locks.Release(volumeID)
 
 	existVol, err := cs.apiClient.Volume.ById(volumeID)
 	if err != nil {
