@@ -3,14 +3,14 @@ package csi
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"strconv"
-	"strings"
-
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pkg/errors"
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
+	"io/ioutil"
+	"os"
+	"strconv"
+	"strings"
 
 	"golang.org/x/sys/unix"
 
@@ -170,58 +170,62 @@ func parseJSONRecurringJobs(jsonRecurringJobs string) ([]longhornclient.Recurrin
 // in case where the mount point exists but is corrupt, the mount point will be cleaned up and a error is returned
 // the underlying implementation utilizes mounter.IsLikelyNotMountPoint so it cannot detect bind mounts
 func ensureMountPoint(targetPath string, mounter mount.Interface) (bool, error) {
-	notMnt, err := mounter.IsLikelyNotMountPoint(targetPath)
+	logrus.Debugf("trying to ensure mount point %v", targetPath)
+	notMnt, err := mount.IsNotMountPoint(mounter, targetPath)
 	if os.IsNotExist(err) {
 		return false, os.MkdirAll(targetPath, 0750)
 	}
 
-	if mount.IsCorruptedMnt(err) {
-		cleanupErr := cleanupMountPoint(targetPath, mounter)
-		if cleanupErr != nil {
-			return true, fmt.Errorf("failed to cleanup corrupt mount point %v cleanup error %v", targetPath, err)
+	IsCorruptedMnt := mount.IsCorruptedMnt(err)
+	if !IsCorruptedMnt {
+
+		logrus.Debugf("mount point %v try reading dir to make sure it's healthy", targetPath)
+		if _, err := ioutil.ReadDir(targetPath); err != nil {
+			logrus.Debugf("mount point %v was identified as corrupt by ReadDir", targetPath)
+			IsCorruptedMnt = true
+		}
+	}
+
+	if IsCorruptedMnt {
+		unmountErr := unmount(targetPath, mounter)
+		if unmountErr != nil {
+			return false, fmt.Errorf("failed to unmount corrupt mount point %v umount error: %v eval error: %v",
+				targetPath, unmountErr, err)
 		}
 
-		return true, fmt.Errorf("cleaned up existing corrupt mount point %v", targetPath)
+		return false, fmt.Errorf("unmounted existing corrupt mount point %v", targetPath)
 	}
 
 	return !notMnt, err
 }
 
-// cleanupMountPoint ensures all mount layers for the targetPath are unmounted and the mount directory is removed
-// the underlying implementation utilizes mounter.IsLikelyNotMountPoint so it cannot detect multiple layers of bind mounts
-func cleanupMountPoint(targetPath string, mounter mount.Interface) error {
-	for {
-		if err := mounter.Unmount(targetPath); err != nil {
-			if strings.Contains(err.Error(), "not mounted") ||
-				strings.Contains(err.Error(), "no mount point specified") {
-				break
-			}
-			return err
-		}
-		notMnt, err := mounter.IsLikelyNotMountPoint(targetPath)
-		if err != nil {
-			return err
-		}
-
-		if notMnt {
-			break
-		}
+func unmount(targetPath string, mounter mount.Interface) error {
+	logrus.Debugf("trying to unmount potential mount point %v", targetPath)
+	err := mounter.Unmount(targetPath)
+	if err == nil {
+		return nil
 	}
 
-	return mount.CleanupMountPoint(targetPath, mounter, false)
+	if strings.Contains(err.Error(), "not mounted") ||
+		strings.Contains(err.Error(), "no mount point specified") {
+		logrus.Infof("no need for unmount not a mount point %v", targetPath)
+		return nil
+	}
+
+	return err
 }
 
-func isLikelyNotMountPointAttach(targetpath string) (bool, error) {
-	notMnt, err := mount.New("").IsLikelyNotMountPoint(targetpath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			err = os.MkdirAll(targetpath, 0750)
-			if err == nil {
-				notMnt = true
-			}
-		}
+// cleanupMountPoint ensures all mount layers for the targetPath are unmounted and the mount directory is removed
+func cleanupMountPoint(targetPath string, mounter mount.Interface) error {
+	// we just try to unmount since the path check would get stuck for nfs mounts
+	logrus.Infof("trying to cleanup mount point %v", targetPath)
+	if err := unmount(targetPath, mounter); err != nil {
+		logrus.Debugf("failed to unmount during cleanup error: %v", err)
+		return err
 	}
-	return notMnt, err
+
+	logrus.Infof("cleaned up mount point %v", targetPath)
+	return mount.CleanupMountPoint(targetPath, mounter, true)
 }
 
 // isBlockDevice return true if volumePath file is a block device, false otherwise.
