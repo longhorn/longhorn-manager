@@ -1789,6 +1789,9 @@ func (vc *VolumeController) checkAndInitVolumeRestore(v *longhorn.Volume) error 
 	if err != nil {
 		return fmt.Errorf("cannot get backup %v: %v", v.Spec.FromBackup, err)
 	}
+	if backup == nil {
+		return fmt.Errorf("cannot find backup %v of volume %v", v.Spec.FromBackup, v.Name)
+	}
 
 	size, err := util.ConvertSize(backup.Size)
 	if err != nil {

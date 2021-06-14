@@ -195,6 +195,10 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		if err != nil {
 			return nil, fmt.Errorf("cannot get backup %v: %v", spec.FromBackup, err)
 		}
+		if backup == nil {
+			return nil, fmt.Errorf("cannot find backup %v of volume %v", v.Spec.FromBackup, v.Name)
+		}
+
 		logrus.Infof("Override size of volume %v to %v because it's from backup", name, backup.VolumeSize)
 		// formalize the final size to the unit in bytes
 		size, err = util.ConvertSize(backup.VolumeSize)
