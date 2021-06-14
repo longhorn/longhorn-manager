@@ -131,6 +131,16 @@ func (n *Mounter) Unmount(target string) error {
 	if len(outputBytes) != 0 {
 		logrus.Debugf("Output of unmounting %s: %v", target, string(outputBytes))
 	}
+
+	if err != nil && strings.Contains(err.Error(), "device busy") {
+		logrus.Infof("detected busy nfs mount point %v will do lazy unmount", target)
+		args = []string{"-l", target}
+		outputBytes, err = n.ne.Exec("umount", args).CombinedOutput()
+		if len(outputBytes) != 0 {
+			logrus.Debugf("Output of lazy unmounting %s: %v", target, string(outputBytes))
+		}
+	}
+
 	return err
 }
 
@@ -154,10 +164,12 @@ func (n *Mounter) IsLikelyNotMountPoint(file string) (bool, error) {
 	}
 
 	// Check the directory exists
+	logrus.Debugf("stat: try to evaluate whether nfs mount point %s exist", file)
 	if _, err = os.Stat(file); os.IsNotExist(err) {
-		logrus.Debugf("findmnt: directory %s does not exist", file)
+		logrus.Debugf("stat: nfs mount point %s does not exist", file)
 		return true, err
 	}
+	logrus.Debugf("stat: done evaluating whether nfs mount point %s exist", file)
 
 	// Resolve any symlinks in file, kernel would do the same and use the resolved path in /proc/mounts
 	hu := NewHostUtil(n.ne)
