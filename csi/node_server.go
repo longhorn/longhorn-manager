@@ -70,6 +70,11 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Errorf(codes.NotFound, "volume %s not found", volumeID)
 	}
 
+	mounter, err := ns.getMounter(volume, volumeCapability)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
 	// For mount volumes, we don't want multiple controllers for a volume, since the filesystem could get messed up
 	if len(volume.Controllers) == 0 || (len(volume.Controllers) > 1 && volumeCapability.GetBlock() == nil) {
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s invalid controller count %v", volumeID, len(volume.Controllers))
@@ -81,6 +86,10 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	// Check volume attachment status
 	if volume.State != string(types.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
+		logrus.Infof("volume %v hasn't been attached yet, try unmounting potential mount point %v", volumeID, targetPath)
+		if err := unmount(targetPath, mounter); err != nil {
+			logrus.Debugf("failed to unmount error: %v", err)
+		}
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s hasn't been attached yet", volumeID)
 	}
 
@@ -89,7 +98,9 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	devicePath := volume.Controllers[0].Endpoint
-	if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable {
+	if volumeCapability.GetBlock() != nil {
+		return ns.nodePublishBlockVolume(volumeID, devicePath, targetPath, mounter)
+	} else if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable {
 
 		if volume.AccessMode != string(types.AccessModeReadWriteMany) {
 			return nil, status.Errorf(codes.FailedPrecondition, "volume %s requires shared access but is not marked for shared use", volumeID)
@@ -99,53 +110,37 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 			return nil, status.Errorf(codes.Aborted, "volume %s share not yet available", volumeID)
 		}
 
-		// namespace mounter that operates in the host namespace
-		nse, err := nfs.NewNsEnter()
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to create nsenter executor, err: %v", err)
-		}
-		nfsMounter := nfs.NewMounter(nse)
-		return ns.nodePublishSharedVolume(volumeID, volume.ShareEndpoint, targetPath, nfsMounter)
-	} else if volumeCapability.GetBlock() != nil {
-		mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOSExec()}
-		return ns.nodePublishBlockVolume(volumeID, devicePath, targetPath, mounter)
+		return ns.nodePublishSharedVolume(volumeID, volume.ShareEndpoint, targetPath, mounter)
 	} else if volumeCapability.GetMount() != nil {
-		userExt4Params, _ := ns.apiClient.Setting.ById(string(types.SettingNameMkfsExt4Parameters))
-
-		// mounter assumes ext4 by default
+		// mounter uses ext4 by default
+		options := volumeCapability.GetMount().GetMountFlags()
 		fsType := volumeCapability.GetMount().GetFsType()
 		if fsType == "" {
 			fsType = "ext4"
 		}
 
-		mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOSExec()}
-		// we allow the user to provide additional params for ext4 filesystem creation.
-		// this allows an ext4 fs to be mounted on older kernels, see https://github.com/longhorn/longhorn/issues/1208
-		if fsType == "ext4" && userExt4Params != nil && userExt4Params.Value != "" {
-			ext4Params := userExt4Params.Value
-			logrus.Infof("volume %v using user provided ext4 fs creation params: %s", volumeID, ext4Params)
-			cmdParamMapping := map[string]string{"mkfs." + fsType: ext4Params}
-			mounter = &mount.SafeFormatAndMount{
-				Interface: mount.New(""),
-				Exec:      NewForcedParamsOsExec(cmdParamMapping),
-			}
+		formatMounter, ok := mounter.(*mount.SafeFormatAndMount)
+		if !ok {
+			return nil, fmt.Errorf("volume %v cannot get format mounter that support filesystem %v creation", volumeID, fsType)
 		}
 
-		return ns.nodePublishMountVolume(volumeID, devicePath, targetPath,
-			fsType, volumeCapability.GetMount().GetMountFlags(), mounter)
+		return ns.nodePublishMountVolume(volumeID, devicePath, targetPath, fsType, options, formatMounter)
 	}
 
 	return nil, status.Errorf(codes.InvalidArgument, "volume %v does not support volume capability, neither Mount nor Block specified", volumeID)
 }
 
 func (ns *NodeServer) nodePublishSharedVolume(volumeName, shareEndpoint, targetPath string, mounter mount.Interface) (*csi.NodePublishVolumeResponse, error) {
-	// It's used to check if a directory is a mount point and it will create the directory if not exist. Hence this target path cannot be used for block volume.
-	notMnt, err := isLikelyNotMountPointAttach(targetPath)
+	isMnt, err := ensureMountPoint(targetPath, mounter)
+
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		msg := fmt.Sprintf("NodePublishVolume: failed to prepare mount point for shared volume %v error %v", volumeName, err)
+		logrus.Error(msg)
+		return nil, status.Error(codes.Internal, msg)
 	}
-	if !notMnt {
-		logrus.Debugf("NodePublishVolume: the volume %s has already been mounted", volumeName)
+
+	if isMnt {
+		logrus.Debugf("NodePublishVolume: found existing healthy mount point for shared volume %v skipping mount", volumeName)
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
 
@@ -203,7 +198,7 @@ func (ns *NodeServer) nodePublishMountVolume(volumeName, devicePath, targetPath,
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
-func (ns *NodeServer) nodePublishBlockVolume(volumeName, devicePath, targetPath string, mounter *mount.SafeFormatAndMount) (*csi.NodePublishVolumeResponse, error) {
+func (ns *NodeServer) nodePublishBlockVolume(volumeName, devicePath, targetPath string, mounter mount.Interface) (*csi.NodePublishVolumeResponse, error) {
 	// we ensure the parent directory exists and is valid
 	if _, err := ensureMountPoint(filepath.Dir(targetPath), mounter); err != nil {
 		return nil, status.Errorf(codes.Internal, "Failed to prepare mount point for block device %v error %v", devicePath, err)
@@ -376,4 +371,48 @@ func getNodeServiceCapabilities(cs []csi.NodeServiceCapability_RPC_Type) []*csi.
 	}
 
 	return nscs
+}
+
+func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability *csi.VolumeCapability) (mount.Interface, error) {
+
+	// regular mounter for device files
+	if volumeCapability.GetBlock() != nil {
+		return mount.New(""), nil
+	}
+
+	// namespace mounter that operates in the host namespace, that can deal with broken nfs mounts
+	if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable {
+		nse, err := nfs.NewNsEnter()
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "volume %v failed to create nsenter executor for nfs mounter err: %v", volume.Name, err)
+		}
+		return nfs.NewMounter(nse), nil
+	}
+
+	// mounter that can format and use hard coded filesystem params
+	if volumeCapability.GetMount() != nil {
+		userExt4Params, _ := ns.apiClient.Setting.ById(string(types.SettingNameMkfsExt4Parameters))
+
+		// mounter assumes ext4 by default
+		fsType := volumeCapability.GetMount().GetFsType()
+		if fsType == "" {
+			fsType = "ext4"
+		}
+
+		mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOSExec()}
+		// we allow the user to provide additional params for ext4 filesystem creation.
+		// this allows an ext4 fs to be mounted on older kernels, see https://github.com/longhorn/longhorn/issues/1208
+		if fsType == "ext4" && userExt4Params != nil && userExt4Params.Value != "" {
+			ext4Params := userExt4Params.Value
+			logrus.Infof("volume %v using user provided ext4 fs creation params: %s", volume.Name, ext4Params)
+			cmdParamMapping := map[string]string{"mkfs." + fsType: ext4Params}
+			mounter = &mount.SafeFormatAndMount{
+				Interface: mount.New(""),
+				Exec:      NewForcedParamsOsExec(cmdParamMapping),
+			}
+		}
+		return mounter, nil
+	}
+
+	return nil, fmt.Errorf("cannot get mounter for volume %v unsupported volume capability %v", volume.Name, volumeCapability.GetAccessType())
 }
