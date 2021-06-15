@@ -21,7 +21,8 @@ import (
 )
 
 const (
-	timeoutAttachDetach     = 120 * time.Second
+	// we wait 1m30s for the volume state polling, this leaves 20s for the rest of the function call
+	timeoutAttachDetach     = 90 * time.Second
 	tickAttachDetach        = 2 * time.Second
 	timeoutBackupInitiation = 60 * time.Second
 	tickBackupInitiation    = 5 * time.Second
