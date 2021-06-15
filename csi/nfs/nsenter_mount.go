@@ -131,6 +131,9 @@ func (n *Mounter) Unmount(target string) error {
 	if len(outputBytes) != 0 {
 		logrus.Debugf("Output of unmounting %s: %v", target, string(outputBytes))
 	}
+	if err != nil {
+		err = fmt.Errorf("unmount failed: %v\nUnmounting arguments: %s\nOutput: %s", err, target, string(outputBytes))
+	}
 
 	if err != nil && strings.Contains(err.Error(), "device busy") {
 		logrus.Infof("detected busy nfs mount point %v will do lazy unmount", target)
@@ -138,6 +141,9 @@ func (n *Mounter) Unmount(target string) error {
 		outputBytes, err = n.ne.Exec("umount", args).CombinedOutput()
 		if len(outputBytes) != 0 {
 			logrus.Debugf("Output of lazy unmounting %s: %v", target, string(outputBytes))
+		}
+		if err != nil {
+			err = fmt.Errorf("lazy unmount failed: %v\nUnmounting arguments: %s\nOutput: %s", err, target, string(outputBytes))
 		}
 	}
 
