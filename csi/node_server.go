@@ -86,7 +86,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	// Check volume attachment status
 	if volume.State != string(types.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
-		logrus.Infof("volume %v hasn't been attached yet, try unmounting potential mount point %v", volumeID, targetPath)
+		logrus.Debugf("volume %v hasn't been attached yet, try unmounting potential mount point %v", volumeID, targetPath)
 		if err := unmount(targetPath, mounter); err != nil {
 			logrus.Debugf("failed to unmount error: %v", err)
 		}
