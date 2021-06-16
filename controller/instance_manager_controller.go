@@ -839,6 +839,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 							},
 						},
 						InitialDelaySeconds: datastore.PodProbeInitialDelay,
+						TimeoutSeconds:      datastore.PodProbeTimeoutSeconds,
 						PeriodSeconds:       datastore.PodProbePeriodSeconds,
 						FailureThreshold:    datastore.PodLivenessProbeFailureThreshold,
 					},
