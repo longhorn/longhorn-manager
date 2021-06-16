@@ -734,6 +734,7 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 							},
 						},
 						InitialDelaySeconds: datastore.PodProbeInitialDelay,
+						TimeoutSeconds:      datastore.PodProbeTimeoutSeconds,
 						PeriodSeconds:       datastore.PodProbePeriodSeconds,
 						FailureThreshold:    datastore.PodLivenessProbeFailureThreshold,
 					},
