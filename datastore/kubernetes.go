@@ -31,7 +31,7 @@ const (
 	KubeStatusPollInterval = 1 * time.Second
 
 	PodProbeInitialDelay             = 3
-	PodProbeTimeoutSeconds           = 5
+	PodProbeTimeoutSeconds           = PodProbePeriodSeconds - 1
 	PodProbePeriodSeconds            = 5
 	PodLivenessProbeFailureThreshold = 3
 )
