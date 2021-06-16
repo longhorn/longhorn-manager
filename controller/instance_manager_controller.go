@@ -834,8 +834,8 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 					ImagePullPolicy: imagePullPolicy,
 					LivenessProbe: &v1.Probe{
 						Handler: v1.Handler{
-							Exec: &v1.ExecAction{
-								Command: []string{"/usr/local/bin/grpc_health_probe", "-addr=:8500"},
+							TCPSocket: &v1.TCPSocketAction{
+								Port: intstr.FromInt(engineapi.InstanceManagerDefaultPort),
 							},
 						},
 						InitialDelaySeconds: datastore.PodProbeInitialDelay,
