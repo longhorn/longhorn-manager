@@ -762,8 +762,8 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 									},
 								},
 								InitialDelaySeconds: 5,
-								TimeoutSeconds:      5,
-								PeriodSeconds:       5,
+								TimeoutSeconds:      datastore.PodProbeTimeoutSeconds,
+								PeriodSeconds:       datastore.PodProbePeriodSeconds,
 							},
 							SecurityContext: &v1.SecurityContext{
 								Privileged: &privileged,
