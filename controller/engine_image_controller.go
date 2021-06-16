@@ -762,6 +762,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 									},
 								},
 								InitialDelaySeconds: 5,
+								TimeoutSeconds:      5,
 								PeriodSeconds:       5,
 							},
 							SecurityContext: &v1.SecurityContext{
