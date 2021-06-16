@@ -791,6 +791,7 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 							},
 						},
 						InitialDelaySeconds: datastore.PodProbeInitialDelay,
+						TimeoutSeconds:      datastore.PodProbeTimeoutSeconds,
 						PeriodSeconds:       datastore.PodProbePeriodSeconds,
 					},
 					VolumeMounts: []v1.VolumeMount{
