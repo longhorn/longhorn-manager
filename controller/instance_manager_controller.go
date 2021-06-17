@@ -72,7 +72,7 @@ type InstanceManagerMonitor struct {
 	instanceManagerUpdater  *InstanceManagerUpdater
 	instanceManagerNotifier *InstanceManagerNotifier
 	ds                      *datastore.DataStore
-	lock                    *sync.Mutex
+	lock                    *sync.RWMutex
 	updateNotification      bool
 	stopCh                  chan struct{}
 	done                    bool
@@ -1021,7 +1021,7 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		ds:                      imc.ds,
 		instanceManagerUpdater:  instanceManagerUpdater,
 		instanceManagerNotifier: instanceManagerNotifier,
-		lock:                    &sync.Mutex{},
+		lock:                    &sync.RWMutex{},
 		stopCh:                  stopCh,
 		done:                    false,
 		monitorVoluntaryStopCh:  monitorVoluntaryStopCh,
@@ -1082,18 +1082,25 @@ func (m *InstanceManagerMonitor) Run() {
 	defer func() {
 		m.logger.Debugf("Stop monitoring instance manager %v", m.Name)
 		m.instanceManagerNotifier.Close()
-		m.done = true
+		m.StopMonitorWithLock()
 		close(m.monitorVoluntaryStopCh)
 	}()
 
 	go func() {
+		continuousFailureCount := 0
 		for {
-			if m.done {
+			if continuousFailureCount >= engineapi.MaxStreamingRecvRetryCount {
+				m.logger.Errorf("instance manager monitor streaming continuously errors receiving items for %v times, will stop the monitor itself", engineapi.MaxStreamingRecvRetryCount)
+				m.StopMonitorWithLock()
+			}
+
+			if m.CheckMonitorStoppedWithLock() {
 				return
 			}
 
 			if _, err := m.instanceManagerNotifier.Recv(); err != nil {
 				m.logger.Errorf("error receiving next item in engine watch: %v", err)
+				continuousFailureCount++
 				time.Sleep(engineapi.MinPollCount * engineapi.PollInterval)
 			} else {
 				m.lock.Lock()
@@ -1110,6 +1117,10 @@ func (m *InstanceManagerMonitor) Run() {
 	for {
 		select {
 		case <-tick:
+			if m.CheckMonitorStoppedWithLock() {
+				return
+			}
+
 			needUpdate := false
 
 			m.lock.Lock()
@@ -1165,6 +1176,18 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 	}
 
 	return false
+}
+
+func (m *InstanceManagerMonitor) CheckMonitorStoppedWithLock() bool {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	return m.done
+}
+
+func (m *InstanceManagerMonitor) StopMonitorWithLock() {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	m.done = true
 }
 
 func (imc *InstanceManagerController) isResponsibleFor(im *longhorn.InstanceManager) bool {
