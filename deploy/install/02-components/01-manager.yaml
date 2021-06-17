@@ -36,6 +36,8 @@ spec:
         - longhornio/longhorn-manager:master
         - --service-account
         - longhorn-service-account
+#       By default, Longhorn manager profiler is enabled to help with troubleshooting. Uncomment below to disable profiler.
+#       - --disable-profiler
         ports:
         - containerPort: 9500
           name: manager
