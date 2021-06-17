@@ -408,10 +408,22 @@ func (s *DataStore) UpdatePersistentVolume(pv *corev1.PersistentVolume) (*corev1
 	return s.kubeClient.CoreV1().PersistentVolumes().Update(pv)
 }
 
-// GetPersistentVolume gets the PersistentVolume from the index for the
+// GetPersistentVolumeRO gets the PersistentVolume from the index for the
 // given name
-func (s *DataStore) GetPersistentVolume(pvName string) (*corev1.PersistentVolume, error) {
+// This function returns direct reference to the internal cache object and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) GetPersistentVolumeRO(pvName string) (*corev1.PersistentVolume, error) {
 	return s.pvLister.Get(pvName)
+}
+
+// GetPersistentVolume gets a mutable PersistentVolume for the given name
+func (s *DataStore) GetPersistentVolume(pvName string) (*corev1.PersistentVolume, error) {
+	resultRO, err := s.pvLister.Get(pvName)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
 }
 
 // CreatePersistentVolumeClaim creates a PersistentVolumeClaim resource
@@ -432,10 +444,22 @@ func (s *DataStore) UpdatePersistentVolumeClaim(namespace string, pvc *corev1.Pe
 	return s.kubeClient.CoreV1().PersistentVolumeClaims(namespace).Update(pvc)
 }
 
-// GetPersistentVolumeClaim gets the PersistentVolumeClaim from the
+// GetPersistentVolumeClaimRO gets the PersistentVolumeClaim from the
 // index for the given name and namespace
-func (s *DataStore) GetPersistentVolumeClaim(namespace, pvcName string) (*corev1.PersistentVolumeClaim, error) {
+// This function returns direct reference to the internal cache object and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) GetPersistentVolumeClaimRO(namespace, pvcName string) (*corev1.PersistentVolumeClaim, error) {
 	return s.pvcLister.PersistentVolumeClaims(namespace).Get(pvcName)
+}
+
+// GetPersistentVolumeClaim gets a mutable PersistentVolumeClaim for the given name and namespace
+func (s *DataStore) GetPersistentVolumeClaim(namespace, pvcName string) (*corev1.PersistentVolumeClaim, error) {
+	resultRO, err := s.pvcLister.PersistentVolumeClaims(namespace).Get(pvcName)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
 }
 
 // GetConfigMapRO gets ConfigMap with the given name in s.namespace
