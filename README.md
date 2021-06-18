@@ -74,7 +74,7 @@ kubectl create clusterrolebinding cluster-admin-binding --clusterrole=cluster-ad
 ```
 
 ### Flexvolume Plugin Directory
-By default we're using the [default Flexvolume Plugin directory](https://github.com/kubernetes/community/blob/master/contributors/devel/flexvolume.md#prerequisites), which is `/usr/libexec/kubernetes/kubelet-plugins/volume/exec/`.
+By default we're using the [default Flexvolume Plugin directory](https://github.com/kubernetes/community/blob/master/contributors/devel/sig-storage/flexvolume.md#prerequisitess), which is `/usr/libexec/kubernetes/kubelet-plugins/volume/exec/`.
 
 For GKE 1.8+, it should be at: `/home/kubernetes/flexvolume`.
 
