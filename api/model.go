@@ -1172,17 +1172,13 @@ type Server struct {
 	m   *manager.VolumeManager
 	wsc *controller.WebsocketController
 	fwd *Fwd
-
-	profilerEnabled bool
 }
 
-func NewServer(m *manager.VolumeManager, wsc *controller.WebsocketController, profilerEnabled bool) *Server {
+func NewServer(m *manager.VolumeManager, wsc *controller.WebsocketController) *Server {
 	s := &Server{
 		m:   m,
 		wsc: wsc,
 		fwd: NewFwd(m),
-
-		profilerEnabled: profilerEnabled,
 	}
 	return s
 }

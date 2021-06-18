@@ -32,7 +32,6 @@ const (
 	FlagManagerImage             = "manager-image"
 	FlagServiceAccount           = "service-account"
 	FlagKubeConfig               = "kube-config"
-	FlagDisableProfiler          = "disable-profiler"
 )
 
 func DaemonCmd() cli.Command {
@@ -66,10 +65,6 @@ func DaemonCmd() cli.Command {
 			cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",
-			},
-			cli.BoolFlag{
-				Name:  FlagDisableProfiler,
-				Usage: "Disable profiler (optional)",
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -113,11 +108,6 @@ func startManager(c *cli.Context) error {
 	kubeconfigPath := c.String(FlagKubeConfig)
 
 	defaultSettingPath := os.Getenv(types.EnvDefaultSettingPath)
-
-	var profilerEnabled bool = true
-	if c.Bool(FlagDisableProfiler) {
-		profilerEnabled = false
-	}
 
 	if err := environmentCheck(); err != nil {
 		logrus.Errorf("Failed environment check, please make sure you " +
@@ -193,7 +183,7 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	server := api.NewServer(m, wsc, profilerEnabled)
+	server := api.NewServer(m, wsc)
 	router := http.Handler(api.NewRouter(server))
 
 	router = util.FilteredLoggingHandler(map[string]struct{}{
