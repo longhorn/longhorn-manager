@@ -2683,6 +2683,7 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
 			Namespace:       vc.namespace,
+			Labels:          types.GetCronJobLabels(v.Name, job),
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: batchv1beta1.CronJobSpec{
@@ -2694,7 +2695,8 @@ func (vc *VolumeController) createCronJob(v *longhorn.Volume, job *types.Recurri
 					BackoffLimit: &backoffLimit,
 					Template: v1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
-							Name: types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
+							Name:   types.GetCronJobNameForVolumeAndJob(v.Name, job.Name),
+							Labels: types.GetCronJobPodLabels(v.Name, job),
 						},
 						Spec: v1.PodSpec{
 							Containers: []v1.Container{
