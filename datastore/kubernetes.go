@@ -100,21 +100,13 @@ func (s *DataStore) ListVolumeCronJobROs(volumeName string) (map[string]*batchv1
 	return itemMap, nil
 }
 
-// CreateVolumeCronJob sets CronJob labels in volume meta and
-// creates a CronJob resource for the given namespace
+// CreateVolumeCronJob creates a CronJob resource for the given namespace
 func (s *DataStore) CreateVolumeCronJob(volumeName string, cronJob *batchv1beta1.CronJob) (*batchv1beta1.CronJob, error) {
-	if err := tagVolumeLabel(volumeName, cronJob); err != nil {
-		return nil, err
-	}
 	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Create(cronJob)
 }
 
-// UpdateVolumeCronJob sets CronJob labels in volume meta and
-// updates CronJobs for the given namespace
+// UpdateVolumeCronJob updates CronJobs for the given namespace
 func (s *DataStore) UpdateVolumeCronJob(volumeName string, cronJob *batchv1beta1.CronJob) (*batchv1beta1.CronJob, error) {
-	if err := tagVolumeLabel(volumeName, cronJob); err != nil {
-		return nil, err
-	}
 	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Update(cronJob)
 }
 
