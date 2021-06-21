@@ -415,7 +415,7 @@ var (
 		Type:        SettingTypeString,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "longhorn-static",
+		Default:     "longhorn",
 	}
 
 	SettingDefinitionTaintToleration = SettingDefinition{
