@@ -177,11 +177,13 @@ const (
 )
 
 type RecurringJob struct {
-	Name   string            `json:"name"`
-	Task   RecurringJobType  `json:"task"`
-	Cron   string            `json:"cron"`
-	Retain int               `json:"retain"`
-	Labels map[string]string `json:"labels"`
+	Name        string            `json:"name"`
+	Groups      []string          `json:"groups"`
+	Task        RecurringJobType  `json:"task"`
+	Cron        string            `json:"cron"`
+	Retain      int               `json:"retain"`
+	Concurrency int               `json:"concurrency"`
+	Labels      map[string]string `json:"labels,omitempty"`
 }
 
 type VolumeCloneStatus struct {
@@ -736,4 +738,18 @@ type SnapshotBackupStatus struct {
 	VolumeCreated          string            `json:"volumeCreated"`
 	VolumeBackingImageName string            `json:"volumeBackingImageName"`
 	LastSyncedAt           *metav1.Time      `json:"lastSyncedAt"`
+}
+
+type RecurringJobSpec struct {
+	Name        string            `json:"name"`
+	Groups      []string          `json:"groups"`
+	Task        RecurringJobType  `json:"task"`
+	Cron        string            `json:"cron"`
+	Retain      int               `json:"retain"`
+	Concurrency int               `json:"concurrency"`
+	Labels      map[string]string `json:"labels,omitempty"`
+}
+
+type RecurringJobStatus struct {
+	OwnerID string `json:"ownerID"`
 }
