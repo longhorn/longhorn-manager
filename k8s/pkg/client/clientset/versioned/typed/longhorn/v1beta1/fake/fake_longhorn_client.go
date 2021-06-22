@@ -68,6 +68,10 @@ func (c *FakeLonghornV1beta1) Nodes(namespace string) v1beta1.NodeInterface {
 	return &FakeNodes{c, namespace}
 }
 
+func (c *FakeLonghornV1beta1) RecurringJobs(namespace string) v1beta1.RecurringJobInterface {
+	return &FakeRecurringJobs{c, namespace}
+}
+
 func (c *FakeLonghornV1beta1) Replicas(namespace string) v1beta1.ReplicaInterface {
 	return &FakeReplicas{c, namespace}
 }

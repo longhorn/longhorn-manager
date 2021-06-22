@@ -98,6 +98,14 @@ type NodeListerExpansion interface{}
 // NodeNamespaceLister.
 type NodeNamespaceListerExpansion interface{}
 
+// RecurringJobListerExpansion allows custom methods to be added to
+// RecurringJobLister.
+type RecurringJobListerExpansion interface{}
+
+// RecurringJobNamespaceListerExpansion allows custom methods to be added to
+// RecurringJobNamespaceLister.
+type RecurringJobNamespaceListerExpansion interface{}
+
 // ReplicaListerExpansion allows custom methods to be added to
 // ReplicaLister.
 type ReplicaListerExpansion interface{}

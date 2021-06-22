@@ -256,3 +256,21 @@ type BackupList struct {
 	metav1.ListMeta `json:"metadata"`
 	Items           []Backup `json:"items"`
 }
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type RecurringJob struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata"`
+	Spec              types.RecurringJobSpec   `json:"spec"`
+	Status            types.RecurringJobStatus `json:"status"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type RecurringJobList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+	Items           []RecurringJob `json:"items"`
+}

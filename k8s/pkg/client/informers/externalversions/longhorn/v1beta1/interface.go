@@ -44,6 +44,8 @@ type Interface interface {
 	InstanceManagers() InstanceManagerInformer
 	// Nodes returns a NodeInformer.
 	Nodes() NodeInformer
+	// RecurringJobs returns a RecurringJobInformer.
+	RecurringJobs() RecurringJobInformer
 	// Replicas returns a ReplicaInformer.
 	Replicas() ReplicaInformer
 	// Settings returns a SettingInformer.
@@ -113,6 +115,11 @@ func (v *version) InstanceManagers() InstanceManagerInformer {
 // Nodes returns a NodeInformer.
 func (v *version) Nodes() NodeInformer {
 	return &nodeInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// RecurringJobs returns a RecurringJobInformer.
+func (v *version) RecurringJobs() RecurringJobInformer {
+	return &recurringJobInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Replicas returns a ReplicaInformer.

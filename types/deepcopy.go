@@ -364,3 +364,21 @@ func (in *SnapshotBackupStatus) DeepCopyInto(out *SnapshotBackupStatus) {
 	}
 	return
 }
+
+func (in *RecurringJobSpec) DeepCopyInto(out *RecurringJobSpec) {
+	*out = *in
+
+	if in.Groups != nil {
+		out.Groups = make([]string, len(in.Groups))
+		for i := 0; i < len(in.Groups); i++ {
+			out.Groups[i] = in.Groups[i]
+		}
+	}
+
+	if in.Labels != nil {
+		out.Labels = make(map[string]string)
+		for key, value := range in.Labels {
+			out.Labels[key] = value
+		}
+	}
+}
