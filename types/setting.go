@@ -311,9 +311,9 @@ var (
 			"The available global options are: \n\n" +
 			"- **disabled**. This is the default option. No replica auto-balance will be done.\n" +
 			"- **least-effort**. This option instructs Longhorn to balance replicas for minimal redundancy.\n" +
-			"- **best-effort**. This option instructs Longhorn to balance replicas for even redundancy.\n" +
-			"Longhorn also support individual volume setting. The setting can be specified in volume.spec.replicaAutoBalance, this overrules the global setting.\n" +
-			"The available volume spec options are: \n\n" +
+			"- **best-effort**. This option instructs Longhorn to balance replicas for even redundancy.\n\n" +
+			"Longhorn also support individual volume setting. The setting can be specified on Volume page, this overrules the global setting.\n\n" +
+			"The available volume setting options are: \n\n" +
 			"- **ignored**. This is the default option that instructs Longhorn to inherit from the global setting.\n" +
 			"- **disabled**. This option instructs Longhorn no replica auto-balance should be done.\n" +
 			"- **least-effort**. This option instructs Longhorn to balance replicas for minimal redundancy.\n" +
