@@ -11,6 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -624,42 +625,17 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 
 	kubernetesStatus := &v.Status.KubernetesStatus
 	if kubernetesStatus.PVCName != "" && kubernetesStatus.LastPVCRefAt == "" {
-		pvc, err := m.ds.GetPersistentVolumeClaim(kubernetesStatus.Namespace, kubernetesStatus.PVCName)
+		waitForPVCExpansion, size, err := m.checkAndExpandPVC(kubernetesStatus.Namespace, kubernetesStatus.PVCName, size)
 		if err != nil {
 			return nil, err
 		}
 
-		requestedSize := resource.MustParse(strconv.FormatInt(size, 10))
-
-		// TODO: Should check for pvc.Spec.Resources.Requests.Storage() here, once upgrade API to v0.18.x.
-		pvcSpecValue, ok := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
-		if !ok {
-			return nil, fmt.Errorf("cannot get request storage")
-		}
-
-		if pvcSpecValue.Cmp(requestedSize) < 0 {
-			pvc.Spec.Resources = corev1.ResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: requestedSize,
-				},
-			}
-
-			logrus.Infof("Persistent Volume Claim %v expansion from %v to %v requested", v.Name, v.Spec.Size, size)
-			_, err = m.ds.UpdatePersistentVolumeClaim(kubernetesStatus.Namespace, pvc)
-			if err != nil {
-				return nil, err
-			}
-
-			// return and CSI plugin call this API later for Longhorn volume expansion
+		// PVC Expand call
+		if waitForPVCExpansion {
 			return v, nil
 		}
 
-		// all other case belong to the CSI plugin call
-		logrus.Infof("CSI plugin call to expand volume %v", v.Name)
-
-		if pvcSpecValue.Cmp(requestedSize) > 0 {
-			size = util.RoundUpSize(pvcSpecValue.Value())
-		}
+		logrus.Infof("CSI plugin call to expand volume %v to size %v", v.Name, size)
 	}
 
 	if v.Spec.Size >= size {
@@ -679,6 +655,59 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 	}
 
 	return v, nil
+}
+
+func (m *VolumeManager) checkAndExpandPVC(namespace string, pvcName string, size int64) (waitForPVCExpansion bool, s int64, err error) {
+	pvc, err := m.ds.GetPersistentVolumeClaim(namespace, pvcName)
+	if err != nil {
+		return false, -1, err
+	}
+
+	longhornStaticStorageClass, err := m.ds.GetSettingValueExisted(types.SettingNameDefaultLonghornStaticStorageClass)
+	if err != nil {
+		return false, -1, err
+	}
+
+	pvcSCName := *pvc.Spec.StorageClassName
+	if pvcSCName == longhornStaticStorageClass {
+		if _, err := m.ds.GetStorageClassRO(pvcSCName); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return false, -1, err
+			}
+			return false, size, nil
+		}
+	}
+
+	// TODO: Should check for pvc.Spec.Resources.Requests.Storage() here, once upgrade API to v0.18.x.
+	pvcSpecValue, ok := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+	if !ok {
+		return false, -1, fmt.Errorf("cannot get request storage")
+	}
+
+	requestedSize := resource.MustParse(strconv.FormatInt(size, 10))
+
+	if pvcSpecValue.Cmp(requestedSize) < 0 {
+		pvc.Spec.Resources = corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceStorage: requestedSize,
+			},
+		}
+
+		logrus.Infof("Persistent Volume Claim %v expand to %v requested", pvcName, requestedSize)
+		_, err = m.ds.UpdatePersistentVolumeClaim(namespace, pvc)
+		if err != nil {
+			return false, -1, err
+		}
+
+		// return and CSI plugin call this API later for Longhorn volume expansion
+		return true, 0, nil
+	}
+
+	// all other case belong to the CSI plugin call
+	if pvcSpecValue.Cmp(requestedSize) > 0 {
+		size = util.RoundUpSize(pvcSpecValue.Value())
+	}
+	return false, size, nil
 }
 
 func (m *VolumeManager) CancelExpansion(volumeName string) (v *longhorn.Volume, err error) {
