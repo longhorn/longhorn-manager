@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -585,14 +585,24 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 		}
 
 		hasHealthyReplicaOnAnotherNode := false
+		isUnusedReplicaOnCurrentNode := false
 		for _, r := range replicas {
 			if r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" && r.Spec.NodeID != imc.controllerID {
 				hasHealthyReplicaOnAnotherNode = true
 				break
 			}
+			// If a replica has never been started, there is no data stored in this replica, and
+			// retaining it makes no sense for HA.
+			// Hence Longhorn doesn't need to block the PDB removal for the replica.
+			// This case typically happens on a newly created volume that hasn't been attached to any node.
+			// https://github.com/longhorn/longhorn/issues/2673
+			if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" && r.Spec.NodeID == imc.controllerID {
+				isUnusedReplicaOnCurrentNode = true
+				break
+			}
 		}
 
-		if !hasHealthyReplicaOnAnotherNode {
+		if !hasHealthyReplicaOnAnotherNode && !isUnusedReplicaOnCurrentNode {
 			return false, nil
 		}
 	}
