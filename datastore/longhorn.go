@@ -476,6 +476,44 @@ func checkEngine(engine *longhorn.Engine) error {
 	return nil
 }
 
+// PickVolumeCurrentEngine pick the current Engine from the Engine list of a volume with the given namespace
+func (s *DataStore) PickVolumeCurrentEngine(v *longhorn.Volume, es map[string]*longhorn.Engine) (*longhorn.Engine, error) {
+	if len(es) == 0 {
+		return nil, nil
+	}
+
+	if len(es) == 1 {
+		for _, e := range es {
+			return e, nil
+		}
+	}
+
+	// len(es) > 1
+	node := v.Status.CurrentNodeID
+	if node != "" {
+		for _, e := range es {
+			if e.Spec.NodeID == node {
+				return e, nil
+			}
+		}
+		return nil, fmt.Errorf("BUG: multiple engines detected but none matched volume %v attached node %v", v.Name, node)
+	}
+	return nil, fmt.Errorf("BUG: multiple engines detected when volume %v is detached", v.Name)
+}
+
+// GetVolumeCurrentEngine returns the Engine for a volume with the given namespace
+func (s *DataStore) GetVolumeCurrentEngine(volumeName string) (*longhorn.Engine, error) {
+	es, err := s.ListVolumeEngines(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	v, err := s.getVolumeRO(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	return s.PickVolumeCurrentEngine(v, es)
+}
+
 // CreateEngine creates a Longhorn Engine resource and verifies creation
 func (s *DataStore) CreateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	if err := checkEngine(e); err != nil {
@@ -2520,4 +2558,345 @@ func (s *DataStore) ListShareManagers() (map[string]*longhorn.ShareManager, erro
 		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
+}
+
+// CreateBackupTarget creates a Longhorn BackupTargets CR and verifies creation
+func (s *DataStore) CreateBackupTarget(backupTarget *longhorn.BackupTarget) (*longhorn.BackupTarget, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, backupTarget); err != nil {
+		return nil, err
+	}
+	ret, err := s.lhClient.LonghornV1beta1().BackupTargets(s.namespace).Create(backupTarget)
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(backupTarget.Name, "backup target", func(name string) (runtime.Object, error) {
+		return s.GetBackupTargetRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.BackupTarget)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for BackupTarget")
+	}
+	return ret.DeepCopy(), nil
+}
+
+// ListBackupTargets returns an object contains all backup targets in the cluster BackupTargets CR
+func (s *DataStore) ListBackupTargets() (map[string]*longhorn.BackupTarget, error) {
+	list, err := s.btLister.BackupTargets(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.BackupTarget{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// GetBackupTargetRO returns the BackupTarget with the given backup target name in the cluster
+func (s *DataStore) GetBackupTargetRO(backupTargetName string) (*longhorn.BackupTarget, error) {
+	return s.btLister.BackupTargets(s.namespace).Get(backupTargetName)
+}
+
+// GetBackupTarget returns a copy of BackupTarget with the given backup target name in the cluster
+func (s *DataStore) GetBackupTarget(name string) (*longhorn.BackupTarget, error) {
+	resultRO, err := s.GetBackupTargetRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// UpdateBackupTarget updates the given Longhorn backup target in the cluster BackupTargets CR and verifies update
+func (s *DataStore) UpdateBackupTarget(backupTarget *longhorn.BackupTarget) (*longhorn.BackupTarget, error) {
+	obj, err := s.lhClient.LonghornV1beta1().BackupTargets(s.namespace).Update(backupTarget)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(backupTarget.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetBackupTargetRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateBackupTargetStatus updates the given Longhorn backup target in the cluster BackupTargets CR status and verifies update
+func (s *DataStore) UpdateBackupTargetStatus(backupTarget *longhorn.BackupTarget) (*longhorn.BackupTarget, error) {
+	obj, err := s.lhClient.LonghornV1beta1().BackupTargets(s.namespace).UpdateStatus(backupTarget)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(backupTarget.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetBackupTargetRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteBackupTarget won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteBackupTarget(backupTargetName string) error {
+	return s.lhClient.LonghornV1beta1().BackupTargets(s.namespace).Delete(backupTargetName, &metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForBackupTarget will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForBackupTarget(backupTarget *longhorn.BackupTarget) error {
+	if !util.FinalizerExists(longhornFinalizerKey, backupTarget) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, backupTarget); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta1().BackupTargets(s.namespace).Update(backupTarget)
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if backupTarget.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for backup volume %s", backupTarget.Name)
+	}
+	return nil
+}
+
+// CreateBackupVolume creates a Longhorn BackupVolumes CR and verifies creation
+func (s *DataStore) CreateBackupVolume(backupVolume *longhorn.BackupVolume) (*longhorn.BackupVolume, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, backupVolume); err != nil {
+		return nil, err
+	}
+	ret, err := s.lhClient.LonghornV1beta1().BackupVolumes(s.namespace).Create(backupVolume)
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(backupVolume.Name, "backup volume", func(name string) (runtime.Object, error) {
+		return s.GetBackupVolumeRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.BackupVolume)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for BackupVolume")
+	}
+	return ret.DeepCopy(), nil
+}
+
+// ListBackupVolumes returns an object contains all backup volumes in the cluster BackupVolumes CR
+func (s *DataStore) ListBackupVolumes() (map[string]*longhorn.BackupVolume, error) {
+	list, err := s.bvLister.BackupVolumes(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.BackupVolume{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+func getBackupVolumeSelector(backupVolumeName string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetBackupVolumeLabels(backupVolumeName),
+	})
+}
+
+// GetBackupVolumeRO returns the BackupVolume with the given backup volume name in the cluster
+func (s *DataStore) GetBackupVolumeRO(backupVolumeName string) (*longhorn.BackupVolume, error) {
+	return s.bvLister.BackupVolumes(s.namespace).Get(backupVolumeName)
+}
+
+// GetBackupVolume returns a copy of BackupVolume with the given backup volume name in the cluster
+func (s *DataStore) GetBackupVolume(name string) (*longhorn.BackupVolume, error) {
+	resultRO, err := s.GetBackupVolumeRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// UpdateBackupVolume updates the given Longhorn backup volume in the cluster BackupVolume CR and verifies update
+func (s *DataStore) UpdateBackupVolume(backupVolume *longhorn.BackupVolume) (*longhorn.BackupVolume, error) {
+	obj, err := s.lhClient.LonghornV1beta1().BackupVolumes(s.namespace).Update(backupVolume)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(backupVolume.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetBackupVolumeRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateBackupVolumeStatus updates the given Longhorn backup volume in the cluster BackupVolumes CR status and verifies update
+func (s *DataStore) UpdateBackupVolumeStatus(backupVolume *longhorn.BackupVolume) (*longhorn.BackupVolume, error) {
+	obj, err := s.lhClient.LonghornV1beta1().BackupVolumes(s.namespace).UpdateStatus(backupVolume)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(backupVolume.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetBackupVolumeRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteBackupVolume won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteBackupVolume(backupVolumeName string) error {
+	return s.lhClient.LonghornV1beta1().BackupVolumes(s.namespace).Delete(backupVolumeName, &metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForBackupVolume will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForBackupVolume(backupVolume *longhorn.BackupVolume) error {
+	if !util.FinalizerExists(longhornFinalizerKey, backupVolume) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, backupVolume); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta1().BackupVolumes(s.namespace).Update(backupVolume)
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if backupVolume.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for backup volume %s", backupVolume.Name)
+	}
+	return nil
+}
+
+// CreateBackup creates a Longhorn Backup CR and verifies creation
+func (s *DataStore) CreateBackup(backup *longhorn.Backup, backupVolumeName string) (*longhorn.Backup, error) {
+	if err := tagBackupVolumeLabel(backupVolumeName, backup); err != nil {
+		return nil, err
+	}
+	if err := util.AddFinalizer(longhornFinalizerKey, backup); err != nil {
+		return nil, err
+	}
+	ret, err := s.lhClient.LonghornV1beta1().Backups(s.namespace).Create(backup)
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(backup.Name, "backup", func(name string) (runtime.Object, error) {
+		return s.GetBackupRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.Backup)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for Backup")
+	}
+	return ret.DeepCopy(), nil
+}
+
+// ListBackupsWithBackupVolumeName returns an object contains all backups in the cluster Backups CR
+// of the given backup volume name
+func (s *DataStore) ListBackupsWithBackupVolumeName(backupVolumeName string) (map[string]*longhorn.Backup, error) {
+	selector, err := getBackupVolumeSelector(backupVolumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.bLister.Backups(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.Backup{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListBackups returns an object contains all backups in the cluster Backups CR
+func (s *DataStore) ListBackups() (map[string]*longhorn.Backup, error) {
+	list, err := s.bLister.Backups(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.Backup{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// GetBackupRO returns the Backup with the given backup name in the cluster
+func (s *DataStore) GetBackupRO(backupName string) (*longhorn.Backup, error) {
+	return s.bLister.Backups(s.namespace).Get(backupName)
+}
+
+// GetBackup returns a copy of Backup with the given backup name in the cluster
+func (s *DataStore) GetBackup(name string) (*longhorn.Backup, error) {
+	resultRO, err := s.GetBackupRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// UpdateBackup updates the given Longhorn backup in the cluster Backup CR and verifies update
+func (s *DataStore) UpdateBackup(backup *longhorn.Backup) (*longhorn.Backup, error) {
+	obj, err := s.lhClient.LonghornV1beta1().Backups(s.namespace).Update(backup)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(backup.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetBackupRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateBackupStatus updates the given Longhorn backup status in the cluster Backups CR status and verifies update
+func (s *DataStore) UpdateBackupStatus(backup *longhorn.Backup) (*longhorn.Backup, error) {
+	obj, err := s.lhClient.LonghornV1beta1().Backups(s.namespace).UpdateStatus(backup)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(backup.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetBackupRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteBackup won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteBackup(backupName string) error {
+	return s.lhClient.LonghornV1beta1().Backups(s.namespace).Delete(backupName, &metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForBackup will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForBackup(backup *longhorn.Backup) error {
+	if !util.FinalizerExists(longhornFinalizerKey, backup) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, backup); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta1().Backups(s.namespace).Update(backup)
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if backup.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for backup %s", backup.Name)
+	}
+	return nil
 }
