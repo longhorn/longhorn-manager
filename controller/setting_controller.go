@@ -14,7 +14,9 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -25,8 +27,6 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/engineapi"
-	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -55,29 +55,25 @@ type SettingController struct {
 
 	ds *datastore.DataStore
 
-	sStoreSynced cache.InformerSynced
-	nStoreSynced cache.InformerSynced
+	sStoreSynced  cache.InformerSynced
+	nStoreSynced  cache.InformerSynced
+	btStoreSynced cache.InformerSynced
 
 	// upgrade checker
 	lastUpgradeCheckedTimestamp time.Time
 	version                     string
 
-	// backup store monitor
-	bsMonitor *BackupStoreMonitor
+	// backup store timer is responsible for updating the backupTarget.spec.syncRequestAt
+	bsTimer *BackupStoreTimer
 }
 
-type BackupStoreMonitor struct {
+type BackupStoreTimer struct {
 	logger       logrus.FieldLogger
 	controllerID string
-
-	backupTarget                 string
-	backupTargetCredentialSecret string
+	ds           *datastore.DataStore
 
 	pollInterval time.Duration
-
-	target *engineapi.BackupTarget
-	ds     *datastore.DataStore
-	stopCh chan struct{}
+	stopCh       chan struct{}
 }
 
 type Version struct {
@@ -101,6 +97,7 @@ func NewSettingController(
 	scheme *runtime.Scheme,
 	settingInformer lhinformers.SettingInformer,
 	nodeInformer lhinformers.NodeInformer,
+	backupTargetInfomer lhinformers.BackupTargetInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID, version string) *SettingController {
 
@@ -120,8 +117,9 @@ func NewSettingController(
 
 		ds: ds,
 
-		sStoreSynced: settingInformer.Informer().HasSynced,
-		nStoreSynced: nodeInformer.Informer().HasSynced,
+		sStoreSynced:  settingInformer.Informer().HasSynced,
+		nStoreSynced:  nodeInformer.Informer().HasSynced,
+		btStoreSynced: backupTargetInfomer.Informer().HasSynced,
 
 		version: version,
 	}
@@ -135,6 +133,11 @@ func NewSettingController(
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.enqueueSettingForNode,
 		UpdateFunc: func(old, cur interface{}) { sc.enqueueSettingForNode(cur) },
+		DeleteFunc: sc.enqueueSettingForNode,
+	})
+
+	backupTargetInfomer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		DeleteFunc: sc.enqueueSettingForBackupTarget,
 	})
 
 	return sc
@@ -147,11 +150,11 @@ func (sc *SettingController) Run(stopCh <-chan struct{}) {
 	sc.logger.Info("Start Longhorn Setting controller")
 	defer sc.logger.Info("Shutting down Longhorn Setting controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn settings", stopCh, sc.sStoreSynced, sc.nStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn settings", stopCh, sc.sStoreSynced, sc.nStoreSynced, sc.btStoreSynced) {
 		return
 	}
 
-	// must remain single threaded since backup store monitor is not thread-safe now
+	// must remain single threaded since backup store timer is not thread-safe now
 	go wait.Until(sc.worker, time.Second, stopCh)
 
 	<-stopCh
@@ -207,14 +210,8 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.syncUpgradeChecker(); err != nil {
 			return err
 		}
-	case string(types.SettingNameBackupTargetCredentialSecret):
-		fallthrough
-	case string(types.SettingNameBackupTarget):
+	case string(types.SettingNameBackupTargetCredentialSecret), string(types.SettingNameBackupTarget), string(types.SettingNameBackupstorePollInterval):
 		if err := sc.syncBackupTarget(); err != nil {
-			return err
-		}
-	case string(types.SettingNameBackupstorePollInterval):
-		if err := sc.updateBackupstorePollInterval(); err != nil {
 			return err
 		}
 	case string(types.SettingNameTaintToleration):
@@ -240,11 +237,50 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 	return nil
 }
 
+// getResponsibleNodeID returns which node need to run
+func getResponsibleNodeID(ds *datastore.DataStore) (string, error) {
+	readyNodes, err := ds.ListReadyNodes()
+	if err != nil {
+		return "", err
+	}
+	if len(readyNodes) == 0 {
+		return "", fmt.Errorf("no ready nodes available")
+	}
+
+	// We use the first node as the responsible node
+	// If we pick a random node, there is probability
+	// more than one node be responsible node at the same time
+	var responsibleNodes []string
+	for node := range readyNodes {
+		responsibleNodes = append(responsibleNodes, node)
+	}
+	sort.Strings(responsibleNodes)
+	return responsibleNodes[0], nil
+}
+
 func (sc *SettingController) syncBackupTarget() (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to sync backup target")
 	}()
 
+	stopTimer := func() {
+		if sc.bsTimer != nil {
+			sc.bsTimer.Stop()
+			sc.bsTimer = nil
+		}
+	}
+
+	responsibleNodeID, err := getResponsibleNodeID(sc.ds)
+	if err != nil {
+		sc.logger.WithError(err).Warn("Failed to select node for sync backup target")
+		return err
+	}
+	if responsibleNodeID != sc.controllerID {
+		stopTimer()
+		return nil
+	}
+
+	// Get settings
 	targetSetting, err := sc.ds.GetSetting(types.SettingNameBackupTarget)
 	if err != nil {
 		return err
@@ -259,69 +295,71 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 	if err != nil {
 		return err
 	}
+	pollInterval := time.Duration(interval) * time.Second
 
-	if sc.bsMonitor != nil {
-		if sc.bsMonitor.backupTarget == targetSetting.Value &&
-			sc.bsMonitor.backupTargetCredentialSecret == secretSetting.Value {
-			// already monitoring
-			return nil
-		}
-		sc.logger.Infof("Restarting backup store monitor because backup target changed from %v to %v", sc.bsMonitor.backupTarget, targetSetting.Value)
-		sc.bsMonitor.Stop()
-		sc.bsMonitor = nil
-		manager.SyncVolumesLastBackupWithBackupVolumes(nil,
-			sc.ds.ListVolumes, sc.ds.GetVolume, sc.ds.UpdateVolumeStatus)
-	}
-
-	if targetSetting.Value == "" {
-		return nil
-	}
-
-	target, err := manager.GenerateBackupTarget(sc.ds)
+	backupTarget, err := sc.ds.GetBackupTarget(types.DefaultBackupTargetName)
 	if err != nil {
-		return err
-	}
-	sc.bsMonitor = &BackupStoreMonitor{
-		logger:       sc.logger.WithField("component", "backup-store-monitor"),
-		controllerID: sc.controllerID,
+		if !datastore.ErrorIsNotFound(err) {
+			return err
+		}
 
-		backupTarget:                 targetSetting.Value,
-		backupTargetCredentialSecret: secretSetting.Value,
-
-		pollInterval: time.Duration(interval) * time.Second,
-
-		target: target,
-		ds:     sc.ds,
-		stopCh: make(chan struct{}),
-	}
-	go sc.bsMonitor.Start()
-	return nil
-}
-
-func (sc *SettingController) updateBackupstorePollInterval() (err error) {
-	if sc.bsMonitor == nil {
-		return nil
+		// Create the default BackupTarget CR if not present
+		backupTarget, err = sc.ds.CreateBackupTarget(&longhorn.BackupTarget{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: types.DefaultBackupTargetName,
+			},
+			Spec: types.BackupTargetSpec{
+				BackupTargetURL:  targetSetting.Value,
+				CredentialSecret: secretSetting.Value,
+				PollInterval:     metav1.Duration{Duration: pollInterval},
+				SyncRequestedAt:  &metav1.Time{Time: time.Now().Add(time.Second).UTC()},
+			},
+		})
+		if err != nil {
+			sc.logger.WithError(err).Warn("Failed to create backup target")
+			return err
+		}
 	}
 
+	existingBackupTarget := backupTarget.DeepCopy()
 	defer func() {
-		err = errors.Wrapf(err, "failed to sync backup target")
+		backupTarget.Spec.BackupTargetURL = targetSetting.Value
+		backupTarget.Spec.CredentialSecret = secretSetting.Value
+		backupTarget.Spec.PollInterval = metav1.Duration{Duration: pollInterval}
+		if !reflect.DeepEqual(existingBackupTarget.Spec, backupTarget.Spec) {
+			// Force sync backup target once the BackupTarget spec be updated
+			backupTarget.Spec.SyncRequestedAt = &metav1.Time{Time: time.Now().Add(time.Second).UTC()}
+			if _, err = sc.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+				sc.logger.WithError(err).Warn("Failed to update backup target")
+			}
+		}
 	}()
 
-	interval, err := sc.ds.GetSettingAsInt(types.SettingNameBackupstorePollInterval)
-	if err != nil {
-		return err
-	}
-
-	if sc.bsMonitor.pollInterval == time.Duration(interval)*time.Second {
+	noNeedMonitor := targetSetting.Value == "" || pollInterval == time.Duration(0)
+	if noNeedMonitor {
+		stopTimer()
 		return nil
 	}
 
-	sc.bsMonitor.Stop()
+	if sc.bsTimer != nil {
+		if sc.bsTimer.pollInterval == pollInterval {
+			// No need to start a new timer if there was one
+			return
+		}
+		// Stop the timer if the poll interval changes
+		stopTimer()
+	}
 
-	sc.bsMonitor.pollInterval = time.Duration(interval) * time.Second
-	sc.bsMonitor.stopCh = make(chan struct{})
+	// Start backup store timer
+	sc.bsTimer = &BackupStoreTimer{
+		logger:       sc.logger.WithField("component", "backup-store-timer"),
+		controllerID: sc.controllerID,
+		ds:           sc.ds,
 
-	go sc.bsMonitor.Start()
+		pollInterval: pollInterval,
+		stopCh:       make(chan struct{}),
+	}
+	go sc.bsTimer.Start()
 	return nil
 }
 
@@ -626,89 +664,38 @@ func (sc *SettingController) updateNodeSelector() error {
 	return nil
 }
 
-func (bm *BackupStoreMonitor) Start() {
-	log := bm.logger.WithFields(logrus.Fields{
-		"backupTarget": bm.target.URL,
-		"pollInterval": bm.pollInterval,
-	})
-	if bm.pollInterval == time.Duration(0) {
-		log.Info("Disabling backup store monitoring")
+func (bst *BackupStoreTimer) Start() {
+	if bst == nil {
 		return
 	}
-	log.Debug("Start backup store monitoring")
-	defer func() {
-		log.Debug("Stop backup store monitoring")
-	}()
+	log := bst.logger.WithFields(logrus.Fields{
+		"interval": bst.pollInterval,
+	})
+	log.Debug("Start backup store timer")
 
-	// since this is run on each node, but we only need a single update
-	// we pick a consistent random ready node for each poll run
-	shouldProcess := func() (bool, error) {
-		defaultEngineImage, err := bm.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+	wait.PollUntil(bst.pollInterval, func() (done bool, err error) {
+		backupTarget, err := bst.ds.GetBackupTarget(types.DefaultBackupTargetName)
 		if err != nil {
+			log.WithError(err).Errorf("Cannot get %s backup target", types.DefaultBackupTargetName)
 			return false, err
 		}
 
-		nodes, err := bm.ds.ListReadyNodesWithEngineImage(defaultEngineImage)
-		if err != nil {
-			return false, err
+		backupTarget.Spec.SyncRequestedAt = &metav1.Time{Time: time.Now().Add(time.Second).UTC()}
+		if _, err = bst.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			log.WithError(err).Warn("Failed to updating backup target")
 		}
+		log.Debug("Trigger sync backup target")
+		return false, nil
+	}, bst.stopCh)
 
-		// for the random ready evaluation
-		// we sort the candidate list (this will normalize the list across nodes)
-		var candidates []string
-		for node := range nodes {
-			candidates = append(candidates, node)
-		}
-
-		if len(candidates) == 0 {
-			return false, fmt.Errorf("no ready nodes with engine image %v available", defaultEngineImage)
-		}
-		sort.Strings(candidates)
-
-		// we use a time index to derive an index into the candidate list (normalizes time differences across nodes)
-		// we arbitrarily choose the pollInterval as your time normalization factor, since this also has the benefit of
-		// doing round robin across the at the time available candidate nodes.
-		interval := int64(bm.pollInterval.Seconds())
-		midPoint := interval / 2
-		timeIndex := int((time.Now().UTC().Unix() + midPoint) / interval)
-		candidateIndex := timeIndex % len(candidates)
-		responsibleNode := candidates[candidateIndex]
-		return bm.controllerID == responsibleNode, nil
-	}
-
-	wait.Until(func() {
-		if isResponsible, err := shouldProcess(); err != nil || !isResponsible {
-			if err != nil {
-				log.WithError(err).Warn("Failed to select node for backup store monitoring, will try again next poll interval")
-			}
-			return
-		}
-
-		bm.logger.Debug("Polling backup store for new volume backups")
-		backupVolumeNames, err := bm.target.ListBackupVolumeNames()
-		if err != nil {
-			bm.logger.WithError(err).Warn("Failed to list backup volumes, cannot update volume names last backup")
-		}
-
-		backupVolumes := make(map[string]*engineapi.BackupVolume)
-		for _, backupVolumeName := range backupVolumeNames {
-			backupVolume, err := bm.target.InspectBackupVolumeMetadata(backupVolumeName)
-			if err != nil {
-				bm.logger.WithError(err).Warn("Failed to inspect backup volume metadata, cannot update volume names last backup")
-				continue
-			}
-			backupVolumes[backupVolumeName] = backupVolume
-		}
-		manager.SyncVolumesLastBackupWithBackupVolumes(backupVolumes,
-			bm.ds.ListVolumes, bm.ds.GetVolume, bm.ds.UpdateVolumeStatus)
-		bm.logger.Debug("Refreshed all volumes last backup based on backup store information")
-	}, bm.pollInterval, bm.stopCh)
+	log.Debug("Stop backup store timer")
 }
 
-func (bm *BackupStoreMonitor) Stop() {
-	if bm.pollInterval != time.Duration(0) {
-		bm.stopCh <- struct{}{}
+func (bst *BackupStoreTimer) Stop() {
+	if bst == nil {
+		return
 	}
+	bst.stopCh <- struct{}{}
 }
 
 func (sc *SettingController) syncUpgradeChecker() error {
@@ -836,6 +823,13 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 
 	sc.queue.AddRateLimited(sc.namespace + "/" + string(types.SettingNameGuaranteedEngineManagerCPU))
 	sc.queue.AddRateLimited(sc.namespace + "/" + string(types.SettingNameGuaranteedReplicaManagerCPU))
+}
+
+func (sc *SettingController) enqueueSettingForBackupTarget(obj interface{}) {
+	if _, ok := obj.(*longhorn.BackupTarget); !ok {
+		return
+	}
+	sc.queue.AddRateLimited(sc.namespace + "/" + string(types.SettingNameBackupTarget))
 }
 
 func (sc *SettingController) updateInstanceManagerCPURequest() error {
