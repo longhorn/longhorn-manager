@@ -42,6 +42,8 @@ const (
 	BackingImagesManagerDirectory = "/backing-images/"
 	BackingImageFileName          = "backing"
 
+	DefaultBackupTargetName = "default"
+
 	LonghornNodeKey     = "longhornnode"
 	LonghornDiskUUIDKey = "longhorndiskuuid"
 
@@ -60,21 +62,21 @@ const (
 
 	LonghornLabelKeyPrefix = "longhorn.io"
 
-	LonghornLabelEngineImage          = "engine-image"
-	LonghornLabelInstanceManager      = "instance-manager"
-	LonghornLabelNode                 = "node"
-	LonghornLabelDiskUUID             = "disk-uuid"
-	LonghornLabelInstanceManagerType  = "instance-manager-type"
-	LonghornLabelInstanceManagerImage = "instance-manager-image"
-	LonghornLabelVolume               = "longhornvolume"
-	LonghornLabelShareManager         = "share-manager"
-	LonghornLabelShareManagerImage    = "share-manager-image"
-	LonghornLabelBackingImage         = "backing-image"
-	LonghornLabelBackingImageManager  = "backing-image-manager"
-	LonghornLabelManagedBy            = "managed-by"
-	LonghornLabelCronJobTask          = "job-task"
-
+	LonghornLabelEngineImage            = "engine-image"
+	LonghornLabelInstanceManager        = "instance-manager"
+	LonghornLabelNode                   = "node"
+	LonghornLabelDiskUUID               = "disk-uuid"
+	LonghornLabelInstanceManagerType    = "instance-manager-type"
+	LonghornLabelInstanceManagerImage   = "instance-manager-image"
+	LonghornLabelVolume                 = "longhornvolume"
+	LonghornLabelShareManager           = "share-manager"
+	LonghornLabelShareManagerImage      = "share-manager-image"
+	LonghornLabelBackingImage           = "backing-image"
+	LonghornLabelBackingImageManager    = "backing-image-manager"
+	LonghornLabelManagedBy              = "managed-by"
+	LonghornLabelCronJobTask            = "job-task"
 	LonghornLabelBackingImageDataSource = "backing-image-data-source"
+	LonghornLabelBackupVolume           = "backup-volume"
 
 	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
@@ -367,6 +369,12 @@ func GetBackingImageDataSourceLabels(name, nodeID, diskUUID string) map[string]s
 		labels[GetLonghornLabelKey(LonghornLabelNode)] = nodeID
 	}
 	return labels
+}
+
+func GetBackupVolumeLabels(volumeName string) map[string]string {
+	return map[string]string{
+		LonghornLabelBackupVolume: volumeName,
+	}
 }
 
 func GetVolumeLabels(volumeName string) map[string]string {
