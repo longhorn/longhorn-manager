@@ -5,7 +5,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
@@ -70,6 +70,9 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 	backingImageInformer := lhInformerFactory.Longhorn().V1beta1().BackingImages()
 	backingImageManagerInformer := lhInformerFactory.Longhorn().V1beta1().BackingImageManagers()
 	backingImageDataSourceInformer := lhInformerFactory.Longhorn().V1beta1().BackingImageDataSources()
+	backupTargetInformer := lhInformerFactory.Longhorn().V1beta1().BackupTargets()
+	backupVolumeInformer := lhInformerFactory.Longhorn().V1beta1().BackupVolumes()
+	backupInformer := lhInformerFactory.Longhorn().V1beta1().Backups()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
@@ -91,6 +94,7 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 		engineImageInformer, nodeInformer, settingInformer,
 		imInformer, shareManagerInformer,
 		backingImageInformer, backingImageManagerInformer, backingImageDataSourceInformer,
+		backupTargetInformer, backupVolumeInformer, backupInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,

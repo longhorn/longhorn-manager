@@ -81,6 +81,9 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	backingImageInformer := lhInformerFactory.Longhorn().V1beta1().BackingImages()
 	backingImageManagerInformer := lhInformerFactory.Longhorn().V1beta1().BackingImageManagers()
 	backingImageDataSourceInformer := lhInformerFactory.Longhorn().V1beta1().BackingImageDataSources()
+	backupTargetInformer := lhInformerFactory.Longhorn().V1beta1().BackupTargets()
+	backupVolumeInformer := lhInformerFactory.Longhorn().V1beta1().BackupVolumes()
+	backupInformer := lhInformerFactory.Longhorn().V1beta1().Backups()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
@@ -102,6 +105,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		engineImageInformer, nodeInformer, settingInformer,
 		imInformer, shareManagerInformer,
 		backingImageInformer, backingImageManagerInformer, backingImageDataSourceInformer,
+		backupTargetInformer, backupVolumeInformer, backupInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
@@ -118,7 +122,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		kubeClient, &engineapi.EngineCollection{}, namespace, controllerID)
 	vc := NewVolumeController(logger, ds, scheme,
 		volumeInformer, engineInformer, replicaInformer,
-		shareManagerInformer,
+		shareManagerInformer, backupVolumeInformer,
 		kubeClient, namespace, controllerID,
 		serviceAccount, managerImage)
 	ic := NewEngineImageController(logger, ds, scheme,
@@ -131,8 +135,17 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		volumeInformer, engineInformer, replicaInformer,
 		settingInformer, engineImageInformer, backingImageInformer, nodeInformer)
 	sc := NewSettingController(logger, ds, scheme,
-		settingInformer, nodeInformer,
+		settingInformer, nodeInformer, backupTargetInformer,
 		kubeClient, namespace, controllerID, version)
+	btc := NewBackupTargetController(logger, ds, scheme,
+		backupTargetInformer,
+		kubeClient, controllerID, namespace)
+	bvc := NewBackupVolumeController(logger, ds, scheme,
+		backupVolumeInformer,
+		kubeClient, controllerID, namespace)
+	bc := NewBackupController(logger, ds, scheme,
+		backupInformer,
+		kubeClient, controllerID, namespace)
 	imc := NewInstanceManagerController(logger, ds, scheme,
 		imInformer, podInformer, kubeNodeInformer, kubeClient, namespace, controllerID, serviceAccount)
 	smc := NewShareManagerController(logger, ds, scheme,
@@ -182,6 +195,9 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	go bic.Run(Workers, stopCh)
 	go bimc.Run(Workers, stopCh)
 	go bidsc.Run(Workers, stopCh)
+	go btc.Run(Workers, stopCh)
+	go bvc.Run(Workers, stopCh)
+	go bc.Run(Workers, stopCh)
 
 	go kpvc.Run(Workers, stopCh)
 	go knc.Run(Workers, stopCh)
