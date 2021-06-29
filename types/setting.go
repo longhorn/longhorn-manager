@@ -523,7 +523,7 @@ var (
 			"- **never** is the default Kubernetes behavior of never deleting volume attachments on terminating pods.\n" +
 			"- **immediate** leads to the deletion of the volume attachment as soon as all workload pods are pending.\n",
 		Category: SettingCategoryGeneral,
-		Type:     SettingTypeString,
+		Type:     SettingTypeDeprecated,
 		Required: true,
 		ReadOnly: false,
 		Default:  string(VolumeAttachmentRecoveryPolicyWait),
