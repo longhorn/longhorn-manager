@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	. "gopkg.in/check.v1"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,18 +17,15 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+	"github.com/longhorn/backupstore"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/engineapi"
-	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util"
-
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
-
-	. "gopkg.in/check.v1"
+	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 func getVolumeLabelSelector(volumeName string) string {
@@ -140,7 +138,7 @@ type VolumeTestCase struct {
 }
 
 func (s *TestSuite) TestVolumeLifeCycle(c *C) {
-	testBackupURL := engineapi.GetBackupURL(TestBackupTarget, TestBackupName, TestBackupVolumeName)
+	testBackupURL := backupstore.EncodeBackupURL(TestBackupName, TestBackupVolumeName, TestBackupTarget)
 
 	var tc *VolumeTestCase
 	testCases := map[string]*VolumeTestCase{}
