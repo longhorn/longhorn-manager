@@ -7,7 +7,6 @@ import (
 
 	devtypes "github.com/longhorn/go-iscsi-helper/types"
 
-	"github.com/longhorn/backupstore"
 	"github.com/longhorn/longhorn-manager/types"
 )
 
@@ -108,32 +107,36 @@ type Volume struct {
 }
 
 type BackupVolume struct {
-	Name                 string                             `json:"name"`
-	Size                 string                             `json:"size"`
-	Labels               map[string]string                  `json:"labels"`
-	Created              string                             `json:"created"`
-	LastBackupName       string                             `json:"lastBackupName"`
-	LastBackupAt         string                             `json:"lastBackupAt"`
-	DataStored           string                             `json:"dataStored"`
-	Messages             map[backupstore.MessageType]string `json:"messages"`
-	Backups              map[string]*Backup                 `json:"backups"`
-	BackingImageName     string                             `json:"backingImageName"`
-	BackingImageChecksum string                             `json:"backingImageChecksum"`
+	Name                 string             `json:"name"`
+	Size                 string             `json:"size"`
+	Labels               map[string]string  `json:"labels"`
+	Created              string             `json:"created"`
+	LastBackupName       string             `json:"lastBackupName"`
+	LastBackupAt         string             `json:"lastBackupAt"`
+	DataStored           string             `json:"dataStored"`
+	Messages             map[string]string  `json:"messages"`
+	Backups              map[string]*Backup `json:"backups"`
+	BackingImageName     string             `json:"backingImageName"`
+	BackingImageChecksum string             `json:"backingImageChecksum"`
 }
 
 type Backup struct {
-	Name                   string                             `json:"name"`
-	URL                    string                             `json:"url"`
-	SnapshotName           string                             `json:"snapshotName"`
-	SnapshotCreated        string                             `json:"snapshotCreated"`
-	Created                string                             `json:"created"`
-	Size                   string                             `json:"size"`
-	Labels                 map[string]string                  `json:"labels"`
-	VolumeName             string                             `json:"volumeName"`
-	VolumeSize             string                             `json:"volumeSize"`
-	VolumeCreated          string                             `json:"volumeCreated"`
-	VolumeBackingImageName string                             `json:"volumeBackingImageName"`
-	Messages               map[backupstore.MessageType]string `json:"messages"`
+	Name                   string            `json:"name"`
+	URL                    string            `json:"url"`
+	SnapshotName           string            `json:"snapshotName"`
+	SnapshotCreated        string            `json:"snapshotCreated"`
+	Created                string            `json:"created"`
+	Size                   string            `json:"size"`
+	Labels                 map[string]string `json:"labels"`
+	VolumeName             string            `json:"volumeName"`
+	VolumeSize             string            `json:"volumeSize"`
+	VolumeCreated          string            `json:"volumeCreated"`
+	VolumeBackingImageName string            `json:"volumeBackingImageName"`
+	Messages               map[string]string `json:"messages"`
+}
+
+type ConfigMetadata struct {
+	ModificationTime time.Time `json:"modificationTime"`
 }
 
 type BackupCreateInfo struct {
