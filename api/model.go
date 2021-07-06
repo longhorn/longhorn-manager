@@ -482,6 +482,7 @@ func backingImageSchema(backingImage *client.Schema) {
 			Input:  "backingImageCleanupInput",
 			Output: "backingImage",
 		},
+		BackingImageUpload: {},
 	}
 
 	name := backingImage.ResourceFields["name"]
@@ -1182,6 +1183,7 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 	}
 	res.Actions = map[string]string{
 		"backingImageCleanup": apiContext.UrlBuilder.ActionLink(res.Resource, "backingImageCleanup"),
+		BackingImageUpload:    apiContext.UrlBuilder.ActionLink(res.Resource, BackingImageUpload),
 	}
 	return res
 }
