@@ -37,6 +37,7 @@ func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) *Node
 		caps: getNodeServiceCapabilities(
 			[]csi.NodeServiceCapability_RPC_Type{
 				csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
+				csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 			}),
 	}
 }
@@ -46,6 +47,11 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	targetPath := req.GetTargetPath()
 	if targetPath == "" {
 		return nil, status.Error(codes.InvalidArgument, "target path missing in request")
+	}
+
+	stagingPath := req.GetStagingTargetPath()
+	if stagingPath == "" {
+		return nil, status.Error(codes.InvalidArgument, "staging path missing in request")
 	}
 
 	volumeCapability := req.GetVolumeCapability()
@@ -58,8 +64,191 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
 
+	volume, err := ns.apiClient.Volume.ById(volumeID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if volume == nil {
+		return nil, status.Errorf(codes.NotFound, "volume %s not found", volumeID)
+	}
+
+	mounter, err := ns.getMounter(volume, volumeCapability)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	// For mount volumes, we don't want multiple controllers for a volume, since the filesystem could get messed up
+	if len(volume.Controllers) == 0 || (len(volume.Controllers) > 1 && volumeCapability.GetBlock() == nil) {
+		return nil, status.Errorf(codes.InvalidArgument, "volume %s invalid controller count %v", volumeID, len(volume.Controllers))
+	}
+
+	if volume.DisableFrontend || volume.Frontend != string(types.VolumeFrontendBlockDev) {
+		return nil, status.Errorf(codes.InvalidArgument, "volume %s invalid frontend type %v is disabled %v", volumeID, volume.Frontend, volume.DisableFrontend)
+	}
+
+	// Check volume attachment status
+	if volume.State != string(types.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
+		logrus.Debugf("volume %v hasn't been attached yet, try unmounting potential mount point %v", volumeID, targetPath)
+		if err := unmount(targetPath, mounter); err != nil {
+			logrus.Debugf("failed to unmount error: %v", err)
+		}
+		return nil, status.Errorf(codes.InvalidArgument, "volume %s hasn't been attached yet", volumeID)
+	}
+
+	if !volume.Ready {
+		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads", volumeID)
+	}
+
+	if volumeCapability.GetBlock() != nil {
+		devicePath := volume.Controllers[0].Endpoint
+		if err := ns.nodePublishBlockVolume(volumeID, devicePath, targetPath, mounter); err != nil {
+			return nil, err
+		}
+
+		logrus.Debugf("NodePublishVolume: done BlockVolume %s", volumeID)
+		return &csi.NodePublishVolumeResponse{}, nil
+	}
+
+	isMnt, err := ensureMountPoint(targetPath, mounter)
+	if err != nil {
+		msg := fmt.Sprintf("NodePublishVolume: failed to prepare mount point for volume %v error %v", volumeID, err)
+		logrus.Error(msg)
+		return nil, status.Error(codes.Internal, msg)
+	}
+
+	if isMnt {
+		logrus.Debugf("NodePublishVolume: found existing healthy mount point for volume %v skipping mount", volumeID)
+		return &csi.NodePublishVolumeResponse{}, nil
+	}
+
+	mountOptions := []string{"bind"}
 	if req.GetReadonly() {
-		return nil, status.Errorf(codes.FailedPrecondition, "volume %s does not support readonly mode", volumeID)
+		mountOptions = append(mountOptions, "ro")
+	}
+	mountOptions = append(mountOptions, volumeCapability.GetMount().GetMountFlags()...)
+
+	if err := mounter.Mount(stagingPath, targetPath, "", mountOptions); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to bind mount volume %v", volumeID)
+	}
+
+	return &csi.NodePublishVolumeResponse{}, nil
+}
+
+func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath string, mounter mount.Interface) error {
+	isMnt, err := ensureMountPoint(targetPath, mounter)
+
+	if err != nil {
+		return status.Errorf(codes.Internal, "Failed to prepare mount point for shared volume %v error %v", volumeID, err)
+	}
+
+	if isMnt {
+		logrus.Debugf("found existing healthy mount point for shared volume %v skipping mount", volumeID)
+		return nil
+	}
+
+	uri, err := url.Parse(shareEndpoint)
+	if err != nil {
+		return status.Errorf(codes.InvalidArgument, "Invalid share endpoint %v for volume %v", shareEndpoint, volumeID)
+	}
+
+	// share endpoint is of the form nfs://server/export
+	fsType := uri.Scheme
+	if fsType != "nfs" {
+		return status.Errorf(codes.InvalidArgument, "Unsupported share type %v for volume %v share endpoint %v", fsType, volumeID, shareEndpoint)
+	}
+
+	server := uri.Host
+	exportPath := uri.Path
+	export := fmt.Sprintf("%s:%s", server, exportPath)
+	mountOptions := []string{
+		"vers=4.1",
+		"noresvport",
+		"soft", // for this release we use soft mode, so we can always cleanup mount points
+		"sync",
+		"intr",
+		"timeo=30",  // This is tenths of a second, so a 3 second timeout, each retrans the timeout will be linearly increased, 3s, 6s, 9s
+		"retrans=3", // We try the io operation for a total of 3 times, before failing, max runtime of 18s
+		// "clientaddr=" // TODO: try to set the client address of the mount to the ip of the pod that is consuming the volume
+	}
+
+	if err := mounter.Mount(export, targetPath, fsType, mountOptions); err != nil {
+		return status.Error(codes.Internal, err.Error())
+	}
+
+	return nil
+}
+
+func (ns *NodeServer) nodeStageMountVolume(volumeID, devicePath, targetPath, fsType string, mountFlags []string, mounter *mount.SafeFormatAndMount) error {
+	isMnt, err := ensureMountPoint(targetPath, mounter)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to prepare mount point for volume %v error %v", volumeID, err)
+	}
+
+	if isMnt {
+		logrus.Debugf("found existing healthy mount point for volume %v skipping mount", volumeID)
+		return nil
+	}
+
+	if err := mounter.FormatAndMount(devicePath, targetPath, fsType, mountFlags); err != nil {
+		return status.Error(codes.Internal, err.Error())
+	}
+	return nil
+}
+
+func (ns *NodeServer) nodePublishBlockVolume(volumeID, devicePath, targetPath string, mounter mount.Interface) error {
+	// we ensure the parent directory exists and is valid
+	if _, err := ensureMountPoint(filepath.Dir(targetPath), mounter); err != nil {
+		return status.Errorf(codes.Internal, "Failed to prepare mount point for block device %v error %v", devicePath, err)
+	}
+
+	// create file where we can bind mount the device to
+	if err := makeFile(targetPath); err != nil {
+		return status.Errorf(codes.Internal, "Error in making file %v", err)
+	}
+
+	if err := mounter.Mount(devicePath, targetPath, "", []string{"bind"}); err != nil {
+		if removeErr := os.Remove(targetPath); removeErr != nil {
+			return status.Errorf(codes.Internal, "Could not remove mount target %q: %v", targetPath, err)
+		}
+		return status.Errorf(codes.Internal, "Could not mount %q at %q: %v", devicePath, targetPath, err)
+	}
+	return nil
+}
+
+func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+	targetPath := req.GetTargetPath()
+	if targetPath == "" {
+		return nil, status.Error(codes.InvalidArgument, "target path missing in request")
+	}
+
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
+	}
+
+	if err := cleanupMountPoint(targetPath, mount.New("")); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to cleanup volume %s mount point %v error %v", volumeID, targetPath, err)
+	}
+
+	logrus.Infof("NodeUnpublishVolume: volume %s unmounted from path %s", volumeID, targetPath)
+	return &csi.NodeUnpublishVolumeResponse{}, nil
+}
+
+func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
+
+	targetPath := req.GetStagingTargetPath()
+	if targetPath == "" {
+		return nil, status.Error(codes.InvalidArgument, "staging path missing in request")
+	}
+
+	volumeCapability := req.GetVolumeCapability()
+	if volumeCapability == nil {
+		return nil, status.Error(codes.InvalidArgument, "volume capability missing in request")
+	}
+
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
 
 	volume, err := ns.apiClient.Volume.ById(volumeID)
@@ -98,10 +287,13 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	devicePath := volume.Controllers[0].Endpoint
-	if volumeCapability.GetBlock() != nil {
-		return ns.nodePublishBlockVolume(volumeID, devicePath, targetPath, mounter)
-	} else if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable {
 
+	// do nothing for block devices, since they are handled by publish
+	if volumeCapability.GetBlock() != nil {
+		return &csi.NodeStageVolumeResponse{}, nil
+	}
+
+	if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable {
 		if volume.AccessMode != string(types.AccessModeReadWriteMany) {
 			return nil, status.Errorf(codes.FailedPrecondition, "volume %s requires shared access but is not marked for shared use", volumeID)
 		}
@@ -110,118 +302,37 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 			return nil, status.Errorf(codes.Aborted, "volume %s share not yet available", volumeID)
 		}
 
-		return ns.nodePublishSharedVolume(volumeID, volume.ShareEndpoint, targetPath, mounter)
-	} else if volumeCapability.GetMount() != nil {
-		// mounter uses ext4 by default
-		options := volumeCapability.GetMount().GetMountFlags()
-		fsType := volumeCapability.GetMount().GetFsType()
-		if fsType == "" {
-			fsType = "ext4"
+		if err := ns.nodeStageSharedVolume(volumeID, volume.ShareEndpoint, targetPath, mounter); err != nil {
+			return nil, err
 		}
 
-		formatMounter, ok := mounter.(*mount.SafeFormatAndMount)
-		if !ok {
-			return nil, fmt.Errorf("volume %v cannot get format mounter that support filesystem %v creation", volumeID, fsType)
-		}
-
-		return ns.nodePublishMountVolume(volumeID, devicePath, targetPath, fsType, options, formatMounter)
+		logrus.Infof("mounted shared volume %v on node %v via share endpoint %v", volumeID, ns.nodeID, volume.ShareEndpoint)
+		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
-	return nil, status.Errorf(codes.InvalidArgument, "volume %v does not support volume capability, neither Mount nor Block specified", volumeID)
+	// mounter uses ext4 by default
+	options := volumeCapability.GetMount().GetMountFlags()
+	fsType := volumeCapability.GetMount().GetFsType()
+	if fsType == "" {
+		fsType = "ext4"
+	}
+
+	formatMounter, ok := mounter.(*mount.SafeFormatAndMount)
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "volume %v cannot get format mounter that support filesystem %v creation", volumeID, fsType)
+	}
+
+	if err := ns.nodeStageMountVolume(volumeID, devicePath, targetPath, fsType, options, formatMounter); err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("mounted volume %v on node %v via device %v", volumeID, ns.nodeID, devicePath)
+	return &csi.NodeStageVolumeResponse{}, nil
 }
 
-func (ns *NodeServer) nodePublishSharedVolume(volumeName, shareEndpoint, targetPath string, mounter mount.Interface) (*csi.NodePublishVolumeResponse, error) {
-	isMnt, err := ensureMountPoint(targetPath, mounter)
+func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 
-	if err != nil {
-		msg := fmt.Sprintf("NodePublishVolume: failed to prepare mount point for shared volume %v error %v", volumeName, err)
-		logrus.Error(msg)
-		return nil, status.Error(codes.Internal, msg)
-	}
-
-	if isMnt {
-		logrus.Debugf("NodePublishVolume: found existing healthy mount point for shared volume %v skipping mount", volumeName)
-		return &csi.NodePublishVolumeResponse{}, nil
-	}
-
-	uri, err := url.Parse(shareEndpoint)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "Invalid share endpoint %v for volume %v", shareEndpoint, volumeName)
-	}
-
-	// share endpoint is of the form nfs://server/export
-	fsType := uri.Scheme
-	if fsType != "nfs" {
-		return nil, status.Errorf(codes.InvalidArgument, "Unsupported share type %v for volume %v share endpoint %v", fsType, volumeName, shareEndpoint)
-	}
-
-	server := uri.Host
-	exportPath := uri.Path
-	export := fmt.Sprintf("%s:%s", server, exportPath)
-	mountOptions := []string{
-		"vers=4.1",
-		"noresvport",
-		"soft", // for this release we use soft mode, so we can always cleanup mount points
-		"sync",
-		"intr",
-		"timeo=30",  // This is tenths of a second, so a 3 second timeout, each retrans the timeout will be linearly increased, 3s, 6s, 9s
-		"retrans=3", // We try the io operation for a total of 3 times, before failing, max runtime of 18s
-		// "clientaddr=" // TODO: try to set the client address of the mount to the ip of the pod that is consuming the volume
-	}
-
-	if err := mounter.Mount(export, targetPath, fsType, mountOptions); err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	logrus.Infof("NodePublishVolume: mounted shared volume %v on node %v via share endpoint %v", volumeName, ns.nodeID, shareEndpoint)
-	return &csi.NodePublishVolumeResponse{}, nil
-}
-
-func (ns *NodeServer) nodePublishMountVolume(volumeName, devicePath, targetPath, fsType string, mountFlags []string, mounter *mount.SafeFormatAndMount) (*csi.NodePublishVolumeResponse, error) {
-	isMnt, err := ensureMountPoint(targetPath, mounter)
-	if err != nil {
-		msg := fmt.Sprintf("NodePublishVolume: failed to prepare mount point for volume %v error %v", volumeName, err)
-		logrus.Error(msg)
-		return nil, status.Error(codes.Internal, msg)
-	}
-
-	if isMnt {
-		logrus.Debugf("NodePublishVolume: found existing healthy mount point for volume %v skipping mount", volumeName)
-		return &csi.NodePublishVolumeResponse{}, nil
-	}
-
-	if err := mounter.FormatAndMount(devicePath, targetPath, fsType, mountFlags); err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	logrus.Debugf("NodePublishVolume: done MountVolume %s", volumeName)
-
-	return &csi.NodePublishVolumeResponse{}, nil
-}
-
-func (ns *NodeServer) nodePublishBlockVolume(volumeName, devicePath, targetPath string, mounter mount.Interface) (*csi.NodePublishVolumeResponse, error) {
-	// we ensure the parent directory exists and is valid
-	if _, err := ensureMountPoint(filepath.Dir(targetPath), mounter); err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to prepare mount point for block device %v error %v", devicePath, err)
-	}
-
-	// create file where we can bind mount the device to
-	if err := makeFile(targetPath); err != nil {
-		return nil, status.Errorf(codes.Internal, "Error in making file %v", err)
-	}
-
-	if err := mounter.Mount(devicePath, targetPath, "", []string{"bind"}); err != nil {
-		if removeErr := os.Remove(targetPath); removeErr != nil {
-			return nil, status.Errorf(codes.Internal, "Could not remove mount target %q: %v", targetPath, err)
-		}
-		return nil, status.Errorf(codes.Internal, "Could not mount %q at %q: %v", devicePath, targetPath, err)
-	}
-	logrus.Debugf("NodePublishVolume: done BlockVolume %s", volumeName)
-
-	return &csi.NodePublishVolumeResponse{}, nil
-}
-
-func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
-	targetPath := req.GetTargetPath()
+	targetPath := req.GetStagingTargetPath()
 	if targetPath == "" {
 		return nil, status.Error(codes.InvalidArgument, "target path missing in request")
 	}
@@ -231,28 +342,13 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
 
-	if err := cleanupMountPoint(targetPath, mount.New("")); err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to cleanup volume %s mount point %v error %v", volumeID, targetPath, err))
+	// CO owns the staging_path so we only unmount but not remove the path
+	if err := unmount(targetPath, mount.New("")); err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to unmount volume %s mount point %v error %v", volumeID, targetPath, err))
 	}
 
-	logrus.Infof("NodeUnpublishVolume: volume %s unmounted from path %s", volumeID, targetPath)
-	return &csi.NodeUnpublishVolumeResponse{}, nil
-}
-
-func (ns *NodeServer) NodeStageVolume(
-	ctx context.Context,
-	req *csi.NodeStageVolumeRequest) (
-	*csi.NodeStageVolumeResponse, error) {
-
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
-func (ns *NodeServer) NodeUnstageVolume(
-	ctx context.Context,
-	req *csi.NodeUnstageVolumeRequest) (
-	*csi.NodeUnstageVolumeResponse, error) {
-
-	return nil, status.Error(codes.Unimplemented, "")
+	logrus.Infof("NodeUnstageVolume: volume %s unmounted from node path %s", volumeID, targetPath)
+	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
 func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
