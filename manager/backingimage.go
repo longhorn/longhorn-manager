@@ -6,6 +6,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"reflect"
 
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -47,6 +48,17 @@ func (m *VolumeManager) ListBackingImageDataSources() (map[string]*longhorn.Back
 
 func (m *VolumeManager) GetBackingImageDataSource(name string) (*longhorn.BackingImageDataSource, error) {
 	return m.ds.GetBackingImageDataSource(name)
+}
+
+func (m *VolumeManager) GetBackingImageDataSourcePod(name string) (*v1.Pod, error) {
+	pod, err := m.ds.GetPod(types.GetBackingImageDataSourcePodName(name))
+	if err != nil {
+		return nil, err
+	}
+	if pod == nil || pod.Labels[types.GetLonghornLabelKey(types.LonghornLabelBackingImageDataSource)] != name {
+		return nil, fmt.Errorf("cannot find pod for backing image data source %v", name)
+	}
+	return pod, nil
 }
 
 func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, parameters map[string]string) (bi *longhorn.BackingImage, err error) {

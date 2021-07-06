@@ -9,11 +9,17 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	v1 "k8s.io/api/core/v1"
+
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
 )
 
 type OwnerIDFunc func(req *http.Request) (string, error)
+type BackingImageUploadServerAddressFunc func(req *http.Request) (string, error)
+type GetTargetAddressFunc func(req *http.Request) (string, error)
+type ProxyRequestHandler func(address string, req *http.Request) (proxyRequired bool, err error)
 
 func OwnerIDFromVolume(m *manager.VolumeManager) func(req *http.Request) (string, error) {
 	return func(req *http.Request) (string, error) {
@@ -76,26 +82,97 @@ func NewFwd(locator NodeLocator) *Fwd {
 	}
 }
 
-func (f *Fwd) Handler(getNodeID OwnerIDFunc, h HandleFuncWithError) HandleFuncWithError {
+func (f *Fwd) Handler(proxyHandler ProxyRequestHandler, getTargetAddressFunc GetTargetAddressFunc, h HandleFuncWithError) HandleFuncWithError {
 	return func(w http.ResponseWriter, req *http.Request) error {
-		nodeID, err := getNodeID(req)
-		if err != nil {
-			return errors.Wrap(err, "fail to get node ID")
-		}
-		if nodeID != "" && nodeID != f.locator.GetCurrentNodeID() {
-			targetNode, err := f.locator.Node2APIAddress(nodeID)
+		var requireProxy bool
+		if proxyHandler != nil {
+			if getTargetAddressFunc == nil {
+				return fmt.Errorf("nil HTTP target address get function")
+			}
+			targetAddress, err := getTargetAddressFunc(req)
 			if err != nil {
-				return errors.Wrapf(err, "cannot find node %v", nodeID)
+				return errors.Wrap(err, "fail to get the target address")
 			}
-			if targetNode != req.Host {
-				req.Host = targetNode
-				req.URL.Host = targetNode
-				req.URL.Scheme = "http"
-				logrus.Debugf("Forwarding request to %v", targetNode)
-				f.proxy.ServeHTTP(w, req)
-				return nil
+			requireProxy, err = proxyHandler(targetAddress, req)
+			if err != nil {
+				return errors.Wrap(err, "fail to verify if the proxy is required")
 			}
+		}
+		if requireProxy {
+			f.proxy.ServeHTTP(w, req)
+			return nil
 		}
 		return h(w, req)
+	}
+}
+
+func (f *Fwd) HandleProxyRequestByNodeID(targetAddress string, req *http.Request) (proxyRequired bool, err error) {
+	if targetAddress == req.Host {
+		return false, nil
+	}
+
+	req.Host = targetAddress
+	req.URL.Host = targetAddress
+	req.URL.Scheme = "http"
+	logrus.Debugf("Forwarding request to %v", targetAddress)
+
+	return true, nil
+}
+
+func (f *Fwd) GetHTTPAddressByNodeID(getNodeID OwnerIDFunc) GetTargetAddressFunc {
+	return func(req *http.Request) (string, error) {
+		nodeID, err := getNodeID(req)
+		if err != nil {
+			return "", errors.Wrap(err, "fail to get target node ID")
+		}
+		return f.locator.Node2APIAddress(nodeID)
+	}
+}
+
+const (
+	BackingImageUpload = "upload"
+)
+
+func (f *Fwd) HandleProxyRequestForBackingImageUpload(targetAddress string, req *http.Request) (proxyRequired bool, err error) {
+	if targetAddress == req.Host {
+		return false, fmt.Errorf("backing image upload request should not be handled by current longhorn manager service")
+	}
+
+	req.Host = targetAddress
+	req.URL.Host = targetAddress
+	req.URL.Scheme = "http"
+	if req.URL.Query().Get("action") != BackingImageUpload {
+		return false, fmt.Errorf("unknown action for backing image upload related request: %v", req.URL.Query().Get("action"))
+	}
+	req.URL.Path = "/v1/file"
+	logrus.Infof("Forwarding backing image upload request to URL %v", req.URL.String())
+
+	return true, nil
+}
+
+func (f *Fwd) GetHTTPAddressForBackingImageUpload(getBackingImageUploadServerAddress BackingImageUploadServerAddressFunc) GetTargetAddressFunc {
+	return func(req *http.Request) (string, error) {
+		return getBackingImageUploadServerAddress(req)
+	}
+}
+
+func UploadServerAddressFromBackingImage(m *manager.VolumeManager) func(req *http.Request) (string, error) {
+	return func(req *http.Request) (string, error) {
+		name := mux.Vars(req)["name"]
+		pod, err := m.GetBackingImageDataSourcePod(name)
+		if err != nil {
+			return "", err
+		}
+		if pod.Status.Phase != v1.PodRunning || pod.Status.PodIP == "" {
+			return "", fmt.Errorf("backing image data source pod is not ready for uploading")
+		}
+		bids, err := m.GetBackingImageDataSource(name)
+		if err != nil {
+			return "", errors.Wrapf(err, "error getting backing image %s", name)
+		}
+		if bids.Status.CurrentState != types.BackingImageStateStarting {
+			return "", fmt.Errorf("upload server for backing image %s has not been initiated", name)
+		}
+		return fmt.Sprintf("%s:%d", pod.Status.PodIP, engineapi.BackingImageDataSourceDefaultPort), nil
 	}
 }
