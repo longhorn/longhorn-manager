@@ -18,10 +18,10 @@ import (
 )
 
 const (
-	DefaultCSIAttacherImage            = "longhornio/csi-attacher:v2.2.1-lh1"
-	DefaultCSIProvisionerImage         = "longhornio/csi-provisioner:v1.6.0-lh1"
-	DefaultCSIResizerImage             = "longhornio/csi-resizer:v0.5.1-lh1"
-	DefaultCSISnapshotterImage         = "longhornio/csi-snapshotter:v2.1.1-lh1"
+	DefaultCSIAttacherImage            = "longhornio/csi-attacher:v2.2.1-lh2"
+	DefaultCSIProvisionerImage         = "longhornio/csi-provisioner:v1.6.0-lh2"
+	DefaultCSIResizerImage             = "longhornio/csi-resizer:v0.5.1-lh2"
+	DefaultCSISnapshotterImage         = "longhornio/csi-snapshotter:v2.1.1-lh2"
 	DefaultCSINodeDriverRegistrarImage = "longhornio/csi-node-driver-registrar:v1.2.0-lh1"
 
 	DefaultCSIAttacherReplicaCount    = 3
