@@ -16,7 +16,6 @@ data:
     upgrade-checker:
     default-replica-count:
     default-data-locality:
-    guaranteed-engine-cpu:
     default-longhorn-static-storage-class:
     backupstore-poll-interval:
     taint-toleration:
@@ -26,7 +25,6 @@ data:
     auto-delete-pod-when-volume-detached-unexpectedly:
     disable-scheduling-on-cordoned-node:
     replica-zone-soft-anti-affinity:
-    volume-attachment-recovery-policy:
     node-down-pod-deletion-policy:
     allow-node-drain-with-last-healthy-replica:
     mkfs-ext4-parameters:
