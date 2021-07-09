@@ -220,13 +220,11 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 
 	if spec.LogRequested {
 		if !status.LogFetched {
+			logrus.Warnf("Try to get requested log for %v in instance manager %v", instanceName, status.InstanceManagerName)
 			if im == nil {
 				logrus.Warnf("Cannot get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
-			} else {
-				logrus.Warnf("Try to get requested log for %v on node %v", instanceName, im.Spec.NodeID)
-				if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
-					logrus.Warnf("cannot get requested log for instance %v on node %v, error %v", instanceName, im.Spec.NodeID, err)
-				}
+			} else if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
+				logrus.Warnf("cannot get requested log for instance %v on node %v, error %v", instanceName, im.Spec.NodeID, err)
 			}
 			status.LogFetched = true
 		}
