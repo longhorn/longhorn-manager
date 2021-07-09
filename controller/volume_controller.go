@@ -573,10 +573,10 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 			if purgeStatus != nil && purgeStatus.Error != "" {
 				vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonFailedSnapshotPurge, "replica %v failed the snapshot purge: %s", r.Name, purgeStatus.Error)
 			}
-			e.Spec.LogRequested = true
-			r.Spec.LogRequested = true
 			if r.Spec.FailedAt == "" {
 				r.Spec.FailedAt = vc.nowHandler()
+				e.Spec.LogRequested = true
+				r.Spec.LogRequested = true
 			}
 			r.Spec.DesireState = types.InstanceStateStopped
 		} else if mode == types.ReplicaModeRW {
@@ -1013,14 +1013,16 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 	}
 
-	if e.Spec.LogRequested && e.Status.LogFetched {
-		e.Spec.LogRequested = false
-	}
+	needReplicaLogs := false
 	for _, r := range rs {
 		if r.Spec.LogRequested && r.Status.LogFetched {
 			r.Spec.LogRequested = false
 		}
+		needReplicaLogs = needReplicaLogs || r.Spec.LogRequested
 		rs[r.Name] = r
+	}
+	if e.Spec.LogRequested && e.Status.LogFetched && !needReplicaLogs {
+		e.Spec.LogRequested = false
 	}
 
 	scheduled := true
