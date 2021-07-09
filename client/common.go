@@ -229,7 +229,7 @@ func (rancherClient *RancherBaseClientImpl) setupRequest(req *http.Request) {
 
 func (rancherClient *RancherBaseClientImpl) newHttpClient() *http.Client {
 	if rancherClient.Opts.Timeout == 0 {
-		rancherClient.Opts.Timeout = time.Second * 10
+		rancherClient.Opts.Timeout = time.Minute
 	}
 	return &http.Client{Timeout: rancherClient.Opts.Timeout}
 }
