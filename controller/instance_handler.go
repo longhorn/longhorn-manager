@@ -335,7 +335,7 @@ func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Obj
 	if err != nil {
 		return err
 	}
-
+	defer stream.Close()
 	for {
 		line, err := stream.Recv()
 		if err == io.EOF {
