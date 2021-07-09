@@ -660,16 +660,24 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 	return nil
 }
 
-func (vc *VolumeController) getHealthyReplicaCount(rs map[string]*longhorn.Replica) int {
-	var healthyCount int
-
+func getHealthyReplicaCount(rs map[string]*longhorn.Replica) int {
+	count := 0
 	for _, r := range rs {
 		if r.Spec.FailedAt == "" && r.Spec.HealthyAt != "" {
-			healthyCount++
+			count++
 		}
 	}
+	return count
+}
 
-	return healthyCount
+func getFailedReplicaCount(rs map[string]*longhorn.Replica) int {
+	count := 0
+	for _, r := range rs {
+		if r.Spec.FailedAt != "" {
+			count++
+		}
+	}
+	return count
 }
 
 func (vc *VolumeController) hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
@@ -712,7 +720,7 @@ func (vc *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*l
 }
 
 func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
-	healthyCount := vc.getHealthyReplicaCount(rs)
+	healthyCount := getHealthyReplicaCount(rs)
 	cleanupLeftoverReplicas := !vc.isVolumeUpgrading(v) && !vc.isVolumeMigrating(v)
 	log := getLoggerForVolume(vc.logger, v)
 
@@ -760,7 +768,7 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 }
 
 func (vc *VolumeController) cleanupFailedToScheduledReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (err error) {
-	healthyCount := vc.getHealthyReplicaCount(rs)
+	healthyCount := getHealthyReplicaCount(rs)
 	hasEvictionRequestedReplicas := vc.hasReplicaEvictionRequested(rs)
 
 	if healthyCount >= v.Spec.NumberOfReplicas {
@@ -781,7 +789,7 @@ func (vc *VolumeController) cleanupFailedToScheduledReplicas(v *longhorn.Volume,
 }
 
 func (vc *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
-	healthyCount := vc.getHealthyReplicaCount(rs)
+	healthyCount := getHealthyReplicaCount(rs)
 	if healthyCount <= v.Spec.NumberOfReplicas {
 		return nil
 	}
@@ -1091,13 +1099,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		e.Spec.SalvageRequested = false
 	}
 
-	allFaulted := true
-	for _, r := range rs {
-		if r.Spec.FailedAt == "" {
-			allFaulted = false
-		}
-	}
-	if allFaulted {
+	isAutoSalvageNeeded := getHealthyReplicaCount(rs) == 0 && getFailedReplicaCount(rs) > 0
+	if isAutoSalvageNeeded {
 		v.Status.Robustness = types.VolumeRobustnessFaulted
 		v.Status.CurrentNodeID = ""
 
@@ -1105,7 +1108,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		if err != nil {
 			return err
 		}
-		// To make sure that we don't miss the `allFaulted` event, This IF statement makes sure the `e.Spec.SalvageRequested=true`
+		// To make sure that we don't miss the `isAutoSalvageNeeded` event, This IF statement makes sure the `e.Spec.SalvageRequested=true`
 		// persist in ETCD before Longhorn salvages the failed replicas in the IF statement below it.
 		// More explanation: when all replicas fails, Longhorn tries to set `e.Spec.SalvageRequested=true`
 		// and try to detach the volume by setting `v.Status.CurrentNodeID = ""`.
@@ -1206,7 +1209,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				}
 			}
 		}
-	} else { // !allFaulted
+	} else { // !isAutoSalvageNeeded
 		if v.Status.Robustness == types.VolumeRobustnessFaulted {
 			v.Status.Robustness = types.VolumeRobustnessUnknown
 			// The volume was faulty and there are usable replicas.
