@@ -1933,6 +1933,9 @@ func (vc *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume
 	} else {
 		adjustCount = unevenCount
 	}
+	if adjustCount < 0 {
+		adjustCount = 0
+	}
 	log.Debugf("Found %v node available for auto-balance duplicates in %v", adjustCount, nodeExtraRs)
 
 	return adjustCount, nodeExtraRs, err
@@ -1968,8 +1971,10 @@ func (vc *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map
 		var nCandidates []string
 		adjustCount, _, nCandidates := vc.getReplicaCountForAutoBalanceBestEffort(v, e, rs, vc.getReplicaCountForAutoBalanceNode)
 		if adjustCount == 0 {
-			_, _, zCandidates := vc.getReplicaCountForAutoBalanceBestEffort(v, e, rs, vc.getReplicaCountForAutoBalanceZone)
-			nCandidates = vc.getNodeCandidatesForAutoBalanceZone(v, e, rs, zCandidates)
+			adjustCount, _, zCandidates := vc.getReplicaCountForAutoBalanceBestEffort(v, e, rs, vc.getReplicaCountForAutoBalanceZone)
+			if adjustCount != 0 {
+				nCandidates = vc.getNodeCandidatesForAutoBalanceZone(v, e, rs, zCandidates)
+			}
 		}
 		// TODO: remove checking and let schedular handle this part after
 		// https://github.com/longhorn/longhorn/issues/2667
