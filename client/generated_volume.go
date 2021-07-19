@@ -69,6 +69,8 @@ type Volume struct {
 
 	Robustness string `json:"robustness,omitempty" yaml:"robustness,omitempty"`
 
+	Secure bool `json:"secure,omitempty" yaml:"secure,omitempty"`
+
 	ShareEndpoint string `json:"shareEndpoint,omitempty" yaml:"share_endpoint,omitempty"`
 
 	ShareState string `json:"shareState,omitempty" yaml:"share_state,omitempty"`
