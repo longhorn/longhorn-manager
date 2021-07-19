@@ -136,7 +136,8 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	ws := NewWebsocketController(logger,
 		volumeInformer, engineInformer, replicaInformer,
 		settingInformer, engineImageInformer, backingImageInformer, nodeInformer,
-		backupTargetInformer, backupVolumeInformer, backupInformer)
+		backupTargetInformer, backupVolumeInformer, backupInformer,
+		recurringJobInformer)
 	sc := NewSettingController(logger, ds, scheme,
 		settingInformer, nodeInformer, backupTargetInformer,
 		kubeClient, namespace, controllerID, version)

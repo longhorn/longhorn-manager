@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/robfig/cron"
@@ -276,8 +277,33 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		}
 	}
 
-	if err := m.validateRecurringJobs(spec.RecurringJobs); err != nil {
-		return nil, err
+	// create recurring job for storage class
+	for _, recurringJob := range spec.RecurringJobs {
+		if recurringJob.Concurrency == 0 {
+			recurringJob.Concurrency = types.DefaultRecurringJobConcurrency
+		}
+		recurringJobSpec := types.RecurringJobSpec{
+			Name:        recurringJob.Name,
+			Task:        recurringJob.Task,
+			Cron:        recurringJob.Cron,
+			Retain:      recurringJob.Retain,
+			Concurrency: recurringJob.Concurrency,
+			Labels:      recurringJob.Labels,
+		}
+		if err := m.validateRecurringJob(recurringJobSpec); err != nil {
+			continue
+		}
+
+		if obj, _ := m.GetRecurringJob(recurringJob.Name); obj != nil {
+			continue
+		}
+
+		m.ds.CreateRecurringJob(&longhorn.RecurringJob{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: recurringJob.Name,
+			},
+			Spec: recurringJobSpec,
+		})
 	}
 
 	if spec.DataSource != "" {
@@ -311,6 +337,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			RevisionCounterDisabled: spec.RevisionCounterDisabled,
 		},
 	}
+
 	v, err = m.ds.CreateVolume(v)
 	if err != nil {
 		return nil, err
@@ -800,30 +827,101 @@ func (m *VolumeManager) CancelExpansion(volumeName string) (v *longhorn.Volume, 
 	return v, nil
 }
 
-func (m *VolumeManager) UpdateRecurringJobs(volumeName string, jobs []types.RecurringJob) (v *longhorn.Volume, err error) {
+func (m *VolumeManager) AddVolumeRecurringJob(volumeName string, name string, isGroup bool) (volumeRecurringJob map[string]*types.VolumeRecurringJob, err error) {
 	defer func() {
-		err = errors.Wrapf(err, "unable to update volume recurring jobs for %v", volumeName)
+		err = errors.Wrapf(err, "failed to add volume recurring jobs for %v", volumeName)
 	}()
 
-	if err = m.validateRecurringJobs(jobs); err != nil {
+	v, err := m.ds.GetVolume(volumeName)
+	if err != nil {
 		return nil, err
 	}
+
+	key := ""
+	if isGroup {
+		key = types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, name)
+	} else {
+		key = types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJob, name)
+	}
+	if value, exist := v.Labels[key]; !exist || value != types.LonghornLabelValueEnabled {
+		v.Labels[key] = types.LonghornLabelValueEnabled
+		v, err = m.ds.UpdateVolume(v)
+		if err != nil {
+			return nil, err
+		}
+		logrus.Debugf("Updated volume %v recurring jobs to %+v", v.Name, volumeRecurringJob)
+	}
+	volumeRecurringJob, err = m.ListVolumeRecurringJob(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	return volumeRecurringJob, nil
+}
+
+func (m *VolumeManager) ListVolumeRecurringJob(volumeName string) (map[string]*types.VolumeRecurringJob, error) {
+	var err error
+	defer func() {
+		err = errors.Wrapf(err, "failed to list volume recurring jobs for %v", volumeName)
+	}()
+
+	v, err := m.ds.GetVolume(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	return marshalLabelToVolumeRecurringJob(v.Labels), nil
+}
+
+func marshalLabelToVolumeRecurringJob(labels map[string]string) map[string]*types.VolumeRecurringJob {
+	groupPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJobGroup) + "/"
+	jobPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJob) + "/"
+	jobMapVolumeJob := make(map[string]*types.VolumeRecurringJob)
+	for label := range labels {
+		if strings.HasPrefix(label, groupPrefix) {
+			jobName := strings.TrimPrefix(label, groupPrefix)
+			jobMapVolumeJob[jobName] = &types.VolumeRecurringJob{
+				Name:    jobName,
+				IsGroup: true,
+			}
+			continue
+		} else if strings.HasPrefix(label, jobPrefix) {
+			jobName := strings.TrimPrefix(label, jobPrefix)
+			jobMapVolumeJob[jobName] = &types.VolumeRecurringJob{
+				Name:    jobName,
+				IsGroup: false,
+			}
+		}
+	}
+	return jobMapVolumeJob
+}
+
+func (m *VolumeManager) DeleteVolumeRecurringJob(volumeName string, name string, isGroup bool) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete volume recurring jobs for %v", volumeName)
+	}()
 
 	v, err = m.ds.GetVolume(volumeName)
 	if err != nil {
 		return nil, err
 	}
 
-	v.Spec.RecurringJobs = jobs
-	v, err = m.ds.UpdateVolume(v)
-	if err != nil {
-		return nil, err
+	key := ""
+	if isGroup {
+		key = types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, name)
+	} else {
+		key = types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJob, name)
 	}
-	logrus.Debugf("Updated volume %v recurring jobs to %+v", v.Name, v.Spec.RecurringJobs)
+	if _, exist := v.Labels[key]; exist {
+		delete(v.Labels, key)
+		v, err = m.ds.UpdateVolume(v)
+		if err != nil {
+			return nil, err
+		}
+		logrus.Debugf("Updated volume %v labels to %+v", v.Name, v.Labels)
+	}
 	return v, nil
 }
 
-func (m *VolumeManager) checkDuplicateJobs(recurringJobs []types.RecurringJob) error {
+func (m *VolumeManager) checkDuplicateJobs(recurringJobs []types.RecurringJobSpec) error {
 	exist := map[string]bool{}
 	for _, job := range recurringJobs {
 		if _, ok := exist[job.Name]; ok {
@@ -834,26 +932,15 @@ func (m *VolumeManager) checkDuplicateJobs(recurringJobs []types.RecurringJob) e
 	return nil
 }
 
-func (m *VolumeManager) validateRecurringJobs(jobs []types.RecurringJob) error {
+func (m *VolumeManager) validateRecurringJobs(jobs []types.RecurringJobSpec) error {
 	if jobs == nil {
 		return nil
 	}
 
 	totalJobRetainCount := 0
 	for _, job := range jobs {
-		if job.Cron == "" || job.Task == "" || job.Name == "" || job.Retain == 0 {
-			return fmt.Errorf("invalid job %+v", job)
-		}
-		if _, err := cron.ParseStandard(job.Cron); err != nil {
-			return fmt.Errorf("invalid cron format(%v): %v", job.Cron, err)
-		}
-		if len(job.Name) > types.MaximumJobNameSize {
-			return fmt.Errorf("job name %v is too long, must be %v characters or less", job.Name, types.MaximumJobNameSize)
-		}
-		if job.Labels != nil {
-			if _, err := util.ValidateSnapshotLabels(job.Labels); err != nil {
-				return err
-			}
+		if err := m.validateRecurringJob(job); err != nil {
+			return err
 		}
 		totalJobRetainCount += job.Retain
 	}
@@ -863,6 +950,24 @@ func (m *VolumeManager) validateRecurringJobs(jobs []types.RecurringJob) error {
 	}
 	if totalJobRetainCount > MaxRecurringJobRetain {
 		return fmt.Errorf("Job Can't retain more than %d snapshots", MaxRecurringJobRetain)
+	}
+	return nil
+}
+
+func (m *VolumeManager) validateRecurringJob(job types.RecurringJobSpec) error {
+	if job.Cron == "" || job.Task == "" || job.Name == "" || job.Retain == 0 || job.Concurrency == 0 {
+		return fmt.Errorf("invalid job %+v", job)
+	}
+	if _, err := cron.ParseStandard(job.Cron); err != nil {
+		return fmt.Errorf("invalid cron format(%v): %v", job.Cron, err)
+	}
+	if len(job.Name) > datastore.NameMaximumLength {
+		return fmt.Errorf("job name %v must be %v characters or less", job.Name, datastore.NameMaximumLength)
+	}
+	if job.Labels != nil {
+		if _, err := util.ValidateSnapshotLabels(job.Labels); err != nil {
+			return err
+		}
 	}
 	return nil
 }

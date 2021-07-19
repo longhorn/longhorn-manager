@@ -7,7 +7,11 @@ const (
 type RecurringJob struct {
 	Resource `yaml:"-"`
 
+	Concurrency int64 `json:"concurrency,omitempty" yaml:"concurrency,omitempty"`
+
 	Cron string `json:"cron,omitempty" yaml:"cron,omitempty"`
+
+	Groups []string `json:"groups,omitempty" yaml:"groups,omitempty"`
 
 	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 

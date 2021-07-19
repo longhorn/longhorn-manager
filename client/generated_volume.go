@@ -61,6 +61,8 @@ type Volume struct {
 
 	RebuildStatus []RebuildStatus `json:"rebuildStatus,omitempty" yaml:"rebuild_status,omitempty"`
 
+	RecurringJobSelector []VolumeRecurringJob `json:"recurringJobSelector,omitempty" yaml:"recurring_job_selector,omitempty"`
+
 	RecurringJobs []RecurringJob `json:"recurringJobs,omitempty" yaml:"recurring_jobs,omitempty"`
 
 	ReplicaAutoBalance string `json:"replicaAutoBalance,omitempty" yaml:"replica_auto_balance,omitempty"`
@@ -118,6 +120,12 @@ type VolumeOperations interface {
 	ActionPvCreate(*Volume, *PVCreateInput) (*Volume, error)
 
 	ActionPvcCreate(*Volume, *PVCCreateInput) (*Volume, error)
+
+	ActionRecurringJobAdd(*Volume, *VolumeRecurringJobInput) (*VolumeRecurringJob, error)
+
+	ActionRecurringJobDelete(*Volume, *VolumeRecurringJobInput) (*VolumeRecurringJob, error)
+
+	ActionRecurringJobList(*Volume) (*VolumeRecurringJob, error)
 
 	ActionReplicaRemove(*Volume, *ReplicaRemoveInput) (*Volume, error)
 
@@ -249,6 +257,33 @@ func (c *VolumeClient) ActionPvcCreate(resource *Volume, input *PVCCreateInput) 
 	resp := &Volume{}
 
 	err := c.rancherClient.doAction(VOLUME_TYPE, "pvcCreate", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionRecurringJobAdd(resource *Volume, input *VolumeRecurringJobInput) (*VolumeRecurringJob, error) {
+
+	resp := &VolumeRecurringJob{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "recurringJobAdd", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionRecurringJobDelete(resource *Volume, input *VolumeRecurringJobInput) (*VolumeRecurringJob, error) {
+
+	resp := &VolumeRecurringJob{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "recurringJobDelete", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionRecurringJobList(resource *Volume) (*VolumeRecurringJob, error) {
+
+	resp := &VolumeRecurringJob{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "recurringJobList", &resource.Resource, nil, resp)
 
 	return resp, err
 }

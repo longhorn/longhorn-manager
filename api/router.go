@@ -68,7 +68,6 @@ func NewRouter(s *Server) *mux.Router {
 		"attach":             s.VolumeAttach,
 		"detach":             s.VolumeDetach,
 		"salvage":            s.VolumeSalvage,
-		"recurringUpdate":    s.VolumeRecurringUpdate,
 		"updateDataLocality": s.VolumeUpdateDataLocality,
 		"updateAccessMode":   s.VolumeUpdateAccessMode,
 		"activate":           s.VolumeActivate,
@@ -91,6 +90,10 @@ func NewRouter(s *Server) *mux.Router {
 
 		"pvCreate":  s.PVCreate,
 		"pvcCreate": s.PVCCreate,
+
+		"recurringJobAdd":    s.VolumeRecurringAdd,
+		"recurringJobList":   s.VolumeRecurringList,
+		"recurringJobDelete": s.VolumeRecurringDelete,
 	}
 	for name, action := range volumeActions {
 		r.Methods("POST").Path("/v1/volumes/{name}").Queries("action", name).Handler(f(schemas, action))
@@ -146,6 +149,12 @@ func NewRouter(s *Server) *mux.Router {
 		r.Methods("POST").Path("/v1/backingimages/{name}").Queries("action", name).Handler(f(schemas, action))
 	}
 
+	r.Methods("GET").Path("/v1/recurringjobs").Handler(f(schemas, s.RecurringJobList))
+	r.Methods("GET").Path("/v1/recurringjobs/{name}").Handler(f(schemas, s.RecurringJobGet))
+	r.Methods("DELETE").Path("/v1/recurringjobs/{name}").Handler(f(schemas, s.RecurringJobDelete))
+	r.Methods("POST").Path("/v1/recurringjobs").Handler(f(schemas, s.RecurringJobCreate))
+	r.Methods("PUT").Path("/v1/recurringjobs/{name}").Handler(f(schemas, s.RecurringJobUpdate))
+
 	r.Methods("POST").Path("/v1/supportbundles").Handler(f(schemas, s.InitiateSupportBundle))
 	r.Methods("GET").Path("/v1/supportbundles/{name}/{bundleName}").Handler(f(schemas,
 		s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(OwnerIDFromNode(s.m)), s.QuerySupportBundle)))
@@ -159,6 +168,10 @@ func NewRouter(s *Server) *mux.Router {
 	volumeListStream := NewStreamHandlerFunc("volumes", s.wsc.NewWatcher("volume", "engine", "replica"), s.volumeList)
 	r.Path("/v1/ws/volumes").Handler(f(schemas, volumeListStream))
 	r.Path("/v1/ws/{period}/volumes").Handler(f(schemas, volumeListStream))
+
+	recurringJobListStream := NewStreamHandlerFunc("recurringjobs", s.wsc.NewWatcher("recurringJob"), s.recurringJobList)
+	r.Path("/v1/ws/recurringjobs").Handler(f(schemas, recurringJobListStream))
+	r.Path("/v1/ws/{period}/recurringjobs").Handler(f(schemas, recurringJobListStream))
 
 	nodeListStream := NewStreamHandlerFunc("nodes", s.wsc.NewWatcher("node"), s.nodeList)
 	r.Path("/v1/ws/nodes").Handler(f(schemas, nodeListStream))

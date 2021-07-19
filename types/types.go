@@ -99,6 +99,8 @@ const (
 	DefaultStorageClassConfigMapName = "longhorn-storageclass"
 	DefaultStorageClassName          = "longhorn"
 	ControlPlaneName                 = "longhorn-manager"
+
+	DefaultRecurringJobConcurrency = 10
 )
 
 const (
@@ -162,14 +164,6 @@ const (
 	engineSuffix    = "-e"
 	replicaSuffix   = "-r"
 	recurringSuffix = "-c"
-
-	// MaximumJobNameSize is calculated using
-	// 1. NameMaximumLength is 40
-	// 2. Recurring suffix is 2
-	// 3. Maximum kubernetes name length is 63
-	// 4. cronjob pod suffix is 11
-	// 5. Dash and buffer for 2
-	MaximumJobNameSize = 8
 
 	engineImagePrefix          = "ei-"
 	instanceManagerImagePrefix = "imi-"
