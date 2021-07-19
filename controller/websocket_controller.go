@@ -42,6 +42,7 @@ type WebsocketController struct {
 	backupTargetSynced cache.InformerSynced
 	backupVolumeSynced cache.InformerSynced
 	backupSynced       cache.InformerSynced
+	recurringJobSynced cache.InformerSynced
 
 	watchers    []*Watcher
 	watcherLock sync.Mutex
@@ -59,6 +60,7 @@ func NewWebsocketController(
 	backupTargetInformer lhinformers.BackupTargetInformer,
 	backupVolumeInformer lhinformers.BackupVolumeInformer,
 	backupInformer lhinformers.BackupInformer,
+	recurringJobInformer lhinformers.RecurringJobInformer,
 ) *WebsocketController {
 
 	wc := &WebsocketController{
@@ -73,6 +75,7 @@ func NewWebsocketController(
 		backupTargetSynced: backupTargetInformer.Informer().HasSynced,
 		backupVolumeSynced: backupVolumeInformer.Informer().HasSynced,
 		backupSynced:       backupInformer.Informer().HasSynced,
+		recurringJobSynced: recurringJobInformer.Informer().HasSynced,
 	}
 
 	volumeInformer.Informer().AddEventHandler(wc.notifyWatchersHandler("volume"))
@@ -85,6 +88,7 @@ func NewWebsocketController(
 	backupTargetInformer.Informer().AddEventHandler(wc.notifyWatchersHandler("backupTarget"))
 	backupVolumeInformer.Informer().AddEventHandler(wc.notifyWatchersHandler("backupVolume"))
 	backupInformer.Informer().AddEventHandler(wc.notifyWatchersHandler("backup"))
+	recurringJobInformer.Informer().AddEventHandler(wc.notifyWatchersHandler("recurringJob"))
 
 	return wc
 }

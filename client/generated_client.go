@@ -15,7 +15,6 @@ type RancherClient struct {
 	RestoreStatus                 RestoreStatusOperations
 	PurgeStatus                   PurgeStatusOperations
 	RebuildStatus                 RebuildStatusOperations
-	RecurringJob                  RecurringJobOperations
 	ReplicaRemoveInput            ReplicaRemoveInputOperations
 	SalvageInput                  SalvageInputOperations
 	ActivateInput                 ActivateInputOperations
@@ -30,6 +29,8 @@ type RancherClient struct {
 	UpdateAccessModeInput         UpdateAccessModeInputOperations
 	WorkloadStatus                WorkloadStatusOperations
 	CloneStatus                   CloneStatusOperations
+	VolumeRecurringJob            VolumeRecurringJobOperations
+	VolumeRecurringJobInput       VolumeRecurringJobInputOperations
 	PVCreateInput                 PVCreateInputOperations
 	PVCCreateInput                PVCCreateInputOperations
 	SettingDefinition             SettingDefinitionOperations
@@ -46,7 +47,7 @@ type RancherClient struct {
 	Snapshot                      SnapshotOperations
 	BackupVolume                  BackupVolumeOperations
 	Setting                       SettingOperations
-	RecurringInput                RecurringInputOperations
+	RecurringJob                  RecurringJobOperations
 	EngineImage                   EngineImageOperations
 	BackingImage                  BackingImageOperations
 	Node                          NodeOperations
@@ -74,7 +75,6 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.RestoreStatus = newRestoreStatusClient(client)
 	client.PurgeStatus = newPurgeStatusClient(client)
 	client.RebuildStatus = newRebuildStatusClient(client)
-	client.RecurringJob = newRecurringJobClient(client)
 	client.ReplicaRemoveInput = newReplicaRemoveInputClient(client)
 	client.SalvageInput = newSalvageInputClient(client)
 	client.ActivateInput = newActivateInputClient(client)
@@ -89,6 +89,8 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.UpdateAccessModeInput = newUpdateAccessModeInputClient(client)
 	client.WorkloadStatus = newWorkloadStatusClient(client)
 	client.CloneStatus = newCloneStatusClient(client)
+	client.VolumeRecurringJob = newVolumeRecurringJobClient(client)
+	client.VolumeRecurringJobInput = newVolumeRecurringJobInputClient(client)
 	client.PVCreateInput = newPVCreateInputClient(client)
 	client.PVCCreateInput = newPVCCreateInputClient(client)
 	client.SettingDefinition = newSettingDefinitionClient(client)
@@ -105,7 +107,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.Snapshot = newSnapshotClient(client)
 	client.BackupVolume = newBackupVolumeClient(client)
 	client.Setting = newSettingClient(client)
-	client.RecurringInput = newRecurringInputClient(client)
+	client.RecurringJob = newRecurringJobClient(client)
 	client.EngineImage = newEngineImageClient(client)
 	client.BackingImage = newBackingImageClient(client)
 	client.Node = newNodeClient(client)

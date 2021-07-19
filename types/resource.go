@@ -104,7 +104,6 @@ type VolumeSpec struct {
 	NodeID                  string           `json:"nodeID"`
 	MigrationNodeID         string           `json:"migrationNodeID"`
 	EngineImage             string           `json:"engineImage"`
-	RecurringJobs           []RecurringJob   `json:"recurringJobs"`
 	BackingImage            string           `json:"backingImage"`
 	Standby                 bool             `json:"Standby"`
 	DiskSelector            []string         `json:"diskSelector"`
@@ -122,6 +121,9 @@ type VolumeSpec struct {
 
 	// Deprecated. Rename to BackingImage
 	BaseImage string `json:"baseImage"`
+
+	// Deprecated. Replaced by a separate resource named "RecurringJob"
+	RecurringJobs []RecurringJob `json:"recurringJobs,omitempty"`
 }
 
 type KubernetesStatus struct {
@@ -186,6 +188,11 @@ type RecurringJob struct {
 	Retain      int               `json:"retain"`
 	Concurrency int               `json:"concurrency"`
 	Labels      map[string]string `json:"labels,omitempty"`
+}
+
+type VolumeRecurringJob struct {
+	Name    string `json:"name"`
+	IsGroup bool   `json:"isGroup"`
 }
 
 type VolumeCloneStatus struct {

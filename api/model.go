@@ -176,10 +176,6 @@ type BackupInput struct {
 	Name string `json:"name"`
 }
 
-type RecurringInput struct {
-	Jobs []types.RecurringJob `json:"jobs"`
-}
-
 type ReplicaRemoveInput struct {
 	Name string `json:"name"`
 }
@@ -331,6 +327,20 @@ type InstanceManager struct {
 	Instances    map[string]types.InstanceProcess `json:"instances"`
 }
 
+type RecurringJob struct {
+	client.Resource
+	types.RecurringJobSpec
+}
+
+type VolumeRecurringJob struct {
+	client.Resource
+	types.VolumeRecurringJob
+}
+
+type VolumeRecurringJobInput struct {
+	types.VolumeRecurringJob
+}
+
 type BackupListOutput struct {
 	Data []Backup `json:"data"`
 	Type string   `json:"type"`
@@ -357,7 +367,6 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("restoreStatus", RestoreStatus{})
 	schemas.AddType("purgeStatus", PurgeStatus{})
 	schemas.AddType("rebuildStatus", RebuildStatus{})
-	schemas.AddType("recurringJob", types.RecurringJob{})
 	schemas.AddType("replicaRemoveInput", ReplicaRemoveInput{})
 	schemas.AddType("salvageInput", SalvageInput{})
 	schemas.AddType("activateInput", ActivateInput{})
@@ -372,6 +381,9 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateAccessModeInput", UpdateAccessModeInput{})
 	schemas.AddType("workloadStatus", types.WorkloadStatus{})
 	schemas.AddType("cloneStatus", types.VolumeCloneStatus{})
+
+	schemas.AddType("volumeRecurringJob", VolumeRecurringJob{})
+	schemas.AddType("volumeRecurringJobInput", VolumeRecurringJobInput{})
 
 	schemas.AddType("PVCreateInput", PVCreateInput{})
 	schemas.AddType("PVCCreateInput", PVCCreateInput{})
@@ -398,7 +410,7 @@ func NewSchema() *client.Schemas {
 	snapshotSchema(schemas.AddType("snapshot", Snapshot{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
-	recurringSchema(schemas.AddType("recurringInput", RecurringInput{}))
+	recurringJobSchema(schemas.AddType("recurringJob", RecurringJob{}))
 	engineImageSchema(schemas.AddType("engineImage", EngineImage{}))
 	backingImageSchema(schemas.AddType("backingImage", BackingImage{}))
 	nodeSchema(schemas.AddType("node", Node{}))
@@ -520,10 +532,43 @@ func backingImageSchema(backingImage *client.Schema) {
 	backingImage.ResourceFields["diskFileStatusMap"] = diskFileStatusMap
 }
 
-func recurringSchema(recurring *client.Schema) {
-	jobs := recurring.ResourceFields["jobs"]
-	jobs.Type = "array[recurringJob]"
-	recurring.ResourceFields["jobs"] = jobs
+func recurringJobSchema(job *client.Schema) {
+	job.CollectionMethods = []string{"GET", "POST"}
+	job.ResourceMethods = []string{"GET", "PUT", "DELETE"}
+
+	name := job.ResourceFields["name"]
+	name.Required = true
+	name.Unique = true
+	name.Create = true
+	job.ResourceFields["name"] = name
+
+	groups := job.ResourceFields["groups"]
+	groups.Type = "array[string]"
+	groups.Nullable = true
+	job.ResourceFields["groups"] = groups
+
+	cron := job.ResourceFields["cron"]
+	cron.Required = true
+	cron.Unique = false
+	cron.Create = true
+	job.ResourceFields["cron"] = cron
+
+	retain := job.ResourceFields["retain"]
+	retain.Required = true
+	retain.Unique = false
+	retain.Create = true
+	job.ResourceFields["retain"] = retain
+
+	concurrency := job.ResourceFields["concurrency"]
+	concurrency.Required = true
+	concurrency.Unique = false
+	concurrency.Create = true
+	job.ResourceFields["concurrency"] = concurrency
+
+	labels := job.ResourceFields["labels"]
+	labels.Type = "map[string]"
+	labels.Nullable = true
+	job.ResourceFields["labels"] = labels
 }
 
 func kubernetesStatusSchema(status *client.Schema) {
@@ -625,8 +670,18 @@ func volumeSchema(volume *client.Schema) {
 			Output: "volume",
 		},
 
-		"recurringUpdate": {
-			Input: "recurringInput",
+		"recurringJobAdd": {
+			Input:  "volumeRecurringJobInput",
+			Output: "volumeRecurringJob",
+		},
+
+		"recurringJobList": {
+			Output: "volumeRecurringJob",
+		},
+
+		"recurringJobDelete": {
+			Input:  "volumeRecurringJobInput",
+			Output: "volumeRecurringJob",
 		},
 
 		"updateReplicaCount": {
@@ -980,7 +1035,6 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		NumberOfReplicas:    v.Spec.NumberOfReplicas,
 		ReplicaAutoBalance:  v.Spec.ReplicaAutoBalance,
 		DataLocality:        v.Spec.DataLocality,
-		RecurringJobs:       v.Spec.RecurringJobs,
 		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
 		Created:             v.CreationTimestamp.String(),
 		EngineImage:         v.Spec.EngineImage,
@@ -1030,7 +1084,6 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	} else {
 		switch v.Status.State {
 		case types.VolumeStateDetached:
-			actions["recurringUpdate"] = struct{}{}
 			actions["activate"] = struct{}{}
 			actions["expand"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
@@ -1041,8 +1094,14 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateDataLocality"] = struct{}{}
 			actions["updateAccessMode"] = struct{}{}
 			actions["updateReplicaAutoBalance"] = struct{}{}
+			actions["recurringJobAdd"] = struct{}{}
+			actions["recurringJobDelete"] = struct{}{}
+			actions["recurringJobList"] = struct{}{}
 		case types.VolumeStateAttaching:
 			actions["cancelExpansion"] = struct{}{}
+			actions["recurringJobAdd"] = struct{}{}
+			actions["recurringJobDelete"] = struct{}{}
+			actions["recurringJobList"] = struct{}{}
 		case types.VolumeStateAttached:
 			actions["activate"] = struct{}{}
 			actions["snapshotPurge"] = struct{}{}
@@ -1052,7 +1111,6 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["snapshotDelete"] = struct{}{}
 			actions["snapshotRevert"] = struct{}{}
 			actions["snapshotBackup"] = struct{}{}
-			actions["recurringUpdate"] = struct{}{}
 			actions["replicaRemove"] = struct{}{}
 			actions["engineUpgrade"] = struct{}{}
 			actions["updateReplicaCount"] = struct{}{}
@@ -1061,6 +1119,9 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
+			actions["recurringJobAdd"] = struct{}{}
+			actions["recurringJobDelete"] = struct{}{}
+			actions["recurringJobList"] = struct{}{}
 		}
 	}
 
@@ -1091,6 +1152,28 @@ func toSnapshotCollection(ss map[string]*types.Snapshot) *client.GenericCollecti
 		data = append(data, toSnapshotResource(v))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshot"}}
+}
+
+func toVolumeRecurringJobResource(obj *types.VolumeRecurringJob) *VolumeRecurringJob {
+	if obj == nil {
+		logrus.Warn("weird: nil volumeRecurringJob")
+		return nil
+	}
+	return &VolumeRecurringJob{
+		Resource: client.Resource{
+			Id:   obj.Name,
+			Type: "volumeRecurringJob",
+		},
+		VolumeRecurringJob: *obj,
+	}
+}
+
+func toVolumeRecurringJobCollection(recurringJobs map[string]*types.VolumeRecurringJob) *client.GenericCollection {
+	data := []interface{}{}
+	for _, recurringJob := range recurringJobs {
+		data = append(data, toVolumeRecurringJobResource(recurringJob))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "volumeRecurringJob"}}
 }
 
 func toBackupTargetResource(bt *longhorn.BackupTarget) *BackupTarget {
@@ -1416,4 +1499,30 @@ func toInstanceManagerCollection(instanceManagers map[string]*longhorn.InstanceM
 		data = append(data, toInstanceManagerResource(im))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "instanceManager"}}
+}
+
+func toRecurringJobResource(recurringJob *longhorn.RecurringJob, apiContext *api.ApiContext) *RecurringJob {
+	return &RecurringJob{
+		Resource: client.Resource{
+			Id:   recurringJob.Name,
+			Type: "recurringJob",
+		},
+		RecurringJobSpec: types.RecurringJobSpec{
+			Name:        recurringJob.Name,
+			Groups:      recurringJob.Spec.Groups,
+			Task:        recurringJob.Spec.Task,
+			Cron:        recurringJob.Spec.Cron,
+			Retain:      recurringJob.Spec.Retain,
+			Concurrency: recurringJob.Spec.Concurrency,
+			Labels:      recurringJob.Spec.Labels,
+		},
+	}
+}
+
+func toRecurringJobCollection(jobs []*longhorn.RecurringJob, apiContext *api.ApiContext) *client.GenericCollection {
+	data := []interface{}{}
+	for _, job := range jobs {
+		data = append(data, toRecurringJobResource(job, apiContext))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "recurringJob"}}
 }

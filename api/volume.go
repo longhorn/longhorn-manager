@@ -162,11 +162,11 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		DataLocality:            volume.DataLocality,
 		StaleReplicaTimeout:     volume.StaleReplicaTimeout,
 		BackingImage:            volume.BackingImage,
-		RecurringJobs:           volume.RecurringJobs,
 		Standby:                 volume.Standby,
 		RevisionCounterDisabled: volume.RevisionCounterDisabled,
 		DiskSelector:            volume.DiskSelector,
 		NodeSelector:            volume.NodeSelector,
+		RecurringJobs:           volume.RecurringJobs,
 	})
 	if err != nil {
 		return errors.Wrap(err, "unable to create volume")
@@ -256,27 +256,65 @@ func (s *Server) VolumeSalvage(rw http.ResponseWriter, req *http.Request) error 
 	return s.responseWithVolume(rw, req, "", v)
 }
 
-func (s *Server) VolumeRecurringUpdate(rw http.ResponseWriter, req *http.Request) error {
-	var input RecurringInput
-	id := mux.Vars(req)["name"]
+func (s *Server) VolumeRecurringAdd(rw http.ResponseWriter, req *http.Request) error {
+	var input VolumeRecurringJobInput
+	volName := mux.Vars(req)["name"]
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error reading recurringInput")
+		return errors.Wrapf(err, "error reading volumeRecurringJobInput")
 	}
 
-	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.UpdateRecurringJobs(id, input.Jobs)
+	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.AddVolumeRecurringJob(volName, input.Name, input.IsGroup)
 	})
 	if err != nil {
 		return err
 	}
-	v, ok := obj.(*longhorn.Volume)
-	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	jobList, err := s.m.ListVolumeRecurringJob(volName)
+	if err != nil {
+		return err
+	}
+	api.GetApiContext(req).Write(toVolumeRecurringJobCollection(jobList))
+	return nil
+}
+
+func (s *Server) VolumeRecurringList(w http.ResponseWriter, req *http.Request) (err error) {
+	defer func() {
+		err = errors.Wrap(err, "fail to list volume recurring jobs")
+	}()
+
+	volName := mux.Vars(req)["name"]
+
+	jobList, err := s.m.ListVolumeRecurringJob(volName)
+	if err != nil {
+		return err
+	}
+	api.GetApiContext(req).Write(toVolumeRecurringJobCollection(jobList))
+	return nil
+}
+
+func (s *Server) VolumeRecurringDelete(rw http.ResponseWriter, req *http.Request) error {
+	var input VolumeRecurringJobInput
+	volName := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrapf(err, "error reading volumeRecurringJobInput")
 	}
 
-	return s.responseWithVolume(rw, req, "", v)
+	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.DeleteVolumeRecurringJob(volName, input.Name, input.IsGroup)
+	})
+	if err != nil {
+		return err
+	}
+	jobList, err := s.m.ListVolumeRecurringJob(volName)
+	if err != nil {
+		return err
+	}
+	api.GetApiContext(req).Write(toVolumeRecurringJobCollection(jobList))
+	return nil
 }
 
 func (s *Server) VolumeUpdateReplicaCount(rw http.ResponseWriter, req *http.Request) error {
