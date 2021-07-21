@@ -20,8 +20,16 @@ import (
 	"k8s.io/kubernetes/pkg/util/mount"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
+	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/csi/nfs"
 	"github.com/longhorn/longhorn-manager/types"
+)
+
+const (
+	// CryptoKeyProvider specifies how the CryptoKeyValue is retrieved
+	// We currently only support passphrase retrieval via direct secret values
+	CryptoKeyProvider = "CRYPTO_KEY_PROVIDER"
+	CryptoKeyValue    = "CRYPTO_KEY_VALUE"
 )
 
 type NodeServer struct {
@@ -322,6 +330,47 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Errorf(codes.Internal, "volume %v cannot get format mounter that support filesystem %v creation", volumeID, fsType)
 	}
 
+	diskFormat, err := formatMounter.GetDiskFormat(devicePath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to evaluate device filesystem format")
+	}
+
+	logrus.Debugf("volume %v device %v contains filesystem of format %v", volumeID, devicePath, diskFormat)
+
+	if volume.Secure {
+		secrets := req.GetSecrets()
+		keyProvider := secrets[CryptoKeyProvider]
+		passphrase := secrets[CryptoKeyValue]
+		if keyProvider != "" && keyProvider != "secret" {
+			return nil, status.Errorf(codes.InvalidArgument, "unsupported key provider %v for secure volume %v", keyProvider, volumeID)
+		}
+
+		if len(passphrase) == 0 {
+			return nil, status.Errorf(codes.InvalidArgument, "missing passphrase for secure volume %v", volumeID)
+		}
+
+		if diskFormat != "" && diskFormat != "crypto_LUKS" {
+			return nil, status.Errorf(codes.InvalidArgument, "unsupported disk encryption format %v", diskFormat)
+		}
+
+		// initial setup of longhorn device for crypto
+		if diskFormat == "" {
+			if err := crypto.EncryptVolume(devicePath, passphrase); err != nil {
+				return nil, status.Error(codes.Internal, err.Error())
+			}
+		}
+
+		cryptoDevice := crypto.VolumeMapper(volumeID)
+		logrus.Debugf("volume %s requires crypto device %s", volumeID, cryptoDevice)
+
+		if err := crypto.OpenVolume(volumeID, devicePath, passphrase); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+
+		// update the device path to point to the new crypto device
+		devicePath = cryptoDevice
+	}
+
 	if err := ns.nodeStageMountVolume(volumeID, devicePath, targetPath, fsType, options, formatMounter); err != nil {
 		return nil, err
 	}
@@ -345,6 +394,18 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	// CO owns the staging_path so we only unmount but not remove the path
 	if err := unmount(targetPath, mount.New("")); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to unmount volume %s mount point %v error %v", volumeID, targetPath, err))
+	}
+
+	// close any matching crypto device for this volume
+	cryptoDevice := crypto.VolumeMapper(volumeID)
+	if isOpen, err := crypto.IsDeviceOpen(cryptoDevice); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	} else if isOpen {
+		logrus.Debugf("NodeUnstagehVolume: volume %s has active crypto device %s", volumeID, cryptoDevice)
+		if err := crypto.CloseVolume(volumeID); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		logrus.Infof("NodeUnstageVolume: volume %s closed active crypto device %s", volumeID, cryptoDevice)
 	}
 
 	logrus.Infof("NodeUnstageVolume: volume %s unmounted from node path %s", volumeID, targetPath)
