@@ -7,6 +7,8 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -16,19 +18,20 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 
-	"github.com/longhorn/longhorn-manager/engineapi"
-	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util"
-
 	longhornclient "github.com/longhorn/longhorn-manager/client"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
+	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 const (
 	FlagSnapshotName = "snapshot-name"
+	FlagGroups       = "groups"
 	FlagLabels       = "labels"
 	FlagRetain       = "retain"
+	FlagConcurrent   = "concurrent"
 	FlagBackup       = "backup"
 
 	HTTPClientTimout = 1 * time.Minute
@@ -44,81 +47,6 @@ const (
 	jobTypeBackup   = string("backup")
 )
 
-func SnapshotCmd() cli.Command {
-	return cli.Command{
-		Name: "snapshot",
-		Flags: []cli.Flag{
-			cli.StringFlag{
-				Name:  FlagManagerURL,
-				Usage: "Longhorn manager API URL",
-			},
-			cli.StringFlag{
-				Name:  FlagSnapshotName,
-				Usage: "the base of snapshot name",
-			},
-			cli.StringSliceFlag{
-				Name:  FlagLabels,
-				Usage: "specify labels, in the format of `--label key1=value1 --label key2=value2`",
-			},
-			cli.IntFlag{
-				Name:  FlagRetain,
-				Usage: "retain number of snapshots with the same label",
-			},
-			cli.BoolFlag{
-				Name:  FlagBackup,
-				Usage: "run the job with backup creation and cleanup",
-			},
-		},
-		Action: func(c *cli.Context) {
-			if err := snapshot(c); err != nil {
-				logrus.Fatalf("Error taking snapshot: %v", err)
-			}
-		},
-	}
-}
-
-func snapshot(c *cli.Context) error {
-	var err error
-
-	managerURL := c.String(FlagManagerURL)
-	if managerURL == "" {
-		return fmt.Errorf("require %v", FlagManagerURL)
-	}
-
-	if c.NArg() == 0 {
-		return errors.New("volume name is required")
-	}
-	volume := c.Args()[0]
-	retain := c.Int(FlagRetain)
-
-	baseName := c.String(FlagSnapshotName)
-	if baseName == "" {
-		return fmt.Errorf("Missing required parameter --" + FlagSnapshotName)
-	}
-	// it's designed to call with same parameter for multiple times
-	snapshotName := baseName + "-" + util.RandomID()
-
-	labelMap := map[string]string{}
-	labels := c.StringSlice(FlagLabels)
-	if labels != nil {
-		labelMap, err = util.ParseLabels(labels)
-		if err != nil {
-			return errors.Wrap(err, "cannot parse labels")
-		}
-	}
-
-	backup := c.Bool(FlagBackup)
-
-	logger := logrus.StandardLogger()
-
-	job, err := NewJob(logger, managerURL, volume, snapshotName, labelMap, retain, backup)
-	if err != nil {
-		return err
-	}
-
-	return job.run()
-}
-
 type Job struct {
 	logger       logrus.FieldLogger
 	lhClient     lhclientset.Interface
@@ -130,6 +58,142 @@ type Job struct {
 	labels       map[string]string
 
 	api *longhornclient.RancherClient
+}
+
+func RecurringJobCmd() cli.Command {
+	return cli.Command{
+		Name: "recurring-job",
+		Flags: []cli.Flag{
+			cli.StringFlag{
+				Name:  FlagManagerURL,
+				Usage: "Longhorn manager API URL",
+			},
+		},
+		Action: func(c *cli.Context) {
+			if err := recurringJob(c); err != nil {
+				logrus.Fatalf("Error taking snapshot: %v", err)
+			}
+		},
+	}
+}
+
+func recurringJob(c *cli.Context) error {
+	logger := logrus.StandardLogger()
+	var err error
+
+	var managerURL string = c.String(FlagManagerURL)
+	if managerURL == "" {
+		return fmt.Errorf("require %v", FlagManagerURL)
+	}
+
+	if c.NArg() != 1 {
+		return errors.New("job name is required")
+	}
+	jobName := c.Args()[0]
+
+	namespace := os.Getenv(types.EnvPodNamespace)
+	if namespace == "" {
+		return fmt.Errorf("cannot detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
+	}
+	lhClient, err := getLonghornClientset()
+	if err != nil {
+		return errors.Wrap(err, "unable to get clientset")
+	}
+	recurringJob, err := lhClient.LonghornV1beta1().RecurringJobs(namespace).Get(jobName, metav1.GetOptions{})
+	if err != nil {
+		logrus.WithError(err).Errorf("Failed to get recurring job %v.", jobName)
+		return nil
+	}
+
+	var jobGroups []string = recurringJob.Spec.Groups
+	var jobTask string = string(recurringJob.Spec.Task)
+	var jobRetain int = recurringJob.Spec.Retain
+	var jobConcurrent int = recurringJob.Spec.Concurrency
+
+	jobLabelMap := map[string]string{}
+	if recurringJob.Spec.Labels != nil {
+		jobLabelMap = recurringJob.Spec.Labels
+	}
+	jobLabelMap[types.RecurringJobLabel] = recurringJob.Name
+	labelJSON, err := json.Marshal(jobLabelMap)
+	if err != nil {
+		return errors.Wrap(err, "Failed to get JSON encoding for labels")
+	}
+
+	var doBackup bool = false
+	if jobTask == string(types.RecurringJobTypeBackup) {
+		doBackup = true
+	}
+
+	allowDetachedSetting := types.SettingNameAllowRecurringJobWhileVolumeDetached
+	allowDetached, err := getSettingAsBoolean(allowDetachedSetting, namespace, lhClient)
+	if err != nil {
+		return errors.Wrapf(err, "unable to get %v setting", allowDetachedSetting)
+	}
+	logger.Debugf("Setting %v is %v", allowDetachedSetting, allowDetached)
+
+	volumes, err := getVolumesBySelector(types.LonghornLabelRecurringJob, jobName, namespace, lhClient)
+	if err != nil {
+		return err
+	}
+	filteredVolumes := []string{}
+	filterVolumesForJob(allowDetached, volumes, &filteredVolumes)
+	for _, jobGroup := range jobGroups {
+		volumes, err := getVolumesBySelector(types.LonghornLabelRecurringJobGroup, jobGroup, namespace, lhClient)
+		if err != nil {
+			return err
+		}
+		filterVolumesForJob(allowDetached, volumes, &filteredVolumes)
+	}
+	logger.Infof("Found %v volumes with recurring job %v", len(filteredVolumes), jobName)
+
+	var wg sync.WaitGroup
+	concurrentLimiter := make(chan struct{}, jobConcurrent)
+	defer wg.Wait()
+	for _, volumeName := range filteredVolumes {
+		wg.Add(1)
+		go func(volumeName string) {
+			concurrentLimiter <- struct{}{}
+			defer func() {
+				<-concurrentLimiter
+				wg.Done()
+			}()
+
+			log := logger.WithFields(logrus.Fields{
+				"job":        jobName,
+				"volume":     volumeName,
+				"task":       jobTask,
+				"retain":     jobRetain,
+				"concurrent": jobConcurrent,
+				"groups":     strings.Join(jobGroups, ","),
+				"labels":     string(labelJSON),
+			})
+			log.Info("Creating job")
+
+			snapshotName := types.GetCronJobNameForRecurringJob(jobName) + "-" + util.RandomID()
+			job, err := NewJob(
+				logger,
+				managerURL,
+				volumeName,
+				snapshotName,
+				jobLabelMap,
+				jobRetain,
+				doBackup)
+			if err != nil {
+				log.WithError(err).Error("failed to create new job for volume")
+				return
+			}
+			err = job.run()
+			if err != nil {
+				log.WithError(err).Errorf("failed to run job for volume")
+				return
+			}
+
+			log.Info("Created job")
+		}(volumeName)
+	}
+
+	return nil
 }
 
 func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName string, labels map[string]string, retain int, backup bool) (*Job, error) {
@@ -847,4 +911,56 @@ func snapshotsToNames(snapshots []longhornclient.Snapshot) []string {
 		result = append(result, snapshot.Name)
 	}
 	return result
+}
+
+func filterVolumesForJob(allowDetached bool, volumes []longhorn.Volume, filterNames *[]string) {
+	logger := logrus.StandardLogger()
+	for _, volume := range volumes {
+		// skip duplicates
+		if util.Contains(*filterNames, volume.Name) {
+			continue
+		}
+		if volume.Status.Robustness != types.VolumeRobustnessFaulted &&
+			(volume.Status.State == types.VolumeStateAttached || allowDetached) {
+			*filterNames = append(*filterNames, volume.Name)
+			continue
+		}
+		logger.Debugf("Cannot create job for %v volume in state %v", volume.Name, volume.Status.State)
+	}
+}
+
+func getVolumesBySelector(recurringJobType, recurringJobName, namespace string, client *lhclientset.Clientset) ([]longhorn.Volume, error) {
+	logger := logrus.StandardLogger()
+
+	label := fmt.Sprintf("%s=%s",
+		types.GetRecurringJobLabelKey(recurringJobType, recurringJobName), types.LonghornLabelValueEnabled)
+	logger.Debugf("Get volumes from label %v", label)
+
+	volumes, err := client.LonghornV1beta1().Volumes(namespace).List(metav1.ListOptions{
+		LabelSelector: label,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return volumes.Items, nil
+}
+
+func getSettingAsBoolean(name types.SettingName, namespace string, client *lhclientset.Clientset) (bool, error) {
+	obj, err := client.LonghornV1beta1().Settings(namespace).Get(string(name), metav1.GetOptions{})
+	if err != nil {
+		return false, err
+	}
+	value, err := strconv.ParseBool(obj.Value)
+	if err != nil {
+		return false, err
+	}
+	return value, nil
+}
+
+func getLonghornClientset() (*lhclientset.Clientset, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to get client config")
+	}
+	return lhclientset.NewForConfig(config)
 }
