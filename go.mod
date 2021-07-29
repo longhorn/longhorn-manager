@@ -40,7 +40,7 @@ require (
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.3
-	github.com/gorilla/websocket v1.4.0
+	github.com/gorilla/websocket v1.4.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.11.3 // indirect
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
@@ -51,7 +51,6 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20210504063753-dfee2468733e
 	github.com/longhorn/go-iscsi-helper v0.0.0-20201111045018-ee87992ec536
 	github.com/longhorn/longhorn-instance-manager v0.0.0-20201016215346-d8437b4e156e
-	github.com/miekg/dns v1.1.22 // indirect
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.2.1
@@ -78,5 +77,4 @@ require (
 	k8s.io/kubernetes v1.16.15
 	k8s.io/metrics v0.16.15
 	k8s.io/utils v0.0.0-20190801114015-581e00157fb1
-	sigs.k8s.io/sig-storage-lib-external-provisioner v4.0.1+incompatible
 )
