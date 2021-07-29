@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -73,6 +74,34 @@ func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, pa
 			return nil, fmt.Errorf("invalid parameter %+v for source type %v", parameters, sourceType)
 		}
 	case types.BackingImageDataSourceTypeUpload:
+	case types.BackingImageDataSourceTypeExportFromVolume:
+		volumeName := parameters[types.DataSourceTypeExportFromVolumeParameterVolumeName]
+		if volumeName == "" {
+			return nil, fmt.Errorf("invalid parameter %+v for source type %v", parameters, sourceType)
+		}
+		v, err := m.ds.GetVolume(volumeName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get volume %v before exporting backing image", volumeName)
+		}
+		if v.Status.Robustness == types.VolumeRobustnessFaulted {
+			return nil, fmt.Errorf("cannot export a backing image from faulted volume %v", volumeName)
+		}
+		eiName := types.GetEngineImageChecksumName(v.Status.CurrentImage)
+		ei, err := m.ds.GetEngineImage(eiName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get then check engine image %v for volume %v before exporting backing image", eiName, volumeName)
+		}
+		if ei.Status.CLIAPIVersion < engineapi.CLIVersionFive {
+			return nil, fmt.Errorf("engine image %v CLI version %v doesn't support this feature, please upgrade engine for volume %v before exporting backing image from the volume", eiName, ei.Status.CLIAPIVersion, volumeName)
+		}
+		// By default the exported file type is raw.
+		if parameters[types.DataSourceTypeExportFromVolumeParameterExportType] == "" {
+			parameters[types.DataSourceTypeExportFromVolumeParameterExportType] = types.DataSourceTypeExportFromVolumeParameterExportTypeRAW
+		}
+		if parameters[types.DataSourceTypeExportFromVolumeParameterExportType] != types.DataSourceTypeExportFromVolumeParameterExportTypeRAW &&
+			parameters[types.DataSourceTypeExportFromVolumeParameterExportType] != types.DataSourceTypeExportFromVolumeParameterExportTypeQCOW2 {
+			return nil, fmt.Errorf("unsupported export type %v", parameters[types.DataSourceTypeExportFromVolumeParameterExportType])
+		}
 	default:
 		return nil, fmt.Errorf("unknown backing image source type %v", sourceType)
 	}
