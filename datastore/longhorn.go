@@ -744,24 +744,16 @@ func (s *DataStore) RemoveFinalizerForReplica(obj *longhorn.Replica) error {
 // GetReplica gets Replica for the given name and namespace and returns
 // a new Replica object
 func (s *DataStore) GetReplica(name string) (*longhorn.Replica, error) {
-	result, err := s.getReplica(name)
-	if err != nil {
-		return nil, err
-	}
-	return s.fixupReplica(result)
-}
-
-func (s *DataStore) getReplicaRO(name string) (*longhorn.Replica, error) {
-	return s.rLister.Replicas(s.namespace).Get(name)
-}
-
-func (s *DataStore) getReplica(name string) (*longhorn.Replica, error) {
-	resultRO, err := s.rLister.Replicas(s.namespace).Get(name)
+	resultRO, err := s.getReplicaRO(name)
 	if err != nil {
 		return nil, err
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
+}
+
+func (s *DataStore) getReplicaRO(name string) (*longhorn.Replica, error) {
+	return s.rLister.Replicas(s.namespace).Get(name)
 }
 
 func (s *DataStore) listReplicas(selector labels.Selector) (map[string]*longhorn.Replica, error) {
@@ -773,10 +765,7 @@ func (s *DataStore) listReplicas(selector labels.Selector) (map[string]*longhorn
 	itemMap := map[string]*longhorn.Replica{}
 	for _, itemRO := range list {
 		// Cannot use cached object from lister
-		itemMap[itemRO.Name], err = s.fixupReplica(itemRO.DeepCopy())
-		if err != nil {
-			return nil, err
-		}
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
 }
@@ -794,10 +783,6 @@ func (s *DataStore) ListVolumeReplicas(volumeName string) (map[string]*longhorn.
 		return nil, err
 	}
 	return s.listReplicas(selector)
-}
-
-func (s *DataStore) fixupReplica(replica *longhorn.Replica) (*longhorn.Replica, error) {
-	return replica, nil
 }
 
 // ReplicaAddressToReplicaName will directly return the address if the format
