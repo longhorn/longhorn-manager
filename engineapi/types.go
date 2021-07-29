@@ -57,7 +57,6 @@ type EngineClient interface {
 	Version(clientOnly bool) (*EngineVersion, error)
 
 	Info() (*Volume, error)
-	Endpoint() (string, error)
 	Expand(size int64) error
 
 	FrontendStart(volumeFrontend types.VolumeFrontend) error
@@ -219,4 +218,25 @@ func GetEngineProcessFrontend(volumeFrontend types.VolumeFrontend) (string, erro
 	}
 
 	return frontend, nil
+}
+
+func GetEngineEndpoint(volume *Volume, ip string) (string, error) {
+	if volume == nil || volume.Frontend == "" {
+		return "", nil
+	}
+
+	switch volume.Frontend {
+	case devtypes.FrontendTGTBlockDev:
+		return volume.Endpoint, nil
+	case devtypes.FrontendTGTISCSI:
+		if ip == "" {
+			return "", fmt.Errorf("iscsi endpoint %v is missing ip", volume.Endpoint)
+		}
+
+		// it will looks like this in the end
+		// iscsi://10.42.0.12:3260/iqn.2014-09.com.rancher:vol-name/1
+		return "iscsi://" + ip + ":" + DefaultISCSIPort + "/" + volume.Endpoint + "/" + DefaultISCSILUN, nil
+	}
+
+	return "", fmt.Errorf("unknown frontend %v", volume.Frontend)
 }
