@@ -574,18 +574,15 @@ func (s *DataStore) getEngineRO(name string) (*longhorn.Engine, error) {
 	return s.eLister.Engines(s.namespace).Get(name)
 }
 
-func (s *DataStore) getEngine(name string) (*longhorn.Engine, error) {
+// GetEngine returns the Engine for the given name and namespace
+func (s *DataStore) GetEngine(name string) (*longhorn.Engine, error) {
 	resultRO, err := s.getEngineRO(name)
 	if err != nil {
 		return nil, err
 	}
+
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
-}
-
-// GetEngine returns the Engine for the given name and namespace
-func (s *DataStore) GetEngine(name string) (*longhorn.Engine, error) {
-	return s.eLister.Engines(s.namespace).Get(name)
 }
 
 func (s *DataStore) listEngines(selector labels.Selector) (map[string]*longhorn.Engine, error) {
@@ -744,24 +741,16 @@ func (s *DataStore) RemoveFinalizerForReplica(obj *longhorn.Replica) error {
 // GetReplica gets Replica for the given name and namespace and returns
 // a new Replica object
 func (s *DataStore) GetReplica(name string) (*longhorn.Replica, error) {
-	result, err := s.getReplica(name)
-	if err != nil {
-		return nil, err
-	}
-	return s.fixupReplica(result)
-}
-
-func (s *DataStore) getReplicaRO(name string) (*longhorn.Replica, error) {
-	return s.rLister.Replicas(s.namespace).Get(name)
-}
-
-func (s *DataStore) getReplica(name string) (*longhorn.Replica, error) {
-	resultRO, err := s.rLister.Replicas(s.namespace).Get(name)
+	resultRO, err := s.getReplicaRO(name)
 	if err != nil {
 		return nil, err
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
+}
+
+func (s *DataStore) getReplicaRO(name string) (*longhorn.Replica, error) {
+	return s.rLister.Replicas(s.namespace).Get(name)
 }
 
 func (s *DataStore) listReplicas(selector labels.Selector) (map[string]*longhorn.Replica, error) {
@@ -773,10 +762,7 @@ func (s *DataStore) listReplicas(selector labels.Selector) (map[string]*longhorn
 	itemMap := map[string]*longhorn.Replica{}
 	for _, itemRO := range list {
 		// Cannot use cached object from lister
-		itemMap[itemRO.Name], err = s.fixupReplica(itemRO.DeepCopy())
-		if err != nil {
-			return nil, err
-		}
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
 }
@@ -794,10 +780,6 @@ func (s *DataStore) ListVolumeReplicas(volumeName string) (map[string]*longhorn.
 		return nil, err
 	}
 	return s.listReplicas(selector)
-}
-
-func (s *DataStore) fixupReplica(replica *longhorn.Replica) (*longhorn.Replica, error) {
-	return replica, nil
 }
 
 // ReplicaAddressToReplicaName will directly return the address if the format
@@ -920,23 +902,15 @@ func (s *DataStore) getEngineImageRO(name string) (*longhorn.EngineImage, error)
 	return s.iLister.EngineImages(s.namespace).Get(name)
 }
 
-func (s *DataStore) getEngineImage(name string) (*longhorn.EngineImage, error) {
+// GetEngineImage returns a new EngineImage object for the given name and
+// namespace
+func (s *DataStore) GetEngineImage(name string) (*longhorn.EngineImage, error) {
 	resultRO, err := s.getEngineImageRO(name)
 	if err != nil {
 		return nil, err
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
-}
-
-// GetEngineImage returns a new EngineImage object for the given name and
-// namespace
-func (s *DataStore) GetEngineImage(name string) (*longhorn.EngineImage, error) {
-	result, err := s.getEngineImage(name)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
 }
 
 // ListEngineImages returns object includes all EngineImage in namespace
@@ -1996,23 +1970,15 @@ func (s *DataStore) getInstanceManagerRO(name string) (*longhorn.InstanceManager
 	return s.imLister.InstanceManagers(s.namespace).Get(name)
 }
 
-func (s *DataStore) getInstanceManager(name string) (*longhorn.InstanceManager, error) {
+// GetInstanceManager gets the InstanceManager for the given name and namespace.
+// Returns new InstanceManager object
+func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, error) {
 	resultRO, err := s.getInstanceManagerRO(name)
 	if err != nil {
 		return nil, err
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
-}
-
-// GetInstanceManager gets the InstanceManager for the given name and namespace.
-// Returns new InstanceManager object
-func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, error) {
-	result, err := s.getInstanceManager(name)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
 }
 
 // CheckInstanceManagerType checks and returns InstanceManager labels type
