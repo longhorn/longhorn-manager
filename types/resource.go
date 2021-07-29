@@ -637,12 +637,18 @@ type BackingImageFileInfo struct {
 type BackingImageDataSourceType string
 
 const (
-	BackingImageDataSourceTypeDownload = BackingImageDataSourceType("download")
-	BackingImageDataSourceTypeUpload   = BackingImageDataSourceType("upload")
+	BackingImageDataSourceTypeDownload         = BackingImageDataSourceType("download")
+	BackingImageDataSourceTypeUpload           = BackingImageDataSourceType("upload")
+	BackingImageDataSourceTypeExportFromVolume = BackingImageDataSourceType("export-from-volume")
 )
 
 const (
-	DataSourceTypeDownloadParameterURL = "url"
+	DataSourceTypeDownloadParameterURL                = "url"
+	DataSourceTypeExportFromVolumeParameterVolumeName = "volume-name"
+	DataSourceTypeExportFromVolumeParameterExportType = "export-type"
+
+	DataSourceTypeExportFromVolumeParameterExportTypeRAW   = "raw"
+	DataSourceTypeExportFromVolumeParameterExportTypeQCOW2 = "qcow2"
 )
 
 type BackingImageDataSourceSpec struct {
