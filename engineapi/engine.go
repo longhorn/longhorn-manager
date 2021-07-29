@@ -10,7 +10,6 @@ import (
 
 	"github.com/pkg/errors"
 
-	devtypes "github.com/longhorn/go-iscsi-helper/types"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/types"
@@ -140,25 +139,6 @@ func (e *Engine) Info() (*Volume, error) {
 		return nil, errors.Wrapf(err, "cannot decode volume info: %v", output)
 	}
 	return info, nil
-}
-
-func (e *Engine) Endpoint() (string, error) {
-	info, err := e.Info()
-	if err != nil {
-		return "", err
-	}
-
-	switch info.Frontend {
-	case devtypes.FrontendTGTBlockDev:
-		return info.Endpoint, nil
-	case devtypes.FrontendTGTISCSI:
-		// it will looks like this in the end
-		// iscsi://10.42.0.12:3260/iqn.2014-09.com.rancher:vol-name/1
-		return "iscsi://" + e.ip + ":" + DefaultISCSIPort + "/" + info.Endpoint + "/" + DefaultISCSILUN, nil
-	case "":
-		return "", nil
-	}
-	return "", fmt.Errorf("Unknown frontend %v", info.Endpoint)
 }
 
 func (e *Engine) Version(clientOnly bool) (*EngineVersion, error) {
