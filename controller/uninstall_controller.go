@@ -81,6 +81,7 @@ func NewUninstallController(
 	backupTargetInformer lhinformers.BackupTargetInformer,
 	backupVolumeInformer lhinformers.BackupVolumeInformer,
 	backupInformer lhinformers.BackupInformer,
+	recurringJobInformer lhinformers.RecurringJobInformer,
 	daemonSetInformer appsv1.DaemonSetInformer,
 	deploymentInformer appsv1.DeploymentInformer,
 	csiDriverInformer storagev1beta1.CSIDriverInformer,
@@ -158,6 +159,10 @@ func NewUninstallController(
 	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDBackupName, metav1.GetOptions{}); err == nil {
 		backupInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, backupInformer.Informer().HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDRecurringJobName, metav1.GetOptions{}); err == nil {
+		recurringJobInformer.Informer().AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, recurringJobInformer.Informer().HasSynced)
 	}
 
 	c.cacheSyncs = cacheSyncs
@@ -438,6 +443,13 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 	} else if len(backups) > 0 {
 		c.logger.Infof("Found %d backups remaining", len(backups))
 		return true, c.deleteBackups(backups)
+	}
+
+	if recurringJobs, err := c.ds.ListRecurringJobs(); err != nil {
+		return true, err
+	} else if len(recurringJobs) > 0 {
+		c.logger.Infof("Found %d recurring jobs remaining", len(recurringJobs))
+		return true, c.deleteRecurringJobs(recurringJobs)
 	}
 
 	if nodes, err := c.ds.ListNodes(); err != nil {
@@ -790,6 +802,22 @@ func (c *UninstallController) deleteBackups(backups map[string]*longhorn.Backup)
 				return errors.Wrapf(err, "Failed to remove finalizer")
 			}
 			log.Info("Removed finalizer")
+		}
+	}
+	return nil
+}
+
+func (c *UninstallController) deleteRecurringJobs(recurringJobs map[string]*longhorn.RecurringJob) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "Failed to delete recurring jobs")
+	}()
+	for _, job := range recurringJobs {
+		log := getLoggerForRecurringJob(c.logger, job)
+		if job.DeletionTimestamp == nil {
+			if err = c.ds.DeleteRecurringJob(job.Name); err != nil {
+				return errors.Wrapf(err, "Failed to mark for deletion")
+			}
+			log.Info("Marked for deletion")
 		}
 	}
 	return nil

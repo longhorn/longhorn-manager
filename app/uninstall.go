@@ -147,6 +147,7 @@ func uninstall(c *cli.Context) error {
 		backupTargetInformer,
 		backupVolumeInformer,
 		backupInformer,
+		recurringJobInformer,
 		daemonSetInformer,
 		deploymentInformer,
 		csiDriverInformer,
