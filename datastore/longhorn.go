@@ -905,23 +905,15 @@ func (s *DataStore) getEngineImageRO(name string) (*longhorn.EngineImage, error)
 	return s.iLister.EngineImages(s.namespace).Get(name)
 }
 
-func (s *DataStore) getEngineImage(name string) (*longhorn.EngineImage, error) {
+// GetEngineImage returns a new EngineImage object for the given name and
+// namespace
+func (s *DataStore) GetEngineImage(name string) (*longhorn.EngineImage, error) {
 	resultRO, err := s.getEngineImageRO(name)
 	if err != nil {
 		return nil, err
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
-}
-
-// GetEngineImage returns a new EngineImage object for the given name and
-// namespace
-func (s *DataStore) GetEngineImage(name string) (*longhorn.EngineImage, error) {
-	result, err := s.getEngineImage(name)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
 }
 
 // ListEngineImages returns object includes all EngineImage in namespace
@@ -1981,23 +1973,15 @@ func (s *DataStore) getInstanceManagerRO(name string) (*longhorn.InstanceManager
 	return s.imLister.InstanceManagers(s.namespace).Get(name)
 }
 
-func (s *DataStore) getInstanceManager(name string) (*longhorn.InstanceManager, error) {
+// GetInstanceManager gets the InstanceManager for the given name and namespace.
+// Returns new InstanceManager object
+func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, error) {
 	resultRO, err := s.getInstanceManagerRO(name)
 	if err != nil {
 		return nil, err
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
-}
-
-// GetInstanceManager gets the InstanceManager for the given name and namespace.
-// Returns new InstanceManager object
-func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, error) {
-	result, err := s.getInstanceManager(name)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
 }
 
 // CheckInstanceManagerType checks and returns InstanceManager labels type
