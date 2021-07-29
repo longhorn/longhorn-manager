@@ -574,18 +574,15 @@ func (s *DataStore) getEngineRO(name string) (*longhorn.Engine, error) {
 	return s.eLister.Engines(s.namespace).Get(name)
 }
 
-func (s *DataStore) getEngine(name string) (*longhorn.Engine, error) {
+// GetEngine returns the Engine for the given name and namespace
+func (s *DataStore) GetEngine(name string) (*longhorn.Engine, error) {
 	resultRO, err := s.getEngineRO(name)
 	if err != nil {
 		return nil, err
 	}
+
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
-}
-
-// GetEngine returns the Engine for the given name and namespace
-func (s *DataStore) GetEngine(name string) (*longhorn.Engine, error) {
-	return s.eLister.Engines(s.namespace).Get(name)
 }
 
 func (s *DataStore) listEngines(selector labels.Selector) (map[string]*longhorn.Engine, error) {
