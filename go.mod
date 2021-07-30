@@ -76,4 +76,5 @@ require (
 	k8s.io/kubernetes v1.16.15
 	k8s.io/metrics v0.16.15
 	k8s.io/utils v0.0.0-20190801114015-581e00157fb1
+	sigs.k8s.io/yaml v1.1.0
 )
