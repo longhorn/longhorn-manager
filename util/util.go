@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"math/rand"
 	"net"
@@ -18,6 +19,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -388,6 +390,12 @@ func GetStringChecksum(data string) string {
 func GetChecksumSHA512(data []byte) string {
 	checksum := sha512.Sum512(data)
 	return hex.EncodeToString(checksum[:])
+}
+
+func GetStringHash(data string) string {
+	hash := fnv.New32a()
+	hash.Write([]byte(data))
+	return fmt.Sprint(strconv.FormatInt(int64(hash.Sum32()), 16))
 }
 
 func CheckBackupType(backupTarget string) (string, error) {
