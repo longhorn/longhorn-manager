@@ -96,7 +96,7 @@ github.com/longhorn/backupstore/util
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/longhorn-instance-manager v0.0.0-20201016215346-d8437b4e156e
+# github.com/longhorn/longhorn-instance-manager v0.0.0-20210729081215-50c310f97378
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/meta
