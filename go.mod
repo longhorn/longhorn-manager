@@ -50,7 +50,7 @@ require (
 	github.com/longhorn/backing-image-manager v0.0.0-20210420131143-904cd772a7a9
 	github.com/longhorn/backupstore v0.0.0-20210504063753-dfee2468733e
 	github.com/longhorn/go-iscsi-helper v0.0.0-20201111045018-ee87992ec536
-	github.com/longhorn/longhorn-instance-manager v0.0.0-20201016215346-d8437b4e156e
+	github.com/longhorn/longhorn-instance-manager v0.0.0-20210729081215-50c310f97378
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.2.1
