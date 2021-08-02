@@ -39,8 +39,8 @@ const (
 	ReplicaHostPrefix                = "/host"
 	EngineBinaryName                 = "longhorn"
 
-	BackingImagesManagerDirectory = "/backing-images/"
-	BackingImageFileName          = "backing"
+	BackingImageManagerDirectory = "/backing-images/"
+	BackingImageFileName         = "backing"
 
 	DefaultBackupTargetName = "default"
 
@@ -78,6 +78,9 @@ const (
 	LonghornLabelSnapshotForCloningVolume = "for-cloning-volume"
 	LonghornLabelBackingImageDataSource   = "backing-image-data-source"
 	LonghornLabelBackupVolume             = "backup-volume"
+
+	LonghornLabelExportFromVolume                 = "export-from-volume"
+	LonghornLabelSnapshotForExportingBackingImage = "for-exporting-backing-image"
 
 	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
@@ -230,7 +233,7 @@ func GetBackingImageDirectoryName(backingImageName, backingImageUUID string) str
 }
 
 func GetBackingImageManagerDirectoryOnHost(diskPath string) string {
-	return filepath.Join(diskPath, BackingImagesManagerDirectory)
+	return filepath.Join(diskPath, BackingImageManagerDirectory)
 }
 
 func GetBackingImageDirectoryOnHost(diskPath, backingImageName, backingImageUUID string) string {

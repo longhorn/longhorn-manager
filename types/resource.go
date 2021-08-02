@@ -647,6 +647,10 @@ const (
 	DataSourceTypeExportFromVolumeParameterVolumeName = "volume-name"
 	DataSourceTypeExportFromVolumeParameterExportType = "export-type"
 
+	DataSourceTypeExportFromVolumeParameterVolumeSize    = "volume-size"
+	DataSourceTypeExportFromVolumeParameterSnapshotName  = "snapshot-name"
+	DataSourceTypeExportFromVolumeParameterSenderAddress = "sender-address"
+
 	DataSourceTypeExportFromVolumeParameterExportTypeRAW   = "raw"
 	DataSourceTypeExportFromVolumeParameterExportTypeQCOW2 = "qcow2"
 )
@@ -662,12 +666,13 @@ type BackingImageDataSourceSpec struct {
 }
 
 type BackingImageDataSourceStatus struct {
-	OwnerID      string            `json:"ownerID"`
-	CurrentState BackingImageState `json:"currentState"`
-	Size         int64             `json:"size"`
-	Progress     int               `json:"progress"`
-	Checksum     string            `json:"checksum"`
-	Message      string            `json:"message"`
+	OwnerID           string            `json:"ownerID"`
+	RunningParameters map[string]string `json:"runningParameters"`
+	CurrentState      BackingImageState `json:"currentState"`
+	Size              int64             `json:"size"`
+	Progress          int               `json:"progress"`
+	Checksum          string            `json:"checksum"`
+	Message           string            `json:"message"`
 }
 
 type BackupTargetSpec struct {

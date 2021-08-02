@@ -428,6 +428,12 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		if isReadyFile {
 			bids.Spec.FileTransferred = true
 		}
+		if bids.Spec.Parameters == nil {
+			bids.Spec.Parameters = map[string]string{}
+		}
+		if bids.Spec.SourceType == types.BackingImageDataSourceTypeExportFromVolume {
+			bids.Labels = map[string]string{types.GetLonghornLabelKey(types.LonghornLabelExportFromVolume): bids.Spec.Parameters[types.DataSourceTypeExportFromVolumeParameterVolumeName]}
+		}
 		if bids, err = bic.ds.CreateBackingImageDataSource(bids); err != nil {
 			return err
 		}
@@ -613,8 +619,13 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 	}
 	if bids != nil && !bids.Spec.FileTransferred {
 		currentDiskFiles[bids.Spec.DiskUUID] = struct{}{}
+		// Due to the possible file type conversion (from raw to qcow2), the size of a backing image data source may changed when the file becomes `ready-for-transfer`.
+		// To avoid mismatching, the controller will blindly update bi.Status.Size based on bids.Status.Size here.
+		if bids.Status.Size != 0 && bids.Status.Size != bi.Status.Size {
+			bi.Status.Size = bids.Status.Size
+		}
 		if err := bic.updateStatusWithFileInfo(bi,
-			bids.Spec.DiskUUID, bids.Status.Message, bids.Status.Checksum, bids.Status.CurrentState, bids.Status.Progress, bids.Status.Size); err != nil {
+			bids.Spec.DiskUUID, bids.Status.Message, bids.Status.Checksum, bids.Status.CurrentState, bids.Status.Progress); err != nil {
 			return err
 		}
 	}
@@ -641,8 +652,17 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 		}
 		currentDiskFiles[bim.Spec.DiskUUID] = struct{}{}
 		if err := bic.updateStatusWithFileInfo(bi,
-			bim.Spec.DiskUUID, info.Message, info.CurrentChecksum, info.State, info.Progress, info.Size); err != nil {
+			bim.Spec.DiskUUID, info.Message, info.CurrentChecksum, info.State, info.Progress); err != nil {
 			return err
+		}
+		if info.Size > 0 {
+			if bi.Status.Size == 0 {
+				bi.Status.Size = info.Size
+				bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonUpdate, "Set size to %v", bi.Status.Size)
+			}
+			if bi.Status.Size != info.Size {
+				return fmt.Errorf("BUG: found mismatching size %v reported by backing image manager %v in disk %v, the size recorded in status is %v", info.Size, bim.Name, bim.Spec.DiskUUID, bi.Status.Size)
+			}
 		}
 	}
 
@@ -656,23 +676,13 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 }
 
 func (bic *BackingImageController) updateStatusWithFileInfo(bi *longhorn.BackingImage,
-	diskUUID, message, checksum string, state types.BackingImageState, progress int, size int64) error {
+	diskUUID, message, checksum string, state types.BackingImageState, progress int) error {
 	if _, exists := bi.Status.DiskFileStatusMap[diskUUID]; !exists {
 		bi.Status.DiskFileStatusMap[diskUUID] = &types.BackingImageDiskFileStatus{}
 	}
 	bi.Status.DiskFileStatusMap[diskUUID].State = state
 	bi.Status.DiskFileStatusMap[diskUUID].Progress = progress
 	bi.Status.DiskFileStatusMap[diskUUID].Message = message
-
-	if size > 0 {
-		if bi.Status.Size == 0 {
-			bi.Status.Size = size
-			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonUpdate, "Set size to %v", bi.Status.Size)
-		}
-		if bi.Status.Size != size {
-			return fmt.Errorf("BUG: found mismatching size %v in disk %v, the size recorded in status is %v", size, diskUUID, bi.Status.Size)
-		}
-	}
 
 	if checksum != "" {
 		if bi.Status.Checksum != "" && bi.Status.Checksum != checksum {
