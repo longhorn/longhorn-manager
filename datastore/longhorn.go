@@ -1549,6 +1549,33 @@ func (s *DataStore) ListBackingImageDataSources() (map[string]*longhorn.BackingI
 	return s.listBackingImageDataSources(labels.Everything())
 }
 
+// ListBackingImageDataSourcesExportingFromVolume returns object includes all BackingImageDataSource in namespace
+func (s *DataStore) ListBackingImageDataSourcesExportingFromVolume(volumeName string) (map[string]*longhorn.BackingImageDataSource, error) {
+	volumeSelector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			types.GetLonghornLabelKey(types.LonghornLabelExportFromVolume): volumeName,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	bidsList, err := s.listBackingImageDataSources(volumeSelector)
+	if err != nil {
+		return nil, err
+	}
+	exportingBackingImageDataSources := map[string]*longhorn.BackingImageDataSource{}
+	for _, bids := range bidsList {
+		if bids.Spec.SourceType != types.BackingImageDataSourceTypeExportFromVolume || bids.Spec.FileTransferred {
+			continue
+		}
+		if bids.Status.CurrentState == types.BackingImageStateFailed || bids.Status.CurrentState == types.BackingImageStateUnknown {
+			continue
+		}
+		exportingBackingImageDataSources[bids.Name] = bids
+	}
+	return exportingBackingImageDataSources, nil
+}
+
 // ListBackingImageDataSourcesByNode returns object includes all BackingImageDataSource in namespace
 func (s *DataStore) ListBackingImageDataSourcesByNode(nodeName string) (map[string]*longhorn.BackingImageDataSource, error) {
 	nodeSelector, err := getNodeSelector(nodeName)

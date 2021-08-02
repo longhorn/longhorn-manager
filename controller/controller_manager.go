@@ -124,7 +124,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		kubeClient, &engineapi.EngineCollection{}, namespace, controllerID)
 	vc := NewVolumeController(logger, ds, scheme,
 		volumeInformer, engineInformer, replicaInformer,
-		shareManagerInformer, backupVolumeInformer,
+		shareManagerInformer, backupVolumeInformer, backingImageDataSourceInformer,
 		kubeClient, namespace, controllerID,
 		serviceAccount, managerImage)
 	ic := NewEngineImageController(logger, ds, scheme,
@@ -163,7 +163,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		podInformer,
 		kubeClient, namespace, controllerID, serviceAccount)
 	bidsc := NewBackingImageDataSourceController(logger, ds, scheme,
-		backingImageDataSourceInformer, backingImageInformer, nodeInformer, podInformer,
+		backingImageDataSourceInformer, backingImageInformer, volumeInformer, nodeInformer, podInformer,
 		kubeClient, namespace, controllerID, serviceAccount)
 	rjc := NewRecurringJobController(logger, ds, scheme,
 		recurringJobInformer,

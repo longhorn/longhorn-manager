@@ -115,7 +115,7 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	logger := logrus.StandardLogger()
 	vc := NewVolumeController(logger, ds, scheme.Scheme,
 		volumeInformer, engineInformer, replicaInformer,
-		shareManagerInformer, backupVolumeInformer,
+		shareManagerInformer, backupVolumeInformer, backingImageDataSourceInformer,
 		kubeClient, TestNamespace, controllerID,
 		TestServiceAccount, TestServiceAccount)
 

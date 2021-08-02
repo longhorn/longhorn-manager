@@ -70,11 +70,12 @@ type VolumeController struct {
 
 	ds *datastore.DataStore
 
-	vStoreSynced  cache.InformerSynced
-	eStoreSynced  cache.InformerSynced
-	rStoreSynced  cache.InformerSynced
-	smStoreSynced cache.InformerSynced
-	bvStoreSynced cache.InformerSynced
+	vStoreSynced    cache.InformerSynced
+	eStoreSynced    cache.InformerSynced
+	rStoreSynced    cache.InformerSynced
+	smStoreSynced   cache.InformerSynced
+	bvStoreSynced   cache.InformerSynced
+	bidsStoreSynced cache.InformerSynced
 
 	scheduler *scheduler.ReplicaScheduler
 
@@ -93,6 +94,7 @@ func NewVolumeController(
 	replicaInformer lhinformers.ReplicaInformer,
 	shareManagerInformer lhinformers.ShareManagerInformer,
 	backupVolumeInformer lhinformers.BackupVolumeInformer,
+	bidsInformer lhinformers.BackingImageDataSourceInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID, serviceAccount string,
 	managerImage string) *VolumeController {
@@ -114,11 +116,12 @@ func NewVolumeController(
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-volume-controller"}),
 
-		vStoreSynced:  volumeInformer.Informer().HasSynced,
-		eStoreSynced:  engineInformer.Informer().HasSynced,
-		rStoreSynced:  replicaInformer.Informer().HasSynced,
-		smStoreSynced: shareManagerInformer.Informer().HasSynced,
-		bvStoreSynced: backupVolumeInformer.Informer().HasSynced,
+		vStoreSynced:    volumeInformer.Informer().HasSynced,
+		eStoreSynced:    engineInformer.Informer().HasSynced,
+		rStoreSynced:    replicaInformer.Informer().HasSynced,
+		smStoreSynced:   shareManagerInformer.Informer().HasSynced,
+		bvStoreSynced:   backupVolumeInformer.Informer().HasSynced,
+		bidsStoreSynced: bidsInformer.Informer().HasSynced,
 
 		backoff: flowcontrol.NewBackOff(time.Minute, time.Minute*3),
 
@@ -151,6 +154,11 @@ func NewVolumeController(
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForBackupVolume(cur) },
 		DeleteFunc: vc.enqueueVolumesForBackupVolume,
 	})
+	backupVolumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    vc.enqueueVolumesForBackingImageDataSource,
+		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForBackingImageDataSource(cur) },
+		DeleteFunc: vc.enqueueVolumesForBackingImageDataSource,
+	})
 	return vc
 }
 
@@ -161,7 +169,7 @@ func (vc *VolumeController) Run(workers int, stopCh <-chan struct{}) {
 	vc.logger.Infof("Start Longhorn volume controller")
 	defer vc.logger.Infof("Shutting down Longhorn volume controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn engines", stopCh, vc.vStoreSynced, vc.eStoreSynced, vc.rStoreSynced, vc.smStoreSynced, vc.bvStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn engines", stopCh, vc.vStoreSynced, vc.eStoreSynced, vc.rStoreSynced, vc.smStoreSynced, vc.bvStoreSynced, vc.bidsStoreSynced) {
 		return
 	}
 
@@ -2503,22 +2511,29 @@ func (vc *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longho
 		return nil
 	}
 
+	exportingBackingImageDataSources, err := vc.ds.ListBackingImageDataSourcesExportingFromVolume(v.Name)
+	if err != nil {
+		return err
+	}
+
 	// Do auto attachment for:
 	//   1. restoring/DR volumes.
 	//   2. offline expansion.
 	//   3. Eviction requested on this volume.
 	//   4. The target volume of a cloning
 	//   5. The source volume of a cloning
+	//   6, Export data as a backing image
 	isRestoringDRVol := v.Status.RestoreRequired || v.Status.IsStandby
 	isOfflineExpansionVol := v.Status.ExpansionRequired
 	isEvictionRequestedOnVol := vc.hasReplicaEvictionRequested(rs)
 	isTargetVolOfCloning := isTargetVolumeOfCloning(v)
 	sourceVolumeOfCloning, err := vc.isSourceVolumeOfCloning(v)
+	isExportingBackingImage := len(exportingBackingImageDataSources) != 0
 	if err != nil {
 		return err
 	}
 	if isRestoringDRVol || isOfflineExpansionVol || isEvictionRequestedOnVol ||
-		isTargetVolOfCloning || sourceVolumeOfCloning {
+		isTargetVolOfCloning || sourceVolumeOfCloning || isExportingBackingImage {
 		// Should use vc.controllerID or v.Status.OwnerID as CurrentNodeID,
 		// otherwise they may be not equal
 		v.Status.CurrentNodeID = v.Status.OwnerID
@@ -2550,6 +2565,15 @@ func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longho
 	if isSourceVolOfCloning, err := vc.isSourceVolumeOfCloning(v); err != nil {
 		return err
 	} else if isSourceVolOfCloning {
+		return nil
+	}
+
+	// This volume is being exported as a backing image.
+	exportingBackingImageDataSources, err := vc.ds.ListBackingImageDataSourcesExportingFromVolume(v.Name)
+	if err != nil {
+		return err
+	}
+	if len(exportingBackingImageDataSources) != 0 {
 		return nil
 	}
 
@@ -3226,6 +3250,29 @@ func (vc *VolumeController) enqueueVolumesForBackupVolume(obj interface{}) {
 		}
 
 		key := bv.Namespace + "/" + volumeName
+		vc.queue.AddRateLimited(key)
+	}
+}
+
+func (vc *VolumeController) enqueueVolumesForBackingImageDataSource(obj interface{}) {
+	bids, isBackingImageDataSource := obj.(*longhorn.BackingImageDataSource)
+	if !isBackingImageDataSource {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to requeue the claimed volumes
+		bids, ok = deletedState.Obj.(*longhorn.BackingImageDataSource)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non BackingImageDataSource object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	if volumeName := bids.Labels[types.GetLonghornLabelKey(types.LonghornLabelExportFromVolume)]; volumeName != "" {
+		key := bids.Namespace + "/" + volumeName
 		vc.queue.AddRateLimited(key)
 	}
 }
