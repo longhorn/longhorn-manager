@@ -414,7 +414,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 	}()
 
-	engine, err := vc.getCurrentEngine(volume, engines)
+	engine, err := vc.ds.PickVolumeCurrentEngine(volume, engines)
 	if err != nil {
 		return err
 	}
@@ -466,30 +466,6 @@ func handleConditionLastTransitionTime(existingStatus, newStatus *types.VolumeSt
 			newStatus.Conditions[conditionType] = existingCondition
 		}
 	}
-}
-
-func (vc *VolumeController) getCurrentEngine(v *longhorn.Volume, es map[string]*longhorn.Engine) (*longhorn.Engine, error) {
-	if len(es) == 0 {
-		return nil, nil
-	}
-
-	if len(es) == 1 {
-		for _, e := range es {
-			return e, nil
-		}
-	}
-
-	// len(es) > 1
-	node := v.Status.CurrentNodeID
-	if node != "" {
-		for _, e := range es {
-			if e.Spec.NodeID == node {
-				return e, nil
-			}
-		}
-		return nil, fmt.Errorf("BUG: multiple engines detected but none matched volume %v attached node %v", v.Name, node)
-	}
-	return nil, fmt.Errorf("BUG: multiple engines detected when volume %v is detached", v.Name)
 }
 
 // EvictReplicas do creating one more replica for eviction, if requested
@@ -721,7 +697,7 @@ func (vc *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*l
 		return nil
 	}
 
-	e, err := vc.getCurrentEngine(v, es)
+	e, err := vc.ds.PickVolumeCurrentEngine(v, es)
 	if err != nil {
 		return err
 	}
@@ -950,7 +926,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 	log := getLoggerForVolume(vc.logger, v)
 
-	e, err := vc.getCurrentEngine(v, es)
+	e, err := vc.ds.PickVolumeCurrentEngine(v, es)
 	if err != nil {
 		return err
 	}
