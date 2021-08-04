@@ -153,7 +153,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		Size:                    size,
 		AccessMode:              volume.AccessMode,
 		Migratable:              volume.Migratable,
-		Secure:                  volume.Secure,
+		Encrypted:               volume.Encrypted,
 		Frontend:                volume.Frontend,
 		FromBackup:              volume.FromBackup,
 		NumberOfReplicas:        volume.NumberOfReplicas,
