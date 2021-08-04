@@ -16,7 +16,7 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
-func (m *VolumeManager) PVCreate(name, pvName, fsType string) (v *longhorn.Volume, err error) {
+func (m *VolumeManager) PVCreate(name, pvName, fsType, secretNamespace, secretName string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to create PV for volume %v", name)
 	}()
@@ -44,6 +44,23 @@ func (m *VolumeManager) PVCreate(name, pvName, fsType string) (v *longhorn.Volum
 	}
 
 	pv := datastore.NewPVManifestForVolume(v, pvName, storageClassName, fsType)
+	if v.Spec.Encrypted {
+		if secretName == "" {
+			secretName = "longhorn-crypto"
+		}
+
+		if secretNamespace == "" {
+			secretNamespace = "longhorn-system"
+		}
+
+		secretRef := &apiv1.SecretReference{
+			Name:      secretName,
+			Namespace: secretNamespace,
+		}
+		pv.Spec.CSI.NodeStageSecretRef = secretRef
+		pv.Spec.CSI.NodePublishSecretRef = secretRef
+	}
+
 	pv, err = m.ds.CreatePersistentVolume(pv)
 	if err != nil {
 		return nil, err

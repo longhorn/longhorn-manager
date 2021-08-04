@@ -10,6 +10,10 @@ type PVCreateInput struct {
 	FsType string `json:"fsType,omitempty" yaml:"fs_type,omitempty"`
 
 	PvName string `json:"pvName,omitempty" yaml:"pv_name,omitempty"`
+
+	SecretName string `json:"secretName,omitempty" yaml:"secret_name,omitempty"`
+
+	SecretNamespace string `json:"secretNamespace,omitempty" yaml:"secret_namespace,omitempty"`
 }
 
 type PVCreateInputCollection struct {

@@ -536,9 +536,14 @@ func NewPVManifestForVolume(v *longhorn.Volume, pvName, storageClassName, fsType
 		"staleReplicaTimeout": strconv.Itoa(v.Spec.StaleReplicaTimeout),
 	}
 
+	if v.Spec.Encrypted {
+		volAttributes["encrypted"] = strconv.FormatBool(v.Spec.Encrypted)
+	}
+
 	accessMode := corev1.ReadWriteOnce
 	if v.Spec.AccessMode == types.AccessModeReadWriteMany {
 		accessMode = corev1.ReadWriteMany
+		volAttributes["migratable"] = strconv.FormatBool(v.Spec.Migratable)
 	}
 
 	return NewPVManifest(v.Spec.Size, pvName, v.Name, storageClassName, fsType, volAttributes, accessMode)
