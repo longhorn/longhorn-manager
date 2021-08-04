@@ -23,6 +23,7 @@ const (
 	LonghornKindShareManager        = "ShareManager"
 	LonghornKindBackingImage        = "BackingImage"
 	LonghornKindBackingImageManager = "BackingImageManager"
+	LonghornKindRecurringJob        = "RecurringJob"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
@@ -62,6 +63,8 @@ const (
 
 	LonghornLabelKeyPrefix = "longhorn.io"
 
+	LonghornLabelRecurringJobKeyPrefixFmt = "recurring-%s.longhorn.io"
+
 	LonghornLabelEngineImage              = "engine-image"
 	LonghornLabelInstanceManager          = "instance-manager"
 	LonghornLabelNode                     = "node"
@@ -74,10 +77,13 @@ const (
 	LonghornLabelBackingImage             = "backing-image"
 	LonghornLabelBackingImageManager      = "backing-image-manager"
 	LonghornLabelManagedBy                = "managed-by"
-	LonghornLabelCronJobTask              = "job-task"
 	LonghornLabelSnapshotForCloningVolume = "for-cloning-volume"
 	LonghornLabelBackingImageDataSource   = "backing-image-data-source"
 	LonghornLabelBackupVolume             = "backup-volume"
+	LonghornLabelRecurringJob             = "job"
+	LonghornLabelRecurringJobGroup        = "job-group"
+
+	LonghornLabelValueEnabled = "enabled"
 
 	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
@@ -183,6 +189,10 @@ func GenerateEngineNameForVolume(vName string) string {
 
 func GenerateReplicaNameForVolume(vName string) string {
 	return vName + replicaSuffix + "-" + util.RandomID()
+}
+
+func GetCronJobNameForRecurringJob(name string) string {
+	return name + recurringSuffix
 }
 
 func GetCronJobNameForVolumeAndJob(vName, job string) string {
@@ -325,17 +335,9 @@ func GetShareManagerLabels(name, image string) map[string]string {
 	return labels
 }
 
-func GetCronJobLabels(volumeName string, job *RecurringJob) map[string]string {
+func GetCronJobLabels(job *RecurringJobSpec) map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
-	labels[LonghornLabelVolume] = volumeName
-	labels[GetLonghornLabelKey(LonghornLabelCronJobTask)] = string(job.Task)
-	return labels
-}
-
-func GetCronJobPodLabels(volumeName string, job *RecurringJob) map[string]string {
-	labels := make(map[string]string)
-	labels[LonghornLabelVolume] = volumeName
-	labels[GetLonghornLabelKey(LonghornLabelCronJobTask)] = string(job.Task)
+	labels[fmt.Sprintf(LonghornLabelRecurringJobKeyPrefixFmt, LonghornLabelRecurringJob)] = job.Name
 	return labels
 }
 
@@ -381,6 +383,17 @@ func GetBackupVolumeLabels(volumeName string) map[string]string {
 func GetVolumeLabels(volumeName string) map[string]string {
 	return map[string]string{
 		LonghornLabelVolume: volumeName,
+	}
+}
+
+func GetRecurringJobLabelKey(labelType, recurringJobName string) string {
+	prefix := fmt.Sprintf(LonghornLabelRecurringJobKeyPrefixFmt, labelType)
+	return fmt.Sprintf("%s/%s", prefix, recurringJobName)
+}
+
+func GetRecurringJobLabelValueMap(labelType, recurringJobName string) map[string]string {
+	return map[string]string{
+		GetRecurringJobLabelKey(labelType, recurringJobName): LonghornLabelValueEnabled,
 	}
 }
 

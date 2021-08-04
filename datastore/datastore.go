@@ -62,6 +62,8 @@ type DataStore struct {
 	bvStoreSynced   cache.InformerSynced
 	bLister         lhlisters.BackupLister
 	bStoreSynced    cache.InformerSynced
+	rjLister        lhlisters.RecurringJobLister
+	rjStoreSynced   cache.InformerSynced
 
 	kubeClient         clientset.Interface
 	pLister            corelisters.PodLister
@@ -110,6 +112,7 @@ func NewDataStore(
 	btInformer lhinformers.BackupTargetInformer,
 	bvInformer lhinformers.BackupVolumeInformer,
 	bInformer lhinformers.BackupInformer,
+	rjInformer lhinformers.RecurringJobInformer,
 	lhClient lhclientset.Interface,
 
 	podInformer coreinformers.PodInformer,
@@ -162,6 +165,8 @@ func NewDataStore(
 		bvStoreSynced:   bvInformer.Informer().HasSynced,
 		bLister:         bInformer.Lister(),
 		bStoreSynced:    bInformer.Informer().HasSynced,
+		rjLister:        rjInformer.Lister(),
+		rjStoreSynced:   rjInformer.Informer().HasSynced,
 
 		kubeClient:         kubeClient,
 		pLister:            podInformer.Lister(),

@@ -42,6 +42,7 @@ const (
 	CRDBackupTargetName           = "backuptargets.longhorn.io"
 	CRDBackupVolumeName           = "backupvolumes.longhorn.io"
 	CRDBackupName                 = "backups.longhorn.io"
+	CRDRecurringJobName           = "recurringjobs.longhorn.io"
 
 	LonghornNamespace = "longhorn-system"
 )

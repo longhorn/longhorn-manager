@@ -83,30 +83,42 @@ func (s *DataStore) GetManagerNodeIPMap() (map[string]string, error) {
 	return nodeIPMap, nil
 }
 
-// ListVolumeCronJobROs returns a map of read-only CronJobs for the volume
-func (s *DataStore) ListVolumeCronJobROs(volumeName string) (map[string]*batchv1beta1.CronJob, error) {
-	selector, err := getVolumeSelector(volumeName)
+// GetCronJobROByRecurringJob returns read-only CronJob for the recurring job
+func (s *DataStore) GetCronJobROByRecurringJob(recurringJob *longhorn.RecurringJob) (*batchv1beta1.CronJob, error) {
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetCronJobLabels(
+			&types.RecurringJobSpec{
+				Name: recurringJob.Name,
+				Task: types.RecurringJobType(recurringJob.Spec.Task),
+			},
+		),
+	})
 	if err != nil {
 		return nil, err
 	}
-	itemMap := map[string]*batchv1beta1.CronJob{}
+	itemMap := map[string]*batchv1beta1.CronJob{
+		recurringJob.Name: nil,
+	}
 	list, err := s.cjLister.CronJobs(s.namespace).List(selector)
 	if err != nil {
 		return nil, err
 	}
-	for _, cj := range list {
-		itemMap[cj.Name] = cj
+	for _, cronJob := range list {
+		if itemMap[recurringJob.Name] != nil {
+			return nil, fmt.Errorf("multiple cronjob found for %v recurring job", recurringJob.Name)
+		}
+		itemMap[recurringJob.Name] = cronJob
 	}
-	return itemMap, nil
+	return itemMap[recurringJob.Name], nil
 }
 
-// CreateVolumeCronJob creates a CronJob resource for the given namespace
-func (s *DataStore) CreateVolumeCronJob(volumeName string, cronJob *batchv1beta1.CronJob) (*batchv1beta1.CronJob, error) {
+// CreateCronJob creates a CronJob resource
+func (s *DataStore) CreateCronJob(cronJob *batchv1beta1.CronJob) (*batchv1beta1.CronJob, error) {
 	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Create(cronJob)
 }
 
-// UpdateVolumeCronJob updates CronJobs for the given namespace
-func (s *DataStore) UpdateVolumeCronJob(volumeName string, cronJob *batchv1beta1.CronJob) (*batchv1beta1.CronJob, error) {
+// UpdateCronJob updates CronJob resource
+func (s *DataStore) UpdateCronJob(cronJob *batchv1beta1.CronJob) (*batchv1beta1.CronJob, error) {
 	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Update(cronJob)
 }
 
