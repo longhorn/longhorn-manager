@@ -337,16 +337,16 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	logrus.Debugf("volume %v device %v contains filesystem of format %v", volumeID, devicePath, diskFormat)
 
-	if volume.Secure {
+	if volume.Encrypted {
 		secrets := req.GetSecrets()
 		keyProvider := secrets[CryptoKeyProvider]
 		passphrase := secrets[CryptoKeyValue]
 		if keyProvider != "" && keyProvider != "secret" {
-			return nil, status.Errorf(codes.InvalidArgument, "unsupported key provider %v for secure volume %v", keyProvider, volumeID)
+			return nil, status.Errorf(codes.InvalidArgument, "unsupported key provider %v for encrypted volume %v", keyProvider, volumeID)
 		}
 
 		if len(passphrase) == 0 {
-			return nil, status.Errorf(codes.InvalidArgument, "missing passphrase for secure volume %v", volumeID)
+			return nil, status.Errorf(codes.InvalidArgument, "missing passphrase for encrypted volume %v", volumeID)
 		}
 
 		if diskFormat != "" && diskFormat != "crypto_LUKS" {

@@ -101,12 +101,12 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.Migratable = isMigratable
 	}
 
-	if secure, ok := volOptions["secure"]; ok {
-		isSecure, err := strconv.ParseBool(secure)
+	if encrypted, ok := volOptions["encrypted"]; ok {
+		isEncrypted, err := strconv.ParseBool(encrypted)
 		if err != nil {
-			return nil, errors.Wrap(err, "Invalid parameter secure")
+			return nil, errors.Wrap(err, "Invalid parameter encrypted")
 		}
-		vol.Secure = isSecure
+		vol.Encrypted = isEncrypted
 	}
 
 	if numberOfReplicas, ok := volOptions["numberOfReplicas"]; ok {

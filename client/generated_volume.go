@@ -27,6 +27,8 @@ type Volume struct {
 
 	DiskSelector []string `json:"diskSelector,omitempty" yaml:"disk_selector,omitempty"`
 
+	Encrypted bool `json:"encrypted,omitempty" yaml:"encrypted,omitempty"`
+
 	EngineImage string `json:"engineImage,omitempty" yaml:"engine_image,omitempty"`
 
 	FromBackup string `json:"fromBackup,omitempty" yaml:"from_backup,omitempty"`
@@ -68,8 +70,6 @@ type Volume struct {
 	RevisionCounterDisabled bool `json:"revisionCounterDisabled,omitempty" yaml:"revision_counter_disabled,omitempty"`
 
 	Robustness string `json:"robustness,omitempty" yaml:"robustness,omitempty"`
-
-	Secure bool `json:"secure,omitempty" yaml:"secure,omitempty"`
 
 	ShareEndpoint string `json:"shareEndpoint,omitempty" yaml:"share_endpoint,omitempty"`
 

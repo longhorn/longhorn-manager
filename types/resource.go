@@ -102,7 +102,7 @@ type VolumeSpec struct {
 	AccessMode              AccessMode     `json:"accessMode"`
 	Migratable              bool           `json:"migratable"`
 
-	Secure bool `json:"secure"`
+	Encrypted bool `json:"encrypted"`
 
 	NumberOfReplicas   int                `json:"numberOfReplicas"`
 	ReplicaAutoBalance ReplicaAutoBalance `json:"replicaAutoBalance"`
