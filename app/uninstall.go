@@ -92,6 +92,7 @@ func uninstall(c *cli.Context) error {
 	backupTargetInformer := lhInformerFactory.Longhorn().V1beta1().BackupTargets()
 	backupVolumeInformer := lhInformerFactory.Longhorn().V1beta1().BackupVolumes()
 	backupInformer := lhInformerFactory.Longhorn().V1beta1().Backups()
+	recurringJobInformer := lhInformerFactory.Longhorn().V1beta1().RecurringJobs()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
@@ -113,6 +114,7 @@ func uninstall(c *cli.Context) error {
 		engineImageInformer, nodeInformer, settingInformer, imInformer, smInformer,
 		backingImageInformer, backingImageManagerInformer, backingImageDataSourceInformer,
 		backupTargetInformer, backupVolumeInformer, backupInformer,
+		recurringJobInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,

@@ -84,6 +84,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	backupTargetInformer := lhInformerFactory.Longhorn().V1beta1().BackupTargets()
 	backupVolumeInformer := lhInformerFactory.Longhorn().V1beta1().BackupVolumes()
 	backupInformer := lhInformerFactory.Longhorn().V1beta1().Backups()
+	recurringJobInformer := lhInformerFactory.Longhorn().V1beta1().RecurringJobs()
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
@@ -106,6 +107,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		imInformer, shareManagerInformer,
 		backingImageInformer, backingImageManagerInformer, backingImageDataSourceInformer,
 		backupTargetInformer, backupVolumeInformer, backupInformer,
+		recurringJobInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
@@ -162,6 +164,9 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	bidsc := NewBackingImageDataSourceController(logger, ds, scheme,
 		backingImageDataSourceInformer, backingImageInformer, nodeInformer, podInformer,
 		kubeClient, namespace, controllerID, serviceAccount)
+	rjc := NewRecurringJobController(logger, ds, scheme,
+		recurringJobInformer,
+		kubeClient, namespace, controllerID, serviceAccount, managerImage)
 	kpvc := NewKubernetesPVController(logger, ds, scheme,
 		volumeInformer, persistentVolumeInformer,
 		persistentVolumeClaimInformer, podInformer,
@@ -199,6 +204,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	go btc.Run(Workers, stopCh)
 	go bvc.Run(Workers, stopCh)
 	go bc.Run(Workers, stopCh)
+	go rjc.Run(Workers, stopCh)
 
 	go kpvc.Run(Workers, stopCh)
 	go knc.Run(Workers, stopCh)

@@ -337,6 +337,19 @@ func GetOwnerReferencesForVolume(v *longhorn.Volume) []metav1.OwnerReference {
 	}
 }
 
+// GetOwnerReferencesForRecurringJob returns a list contains single OwnerReference for the
+// given recurringJob name
+func GetOwnerReferencesForRecurringJob(recurringJob *longhorn.RecurringJob) []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		{
+			APIVersion: longhorn.SchemeGroupVersion.String(),
+			Kind:       types.LonghornKindRecurringJob,
+			UID:        recurringJob.UID,
+			Name:       recurringJob.Name,
+		},
+	}
+}
+
 // CreateVolume creates a Longhorn Volume resource and verifies creation
 func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	if err := checkVolume(v); err != nil {
@@ -345,6 +358,10 @@ func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	if err := fixupMetadata(v.Name, v); err != nil {
 		return nil, err
 	}
+	if err := fixupRecurringJob(v); err != nil {
+		return nil, err
+	}
+
 	// Add backup volume name label to the restore/DR volume
 	if v.Spec.FromBackup != "" {
 		_, backupVolumeName, _, err := backupstore.DecodeBackupURL(v.Spec.FromBackup)
@@ -383,6 +400,9 @@ func (s *DataStore) UpdateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 		return nil, err
 	}
 	if err := fixupMetadata(v.Name, v); err != nil {
+		return nil, err
+	}
+	if err := fixupRecurringJob(v); err != nil {
 		return nil, err
 	}
 
@@ -463,6 +483,11 @@ func (s *DataStore) ListVolumesROWithBackupVolumeName(backupVolumeName string) (
 	return s.vLister.Volumes(s.namespace).List(selector)
 }
 
+// ListVolumesBySelectorRO returns a list of all Volumes for the given namespace
+func (s *DataStore) ListVolumesBySelectorRO(selector labels.Selector) ([]*longhorn.Volume, error) {
+	return s.vLister.Volumes(s.namespace).List(selector)
+}
+
 // ListVolumes returns an object contains all Volume
 func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 	itemMap := make(map[string]*longhorn.Volume)
@@ -510,6 +535,22 @@ func (s *DataStore) ListDRVolumesROWithBackupVolumeName(backupVolumeName string)
 		if itemRO.Spec.Standby {
 			itemMap[itemRO.Name] = itemRO
 		}
+	}
+	return itemMap, nil
+}
+
+// ListVolumesByLabelSelector returns an object contains all Volume
+func (s *DataStore) ListVolumesByLabelSelector(selector labels.Selector) (map[string]*longhorn.Volume, error) {
+	itemMap := make(map[string]*longhorn.Volume)
+
+	list, err := s.ListVolumesBySelectorRO(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
 }
@@ -2037,6 +2078,45 @@ func tagBackupVolumeLabel(backupVolumeName string, obj runtime.Object) error {
 	return nil
 }
 
+func fixupRecurringJob(v *longhorn.Volume) error {
+	if err := tagRecurringJobDefaultLabel(v); err != nil {
+		return err
+	}
+	return nil
+}
+
+func tagRecurringJobDefaultLabel(obj runtime.Object) error {
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+
+	jobPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJob)
+	groupPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJobGroup)
+
+	jobLabels := []string{}
+	for label := range labels {
+		if !strings.HasPrefix(label, jobPrefix) &&
+			!strings.HasPrefix(label, groupPrefix) {
+			continue
+		}
+		jobLabels = append(jobLabels, label)
+	}
+
+	defaultLabel := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, types.RecurringJobGroupDefault)
+	jobLabelCount := len(jobLabels)
+	if jobLabelCount == 0 {
+		labels[defaultLabel] = types.LonghornLabelValueEnabled
+	}
+	metadata.SetLabels(labels)
+	return nil
+}
+
 // GetOwnerReferencesForNode returns a list contains a single OwnerReference
 // for the given Node ID and name
 func GetOwnerReferencesForNode(node *longhorn.Node) []metav1.OwnerReference {
@@ -2960,4 +3040,97 @@ func (s *DataStore) RemoveFinalizerForBackup(backup *longhorn.Backup) error {
 		return errors.Wrapf(err, "unable to remove finalizer for backup %s", backup.Name)
 	}
 	return nil
+}
+
+// CreateRecurringJob creates a Longhorn RecurringJob resource and verifies
+// creation
+func (s *DataStore) CreateRecurringJob(recurringJob *longhorn.RecurringJob) (*longhorn.RecurringJob, error) {
+	ret, err := s.lhClient.LonghornV1beta1().RecurringJobs(s.namespace).Create(recurringJob)
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(recurringJob.Name, "recurring job", func(name string) (runtime.Object, error) {
+		return s.getRecurringJobRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.RecurringJob)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for recurring job")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// ListRecurringJobs returns a map of RecurringJobPolicies indexed by name
+func (s *DataStore) ListRecurringJobs() (map[string]*longhorn.RecurringJob, error) {
+	itemMap := map[string]*longhorn.RecurringJob{}
+
+	list, err := s.rjLister.RecurringJobs(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+func (s *DataStore) getRecurringJobRO(name string) (*longhorn.RecurringJob, error) {
+	return s.rjLister.RecurringJobs(s.namespace).Get(name)
+}
+
+// GetRecurringJob gets the RecurringJob for the given name and namespace.
+// Returns a mutable RecurringJob object
+func (s *DataStore) GetRecurringJob(name string) (*longhorn.RecurringJob, error) {
+	result, err := s.getRecurringJob(name)
+	if err != nil {
+		return nil, err
+	}
+	return result.DeepCopy(), nil
+}
+
+func (s *DataStore) getRecurringJob(name string) (*longhorn.RecurringJob, error) {
+	return s.rjLister.RecurringJobs(s.namespace).Get(name)
+}
+
+// UpdateRecurringJob updates Longhorn RecurringJob and verifies update
+func (s *DataStore) UpdateRecurringJob(recurringJob *longhorn.RecurringJob) (*longhorn.RecurringJob, error) {
+	obj, err := s.lhClient.LonghornV1beta1().RecurringJobs(s.namespace).Update(recurringJob)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(recurringJob.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getRecurringJob(name)
+	})
+	return obj, nil
+}
+
+// UpdateRecurringJobStatus updates Longhorn RecurringJob resource status and
+// verifies update
+func (s *DataStore) UpdateRecurringJobStatus(recurringJob *longhorn.RecurringJob) (*longhorn.RecurringJob, error) {
+	obj, err := s.lhClient.LonghornV1beta1().RecurringJobs(s.namespace).UpdateStatus(recurringJob)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(recurringJob.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getRecurringJobRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteRecurringJob deletes the RecurringJob.
+// The dependents will be deleted in the foreground
+func (s *DataStore) DeleteRecurringJob(name string) error {
+	propagation := metav1.DeletePropagationForeground
+	return s.lhClient.LonghornV1beta1().RecurringJobs(s.namespace).Delete(
+		name, &metav1.DeleteOptions{PropagationPolicy: &propagation},
+	)
 }

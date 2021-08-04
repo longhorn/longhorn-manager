@@ -174,6 +174,8 @@ type RecurringJobType string
 const (
 	RecurringJobTypeSnapshot = RecurringJobType("snapshot")
 	RecurringJobTypeBackup   = RecurringJobType("backup")
+
+	RecurringJobGroupDefault = "default"
 )
 
 type RecurringJob struct {
