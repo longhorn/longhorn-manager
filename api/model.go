@@ -201,6 +201,9 @@ type UpdateAccessModeInput struct {
 type PVCreateInput struct {
 	PVName string `json:"pvName"`
 	FSType string `json:"fsType"`
+
+	SecretName      string `json:"secretName"`
+	SecretNamespace string `json:"secretNamespace"`
 }
 
 type PVCCreateInput struct {
