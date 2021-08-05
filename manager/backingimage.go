@@ -49,42 +49,32 @@ func (m *VolumeManager) GetBackingImageDataSource(name string) (*longhorn.Backin
 	return m.ds.GetBackingImageDataSource(name)
 }
 
-func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, parameters map[string]string) (bi *longhorn.BackingImage, bids *longhorn.BackingImageDataSource, err error) {
+func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, parameters map[string]string) (bi *longhorn.BackingImage, err error) {
 	name = util.AutoCorrectName(name, datastore.NameMaximumLength)
 	if !util.ValidateName(name) {
-		return nil, nil, fmt.Errorf("invalid name %v", name)
+		return nil, fmt.Errorf("invalid name %v", name)
 	}
 
 	switch types.BackingImageDataSourceType(sourceType) {
 	case types.BackingImageDataSourceTypeDownload:
 		if parameters[types.DataSourceTypeDownloadParameterURL] == "" {
-			return nil, nil, fmt.Errorf("invalid parameter %+v for source type %v", parameters, sourceType)
+			return nil, fmt.Errorf("invalid parameter %+v for source type %v", parameters, sourceType)
 		}
 	case types.BackingImageDataSourceTypeUpload:
 	default:
-		return nil, nil, fmt.Errorf("unknown backing image source type %v", sourceType)
+		return nil, fmt.Errorf("unknown backing image source type %v", sourceType)
 	}
 
 	if _, err := m.ds.GetBackingImage(name); err == nil {
-		return nil, nil, fmt.Errorf("backing image already exists")
+		return nil, fmt.Errorf("backing image already exists")
 	} else if !apierrors.IsNotFound(err) {
-		return nil, nil, errors.Wrapf(err, "failed to check backing image existence before creation")
-	}
-	if bids, err := m.ds.GetBackingImageDataSource(name); err == nil {
-		if bids.DeletionTimestamp == nil {
-			if err := m.ds.DeleteBackingImageDataSource(name); err != nil && !apierrors.IsNotFound(err) {
-				return nil, nil, errors.Wrapf(err, "failed to clean up old backing image data source before creation")
-			}
-		}
-		return nil, nil, errors.Wrapf(err, "need to wait for old backing image data source removal before creation")
-	} else if !apierrors.IsNotFound(err) {
-		return nil, nil, fmt.Errorf("failed to check backing image data source existence before creation")
+		return nil, errors.Wrapf(err, "failed to check backing image existence before creation")
 	}
 
-	var diskUUID, diskPath, nodeID string
+	var diskUUID string
 	nodes, err := m.ds.ListNodes()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	for _, node := range nodes {
 		if types.GetCondition(node.Status.Conditions, types.NodeConditionTypeSchedulable).Status != types.ConditionStatusTrue {
@@ -98,24 +88,15 @@ func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, pa
 				continue
 			}
 			diskUUID = diskStatus.DiskUUID
-			diskPath = node.Spec.Disks[diskName].Path
-			nodeID = node.Name
 			break
 		}
-		if diskUUID != "" && diskPath != "" && nodeID != "" {
+		if diskUUID != "" {
 			break
 		}
 	}
-	if diskUUID == "" || diskPath == "" || nodeID == "" {
-		return nil, nil, fmt.Errorf("cannot find a schedulable disk for backing image %v creation", name)
+	if diskUUID == "" {
+		return nil, fmt.Errorf("cannot find a schedulable disk for backing image %v creation", name)
 	}
-
-	defer func() {
-		if err == nil {
-			return
-		}
-		m.ds.DeleteBackingImage(name)
-	}()
 
 	bi = &longhorn.BackingImage{
 		ObjectMeta: metav1.ObjectMeta{
@@ -126,33 +107,17 @@ func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, pa
 			Disks: map[string]struct{}{
 				diskUUID: struct{}{},
 			},
-			Checksum: checksum,
+			Checksum:         checksum,
+			SourceType:       types.BackingImageDataSourceType(sourceType),
+			SourceParameters: parameters,
 		},
 	}
 	if bi, err = m.ds.CreateBackingImage(bi); err != nil {
-		return nil, nil, err
-	}
-
-	bids = &longhorn.BackingImageDataSource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
-			OwnerReferences: datastore.GetOwnerReferencesForBackingImage(bi),
-		},
-		Spec: types.BackingImageDataSourceSpec{
-			NodeID:     nodeID,
-			DiskUUID:   diskUUID,
-			DiskPath:   diskPath,
-			Checksum:   checksum,
-			SourceType: types.BackingImageDataSourceType(sourceType),
-			Parameters: parameters,
-		},
-	}
-	if bids, err = m.ds.CreateBackingImageDataSource(bids); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	logrus.Infof("Created backing image %v", name)
-	return bi, bids, nil
+	return bi, nil
 }
 
 func (m *VolumeManager) DeleteBackingImage(name string) error {

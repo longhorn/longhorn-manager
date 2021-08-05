@@ -345,6 +345,58 @@ func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.Back
 func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.BackingImage) (err error) {
 	log := getLoggerForBackingImage(bic.logger, bi)
 
+	bids, err := bic.ds.GetBackingImageDataSource(bi.Name)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	if bids == nil {
+		log.Debug("Cannot find backing image data source, then controller will create it first")
+		var readyDiskUUID, readyDiskPath, readyNodeID string
+		isReadyFile := false
+		for diskUUID := range bi.Spec.Disks {
+			node, diskName, err := bic.ds.GetReadyDiskNode(diskUUID)
+			if err != nil {
+				if !types.ErrorIsNotFound(err) {
+					return err
+				}
+				continue
+			}
+			readyNodeID = node.Name
+			readyDiskUUID = diskUUID
+			readyDiskPath = node.Spec.Disks[diskName].Path
+			// Prefer to pick up a disk contains the ready file if possible.
+			if fileStatus, ok := bi.Status.DiskFileStatusMap[diskUUID]; ok && fileStatus.State == types.BackingImageStateReady {
+				isReadyFile = true
+				break
+			}
+		}
+		if readyNodeID == "" || readyDiskUUID == "" || readyDiskPath == "" {
+			return fmt.Errorf("cannot find a ready disk for backing image data source creation")
+		}
+
+		bids = &longhorn.BackingImageDataSource{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:            bi.Name,
+				OwnerReferences: datastore.GetOwnerReferencesForBackingImage(bi),
+			},
+			Spec: types.BackingImageDataSourceSpec{
+				NodeID:     readyNodeID,
+				DiskUUID:   readyDiskUUID,
+				DiskPath:   readyDiskPath,
+				Checksum:   bi.Spec.Checksum,
+				SourceType: bi.Spec.SourceType,
+				Parameters: bi.Spec.SourceParameters,
+			},
+		}
+		if isReadyFile {
+			bids.Spec.FileTransferred = true
+		}
+		if bids, err = bic.ds.CreateBackingImageDataSource(bids); err != nil {
+			return err
+		}
+	}
+	existingBIDS := bids.DeepCopy()
+
 	allFilesUnavailable := false
 	for _, fileStatus := range bi.Status.DiskFileStatusMap {
 		allFilesUnavailable = true
@@ -353,16 +405,6 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 			break
 		}
 	}
-
-	bids, err := bic.ds.GetBackingImageDataSource(bi.Name)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
-		log.Warn("Cannot find backing image data source, then controller will skip handle it since the file is ready")
-		return nil
-	}
-	existingBIDS := bids.DeepCopy()
 
 	// Check if the data source already finished the 1st file preparing.
 	if !bids.Spec.FileTransferred && bids.Status.CurrentState == types.BackingImageStateReady {
