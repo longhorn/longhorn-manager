@@ -628,7 +628,7 @@ func (c *BackingImageManagerController) prepareBackingImageFiles(currentBIM *lon
 
 		// Manager waits and fetches the 1st available file from BackingImageDataSource
 		if !bids.Spec.FileTransferred {
-			if bids.Status.CurrentState != types.BackingImageStateReady {
+			if bids.Status.CurrentState != types.BackingImageStateReadyForTransfer {
 				continue
 			}
 			sourceFileName := engineapi.GetBackingImageDataSourceFileName(biName, bi.Status.UUID)

@@ -407,7 +407,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 	}
 
 	// Check if the data source already finished the 1st file preparing.
-	if !bids.Spec.FileTransferred && bids.Status.CurrentState == types.BackingImageStateReady {
+	if !bids.Spec.FileTransferred && bids.Status.CurrentState == types.BackingImageStateReadyForTransfer {
 		// Cannot rely on backingImage.Status.DiskFileStatusMap[bids.Spec.DiskUUID]
 		// Need to make sure the backing image manager take over the file before marking the data source as file transferred
 		defaultImage, err := bic.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)

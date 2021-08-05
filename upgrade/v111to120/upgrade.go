@@ -150,7 +150,6 @@ func checkAndCreateBackingImageDataSource(namespace string, lhClient *lhclientse
 
 	// Then blindly set the state as ready
 	bids.Status.OwnerID = bids.Spec.NodeID
-	bids.Status.CurrentState = types.BackingImageStateReady
 	bids.Status.Size = bi.Status.Size
 	bids.Status.Progress = 100
 	if bids, err = lhClient.LonghornV1beta1().BackingImageDataSources(namespace).UpdateStatus(bids); err != nil && !apierrors.IsAlreadyExists(err) {
