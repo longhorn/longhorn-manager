@@ -268,6 +268,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 	}()
 
 	if bids.Spec.FileTransferred {
+		bids.Status.CurrentState = types.BackingImageStateReady
 		return c.cleanup(bids)
 	}
 
@@ -396,6 +397,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 				fileProcessingStarted :=
 					bids.Status.CurrentState == types.BackingImageStateStarting ||
 						bids.Status.CurrentState == types.BackingImageStateInProgress ||
+						bids.Status.CurrentState == types.BackingImageStateReadyForTransfer ||
 						bids.Status.CurrentState == types.BackingImageStateReady
 				if fileProcessingStarted || bids.Status.CurrentState == types.BackingImageStateUnknown {
 					log.Errorf("Backing Image Data Source was state %v but the pod became not ready, the state will be updated to %v, message: %v", bids.Status.CurrentState, types.BackingImageStateFailed, podNotReadyMessage)
@@ -843,7 +845,7 @@ func (m *BackingImageDataSourceMonitor) sync() {
 		}
 	}
 
-	if bids.Status.CurrentState == types.BackingImageStateReady {
+	if bids.Status.CurrentState == types.BackingImageStateReady || bids.Status.CurrentState == types.BackingImageStateReadyForTransfer {
 		m.backoff.DeleteEntry(bids.Name)
 	}
 }

@@ -502,12 +502,13 @@ type BackingImageDownloadState string
 type BackingImageState string
 
 const (
-	BackingImageStatePending    = BackingImageState("pending")
-	BackingImageStateStarting   = BackingImageState("starting")
-	BackingImageStateReady      = BackingImageState("ready")
-	BackingImageStateInProgress = BackingImageState("in_progress")
-	BackingImageStateFailed     = BackingImageState("failed")
-	BackingImageStateUnknown    = BackingImageState("unknown")
+	BackingImageStatePending          = BackingImageState("pending")
+	BackingImageStateStarting         = BackingImageState("starting")
+	BackingImageStateReadyForTransfer = BackingImageState("ready-for-transfer")
+	BackingImageStateReady            = BackingImageState("ready")
+	BackingImageStateInProgress       = BackingImageState("in_progress")
+	BackingImageStateFailed           = BackingImageState("failed")
+	BackingImageStateUnknown          = BackingImageState("unknown")
 )
 
 type BackingImageSpec struct {

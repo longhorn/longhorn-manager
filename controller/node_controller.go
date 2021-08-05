@@ -970,7 +970,7 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 			continue
 		}
 		switch fileStatus.State {
-		case types.BackingImageStateReady:
+		case types.BackingImageStateReadyForTransfer, types.BackingImageStateReady:
 			readyDiskFileCount++
 		case types.BackingImageStateFailed:
 			failedDiskFileCount++
@@ -1016,7 +1016,7 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 				continue
 			}
 			failedDiskFileCount--
-		case types.BackingImageStateReady:
+		case types.BackingImageStateReadyForTransfer, types.BackingImageStateReady:
 			if haRequirement >= readyDiskFileCount {
 				continue
 			}

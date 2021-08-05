@@ -196,7 +196,7 @@ func (m *VolumeManager) CleanUpBackingImageDiskFiles(name string, diskFileList [
 			fileStatus = &types.BackingImageDiskFileStatus{}
 		}
 		switch fileStatus.State {
-		case types.BackingImageStateReady:
+		case types.BackingImageStateReadyForTransfer, types.BackingImageStateReady:
 			if _, exists := cleanupFileMap[diskUUID]; !exists {
 				readyActiveFileCount++
 			} else {
