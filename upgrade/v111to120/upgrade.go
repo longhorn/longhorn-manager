@@ -81,7 +81,7 @@ func upgradeBackingImages(namespace string, lhClient *lhclientset.Clientset) (er
 			}
 		}
 
-		if bi.Spec.ImageURL != "" {
+		if bi.Spec.ImageURL != "" || bi.Spec.SourceType == "" {
 			bi, err := lhClient.LonghornV1beta1().BackingImages(namespace).Get(bi.Name, metav1.GetOptions{})
 			if err != nil {
 				return err
@@ -90,6 +90,8 @@ func upgradeBackingImages(namespace string, lhClient *lhclientset.Clientset) (er
 				return err
 			}
 			bi.Spec.ImageURL = ""
+			bi.Spec.SourceType = types.BackingImageDataSourceTypeDownload
+			bi.Spec.SourceParameters = map[string]string{types.DataSourceTypeDownloadParameterURL: bi.Spec.ImageURL}
 			if _, err := lhClient.LonghornV1beta1().BackingImages(namespace).Update(bi); err != nil {
 				return err
 			}

@@ -511,8 +511,10 @@ const (
 )
 
 type BackingImageSpec struct {
-	Disks    map[string]struct{} `json:"disks"`
-	Checksum string              `json:"checksum"`
+	Disks            map[string]struct{}        `json:"disks"`
+	Checksum         string                     `json:"checksum"`
+	SourceType       BackingImageDataSourceType `json:"sourceType"`
+	SourceParameters map[string]string          `json:"sourceParameters"`
 
 	// Deprecated: This kind of info will be included in the related BackingImageDataSource.
 	ImageURL string `json:"imageURL"`
