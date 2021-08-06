@@ -17,9 +17,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	"github.com/longhorn/backupstore"
+
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 const (
@@ -96,7 +99,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 
 	switch sName {
 	case types.SettingNameBackupTarget:
-		vs, err := s.ListStandbyVolumesRO()
+		vs, err := s.ListDRVolumesRO()
 		if err != nil {
 			return errors.Wrapf(err, "failed to list standby volume when modifying BackupTarget")
 		}
@@ -342,6 +345,16 @@ func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	if err := fixupMetadata(v.Name, v); err != nil {
 		return nil, err
 	}
+	// Add backup volume name label to the restore/DR volume
+	if v.Spec.FromBackup != "" {
+		_, backupVolumeName, _, err := backupstore.DecodeBackupURL(v.Spec.FromBackup)
+		if err != nil {
+			return nil, fmt.Errorf("cannot decode backup URL %v: %v", v.Spec.FromBackup, err)
+		}
+		if err := tagBackupVolumeLabel(backupVolumeName, v); err != nil {
+			return nil, err
+		}
+	}
 	ret, err := s.lhClient.LonghornV1beta1().Volumes(s.namespace).Create(v)
 	if err != nil {
 		return nil, err
@@ -440,6 +453,16 @@ func (s *DataStore) ListVolumesRO() ([]*longhorn.Volume, error) {
 	return s.vLister.Volumes(s.namespace).List(labels.Everything())
 }
 
+// ListVolumesROWithBackupVolumeName returns a single object contains all volumes
+// with the given backup volume name
+func (s *DataStore) ListVolumesROWithBackupVolumeName(backupVolumeName string) ([]*longhorn.Volume, error) {
+	selector, err := getBackupVolumeSelector(backupVolumeName)
+	if err != nil {
+		return nil, err
+	}
+	return s.vLister.Volumes(s.namespace).List(selector)
+}
+
 // ListVolumes returns an object contains all Volume
 func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 	itemMap := make(map[string]*longhorn.Volume)
@@ -456,11 +479,29 @@ func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 	return itemMap, nil
 }
 
-// ListStandbyVolumesRO returns a single object contains all standby Volumes
-func (s *DataStore) ListStandbyVolumesRO() (map[string]*longhorn.Volume, error) {
+// ListDRVolumesRO returns a single object contains all DR Volumes
+func (s *DataStore) ListDRVolumesRO() (map[string]*longhorn.Volume, error) {
 	itemMap := make(map[string]*longhorn.Volume)
 
 	list, err := s.ListVolumesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		if itemRO.Spec.Standby {
+			itemMap[itemRO.Name] = itemRO
+		}
+	}
+	return itemMap, nil
+}
+
+// ListDRVolumesROWithBackupVolumeName returns a single object contains the DR volumes
+// matches to the backup volume name
+func (s *DataStore) ListDRVolumesROWithBackupVolumeName(backupVolumeName string) (map[string]*longhorn.Volume, error) {
+	itemMap := make(map[string]*longhorn.Volume)
+
+	list, err := s.ListVolumesROWithBackupVolumeName(backupVolumeName)
 	if err != nil {
 		return nil, err
 	}
@@ -1976,6 +2017,22 @@ func tagBackingImageLabel(backingImageName string, obj runtime.Object) error {
 		labels = map[string]string{}
 	}
 	labels[types.GetLonghornLabelKey(types.LonghornLabelBackingImage)] = backingImageName
+	metadata.SetLabels(labels)
+	return nil
+}
+
+func tagBackupVolumeLabel(backupVolumeName string, obj runtime.Object) error {
+	// fix longhorn.io/backup-volume label for object
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[types.LonghornLabelBackupVolume] = backupVolumeName
 	metadata.SetLabels(labels)
 	return nil
 }

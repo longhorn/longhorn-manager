@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	. "gopkg.in/check.v1"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,11 +20,14 @@ import (
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
-	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util"
+
+	. "gopkg.in/check.v1"
 )
 
 func getVolumeLabelSelector(volumeName string) string {
@@ -109,10 +111,11 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 		kubeClient, TestNamespace)
 
 	logger := logrus.StandardLogger()
-	vc := NewVolumeController(logger,
-		ds, scheme.Scheme,
-		volumeInformer, engineInformer, replicaInformer, shareManagerInformer,
-		kubeClient, TestNamespace, controllerID, TestServiceAccount, TestManagerImage)
+	vc := NewVolumeController(logger, ds, scheme.Scheme,
+		volumeInformer, engineInformer, replicaInformer,
+		shareManagerInformer, backupVolumeInformer,
+		kubeClient, TestNamespace, controllerID,
+		TestServiceAccount, TestServiceAccount)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	vc.eventRecorder = fakeRecorder
@@ -120,6 +123,8 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	vc.vStoreSynced = alwaysReady
 	vc.rStoreSynced = alwaysReady
 	vc.eStoreSynced = alwaysReady
+	vc.smStoreSynced = alwaysReady
+	vc.bvStoreSynced = alwaysReady
 	vc.nowHandler = getTestNow
 
 	return vc
@@ -142,7 +147,7 @@ type VolumeTestCase struct {
 }
 
 func (s *TestSuite) TestVolumeLifeCycle(c *C) {
-	testBackupURL := backupstore.EncodeBackupURL(TestBackupName, TestBackupVolumeName, TestBackupTarget)
+	testBackupURL := backupstore.EncodeBackupURL(TestBackupName, TestVolumeName, TestBackupTarget)
 
 	var tc *VolumeTestCase
 	testCases := map[string]*VolumeTestCase{}
@@ -383,6 +388,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.FrontendDisabled = true
 	tc.volume.Status.RestoreRequired = true
 	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.LastBackup = TestBackupName
 	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
 		types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
 	for _, e := range tc.engines {
@@ -426,6 +432,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.CurrentImage = TestEngineImage
 	tc.volume.Status.FrontendDisabled = true
 	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.LastBackup = TestBackupName
 	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
 		types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
 	for _, e := range tc.engines {
@@ -486,6 +493,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.CurrentImage = TestEngineImage
 	tc.volume.Status.FrontendDisabled = false
 	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.LastBackup = TestBackupName
 	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
 		types.VolumeConditionTypeRestore, types.ConditionStatusFalse, "", "")
 	for _, e := range tc.engines {
@@ -537,6 +545,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.FrontendDisabled = true
 	tc.volume.Status.RestoreRequired = true
 	tc.volume.Status.RestoreInitiated = true
+	tc.volume.Status.LastBackup = TestBackupName
 	tc.volume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
 		types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
 	for _, e := range tc.engines {
@@ -1367,6 +1376,29 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		c.Assert(err, IsNil)
 		err = imIndexer.Add(rm2)
 		c.Assert(err, IsNil)
+
+		if tc.volume.Spec.FromBackup != "" {
+			bName, bvName, _, err := backupstore.DecodeBackupURL(tc.volume.Spec.FromBackup)
+			c.Assert(err, IsNil)
+
+			backupVolume := &longhorn.BackupVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: bvName,
+					Finalizers: []string{
+						longhorn.SchemeGroupVersion.Group,
+					},
+				},
+				Status: types.BackupVolumeStatus{
+					LastBackupName: bName,
+				},
+			}
+
+			bv, err := lhClient.LonghornV1beta1().BackupVolumes(TestNamespace).Create(backupVolume)
+			c.Assert(err, IsNil)
+			bvIndexer := lhInformerFactory.Longhorn().V1beta1().BackupVolumes().Informer().GetIndexer()
+			err = bvIndexer.Add(bv)
+			c.Assert(err, IsNil)
+		}
 
 		// Set replica node soft anti-affinity setting
 		if tc.replicaNodeSoftAntiAffinity != "" {
