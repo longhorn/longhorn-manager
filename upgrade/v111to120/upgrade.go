@@ -1,13 +1,18 @@
 package v111to120
 
 import (
+	"fmt"
 	"reflect"
+	"strconv"
+	"time"
 
 	"github.com/pkg/errors"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/backupstore"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
@@ -26,7 +31,12 @@ func UpgradeCRs(namespace string, lhClient *lhclientset.Clientset) (err error) {
 	if err := upgradeBackingImages(namespace, lhClient); err != nil {
 		return err
 	}
-
+	if err := upgradeBackupTargets(namespace, lhClient); err != nil {
+		return nil
+	}
+	if err := upgradeVolumes(namespace, lhClient); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -156,5 +166,126 @@ func checkAndCreateBackingImageDataSource(namespace string, lhClient *lhclientse
 		return err
 	}
 
+	return nil
+}
+
+func upgradeBackupTargets(namespace string, lhClient *lhclientset.Clientset) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "upgrade backup target failed")
+	}()
+
+	const defaultBackupTargetName = "default"
+	_, err = lhClient.LonghornV1beta1().BackupTargets(namespace).Get(defaultBackupTargetName, metav1.GetOptions{})
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+	if err == nil {
+		return nil
+	}
+
+	// Get settings
+	targetSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameBackupTarget), metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	secretSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameBackupTargetCredentialSecret), metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	interval, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameBackupstorePollInterval), metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	var pollInterval time.Duration
+	definition, ok := types.SettingDefinitions[types.SettingNameBackupstorePollInterval]
+	if !ok {
+		return fmt.Errorf("setting %v is not supported", types.SettingNameBackupstorePollInterval)
+	}
+	if definition.Type != types.SettingTypeInt {
+		return fmt.Errorf("The %v setting value couldn't change to integer, value is %v ", string(types.SettingNameBackupstorePollInterval), interval.Value)
+	}
+	result, err := strconv.ParseInt(interval.Value, 10, 64)
+	if err != nil {
+		return err
+	}
+	pollInterval = time.Duration(result) * time.Second
+
+	// Create the default BackupTarget CR if not present
+	_, err = lhClient.LonghornV1beta1().BackupTargets(namespace).Create(&longhorn.BackupTarget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       defaultBackupTargetName,
+			Finalizers: []string{longhorn.SchemeGroupVersion.Group},
+		},
+		Spec: types.BackupTargetSpec{
+			BackupTargetURL:  targetSetting.Value,
+			CredentialSecret: secretSetting.Value,
+			PollInterval:     metav1.Duration{Duration: pollInterval},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "upgrade volume failed")
+	}()
+
+	volumeList, err := lhClient.LonghornV1beta1().Volumes(namespace).List(metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	for _, volume := range volumeList.Items {
+		if err := upgradeLabelsForVolume(&volume, lhClient, namespace); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func upgradeLabelsForVolume(v *longhorn.Volume, lhClient *lhclientset.Clientset, namespace string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "upgradeLabelsForVolume failed")
+	}()
+
+	// Add backup volume name label to the restore/DR volume
+	if v.Spec.FromBackup == "" {
+		return nil
+	}
+	_, backupVolumeName, _, err := backupstore.DecodeBackupURL(v.Spec.FromBackup)
+	if err != nil {
+		return fmt.Errorf("cannot decode backup URL %s for volume %s: %v", v.Spec.FromBackup, v.Name, err)
+	}
+
+	metadata, err := meta.Accessor(v)
+	if err != nil {
+		return err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[types.LonghornLabelBackupVolume] = backupVolumeName
+	metadata.SetLabels(labels)
+
+	if _, err := lhClient.LonghornV1beta1().Volumes(namespace).Update(v); err != nil {
+		return errors.Wrapf(err, "failed to add label for volume %s during upgrade", v.Name)
+	}
 	return nil
 }
