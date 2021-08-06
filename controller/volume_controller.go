@@ -32,7 +32,6 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
-	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -77,6 +76,7 @@ type VolumeController struct {
 	eStoreSynced  cache.InformerSynced
 	rStoreSynced  cache.InformerSynced
 	smStoreSynced cache.InformerSynced
+	bvStoreSynced cache.InformerSynced
 
 	scheduler *scheduler.ReplicaScheduler
 
@@ -94,6 +94,7 @@ func NewVolumeController(
 	engineInformer lhinformers.EngineInformer,
 	replicaInformer lhinformers.ReplicaInformer,
 	shareManagerInformer lhinformers.ShareManagerInformer,
+	backupVolumeInformer lhinformers.BackupVolumeInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID, serviceAccount string,
 	managerImage string) *VolumeController {
@@ -119,6 +120,7 @@ func NewVolumeController(
 		eStoreSynced:  engineInformer.Informer().HasSynced,
 		rStoreSynced:  replicaInformer.Informer().HasSynced,
 		smStoreSynced: shareManagerInformer.Informer().HasSynced,
+		bvStoreSynced: backupVolumeInformer.Informer().HasSynced,
 
 		backoff: flowcontrol.NewBackOff(time.Minute, time.Minute*3),
 
@@ -147,6 +149,10 @@ func NewVolumeController(
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForShareManager(cur) },
 		DeleteFunc: vc.enqueueVolumesForShareManager,
 	})
+	backupVolumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForBackupVolume(cur) },
+		DeleteFunc: vc.enqueueVolumesForBackupVolume,
+	})
 	return vc
 }
 
@@ -157,7 +163,7 @@ func (vc *VolumeController) Run(workers int, stopCh <-chan struct{}) {
 	vc.logger.Infof("Start Longhorn volume controller")
 	defer vc.logger.Infof("Shutting down Longhorn volume controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn engines", stopCh, vc.vStoreSynced, vc.eStoreSynced, vc.rStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn engines", stopCh, vc.vStoreSynced, vc.eStoreSynced, vc.rStoreSynced, vc.smStoreSynced, vc.bvStoreSynced) {
 		return
 	}
 
@@ -431,6 +437,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 
 	if err := vc.ReconcileShareManagerState(volume); err != nil {
 		return err
+	}
+
+	if err := vc.ReconcileBackupVolumeState(volume); err != nil {
+		return nil
 	}
 
 	if err := vc.ReconcileVolumeState(volume, engines, replicas); err != nil {
@@ -2318,20 +2328,17 @@ func (vc *VolumeController) checkAndInitVolumeRestore(v *longhorn.Volume) error 
 		return nil
 	}
 
-	backupTarget, err := manager.GenerateBackupTarget(vc.ds)
+	bName, _, _, err := backupstore.DecodeBackupURL(v.Spec.FromBackup)
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot get backup name from backup URL %v: %v", v.Spec.FromBackup, err)
 	}
 
-	backup, err := backupTarget.InspectBackupConfig(v.Spec.FromBackup)
+	backup, err := vc.ds.GetBackupRO(bName)
 	if err != nil {
-		return fmt.Errorf("cannot get backup %v: %v", v.Spec.FromBackup, err)
-	}
-	if backup == nil {
-		return fmt.Errorf("cannot find backup %v of volume %v", v.Spec.FromBackup, v.Name)
+		return fmt.Errorf("cannot inspect the backup config %v: %v", v.Spec.FromBackup, err)
 	}
 
-	size, err := util.ConvertSize(backup.Size)
+	size, err := util.ConvertSize(backup.Status.Size)
 	if err != nil {
 		return fmt.Errorf("cannot get the size of backup %v: %v", v.Spec.FromBackup, err)
 	}
@@ -2345,10 +2352,10 @@ func (vc *VolumeController) checkAndInitVolumeRestore(v *longhorn.Volume) error 
 		} else {
 			// We were able to unmarshal KubernetesStatus. Set the Ref fields.
 			if kubeStatus.PVCName != "" && kubeStatus.LastPVCRefAt == "" {
-				kubeStatus.LastPVCRefAt = backup.SnapshotCreated
+				kubeStatus.LastPVCRefAt = backup.Status.SnapshotCreatedAt
 			}
 			if len(kubeStatus.WorkloadsStatus) != 0 && kubeStatus.LastPodRefAt == "" {
-				kubeStatus.LastPodRefAt = backup.SnapshotCreated
+				kubeStatus.LastPodRefAt = backup.Status.SnapshotCreatedAt
 			}
 
 			// Do not restore the PersistentVolume fields.
@@ -2504,7 +2511,7 @@ func (vc *VolumeController) getInfoFromBackupURL(v *longhorn.Volume) (string, st
 		return "", "", nil
 	}
 
-	backupName, backupVolumeName, _, err := backupstore.DecodeMetadataURL(v.Spec.FromBackup)
+	backupName, backupVolumeName, _, err := backupstore.DecodeBackupURL(v.Spec.FromBackup)
 	return backupVolumeName, backupName, err
 }
 
@@ -3244,4 +3251,84 @@ func (vc *VolumeController) createShareManagerForVolume(volume *longhorn.Volume,
 	}
 
 	return vc.ds.CreateShareManager(sm)
+}
+
+// enqueueVolumesForBackupVolume enqueues the volumes which is/are DR volumes or
+// the volume name matches backup volume name
+func (vc *VolumeController) enqueueVolumesForBackupVolume(obj interface{}) {
+	bv, isBackupVolume := obj.(*longhorn.BackupVolume)
+	if !isBackupVolume {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to requeue the claimed volumes
+		bv, ok = deletedState.Obj.(*longhorn.BackupVolume)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non BackupVolume object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	// Update last backup for the volume name matches backup volume name
+	var matchedVolumeName string
+	_, err := vc.ds.GetVolume(bv.Name)
+	if err == nil {
+		matchedVolumeName = bv.Name
+		key := bv.Namespace + "/" + bv.Name
+		vc.queue.AddRateLimited(key)
+	}
+
+	// Update last backup for DR volumes
+	volumes, err := vc.ds.ListDRVolumesROWithBackupVolumeName(bv.Name)
+	if err != nil {
+		return
+	}
+	for volumeName := range volumes {
+		if volumeName == matchedVolumeName {
+			// Skip the volume which be enqueued already
+			continue
+		}
+
+		key := bv.Namespace + "/" + volumeName
+		vc.queue.AddRateLimited(key)
+	}
+}
+
+// ReconcileBackupVolumeState is responsible for syncing the state of backup volumes to volume.status
+func (vc *VolumeController) ReconcileBackupVolumeState(volume *longhorn.Volume) error {
+	log := getLoggerForVolume(vc.logger, volume)
+
+	// Update last backup for the DR volume or
+	// update last backup for the volume name matches backup volume name
+	var backupVolumeName string
+	if volume.Spec.Standby {
+		name, ok := volume.Labels[types.LonghornLabelBackupVolume]
+		if !ok {
+			log.Warn("Cannot find the backup volume label")
+			return nil
+		}
+		backupVolumeName = name
+	} else {
+		backupVolumeName = volume.Name
+	}
+
+	bv, err := vc.ds.GetBackupVolume(backupVolumeName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		log.WithError(err).Errorf("Failed to get backup volume %s", backupVolumeName)
+		return err
+	}
+
+	// Clean up last backup if the BackupVolume CR gone
+	if bv == nil || !bv.DeletionTimestamp.IsZero() {
+		volume.Status.LastBackup = ""
+		volume.Status.LastBackupAt = ""
+		return nil
+	}
+	// Set last backup
+	volume.Status.LastBackup = bv.Status.LastBackupName
+	volume.Status.LastBackupAt = bv.Status.LastBackupAt
+	return nil
 }
