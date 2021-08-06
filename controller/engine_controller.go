@@ -1059,29 +1059,42 @@ func checkSizeBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine,
 }
 
 func restoreBackup(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, client engineapi.EngineClient, cliAPIVersion int, ds *datastore.DataStore) error {
-	backupTarget, err := manager.GenerateBackupTarget(ds)
+	// Get default backup target
+	backupTarget, err := ds.GetBackupTargetRO(types.DefaultBackupTargetName)
 	if err != nil {
-		return errors.Wrapf(err, "cannot generate BackupTarget for backup restoration of engine %v", engine.Name)
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+		return nil
 	}
 
-	credential, err := manager.GetBackupCredentialConfig(ds)
+	// Initialize a backup target client
+	credential, err := ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
 	if err != nil {
-		return errors.Wrapf(err, "cannot get backup credential config for backup restoration of engine %v", engine.Name)
+		return err
+	}
+	defaultEngineImage, err := ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+	if err != nil {
+		return err
+	}
+	backupTargetClient, err := engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential)
+	if err != nil {
+		return errors.Wrapf(err, "cannot init backup target client for backup restoration of engine %v", engine.Name)
 	}
 
 	if cliAPIVersion < engineapi.CLIVersionFour {
 		// For compatible engines, `LastRestoredBackup` is required to indicate if the restore is incremental restore
 		log.Infof("Prepare to restore backup, backup target: %v, backup volume: %v, requested restored backup name: %v, last restored backup name: %v",
-			backupTarget.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
-		if err = client.BackupRestore(backupTarget.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup, credential); err != nil {
+			backupTargetClient.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
+		if err = client.BackupRestore(backupTargetClient.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup, backupTargetClient.Credential); err != nil {
 			if extraErr := handleRestoreErrorForCompatibleEngine(log, engine, rsMap, err); extraErr != nil {
 				return extraErr
 			}
 		}
 	} else {
-		if err = client.BackupRestore(backupTarget.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, "", credential); err != nil {
+		if err = client.BackupRestore(backupTargetClient.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, "", backupTargetClient.Credential); err != nil {
 			log.Infof("Prepare to restore backup, backup target: %v, backup volume: %v, requested restored backup name: %v",
-				backupTarget.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
+				backupTargetClient.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
 			if extraErr := handleRestoreError(log, engine, rsMap, err); extraErr != nil {
 				return extraErr
 			}

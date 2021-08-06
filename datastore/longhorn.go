@@ -245,22 +245,26 @@ func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, err
 // GetCredentialFromSecret gets the Secret of the given name and namespace
 // Returns a new credential object or error
 func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]string, error) {
-	secret, err := s.kubeClient.CoreV1().Secrets(s.namespace).Get(secretName, metav1.GetOptions{})
+	secret, err := s.GetSecretRO(s.namespace, secretName)
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	credentialSecret := make(map[string]string)
-	if secret.Data != nil {
-		credentialSecret[types.AWSIAMRoleArn] = string(secret.Data[types.AWSIAMRoleArn])
-		credentialSecret[types.AWSAccessKey] = string(secret.Data[types.AWSAccessKey])
-		credentialSecret[types.AWSSecretKey] = string(secret.Data[types.AWSSecretKey])
-		credentialSecret[types.AWSEndPoint] = string(secret.Data[types.AWSEndPoint])
-		credentialSecret[types.AWSCert] = string(secret.Data[types.AWSCert])
-		credentialSecret[types.HTTPSProxy] = string(secret.Data[types.HTTPSProxy])
-		credentialSecret[types.HTTPProxy] = string(secret.Data[types.HTTPProxy])
-		credentialSecret[types.NOProxy] = string(secret.Data[types.NOProxy])
-		credentialSecret[types.VirtualHostedStyle] = string(secret.Data[types.VirtualHostedStyle])
+	if secret.Data == nil {
+		return credentialSecret, nil
 	}
+	credentialSecret[types.AWSIAMRoleArn] = string(secret.Data[types.AWSIAMRoleArn])
+	credentialSecret[types.AWSAccessKey] = string(secret.Data[types.AWSAccessKey])
+	credentialSecret[types.AWSSecretKey] = string(secret.Data[types.AWSSecretKey])
+	credentialSecret[types.AWSEndPoint] = string(secret.Data[types.AWSEndPoint])
+	credentialSecret[types.AWSCert] = string(secret.Data[types.AWSCert])
+	credentialSecret[types.HTTPSProxy] = string(secret.Data[types.HTTPSProxy])
+	credentialSecret[types.HTTPProxy] = string(secret.Data[types.HTTPProxy])
+	credentialSecret[types.NOProxy] = string(secret.Data[types.NOProxy])
+	credentialSecret[types.VirtualHostedStyle] = string(secret.Data[types.VirtualHostedStyle])
 	return credentialSecret, nil
 }
 
