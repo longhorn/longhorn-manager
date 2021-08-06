@@ -578,12 +578,6 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 		return nil, fmt.Errorf("invalid frontend %v", frontend)
 	}
 
-	// ListBackupVolumes() will trigger the update for LastBackup
-	_, err = m.ListBackupVolumes()
-	if err != nil {
-		logrus.Warnf("failed to update LastBackup and backup volume list before activating standby volume %v: %v", volumeName, err)
-	}
-
 	v, err = m.ds.GetVolume(volumeName)
 	if err != nil {
 		return nil, err
