@@ -379,11 +379,28 @@ func (c *BackingImageManagerController) updateForUnknownBackingImageManager(bim 
 	}
 	c.backoffMap.Delete(bim.Name)
 
+	log := getLoggerForBackingImageManager(c.logger, bim)
 	for biName, info := range bim.Status.BackingImageFileMap {
 		if info.State == types.BackingImageStateFailed {
 			continue
 		}
 		info.State = types.BackingImageStateUnknown
+		bim.Status.BackingImageFileMap[biName] = info
+	}
+	for biName := range bim.Spec.BackingImages {
+		if _, ok := bim.Status.BackingImageFileMap[biName]; ok {
+			continue
+		}
+		bi, err := c.ds.GetBackingImage(biName)
+		if err != nil {
+			log.Warnf("Failed to get backing image %v before marking the empty file record in an unavailable disk as unknown", biName)
+			continue
+		}
+		info := types.BackingImageFileInfo{
+			Name:  bi.Name,
+			UUID:  bi.Status.UUID,
+			State: types.BackingImageStateUnknown,
+		}
 		bim.Status.BackingImageFileMap[biName] = info
 	}
 

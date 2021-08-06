@@ -397,12 +397,22 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 	}
 	existingBIDS := bids.DeepCopy()
 
-	allFilesUnavailable := false
-	for _, fileStatus := range bi.Status.DiskFileStatusMap {
-		allFilesUnavailable = true
-		if fileStatus.State != types.BackingImageStateFailed && fileStatus.State != types.BackingImageStateUnknown {
+	// If all files in Spec.Disk becomes unavailable and there is no extra ready files.
+	allFilesUnavailable := true
+	for diskUUID := range bi.Spec.Disks {
+		fileStatus, ok := bi.Status.DiskFileStatusMap[diskUUID]
+		if !ok || (fileStatus.State != types.BackingImageStateFailed && fileStatus.State != types.BackingImageStateUnknown) {
 			allFilesUnavailable = false
 			break
+		}
+	}
+	if allFilesUnavailable {
+		// Check if there are extra available files outside of Spec.Disks
+		for _, fileStatus := range bi.Status.DiskFileStatusMap {
+			if fileStatus.State != types.BackingImageStateFailed && fileStatus.State != types.BackingImageStateUnknown {
+				allFilesUnavailable = false
+				break
+			}
 		}
 	}
 
