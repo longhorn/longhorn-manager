@@ -39,6 +39,9 @@ const (
 	CRDBackingImageName           = "backingimages.longhorn.io"
 	CRDBackingImageManagerName    = "backingimagemanagers.longhorn.io"
 	CRDBackingImageDataSourceName = "backingimagedatasources.longhorn.io"
+	CRDBackupTargetName           = "backuptargets.longhorn.io"
+	CRDBackupVolumeName           = "backupvolumes.longhorn.io"
+	CRDBackupName                 = "backups.longhorn.io"
 
 	LonghornNamespace = "longhorn-system"
 )
@@ -74,6 +77,9 @@ func NewUninstallController(
 	backingImageInformer lhinformers.BackingImageInformer,
 	backingImageManagerInformer lhinformers.BackingImageManagerInformer,
 	backingImageDataSourceInformer lhinformers.BackingImageDataSourceInformer,
+	backupTargetInformer lhinformers.BackupTargetInformer,
+	backupVolumeInformer lhinformers.BackupVolumeInformer,
+	backupInformer lhinformers.BackupInformer,
 	daemonSetInformer appsv1.DaemonSetInformer,
 	deploymentInformer appsv1.DeploymentInformer,
 	csiDriverInformer storagev1beta1.CSIDriverInformer,
@@ -139,6 +145,18 @@ func NewUninstallController(
 	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDBackingImageDataSourceName, metav1.GetOptions{}); err == nil {
 		backingImageDataSourceInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, backingImageDataSourceInformer.Informer().HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDBackupTargetName, metav1.GetOptions{}); err == nil {
+		backupTargetInformer.Informer().AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, backupTargetInformer.Informer().HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDBackupVolumeName, metav1.GetOptions{}); err == nil {
+		backupVolumeInformer.Informer().AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, backupVolumeInformer.Informer().HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDBackupName, metav1.GetOptions{}); err == nil {
+		backupInformer.Informer().AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, backupInformer.Informer().HasSynced)
 	}
 
 	c.cacheSyncs = cacheSyncs
@@ -398,6 +416,27 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 	} else if len(backingImageDataSources) > 0 {
 		c.logger.Infof("Found %d backingImageDataSources remaining", len(backingImageDataSources))
 		return true, c.deleteBackingImageDataSource(backingImageDataSources)
+	}
+
+	if backupTargets, err := c.ds.ListBackupTargets(); err != nil {
+		return true, err
+	} else if len(backupTargets) > 0 {
+		c.logger.Infof("Found %d backuptargets remaining", len(backupTargets))
+		return true, c.deleteBackupTargets(backupTargets)
+	}
+
+	if backupVolumes, err := c.ds.ListBackupVolumes(); err != nil {
+		return true, err
+	} else if len(backupVolumes) > 0 {
+		c.logger.Infof("Found %d backupvolumes remaining", len(backupVolumes))
+		return true, c.deleteBackupVolumes(backupVolumes)
+	}
+
+	if backups, err := c.ds.ListBackups(); err != nil {
+		return true, err
+	} else if len(backups) > 0 {
+		c.logger.Infof("Found %d backups remaining", len(backups))
+		return true, c.deleteBackups(backups)
 	}
 
 	if nodes, err := c.ds.ListNodes(); err != nil {
@@ -678,6 +717,75 @@ func (c *UninstallController) deleteBackingImageDataSource(backingImageDataSourc
 				return err
 			}
 			if err = c.ds.RemoveFinalizerForBackingImageDataSource(bids); err != nil {
+				return errors.Wrapf(err, "Failed to remove finalizer")
+			}
+			log.Info("Removed finalizer")
+		}
+	}
+	return nil
+}
+
+func (c *UninstallController) deleteBackupTargets(backupTargets map[string]*longhorn.BackupTarget) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "Failed to delete backup targets")
+	}()
+	for _, bt := range backupTargets {
+		log := getLoggerForBackupTarget(c.logger, bt)
+
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if bt.DeletionTimestamp == nil {
+			if err = c.ds.DeleteBackupTarget(bt.Name); err != nil {
+				return errors.Wrapf(err, "Failed to mark for deletion")
+			}
+			log.Info("Marked for deletion")
+		} else if bt.DeletionTimestamp.Before(&timeout) {
+			if err = c.ds.RemoveFinalizerForBackupTarget(bt); err != nil {
+				return errors.Wrapf(err, "Failed to remove finalizer")
+			}
+			log.Info("Removed finalizer")
+		}
+	}
+	return nil
+}
+
+func (c *UninstallController) deleteBackupVolumes(backupVolumes map[string]*longhorn.BackupVolume) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "Failed to delete backup volumes")
+	}()
+	for _, bv := range backupVolumes {
+		log := getLoggerForBackupVolume(c.logger, bv)
+
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if bv.DeletionTimestamp == nil {
+			if err = c.ds.DeleteBackupVolume(bv.Name); err != nil {
+				return errors.Wrapf(err, "Failed to mark for deletion")
+			}
+			log.Info("Marked for deletion")
+		} else if bv.DeletionTimestamp.Before(&timeout) {
+			if err = c.ds.RemoveFinalizerForBackupVolume(bv); err != nil {
+				return errors.Wrapf(err, "Failed to remove finalizer")
+			}
+			log.Info("Removed finalizer")
+		}
+	}
+	return nil
+}
+
+func (c *UninstallController) deleteBackups(backups map[string]*longhorn.Backup) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "Failed to delete backups")
+	}()
+	for _, b := range backups {
+		log := getLoggerForBackup(c.logger, b)
+
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if b.DeletionTimestamp == nil {
+			if err = c.ds.DeleteBackup(b.Name); err != nil {
+				return errors.Wrapf(err, "Failed to mark for deletion")
+			}
+			log.Info("Marked for deletion")
+		} else if b.DeletionTimestamp.Before(&timeout) {
+			if err = c.ds.RemoveFinalizerForBackup(b); err != nil {
 				return errors.Wrapf(err, "Failed to remove finalizer")
 			}
 			log.Info("Removed finalizer")
