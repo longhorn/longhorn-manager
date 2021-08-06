@@ -48,7 +48,7 @@ require (
 	github.com/jinzhu/copier v0.0.0-20190924061706-b57f9002281a
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v0.0.0-20210809125601-48e29abcd637
-	github.com/longhorn/backupstore v0.0.0-20210504063753-dfee2468733e
+	github.com/longhorn/backupstore v0.0.0-20210729000425-b76c1441afc0
 	github.com/longhorn/go-iscsi-helper v0.0.0-20201111045018-ee87992ec536
 	github.com/longhorn/longhorn-instance-manager v0.0.0-20210729081215-50c310f97378
 	github.com/mitchellh/mapstructure v1.1.2
