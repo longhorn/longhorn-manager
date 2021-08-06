@@ -290,8 +290,10 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	} else if len(engine.Spec.UpgradedReplicaAddressMap) == 0 {
 		syncReplicaAddressMap = true
 	}
-	if syncReplicaAddressMap {
+	if syncReplicaAddressMap && !reflect.DeepEqual(engine.Status.CurrentReplicaAddressMap, engine.Spec.ReplicaAddressMap) {
 		engine.Status.CurrentReplicaAddressMap = engine.Spec.ReplicaAddressMap
+		// Make sure the CurrentReplicaAddressMap persist in the etcd before continue
+		return nil
 	}
 
 	if err := ec.instanceHandler.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
