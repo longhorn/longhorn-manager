@@ -47,6 +47,7 @@ func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string)
 				csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
 				csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 				csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
+				csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
 			}),
 		accessModes: getVolumeCapabilityAccessModes(
 			[]csi.VolumeCapability_AccessMode_Mode{
@@ -75,35 +76,54 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		reqVolSizeBytes = req.GetCapacityRange().GetRequiredBytes()
 	}
 	if reqVolSizeBytes < util.MinimalVolumeSize {
-		logrus.Infof("volume %s requested capacity %v is smaller than minimal capacity %v, enforcing minimal capacity.", volumeID, reqVolSizeBytes, util.MinimalVolumeSize)
+		logrus.Infof("CreateVolume: volume %s requested capacity %v is smaller than minimal capacity %v, enforcing minimal capacity.", volumeID, reqVolSizeBytes, util.MinimalVolumeSize)
 		reqVolSizeBytes = util.MinimalVolumeSize
 	}
 	// Round up to multiple of 2 * 1024 * 1024
 	reqVolSizeBytes = util.RoundUpSize(reqVolSizeBytes)
 
-	// check if we need to restore from a csi snapshot
-	// we don't support volume cloning at the moment
-	source := req.VolumeContentSource
-	if source != nil {
-		if source.GetVolume() != nil {
-			return nil, status.Error(codes.InvalidArgument, "volume cloning not supported")
-		}
+	volumeSource := req.GetVolumeContentSource()
+	if volumeSource != nil {
+		switch volumeSource.Type.(type) {
+		case *csi.VolumeContentSource_Snapshot:
+			if snapshot := volumeSource.GetSnapshot(); snapshot != nil {
+				_, backupVolume, backupName := decodeSnapshotID(snapshot.SnapshotId)
+				bv, err := cs.apiClient.BackupVolume.ById(backupVolume)
+				if err != nil {
+					return nil, status.Errorf(codes.NotFound, "cannot restore csi snapshot %s backup volume %s unavailable", snapshot.SnapshotId, backupVolume)
+				}
 
-		snapshot := source.GetSnapshot()
-		_, backupVolume, backupName := decodeSnapshotID(snapshot.SnapshotId)
-		bv, err := cs.apiClient.BackupVolume.ById(backupVolume)
-		if err != nil {
-			return nil, status.Errorf(codes.NotFound, "cannot restore csi snapshot %s backup volume %s unavailable", snapshot.SnapshotId, backupVolume)
-		}
+				backup, err := cs.apiClient.BackupVolume.ActionBackupGet(bv, &longhornclient.BackupInput{Name: backupName})
+				if err != nil {
+					return nil, status.Errorf(codes.NotFound, "cannot restore csi snapshot %v backup %s unavailable", snapshot.SnapshotId, backupName)
+				}
 
-		backup, err := cs.apiClient.BackupVolume.ActionBackupGet(bv, &longhornclient.BackupInput{Name: backupName})
-		if err != nil {
-			return nil, status.Errorf(codes.NotFound, "cannot restore csi snapshot %v backup %s unavailable", snapshot.SnapshotId, backupName)
-		}
+				// use the fromBackup method for the csi snapshot restores as well
+				// the same parameter was previously only used for restores based on the storage class
+				volumeParameters["fromBackup"] = backup.Url
+			}
+		case *csi.VolumeContentSource_Volume:
+			if srcVolume := volumeSource.GetVolume(); srcVolume != nil {
+				longhornSrcVol, err := cs.apiClient.Volume.ById(srcVolume.VolumeId)
+				if err != nil {
+					return nil, status.Errorf(codes.NotFound, "cannot clone volume: source volume %s is unavailable", srcVolume.VolumeId)
+				}
 
-		// use the fromBackup method for the csi snapshot restores as well
-		// the same parameter was previously only used for restores based on the storage class
-		volumeParameters["fromBackup"] = backup.Url
+				// check size of source and requested
+				srcVolSizeBytes, err := strconv.ParseInt(longhornSrcVol.Size, 10, 64)
+				if err != nil {
+					return nil, status.Errorf(codes.Internal, err.Error())
+				}
+				if reqVolSizeBytes != srcVolSizeBytes {
+					return nil, status.Errorf(codes.OutOfRange, "cannot clone volume: the requested size (%v bytes) is different than the source volume size (%v bytes)", reqVolSizeBytes, srcVolSizeBytes)
+				}
+
+				dataSource, _ := types.NewVolumeDataSource(types.VolumeDataSourceTypeVolume, map[string]string{types.VolumeNameKey: srcVolume.VolumeId})
+				volumeParameters["dataSource"] = dataSource.ToString()
+			}
+		default:
+			return nil, status.Errorf(codes.InvalidArgument, "%v not a proper volume source", volumeSource)
+		}
 	}
 
 	existVol, err := cs.apiClient.Volume.ById(volumeID)
@@ -122,13 +142,16 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			return nil, status.Errorf(codes.AlreadyExists, "volume %s size %v differs from requested size %v", existVol.Name, exVolSize, reqVolSizeBytes)
 		}
 
-		// pass through the volume content source in case this volume is in the process of being created
+		// pass through the volume content source in case this volume is in the process of being created.
+		// We won't wait for clone/restore to complete but return OK immediately here so that
+		// if Kubernetes wants to abort/delete the cloning/restoring volume, it has the volume ID and is able to do so.
+		// We will wait for clone/restore to complete inside ControllerPublishVolume.
 		rsp := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
 				VolumeId:      existVol.Id,
 				CapacityBytes: exVolSize,
 				VolumeContext: volumeParameters,
-				ContentSource: source,
+				ContentSource: volumeSource,
 			},
 		}
 
@@ -175,7 +198,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			VolumeId:      resVol.Id,
 			CapacityBytes: reqVolSizeBytes,
 			VolumeContext: volumeParameters,
-			ContentSource: source,
+			ContentSource: volumeSource,
 		},
 	}, nil
 }
@@ -347,7 +370,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 	//  Most of the readiness conditions are covered by the attach, except auto attachment which requires changes to the design
 	//  should be handled by the processing of the api return codes
 	if !volume.Ready {
-		return nil, status.Errorf(codes.Aborted, "volume %s in state %v is not ready for workloads", volumeID, volume.State)
+		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads", volumeID)
 	}
 
 	// TODO: JM if volume is already attached to a different node, return code `codes.FailedPrecondition`
