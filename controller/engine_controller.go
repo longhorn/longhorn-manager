@@ -823,6 +823,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	// Make sure the engine object is updated before engineapi calls.
 	if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
 		engine, err = m.ds.UpdateEngineStatus(engine)
+		existingEngine = engine.DeepCopy()
 		if err != nil {
 			return err
 		}
@@ -870,7 +871,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.RestoreStatus = rsMap
 		if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
 			if _, updateErr := m.ds.UpdateEngineStatus(engine); updateErr != nil {
-				err = errors.Wrapf(err, "engine monitor: Failed to update the restore status for engine %v: %v", engine.Name, updateErr)
+				err = errors.Wrapf(err, "engine monitor: Failed to update the status for engine %v: %v", engine.Name, updateErr)
 			}
 		}
 	}()
@@ -883,6 +884,25 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	// Incremental restoration will implicitly expand the DR volume once the backup volume is expanded
 	if needRestore {
 		if err = restoreBackup(m.logger, engine, rsMap, client, cliAPIVersion, m.ds); err != nil {
+			return err
+		}
+	}
+
+	var snapshotCloneStatusMap map[string]*types.SnapshotCloneStatus
+	if cliAPIVersion >= engineapi.CLIVersionFive {
+		if snapshotCloneStatusMap, err = client.SnapshotCloneStatus(); err != nil {
+			return err
+		}
+	}
+
+	engine.Status.CloneStatus = snapshotCloneStatusMap
+
+	needClone, err := preCloneCheck(engine)
+	if err != nil {
+		return err
+	}
+	if needClone {
+		if err = cloneSnapshot(engine, client, m.ds); err != nil {
 			return err
 		}
 	}
@@ -1139,6 +1159,46 @@ func handleRestoreErrorForCompatibleEngine(log logrus.FieldLogger, engine *longh
 	log.WithError(taskErr).Warnf("Some replicas of the compatible engine failed to start restoring backup %v with last restored backup %v in engine monitor",
 		engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
 
+	return nil
+}
+
+func preCloneCheck(engine *longhorn.Engine) (needClone bool, err error) {
+	if engine.Spec.RequestedDataSource == "" {
+		return false, nil
+	}
+	for _, status := range engine.Status.CloneStatus {
+		// Already in-cloning or finished cloning the snapshot
+		if status != nil && status.State != "" {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func cloneSnapshot(engine *longhorn.Engine, client engineapi.EngineClient, ds *datastore.DataStore) error {
+	sourceVolumeName := engine.Spec.RequestedDataSource.GetVolumeName()
+	snapshotName := engine.Spec.RequestedDataSource.GetSnapshotName()
+	sourceEngines, err := ds.ListVolumeEngines(sourceVolumeName)
+	if err != nil {
+		return err
+	}
+	if len(sourceEngines) != 1 {
+		return fmt.Errorf("failed to get engine for the source volume %v. The source volume has %v engines", sourceVolumeName, len(sourceEngines))
+	}
+	var sourceEngine *longhorn.Engine
+	for _, e := range sourceEngines {
+		sourceEngine = e
+	}
+	sourceEngineControllerURL := imutil.GetURL(sourceEngine.Status.IP, sourceEngine.Status.Port)
+	if err := client.SnapshotClone(snapshotName, sourceEngineControllerURL); err != nil {
+		// There is only 1 replica during volume cloning,
+		// so if the cloning failed, it must be that the replica failed to clone.
+		for _, status := range engine.Status.CloneStatus {
+			status.Error = err.Error()
+			status.State = types.ProcessStateError
+		}
+		return err
+	}
 	return nil
 }
 

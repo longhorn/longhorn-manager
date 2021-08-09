@@ -148,27 +148,27 @@ func (e *EngineSimulator) SimulateStopReplica(addr string) error {
 }
 
 func (e *EngineSimulator) SnapshotCreate(name string, labels map[string]string) (string, error) {
-	return "", fmt.Errorf("Not implemented")
+	return "", fmt.Errorf("not implemented")
 }
 
 func (e *EngineSimulator) SnapshotList() (map[string]*types.Snapshot, error) {
-	return nil, fmt.Errorf("Not implemented")
+	return nil, fmt.Errorf("not implemented")
 }
 
 func (e *EngineSimulator) SnapshotGet(name string) (*types.Snapshot, error) {
-	return nil, fmt.Errorf("Not implemented")
+	return nil, fmt.Errorf("not implemented")
 }
 
 func (e *EngineSimulator) SnapshotDelete(name string) error {
-	return fmt.Errorf("Not implemented")
+	return fmt.Errorf("not implemented")
 }
 
 func (e *EngineSimulator) SnapshotRevert(name string) error {
-	return fmt.Errorf("Not implemented")
+	return fmt.Errorf("not implemented")
 }
 
 func (e *EngineSimulator) SnapshotPurge() error {
-	return fmt.Errorf("Not implemented")
+	return fmt.Errorf("not implemented")
 }
 
 func (e *EngineSimulator) SnapshotPurgeStatus() (map[string]*types.PurgeStatus, error) {
@@ -184,36 +184,44 @@ func (e *EngineSimulator) SnapshotBackupStatus() (map[string]*types.BackupStatus
 }
 
 func (e *EngineSimulator) Version(clientOnly bool) (*EngineVersion, error) {
-	return nil, fmt.Errorf("Not implemented")
+	return nil, fmt.Errorf("not implemented")
 }
 
 func (e *EngineSimulator) Info() (*Volume, error) {
-	return nil, fmt.Errorf("Not implemented")
+	return nil, fmt.Errorf("not implemented")
 }
 
 func (e *EngineSimulator) Expand(size int64) error {
-	return fmt.Errorf("Not implemented")
+	return fmt.Errorf("not implemented")
 }
 
 func (e *EngineSimulator) BackupRestore(backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error {
-	return fmt.Errorf("Not implemented")
+	return fmt.Errorf("not implemented")
+}
+
+func (e *EngineSimulator) SnapshotClone(snapshotName, fromControllerAddress string) error {
+	return fmt.Errorf("not implemented")
 }
 
 func (e *EngineSimulator) BackupRestoreStatus() (map[string]*types.RestoreStatus, error) {
-	return nil, fmt.Errorf("Not implemented")
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (e *EngineSimulator) SnapshotCloneStatus() (map[string]*types.SnapshotCloneStatus, error) {
+	return nil, fmt.Errorf("not implemented")
 }
 
 func (e *EngineSimulator) ReplicaRebuildStatus() (map[string]*types.RebuildStatus, error) {
-	return nil, fmt.Errorf("Not implemented")
+	return nil, fmt.Errorf("not implemented")
 }
 
 func (e *EngineSimulator) FrontendStart(volumeFrontend types.VolumeFrontend) error {
-	return fmt.Errorf("Not implemented")
+	return fmt.Errorf("not implemented")
 }
 func (e *EngineSimulator) FrontendShutdown() error {
-	return fmt.Errorf("Not implemented")
+	return fmt.Errorf("not implemented")
 }
 
 func (e *EngineSimulator) ReplicaRebuildVerify(url string) error {
-	return fmt.Errorf("Not implemented")
+	return fmt.Errorf("not implemented")
 }

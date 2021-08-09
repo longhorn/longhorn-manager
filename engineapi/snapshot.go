@@ -90,3 +90,25 @@ func (e *Engine) SnapshotPurgeStatus() (map[string]*types.PurgeStatus, error) {
 
 	return data, nil
 }
+
+func (e *Engine) SnapshotClone(snapshotName, fromControllerAddress string) error {
+	args := []string{"snapshot", "clone", "--snapshot-name", snapshotName, "--from-controller-address", fromControllerAddress}
+	if _, err := e.ExecuteEngineBinaryWithoutTimeout([]string{}, args...); err != nil {
+		return errors.Wrapf(err, "error starting snapshot clone")
+	}
+	logrus.Debugf("Cloned snapshot %v from volume %v to volume %v", snapshotName, fromControllerAddress, e.cURL)
+	return nil
+}
+
+func (e *Engine) SnapshotCloneStatus() (map[string]*types.SnapshotCloneStatus, error) {
+	args := []string{"snapshot", "clone-status"}
+	output, err := e.ExecuteEngineBinary(args...)
+	if err != nil {
+		return nil, err
+	}
+	snapshotCloneStatusMap := make(map[string]*types.SnapshotCloneStatus)
+	if err := json.Unmarshal([]byte(output), &snapshotCloneStatusMap); err != nil {
+		return nil, err
+	}
+	return snapshotCloneStatusMap, nil
+}

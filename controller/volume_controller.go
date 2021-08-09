@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -515,7 +516,7 @@ func (vc *VolumeController) EvictReplicas(v *longhorn.Volume,
 }
 
 // ReconcileEngineReplicaState will get the current main engine e.Status.ReplicaModeMap, e.Status.RestoreStatus,
-// and e.Status.purgeStatus then update v and rs accordingly.
+// e.Status.purgeStatus, and e.Status.SnapshotCloneStatus then update v and rs accordingly.
 func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to reconcile engine/replica state for %v", v.Name)
@@ -667,6 +668,17 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		}
 		// replicas will be started by ReconcileVolumeState() later
 	}
+
+	for _, status := range e.Status.CloneStatus {
+		if status != nil && status.State == types.ProcessStateComplete && v.Status.CloneStatus.State != types.VolumeCloneStateCompleted {
+			v.Status.CloneStatus.State = types.VolumeCloneStateCompleted
+			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonVolumeCloneCompleted, "finished cloning snapshot %v from source volume %v", v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
+		} else if status != nil && status.State == types.ProcessStateError && v.Status.CloneStatus.State != types.VolumeCloneStateFailed {
+			v.Status.CloneStatus.State = types.VolumeCloneStateFailed
+			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonVolumeCloneFailed, "failed to clone snapshot %v from source volume %v: %v", v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume, status.Error)
+		}
+	}
+
 	return nil
 }
 
@@ -952,6 +964,14 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		return err
 	}
 	if err := vc.updateRequestedBackupForVolumeRestore(v, e); err != nil {
+		return err
+	}
+
+	if err := vc.checkAndInitVolumeClone(v); err != nil {
+		return err
+	}
+
+	if err := vc.updateRequestedDataSourceForVolumeCloning(v, e); err != nil {
 		return err
 	}
 
@@ -1965,6 +1985,14 @@ func (vc *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map
 		}
 	}
 
+	// Only create 1 replica while volume is in cloning process
+	if isTargetVolumeOfCloning(v) {
+		if usableCount == 0 {
+			return 1, ""
+		}
+		return 0, ""
+	}
+
 	switch {
 	case v.Spec.NumberOfReplicas < usableCount:
 		return 0, ""
@@ -2375,6 +2403,95 @@ func (vc *VolumeController) checkAndInitVolumeRestore(v *longhorn.Volume) error 
 	return nil
 }
 
+func (vc *VolumeController) updateRequestedDataSourceForVolumeCloning(v *longhorn.Volume, e *longhorn.Engine) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to updateRequestedDataSourceForVolumeCloning")
+	}()
+
+	if e == nil {
+		return nil
+	}
+	if isTargetVolumeOfCloning(v) && v.Status.CloneStatus.State == types.VolumeCloneStateInitiated {
+		ds, err := types.NewVolumeDataSource(types.VolumeDataSourceTypeSnapshot, map[string]string{
+			types.VolumeNameKey:   v.Status.CloneStatus.SourceVolume,
+			types.SnapshotNameKey: v.Status.CloneStatus.Snapshot,
+		})
+		if err != nil {
+			return err
+		}
+		e.Spec.RequestedDataSource = ds
+		return nil
+	}
+	e.Spec.RequestedDataSource = ""
+	return nil
+}
+
+func (vc *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to checkAndInitVolumeClone for volume %v", v.Name)
+	}()
+
+	dataSource := v.Spec.DataSource
+	if !dataSource.IsDataFromVolume() || v.Status.CloneStatus.State != types.VolumeCloneStateEmpty {
+		return nil
+	}
+
+	sourceVolName := dataSource.GetVolumeName()
+	snapshotName := dataSource.GetSnapshotName()
+	sourceVol, err := vc.ds.GetVolume(sourceVolName)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			v.Status.CloneStatus.State = types.VolumeCloneStateFailed
+			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonVolumeCloneFailed, "cannot find the source volume %v", sourceVolName)
+			return nil
+		}
+		return err
+	}
+	// Wait for the source volume to be attach
+	if sourceVol.Status.State != types.VolumeStateAttached {
+		return nil
+	}
+	if snapshotName == "" {
+		labels := map[string]string{types.GetLonghornLabelKey(types.LonghornLabelSnapshotForCloningVolume): v.Name}
+		snapshot, err := vc.createSnapshot("", labels, sourceVol)
+		if err != nil {
+			return errors.Wrapf(err, "failed to create snapshot of source volume %v", sourceVol.Name)
+		}
+		snapshotName = snapshot.Name
+	}
+
+	// Store data into the volume clone status. Make sure that the created snapshot
+	// persit in the volume spec before continue
+	v.Status.CloneStatus.SourceVolume = sourceVolName
+	v.Status.CloneStatus.Snapshot = snapshotName
+	v.Status.CloneStatus.State = types.VolumeCloneStateInitiated
+	vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonVolumeCloneInitiated, "source volume %v, snapshot %v", sourceVolName, snapshotName)
+
+	return nil
+}
+
+// isTargetVolumeOfCloning checks if the input volume is the target volume of an on-going cloning process
+func isTargetVolumeOfCloning(v *longhorn.Volume) bool {
+	isCloningDesired := v.Spec.DataSource.IsDataFromVolume()
+	isCloningDone := v.Status.CloneStatus.State == types.VolumeCloneStateCompleted ||
+		v.Status.CloneStatus.State == types.VolumeCloneStateFailed
+	return isCloningDesired && !isCloningDone
+}
+
+// isSourceVolumeOfCloning checks if the input volume is the source volume of an on-going cloning process
+func (vc *VolumeController) isSourceVolumeOfCloning(v *longhorn.Volume) (bool, error) {
+	vols, err := vc.ds.ListVolumes()
+	if err != nil {
+		return false, err
+	}
+	for _, vol := range vols {
+		if isTargetVolumeOfCloning(vol) && vol.Spec.DataSource.GetVolumeName() == v.Name {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (vc *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
 	log := getLoggerForVolume(vc.logger, v)
 
@@ -2423,8 +2540,18 @@ func (vc *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longho
 	//   1. restoring/DR volumes.
 	//   2. offline expansion.
 	//   3. Eviction requested on this volume.
-	if v.Status.RestoreRequired || v.Status.IsStandby ||
-		v.Status.ExpansionRequired || vc.hasReplicaEvictionRequested(rs) {
+	//   4. The target volume of a cloning
+	//   5. The source volume of a cloning
+	isRestoringDRVol := v.Status.RestoreRequired || v.Status.IsStandby
+	isOfflineExpansionVol := v.Status.ExpansionRequired
+	isEvictionRequestedOnVol := vc.hasReplicaEvictionRequested(rs)
+	isTargetVolOfCloning := isTargetVolumeOfCloning(v)
+	sourceVolumeOfCloning, err := vc.isSourceVolumeOfCloning(v)
+	if err != nil {
+		return err
+	}
+	if isRestoringDRVol || isOfflineExpansionVol || isEvictionRequestedOnVol ||
+		isTargetVolOfCloning || sourceVolumeOfCloning {
 		// Should use vc.controllerID or v.Status.OwnerID as CurrentNodeID,
 		// otherwise they may be not equal
 		v.Status.CurrentNodeID = v.Status.OwnerID
@@ -2446,6 +2573,16 @@ func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longho
 
 	// Don't do auto-detachment if the eviction is going on.
 	if vc.hasReplicaEvictionRequested(rs) {
+		return nil
+	}
+
+	// While cloning is happening, don't auto-detach target volume or source volume of the cloning
+	if isTargetVolumeOfCloning(v) {
+		return nil
+	}
+	if isSourceVolOfCloning, err := vc.isSourceVolumeOfCloning(v); err != nil {
+		return err
+	} else if isSourceVolOfCloning {
 		return nil
 	}
 
@@ -3330,5 +3467,87 @@ func (vc *VolumeController) ReconcileBackupVolumeState(volume *longhorn.Volume) 
 	// Set last backup
 	volume.Status.LastBackup = bv.Status.LastBackupName
 	volume.Status.LastBackupAt = bv.Status.LastBackupAt
+	return nil
+}
+
+// TODO: this block of code is duplicated of CreateSnapshot in MANAGER package.
+// Once we have Snapshot CR, we should refactor this
+
+func (vc *VolumeController) createSnapshot(snapshotName string, labels map[string]string, volume *longhorn.Volume) (*types.Snapshot, error) {
+	if volume.Name == "" {
+		return nil, fmt.Errorf("volume name required")
+	}
+
+	for k, v := range labels {
+		if strings.Contains(k, "=") || strings.Contains(v, "=") {
+			return nil, fmt.Errorf("labels cannot contain '='")
+		}
+	}
+
+	if err := vc.checkVolumeNotInMigration(volume); err != nil {
+		return nil, err
+	}
+
+	engine, err := vc.getEngineClient(volume.Name)
+	if err != nil {
+		return nil, err
+	}
+	snapshotName, err = engine.SnapshotCreate(snapshotName, labels)
+	if err != nil {
+		return nil, err
+	}
+	snap, err := engine.SnapshotGet(snapshotName)
+	if err != nil {
+		return nil, err
+	}
+	if snap == nil {
+		return nil, fmt.Errorf("cannot found just created snapshot '%s', for volume '%s'", snapshotName, volume.Name)
+	}
+	logrus.Debugf("Created snapshot %v with labels %+v for volume %v", snapshotName, labels, volume.Name)
+	return snap, nil
+}
+
+func (vc *VolumeController) getEngineClient(volumeName string) (client engineapi.EngineClient, err error) {
+	var e *longhorn.Engine
+
+	defer func() {
+		err = errors.Wrapf(err, "cannot get client for volume %v", volumeName)
+	}()
+	es, err := vc.ds.ListVolumeEngines(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	if len(es) == 0 {
+		return nil, fmt.Errorf("cannot find engine")
+	}
+	if len(es) != 1 {
+		return nil, fmt.Errorf("more than one engine exists")
+	}
+	for _, e = range es {
+		break
+	}
+	if e.Status.CurrentState != types.InstanceStateRunning {
+		return nil, fmt.Errorf("engine is not running")
+	}
+	if isReady, err := vc.ds.CheckEngineImageReadiness(e.Status.CurrentImage, vc.controllerID); !isReady {
+		if err != nil {
+			return nil, fmt.Errorf("cannot get engine client with image %v: %v", e.Status.CurrentImage, err)
+		}
+		return nil, fmt.Errorf("cannot get engine client with image %v because it isn't deployed on this node", e.Status.CurrentImage)
+	}
+
+	engineCollection := &engineapi.EngineCollection{}
+	return engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
+		VolumeName:  e.Spec.VolumeName,
+		EngineImage: e.Status.CurrentImage,
+		IP:          e.Status.IP,
+		Port:        e.Status.Port,
+	})
+}
+
+func (vc *VolumeController) checkVolumeNotInMigration(volume *longhorn.Volume) error {
+	if volume.Spec.MigrationNodeID != "" {
+		return fmt.Errorf("cannot operate during migration")
+	}
 	return nil
 }

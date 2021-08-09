@@ -280,6 +280,12 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		return nil, err
 	}
 
+	if spec.DataSource != "" {
+		if err := m.verifyDataSourceForVolumeCreation(spec.DataSource, size); err != nil {
+			return nil, err
+		}
+	}
+
 	v = &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -292,6 +298,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			Frontend:                spec.Frontend,
 			EngineImage:             defaultEngineImage,
 			FromBackup:              spec.FromBackup,
+			DataSource:              spec.DataSource,
 			NumberOfReplicas:        spec.NumberOfReplicas,
 			ReplicaAutoBalance:      spec.ReplicaAutoBalance,
 			DataLocality:            spec.DataLocality,
@@ -310,6 +317,34 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 	}
 	logrus.Debugf("Created volume %v: %+v", v.Name, v.Spec)
 	return v, nil
+}
+
+func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource types.VolumeDataSource, requestSize int64) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to verify data source")
+	}()
+
+	if !types.IsValidVolumeDataSource(dataSource) {
+		return fmt.Errorf("in valid value for data source: %v", dataSource)
+	}
+
+	if dataSource.IsDataFromVolume() {
+		srcVolName := dataSource.GetVolumeName()
+		srcVol, err := m.ds.GetVolume(srcVolName)
+		if err != nil {
+			return err
+		}
+		if requestSize != srcVol.Spec.Size {
+			return fmt.Errorf("size of target volume (%v bytes) is different than size of source volume (%v bytes)", requestSize, srcVol.Spec.Size)
+		}
+
+		if snapName := dataSource.GetSnapshotName(); snapName != "" {
+			if _, err := m.GetSnapshot(snapName, srcVolName); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (m *VolumeManager) Delete(name string) error {

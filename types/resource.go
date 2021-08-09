@@ -32,6 +32,14 @@ const (
 	VolumeFrontendEmpty    = VolumeFrontend("")
 )
 
+type VolumeDataSource string
+
+const (
+	VolumeDataSourceTypeBackup   = "backup" // Planing to move FromBackup field into DataSource field
+	VolumeDataSourceTypeSnapshot = "snapshot"
+	VolumeDataSourceTypeVolume   = "volume"
+)
+
 type ReplicaAutoBalance string
 
 const (
@@ -87,24 +95,25 @@ const (
 )
 
 type VolumeSpec struct {
-	Size                    int64          `json:"size,string"`
-	Frontend                VolumeFrontend `json:"frontend"`
-	FromBackup              string         `json:"fromBackup"`
-	DataLocality            DataLocality   `json:"dataLocality"`
-	StaleReplicaTimeout     int            `json:"staleReplicaTimeout"`
-	NodeID                  string         `json:"nodeID"`
-	MigrationNodeID         string         `json:"migrationNodeID"`
-	EngineImage             string         `json:"engineImage"`
-	RecurringJobs           []RecurringJob `json:"recurringJobs"`
-	BackingImage            string         `json:"backingImage"`
-	Standby                 bool           `json:"Standby"`
-	DiskSelector            []string       `json:"diskSelector"`
-	NodeSelector            []string       `json:"nodeSelector"`
-	DisableFrontend         bool           `json:"disableFrontend"`
-	RevisionCounterDisabled bool           `json:"revisionCounterDisabled"`
-	LastAttachedBy          string         `json:"lastAttachedBy"`
-	AccessMode              AccessMode     `json:"accessMode"`
-	Migratable              bool           `json:"migratable"`
+	Size                    int64            `json:"size,string"`
+	Frontend                VolumeFrontend   `json:"frontend"`
+	FromBackup              string           `json:"fromBackup"`
+	DataSource              VolumeDataSource `json:"dataSource"`
+	DataLocality            DataLocality     `json:"dataLocality"`
+	StaleReplicaTimeout     int              `json:"staleReplicaTimeout"`
+	NodeID                  string           `json:"nodeID"`
+	MigrationNodeID         string           `json:"migrationNodeID"`
+	EngineImage             string           `json:"engineImage"`
+	RecurringJobs           []RecurringJob   `json:"recurringJobs"`
+	BackingImage            string           `json:"backingImage"`
+	Standby                 bool             `json:"Standby"`
+	DiskSelector            []string         `json:"diskSelector"`
+	NodeSelector            []string         `json:"nodeSelector"`
+	DisableFrontend         bool             `json:"disableFrontend"`
+	RevisionCounterDisabled bool             `json:"revisionCounterDisabled"`
+	LastAttachedBy          string           `json:"lastAttachedBy"`
+	AccessMode              AccessMode       `json:"accessMode"`
+	Migratable              bool             `json:"migratable"`
 
 	Encrypted bool `json:"encrypted"`
 
@@ -150,6 +159,7 @@ type VolumeStatus struct {
 	FrontendDisabled   bool                 `json:"frontendDisabled"`
 	RestoreRequired    bool                 `json:"restoreRequired"`
 	RestoreInitiated   bool                 `json:"restoreInitiated"`
+	CloneStatus        VolumeCloneStatus    `json:"cloneStatus"`
 	RemountRequestedAt string               `json:"remountRequestedAt"`
 	ExpansionRequired  bool                 `json:"expansionRequired"`
 	IsStandby          bool                 `json:"isStandby"`
@@ -173,6 +183,21 @@ type RecurringJob struct {
 	Retain int               `json:"retain"`
 	Labels map[string]string `json:"labels"`
 }
+
+type VolumeCloneStatus struct {
+	SourceVolume string           `json:"sourceVolume"`
+	Snapshot     string           `json:"snapshot"`
+	State        VolumeCloneState `json:"state"`
+}
+
+type VolumeCloneState string
+
+const (
+	VolumeCloneStateEmpty     = VolumeCloneState("")
+	VolumeCloneStateInitiated = VolumeCloneState("initiated")
+	VolumeCloneStateCompleted = VolumeCloneState("completed")
+	VolumeCloneStateFailed    = VolumeCloneState("failed")
+)
 
 type InstanceState string
 
@@ -214,26 +239,28 @@ type EngineSpec struct {
 	UpgradedReplicaAddressMap map[string]string `json:"upgradedReplicaAddressMap"`
 	BackupVolume              string            `json:"backupVolume"`
 	RequestedBackupRestore    string            `json:"requestedBackupRestore"`
+	RequestedDataSource       VolumeDataSource  `json:"requestedDataSource"`
 	DisableFrontend           bool              `json:"disableFrontend"`
 	RevisionCounterDisabled   bool              `json:"revisionCounterDisabled"`
 }
 
 type EngineStatus struct {
 	InstanceStatus
-	CurrentSize              int64                     `json:"currentSize,string"`
-	CurrentReplicaAddressMap map[string]string         `json:"currentReplicaAddressMap"`
-	ReplicaModeMap           map[string]ReplicaMode    `json:"replicaModeMap"`
-	Endpoint                 string                    `json:"endpoint"`
-	LastRestoredBackup       string                    `json:"lastRestoredBackup"`
-	BackupStatus             map[string]*BackupStatus  `json:"backupStatus"`
-	RestoreStatus            map[string]*RestoreStatus `json:"restoreStatus"`
-	PurgeStatus              map[string]*PurgeStatus   `json:"purgeStatus"`
-	RebuildStatus            map[string]*RebuildStatus `json:"rebuildStatus"`
-	Snapshots                map[string]*Snapshot      `json:"snapshots"`
-	SnapshotsError           string                    `json:"snapshotsError"`
-	IsExpanding              bool                      `json:"isExpanding"`
-	LastExpansionError       string                    `json:"lastExpansionError"`
-	LastExpansionFailedAt    string                    `json:"lastExpansionFailedAt"`
+	CurrentSize              int64                           `json:"currentSize,string"`
+	CurrentReplicaAddressMap map[string]string               `json:"currentReplicaAddressMap"`
+	ReplicaModeMap           map[string]ReplicaMode          `json:"replicaModeMap"`
+	Endpoint                 string                          `json:"endpoint"`
+	LastRestoredBackup       string                          `json:"lastRestoredBackup"`
+	BackupStatus             map[string]*BackupStatus        `json:"backupStatus"`
+	RestoreStatus            map[string]*RestoreStatus       `json:"restoreStatus"`
+	PurgeStatus              map[string]*PurgeStatus         `json:"purgeStatus"`
+	RebuildStatus            map[string]*RebuildStatus       `json:"rebuildStatus"`
+	CloneStatus              map[string]*SnapshotCloneStatus `json:"cloneStatus"`
+	Snapshots                map[string]*Snapshot            `json:"snapshots"`
+	SnapshotsError           string                          `json:"snapshotsError"`
+	IsExpanding              bool                            `json:"isExpanding"`
+	LastExpansionError       string                          `json:"lastExpansionError"`
+	LastExpansionFailedAt    string                          `json:"lastExpansionFailedAt"`
 }
 
 type Snapshot struct {
@@ -417,6 +444,22 @@ type RebuildStatus struct {
 	State              string `json:"state"`
 	FromReplicaAddress string `json:"fromReplicaAddress"`
 }
+
+type SnapshotCloneStatus struct {
+	IsCloning          bool   `json:"isCloning"`
+	Error              string `json:"error"`
+	Progress           int    `json:"progress"`
+	State              string `json:"state"`
+	FromReplicaAddress string `json:"fromReplicaAddress"`
+	SnapshotName       string `json:"snapshotName"`
+}
+
+// Should be the same values as in https://github.com/longhorn/longhorn-engine/blob/master/pkg/types/types.go
+const (
+	ProcessStateComplete   = "complete"
+	ProcessStateError      = "error"
+	ProcessStateInProgress = "in_progress"
+)
 
 type InstanceType string
 
