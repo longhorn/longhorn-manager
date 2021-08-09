@@ -15,6 +15,10 @@ const (
 	EventReasonRebuilding       = "Rebuilding"
 	EventReasonFailedRebuilding = "FailedRebuilding"
 
+	EventReasonVolumeCloneCompleted = "VolumeCloneCompleted"
+	EventReasonVolumeCloneInitiated = "VolumeCloneInitiated"
+	EventReasonVolumeCloneFailed    = "VolumeCloneFailed"
+
 	EventReasonFailedStartingSnapshotPurge = "FailedStartingSnapshotPurge"
 	EventReasonFailedSnapshotPurge         = "FailedSnapshotPurge"
 

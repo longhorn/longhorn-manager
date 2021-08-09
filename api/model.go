@@ -27,6 +27,7 @@ type Volume struct {
 	Frontend                types.VolumeFrontend   `json:"frontend"`
 	DisableFrontend         bool                   `json:"disableFrontend"`
 	FromBackup              string                 `json:"fromBackup"`
+	DataSource              types.VolumeDataSource `json:"dataSource"`
 	DataLocality            types.DataLocality     `json:"dataLocality"`
 	StaleReplicaTimeout     int                    `json:"staleReplicaTimeout"`
 	State                   types.VolumeState      `json:"state"`
@@ -50,6 +51,7 @@ type Volume struct {
 	RecurringJobs    []types.RecurringJob       `json:"recurringJobs"`
 	Conditions       map[string]types.Condition `json:"conditions"`
 	KubernetesStatus types.KubernetesStatus     `json:"kubernetesStatus"`
+	CloneStatus      types.VolumeCloneStatus    `json:"cloneStatus"`
 	Ready            bool                       `json:"ready"`
 
 	AccessMode    types.AccessMode        `json:"accessMode"`
@@ -363,6 +365,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateDataLocalityInput", UpdateDataLocalityInput{})
 	schemas.AddType("UpdateAccessModeInput", UpdateAccessModeInput{})
 	schemas.AddType("workloadStatus", types.WorkloadStatus{})
+	schemas.AddType("cloneStatus", types.VolumeCloneStatus{})
 
 	schemas.AddType("PVCreateInput", PVCreateInput{})
 	schemas.AddType("PVCCreateInput", PVCCreateInput{})
@@ -681,6 +684,10 @@ func volumeSchema(volume *client.Schema) {
 	volumeFromBackup.Create = true
 	volume.ResourceFields["fromBackup"] = volumeFromBackup
 
+	volumeDataSource := volume.ResourceFields["dataSource"]
+	volumeDataSource.Create = true
+	volume.ResourceFields["dataSource"] = volumeDataSource
+
 	volumeNumberOfReplicas := volume.ResourceFields["numberOfReplicas"]
 	volumeNumberOfReplicas.Create = true
 	volumeNumberOfReplicas.Required = true
@@ -742,6 +749,10 @@ func volumeSchema(volume *client.Schema) {
 	kubernetesStatus := volume.ResourceFields["kubernetesStatus"]
 	kubernetesStatus.Type = "kubernetesStatus"
 	volume.ResourceFields["kubernetesStatus"] = kubernetesStatus
+
+	cloneStatus := volume.ResourceFields["cloneStatus"]
+	cloneStatus.Type = "cloneStatus"
+	volume.ResourceFields["cloneStatus"] = cloneStatus
 
 	backupStatus := volume.ResourceFields["backupStatus"]
 	backupStatus.Type = "array[backupStatus]"
@@ -935,12 +946,14 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	//      In other cases, scheduling failure only happens when the volume is attached.
 	//   3. It's faulted.
 	//   4. It's restore pending.
+	//   5. It's failed to clone
 	ready := true
 	scheduledCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled)
 	if (v.Spec.NodeID == "" && v.Status.State != types.VolumeStateDetached) ||
 		(v.Status.State == types.VolumeStateDetached && scheduledCondition.Status != types.ConditionStatusTrue) ||
 		v.Status.Robustness == types.VolumeRobustnessFaulted ||
-		v.Status.RestoreRequired {
+		v.Status.RestoreRequired ||
+		v.Status.CloneStatus.State == types.VolumeCloneStateFailed {
 		ready = false
 	}
 
@@ -957,6 +970,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		DisableFrontend:     v.Spec.DisableFrontend,
 		LastAttachedBy:      v.Spec.LastAttachedBy,
 		FromBackup:          v.Spec.FromBackup,
+		DataSource:          v.Spec.DataSource,
 		NumberOfReplicas:    v.Spec.NumberOfReplicas,
 		ReplicaAutoBalance:  v.Spec.ReplicaAutoBalance,
 		DataLocality:        v.Spec.DataLocality,
@@ -988,6 +1002,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 
 		Conditions:       v.Status.Conditions,
 		KubernetesStatus: v.Status.KubernetesStatus,
+		CloneStatus:      v.Status.CloneStatus,
 
 		Controllers:   controllers,
 		Replicas:      replicas,

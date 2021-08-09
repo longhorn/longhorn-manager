@@ -19,6 +19,7 @@ const (
 	MinCLIVersion = 3
 
 	CLIVersionFour = 4
+	CLIVersionFive = 5
 
 	InstanceManagerDefaultPort = 8500
 
@@ -78,6 +79,8 @@ type EngineClient interface {
 	SnapshotPurgeStatus() (map[string]*types.PurgeStatus, error)
 	SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels map[string]string, credential map[string]string) (string, error)
 	SnapshotBackupStatus() (map[string]*types.BackupStatus, error)
+	SnapshotCloneStatus() (map[string]*types.SnapshotCloneStatus, error)
+	SnapshotClone(snapshotName, fromControllerAddress string) error
 
 	BackupRestore(backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error
 	BackupRestoreStatus() (map[string]*types.RestoreStatus, error)
