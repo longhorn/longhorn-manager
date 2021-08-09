@@ -13,6 +13,8 @@ type Volume struct {
 
 	BackupStatus []BackupStatus `json:"backupStatus,omitempty" yaml:"backup_status,omitempty"`
 
+	CloneStatus CloneStatus `json:"cloneStatus,omitempty" yaml:"clone_status,omitempty"`
+
 	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
 	Controllers []Controller `json:"controllers,omitempty" yaml:"controllers,omitempty"`
@@ -22,6 +24,8 @@ type Volume struct {
 	CurrentImage string `json:"currentImage,omitempty" yaml:"current_image,omitempty"`
 
 	DataLocality string `json:"dataLocality,omitempty" yaml:"data_locality,omitempty"`
+
+	DataSource string `json:"dataSource,omitempty" yaml:"data_source,omitempty"`
 
 	DisableFrontend bool `json:"disableFrontend,omitempty" yaml:"disable_frontend,omitempty"`
 
