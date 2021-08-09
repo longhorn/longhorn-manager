@@ -144,6 +144,10 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.FromBackup = fromBackup
 	}
 
+	if dataSource, ok := volOptions["dataSource"]; ok {
+		vol.DataSource = dataSource
+	}
+
 	if backingImage, ok := volOptions["backingImage"]; ok {
 		vol.BackingImage = backingImage
 	}
