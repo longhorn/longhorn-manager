@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
 
 	corev1 "k8s.io/api/core/v1"
@@ -28,6 +29,8 @@ import (
 const (
 	// NameMaximumLength restricted the length due to Kubernetes name limitation
 	NameMaximumLength = 40
+
+	MaxRecurringJobRetain = 50
 )
 
 var (
@@ -358,7 +361,7 @@ func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	if err := fixupMetadata(v.Name, v); err != nil {
 		return nil, err
 	}
-	if err := fixupRecurringJob(v); err != nil {
+	if err := FixupRecurringJob(v); err != nil {
 		return nil, err
 	}
 
@@ -402,7 +405,7 @@ func (s *DataStore) UpdateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	if err := fixupMetadata(v.Name, v); err != nil {
 		return nil, err
 	}
-	if err := fixupRecurringJob(v); err != nil {
+	if err := FixupRecurringJob(v); err != nil {
 		return nil, err
 	}
 
@@ -2078,7 +2081,7 @@ func tagBackupVolumeLabel(backupVolumeName string, obj runtime.Object) error {
 	return nil
 }
 
-func fixupRecurringJob(v *longhorn.Volume) error {
+func FixupRecurringJob(v *longhorn.Volume) error {
 	if err := tagRecurringJobDefaultLabel(v); err != nil {
 		return err
 	}
@@ -3133,4 +3136,47 @@ func (s *DataStore) DeleteRecurringJob(name string) error {
 	return s.lhClient.LonghornV1beta1().RecurringJobs(s.namespace).Delete(
 		name, &metav1.DeleteOptions{PropagationPolicy: &propagation},
 	)
+}
+
+func ValidateRecurringJob(job types.RecurringJobSpec) error {
+	if job.Cron == "" || job.Task == "" || job.Name == "" || job.Retain == 0 {
+		return fmt.Errorf("invalid job %+v", job)
+	}
+	if job.Task != types.RecurringJobTypeBackup && job.Task != types.RecurringJobTypeSnapshot {
+		return fmt.Errorf("recurring job type %v is not valid", job.Task)
+	}
+	if job.Concurrency == 0 {
+		job.Concurrency = types.DefaultRecurringJobConcurrency
+	}
+	if _, err := cron.ParseStandard(job.Cron); err != nil {
+		return fmt.Errorf("invalid cron format(%v): %v", job.Cron, err)
+	}
+	if len(job.Name) > NameMaximumLength {
+		return fmt.Errorf("job name %v must be %v characters or less", job.Name, NameMaximumLength)
+	}
+	if job.Labels != nil {
+		if _, err := util.ValidateSnapshotLabels(job.Labels); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ValidateRecurringJobs(jobs []types.RecurringJobSpec) error {
+	if jobs == nil {
+		return nil
+	}
+
+	totalJobRetainCount := 0
+	for _, job := range jobs {
+		if err := ValidateRecurringJob(job); err != nil {
+			return err
+		}
+		totalJobRetainCount += job.Retain
+	}
+
+	if totalJobRetainCount > MaxRecurringJobRetain {
+		return fmt.Errorf("Job Can't retain more than %d snapshots", MaxRecurringJobRetain)
+	}
+	return nil
 }

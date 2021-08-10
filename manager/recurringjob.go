@@ -54,7 +54,7 @@ func (m *VolumeManager) CreateRecurringJob(spec *types.RecurringJobSpec) (*longh
 			Labels:      spec.Labels,
 		},
 	}
-	if err := m.validateRecurringJobs(jobs); err != nil {
+	if err := datastore.ValidateRecurringJobs(jobs); err != nil {
 		return nil, err
 	}
 
@@ -89,7 +89,7 @@ func (m *VolumeManager) UpdateRecurringJob(spec types.RecurringJobSpec) (*longho
 			Labels:      spec.Labels,
 		},
 	}
-	if err = m.validateRecurringJobs(jobs); err != nil {
+	if err = datastore.ValidateRecurringJobs(jobs); err != nil {
 		return nil, err
 	}
 

@@ -42,13 +42,14 @@ type Volume struct {
 	Standby                 bool                   `json:"standby"`
 	RestoreRequired         bool                   `json:"restoreRequired"`
 	RevisionCounterDisabled bool                   `json:"revisionCounterDisabled"`
-	DiskSelector            []string               `json:"diskSelector"`
-	NodeSelector            []string               `json:"nodeSelector"`
+
+	DiskSelector         []string                   `json:"diskSelector"`
+	NodeSelector         []string                   `json:"nodeSelector"`
+	RecurringJobSelector []types.VolumeRecurringJob `json:"recurringJobSelector"`
 
 	NumberOfReplicas   int                      `json:"numberOfReplicas"`
 	ReplicaAutoBalance types.ReplicaAutoBalance `json:"replicaAutoBalance"`
 
-	RecurringJobs    []types.RecurringJob       `json:"recurringJobs"`
 	Conditions       map[string]types.Condition `json:"conditions"`
 	KubernetesStatus types.KubernetesStatus     `json:"kubernetesStatus"`
 	CloneStatus      types.VolumeCloneStatus    `json:"cloneStatus"`
@@ -783,6 +784,12 @@ func volumeSchema(volume *client.Schema) {
 	recurringJobs.Default = nil
 	recurringJobs.Type = "array[recurringJob]"
 	volume.ResourceFields["recurringJobs"] = recurringJobs
+
+	recurringJobSelector := volume.ResourceFields["recurringJobSelector"]
+	recurringJobSelector.Create = true
+	recurringJobSelector.Default = nil
+	recurringJobSelector.Type = "array[volumeRecurringJob]"
+	volume.ResourceFields["recurringJobSelector"] = recurringJobSelector
 
 	standby := volume.ResourceFields["standby"]
 	standby.Create = true
