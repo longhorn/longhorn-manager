@@ -6,9 +6,8 @@ Manager for Longhorn.
 
 ## Requirement
 
-1. Existing Kubernetes Cluster 1.8+
+1. Existing Kubernetes Cluster 1.16+.
 2. Make sure `iscsiadm`/`open-iscsi` has been installed on the host.
-3. Make sure `jq`, `findmnt`, `curl` has been installed on the host, for the Longhorn Flexvolume Driver.
 
 ## Build
 
@@ -56,36 +55,19 @@ longhorn-uninstall   1/1           20s        20s
   kubectl delete -f deploy/uninstall/uninstall.yaml
   ```
 
-Tip: If you try `kubectl delete -Rf deploy/install` first and get stuck there, 
-pressing `Ctrl C` then running `kubectl create -f deploy/uninstall/uninstall.yaml` can also help you remove Longhorn. Finally, don't forget to cleanup remaining components by running `kubectl delete -f deploy/uninstall/uninstall.yaml`.
+Tip: If you try `kubectl delete -Rf deploy/install` first and get stuck there, pressing `Ctrl C` then running `kubectl create -f deploy/uninstall/uninstall.yaml` can also help you remove Longhorn. Finally, don't forget to cleanup remaining components by running `kubectl delete -f deploy/uninstall/uninstall.yaml`.
 
 
 ## Integration test
 
 See [longhorn-tests repo](https://github.com/rancher/longhorn-tests/tree/master/manager/integration)
 
-## Notes:
-
-### Google Kubernetes Engine
-You will need to create cluster-admin role binding for yourselves before creating the deployment, see
-[here](https://cloud.google.com/kubernetes-engine/docs/how-to/role-based-access-control) for details.
-```
-kubectl create clusterrolebinding cluster-admin-binding --clusterrole=cluster-admin --user=<name@example.com>
-```
-
-### Flexvolume Plugin Directory
-By default we're using the [default Flexvolume Plugin directory](https://github.com/kubernetes/community/blob/master/contributors/devel/sig-storage/flexvolume.md#prerequisitess), which is `/usr/libexec/kubernetes/kubelet-plugins/volume/exec/`.
-
-For GKE 1.8+, it should be at: `/home/kubernetes/flexvolume`.
-
-You may need to change `deploy/deploy.yaml` volume `flexvolume-longhorn-mount` location according to your own environment.
-
 ## Contribution
 
 Please check [the Longhorn repo](https://github.com/longhorn/longhorn#community) for the contributing guide.
 
 ## License
-Copyright (c) 2014-2019 The Longhorn Authors
+Copyright (c) 2014-2021 The Longhorn Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
