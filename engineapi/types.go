@@ -122,6 +122,7 @@ type BackupVolume struct {
 
 type Backup struct {
 	Name                   string            `json:"name"`
+	State                  types.BackupState `json:"state"`
 	URL                    string            `json:"url"`
 	SnapshotName           string            `json:"snapshotName"`
 	SnapshotCreated        string            `json:"snapshotCreated"`

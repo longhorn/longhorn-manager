@@ -1124,6 +1124,7 @@ func toBackupResource(b *longhorn.Backup) *Backup {
 		},
 		Backup: engineapi.Backup{
 			Name:                   b.Name,
+			State:                  b.Status.State,
 			URL:                    b.Status.URL,
 			SnapshotName:           b.Status.SnapshotName,
 			SnapshotCreated:        b.Status.SnapshotCreatedAt,

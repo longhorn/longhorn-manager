@@ -286,37 +286,34 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		}
 	}()
 
-	if backup.Spec.SnapshotName != "" {
-		// Perform backup snapshot to remote backup target
-		if backup.Status.State == "" {
-			// Initialize a backup target client
-			credential, err := bc.ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
-			if err != nil {
-				return err
-			}
-			backupTargetClient, err := engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential)
-			if err != nil {
-				log.WithError(err).Error("Error init backup target client")
-				return nil // Ignore error to prevent enqueue
-			}
-
-			// Initialize a engine client
-			engine, err := bc.ds.GetVolumeCurrentEngine(backupVolumeName)
-			if err != nil {
-				return err
-			}
-			engineCollection := &engineapi.EngineCollection{}
-			engineClient, err := GetClientForEngine(engine, engineCollection, engine.Status.CurrentImage)
-			if err != nil {
-				return err
-			}
-
-			go bc.backupCreation(log, engineClient, backupTargetClient.URL, backupTargetClient.Credential, backup)
-			return nil
-		} else if backup.Status.State != types.SnapshotBackupStateCompleted {
-			// backup snapshot not completed yet
-			return nil
+	// Perform backup snapshot to remote backup target
+	if backup.Spec.SnapshotName != "" && backup.Status.State == "" {
+		// Initialize a backup target client
+		credential, err := bc.ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
+		if err != nil {
+			return err
 		}
+		backupTargetClient, err := engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential)
+		if err != nil {
+			log.WithError(err).Error("Error init backup target client")
+			return nil // Ignore error to prevent enqueue
+		}
+
+		// Initialize a engine client
+		engine, err := bc.ds.GetVolumeCurrentEngine(backupVolumeName)
+		if err != nil {
+			return err
+		}
+		engineCollection := &engineapi.EngineCollection{}
+		engineClient, err := GetClientForEngine(engine, engineCollection, engine.Status.CurrentImage)
+		if err != nil {
+			return err
+		}
+
+		if err := bc.backupCreation(log, engineClient, backupTargetClient.URL, backupTargetClient.Credential, backup); err != nil {
+			return err
+		}
+		return nil
 	}
 
 	// The backup config had synced
@@ -347,6 +344,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	}
 
 	// Update Backup CR status
+	backup.Status.State = types.BackupStateCompleted
 	backup.Status.URL = backupInfo.URL
 	backup.Status.SnapshotName = backupInfo.SnapshotName
 	backup.Status.SnapshotCreatedAt = backupInfo.SnapshotCreated
@@ -358,7 +356,6 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	backup.Status.VolumeSize = backupInfo.VolumeSize
 	backup.Status.VolumeCreated = backupInfo.VolumeCreated
 	backup.Status.VolumeBackingImageName = backupInfo.VolumeBackingImageName
-	backup.Status.VolumeBackingImageURL = backupInfo.VolumeBackingImageURL
 	backup.Status.LastSyncedAt = syncTime
 	return nil
 }
@@ -405,71 +402,70 @@ func (bc *BackupController) getBackupVolumeName(backup *longhorn.Backup) (string
 	return backupVolumeName, nil
 }
 
-func (bc *BackupController) backupCreation(log logrus.FieldLogger, backupTargetClient *engineapi.BackupTarget, backup *longhorn.Backup, volumeName string) error {
-	e, err := bc.ds.GetVolumeCurrentEngine(volumeName)
-	if err != nil {
-		return err
-	}
-	if e.Status.CurrentState != types.InstanceStateRunning {
-		return fmt.Errorf("engine is not running")
-	}
-	if isReady, err := bc.ds.CheckEngineImageReadiness(e.Status.CurrentImage, bc.controllerID); !isReady {
+func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient engineapi.EngineClient, url string, credential map[string]string, backup *longhorn.Backup) error {
+	volumeName := engineClient.Name()
+
+	log = log.WithFields(
+		logrus.Fields{
+			"vol":      volumeName,
+			"snapshot": backup.Spec.SnapshotName,
+			"label":    backup.Spec.Labels,
+		},
+	)
+
+	logEvent := func(err error) {
 		if err != nil {
-			return fmt.Errorf("cannot get engine client with image %v: %v", e.Status.CurrentImage, err)
+			bc.eventRecorder.Eventf(backup, corev1.EventTypeWarning, string(backup.Status.State),
+				"Snapshot %s backup %s volume %s label %v: %v", backup.Spec.SnapshotName, backup.Name, volumeName, backup.Spec.Labels, err)
+			log.WithError(err).Debugf("state %s", string(backup.Status.State))
+			return
 		}
-		return fmt.Errorf("cannot get engine client with image %v because it isn't deployed on this node", e.Status.CurrentImage)
+		bc.eventRecorder.Eventf(backup, corev1.EventTypeNormal, string(backup.Status.State),
+			"Snapshot %s backup %s volume %s label %v", backup.Spec.SnapshotName, backup.Name, volumeName, backup.Spec.Labels)
+		log.Debugf("state %s", string(backup.Status.State))
 	}
 
-	engineCollection := &engineapi.EngineCollection{}
-	engineClient, err := engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:  e.Spec.VolumeName,
-		EngineImage: e.Status.CurrentImage,
-		IP:          e.Status.IP,
-		Port:        e.Status.Port,
-	})
-	if err != nil {
-		return err
-	}
+	backup.Status.State = types.BackupStatePending
+	logEvent(nil)
 
 	go func() {
-		log := log.WithFields(
-			logrus.Fields{
-				"vol":      volumeName,
-				"snapshot": backup.Spec.SnapshotName,
-				"label":    backup.Spec.Labels,
-			},
-		)
-
-		bc.eventRecorder.Eventf(backup, corev1.EventTypeNormal, EventReasonInitialized,
-			"Volume %s snapshot %s label %v", volumeName, backup.Spec.SnapshotName, backup.Spec.Labels)
-		log.Debugf("Backup snapshot initialized")
+		var err error
+		existingBackup := backup.DeepCopy()
+		defer func() {
+			if err != nil {
+				return
+			}
+			if reflect.DeepEqual(existingBackup.Status, backup.Status) {
+				return
+			}
+			if _, err := bc.ds.UpdateBackupStatus(backup); err != nil {
+				log.WithError(err).Errorf("Error update backup status")
+			}
+		}()
 
 		_, err = engineClient.SnapshotBackup(
-			backup.Name, backup.Spec.SnapshotName, backupTargetClient.URL,
-			backup.Spec.BackingImage, backup.Spec.BackingImageURL,
-			backup.Spec.Labels, backupTargetClient.Credential)
+			backup.Name, backup.Spec.SnapshotName, url,
+			backup.Spec.BackingImage, backup.Spec.BackingImageChecksum,
+			backup.Spec.Labels, credential)
 		if err != nil {
-			bc.eventRecorder.Eventf(backup, corev1.EventTypeWarning, EventReasonInitialized,
-				"Error volume %s snapshot %s label %v: %v",
-				volumeName, backup.Spec.SnapshotName, backup.Spec.Labels, err)
-			log.WithError(err).Errorf("Failed to backup snapshot initialized")
+			backup.Status.State = types.BackupStateError
+			logEvent(err)
 			return
 		}
 
-		bc.eventRecorder.Eventf(backup, corev1.EventTypeNormal, EventReasonInProgress,
-			"Volume %s snapshot %s label %v", volumeName, backup.Spec.SnapshotName, backup.Spec.Labels)
-		log.Debugf("Backup snapshot in progress")
+		backup.Status.State = types.BackupStateInProgress
+		logEvent(nil)
 
-		bks := &types.BackupStatus{}
+		// Monitor snapshot backup progress
 		for {
 			engines, err := bc.ds.ListVolumeEngines(volumeName)
 			if err != nil {
-				log.WithError(err).Errorf("Failed to get engines for volume %v", volumeName)
-				bc.eventRecorder.Eventf(backup, corev1.EventTypeWarning, EventReasonFailed,
-					"Get engines for volume %s error %v", volumeName, err)
+				backup.Status.State = types.BackupStateUnknown
+				logEvent(err)
 				return
 			}
 
+			bks := &types.BackupStatus{}
 			for _, e := range engines {
 				backupStatusList := e.Status.BackupStatus
 				for _, b := range backupStatusList {
@@ -479,12 +475,20 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, backupTargetC
 					}
 				}
 			}
-			if bks.Error != "" {
-				bc.eventRecorder.Eventf(backup, corev1.EventTypeWarning, EventReasonFailed,
-					"Backup error %v volume %s snapshot %s label %v", bks.Error, volumeName, backup.Spec.SnapshotName, backup.Spec.Labels)
-				log.Errorf("Failed to updated volume LastBackup for %s due to backup error %s", volumeName, bks.Error)
-				break
+			if bks == nil {
+				backup.Status.State = types.BackupStateUnknown
+				logEvent(fmt.Errorf("cannot find backup status"))
+				return
 			}
+			if bks.Error != "" {
+				backup.Status.State = types.BackupStateError
+				logEvent(errors.New(bks.Error))
+				return
+			}
+
+			// TODO:
+			//   use resource monitoring https://github.com/longhorn/longhorn/issues/2441
+			//   to trigger updates backup volume to run reconcile immediately
 			if bks.Progress == 100 {
 				// Request backup_volume_controller to reconcile BackupVolume immediately.
 				backupVolume, err := bc.ds.GetBackupVolume(volumeName)
@@ -507,10 +511,9 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, backupTargetC
 					}
 				}
 
-				bc.eventRecorder.Eventf(backup, corev1.EventTypeNormal, EventReasonSucceeded,
-					"Volume %s snapshot %s label %v", volumeName, backup.Spec.SnapshotName, backup.Spec.Labels)
-				log.Debugf("Backup snapshot succeeded")
-				break
+				backup.Status.State = types.BackupStateCompleted
+				logEvent(nil)
+				return
 			}
 			time.Sleep(BackupStatusQueryInterval)
 		}
