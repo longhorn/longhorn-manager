@@ -23,6 +23,5 @@ data:
     #  backingImageChecksum: "SHA512 checksum of the backing image"
     #  diskSelector: "ssd,fast"
     #  nodeSelector: "storage,fast"
-    #  recurringJobs: '[{"name":"snap", "task":"snapshot", "cron":"*/1 * * * *", "retain":1},
-    #                   {"name":"backup", "task":"backup", "cron":"*/2 * * * *", "retain":1,
-    #                    "labels": {"interval":"2m"}}]'
+    #  recurringJobSelector: '[{"name":"snap-group", "isGroup":true},
+    #                          {"name":"backup", "isGroup":false}]'

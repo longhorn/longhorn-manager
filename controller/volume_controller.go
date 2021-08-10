@@ -306,12 +306,6 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			}
 		}
 
-		for _, job := range volume.Spec.RecurringJobs {
-			if err := vc.ds.DeleteCronJob(types.GetCronJobNameForVolumeAndJob(volume.Name, job.Name)); err != nil {
-				return err
-			}
-		}
-
 		for _, e := range engines {
 			if e.DeletionTimestamp == nil {
 				if err := vc.ds.DeleteEngine(e.Name); err != nil {
@@ -417,6 +411,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	}
 	if len(engines) <= 1 {
 		if err := vc.ReconcileEngineReplicaState(volume, engine, replicas); err != nil {
+			return err
+		}
+
+		if err := vc.updateRecurringJobs(volume); err != nil {
 			return err
 		}
 
@@ -2784,6 +2782,22 @@ func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 		return
 	}
 	vc.enqueueVolume(volume)
+}
+
+func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "fail to update recurring jobs for %v", v.Name)
+	}()
+
+	existingVolume := v.DeepCopy()
+	if err = datastore.FixupRecurringJob(v); err != nil {
+		return err
+	}
+	if err == nil && !reflect.DeepEqual(existingVolume.Labels, v.Labels) {
+		_, err = vc.ds.UpdateVolume(v)
+	}
+
+	return nil
 }
 
 func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {

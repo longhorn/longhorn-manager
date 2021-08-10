@@ -160,6 +160,15 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.RecurringJobs = recurringJobs
 	}
 
+	recurringJobSelector := []longhornclient.VolumeRecurringJob{}
+	if jsonRecurringJobSelector, ok := volOptions["recurringJobSelector"]; ok {
+		err := json.Unmarshal([]byte(jsonRecurringJobSelector), &recurringJobSelector)
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid json format of recurringJobSelector")
+		}
+		vol.RecurringJobSelector = recurringJobSelector
+	}
+
 	if diskSelector, ok := volOptions["diskSelector"]; ok {
 		vol.DiskSelector = strings.Split(diskSelector, ",")
 	}

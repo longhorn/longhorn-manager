@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
 
 	corev1 "k8s.io/api/core/v1"
@@ -32,10 +31,6 @@ type VolumeManager struct {
 	currentNodeID string
 	sb            *SupportBundle
 }
-
-const (
-	MaxRecurringJobRetain = 50
-)
 
 func NewVolumeManager(currentNodeID string, ds *datastore.DataStore) *VolumeManager {
 	return &VolumeManager{
@@ -157,7 +152,7 @@ func (m *VolumeManager) getDefaultReplicaCount() (int, error) {
 	return int(c), nil
 }
 
-func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn.Volume, err error) {
+func (m *VolumeManager) Create(name string, spec *types.VolumeSpec, recurringJobSelector []types.VolumeRecurringJob) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to create volume %v", name)
 		if err != nil {
@@ -277,33 +272,14 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 		}
 	}
 
-	// create recurring job for storage class
-	for _, recurringJob := range spec.RecurringJobs {
-		if recurringJob.Concurrency == 0 {
-			recurringJob.Concurrency = types.DefaultRecurringJobConcurrency
+	labels := map[string]string{}
+	for _, job := range recurringJobSelector {
+		labelType := types.LonghornLabelRecurringJob
+		if job.IsGroup {
+			labelType = types.LonghornLabelRecurringJobGroup
 		}
-		recurringJobSpec := types.RecurringJobSpec{
-			Name:        recurringJob.Name,
-			Task:        recurringJob.Task,
-			Cron:        recurringJob.Cron,
-			Retain:      recurringJob.Retain,
-			Concurrency: recurringJob.Concurrency,
-			Labels:      recurringJob.Labels,
-		}
-		if err := m.validateRecurringJob(recurringJobSpec); err != nil {
-			continue
-		}
-
-		if obj, _ := m.GetRecurringJob(recurringJob.Name); obj != nil {
-			continue
-		}
-
-		m.ds.CreateRecurringJob(&longhorn.RecurringJob{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: recurringJob.Name,
-			},
-			Spec: recurringJobSpec,
-		})
+		key := types.GetRecurringJobLabelKey(labelType, job.Name)
+		labels[key] = types.LonghornLabelValueEnabled
 	}
 
 	if spec.DataSource != "" {
@@ -314,7 +290,8 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 
 	v = &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:   name,
+			Labels: labels,
 		},
 		Spec: types.VolumeSpec{
 			Size:                    size,
@@ -330,7 +307,6 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec) (v *longhorn
 			DataLocality:            spec.DataLocality,
 			StaleReplicaTimeout:     spec.StaleReplicaTimeout,
 			BackingImage:            spec.BackingImage,
-			RecurringJobs:           spec.RecurringJobs,
 			Standby:                 spec.Standby,
 			DiskSelector:            spec.DiskSelector,
 			NodeSelector:            spec.NodeSelector,
@@ -919,57 +895,6 @@ func (m *VolumeManager) DeleteVolumeRecurringJob(volumeName string, name string,
 		logrus.Debugf("Updated volume %v labels to %+v", v.Name, v.Labels)
 	}
 	return v, nil
-}
-
-func (m *VolumeManager) checkDuplicateJobs(recurringJobs []types.RecurringJobSpec) error {
-	exist := map[string]bool{}
-	for _, job := range recurringJobs {
-		if _, ok := exist[job.Name]; ok {
-			return fmt.Errorf("duplicate job %v in recurringJobs %v", job.Name, recurringJobs)
-		}
-		exist[job.Name] = true
-	}
-	return nil
-}
-
-func (m *VolumeManager) validateRecurringJobs(jobs []types.RecurringJobSpec) error {
-	if jobs == nil {
-		return nil
-	}
-
-	totalJobRetainCount := 0
-	for _, job := range jobs {
-		if err := m.validateRecurringJob(job); err != nil {
-			return err
-		}
-		totalJobRetainCount += job.Retain
-	}
-
-	if err := m.checkDuplicateJobs(jobs); err != nil {
-		return err
-	}
-	if totalJobRetainCount > MaxRecurringJobRetain {
-		return fmt.Errorf("Job Can't retain more than %d snapshots", MaxRecurringJobRetain)
-	}
-	return nil
-}
-
-func (m *VolumeManager) validateRecurringJob(job types.RecurringJobSpec) error {
-	if job.Cron == "" || job.Task == "" || job.Name == "" || job.Retain == 0 || job.Concurrency == 0 {
-		return fmt.Errorf("invalid job %+v", job)
-	}
-	if _, err := cron.ParseStandard(job.Cron); err != nil {
-		return fmt.Errorf("invalid cron format(%v): %v", job.Cron, err)
-	}
-	if len(job.Name) > datastore.NameMaximumLength {
-		return fmt.Errorf("job name %v must be %v characters or less", job.Name, datastore.NameMaximumLength)
-	}
-	if job.Labels != nil {
-		if _, err := util.ValidateSnapshotLabels(job.Labels); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (m *VolumeManager) DeleteReplica(volumeName, replicaName string) error {
