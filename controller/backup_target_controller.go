@@ -208,6 +208,13 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 
 	log := getLoggerForBackupTarget(btc.logger, backupTarget)
 
+	if backupTarget.Status.LastSyncedAt == nil {
+		backupTarget.Status.LastSyncedAt = &metav1.Time{Time: time.Time{}}
+		if backupTarget, err = btc.ds.UpdateBackupTargetStatus(backupTarget); err != nil {
+			return err
+		}
+	}
+
 	// Check the controller should run synchronization
 	if !backupTarget.Status.LastSyncedAt.IsZero() &&
 		backupTarget.Status.LastSyncedAt.Time.After(backupTarget.Spec.SyncRequestedAt.Time) {

@@ -226,6 +226,13 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return err
 	}
 
+	if backup.Status.LastSyncedAt == nil {
+		backup.Status.LastSyncedAt = &metav1.Time{Time: time.Time{}}
+		if backup, err = bc.ds.UpdateBackupStatus(backup); err != nil {
+			return err
+		}
+	}
+
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backup.DeletionTimestamp.IsZero() {
 		// No need to delete the backup from the remote backup target
