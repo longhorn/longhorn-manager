@@ -114,6 +114,14 @@ func (f *Fwd) HandleProxyRequestByNodeID(targetAddress string, req *http.Request
 	req.Host = targetAddress
 	req.URL.Host = targetAddress
 	req.URL.Scheme = "http"
+	h := req.Header
+	if h.Get("X-Forwarded-Proto") == "https" {
+		h.Set("X-Forwarded-Proto", "http")
+	}
+	if h.Get("X-Forwarded-Host") != "" {
+		h.Del("X-Forwarded-Host")
+	}
+	req.Header = h
 	logrus.Debugf("Forwarding request to %v", targetAddress)
 
 	return true, nil
