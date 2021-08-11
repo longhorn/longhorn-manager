@@ -214,6 +214,13 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return nil
 	}
 
+	if backupVolume.Status.LastSyncedAt == nil {
+		backupVolume.Status.LastSyncedAt = &metav1.Time{Time: time.Time{}}
+		if backupVolume, err = bvc.ds.UpdateBackupVolumeStatus(backupVolume); err != nil {
+			return err
+		}
+	}
+
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backupVolume.DeletionTimestamp.IsZero() {
 		// Delete related Backup CRs with the given backup volume name

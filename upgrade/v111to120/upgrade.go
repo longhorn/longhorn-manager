@@ -31,6 +31,7 @@ func UpgradeCRs(namespace string, lhClient *lhclientset.Clientset) (err error) {
 	if err := upgradeBackingImages(namespace, lhClient); err != nil {
 		return err
 	}
+	// TODO: Need to re-consider if this is required.
 	if err := upgradeBackupTargets(namespace, lhClient); err != nil {
 		return nil
 	}
@@ -232,6 +233,7 @@ func upgradeBackupTargets(namespace string, lhClient *lhclientset.Clientset) (er
 			BackupTargetURL:  targetSetting.Value,
 			CredentialSecret: secretSetting.Value,
 			PollInterval:     metav1.Duration{Duration: pollInterval},
+			SyncRequestedAt:  &metav1.Time{Time: time.Now().Add(time.Second).UTC()},
 		},
 	})
 	if err != nil {

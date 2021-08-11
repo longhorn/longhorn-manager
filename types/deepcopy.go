@@ -280,8 +280,7 @@ func (in *BackupTargetSpec) DeepCopyInto(out *BackupTargetSpec) {
 	*out = *in
 	out.PollInterval = in.PollInterval
 	if in.SyncRequestedAt != nil {
-		in, out := &in.SyncRequestedAt, &out.SyncRequestedAt
-		*out = (*in).DeepCopy()
+		out.SyncRequestedAt = in.SyncRequestedAt.DeepCopy()
 	}
 	return
 }
@@ -289,8 +288,7 @@ func (in *BackupTargetSpec) DeepCopyInto(out *BackupTargetSpec) {
 func (in *BackupTargetStatus) DeepCopyInto(out *BackupTargetStatus) {
 	*out = *in
 	if in.LastSyncedAt != nil {
-		in, out := &in.LastSyncedAt, &out.LastSyncedAt
-		*out = (*in).DeepCopy()
+		out.LastSyncedAt = in.LastSyncedAt.DeepCopy()
 	}
 	return
 }
@@ -298,8 +296,7 @@ func (in *BackupTargetStatus) DeepCopyInto(out *BackupTargetStatus) {
 func (in *BackupVolumeSpec) DeepCopyInto(out *BackupVolumeSpec) {
 	*out = *in
 	if in.SyncRequestedAt != nil {
-		in, out := &in.SyncRequestedAt, &out.SyncRequestedAt
-		*out = (*in).DeepCopy()
+		out.SyncRequestedAt = in.SyncRequestedAt.DeepCopy()
 	}
 	return
 }
@@ -311,22 +308,19 @@ func (in *BackupVolumeStatus) DeepCopyInto(out *BackupVolumeStatus) {
 		*out = (*in).DeepCopy()
 	}
 	if in.Labels != nil {
-		in, out := &in.Labels, &out.Labels
-		*out = make(map[string]string, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
+		out.Labels = make(map[string]string)
+		for key, value := range in.Labels {
+			out.Labels[key] = value
 		}
 	}
 	if in.Messages != nil {
-		in, out := &in.Messages, &out.Messages
-		*out = make(map[string]string, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
+		out.Messages = make(map[string]string)
+		for key, value := range in.Messages {
+			out.Messages[key] = value
 		}
 	}
 	if in.LastSyncedAt != nil {
-		in, out := &in.LastSyncedAt, &out.LastSyncedAt
-		*out = (*in).DeepCopy()
+		out.LastSyncedAt = in.LastSyncedAt.DeepCopy()
 	}
 	return
 }
@@ -334,14 +328,12 @@ func (in *BackupVolumeStatus) DeepCopyInto(out *BackupVolumeStatus) {
 func (in *SnapshotBackupSpec) DeepCopyInto(out *SnapshotBackupSpec) {
 	*out = *in
 	if in.SyncRequestedAt != nil {
-		in, out := &in.SyncRequestedAt, &out.SyncRequestedAt
-		*out = (*in).DeepCopy()
+		out.SyncRequestedAt = in.SyncRequestedAt.DeepCopy()
 	}
 	if in.Labels != nil {
-		in, out := &in.Labels, &out.Labels
-		*out = make(map[string]string, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
+		out.Labels = make(map[string]string)
+		for key, value := range in.Labels {
+			out.Labels[key] = value
 		}
 	}
 	return
@@ -350,22 +342,19 @@ func (in *SnapshotBackupSpec) DeepCopyInto(out *SnapshotBackupSpec) {
 func (in *SnapshotBackupStatus) DeepCopyInto(out *SnapshotBackupStatus) {
 	*out = *in
 	if in.Labels != nil {
-		in, out := &in.Labels, &out.Labels
-		*out = make(map[string]string, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
+		out.Labels = make(map[string]string)
+		for key, value := range in.Labels {
+			out.Labels[key] = value
 		}
 	}
 	if in.Messages != nil {
-		in, out := &in.Messages, &out.Messages
-		*out = make(map[string]string, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
+		out.Messages = make(map[string]string)
+		for key, value := range in.Messages {
+			out.Messages[key] = value
 		}
 	}
 	if in.LastSyncedAt != nil {
-		in, out := &in.LastSyncedAt, &out.LastSyncedAt
-		*out = (*in).DeepCopy()
+		out.LastSyncedAt = in.LastSyncedAt.DeepCopy()
 	}
 	return
 }
