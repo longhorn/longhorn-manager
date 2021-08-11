@@ -117,9 +117,8 @@ func NewSettingController(
 
 		ds: ds,
 
-		sStoreSynced:  settingInformer.Informer().HasSynced,
-		nStoreSynced:  nodeInformer.Informer().HasSynced,
-		btStoreSynced: backupTargetInfomer.Informer().HasSynced,
+		sStoreSynced: settingInformer.Informer().HasSynced,
+		nStoreSynced: nodeInformer.Informer().HasSynced,
 
 		version: version,
 	}
@@ -136,10 +135,6 @@ func NewSettingController(
 		DeleteFunc: sc.enqueueSettingForNode,
 	})
 
-	backupTargetInfomer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		DeleteFunc: sc.enqueueSettingForBackupTarget,
-	})
-
 	return sc
 }
 
@@ -150,7 +145,7 @@ func (sc *SettingController) Run(stopCh <-chan struct{}) {
 	sc.logger.Info("Start Longhorn Setting controller")
 	defer sc.logger.Info("Shutting down Longhorn Setting controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn settings", stopCh, sc.sStoreSynced, sc.nStoreSynced, sc.btStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn settings", stopCh, sc.sStoreSynced, sc.nStoreSynced) {
 		return
 	}
 
@@ -823,13 +818,6 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 
 	sc.queue.AddRateLimited(sc.namespace + "/" + string(types.SettingNameGuaranteedEngineManagerCPU))
 	sc.queue.AddRateLimited(sc.namespace + "/" + string(types.SettingNameGuaranteedReplicaManagerCPU))
-}
-
-func (sc *SettingController) enqueueSettingForBackupTarget(obj interface{}) {
-	if _, ok := obj.(*longhorn.BackupTarget); !ok {
-		return
-	}
-	sc.queue.AddRateLimited(sc.namespace + "/" + string(types.SettingNameBackupTarget))
 }
 
 func (sc *SettingController) updateInstanceManagerCPURequest() error {
