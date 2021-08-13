@@ -38,6 +38,7 @@ type RancherClient struct {
 	SupportBundleInitateInput     SupportBundleInitateInputOperations
 	Tag                           TagOperations
 	InstanceManager               InstanceManagerOperations
+	BackingImageDiskFileStatus    BackingImageDiskFileStatusOperations
 	BackingImageCleanupInput      BackingImageCleanupInputOperations
 	Volume                        VolumeOperations
 	Snapshot                      SnapshotOperations
@@ -52,7 +53,6 @@ type RancherClient struct {
 	KubernetesStatus              KubernetesStatusOperations
 	BackupListOutput              BackupListOutputOperations
 	SnapshotListOutput            SnapshotListOutputOperations
-	BackingImageDiskFileStatus    BackingImageDiskFileStatusOperations
 }
 
 func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
@@ -95,6 +95,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.SupportBundleInitateInput = newSupportBundleInitateInputClient(client)
 	client.Tag = newTagClient(client)
 	client.InstanceManager = newInstanceManagerClient(client)
+	client.BackingImageDiskFileStatus = newBackingImageDiskFileStatusClient(client)
 	client.BackingImageCleanupInput = newBackingImageCleanupInputClient(client)
 	client.Volume = newVolumeClient(client)
 	client.Snapshot = newSnapshotClient(client)
@@ -109,7 +110,6 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.KubernetesStatus = newKubernetesStatusClient(client)
 	client.BackupListOutput = newBackupListOutputClient(client)
 	client.SnapshotListOutput = newSnapshotListOutputClient(client)
-	client.BackingImageDiskFileStatus = newBackingImageDiskFileStatusClient(client)
 
 	return client
 }

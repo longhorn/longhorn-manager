@@ -21,6 +21,8 @@ type Backup struct {
 
 	SnapshotName string `json:"snapshotName,omitempty" yaml:"snapshot_name,omitempty"`
 
+	State string `json:"state,omitempty" yaml:"state,omitempty"`
+
 	Url string `json:"url,omitempty" yaml:"url,omitempty"`
 
 	VolumeBackingImageName string `json:"volumeBackingImageName,omitempty" yaml:"volume_backing_image_name,omitempty"`
