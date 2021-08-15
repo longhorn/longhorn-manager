@@ -293,7 +293,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	// Get a list of all the backups that exist as custom resources in the cluster
 	clusterBackups, err := bvc.ds.ListBackupsWithBackupVolumeName(backupVolumeName)
 	if err != nil {
-		log.WithError(err).Error("Error listing backups in the cluster, proceeding with pull into cluster")
+		log.WithError(err).Error("Error listing backups in the cluster")
 		return err
 	}
 
