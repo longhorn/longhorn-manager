@@ -334,8 +334,10 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return nil
 	}
 
-	// Check the backup volume config metadata got changed
-	if backupVolume.Status.LastModificationTime.Equal(configMetadata.ModificationTime) {
+	// If there is no backup CR creation/deletion and the backup volume config metadata not changed
+	// skip read the backup volume config
+	if len(backupsToPull) == 0 && len(backupsToDelete) == 0 &&
+		backupVolume.Status.LastModificationTime.Equal(configMetadata.ModificationTime) {
 		backupVolume.Status.LastSyncedAt = syncTime
 		return nil
 	}
