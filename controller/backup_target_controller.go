@@ -278,7 +278,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	// Get a list of all the backup volumes that exist as custom resources in the cluster
 	clusterBackupVolumes, err := btc.ds.ListBackupVolumes()
 	if err != nil {
-		log.WithError(err).Error("Error listing backup volumes in the cluster, proceeding with pull into cluster")
+		log.WithError(err).Error("Error listing backup volumes in the cluster")
 		return err
 	}
 
