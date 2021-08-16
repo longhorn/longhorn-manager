@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -390,26 +391,26 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 
 		h := newTestInstanceHandler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
 
-		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(newEngineImage(TestEngineImage, types.EngineImageStateDeployed))
+		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(context.TODO(), newEngineImage(TestEngineImage, types.EngineImageStateDeployed), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
 
 		imImageSetting := newDefaultInstanceManagerImageSetting()
-		imImageSetting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(imImageSetting)
+		imImageSetting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = sIndexer.Add(imImageSetting)
 		c.Assert(err, IsNil)
 
 		if tc.instanceManager != nil {
-			im, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(tc.instanceManager)
+			im, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(context.TODO(), tc.instanceManager, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			imIndexer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers().Informer().GetIndexer()
 			err = imIndexer.Add(im)
 			c.Assert(err, IsNil)
 		}
 
-		node, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, ""))
+		node, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(context.TODO(), newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, ""), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		nodeIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
 		err = nodeIndexer.Add(node)

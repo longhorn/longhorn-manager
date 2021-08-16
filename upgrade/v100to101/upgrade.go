@@ -1,8 +1,10 @@
 package v100to101
 
 import (
-	"github.com/pkg/errors"
+	"context"
 	"reflect"
+
+	"github.com/pkg/errors"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -32,7 +34,7 @@ func UpgradeInstanceManagerPods(namespace string, lhClient *lhclientset.Clientse
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance manager pods failed")
 	}()
 
-	imList, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).List(metav1.ListOptions{})
+	imList, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -41,7 +43,7 @@ func UpgradeInstanceManagerPods(namespace string, lhClient *lhclientset.Clientse
 	}
 
 	for _, im := range imList.Items {
-		imPodsList, err := kubeClient.CoreV1().Pods(namespace).List(metav1.ListOptions{
+		imPodsList, err := kubeClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
 			FieldSelector: "metadata.name=" + im.Name,
 		})
 		if err != nil {
@@ -70,7 +72,7 @@ func upgradeInstanceMangerPodLabel(pod *v1.Pod, im *longhorn.InstanceManager, ku
 		return nil
 	}
 	metadata.SetLabels(newPodLabels)
-	if _, err := kubeClient.CoreV1().Pods(namespace).Update(pod); err != nil {
+	if _, err := kubeClient.CoreV1().Pods(namespace).Update(context.TODO(), pod, metav1.UpdateOptions{}); err != nil {
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to update the spec for instance manager pod %v during the instance managers upgrade", pod.Name)
 	}
 	return nil
@@ -88,7 +90,7 @@ func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset)
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance manager failed")
 	}()
 
-	imList, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).List(metav1.ListOptions{})
+	imList, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -118,7 +120,7 @@ func upgradeInstanceManagersLabels(im *longhorn.InstanceManager, lhClient *lhcli
 	}
 
 	metadata.SetLabels(newInstanceManagerLabels)
-	if im, err = lhClient.LonghornV1beta1().InstanceManagers(namespace).Update(im); err != nil {
+	if im, err = lhClient.LonghornV1beta1().InstanceManagers(namespace).Update(context.TODO(), im, metav1.UpdateOptions{}); err != nil {
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to update the spec for instance manager %v during the instance managers upgrade", im.Name)
 	}
 	return nil

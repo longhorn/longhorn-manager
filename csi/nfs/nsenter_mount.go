@@ -23,8 +23,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
+	"k8s.io/utils/mount"
 )
 
 const (
@@ -65,6 +65,10 @@ func (n *Mounter) Mount(source string, target string, fstype string, options []s
 	}
 
 	return n.doNsenterMount(source, target, fstype, options)
+}
+
+func (n *Mounter) MountSensitive(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
+	return fmt.Errorf("not implemented")
 }
 
 // doNsenterMount nsenters the host's mount namespace and performs the

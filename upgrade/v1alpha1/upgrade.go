@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	"context"
 	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -34,7 +35,7 @@ func IsCRDVersionMatch(config *restclient.Config, namespace string) (bool, error
 		return false, errors.Wrap(err, "unable to create scheme for v1alpha1")
 	}
 
-	if _, err := lhClientV1alpha1.LonghornV1alpha1().Settings(namespace).Get(string(types.SettingNameDefaultEngineImage), metav1.GetOptions{}); err != nil {
+	if _, err := lhClientV1alpha1.LonghornV1alpha1().Settings(namespace).Get(context.TODO(), string(types.SettingNameDefaultEngineImage), metav1.GetOptions{}); err != nil {
 		if apierrors.IsNotFound(err) {
 			// cannot find the setting,
 			logrus.Infof("Longhorn CRD API v1alpha1 not found")
@@ -58,7 +59,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 	}
 
 	volumeMap := map[string]*longhorn.Volume{}
-	volumes, err := lhClientV1alpha1.LonghornV1alpha1().Volumes(namespace).List(metav1.ListOptions{})
+	volumes, err := lhClientV1alpha1.LonghornV1alpha1().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return errors.Wrap(err, "upgrade: v1alpha1: unable to list volumes")
 	}
@@ -68,13 +69,13 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 
 		copyObjectMetaFromV1alpha1(&v.ObjectMeta, &old.ObjectMeta)
 		copier.Copy(&v.Spec, &old.Spec)
-		v, err = lhClient.LonghornV1beta1().Volumes(namespace).Create(v)
+		v, err = lhClient.LonghornV1beta1().Volumes(namespace).Create(context.TODO(), v, metav1.CreateOptions{})
 		if err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v %v", old.Kind, old.Name)
 			}
 			logrus.Warnf("%v: creating %v %v v1beta1 but it's already exist, skipping creation", upgradeLogPrefix, old.Kind, old.Name)
-			v, err = lhClient.LonghornV1beta1().Volumes(namespace).Get(old.Name, metav1.GetOptions{})
+			v, err = lhClient.LonghornV1beta1().Volumes(namespace).Get(context.TODO(), old.Name, metav1.GetOptions{})
 			if err != nil {
 				return errors.Wrapf(err, "cannot get %v %v for upgrading v1alpha1 to v1beta1", old.Kind, old.Name)
 			}
@@ -90,7 +91,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 		// The volume must complete restoration before upgrade
 		v.Status.RestoreInitiated = true
 
-		v, err = lhClient.LonghornV1beta1().Volumes(namespace).UpdateStatus(v)
+		v, err = lhClient.LonghornV1beta1().Volumes(namespace).UpdateStatus(context.TODO(), v, metav1.UpdateOptions{})
 		if err != nil {
 			if !apierrors.IsConflict(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v status %v", old.Kind, old.Name)
@@ -101,7 +102,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 		volumeMap[v.Name] = v
 	}
 
-	engines, err := lhClientV1alpha1.LonghornV1alpha1().Engines(namespace).List(metav1.ListOptions{})
+	engines, err := lhClientV1alpha1.LonghornV1alpha1().Engines(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return errors.Wrap(err, "upgrade: v1alpha1: unable to list engines")
 	}
@@ -116,13 +117,13 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 			}
 		}
 		copier.Copy(&e.Spec, &old.Spec)
-		e, err = lhClient.LonghornV1beta1().Engines(namespace).Create(e)
+		e, err = lhClient.LonghornV1beta1().Engines(namespace).Create(context.TODO(), e, metav1.CreateOptions{})
 		if err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v %v", old.Kind, old.Name)
 			}
 			logrus.Warnf("%v: creating %v %v v1beta1 but it's already exist, skipping creation", upgradeLogPrefix, old.Kind, old.Name)
-			e, err = lhClient.LonghornV1beta1().Engines(namespace).Get(old.Name, metav1.GetOptions{})
+			e, err = lhClient.LonghornV1beta1().Engines(namespace).Get(context.TODO(), old.Name, metav1.GetOptions{})
 			if err != nil {
 				return errors.Wrapf(err, "cannot get %v %v for upgrading v1alpha1 to v1beta1", old.Kind, old.Name)
 			}
@@ -132,7 +133,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 		e.Status.OwnerID = old.Spec.OwnerID
 		e.Status.LogFetched = old.Spec.LogRequested
 		e.Status.CurrentReplicaAddressMap = old.Spec.ReplicaAddressMap
-		e, err = lhClient.LonghornV1beta1().Engines(namespace).UpdateStatus(e)
+		e, err = lhClient.LonghornV1beta1().Engines(namespace).UpdateStatus(context.TODO(), e, metav1.UpdateOptions{})
 		if err != nil {
 			if !apierrors.IsConflict(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v status %v", old.Kind, old.Name)
@@ -142,7 +143,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 		}
 	}
 
-	replicas, err := lhClientV1alpha1.LonghornV1alpha1().Replicas(namespace).List(metav1.ListOptions{})
+	replicas, err := lhClientV1alpha1.LonghornV1alpha1().Replicas(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return errors.Wrap(err, "upgrade: v1alpha1: unable to list replicas")
 	}
@@ -157,13 +158,13 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 			}
 		}
 		copier.Copy(&new.Spec, &old.Spec)
-		new, err = lhClient.LonghornV1beta1().Replicas(namespace).Create(new)
+		new, err = lhClient.LonghornV1beta1().Replicas(namespace).Create(context.TODO(), new, metav1.CreateOptions{})
 		if err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v %v", old.Kind, old.Name)
 			}
 			logrus.Warnf("%v: creating %v %v v1beta1 but it's already exist, skipping creation", upgradeLogPrefix, old.Kind, old.Name)
-			new, err = lhClient.LonghornV1beta1().Replicas(namespace).Get(old.Name, metav1.GetOptions{})
+			new, err = lhClient.LonghornV1beta1().Replicas(namespace).Get(context.TODO(), old.Name, metav1.GetOptions{})
 			if err != nil {
 				return errors.Wrapf(err, "cannot get %v %v for upgrading v1alpha1 to v1beta1", old.Kind, old.Name)
 			}
@@ -172,7 +173,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 		copier.Copy(&new.Status, &old.Status)
 		new.Status.OwnerID = old.Spec.OwnerID
 		new.Status.LogFetched = old.Spec.LogRequested
-		new, err = lhClient.LonghornV1beta1().Replicas(namespace).UpdateStatus(new)
+		new, err = lhClient.LonghornV1beta1().Replicas(namespace).UpdateStatus(context.TODO(), new, metav1.UpdateOptions{})
 		if err != nil {
 			if !apierrors.IsConflict(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v status %v", old.Kind, old.Name)
@@ -183,7 +184,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 	}
 
 	engineImageMap := map[string]*longhorn.EngineImage{}
-	engineImages, err := lhClientV1alpha1.LonghornV1alpha1().EngineImages(namespace).List(metav1.ListOptions{})
+	engineImages, err := lhClientV1alpha1.LonghornV1alpha1().EngineImages(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return errors.Wrap(err, "upgrade: v1alpha1: unable to list engine images")
 	}
@@ -192,13 +193,13 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 
 		copyObjectMetaFromV1alpha1(&new.ObjectMeta, &old.ObjectMeta)
 		copier.Copy(&new.Spec, &old.Spec)
-		new, err = lhClient.LonghornV1beta1().EngineImages(namespace).Create(new)
+		new, err = lhClient.LonghornV1beta1().EngineImages(namespace).Create(context.TODO(), new, metav1.CreateOptions{})
 		if err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v %v", old.Kind, old.Name)
 			}
 			logrus.Warnf("%v: creating %v %v v1beta1 but it's already exist, skipping creation", upgradeLogPrefix, old.Kind, old.Name)
-			new, err = lhClient.LonghornV1beta1().EngineImages(namespace).Get(old.Name, metav1.GetOptions{})
+			new, err = lhClient.LonghornV1beta1().EngineImages(namespace).Get(context.TODO(), old.Name, metav1.GetOptions{})
 			if err != nil {
 				return errors.Wrapf(err, "cannot get %v %v for upgrading v1alpha1 to v1beta1", old.Kind, old.Name)
 			}
@@ -206,7 +207,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 
 		copier.Copy(&new.Status, &old.Status)
 		new.Status.OwnerID = old.Spec.OwnerID
-		new, err = lhClient.LonghornV1beta1().EngineImages(namespace).UpdateStatus(new)
+		new, err = lhClient.LonghornV1beta1().EngineImages(namespace).UpdateStatus(context.TODO(), new, metav1.UpdateOptions{})
 		if err != nil {
 			if !apierrors.IsConflict(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v status %v", old.Kind, old.Name)
@@ -219,7 +220,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 	}
 
 	instanceManagerMap := map[string]*longhorn.InstanceManager{}
-	instanceManagers, err := lhClientV1alpha1.LonghornV1alpha1().InstanceManagers(namespace).List(metav1.ListOptions{})
+	instanceManagers, err := lhClientV1alpha1.LonghornV1alpha1().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return errors.Wrap(err, "upgrade: v1alpha1: unable to list engine images")
 	}
@@ -234,13 +235,13 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 			}
 		}
 		copier.Copy(&new.Spec, &old.Spec)
-		new, err = lhClient.LonghornV1beta1().InstanceManagers(namespace).Create(new)
+		new, err = lhClient.LonghornV1beta1().InstanceManagers(namespace).Create(context.TODO(), new, metav1.CreateOptions{})
 		if err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v %v", old.Kind, old.Name)
 			}
 			logrus.Warnf("%v: creating %v %v v1beta1 but it's already exist, skipping creation", upgradeLogPrefix, old.Kind, old.Name)
-			new, err = lhClient.LonghornV1beta1().InstanceManagers(namespace).Get(old.Name, metav1.GetOptions{})
+			new, err = lhClient.LonghornV1beta1().InstanceManagers(namespace).Get(context.TODO(), old.Name, metav1.GetOptions{})
 			if err != nil {
 				return errors.Wrapf(err, "cannot get %v %v for upgrading v1alpha1 to v1beta1", old.Kind, old.Name)
 			}
@@ -248,7 +249,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 
 		copier.Copy(&new.Status, &old.Status)
 		new.Status.OwnerID = old.Spec.OwnerID
-		new, err = lhClient.LonghornV1beta1().InstanceManagers(namespace).UpdateStatus(new)
+		new, err = lhClient.LonghornV1beta1().InstanceManagers(namespace).UpdateStatus(context.TODO(), new, metav1.UpdateOptions{})
 		if err != nil {
 			if !apierrors.IsConflict(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v status %v", old.Kind, old.Name)
@@ -259,7 +260,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 		instanceManagerMap[new.Name] = new
 	}
 
-	nodes, err := lhClientV1alpha1.LonghornV1alpha1().Nodes(namespace).List(metav1.ListOptions{})
+	nodes, err := lhClientV1alpha1.LonghornV1alpha1().Nodes(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return errors.Wrap(err, "upgrade: v1alpha1: unable to list engine images")
 	}
@@ -268,20 +269,20 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 
 		copyObjectMetaFromV1alpha1(&new.ObjectMeta, &old.ObjectMeta)
 		copier.Copy(&new.Spec, &old.Spec)
-		new, err = lhClient.LonghornV1beta1().Nodes(namespace).Create(new)
+		new, err = lhClient.LonghornV1beta1().Nodes(namespace).Create(context.TODO(), new, metav1.CreateOptions{})
 		if err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v %v", old.Kind, old.Name)
 			}
 			logrus.Warnf("%v: creating %v %v v1beta1 but it's already exist, skipping creation", upgradeLogPrefix, old.Kind, old.Name)
-			new, err = lhClient.LonghornV1beta1().Nodes(namespace).Get(old.Name, metav1.GetOptions{})
+			new, err = lhClient.LonghornV1beta1().Nodes(namespace).Get(context.TODO(), old.Name, metav1.GetOptions{})
 			if err != nil {
 				return errors.Wrapf(err, "cannot get %v %v for upgrading v1alpha1 to v1beta1", old.Kind, old.Name)
 			}
 		}
 
 		copier.Copy(&new.Status, &old.Status)
-		new, err = lhClient.LonghornV1beta1().Nodes(namespace).UpdateStatus(new)
+		new, err = lhClient.LonghornV1beta1().Nodes(namespace).UpdateStatus(context.TODO(), new, metav1.UpdateOptions{})
 		if err != nil {
 			if !apierrors.IsConflict(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v status %v", old.Kind, old.Name)
@@ -291,7 +292,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 		}
 	}
 
-	settings, err := lhClientV1alpha1.LonghornV1alpha1().Settings(namespace).List(metav1.ListOptions{})
+	settings, err := lhClientV1alpha1.LonghornV1alpha1().Settings(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return errors.Wrap(err, "upgrade: v1alpha1: unable to list engine images")
 	}
@@ -300,7 +301,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 
 		copyObjectMetaFromV1alpha1(&new.ObjectMeta, &old.ObjectMeta)
 		new.Value = old.Value
-		new, err = lhClient.LonghornV1beta1().Settings(namespace).Create(new)
+		new, err = lhClient.LonghornV1beta1().Settings(namespace).Create(context.TODO(), new, metav1.CreateOptions{})
 		if err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v %v", old.Kind, old.Name)

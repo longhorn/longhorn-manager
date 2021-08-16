@@ -19,6 +19,8 @@ limitations under the License.
 package fake
 
 import (
+	"context"
+
 	v1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
@@ -39,7 +41,7 @@ var engineimagesResource = schema.GroupVersionResource{Group: "longhorn.io", Ver
 var engineimagesKind = schema.GroupVersionKind{Group: "longhorn.io", Version: "v1beta1", Kind: "EngineImage"}
 
 // Get takes name of the engineImage, and returns the corresponding engineImage object, and an error if there is any.
-func (c *FakeEngineImages) Get(name string, options v1.GetOptions) (result *v1beta1.EngineImage, err error) {
+func (c *FakeEngineImages) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.EngineImage, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewGetAction(engineimagesResource, c.ns, name), &v1beta1.EngineImage{})
 
@@ -50,7 +52,7 @@ func (c *FakeEngineImages) Get(name string, options v1.GetOptions) (result *v1be
 }
 
 // List takes label and field selectors, and returns the list of EngineImages that match those selectors.
-func (c *FakeEngineImages) List(opts v1.ListOptions) (result *v1beta1.EngineImageList, err error) {
+func (c *FakeEngineImages) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.EngineImageList, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewListAction(engineimagesResource, engineimagesKind, c.ns, opts), &v1beta1.EngineImageList{})
 
@@ -72,14 +74,14 @@ func (c *FakeEngineImages) List(opts v1.ListOptions) (result *v1beta1.EngineImag
 }
 
 // Watch returns a watch.Interface that watches the requested engineImages.
-func (c *FakeEngineImages) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeEngineImages) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewWatchAction(engineimagesResource, c.ns, opts))
 
 }
 
 // Create takes the representation of a engineImage and creates it.  Returns the server's representation of the engineImage, and an error, if there is any.
-func (c *FakeEngineImages) Create(engineImage *v1beta1.EngineImage) (result *v1beta1.EngineImage, err error) {
+func (c *FakeEngineImages) Create(ctx context.Context, engineImage *v1beta1.EngineImage, opts v1.CreateOptions) (result *v1beta1.EngineImage, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewCreateAction(engineimagesResource, c.ns, engineImage), &v1beta1.EngineImage{})
 
@@ -90,7 +92,7 @@ func (c *FakeEngineImages) Create(engineImage *v1beta1.EngineImage) (result *v1b
 }
 
 // Update takes the representation of a engineImage and updates it. Returns the server's representation of the engineImage, and an error, if there is any.
-func (c *FakeEngineImages) Update(engineImage *v1beta1.EngineImage) (result *v1beta1.EngineImage, err error) {
+func (c *FakeEngineImages) Update(ctx context.Context, engineImage *v1beta1.EngineImage, opts v1.UpdateOptions) (result *v1beta1.EngineImage, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewUpdateAction(engineimagesResource, c.ns, engineImage), &v1beta1.EngineImage{})
 
@@ -102,7 +104,7 @@ func (c *FakeEngineImages) Update(engineImage *v1beta1.EngineImage) (result *v1b
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeEngineImages) UpdateStatus(engineImage *v1beta1.EngineImage) (*v1beta1.EngineImage, error) {
+func (c *FakeEngineImages) UpdateStatus(ctx context.Context, engineImage *v1beta1.EngineImage, opts v1.UpdateOptions) (*v1beta1.EngineImage, error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewUpdateSubresourceAction(engineimagesResource, "status", c.ns, engineImage), &v1beta1.EngineImage{})
 
@@ -113,7 +115,7 @@ func (c *FakeEngineImages) UpdateStatus(engineImage *v1beta1.EngineImage) (*v1be
 }
 
 // Delete takes name of the engineImage and deletes it. Returns an error if one occurs.
-func (c *FakeEngineImages) Delete(name string, options *v1.DeleteOptions) error {
+func (c *FakeEngineImages) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
 		Invokes(testing.NewDeleteAction(engineimagesResource, c.ns, name), &v1beta1.EngineImage{})
 
@@ -121,15 +123,15 @@ func (c *FakeEngineImages) Delete(name string, options *v1.DeleteOptions) error 
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeEngineImages) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
-	action := testing.NewDeleteCollectionAction(engineimagesResource, c.ns, listOptions)
+func (c *FakeEngineImages) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+	action := testing.NewDeleteCollectionAction(engineimagesResource, c.ns, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1beta1.EngineImageList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched engineImage.
-func (c *FakeEngineImages) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1beta1.EngineImage, err error) {
+func (c *FakeEngineImages) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.EngineImage, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewPatchSubresourceAction(engineimagesResource, c.ns, name, pt, data, subresources...), &v1beta1.EngineImage{})
 

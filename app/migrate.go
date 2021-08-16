@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -64,7 +65,7 @@ func migrateForPre070Volumes(c *cli.Context) error {
 	}
 
 	if migrateAllVolumes {
-		vs, err := lhClient.LonghornV1beta1().Volumes(lhNamespace).List(metav1.ListOptions{})
+		vs, err := lhClient.LonghornV1beta1().Volumes(lhNamespace).List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
 			return err
 		}
@@ -92,7 +93,7 @@ func migratePVAndPVCForPre070Volume(kubeClient *kubeclientset.Clientset, lhClien
 		}
 	}()
 
-	v, err := lhClient.LonghornV1beta1().Volumes(lhNamespace).Get(volumeName, metav1.GetOptions{})
+	v, err := lhClient.LonghornV1beta1().Volumes(lhNamespace).Get(context.TODO(), volumeName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -111,7 +112,7 @@ func migratePVAndPVCForPre070Volume(kubeClient *kubeclientset.Clientset, lhClien
 		return nil
 	}
 
-	oldPV, err := kubeClient.CoreV1().PersistentVolumes().Get(ks.PVName, metav1.GetOptions{})
+	oldPV, err := kubeClient.CoreV1().PersistentVolumes().Get(context.TODO(), ks.PVName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -132,6 +133,7 @@ func migratePVAndPVCForPre070Volume(kubeClient *kubeclientset.Clientset, lhClien
 	//     1) the StorageClass used by the old PV and PVC still exists;
 	//     2) its parameters are the same as oldPV.Spec.CSI.VolumeAttributes.
 	staticStorageClass, err := lhClient.LonghornV1beta1().Settings(lhNamespace).Get(
+		context.TODO(),
 		string(types.SettingNameDefaultLonghornStaticStorageClass), metav1.GetOptions{})
 	if err != nil {
 		return err
@@ -148,7 +150,7 @@ func migratePVAndPVCForPre070Volume(kubeClient *kubeclientset.Clientset, lhClien
 
 	if oldPV.Spec.PersistentVolumeReclaimPolicy != v1.PersistentVolumeReclaimRetain {
 		oldPV.Spec.PersistentVolumeReclaimPolicy = v1.PersistentVolumeReclaimRetain
-		if oldPV, err = kubeClient.CoreV1().PersistentVolumes().Update(oldPV); err != nil {
+		if oldPV, err = kubeClient.CoreV1().PersistentVolumes().Update(context.TODO(), oldPV, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 	}
@@ -159,18 +161,18 @@ func migratePVAndPVCForPre070Volume(kubeClient *kubeclientset.Clientset, lhClien
 		pvcRecreationRequired = true
 		pvcName = ks.PVCName
 		namespace = ks.Namespace
-		if err = kubeClient.CoreV1().PersistentVolumeClaims(namespace).Delete(pvcName, &metav1.DeleteOptions{}); err != nil {
+		if err = kubeClient.CoreV1().PersistentVolumeClaims(namespace).Delete(context.TODO(), pvcName, metav1.DeleteOptions{}); err != nil {
 			return err
 		}
 	}
 
-	if err = kubeClient.CoreV1().PersistentVolumes().Delete(ks.PVName, &metav1.DeleteOptions{}); err != nil {
+	if err = kubeClient.CoreV1().PersistentVolumes().Delete(context.TODO(), ks.PVName, metav1.DeleteOptions{}); err != nil {
 		return err
 	}
 
 	pvDeleted := false
 	for i := 0; i < datastore.KubeStatusPollCount; i++ {
-		v, err = lhClient.LonghornV1beta1().Volumes(lhNamespace).Get(volumeName, metav1.GetOptions{})
+		v, err = lhClient.LonghornV1beta1().Volumes(lhNamespace).Get(context.TODO(), volumeName, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -185,13 +187,13 @@ func migratePVAndPVCForPre070Volume(kubeClient *kubeclientset.Clientset, lhClien
 	}
 
 	newPV := datastore.NewPVManifestForVolume(v, oldPV.Name, staticStorageClass.Value, oldPV.Spec.CSI.FSType)
-	if newPV, err = kubeClient.CoreV1().PersistentVolumes().Create(newPV); err != nil {
+	if newPV, err = kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), newPV, metav1.CreateOptions{}); err != nil {
 		return err
 	}
 
 	if pvcRecreationRequired {
 		pvc := datastore.NewPVCManifestForVolume(v, oldPV.Name, namespace, pvcName, staticStorageClass.Value)
-		if pvc, err = kubeClient.CoreV1().PersistentVolumeClaims(namespace).Create(pvc); err != nil {
+		if pvc, err = kubeClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.TODO(), pvc, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	}

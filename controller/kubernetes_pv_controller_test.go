@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"sort"
 
@@ -491,7 +492,7 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		// Need to create pv, pvc, pod and longhorn volume
 		var v *longhorn.Volume
 		if tc.volume != nil {
-			v, err = lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(tc.volume)
+			v, err = lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(context.TODO(), tc.volume, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = vIndexer.Add(v)
 			c.Assert(err, IsNil)
@@ -499,7 +500,7 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 
 		var pv *apiv1.PersistentVolume
 		if tc.pv != nil {
-			pv, err = kubeClient.CoreV1().PersistentVolumes().Create(tc.pv)
+			pv, err = kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), tc.pv, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			pvIndexer.Add(pv)
 			c.Assert(err, IsNil)
@@ -509,14 +510,14 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		}
 
 		if tc.pvc != nil {
-			pvc, err := kubeClient.CoreV1().PersistentVolumeClaims(TestNamespace).Create(tc.pvc)
+			pvc, err := kubeClient.CoreV1().PersistentVolumeClaims(TestNamespace).Create(context.TODO(), tc.pvc, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			pvcIndexer.Add(pvc)
 		}
 
 		if len(tc.pods) != 0 {
 			for _, p := range tc.pods {
-				p, err = kubeClient.CoreV1().Pods(TestNamespace).Create(p)
+				p, err = kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), p, metav1.CreateOptions{})
 				c.Assert(err, IsNil)
 				pIndexer.Add(p)
 			}
@@ -528,7 +529,7 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		}
 
 		if v != nil {
-			retV, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Get(v.Name, metav1.GetOptions{})
+			retV, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Get(context.TODO(), v.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(retV.Spec, DeepEquals, tc.expectVolume.Spec)
 			sort.Slice(retV.Status.KubernetesStatus.WorkloadsStatus, func(i, j int) bool {

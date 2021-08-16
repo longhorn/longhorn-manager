@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -527,7 +528,7 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 	if nodeFailed, _ := c.ds.IsNodeDownOrDeleted(pod.Spec.NodeName); nodeFailed {
 		log.Debug("node of share manager pod is down, force deleting pod to allow fail over")
 		gracePeriod := int64(0)
-		err := c.kubeClient.CoreV1().Pods(pod.Namespace).Delete(podName, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod})
+		err := c.kubeClient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod})
 		if err != nil && !apierrors.IsNotFound(err) {
 			log.WithError(err).Debugf("failed to force delete share manager pod")
 			return err

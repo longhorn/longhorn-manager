@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -107,59 +108,59 @@ func NewUninstallController(
 		deploymentInformer.Informer().HasSynced,
 	}
 
-	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDEngineName, metav1.GetOptions{}); err == nil {
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), CRDEngineName, metav1.GetOptions{}); err == nil {
 		engineInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, engineInformer.Informer().HasSynced)
 	}
-	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDReplicaName, metav1.GetOptions{}); err == nil {
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), CRDReplicaName, metav1.GetOptions{}); err == nil {
 		replicaInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, replicaInformer.Informer().HasSynced)
 	}
-	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDVolumeName, metav1.GetOptions{}); err == nil {
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), CRDVolumeName, metav1.GetOptions{}); err == nil {
 		volumeInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, volumeInformer.Informer().HasSynced)
 	}
-	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDEngineImageName, metav1.GetOptions{}); err == nil {
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), CRDEngineImageName, metav1.GetOptions{}); err == nil {
 		engineImageInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, engineImageInformer.Informer().HasSynced)
 	}
-	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDNodeName, metav1.GetOptions{}); err == nil {
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), CRDNodeName, metav1.GetOptions{}); err == nil {
 		nodeInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, nodeInformer.Informer().HasSynced)
 	}
-	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDInstanceManagerName, metav1.GetOptions{}); err == nil {
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), CRDInstanceManagerName, metav1.GetOptions{}); err == nil {
 		imInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, imInformer.Informer().HasSynced)
 	}
-	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDShareManagerName, metav1.GetOptions{}); err == nil {
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), CRDShareManagerName, metav1.GetOptions{}); err == nil {
 		smInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, smInformer.Informer().HasSynced)
 	}
-	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDBackingImageName, metav1.GetOptions{}); err == nil {
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), CRDBackingImageName, metav1.GetOptions{}); err == nil {
 		backingImageInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, backingImageInformer.Informer().HasSynced)
 	}
-	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDBackingImageManagerName, metav1.GetOptions{}); err == nil {
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), CRDBackingImageManagerName, metav1.GetOptions{}); err == nil {
 		backingImageManagerInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, backingImageManagerInformer.Informer().HasSynced)
 	}
-	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDBackingImageDataSourceName, metav1.GetOptions{}); err == nil {
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), CRDBackingImageDataSourceName, metav1.GetOptions{}); err == nil {
 		backingImageDataSourceInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, backingImageDataSourceInformer.Informer().HasSynced)
 	}
-	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDBackupTargetName, metav1.GetOptions{}); err == nil {
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), CRDBackupTargetName, metav1.GetOptions{}); err == nil {
 		backupTargetInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, backupTargetInformer.Informer().HasSynced)
 	}
-	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDBackupVolumeName, metav1.GetOptions{}); err == nil {
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), CRDBackupVolumeName, metav1.GetOptions{}); err == nil {
 		backupVolumeInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, backupVolumeInformer.Informer().HasSynced)
 	}
-	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDBackupName, metav1.GetOptions{}); err == nil {
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), CRDBackupName, metav1.GetOptions{}); err == nil {
 		backupInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, backupInformer.Informer().HasSynced)
 	}
-	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(CRDRecurringJobName, metav1.GetOptions{}); err == nil {
+	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), CRDRecurringJobName, metav1.GetOptions{}); err == nil {
 		recurringJobInformer.Informer().AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, recurringJobInformer.Informer().HasSynced)
 	}

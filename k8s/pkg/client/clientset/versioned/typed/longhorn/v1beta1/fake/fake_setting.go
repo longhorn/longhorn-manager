@@ -19,6 +19,8 @@ limitations under the License.
 package fake
 
 import (
+	"context"
+
 	v1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
@@ -39,7 +41,7 @@ var settingsResource = schema.GroupVersionResource{Group: "longhorn.io", Version
 var settingsKind = schema.GroupVersionKind{Group: "longhorn.io", Version: "v1beta1", Kind: "Setting"}
 
 // Get takes name of the setting, and returns the corresponding setting object, and an error if there is any.
-func (c *FakeSettings) Get(name string, options v1.GetOptions) (result *v1beta1.Setting, err error) {
+func (c *FakeSettings) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.Setting, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewGetAction(settingsResource, c.ns, name), &v1beta1.Setting{})
 
@@ -50,7 +52,7 @@ func (c *FakeSettings) Get(name string, options v1.GetOptions) (result *v1beta1.
 }
 
 // List takes label and field selectors, and returns the list of Settings that match those selectors.
-func (c *FakeSettings) List(opts v1.ListOptions) (result *v1beta1.SettingList, err error) {
+func (c *FakeSettings) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.SettingList, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewListAction(settingsResource, settingsKind, c.ns, opts), &v1beta1.SettingList{})
 
@@ -72,14 +74,14 @@ func (c *FakeSettings) List(opts v1.ListOptions) (result *v1beta1.SettingList, e
 }
 
 // Watch returns a watch.Interface that watches the requested settings.
-func (c *FakeSettings) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeSettings) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewWatchAction(settingsResource, c.ns, opts))
 
 }
 
 // Create takes the representation of a setting and creates it.  Returns the server's representation of the setting, and an error, if there is any.
-func (c *FakeSettings) Create(setting *v1beta1.Setting) (result *v1beta1.Setting, err error) {
+func (c *FakeSettings) Create(ctx context.Context, setting *v1beta1.Setting, opts v1.CreateOptions) (result *v1beta1.Setting, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewCreateAction(settingsResource, c.ns, setting), &v1beta1.Setting{})
 
@@ -90,7 +92,7 @@ func (c *FakeSettings) Create(setting *v1beta1.Setting) (result *v1beta1.Setting
 }
 
 // Update takes the representation of a setting and updates it. Returns the server's representation of the setting, and an error, if there is any.
-func (c *FakeSettings) Update(setting *v1beta1.Setting) (result *v1beta1.Setting, err error) {
+func (c *FakeSettings) Update(ctx context.Context, setting *v1beta1.Setting, opts v1.UpdateOptions) (result *v1beta1.Setting, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewUpdateAction(settingsResource, c.ns, setting), &v1beta1.Setting{})
 
@@ -101,7 +103,7 @@ func (c *FakeSettings) Update(setting *v1beta1.Setting) (result *v1beta1.Setting
 }
 
 // Delete takes name of the setting and deletes it. Returns an error if one occurs.
-func (c *FakeSettings) Delete(name string, options *v1.DeleteOptions) error {
+func (c *FakeSettings) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
 		Invokes(testing.NewDeleteAction(settingsResource, c.ns, name), &v1beta1.Setting{})
 
@@ -109,15 +111,15 @@ func (c *FakeSettings) Delete(name string, options *v1.DeleteOptions) error {
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeSettings) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
-	action := testing.NewDeleteCollectionAction(settingsResource, c.ns, listOptions)
+func (c *FakeSettings) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+	action := testing.NewDeleteCollectionAction(settingsResource, c.ns, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1beta1.SettingList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched setting.
-func (c *FakeSettings) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1beta1.Setting, err error) {
+func (c *FakeSettings) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.Setting, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewPatchSubresourceAction(settingsResource, c.ns, name, pt, data, subresources...), &v1beta1.Setting{})
 

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -333,7 +334,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		// TODO: Will remove this reference kind correcting after all Longhorn components having used the new kinds
 		if len(pod.OwnerReferences) < 1 || pod.OwnerReferences[0].Kind != types.LonghornKindInstanceManager {
 			pod.OwnerReferences = datastore.GetOwnerReferencesForInstanceManager(im)
-			pod, err = imc.kubeClient.CoreV1().Pods(imc.namespace).Update(pod)
+			pod, err = imc.kubeClient.CoreV1().Pods(imc.namespace).Update(context.TODO(), pod, metav1.UpdateOptions{})
 			if err != nil {
 				return err
 			}

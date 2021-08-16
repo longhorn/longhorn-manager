@@ -19,6 +19,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"context"
 	"time"
 
 	v1alpha1 "github.com/longhorn/longhorn-manager/upgrade/v1alpha1/k8s/pkg/apis/longhorn/v1alpha1"
@@ -37,14 +38,14 @@ type EngineImagesGetter interface {
 
 // EngineImageInterface has methods to work with EngineImage resources.
 type EngineImageInterface interface {
-	Create(*v1alpha1.EngineImage) (*v1alpha1.EngineImage, error)
-	Update(*v1alpha1.EngineImage) (*v1alpha1.EngineImage, error)
-	Delete(name string, options *v1.DeleteOptions) error
-	DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error
-	Get(name string, options v1.GetOptions) (*v1alpha1.EngineImage, error)
-	List(opts v1.ListOptions) (*v1alpha1.EngineImageList, error)
-	Watch(opts v1.ListOptions) (watch.Interface, error)
-	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.EngineImage, err error)
+	Create(ctx context.Context, engineImage *v1alpha1.EngineImage, opts v1.CreateOptions) (*v1alpha1.EngineImage, error)
+	Update(ctx context.Context, engineImage *v1alpha1.EngineImage, opts v1.UpdateOptions) (*v1alpha1.EngineImage, error)
+	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
+	DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error
+	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1alpha1.EngineImage, error)
+	List(ctx context.Context, opts v1.ListOptions) (*v1alpha1.EngineImageList, error)
+	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.EngineImage, err error)
 	EngineImageExpansion
 }
 
@@ -63,20 +64,20 @@ func newEngineImages(c *LonghornV1alpha1Client, namespace string) *engineImages 
 }
 
 // Get takes name of the engineImage, and returns the corresponding engineImage object, and an error if there is any.
-func (c *engineImages) Get(name string, options v1.GetOptions) (result *v1alpha1.EngineImage, err error) {
+func (c *engineImages) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.EngineImage, err error) {
 	result = &v1alpha1.EngineImage{}
 	err = c.client.Get().
 		Namespace(c.ns).
 		Resource("engineimages").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // List takes label and field selectors, and returns the list of EngineImages that match those selectors.
-func (c *engineImages) List(opts v1.ListOptions) (result *v1alpha1.EngineImageList, err error) {
+func (c *engineImages) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.EngineImageList, err error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -87,13 +88,13 @@ func (c *engineImages) List(opts v1.ListOptions) (result *v1alpha1.EngineImageLi
 		Resource("engineimages").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Watch returns a watch.Interface that watches the requested engineImages.
-func (c *engineImages) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *engineImages) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -104,71 +105,74 @@ func (c *engineImages) Watch(opts v1.ListOptions) (watch.Interface, error) {
 		Resource("engineimages").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Watch()
+		Watch(ctx)
 }
 
 // Create takes the representation of a engineImage and creates it.  Returns the server's representation of the engineImage, and an error, if there is any.
-func (c *engineImages) Create(engineImage *v1alpha1.EngineImage) (result *v1alpha1.EngineImage, err error) {
+func (c *engineImages) Create(ctx context.Context, engineImage *v1alpha1.EngineImage, opts v1.CreateOptions) (result *v1alpha1.EngineImage, err error) {
 	result = &v1alpha1.EngineImage{}
 	err = c.client.Post().
 		Namespace(c.ns).
 		Resource("engineimages").
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(engineImage).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Update takes the representation of a engineImage and updates it. Returns the server's representation of the engineImage, and an error, if there is any.
-func (c *engineImages) Update(engineImage *v1alpha1.EngineImage) (result *v1alpha1.EngineImage, err error) {
+func (c *engineImages) Update(ctx context.Context, engineImage *v1alpha1.EngineImage, opts v1.UpdateOptions) (result *v1alpha1.EngineImage, err error) {
 	result = &v1alpha1.EngineImage{}
 	err = c.client.Put().
 		Namespace(c.ns).
 		Resource("engineimages").
 		Name(engineImage.Name).
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(engineImage).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Delete takes name of the engineImage and deletes it. Returns an error if one occurs.
-func (c *engineImages) Delete(name string, options *v1.DeleteOptions) error {
+func (c *engineImages) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	return c.client.Delete().
 		Namespace(c.ns).
 		Resource("engineimages").
 		Name(name).
-		Body(options).
-		Do().
+		Body(&opts).
+		Do(ctx).
 		Error()
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *engineImages) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
+func (c *engineImages) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
 	var timeout time.Duration
-	if listOptions.TimeoutSeconds != nil {
-		timeout = time.Duration(*listOptions.TimeoutSeconds) * time.Second
+	if listOpts.TimeoutSeconds != nil {
+		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
 		Namespace(c.ns).
 		Resource("engineimages").
-		VersionedParams(&listOptions, scheme.ParameterCodec).
+		VersionedParams(&listOpts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Body(options).
-		Do().
+		Body(&opts).
+		Do(ctx).
 		Error()
 }
 
 // Patch applies the patch and returns the patched engineImage.
-func (c *engineImages) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.EngineImage, err error) {
+func (c *engineImages) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.EngineImage, err error) {
 	result = &v1alpha1.EngineImage{}
 	err = c.client.Patch(pt).
 		Namespace(c.ns).
 		Resource("engineimages").
-		SubResource(subresources...).
 		Name(name).
+		SubResource(subresources...).
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(data).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }

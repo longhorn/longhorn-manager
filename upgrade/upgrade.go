@@ -146,7 +146,7 @@ func doAPIVersionUpgrade(namespace string, config *restclient.Config, lhClient *
 
 	crdAPIVersion := ""
 
-	crdAPIVersionSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameCRDAPIVersion), metav1.GetOptions{})
+	crdAPIVersionSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameCRDAPIVersion), metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
@@ -160,7 +160,7 @@ func doAPIVersionUpgrade(namespace string, config *restclient.Config, lhClient *
 				Value: "",
 			},
 		}
-		crdAPIVersionSetting, err = lhClient.LonghornV1beta1().Settings(namespace).Create(crdAPIVersionSetting)
+		crdAPIVersionSetting, err = lhClient.LonghornV1beta1().Settings(namespace).Create(context.TODO(), crdAPIVersionSetting, metav1.CreateOptions{})
 		if err != nil {
 			return errors.Wrap(err, "cannot create CRDAPIVersionSetting")
 		}
@@ -187,7 +187,7 @@ func doAPIVersionUpgrade(namespace string, config *restclient.Config, lhClient *
 		}
 		if !isV1alpha1 {
 			crdAPIVersionSetting.Value = types.CurrentCRDAPIVersion
-			if _, err := lhClient.LonghornV1beta1().Settings(namespace).Update(crdAPIVersionSetting); err != nil {
+			if _, err := lhClient.LonghornV1beta1().Settings(namespace).Update(context.TODO(), crdAPIVersionSetting, metav1.UpdateOptions{}); err != nil {
 				return errors.Wrapf(err, "cannot finish CRD API upgrade by setting the CRDAPIVersionSetting to %v", types.CurrentCRDAPIVersion)
 			}
 			logrus.Infof("Initialized CRD API Version to %v", types.CurrentCRDAPIVersion)
@@ -202,7 +202,7 @@ func doAPIVersionUpgrade(namespace string, config *restclient.Config, lhClient *
 			return err
 		}
 		crdAPIVersionSetting.Value = types.CRDAPIVersionV1beta1
-		if _, err := lhClient.LonghornV1beta1().Settings(namespace).Update(crdAPIVersionSetting); err != nil {
+		if _, err := lhClient.LonghornV1beta1().Settings(namespace).Update(context.TODO(), crdAPIVersionSetting, metav1.UpdateOptions{}); err != nil {
 			return errors.Wrapf(err, "cannot finish CRD API upgrade by setting the CRDAPIVersionSetting to %v", types.CurrentCRDAPIVersion)
 		}
 		logrus.Infof("CRD has been upgraded to %v", crdAPIVersionSetting.Value)

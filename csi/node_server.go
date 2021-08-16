@@ -18,7 +18,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"k8s.io/kubernetes/pkg/util/mount"
+	utilexec "k8s.io/utils/exec"
+	"k8s.io/utils/mount"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/csi/crypto"
@@ -573,7 +574,7 @@ func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability
 			fsType = "ext4"
 		}
 
-		mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: mount.NewOSExec()}
+		mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: utilexec.New()}
 		// we allow the user to provide additional params for ext4 filesystem creation.
 		// this allows an ext4 fs to be mounted on older kernels, see https://github.com/longhorn/longhorn/issues/1208
 		if fsType == "ext4" && userExt4Params != nil && userExt4Params.Value != "" {
@@ -582,7 +583,7 @@ func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability
 			cmdParamMapping := map[string]string{"mkfs." + fsType: ext4Params}
 			mounter = &mount.SafeFormatAndMount{
 				Interface: mount.New(""),
-				Exec:      NewForcedParamsOsExec(cmdParamMapping),
+				Exec:      NewForcedParamsExec(cmdParamMapping),
 			}
 		}
 		return mounter, nil
