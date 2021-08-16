@@ -353,6 +353,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		log.Debug("Cannot find backing image data source, then controller will create it first")
 		var readyDiskUUID, readyDiskPath, readyNodeID string
 		isReadyFile := false
+		foundReadyDisk := false
 		for diskUUID := range bi.Spec.Disks {
 			node, diskName, err := bic.ds.GetReadyDiskNode(diskUUID)
 			if err != nil {
@@ -361,6 +362,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 				}
 				continue
 			}
+			foundReadyDisk = true
 			readyNodeID = node.Name
 			readyDiskUUID = diskUUID
 			readyDiskPath = node.Spec.Disks[diskName].Path
@@ -370,7 +372,35 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 				break
 			}
 		}
-		if readyNodeID == "" || readyDiskUUID == "" || readyDiskPath == "" {
+		if !foundReadyDisk {
+			nodes, err := bic.ds.ListNodes()
+			if err != nil {
+				return err
+			}
+			for _, node := range nodes {
+				if types.GetCondition(node.Status.Conditions, types.NodeConditionTypeSchedulable).Status != types.ConditionStatusTrue {
+					continue
+				}
+				for diskName, diskStatus := range node.Status.DiskStatus {
+					if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status != types.ConditionStatusTrue {
+						continue
+					}
+					diskSpec, exists := node.Spec.Disks[diskName]
+					if !exists {
+						continue
+					}
+					foundReadyDisk = true
+					readyNodeID = node.Name
+					readyDiskUUID = diskStatus.DiskUUID
+					readyDiskPath = diskSpec.Path
+					break
+				}
+				if foundReadyDisk {
+					break
+				}
+			}
+		}
+		if !foundReadyDisk {
 			return fmt.Errorf("cannot find a ready disk for backing image data source creation")
 		}
 
