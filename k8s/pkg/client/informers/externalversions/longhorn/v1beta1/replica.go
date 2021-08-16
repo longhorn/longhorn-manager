@@ -19,6 +19,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	"context"
 	time "time"
 
 	longhornv1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
@@ -61,13 +62,13 @@ func NewFilteredReplicaInformer(client versioned.Interface, namespace string, re
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.LonghornV1beta1().Replicas(namespace).List(options)
+				return client.LonghornV1beta1().Replicas(namespace).List(context.TODO(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.LonghornV1beta1().Replicas(namespace).Watch(options)
+				return client.LonghornV1beta1().Replicas(namespace).Watch(context.TODO(), options)
 			},
 		},
 		&longhornv1beta1.Replica{},

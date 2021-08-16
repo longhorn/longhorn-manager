@@ -1,6 +1,7 @@
 package monitoring
 
 import (
+	"context"
 	"strings"
 	"sync"
 
@@ -241,7 +242,7 @@ func (nc *NodeCollector) collectNodeActualCPUMemoryUsage(ch chan<- prometheus.Me
 		}
 	}()
 
-	nodeMetrics, err := nc.kubeMetricsClient.MetricsV1beta1().NodeMetricses().List(metav1.ListOptions{
+	nodeMetrics, err := nc.kubeMetricsClient.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{
 		FieldSelector: "metadata.name=" + nc.currentNodeID,
 	})
 	if err != nil {

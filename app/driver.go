@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -206,7 +207,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
 	rootDir := c.String(FlagKubeletRootDir)
 
-	tolerationSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameTaintToleration), metav1.GetOptions{})
+	tolerationSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameTaintToleration), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -219,7 +220,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	nodeSelectorSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameSystemManagedComponentsNodeSelector), metav1.GetOptions{})
+	nodeSelectorSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameSystemManagedComponentsNodeSelector), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -228,19 +229,19 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	priorityClassSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNamePriorityClass), metav1.GetOptions{})
+	priorityClassSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNamePriorityClass), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 	priorityClass := priorityClassSetting.Value
 
-	registrySecretSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameRegistrySecret), metav1.GetOptions{})
+	registrySecretSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameRegistrySecret), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 	registrySecret := registrySecretSetting.Value
 
-	imagePullPolicySetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameSystemManagedPodsImagePullPolicy), metav1.GetOptions{})
+	imagePullPolicySetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameSystemManagedPodsImagePullPolicy), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -343,7 +344,7 @@ func newDaemonSetOps(kubeClient *clientset.Clientset) (*DaemonSetOps, error) {
 }
 
 func (ops *DaemonSetOps) Get(name string) (*appsv1.DaemonSet, error) {
-	d, err := ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Get(name, metav1.GetOptions{})
+	d, err := ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
@@ -354,10 +355,10 @@ func (ops *DaemonSetOps) Get(name string) (*appsv1.DaemonSet, error) {
 }
 
 func (ops *DaemonSetOps) Create(name string, d *appsv1.DaemonSet) (*appsv1.DaemonSet, error) {
-	return ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Create(d)
+	return ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Create(context.TODO(), d, metav1.CreateOptions{})
 }
 
 func (ops *DaemonSetOps) Delete(name string) error {
 	propagation := metav1.DeletePropagationForeground
-	return ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
+	return ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
 }

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -470,7 +471,7 @@ func (ec *EngineController) deleteInstanceWithCLIAPIVersionOne(e *longhorn.Engin
 	}
 
 	if isCLIAPIVersionOne {
-		pod, err := ec.kubeClient.CoreV1().Pods(ec.namespace).Get(e.Name, metav1.GetOptions{})
+		pod, err := ec.kubeClient.CoreV1().Pods(ec.namespace).Get(context.TODO(), e.Name, metav1.GetOptions{})
 		if err != nil && !apierrors.IsNotFound(err) {
 			return errors.Wrapf(err, "failed to get pod for old engine %v", e.Name)
 		}
@@ -502,7 +503,7 @@ func (ec *EngineController) deleteOldEnginePod(pod *v1.Pod, e *longhorn.Engine) 
 				log.Debugf("engine pod still exists after grace period %v passed, force deletion: now %v, deadline %v",
 					pod.DeletionGracePeriodSeconds, now, deletionDeadline)
 				gracePeriod := int64(0)
-				if err := ec.kubeClient.CoreV1().Pods(ec.namespace).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod}); err != nil {
+				if err := ec.kubeClient.CoreV1().Pods(ec.namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod}); err != nil {
 					log.WithError(err).Debugf("failed to force delete engine pod")
 					return nil
 				}
@@ -511,7 +512,7 @@ func (ec *EngineController) deleteOldEnginePod(pod *v1.Pod, e *longhorn.Engine) 
 		return nil
 	}
 
-	if err := ec.kubeClient.CoreV1().Pods(ec.namespace).Delete(pod.Name, nil); err != nil {
+	if err := ec.kubeClient.CoreV1().Pods(ec.namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{}); err != nil {
 		ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping pod for old engine %v: %v", pod.Name, err)
 		return nil
 	}

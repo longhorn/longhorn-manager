@@ -1,6 +1,7 @@
 package v110to120
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -78,7 +79,7 @@ func translateStorageClassRecurringJobsToSelector(namespace string, kubeClient *
 	)
 
 	log.Debugf("Getting %v configMap", types.DefaultStorageClassConfigMapName)
-	storageClassCM, err := kubeClient.CoreV1().ConfigMaps(namespace).Get(types.DefaultStorageClassConfigMapName, metav1.GetOptions{})
+	storageClassCM, err := kubeClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), types.DefaultStorageClassConfigMapName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to get %v ConfigMap: %v", types.DefaultStorageClassConfigMapName, err)
 	}
@@ -152,7 +153,7 @@ func translateStorageClassRecurringJobsToSelector(namespace string, kubeClient *
 	newStorageClassYAML, err := yaml.Marshal(sc)
 	storageClassCM.Data["storageclass.yaml"] = string(newStorageClassYAML)
 	logrus.Infof("Updating %v configmap", storageClassCM.Name)
-	if _, err := kubeClient.CoreV1().ConfigMaps(namespace).Update(storageClassCM); err != nil {
+	if _, err := kubeClient.CoreV1().ConfigMaps(namespace).Update(context.TODO(), storageClassCM, metav1.UpdateOptions{}); err != nil {
 		return errors.Wrapf(err, "failed to update %v configmap", storageClassCM.Name)
 	}
 	return nil
@@ -171,7 +172,7 @@ func translateVolumeRecurringJobsToLabel(namespace string, lhClient *lhclientset
 	)
 
 	log.Debugf("Listing all volumes")
-	volumeList, err := lhClient.LonghornV1beta1().Volumes(namespace).List(metav1.ListOptions{})
+	volumeList, err := lhClient.LonghornV1beta1().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Debug("Cannot find volumes")
@@ -210,7 +211,7 @@ func translateVolumeRecurringJobsToLabel(namespace string, lhClient *lhclientset
 			volume.Spec.RecurringJobs = nil
 		}
 		logrus.Infof("Updating %v volume labels to %v", volume.Name, volume.Labels)
-		updatedVolume, err := lhClient.LonghornV1beta1().Volumes(namespace).Update(&volume)
+		updatedVolume, err := lhClient.LonghornV1beta1().Volumes(namespace).Update(context.TODO(), &volume, metav1.UpdateOptions{})
 		if err != nil {
 			return errors.Wrapf(err, "failed to update %v volume", volume.Name)
 		}
@@ -245,7 +246,7 @@ func translateVolumeRecurringJobToCRs(namespace string, lhClient *lhclientset.Cl
 			Spec: *spec,
 		}
 		log.Debugf("Checking if %v recurring job CR already exists", spec.Name)
-		obj, err := lhClient.LonghornV1beta1().RecurringJobs(namespace).Get(job.Name, metav1.GetOptions{})
+		obj, err := lhClient.LonghornV1beta1().RecurringJobs(namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
 		if err == nil {
 			log.Debugf("Recurring job CR already exists %v", obj)
 			continue
@@ -253,7 +254,7 @@ func translateVolumeRecurringJobToCRs(namespace string, lhClient *lhclientset.Cl
 		if !apierrors.IsNotFound(err) {
 			log.Debugf("Failed to get recurring job %v", spec.Name)
 		}
-		_, err = lhClient.LonghornV1beta1().RecurringJobs(namespace).Create(job)
+		_, err = lhClient.LonghornV1beta1().RecurringJobs(namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		if err != nil {
 			return errors.Wrapf(err, "failed to create recurring job CR with %v", spec)
 		}
@@ -274,7 +275,7 @@ func cleanupAppliedVolumeCronJobs(namespace string, lhClient *lhclientset.Client
 	)
 
 	log.Debugf("Listing all volumes")
-	volumeList, err := lhClient.LonghornV1beta1().Volumes(namespace).List(metav1.ListOptions{})
+	volumeList, err := lhClient.LonghornV1beta1().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Debug("Cannot find volumes")
@@ -293,7 +294,7 @@ func cleanupAppliedVolumeCronJobs(namespace string, lhClient *lhclientset.Client
 		}
 		for name := range appliedCronJobROs {
 			log.Infof("Deleting %v cronjob job for %v volume", name, v.Name)
-			err := cronJobClient.Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
+			err := cronJobClient.Delete(context.TODO(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
 			if err != nil {
 				return errors.Wrapf(err, "failed to delete %v cron job for volume %v", name, v.Name)
 			}
@@ -331,7 +332,7 @@ func createRecurringJobID(recurringJob types.RecurringJobSpec) (key string, err 
 
 func listVolumeCronJobROs(volumeName, namespace string, kubeClient *clientset.Clientset) (map[string]*batchv1beta1.CronJob, error) {
 	itemMap := map[string]*batchv1beta1.CronJob{}
-	list, err := kubeClient.BatchV1beta1().CronJobs(namespace).List(metav1.ListOptions{
+	list, err := kubeClient.BatchV1beta1().CronJobs(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: types.LonghornLabelVolume + "=" + volumeName,
 	})
 	if err != nil {

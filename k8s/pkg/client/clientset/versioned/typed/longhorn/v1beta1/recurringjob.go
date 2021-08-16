@@ -19,6 +19,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	"context"
 	"time"
 
 	v1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
@@ -37,15 +38,15 @@ type RecurringJobsGetter interface {
 
 // RecurringJobInterface has methods to work with RecurringJob resources.
 type RecurringJobInterface interface {
-	Create(*v1beta1.RecurringJob) (*v1beta1.RecurringJob, error)
-	Update(*v1beta1.RecurringJob) (*v1beta1.RecurringJob, error)
-	UpdateStatus(*v1beta1.RecurringJob) (*v1beta1.RecurringJob, error)
-	Delete(name string, options *v1.DeleteOptions) error
-	DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error
-	Get(name string, options v1.GetOptions) (*v1beta1.RecurringJob, error)
-	List(opts v1.ListOptions) (*v1beta1.RecurringJobList, error)
-	Watch(opts v1.ListOptions) (watch.Interface, error)
-	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1beta1.RecurringJob, err error)
+	Create(ctx context.Context, recurringJob *v1beta1.RecurringJob, opts v1.CreateOptions) (*v1beta1.RecurringJob, error)
+	Update(ctx context.Context, recurringJob *v1beta1.RecurringJob, opts v1.UpdateOptions) (*v1beta1.RecurringJob, error)
+	UpdateStatus(ctx context.Context, recurringJob *v1beta1.RecurringJob, opts v1.UpdateOptions) (*v1beta1.RecurringJob, error)
+	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
+	DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error
+	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1beta1.RecurringJob, error)
+	List(ctx context.Context, opts v1.ListOptions) (*v1beta1.RecurringJobList, error)
+	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.RecurringJob, err error)
 	RecurringJobExpansion
 }
 
@@ -64,20 +65,20 @@ func newRecurringJobs(c *LonghornV1beta1Client, namespace string) *recurringJobs
 }
 
 // Get takes name of the recurringJob, and returns the corresponding recurringJob object, and an error if there is any.
-func (c *recurringJobs) Get(name string, options v1.GetOptions) (result *v1beta1.RecurringJob, err error) {
+func (c *recurringJobs) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.RecurringJob, err error) {
 	result = &v1beta1.RecurringJob{}
 	err = c.client.Get().
 		Namespace(c.ns).
 		Resource("recurringjobs").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // List takes label and field selectors, and returns the list of RecurringJobs that match those selectors.
-func (c *recurringJobs) List(opts v1.ListOptions) (result *v1beta1.RecurringJobList, err error) {
+func (c *recurringJobs) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.RecurringJobList, err error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -88,13 +89,13 @@ func (c *recurringJobs) List(opts v1.ListOptions) (result *v1beta1.RecurringJobL
 		Resource("recurringjobs").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Watch returns a watch.Interface that watches the requested recurringJobs.
-func (c *recurringJobs) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *recurringJobs) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -105,87 +106,90 @@ func (c *recurringJobs) Watch(opts v1.ListOptions) (watch.Interface, error) {
 		Resource("recurringjobs").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Watch()
+		Watch(ctx)
 }
 
 // Create takes the representation of a recurringJob and creates it.  Returns the server's representation of the recurringJob, and an error, if there is any.
-func (c *recurringJobs) Create(recurringJob *v1beta1.RecurringJob) (result *v1beta1.RecurringJob, err error) {
+func (c *recurringJobs) Create(ctx context.Context, recurringJob *v1beta1.RecurringJob, opts v1.CreateOptions) (result *v1beta1.RecurringJob, err error) {
 	result = &v1beta1.RecurringJob{}
 	err = c.client.Post().
 		Namespace(c.ns).
 		Resource("recurringjobs").
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(recurringJob).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Update takes the representation of a recurringJob and updates it. Returns the server's representation of the recurringJob, and an error, if there is any.
-func (c *recurringJobs) Update(recurringJob *v1beta1.RecurringJob) (result *v1beta1.RecurringJob, err error) {
+func (c *recurringJobs) Update(ctx context.Context, recurringJob *v1beta1.RecurringJob, opts v1.UpdateOptions) (result *v1beta1.RecurringJob, err error) {
 	result = &v1beta1.RecurringJob{}
 	err = c.client.Put().
 		Namespace(c.ns).
 		Resource("recurringjobs").
 		Name(recurringJob.Name).
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(recurringJob).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-
-func (c *recurringJobs) UpdateStatus(recurringJob *v1beta1.RecurringJob) (result *v1beta1.RecurringJob, err error) {
+func (c *recurringJobs) UpdateStatus(ctx context.Context, recurringJob *v1beta1.RecurringJob, opts v1.UpdateOptions) (result *v1beta1.RecurringJob, err error) {
 	result = &v1beta1.RecurringJob{}
 	err = c.client.Put().
 		Namespace(c.ns).
 		Resource("recurringjobs").
 		Name(recurringJob.Name).
 		SubResource("status").
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(recurringJob).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Delete takes name of the recurringJob and deletes it. Returns an error if one occurs.
-func (c *recurringJobs) Delete(name string, options *v1.DeleteOptions) error {
+func (c *recurringJobs) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	return c.client.Delete().
 		Namespace(c.ns).
 		Resource("recurringjobs").
 		Name(name).
-		Body(options).
-		Do().
+		Body(&opts).
+		Do(ctx).
 		Error()
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *recurringJobs) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
+func (c *recurringJobs) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
 	var timeout time.Duration
-	if listOptions.TimeoutSeconds != nil {
-		timeout = time.Duration(*listOptions.TimeoutSeconds) * time.Second
+	if listOpts.TimeoutSeconds != nil {
+		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
 		Namespace(c.ns).
 		Resource("recurringjobs").
-		VersionedParams(&listOptions, scheme.ParameterCodec).
+		VersionedParams(&listOpts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Body(options).
-		Do().
+		Body(&opts).
+		Do(ctx).
 		Error()
 }
 
 // Patch applies the patch and returns the patched recurringJob.
-func (c *recurringJobs) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1beta1.RecurringJob, err error) {
+func (c *recurringJobs) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.RecurringJob, err error) {
 	result = &v1beta1.RecurringJob{}
 	err = c.client.Patch(pt).
 		Namespace(c.ns).
 		Resource("recurringjobs").
-		SubResource(subresources...).
 		Name(name).
+		SubResource(subresources...).
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(data).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }

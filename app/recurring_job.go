@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -99,7 +100,7 @@ func recurringJob(c *cli.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to get clientset")
 	}
-	recurringJob, err := lhClient.LonghornV1beta1().RecurringJobs(namespace).Get(jobName, metav1.GetOptions{})
+	recurringJob, err := lhClient.LonghornV1beta1().RecurringJobs(namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
 	if err != nil {
 		logrus.WithError(err).Errorf("Failed to get recurring job %v.", jobName)
 		return nil
@@ -779,11 +780,11 @@ func (job *Job) listBackupsForCleanup(backups []longhornclient.Backup) []string 
 }
 
 func (job *Job) GetVolume(name string) (*longhorn.Volume, error) {
-	return job.lhClient.LonghornV1beta1().Volumes(job.namespace).Get(name, metav1.GetOptions{})
+	return job.lhClient.LonghornV1beta1().Volumes(job.namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
 
 func (job *Job) UpdateVolumeStatus(v *longhorn.Volume) (*longhorn.Volume, error) {
-	return job.lhClient.LonghornV1beta1().Volumes(job.namespace).UpdateStatus(v)
+	return job.lhClient.LonghornV1beta1().Volumes(job.namespace).UpdateStatus(context.TODO(), v, metav1.UpdateOptions{})
 }
 
 // waitForVolumeState timeout in second
@@ -936,7 +937,7 @@ func getVolumesBySelector(recurringJobType, recurringJobName, namespace string, 
 		types.GetRecurringJobLabelKey(recurringJobType, recurringJobName), types.LonghornLabelValueEnabled)
 	logger.Debugf("Get volumes from label %v", label)
 
-	volumes, err := client.LonghornV1beta1().Volumes(namespace).List(metav1.ListOptions{
+	volumes, err := client.LonghornV1beta1().Volumes(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: label,
 	})
 	if err != nil {
@@ -946,7 +947,7 @@ func getVolumesBySelector(recurringJobType, recurringJobName, namespace string, 
 }
 
 func getSettingAsBoolean(name types.SettingName, namespace string, client *lhclientset.Clientset) (bool, error) {
-	obj, err := client.LonghornV1beta1().Settings(namespace).Get(string(name), metav1.GetOptions{})
+	obj, err := client.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(name), metav1.GetOptions{})
 	if err != nil {
 		return false, err
 	}

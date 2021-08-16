@@ -1,6 +1,7 @@
 package v102to110
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 
@@ -88,7 +89,7 @@ func upgradeInstanceMangerPodOwnerRef(pod *v1.Pod, kubeClient *clientset.Clients
 
 	metadata.SetOwnerReferences(podOwnerRefs)
 
-	if _, err = kubeClient.CoreV1().Pods(namespace).Update(pod); err != nil {
+	if _, err = kubeClient.CoreV1().Pods(namespace).Update(context.TODO(), pod, metav1.UpdateOptions{}); err != nil {
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to update the owner reference for instance manager pod %v during the instance managers pods upgrade", pod.GetName())
 	}
 
@@ -100,7 +101,7 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err erro
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade volume failed")
 	}()
 
-	volumeList, err := lhClient.LonghornV1beta1().Volumes(namespace).List(metav1.ListOptions{})
+	volumeList, err := lhClient.LonghornV1beta1().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -114,7 +115,7 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err erro
 		// so we add the previously only supported rwo access mode
 		if v.Spec.AccessMode == "" {
 			v.Spec.AccessMode = types.AccessModeReadWriteOnce
-			updatedVolume, err := lhClient.LonghornV1beta1().Volumes(namespace).Update(&v)
+			updatedVolume, err := lhClient.LonghornV1beta1().Volumes(namespace).Update(context.TODO(), &v, metav1.UpdateOptions{})
 			if err != nil {
 				return err
 			}
@@ -123,7 +124,7 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err erro
 
 		if v.Status.Robustness == types.VolumeRobustnessDegraded {
 			v.Status.LastDegradedAt = util.Now()
-			if _, err := lhClient.LonghornV1beta1().Volumes(namespace).UpdateStatus(&v); err != nil {
+			if _, err := lhClient.LonghornV1beta1().Volumes(namespace).UpdateStatus(context.TODO(), &v, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
@@ -136,7 +137,7 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset) (err err
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade replica failed")
 	}()
 
-	replicaList, err := lhClient.LonghornV1beta1().Replicas(namespace).List(metav1.ListOptions{})
+	replicaList, err := lhClient.LonghornV1beta1().Replicas(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -149,7 +150,7 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset) (err err
 			continue
 		}
 		isFailedReplica := false
-		node, err := lhClient.LonghornV1beta1().Nodes(namespace).Get(r.Spec.NodeID, metav1.GetOptions{})
+		node, err := lhClient.LonghornV1beta1().Nodes(namespace).Get(context.TODO(), r.Spec.NodeID, metav1.GetOptions{})
 		if err != nil {
 			logrus.Errorf("%vFailed to get node %v during the replica %v upgrade: %v", upgradeLogPrefix, r.Spec.NodeID, r.Name, err)
 			isFailedReplica = true
@@ -180,7 +181,7 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset) (err err
 			r.Spec.FailedAt = util.Now()
 		}
 		r.Spec.DataPath = ""
-		if _, err := lhClient.LonghornV1beta1().Replicas(namespace).Update(&r); err != nil {
+		if _, err := lhClient.LonghornV1beta1().Replicas(namespace).Update(context.TODO(), &r, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 	}
