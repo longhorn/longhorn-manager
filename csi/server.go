@@ -19,6 +19,7 @@ limitations under the License.
 package csi
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -28,7 +29,6 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 
