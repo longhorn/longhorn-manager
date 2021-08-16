@@ -83,42 +83,13 @@ func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, pa
 		return nil, errors.Wrapf(err, "failed to check backing image existence before creation")
 	}
 
-	var diskUUID string
-	nodes, err := m.ds.ListNodes()
-	if err != nil {
-		return nil, err
-	}
-	for _, node := range nodes {
-		if types.GetCondition(node.Status.Conditions, types.NodeConditionTypeSchedulable).Status != types.ConditionStatusTrue {
-			continue
-		}
-		for diskName, diskStatus := range node.Status.DiskStatus {
-			if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status != types.ConditionStatusTrue {
-				continue
-			}
-			if _, exists := node.Spec.Disks[diskName]; !exists {
-				continue
-			}
-			diskUUID = diskStatus.DiskUUID
-			break
-		}
-		if diskUUID != "" {
-			break
-		}
-	}
-	if diskUUID == "" {
-		return nil, fmt.Errorf("cannot find a schedulable disk for backing image %v creation", name)
-	}
-
 	bi = &longhorn.BackingImage{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
 			Labels: types.GetBackingImageLabels(),
 		},
 		Spec: types.BackingImageSpec{
-			Disks: map[string]struct{}{
-				diskUUID: struct{}{},
-			},
+			Disks:            map[string]struct{}{},
 			Checksum:         checksum,
 			SourceType:       types.BackingImageDataSourceType(sourceType),
 			SourceParameters: parameters,
