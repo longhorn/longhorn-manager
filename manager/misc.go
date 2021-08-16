@@ -250,6 +250,9 @@ func (m *VolumeManager) generateSupportBundleYAMLsForLonghorn(dir string, errLog
 	getObjectMapAndEncodeToYAML("backingimages", func() (interface{}, error) {
 		return m.ds.ListBackingImages()
 	}, dir, errLog)
+	getObjectMapAndEncodeToYAML("recurringjobs", func() (interface{}, error) {
+		return m.ds.ListRecurringJobs()
+	}, dir, errLog)
 }
 
 func writeErrorToFile(path string, errorMessage error) error {
