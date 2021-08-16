@@ -670,7 +670,33 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		}
 	}
 
-	pod, err := c.ds.CreatePod(c.createPodManifest(sm, annotations, tolerations, imagePullPolicy, nil, registrySecret, priorityClass, nodeSelector))
+	volume, err := c.ds.GetVolume(sm.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	var cryptoKey []byte
+	if volume.Spec.Encrypted {
+		pv, err := c.ds.GetPersistentVolume(volume.Status.KubernetesStatus.PVName)
+		if err != nil {
+			return nil, err
+		}
+
+		secretRef := pv.Spec.CSI.NodePublishSecretRef
+		secret, err := c.ds.GetSecretRO(secretRef.Namespace, secretRef.Name)
+		if err != nil {
+			return nil, err
+		}
+
+		cryptoKey = secret.Data["CRYPTO_KEY_VALUE"]
+		if len(cryptoKey) == 0 {
+			return nil, fmt.Errorf("missing CRYPTO_KEY_VALUE in secret for encrypted RWX volume %v", volume.Name)
+		}
+		c.logger.Infof("crypto key: %v", string(cryptoKey))
+	}
+
+	manifest := c.createPodManifest(sm, annotations, tolerations, imagePullPolicy, nil, registrySecret, priorityClass, nodeSelector, cryptoKey)
+	pod, err := c.ds.CreatePod(manifest)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create pod for share manager %v", sm.Name)
 	}
@@ -704,7 +730,8 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 }
 
 func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, annotations map[string]string, tolerations []v1.Toleration,
-	pullPolicy v1.PullPolicy, resourceReq *v1.ResourceRequirements, registrySecret string, priorityClass string, nodeSelector map[string]string) *v1.Pod {
+	pullPolicy v1.PullPolicy, resourceReq *v1.ResourceRequirements, registrySecret string, priorityClass string, nodeSelector map[string]string,
+	cryptoKey []byte) *v1.Pod {
 	privileged := true
 	podSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -745,6 +772,20 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 			},
 			RestartPolicy: v1.RestartPolicyNever,
 		},
+	}
+
+	// this is an encrypted volume the cryptoKey is base64 encoded
+	if len(cryptoKey) > 0 {
+		podSpec.Spec.Containers[0].Env = []v1.EnvVar{
+			{
+				Name:  "ENCRYPTED",
+				Value: "True",
+			},
+			{
+				Name:  "PASSPHRASE",
+				Value: string(cryptoKey),
+			},
+		}
 	}
 
 	// host mount the devices, so we can mount the shared longhorn-volume into the export folder
