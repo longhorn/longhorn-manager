@@ -7,5 +7,5 @@ longhornio/backing-image-manager:v2_20210809
 longhornio/longhorn-engine:master
 longhornio/longhorn-instance-manager:v1_20210731
 longhornio/longhorn-manager:master
-longhornio/longhorn-share-manager:v1_20210416
+joshimoo/longhorn-share-manager:v_20210819
 longhornio/longhorn-ui:master
