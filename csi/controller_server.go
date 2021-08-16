@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -147,45 +148,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	if vol.BackingImage != "" {
-		// There will be an empty BackingImage object rather than nil returned even if there is an error
-		existingBackingImage, err := cs.apiClient.BackingImage.ById(vol.BackingImage)
-		if err != nil && !strings.Contains(err.Error(), "not found") {
-			return nil, status.Errorf(codes.Internal, "volume %s unable to retrieve backing image %s error %v", volumeID, vol.BackingImage, err)
-		}
-		// A new backing image will be created automatically only if:
-		//   1. there is no existing backing image named `backingImage`
-		//   2. there is valid data source type as well as corresponding parameters
-		if existingBackingImage == nil || existingBackingImage.Name == "" {
-			bidsType := ""
-			bidsParameters := map[string]string{}
-			switch strings.ToLower(volumeParameters["backingImageDataSourceType"]) {
-			case string(types.BackingImageDataSourceTypeDownload):
-				bidsType = string(types.BackingImageDataSourceTypeDownload)
-				parametersStr := volumeParameters["backingImageDataSourceParameters"]
-				if err := json.Unmarshal([]byte(parametersStr), &bidsParameters); err != nil {
-					return nil, status.Errorf(codes.InvalidArgument, "volume %s unable to create missing backing image with parameters %s, error: %v", volumeID, parametersStr, err)
-				}
-			case "":
-				// backward compatibility
-				if volumeParameters["backingImageURL"] == "" {
-					return nil, status.Errorf(codes.NotFound, "volume %s missing backing image %v unable to create volume", volumeID, vol.BackingImage)
-				}
-				bidsType = string(types.BackingImageDataSourceTypeDownload)
-				bidsParameters[types.DataSourceTypeDownloadParameterURL] = volumeParameters["backingImageURL"]
-			default:
-				return nil, status.Errorf(codes.InvalidArgument, "volume %s unable to create missing backing image %v with data source type %v", volumeID, vol.BackingImage, volumeParameters["backingImageDataSourceType"])
-			}
-
-			if _, err := cs.apiClient.BackingImage.Create(&longhornclient.BackingImage{
-				Name:             vol.BackingImage,
-				ExpectedChecksum: volumeParameters["backingImageChecksum"],
-				SourceType:       bidsType,
-				Parameters:       bidsParameters,
-			}); err != nil {
-				return nil, status.Error(codes.Internal, err.Error())
-			}
-		}
+	if err = cs.checkAndPrepareBackingImage(volumeID, vol.BackingImage, volumeParameters); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	vol.Name = volumeID
@@ -214,6 +178,63 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			ContentSource: source,
 		},
 	}, nil
+}
+
+func (cs *ControllerServer) checkAndPrepareBackingImage(volumeName, backingImageName string, volumeParameters map[string]string) error {
+	if backingImageName == "" {
+		return nil
+	}
+
+	bidsType := strings.ToLower(volumeParameters["backingImageDataSourceType"])
+	bidsParameters := map[string]string{}
+	biChecksum := volumeParameters["backingImageChecksum"]
+	if bidsParametersStr := volumeParameters["backingImageDataSourceParameters"]; bidsParametersStr != "" {
+		if err := json.Unmarshal([]byte(bidsParametersStr), &bidsParameters); err != nil {
+			return fmt.Errorf("volume %s is unable to create missing backing image with parameters %s: %v", volumeName, bidsParametersStr, err)
+		}
+	}
+
+	// There will be an empty BackingImage object rather than nil returned even if there is an error
+	existingBackingImage, err := cs.apiClient.BackingImage.ById(backingImageName)
+	if err != nil && !strings.Contains(err.Error(), "not found") {
+		return fmt.Errorf("volume %s is unable to retrieve backing image %s: %v", volumeName, backingImageName, err)
+	}
+	// A new backing image will be created automatically only if:
+	//   1. There is no existing backing image named `backingImage`.
+	//   2. The data source is valid for CSI. Notice that the CSI plugin cannot create a backing image with type `upload`.
+	if existingBackingImage == nil || existingBackingImage.Name == "" {
+		switch bidsType {
+		case string(types.BackingImageDataSourceTypeUpload):
+			return fmt.Errorf("cannot upload backing image %v via CSI", backingImageName)
+		case "":
+			// backward compatibility
+			if volumeParameters["backingImageURL"] == "" {
+				return fmt.Errorf("volume %s missing backing image %v unable to create volume", volumeName, backingImageName)
+			}
+			bidsType = string(types.BackingImageDataSourceTypeDownload)
+			bidsParameters[types.DataSourceTypeDownloadParameterURL] = volumeParameters["backingImageURL"]
+		}
+
+		_, err = cs.apiClient.BackingImage.Create(&longhornclient.BackingImage{
+			Name:             backingImageName,
+			ExpectedChecksum: biChecksum,
+			SourceType:       bidsType,
+			Parameters:       bidsParameters,
+		})
+		return err
+	}
+
+	if (bidsType != "" && bidsType != existingBackingImage.SourceType) || (len(bidsParameters) != 0 && !reflect.DeepEqual(existingBackingImage.Parameters, bidsParameters)) {
+		return fmt.Errorf("existing backing image %v data source is different from the parameters in the creation request or StorageClass", backingImageName)
+	}
+	if biChecksum != "" {
+		if (existingBackingImage.CurrentChecksum != "" && existingBackingImage.CurrentChecksum != biChecksum) ||
+			(existingBackingImage.ExpectedChecksum != "" && existingBackingImage.ExpectedChecksum != biChecksum) {
+			return fmt.Errorf("existing backing image %v expected checksum or current checksum doesn't match the specified checksum %v in the request", backingImageName, biChecksum)
+		}
+	}
+
+	return nil
 }
 
 func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
