@@ -267,6 +267,10 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 		}
 	}()
 
+	if err := c.syncBackingImage(bids); err != nil {
+		return err
+	}
+
 	if bids.Spec.FileTransferred {
 		bids.Status.CurrentState = types.BackingImageStateReady
 		return c.cleanup(bids)
@@ -283,10 +287,6 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 			bids.Status.CurrentState = types.BackingImageStateUnknown
 		}
 		return nil
-	}
-
-	if err := c.syncBackingImage(bids); err != nil {
-		return err
 	}
 
 	if err := c.syncBackingImageDataSourcePod(bids); err != nil {
@@ -322,10 +322,24 @@ func (c *BackingImageDataSourceController) syncBackingImage(bids *longhorn.Backi
 	if err != nil {
 		return err
 	}
-	if _, exists := bi.Spec.Disks[bids.Spec.DiskUUID]; !exists {
-		bi.Spec.Disks[bids.Spec.DiskUUID] = struct{}{}
-		if bi, err = c.ds.UpdateBackingImage(bi); err != nil {
-			return err
+
+	existingBI := bi.DeepCopy()
+	defer func() {
+		if !reflect.DeepEqual(existingBI.Spec, bi.Spec) {
+			if bi, err = c.ds.UpdateBackingImage(bi); err != nil {
+				return
+			}
+		}
+	}()
+
+	if bi.Spec.Disks == nil {
+		bi.Spec.Disks = map[string]struct{}{}
+	}
+
+	if !bids.Spec.FileTransferred {
+		if _, exists := bi.Spec.Disks[bids.Spec.DiskUUID]; !exists {
+			bi.Spec.Disks[bids.Spec.DiskUUID] = struct{}{}
+
 		}
 	}
 

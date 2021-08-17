@@ -953,7 +953,7 @@ func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error
 }
 
 func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage, bids *longhorn.BackingImageDataSource, waitInterval time.Duration, haRequirement int) {
-	if bi.Status.DiskLastRefAtMap == nil {
+	if bi.Spec.Disks == nil || bi.Status.DiskLastRefAtMap == nil {
 		return
 	}
 
