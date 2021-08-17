@@ -788,21 +788,56 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 		}
 	}
 
-	// host mount the devices, so we can mount the shared longhorn-volume into the export folder
-	hostToContainer := v1.MountPropagationHostToContainer
 	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
 		{
-			MountPath:        "/host/dev",
-			Name:             "dev",
-			MountPropagation: &hostToContainer,
+			Name:      "host-dev",
+			MountPath: "/dev",
+		},
+		{
+			Name:      "host-sys",
+			MountPath: "/sys",
+		},
+		{
+			Name:      "host-proc",
+			MountPath: "/host/proc", // we use this to enter the host namespace
+		},
+		{
+			Name:      "lib-modules",
+			MountPath: "/lib/modules",
+			ReadOnly:  true,
 		},
 	}
+
 	podSpec.Spec.Volumes = []v1.Volume{
 		{
-			Name: "dev",
+			Name: "host-dev",
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
 					Path: "/dev",
+				},
+			},
+		},
+		{
+			Name: "host-sys",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/sys",
+				},
+			},
+		},
+		{
+			Name: "host-proc",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/proc",
+				},
+			},
+		},
+		{
+			Name: "lib-modules",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/lib/modules",
 				},
 			},
 		},
