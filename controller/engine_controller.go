@@ -1090,15 +1090,7 @@ func restoreBackup(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[st
 	}
 
 	// Initialize a backup target client
-	credential, err := ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
-	if err != nil {
-		return err
-	}
-	defaultEngineImage, err := ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
-	if err != nil {
-		return err
-	}
-	backupTargetClient, err := engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential)
+	backupTargetClient, err := getBackupTargetClient(ds, backupTarget)
 	if err != nil {
 		return errors.Wrapf(err, "cannot init backup target client for backup restoration of engine %v", engine.Name)
 	}

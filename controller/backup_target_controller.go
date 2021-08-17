@@ -24,6 +24,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
@@ -173,6 +174,28 @@ func getLoggerForBackupTarget(logger logrus.FieldLogger, backupTarget *longhorn.
 	)
 }
 
+func getBackupTargetClient(ds *datastore.DataStore, backupTarget *longhorn.BackupTarget) (*engineapi.BackupTargetClient, error) {
+	defaultEngineImage, err := ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+	if err != nil {
+		return nil, err
+	}
+	backupType, err := util.CheckBackupType(backupTarget.Spec.BackupTargetURL)
+	if err != nil {
+		return nil, err
+	}
+	var credential map[string]string
+	if backupType == types.BackupStoreTypeS3 {
+		if backupTarget.Spec.CredentialSecret == "" {
+			return nil, fmt.Errorf("Could not backup for %s without credential secret", types.BackupStoreTypeS3)
+		}
+		credential, err = ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential), nil
+}
+
 func (btc *BackupTargetController) reconcile(name string) (err error) {
 	backupTarget, err := btc.ds.GetBackupTarget(name)
 	if err != nil {
@@ -242,11 +265,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	}
 
 	// Initialize a backup target client
-	credential, err := btc.ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
-	if err != nil {
-		return err
-	}
-	backupTargetClient, err := engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential)
+	backupTargetClient, err := getBackupTargetClient(btc.ds, backupTarget)
 	if err != nil {
 		backupTarget.Status.Available = false
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,

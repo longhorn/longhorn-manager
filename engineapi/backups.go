@@ -22,20 +22,12 @@ type BackupTargetClient struct {
 }
 
 // NewBackupTargetClient returns the backup target client
-func NewBackupTargetClient(defaultEngineImage, url string, credential map[string]string) (*BackupTargetClient, error) {
-	backupType, err := util.CheckBackupType(url)
-	if err != nil {
-		return nil, err
-	}
-	if backupType == types.BackupStoreTypeS3 && credential == nil {
-		return nil, fmt.Errorf("Could not backup for %s without credential secret", types.BackupStoreTypeS3)
-	}
-
+func NewBackupTargetClient(defaultEngineImage, url string, credential map[string]string) *BackupTargetClient {
 	return &BackupTargetClient{
 		Image:      defaultEngineImage,
 		URL:        url,
 		Credential: credential,
-	}, nil
+	}
 }
 
 func (btc *BackupTargetClient) LonghornEngineBinary() string {
