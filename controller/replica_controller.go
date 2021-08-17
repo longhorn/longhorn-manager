@@ -381,6 +381,10 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 			log.Debugf("The requested backing image %v has not been initialized, UUID is empty", bi.Name)
 			return nil, nil
 		}
+		if bi.Spec.Disks == nil {
+			log.Debugf("The requested backing image %v has not started disk file handling", bi.Name)
+			return nil, nil
+		}
 		if _, exists := bi.Spec.Disks[r.Spec.DiskID]; !exists {
 			bi.Spec.Disks[r.Spec.DiskID] = struct{}{}
 			log.Debugf("Replica %v will ask backing image %v to download file to node %v disk %v",

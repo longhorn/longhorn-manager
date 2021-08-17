@@ -125,6 +125,9 @@ func checkAndCreateBackingImageDataSource(namespace string, lhClient *lhclientse
 				if !exists {
 					continue
 				}
+				if bi.Spec.Disks == nil {
+					continue
+				}
 				for diskUUID := range bi.Spec.Disks {
 					if diskUUID != status.DiskUUID {
 						continue

@@ -1177,13 +1177,17 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 		deletionTimestamp = bi.DeletionTimestamp.String()
 	}
 	diskFileStatusMap := make(map[string]types.BackingImageDiskFileStatus)
-	for diskUUID, diskStatus := range bi.Status.DiskFileStatusMap {
-		diskFileStatusMap[diskUUID] = *diskStatus
+	if bi.Status.DiskFileStatusMap != nil {
+		for diskUUID, diskStatus := range bi.Status.DiskFileStatusMap {
+			diskFileStatusMap[diskUUID] = *diskStatus
+		}
 	}
-	for diskUUID := range bi.Spec.Disks {
-		if _, exists := bi.Status.DiskFileStatusMap[diskUUID]; !exists {
-			diskFileStatusMap[diskUUID] = types.BackingImageDiskFileStatus{
-				Message: "File processing is not started",
+	if bi.Spec.Disks != nil {
+		for diskUUID := range bi.Spec.Disks {
+			if _, exists := bi.Status.DiskFileStatusMap[diskUUID]; !exists {
+				diskFileStatusMap[diskUUID] = types.BackingImageDiskFileStatus{
+					Message: "File processing is not started",
+				}
 			}
 		}
 	}

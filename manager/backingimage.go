@@ -129,6 +129,10 @@ func (m *VolumeManager) CleanUpBackingImageDiskFiles(name string, diskFileList [
 		logrus.Infof("Deleting backing image %v, there is no need to do disk cleanup for it", name)
 		return bi, nil
 	}
+	if bi.Spec.Disks == nil {
+		logrus.Infof("backing image %v has not disk required, there is no need to do cleanup then", name)
+		return bi, nil
+	}
 	bids, err := m.GetBackingImageDataSource(name)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {

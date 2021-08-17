@@ -267,6 +267,11 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 		return err
 	}
 
+	// We cannot continue without `Spec.Disks`. The backing image data source controller can update it.
+	if backingImage.Spec.Disks == nil {
+		return nil
+	}
+
 	if err := bic.handleBackingImageManagers(backingImage); err != nil {
 		return err
 	}
@@ -354,22 +359,24 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		var readyDiskUUID, readyDiskPath, readyNodeID string
 		isReadyFile := false
 		foundReadyDisk := false
-		for diskUUID := range bi.Spec.Disks {
-			node, diskName, err := bic.ds.GetReadyDiskNode(diskUUID)
-			if err != nil {
-				if !types.ErrorIsNotFound(err) {
-					return err
+		if bi.Spec.Disks != nil {
+			for diskUUID := range bi.Spec.Disks {
+				node, diskName, err := bic.ds.GetReadyDiskNode(diskUUID)
+				if err != nil {
+					if !types.ErrorIsNotFound(err) {
+						return err
+					}
+					continue
 				}
-				continue
-			}
-			foundReadyDisk = true
-			readyNodeID = node.Name
-			readyDiskUUID = diskUUID
-			readyDiskPath = node.Spec.Disks[diskName].Path
-			// Prefer to pick up a disk contains the ready file if possible.
-			if fileStatus, ok := bi.Status.DiskFileStatusMap[diskUUID]; ok && fileStatus.State == types.BackingImageStateReady {
-				isReadyFile = true
-				break
+				foundReadyDisk = true
+				readyNodeID = node.Name
+				readyDiskUUID = diskUUID
+				readyDiskPath = node.Spec.Disks[diskName].Path
+				// Prefer to pick up a disk contains the ready file if possible.
+				if fileStatus, ok := bi.Status.DiskFileStatusMap[diskUUID]; ok && fileStatus.State == types.BackingImageStateReady {
+					isReadyFile = true
+					break
+				}
 			}
 		}
 		if !foundReadyDisk {
@@ -429,11 +436,13 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 
 	// If all files in Spec.Disk becomes unavailable and there is no extra ready files.
 	allFilesUnavailable := true
-	for diskUUID := range bi.Spec.Disks {
-		fileStatus, ok := bi.Status.DiskFileStatusMap[diskUUID]
-		if !ok || (fileStatus.State != types.BackingImageStateFailed && fileStatus.State != types.BackingImageStateUnknown) {
-			allFilesUnavailable = false
-			break
+	if bi.Spec.Disks != nil {
+		for diskUUID := range bi.Spec.Disks {
+			fileStatus, ok := bi.Status.DiskFileStatusMap[diskUUID]
+			if !ok || (fileStatus.State != types.BackingImageStateFailed && fileStatus.State != types.BackingImageStateUnknown) {
+				allFilesUnavailable = false
+				break
+			}
 		}
 	}
 	if allFilesUnavailable {
