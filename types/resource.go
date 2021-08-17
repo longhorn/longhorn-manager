@@ -628,10 +628,17 @@ type BackupTargetSpec struct {
 	SyncRequestedAt  *metav1.Time    `json:"syncRequestedAt"`
 }
 
+const (
+	BackupTargetConditionTypeUnavailable = "Unavailable"
+
+	BackupTargetConditionReasonUnavailable = "Unavailable"
+)
+
 type BackupTargetStatus struct {
-	OwnerID      string       `json:"ownerID"`
-	Available    bool         `json:"available"`
-	LastSyncedAt *metav1.Time `json:"lastSyncedAt"`
+	OwnerID      string               `json:"ownerID"`
+	Available    bool                 `json:"available"`
+	Conditions   map[string]Condition `json:"conditions"`
+	LastSyncedAt *metav1.Time         `json:"lastSyncedAt"`
 }
 
 type BackupVolumeSpec struct {
