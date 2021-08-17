@@ -457,7 +457,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return err
 	}
 
-	if err := nc.cleanUpBackingImagesInDisks(node); err != nil {
+	if err := nc.syncBackingImagesWithDisks(node); err != nil {
 		return err
 	}
 
@@ -918,7 +918,7 @@ func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, ima
 	return nc.ds.CreateInstanceManager(instanceManager)
 }
 
-func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error {
+func (nc *NodeController) syncBackingImagesWithDisks(node *longhorn.Node) error {
 	settingValue, err := nc.ds.GetSettingAsInt(types.SettingNameBackingImageCleanupWaitInterval)
 	if err != nil {
 		logrus.Errorf("failed to get Setting BackingImageCleanupWaitInterval, won't do cleanup for backing images: %v", err)
@@ -931,31 +931,37 @@ func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error
 		return err
 	}
 	for _, bi := range backingImages {
-		if bi.Status.DiskLastRefAtMap == nil {
-			continue
-		}
 		log := getLoggerForBackingImage(nc.logger, bi).WithField("node", node.Name)
-		existingBackingImage := bi.DeepCopy()
-		for _, diskStatus := range node.Status.DiskStatus {
-			uuid := diskStatus.DiskUUID
-			if _, exists := bi.Spec.Disks[uuid]; !exists {
-				continue
-			}
-			lastRefAtStr, exists := bi.Status.DiskLastRefAtMap[uuid]
-			if !exists {
-				continue
-			}
-			lastRefAt, err := util.ParseTime(lastRefAtStr)
-			if err != nil {
-				log.Errorf("Unable to parse LastRefAt timestamp %v", lastRefAtStr)
-				continue
-			}
-			if time.Now().After(lastRefAt.Add(waitInterval)) {
-				log.Debugf("Start to cleanup the unused backing image in disk %v", uuid)
-				delete(bi.Spec.Disks, uuid)
+
+		updateRequired := false
+		if bi.Spec.Disks == nil {
+			// The initialization of this field will be handled by a new controller named BackingImageDataSourceController since v1.2.x
+			bi.Spec.Disks = map[string]struct{}{}
+			updateRequired = true
+		}
+		if bi.Status.DiskLastRefAtMap != nil {
+			for _, diskStatus := range node.Status.DiskStatus {
+				uuid := diskStatus.DiskUUID
+				if _, exists := bi.Spec.Disks[uuid]; !exists {
+					continue
+				}
+				lastRefAtStr, exists := bi.Status.DiskLastRefAtMap[uuid]
+				if !exists {
+					continue
+				}
+				lastRefAt, err := util.ParseTime(lastRefAtStr)
+				if err != nil {
+					log.Errorf("Unable to parse LastRefAt timestamp %v", lastRefAtStr)
+					continue
+				}
+				if time.Now().After(lastRefAt.Add(waitInterval)) {
+					log.Debugf("Start to cleanup the unused backing image in disk %v", uuid)
+					delete(bi.Spec.Disks, uuid)
+					updateRequired = true
+				}
 			}
 		}
-		if !reflect.DeepEqual(existingBackingImage.Spec, bi.Spec) {
+		if updateRequired {
 			if _, err := nc.ds.UpdateBackingImage(bi); err != nil {
 				log.WithError(err).Error("Failed to update backing image when cleaning up the images in disks")
 				// Requeue the node but do not fail the whole sync function

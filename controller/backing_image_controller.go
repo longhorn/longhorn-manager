@@ -258,6 +258,11 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 		backingImage.Status.DiskLastRefAtMap = map[string]string{}
 	}
 
+	// We cannot continue without `Spec.Disks`. Need to wait for other controllers initializing it.
+	if backingImage.Spec.Disks == nil {
+		return nil
+	}
+
 	if err := bic.handleBackingImageManagers(backingImage); err != nil {
 		return err
 	}

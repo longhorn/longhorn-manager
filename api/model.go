@@ -1121,9 +1121,11 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 	for diskID, state := range bi.Status.DiskDownloadStateMap {
 		diskStateMap[diskID] = string(state)
 	}
-	for diskID := range bi.Spec.Disks {
-		if _, exists := bi.Status.DiskDownloadStateMap[diskID]; !exists {
-			diskStateMap[diskID] = ""
+	if bi.Spec.Disks != nil {
+		for diskID := range bi.Spec.Disks {
+			if _, exists := bi.Status.DiskDownloadStateMap[diskID]; !exists {
+				diskStateMap[diskID] = ""
+			}
 		}
 	}
 	res := &BackingImage{
