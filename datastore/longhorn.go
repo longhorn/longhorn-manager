@@ -254,9 +254,6 @@ func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, err
 func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]string, error) {
 	secret, err := s.GetSecretRO(s.namespace, secretName)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	credentialSecret := make(map[string]string)

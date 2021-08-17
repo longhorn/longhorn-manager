@@ -237,11 +237,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		if backupTarget.DeletionTimestamp == nil && backupTarget.Spec.BackupTargetURL != "" &&
 			backupVolume != nil && backupVolume.DeletionTimestamp == nil {
 			// Initialize a backup target client
-			credential, err := bc.ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
-			if err != nil {
-				return err
-			}
-			backupTargetClient, err := engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential)
+			backupTargetClient, err := getBackupTargetClient(bc.ds, backupTarget)
 			if err != nil {
 				log.WithError(err).Error("Error init backup target client")
 				return nil // Ignore error to prevent enqueue
@@ -285,11 +281,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	// Perform backup snapshot to remote backup target
 	if backup.Spec.SnapshotName != "" && backup.Status.State == "" {
 		// Initialize a backup target client
-		credential, err := bc.ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
-		if err != nil {
-			return err
-		}
-		backupTargetClient, err := engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential)
+		backupTargetClient, err := getBackupTargetClient(bc.ds, backupTarget)
 		if err != nil {
 			log.WithError(err).Error("Error init backup target client")
 			return nil // Ignore error to prevent enqueue
@@ -319,11 +311,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	}
 
 	// Initialize a backup target client
-	credential, err := bc.ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
-	if err != nil {
-		return err
-	}
-	backupTargetClient, err := engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential)
+	backupTargetClient, err := getBackupTargetClient(bc.ds, backupTarget)
 	if err != nil {
 		log.WithError(err).Error("Error init a backup target client")
 		return nil // Ignore error to prevent enqueue

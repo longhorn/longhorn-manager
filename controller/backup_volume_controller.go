@@ -24,7 +24,6 @@ import (
 	"github.com/longhorn/backupstore"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
@@ -223,11 +222,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		// Delete the backup volume from the remote backup target
 		if backupTarget.DeletionTimestamp == nil && backupTarget.Spec.BackupTargetURL != "" {
 			// Initialize a backup target client
-			credential, err := bvc.ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
-			if err != nil {
-				return err
-			}
-			backupTargetClient, err := engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential)
+			backupTargetClient, err := getBackupTargetClient(bvc.ds, backupTarget)
 			if err != nil {
 				log.WithError(err).Error("Error init backup target client")
 				return nil // Ignore error to prevent enqueue
@@ -263,11 +258,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	}
 
 	// Initialize a backup target client
-	credential, err := bvc.ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
-	if err != nil {
-		return err
-	}
-	backupTargetClient, err := engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential)
+	backupTargetClient, err := getBackupTargetClient(bvc.ds, backupTarget)
 	if err != nil {
 		log.WithError(err).Error("Error init backup target client")
 		return nil // Ignore error to prevent enqueue
