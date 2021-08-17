@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pkg/errors"
@@ -142,7 +143,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
-func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath string, mounter mount.Interface) error {
+func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath string, mounter mount.Interface, mountOptions []string) error {
 	isMnt, err := ensureMountPoint(targetPath, mounter)
 
 	if err != nil {
@@ -168,15 +169,18 @@ func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath 
 	server := uri.Host
 	exportPath := uri.Path
 	export := fmt.Sprintf("%s:%s", server, exportPath)
-	mountOptions := []string{
-		"vers=4.1",
-		"noresvport",
-		"soft", // for this release we use soft mode, so we can always cleanup mount points
-		"sync",
-		"intr",
-		"timeo=30",  // This is tenths of a second, so a 3 second timeout, each retrans the timeout will be linearly increased, 3s, 6s, 9s
-		"retrans=3", // We try the io operation for a total of 3 times, before failing, max runtime of 18s
-		// "clientaddr=" // TODO: try to set the client address of the mount to the ip of the pod that is consuming the volume
+
+	// set default longhorn nfs client options
+	if len(mountOptions) == 0 {
+		mountOptions = []string{
+			"vers=4.1",
+			"noresvport",
+			"soft", // for this release we use soft mode, so we can always cleanup mount points
+			"sync", // sync mode is prohibitively expensive on the client
+			"intr",
+			"timeo=30",  // This is tenths of a second, so a 3 second timeout, each retrans the timeout will be linearly increased, 3s, 6s, 9s
+			"retrans=3", // We try the io operation for a total of 3 times, before failing, max runtime of 18s
+		}
 	}
 
 	if err := mounter.Mount(export, targetPath, fsType, mountOptions); err != nil {
@@ -310,7 +314,14 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			return nil, status.Errorf(codes.Aborted, "volume %s share not yet available", volumeID)
 		}
 
-		if err := ns.nodeStageSharedVolume(volumeID, volume.ShareEndpoint, targetPath, mounter); err != nil {
+		// undocumented field to allow testing different nfs mount options
+		// this can be used to enable the default host (ubuntu) client async mode
+		var mountOptions []string
+		if len(req.VolumeContext["nfsOptions"]) > 0 {
+			mountOptions = strings.Split(req.VolumeContext["nfsOptions"], ",")
+		}
+
+		if err := ns.nodeStageSharedVolume(volumeID, volume.ShareEndpoint, targetPath, mounter, mountOptions); err != nil {
 			return nil, err
 		}
 
