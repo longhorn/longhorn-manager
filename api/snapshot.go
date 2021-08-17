@@ -181,7 +181,7 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 		labels[types.KubernetesStatusLabel] = string(kubeStatus)
 	}
 
-	if err := s.m.BackupSnapshot(bsutil.GenerateName("backup"), volName, input.Name, vol.Spec.BackingImage, labels); err != nil {
+	if err := s.m.BackupSnapshot(bsutil.GenerateName("backup"), volName, input.Name, labels); err != nil {
 		return err
 	}
 

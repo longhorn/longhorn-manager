@@ -245,7 +245,7 @@ func (btc *BackupTargetClient) DeleteBackup(backupURL string) error {
 	return nil
 }
 
-func (e *Engine) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels map[string]string, credential map[string]string) (string, error) {
+func (e *Engine) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, error) {
 	if snapName == VolumeHeadName {
 		return "", fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)
 	}

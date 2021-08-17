@@ -432,6 +432,32 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 		log.Debugf("state %s", string(backup.Status.State))
 	}
 
+	// Get the volume CR
+	volume, err := bc.ds.GetVolume(volumeName)
+	if err != nil {
+		return err
+	}
+
+	// Backing image validation
+	biName := volume.Spec.BackingImage
+	biChecksum := ""
+	if biName != "" {
+		bi, err := bc.ds.GetBackingImage(biName)
+		if err != nil {
+			return err
+		}
+		bv, err := bc.ds.GetBackupVolumeRO(volumeName)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+		if bv != nil &&
+			bv.Status.BackingImageChecksum != "" && bi.Status.Checksum != "" &&
+			bv.Status.BackingImageChecksum != bi.Status.Checksum {
+			return fmt.Errorf("the backing image %v checksum %v in the backup volume doesn't match the current checksum %v", biName, bv.Status.BackingImageChecksum, bi.Status.Checksum)
+		}
+		biChecksum = bi.Status.Checksum
+	}
+
 	backup.Status.State = types.BackupStatePending
 	logEvent(nil)
 
@@ -450,11 +476,7 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 			}
 		}()
 
-		_, err = engineClient.SnapshotBackup(
-			backup.Name, backup.Spec.SnapshotName, url,
-			backup.Spec.BackingImage, backup.Spec.BackingImageChecksum,
-			backup.Spec.Labels, credential)
-		if err != nil {
+		if _, err = engineClient.SnapshotBackup(backup.Name, backup.Spec.SnapshotName, url, biName, biChecksum, backup.Spec.Labels, credential); err != nil {
 			backup.Status.State = types.BackupStateError
 			logEvent(err)
 			return

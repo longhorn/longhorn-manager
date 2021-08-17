@@ -655,12 +655,10 @@ type BackupVolumeStatus struct {
 }
 
 type SnapshotBackupSpec struct {
-	SyncRequestedAt      *metav1.Time      `json:"syncRequestedAt"`
-	FileCleanupRequired  bool              `json:"fileCleanupRequired"`
-	SnapshotName         string            `json:"snapshotName"`
-	Labels               map[string]string `json:"labels"`
-	BackingImage         string            `json:"backingImage"`
-	BackingImageChecksum string            `json:"backingImageChecksum"`
+	SyncRequestedAt     *metav1.Time      `json:"syncRequestedAt"`
+	FileCleanupRequired bool              `json:"fileCleanupRequired"`
+	SnapshotName        string            `json:"snapshotName"`
+	Labels              map[string]string `json:"labels"`
 }
 
 type BackupState string
