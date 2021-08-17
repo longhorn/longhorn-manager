@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -675,27 +676,30 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		return nil, err
 	}
 
-	var cryptoKey []byte
-	if volume.Spec.Encrypted {
-		pv, err := c.ds.GetPersistentVolume(volume.Status.KubernetesStatus.PVName)
-		if err != nil {
-			return nil, err
-		}
+	pv, err := c.ds.GetPersistentVolume(volume.Status.KubernetesStatus.PVName)
+	if err != nil {
+		return nil, err
+	}
 
+	fsType := pv.Spec.CSI.FSType
+	mountOptions := pv.Spec.MountOptions
+
+	var cryptoKey string
+	if volume.Spec.Encrypted {
 		secretRef := pv.Spec.CSI.NodePublishSecretRef
 		secret, err := c.ds.GetSecretRO(secretRef.Namespace, secretRef.Name)
 		if err != nil {
 			return nil, err
 		}
 
-		cryptoKey = secret.Data["CRYPTO_KEY_VALUE"]
+		cryptoKey = string(secret.Data["CRYPTO_KEY_VALUE"])
 		if len(cryptoKey) == 0 {
 			return nil, fmt.Errorf("missing CRYPTO_KEY_VALUE in secret for encrypted RWX volume %v", volume.Name)
 		}
-		c.logger.Infof("crypto key: %v", string(cryptoKey))
 	}
 
-	manifest := c.createPodManifest(sm, annotations, tolerations, imagePullPolicy, nil, registrySecret, priorityClass, nodeSelector, cryptoKey)
+	manifest := c.createPodManifest(sm, annotations, tolerations, imagePullPolicy, nil, registrySecret, priorityClass, nodeSelector,
+		fsType, mountOptions, cryptoKey)
 	pod, err := c.ds.CreatePod(manifest)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create pod for share manager %v", sm.Name)
@@ -730,8 +734,20 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 }
 
 func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, annotations map[string]string, tolerations []v1.Toleration,
-	pullPolicy v1.PullPolicy, resourceReq *v1.ResourceRequirements, registrySecret string, priorityClass string, nodeSelector map[string]string,
-	cryptoKey []byte) *v1.Pod {
+	pullPolicy v1.PullPolicy, resourceReq *v1.ResourceRequirements, registrySecret, priorityClass string, nodeSelector map[string]string,
+	fsType string, mountOptions []string, cryptoKey string) *v1.Pod {
+
+	// command args for the share-manager
+	args := []string{"--debug", "daemon", "--volume", sm.Name}
+
+	if len(fsType) > 0 {
+		args = append(args, "--fs", fsType)
+	}
+
+	if len(mountOptions) > 0 {
+		args = append(args, "--mount", strings.Join(mountOptions, ","))
+	}
+
 	privileged := true
 	podSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -753,7 +769,7 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 					Image:           sm.Spec.Image,
 					ImagePullPolicy: pullPolicy,
 					// Command: []string{"longhorn-share-manager"},
-					Args: []string{"--debug", "daemon", "--volume", sm.Name},
+					Args: args,
 					ReadinessProbe: &v1.Probe{
 						Handler: v1.Handler{
 							Exec: &v1.ExecAction{
