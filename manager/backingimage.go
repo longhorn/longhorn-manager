@@ -92,6 +92,15 @@ func (m *VolumeManager) CleanUpBackingImageInDisks(name string, disks []string) 
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to get backing image %v", name)
 	}
+	if bi.DeletionTimestamp != nil {
+		logrus.Infof("Deleting backing image %v, there is no need to do disk cleanup for it", name)
+		return bi, nil
+	}
+	if bi.Spec.Disks == nil {
+		logrus.Infof("backing image %v has not disk required, there is no need to do cleanup then", name)
+		return bi, nil
+	}
+
 	replicas, err := m.ds.ListReplicasByBackingImage(name)
 	if err != nil {
 		return nil, err
