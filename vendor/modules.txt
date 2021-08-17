@@ -88,7 +88,7 @@ github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/rpc
 github.com/longhorn/backing-image-manager/pkg/types
-# github.com/longhorn/backupstore v0.0.0-20210729000425-b76c1441afc0
+# github.com/longhorn/backupstore v0.0.0-20210817080617-8ea3843e6b0d
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/util
