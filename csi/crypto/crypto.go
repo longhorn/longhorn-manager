@@ -20,7 +20,7 @@ func VolumeMapper(volume string) string {
 // EncryptVolume encrypts provided device with LUKS.
 func EncryptVolume(devicePath, passphrase string) error {
 	logrus.Debugf("Encrypting device %s with LUKS", devicePath)
-	if _, _, err := luksFormat(devicePath, passphrase); err != nil {
+	if _, err := luksFormat(devicePath, passphrase); err != nil {
 		return fmt.Errorf("failed to encrypt device %s with LUKS: %w", devicePath, err)
 	}
 	return nil
@@ -34,9 +34,9 @@ func OpenVolume(volume, devicePath, passphrase string) error {
 	}
 
 	logrus.Debugf("Opening device %s with LUKS on %s", devicePath, volume)
-	_, stderr, err := luksOpen(volume, devicePath, passphrase)
+	_, err := luksOpen(volume, devicePath, passphrase)
 	if err != nil {
-		logrus.Warnf("failed to open LUKS device %s: %s", devicePath, stderr)
+		logrus.Warnf("failed to open LUKS device %s: %s", devicePath, err)
 	}
 	return err
 }
@@ -44,7 +44,7 @@ func OpenVolume(volume, devicePath, passphrase string) error {
 // CloseVolume closes encrypted volume so it can be detached.
 func CloseVolume(volume string) error {
 	logrus.Debugf("Closing LUKS device %s", volume)
-	_, _, err := luksClose(volume)
+	_, err := luksClose(volume)
 	return err
 }
 
@@ -62,7 +62,7 @@ func DeviceEncryptionStatus(devicePath string) (mappedDevice, mapper string, err
 		return devicePath, "", nil
 	}
 	volume := strings.TrimPrefix(devicePath, mapperFilePathPrefix+"/")
-	stdout, _, err := luksStatus(volume)
+	stdout, err := luksStatus(volume)
 	if err != nil {
 		logrus.Debugf("device %s is not an active LUKS device: %v", devicePath, err)
 		return devicePath, "", nil

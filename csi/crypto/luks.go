@@ -1,33 +1,32 @@
 package crypto
 
 import (
-	"bytes"
-	"fmt"
-	"os/exec"
-	"strings"
+	iscsi_util "github.com/longhorn/go-iscsi-helper/util"
 )
 
-func luksOpen(volume, devicePath, passphrase string) (stdout, stderr []byte, err error) {
-	return cryptSetupWithPassphrase(&passphrase,
+const HostProcPath = "/proc" // we use hostPID for the csi plugin
+
+func luksOpen(volume, devicePath, passphrase string) (stdout string, err error) {
+	return cryptSetupWithPassphrase(passphrase,
 		"luksOpen", devicePath, volume, "-d", "/dev/stdin")
 }
 
-func luksClose(volume string) (stdout, stderr []byte, err error) {
+func luksClose(volume string) (stdout string, err error) {
 	return cryptSetup("luksClose", volume)
 }
 
-func luksFormat(devicePath, passphrase string) (stdout, stderr []byte, err error) {
-	return cryptSetupWithPassphrase(&passphrase,
+func luksFormat(devicePath, passphrase string) (stdout string, err error) {
+	return cryptSetupWithPassphrase(passphrase,
 		"-q", "luksFormat", "--type", "luks2", "--hash", "sha256",
 		devicePath, "-d", "/dev/stdin")
 }
 
-func luksStatus(volume string) (stdout, stderr []byte, err error) {
+func luksStatus(volume string) (stdout string, err error) {
 	return cryptSetup("status", volume)
 }
 
-func cryptSetup(args ...string) (stdout, stderr []byte, err error) {
-	return cryptSetupWithPassphrase(nil, args...)
+func cryptSetup(args ...string) (stdout string, err error) {
+	return cryptSetupWithPassphrase("", args...)
 }
 
 // cryptSetupWithPassphrase runs cryptsetup via nsenter inside of the host namespaces
@@ -35,22 +34,16 @@ func cryptSetup(args ...string) (stdout, stderr []byte, err error) {
 // 1 wrong parameters, 2 no permission (bad passphrase),
 // 3 out of memory, 4 wrong device specified,
 // 5 device already exists or device is busy.
-func cryptSetupWithPassphrase(passphrase *string, args ...string) (stdout, stderr []byte, err error) {
-	nsenterArgs := []string{"-t 1", "--all", "cryptsetup"}
-	nsenterArgs = append(nsenterArgs, args...)
-	cmd := exec.Command("nsenter", nsenterArgs...)
-
-	var stdoutBuf bytes.Buffer
-	var stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-	if passphrase != nil {
-		cmd.Stdin = strings.NewReader(*passphrase)
+func cryptSetupWithPassphrase(passphrase string, args ...string) (stdout string, err error) {
+	initiatorNSPath := iscsi_util.GetHostNamespacePath(HostProcPath)
+	ne, err := iscsi_util.NewNamespaceExecutor(initiatorNSPath)
+	if err != nil {
+		return "", err
 	}
 
-	if err := cmd.Run(); err != nil {
-		return stdoutBuf.Bytes(), stderrBuf.Bytes(), fmt.Errorf("failed to run cryptsetup args: %v error: %v", args, err)
-	}
+	if len(passphrase) > 0 {
+		return ne.ExecuteWithStdin("cryptsetup", args, passphrase)
 
-	return stdoutBuf.Bytes(), nil, nil
+	}
+	return ne.Execute("cryptsetup", args)
 }
