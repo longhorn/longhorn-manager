@@ -153,7 +153,7 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 	return nil
 }
 
-func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName, backingImageName string, labels map[string]string) error {
+func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName string, labels map[string]string) error {
 	if volumeName == "" || snapshotName == "" {
 		return fmt.Errorf("volume and snapshot name required")
 	}
@@ -162,32 +162,14 @@ func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName, bac
 		return err
 	}
 
-	biChecksum := ""
-	if backingImageName != "" {
-		bi, err := m.GetBackingImage(backingImageName)
-		if err != nil {
-			return err
-		}
-		bv, err := m.ds.GetBackupVolumeRO(volumeName)
-		if err != nil {
-			return err
-		}
-		if bv != nil && bv.Status.BackingImageChecksum != "" && bi.Status.Checksum != "" && bv.Status.BackingImageChecksum != bi.Status.Checksum {
-			return fmt.Errorf("the backing image %v checksum %v in the backup volume doesn't match the current checksum %v", backingImageName, bv.Status.BackingImageChecksum, bi.Status.Checksum)
-		}
-		biChecksum = bi.Status.Checksum
-	}
-
 	backupCR := &longhorn.Backup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: backupName,
 		},
 		Spec: types.SnapshotBackupSpec{
-			SyncRequestedAt:      &metav1.Time{Time: time.Now().UTC()},
-			SnapshotName:         snapshotName,
-			Labels:               labels,
-			BackingImage:         backingImageName,
-			BackingImageChecksum: biChecksum,
+			SyncRequestedAt: &metav1.Time{Time: time.Now().UTC()},
+			SnapshotName:    snapshotName,
+			Labels:          labels,
 		},
 	}
 	_, err := m.ds.CreateBackup(backupCR, volumeName)
