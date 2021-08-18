@@ -313,7 +313,6 @@ func (control *RecurringJobController) newCronJob(recurringJob *longhorn.Recurri
 		return nil, err
 	}
 	// for mounting inside container
-	privilege := true
 	cronJob := &batchv1beta1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      recurringJob.Name,
@@ -345,9 +344,6 @@ func (control *RecurringJobController) newCronJob(recurringJob *longhorn.Recurri
 									Name:    recurringJob.Name,
 									Image:   control.ManagerImage,
 									Command: cmd,
-									SecurityContext: &corev1.SecurityContext{
-										Privileged: &privilege,
-									},
 									Env: []corev1.EnvVar{
 										{
 											Name: "POD_NAMESPACE",
