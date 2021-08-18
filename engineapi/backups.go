@@ -273,7 +273,7 @@ func (e *Engine) SnapshotBackup(backupName, snapName, backupTarget, backingImage
 			args = append(args, "--backing-image-checksum", backingImageChecksum)
 		}
 	}
-	if backupName != "" {
+	if backupName != "" && version.ClientVersion.CLIAPIVersion > CLIVersionFour {
 		args = append(args, "--backup-name", backupName)
 	}
 	for k, v := range labels {
