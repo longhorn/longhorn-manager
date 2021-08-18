@@ -106,6 +106,14 @@ type Volume struct {
 	LastExpansionFailedAt string `json:"lastExpansionFailedAt"`
 }
 
+type BackupTarget struct {
+	BackupTargetURL  string `json:"backupTargetURL"`
+	CredentialSecret string `json:"credentialSecret"`
+	PollInterval     string `json:"pollInterval"`
+	Available        bool   `json:"available"`
+	Message          string `json:"message"`
+}
+
 type BackupVolume struct {
 	Name                 string             `json:"name"`
 	Size                 string             `json:"size"`

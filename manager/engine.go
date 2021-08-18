@@ -225,6 +225,22 @@ func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.Eng
 	})
 }
 
+func (m *VolumeManager) ListBackupTargetsSorted() ([]*longhorn.BackupTarget, error) {
+	backupTargetMap, err := m.ds.ListBackupTargets()
+	if err != nil {
+		return []*longhorn.BackupTarget{}, err
+	}
+	backupTargetNames, err := sortKeys(backupTargetMap)
+	if err != nil {
+		return []*longhorn.BackupTarget{}, err
+	}
+	backupTargets := make([]*longhorn.BackupTarget, len(backupTargetMap))
+	for i, backupTargetName := range backupTargetNames {
+		backupTargets[i] = backupTargetMap[backupTargetName]
+	}
+	return backupTargets, nil
+}
+
 func (m *VolumeManager) ListBackupVolumes() (map[string]*longhorn.BackupVolume, error) {
 	return m.ds.ListBackupVolumes()
 }

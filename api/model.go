@@ -73,6 +73,11 @@ type Snapshot struct {
 	types.Snapshot
 }
 
+type BackupTarget struct {
+	client.Resource
+	engineapi.BackupTarget
+}
+
 type BackupVolume struct {
 	client.Resource
 	engineapi.BackupVolume
@@ -343,6 +348,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("attachInput", AttachInput{})
 	schemas.AddType("detachInput", DetachInput{})
 	schemas.AddType("snapshotInput", SnapshotInput{})
+	schemas.AddType("backupTarget", BackupTarget{})
 	schemas.AddType("backup", Backup{})
 	schemas.AddType("backupInput", BackupInput{})
 	schemas.AddType("backupStatus", BackupStatus{})
@@ -1072,6 +1078,28 @@ func toSnapshotCollection(ss map[string]*types.Snapshot) *client.GenericCollecti
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshot"}}
 }
 
+func toBackupTargetResource(bt *longhorn.BackupTarget) *BackupTarget {
+	if bt == nil {
+		logrus.Warnf("weird: nil backupTarget")
+		return nil
+	}
+	res := &BackupTarget{
+		Resource: client.Resource{
+			Id:    bt.Name,
+			Type:  "backupTarget",
+			Links: map[string]string{},
+		},
+		BackupTarget: engineapi.BackupTarget{
+			BackupTargetURL:  bt.Spec.BackupTargetURL,
+			CredentialSecret: bt.Spec.CredentialSecret,
+			PollInterval:     bt.Spec.PollInterval.Duration.String(),
+			Available:        bt.Status.Available,
+			Message:          bt.Status.Conditions[types.BackupTargetConditionTypeUnavailable].Message,
+		},
+	}
+	return res
+}
+
 func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContext) *BackupVolume {
 	if bv == nil {
 		logrus.Warnf("weird: nil backupVolume")
@@ -1101,6 +1129,14 @@ func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContex
 		"backupDelete": apiContext.UrlBuilder.ActionLink(b.Resource, "backupDelete"),
 	}
 	return b
+}
+
+func toBackupTargetCollection(bts []*longhorn.BackupTarget) *client.GenericCollection {
+	data := []interface{}{}
+	for _, bt := range bts {
+		data = append(data, toBackupTargetResource(bt))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backupTarget"}}
 }
 
 func toBackupVolumeCollection(bv map[string]*longhorn.BackupVolume, apiContext *api.ApiContext) *client.GenericCollection {
