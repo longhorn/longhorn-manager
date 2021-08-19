@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strconv"
-	"time"
 
 	"github.com/pkg/errors"
 
@@ -31,10 +29,6 @@ func UpgradeCRs(namespace string, lhClient *lhclientset.Clientset) (err error) {
 	}()
 	if err := upgradeBackingImages(namespace, lhClient); err != nil {
 		return err
-	}
-	// TODO: Need to re-consider if this is required.
-	if err := upgradeBackupTargets(namespace, lhClient); err != nil {
-		return nil
 	}
 	if err := upgradeVolumes(namespace, lhClient); err != nil {
 		return err
@@ -171,78 +165,6 @@ func checkAndCreateBackingImageDataSource(namespace string, lhClient *lhclientse
 		return err
 	}
 
-	return nil
-}
-
-func upgradeBackupTargets(namespace string, lhClient *lhclientset.Clientset) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "upgrade backup target failed")
-	}()
-
-	const defaultBackupTargetName = "default"
-	_, err = lhClient.LonghornV1beta1().BackupTargets(namespace).Get(context.TODO(), defaultBackupTargetName, metav1.GetOptions{})
-	if err != nil && !datastore.ErrorIsNotFound(err) {
-		return err
-	}
-	if err == nil {
-		return nil
-	}
-
-	// Get settings
-	targetSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameBackupTarget), metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	secretSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameBackupTargetCredentialSecret), metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	interval, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameBackupstorePollInterval), metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	var pollInterval time.Duration
-	definition, ok := types.SettingDefinitions[types.SettingNameBackupstorePollInterval]
-	if !ok {
-		return fmt.Errorf("setting %v is not supported", types.SettingNameBackupstorePollInterval)
-	}
-	if definition.Type != types.SettingTypeInt {
-		return fmt.Errorf("The %v setting value couldn't change to integer, value is %v ", string(types.SettingNameBackupstorePollInterval), interval.Value)
-	}
-	result, err := strconv.ParseInt(interval.Value, 10, 64)
-	if err != nil {
-		return err
-	}
-	pollInterval = time.Duration(result) * time.Second
-
-	// Create the default BackupTarget CR if not present
-	_, err = lhClient.LonghornV1beta1().BackupTargets(namespace).Create(context.TODO(), &longhorn.BackupTarget{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       defaultBackupTargetName,
-			Finalizers: []string{longhorn.SchemeGroupVersion.Group},
-		},
-		Spec: types.BackupTargetSpec{
-			BackupTargetURL:  targetSetting.Value,
-			CredentialSecret: secretSetting.Value,
-			PollInterval:     metav1.Duration{Duration: pollInterval},
-			SyncRequestedAt:  &metav1.Time{Time: time.Now().Add(time.Second).UTC()},
-		},
-	}, metav1.CreateOptions{})
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
