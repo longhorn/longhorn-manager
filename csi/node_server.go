@@ -396,16 +396,22 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to unmount volume %s mount point %v error %v", volumeID, targetPath, err))
 	}
 
-	// close any matching crypto device for this volume
-	cryptoDevice := crypto.VolumeMapper(volumeID)
-	if isOpen, err := crypto.IsDeviceOpen(cryptoDevice); err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	} else if isOpen {
-		logrus.Debugf("NodeUnstagehVolume: volume %s has active crypto device %s", volumeID, cryptoDevice)
-		if err := crypto.CloseVolume(volumeID); err != nil {
+	// optionally try to retrieve the volume and check if it's an RWX volume
+	// if it is we let the share-manager clean up the crypto device
+	volume, _ := ns.apiClient.Volume.ById(volumeID)
+	cleanupCryptoDevice := !requiresSharedAccess(volume, nil)
+
+	if cleanupCryptoDevice {
+		cryptoDevice := crypto.VolumeMapper(volumeID)
+		if isOpen, err := crypto.IsDeviceOpen(cryptoDevice); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
+		} else if isOpen {
+			logrus.Debugf("NodeUnstagehVolume: volume %s has active crypto device %s", volumeID, cryptoDevice)
+			if err := crypto.CloseVolume(volumeID); err != nil {
+				return nil, status.Error(codes.Internal, err.Error())
+			}
+			logrus.Infof("NodeUnstageVolume: volume %s closed active crypto device %s", volumeID, cryptoDevice)
 		}
-		logrus.Infof("NodeUnstageVolume: volume %s closed active crypto device %s", volumeID, cryptoDevice)
 	}
 
 	logrus.Infof("NodeUnstageVolume: volume %s unmounted from node path %s", volumeID, targetPath)
