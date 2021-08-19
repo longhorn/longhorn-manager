@@ -1,6 +1,12 @@
 package crypto
 
 import (
+	"bytes"
+	"fmt"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
 	iscsi_util "github.com/longhorn/go-iscsi-helper/util"
 )
 
@@ -35,15 +41,32 @@ func cryptSetup(args ...string) (stdout string, err error) {
 // 3 out of memory, 4 wrong device specified,
 // 5 device already exists or device is busy.
 func cryptSetupWithPassphrase(passphrase string, args ...string) (stdout string, err error) {
-	initiatorNSPath := iscsi_util.GetHostNamespacePath(HostProcPath)
-	ne, err := iscsi_util.NewNamespaceExecutor(initiatorNSPath)
-	if err != nil {
-		return "", err
-	}
+	// NOTE: cryptsetup needs to be run in the host IPC/MNT
+	// if you only use MNT the binary will not return but still do the appropriate action.
+	ns := iscsi_util.GetHostNamespacePath(HostProcPath)
+	// ns := fmt.Sprintf("%s/%d/ns/", HostProcPath, 1)
+	nsArgs := prepareCommandArgs(ns, "cryptsetup", args)
+	cmd := exec.Command("nsenter", nsArgs...)
 
+	var stdoutBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
 	if len(passphrase) > 0 {
-		return ne.ExecuteWithStdin("cryptsetup", args, passphrase)
-
+		cmd.Stdin = strings.NewReader(passphrase)
 	}
-	return ne.Execute("cryptsetup", args)
+
+	output := string(stdoutBuf.Bytes())
+	if err := cmd.Run(); err != nil {
+		return output, fmt.Errorf("failed to run cryptsetup args: %v output: %v error: %v", args, output, err)
+	}
+
+	return stdoutBuf.String(), nil
+}
+
+func prepareCommandArgs(ns, cmd string, args []string) []string {
+	cmdArgs := []string{
+		"--mount=" + filepath.Join(ns, "mnt"),
+		"--ipc=" + filepath.Join(ns, "ipc"),
+		cmd,
+	}
+	return append(cmdArgs, args...)
 }
