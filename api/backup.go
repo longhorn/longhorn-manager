@@ -9,12 +9,23 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+func (s *Server) BackupTargetList(w http.ResponseWriter, req *http.Request) error {
+	apiContext := api.GetApiContext(req)
+
+	backupTargets, err := s.m.ListBackupTargetsSorted()
+	if err != nil {
+		return errors.Wrapf(err, "error listing backup targets")
+	}
+	apiContext.Write(toBackupTargetCollection(backupTargets))
+	return nil
+}
+
 func (s *Server) BackupVolumeList(w http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 
 	volumes, err := s.m.ListBackupVolumes()
 	if err != nil {
-		return errors.Wrapf(err, "error listing backups")
+		return errors.Wrapf(err, "error listing backup volumes")
 	}
 	apiContext.Write(toBackupVolumeCollection(volumes, apiContext))
 	return nil

@@ -8,6 +8,7 @@ type RancherClient struct {
 	AttachInput                   AttachInputOperations
 	DetachInput                   DetachInputOperations
 	SnapshotInput                 SnapshotInputOperations
+	BackupTarget                  BackupTargetOperations
 	Backup                        BackupOperations
 	BackupInput                   BackupInputOperations
 	BackupStatus                  BackupStatusOperations
@@ -65,6 +66,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.AttachInput = newAttachInputClient(client)
 	client.DetachInput = newDetachInputClient(client)
 	client.SnapshotInput = newSnapshotInputClient(client)
+	client.BackupTarget = newBackupTargetClient(client)
 	client.Backup = newBackupClient(client)
 	client.BackupInput = newBackupInputClient(client)
 	client.BackupStatus = newBackupStatusClient(client)

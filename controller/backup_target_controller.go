@@ -237,6 +237,9 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 
 	if backupTarget.Spec.BackupTargetURL == "" {
 		backupTarget.Status.Available = false
+		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
+			types.BackupTargetConditionTypeUnavailable, types.ConditionStatusTrue,
+			types.BackupTargetConditionReasonUnavailable, "backup target URL is empty")
 		// Clean up all BackupVolume CRs
 		if err := btc.cleanupBackupVolumes(); err != nil {
 			log.WithError(err).Error("Error deleting backup volumes")
@@ -253,6 +256,9 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	backupTargetClient, err := engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential)
 	if err != nil {
 		backupTarget.Status.Available = false
+		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
+			types.BackupTargetConditionTypeUnavailable, types.ConditionStatusTrue,
+			types.BackupTargetConditionReasonUnavailable, err.Error())
 		log.WithError(err).Error("Error init backup target client")
 		return nil // Ignore error to allow status update as well as preventing enqueue
 	}
@@ -261,6 +267,9 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	res, err := backupTargetClient.ListBackupVolumeNames()
 	if err != nil {
 		backupTarget.Status.Available = false
+		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
+			types.BackupTargetConditionTypeUnavailable, types.ConditionStatusTrue,
+			types.BackupTargetConditionReasonUnavailable, err.Error())
 		log.WithError(err).Error("Error listing backup volumes from backup target")
 		return nil // Ignore error to allow status update as well as preventing enqueue
 	}
@@ -326,6 +335,9 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 
 	// Update the backup target status
 	backupTarget.Status.Available = true
+	backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
+		types.BackupTargetConditionTypeUnavailable, types.ConditionStatusFalse,
+		"", "")
 	return nil
 }
 

@@ -287,6 +287,12 @@ func (in *BackupTargetSpec) DeepCopyInto(out *BackupTargetSpec) {
 
 func (in *BackupTargetStatus) DeepCopyInto(out *BackupTargetStatus) {
 	*out = *in
+	if in.Conditions != nil {
+		out.Conditions = make(map[string]Condition)
+		for key, value := range in.Conditions {
+			out.Conditions[key] = value
+		}
+	}
 	if in.LastSyncedAt != nil {
 		out.LastSyncedAt = in.LastSyncedAt.DeepCopy()
 	}
