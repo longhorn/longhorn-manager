@@ -567,7 +567,7 @@ const (
 	BackingImageStateStarting         = BackingImageState("starting")
 	BackingImageStateReadyForTransfer = BackingImageState("ready-for-transfer")
 	BackingImageStateReady            = BackingImageState("ready")
-	BackingImageStateInProgress       = BackingImageState("in_progress")
+	BackingImageStateInProgress       = BackingImageState("in-progress")
 	BackingImageStateFailed           = BackingImageState("failed")
 	BackingImageStateUnknown          = BackingImageState("unknown")
 )
