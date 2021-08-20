@@ -1008,7 +1008,9 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 		//  4. If there are no enough files including failed ones, skip cleanup.
 		fileStatus, exists := bi.Status.DiskFileStatusMap[diskUUID]
 		if !exists {
-			fileStatus.State = types.BackingImageStatePending
+			fileStatus = &types.BackingImageDiskFileStatus{
+				State: types.BackingImageStatePending,
+			}
 		}
 		switch fileStatus.State {
 		case types.BackingImageStateFailed:
