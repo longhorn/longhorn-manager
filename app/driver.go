@@ -183,9 +183,9 @@ func checkKubernetesVersion(kubeClient *clientset.Clientset) error {
 		return errors.Wrap(err, "failed to get Kubernetes server version")
 	}
 	currentVersion := version.MustParseSemantic(serverVersion.GitVersion)
-	minVersion := version.MustParseSemantic(types.CSIMinVersion)
+	minVersion := version.MustParseSemantic(types.KubernetesMinVersion)
 	if !currentVersion.AtLeast(minVersion) {
-		return fmt.Errorf("Kubernetes version need to be at least %v, but it's %v", types.CSIMinVersion, serverVersion.GitVersion)
+		return fmt.Errorf("Kubernetes version need to be at least %v, but it's %v", types.KubernetesMinVersion, serverVersion.GitVersion)
 	}
 	return nil
 }
@@ -270,16 +270,6 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		logrus.Infof("User specified root dir: %v", rootDir)
 	}
 
-	volumeExpansionEnabled, err := util.IsKubernetesVersionAtLeast(kubeClient, types.CSIVolumeExpansionMinVersion)
-	if err != nil {
-		return err
-	}
-
-	snapshotSupportEnabled, err := util.IsKubernetesVersionAtLeast(kubeClient, types.CSISnapshotterMinVersion)
-	if err != nil {
-		return err
-	}
-
 	if err := upgradeLonghornRelatedComponents(kubeClient, namespace); err != nil {
 		return err
 	}
@@ -299,18 +289,14 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	if volumeExpansionEnabled {
-		resizerDeployment := csi.NewResizerDeployment(namespace, serviceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
-		if err := resizerDeployment.Deploy(kubeClient); err != nil {
-			return err
-		}
+	resizerDeployment := csi.NewResizerDeployment(namespace, serviceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
+	if err := resizerDeployment.Deploy(kubeClient); err != nil {
+		return err
 	}
 
-	if snapshotSupportEnabled {
-		snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
-		if err := snapshotterDeployment.Deploy(kubeClient); err != nil {
-			return err
-		}
+	snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
+	if err := snapshotterDeployment.Deploy(kubeClient); err != nil {
+		return err
 	}
 
 	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, managerImage, managerURL, rootDir, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)

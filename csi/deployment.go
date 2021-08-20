@@ -18,11 +18,11 @@ import (
 )
 
 const (
-	DefaultCSIAttacherImage            = "longhornio/csi-attacher:v2.2.1-lh1"
-	DefaultCSIProvisionerImage         = "longhornio/csi-provisioner:v1.6.0-lh1"
-	DefaultCSIResizerImage             = "longhornio/csi-resizer:v0.5.1-lh1"
-	DefaultCSISnapshotterImage         = "longhornio/csi-snapshotter:v2.1.1-lh1"
-	DefaultCSINodeDriverRegistrarImage = "longhornio/csi-node-driver-registrar:v1.2.0-lh1"
+	DefaultCSIAttacherImage            = "k8s.gcr.io/sig-storage/csi-attacher:v3.2.1"
+	DefaultCSIProvisionerImage         = "k8s.gcr.io/sig-storage/csi-provisioner:v2.1.2"
+	DefaultCSIResizerImage             = "k8s.gcr.io/sig-storage/csi-resizer:v1.2.0"
+	DefaultCSISnapshotterImage         = "k8s.gcr.io/sig-storage/csi-snapshotter:v3.0.3"
+	DefaultCSINodeDriverRegistrarImage = "k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.3.0"
 
 	DefaultCSIAttacherReplicaCount    = 3
 	DefaultCSIProvisionerReplicaCount = 3
@@ -131,8 +131,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 			"--v=5",
 			"--csi-address=$(ADDRESS)",
 			"--timeout=1m50s",
-			"--enable-leader-election",
-			"--leader-election-type=leases",
+			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 		},
 		int32(replicaCount),
@@ -197,7 +196,7 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 		[]string{
 			"--v=5",
 			"--csi-address=$(ADDRESS)",
-			"--csiTimeout=1m50s", // TODO: change this to timeout once, we upgrade the external resizer version.
+			"--timeout=1m50s",
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 		},

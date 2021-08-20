@@ -428,11 +428,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 					v1.EventTypeNormal)
 		}
 
-		isUsingTopologyLabels, err := nc.topologyLabelsChecker(nc.kubeClient, types.KubernetesTopologyLabelsVersion)
-		if err != nil {
-			return err
-		}
-		node.Status.Region, node.Status.Zone = types.GetRegionAndZone(kubeNode.Labels, isUsingTopologyLabels)
+		node.Status.Region, node.Status.Zone = types.GetRegionAndZone(kubeNode.Labels)
 
 	}
 
