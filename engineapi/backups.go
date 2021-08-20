@@ -134,6 +134,9 @@ func parseBackupNamesList(output, volumeName string) ([]string, error) {
 	}
 
 	backupNames := []string{}
+	if volumeData.Messages[string(backupstore.MessageTypeError)] != "" {
+		return backupNames, errors.New(volumeData.Messages[string(backupstore.MessageTypeError)])
+	}
 	for backupName := range volumeData.Backups {
 		backupNames = append(backupNames, backupName)
 	}
