@@ -1,6 +1,8 @@
 package types
 
 import (
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -775,4 +777,52 @@ type RecurringJobSpec struct {
 
 type RecurringJobStatus struct {
 	OwnerID string `json:"ownerID"`
+}
+
+const (
+	SupportBundleLabelKey = "longhorn.io/supportbundle"
+
+	SupportBundleManager = "support-bundle-manager"
+
+	SupportBundleCreationTimeout = 60 * time.Minute
+)
+
+type SuppportBundleState string
+
+const (
+	SupportBundleStateNone             = SuppportBundleState("")
+	SupportBundleStateInProgress       = SuppportBundleState("InProgress")
+	SupportBundleStateReadyForDownload = SuppportBundleState("ReadyForDownload")
+	SupportBundleStateError            = SuppportBundleState("Error")
+	SupportBundleStateDeleting         = SuppportBundleState("Deleting")
+)
+
+type SupportBundleError string
+
+const (
+	SupportBundleErrorMkdirFailed      = SupportBundleError("Failed to create bundle file directory")
+	SupportBundleErrorZipFailed        = SupportBundleError("Failed to compress the support bundle files")
+	SupportBundleErrorOpenFailed       = SupportBundleError("Failed to open the compressed bundle file")
+	SupportBundleErrorStatFailed       = SupportBundleError("Failed to compute the size of the compressed bundle file")
+	SupportBundleErrorCreateDeployment = SupportBundleError("Failed to create support bundle kit deployment")
+	SupportBundleErrorTimeout          = SupportBundleError("Failed to generate support bundle: timeout")
+
+	SupportBundleProgressPercentageYaml  = 20
+	SupportBundleProgressPercentageLogs  = 75
+	SupportBundleProgressPercentageTotal = 100
+)
+
+type SupportBundleSpec struct {
+	Name        string `json:"name"`
+	IssueURL    string `json:"issueURL"`
+	Description string `json:"description"`
+}
+
+type SupportBundleStatus struct {
+	State        SuppportBundleState `json:"state,omitempty"`
+	Progress     int                 `json:"progress,omitempty"`
+	FileName     string              `json:"filename,omitempty"`
+	FileSize     int64               `json:"filesize,omitempty"`
+	Conditions   []Condition         `json:"conditions,omitempty"`
+	ErrorMessage SupportBundleError  `json:"errormessage,omitempty"`
 }

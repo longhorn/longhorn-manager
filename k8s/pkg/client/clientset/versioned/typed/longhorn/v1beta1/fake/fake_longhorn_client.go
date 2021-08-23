@@ -84,6 +84,10 @@ func (c *FakeLonghornV1beta1) ShareManagers(namespace string) v1beta1.ShareManag
 	return &FakeShareManagers{c, namespace}
 }
 
+func (c *FakeLonghornV1beta1) SupportBundles(namespace string) v1beta1.SupportBundleInterface {
+	return &FakeSupportBundles{c, namespace}
+}
+
 func (c *FakeLonghornV1beta1) Volumes(namespace string) v1beta1.VolumeInterface {
 	return &FakeVolumes{c, namespace}
 }

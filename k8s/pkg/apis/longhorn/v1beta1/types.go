@@ -274,3 +274,22 @@ type RecurringJobList struct {
 	metav1.ListMeta `json:"metadata"`
 	Items           []RecurringJob `json:"items"`
 }
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type SupportBundle struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata"`
+
+	Spec   types.SupportBundleSpec   `json:"spec"`
+	Status types.SupportBundleStatus `json:"status"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type SupportBundleList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+	Items           []SupportBundle `json:"items"`
+}

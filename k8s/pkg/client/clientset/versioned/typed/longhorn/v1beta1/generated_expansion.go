@@ -46,4 +46,6 @@ type SettingExpansion interface{}
 
 type ShareManagerExpansion interface{}
 
+type SupportBundleExpansion interface{}
+
 type VolumeExpansion interface{}

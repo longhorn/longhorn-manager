@@ -130,6 +130,14 @@ type ShareManagerListerExpansion interface{}
 // ShareManagerNamespaceLister.
 type ShareManagerNamespaceListerExpansion interface{}
 
+// SupportBundleListerExpansion allows custom methods to be added to
+// SupportBundleLister.
+type SupportBundleListerExpansion interface{}
+
+// SupportBundleNamespaceListerExpansion allows custom methods to be added to
+// SupportBundleNamespaceLister.
+type SupportBundleNamespaceListerExpansion interface{}
+
 // VolumeListerExpansion allows custom methods to be added to
 // VolumeLister.
 type VolumeListerExpansion interface{}

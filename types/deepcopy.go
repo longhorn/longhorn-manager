@@ -382,3 +382,19 @@ func (in *RecurringJobSpec) DeepCopyInto(out *RecurringJobSpec) {
 		}
 	}
 }
+
+func (in *SupportBundleSpec) DeepCopyInto(out *SupportBundleSpec) {
+	*out = *in
+	return
+}
+
+func (in *SupportBundleStatus) DeepCopyInto(out *SupportBundleStatus) {
+	*out = *in
+	if in.Conditions != nil {
+		out.Conditions = make([]Condition, len(in.Conditions))
+		for i, c := range in.Conditions {
+			out.Conditions[i] = c
+		}
+	}
+	return
+}
