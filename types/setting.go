@@ -509,7 +509,7 @@ var (
 	}
 	SettingDefinitionReplicaZoneSoftAntiAffinity = SettingDefinition{
 		DisplayName: "Replica Zone Level Soft Anti-Affinity",
-		Description: "Allow scheduling new Replicas of Volume to the Nodes in the same Zone as existing healthy Replicas. Nodes don't belong to any Zone will be treated as in the same Zone.",
+		Description: "Allow scheduling new Replicas of Volume to the Nodes in the same Zone as existing healthy Replicas. Nodes don't belong to any Zone will be treated as in the same Zone. Notice that Longhorn relies on label `topology.kubernetes.io/zone=<Zone name of the node>` in the Kubernetes node object to identify the zone.",
 		Category:    SettingCategoryScheduling,
 		Type:        SettingTypeBool,
 		Required:    true,
