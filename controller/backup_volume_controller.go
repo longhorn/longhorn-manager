@@ -213,13 +213,6 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return nil
 	}
 
-	if backupVolume.Status.LastSyncedAt == nil {
-		backupVolume.Status.LastSyncedAt = &metav1.Time{Time: time.Time{}}
-		if backupVolume, err = bvc.ds.UpdateBackupVolumeStatus(backupVolume); err != nil {
-			return err
-		}
-	}
-
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backupVolume.DeletionTimestamp.IsZero() {
 		if err := bvc.ds.DeleteAllBackupsForBackupVolume(backupVolumeName); err != nil {
@@ -248,7 +241,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return bvc.ds.RemoveFinalizerForBackupVolume(backupVolume)
 	}
 
-	syncTime := &metav1.Time{Time: time.Now().UTC()}
+	syncTime := metav1.Time{Time: time.Now().UTC()}
 	existingBackupVolume := backupVolume.DeepCopy()
 	defer func() {
 		if err != nil {
@@ -265,7 +258,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 	// Check the controller should run synchronization
 	if !backupVolume.Status.LastSyncedAt.IsZero() &&
-		backupVolume.Status.LastSyncedAt.Time.After(backupVolume.Spec.SyncRequestedAt.Time) {
+		!backupVolume.Spec.SyncRequestedAt.After(backupVolume.Status.LastSyncedAt.Time) {
 		return nil
 	}
 
@@ -311,9 +304,6 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 			ObjectMeta: metav1.ObjectMeta{
 				Name: backupName,
 			},
-			Spec: types.SnapshotBackupSpec{
-				SyncRequestedAt: syncTime,
-			},
 		}
 		if _, err = bvc.ds.CreateBackup(backup, backupVolumeName); err != nil && !apierrors.IsAlreadyExists(err) {
 			log.WithError(err).Errorf("Error creating backup %s into cluster", backupName)
@@ -345,8 +335,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	}
 
 	// Check the backup volume config metadata got changed
-	if !backupVolume.Status.LastModificationTime.IsZero() &&
-		backupVolume.Status.LastModificationTime.Time.Equal(configMetadata.ModificationTime) {
+	if backupVolume.Status.LastModificationTime.Equal(configMetadata.ModificationTime) {
 		backupVolume.Status.LastSyncedAt = syncTime
 		return nil
 	}
@@ -373,7 +362,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	}
 
 	// Update BackupVolume CR status
-	backupVolume.Status.LastModificationTime = &metav1.Time{Time: configMetadata.ModificationTime}
+	backupVolume.Status.LastModificationTime = configMetadata.ModificationTime
 	backupVolume.Status.Size = backupVolumeInfo.Size
 	backupVolume.Status.Labels = backupVolumeInfo.Labels
 	backupVolume.Status.CreatedAt = backupVolumeInfo.Created

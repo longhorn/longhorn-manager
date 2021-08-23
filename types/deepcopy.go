@@ -278,10 +278,6 @@ func (from *BackingImageDataSourceStatus) DeepCopyInto(to *BackingImageDataSourc
 
 func (in *BackupTargetSpec) DeepCopyInto(out *BackupTargetSpec) {
 	*out = *in
-	out.PollInterval = in.PollInterval
-	if in.SyncRequestedAt != nil {
-		out.SyncRequestedAt = in.SyncRequestedAt.DeepCopy()
-	}
 	return
 }
 
@@ -293,26 +289,16 @@ func (in *BackupTargetStatus) DeepCopyInto(out *BackupTargetStatus) {
 			out.Conditions[key] = value
 		}
 	}
-	if in.LastSyncedAt != nil {
-		out.LastSyncedAt = in.LastSyncedAt.DeepCopy()
-	}
 	return
 }
 
 func (in *BackupVolumeSpec) DeepCopyInto(out *BackupVolumeSpec) {
 	*out = *in
-	if in.SyncRequestedAt != nil {
-		out.SyncRequestedAt = in.SyncRequestedAt.DeepCopy()
-	}
 	return
 }
 
 func (in *BackupVolumeStatus) DeepCopyInto(out *BackupVolumeStatus) {
 	*out = *in
-	if in.LastModificationTime != nil {
-		in, out := &in.LastModificationTime, &out.LastModificationTime
-		*out = (*in).DeepCopy()
-	}
 	if in.Labels != nil {
 		out.Labels = make(map[string]string)
 		for key, value := range in.Labels {
@@ -325,17 +311,11 @@ func (in *BackupVolumeStatus) DeepCopyInto(out *BackupVolumeStatus) {
 			out.Messages[key] = value
 		}
 	}
-	if in.LastSyncedAt != nil {
-		out.LastSyncedAt = in.LastSyncedAt.DeepCopy()
-	}
 	return
 }
 
 func (in *SnapshotBackupSpec) DeepCopyInto(out *SnapshotBackupSpec) {
 	*out = *in
-	if in.SyncRequestedAt != nil {
-		out.SyncRequestedAt = in.SyncRequestedAt.DeepCopy()
-	}
 	if in.Labels != nil {
 		out.Labels = make(map[string]string)
 		for key, value := range in.Labels {
@@ -358,9 +338,6 @@ func (in *SnapshotBackupStatus) DeepCopyInto(out *SnapshotBackupStatus) {
 		for key, value := range in.Messages {
 			out.Messages[key] = value
 		}
-	}
-	if in.LastSyncedAt != nil {
-		out.LastSyncedAt = in.LastSyncedAt.DeepCopy()
 	}
 	return
 }
