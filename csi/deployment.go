@@ -8,7 +8,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	storagev1beta "k8s.io/api/storage/v1beta1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
@@ -562,16 +562,16 @@ func (p *PluginDeployment) Cleanup(kubeClient *clientset.Clientset) {
 }
 
 type DriverObjectDeployment struct {
-	obj *storagev1beta.CSIDriver
+	obj *storagev1.CSIDriver
 }
 
 func NewCSIDriverObject() *DriverObjectDeployment {
 	falseFlag := true
-	obj := &storagev1beta.CSIDriver{
+	obj := &storagev1.CSIDriver{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: types.LonghornDriverName,
 		},
-		Spec: storagev1beta.CSIDriverSpec{
+		Spec: storagev1.CSIDriverSpec{
 			PodInfoOnMount: &falseFlag,
 		},
 	}
