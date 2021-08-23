@@ -325,7 +325,7 @@ func (s *DataStore) DeleteDeployment(name string) error {
 
 // DeleteCSIDriver deletes CSIDriver for the given name and namespace
 func (s *DataStore) DeleteCSIDriver(name string) error {
-	return s.kubeClient.StorageV1beta1().CSIDrivers().Delete(context.TODO(), name, metav1.DeleteOptions{})
+	return s.kubeClient.StorageV1().CSIDrivers().Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
 // ListManagerPods returns a list of Pods marked with app=longhorn-manager

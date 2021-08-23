@@ -12,7 +12,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	storagev1beta "k8s.io/api/storage/v1beta1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -337,20 +337,20 @@ func daemonSetGetFunc(kubeClient *clientset.Clientset, name, namespace string) (
 }
 
 func csiDriverObjectCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
-	o, ok := obj.(*storagev1beta.CSIDriver)
+	o, ok := obj.(*storagev1.CSIDriver)
 	if !ok {
 		return fmt.Errorf("BUG: cannot convert back the object")
 	}
-	_, err := kubeClient.StorageV1beta1().CSIDrivers().Create(context.TODO(), o, metav1.CreateOptions{})
+	_, err := kubeClient.StorageV1().CSIDrivers().Create(context.TODO(), o, metav1.CreateOptions{})
 	return err
 }
 
 func csiDriverObjectDeleteFunc(kubeClient *clientset.Clientset, name, namespace string) error {
-	return kubeClient.StorageV1beta1().CSIDrivers().Delete(context.TODO(), name, metav1.DeleteOptions{})
+	return kubeClient.StorageV1().CSIDrivers().Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
 func csiDriverObjectGetFunc(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error) {
-	return kubeClient.StorageV1beta1().CSIDrivers().Get(context.TODO(), name, metav1.GetOptions{})
+	return kubeClient.StorageV1().CSIDrivers().Get(context.TODO(), name, metav1.GetOptions{})
 }
 
 // CheckMountPropagationWithNode https://github.com/kubernetes/kubernetes/issues/66086#issuecomment-404346854
