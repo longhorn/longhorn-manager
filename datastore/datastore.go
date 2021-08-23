@@ -94,6 +94,8 @@ type DataStore struct {
 	pdbStoreSynced     cache.InformerSynced
 	svLister           corelisters.ServiceLister
 	svStoreSynced      cache.InformerSynced
+	sbLister           lhlisters.SupportBundleLister
+	sbStoreSynced      cache.InformerSynced
 }
 
 // NewDataStore creates new DataStore object
@@ -113,6 +115,7 @@ func NewDataStore(
 	bvInformer lhinformers.BackupVolumeInformer,
 	bInformer lhinformers.BackupInformer,
 	rjInformer lhinformers.RecurringJobInformer,
+
 	lhClient lhclientset.Interface,
 
 	podInformer coreinformers.PodInformer,
@@ -129,6 +132,7 @@ func NewDataStore(
 	storageclassInformer storageinformers_v1.StorageClassInformer,
 	pdbInformer policyinformers.PodDisruptionBudgetInformer,
 	serviceInformer coreinformers.ServiceInformer,
+	sbInformer lhinformers.SupportBundleInformer,
 
 	kubeClient clientset.Interface,
 	namespace string) *DataStore {
@@ -197,6 +201,8 @@ func NewDataStore(
 		pdbStoreSynced:     pdbInformer.Informer().HasSynced,
 		svLister:           serviceInformer.Lister(),
 		svStoreSynced:      serviceInformer.Informer().HasSynced,
+		sbLister:           sbInformer.Lister(),
+		sbStoreSynced:      sbInformer.Informer().HasSynced,
 	}
 }
 
@@ -211,7 +217,7 @@ func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 		s.pcStoreSynced, s.csiDriverSynced, s.storageclassSynced,
 		s.pdbStoreSynced, s.smStoreSynced, s.svStoreSynced,
 		s.biStoreSynced, s.bimStoreSynced, s.bidsStoreSynced,
-		s.btStoreSynced, s.bvStoreSynced, s.bStoreSynced,
+		s.btStoreSynced, s.bvStoreSynced, s.bStoreSynced, s.sbStoreSynced,
 	)
 }
 

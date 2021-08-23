@@ -292,6 +292,11 @@ func (s *DataStore) DeleteDaemonSet(name string) error {
 	return s.kubeClient.AppsV1().DaemonSets(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
 }
 
+// CreateDeployment creates a deployment resource for the given deployment object and namespace
+func (s *DataStore) CreateDeployment(deploy *appsv1.Deployment) (*appsv1.Deployment, error) {
+	return s.kubeClient.AppsV1().Deployments(s.namespace).Create(deploy)
+}
+
 // GetDeployment gets the Deployment for the given name and namespace
 func (s *DataStore) GetDeployment(name string) (*appsv1.Deployment, error) {
 	return s.dpLister.Deployments(s.namespace).Get(name)

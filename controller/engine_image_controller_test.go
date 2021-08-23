@@ -79,6 +79,7 @@ func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInfo
 	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
 	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
+	supportBundleInformer := lhInformerFactory.Longhorn().V1beta1().SupportBundles()
 
 	// Skip the Lister check that occurs on creation of an Instance Manager.
 	datastore.SkipListerCheck = true
@@ -88,15 +89,14 @@ func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInfo
 		engineImageInformer, nodeInformer, settingInformer,
 		imInformer, shareManagerInformer,
 		backingImageInformer, backingImageManagerInformer, backingImageDataSourceInformer,
-		backupTargetInformer, backupVolumeInformer, backupInformer,
-		recurringJobInformer,
+		backupTargetInformer, backupVolumeInformer, backupInformer, recurringJobInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
 		configMapInformer, secretInformer, kubeNodeInformer, priorityClassInformer,
 		csiDriverInformer, storageclassInformer,
 		pdbInformer,
-		serviceInformer,
+		serviceInformer, supportBundleInformer,
 		kubeClient, TestNamespace)
 
 	logger := logrus.StandardLogger()

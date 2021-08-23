@@ -100,21 +100,21 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
 	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
+	supportBundleInformer := lhInformerFactory.Longhorn().V1beta1().SupportBundles()
 
 	ds := datastore.NewDataStore(
 		volumeInformer, engineInformer, replicaInformer,
 		engineImageInformer, nodeInformer, settingInformer,
 		imInformer, shareManagerInformer,
 		backingImageInformer, backingImageManagerInformer, backingImageDataSourceInformer,
-		backupTargetInformer, backupVolumeInformer, backupInformer,
-		recurringJobInformer,
+		backupTargetInformer, backupVolumeInformer, backupInformer, recurringJobInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
 		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
 		configMapInformer, secretInformer, kubeNodeInformer, priorityClassInformer,
 		csiDriverInformer, storageclassInformer,
 		pdbInformer,
-		serviceInformer,
+		serviceInformer, supportBundleInformer,
 		kubeClient, namespace)
 	rc := NewReplicaController(logger, ds, scheme,
 		nodeInformer, replicaInformer, imInformer, backingImageInformer,
