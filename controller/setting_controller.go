@@ -210,7 +210,7 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.syncUpgradeChecker(); err != nil {
 			return err
 		}
-	case string(types.SettingNameBackupTargetCredentialSecret), string(types.SettingNameBackupTarget), string(types.SettingNameBackupstorePollInterval):
+	case string(types.SettingNameBackupTarget), string(types.SettingNameBackupTargetCredentialSecret), string(types.SettingNameBackupstorePollInterval):
 		if err := sc.syncBackupTarget(); err != nil {
 			return err
 		}
@@ -822,6 +822,7 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 
 	sc.queue.AddRateLimited(sc.namespace + "/" + string(types.SettingNameGuaranteedEngineManagerCPU))
 	sc.queue.AddRateLimited(sc.namespace + "/" + string(types.SettingNameGuaranteedReplicaManagerCPU))
+	sc.queue.AddRateLimited(sc.namespace + "/" + string(types.SettingNameBackupTarget))
 }
 
 func (sc *SettingController) enqueueSettingForBackupTarget(obj interface{}) {
