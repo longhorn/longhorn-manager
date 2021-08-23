@@ -154,7 +154,7 @@ func NewVolumeController(
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForBackupVolume(cur) },
 		DeleteFunc: vc.enqueueVolumesForBackupVolume,
 	})
-	backupVolumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	bidsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueVolumesForBackingImageDataSource,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForBackingImageDataSource(cur) },
 		DeleteFunc: vc.enqueueVolumesForBackingImageDataSource,
