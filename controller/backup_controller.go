@@ -226,13 +226,6 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return err
 	}
 
-	if backup.Status.LastSyncedAt == nil {
-		backup.Status.LastSyncedAt = &metav1.Time{Time: time.Time{}}
-		if backup, err = bc.ds.UpdateBackupStatus(backup); err != nil {
-			return err
-		}
-	}
-
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backup.DeletionTimestamp.IsZero() {
 		backupVolume, err := bc.ds.GetBackupVolume(backupVolumeName)
@@ -262,7 +255,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 		// Request backup_volume_controller to reconcile BackupVolume immediately if it's the last backup
 		if backupVolume != nil && backupVolume.Status.LastBackupName == backup.Name {
-			backupVolume.Spec.SyncRequestedAt = &metav1.Time{Time: time.Now().Add(time.Second).UTC()}
+			backupVolume.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
 			if _, err = bc.ds.UpdateBackupVolume(backupVolume); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 				log.WithError(err).Errorf("Error updating backup volume %s spec", backupVolumeName)
 				// Do not return err to enqueue since backup_controller is responsible to
@@ -273,7 +266,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return bc.ds.RemoveFinalizerForBackup(backup)
 	}
 
-	syncTime := &metav1.Time{Time: time.Now().UTC()}
+	syncTime := metav1.Time{Time: time.Now().UTC()}
 	existingBackup := backup.DeepCopy()
 	defer func() {
 		if err != nil {
@@ -320,7 +313,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 	// The backup config had synced
 	if !backup.Status.LastSyncedAt.IsZero() &&
-		backup.Status.LastSyncedAt.Time.After(backup.Spec.SyncRequestedAt.Time) {
+		!backup.Spec.SyncRequestedAt.After(backup.Status.LastSyncedAt.Time) {
 		return nil
 	}
 
@@ -517,7 +510,7 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 				// Request backup_volume_controller to reconcile BackupVolume immediately.
 				backupVolume, err := bc.ds.GetBackupVolume(volumeName)
 				if err == nil {
-					backupVolume.Spec.SyncRequestedAt = &metav1.Time{Time: time.Now().Add(time.Second).UTC()}
+					backupVolume.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
 					if _, err = bc.ds.UpdateBackupVolume(backupVolume); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 						log.WithError(err).Errorf("Error updating backup volume %s spec", volumeName)
 					}
@@ -525,9 +518,6 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 					backupVolume := &longhorn.BackupVolume{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: volumeName,
-						},
-						Spec: types.BackupVolumeSpec{
-							SyncRequestedAt: &metav1.Time{Time: time.Now().Add(time.Second).UTC()},
 						},
 					}
 					if _, err = bc.ds.CreateBackupVolume(backupVolume); err != nil && !apierrors.IsAlreadyExists(err) {

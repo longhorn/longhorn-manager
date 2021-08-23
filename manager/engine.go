@@ -166,9 +166,8 @@ func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName stri
 			Name: backupName,
 		},
 		Spec: types.SnapshotBackupSpec{
-			SyncRequestedAt: &metav1.Time{Time: time.Now().UTC()},
-			SnapshotName:    snapshotName,
-			Labels:          labels,
+			SnapshotName: snapshotName,
+			Labels:       labels,
 		},
 	}
 	_, err := m.ds.CreateBackup(backupCR, volumeName)

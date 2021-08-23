@@ -208,20 +208,13 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 
 	log := getLoggerForBackupTarget(btc.logger, backupTarget)
 
-	if backupTarget.Status.LastSyncedAt == nil {
-		backupTarget.Status.LastSyncedAt = &metav1.Time{Time: time.Time{}}
-		if backupTarget, err = btc.ds.UpdateBackupTargetStatus(backupTarget); err != nil {
-			return err
-		}
-	}
-
 	// Check the controller should run synchronization
 	if !backupTarget.Status.LastSyncedAt.IsZero() &&
-		backupTarget.Status.LastSyncedAt.Time.After(backupTarget.Spec.SyncRequestedAt.Time) {
+		!backupTarget.Spec.SyncRequestedAt.After(backupTarget.Status.LastSyncedAt.Time) {
 		return nil
 	}
 
-	syncTime := &metav1.Time{Time: time.Now().UTC()}
+	syncTime := metav1.Time{Time: time.Now().UTC()}
 	defer func() {
 		if err != nil {
 			return
@@ -298,9 +291,6 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		backupVolume := &longhorn.BackupVolume{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: backupVolumeName,
-			},
-			Spec: types.BackupVolumeSpec{
-				SyncRequestedAt: syncTime,
 			},
 		}
 		if _, err = btc.ds.CreateBackupVolume(backupVolume); err != nil && !apierrors.IsAlreadyExists(err) {
