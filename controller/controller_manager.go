@@ -184,6 +184,9 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	ksc := NewKubernetesSecretController(logger, ds, scheme,
 		secretInformer,
 		kubeClient, controllerID, namespace)
+	sbc := NewSupportBundleController(logger, ds, scheme,
+		supportBundleInformer,
+		kubeClient, controllerID, namespace, serviceAccount)
 
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
@@ -212,6 +215,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	go kpc.Run(Workers, stopCh)
 	go kcfmc.Run(Workers, stopCh)
 	go ksc.Run(Workers, stopCh)
+	go sbc.Run(Workers, stopCh)
 
 	return ds, ws, nil
 }
