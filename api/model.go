@@ -1,7 +1,9 @@
 package api
 
 import (
+	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
@@ -1369,6 +1371,8 @@ type Server struct {
 	m   *manager.VolumeManager
 	wsc *controller.WebsocketController
 	fwd *Fwd
+
+	httpClient *http.Client
 }
 
 func NewServer(m *manager.VolumeManager, wsc *controller.WebsocketController) *Server {
@@ -1376,6 +1380,9 @@ func NewServer(m *manager.VolumeManager, wsc *controller.WebsocketController) *S
 		m:   m,
 		wsc: wsc,
 		fwd: NewFwd(m),
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 	}
 	return s
 }

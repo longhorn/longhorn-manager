@@ -149,6 +149,8 @@ func NewRouter(s *Server) *mux.Router {
 		r.Methods("POST").Path("/v1/backingimages/{name}").Queries("action", name).Handler(f(schemas, action))
 	}
 
+	r.Methods("GET").Path("/v1/supportbundles/{bundleName}/download").Handler(f(schemas, s.SupportBundleDownload))
+
 	r.Methods("GET").Path("/v1/recurringjobs").Handler(f(schemas, s.RecurringJobList))
 	r.Methods("GET").Path("/v1/recurringjobs/{name}").Handler(f(schemas, s.RecurringJobGet))
 	r.Methods("DELETE").Path("/v1/recurringjobs/{name}").Handler(f(schemas, s.RecurringJobDelete))

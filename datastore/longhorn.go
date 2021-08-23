@@ -3212,3 +3212,87 @@ func ValidateRecurringJobs(jobs []types.RecurringJobSpec) error {
 	}
 	return nil
 }
+
+// GetSupportBundleRO returns the SupportBundle with the given supportbundle name in the cluster
+func (s *DataStore) GetSupportBundleRO(supportBundleName string) (*longhorn.SupportBundle, error) {
+	return s.sbLister.SupportBundles(s.namespace).Get(supportBundleName)
+}
+
+// GetSupportBundle returns a copy of SupportBundle with the given supportbundle name in the cluster
+func (s *DataStore) GetSupportBundle(name string) (*longhorn.SupportBundle, error) {
+	resultRO, err := s.GetSupportBundleRO(name)
+	if err != nil {
+		return nil, err
+	}
+	return resultRO.DeepCopy(), nil
+}
+
+// UpdateSupportBundle updates the given Longhorn supportbundle in the cluster SupportBundle CR and verifies update
+func (s *DataStore) UpdateSupportBundle(supportBundle *longhorn.SupportBundle) (*longhorn.SupportBundle, error) {
+	obj, err := s.lhClient.LonghornV1beta1().SupportBundles(s.namespace).Update(supportBundle)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(supportBundle.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetSupportBundleRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteSupportBundle deletes the SupportBundle.
+// The dependents will be deleted in the foreground
+func (s *DataStore) DeleteSupportBundle(supportBundleName string) error {
+	propagation := metav1.DeletePropagationForeground
+	return s.lhClient.LonghornV1beta1().SupportBundles(s.namespace).Delete(
+		supportBundleName, &metav1.DeleteOptions{PropagationPolicy: &propagation},
+	)
+}
+
+// UpdateSupportBundleStatus updates the given Longhorn supportbundle status in the cluster SupportBundle CR status and verifies update
+func (s *DataStore) UpdateSupportBundleStatus(supportBundle *longhorn.SupportBundle) (*longhorn.SupportBundle, error) {
+	obj, err := s.lhClient.LonghornV1beta1().SupportBundles(s.namespace).UpdateStatus(supportBundle)
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(supportBundle.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetSupportBundleRO(name)
+	})
+	return obj, nil
+}
+
+// ListSupportBundles returns an object contains all supportbundles in the cluster SupportBundles CR
+func (s *DataStore) ListSupportBundles() (map[string]*longhorn.SupportBundle, error) {
+	list, err := s.sbLister.SupportBundles(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.SupportBundle{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// CreateSupportBundle creates a Longhorn SupportBundle CR and verifies creation
+func (s *DataStore) CreateSupportBundle(supportbundle *longhorn.SupportBundle) (*longhorn.SupportBundle, error) {
+	ret, err := s.lhClient.LonghornV1beta1().SupportBundles(s.namespace).Create(supportbundle)
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(supportbundle.Name, "supportbundle", func(name string) (runtime.Object, error) {
+		return s.GetSupportBundleRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.SupportBundle)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for SupportBundle")
+	}
+	return ret.DeepCopy(), nil
+}
