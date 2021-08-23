@@ -80,6 +80,7 @@ const (
 	SettingNameBackingImageCleanupWaitInterval              = SettingName("backing-image-cleanup-wait-interval")
 	SettingNameGuaranteedEngineManagerCPU                   = SettingName("guaranteed-engine-manager-cpu")
 	SettingNameGuaranteedReplicaManagerCPU                  = SettingName("guaranteed-replica-manager-cpu")
+	SettingNameSupportBundleImage                           = SettingName("support-bundle-image")
 )
 
 var (
@@ -127,6 +128,7 @@ var (
 		SettingNameBackingImageCleanupWaitInterval,
 		SettingNameGuaranteedEngineManagerCPU,
 		SettingNameGuaranteedReplicaManagerCPU,
+		SettingNameSupportBundleImage,
 	}
 )
 
@@ -195,6 +197,17 @@ var (
 		SettingNameBackingImageCleanupWaitInterval:              SettingDefinitionBackingImageCleanupWaitInterval,
 		SettingNameGuaranteedEngineManagerCPU:                   SettingDefinitionGuaranteedEngineManagerCPU,
 		SettingNameGuaranteedReplicaManagerCPU:                  SettingDefinitionGuaranteedReplicaManagerCPU,
+		SettingNameSupportBundleImage:                           SettingDefinitionSupportBundleImage,
+	}
+
+	SettingDefinitionSupportBundleImage = SettingDefinition{
+		DisplayName: "Support Bundle Image Name",
+		Description: "The image name of the support bundle",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    true,
+		Default:     "rancher/support-bundle-kit:v0.0.2",
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
