@@ -411,13 +411,13 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 		},
 	)
 
-	event := func(err error, state types.BackupState, backup *longhorn.Backup) {
+	event := func(err error, state types.BackupState, backup *longhorn.Backup, volume *longhorn.Volume) {
 		if err != nil {
-			bc.eventRecorder.Eventf(backup, corev1.EventTypeWarning, string(state),
+			bc.eventRecorder.Eventf(volume, corev1.EventTypeWarning, string(state),
 				"Snapshot %s backup %s label %v: %v", backup.Spec.SnapshotName, backup.Name, backup.Spec.Labels, err)
 			return
 		}
-		bc.eventRecorder.Eventf(backup, corev1.EventTypeNormal, string(state),
+		bc.eventRecorder.Eventf(volume, corev1.EventTypeNormal, string(state),
 			"Snapshot %s backup %s label %v", backup.Spec.SnapshotName, backup.Name, backup.Spec.Labels)
 	}
 
@@ -448,7 +448,7 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 	}
 
 	backup.Status.State = types.BackupStateInProgress
-	event(nil, backup.Status.State, backup)
+	event(nil, backup.Status.State, backup, volume)
 
 	go func() {
 		state := backup.Status.State
@@ -472,7 +472,7 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 
 		if _, err = engineClient.SnapshotBackup(backup.Name, backup.Spec.SnapshotName, url, biName, biChecksum, backup.Spec.Labels, credential); err != nil {
 			state = types.BackupStateError
-			event(err, state, backup)
+			event(err, state, backup, volume)
 			return
 		}
 
@@ -481,7 +481,7 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 			engines, err := bc.ds.ListVolumeEngines(volume.Name)
 			if err != nil {
 				state = types.BackupStateUnknown
-				event(err, state, backup)
+				event(err, state, backup, volume)
 				return
 			}
 
@@ -497,12 +497,12 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 			}
 			if bks == nil {
 				state = types.BackupStateUnknown
-				event(err, state, backup)
+				event(err, state, backup, volume)
 				return
 			}
 			if bks.Error != "" {
 				state = types.BackupStateError
-				event(errors.New(bks.Error), state, backup)
+				event(errors.New(bks.Error), state, backup, volume)
 				return
 			}
 
@@ -515,7 +515,7 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 			//   use resource monitoring https://github.com/longhorn/longhorn/issues/2441
 			//   to trigger updates backup volume to run reconcile immediately
 			state = types.BackupStateCompleted
-			event(nil, state, backup)
+			event(nil, state, backup, volume)
 
 			syncTime := metav1.Time{Time: time.Now().UTC()}
 			backupVolume, err := bc.ds.GetBackupVolume(volumeName)
