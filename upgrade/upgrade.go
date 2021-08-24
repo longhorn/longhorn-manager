@@ -28,6 +28,7 @@ import (
 	"github.com/longhorn/longhorn-manager/upgrade/v100to101"
 	"github.com/longhorn/longhorn-manager/upgrade/v102to110"
 	"github.com/longhorn/longhorn-manager/upgrade/v110to111"
+	"github.com/longhorn/longhorn-manager/upgrade/v112to113"
 	"github.com/longhorn/longhorn-manager/upgrade/v1alpha1"
 )
 
@@ -109,7 +110,7 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 				if err = doAPIVersionUpgrade(namespace, config, lhClient); err != nil {
 					return
 				}
-				if err = doCRUpgrade(namespace, lhClient); err != nil {
+				if err = doCRUpgrade(namespace, lhClient, kubeClient); err != nil {
 					return
 				}
 				if err = doPodsUpgrade(namespace, lhClient, kubeClient); err != nil {
@@ -221,7 +222,7 @@ func upgradeLocalNode() (err error) {
 	return nil
 }
 
-func doCRUpgrade(namespace string, lhClient *lhclientset.Clientset) (err error) {
+func doCRUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
 	defer func() {
 		err = errors.Wrap(err, "upgrade CRD failed")
 	}()
@@ -237,6 +238,11 @@ func doCRUpgrade(namespace string, lhClient *lhclientset.Clientset) (err error) 
 	if err := v110to111.UpgradeCRs(namespace, lhClient); err != nil {
 		return err
 	}
+
+	if err := v112to113.UpgradeCRs(namespace, lhClient, kubeClient); err != nil {
+		return err
+	}
+
 	return nil
 }
 
