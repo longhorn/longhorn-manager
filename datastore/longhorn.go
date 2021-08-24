@@ -3029,6 +3029,11 @@ func (s *DataStore) DeleteBackup(backupName string) error {
 	return s.lhClient.LonghornV1beta1().Backups(s.namespace).Delete(context.TODO(), backupName, metav1.DeleteOptions{})
 }
 
+// DeleteAllBackupsForBackupVolume won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteAllBackupsForBackupVolume(backupVolumeName string) error {
+	return s.lhClient.LonghornV1beta1().Backups(s.namespace).DeleteCollection(context.TODO(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", types.LonghornLabelBackupVolume, backupVolumeName)})
+}
+
 // RemoveFinalizerForBackup will result in deletion if DeletionTimestamp was set
 func (s *DataStore) RemoveFinalizerForBackup(backup *longhorn.Backup) error {
 	if !util.FinalizerExists(longhornFinalizerKey, backup) {

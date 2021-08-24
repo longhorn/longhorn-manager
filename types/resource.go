@@ -710,8 +710,7 @@ type BackupTargetStatus struct {
 }
 
 type BackupVolumeSpec struct {
-	SyncRequestedAt     *metav1.Time `json:"syncRequestedAt"`
-	FileCleanupRequired bool         `json:"fileCleanupRequired"`
+	SyncRequestedAt *metav1.Time `json:"syncRequestedAt"`
 }
 
 type BackupVolumeStatus struct {
@@ -730,10 +729,9 @@ type BackupVolumeStatus struct {
 }
 
 type SnapshotBackupSpec struct {
-	SyncRequestedAt     *metav1.Time      `json:"syncRequestedAt"`
-	FileCleanupRequired bool              `json:"fileCleanupRequired"`
-	SnapshotName        string            `json:"snapshotName"`
-	Labels              map[string]string `json:"labels"`
+	SyncRequestedAt *metav1.Time      `json:"syncRequestedAt"`
+	SnapshotName    string            `json:"snapshotName"`
+	Labels          map[string]string `json:"labels"`
 }
 
 type BackupState string

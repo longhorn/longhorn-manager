@@ -11,7 +11,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 
@@ -261,20 +260,6 @@ func (m *VolumeManager) GetBackupVolume(volumeName string) (*longhorn.BackupVolu
 }
 
 func (m *VolumeManager) DeleteBackupVolume(volumeName string) error {
-	backupVolume, err := m.ds.GetBackupVolumeRO(volumeName)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	// Request to delete remote config
-	backupVolume.Spec.FileCleanupRequired = true
-	backupVolume, err = m.ds.UpdateBackupVolume(backupVolume)
-	if err != nil && !datastore.ErrorIsConflict(err) {
-		return err
-	}
 	return m.ds.DeleteBackupVolume(volumeName)
 }
 
@@ -287,18 +272,5 @@ func (m *VolumeManager) GetBackup(backupName, volumeName string) (*longhorn.Back
 }
 
 func (m *VolumeManager) DeleteBackup(backupName, volumeName string) error {
-	backup, err := m.ds.GetBackupRO(backupName)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	// Request to delete remote config
-	backup.Spec.FileCleanupRequired = true
-	if _, err = m.ds.UpdateBackup(backup); err != nil && !datastore.ErrorIsConflict(err) {
-		return err
-	}
 	return m.ds.DeleteBackup(backupName)
 }
