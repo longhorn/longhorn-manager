@@ -1919,6 +1919,7 @@ func (s *DataStore) ListEnginesByNodeRO(name string) ([]*longhorn.Engine, error)
 // instance Manager name and UID
 func GetOwnerReferencesForInstanceManager(im *longhorn.InstanceManager) []metav1.OwnerReference {
 	controller := true
+	blockOwnerDeletion := true
 	return []metav1.OwnerReference{
 		{
 			APIVersion: longhorn.SchemeGroupVersion.String(),
@@ -1927,7 +1928,8 @@ func GetOwnerReferencesForInstanceManager(im *longhorn.InstanceManager) []metav1
 			UID:        im.UID,
 			// This field is needed so that `kubectl drain` can work without --force flag
 			// See https://github.com/longhorn/longhorn/issues/1286#issuecomment-623283028 for more details
-			Controller: &controller,
+			Controller:         &controller,
+			BlockOwnerDeletion: &blockOwnerDeletion,
 		},
 	}
 }
@@ -1935,9 +1937,6 @@ func GetOwnerReferencesForInstanceManager(im *longhorn.InstanceManager) []metav1
 // CreateInstanceManager creates a Longhorn InstanceManager resource and
 // verifies creation
 func (s *DataStore) CreateInstanceManager(im *longhorn.InstanceManager) (*longhorn.InstanceManager, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, im); err != nil {
-		return nil, err
-	}
 	ret, err := s.lhClient.LonghornV1beta1().InstanceManagers(s.namespace).Create(im)
 	if err != nil {
 		return nil, err
@@ -1960,10 +1959,11 @@ func (s *DataStore) CreateInstanceManager(im *longhorn.InstanceManager) (*longho
 	return ret.DeepCopy(), nil
 }
 
-// DeleteInstanceManager won't result in immediately deletion since finalizer
-// was set by default
+// DeleteInstanceManager deletes the InstanceManager.
+// The dependents will be deleted in the foreground
 func (s *DataStore) DeleteInstanceManager(name string) error {
-	return s.lhClient.LonghornV1beta1().InstanceManagers(s.namespace).Delete(name, &metav1.DeleteOptions{})
+	propagation := metav1.DeletePropagationForeground
+	return s.lhClient.LonghornV1beta1().InstanceManagers(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
 }
 
 func (s *DataStore) getInstanceManagerRO(name string) (*longhorn.InstanceManager, error) {
@@ -2089,32 +2089,8 @@ func (s *DataStore) ListInstanceManagers() (map[string]*longhorn.InstanceManager
 	return itemMap, nil
 }
 
-// RemoveFinalizerForInstanceManager will result in deletion if DeletionTimestamp was set
-func (s *DataStore) RemoveFinalizerForInstanceManager(obj *longhorn.InstanceManager) error {
-	if !util.FinalizerExists(longhornFinalizerKey, obj) {
-		// finalizer already removed
-		return nil
-	}
-	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
-		return err
-	}
-	_, err := s.lhClient.LonghornV1beta1().InstanceManagers(s.namespace).Update(obj)
-	if err != nil {
-		// workaround `StorageError: invalid object, Code: 4` due to empty object
-		if obj.DeletionTimestamp != nil {
-			return nil
-		}
-		return errors.Wrapf(err, "unable to remove finalizer for instance manager %v", obj.Name)
-	}
-	return nil
-}
-
 // UpdateInstanceManager updates Longhorn InstanceManager resource and verifies update
 func (s *DataStore) UpdateInstanceManager(im *longhorn.InstanceManager) (*longhorn.InstanceManager, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, im); err != nil {
-		return nil, err
-	}
-
 	obj, err := s.lhClient.LonghornV1beta1().InstanceManagers(s.namespace).Update(im)
 	if err != nil {
 		return nil, err
