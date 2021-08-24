@@ -16,18 +16,25 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/yaml"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	"github.com/longhorn/longhorn-manager/types"
+	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 	"github.com/longhorn/longhorn-manager/util"
 )
 
 const (
 	upgradeLogPrefix = "upgrade from v1.1.0 to v1.2.0: "
+
+	longhornFinalizerKey = "longhorn.io"
 )
 
 func UpgradeCRs(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) error {
 	if err := upgradeRecurringJobs(namespace, lhClient, kubeClient); err != nil {
+		return err
+	}
+	if err := upgradeInstanceManagers(namespace, lhClient, kubeClient); err != nil {
 		return err
 	}
 	return nil
@@ -35,7 +42,7 @@ func UpgradeCRs(namespace string, lhClient *lhclientset.Clientset, kubeClient *c
 
 func upgradeRecurringJobs(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade volume failed")
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade recurring jobs failed")
 	}()
 
 	// Need to transfer volume spec recurringJobs to CRs because Longhorn
@@ -58,6 +65,58 @@ func upgradeRecurringJobs(namespace string, lhClient *lhclientset.Clientset, kub
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance managers failed")
+	}()
+
+	// The pod update should happen before IM CR update. Hence we should not abstract this part as a function call in `doPodsUpgrade`.
+	blockOwnerDeletion := true
+	imPodList, err := upgradeutil.ListIMPods(namespace, kubeClient)
+	if err != nil {
+		return err
+	}
+	for _, imPod := range imPodList {
+		if imPod.OwnerReferences == nil || len(imPod.OwnerReferences) == 0 {
+			im, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).Get(context.TODO(), imPod.Name, metav1.GetOptions{})
+			if err != nil {
+				logrus.Errorf("cannot find the instance manager CR for the instance manager pod %v that has no owner reference during v1.2.0 upgrade: %v", imPod.Name, err)
+				continue
+			}
+			imPod.OwnerReferences = datastore.GetOwnerReferencesForInstanceManager(im)
+			if _, err = kubeClient.CoreV1().Pods(namespace).Update(context.TODO(), &imPod, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+			continue
+		}
+		if imPod.OwnerReferences[0].BlockOwnerDeletion == nil || !*imPod.OwnerReferences[0].BlockOwnerDeletion {
+			imPod.OwnerReferences[0].BlockOwnerDeletion = &blockOwnerDeletion
+			if _, err = kubeClient.CoreV1().Pods(namespace).Update(context.TODO(), &imPod, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
+
+	imList, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, im := range imList.Items {
+		if !util.FinalizerExists(longhornFinalizerKey, &im) {
+			// finalizer already removed
+			return nil
+		}
+		if err := util.RemoveFinalizer(longhornFinalizerKey, &im); err != nil {
+			return err
+		}
+		if _, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).Update(context.TODO(), &im, metav1.UpdateOptions{}); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
