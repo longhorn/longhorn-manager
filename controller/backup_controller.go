@@ -235,38 +235,33 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backup.DeletionTimestamp.IsZero() {
-		// No need to delete the backup from the remote backup target
-		if !backup.Spec.FileCleanupRequired {
-			return bc.ds.RemoveFinalizerForBackup(backup)
-		}
-
-		// Initialize a backup target client
-		credential, err := bc.ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
-		if err != nil {
+		backupVolume, err := bc.ds.GetBackupVolume(backupVolumeName)
+		if err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
-		backupTargetClient, err := engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential)
-		if err != nil {
-			log.WithError(err).Error("Error init backup target client")
-			return nil // Ignore error to prevent enqueue
-		}
 
-		backupURL := backupstore.EncodeBackupURL(backup.Name, backupVolumeName, backupTargetClient.URL)
-		if err := backupTargetClient.DeleteBackup(backupURL); err != nil {
-			log.WithError(err).Error("Error deleting remote backup")
-			return err
+		if backupTarget.DeletionTimestamp == nil && backupTarget.Spec.BackupTargetURL != "" &&
+			backupVolume != nil && backupVolume.DeletionTimestamp == nil {
+			// Initialize a backup target client
+			credential, err := bc.ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
+			if err != nil {
+				return err
+			}
+			backupTargetClient, err := engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential)
+			if err != nil {
+				log.WithError(err).Error("Error init backup target client")
+				return nil // Ignore error to prevent enqueue
+			}
+
+			backupURL := backupstore.EncodeBackupURL(backup.Name, backupVolumeName, backupTargetClient.URL)
+			if err := backupTargetClient.DeleteBackup(backupURL); err != nil {
+				log.WithError(err).Error("Error deleting remote backup")
+				return err
+			}
 		}
 
 		// Request backup_volume_controller to reconcile BackupVolume immediately if it's the last backup
-		backupVolume, err := bc.ds.GetBackupVolume(backupVolumeName)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				return nil // Ignore error to prevent enqueue
-			}
-			return err
-		}
-
-		if backupVolume.Status.LastBackupName == backup.Name {
+		if backupVolume != nil && backupVolume.Status.LastBackupName == backup.Name {
 			backupVolume.Spec.SyncRequestedAt = &metav1.Time{Time: time.Now().Add(time.Second).UTC()}
 			if _, err = bc.ds.UpdateBackupVolume(backupVolume); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 				log.WithError(err).Errorf("Error updating backup volume %s spec", backupVolumeName)

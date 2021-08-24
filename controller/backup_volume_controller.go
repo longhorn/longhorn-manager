@@ -3,7 +3,6 @@ package controller
 import (
 	"fmt"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -223,14 +222,13 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backupVolume.DeletionTimestamp.IsZero() {
-		// Delete related Backup CRs with the given backup volume name
-		if err := bvc.cleanupBackupsWithBackupVolumeName(backupVolumeName, backupVolume.Spec.FileCleanupRequired); err != nil {
+		if err := bvc.ds.DeleteAllBackupsForBackupVolume(backupVolumeName); err != nil {
 			log.WithError(err).Error("Error deleting backups")
 			return err
 		}
 
 		// Delete the backup volume from the remote backup target
-		if backupVolume.Spec.FileCleanupRequired {
+		if backupTarget.DeletionTimestamp == nil && backupTarget.Spec.BackupTargetURL != "" {
 			// Initialize a backup target client
 			credential, err := bvc.ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
 			if err != nil {
@@ -386,37 +384,6 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	backupVolume.Status.BackingImageName = backupVolumeInfo.BackingImageName
 	backupVolume.Status.BackingImageChecksum = backupVolumeInfo.BackingImageChecksum
 	backupVolume.Status.LastSyncedAt = syncTime
-	return nil
-}
-
-// cleanupBackupsWithBackupVolumeName deletes related Backup CRs with the given backup volume name
-func (bvc *BackupVolumeController) cleanupBackupsWithBackupVolumeName(backupVolumeName string, fileCleanupRequired bool) error {
-	backups, err := bvc.ds.ListBackupsWithBackupVolumeName(backupVolumeName)
-	if err != nil {
-		return err
-	}
-
-	var errs []string
-	for backupName, backup := range backups {
-		if fileCleanupRequired && !backup.Spec.FileCleanupRequired {
-			backup.Spec.FileCleanupRequired = true
-			if _, err = bvc.ds.UpdateBackup(backup); err != nil {
-				// We don't check the error is a conflict since we want to make sure
-				// the backup.Spec.FileCleanupRequired = true
-				// Therefore, if any error occurs, return error to enqueue
-				errs = append(errs, err.Error())
-				continue
-			}
-		}
-
-		if err = bvc.ds.DeleteBackup(backupName); err != nil {
-			errs = append(errs, err.Error())
-			continue
-		}
-	}
-	if len(errs) > 0 {
-		return errors.New(strings.Join(errs, ","))
-	}
 	return nil
 }
 
