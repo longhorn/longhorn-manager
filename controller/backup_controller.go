@@ -214,6 +214,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		if !apierrors.IsNotFound(err) {
 			return err
 		}
+		log.Warnf("Cannot found the %s backup target", types.DefaultBackupTargetName)
 		return nil
 	}
 

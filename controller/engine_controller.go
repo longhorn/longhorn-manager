@@ -1086,7 +1086,7 @@ func restoreBackup(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[st
 		if !apierrors.IsNotFound(err) {
 			return err
 		}
-		return nil
+		return fmt.Errorf("cannot found the %s backup target", types.DefaultBackupTargetName)
 	}
 
 	// Initialize a backup target client
