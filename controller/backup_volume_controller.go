@@ -221,7 +221,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		}
 
 		// Delete the backup volume from the remote backup target
-		if backupTarget.DeletionTimestamp == nil && backupTarget.Spec.BackupTargetURL != "" {
+		if backupTarget.Spec.BackupTargetURL != "" {
 			// Initialize a backup target client
 			backupTargetClient, err := getBackupTargetClient(bvc.ds, backupTarget)
 			if err != nil {
