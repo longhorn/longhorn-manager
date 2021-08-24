@@ -382,6 +382,40 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 		return true, c.deleteReplicas(replicas)
 	}
 
+	// Unset backup target to prevent the remote backup target
+	// backup volume config, and backup config and it's data
+	// being deleted during uninstall process.
+	// TODO:
+	//   Remove the setting CRs and add OwnerReferences on BackupTarget CR.
+	//   After that when deleting setting CRs, the default BackupTarget CR
+	//   be cascading deleted automatically.
+	targetSetting, err := c.ds.GetSetting(types.SettingNameBackupTarget)
+	if err != nil {
+		return true, err
+	}
+	if targetSetting.Value != "" {
+		targetSetting.Value = ""
+		if _, err := c.ds.UpdateSetting(targetSetting); err != nil {
+			return true, err
+		}
+	}
+
+	// Waits the BackupVolume CRs be clean up by backup_target_controller
+	if backupVolumes, err := c.ds.ListBackupVolumes(); err != nil {
+		return true, err
+	} else if len(backupVolumes) > 0 {
+		c.logger.Infof("Found %d backupvolumes remaining", len(backupVolumes))
+		return true, nil
+	}
+
+	// Waits the Backup CRs be clean up by backup_volume_controller
+	if backups, err := c.ds.ListBackups(); err != nil {
+		return true, err
+	} else if len(backups) > 0 {
+		c.logger.Infof("Found %d backups remaining", len(backups))
+		return true, nil
+	}
+
 	if engineImages, err := c.ds.ListEngineImages(); err != nil {
 		return true, err
 	} else if len(engineImages) > 0 {
@@ -415,27 +449,6 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 	} else if len(backingImageDataSources) > 0 {
 		c.logger.Infof("Found %d backingImageDataSources remaining", len(backingImageDataSources))
 		return true, c.deleteBackingImageDataSource(backingImageDataSources)
-	}
-
-	if backupTargets, err := c.ds.ListBackupTargets(); err != nil {
-		return true, err
-	} else if len(backupTargets) > 0 {
-		c.logger.Infof("Found %d backuptargets remaining", len(backupTargets))
-		return true, c.deleteBackupTargets(backupTargets)
-	}
-
-	if backupVolumes, err := c.ds.ListBackupVolumes(); err != nil {
-		return true, err
-	} else if len(backupVolumes) > 0 {
-		c.logger.Infof("Found %d backupvolumes remaining", len(backupVolumes))
-		return true, c.deleteBackupVolumes(backupVolumes)
-	}
-
-	if backups, err := c.ds.ListBackups(); err != nil {
-		return true, err
-	} else if len(backups) > 0 {
-		c.logger.Infof("Found %d backups remaining", len(backups))
-		return true, c.deleteBackups(backups)
 	}
 
 	if recurringJobs, err := c.ds.ListRecurringJobs(); err != nil {
@@ -710,75 +723,6 @@ func (c *UninstallController) deleteBackingImageDataSource(backingImageDataSourc
 				return err
 			}
 			if err = c.ds.RemoveFinalizerForBackingImageDataSource(bids); err != nil {
-				return errors.Wrapf(err, "Failed to remove finalizer")
-			}
-			log.Info("Removed finalizer")
-		}
-	}
-	return nil
-}
-
-func (c *UninstallController) deleteBackupTargets(backupTargets map[string]*longhorn.BackupTarget) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "Failed to delete backup targets")
-	}()
-	for _, bt := range backupTargets {
-		log := getLoggerForBackupTarget(c.logger, bt)
-
-		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
-		if bt.DeletionTimestamp == nil {
-			if err = c.ds.DeleteBackupTarget(bt.Name); err != nil {
-				return errors.Wrapf(err, "Failed to mark for deletion")
-			}
-			log.Info("Marked for deletion")
-		} else if bt.DeletionTimestamp.Before(&timeout) {
-			if err = c.ds.RemoveFinalizerForBackupTarget(bt); err != nil {
-				return errors.Wrapf(err, "Failed to remove finalizer")
-			}
-			log.Info("Removed finalizer")
-		}
-	}
-	return nil
-}
-
-func (c *UninstallController) deleteBackupVolumes(backupVolumes map[string]*longhorn.BackupVolume) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "Failed to delete backup volumes")
-	}()
-	for _, bv := range backupVolumes {
-		log := getLoggerForBackupVolume(c.logger, bv)
-
-		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
-		if bv.DeletionTimestamp == nil {
-			if err = c.ds.DeleteBackupVolume(bv.Name); err != nil {
-				return errors.Wrapf(err, "Failed to mark for deletion")
-			}
-			log.Info("Marked for deletion")
-		} else if bv.DeletionTimestamp.Before(&timeout) {
-			if err = c.ds.RemoveFinalizerForBackupVolume(bv); err != nil {
-				return errors.Wrapf(err, "Failed to remove finalizer")
-			}
-			log.Info("Removed finalizer")
-		}
-	}
-	return nil
-}
-
-func (c *UninstallController) deleteBackups(backups map[string]*longhorn.Backup) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "Failed to delete backups")
-	}()
-	for _, b := range backups {
-		log := getLoggerForBackup(c.logger, b)
-
-		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
-		if b.DeletionTimestamp == nil {
-			if err = c.ds.DeleteBackup(b.Name); err != nil {
-				return errors.Wrapf(err, "Failed to mark for deletion")
-			}
-			log.Info("Marked for deletion")
-		} else if b.DeletionTimestamp.Before(&timeout) {
-			if err = c.ds.RemoveFinalizerForBackup(b); err != nil {
 				return errors.Wrapf(err, "Failed to remove finalizer")
 			}
 			log.Info("Removed finalizer")

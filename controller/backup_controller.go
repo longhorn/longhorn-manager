@@ -235,7 +235,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			return err
 		}
 
-		if backupTarget.DeletionTimestamp == nil && backupTarget.Spec.BackupTargetURL != "" &&
+		if backupTarget.Spec.BackupTargetURL != "" &&
 			backupVolume != nil && backupVolume.DeletionTimestamp == nil {
 			// Initialize a backup target client
 			backupTargetClient, err := getBackupTargetClient(bc.ds, backupTarget)
