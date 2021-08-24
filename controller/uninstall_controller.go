@@ -8,7 +8,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
 
-	v1 "k8s.io/api/core/v1"
 	apiextension "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -601,32 +600,12 @@ func (c *UninstallController) deleteInstanceManagers(instanceManagers map[string
 	}()
 	for _, im := range instanceManagers {
 		log := getLoggerForInstanceManager(c.logger, im)
-
-		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if im.DeletionTimestamp == nil {
 			if err = c.ds.DeleteInstanceManager(im.Name); err != nil {
 				err = errors.Wrapf(err, "Failed to mark for deletion")
 				return
 			}
 			log.Info("Marked for deletion")
-		} else if im.DeletionTimestamp.Before(&timeout) {
-			var pod *v1.Pod
-			pod, err = c.ds.GetPod(im.Name)
-			if err != nil {
-				err = errors.Wrapf(err, "Could not get pod for instance manager")
-			}
-			if pod != nil {
-				if err = c.ds.DeletePod(pod.Name); err != nil {
-					return
-				}
-				log.Info("Removed instance manager")
-			}
-
-			if err = c.ds.RemoveFinalizerForInstanceManager(im); err != nil {
-				err = errors.Wrapf(err, "Failed to remove finalizer")
-				return
-			}
-			log.Info("Removed finalizer")
 		}
 	}
 	return
