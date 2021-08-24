@@ -288,10 +288,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	}
 
 	if im.DeletionTimestamp != nil {
-		if err := imc.cleanupInstanceManager(im); err != nil {
-			return err
-		}
-		return imc.ds.RemoveFinalizerForInstanceManager(im)
+		return nil
 	}
 
 	existingIM := im.DeepCopy()
