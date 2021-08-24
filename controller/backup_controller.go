@@ -408,16 +408,14 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 		},
 	)
 
-	logEvent := func(err error) {
+	event := func(err error, state types.BackupState, backup *longhorn.Backup) {
 		if err != nil {
-			bc.eventRecorder.Eventf(backup, corev1.EventTypeWarning, string(backup.Status.State),
-				"Snapshot %s backup %s volume %s label %v: %v", backup.Spec.SnapshotName, backup.Name, volumeName, backup.Spec.Labels, err)
-			log.WithError(err).Debugf("state %s", string(backup.Status.State))
+			bc.eventRecorder.Eventf(backup, corev1.EventTypeWarning, string(state),
+				"Snapshot %s backup %s label %v: %v", backup.Spec.SnapshotName, backup.Name, backup.Spec.Labels, err)
 			return
 		}
-		bc.eventRecorder.Eventf(backup, corev1.EventTypeNormal, string(backup.Status.State),
-			"Snapshot %s backup %s volume %s label %v", backup.Spec.SnapshotName, backup.Name, volumeName, backup.Spec.Labels)
-		log.Debugf("state %s", string(backup.Status.State))
+		bc.eventRecorder.Eventf(backup, corev1.EventTypeNormal, string(state),
+			"Snapshot %s backup %s label %v", backup.Spec.SnapshotName, backup.Name, backup.Spec.Labels)
 	}
 
 	// Get the volume CR
@@ -446,39 +444,41 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 		biChecksum = bi.Status.Checksum
 	}
 
-	backup.Status.State = types.BackupStatePending
-	logEvent(nil)
+	backup.Status.State = types.BackupStateInProgress
+	event(nil, backup.Status.State, backup)
 
 	go func() {
-		var err error
-		existingBackup := backup.DeepCopy()
+		state := backup.Status.State
 		defer func() {
+			backup, err := bc.ds.GetBackup(backup.Name)
 			if err != nil {
+				log.WithError(err).Errorf("Error get backup")
 				return
 			}
+			existingBackup := backup.DeepCopy()
+
+			backup.Status.State = state
 			if reflect.DeepEqual(existingBackup.Status, backup.Status) {
 				return
 			}
-			if _, err := bc.ds.UpdateBackupStatus(backup); err != nil {
-				log.WithError(err).Errorf("Error update backup status")
+			if _, err := bc.ds.UpdateBackupStatus(backup); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+				log.WithError(err).Errorf("Error updating backup status")
+				return
 			}
 		}()
 
 		if _, err = engineClient.SnapshotBackup(backup.Name, backup.Spec.SnapshotName, url, biName, biChecksum, backup.Spec.Labels, credential); err != nil {
-			backup.Status.State = types.BackupStateError
-			logEvent(err)
+			state = types.BackupStateError
+			event(err, state, backup)
 			return
 		}
 
-		backup.Status.State = types.BackupStateInProgress
-		logEvent(nil)
-
 		// Monitor snapshot backup progress
 		for {
-			engines, err := bc.ds.ListVolumeEngines(volumeName)
+			engines, err := bc.ds.ListVolumeEngines(volume.Name)
 			if err != nil {
-				backup.Status.State = types.BackupStateUnknown
-				logEvent(err)
+				state = types.BackupStateUnknown
+				event(err, state, backup)
 				return
 			}
 
@@ -493,43 +493,48 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 				}
 			}
 			if bks == nil {
-				backup.Status.State = types.BackupStateUnknown
-				logEvent(fmt.Errorf("cannot find backup status"))
+				state = types.BackupStateUnknown
+				event(err, state, backup)
 				return
 			}
 			if bks.Error != "" {
-				backup.Status.State = types.BackupStateError
-				logEvent(errors.New(bks.Error))
+				state = types.BackupStateError
+				event(errors.New(bks.Error), state, backup)
 				return
+			}
+
+			if bks.Progress != 100 {
+				time.Sleep(BackupStatusQueryInterval)
+				continue
 			}
 
 			// TODO:
 			//   use resource monitoring https://github.com/longhorn/longhorn/issues/2441
 			//   to trigger updates backup volume to run reconcile immediately
-			if bks.Progress == 100 {
-				// Request backup_volume_controller to reconcile BackupVolume immediately.
-				backupVolume, err := bc.ds.GetBackupVolume(volumeName)
-				if err == nil {
-					backupVolume.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
-					if _, err = bc.ds.UpdateBackupVolume(backupVolume); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-						log.WithError(err).Errorf("Error updating backup volume %s spec", volumeName)
-					}
-				} else if err != nil && apierrors.IsNotFound(err) {
-					backupVolume := &longhorn.BackupVolume{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: volumeName,
-						},
-					}
-					if _, err = bc.ds.CreateBackupVolume(backupVolume); err != nil && !apierrors.IsAlreadyExists(err) {
-						log.WithError(err).Errorf("Error creating backup volume %s into cluster", volumeName)
-					}
-				}
+			state = types.BackupStateCompleted
+			event(nil, state, backup)
 
-				backup.Status.State = types.BackupStateCompleted
-				logEvent(nil)
-				return
+			syncTime := metav1.Time{Time: time.Now().UTC()}
+			backupVolume, err := bc.ds.GetBackupVolume(volumeName)
+			if err == nil {
+				// Request backup_volume_controller to reconcile BackupVolume immediately.
+				backupVolume.Spec.SyncRequestedAt = syncTime
+				if _, err = bc.ds.UpdateBackupVolume(backupVolume); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+					log.WithError(err).Errorf("Error updating backup volume %s spec", volume.Name)
+				}
+			} else if err != nil && apierrors.IsNotFound(err) {
+				// Request backup_target_controller to reconcile BackupTarget immediately.
+				backupTarget, err := bc.ds.GetBackupTarget(types.DefaultBackupTargetName)
+				if err != nil {
+					log.WithError(err).Warn("Failed to get backup target")
+					return
+				}
+				backupTarget.Spec.SyncRequestedAt = syncTime
+				if _, err = bc.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+					log.WithError(err).Warn("Failed to update backup target")
+				}
 			}
-			time.Sleep(BackupStatusQueryInterval)
+			return
 		}
 	}()
 

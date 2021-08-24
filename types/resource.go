@@ -739,11 +739,10 @@ type SnapshotBackupSpec struct {
 type BackupState string
 
 const (
-	BackupStatePending    = BackupState("pending")
-	BackupStateInProgress = BackupState("inprogress")
-	BackupStateCompleted  = BackupState("completed")
-	BackupStateError      = BackupState("error")
-	BackupStateUnknown    = BackupState("unknown")
+	BackupStateInProgress = BackupState("InProgress")
+	BackupStateCompleted  = BackupState("Completed")
+	BackupStateError      = BackupState("Error")
+	BackupStateUnknown    = BackupState("Unknown")
 )
 
 type SnapshotBackupStatus struct {
