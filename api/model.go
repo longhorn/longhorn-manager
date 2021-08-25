@@ -83,12 +83,12 @@ type BackupTarget struct {
 
 type BackupVolume struct {
 	client.Resource
-	engineapi.BackupVolume
+	types.BackupVolumeStatus
 }
 
 type Backup struct {
 	client.Resource
-	engineapi.Backup
+	types.SnapshotBackupStatus
 }
 
 type Setting struct {
@@ -1216,17 +1216,7 @@ func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContex
 			Type:  "backupVolume",
 			Links: map[string]string{},
 		},
-		BackupVolume: engineapi.BackupVolume{
-			Name:             bv.Name,
-			Size:             bv.Status.Size,
-			Labels:           bv.Status.Labels,
-			Created:          bv.Status.CreatedAt,
-			LastBackupName:   bv.Status.LastBackupName,
-			LastBackupAt:     bv.Status.LastBackupAt,
-			DataStored:       bv.Status.DataStored,
-			Messages:         bv.Status.Messages,
-			BackingImageName: bv.Status.BackingImageName,
-		},
+		BackupVolumeStatus: bv.Status,
 	}
 	b.Actions = map[string]string{
 		"backupList":   apiContext.UrlBuilder.ActionLink(b.Resource, "backupList"),
@@ -1244,10 +1234,10 @@ func toBackupTargetCollection(bts []*longhorn.BackupTarget) *client.GenericColle
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backupTarget"}}
 }
 
-func toBackupVolumeCollection(bv map[string]*longhorn.BackupVolume, apiContext *api.ApiContext) *client.GenericCollection {
+func toBackupVolumeCollection(bvs []*longhorn.BackupVolume, apiContext *api.ApiContext) *client.GenericCollection {
 	data := []interface{}{}
-	for _, v := range bv {
-		data = append(data, toBackupVolumeResource(v, apiContext))
+	for _, bv := range bvs {
+		data = append(data, toBackupVolumeResource(bv, apiContext))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backupVolume"}}
 }
@@ -1257,31 +1247,27 @@ func toBackupResource(b *longhorn.Backup) *Backup {
 		logrus.Warnf("weird: nil backup")
 		return nil
 	}
-	return &Backup{
+	ret := &Backup{
 		Resource: client.Resource{
 			Id:    b.Name,
 			Type:  "backup",
 			Links: map[string]string{},
 		},
-		Backup: engineapi.Backup{
-			Name:                   b.Name,
-			State:                  b.Status.State,
-			URL:                    b.Status.URL,
-			SnapshotName:           b.Status.SnapshotName,
-			SnapshotCreated:        b.Status.SnapshotCreatedAt,
-			Created:                b.Status.BackupCreatedAt,
-			Size:                   b.Status.Size,
-			Labels:                 b.Status.Labels,
-			VolumeName:             b.Status.VolumeName,
-			VolumeSize:             b.Status.VolumeSize,
-			VolumeCreated:          b.Status.VolumeCreated,
-			VolumeBackingImageName: b.Status.VolumeBackingImageName,
-			Messages:               b.Status.Messages,
-		},
+		SnapshotBackupStatus: b.Status,
 	}
+	// Set the volume name from backup CR's label if it's empty.
+	// This field is empty probably because the backup state is not Ready
+	// or the content of the backup config is empty.
+	if ret.SnapshotBackupStatus.VolumeName == "" {
+		backupVolumeName, ok := b.Labels[types.LonghornLabelBackupVolume]
+		if ok {
+			ret.SnapshotBackupStatus.VolumeName = backupVolumeName
+		}
+	}
+	return ret
 }
 
-func toBackupCollection(bs map[string]*longhorn.Backup) *client.GenericCollection {
+func toBackupCollection(bs []*longhorn.Backup) *client.GenericCollection {
 	data := []interface{}{}
 	for _, v := range bs {
 		data = append(data, toBackupResource(v))

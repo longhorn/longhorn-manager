@@ -6,6 +6,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
+	"github.com/rancher/go-rancher/client"
 	"github.com/sirupsen/logrus"
 )
 
@@ -23,12 +24,20 @@ func (s *Server) BackupTargetList(w http.ResponseWriter, req *http.Request) erro
 func (s *Server) BackupVolumeList(w http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 
-	volumes, err := s.m.ListBackupVolumes()
+	bvs, err := s.backupVolumeList(apiContext)
 	if err != nil {
-		return errors.Wrapf(err, "error listing backup volumes")
+		return err
 	}
-	apiContext.Write(toBackupVolumeCollection(volumes, apiContext))
+	apiContext.Write(bvs)
 	return nil
+}
+
+func (s *Server) backupVolumeList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
+	bvs, err := s.m.ListBackupVolumesSorted()
+	if err != nil {
+		return nil, errors.Wrap(err, "error listing backup volume")
+	}
+	return toBackupVolumeCollection(bvs, apiContext), nil
 }
 
 func (s *Server) BackupVolumeGet(w http.ResponseWriter, req *http.Request) error {
@@ -53,14 +62,24 @@ func (s *Server) BackupVolumeDelete(w http.ResponseWriter, req *http.Request) er
 }
 
 func (s *Server) BackupList(w http.ResponseWriter, req *http.Request) error {
+	apiContext := api.GetApiContext(req)
+
 	volName := mux.Vars(req)["volName"]
 
-	bs, err := s.m.ListBackupsForVolume(volName)
+	bs, err := s.m.ListBackupsForVolumeSorted(volName)
 	if err != nil {
 		return errors.Wrapf(err, "error listing backups for volume '%s'", volName)
 	}
-	api.GetApiContext(req).Write(toBackupCollection(bs))
+	apiContext.Write(toBackupCollection(bs))
 	return nil
+}
+
+func (s *Server) backupListAll(apiContext *api.ApiContext) (*client.GenericCollection, error) {
+	bs, err := s.m.ListAllBackupsSorted()
+	if err != nil {
+		return nil, errors.Wrap(err, "error listing all backups")
+	}
+	return toBackupCollection(bs), nil
 }
 
 func (s *Server) BackupGet(w http.ResponseWriter, req *http.Request) error {

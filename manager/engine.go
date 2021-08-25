@@ -243,6 +243,22 @@ func (m *VolumeManager) ListBackupVolumes() (map[string]*longhorn.BackupVolume, 
 	return m.ds.ListBackupVolumes()
 }
 
+func (m *VolumeManager) ListBackupVolumesSorted() ([]*longhorn.BackupVolume, error) {
+	backupVolumeMap, err := m.ds.ListBackupVolumes()
+	if err != nil {
+		return []*longhorn.BackupVolume{}, err
+	}
+	backupVolumeNames, err := sortKeys(backupVolumeMap)
+	if err != nil {
+		return []*longhorn.BackupVolume{}, err
+	}
+	backupVolumes := make([]*longhorn.BackupVolume, len(backupVolumeMap))
+	for i, backupVolumeName := range backupVolumeNames {
+		backupVolumes[i] = backupVolumeMap[backupVolumeName]
+	}
+	return backupVolumes, nil
+}
+
 func (m *VolumeManager) GetBackupVolume(volumeName string) (*longhorn.BackupVolume, error) {
 	backupVolume, err := m.ds.GetBackupVolumeRO(volumeName)
 	if err != nil {
@@ -262,8 +278,40 @@ func (m *VolumeManager) DeleteBackupVolume(volumeName string) error {
 	return m.ds.DeleteBackupVolume(volumeName)
 }
 
+func (m *VolumeManager) ListAllBackupsSorted() ([]*longhorn.Backup, error) {
+	backupMap, err := m.ds.ListBackups()
+	if err != nil {
+		return []*longhorn.Backup{}, err
+	}
+	backupNames, err := sortKeys(backupMap)
+	if err != nil {
+		return []*longhorn.Backup{}, err
+	}
+	backups := make([]*longhorn.Backup, len(backupMap))
+	for i, backupName := range backupNames {
+		backups[i] = backupMap[backupName]
+	}
+	return backups, nil
+}
+
 func (m *VolumeManager) ListBackupsForVolume(volumeName string) (map[string]*longhorn.Backup, error) {
 	return m.ds.ListBackupsWithBackupVolumeName(volumeName)
+}
+
+func (m *VolumeManager) ListBackupsForVolumeSorted(volumeName string) ([]*longhorn.Backup, error) {
+	backupMap, err := m.ListBackupsForVolume(volumeName)
+	if err != nil {
+		return []*longhorn.Backup{}, err
+	}
+	backupNames, err := sortKeys(backupMap)
+	if err != nil {
+		return []*longhorn.Backup{}, err
+	}
+	backups := make([]*longhorn.Backup, len(backupMap))
+	for i, backupName := range backupNames {
+		backups[i] = backupMap[backupName]
+	}
+	return backups, nil
 }
 
 func (m *VolumeManager) GetBackup(backupName, volumeName string) (*longhorn.Backup, error) {
