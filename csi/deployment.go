@@ -62,7 +62,7 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 		attacherImage,
 		rootDir,
 		[]string{
-			"--v=5",
+			"--v=2",
 			"--csi-address=$(ADDRESS)",
 			"--timeout=1m50s",
 			"--leader-election",
@@ -128,7 +128,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 		provisionerImage,
 		rootDir,
 		[]string{
-			"--v=5",
+			"--v=2",
 			"--csi-address=$(ADDRESS)",
 			"--timeout=1m50s",
 			"--leader-election",
@@ -194,7 +194,7 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 		resizerImage,
 		rootDir,
 		[]string{
-			"--v=5",
+			"--v=2",
 			"--csi-address=$(ADDRESS)",
 			"--timeout=1m50s",
 			"--leader-election",
@@ -259,7 +259,7 @@ func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootD
 		snapshotterImage,
 		rootDir,
 		[]string{
-			"--v=5",
+			"--v=2",
 			"--csi-address=$(ADDRESS)",
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
@@ -358,7 +358,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 								Privileged: pointer.BoolPtr(true),
 							},
 							Args: []string{
-								"--v=5",
+								"--v=2",
 								"--csi-address=$(ADDRESS)",
 								"--kubelet-registration-path=" + GetCSISocketFilePath(rootDir),
 							},
