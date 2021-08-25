@@ -185,6 +185,22 @@ func NewRouter(s *Server) *mux.Router {
 	r.Path("/v1/ws/backingimages").Handler(f(schemas, backingImageStream))
 	r.Path("/v1/ws/{period}/backingimages").Handler(f(schemas, backingImageStream))
 
+	backupVolumeStream := NewStreamHandlerFunc("backupvolumes", s.wsc.NewWatcher("backupVolume"), s.backupVolumeList)
+	r.Path("/v1/ws/backupvolumes").Handler(f(schemas, backupVolumeStream))
+	r.Path("/v1/ws/{period}/backupvolumes").Handler(f(schemas, backupVolumeStream))
+
+	// TODO:
+	// We haven't found a way to allow passing the volume name as a parameter to filter
+	// per-backup volume's backups change thru. WebSocket endpoint. Either by:
+	// - `/v1/ws/backups/{volName}`
+	// - `/v1/ws/backups?volName=<volName>`
+	// - `/v1/ws/backupvolumes/{backupName}`
+	// Once we enhance this part, the WebSocket endpoint could only send the updates of specific
+	// backup volume changes and decrease the traffic data it sends out.
+	backupStream := NewStreamHandlerFunc("backups", s.wsc.NewWatcher("backup"), s.backupListAll)
+	r.Path("/v1/ws/backups").Handler(f(schemas, backupStream))
+	r.Path("/v1/ws/{period}/backups").Handler(f(schemas, backupStream))
+
 	eventListStream := NewStreamHandlerFunc("events", s.wsc.NewWatcher("event"), s.eventList)
 	r.Path("/v1/ws/events").Handler(f(schemas, eventListStream))
 	r.Path("/v1/ws/{period}/events").Handler(f(schemas, eventListStream))
