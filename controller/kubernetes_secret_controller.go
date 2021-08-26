@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -23,13 +24,16 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 type KubernetesSecretController struct {
 	*baseController
 
+	// which namespace controller is running with
+	namespace string
 	// use as the OwnerID of the controller
-	namespace    string
 	controllerID string
 
 	kubeClient    clientset.Interface
@@ -70,8 +74,18 @@ func NewKubernetesSecretController(
 	}
 
 	secretInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    ks.enqueueSecretChange,
-		UpdateFunc: func(old, cur interface{}) { ks.enqueueSecretChange(cur) },
+		AddFunc: ks.enqueueSecretChange,
+		UpdateFunc: func(old, cur interface{}) {
+			oldSecret := old.(*v1.Secret)
+			curSecret := cur.(*v1.Secret)
+			if curSecret.ResourceVersion == oldSecret.ResourceVersion {
+				// Periodic resync will send update events for all known secrets.
+				// Two different versions of the same secret will always have different RVs.
+				// Ref to https://github.com/kubernetes/kubernetes/blob/c8ebc8ab75a9c36453cf6fa30990fd0a277d856d/pkg/controller/deployment/deployment_controller.go#L256-L263
+				return
+			}
+			ks.enqueueSecretChange(cur)
+		},
 		DeleteFunc: ks.enqueueSecretChange,
 	})
 
@@ -82,8 +96,8 @@ func (ks *KubernetesSecretController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer ks.queue.ShutDown()
 
-	ks.logger.Infof("Start")
-	defer ks.logger.Infof("Shutting down")
+	ks.logger.Info("Start Longhorn Kubernetes secret controller")
+	defer ks.logger.Info("Shutting down Longhorn Kubernetes secret controller")
 
 	if !cache.WaitForNamedCacheSync(ks.name, stopCh, ks.secretSynced) {
 		return
@@ -136,6 +150,10 @@ func (ks *KubernetesSecretController) syncHandler(key string) (err error) {
 	if err != nil {
 		return err
 	}
+	if namespace != ks.namespace {
+		// Not ours, skip it
+		return nil
+	}
 
 	if err := ks.reconcileSecret(namespace, secretName); err != nil {
 		return err
@@ -144,44 +162,37 @@ func (ks *KubernetesSecretController) syncHandler(key string) (err error) {
 }
 
 func (ks *KubernetesSecretController) reconcileSecret(namespace, secretName string) error {
-	if namespace != ks.namespace {
-		// Not ours, skip it
+	// Get default backup target
+	backupTarget, err := ks.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+		ks.logger.Warnf("Cannot found the %s backup target", types.DefaultBackupTargetName)
 		return nil
 	}
 
-	backupTarget, err := ks.ds.GetSettingValueExisted(types.SettingNameBackupTarget)
-	if err != nil {
-		// The backup target does not exist, skip it
-		return nil
-	}
-	backupType, err := util.CheckBackupType(backupTarget)
-	if err != nil {
-		// Invalid backup target, skip it
-		return nil
-	}
-	if backupType != types.BackupStoreTypeS3 {
-		// We only focus on backup target S3, skip it
-		return nil
-	}
-
-	sn, err := ks.ds.GetSettingValueExisted(types.SettingNameBackupTargetCredentialSecret)
-	if err != nil {
-		// The backup target credential secret does not exist, skip it
-		return nil
-	}
-	if sn != secretName {
-		// Not ours, skip it
+	backupType, err := util.CheckBackupType(backupTarget.Spec.BackupTargetURL)
+	if err != nil || backupType != types.BackupStoreTypeS3 || backupTarget.Spec.CredentialSecret != secretName {
+		// We only focus on backup target S3 and the credential secret setting matches to the current secret name
 		return nil
 	}
 
 	secret, err := ks.ds.GetSecretRO(namespace, secretName)
-	if err != nil {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return err
+	}
+	awsIAMRoleArn := ""
+	if secret != nil {
+		awsIAMRoleArn = string(secret.Data[types.AWSIAMRoleArn])
 	}
 
 	// Annotates AWS IAM role arn to the manager as well as the replica instance managers
-	awsIAMRoleArn := string(secret.Data[types.AWSIAMRoleArn])
-	return ks.annotateAWSIAMRoleArn(awsIAMRoleArn)
+	if err := ks.annotateAWSIAMRoleArn(awsIAMRoleArn); err != nil {
+		return err
+	}
+	// Trigger backup_target_controller once the credential secret changes
+	return ks.triggerSyncBackupTarget(backupTarget)
 }
 
 func (ks *KubernetesSecretController) enqueueSecretChange(obj interface{}) {
@@ -234,5 +245,20 @@ func (ks *KubernetesSecretController) annotateAWSIAMRoleArn(awsIAMRoleArn string
 		ks.logger.Infof("AWS IAM role for pod %v/%v updated", pod.Namespace, pod.Name)
 	}
 
+	return nil
+}
+
+// triggerSyncBackupTarget sets the `spec.syncRequestedAt` trigger backup_target_controller
+// to run reconcile loop
+func (ks *KubernetesSecretController) triggerSyncBackupTarget(backupTarget *longhorn.BackupTarget) error {
+	if backupTarget.Status.OwnerID != ks.controllerID {
+		return nil
+	}
+
+	backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
+	if _, err := ks.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+		ks.logger.WithError(err).Warn("Failed to updating backup target")
+	}
+	ks.logger.Debug("Trigger sync backup target because the credential secret change")
 	return nil
 }
