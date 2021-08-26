@@ -489,7 +489,7 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		sm.Status.State = types.ShareManagerStateStarting
 	}
 
-	// HACK: at the moment the consumer needs to control the state transitions of the volume
+	// TODO: #2527 at the moment the consumer needs to control the state transitions of the volume
 	//  since it's not possible to just specify the desired state, we should fix that down the line.
 	//  for the actual state transition we need to request detachment then wait for detachment
 	//  afterwards we can request attachment to the new node.
@@ -497,16 +497,22 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 	if volume.Spec.NodeID != "" && err != nil {
 		log.WithError(err).Warnf("cannot check IsNodeDownOrDeleted(%v) when syncShareManagerVolume", volume.Spec.NodeID)
 	}
-	shouldDetach := isDown && (volume.Status.State == types.VolumeStateAttached || volume.Status.State == types.VolumeStateAttaching)
+
+	nodeSwitch := volume.Spec.NodeID != "" && volume.Spec.NodeID != sm.Status.OwnerID
+	buggedVolume := volume.Spec.NodeID != "" && volume.Spec.NodeID == sm.Status.OwnerID && volume.Status.CurrentNodeID != "" && volume.Status.CurrentNodeID != volume.Spec.NodeID
+	shouldDetach := isDown || buggedVolume || nodeSwitch
 	if shouldDetach {
-		log.WithField("volume", volume.Name).Infof("Requesting Volume detach from previous node %v", volume.Status.CurrentNodeID)
-		volume.Spec.NodeID = ""
-		if volume, err = c.ds.UpdateVolume(volume); err != nil {
+		log.Infof("Requesting Volume detach from node %v attached node %v", volume.Spec.NodeID, volume.Status.CurrentNodeID)
+		if err = c.detachShareManagerVolume(sm); err != nil {
 			return err
 		}
 	}
 
-	if volume.Status.State == types.VolumeStateDetached && volume.Spec.NodeID == "" {
+	// TODO: #2527 this detach/attach is so brittle, we really need to fix the volume controller
+	// 	we need to wait till the volume is completely detached even though the state might be detached
+	// 	it might still have a current node id set, which will then block reattachment forever
+	shouldAttach := volume.Status.State == types.VolumeStateDetached && volume.Spec.NodeID == "" && volume.Status.CurrentNodeID == ""
+	if shouldAttach {
 		log.WithField("volume", volume.Name).Info("Requesting Volume attach to share manager node")
 		volume.Spec.NodeID = sm.Status.OwnerID
 		if volume, err = c.ds.UpdateVolume(volume); err != nil {
