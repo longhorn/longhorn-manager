@@ -162,6 +162,10 @@ func (kc *KubernetesPodController) syncHandler(key string) (err error) {
 		return errors.Wrapf(err, "Error getting Pod: %s", name)
 	}
 	nodeID := pod.Spec.NodeName
+	if nodeID == "" {
+		kc.logger.WithField("pod", pod.Name).Trace("skipping pod check since pod is not scheduled yet")
+		return nil
+	}
 	if err := kc.handlePodDeletionIfNodeDown(pod, nodeID, namespace); err != nil {
 		return err
 	}
