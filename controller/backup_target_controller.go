@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -237,14 +238,22 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		return nil
 	}
 
+	var backupTargetClient *engineapi.BackupTargetClient
+	existingBackupTarget := backupTarget.DeepCopy()
 	syncTime := metav1.Time{Time: time.Now().UTC()}
 	defer func() {
 		if err != nil {
 			return
 		}
-		// There is no need to do deep equal since this controller
-		// always updates timestamp `backupTarget.Status.LastSyncedAt`
-		backupTarget.Status.LastSyncedAt = syncTime
+		if backupTargetClient != nil {
+			// If there is something wrong with the backup target config and Longhorn cannot launch the client,
+			// lacking the credential for example, Longhorn won't even try to connect with the remote backupstore.
+			// In this case, the controller should not update `Status.LastSyncedAt`.
+			backupTarget.Status.LastSyncedAt = syncTime
+		}
+		if reflect.DeepEqual(existingBackupTarget.Status, backupTarget.Status) {
+			return
+		}
 		if _, err := btc.ds.UpdateBackupTargetStatus(backupTarget); err != nil && apierrors.IsConflict(errors.Cause(err)) {
 			log.WithError(err).Debugf("Requeue %v due to conflict", name)
 			btc.enqueueBackupTarget(backupTarget)
@@ -265,7 +274,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	}
 
 	// Initialize a backup target client
-	backupTargetClient, err := getBackupTargetClient(btc.ds, backupTarget)
+	backupTargetClient, err = getBackupTargetClient(btc.ds, backupTarget)
 	if err != nil {
 		backupTarget.Status.Available = false
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
