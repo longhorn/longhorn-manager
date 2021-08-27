@@ -2621,6 +2621,11 @@ func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longho
 		if r.Spec.NodeID == "" {
 			continue
 		}
+		if isDownOrDeleted, err := vc.ds.IsNodeDownOrDeleted(r.Spec.NodeID); err != nil {
+			return err
+		} else if isDownOrDeleted {
+			continue
+		}
 		if mode := e.Status.ReplicaModeMap[r.Name]; mode != types.ReplicaModeRW {
 			allScheduledReplicasIncluded = false
 			break
