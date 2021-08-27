@@ -3284,10 +3284,10 @@ func (vc *VolumeController) enqueueVolumesForBackingImageDataSource(obj interfac
 func (vc *VolumeController) ReconcileBackupVolumeState(volume *longhorn.Volume) error {
 	log := getLoggerForVolume(vc.logger, volume)
 
-	// Update last backup for the DR volume or
+	// Update last backup for the DR/restore volume or
 	// update last backup for the volume name matches backup volume name
 	var backupVolumeName string
-	if volume.Spec.Standby {
+	if volume.Status.RestoreRequired {
 		name, ok := volume.Labels[types.LonghornLabelBackupVolume]
 		if !ok {
 			log.Warn("Cannot find the backup volume label")
