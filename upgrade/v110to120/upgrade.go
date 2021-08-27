@@ -107,7 +107,8 @@ func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, 
 	for _, im := range imList.Items {
 		if !util.FinalizerExists(longhornFinalizerKey, &im) {
 			// finalizer already removed
-			return nil
+			// skip updating this instance manager
+			continue
 		}
 		if err := util.RemoveFinalizer(longhornFinalizerKey, &im); err != nil {
 			return err
