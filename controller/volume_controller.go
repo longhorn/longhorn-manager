@@ -1265,15 +1265,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			if r.Spec.NodeID == "" {
 				continue
 			}
-			nodeDown, err := vc.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
-			if err != nil {
-				return errors.Wrapf(err, "cannot find node %v", r.Spec.NodeID)
-			}
 			canIMLaunchReplica, err := vc.canInstanceManagerLaunchReplica(r)
 			if err != nil {
 				return err
 			}
-			if nodeDown || !canIMLaunchReplica {
+			if !canIMLaunchReplica {
 				if r.Spec.FailedAt == "" {
 					r.Spec.FailedAt = vc.nowHandler()
 				}
@@ -1381,6 +1377,13 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 }
 
 func (vc *VolumeController) canInstanceManagerLaunchReplica(r *longhorn.Replica) (bool, error) {
+	nodeDown, err := vc.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
+	if err != nil {
+		return false, errors.Wrapf(err, "fail checking IsNodeDownOrDeleted %v", r.Spec.NodeID)
+	}
+	if nodeDown {
+		return false, nil
+	}
 	// Replica already had IM
 	if r.Status.InstanceManagerName != "" {
 		return true, nil
