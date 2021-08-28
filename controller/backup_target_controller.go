@@ -402,7 +402,7 @@ func (btc *BackupTargetController) cleanupBackupVolumes() error {
 
 	var errs []string
 	for backupVolumeName := range clusterBackupVolumes {
-		if err = btc.ds.DeleteBackupVolume(backupVolumeName); err != nil {
+		if err = btc.ds.DeleteBackupVolume(backupVolumeName); err != nil && !apierrors.IsNotFound(err) {
 			errs = append(errs, err.Error())
 			continue
 		}
