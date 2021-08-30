@@ -83,12 +83,35 @@ type BackupTarget struct {
 
 type BackupVolume struct {
 	client.Resource
-	types.BackupVolumeStatus
+
+	Name                 string            `json:"name"`
+	Size                 string            `json:"size"`
+	Labels               map[string]string `json:"labels"`
+	Created              string            `json:"created"`
+	LastBackupName       string            `json:"lastBackupName"`
+	LastBackupAt         string            `json:"lastBackupAt"`
+	DataStored           string            `json:"dataStored"`
+	Messages             map[string]string `json:"messages"`
+	BackingImageName     string            `json:"backingImageName"`
+	BackingImageChecksum string            `json:"backingImageChecksum"`
 }
 
 type Backup struct {
 	client.Resource
-	types.SnapshotBackupStatus
+
+	Name                   string            `json:"name"`
+	State                  types.BackupState `json:"state"`
+	URL                    string            `json:"url"`
+	SnapshotName           string            `json:"snapshotName"`
+	SnapshotCreated        string            `json:"snapshotCreated"`
+	Created                string            `json:"created"`
+	Size                   string            `json:"size"`
+	Labels                 map[string]string `json:"labels"`
+	Messages               map[string]string `json:"messages"`
+	VolumeName             string            `json:"volumeName"`
+	VolumeSize             string            `json:"volumeSize"`
+	VolumeCreated          string            `json:"volumeCreated"`
+	VolumeBackingImageName string            `json:"volumeBackingImageName"`
 }
 
 type Setting struct {
@@ -1216,7 +1239,16 @@ func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContex
 			Type:  "backupVolume",
 			Links: map[string]string{},
 		},
-		BackupVolumeStatus: bv.Status,
+		Name:                 bv.Name,
+		Size:                 bv.Status.Size,
+		Labels:               bv.Status.Labels,
+		Created:              bv.Status.CreatedAt,
+		LastBackupName:       bv.Status.LastBackupName,
+		LastBackupAt:         bv.Status.LastBackupAt,
+		DataStored:           bv.Status.DataStored,
+		Messages:             bv.Status.Messages,
+		BackingImageName:     bv.Status.BackingImageName,
+		BackingImageChecksum: bv.Status.BackingImageChecksum,
 	}
 	b.Actions = map[string]string{
 		"backupList":   apiContext.UrlBuilder.ActionLink(b.Resource, "backupList"),
@@ -1253,15 +1285,27 @@ func toBackupResource(b *longhorn.Backup) *Backup {
 			Type:  "backup",
 			Links: map[string]string{},
 		},
-		SnapshotBackupStatus: b.Status,
+		Name:                   b.Name,
+		State:                  b.Status.State,
+		URL:                    b.Status.URL,
+		SnapshotName:           b.Status.SnapshotName,
+		SnapshotCreated:        b.Status.SnapshotCreatedAt,
+		Created:                b.Status.BackupCreatedAt,
+		Size:                   b.Status.Size,
+		Labels:                 b.Status.Labels,
+		Messages:               b.Status.Messages,
+		VolumeName:             b.Status.VolumeName,
+		VolumeSize:             b.Status.VolumeSize,
+		VolumeCreated:          b.Status.VolumeCreated,
+		VolumeBackingImageName: b.Status.VolumeBackingImageName,
 	}
 	// Set the volume name from backup CR's label if it's empty.
 	// This field is empty probably because the backup state is not Ready
 	// or the content of the backup config is empty.
-	if ret.SnapshotBackupStatus.VolumeName == "" {
+	if ret.VolumeName == "" {
 		backupVolumeName, ok := b.Labels[types.LonghornLabelBackupVolume]
 		if ok {
-			ret.SnapshotBackupStatus.VolumeName = backupVolumeName
+			ret.VolumeName = backupVolumeName
 		}
 	}
 	return ret
