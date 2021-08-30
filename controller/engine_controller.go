@@ -1047,6 +1047,10 @@ func checkSizeBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine,
 	if err != nil {
 		return false, err
 	}
+	// Need to wait for BackupVolume CR syncing with the remote backup target.
+	if bv.Status.Size == "" {
+		return false, nil
+	}
 	bvSize, err := strconv.ParseInt(bv.Status.Size, 10, 64)
 	if err != nil {
 		return false, err
