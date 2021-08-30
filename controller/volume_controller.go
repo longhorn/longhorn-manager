@@ -2352,7 +2352,7 @@ func (vc *VolumeController) checkAndInitVolumeRestore(v *longhorn.Volume) error 
 
 	// If KubernetesStatus is set on Backup, restore it.
 	kubeStatus := &types.KubernetesStatus{}
-	if statusJSON, ok := backup.Labels[types.KubernetesStatusLabel]; ok {
+	if statusJSON, ok := backup.Status.Labels[types.KubernetesStatusLabel]; ok {
 		if err := json.Unmarshal([]byte(statusJSON), kubeStatus); err != nil {
 			log.WithError(err).Warnf("Ignore KubernetesStatus JSON for backup %v", backup.Name)
 		} else {
