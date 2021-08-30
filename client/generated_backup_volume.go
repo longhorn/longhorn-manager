@@ -11,8 +11,6 @@ type BackupVolume struct {
 
 	BackingImageName string `json:"backingImageName,omitempty" yaml:"backing_image_name,omitempty"`
 
-	Backups map[string]string `json:"backups,omitempty" yaml:"backups,omitempty"`
-
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`
 
 	DataStored string `json:"dataStored,omitempty" yaml:"data_stored,omitempty"`
