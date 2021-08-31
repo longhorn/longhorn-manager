@@ -37,8 +37,6 @@ type RancherClient struct {
 	VolumeCondition               VolumeConditionOperations
 	NodeCondition                 NodeConditionOperations
 	DiskCondition                 DiskConditionOperations
-	SupportBundle                 SupportBundleOperations
-	SupportBundleInitateInput     SupportBundleInitateInputOperations
 	Tag                           TagOperations
 	InstanceManager               InstanceManagerOperations
 	BackingImageDiskFileStatus    BackingImageDiskFileStatusOperations
@@ -97,8 +95,6 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.VolumeCondition = newVolumeConditionClient(client)
 	client.NodeCondition = newNodeConditionClient(client)
 	client.DiskCondition = newDiskConditionClient(client)
-	client.SupportBundle = newSupportBundleClient(client)
-	client.SupportBundleInitateInput = newSupportBundleInitateInputClient(client)
 	client.Tag = newTagClient(client)
 	client.InstanceManager = newInstanceManagerClient(client)
 	client.BackingImageDiskFileStatus = newBackingImageDiskFileStatusClient(client)

@@ -29,7 +29,6 @@ type VolumeManager struct {
 	ds *datastore.DataStore
 
 	currentNodeID string
-	sb            *SupportBundle
 }
 
 func NewVolumeManager(currentNodeID string, ds *datastore.DataStore) *VolumeManager {
@@ -923,22 +922,6 @@ func (m *VolumeManager) DeleteReplica(volumeName, replicaName string) error {
 	}
 	logrus.Debugf("Deleted replica %v of volume %v", replicaName, volumeName)
 	return nil
-}
-
-func (m *VolumeManager) GetManagerNodeIPMap() (map[string]string, error) {
-	podList, err := m.ds.ListManagerPods()
-	if err != nil {
-		return nil, err
-	}
-
-	nodeIPMap := map[string]string{}
-	for _, pod := range podList {
-		if nodeIPMap[pod.Spec.NodeName] != "" {
-			return nil, fmt.Errorf("multiple managers on the node %v", pod.Spec.NodeName)
-		}
-		nodeIPMap[pod.Spec.NodeName] = pod.Status.PodIP
-	}
-	return nodeIPMap, nil
 }
 
 func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Volume, err error) {

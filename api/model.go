@@ -1,9 +1,7 @@
 package api
 
 import (
-	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
@@ -258,24 +256,20 @@ type Event struct {
 	EventType string   `json:"eventType"`
 }
 
+type Tag struct {
+	client.Resource
+	Name    string `json:"name"`
+	TagType string `json:"tagType"`
+}
+
 type SupportBundle struct {
 	client.Resource
-	NodeID             string              `json:"nodeID"`
-	State              manager.BundleState `json:"state"`
-	Name               string              `json:"name"`
-	ErrorMessage       manager.BundleError `json:"errorMessage"`
-	ProgressPercentage int                 `json:"progressPercentage"`
+	types.SupportBundleSpec
 }
 
 type SupportBundleInitateInput struct {
 	IssueURL    string `json:"issueURL"`
 	Description string `json:"description"`
-}
-
-type Tag struct {
-	client.Resource
-	Name    string `json:"name"`
-	TagType string `json:"tagType"`
 }
 
 type BackupStatus struct {
@@ -398,6 +392,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("diskCondition", types.Condition{})
 
 	schemas.AddType("event", Event{})
+
 	schemas.AddType("supportBundle", SupportBundle{})
 	schemas.AddType("supportBundleInitateInput", SupportBundleInitateInput{})
 
@@ -1371,8 +1366,6 @@ type Server struct {
 	m   *manager.VolumeManager
 	wsc *controller.WebsocketController
 	fwd *Fwd
-
-	httpClient *http.Client
 }
 
 func NewServer(m *manager.VolumeManager, wsc *controller.WebsocketController) *Server {
@@ -1380,9 +1373,6 @@ func NewServer(m *manager.VolumeManager, wsc *controller.WebsocketController) *S
 		m:   m,
 		wsc: wsc,
 		fwd: NewFwd(m),
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
 	}
 	return s
 }
@@ -1456,17 +1446,17 @@ func toEventCollection(eventList *v1.EventList) *client.GenericCollection {
 }
 
 //Support Bundle Resource
-func toSupportBundleResource(nodeID string, sb *manager.SupportBundle) *SupportBundle {
-	return &SupportBundle{
+func toSupportBundleResource(nodeID string, sb *longhorn.SupportBundle) *manager.SupportBundle {
+	return &manager.SupportBundle{
 		Resource: client.Resource{
 			Id:   nodeID,
 			Type: "supportbundle",
 		},
 		NodeID:             nodeID,
-		State:              sb.State,
 		Name:               sb.Name,
-		ErrorMessage:       sb.Error,
-		ProgressPercentage: sb.ProgressPercentage,
+		ProgressPercentage: sb.Status.Progress,
+		State:              sb.Status.State,
+		ErrorMessage:       sb.Status.ErrorMessage,
 	}
 }
 

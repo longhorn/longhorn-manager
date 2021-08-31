@@ -1,17 +1,12 @@
 package api
 
 import (
-	"fmt"
-	"io"
 	"net/http"
-	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
-
-	"github.com/longhorn/longhorn-manager/manager"
 )
 
 func (s *Server) EventList(rw http.ResponseWriter, req *http.Request) error {
@@ -31,62 +26,6 @@ func (s *Server) eventList(apiContext *api.ApiContext) (*client.GenericCollectio
 		return nil, errors.Wrap(err, "fail to list events")
 	}
 	return toEventCollection(eventList), nil
-}
-
-func (s *Server) InitiateSupportBundle(w http.ResponseWriter, req *http.Request) error {
-	var sb *manager.SupportBundle
-	var supportBundleInput SupportBundleInitateInput
-
-	apiContext := api.GetApiContext(req)
-	if err := apiContext.Read(&supportBundleInput); err != nil {
-		return err
-	}
-	sb, err := s.m.InitSupportBundle(supportBundleInput.IssueURL, supportBundleInput.Description)
-	if err != nil {
-		return fmt.Errorf("unable to initiate Support Bundle Download:%v", err)
-	}
-	apiContext.Write(toSupportBundleResource(s.m.GetCurrentNodeID(), sb))
-	return nil
-}
-
-func (s *Server) QuerySupportBundle(w http.ResponseWriter, req *http.Request) error {
-	bundleName := mux.Vars(req)["bundleName"]
-	apiContext := api.GetApiContext(req)
-	sb, err := s.m.GetSupportBundle(bundleName)
-	if err != nil {
-		return errors.Wrap(err, "failed to get support bundle")
-	}
-	apiContext.Write(toSupportBundleResource(s.m.GetCurrentNodeID(), sb))
-	return nil
-}
-
-func (s *Server) DownloadSupportBundle(w http.ResponseWriter, req *http.Request) error {
-	bundleName := mux.Vars(req)["bundleName"]
-	sb, err := s.m.GetSupportBundle(bundleName)
-	if err != nil {
-		return err
-	}
-
-	if sb.State == manager.BundleStateError {
-		return errors.Wrap(err, "support bundle creation failed")
-	}
-	if sb.State == manager.BundleStateInProgress {
-		return fmt.Errorf("support bundle creation is still in progress")
-	}
-
-	file, err := s.m.GetBundleFileHandler()
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	w.Header().Set("Content-Disposition", "attachment; filename="+sb.Filename)
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Length", strconv.FormatInt(sb.Size, 10))
-	if _, err := io.Copy(w, file); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (s *Server) DiskTagList(rw http.ResponseWriter, req *http.Request) error {
