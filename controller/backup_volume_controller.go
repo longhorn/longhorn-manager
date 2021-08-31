@@ -284,7 +284,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	for _, b := range clusterBackups {
 		// Skip the Backup CR which is created from the local cluster and
 		// the snapshot backup hasn't be completed or pulled from the remote backup target yet
-		if b.Spec.SnapshotName != "" && b.Status.State != types.BackupStateCompleted && b.Status.State != types.BackupStateReady {
+		if b.Spec.SnapshotName != "" && b.Status.State != types.BackupStateCompleted {
 			continue
 		}
 		clustersSet.Insert(b.Name)
