@@ -246,6 +246,7 @@ func translateVolumeRecurringJobsToLabel(namespace string, lhClient *lhclientset
 			volumeLabels = map[string]string{}
 		}
 
+		updateVolume := false
 		for _, recurringJob := range volume.Spec.RecurringJobs {
 			recurringJobSpec := types.RecurringJobSpec{
 				Name:        recurringJob.Name,
@@ -265,17 +266,19 @@ func translateVolumeRecurringJobsToLabel(namespace string, lhClient *lhclientset
 			}
 			key := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJob, id)
 			volumeLabels[key] = types.LonghornLabelValueEnabled
+			updateVolume = true
 		}
-		if len(volumeLabels) != 0 {
+		if updateVolume {
 			volume.Labels = volumeLabels
 			volume.Spec.RecurringJobs = nil
+
+			logrus.Infof("Updating %v volume labels to %v", volume.Name, volume.Labels)
+			updatedVolume, err := lhClient.LonghornV1beta1().Volumes(namespace).Update(context.TODO(), &volume, metav1.UpdateOptions{})
+			if err != nil {
+				return errors.Wrapf(err, "failed to update %v volume", volume.Name)
+			}
+			volume = *updatedVolume
 		}
-		logrus.Infof("Updating %v volume labels to %v", volume.Name, volume.Labels)
-		updatedVolume, err := lhClient.LonghornV1beta1().Volumes(namespace).Update(context.TODO(), &volume, metav1.UpdateOptions{})
-		if err != nil {
-			return errors.Wrapf(err, "failed to update %v volume", volume.Name)
-		}
-		volume = *updatedVolume
 	}
 	return nil
 }
