@@ -138,7 +138,7 @@ func translateStorageClassRecurringJobsToSelector(namespace string, kubeClient *
 		},
 	)
 
-	log.Debugf("Getting %v configMap", types.DefaultStorageClassConfigMapName)
+	log.Debugf(upgradeLogPrefix+"Getting %v configMap", types.DefaultStorageClassConfigMapName)
 	storageClassCM, err := kubeClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), types.DefaultStorageClassConfigMapName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to get %v ConfigMap: %v", types.DefaultStorageClassConfigMapName, err)
@@ -179,7 +179,7 @@ func translateStorageClassRecurringJobsToSelector(namespace string, kubeClient *
 			recurringJobIDs = append(recurringJobIDs, id)
 		}
 	}
-	log.Debugf("Converting recurringJobs %v to recurringJobSelector", recurringJobIDs)
+	log.Debugf(upgradeLogPrefix+"Converting recurringJobs %v to recurringJobSelector", recurringJobIDs)
 	scRecurringJobSelectors := []recurringJobSelector{}
 	scRecurringJobSelectorJSON, ok := sc.Parameters["recurringJobSelector"]
 	scRecurringJobSelectorIDs := []string{}
@@ -205,14 +205,14 @@ func translateStorageClassRecurringJobsToSelector(namespace string, kubeClient *
 	if err != nil {
 		return errors.Wrapf(err, "failed to marshal JSON %v", scRecurringJobSelectors)
 	}
-	log.Infof("Adding %v to recurringJobSelector", recurringJobIDs)
+	log.Infof(upgradeLogPrefix+"Adding %v to recurringJobSelector", recurringJobIDs)
 	sc.Parameters["recurringJobSelector"] = string(selectorJSON)
-	log.Debug("Removing recurringJobs")
+	log.Debug(upgradeLogPrefix + "Removing recurringJobs")
 	delete(sc.Parameters, "recurringJobs")
 
 	newStorageClassYAML, err := yaml.Marshal(sc)
 	storageClassCM.Data["storageclass.yaml"] = string(newStorageClassYAML)
-	logrus.Infof("Updating %v configmap", storageClassCM.Name)
+	logrus.Infof(upgradeLogPrefix+"Updating %v configmap", storageClassCM.Name)
 	if _, err := kubeClient.CoreV1().ConfigMaps(namespace).Update(context.TODO(), storageClassCM, metav1.UpdateOptions{}); err != nil {
 		return errors.Wrapf(err, "failed to update %v configmap", storageClassCM.Name)
 	}
@@ -231,11 +231,11 @@ func translateVolumeRecurringJobsToLabel(namespace string, lhClient *lhclientset
 		},
 	)
 
-	log.Debugf("Listing all volumes")
+	log.Debug(upgradeLogPrefix + "Listing all volumes")
 	volumeList, err := lhClient.LonghornV1beta1().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Debug("Cannot find volumes")
+			log.Debug(upgradeLogPrefix + "Cannot find volumes")
 			return nil
 		}
 		return errors.Wrap(err, "failed to list volumes")
@@ -272,7 +272,7 @@ func translateVolumeRecurringJobsToLabel(namespace string, lhClient *lhclientset
 			volume.Labels = volumeLabels
 			volume.Spec.RecurringJobs = nil
 
-			logrus.Infof("Updating %v volume labels to %v", volume.Name, volume.Labels)
+			log.Infof(upgradeLogPrefix+"Updating %v volume labels to %v", volume.Name, volume.Labels)
 			updatedVolume, err := lhClient.LonghornV1beta1().Volumes(namespace).Update(context.TODO(), &volume, metav1.UpdateOptions{})
 			if err != nil {
 				return errors.Wrapf(err, "failed to update %v volume", volume.Name)
@@ -296,26 +296,26 @@ func translateVolumeRecurringJobToCRs(namespace string, lhClient *lhclientset.Cl
 	)
 
 	if len(sharedMap) == 0 {
-		log.Debug("Found 0 recurring job needs to be converted to CR")
+		log.Debug(upgradeLogPrefix + "Found 0 recurring job needs to be converted to CR")
 		return nil
 	}
 
 	for _, spec := range sharedMap {
-		log.Infof("Creating %v recurring job CR", spec.Name)
+		log.Infof(upgradeLogPrefix+"Creating %v recurring job CR", spec.Name)
 		job := &longhorn.RecurringJob{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: spec.Name,
 			},
 			Spec: *spec,
 		}
-		log.Debugf("Checking if %v recurring job CR already exists", spec.Name)
+		log.Debugf(upgradeLogPrefix+"Checking if %v recurring job CR already exists", spec.Name)
 		obj, err := lhClient.LonghornV1beta1().RecurringJobs(namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
 		if err == nil {
-			log.Debugf("Recurring job CR already exists %v", obj)
+			log.Debugf(upgradeLogPrefix+"Recurring job CR already exists %v", obj)
 			continue
 		}
 		if !apierrors.IsNotFound(err) {
-			log.Debugf("Failed to get recurring job %v", spec.Name)
+			log.Debugf(upgradeLogPrefix+"Failed to get recurring job %v", spec.Name)
 		}
 		_, err = lhClient.LonghornV1beta1().RecurringJobs(namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		if err != nil {
@@ -337,11 +337,11 @@ func cleanupAppliedVolumeCronJobs(namespace string, lhClient *lhclientset.Client
 		},
 	)
 
-	log.Debugf("Listing all volumes")
+	log.Debug(upgradeLogPrefix + "Listing all volumes")
 	volumeList, err := lhClient.LonghornV1beta1().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Debug("Cannot find volumes")
+			log.Debug(upgradeLogPrefix + "Cannot find volumes")
 			return nil
 		}
 		return errors.Wrap(err, "failed to list volumes")
@@ -350,19 +350,19 @@ func cleanupAppliedVolumeCronJobs(namespace string, lhClient *lhclientset.Client
 	propagation := metav1.DeletePropagationForeground
 	cronJobClient := kubeClient.BatchV1beta1().CronJobs(namespace)
 	for _, v := range volumeList.Items {
-		log.Debugf("Listing all cron jobs for volume %v", v.Name)
+		log.Debugf(upgradeLogPrefix+"Listing all cron jobs for volume %v", v.Name)
 		appliedCronJobROs, err := listVolumeCronJobROs(v.Name, namespace, kubeClient)
 		if err != nil {
 			return errors.Wrapf(err, "failed to list all cron jobs for volume %v", v.Name)
 		}
 		for name := range appliedCronJobROs {
-			log.Infof("Deleting %v cronjob job for %v volume", name, v.Name)
+			log.Infof(upgradeLogPrefix+"Deleting %v cronjob job for %v volume", name, v.Name)
 			err := cronJobClient.Delete(context.TODO(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
 			if err != nil {
 				return errors.Wrapf(err, "failed to delete %v cron job for volume %v", name, v.Name)
 			}
 		}
-		log.Infof("Deleted %v cronjob job for %v volume", len(appliedCronJobROs), v.Name)
+		log.Infof(upgradeLogPrefix+"Deleted %v cronjob job for %v volume", len(appliedCronJobROs), v.Name)
 	}
 	return nil
 }
