@@ -440,6 +440,12 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 	}
 	existingBIDS := bids.DeepCopy()
 
+	recoveryWaitIntervalSettingValue, err := bic.ds.GetSettingAsInt(types.SettingNameBackingImageRecoveryWaitInterval)
+	if err != nil {
+		return err
+	}
+	recoveryWaitInterval := time.Duration(recoveryWaitIntervalSettingValue) * time.Second
+
 	// If all files in Spec.Disk becomes unavailable and there is no extra ready files.
 	allFilesUnavailable := true
 	if bi.Spec.Disks != nil {
@@ -449,12 +455,39 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 				allFilesUnavailable = false
 				break
 			}
+			if fileStatus.LastStateTransitionTime == "" {
+				allFilesUnavailable = false
+				break
+			}
+			lastStateTransitionTime, err := util.ParseTime(fileStatus.LastStateTransitionTime)
+			if err != nil {
+				return err
+			}
+			if lastStateTransitionTime.Add(recoveryWaitInterval).After(time.Now()) {
+				allFilesUnavailable = false
+				break
+			}
 		}
 	}
 	if allFilesUnavailable {
 		// Check if there are extra available files outside of Spec.Disks
-		for _, fileStatus := range bi.Status.DiskFileStatusMap {
+		for diskUUID, fileStatus := range bi.Status.DiskFileStatusMap {
+			if _, exists := bi.Spec.Disks[diskUUID]; exists {
+				continue
+			}
 			if fileStatus.State != types.BackingImageStateFailed && fileStatus.State != types.BackingImageStateUnknown {
+				allFilesUnavailable = false
+				break
+			}
+			if fileStatus.LastStateTransitionTime == "" {
+				allFilesUnavailable = false
+				break
+			}
+			lastStateTransitionTime, err := util.ParseTime(fileStatus.LastStateTransitionTime)
+			if err != nil {
+				return err
+			}
+			if lastStateTransitionTime.Add(recoveryWaitInterval).After(time.Now()) {
 				allFilesUnavailable = false
 				break
 			}
