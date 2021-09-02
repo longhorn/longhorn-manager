@@ -37,5 +37,6 @@ data:
     auto-cleanup-system-generated-snapshot:
     concurrent-automatic-engine-upgrade-per-node-limit:
     backing-image-cleanup-wait-interval:
+    backing-image-recovery-wait-interval:
     guaranteed-engine-manager-cpu:
     guaranteed-replica-manager-cpu:
