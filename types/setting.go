@@ -78,6 +78,7 @@ const (
 	SettingNameAutoCleanupSystemGeneratedSnapshot           = SettingName("auto-cleanup-system-generated-snapshot")
 	SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit = SettingName("concurrent-automatic-engine-upgrade-per-node-limit")
 	SettingNameBackingImageCleanupWaitInterval              = SettingName("backing-image-cleanup-wait-interval")
+	SettingNameBackingImageRecoveryWaitInterval             = SettingName("backing-image-recovery-wait-interval")
 	SettingNameGuaranteedEngineManagerCPU                   = SettingName("guaranteed-engine-manager-cpu")
 	SettingNameGuaranteedReplicaManagerCPU                  = SettingName("guaranteed-replica-manager-cpu")
 )
@@ -125,6 +126,7 @@ var (
 		SettingNameAutoCleanupSystemGeneratedSnapshot,
 		SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit,
 		SettingNameBackingImageCleanupWaitInterval,
+		SettingNameBackingImageRecoveryWaitInterval,
 		SettingNameGuaranteedEngineManagerCPU,
 		SettingNameGuaranteedReplicaManagerCPU,
 	}
@@ -193,6 +195,7 @@ var (
 		SettingNameAutoCleanupSystemGeneratedSnapshot:           SettingDefinitionAutoCleanupSystemGeneratedSnapshot,
 		SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit: SettingDefinitionConcurrentAutomaticEngineUpgradePerNodeLimit,
 		SettingNameBackingImageCleanupWaitInterval:              SettingDefinitionBackingImageCleanupWaitInterval,
+		SettingNameBackingImageRecoveryWaitInterval:             SettingDefinitionBackingImageRecoveryWaitInterval,
 		SettingNameGuaranteedEngineManagerCPU:                   SettingDefinitionGuaranteedEngineManagerCPU,
 		SettingNameGuaranteedReplicaManagerCPU:                  SettingDefinitionGuaranteedReplicaManagerCPU,
 	}
@@ -671,6 +674,19 @@ var (
 		Default:     "60",
 	}
 
+	SettingDefinitionBackingImageRecoveryWaitInterval = SettingDefinition{
+		DisplayName: "Backing Image Recovery Wait Interval",
+		Description: "In seconds. The interval determines how long Longhorn will wait before re-downloading the backing image file when all disk files of this backing image become failed or unknown. \n\n" +
+			"WARNING: \n\n" +
+			"  - This recovery only works for the backing image of which the creation type is \"download\". \n\n" +
+			"  - File state \"unknown\" means the related manager pods on the pod is not running or the node itself is down/disconnected.",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeInt,
+		Required: true,
+		ReadOnly: false,
+		Default:  "300",
+	}
+
 	SettingDefinitionGuaranteedEngineManagerCPU = SettingDefinition{
 		DisplayName: "Guaranteed Engine Manager CPU",
 		Description: "This integer value indicates how many percentage of the total allocatable CPU on each node will be reserved for each engine manager Pod. For example, 10 means 10% of the total CPU on a node will be allocated to each engine manager pod on this node. This will help maintain engine stability during high node workload. \n\n" +
@@ -820,6 +836,8 @@ func ValidateInitSetting(name, value string) (err error) {
 			return fmt.Errorf("cannot set a value %v for the deprecated setting %v", value, sName)
 		}
 	case SettingNameBackingImageCleanupWaitInterval:
+		fallthrough
+	case SettingNameBackingImageRecoveryWaitInterval:
 		fallthrough
 	case SettingNameReplicaReplenishmentWaitInterval:
 		fallthrough
