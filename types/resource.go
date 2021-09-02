@@ -187,7 +187,7 @@ const (
 //       spec.
 type RecurringJob struct {
 	Name        string            `json:"name"`
-	Groups      []string          `json:"groups"`
+	Groups      []string          `json:"groups,omitempty"`
 	Task        RecurringJobType  `json:"task"`
 	Cron        string            `json:"cron"`
 	Retain      int               `json:"retain"`
@@ -765,7 +765,7 @@ type SnapshotBackupStatus struct {
 
 type RecurringJobSpec struct {
 	Name        string            `json:"name"`
-	Groups      []string          `json:"groups"`
+	Groups      []string          `json:"groups,omitempty"`
 	Task        RecurringJobType  `json:"task"`
 	Cron        string            `json:"cron"`
 	Retain      int               `json:"retain"`
