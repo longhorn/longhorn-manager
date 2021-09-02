@@ -133,6 +133,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 			"--timeout=1m50s",
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
+			"--default-fstype=ext4",
 		},
 		int32(replicaCount),
 		tolerations,
