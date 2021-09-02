@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	batchv1beta1 "k8s.io/api/batch/v1beta1"
+	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,34 +36,6 @@ func UpgradeCRs(namespace string, lhClient *lhclientset.Clientset, kubeClient *c
 		return err
 	}
 	if err := upgradeInstanceManagers(namespace, lhClient, kubeClient); err != nil {
-		return err
-	}
-	return nil
-}
-
-func upgradeRecurringJobs(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade recurring jobs failed")
-	}()
-
-	// Need to transfer volume spec recurringJobs to CRs because Longhorn
-	// is migrating to label-driven recurring job CRD.
-	idMapSpec := make(map[string]*types.RecurringJobSpec)
-	err = translateStorageClassRecurringJobsToSelector(namespace, kubeClient, idMapSpec)
-	if err != nil {
-		return err
-	}
-	err = translateVolumeRecurringJobsToLabel(namespace, lhClient, idMapSpec)
-	if err != nil {
-		return err
-	}
-	err = translateVolumeRecurringJobToCRs(namespace, lhClient, idMapSpec)
-	if err != nil {
-		return err
-	}
-
-	err = cleanupAppliedVolumeCronJobs(namespace, lhClient, kubeClient)
-	if err != nil {
 		return err
 	}
 	return nil
@@ -121,37 +94,94 @@ func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, 
 	return nil
 }
 
+type recurringJobUpgrade struct {
+	log *logrus.Entry
+
+	namespace string
+
+	kubeClient *clientset.Clientset
+	lhClient   *lhclientset.Clientset
+
+	recurringJobMapSpec map[string]*types.RecurringJobSpec
+	volumeMapLabels     map[string]map[string]string
+
+	storageClass          *storagev1.StorageClass
+	storageClassConfigMap *corev1.ConfigMap
+
+	volumes *longhorn.VolumeList
+}
+
 type recurringJobSelector struct {
 	Name    string `json:"name"`
 	IsGroup bool   `json:"isGroup"`
 }
 
-func translateStorageClassRecurringJobsToSelector(namespace string, kubeClient *clientset.Clientset, sharedMap map[string]*types.RecurringJobSpec) (err error) {
+func newRecurringJobUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) *recurringJobUpgrade {
+	return &recurringJobUpgrade{
+		log:                 logrus.WithField("namespace", namespace),
+		namespace:           namespace,
+		kubeClient:          kubeClient,
+		lhClient:            lhClient,
+		recurringJobMapSpec: map[string]*types.RecurringJobSpec{},
+		volumeMapLabels:     map[string]map[string]string{},
+	}
+}
+
+// upgradeRecurringJobs creates CRs from existing recurringJobs settings in
+// storageClass and volumes spec.
+// Here will also translates the storageClass recurringJobs to
+// recurringJobSelector and volume.spec recurringJobs to volume labels.
+func upgradeRecurringJobs(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+"translate storageClass recurringJobs to recurringJobSelector failed")
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade recurring jobs failed")
 	}()
 
-	log := logrus.WithFields(
-		logrus.Fields{
-			"upgrade":   "translate-storageClass-recurringJobs-to-recurringJobSelector",
-			"namespace": namespace,
-		},
-	)
+	run := newRecurringJobUpgrade(namespace, lhClient, kubeClient)
 
-	log.Debugf(upgradeLogPrefix+"Getting %v configMap", types.DefaultStorageClassConfigMapName)
-	storageClassCM, err := kubeClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), types.DefaultStorageClassConfigMapName, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to get %v ConfigMap: %v", types.DefaultStorageClassConfigMapName, err)
-	}
-	storageClassYAML, found := storageClassCM.Data["storageclass.yaml"]
-	if !found {
-		return fmt.Errorf("failed to find storageclass.yaml inside the %v ConfigMap", types.DefaultStorageClassConfigMapName)
-	}
-	sc, err := buildStorageClassFromYAML(storageClassYAML)
+	err = run.translateStorageClassRecurringJobs()
 	if err != nil {
 		return err
 	}
-	scRecurringJobsJSON, ok := sc.Parameters["recurringJobs"]
+
+	err = run.translateVolumeRecurringJobs()
+	if err != nil {
+		return err
+	}
+
+	err = run.cleanupAppliedVolumeCronJobs()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (run *recurringJobUpgrade) translateStorageClassRecurringJobs() (err error) {
+	revertLog := run.log
+	defer func() {
+		if err == nil {
+			run.log.Info(upgradeLogPrefix + "Finished storageClass recurring job translation")
+		}
+		err = errors.Wrapf(err, upgradeLogPrefix+"translate storage class recurring jobs failed")
+
+		run.log = revertLog
+		run.recurringJobMapSpec = map[string]*types.RecurringJobSpec{}
+	}()
+	run.log = run.log.WithField("translate", "storage-class-recurring-jobs")
+	run.log.Info(upgradeLogPrefix + "Starting storageClass recurring job translation")
+
+	run.storageClassConfigMap, err = run.kubeClient.CoreV1().ConfigMaps(run.namespace).Get(context.TODO(), types.DefaultStorageClassConfigMapName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get %v ConfigMap: %v", types.DefaultStorageClassConfigMapName, err)
+	}
+	storageClassYAML, found := run.storageClassConfigMap.Data["storageclass.yaml"]
+	if !found {
+		return fmt.Errorf("failed to find storageclass.yaml inside the %v ConfigMap", types.DefaultStorageClassConfigMapName)
+	}
+	err = run.initStorageClassObjFromYAML(storageClassYAML)
+	if err != nil {
+		return err
+	}
+	scRecurringJobsJSON, ok := run.storageClass.Parameters["recurringJobs"]
 	if !ok {
 		return nil
 	}
@@ -167,7 +197,7 @@ func translateStorageClassRecurringJobsToSelector(namespace string, kubeClient *
 		if err != nil {
 			return errors.Wrapf(err, "failed to create ID for recurring job %v", recurringJob)
 		}
-		sharedMap[id] = &types.RecurringJobSpec{
+		run.recurringJobMapSpec[id] = &types.RecurringJobSpec{
 			Name:        id,
 			Task:        recurringJob.Task,
 			Cron:        recurringJob.Cron,
@@ -179,74 +209,92 @@ func translateStorageClassRecurringJobsToSelector(namespace string, kubeClient *
 			recurringJobIDs = append(recurringJobIDs, id)
 		}
 	}
-	log.Debugf(upgradeLogPrefix+"Converting recurringJobs %v to recurringJobSelector", recurringJobIDs)
-	scRecurringJobSelectors := []recurringJobSelector{}
-	scRecurringJobSelectorJSON, ok := sc.Parameters["recurringJobSelector"]
-	scRecurringJobSelectorIDs := []string{}
-	if ok {
-		err = json.Unmarshal([]byte(scRecurringJobSelectorJSON), &scRecurringJobSelectors)
+	if err := run.createRecurringJobCRs(); err != nil {
+		return err
+	}
+	if err := run.convertToSelectors(recurringJobIDs); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (run *recurringJobUpgrade) convertToSelectors(recurringJobIDs []string) (err error) {
+	revertLog := run.log
+	defer func() {
+		run.log = revertLog
+		err = errors.Wrapf(err, "convert storageClass recurringJobs to recurringJobSelector failed")
+	}()
+	run.log = run.log.WithField("action", "convert-recurring-jobs-to-selectors")
+
+	if len(recurringJobIDs) == 0 {
+		run.log.Debug(upgradeLogPrefix + "Found 0 recurring job to convert to recurring job selector")
+		return
+	}
+
+	selectors := []recurringJobSelector{}
+	selectorIDs := []string{}
+	if selectorParameter, ok := run.storageClass.Parameters["recurringJobSelector"]; ok {
+		err = json.Unmarshal([]byte(selectorParameter), &selectors)
 		if err != nil {
-			return errors.Wrapf(err, "failed to unmarshal: %v", scRecurringJobs)
+			return errors.Wrapf(err, "failed to unmarshal: %v", selectorParameter)
 		}
-		for _, selector := range scRecurringJobSelectors {
-			scRecurringJobSelectorIDs = append(scRecurringJobSelectorIDs, selector.Name)
+		for _, selector := range selectors {
+			selectorIDs = append(selectorIDs, selector.Name)
 		}
 	}
 	for _, id := range recurringJobIDs {
-		if util.Contains(scRecurringJobSelectorIDs, id) {
+		if util.Contains(selectorIDs, id) {
 			continue
 		}
-		scRecurringJobSelectors = append(scRecurringJobSelectors, recurringJobSelector{
+		selectors = append(selectors, recurringJobSelector{
 			Name:    id,
 			IsGroup: false,
 		})
 	}
-	selectorJSON, err := json.Marshal(scRecurringJobSelectors)
+	selectorJSON, err := json.Marshal(selectors)
 	if err != nil {
-		return errors.Wrapf(err, "failed to marshal JSON %v", scRecurringJobSelectors)
+		return errors.Wrapf(err, "failed to marshal JSON %v", selectors)
 	}
-	log.Infof(upgradeLogPrefix+"Adding %v to recurringJobSelector", recurringJobIDs)
-	sc.Parameters["recurringJobSelector"] = string(selectorJSON)
-	log.Debug(upgradeLogPrefix + "Removing recurringJobs")
-	delete(sc.Parameters, "recurringJobs")
+	run.log.Infof(upgradeLogPrefix+"Adding %v to recurringJobSelector", recurringJobIDs)
+	run.storageClass.Parameters["recurringJobSelector"] = string(selectorJSON)
 
-	newStorageClassYAML, err := yaml.Marshal(sc)
-	storageClassCM.Data["storageclass.yaml"] = string(newStorageClassYAML)
-	logrus.Infof(upgradeLogPrefix+"Updating %v configmap", storageClassCM.Name)
-	if _, err := kubeClient.CoreV1().ConfigMaps(namespace).Update(context.TODO(), storageClassCM, metav1.UpdateOptions{}); err != nil {
-		return errors.Wrapf(err, "failed to update %v configmap", storageClassCM.Name)
+	run.log.Info(upgradeLogPrefix + "Removing recurringJobs")
+	delete(run.storageClass.Parameters, "recurringJobs")
+
+	logrus.Infof(upgradeLogPrefix+"Updating %v configmap", run.storageClassConfigMap.Name)
+	newStorageClassYAML, err := yaml.Marshal(run.storageClass)
+	run.storageClassConfigMap.Data["storageclass.yaml"] = string(newStorageClassYAML)
+	if _, err := run.kubeClient.CoreV1().ConfigMaps(run.namespace).Update(context.TODO(), run.storageClassConfigMap, metav1.UpdateOptions{}); err != nil {
+		return errors.Wrapf(err, "failed to update %v configmap", run.storageClassConfigMap.Name)
 	}
 	return nil
 }
 
-func translateVolumeRecurringJobsToLabel(namespace string, lhClient *lhclientset.Clientset, sharedMap map[string]*types.RecurringJobSpec) (err error) {
+func (run *recurringJobUpgrade) translateVolumeRecurringJobs() (err error) {
+	revertLog := run.log
 	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+"translate volume recurringJobs to volume labels failed")
+		if err == nil {
+			run.log.Info(upgradeLogPrefix + "Finished volume recurring job translation")
+		}
+		err = errors.Wrapf(err, upgradeLogPrefix+"translate volume recurringJobs failed")
+
+		run.log = revertLog
+		run.recurringJobMapSpec = map[string]*types.RecurringJobSpec{}
 	}()
+	run.log = run.log.WithField("translate", "volume-recurring-jobs")
+	run.log.Info(upgradeLogPrefix + "Starting volume recurring job translation")
 
-	log := logrus.WithFields(
-		logrus.Fields{
-			"upgrade":   "translate-volume-recurringJobs-to-volume-labels",
-			"namespace": namespace,
-		},
-	)
-
-	log.Debug(upgradeLogPrefix + "Listing all volumes")
-	volumeList, err := lhClient.LonghornV1beta1().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
+	run.volumes, err = run.lhClient.LonghornV1beta1().Volumes(run.namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Debug(upgradeLogPrefix + "Cannot find volumes")
+			run.log.Debug(upgradeLogPrefix + "Found 0 volume")
 			return nil
 		}
 		return errors.Wrap(err, "failed to list volumes")
 	}
-	for _, volume := range volumeList.Items {
-		volumeLabels := volume.Labels
-		if volumeLabels == nil {
-			volumeLabels = map[string]string{}
-		}
-
-		updateVolume := false
+	for _, volume := range run.volumes.Items {
+		addVolumeLabels := map[string]string{}
 		for _, recurringJob := range volume.Spec.RecurringJobs {
 			recurringJobSpec := types.RecurringJobSpec{
 				Name:        recurringJob.Name,
@@ -260,64 +308,131 @@ func translateVolumeRecurringJobsToLabel(namespace string, lhClient *lhclientset
 			if err != nil {
 				return errors.Wrapf(err, "failed to create ID for recurring job %v", recurringJob)
 			}
-			if _, exist := sharedMap[id]; !exist {
+			if _, exist := run.recurringJobMapSpec[id]; !exist {
 				recurringJobSpec.Name = id
-				sharedMap[id] = &recurringJobSpec
+				run.recurringJobMapSpec[id] = &recurringJobSpec
 			}
 			key := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJob, id)
-			volumeLabels[key] = types.LonghornLabelValueEnabled
-			updateVolume = true
+			addVolumeLabels[key] = types.LonghornLabelValueEnabled
 		}
-		if updateVolume {
-			volume.Labels = volumeLabels
-			volume.Spec.RecurringJobs = nil
+		if len(addVolumeLabels) != 0 {
+			run.volumeMapLabels[volume.Name] = addVolumeLabels
+		}
+	}
+	if err := run.createRecurringJobCRs(); err != nil {
+		return err
+	}
+	if err := run.convertToVolumeLabels(); err != nil {
+		return err
+	}
 
-			log.Infof(upgradeLogPrefix+"Updating %v volume labels to %v", volume.Name, volume.Labels)
-			updatedVolume, err := lhClient.LonghornV1beta1().Volumes(namespace).Update(context.TODO(), &volume, metav1.UpdateOptions{})
-			if err != nil {
-				return errors.Wrapf(err, "failed to update %v volume", volume.Name)
+	return nil
+}
+
+func (run *recurringJobUpgrade) convertToVolumeLabels() (err error) {
+	revertLog := run.log
+	defer func() {
+		run.log = revertLog
+		err = errors.Wrapf(err, upgradeLogPrefix+"convert volume recurring jobs to labels failed")
+	}()
+	run.log = run.log.WithField("action", "convert-volume-recurring-jobs-to-labels")
+
+	volumeClient := run.lhClient.LonghornV1beta1().Volumes(run.namespace)
+	for volumeName, labels := range run.volumeMapLabels {
+		if len(labels) == 0 {
+			continue
+		}
+		volume, err := volumeClient.Get(context.TODO(), volumeName, metav1.GetOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				run.log.Debug(upgradeLogPrefix + "Cannot find volume, could be removed")
+				continue
 			}
-			volume = *updatedVolume
+			return errors.Wrapf(err, "failed to get volume %v", volumeName)
+		}
+		volumeLabels := volume.Labels
+		if volumeLabels == nil {
+			volumeLabels = map[string]string{}
+		}
+		for key, value := range labels {
+			volumeLabels[key] = value
+		}
+		volume.Labels = volumeLabels
+		volume.Spec.RecurringJobs = nil
+		run.log.Infof(upgradeLogPrefix+"Updating %v volume labels to %v", volume.Name, volume.Labels)
+		_, err = volumeClient.Update(context.TODO(), volume, metav1.UpdateOptions{})
+		if err != nil {
+			return errors.Wrapf(err, "failed to update %v volume", volume.Name)
 		}
 	}
 	return nil
 }
 
-func translateVolumeRecurringJobToCRs(namespace string, lhClient *lhclientset.Clientset, sharedMap map[string]*types.RecurringJobSpec) (err error) {
+func (run *recurringJobUpgrade) cleanupAppliedVolumeCronJobs() (err error) {
+	revertLog := run.log
 	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+"translate volume recurringJobs to recurringJob CRs")
+		if err == nil {
+			run.log.Info(upgradeLogPrefix + "Finished volume cron job cleanup")
+		}
+		err = errors.Wrapf(err, upgradeLogPrefix+"cleanup applied volume cron jobs failed")
+		run.log = revertLog
 	}()
+	run.log = run.log.WithField("action", "cleanup-applied-volume-cron-jobs")
+	run.log.Info(upgradeLogPrefix + "Starting volume cron job cleanup")
 
-	log := logrus.WithFields(
-		logrus.Fields{
-			"upgrade":   "translate-volume-recurringJobs-to-recurringJob-CRs",
-			"namespace": namespace,
-		},
-	)
+	propagation := metav1.DeletePropagationForeground
+	cronJobClient := run.kubeClient.BatchV1beta1().CronJobs(run.namespace)
+	for _, v := range run.volumes.Items {
+		run.log.Debugf(upgradeLogPrefix+"Listing all cron jobs for volume %v", v.Name)
+		appliedCronJobROs, err := listVolumeCronJobROs(v.Name, run.namespace, run.kubeClient)
+		if err != nil {
+			return errors.Wrapf(err, "failed to list all cron jobs for volume %v", v.Name)
+		}
+		for name := range appliedCronJobROs {
+			run.log.Infof(upgradeLogPrefix+"Deleting %v cronjob job for %v volume", name, v.Name)
+			err := cronJobClient.Delete(context.TODO(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
+			if err != nil {
+				return errors.Wrapf(err, "failed to delete %v cron job for volume %v", name, v.Name)
+			}
+		}
+		run.log.Infof(upgradeLogPrefix+"Deleted %v cronjob job for %v volume", len(appliedCronJobROs), v.Name)
+	}
 
-	if len(sharedMap) == 0 {
-		log.Debug(upgradeLogPrefix + "Found 0 recurring job needs to be converted to CR")
+	return nil
+}
+
+func (run *recurringJobUpgrade) createRecurringJobCRs() (err error) {
+	revertLog := run.log
+	defer func() {
+		run.log = revertLog
+		err = errors.Wrapf(err, "create recurringJob CRs failed")
+	}()
+	run.log = run.log.WithField("action", "create-recurringJob-CRs")
+
+	if len(run.recurringJobMapSpec) == 0 {
+		run.log.Debug(upgradeLogPrefix + "Found 0 recurring job")
 		return nil
 	}
 
-	for _, spec := range sharedMap {
-		log.Infof(upgradeLogPrefix+"Creating %v recurring job CR", spec.Name)
-		job := &longhorn.RecurringJob{
+	recurringJobClient := run.lhClient.LonghornV1beta1().RecurringJobs(run.namespace)
+	for recurringJobName, spec := range run.recurringJobMapSpec {
+		run.log.Infof(upgradeLogPrefix+"Creating %v recurring job CR", recurringJobName)
+		newRecurringJob := &longhorn.RecurringJob{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: spec.Name,
+				Name: recurringJobName,
 			},
 			Spec: *spec,
 		}
-		log.Debugf(upgradeLogPrefix+"Checking if %v recurring job CR already exists", spec.Name)
-		obj, err := lhClient.LonghornV1beta1().RecurringJobs(namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
+		run.log.Debugf(upgradeLogPrefix+"Checking if %v recurring job CR already exists", recurringJobName)
+		obj, err := recurringJobClient.Get(context.TODO(), newRecurringJob.Name, metav1.GetOptions{})
 		if err == nil {
-			log.Debugf(upgradeLogPrefix+"Recurring job CR already exists %v", obj)
+			run.log.Debugf(upgradeLogPrefix+"Recurring job CR already exists %v", obj)
 			continue
 		}
 		if !apierrors.IsNotFound(err) {
-			log.Debugf(upgradeLogPrefix+"Failed to get recurring job %v", spec.Name)
+			return errors.Wrapf(err, "failed to get recurring job %v", recurringJobName)
 		}
-		_, err = lhClient.LonghornV1beta1().RecurringJobs(namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+		_, err = recurringJobClient.Create(context.TODO(), newRecurringJob, metav1.CreateOptions{})
 		if err != nil {
 			return errors.Wrapf(err, "failed to create recurring job CR with %v", spec)
 		}
@@ -325,59 +440,18 @@ func translateVolumeRecurringJobToCRs(namespace string, lhClient *lhclientset.Cl
 	return nil
 }
 
-func cleanupAppliedVolumeCronJobs(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+"cleanup applied volume cron jobs")
-	}()
-
-	log := logrus.WithFields(
-		logrus.Fields{
-			"upgrade":   "cleanup-applied-volume-cron-jobs",
-			"namespace": namespace,
-		},
-	)
-
-	log.Debug(upgradeLogPrefix + "Listing all volumes")
-	volumeList, err := lhClient.LonghornV1beta1().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Debug(upgradeLogPrefix + "Cannot find volumes")
-			return nil
-		}
-		return errors.Wrap(err, "failed to list volumes")
-	}
-
-	propagation := metav1.DeletePropagationForeground
-	cronJobClient := kubeClient.BatchV1beta1().CronJobs(namespace)
-	for _, v := range volumeList.Items {
-		log.Debugf(upgradeLogPrefix+"Listing all cron jobs for volume %v", v.Name)
-		appliedCronJobROs, err := listVolumeCronJobROs(v.Name, namespace, kubeClient)
-		if err != nil {
-			return errors.Wrapf(err, "failed to list all cron jobs for volume %v", v.Name)
-		}
-		for name := range appliedCronJobROs {
-			log.Infof(upgradeLogPrefix+"Deleting %v cronjob job for %v volume", name, v.Name)
-			err := cronJobClient.Delete(context.TODO(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
-			if err != nil {
-				return errors.Wrapf(err, "failed to delete %v cron job for volume %v", name, v.Name)
-			}
-		}
-		log.Infof(upgradeLogPrefix+"Deleted %v cronjob job for %v volume", len(appliedCronJobROs), v.Name)
-	}
-	return nil
-}
-
-func buildStorageClassFromYAML(storageclassYAML string) (*storagev1.StorageClass, error) {
+func (run *recurringJobUpgrade) initStorageClassObjFromYAML(storageclassYAML string) error {
 	decode := scheme.Codecs.UniversalDeserializer().Decode
 	obj, _, err := decode([]byte(storageclassYAML), nil, nil)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to decoding YAML string")
+		return errors.Wrapf(err, "failed to decoding YAML string")
 	}
-	storageclass, ok := obj.(*storagev1.StorageClass)
+	sc, ok := obj.(*storagev1.StorageClass)
 	if !ok {
-		return nil, fmt.Errorf("invalid storageclass YAML string: %v", storageclassYAML)
+		return fmt.Errorf("invalid storageclass YAML string: %v", storageclassYAML)
 	}
-	return storageclass, nil
+	run.storageClass = sc
+	return nil
 }
 
 func createRecurringJobID(recurringJob types.RecurringJobSpec) (key string, err error) {
