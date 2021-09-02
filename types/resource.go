@@ -599,9 +599,10 @@ type BackingImageStatus struct {
 }
 
 type BackingImageDiskFileStatus struct {
-	State    BackingImageState `json:"state"`
-	Progress int               `json:"progress"`
-	Message  string            `json:"message"`
+	State                   BackingImageState `json:"state"`
+	Progress                int               `json:"progress"`
+	Message                 string            `json:"message"`
+	LastStateTransitionTime string            `json:"lastStateTransitionTime"`
 }
 
 type BackingImageManagerState string

@@ -672,6 +672,12 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 		}
 	}
 
+	for diskUUID := range bi.Status.DiskFileStatusMap {
+		if bi.Status.DiskFileStatusMap[diskUUID].LastStateTransitionTime == "" {
+			bi.Status.DiskFileStatusMap[diskUUID].LastStateTransitionTime = util.Now()
+		}
+	}
+
 	return nil
 }
 
@@ -680,7 +686,10 @@ func (bic *BackingImageController) updateStatusWithFileInfo(bi *longhorn.Backing
 	if _, exists := bi.Status.DiskFileStatusMap[diskUUID]; !exists {
 		bi.Status.DiskFileStatusMap[diskUUID] = &types.BackingImageDiskFileStatus{}
 	}
-	bi.Status.DiskFileStatusMap[diskUUID].State = state
+	if bi.Status.DiskFileStatusMap[diskUUID].State != state {
+		bi.Status.DiskFileStatusMap[diskUUID].LastStateTransitionTime = util.Now()
+		bi.Status.DiskFileStatusMap[diskUUID].State = state
+	}
 	bi.Status.DiskFileStatusMap[diskUUID].Progress = progress
 	bi.Status.DiskFileStatusMap[diskUUID].Message = message
 
