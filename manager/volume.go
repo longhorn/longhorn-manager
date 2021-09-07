@@ -431,8 +431,8 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		if v.Status.State != types.VolumeStateAttached {
 			return nil, fmt.Errorf("invalid volume state to start migration %v", v.Status.State)
 		}
-		if v.Status.Robustness != types.VolumeRobustnessHealthy {
-			return nil, fmt.Errorf("volume must be healthy to start migration")
+		if v.Status.Robustness != types.VolumeRobustnessHealthy && v.Status.Robustness != types.VolumeRobustnessDegraded {
+			return nil, fmt.Errorf("volume must be healthy or degraded to start migration")
 		}
 		if v.Spec.EngineImage != v.Status.CurrentImage {
 			return nil, fmt.Errorf("upgrading in process for volume, cannot start migration")
