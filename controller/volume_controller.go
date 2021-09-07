@@ -2861,21 +2861,14 @@ func (vc *VolumeController) getCurrentEngineAndCleanupOthers(v *longhorn.Volume,
 }
 
 func (vc *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
-	rs, pathToOldRunnngRs, pathToNewRs map[string]*longhorn.Replica,
+	rs, pathToOldRs, pathToNewRs map[string]*longhorn.Replica,
 	fixupFunc func(r *longhorn.Replica, obj string), obj string) error {
-	log := getLoggerForVolume(vc.logger, v)
 
-	if len(pathToNewRs) == v.Spec.NumberOfReplicas {
-		return nil
+	if len(pathToOldRs) == 0 {
+		return fmt.Errorf("no old replica for the volume")
 	}
 
-	if len(pathToOldRunnngRs) != v.Spec.NumberOfReplicas {
-		log.Debugf("Volume old healthy replica count %v doesn't match the desired replica count %v",
-			len(pathToOldRunnngRs), v.Spec.NumberOfReplicas)
-		return nil
-	}
-
-	for path, r := range pathToOldRunnngRs {
+	for path, r := range pathToOldRs {
 		if pathToNewRs[path] != nil {
 			continue
 		}
@@ -2889,6 +2882,14 @@ func (vc *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 		}
 		pathToNewRs[path] = newReplica
 		rs[newReplica.Name] = newReplica
+	}
+	for path, r := range pathToNewRs {
+		if pathToOldRs[path] != nil {
+			continue
+		}
+		if err := vc.deleteReplica(r, rs); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
 	}
 	return nil
 }
@@ -2995,16 +2996,27 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		es[migrationEngine.Name] = migrationEngine
 	}
 
-	currentReplicas := map[string]*longhorn.Replica{}
+	currentAvailableReplicas := map[string]*longhorn.Replica{}
 	migrationReplicas := map[string]*longhorn.Replica{}
 	unknownReplicas := map[string]*longhorn.Replica{}
 	for _, r := range rs {
-		dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
-		if r.Spec.FailedAt != "" {
+		isUnavailable, err := vc.IsReplicaUnavailable(r)
+		if err != nil {
+			return err
+		}
+		if isUnavailable {
 			continue
 		}
+		dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
 		if r.Spec.EngineName == currentEngine.Name {
-			currentReplicas[dataPath] = r
+			if currentEngine.Status.ReplicaModeMap[r.Name] == types.ReplicaModeWO {
+				logrus.Debugf("Cannot start migration since the current replica %v is mode WriteOnly, which means the rebuilding is in progress", r.Name)
+				return nil
+			}
+			if currentEngine.Status.ReplicaModeMap[r.Name] != types.ReplicaModeRW {
+				return fmt.Errorf("unexpected mode %v for the current replica %v, cannot continue migration", currentEngine.Status.ReplicaModeMap[r.Name], r.Name)
+			}
+			currentAvailableReplicas[dataPath] = r
 		} else if r.Spec.EngineName == migrationEngine.Name {
 			migrationReplicas[dataPath] = r
 		} else {
@@ -3013,7 +3025,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		}
 	}
 
-	if err := vc.createAndStartMatchingReplicas(v, rs, currentReplicas, migrationReplicas, func(r *longhorn.Replica, engineName string) {
+	if err := vc.createAndStartMatchingReplicas(v, rs, currentAvailableReplicas, migrationReplicas, func(r *longhorn.Replica, engineName string) {
 		r.Spec.EngineName = engineName
 	}, migrationEngine.Name); err != nil {
 		return err
@@ -3022,7 +3034,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 	if migrationEngine.Spec.DesireState != types.InstanceStateRunning {
 		replicaAddressMap := map[string]string{}
 		for _, r := range migrationReplicas {
-			// wait for all potentially healthy replicas become running
+			// wait for all potentially available replicas become running
 			if r.Status.CurrentState != types.InstanceStateRunning {
 				return nil
 			}
@@ -3052,6 +3064,42 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 
 	vc.logger.Infof("volume migration engine on node %v is ready", v.Spec.MigrationNodeID)
 	return nil
+}
+
+func (vc *VolumeController) IsReplicaUnavailable(r *longhorn.Replica) (bool, error) {
+	log := vc.logger.WithFields(logrus.Fields{
+		"replica":       r.Name,
+		"replicaNodeID": r.Spec.NodeID,
+	})
+
+	if r.Spec.FailedAt != "" || r.Spec.NodeID == "" || r.Spec.DiskID == "" {
+		return true, nil
+	}
+
+	isDownOrDeleted, err := vc.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
+	if err != nil {
+		log.WithError(err).Errorf("Unable to check if node %v is still running for failed replica", r.Spec.NodeID)
+		return true, err
+	}
+	if isDownOrDeleted {
+		return true, nil
+	}
+
+	node, err := vc.ds.GetNode(r.Spec.NodeID)
+	if err != nil {
+		log.WithError(err).Errorf("Unable to get node %v for failed replica", r.Spec.NodeID)
+		return true, err
+	}
+	for _, diskStatus := range node.Status.DiskStatus {
+		if diskStatus.DiskUUID != r.Spec.DiskID {
+			continue
+		}
+		if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeReady).Status != types.ConditionStatusTrue {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // isResponsibleFor picks a running node that has the default engine image deployed.
