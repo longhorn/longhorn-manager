@@ -276,12 +276,7 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 	if err != nil {
 		return err
 	}
-
-	// for the workloads we only track non terminating pods
-	activePods := filterPods(pods, func(p *v1.Pod) bool {
-		return p.DeletionTimestamp == nil
-	})
-	kc.setWorkloads(ks, activePods)
+	kc.setWorkloads(ks, pods)
 
 	return nil
 }
