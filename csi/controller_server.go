@@ -108,6 +108,9 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 				if err != nil {
 					return nil, status.Errorf(codes.NotFound, "cannot clone volume: source volume %s is unavailable", srcVolume.VolumeId)
 				}
+				if longhornSrcVol == nil {
+					return nil, status.Errorf(codes.NotFound, "cannot clone volume: source volume %s is not found", srcVolume.VolumeId)
+				}
 
 				// check size of source and requested
 				srcVolSizeBytes, err := strconv.ParseInt(longhornSrcVol.Size, 10, 64)
