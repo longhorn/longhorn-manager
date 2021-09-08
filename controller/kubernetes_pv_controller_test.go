@@ -369,7 +369,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	tc.expectVolume.Status.KubernetesStatus.WorkloadsStatus = workloads
 	testCases["pod phase updated to 'failed'"] = tc
 
-	// pod deleted
+	// pod deletion requested (retain workload status)
 	tc = generateKubernetesTestCaseTemplate()
 	tc.pv.Status.Phase = apiv1.VolumeBound
 	workloads = []types.WorkloadStatus{}
@@ -391,8 +391,34 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 		WorkloadsStatus: workloads,
 	}
 	tc.copyCurrentToExpect()
+	tc.expectVolume.Status.KubernetesStatus.LastPodRefAt = ""
+	testCases["pod deletion requested"] = tc
+
+	// pod deleted (set podLastRefAt)
+	tc = generateKubernetesTestCaseTemplate()
+	tc.pv.Status.Phase = apiv1.VolumeBound
+	workloads = []types.WorkloadStatus{}
+	for _, p := range tc.pods {
+		p.DeletionTimestamp = &deleteTime
+		ws := types.WorkloadStatus{
+			PodName:      p.Name,
+			PodStatus:    string(p.Status.Phase),
+			WorkloadName: TestWorkloadName,
+			WorkloadType: TestWorkloadKind,
+		}
+		workloads = append(workloads, ws)
+	}
+	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
+		PVName:          TestPVName,
+		PVStatus:        string(apiv1.VolumeBound),
+		Namespace:       TestNamespace,
+		PVCName:         TestPVCName,
+		WorkloadsStatus: workloads,
+	}
+	tc.copyCurrentToExpect()
+	tc.pods = nil // pod has been deleted
 	tc.expectVolume.Status.KubernetesStatus.LastPodRefAt = getTestNow()
-	testCases["pod deleted"] = tc
+	testCases["pod deletion done"] = tc
 
 	// pv phase updated: bound -> failed
 	tc = generateKubernetesTestCaseTemplate()
