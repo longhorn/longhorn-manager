@@ -2,10 +2,14 @@ package datastore
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 // GetLonghornEventList returns an uncached list of longhorn events for the
@@ -136,4 +140,33 @@ func (s *DataStore) GetAllConfigMaps() (runtime.Object, error) {
 // For example, support bundle creation
 func (s *DataStore) GetAllVolumeAttachments() (runtime.Object, error) {
 	return s.kubeClient.StorageV1().VolumeAttachments().List(context.TODO(), metav1.ListOptions{})
+}
+
+// FindRandomReadyNode return a random ready node.
+// Return error if there is no ready node
+func FindRandomReadyNode(engineImage *longhorn.EngineImage, nodes *longhorn.NodeList) (string, error) {
+	if engineImage.Status.State != longhorn.EngineImageStateDeployed && engineImage.Status.State != longhorn.EngineImageStateDeploying {
+		return "", fmt.Errorf("error: the volume's engine image %v is in state: %v", engineImage.Name, engineImage.Status.State)
+	}
+
+	var readyNodeList []string
+	for _, node := range nodes.Items {
+		var readyCondition *longhorn.Condition
+		for i := range node.Status.Conditions {
+			con := node.Status.Conditions[i]
+			if con.Type == longhorn.NodeConditionTypeReady {
+				readyCondition = &con
+			}
+		}
+
+		if readyCondition != nil &&
+			readyCondition.Status == longhorn.ConditionStatusTrue && engineImage.Status.NodeDeploymentMap[node.Name] {
+			readyNodeList = append(readyNodeList, node.Name)
+		}
+	}
+
+	if len(readyNodeList) == 0 {
+		return "", fmt.Errorf("cannot find a ready node")
+	}
+	return readyNodeList[rand.Intn(len(readyNodeList))], nil
 }

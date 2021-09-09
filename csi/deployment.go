@@ -421,6 +421,14 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 							},
 							Env: []v1.EnvVar{
 								{
+									Name: "POD_NAMESPACE",
+									ValueFrom: &v1.EnvVarSource{
+										FieldRef: &v1.ObjectFieldSelector{
+											FieldPath: "metadata.namespace",
+										},
+									},
+								},
+								{
 									Name: "NODE_ID",
 									ValueFrom: &v1.EnvVarSource{
 										FieldRef: &v1.ObjectFieldSelector{

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"os"
 	"sort"
 	"strconv"
@@ -20,6 +19,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -324,7 +324,15 @@ func (job *Job) run() (err error) {
 	if volume.State == string(longhorn.VolumeStateDetached) {
 		// Find a random ready node to attach the volume
 		// For load balancing purpose, the node need to be random
-		nodeToAttach, err := job.findARandomReadyNode(volume)
+		nodeList, err := job.lhClient.LonghornV1beta2().Nodes(job.namespace).List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			return err
+		}
+		engineImage, err := job.lhClient.LonghornV1beta2().EngineImages(job.namespace).Get(context.TODO(), types.GetEngineImageChecksumName(volume.CurrentImage), metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		nodeToAttach, err := datastore.FindRandomReadyNode(engineImage, nodeList)
 		if err != nil {
 			return errors.Wrapf(err, "cannot do auto attaching for volume %v", volumeName)
 		}
@@ -739,57 +747,6 @@ func (job *Job) waitForVolumeState(state string, timeout int) (*longhornclient.V
 	}
 
 	return nil, fmt.Errorf("timeout waiting for volume %v to be in state %v", volumeName, state)
-}
-
-// findARandomReadyNode return a random ready node to attach the volume
-// return error if there is no ready node
-func (job *Job) findARandomReadyNode(v *longhornclient.Volume) (string, error) {
-	nodeCollection, err := job.api.Node.List(longhornclient.NewListOpts())
-	if err != nil {
-		return "", err
-	}
-
-	engineImage, err := job.GetEngineImage(types.GetEngineImageChecksumName(v.CurrentImage))
-	if err != nil {
-		return "", err
-	}
-	if engineImage.Status.State != longhorn.EngineImageStateDeployed && engineImage.Status.State != longhorn.EngineImageStateDeploying {
-		return "", fmt.Errorf("error: the volume's engine image %v is in state: %v", engineImage.Name, engineImage.Status.State)
-	}
-
-	var readyNodeList []string
-	for _, node := range nodeCollection.Data {
-		var readyConditionInterface map[string]interface{}
-		for i := range node.Conditions {
-			con := node.Conditions[i].(map[string]interface{})
-			if con["type"] == longhorn.NodeConditionTypeReady {
-				readyConditionInterface = con
-			}
-		}
-
-		if readyConditionInterface != nil {
-			// convert the interface to json
-			jsonString, err := json.Marshal(readyConditionInterface)
-			if err != nil {
-				return "", err
-			}
-
-			readyCondition := longhorn.Condition{}
-
-			if err := json.Unmarshal(jsonString, &readyCondition); err != nil {
-				return "", err
-			}
-
-			if readyCondition.Status == longhorn.ConditionStatusTrue && engineImage.Status.NodeDeploymentMap[node.Name] {
-				readyNodeList = append(readyNodeList, node.Name)
-			}
-		}
-	}
-
-	if len(readyNodeList) == 0 {
-		return "", fmt.Errorf("cannot find a ready node")
-	}
-	return readyNodeList[rand.Intn(len(readyNodeList))], nil
 }
 
 func filterSnapshots(snapshots []longhornclient.Snapshot, predicate func(snapshot longhornclient.Snapshot) bool) []longhornclient.Snapshot {

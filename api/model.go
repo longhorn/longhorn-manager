@@ -1136,6 +1136,9 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateDataLocality"] = struct{}{}
 			actions["updateAccessMode"] = struct{}{}
 			actions["updateReplicaAutoBalance"] = struct{}{}
+			actions["snapshotList"] = struct{}{}
+			actions["snapshotCreate"] = struct{}{}
+			actions["snapshotBackup"] = struct{}{}
 			actions["recurringJobAdd"] = struct{}{}
 			actions["recurringJobDelete"] = struct{}{}
 			actions["recurringJobList"] = struct{}{}
