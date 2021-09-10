@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -64,6 +65,8 @@ type ReplicaController struct {
 	biStoreSynced cache.InformerSynced
 
 	instanceHandler *InstanceHandler
+
+	rebuildingLock *sync.Mutex
 }
 
 func NewReplicaController(
@@ -92,6 +95,8 @@ func NewReplicaController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-replica-controller"}),
 
 		ds: ds,
+
+		rebuildingLock: &sync.Mutex{},
 
 		nStoreSynced:  nodeInformer.Informer().HasSynced,
 		rStoreSynced:  replicaInformer.Informer().HasSynced,
@@ -381,6 +386,16 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 		}
 	}
 
+	if r.Spec.RebuildRetryCount != 0 {
+		canStart, err := rc.CanStartRebuildingReplica(r)
+		if err != nil {
+			return nil, err
+		}
+		if !canStart {
+			return nil, nil
+		}
+	}
+
 	im, err := rc.ds.GetInstanceManagerByInstance(obj)
 	if err != nil {
 		return nil, err
@@ -428,6 +443,48 @@ func (rc *ReplicaController) GetBackingImagePathForReplicaStarting(r *longhorn.R
 		return "", nil
 	}
 	return types.GetBackingImagePathForReplicaManagerContainer(r.Spec.DiskPath, r.Spec.BackingImage, bi.Status.UUID), nil
+}
+
+func (rc *ReplicaController) CanStartRebuildingReplica(r *longhorn.Replica) (bool, error) {
+	log := getLoggerForReplica(rc.logger, r)
+
+	concurrentRebuildingLimit, err := rc.ds.GetSettingAsInt(types.SettingNameConcurrentReplicaRebuildPerNodeLimit)
+	if err != nil {
+		return false, err
+	}
+
+	// No limit.
+	if concurrentRebuildingLimit < 1 {
+		return true, nil
+	}
+
+	rc.rebuildingLock.Lock()
+	defer rc.rebuildingLock.Unlock()
+
+	inProgressRebuildingCount := 0
+	rs, err := rc.ds.ListReplicasByNodeRO(r.Spec.NodeID)
+	if err != nil {
+		return false, err
+	}
+	for _, replicaOnTheSameNode := range rs {
+		if replicaOnTheSameNode.Name == r.Name {
+			continue
+		}
+		if replicaOnTheSameNode.Spec.RebuildRetryCount == 0 {
+			continue
+		}
+		if replicaOnTheSameNode.Status.CurrentState != types.InstanceStateStarting && replicaOnTheSameNode.Status.CurrentState != types.InstanceStateRunning {
+			continue
+		}
+		inProgressRebuildingCount++
+	}
+	if inProgressRebuildingCount >= int(concurrentRebuildingLimit) {
+		log.Debugf("There are already %v replica rebuildings on this node, which reaches or exceeds the limit value %v",
+			inProgressRebuildingCount, concurrentRebuildingLimit)
+		return false, nil
+	}
+
+	return true, nil
 }
 
 func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
