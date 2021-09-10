@@ -350,8 +350,13 @@ func (c *ShareManagerController) syncShareManagerEndpoint(sm *longhorn.ShareMana
 	}
 
 	service, err := c.ds.GetService(sm.Namespace, sm.Name)
-	if err != nil {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return err
+	}
+
+	if service == nil {
+		c.logger.Warn("missing service for share-manager, unsetting endpoint")
+		sm.Status.Endpoint = ""
 	}
 
 	sm.Status.Endpoint = fmt.Sprintf("nfs://%v/%v", service.Spec.ClusterIP, sm.Name)
