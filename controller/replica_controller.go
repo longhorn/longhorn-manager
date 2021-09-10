@@ -365,47 +365,20 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 		return nil, fmt.Errorf("BUG: invalid object for replica process creation: %v", obj)
 	}
 
-	log := getLoggerForReplica(rc.logger, r)
-
 	dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
 	if r.Spec.NodeID == "" || dataPath == "" || r.Spec.DiskID == "" || r.Spec.VolumeSize == 0 {
 		return nil, fmt.Errorf("missing parameters for replica process creation: %v", r)
 	}
 
+	var err error
 	backingImagePath := ""
 	if r.Spec.BackingImage != "" {
-		bi, err := rc.ds.GetBackingImage(r.Spec.BackingImage)
-		if err != nil {
+		if backingImagePath, err = rc.GetBackingImagePathForReplicaStarting(r); err != nil {
 			return nil, err
 		}
-		if bi.Status.UUID == "" {
-			log.Debugf("The requested backing image %v has not been initialized, UUID is empty", bi.Name)
+		if backingImagePath == "" {
 			return nil, nil
 		}
-		if bi.Spec.Disks == nil {
-			log.Debugf("The requested backing image %v has not started disk file handling", bi.Name)
-			return nil, nil
-		}
-		if _, exists := bi.Spec.Disks[r.Spec.DiskID]; !exists {
-			bi.Spec.Disks[r.Spec.DiskID] = struct{}{}
-			log.Debugf("Replica %v will ask backing image %v to download file to node %v disk %v",
-				r.Name, bi.Name, r.Spec.NodeID, r.Spec.DiskID)
-			if _, err := rc.ds.UpdateBackingImage(bi); err != nil {
-				return nil, err
-			}
-			return nil, nil
-		}
-		// bi.Spec.Disks[r.Spec.DiskID] exists
-		if fileStatus, exists := bi.Status.DiskFileStatusMap[r.Spec.DiskID]; !exists || fileStatus.State != types.BackingImageStateReady {
-			currentBackingImageState := ""
-			if fileStatus != nil {
-				currentBackingImageState = string(fileStatus.State)
-			}
-			log.Debugf("Replica %v is waiting for backing image %v downloading file to node %v disk %v, the current state is %v",
-				r.Name, bi.Name, r.Spec.NodeID, r.Spec.DiskID, currentBackingImageState)
-			return nil, nil
-		}
-		backingImagePath = types.GetBackingImagePathForReplicaManagerContainer(r.Spec.DiskPath, r.Spec.BackingImage, bi.Status.UUID)
 	}
 
 	im, err := rc.ds.GetInstanceManagerByInstance(obj)
@@ -418,6 +391,43 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 	}
 
 	return c.ReplicaProcessCreate(r.Name, r.Spec.EngineImage, dataPath, backingImagePath, r.Spec.VolumeSize, r.Spec.RevisionCounterDisabled)
+}
+
+func (rc *ReplicaController) GetBackingImagePathForReplicaStarting(r *longhorn.Replica) (string, error) {
+	log := getLoggerForReplica(rc.logger, r)
+
+	bi, err := rc.ds.GetBackingImage(r.Spec.BackingImage)
+	if err != nil {
+		return "", err
+	}
+	if bi.Status.UUID == "" {
+		log.Debugf("The requested backing image %v has not been initialized, UUID is empty", bi.Name)
+		return "", nil
+	}
+	if bi.Spec.Disks == nil {
+		log.Debugf("The requested backing image %v has not started disk file handling", bi.Name)
+		return "", nil
+	}
+	if _, exists := bi.Spec.Disks[r.Spec.DiskID]; !exists {
+		bi.Spec.Disks[r.Spec.DiskID] = struct{}{}
+		log.Debugf("Replica %v will ask backing image %v to download file to node %v disk %v",
+			r.Name, bi.Name, r.Spec.NodeID, r.Spec.DiskID)
+		if _, err := rc.ds.UpdateBackingImage(bi); err != nil {
+			return "", err
+		}
+		return "", nil
+	}
+	// bi.Spec.Disks[r.Spec.DiskID] exists
+	if fileStatus, exists := bi.Status.DiskFileStatusMap[r.Spec.DiskID]; !exists || fileStatus.State != types.BackingImageStateReady {
+		currentBackingImageState := ""
+		if fileStatus != nil {
+			currentBackingImageState = string(fileStatus.State)
+		}
+		log.Debugf("Replica %v is waiting for backing image %v downloading file to node %v disk %v, the current state is %v",
+			r.Name, bi.Name, r.Spec.NodeID, r.Spec.DiskID, currentBackingImageState)
+		return "", nil
+	}
+	return types.GetBackingImagePathForReplicaManagerContainer(r.Spec.DiskPath, r.Spec.BackingImage, bi.Status.UUID), nil
 }
 
 func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
