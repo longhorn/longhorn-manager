@@ -315,10 +315,7 @@ func (c *ShareManagerController) syncShareManager(key string) (err error) {
 	// update at the end, after the whole reconcile loop
 	existingShareManager := sm.DeepCopy()
 	defer func() {
-		if !reflect.DeepEqual(existingShareManager.Status, sm.Status) {
-			// we end up overwriting any prior errors
-			// but if the update works, the share manager will be
-			// enqueued again anyway
+		if err == nil && !reflect.DeepEqual(existingShareManager.Status, sm.Status) {
 			_, err = c.ds.UpdateShareManagerStatus(sm)
 		}
 
@@ -438,10 +435,10 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		// ensure volume gets detached if share manager needs to be cleaned up and hasn't stopped yet
 		// we need the isNotNeeded var so we don't accidentally detach manually attached volumes,
 		// while the share manager is no longer running (only run cleanup once)
-		if isNotNeeded && sm.Status.State != types.ShareManagerStateStopped {
+		if isNotNeeded && sm.Status.State != types.ShareManagerStateStopping && sm.Status.State != types.ShareManagerStateStopped {
 			getLoggerForShareManager(c.logger, sm).Info("stopping share manager")
 			if err = c.detachShareManagerVolume(sm); err == nil {
-				sm.Status.State = types.ShareManagerStateStopped
+				sm.Status.State = types.ShareManagerStateStopping
 			}
 		}
 	}()
@@ -454,7 +451,7 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 	}
 
 	if !c.isShareManagerRequiredForVolume(volume) {
-		if sm.Status.State != types.ShareManagerStateStopped {
+		if sm.Status.State != types.ShareManagerStateStopping && sm.Status.State != types.ShareManagerStateStopped {
 			log.Info("share manager is no longer required")
 			isNotNeeded = true
 		}
@@ -468,10 +465,16 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 	// we only check for running, since we don't want to nuke valid pods, not schedulable only means no new pods.
 	// in the case of a drain kubernetes will terminate the running pod, which we will mark as error in the sync pod method
 	if !c.ds.IsNodeSchedulable(sm.Status.OwnerID) {
-		if sm.Status.State != types.ShareManagerStateStopped {
+		if sm.Status.State != types.ShareManagerStateStopping && sm.Status.State != types.ShareManagerStateStopped {
 			log.Info("cannot start share manager, node is not schedulable")
 			isNotNeeded = true
 		}
+		return nil
+	}
+
+	// we wait till a transition to stopped before ramp up again
+	if sm.Status.State == types.ShareManagerStateStopping {
+		log.Debug("waiting for share manager stopped, before starting")
 		return nil
 	}
 
@@ -523,7 +526,9 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 	if err != nil && !apierrors.IsNotFound(err) {
 		log.WithError(err).WithField("pod", podName).Error("failed to retrieve pod for share manager from datastore")
 		return err
-	} else if pod == nil {
+	}
+
+	if pod == nil {
 		return nil
 	}
 
@@ -545,6 +550,7 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 }
 
 // syncShareManagerPod controls pod existence and provides the following state transitions
+// stopping -> stopped (no more pod)
 // stopped -> stopped (rest state)
 // starting -> starting (pending, volume attachment)
 // starting ,running, error -> error (restart, remount volumes)
@@ -552,7 +558,8 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 // controls transitions to running, error
 func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) (err error) {
 	defer func() {
-		if sm.Status.State == types.ShareManagerStateError || sm.Status.State == types.ShareManagerStateStopped {
+		if sm.Status.State == types.ShareManagerStateStopping || sm.Status.State == types.ShareManagerStateStopped ||
+			sm.Status.State == types.ShareManagerStateError {
 			err = c.cleanupShareManagerPod(sm)
 		}
 	}()
@@ -569,6 +576,12 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		log.WithError(err).Error("failed to retrieve pod for share manager from datastore")
 		return err
 	} else if pod == nil {
+
+		if sm.Status.State == types.ShareManagerStateStopping {
+			log.Debug("Share Manager pod is gone, transitioning to stopped state for share manager stopped, before starting")
+			sm.Status.State = types.ShareManagerStateStopped
+			return nil
+		}
 
 		// there should only ever be no pod if we are in pending state
 		// if there is no pod in any other state transition to error so we start over
@@ -591,11 +604,26 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		log.WithError(err).Warnf("cannot check IsNodeDownOrDeleted(%v) when syncShareManagerPod", pod.Spec.NodeName)
 	}
 	if pod.DeletionTimestamp != nil || isDown {
+
+		// if we just transitioned to the starting state, while the prior cleanup is still in progress we will switch to error state
+		// which will lead to a bad loop of starting (new workload) -> error (remount) -> stopped (cleanup sm)
+		if sm.Status.State == types.ShareManagerStateStopping {
+			log.Debug("Share Manager is waiting for pod deletion before transitioning to stopped state")
+			return nil
+		}
+
 		if sm.Status.State != types.ShareManagerStateStopped {
 			log.Debug("Share Manager pod requires cleanup with remount")
 			sm.Status.State = types.ShareManagerStateError
 		}
 
+		return nil
+	}
+
+	// if we have an deleted pod but are supposed to be stopping
+	// we don't modify the share-manager state
+	if sm.Status.State == types.ShareManagerStateStopping {
+		log.Debug("Share Manager is waiting for pod deletion before transitioning to stopped state")
 		return nil
 	}
 
@@ -614,8 +642,7 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		}
 
 		if !allContainersReady {
-			key := sm.Namespace + "/" + sm.Name
-			c.queue.AddRateLimited(key)
+			c.enqueueShareManager(sm)
 		} else if sm.Status.State == types.ShareManagerStateStarting {
 			sm.Status.State = types.ShareManagerStateRunning
 		} else if sm.Status.State != types.ShareManagerStateRunning {
