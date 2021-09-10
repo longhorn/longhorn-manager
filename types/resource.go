@@ -545,6 +545,7 @@ const (
 	ShareManagerStateUnknown  = ShareManagerState("unknown")
 	ShareManagerStateStarting = ShareManagerState("starting")
 	ShareManagerStateRunning  = ShareManagerState("running")
+	ShareManagerStateStopping = ShareManagerState("stopping")
 	ShareManagerStateStopped  = ShareManagerState("stopped")
 	ShareManagerStateError    = ShareManagerState("error")
 )
