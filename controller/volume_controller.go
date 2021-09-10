@@ -1507,8 +1507,11 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 	log := getLoggerForVolume(vc.logger, v)
 
 	replenishCount := vc.getReplenishReplicasCount(v, rs)
+
+	newVolume := len(rs) == 0
+
 	// For regular rebuild case or data locality case, rebuild one replica at a time
-	if (len(rs) != 0 && replenishCount > 0) || hardNodeAffinity != "" {
+	if (!newVolume && replenishCount > 0) || hardNodeAffinity != "" {
 		replenishCount = 1
 	}
 
@@ -1532,11 +1535,9 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		}
 		if vc.scheduler.RequireNewReplica(rs, v, hardNodeAffinity) {
 			log.Debugf("A new replica will be replenished during rebuilding")
-			r, err := vc.createReplica(v, e, rs, hardNodeAffinity)
-			if err != nil {
+			if err := vc.createReplica(v, e, rs, hardNodeAffinity, !newVolume); err != nil {
 				return err
 			}
-			rs[r.Name] = r
 		}
 	}
 	return nil
@@ -2028,7 +2029,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 	return vc.ds.CreateEngine(engine)
 }
 
-func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, hardNodeAffinity string) (*longhorn.Replica, error) {
+func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, hardNodeAffinity string, isRebuildingReplica bool) error {
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            types.GenerateReplicaNameForVolume(v.Name),
@@ -2048,30 +2049,17 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 			RevisionCounterDisabled: v.Spec.RevisionCounterDisabled,
 		},
 	}
-
-	return vc.ds.CreateReplica(replica)
-}
-
-func (vc *VolumeController) createReplicaManifest(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) *longhorn.Replica {
-	replica := &longhorn.Replica{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            types.GenerateReplicaNameForVolume(v.Name),
-			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
-		},
-		Spec: types.ReplicaSpec{
-			InstanceSpec: types.InstanceSpec{
-				VolumeName:  v.Name,
-				VolumeSize:  v.Spec.Size,
-				EngineImage: v.Status.CurrentImage,
-				DesireState: types.InstanceStateStopped,
-			},
-			EngineName:   e.Name,
-			Active:       true,
-			BackingImage: v.Spec.BackingImage,
-		},
+	if isRebuildingReplica {
+		replica.Spec.RebuildRetryCount++
 	}
 
-	return replica
+	replica, err := vc.ds.CreateReplica(replica)
+	if err != nil {
+		return err
+	}
+	rs[replica.Name] = replica
+
+	return nil
 }
 
 func (vc *VolumeController) duplicateReplica(r *longhorn.Replica, v *longhorn.Volume) *longhorn.Replica {
