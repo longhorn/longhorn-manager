@@ -109,8 +109,16 @@ func NewReplicaController(
 	rc.instanceHandler = NewInstanceHandler(ds, rc, rc.eventRecorder)
 
 	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    rc.enqueueReplica,
-		UpdateFunc: func(old, cur interface{}) { rc.enqueueReplica(cur) },
+		AddFunc: rc.enqueueReplica,
+		UpdateFunc: func(old, cur interface{}) {
+			rc.enqueueReplica(cur)
+
+			oldR := old.(*longhorn.Replica)
+			curR := cur.(*longhorn.Replica)
+			if IsRebuildingReplica(oldR) && !IsRebuildingReplica(curR) {
+				rc.enqueueAllRebuildingReplicaOnCurrentNode()
+			}
+		},
 		DeleteFunc: rc.enqueueReplica,
 	})
 
@@ -393,7 +401,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstancePro
 		}
 	}
 
-	if r.Spec.RebuildRetryCount != 0 {
+	if IsRebuildingReplica(r) {
 		canStart, err := rc.CanStartRebuildingReplica(r)
 		if err != nil {
 			return nil, err
@@ -450,6 +458,10 @@ func (rc *ReplicaController) GetBackingImagePathForReplicaStarting(r *longhorn.R
 		return "", nil
 	}
 	return types.GetBackingImagePathForReplicaManagerContainer(r.Spec.DiskPath, r.Spec.BackingImage, bi.Status.UUID), nil
+}
+
+func IsRebuildingReplica(r *longhorn.Replica) bool {
+	return r.Spec.RebuildRetryCount != 0 && r.Spec.HealthyAt == "" && r.Spec.FailedAt == ""
 }
 
 func (rc *ReplicaController) CanStartRebuildingReplica(r *longhorn.Replica) (bool, error) {
@@ -769,17 +781,23 @@ func (rc *ReplicaController) enqueueSettingChange(obj interface{}) {
 		return
 	}
 
+	rc.enqueueAllRebuildingReplicaOnCurrentNode()
+
+	return
+}
+
+func (rc *ReplicaController) enqueueAllRebuildingReplicaOnCurrentNode() {
 	replicas, err := rc.ds.ListReplicasByNodeRO(rc.controllerID)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to list replicas on current node %v for setting %v: %v",
-			rc.controllerID, types.SettingNameConcurrentReplicaRebuildPerNodeLimit, err))
+		utilruntime.HandleError(fmt.Errorf("failed to list rebuilding replicas on current node %v: %v",
+			rc.controllerID, err))
 		return
 	}
 	for _, r := range replicas {
-		rc.enqueueReplica(r)
+		if IsRebuildingReplica(r) {
+			rc.enqueueReplica(r)
+		}
 	}
-
-	return
 }
 
 func (rc *ReplicaController) isResponsibleFor(r *longhorn.Replica) bool {
