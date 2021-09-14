@@ -117,7 +117,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		serviceInformer,
 		kubeClient, namespace)
 	rc := NewReplicaController(logger, ds, scheme,
-		nodeInformer, replicaInformer, imInformer, backingImageInformer,
+		nodeInformer, replicaInformer, imInformer, backingImageInformer, settingInformer,
 		kubeClient, namespace, controllerID)
 	ec := NewEngineController(logger, ds, scheme,
 		engineInformer, imInformer,

@@ -63,6 +63,7 @@ type ReplicaController struct {
 	rStoreSynced  cache.InformerSynced
 	imStoreSynced cache.InformerSynced
 	biStoreSynced cache.InformerSynced
+	sStoreSynced  cache.InformerSynced
 
 	instanceHandler *InstanceHandler
 
@@ -77,6 +78,7 @@ func NewReplicaController(
 	replicaInformer lhinformers.ReplicaInformer,
 	instanceManagerInformer lhinformers.InstanceManagerInformer,
 	backingImageInformer lhinformers.BackingImageInformer,
+	settingInformer lhinformers.SettingInformer,
 	kubeClient clientset.Interface,
 	namespace string, controllerID string) *ReplicaController {
 
@@ -102,6 +104,7 @@ func NewReplicaController(
 		rStoreSynced:  replicaInformer.Informer().HasSynced,
 		imStoreSynced: instanceManagerInformer.Informer().HasSynced,
 		biStoreSynced: backingImageInformer.Informer().HasSynced,
+		sStoreSynced:  settingInformer.Informer().HasSynced,
 	}
 	rc.instanceHandler = NewInstanceHandler(ds, rc, rc.eventRecorder)
 
@@ -129,6 +132,10 @@ func NewReplicaController(
 		DeleteFunc: rc.enqueueBackingImageChange,
 	})
 
+	settingInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old, cur interface{}) { rc.enqueueSettingChange(cur) },
+	})
+
 	return rc
 }
 
@@ -139,7 +146,7 @@ func (rc *ReplicaController) Run(workers int, stopCh <-chan struct{}) {
 	rc.logger.Info("Start Longhorn replica controller")
 	defer rc.logger.Info("Shutting down Longhorn replica controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn replicas", stopCh, rc.nStoreSynced, rc.rStoreSynced, rc.imStoreSynced, rc.biStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn replicas", stopCh, rc.nStoreSynced, rc.rStoreSynced, rc.imStoreSynced, rc.biStoreSynced, rc.sStoreSynced) {
 		return
 	}
 
@@ -736,6 +743,40 @@ func (rc *ReplicaController) enqueueBackingImageChange(obj interface{}) {
 		for _, r := range replicas {
 			rc.enqueueReplica(r)
 		}
+	}
+
+	return
+}
+
+func (rc *ReplicaController) enqueueSettingChange(obj interface{}) {
+	setting, ok := obj.(*longhorn.Setting)
+	if !ok {
+		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		setting, ok = deletedState.Obj.(*longhorn.Setting)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	if types.SettingName(setting.Name) != types.SettingNameConcurrentReplicaRebuildPerNodeLimit {
+		return
+	}
+
+	replicas, err := rc.ds.ListReplicasByNodeRO(rc.controllerID)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list replicas on current node %v for setting %v: %v",
+			rc.controllerID, types.SettingNameConcurrentReplicaRebuildPerNodeLimit, err))
+		return
+	}
+	for _, r := range replicas {
+		rc.enqueueReplica(r)
 	}
 
 	return
