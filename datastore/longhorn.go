@@ -1059,7 +1059,11 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 	if len(nodes) == 0 || (len(nodes) == 1 && nodes[0] == "") {
 		return false, nil
 	}
-	nodesHaveEngineImage, err := s.ListNodesWithEngineImage(image)
+	eiStates := map[types.EngineImageState]struct{}{
+		types.EngineImageStateDeploying: {},
+		types.EngineImageStateDeployed:  {},
+	}
+	nodesHaveEngineImage, err := s.ListNodesWithEngineImage(image, eiStates)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed CheckEngineImageReadiness for nodes %v", nodes)
 	}
@@ -1767,7 +1771,7 @@ func (s *DataStore) ListNodesRO() ([]*longhorn.Node, error) {
 	return s.nLister.Nodes(s.namespace).List(labels.Everything())
 }
 
-func (s *DataStore) ListNodesWithEngineImage(image string) (map[string]*longhorn.Node, error) {
+func (s *DataStore) ListNodesWithEngineImage(image string, states map[types.EngineImageState]struct{}) (map[string]*longhorn.Node, error) {
 	nodes, err := s.ListNodes()
 	if err != nil {
 		return nil, err
@@ -1777,7 +1781,7 @@ func (s *DataStore) ListNodesWithEngineImage(image string) (map[string]*longhorn
 	if err != nil {
 		return nil, fmt.Errorf("unable to get engine image %v: %v", image, err)
 	}
-	if ei.Status.State != types.EngineImageStateDeployed && ei.Status.State != types.EngineImageStateDeploying {
+	if _, exist := states[ei.Status.State]; !exist {
 		return map[string]*longhorn.Node{}, nil
 	}
 
@@ -1833,9 +1837,26 @@ func (s *DataStore) ListReadyAndSchedulableNodes() (map[string]*longhorn.Node, e
 	return filterSchedulableNodes(filterReadyNodes(nodes)), nil
 }
 
-// ListReadyNodesWithEngineImage returns list of ready nodes that have the corresponding engine image deployed
+// ListReadyNodesWithEngineImage returns list of ready nodes that have the corresponding engine image deploying or deployed
 func (s *DataStore) ListReadyNodesWithEngineImage(image string) (map[string]*longhorn.Node, error) {
-	nodes, err := s.ListNodesWithEngineImage(image)
+	eiStates := map[types.EngineImageState]struct{}{
+		types.EngineImageStateDeploying: {},
+		types.EngineImageStateDeployed:  {},
+	}
+	nodes, err := s.ListNodesWithEngineImage(image, eiStates)
+	if err != nil {
+		return nil, err
+	}
+	readyNodes := filterReadyNodes(nodes)
+	return readyNodes, nil
+}
+
+// ListReadyNodesWithReadyEngineImage returns list of ready nodes that have the corresponding engine image deployed
+func (s *DataStore) ListReadyNodesWithReadyEngineImage(image string) (map[string]*longhorn.Node, error) {
+	eiStates := map[types.EngineImageState]struct{}{
+		types.EngineImageStateDeployed: {},
+	}
+	nodes, err := s.ListNodesWithEngineImage(image, eiStates)
 	if err != nil {
 		return nil, err
 	}

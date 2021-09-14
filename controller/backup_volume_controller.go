@@ -383,14 +383,13 @@ func (bvc *BackupVolumeController) isResponsibleFor(bv *longhorn.BackupVolume, d
 
 	isResponsible := isControllerResponsibleFor(bvc.controllerID, bvc.ds, bv.Name, "", bv.Status.OwnerID)
 
-	readyNodesWithEI, err := bvc.ds.ListReadyNodesWithEngineImage(defaultEngineImage)
+	readyNodesWithReadyEI, err := bvc.ds.ListReadyNodesWithReadyEngineImage(defaultEngineImage)
 	if err != nil {
 		return false, err
 	}
-	// No node in the system has the default engine image,
-	// Fall back to the default logic where we pick a running node to be the owner
-	if len(readyNodesWithEI) == 0 {
-		return isResponsible, nil
+	// No node in the system has the default engine image in ready state
+	if len(readyNodesWithReadyEI) == 0 {
+		return false, nil
 	}
 
 	currentOwnerEngineAvailable, err := bvc.ds.CheckEngineImageReadiness(defaultEngineImage, bv.Status.OwnerID)

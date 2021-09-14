@@ -52,6 +52,7 @@ func NewBackupTargetController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	backupTargetInformer lhinformers.BackupTargetInformer,
+	engineImageInformer lhinformers.EngineImageInformer,
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string) *BackupTargetController {
@@ -81,6 +82,20 @@ func NewBackupTargetController(
 		UpdateFunc: func(old, cur interface{}) { btc.enqueueBackupTarget(cur) },
 	})
 
+	engineImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old, cur interface{}) {
+			oldEI := old.(*longhorn.EngineImage)
+			curEI := cur.(*longhorn.EngineImage)
+			if curEI.ResourceVersion == oldEI.ResourceVersion {
+				// Periodic resync will send update events for all known secrets.
+				// Two different versions of the same secret will always have different RVs.
+				// Ref to https://github.com/kubernetes/kubernetes/blob/c8ebc8ab75a9c36453cf6fa30990fd0a277d856d/pkg/controller/deployment/deployment_controller.go#L256-L263
+				return
+			}
+			btc.enqueueEngineImage(cur)
+		},
+	})
+
 	return btc
 }
 
@@ -92,6 +107,23 @@ func (btc *BackupTargetController) enqueueBackupTarget(obj interface{}) {
 	}
 
 	btc.queue.AddRateLimited(key)
+}
+
+func (btc *BackupTargetController) enqueueEngineImage(obj interface{}) {
+	ei, ok := obj.(*longhorn.EngineImage)
+	if !ok {
+		return
+	}
+
+	defaultEngineImage, err := btc.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+	// Enqueue the backup target only when the default engine image becomes ready
+	if err != nil || ei.Spec.Image != defaultEngineImage || ei.Status.State != types.EngineImageStateDeployed {
+		return
+	}
+	// For now, we only support a default backup target
+	// We've to enhance it once we support multiple backup targets
+	// https://github.com/longhorn/longhorn/issues/2317
+	btc.queue.AddRateLimited(ei.Namespace + "/" + types.DefaultBackupTargetName)
 }
 
 func (btc *BackupTargetController) Run(workers int, stopCh <-chan struct{}) {
@@ -367,14 +399,13 @@ func (btc *BackupTargetController) isResponsibleFor(bt *longhorn.BackupTarget, d
 
 	isResponsible := isControllerResponsibleFor(btc.controllerID, btc.ds, bt.Name, "", bt.Status.OwnerID)
 
-	readyNodesWithEI, err := btc.ds.ListReadyNodesWithEngineImage(defaultEngineImage)
+	readyNodesWithReadyEI, err := btc.ds.ListReadyNodesWithReadyEngineImage(defaultEngineImage)
 	if err != nil {
 		return false, err
 	}
-	// No node in the system has the default engine image,
-	// Fall back to the default logic where we pick a running node to be the owner
-	if len(readyNodesWithEI) == 0 {
-		return isResponsible, nil
+	// No node in the system has the default engine image in ready state
+	if len(readyNodesWithReadyEI) == 0 {
+		return false, nil
 	}
 
 	currentOwnerEngineAvailable, err := btc.ds.CheckEngineImageReadiness(defaultEngineImage, bt.Status.OwnerID)
