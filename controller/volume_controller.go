@@ -1694,10 +1694,8 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 	dataPathToNewReplica := map[string]*longhorn.Replica{}
 	for _, r := range rs {
 		dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
-		if r.Spec.EngineImage == v.Status.CurrentImage && r.Status.CurrentState == types.InstanceStateRunning {
-			if mode, exists := e.Status.ReplicaModeMap[r.Name]; exists && mode == types.ReplicaModeRW {
-				dataPathToOldRunningReplica[dataPath] = r
-			}
+		if r.Spec.EngineImage == v.Status.CurrentImage && r.Status.CurrentState == types.InstanceStateRunning && r.Spec.HealthyAt != "" {
+			dataPathToOldRunningReplica[dataPath] = r
 		} else if r.Spec.EngineImage == v.Spec.EngineImage {
 			dataPathToNewReplica[dataPath] = r
 		} else {
