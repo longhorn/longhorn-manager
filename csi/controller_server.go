@@ -3,6 +3,7 @@ package csi
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -647,6 +648,11 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	if existVol, err = cs.apiClient.Volume.ActionExpand(existVol, &longhornclient.ExpandInput{
 		Size: strconv.FormatInt(requestedSize, 10),
 	}); err != nil {
+		// TODO: This manual error code parsing should be refactored once Longhorn API implements error code response
+		// https://github.com/longhorn/longhorn/issues/1875
+		if matched, _ := regexp.MatchString("cannot schedule .* more bytes to disk", err.Error()); matched {
+			return nil, status.Errorf(codes.OutOfRange, err.Error())
+		}
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
