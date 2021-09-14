@@ -5,6 +5,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -545,8 +546,8 @@ func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, requiredStorage int
 	// StorageAvailable = the space can be used by 3rd party or Longhorn system.
 	// There is no (direct) relationship between StorageReserved and StorageAvailable.
 	return info.StorageMaximum > 0 && info.StorageAvailable > 0 &&
-		info.StorageAvailable-requiredStorage > info.StorageMaximum*info.MinimalAvailablePercentage/100 &&
-		(size+info.StorageScheduled) <= (info.StorageMaximum-info.StorageReserved)*(info.OverProvisioningPercentage/100)
+		info.StorageAvailable-requiredStorage > int64(float64(info.StorageMaximum)*float64(info.MinimalAvailablePercentage)/100) &&
+		(size+info.StorageScheduled) <= int64(float64(info.StorageMaximum-info.StorageReserved)*float64(info.OverProvisioningPercentage)/100)
 }
 
 func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk types.DiskSpec, diskStatus *types.DiskStatus) (*DiskSchedulingInfo, error) {
@@ -568,4 +569,56 @@ func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk types.DiskSpec, diskStat
 		MinimalAvailablePercentage: minimalAvailablePercentage,
 	}
 	return info, nil
+}
+
+func (rcs *ReplicaScheduler) CheckReplicasSizeExpansion(v *longhorn.Volume, oldSize, newSize int64) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "error while CheckReplicasSizeExpansion for volume %v", v.Name)
+	}()
+
+	replicas, err := rcs.ds.ListVolumeReplicas(v.Name)
+	if err != nil {
+		return err
+	}
+	diskIDToReplicaCount := map[string]int64{}
+	diskIDToDiskInfo := map[string]*DiskSchedulingInfo{}
+	for _, r := range replicas {
+		if r.Spec.NodeID == "" {
+			continue
+		}
+		node, err := rcs.ds.GetNode(r.Spec.NodeID)
+		if err != nil {
+			return err
+		}
+		diskSpec, diskStatus, ok := findDiskSpecAndDiskStatusInNode(r.Spec.DiskID, node)
+		if !ok {
+			return fmt.Errorf("cannot find the disk %v in node %v", r.Spec.DiskID, node.Name)
+		}
+		diskInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, &diskStatus)
+		if err != nil {
+			return fmt.Errorf("failed to GetDiskSchedulingInfo %v", err)
+		}
+		diskIDToDiskInfo[r.Spec.DiskID] = diskInfo
+		diskIDToReplicaCount[r.Spec.DiskID] = diskIDToReplicaCount[r.Spec.DiskID] + 1
+	}
+
+	expandingSize := newSize - oldSize
+	for diskID, diskInfo := range diskIDToDiskInfo {
+		requestingSizeExpansionOnDisk := expandingSize * diskIDToReplicaCount[diskID]
+		if !rcs.IsSchedulableToDisk(requestingSizeExpansionOnDisk, 0, diskInfo) {
+			logrus.Errorf("Cannot schedule %v more bytes to disk %v with %+v", requestingSizeExpansionOnDisk, diskID, diskInfo)
+			return fmt.Errorf("cannot schedule %v more bytes to disk %v with %+v", requestingSizeExpansionOnDisk, diskID, diskInfo)
+		}
+	}
+	return nil
+}
+
+func findDiskSpecAndDiskStatusInNode(diskUUID string, node *longhorn.Node) (types.DiskSpec, types.DiskStatus, bool) {
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		if diskStatus.DiskUUID == diskUUID {
+			diskSpec := node.Spec.Disks[diskName]
+			return diskSpec, *diskStatus, true
+		}
+	}
+	return types.DiskSpec{}, types.DiskStatus{}, false
 }
