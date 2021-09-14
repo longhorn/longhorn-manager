@@ -142,7 +142,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		settingInformer, nodeInformer, backupTargetInformer,
 		kubeClient, namespace, controllerID, version)
 	btc := NewBackupTargetController(logger, ds, scheme,
-		backupTargetInformer,
+		backupTargetInformer, engineImageInformer,
 		kubeClient, controllerID, namespace)
 	bvc := NewBackupVolumeController(logger, ds, scheme,
 		backupVolumeInformer,
