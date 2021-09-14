@@ -19,6 +19,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -26,7 +27,8 @@ import (
 )
 
 type VolumeManager struct {
-	ds *datastore.DataStore
+	ds        *datastore.DataStore
+	scheduler *scheduler.ReplicaScheduler
 
 	currentNodeID string
 	sb            *SupportBundle
@@ -34,7 +36,8 @@ type VolumeManager struct {
 
 func NewVolumeManager(currentNodeID string, ds *datastore.DataStore) *VolumeManager {
 	return &VolumeManager{
-		ds: ds,
+		ds:        ds,
+		scheduler: scheduler.NewReplicaScheduler(ds),
 
 		currentNodeID: currentNodeID,
 	}
@@ -689,6 +692,10 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 	if v.Spec.Size >= size {
 		logrus.Infof("Volume %v expansion is not necessary since current size %v >= %v", v.Name, v.Spec.Size, size)
 		return v, nil
+	}
+
+	if err := m.scheduler.CheckReplicasSizeExpansion(v, v.Spec.Size, size); err != nil {
+		return nil, err
 	}
 
 	logrus.Infof("Volume %v expansion from %v to %v requested", v.Name, v.Spec.Size, size)
