@@ -742,10 +742,9 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 			staled = true
 		}
 
-		// 1. failed before ever became healthy (RW), except for replica reuse failure during rebuilding
-		// 2. failed too long ago, became stale and unnecessary to keep
-		// around, unless we don't any healthy replicas
-		if (r.Spec.HealthyAt == "" && r.Spec.RebuildRetryCount == 0) || (healthyCount != 0 && staled) {
+		// 1. failed for multiple times or failed at rebuilding (`Spec.RebuildRetryCount` of a newly created rebuilding replica is `FailedReplicaMaxRetryCount`) before ever became healthy/ mode RW,
+		// 2. failed too long ago, became stale and unnecessary to keep around, unless we don't have any healthy replicas
+		if (r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount) || (healthyCount != 0 && staled) {
 			log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
 			if err := vc.deleteReplica(r, rs); err != nil {
 				return errors.Wrapf(err, "cannot cleanup staled replica %v", r.Name)
@@ -2056,7 +2055,8 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 	}
 	if isRebuildingReplica {
 		log.Debugf("A new replica %v will be replenished during rebuilding", replica.Name)
-		replica.Spec.RebuildRetryCount++
+		// Prevent this new replica from being reused after rebuilding failure.
+		replica.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
 	}
 
 	replica, err := vc.ds.CreateReplica(replica)
