@@ -327,7 +327,7 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 		backupTarget.Spec.PollInterval = metav1.Duration{Duration: pollInterval}
 		if !reflect.DeepEqual(existingBackupTarget.Spec, backupTarget.Spec) {
 			// Force sync backup target once the BackupTarget spec be updated
-			backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
+			backupTarget.Spec.SyncRequestedAt = time.Now().UTC()
 			if _, err = sc.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 				sc.logger.WithError(err).Warn("Failed to update backup target")
 			}
@@ -679,7 +679,7 @@ func (bst *BackupStoreTimer) Start() {
 			return false, err
 		}
 
-		backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
+		backupTarget.Spec.SyncRequestedAt = time.Now().UTC()
 		if _, err = bst.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 			log.WithError(err).Warn("Failed to updating backup target")
 		}
