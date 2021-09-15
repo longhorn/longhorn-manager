@@ -833,22 +833,25 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	// volume attaching, start replicas, one node down
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = TestNode1
-	tc.volume.Status.CurrentNodeID = TestNode1
+	tc.volume.Spec.StaleReplicaTimeout = 1<<24 - 1
 	tc.nodes[1] = newNode(TestNode2, TestNamespace, false, types.ConditionStatusFalse, string(types.NodeConditionReasonKubernetesNodeGone))
 	for _, r := range tc.replicas {
+		// Assume the volume is previously attached then detached.
+		r.Spec.HealthyAt = getTestNow()
 		r.Status.CurrentState = types.InstanceStateStopped
 	}
 	tc.copyCurrentToExpect()
+	tc.expectVolume.Status.CurrentNodeID = TestNode1
 	tc.expectVolume.Status.State = types.VolumeStateAttaching
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
-	expectRs := map[string]*longhorn.Replica{}
 	for _, r := range tc.expectReplicas {
-		if r.Spec.NodeID != TestNode2 {
+		if r.Spec.NodeID == TestNode2 {
+			r.Spec.DesireState = types.InstanceStateStopped
+			r.Spec.FailedAt = getTestNow()
+		} else {
 			r.Spec.DesireState = types.InstanceStateRunning
-			expectRs[r.Name] = r
 		}
 	}
-	tc.expectReplicas = expectRs
 	testCases["volume attaching - start replicas - node failed"] = tc
 
 	// Disable revision counter
@@ -874,7 +877,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		expectEs[e.Name] = e
 	}
 	tc.expectEngines = expectEs
-	expectRs = map[string]*longhorn.Replica{}
+	expectRs := map[string]*longhorn.Replica{}
 	for _, r := range tc.expectReplicas {
 		r.Spec.DesireState = types.InstanceStateRunning
 		r.Spec.RevisionCounterDisabled = true
