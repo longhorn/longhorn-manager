@@ -1486,6 +1486,10 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		return nil
 	}
 
+	if (len(rs) != 0) && v.Status.State != types.VolumeStateAttached {
+		return nil
+	}
+
 	if e == nil {
 		return fmt.Errorf("BUG: replenishReplica needs a valid engine")
 	}
@@ -1534,7 +1538,6 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 				reusableFailedReplica.Name, vc.backoff.Get(reusableFailedReplica.Name).Seconds())
 		}
 		if vc.scheduler.RequireNewReplica(rs, v, hardNodeAffinity) {
-			log.Debugf("A new replica will be replenished during rebuilding")
 			if err := vc.createReplica(v, e, rs, hardNodeAffinity, !newVolume); err != nil {
 				return err
 			}
@@ -2030,6 +2033,8 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 }
 
 func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, hardNodeAffinity string, isRebuildingReplica bool) error {
+	log := getLoggerForVolume(vc.logger, v)
+
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            types.GenerateReplicaNameForVolume(v.Name),
@@ -2050,6 +2055,7 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 		},
 	}
 	if isRebuildingReplica {
+		log.Debugf("A new replica %v will be replenished during rebuilding", replica.Name)
 		replica.Spec.RebuildRetryCount++
 	}
 
