@@ -220,8 +220,16 @@ func (rc *ReplicaController) isEvictionRequested(replica *longhorn.Replica) bool
 	}
 
 	// Check if disk has been request eviction.
-	if node.Spec.Disks[replica.Spec.DiskID].EvictionRequested == true {
-		return true
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		if diskStatus.DiskUUID != replica.Spec.DiskID {
+			continue
+		}
+		diskSpec, ok := node.Spec.Disks[diskName]
+		if !ok {
+			log.Warnf("Cannot continue handling replica eviction since there is no spec for disk name %v on node %v", diskName, node.Name)
+			return false
+		}
+		return diskSpec.EvictionRequested
 	}
 
 	return false
