@@ -51,6 +51,7 @@ const (
 	SettingNameStorageMinimalAvailablePercentage            = SettingName("storage-minimal-available-percentage")
 	SettingNameUpgradeChecker                               = SettingName("upgrade-checker")
 	SettingNameLatestLonghornVersion                        = SettingName("latest-longhorn-version")
+	SettingNameStableLonghornVersions                       = SettingName("stable-longhorn-versions")
 	SettingNameDefaultReplicaCount                          = SettingName("default-replica-count")
 	SettingNameDefaultDataLocality                          = SettingName("default-data-locality")
 	SettingNameGuaranteedEngineCPU                          = SettingName("guaranteed-engine-cpu")
@@ -97,6 +98,7 @@ var (
 		SettingNameStorageMinimalAvailablePercentage,
 		SettingNameUpgradeChecker,
 		SettingNameLatestLonghornVersion,
+		SettingNameStableLonghornVersions,
 		SettingNameDefaultReplicaCount,
 		SettingNameDefaultDataLocality,
 		SettingNameGuaranteedEngineCPU,
@@ -164,6 +166,7 @@ var (
 		SettingNameStorageMinimalAvailablePercentage:            SettingDefinitionStorageMinimalAvailablePercentage,
 		SettingNameUpgradeChecker:                               SettingDefinitionUpgradeChecker,
 		SettingNameLatestLonghornVersion:                        SettingDefinitionLatestLonghornVersion,
+		SettingNameStableLonghornVersions:                       SettingDefinitionStableLonghornVersions,
 		SettingNameDefaultReplicaCount:                          SettingDefinitionDefaultReplicaCount,
 		SettingNameDefaultDataLocality:                          SettingDefinitionDefaultDataLocality,
 		SettingNameGuaranteedEngineCPU:                          SettingDefinitionGuaranteedEngineCPU,
@@ -335,6 +338,15 @@ var (
 	SettingDefinitionLatestLonghornVersion = SettingDefinition{
 		DisplayName: "Latest Longhorn Version",
 		Description: "The latest version of Longhorn available. Updated by Upgrade Checker automatically",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    false,
+		ReadOnly:    true,
+	}
+
+	SettingDefinitionStableLonghornVersions = SettingDefinition{
+		DisplayName: "Stable Longhorn Versions",
+		Description: "The latest stable version of every minor release line. Updated by Upgrade Checker automatically",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
 		Required:    false,
