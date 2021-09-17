@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -36,6 +37,7 @@ import (
 
 const (
 	VersionTagLatest = "latest"
+	VersionTagStable = "stable"
 )
 
 var (
@@ -707,11 +709,21 @@ func (sc *SettingController) syncUpgradeChecker() error {
 	if err != nil {
 		return err
 	}
+	stableLonghornVersions, err := sc.ds.GetSetting(types.SettingNameStableLonghornVersions)
+	if err != nil {
+		return err
+	}
 
 	if upgradeCheckerEnabled == false {
 		if latestLonghornVersion.Value != "" {
 			latestLonghornVersion.Value = ""
 			if _, err := sc.ds.UpdateSetting(latestLonghornVersion); err != nil {
+				return err
+			}
+		}
+		if stableLonghornVersions.Value != "" {
+			stableLonghornVersions.Value = ""
+			if _, err := sc.ds.UpdateSetting(stableLonghornVersions); err != nil {
 				return err
 			}
 		}
@@ -726,17 +738,18 @@ func (sc *SettingController) syncUpgradeChecker() error {
 		return nil
 	}
 
-	oldVersion := latestLonghornVersion.Value
-	latestLonghornVersion.Value, err = sc.CheckLatestLonghornVersion()
+	currentLatestVersion := latestLonghornVersion.Value
+	currentStableVersions := stableLonghornVersions.Value
+	latestLonghornVersion.Value, stableLonghornVersions.Value, err = sc.CheckLatestAndStableLonghornVersions()
 	if err != nil {
 		// non-critical error, don't retry
-		sc.logger.WithError(err).Debug("Failed to check for the latest upgrade")
+		sc.logger.WithError(err).Debug("Failed to check for the latest and stable Longhorn versions")
 		return nil
 	}
 
 	sc.lastUpgradeCheckedTimestamp = now
 
-	if latestLonghornVersion.Value != oldVersion {
+	if latestLonghornVersion.Value != currentLatestVersion {
 		sc.logger.Infof("Latest Longhorn version is %v", latestLonghornVersion.Value)
 		if _, err := sc.ds.UpdateSetting(latestLonghornVersion); err != nil {
 			// non-critical error, don't retry
@@ -744,17 +757,26 @@ func (sc *SettingController) syncUpgradeChecker() error {
 			return nil
 		}
 	}
+	if stableLonghornVersions.Value != currentStableVersions {
+		sc.logger.Infof("The latest stable version of every minor release line: %v", stableLonghornVersions.Value)
+		if _, err := sc.ds.UpdateSetting(stableLonghornVersions); err != nil {
+			// non-critical error, don't retry
+			sc.logger.WithError(err).Debug("Cannot update stable Longhorn versions")
+			return nil
+		}
+	}
+
 	return nil
 }
 
-func (sc *SettingController) CheckLatestLonghornVersion() (string, error) {
+func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, string, error) {
 	var (
 		resp    CheckUpgradeResponse
 		content bytes.Buffer
 	)
 	kubeVersion, err := sc.kubeClient.Discovery().ServerVersion()
 	if err != nil {
-		return "", errors.Wrap(err, "failed to get Kubernetes server version")
+		return "", "", errors.Wrap(err, "failed to get Kubernetes server version")
 	}
 
 	req := &CheckUpgradeRequest{
@@ -762,11 +784,11 @@ func (sc *SettingController) CheckLatestLonghornVersion() (string, error) {
 		KubernetesVersion: kubeVersion.GitVersion,
 	}
 	if err := json.NewEncoder(&content).Encode(req); err != nil {
-		return "", err
+		return "", "", err
 	}
 	r, err := http.Post(checkUpgradeURL, "application/json", &content)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer r.Body.Close()
 	if r.StatusCode != http.StatusOK {
@@ -777,31 +799,29 @@ func (sc *SettingController) CheckLatestLonghornVersion() (string, error) {
 		} else {
 			message = string(messageBytes)
 		}
-		return "", fmt.Errorf("query return status code %v, message %v", r.StatusCode, message)
+		return "", "", fmt.Errorf("query return status code %v, message %v", r.StatusCode, message)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	latestVersion := ""
+	stableVersions := []string{}
 	for _, v := range resp.Versions {
-		found := false
 		for _, tag := range v.Tags {
 			if tag == VersionTagLatest {
-				found = true
-				break
+				latestVersion = v.Name
 			}
-		}
-		if found {
-			latestVersion = v.Name
-			break
+			if tag == VersionTagStable {
+				stableVersions = append(stableVersions, v.Name)
+			}
 		}
 	}
 	if latestVersion == "" {
-		return "", fmt.Errorf("cannot find latest version in response: %+v", resp)
+		return "", "", fmt.Errorf("cannot find latest Longhorn version during CheckLatestAndStableLonghornVersions")
 	}
-
-	return latestVersion, nil
+	sort.Strings(stableVersions)
+	return latestVersion, strings.Join(stableVersions, ","), nil
 }
 
 func (sc *SettingController) enqueueSetting(obj interface{}) {
