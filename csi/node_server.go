@@ -386,6 +386,28 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, err
 	}
 
+	// check if we need to resize the fs
+	// this is important since cloned volumes of bigger size don't trigger NodeExpandVolume
+	// therefore NodeExpandVolume is kind of redundant since we have to do this anyway
+	// some refs below for more details
+	// https://github.com/kubernetes/kubernetes/issues/94929
+	// https://github.com/kubernetes-sigs/aws-ebs-csi-driver/pull/753
+	resizer := mount.NewResizeFs(utilexec.New())
+	if needsResize, err := resizer.NeedResize(devicePath, targetPath); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	} else if needsResize {
+		if resized, err := resizer.Resize(devicePath, targetPath); err != nil {
+			logrus.WithError(err).Errorf("mounted volume %v on node %v failed required filesystem resize", volumeID, ns.nodeID)
+			return nil, status.Error(codes.Internal, err.Error())
+		} else if resized {
+			logrus.Infof("mounted volume %v on node %v succesfully resized filesystem after mount", volumeID, ns.nodeID)
+		} else {
+			logrus.Debugf("mounted volume %v on node %v already has correct filesystem size", volumeID, ns.nodeID)
+		}
+	} else {
+		logrus.Debugf("mounted volume %v on node %v does not require filesystem resize", volumeID, ns.nodeID)
+	}
+
 	logrus.Infof("mounted volume %v on node %v via device %v", volumeID, ns.nodeID, devicePath)
 	return &csi.NodeStageVolumeResponse{}, nil
 }
