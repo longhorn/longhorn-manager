@@ -23,7 +23,6 @@ import (
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/csi/crypto"
-	"github.com/longhorn/longhorn-manager/csi/nfs"
 	"github.com/longhorn/longhorn-manager/types"
 )
 
@@ -549,19 +548,10 @@ func getNodeServiceCapabilities(cs []csi.NodeServiceCapability_RPC_Type) []*csi.
 }
 
 func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability *csi.VolumeCapability) (mount.Interface, error) {
-
-	// regular mounter for device files
-	if volumeCapability.GetBlock() != nil {
+	// regular mounter for device files / nfs has no format ability
+	regularMounter := volumeCapability.GetBlock() != nil || (requiresSharedAccess(volume, volumeCapability) && !volume.Migratable)
+	if regularMounter {
 		return mount.New(""), nil
-	}
-
-	// namespace mounter that operates in the host namespace, that can deal with broken nfs mounts
-	if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable {
-		nse, err := nfs.NewNsEnter()
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "volume %v failed to create nsenter executor for nfs mounter err: %v", volume.Name, err)
-		}
-		return nfs.NewMounter(nse), nil
 	}
 
 	// mounter that can format and use hard coded filesystem params
