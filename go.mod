@@ -60,7 +60,7 @@ require (
 	golang.org/x/sys v0.0.0-20201112073958-5cba982894dd
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0
 	google.golang.org/grpc v1.26.0
-	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127
+	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f
 	gopkg.in/square/go-jose.v2 v2.3.1 // indirect
 	gopkg.in/yaml.v2 v2.2.8
 	k8s.io/api v0.18.19
@@ -69,6 +69,7 @@ require (
 	k8s.io/client-go v0.18.19
 	k8s.io/kubernetes v1.18.19
 	k8s.io/metrics v0.18.19
-	k8s.io/utils v0.0.0-20200324210504-a9aa75ae1b89
+	k8s.io/mount-utils v0.22.2
+	k8s.io/utils v0.0.0-20210819203725-bdf08cb9a70a
 	sigs.k8s.io/yaml v1.2.0
 )
