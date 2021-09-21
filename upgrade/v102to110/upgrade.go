@@ -122,7 +122,7 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err erro
 			v = *updatedVolume
 		}
 
-		if v.Status.Robustness == types.VolumeRobustnessDegraded {
+		if v.Status.Robustness == types.VolumeRobustnessDegraded && v.Status.LastDegradedAt == "" {
 			v.Status.LastDegradedAt = util.Now()
 			if _, err := lhClient.LonghornV1beta1().Volumes(namespace).UpdateStatus(context.TODO(), &v, metav1.UpdateOptions{}); err != nil {
 				return err
