@@ -614,7 +614,7 @@ var (
 		DisplayName: "Disable Replica Rebuild",
 		Description: "This setting disable replica rebuild cross the whole cluster, eviction and data locality feature won't work if this setting is true. But doesn't have any impact to any current replica rebuild and restore disaster recovery volume.",
 		Category:    SettingCategoryDangerZone,
-		Type:        SettingTypeBool,
+		Type:        SettingTypeDeprecated,
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "false",
