@@ -548,10 +548,13 @@ func getNodeServiceCapabilities(cs []csi.NodeServiceCapability_RPC_Type) []*csi.
 }
 
 func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability *csi.VolumeCapability) (mount.Interface, error) {
-	// regular mounter for device files / nfs has no format ability
-	regularMounter := volumeCapability.GetBlock() != nil || (requiresSharedAccess(volume, volumeCapability) && !volume.Migratable)
-	if regularMounter {
+	if volumeCapability.GetBlock() != nil {
 		return mount.New(""), nil
+	}
+
+	// HACK: to nsenter host namespaces for the nfs mounts to stay available after csi plugin dies
+	if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable {
+		return mount.New("/usr/local/sbin/nsmounter"), nil
 	}
 
 	// mounter that can format and use hard coded filesystem params

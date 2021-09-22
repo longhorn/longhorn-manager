@@ -1,0 +1,3 @@
+#!/bin/bash
+
+nsenter -t 1 -m -n -u -- "$@"
