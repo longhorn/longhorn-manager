@@ -1572,10 +1572,11 @@ func hasLocalReplicaOnSameNodeAsEngine(e *longhorn.Engine, rs map[string]*longho
 // It will count all the potentially usable replicas, since some replicas maybe
 // blank or in rebuilding state
 func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, hardNodeAffinity string) error {
-	disableReplicaRebuild, err := vc.ds.GetSettingAsBool(types.SettingNameDisableReplicaRebuild)
+	concurrentRebuildingLimit, err := vc.ds.GetSettingAsInt(types.SettingNameConcurrentReplicaRebuildPerNodeLimit)
 	if err != nil {
 		return err
 	}
+	disableReplicaRebuild := concurrentRebuildingLimit == 0
 
 	// If disabled replica rebuild, skip all the rebuild except first time creation.
 	if (len(rs) != 0) && disableReplicaRebuild {
