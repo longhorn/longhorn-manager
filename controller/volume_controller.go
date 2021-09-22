@@ -1440,32 +1440,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonRestoreInProgress, "")
 		}
 
-		if v.Status.ExpansionRequired {
-			// The engine expansion is complete
-			if v.Spec.Size == e.Status.CurrentSize {
-				if v.Spec.Frontend == longhorn.VolumeFrontendBlockDev {
-					log.Info("Prepare to start frontend and expand the file system for volume")
-					// Here is the exception that the frontend is enabled but the volume is auto attached.
-					v.Status.FrontendDisabled = false
-					e.Spec.DisableFrontend = false
-					// Wait for the frontend to be up after e.Spec.DisableFrontend getting changed.
-					// If the frontend is up, the engine endpoint won't be empty.
-					if e.Status.Endpoint != "" {
-						// Best effort. We don't know if there is a file system built in the volume.
-						if err := util.ExpandFileSystem(v.Name); err != nil {
-							log.WithError(err).Warn("Failed to expand the file system for volume")
-						} else {
-							log.Info("Succeeded to expand the file system for volume")
-						}
-						v.Status.ExpansionRequired = false
-					}
-				} else {
-					log.Info("Expanding file system is not supported for volume frontend")
-					v.Status.ExpansionRequired = false
-				}
-				vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonSucceededExpansion,
-					"Succeeds to expand the volume %v to size %v, will automatically detach it if it's not DR volume", v.Name, e.Status.CurrentSize)
-			}
+		// The engine expansion is complete
+		if v.Status.ExpansionRequired && v.Spec.Size == e.Status.CurrentSize {
+			v.Status.ExpansionRequired = false
+			v.Status.FrontendDisabled = false
+			e.Spec.DisableFrontend = false
 		}
 
 		v.Status.State = longhorn.VolumeStateAttached
