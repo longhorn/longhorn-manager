@@ -7,7 +7,7 @@ RUN apt-get update && \
     apt-get install -y curl vim nfs-common iproute2 dnsutils iputils-ping telnet zip xfsprogs && \
     rm -rf /var/lib/apt/lists/*
 
-COPY bin package/launch-manager /usr/local/sbin/
+COPY bin package/launch-manager package/nsmounter /usr/local/sbin/
 
 VOLUME /usr/local/sbin
 EXPOSE 9500
