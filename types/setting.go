@@ -633,13 +633,17 @@ var (
 
 	SettingDefinitionConcurrentReplicaRebuildPerNodeLimit = SettingDefinition{
 		DisplayName: "Concurrent Replica Rebuild Per Node Limit",
-		Description: "This setting controls how many replicas on a node can be rebuilt simultaneously." +
-			"If the value is 0, Longhorn will not limit the rebuilding.",
-		Category: SettingCategoryGeneral,
+		Description: "This setting controls how many replicas on a node can be rebuilt simultaneously. \n\n" +
+			"Typically, Longhorn can block the replica starting once the current rebuilding count on a node exceeds the limit. But when the value is 0, it means disabling the replica rebuilding. \n\n" +
+			"WARNING: \n\n" +
+			"  - The old setting \"Disable Replica Rebuild\" is replaced by this setting. \n\n" +
+			"  - Different from relying on replica starting delay to limit the concurrent rebuilding, if the rebuilding is disabled, replica object replenishment will be directly skipped. \n\n" +
+			"  - When the value is 0/rebuilding is disabled, eviction and data locality feature won't work. But this shouldn't have any impact to any current replica rebuild and backup restore.",
+		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeInt,
 		Required: true,
 		ReadOnly: false,
-		Default:  "0",
+		Default:  "5",
 	}
 
 	SettingDefinitionSystemManagedPodsImagePullPolicy = SettingDefinition{

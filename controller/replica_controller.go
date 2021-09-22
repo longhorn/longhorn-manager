@@ -480,7 +480,9 @@ func (rc *ReplicaController) CanStartRebuildingReplica(r *longhorn.Replica) (boo
 		return false, err
 	}
 
-	// No limit.
+	// If the concurrent value is 0, Longhorn will rely on
+	// skipping replica replenishment rather than blocking process launching here to disable the rebuilding.
+	// Otherwise, the newly created replicas will keep hanging up there.
 	if concurrentRebuildingLimit < 1 {
 		return true, nil
 	}
