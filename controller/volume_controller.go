@@ -1707,10 +1707,15 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		}
 	}
 
-	if err := vc.createAndStartMatchingReplicas(v, rs, dataPathToOldRunningReplica, dataPathToNewReplica, func(r *longhorn.Replica, engineImage string) {
-		r.Spec.EngineImage = engineImage
-	}, v.Spec.EngineImage); err != nil {
-		return err
+	// Skip checking and creating new replicas for the 2 cases:
+	//   1. Volume is degraded.
+	//   2. The new replicas is activated and all old replicas are already purged.
+	if len(dataPathToOldRunningReplica) >= v.Spec.NumberOfReplicas {
+		if err := vc.createAndStartMatchingReplicas(v, rs, dataPathToOldRunningReplica, dataPathToNewReplica, func(r *longhorn.Replica, engineImage string) {
+			r.Spec.EngineImage = engineImage
+		}, v.Spec.EngineImage); err != nil {
+			return err
+		}
 	}
 
 	if e.Spec.EngineImage != v.Spec.EngineImage {
@@ -2372,11 +2377,6 @@ func (vc *VolumeController) getCurrentEngineAndCleanupOthers(v *longhorn.Volume,
 func (vc *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 	rs, pathToOldRs, pathToNewRs map[string]*longhorn.Replica,
 	fixupFunc func(r *longhorn.Replica, obj string), obj string) error {
-
-	if len(pathToOldRs) == 0 {
-		return fmt.Errorf("no old replica for the volume")
-	}
-
 	for path, r := range pathToOldRs {
 		if pathToNewRs[path] != nil {
 			continue
@@ -2391,14 +2391,6 @@ func (vc *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 		}
 		pathToNewRs[path] = newReplica
 		rs[newReplica.Name] = newReplica
-	}
-	for path, r := range pathToNewRs {
-		if pathToOldRs[path] != nil {
-			continue
-		}
-		if err := vc.deleteReplica(r, rs); err != nil && !apierrors.IsNotFound(err) {
-			return err
-		}
 	}
 	return nil
 }
@@ -2556,6 +2548,9 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 				continue
 			}
 			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
+		}
+		if len(replicaAddressMap) == 0 {
+			return fmt.Errorf("volume %v: no new replica during migration", v.Name)
 		}
 		if migrationEngine.Spec.NodeID != "" && migrationEngine.Spec.NodeID != v.Spec.MigrationNodeID {
 			return fmt.Errorf("volume %v: engine is on node %v vs volume migration on %v",
