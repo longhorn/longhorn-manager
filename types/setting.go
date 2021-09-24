@@ -638,7 +638,7 @@ var (
 			"WARNING: \n\n" +
 			"  - The old setting \"Disable Replica Rebuild\" is replaced by this setting. \n\n" +
 			"  - Different from relying on replica starting delay to limit the concurrent rebuilding, if the rebuilding is disabled, replica object replenishment will be directly skipped. \n\n" +
-			"  - When the value is 0/rebuilding is disabled, eviction and data locality feature won't work. But this shouldn't have any impact to any current replica rebuild and backup restore.",
+			"  - When the value is 0, the eviction and data locality feature won't work. But this shouldn't have any impact to any current replica rebuild and backup restore.",
 		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeInt,
 		Required: true,
