@@ -67,7 +67,8 @@ type ReplicaController struct {
 
 	instanceHandler *InstanceHandler
 
-	rebuildingLock *sync.Mutex
+	rebuildingLock          *sync.Mutex
+	inProgressRebuildingMap map[string]struct{}
 }
 
 func NewReplicaController(
@@ -98,7 +99,8 @@ func NewReplicaController(
 
 		ds: ds,
 
-		rebuildingLock: &sync.Mutex{},
+		rebuildingLock:          &sync.Mutex{},
+		inProgressRebuildingMap: map[string]struct{}{},
 
 		nStoreSynced:  nodeInformer.Informer().HasSynced,
 		rStoreSynced:  replicaInformer.Informer().HasSynced,
@@ -487,31 +489,51 @@ func (rc *ReplicaController) CanStartRebuildingReplica(r *longhorn.Replica) (boo
 		return true, nil
 	}
 
+	// This is the only place in which the controller will operate
+	// the in progress rebuilding replica map. Then the main reconcile loop
+	// and the normal replicas will not be affected by the locking.
 	rc.rebuildingLock.Lock()
 	defer rc.rebuildingLock.Unlock()
 
-	inProgressRebuildingCount := 0
+	rsMap := map[string]*longhorn.Replica{}
 	rs, err := rc.ds.ListReplicasByNodeRO(r.Spec.NodeID)
 	if err != nil {
 		return false, err
 	}
 	for _, replicaOnTheSameNode := range rs {
-		if replicaOnTheSameNode.Name == r.Name {
-			continue
+		rsMap[replicaOnTheSameNode.Name] = replicaOnTheSameNode
+		// Just in case, this means the replica controller will try to recall
+		// in-progress rebuilding replicas even if the longhorn manager pod is restarted.
+		if IsRebuildingReplica(replicaOnTheSameNode) &&
+			(replicaOnTheSameNode.Status.CurrentState == types.InstanceStateStarting ||
+				replicaOnTheSameNode.Status.CurrentState == types.InstanceStateRunning) {
+			rc.inProgressRebuildingMap[replicaOnTheSameNode.Name] = struct{}{}
 		}
-		if replicaOnTheSameNode.Spec.RebuildRetryCount == 0 {
-			continue
-		}
-		if replicaOnTheSameNode.Status.CurrentState != types.InstanceStateStarting && replicaOnTheSameNode.Status.CurrentState != types.InstanceStateRunning {
-			continue
-		}
-		inProgressRebuildingCount++
 	}
-	if inProgressRebuildingCount >= int(concurrentRebuildingLimit) {
-		log.Debugf("There are already %v replica rebuildings on this node, which reaches or exceeds the limit value %v",
-			inProgressRebuildingCount, concurrentRebuildingLimit)
+
+	// Clean up the entries when the corresponding replica is no longer a
+	// rebuilding one.
+	for inProgressReplicaName := range rc.inProgressRebuildingMap {
+		if inProgressReplicaName == r.Name {
+			return true, nil
+		}
+		replicaOnTheSameNode, exists := rsMap[inProgressReplicaName]
+		if !exists {
+			delete(rc.inProgressRebuildingMap, inProgressReplicaName)
+			continue
+		}
+		if !IsRebuildingReplica(replicaOnTheSameNode) {
+			delete(rc.inProgressRebuildingMap, inProgressReplicaName)
+		}
+	}
+
+	if len(rc.inProgressRebuildingMap) >= int(concurrentRebuildingLimit) {
+		log.Debugf("Replica rebuildings for %+v are in progress on this node, which reaches or exceeds the concurrent limit value %v",
+			rc.inProgressRebuildingMap, concurrentRebuildingLimit)
 		return false, nil
 	}
+
+	rc.inProgressRebuildingMap[r.Name] = struct{}{}
 
 	return true, nil
 }
