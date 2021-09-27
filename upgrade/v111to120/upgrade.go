@@ -209,6 +209,9 @@ func upgradeLabelsForVolume(v *longhorn.Volume, lhClient *lhclientset.Clientset,
 	if labels == nil {
 		labels = map[string]string{}
 	}
+	if _, exists := labels[types.LonghornLabelBackupVolume]; exists {
+		return nil
+	}
 	labels[types.LonghornLabelBackupVolume] = backupVolumeName
 	metadata.SetLabels(labels)
 
