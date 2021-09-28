@@ -19,8 +19,8 @@ func GetCSIManager() *Manager {
 	return &Manager{}
 }
 
-func (m *Manager) Run(driverName, nodeID, endpoint, csiVersion, identityVersion, managerURL string) error {
-	logrus.Infof("CSI Driver: %v csiVersion: %v, manager URL %v", driverName, csiVersion, managerURL)
+func (m *Manager) Run(driverName, nodeID, endpoint, identityVersion, managerURL string) error {
+	logrus.Infof("CSI Driver: %v version: %v, manager URL %v", driverName, identityVersion, managerURL)
 
 	// Longhorn API Client
 	clientOpts := &longhornclient.ClientOpts{Url: managerURL}
