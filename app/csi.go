@@ -31,11 +31,6 @@ func CSICommand() cli.Command {
 				Value: "",
 				Usage: "Longhorn manager API URL",
 			},
-			cli.StringFlag{
-				Name:  "csi-version",
-				Value: "0.3.0",
-				Usage: "CSI plugin version",
-			},
 		},
 		Action: func(c *cli.Context) {
 			if err := runCSI(c); err != nil {
@@ -51,7 +46,6 @@ func runCSI(c *cli.Context) error {
 	return manager.Run(c.String("drivername"),
 		c.String("nodeid"),
 		c.String("endpoint"),
-		c.String("csi-version"),
 		identityVersion,
 		c.String("manager-url"))
 }
