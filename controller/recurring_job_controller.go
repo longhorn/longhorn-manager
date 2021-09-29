@@ -312,6 +312,12 @@ func (control *RecurringJobController) newCronJob(recurringJob *longhorn.Recurri
 	if err != nil {
 		return nil, err
 	}
+	registrySecretSetting, err := control.ds.GetSetting(types.SettingNameRegistrySecret)
+	if err != nil {
+		return nil, err
+	}
+	registrySecret := registrySecretSetting.Value
+
 	// for mounting inside container
 	cronJob := &batchv1beta1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
@@ -383,5 +389,14 @@ func (control *RecurringJobController) newCronJob(recurringJob *longhorn.Recurri
 			},
 		},
 	}
+
+	if registrySecret != "" {
+		cronJob.Spec.JobTemplate.Spec.Template.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
+			{
+				Name: registrySecret,
+			},
+		}
+	}
+
 	return cronJob, nil
 }
