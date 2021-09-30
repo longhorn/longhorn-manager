@@ -119,6 +119,38 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
 
+	// we validate the staging path to make sure the global mount is still valid
+	if isMnt, err := ensureMountPoint(stagingPath, mounter); err != nil || !isMnt {
+		msg := fmt.Sprintf("NodePublishVolume: staging path is no longer valid for volume %v", volumeID)
+		logrus.Error(msg)
+
+		// HACK: normally when we return FailedPrecondition below kubelet should call NodeStageVolume again
+		//	but currently it does not, so we manually call NodeStageVolume to remount the block device globally
+		//	we currently don't reuse the previously mapped block device (major:minor) so the initial mount even after
+		//	reattachment of the longhorn block dev is no longer valid
+		logrus.Warnf("NodePublishVolume: calling NodeUnstageVolume for volume %v", volumeID)
+		_, _ = ns.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
+			VolumeId:          volumeID,
+			StagingTargetPath: stagingPath,
+		})
+
+		logrus.Warnf("NodePublishVolume: calling NodeStageVolume for volume %v", volumeID)
+		_, err := ns.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+			VolumeId:          volumeID,
+			PublishContext:    req.PublishContext,
+			StagingTargetPath: stagingPath,
+			VolumeCapability:  volumeCapability,
+			Secrets:           req.Secrets,
+			VolumeContext:     req.VolumeContext,
+		})
+		if err != nil {
+			logrus.Errorf("NodePublishVolume: failed NodeStageVolume staging path is still in a bad state for volume %v", volumeID)
+			return nil, status.Error(codes.FailedPrecondition, msg)
+		}
+
+		logrus.Infof("NodePublishVolume: NodeStageVolume call succeeded for volume %v continuing with regular NodePublishVolume flow", volumeID)
+	}
+
 	isMnt, err := ensureMountPoint(targetPath, mounter)
 	if err != nil {
 		msg := fmt.Sprintf("NodePublishVolume: failed to prepare mount point for volume %v error %v", volumeID, err)
