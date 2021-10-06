@@ -2302,12 +2302,24 @@ func (vc *VolumeController) updateRequestedBackupForVolumeRestore(v *longhorn.Vo
 	if v.Spec.FromBackup == "" {
 		return nil
 	}
-	if !v.Status.RestoreRequired && !v.Status.IsStandby {
+
+	// If the volume is not restoring, skip setting e.Spec.RequestedBackupRestore
+	if !v.Status.RestoreRequired {
 		return nil
 	}
 
-	if v.Status.LastBackup != "" && v.Status.LastBackup != e.Spec.RequestedBackupRestore {
-		e.Spec.RequestedBackupRestore = v.Status.LastBackup
+	// For DR volume, we set RequestedBackupRestore to the LastBackup
+	if v.Status.IsStandby {
+		if v.Status.LastBackup != "" && v.Status.LastBackup != e.Spec.RequestedBackupRestore {
+			e.Spec.RequestedBackupRestore = v.Status.LastBackup
+		}
+		return nil
+	}
+
+	// For non-DR restoring volume, we set RequestedBackupRestore to the backup in v.Spec.FromBackup
+	if _, backupName, err := vc.getInfoFromBackupURL(v); err == nil && backupName != "" {
+		e.Spec.RequestedBackupRestore = backupName
+		return nil
 	}
 
 	return nil
