@@ -301,6 +301,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		types.VolumeConditionTypeRestore, types.ConditionStatusFalse, "", "")
 	for _, e := range tc.engines {
 		e.Spec.BackupVolume = TestBackupVolumeName
+		e.Spec.RequestedBackupRestore = TestBackupName
 		e.Status.ReplicaModeMap = map[string]types.ReplicaMode{}
 	}
 	for _, r := range tc.replicas {
