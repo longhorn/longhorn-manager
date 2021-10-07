@@ -1879,6 +1879,10 @@ func (s *DataStore) ListPodsRO() ([]*corev1.Pod, error) {
 	return s.pLister.Pods(s.namespace).List(labels.Everything())
 }
 
+func (s *DataStore) GetPodRO(namespace, name string) (*corev1.Pod, error) {
+	return s.pLister.Pods(namespace).Get(name)
+}
+
 // GetRandomReadyNode gets a list of all Node in the given namespace and
 // returns the first Node marked with condition ready and allow scheduling
 func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {

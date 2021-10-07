@@ -32,7 +32,6 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 var (
@@ -57,11 +56,7 @@ type ReplicaController struct {
 
 	ds *datastore.DataStore
 
-	nStoreSynced  cache.InformerSynced
-	rStoreSynced  cache.InformerSynced
-	imStoreSynced cache.InformerSynced
-	biStoreSynced cache.InformerSynced
-	sStoreSynced  cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 
 	instanceHandler *InstanceHandler
 
@@ -73,11 +68,6 @@ func NewReplicaController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	nodeInformer lhinformers.NodeInformer,
-	replicaInformer lhinformers.ReplicaInformer,
-	instanceManagerInformer lhinformers.InstanceManagerInformer,
-	backingImageInformer lhinformers.BackingImageInformer,
-	settingInformer lhinformers.SettingInformer,
 	kubeClient clientset.Interface,
 	namespace string, controllerID string) *ReplicaController {
 
@@ -99,16 +89,10 @@ func NewReplicaController(
 
 		rebuildingLock:          &sync.Mutex{},
 		inProgressRebuildingMap: map[string]struct{}{},
-
-		nStoreSynced:  nodeInformer.Informer().HasSynced,
-		rStoreSynced:  replicaInformer.Informer().HasSynced,
-		imStoreSynced: instanceManagerInformer.Informer().HasSynced,
-		biStoreSynced: backingImageInformer.Informer().HasSynced,
-		sStoreSynced:  settingInformer.Informer().HasSynced,
 	}
 	rc.instanceHandler = NewInstanceHandler(ds, rc, rc.eventRecorder)
 
-	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.ReplicaInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: rc.enqueueReplica,
 		UpdateFunc: func(old, cur interface{}) {
 			rc.enqueueReplica(cur)
@@ -121,28 +105,33 @@ func NewReplicaController(
 		},
 		DeleteFunc: rc.enqueueReplica,
 	})
+	rc.cacheSyncs = append(rc.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
-	instanceManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.InstanceManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueInstanceManagerChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueInstanceManagerChange(cur) },
 		DeleteFunc: rc.enqueueInstanceManagerChange,
 	})
+	rc.cacheSyncs = append(rc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.NodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueNodeChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueNodeChange(cur) },
 		DeleteFunc: rc.enqueueNodeChange,
 	})
+	rc.cacheSyncs = append(rc.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	backingImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.BackingImageInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueBackingImageChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueBackingImageChange(cur) },
 		DeleteFunc: rc.enqueueBackingImageChange,
 	})
+	rc.cacheSyncs = append(rc.cacheSyncs, ds.BackingImageInformer.HasSynced)
 
-	settingInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.SettingInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueSettingChange(cur) },
 	})
+	rc.cacheSyncs = append(rc.cacheSyncs, ds.SettingInformer.HasSynced)
 
 	return rc
 }
@@ -154,7 +143,7 @@ func (rc *ReplicaController) Run(workers int, stopCh <-chan struct{}) {
 	rc.logger.Info("Start Longhorn replica controller")
 	defer rc.logger.Info("Shutting down Longhorn replica controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn replicas", stopCh, rc.nStoreSynced, rc.rStoreSynced, rc.imStoreSynced, rc.biStoreSynced, rc.sStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn replicas", stopCh, rc.cacheSyncs...) {
 		return
 	}
 

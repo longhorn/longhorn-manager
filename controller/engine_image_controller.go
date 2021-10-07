@@ -19,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	appsinformers "k8s.io/client-go/informers/apps/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -32,7 +31,6 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 var (
@@ -55,9 +53,7 @@ type EngineImageController struct {
 
 	ds *datastore.DataStore
 
-	iStoreSynced  cache.InformerSynced
-	vStoreSynced  cache.InformerSynced
-	dsStoreSynced cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 
 	// for unit test
 	nowHandler                func() string
@@ -69,9 +65,6 @@ func NewEngineImageController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	engineImageInformer lhinformers.EngineImageInformer,
-	volumeInformer lhinformers.VolumeInformer,
-	dsInformer appsinformers.DaemonSetInformer,
 	kubeClient clientset.Interface,
 	namespace string, controllerID, serviceAccount string) *EngineImageController {
 
@@ -92,32 +85,31 @@ func NewEngineImageController(
 
 		ds: ds,
 
-		iStoreSynced:  engineImageInformer.Informer().HasSynced,
-		vStoreSynced:  volumeInformer.Informer().HasSynced,
-		dsStoreSynced: dsInformer.Informer().HasSynced,
-
 		nowHandler:                util.Now,
 		engineBinaryChecker:       types.EngineBinaryExistOnHostForImage,
 		engineImageVersionUpdater: updateEngineImageVersion,
 	}
 
-	engineImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.EngineImageInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ic.enqueueEngineImage,
 		UpdateFunc: func(old, cur interface{}) { ic.enqueueEngineImage(cur) },
 		DeleteFunc: ic.enqueueEngineImage,
 	})
+	ic.cacheSyncs = append(ic.cacheSyncs, ds.EngineImageInformer.HasSynced)
 
-	volumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(obj interface{}) { ic.enqueueVolumes(obj) },
 		UpdateFunc: func(old, cur interface{}) { ic.enqueueVolumes(old, cur) },
 		DeleteFunc: func(obj interface{}) { ic.enqueueVolumes(obj) },
 	})
+	ic.cacheSyncs = append(ic.cacheSyncs, ds.VolumeInformer.HasSynced)
 
-	dsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.DaemonSetInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ic.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { ic.enqueueControlleeChange(cur) },
 		DeleteFunc: ic.enqueueControlleeChange,
 	})
+	ic.cacheSyncs = append(ic.cacheSyncs, ds.DaemonSetInformer.HasSynced)
 
 	return ic
 }
@@ -129,7 +121,7 @@ func (ic *EngineImageController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start Longhorn Engine Image controller")
 	defer logrus.Infof("Shutting down Longhorn Engine Image controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn engine images", stopCh, ic.iStoreSynced, ic.vStoreSynced, ic.dsStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn engine images", stopCh, ic.cacheSyncs...) {
 		return
 	}
 

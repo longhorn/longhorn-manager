@@ -19,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -35,7 +34,6 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 const (
@@ -56,11 +54,7 @@ type BackingImageDataSourceController struct {
 
 	backoff *flowcontrol.Backoff
 
-	bidsStoreSynced cache.InformerSynced
-	biStoreSynced   cache.InformerSynced
-	vStoreSynced    cache.InformerSynced
-	nStoreSynced    cache.InformerSynced
-	pStoreSynced    cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 
 	lock       *sync.RWMutex
 	monitorMap map[string]chan struct{}
@@ -82,11 +76,6 @@ func NewBackingImageDataSourceController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	bidsInformer lhinformers.BackingImageDataSourceInformer,
-	biInformer lhinformers.BackingImageInformer,
-	volumeInformer lhinformers.VolumeInformer,
-	nodeInformer lhinformers.NodeInformer,
-	pInformer coreinformers.PodInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID, serviceAccount string) *BackingImageDataSourceController {
 
@@ -108,38 +97,36 @@ func NewBackingImageDataSourceController(
 
 		backoff: flowcontrol.NewBackOff(time.Minute, time.Minute*5),
 
-		bidsStoreSynced: bidsInformer.Informer().HasSynced,
-		biStoreSynced:   biInformer.Informer().HasSynced,
-		vStoreSynced:    volumeInformer.Informer().HasSynced,
-		nStoreSynced:    nodeInformer.Informer().HasSynced,
-		pStoreSynced:    pInformer.Informer().HasSynced,
-
 		lock:       &sync.RWMutex{},
 		monitorMap: map[string]chan struct{}{},
 	}
 
-	bidsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.BackingImageDataSourceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueBackingImageDataSource,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueBackingImageDataSource(cur) },
 		DeleteFunc: c.enqueueBackingImageDataSource,
 	})
+	c.cacheSyncs = append(c.cacheSyncs, ds.BackingImageDataSourceInformer.HasSynced)
 
-	biInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.BackingImageInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueForBackingImage,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueForBackingImage(cur) },
 		DeleteFunc: c.enqueueForBackingImage,
 	})
+	c.cacheSyncs = append(c.cacheSyncs, ds.BackingImageInformer.HasSynced)
 
-	volumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { c.enqueueForVolume(cur) },
 	})
+	c.cacheSyncs = append(c.cacheSyncs, ds.VolumeInformer.HasSynced)
 
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.NodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(oldObj, cur interface{}) { c.enqueueForLonghornNode(cur) },
 		DeleteFunc: c.enqueueForLonghornNode,
 	})
+	c.cacheSyncs = append(c.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	pInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+	ds.PodInformer.AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: isBackingImageDataSourcePod,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.enqueueForBackingImageDataSourcePod,
@@ -147,6 +134,7 @@ func NewBackingImageDataSourceController(
 			DeleteFunc: c.enqueueForBackingImageDataSourcePod,
 		},
 	})
+	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
 
 	return c
 }
@@ -158,7 +146,7 @@ func (c *BackingImageDataSourceController) Run(workers int, stopCh <-chan struct
 	logrus.Infof("Starting Longhorn backing image data source controller")
 	defer logrus.Infof("Shutting down Longhorn backing image data source controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn backing image data source", stopCh, c.bidsStoreSynced, c.biStoreSynced, c.vStoreSynced, c.nStoreSynced, c.pStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn backing image data source", stopCh, c.cacheSyncs...) {
 		return
 	}
 
