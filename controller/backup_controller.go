@@ -28,7 +28,6 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 const (
@@ -48,14 +47,13 @@ type BackupController struct {
 
 	ds *datastore.DataStore
 
-	bStoreSynced cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 }
 
 func NewBackupController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	backupInformer lhinformers.BackupInformer,
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string) *BackupController {
@@ -76,15 +74,14 @@ func NewBackupController(
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-backup-controller"}),
-
-		bStoreSynced: backupInformer.Informer().HasSynced,
 	}
 
-	backupInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.BackupInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    bc.enqueueBackup,
 		UpdateFunc: func(old, cur interface{}) { bc.enqueueBackup(cur) },
 		DeleteFunc: bc.enqueueBackup,
 	})
+	bc.cacheSyncs = append(bc.cacheSyncs, ds.BackupInformer.HasSynced)
 
 	return bc
 }
@@ -106,7 +103,7 @@ func (bc *BackupController) Run(workers int, stopCh <-chan struct{}) {
 	bc.logger.Infof("Start Longhorn Backup controller")
 	defer bc.logger.Infof("Shutting down Longhorn Backup controller")
 
-	if !cache.WaitForNamedCacheSync(bc.name, stopCh, bc.bStoreSynced) {
+	if !cache.WaitForNamedCacheSync(bc.name, stopCh, bc.cacheSyncs...) {
 		return
 	}
 	for i := 0; i < workers; i++ {

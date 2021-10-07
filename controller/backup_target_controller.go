@@ -28,7 +28,6 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 type BackupTargetController struct {
@@ -44,15 +43,13 @@ type BackupTargetController struct {
 
 	ds *datastore.DataStore
 
-	btStoreSynced cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 }
 
 func NewBackupTargetController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	backupTargetInformer lhinformers.BackupTargetInformer,
-	engineImageInformer lhinformers.EngineImageInformer,
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string) *BackupTargetController {
@@ -73,16 +70,15 @@ func NewBackupTargetController(
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-backup-target-controller"}),
-
-		btStoreSynced: backupTargetInformer.Informer().HasSynced,
 	}
 
-	backupTargetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.BackupTargetInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    btc.enqueueBackupTarget,
 		UpdateFunc: func(old, cur interface{}) { btc.enqueueBackupTarget(cur) },
 	})
+	btc.cacheSyncs = append(btc.cacheSyncs, ds.BackupTargetInformer.HasSynced)
 
-	engineImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.EngineImageInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) {
 			oldEI := old.(*longhorn.EngineImage)
 			curEI := cur.(*longhorn.EngineImage)
@@ -95,6 +91,7 @@ func NewBackupTargetController(
 			btc.enqueueEngineImage(cur)
 		},
 	})
+	btc.cacheSyncs = append(btc.cacheSyncs, ds.EngineImageInformer.HasSynced)
 
 	return btc
 }
@@ -133,7 +130,7 @@ func (btc *BackupTargetController) Run(workers int, stopCh <-chan struct{}) {
 	btc.logger.Infof("Start Longhorn Backup Target controller")
 	defer btc.logger.Infof("Shutting down Longhorn Backup Target controller")
 
-	if !cache.WaitForNamedCacheSync(btc.name, stopCh, btc.btStoreSynced) {
+	if !cache.WaitForNamedCacheSync(btc.name, stopCh, btc.cacheSyncs...) {
 		return
 	}
 	for i := 0; i < workers; i++ {

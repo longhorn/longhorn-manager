@@ -19,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -34,7 +33,6 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 var (
@@ -53,9 +51,7 @@ type InstanceManagerController struct {
 
 	ds *datastore.DataStore
 
-	imStoreSynced cache.InformerSynced
-	pStoreSynced  cache.InformerSynced
-	knStoreSynced cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 
 	instanceManagerMonitorMutex *sync.RWMutex
 	instanceManagerMonitorMap   map[string]chan struct{}
@@ -107,9 +103,6 @@ func NewInstanceManagerController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	imInformer lhinformers.InstanceManagerInformer,
-	pInformer coreinformers.PodInformer,
-	kubeNodeInformer coreinformers.NodeInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID, serviceAccount string) *InstanceManagerController {
 
@@ -129,23 +122,20 @@ func NewInstanceManagerController(
 
 		ds: ds,
 
-		imStoreSynced: imInformer.Informer().HasSynced,
-		pStoreSynced:  pInformer.Informer().HasSynced,
-		knStoreSynced: kubeNodeInformer.Informer().HasSynced,
-
 		instanceManagerMonitorMutex: &sync.RWMutex{},
 		instanceManagerMonitorMap:   map[string]chan struct{}{},
 
 		versionUpdater: updateInstanceManagerVersion,
 	}
 
-	imInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.InstanceManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    imc.enqueueInstanceManager,
 		UpdateFunc: func(old, cur interface{}) { imc.enqueueInstanceManager(cur) },
 		DeleteFunc: imc.enqueueInstanceManager,
 	})
+	imc.cacheSyncs = append(imc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
-	pInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+	ds.PodInformer.AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: isInstanceManagerPod,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    imc.enqueueInstanceManagerPod,
@@ -153,11 +143,13 @@ func NewInstanceManagerController(
 			DeleteFunc: imc.enqueueInstanceManagerPod,
 		},
 	})
+	imc.cacheSyncs = append(imc.cacheSyncs, ds.PodInformer.HasSynced)
 
-	kubeNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.KubeNodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(oldObj, cur interface{}) { imc.enqueueKubernetesNode(cur) },
 		DeleteFunc: imc.enqueueKubernetesNode,
 	})
+	imc.cacheSyncs = append(imc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
 	return imc
 }
@@ -192,7 +184,7 @@ func (imc *InstanceManagerController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Starting Longhorn instance manager controller")
 	defer logrus.Infof("Shutting down Longhorn instance manager controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn instance manager", stopCh, imc.imStoreSynced, imc.pStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn instance manager", stopCh, imc.cacheSyncs...) {
 		return
 	}
 

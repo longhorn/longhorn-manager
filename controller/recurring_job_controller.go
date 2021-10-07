@@ -25,7 +25,6 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 )
@@ -44,14 +43,13 @@ type RecurringJobController struct {
 
 	ds *datastore.DataStore
 
-	rjStoreSynced cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 }
 
 func NewRecurringJobController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	recurringJobInformer lhinformers.RecurringJobInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID, serviceAccount, managerImage string,
 ) *RecurringJobController {
@@ -73,15 +71,14 @@ func NewRecurringJobController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-recurring-job-controller"}),
 
 		ds: ds,
-
-		rjStoreSynced: recurringJobInformer.Informer().HasSynced,
 	}
 
-	recurringJobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.RecurringJobInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rjc.enqueueRecurringJob,
 		UpdateFunc: func(old, cur interface{}) { rjc.enqueueRecurringJob(cur) },
 		DeleteFunc: rjc.enqueueRecurringJob,
 	})
+	rjc.cacheSyncs = append(rjc.cacheSyncs, ds.RecurringJobInformer.HasSynced)
 
 	return rjc
 }
@@ -103,7 +100,7 @@ func (control *RecurringJobController) Run(workers int, stopCh <-chan struct{}) 
 	logrus.Infof("Starting Longhorn Recurring Job controller")
 	defer logrus.Infof("Shutting down Longhorn Recurring Job controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn recurring jobs", stopCh, control.rjStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn recurring jobs", stopCh, control.cacheSyncs...) {
 		return
 	}
 

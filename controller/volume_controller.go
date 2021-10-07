@@ -35,7 +35,6 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 var (
@@ -61,21 +60,14 @@ type VolumeController struct {
 	// which namespace controller is running with
 	namespace string
 	// use as the OwnerID of the controller
-	controllerID   string
-	ManagerImage   string
-	ServiceAccount string
+	controllerID string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
 	ds *datastore.DataStore
 
-	vStoreSynced    cache.InformerSynced
-	eStoreSynced    cache.InformerSynced
-	rStoreSynced    cache.InformerSynced
-	smStoreSynced   cache.InformerSynced
-	bvStoreSynced   cache.InformerSynced
-	bidsStoreSynced cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 
 	scheduler *scheduler.ReplicaScheduler
 
@@ -89,15 +81,10 @@ func NewVolumeController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	volumeInformer lhinformers.VolumeInformer,
-	engineInformer lhinformers.EngineInformer,
-	replicaInformer lhinformers.ReplicaInformer,
-	shareManagerInformer lhinformers.ShareManagerInformer,
-	backupVolumeInformer lhinformers.BackupVolumeInformer,
-	bidsInformer lhinformers.BackingImageDataSourceInformer,
 	kubeClient clientset.Interface,
-	namespace, controllerID, serviceAccount string,
-	managerImage string) *VolumeController {
+	namespace,
+	controllerID string,
+) *VolumeController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -107,21 +94,12 @@ func NewVolumeController(
 	vc := &VolumeController{
 		baseController: newBaseController("longhorn-volume", logger),
 
-		ds:             ds,
-		namespace:      namespace,
-		controllerID:   controllerID,
-		ManagerImage:   managerImage,
-		ServiceAccount: serviceAccount,
+		ds:           ds,
+		namespace:    namespace,
+		controllerID: controllerID,
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-volume-controller"}),
-
-		vStoreSynced:    volumeInformer.Informer().HasSynced,
-		eStoreSynced:    engineInformer.Informer().HasSynced,
-		rStoreSynced:    replicaInformer.Informer().HasSynced,
-		smStoreSynced:   shareManagerInformer.Informer().HasSynced,
-		bvStoreSynced:   backupVolumeInformer.Informer().HasSynced,
-		bidsStoreSynced: bidsInformer.Informer().HasSynced,
 
 		backoff: flowcontrol.NewBackOff(time.Minute, time.Minute*3),
 
@@ -130,35 +108,47 @@ func NewVolumeController(
 
 	vc.scheduler = scheduler.NewReplicaScheduler(ds)
 
-	volumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueVolume,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolume(cur) },
 		DeleteFunc: vc.enqueueVolume,
 	})
-	engineInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	vc.cacheSyncs = append(vc.cacheSyncs, ds.VolumeInformer.HasSynced)
+
+	ds.EngineInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueControlleeChange(cur) },
 		DeleteFunc: vc.enqueueControlleeChange,
 	})
-	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	vc.cacheSyncs = append(vc.cacheSyncs, ds.EngineInformer.HasSynced)
+
+	ds.ReplicaInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueControlleeChange(cur) },
 		DeleteFunc: vc.enqueueControlleeChange,
 	})
-	shareManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	vc.cacheSyncs = append(vc.cacheSyncs, ds.ReplicaInformer.HasSynced)
+
+	ds.ShareManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueVolumesForShareManager,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForShareManager(cur) },
 		DeleteFunc: vc.enqueueVolumesForShareManager,
 	})
-	backupVolumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	vc.cacheSyncs = append(vc.cacheSyncs, ds.ShareManagerInformer.HasSynced)
+
+	ds.BackupVolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForBackupVolume(cur) },
 		DeleteFunc: vc.enqueueVolumesForBackupVolume,
 	})
-	bidsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	vc.cacheSyncs = append(vc.cacheSyncs, ds.BackupVolumeInformer.HasSynced)
+
+	ds.BackingImageDataSourceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueVolumesForBackingImageDataSource,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForBackingImageDataSource(cur) },
 		DeleteFunc: vc.enqueueVolumesForBackingImageDataSource,
 	})
+	vc.cacheSyncs = append(vc.cacheSyncs, ds.BackingImageDataSourceInformer.HasSynced)
+
 	return vc
 }
 
@@ -169,7 +159,7 @@ func (vc *VolumeController) Run(workers int, stopCh <-chan struct{}) {
 	vc.logger.Infof("Start Longhorn volume controller")
 	defer vc.logger.Infof("Shutting down Longhorn volume controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn engines", stopCh, vc.vStoreSynced, vc.eStoreSynced, vc.rStoreSynced, vc.smStoreSynced, vc.bvStoreSynced, vc.bidsStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn engines", stopCh, vc.cacheSyncs...) {
 		return
 	}
 

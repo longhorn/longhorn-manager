@@ -13,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -24,7 +23,6 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 type KubernetesNodeController struct {
@@ -37,18 +35,13 @@ type KubernetesNodeController struct {
 
 	ds *datastore.DataStore
 
-	nStoreSynced  cache.InformerSynced
-	sStoreSynced  cache.InformerSynced
-	knStoreSynced cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 }
 
 func NewKubernetesNodeController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	nodeInformer lhinformers.NodeInformer,
-	settingInformer lhinformers.SettingInformer,
-	kubeNodeInformer coreinformers.NodeInformer,
 	kubeClient clientset.Interface,
 	controllerID string) *KubernetesNodeController {
 
@@ -66,19 +59,16 @@ func NewKubernetesNodeController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-kubernetes-node-controller"}),
 
 		ds: ds,
-
-		nStoreSynced:  nodeInformer.Informer().HasSynced,
-		sStoreSynced:  settingInformer.Informer().HasSynced,
-		knStoreSynced: kubeNodeInformer.Informer().HasSynced,
 	}
 
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.NodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    knc.enqueueLonghornNode,
 		UpdateFunc: func(old, cur interface{}) { knc.enqueueLonghornNode(cur) },
 		DeleteFunc: knc.enqueueLonghornNode,
 	})
+	knc.cacheSyncs = append(knc.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	settingInformer.Informer().AddEventHandler(
+	ds.SettingInformer.AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: isSettingCreateDefaultDiskLabeledNodes,
 			Handler: cache.ResourceEventHandlerFuncs{
@@ -87,11 +77,13 @@ func NewKubernetesNodeController(
 			},
 		},
 	)
+	knc.cacheSyncs = append(knc.cacheSyncs, ds.SettingInformer.HasSynced)
 
-	kubeNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.KubeNodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { knc.enqueueNode(cur) },
 		DeleteFunc: knc.enqueueNode,
 	})
+	knc.cacheSyncs = append(knc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
 	return knc
 }
@@ -121,8 +113,7 @@ func (knc *KubernetesNodeController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start Longhorn Kubernetes node controller")
 	defer logrus.Infof("Shutting down Longhorn Kubernetes node controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn kubernetes node", stopCh,
-		knc.nStoreSynced, knc.sStoreSynced, knc.knStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn kubernetes node", stopCh, knc.cacheSyncs...) {
 		return
 	}
 
