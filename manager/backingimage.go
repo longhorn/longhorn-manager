@@ -2,9 +2,11 @@ package manager
 
 import (
 	"fmt"
+	"reflect"
+	"strings"
+
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"reflect"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -68,6 +70,9 @@ func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, pa
 		return nil, fmt.Errorf("invalid name %v", name)
 	}
 
+	for k, v := range parameters {
+		parameters[k] = strings.TrimSpace(v)
+	}
 	switch types.BackingImageDataSourceType(sourceType) {
 	case types.BackingImageDataSourceTypeDownload:
 		if parameters[types.DataSourceTypeDownloadParameterURL] == "" {
@@ -119,7 +124,7 @@ func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, pa
 		},
 		Spec: types.BackingImageSpec{
 			Disks:            map[string]struct{}{},
-			Checksum:         checksum,
+			Checksum:         strings.TrimSpace(checksum),
 			SourceType:       types.BackingImageDataSourceType(sourceType),
 			SourceParameters: parameters,
 		},
