@@ -68,6 +68,12 @@ func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, pa
 		return nil, fmt.Errorf("invalid name %v", name)
 	}
 
+	if len(checksum) != 0 {
+		if !util.ValidateChecksumSHA512(checksum) {
+			return nil, fmt.Errorf("invalid checksum %v", checksum)
+		}
+	}
+
 	switch types.BackingImageDataSourceType(sourceType) {
 	case types.BackingImageDataSourceTypeDownload:
 		if parameters[types.DataSourceTypeDownloadParameterURL] == "" {
