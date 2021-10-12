@@ -247,8 +247,23 @@ func (m *VolumeManager) generateSupportBundleYAMLsForLonghorn(dir string, errLog
 	getObjectMapAndEncodeToYAML("sharemanagers", func() (interface{}, error) {
 		return m.ds.ListShareManagers()
 	}, dir, errLog)
+	getObjectMapAndEncodeToYAML("backingimagedatasources", func() (interface{}, error) {
+		return m.ds.ListBackingImageDataSources()
+	}, dir, errLog)
+	getObjectMapAndEncodeToYAML("backingimagemanagers", func() (interface{}, error) {
+		return m.ds.ListBackingImageManagers()
+	}, dir, errLog)
 	getObjectMapAndEncodeToYAML("backingimages", func() (interface{}, error) {
 		return m.ds.ListBackingImages()
+	}, dir, errLog)
+	getObjectMapAndEncodeToYAML("backuptargets", func() (interface{}, error) {
+		return m.ds.ListBackupTargets()
+	}, dir, errLog)
+	getObjectMapAndEncodeToYAML("backupvolumes", func() (interface{}, error) {
+		return m.ds.ListBackupVolumes()
+	}, dir, errLog)
+	getObjectMapAndEncodeToYAML("backups", func() (interface{}, error) {
+		return m.ds.ListBackups()
 	}, dir, errLog)
 	getObjectMapAndEncodeToYAML("recurringjobs", func() (interface{}, error) {
 		return m.ds.ListRecurringJobs()
