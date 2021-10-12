@@ -70,9 +70,18 @@ func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, pa
 		return nil, fmt.Errorf("invalid name %v", name)
 	}
 
+	if len(checksum) != 0 {
+		checksum = strings.TrimSpace(checksum)
+
+		if !util.ValidateChecksumSHA512(checksum) {
+			return nil, fmt.Errorf("invalid checksum %v", checksum)
+		}
+	}
+
 	for k, v := range parameters {
 		parameters[k] = strings.TrimSpace(v)
 	}
+
 	switch types.BackingImageDataSourceType(sourceType) {
 	case types.BackingImageDataSourceTypeDownload:
 		if parameters[types.DataSourceTypeDownloadParameterURL] == "" {
@@ -124,7 +133,7 @@ func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, pa
 		},
 		Spec: types.BackingImageSpec{
 			Disks:            map[string]struct{}{},
-			Checksum:         strings.TrimSpace(checksum),
+			Checksum:         checksum,
 			SourceType:       types.BackingImageDataSourceType(sourceType),
 			SourceParameters: parameters,
 		},
