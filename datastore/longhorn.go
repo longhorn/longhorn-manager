@@ -1865,24 +1865,6 @@ func (s *DataStore) ListReadyNodesWithReadyEngineImage(image string) (map[string
 	return readyNodes, nil
 }
 
-// ListKubeNodesRO returns a list of all Kubernetes Nodes for the given namespace,
-// the list contains direct references to the internal cache objects and should not be mutated.
-// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
-func (s *DataStore) ListKubeNodesRO() ([]*corev1.Node, error) {
-	return s.knLister.List(labels.Everything())
-}
-
-// ListPodsRO returns a list of all Pods for the given namespace,
-// the list contains direct references to the internal cache objects and should not be mutated.
-// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
-func (s *DataStore) ListPodsRO() ([]*corev1.Pod, error) {
-	return s.pLister.Pods(s.namespace).List(labels.Everything())
-}
-
-func (s *DataStore) GetPodRO(namespace, name string) (*corev1.Pod, error) {
-	return s.pLister.Pods(namespace).Get(name)
-}
-
 // GetRandomReadyNode gets a list of all Node in the given namespace and
 // returns the first Node marked with condition ready and allow scheduling
 func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
