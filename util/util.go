@@ -282,6 +282,11 @@ func ValidateName(name string) bool {
 	return validName.MatchString(name)
 }
 
+func ValidateChecksumSHA512(checksum string) bool {
+	validChecksum := regexp.MustCompile(`^[a-f0-9]{128}$`)
+	return validChecksum.MatchString(checksum)
+}
+
 func GetBackupID(backupURL string) (string, error) {
 	u, err := url.Parse(backupURL)
 	if err != nil {
