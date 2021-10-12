@@ -91,12 +91,6 @@ func NewKubernetesPVController(
 	})
 	kc.cacheSyncs = append(kc.cacheSyncs, ds.PodInformer.HasSynced)
 
-	// after volume becomes detached, try to delete the VA of lost node
-	ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(old, cur interface{}) { kc.enqueueVolumeChange(cur) },
-	})
-	kc.cacheSyncs = append(kc.cacheSyncs, ds.VolumeInformer.HasSynced)
-
 	return kc
 }
 
