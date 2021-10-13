@@ -12,7 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -890,7 +890,6 @@ func (c *BackingImageDataSourceController) stopMonitoring(bidsName string) {
 	delete(c.monitorMap, bidsName)
 	log.Infof("Stopped monitoring")
 
-	return
 }
 
 func (c *BackingImageDataSourceController) startMonitoring(bids *longhorn.BackingImageDataSource) {

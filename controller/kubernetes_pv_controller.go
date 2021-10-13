@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -299,7 +299,7 @@ func (kc *KubernetesPVController) enqueuePersistentVolume(obj interface{}) {
 		return
 	}
 	kc.queue.AddRateLimited(key)
-	return
+
 }
 
 func (kc *KubernetesPVController) enqueuePodChange(obj interface{}) {
@@ -338,7 +338,7 @@ func (kc *KubernetesPVController) enqueuePodChange(obj interface{}) {
 			kc.queue.AddRateLimited(pvName)
 		}
 	}
-	return
+
 }
 
 func (kc *KubernetesPVController) enqueueVolumeChange(obj interface{}) {
@@ -366,7 +366,7 @@ func (kc *KubernetesPVController) enqueueVolumeChange(obj interface{}) {
 		ks.LastPodRefAt == "" {
 		kc.queue.AddRateLimited(volume.Status.KubernetesStatus.PVName)
 	}
-	return
+
 }
 
 func (kc *KubernetesPVController) enqueuePVDeletion(obj interface{}) {
@@ -389,7 +389,7 @@ func (kc *KubernetesPVController) enqueuePVDeletion(obj interface{}) {
 	if pv.Spec.CSI != nil && pv.Spec.CSI.VolumeHandle != "" {
 		kc.pvToVolumeCache.Store(pv.Name, pv.Spec.CSI.VolumeHandle)
 	}
-	return
+
 }
 
 func (kc *KubernetesPVController) cleanupForPVDeletion(pvName string) (bool, error) {
@@ -489,7 +489,7 @@ func (kc *KubernetesPVController) setWorkloads(ks *types.KubernetesStatus, pods 
 		ws.WorkloadName, ws.WorkloadType = kc.detectWorkload(p)
 		ks.WorkloadsStatus = append(ks.WorkloadsStatus, ws)
 	}
-	return
+
 }
 
 func (kc *KubernetesPVController) detectWorkload(p *v1.Pod) (string, string) {

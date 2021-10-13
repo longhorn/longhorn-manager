@@ -69,7 +69,6 @@ func InitMonitoringSystem(logger logrus.FieldLogger, currentNodeID string, ds *d
 		}
 	}
 
-	return
 }
 
 func buildMetricClientFromConfigPath(kubeconfigPath string) (*metricsclientset.Clientset, error) {

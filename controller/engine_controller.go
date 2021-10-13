@@ -375,7 +375,7 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 	for _, e := range engineMap {
 		ec.enqueueEngine(e)
 	}
-	return
+
 }
 
 func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProcess, error) {
@@ -620,7 +620,6 @@ func (ec *EngineController) resetAndStopMonitoring(e *longhorn.Engine) {
 
 	ec.stopMonitoring(e.Name)
 
-	return
 }
 
 func (ec *EngineController) stopMonitoring(engineName string) {
@@ -640,7 +639,6 @@ func (ec *EngineController) stopMonitoring(engineName string) {
 		close(stopCh)
 	}
 
-	return
 }
 
 func (m *EngineMonitor) Run() {

@@ -275,7 +275,6 @@ func (rc *ReplicaController) UpdateReplicaEvictionStatus(replica *longhorn.Repli
 		log.Debug("Replica has cancelled eviction")
 	}
 
-	return
 }
 
 func (rc *ReplicaController) syncReplica(key string) (err error) {
@@ -726,7 +725,7 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(obj interface{}) {
 	for _, r := range replicasRO {
 		rc.enqueueReplica(r)
 	}
-	return
+
 }
 
 func (rc *ReplicaController) enqueueNodeChange(obj interface{}) {
@@ -758,7 +757,6 @@ func (rc *ReplicaController) enqueueNodeChange(obj interface{}) {
 		}
 	}
 
-	return
 }
 
 func (rc *ReplicaController) enqueueBackingImageChange(obj interface{}) {
@@ -789,7 +787,6 @@ func (rc *ReplicaController) enqueueBackingImageChange(obj interface{}) {
 		}
 	}
 
-	return
 }
 
 func (rc *ReplicaController) enqueueSettingChange(obj interface{}) {
@@ -815,7 +812,6 @@ func (rc *ReplicaController) enqueueSettingChange(obj interface{}) {
 
 	rc.enqueueAllRebuildingReplicaOnCurrentNode()
 
-	return
 }
 
 func (rc *ReplicaController) enqueueAllRebuildingReplicaOnCurrentNode() {

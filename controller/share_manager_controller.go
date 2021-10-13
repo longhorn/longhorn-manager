@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -183,7 +183,7 @@ func (c *ShareManagerController) enqueueShareManagerForPod(obj interface{}) {
 	c.logger.WithField("pod", pod.Name).WithField("shareManager", smName).Trace("Enqueuing share manager for pod")
 	key := pod.Namespace + "/" + smName
 	c.queue.AddRateLimited(key)
-	return
+
 }
 
 func isShareManagerPod(obj interface{}) bool {

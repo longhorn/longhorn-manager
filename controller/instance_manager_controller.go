@@ -1003,7 +1003,7 @@ func (notifier *InstanceManagerNotifier) Recv() (struct{}, error) {
 
 func (notifier *InstanceManagerNotifier) Close() {
 	notifier.stream.Close()
-	return
+
 }
 
 func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManager, instanceManagerUpdater *InstanceManagerUpdater) {
@@ -1074,7 +1074,6 @@ func (imc *InstanceManagerController) stopMonitoring(im *longhorn.InstanceManage
 		close(stopCh)
 	}
 
-	return
 }
 
 func (imc *InstanceManagerController) isMonitoring(imName string) bool {
