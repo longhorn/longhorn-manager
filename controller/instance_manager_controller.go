@@ -727,7 +727,7 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 			// node (e.g. controller/etcd node). Skip it
 			return
 		}
-		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v: %v ", kubernetesNode.Name, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get node %v: %v ", kubernetesNode.Name, err))
 		return
 	}
 

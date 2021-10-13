@@ -11,7 +11,7 @@ import (
 	"github.com/urfave/cli"
 
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/version"
@@ -185,7 +185,7 @@ func checkKubernetesVersion(kubeClient *clientset.Clientset) error {
 	currentVersion := version.MustParseSemantic(serverVersion.GitVersion)
 	minVersion := version.MustParseSemantic(types.KubernetesMinVersion)
 	if !currentVersion.AtLeast(minVersion) {
-		return fmt.Errorf("Kubernetes version need to be at least %v, but it's %v", types.KubernetesMinVersion, serverVersion.GitVersion)
+		return fmt.Errorf("kubernetes version need to be at least %v, but it's %v", types.KubernetesMinVersion, serverVersion.GitVersion)
 	}
 	return nil
 }
@@ -322,7 +322,7 @@ type DaemonSetOps struct {
 func newDaemonSetOps(kubeClient *clientset.Clientset) (*DaemonSetOps, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
-		return nil, fmt.Errorf("Cannot detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
+		return nil, fmt.Errorf("cannot detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
 	}
 	return &DaemonSetOps{
 		namespace, kubeClient,

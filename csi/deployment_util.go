@@ -151,7 +151,7 @@ func waitForDeletion(kubeClient *clientset.Clientset, name, namespace, resource 
 		}
 		time.Sleep(time.Duration(1) * time.Second)
 	}
-	return fmt.Errorf("Foreground deletion of %s %s timed out", resource, name)
+	return fmt.Errorf("foreground deletion of %s %s timed out", resource, name)
 }
 
 func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
@@ -381,7 +381,7 @@ func CheckMountPropagationWithNode(managerURL string) error {
 			}
 		}
 		if condition == nil || condition["status"] == nil || condition["status"].(string) != string(types.ConditionStatusTrue) {
-			return fmt.Errorf("Node %s is not support mount propagation", node.Name)
+			return fmt.Errorf("node %s is not support mount propagation", node.Name)
 		}
 	}
 

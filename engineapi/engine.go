@@ -28,7 +28,7 @@ type Engine struct {
 
 func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (EngineClient, error) {
 	if request.EngineImage == "" {
-		return nil, fmt.Errorf("Invalid empty engine image from request")
+		return nil, fmt.Errorf("invalid empty engine image from request")
 	}
 	if request.IP != "" && request.Port == 0 {
 		return nil, fmt.Errorf("Invalid empty port from request with valid IP")
