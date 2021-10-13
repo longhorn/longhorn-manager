@@ -237,7 +237,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			return err
 		}
 
-		if backupTarget.Spec.BackupTargetURL != "" &&
+		if backupTarget.Status.Available &&
 			backupVolume != nil && backupVolume.DeletionTimestamp == nil {
 			// Initialize a backup target client
 			backupTargetClient, err := getBackupTargetClient(bc.ds, backupTarget)
@@ -280,6 +280,11 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			bc.enqueueBackup(backup)
 		}
 	}()
+
+	// Check the controller should run synchronization
+	if !backupTarget.Status.Available {
+		return nil
+	}
 
 	// Perform backup snapshot to the remote backup target
 	// If the Backup CR is created by the user/API layer (spec.snapshotName != "") and has not been synced (status.lastSyncedAt == ""),
