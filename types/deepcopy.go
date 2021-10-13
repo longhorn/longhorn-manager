@@ -278,7 +278,7 @@ func (from *BackingImageDataSourceStatus) DeepCopyInto(to *BackingImageDataSourc
 
 func (in *BackupTargetSpec) DeepCopyInto(out *BackupTargetSpec) {
 	*out = *in
-	return
+
 }
 
 func (in *BackupTargetStatus) DeepCopyInto(out *BackupTargetStatus) {
@@ -289,7 +289,7 @@ func (in *BackupTargetStatus) DeepCopyInto(out *BackupTargetStatus) {
 			out.Conditions[key] = value
 		}
 	}
-	return
+
 }
 
 func (in *BackupVolumeSpec) DeepCopyInto(out *BackupVolumeSpec) {
@@ -311,7 +311,7 @@ func (in *BackupVolumeStatus) DeepCopyInto(out *BackupVolumeStatus) {
 			out.Messages[key] = value
 		}
 	}
-	return
+
 }
 
 func (in *SnapshotBackupSpec) DeepCopyInto(out *SnapshotBackupSpec) {
@@ -322,7 +322,7 @@ func (in *SnapshotBackupSpec) DeepCopyInto(out *SnapshotBackupSpec) {
 			out.Labels[key] = value
 		}
 	}
-	return
+
 }
 
 func (in *SnapshotBackupStatus) DeepCopyInto(out *SnapshotBackupStatus) {
@@ -339,7 +339,7 @@ func (in *SnapshotBackupStatus) DeepCopyInto(out *SnapshotBackupStatus) {
 			out.Messages[key] = value
 		}
 	}
-	return
+
 }
 
 func (in *RecurringJobSpec) DeepCopyInto(out *RecurringJobSpec) {

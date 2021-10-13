@@ -47,7 +47,6 @@ func (s *NonBlockingGRPCServer) Start(endpoint string, ids csi.IdentityServer, c
 
 	go s.serve(endpoint, ids, cs, ns)
 
-	return
 }
 
 func (s *NonBlockingGRPCServer) Wait() {

@@ -890,7 +890,6 @@ func (c *BackingImageDataSourceController) stopMonitoring(bidsName string) {
 	delete(c.monitorMap, bidsName)
 	log.Infof("Stopped monitoring")
 
-	return
 }
 
 func (c *BackingImageDataSourceController) startMonitoring(bids *longhorn.BackingImageDataSource) {

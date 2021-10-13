@@ -404,7 +404,6 @@ func (c *BackingImageManagerController) updateForUnknownBackingImageManager(bim 
 		bim.Status.BackingImageFileMap[biName] = info
 	}
 
-	return
 }
 
 func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn.BackingImageManager, backoff *flowcontrol.Backoff) (err error) {
@@ -1066,7 +1065,6 @@ func (c *BackingImageManagerController) stopMonitoring(bimName string) {
 	delete(c.monitorMap, bimName)
 	log.Infof("Stopped monitoring")
 
-	return
 }
 
 func (c *BackingImageManagerController) isMonitoring(bimName string) bool {
