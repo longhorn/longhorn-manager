@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -22,13 +23,13 @@ func upgradeLonghornRelatedComponents(kubeClient *clientset.Clientset, namespace
 	if err != nil {
 		return err
 	}
-	for _, pv := range pvList.Items {
+	for i, pv := range pvList.Items {
 		// Make sure we are handling the Longhorn related PVs only
 		if v, exist := pv.Annotations[PVAnnotationCSIProvisioner]; !exist || v != types.DeprecatedProvisionerName {
 			continue
 		}
 		pv.Annotations[PVAnnotationCSIProvisioner] = types.LonghornDriverName
-		if _, err := kubeClient.CoreV1().PersistentVolumes().Update(context.TODO(), &pv, metav1.UpdateOptions{}); err != nil {
+		if _, err := kubeClient.CoreV1().PersistentVolumes().Update(context.TODO(), &pvList.Items[i], metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 

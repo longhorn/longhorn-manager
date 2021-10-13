@@ -2759,9 +2759,9 @@ func (vc *VolumeController) enqueueControlleeChange(obj interface{}) {
 		return
 	}
 	ownerRefs := metaObj.GetOwnerReferences()
-	for _, ref := range ownerRefs {
+	for i := range ownerRefs {
 		namespace := metaObj.GetNamespace()
-		vc.ResolveRefAndEnqueue(namespace, &ref)
+		vc.ResolveRefAndEnqueue(namespace, &ownerRefs[i])
 		return
 	}
 }

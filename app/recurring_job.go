@@ -610,9 +610,9 @@ func (job *Job) doRecurringBackup() (err error) {
 		}
 
 		var info *longhornclient.BackupStatus
-		for _, status := range volume.BackupStatus {
+		for i, status := range volume.BackupStatus {
 			if status.Snapshot == snapshot {
-				info = &status
+				info = &volume.BackupStatus[i]
 				break
 			}
 		}

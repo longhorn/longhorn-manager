@@ -57,8 +57,8 @@ func upgradeInstanceManagerPods(namespace string, kubeClient *clientset.Clientse
 	if err != nil {
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing instance manager pods before updating Pod's owner reference")
 	}
-	for _, pod := range imPods {
-		if err := upgradeInstanceMangerPodOwnerRef(&pod, kubeClient, namespace); err != nil {
+	for i := range imPods {
+		if err := upgradeInstanceMangerPodOwnerRef(&imPods[i], kubeClient, namespace); err != nil {
 			return err
 		}
 	}
@@ -109,13 +109,13 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err erro
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn volumes during the volume upgrade")
 	}
 
-	for _, v := range volumeList.Items {
+	for i, v := range volumeList.Items {
 		// in pr https://github.com/longhorn/longhorn-manager/pull/789
 		// we added a new access mode field, that is exposed to the ui
 		// so we add the previously only supported rwo access mode
 		if v.Spec.AccessMode == "" {
 			v.Spec.AccessMode = types.AccessModeReadWriteOnce
-			updatedVolume, err := lhClient.LonghornV1beta1().Volumes(namespace).Update(context.TODO(), &v, metav1.UpdateOptions{})
+			updatedVolume, err := lhClient.LonghornV1beta1().Volumes(namespace).Update(context.TODO(), &volumeList.Items[i], metav1.UpdateOptions{})
 			if err != nil {
 				return err
 			}
@@ -124,7 +124,7 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err erro
 
 		if v.Status.Robustness == types.VolumeRobustnessDegraded && v.Status.LastDegradedAt == "" {
 			v.Status.LastDegradedAt = util.Now()
-			if _, err := lhClient.LonghornV1beta1().Volumes(namespace).UpdateStatus(context.TODO(), &v, metav1.UpdateOptions{}); err != nil {
+			if _, err := lhClient.LonghornV1beta1().Volumes(namespace).UpdateStatus(context.TODO(), &volumeList.Items[i], metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
@@ -145,7 +145,7 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset) (err err
 		return errors.Wrapf(err, "failed to list all existing Longhorn replicas during the replica upgrade")
 	}
 
-	for _, r := range replicaList.Items {
+	for i, r := range replicaList.Items {
 		if r.Spec.DataPath == "" || r.Spec.NodeID == "" {
 			continue
 		}
@@ -181,7 +181,7 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset) (err err
 			r.Spec.FailedAt = util.Now()
 		}
 		r.Spec.DataPath = ""
-		if _, err := lhClient.LonghornV1beta1().Replicas(namespace).Update(context.TODO(), &r, metav1.UpdateOptions{}); err != nil {
+		if _, err := lhClient.LonghornV1beta1().Replicas(namespace).Update(context.TODO(), &replicaList.Items[i], metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 	}

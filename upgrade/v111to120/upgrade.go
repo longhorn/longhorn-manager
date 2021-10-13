@@ -53,7 +53,7 @@ func upgradeBackingImages(namespace string, lhClient *lhclientset.Clientset) (er
 	if err != nil {
 		return err
 	}
-	for _, bi := range biList.Items {
+	for i, bi := range biList.Items {
 		existingBI := bi.DeepCopy()
 		if bi.Status.DiskFileStatusMap == nil {
 			bi.Status.DiskFileStatusMap = map[string]*types.BackingImageDiskFileStatus{}
@@ -82,7 +82,7 @@ func upgradeBackingImages(namespace string, lhClient *lhclientset.Clientset) (er
 		bi.Status.DiskDownloadProgressMap = map[string]int{}
 
 		if !reflect.DeepEqual(bi.Status, existingBI.Status) {
-			if _, err := lhClient.LonghornV1beta1().BackingImages(namespace).UpdateStatus(context.TODO(), &bi, metav1.UpdateOptions{}); err != nil {
+			if _, err := lhClient.LonghornV1beta1().BackingImages(namespace).UpdateStatus(context.TODO(), &biList.Items[i], metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
@@ -178,8 +178,8 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err erro
 		return err
 	}
 
-	for _, volume := range volumeList.Items {
-		if err := upgradeLabelsForVolume(&volume, lhClient, namespace); err != nil {
+	for i := range volumeList.Items {
+		if err := upgradeLabelsForVolume(&volumeList.Items[i], lhClient, namespace); err != nil {
 			return err
 		}
 	}

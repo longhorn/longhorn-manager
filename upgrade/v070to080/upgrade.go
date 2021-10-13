@@ -68,11 +68,11 @@ func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset)
 		}
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing instance managers during the instance managers upgrade")
 	}
-	for _, im := range imList.Items {
+	for i, im := range imList.Items {
 		if im.Spec.Image != "" {
 			continue
 		}
-		im := &im
+		im := &imList.Items[i]
 		if types.ValidateEngineImageChecksumName(im.Spec.EngineImage) {
 			ei, err := lhClient.LonghornV1beta1().EngineImages(namespace).Get(context.TODO(), im.Spec.EngineImage, metav1.GetOptions{})
 			if err != nil {

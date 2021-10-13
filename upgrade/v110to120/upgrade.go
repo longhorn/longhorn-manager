@@ -52,7 +52,7 @@ func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, 
 	if err != nil {
 		return err
 	}
-	for _, imPod := range imPodList {
+	for i, imPod := range imPodList {
 		if imPod.OwnerReferences == nil || len(imPod.OwnerReferences) == 0 {
 			im, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).Get(context.TODO(), imPod.Name, metav1.GetOptions{})
 			if err != nil {
@@ -60,14 +60,14 @@ func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, 
 				continue
 			}
 			imPod.OwnerReferences = datastore.GetOwnerReferencesForInstanceManager(im)
-			if _, err = kubeClient.CoreV1().Pods(namespace).Update(context.TODO(), &imPod, metav1.UpdateOptions{}); err != nil {
+			if _, err = kubeClient.CoreV1().Pods(namespace).Update(context.TODO(), &imPodList[i], metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 			continue
 		}
 		if imPod.OwnerReferences[0].BlockOwnerDeletion == nil || !*imPod.OwnerReferences[0].BlockOwnerDeletion {
 			imPod.OwnerReferences[0].BlockOwnerDeletion = &blockOwnerDeletion
-			if _, err = kubeClient.CoreV1().Pods(namespace).Update(context.TODO(), &imPod, metav1.UpdateOptions{}); err != nil {
+			if _, err = kubeClient.CoreV1().Pods(namespace).Update(context.TODO(), &imPodList[i], metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
@@ -77,16 +77,16 @@ func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, 
 	if err != nil {
 		return err
 	}
-	for _, im := range imList.Items {
-		if !util.FinalizerExists(longhornFinalizerKey, &im) {
+	for i := range imList.Items {
+		if !util.FinalizerExists(longhornFinalizerKey, &imList.Items[i]) {
 			// finalizer already removed
 			// skip updating this instance manager
 			continue
 		}
-		if err := util.RemoveFinalizer(longhornFinalizerKey, &im); err != nil {
+		if err := util.RemoveFinalizer(longhornFinalizerKey, &imList.Items[i]); err != nil {
 			return err
 		}
-		if _, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).Update(context.TODO(), &im, metav1.UpdateOptions{}); err != nil {
+		if _, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).Update(context.TODO(), &imList.Items[i], metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 	}
@@ -475,8 +475,8 @@ func listVolumeCronJobROs(volumeName, namespace string, kubeClient *clientset.Cl
 	if err != nil {
 		return nil, err
 	}
-	for _, cj := range list.Items {
-		itemMap[cj.Name] = &cj
+	for i, cj := range list.Items {
+		itemMap[cj.Name] = &list.Items[i]
 	}
 	return itemMap, nil
 }

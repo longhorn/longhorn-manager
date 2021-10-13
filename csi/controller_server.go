@@ -182,7 +182,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	// TODO: this is for the recurringJobs in volume spec and recurringJobs in
 	// storageClass. Should be removed when recurringJobs gets removed from
 	// storageClass parameters.
-	for _, recurringJob := range vol.RecurringJobs {
+	for i, recurringJob := range vol.RecurringJobs {
 		recurringJob.Concurrency = types.DefaultRecurringJobConcurrency
 
 		if err := datastore.ValidateRecurringJob(types.RecurringJobSpec{
@@ -202,7 +202,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			if !strings.Contains(err.Error(), "not found") {
 				return nil, status.Error(codes.Internal, err.Error())
 			}
-			if _, err := cs.apiClient.RecurringJob.Create(&recurringJob); err != nil {
+			if _, err := cs.apiClient.RecurringJob.Create(&vol.RecurringJobs[i]); err != nil {
 				return nil, status.Error(codes.Internal, err.Error())
 			}
 		}
@@ -557,9 +557,9 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 
 	// NOTE: csi-snapshots assume a 1 to 1 relationship, longhorn allows for multiple backups of a snapshot
 	var backup *longhornclient.Backup
-	for _, b := range backupListOutput.Data {
+	for i, b := range backupListOutput.Data {
 		if b.SnapshotName == csiSnapshotName {
-			backup = &b
+			backup = &backupListOutput.Data[i]
 			break
 		}
 	}
@@ -584,9 +584,9 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	for _, snap := range snapshotListOutput.Data {
+	for i, snap := range snapshotListOutput.Data {
 		if snap.Name == csiSnapshotName {
-			snapshot = &snap
+			snapshot = &snapshotListOutput.Data[i]
 			break
 		}
 	}
@@ -895,9 +895,9 @@ func (cs *ControllerServer) getBackupStatus(volumeName, snapshotName string) (*l
 	}
 
 	var backupStatus *longhornclient.BackupStatus
-	for _, status := range existVol.BackupStatus {
+	for i, status := range existVol.BackupStatus {
 		if status.Snapshot == snapshotName {
-			backupStatus = &status
+			backupStatus = &existVol.BackupStatus[i]
 			break
 		}
 	}

@@ -42,7 +42,7 @@ func UpgradeInstanceManagerPods(namespace string, lhClient *lhclientset.Clientse
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing instance managers during the instance managers pods upgrade")
 	}
 
-	for _, im := range imList.Items {
+	for i, im := range imList.Items {
 		imPodsList, err := kubeClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
 			FieldSelector: "metadata.name=" + im.Name,
 		})
@@ -52,8 +52,8 @@ func UpgradeInstanceManagerPods(namespace string, lhClient *lhclientset.Clientse
 			}
 			return errors.Wrapf(err, upgradeLogPrefix+"failed to find pod for instance manager %v during the instance managers pods upgrade", im.Name)
 		}
-		for _, pod := range imPodsList.Items {
-			if err := upgradeInstanceMangerPodLabel(&pod, &im, kubeClient, namespace); err != nil {
+		for j := range imPodsList.Items {
+			if err := upgradeInstanceMangerPodLabel(&imPodsList.Items[j], &imList.Items[i], kubeClient, namespace); err != nil {
 				return err
 			}
 		}
@@ -98,8 +98,8 @@ func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset)
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing instance managers during the instance managers upgrade")
 	}
 
-	for _, im := range imList.Items {
-		if err := upgradeInstanceManagersLabels(&im, lhClient, namespace); err != nil {
+	for i := range imList.Items {
+		if err := upgradeInstanceManagersLabels(&imList.Items[i], lhClient, namespace); err != nil {
 			return err
 		}
 	}
