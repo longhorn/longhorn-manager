@@ -160,6 +160,21 @@ func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName stri
 		return err
 	}
 
+	_, err := m.ds.GetBackupVolumeRO(volumeName)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+		backupVolumeCR := &longhorn.BackupVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: volumeName,
+			},
+		}
+		if _, err := m.ds.CreateBackupVolume(backupVolumeCR); err != nil && !apierrors.IsAlreadyExists(err) {
+			return err
+		}
+	}
+
 	backupCR := &longhorn.Backup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: backupName,
@@ -169,7 +184,7 @@ func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName stri
 			Labels:       labels,
 		},
 	}
-	_, err := m.ds.CreateBackup(backupCR, volumeName)
+	_, err = m.ds.CreateBackup(backupCR, volumeName)
 	return err
 }
 
