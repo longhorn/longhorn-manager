@@ -11,7 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -226,7 +226,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 
 	checksumName := types.GetEngineImageChecksumName(engineImage.Spec.Image)
 	if engineImage.Name != checksumName {
-		return fmt.Errorf("Image %v checksum %v doesn't match engine image name %v", engineImage.Spec.Image, checksumName, engineImage.Name)
+		return fmt.Errorf("image %v checksum %v doesn't match engine image name %v", engineImage.Spec.Image, checksumName, engineImage.Name)
 	}
 
 	dsName := types.GetDaemonSetNameFromEngineImageName(engineImage.Name)

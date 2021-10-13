@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -258,7 +258,7 @@ func (knc *KubernetesNodeController) enqueueLonghornNode(obj interface{}) {
 func (knc *KubernetesNodeController) enqueueNode(node interface{}) {
 	key, err := controller.KeyFunc(node)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get key for object %#v: %v", node, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", node, err))
 		return
 	}
 

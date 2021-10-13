@@ -149,7 +149,7 @@ func (m *VolumeManager) DiskUpdate(name string, updateDisks map[string]types.Dis
 
 	for name, uDisk := range updateDisks {
 		if uDisk.StorageReserved < 0 {
-			return nil, fmt.Errorf("Update disk on node %v error: The storageReserved setting of disk %v(%v) is not valid, should be positive and no more than storageMaximum and storageAvailable", name, name, uDisk.Path)
+			return nil, fmt.Errorf("update disk on node %v error: The storageReserved setting of disk %v(%v) is not valid, should be positive and no more than storageMaximum and storageAvailable", name, name, uDisk.Path)
 		}
 
 		tags, err := util.ValidateTags(uDisk.Tags)
@@ -198,7 +198,7 @@ func (m *VolumeManager) DeleteNode(name string) error {
 		(condition.Reason != types.NodeConditionReasonKubernetesNodeGone &&
 			condition.Reason != types.NodeConditionReasonManagerPodMissing) ||
 		node.Spec.AllowScheduling || len(replicas) > 0 || len(engines) > 0 {
-		return fmt.Errorf("Could not delete node %v with node ready condition is %v, reason is %v, node schedulable %v, and %v replica, %v engine running on it", name,
+		return fmt.Errorf("could not delete node %v with node ready condition is %v, reason is %v, node schedulable %v, and %v replica, %v engine running on it", name,
 			condition.Status, condition.Reason, node.Spec.AllowScheduling, len(replicas), len(engines))
 	}
 	if err := m.ds.DeleteNode(name); err != nil {

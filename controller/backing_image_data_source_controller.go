@@ -12,7 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -758,7 +758,7 @@ func (c *BackingImageDataSourceController) enqueueForBackingImage(obj interface{
 		if apierrors.IsNotFound(err) {
 			return
 		}
-		utilruntime.HandleError(fmt.Errorf("Couldn't get backing image data source %v: %v ", backingImage.Name, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get backing image data source %v: %v ", backingImage.Name, err))
 		return
 	}
 	c.enqueueBackingImageDataSource(backingImageDataSource)
@@ -783,7 +783,7 @@ func (c *BackingImageDataSourceController) enqueueForVolume(obj interface{}) {
 
 	bidsMap, err := c.ds.ListBackingImageDataSourcesExportingFromVolume(volume.Name)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't list backing image data source based on volume %v: %v ", volume.Name, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't list backing image data source based on volume %v: %v ", volume.Name, err))
 		return
 	}
 	for _, bids := range bidsMap {
@@ -815,7 +815,7 @@ func (c *BackingImageDataSourceController) enqueueForLonghornNode(obj interface{
 			// node (e.g. controller/etcd node). Skip it
 			return
 		}
-		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v: %v ", node.Name, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get node %v: %v ", node.Name, err))
 		return
 	}
 

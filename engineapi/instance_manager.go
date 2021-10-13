@@ -45,7 +45,7 @@ func GetDeprecatedInstanceManagerBinary(image string) string {
 
 func CheckInstanceManagerCompatibilty(imMinVersion, imVersion int) error {
 	if CurrentInstanceManagerAPIVersion > imVersion || CurrentInstanceManagerAPIVersion < imMinVersion {
-		return fmt.Errorf("Current InstanceManager version %v is not compatible with InstanceManagerAPIVersion %v and InstanceManagerAPIMinVersion %v",
+		return fmt.Errorf("current InstanceManager version %v is not compatible with InstanceManagerAPIVersion %v and InstanceManagerAPIMinVersion %v",
 			CurrentInstanceManagerAPIVersion, imVersion, imMinVersion)
 	}
 	return nil
