@@ -280,8 +280,10 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	clustersSet := sets.NewString()
 	for _, b := range clusterBackups {
 		// Skip the Backup CR which is created from the local cluster and
-		// the snapshot backup hasn't be completed or pulled from the remote backup target yet
-		if b.Spec.SnapshotName != "" && b.Status.State != longhorn.BackupStateCompleted {
+		// the snapshot backup hasn't be completed and sync with the remote backup target yet
+		// note that the error/unknown Backup CRs would be included in the clustersSet
+		if b.Status.LastSyncedAt.IsZero() && b.Spec.SnapshotName != "" &&
+			(b.Status.State == longhorn.BackupStateNew || b.Status.State == longhorn.BackupStateInProgress || b.Status.State == longhorn.BackupStateCompleted) {
 			continue
 		}
 		clustersSet.Insert(b.Name)

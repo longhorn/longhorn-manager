@@ -333,8 +333,12 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	}
 
 	clusterBackupVolumesSet := sets.NewString()
-	for _, b := range clusterBackupVolumes {
-		clusterBackupVolumesSet.Insert(b.Name)
+	for _, bv := range clusterBackupVolumes {
+		// Skip the BackupVolume CR which hasn't be pulled from the remote backup target yet
+		if bv.Status.LastSyncedAt.IsZero() {
+			continue
+		}
+		clusterBackupVolumesSet.Insert(bv.Name)
 	}
 
 	// TODO: add a unit test, separate to a function
