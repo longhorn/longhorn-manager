@@ -328,7 +328,7 @@ func (job *Job) run() (err error) {
 		// Disable the volume's frontend make sure that pod cannot use the volume during the recurring job.
 		// This is necessary so that we can safely detach the volume when finishing the job.
 		job.logger.Infof("Automatically attach volume %v to node %v", volumeName, nodeToAttach)
-		if volume, err = volumeAPI.ActionAttach(volume, &longhornclient.AttachInput{
+		if _, err = volumeAPI.ActionAttach(volume, &longhornclient.AttachInput{
 			DisableFrontend: true,
 			HostId:          nodeToAttach,
 			AttachedBy:      jobName,

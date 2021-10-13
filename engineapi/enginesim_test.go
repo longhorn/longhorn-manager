@@ -63,7 +63,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(replicas, HasLen, 1)
 	c.Assert(replicas[Replica1Addr].Mode, Equals, types.ReplicaModeRW)
 
-	err = sim.ReplicaAdd(Replica3Addr, false)
+	_ = sim.ReplicaAdd(Replica3Addr, false)
 	replicas, err = sim.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)

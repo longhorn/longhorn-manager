@@ -10,7 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -187,13 +187,13 @@ func migratePVAndPVCForPre070Volume(kubeClient *kubeclientset.Clientset, lhClien
 	}
 
 	newPV := datastore.NewPVManifestForVolume(v, oldPV.Name, staticStorageClass.Value, oldPV.Spec.CSI.FSType)
-	if newPV, err = kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), newPV, metav1.CreateOptions{}); err != nil {
+	if _, err = kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), newPV, metav1.CreateOptions{}); err != nil {
 		return err
 	}
 
 	if pvcRecreationRequired {
 		pvc := datastore.NewPVCManifestForVolume(v, oldPV.Name, namespace, pvcName, staticStorageClass.Value)
-		if pvc, err = kubeClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.TODO(), pvc, metav1.CreateOptions{}); err != nil {
+		if _, err = kubeClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.TODO(), pvc, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	}

@@ -11,7 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -299,7 +299,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	// TODO: Will remove this reference kind correcting after all Longhorn components having used the new kinds
 	if len(ds.OwnerReferences) < 1 || ds.OwnerReferences[0].Kind != types.LonghornKindEngineImage {
 		ds.OwnerReferences = datastore.GetOwnerReferencesForEngineImage(engineImage)
-		ds, err = ic.kubeClient.AppsV1().DaemonSets(ic.namespace).Update(context.TODO(), ds, metav1.UpdateOptions{})
+		_, err = ic.kubeClient.AppsV1().DaemonSets(ic.namespace).Update(context.TODO(), ds, metav1.UpdateOptions{})
 		if err != nil {
 			return err
 		}
@@ -439,7 +439,7 @@ func (ic *EngineImageController) handleAutoUpgradeEngineImageToDefaultEngineImag
 		for _, v := range vs {
 			ic.logger.WithFields(logrus.Fields{"volume": v.Name, "engineImage": v.Spec.EngineImage}).Infof("automatically upgrade volume engine image to the default engine image %v", defaultEngineImage)
 			v.Spec.EngineImage = defaultEngineImage
-			v, err = ic.ds.UpdateVolume(v)
+			_, err = ic.ds.UpdateVolume(v)
 			if err != nil {
 				return err
 			}

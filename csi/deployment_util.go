@@ -360,7 +360,7 @@ func CheckMountPropagationWithNode(managerURL string) error {
 	if err != nil {
 		return err
 	}
-	nodeCollection, err := apiClient.Node.List(&longhornclient.ListOpts{})
+	nodeCollection, _ := apiClient.Node.List(&longhornclient.ListOpts{})
 	for _, node := range nodeCollection.Data {
 		con := node.Conditions[string(types.NodeConditionTypeMountPropagation)]
 		var condition map[string]interface{}

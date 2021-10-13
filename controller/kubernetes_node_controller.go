@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -322,11 +322,11 @@ func (knc *KubernetesNodeController) syncDefaultDisks(node *longhorn.Node) (err 
 
 	node.Spec.Disks = disks
 
-	updatedNode, err := knc.ds.UpdateNode(node)
+	_, err = knc.ds.UpdateNode(node)
 	if err != nil {
 		return err
 	}
-	node = updatedNode
+
 	return nil
 }
 
@@ -348,11 +348,11 @@ func (knc *KubernetesNodeController) syncDefaultNodeTags(node *longhorn.Node) er
 		}
 		node.Spec.Tags = tags
 
-		updatedNode, err := knc.ds.UpdateNode(node)
+		_, err = knc.ds.UpdateNode(node)
 		if err != nil {
 			return err
 		}
-		node = updatedNode
+
 	}
 	return nil
 }

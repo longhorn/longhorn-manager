@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	"context"
+
 	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -133,7 +134,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 		e.Status.OwnerID = old.Spec.OwnerID
 		e.Status.LogFetched = old.Spec.LogRequested
 		e.Status.CurrentReplicaAddressMap = old.Spec.ReplicaAddressMap
-		e, err = lhClient.LonghornV1beta1().Engines(namespace).UpdateStatus(context.TODO(), e, metav1.UpdateOptions{})
+		_, err = lhClient.LonghornV1beta1().Engines(namespace).UpdateStatus(context.TODO(), e, metav1.UpdateOptions{})
 		if err != nil {
 			if !apierrors.IsConflict(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v status %v", old.Kind, old.Name)
@@ -173,7 +174,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 		copier.Copy(&new.Status, &old.Status)
 		new.Status.OwnerID = old.Spec.OwnerID
 		new.Status.LogFetched = old.Spec.LogRequested
-		new, err = lhClient.LonghornV1beta1().Replicas(namespace).UpdateStatus(context.TODO(), new, metav1.UpdateOptions{})
+		_, err = lhClient.LonghornV1beta1().Replicas(namespace).UpdateStatus(context.TODO(), new, metav1.UpdateOptions{})
 		if err != nil {
 			if !apierrors.IsConflict(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v status %v", old.Kind, old.Name)
@@ -282,7 +283,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 		}
 
 		copier.Copy(&new.Status, &old.Status)
-		new, err = lhClient.LonghornV1beta1().Nodes(namespace).UpdateStatus(context.TODO(), new, metav1.UpdateOptions{})
+		_, err = lhClient.LonghornV1beta1().Nodes(namespace).UpdateStatus(context.TODO(), new, metav1.UpdateOptions{})
 		if err != nil {
 			if !apierrors.IsConflict(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v status %v", old.Kind, old.Name)
@@ -301,7 +302,7 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 
 		copyObjectMetaFromV1alpha1(&new.ObjectMeta, &old.ObjectMeta)
 		new.Value = old.Value
-		new, err = lhClient.LonghornV1beta1().Settings(namespace).Create(context.TODO(), new, metav1.CreateOptions{})
+		_, err = lhClient.LonghornV1beta1().Settings(namespace).Create(context.TODO(), new, metav1.CreateOptions{})
 		if err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				return errors.Wrapf(err, "failed to convert v1alpha1 to v1beta1 for %v %v", old.Kind, old.Name)

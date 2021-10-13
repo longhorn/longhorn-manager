@@ -161,7 +161,7 @@ func checkAndCreateBackingImageDataSource(namespace string, lhClient *lhclientse
 	bids.Status.OwnerID = bids.Spec.NodeID
 	bids.Status.Size = bi.Status.Size
 	bids.Status.Progress = 100
-	if bids, err = lhClient.LonghornV1beta1().BackingImageDataSources(namespace).UpdateStatus(context.TODO(), bids, metav1.UpdateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+	if _, err = lhClient.LonghornV1beta1().BackingImageDataSources(namespace).UpdateStatus(context.TODO(), bids, metav1.UpdateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
 		return err
 	}
 

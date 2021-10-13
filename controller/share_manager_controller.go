@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -421,7 +421,7 @@ func (c ShareManagerController) detachShareManagerVolume(sm *longhorn.ShareManag
 	if shouldDetach {
 		log.Infof("requesting Volume detach from node %v", volume.Spec.NodeID)
 		volume.Spec.NodeID = ""
-		volume, err = c.ds.UpdateVolume(volume)
+		_, err = c.ds.UpdateVolume(volume)
 		return err
 	}
 
@@ -516,7 +516,7 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 	if shouldAttach {
 		log.WithField("volume", volume.Name).Info("Requesting Volume attach to share manager node")
 		volume.Spec.NodeID = sm.Status.OwnerID
-		if volume, err = c.ds.UpdateVolume(volume); err != nil {
+		if _, err = c.ds.UpdateVolume(volume); err != nil {
 			return err
 		}
 	}
