@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/pkg/errors"
-	"github.com/robfig/cron"
-	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/pkg/errors"
+	"github.com/robfig/cron"
+	"github.com/sirupsen/logrus"
 
 	"golang.org/x/sys/unix"
 
@@ -322,7 +323,8 @@ func makeDir(pathname string) error {
 func makeFile(pathname string) error {
 	f, err := os.OpenFile(pathname, os.O_CREATE, os.FileMode(0644))
 	if f != nil {
-		f.Close()
+		err = f.Close()
+		return err
 	}
 	if err != nil {
 		if !os.IsExist(err) {
