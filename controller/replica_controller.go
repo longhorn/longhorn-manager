@@ -25,8 +25,6 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
-	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
-	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -374,18 +372,6 @@ func (rc *ReplicaController) enqueueReplica(obj interface{}) {
 	}
 
 	rc.queue.AddRateLimited(key)
-}
-
-func (rc *ReplicaController) getProcessManagerClient(instanceManagerName string) (*imclient.ProcessManagerClient, error) {
-	im, err := rc.ds.GetInstanceManager(instanceManagerName)
-	if err != nil {
-		return nil, fmt.Errorf("cannot find Instance Manager %v", instanceManagerName)
-	}
-	if im.Status.CurrentState != types.InstanceManagerStateRunning || im.Status.IP == "" {
-		return nil, fmt.Errorf("invalid Instance Manager %v", instanceManagerName)
-	}
-
-	return imclient.NewProcessManagerClient(imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)), nil
 }
 
 func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstanceProcess, error) {

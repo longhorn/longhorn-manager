@@ -26,8 +26,6 @@ const (
 	DefaultISCSIPort = "3260"
 	DefaultISCSILUN  = "1"
 
-	commonTimeout = 1 * time.Minute
-
 	BackupStateComplete   = "complete"
 	BackupStateError      = "error"
 	BackupStateInProgress = "in_progress"

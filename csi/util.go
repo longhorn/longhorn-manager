@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/pkg/errors"
-	"github.com/robfig/cron"
-	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/pkg/errors"
+	"github.com/robfig/cron"
+	"github.com/sirupsen/logrus"
 
 	"golang.org/x/sys/unix"
 
@@ -302,19 +303,6 @@ func getFilesystemStatistics(volumePath string) (*volumeFilesystemStatistics, er
 	}
 
 	return volStats, nil
-}
-
-// makeDir creates a new directory.
-// If pathname already exists as a directory, no error is returned.
-// If pathname already exists as a file, an error is returned.
-func makeDir(pathname string) error {
-	err := os.MkdirAll(pathname, os.FileMode(0755))
-	if err != nil {
-		if !os.IsExist(err) {
-			return err
-		}
-	}
-	return nil
 }
 
 // makeFile creates an empty file.

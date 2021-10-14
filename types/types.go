@@ -414,11 +414,11 @@ func GetShareManagerImageChecksumName(image string) string {
 }
 
 func GetShareManagerPodNameFromShareManagerName(smName string) string {
-	return LonghornLabelShareManager + "-" + smName
+	return shareManagerPrefix + smName
 }
 
 func GetShareManagerNameFromShareManagerPodName(podName string) string {
-	return strings.TrimPrefix(podName, LonghornLabelShareManager+"-")
+	return strings.TrimPrefix(podName, shareManagerPrefix)
 }
 
 func ValidateEngineImageChecksumName(name string) bool {

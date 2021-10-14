@@ -11,10 +11,8 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/kubernetes/pkg/controller"
 
@@ -240,14 +238,6 @@ func getKey(obj interface{}, c *C) string {
 	key, err := controller.KeyFunc(obj)
 	c.Assert(err, IsNil)
 	return key
-}
-
-func getOwnerReference(obj runtime.Object) *metav1.OwnerReference {
-	metadata, err := meta.Accessor(obj)
-	if err != nil {
-		return nil
-	}
-	return &metadata.GetOwnerReferences()[0]
 }
 
 func getTestNow() string {

@@ -12,7 +12,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	"github.com/longhorn/longhorn-manager/types"
 )
 
@@ -20,8 +19,6 @@ const (
 	RetryCounts   = 360
 	RetryInterval = 5 * time.Second
 )
-
-var ownerKindReplica = longhorn.SchemeGroupVersion.WithKind("Replica").String()
 
 func PostUpgradeCmd() cli.Command {
 	return cli.Command{
