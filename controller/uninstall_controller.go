@@ -218,7 +218,7 @@ func (c *UninstallController) Run() error {
 	startTime := time.Now()
 	c.logger.Info("Uninstalling...")
 	defer func() {
-		log := c.logger.WithField("runtime", time.Now().Sub(startTime))
+		log := c.logger.WithField("runtime", time.Since(startTime))
 		log.Info("Uninstallation completed")
 	}()
 	go wait.Until(c.worker, time.Second, c.stopCh)
