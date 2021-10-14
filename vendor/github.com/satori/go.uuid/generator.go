@@ -24,7 +24,7 @@ package uuid
 import (
 	"crypto/md5"
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/binary"
 	"hash"
 	"net"
@@ -159,7 +159,7 @@ func (g *generator) NewV4() UUID {
 
 // NewV5 returns UUID based on SHA-1 hash of namespace UUID and name.
 func (g *generator) NewV5(ns UUID, name string) UUID {
-	u := newFromHash(sha1.New(), ns, name)
+	u := newFromHash(sha256.New(), ns, name)
 	u.SetVersion(V5)
 	u.SetVariant(VariantRFC4122)
 

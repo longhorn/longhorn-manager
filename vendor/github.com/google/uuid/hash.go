@@ -6,7 +6,7 @@ package uuid
 
 import (
 	"crypto/md5"
-	"crypto/sha1"
+	"crypto/sha256"
 	"hash"
 )
 
@@ -49,5 +49,5 @@ func NewMD5(space UUID, data []byte) UUID {
 //
 //  NewHash(sha1.New(), space, data, 5)
 func NewSHA1(space UUID, data []byte) UUID {
-	return NewHash(sha1.New(), space, data, 5)
+	return NewHash(sha256.New(), space, data, 5)
 }
