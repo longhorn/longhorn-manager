@@ -282,10 +282,10 @@ func checkVolume(v *longhorn.Volume) error {
 	}
 	errs := validation.IsDNS1123Label(v.Name)
 	if len(errs) != 0 {
-		return fmt.Errorf("Invalid volume name: %+v", errs)
+		return fmt.Errorf("invalid volume name: %+v", errs)
 	}
 	if len(v.Name) > NameMaximumLength {
-		return fmt.Errorf("Volume name is too long %v, must be less than %v characters",
+		return fmt.Errorf("volume name is too long %v, must be less than %v characters",
 			v.Name, NameMaximumLength)
 	}
 	return nil
@@ -2203,7 +2203,7 @@ func (s *DataStore) GetSettingAsInt(settingName types.SettingName) (int64, error
 		return result, nil
 	}
 
-	return -1, fmt.Errorf("The %v setting value couldn't change to integer, value is %v ", string(settingName), value)
+	return -1, fmt.Errorf("the %v setting value couldn't change to integer, value is %v ", string(settingName), value)
 }
 
 // GetSettingAsBool gets the setting for the given name, returns as boolean
@@ -2227,7 +2227,7 @@ func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error
 		return result, nil
 	}
 
-	return false, fmt.Errorf("The %v setting value couldn't be converted to bool, value is %v ", string(settingName), value)
+	return false, fmt.Errorf("the %v setting value couldn't be converted to bool, value is %v ", string(settingName), value)
 }
 
 // GetSettingImagePullPolicy get the setting and return one of Kubernetes ImagePullPolicy definition
@@ -2521,7 +2521,7 @@ func verifyCreation(name, kind string, getMethod func(name string) (runtime.Obje
 		time.Sleep(VerificationRetryInterval)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("Unable to verify the existence of newly created %s %s: %v", kind, name, err)
+		return nil, fmt.Errorf("unable to verify the existence of newly created %s %s: %v", kind, name, err)
 	}
 	return ret, nil
 }
@@ -3188,7 +3188,7 @@ func ValidateRecurringJobs(jobs []types.RecurringJobSpec) error {
 	}
 
 	if totalJobRetainCount > MaxRecurringJobRetain {
-		return fmt.Errorf("Job Can't retain more than %d snapshots", MaxRecurringJobRetain)
+		return fmt.Errorf("job Can't retain more than %d snapshots", MaxRecurringJobRetain)
 	}
 	return nil
 }

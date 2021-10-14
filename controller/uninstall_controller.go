@@ -207,7 +207,7 @@ func (c *UninstallController) Run() error {
 	defer c.queue.ShutDown()
 
 	if !cache.WaitForNamedCacheSync("longhorn uninstall", c.stopCh, c.cacheSyncs...) {
-		return fmt.Errorf("Failed to sync informers")
+		return fmt.Errorf("failed to sync informers")
 	}
 
 	if err := c.checkPreconditions(); err != nil {

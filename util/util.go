@@ -151,7 +151,7 @@ func WaitForDevice(dev string, timeout int) error {
 		st, err := os.Stat(dev)
 		if err == nil {
 			if st.Mode()&os.ModeDevice == 0 {
-				return fmt.Errorf("Invalid mode for %v: 0x%x", dev, st.Mode())
+				return fmt.Errorf("invalid mode for %v: 0x%x", dev, st.Mode())
 			}
 			return nil
 		}
@@ -230,12 +230,12 @@ func ExecuteWithTimeout(timeout time.Duration, envs []string, binary string, arg
 			}
 
 		}
-		return "", fmt.Errorf("Timeout executing: %v %v, output %s, stderr, %s, error %v",
+		return "", fmt.Errorf("timeout executing: %v %v, output %s, stderr, %s, error %v",
 			binary, args, output.String(), stderr.String(), err)
 	}
 
 	if err != nil {
-		return "", fmt.Errorf("Failed to execute: %v %v, output %s, stderr, %s, error %v",
+		return "", fmt.Errorf("failed to execute: %v %v, output %s, stderr, %s, error %v",
 			binary, args, output.String(), stderr.String(), err)
 	}
 	return output.String(), nil

@@ -176,7 +176,7 @@ func (e *EngineSimulator) SnapshotPurgeStatus() (map[string]*types.PurgeStatus, 
 }
 
 func (e *EngineSimulator) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, error) {
-	return "", fmt.Errorf("Not implemented")
+	return "", fmt.Errorf("not implemented")
 }
 
 func (e *EngineSimulator) SnapshotBackupStatus() (map[string]*types.BackupStatus, error) {

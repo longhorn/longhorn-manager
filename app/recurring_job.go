@@ -200,7 +200,7 @@ func recurringJob(c *cli.Context) error {
 func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName string, labels map[string]string, retain int, backup bool) (*Job, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
-		return nil, fmt.Errorf("Cannot detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
+		return nil, fmt.Errorf("cannot detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
 	}
 
 	config, err := rest.InClusterConfig()
@@ -661,7 +661,7 @@ func (job *Job) doRecurringBackup() (err error) {
 		if _, err := backupAPI.ActionBackupDelete(backupVolume, &longhornclient.BackupInput{
 			Name: backup,
 		}); err != nil {
-			return fmt.Errorf("Cleaned up backup %v failed for %v: %v", backup, volumeName, err)
+			return fmt.Errorf("cleaned up backup %v failed for %v: %v", backup, volumeName, err)
 		}
 		job.logger.Debugf("Cleaned up backup %v for %v", backup, volumeName)
 	}

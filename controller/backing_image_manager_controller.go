@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -903,7 +903,7 @@ func (c *BackingImageManagerController) enqueueForBackingImage(obj interface{}) 
 		if apierrors.IsNotFound(err) {
 			return
 		}
-		utilruntime.HandleError(fmt.Errorf("Couldn't get backing image %v: %v ", backingImage.Name, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get backing image %v: %v ", backingImage.Name, err))
 		return
 	}
 
@@ -948,7 +948,7 @@ func (c *BackingImageManagerController) enqueueForLonghornNode(obj interface{}) 
 			// node (e.g. controller/etcd node). Skip it
 			return
 		}
-		utilruntime.HandleError(fmt.Errorf("Couldn't get node %v: %v ", node.Name, err))
+		utilruntime.HandleError(fmt.Errorf("couldn't get node %v: %v ", node.Name, err))
 		return
 	}
 

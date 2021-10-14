@@ -353,7 +353,7 @@ func (rancherClient *RancherBaseClientImpl) Post(url string, createObj interface
 func (rancherClient *RancherBaseClientImpl) GetLink(resource Resource, link string, respObject interface{}) error {
 	url := resource.Links[link]
 	if url == "" {
-		return fmt.Errorf("Failed to find link: %s", link)
+		return fmt.Errorf("failed to find link: %s", link)
 	}
 
 	return rancherClient.doGet(url, &ListOpts{}, respObject)

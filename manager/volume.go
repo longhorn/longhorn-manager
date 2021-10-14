@@ -563,14 +563,14 @@ func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *lo
 		}
 		isDownOrDeleted, err := m.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to check if the related node %v is still running for replica %v", r.Spec.NodeID, name)
+			return nil, fmt.Errorf("failed to check if the related node %v is still running for replica %v", r.Spec.NodeID, name)
 		}
 		if isDownOrDeleted {
-			return nil, fmt.Errorf("Unable to check if the related node %v is down or deleted for replica %v", r.Spec.NodeID, name)
+			return nil, fmt.Errorf("unable to check if the related node %v is down or deleted for replica %v", r.Spec.NodeID, name)
 		}
 		node, err := m.ds.GetNode(r.Spec.NodeID)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to get the related node %v for replica %v", r.Spec.NodeID, name)
+			return nil, fmt.Errorf("failed to get the related node %v for replica %v", r.Spec.NodeID, name)
 		}
 		diskSchedulable := false
 		for _, diskStatus := range node.Status.DiskStatus {
@@ -582,7 +582,7 @@ func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *lo
 			}
 		}
 		if !diskSchedulable {
-			return nil, fmt.Errorf("Disk with UUID %v on node %v is unschedulable for replica %v", r.Spec.DiskID, r.Spec.NodeID, name)
+			return nil, fmt.Errorf("disk with UUID %v on node %v is unschedulable for replica %v", r.Spec.DiskID, r.Spec.NodeID, name)
 		}
 		if r.Spec.FailedAt == "" {
 			// already updated, ignore it for idempotency
