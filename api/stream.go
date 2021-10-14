@@ -105,7 +105,10 @@ func writeList(conn *websocket.Conn, oldResp *client.GenericCollection, listFunc
 		return oldResp, err
 	}
 
-	conn.SetWriteDeadline(time.Now().Add(writeWait))
+	err = conn.SetWriteDeadline(time.Now().Add(writeWait))
+	if err != nil {
+		return oldResp, err
+	}
 	err = conn.WriteJSON(data)
 	if err != nil {
 		return oldResp, err
