@@ -122,7 +122,7 @@ func Backoff(maxDuration time.Duration, timeoutMessage string, f func() (bool, e
 	waitTime := 150 * time.Millisecond
 	maxWaitTime := 2 * time.Second
 	for {
-		if time.Now().Sub(startTime) > maxDuration {
+		if time.Since(startTime) > maxDuration {
 			return errors.New(timeoutMessage)
 		}
 
