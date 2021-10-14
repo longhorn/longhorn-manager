@@ -141,7 +141,7 @@ func upgradeLonghornNodes(namespace string, lhClient *lhclientset.Clientset) (er
 			node.Spec.ReplicaManagerCPURequest = requestedMilliCPU
 			updateRequired = true
 		}
-		if updateRequired == true {
+		if updateRequired {
 			if _, err := lhClient.LonghornV1beta1().Nodes(namespace).Update(context.TODO(), &node, metav1.UpdateOptions{}); err != nil {
 				return err
 			}

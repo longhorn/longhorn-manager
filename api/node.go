@@ -69,7 +69,7 @@ func (s *Server) NodeUpdate(rw http.ResponseWriter, req *http.Request) error {
 
 	// Only scheduling disabled node can be evicted
 	// Can not enable scheduling on an evicting node
-	if n.EvictionRequested == true && n.AllowScheduling != false {
+	if n.EvictionRequested && n.AllowScheduling {
 		return fmt.Errorf("need to disable scheduling on node %v for node eviction, or cancel eviction to enable scheduling on this node", n.Name)
 	}
 
@@ -115,8 +115,8 @@ func (s *Server) DiskUpdate(rw http.ResponseWriter, req *http.Request) error {
 	// Only scheduling disabled disk can be evicted
 	// Can not enable scheduling on an evicting disk
 	for diskName, diskSpec := range diskUpdate.Disks {
-		if diskSpec.EvictionRequested == true &&
-			diskSpec.AllowScheduling != false {
+		if diskSpec.EvictionRequested &&
+			diskSpec.AllowScheduling {
 			return fmt.Errorf("need to disable scheduling on disk %v for disk eviction, or cancel eviction to enable scheduling on this disk", diskName)
 		}
 	}

@@ -408,7 +408,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		// k8s node status
 		kubeSpec := kubeNode.Spec
 		if DisableSchedulingOnCordonedNode &&
-			kubeSpec.Unschedulable == true {
+			kubeSpec.Unschedulable {
 			node.Status.Conditions =
 				types.SetConditionAndRecord(node.Status.Conditions,
 					types.NodeConditionTypeSchedulable,

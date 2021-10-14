@@ -793,7 +793,7 @@ func ValidateInitSetting(name, value string) (err error) {
 	if !ok {
 		return fmt.Errorf("setting %v is not supported", sName)
 	}
-	if definition.Required == true && value == "" {
+	if definition.Required && value == "" {
 		return fmt.Errorf("required setting %v shouldn't be empty", sName)
 	}
 

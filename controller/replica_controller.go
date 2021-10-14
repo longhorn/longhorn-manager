@@ -238,7 +238,7 @@ func (rc *ReplicaController) isEvictionRequested(replica *longhorn.Replica) bool
 	}
 
 	// Check if node has been request eviction.
-	if node.Spec.EvictionRequested == true {
+	if node.Spec.EvictionRequested {
 		return true
 	}
 
@@ -263,14 +263,14 @@ func (rc *ReplicaController) UpdateReplicaEvictionStatus(replica *longhorn.Repli
 
 	// Check if eviction has been requested on this replica
 	if rc.isEvictionRequested(replica) &&
-		(replica.Status.EvictionRequested == false) {
+		(!replica.Status.EvictionRequested) {
 		replica.Status.EvictionRequested = true
 		log.Debug("Replica has requested eviction")
 	}
 
 	// Check if eviction has been cancelled on this replica
 	if !rc.isEvictionRequested(replica) &&
-		(replica.Status.EvictionRequested == true) {
+		(replica.Status.EvictionRequested) {
 		replica.Status.EvictionRequested = false
 		log.Debug("Replica has cancelled eviction")
 	}
