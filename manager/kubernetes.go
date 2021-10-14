@@ -120,7 +120,7 @@ func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.
 	}
 
 	pvc := datastore.NewPVCManifestForVolume(v, ks.PVName, namespace, pvcName, pv.Spec.StorageClassName)
-	pvc, err = m.ds.CreatePersistentVolumeClaim(namespace, pvc)
+	_, err = m.ds.CreatePersistentVolumeClaim(namespace, pvc)
 	if err != nil {
 		return nil, err
 	}
