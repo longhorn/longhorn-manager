@@ -473,7 +473,7 @@ func (vc *VolumeController) EvictReplicas(v *longhorn.Volume,
 	log := getLoggerForVolume(vc.logger, v)
 
 	for _, replica := range rs {
-		if replica.Status.EvictionRequested == true &&
+		if replica.Status.EvictionRequested &&
 			healthyCount == v.Spec.NumberOfReplicas {
 			if err := vc.replenishReplicas(v, e, rs, ""); err != nil {
 				log.WithError(err).Error("Failed to create new replica for replica eviction")
@@ -679,7 +679,7 @@ func getFailedReplicaCount(rs map[string]*longhorn.Replica) int {
 
 func (vc *VolumeController) hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 	for _, r := range rs {
-		if r.Status.EvictionRequested == true {
+		if r.Status.EvictionRequested {
 			return true
 		}
 	}

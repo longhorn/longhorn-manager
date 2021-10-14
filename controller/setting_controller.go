@@ -714,7 +714,7 @@ func (sc *SettingController) syncUpgradeChecker() error {
 		return err
 	}
 
-	if upgradeCheckerEnabled == false {
+	if !upgradeCheckerEnabled {
 		if latestLonghornVersion.Value != "" {
 			latestLonghornVersion.Value = ""
 			if _, err := sc.ds.UpdateSetting(latestLonghornVersion); err != nil {

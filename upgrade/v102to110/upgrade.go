@@ -76,7 +76,7 @@ func upgradeInstanceMangerPodOwnerRef(pod *v1.Pod, kubeClient *clientset.Clients
 	needToUpdate := false
 	for ind, ownerRef := range podOwnerRefs {
 		if ownerRef.Kind == types.LonghornKindInstanceManager &&
-			(ownerRef.Controller == nil || *ownerRef.Controller != true) {
+			(ownerRef.Controller == nil || !*ownerRef.Controller) {
 			ownerRef.Controller = &isController
 			needToUpdate = true
 		}

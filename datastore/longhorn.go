@@ -1890,7 +1890,7 @@ func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
 
 	for _, node := range nodesRO {
 		readyCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
-		if readyCondition.Status == types.ConditionStatusTrue && node.Spec.AllowScheduling == true {
+		if readyCondition.Status == types.ConditionStatusTrue && node.Spec.AllowScheduling {
 			return node.DeepCopy(), nil
 		}
 	}
