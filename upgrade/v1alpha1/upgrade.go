@@ -180,7 +180,10 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 			}
 		}
 
-		copier.Copy(&new.Status, &old.Status)
+		err = copier.Copy(&new.Status, &old.Status)
+		if err != nil {
+			return err
+		}
 		new.Status.OwnerID = old.Spec.OwnerID
 		new.Status.LogFetched = old.Spec.LogRequested
 		new, err = lhClient.LonghornV1beta1().Replicas(namespace).UpdateStatus(context.TODO(), new, metav1.UpdateOptions{})

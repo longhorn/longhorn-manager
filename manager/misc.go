@@ -60,8 +60,8 @@ func (m *VolumeManager) GetSupportBundle(name string) (*SupportBundle, error) {
 }
 
 func (m *VolumeManager) DeleteSupportBundle() {
-	os.Remove(filepath.Join("/tmp", m.sb.Filename))
-	os.RemoveAll(filepath.Join("/tmp", m.sb.Name))
+	_ = os.Remove(filepath.Join("/tmp", m.sb.Filename))
+	_ = os.RemoveAll(filepath.Join("/tmp", m.sb.Name))
 	m.sb = nil
 }
 
@@ -341,7 +341,7 @@ func (m *VolumeManager) generateSupportBundleLogs(logsDir string, errLog io.Writ
 				continue
 			}
 			streamLogToFile(stream, logFileName, errLog)
-			stream.Close()
+			_ = stream.Close()
 		}
 
 		percentage := float64(index) / float64(len(podList.Items)) * BundleProgressPercentageLogs

@@ -310,7 +310,8 @@ func getFilesystemStatistics(volumePath string) (*volumeFilesystemStatistics, er
 func makeFile(pathname string) error {
 	f, err := os.OpenFile(pathname, os.O_CREATE, os.FileMode(0644))
 	if f != nil {
-		f.Close()
+		err = f.Close()
+		return err
 	}
 	if err != nil {
 		if !os.IsExist(err) {
