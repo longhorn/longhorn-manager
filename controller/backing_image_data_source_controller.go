@@ -376,11 +376,11 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 	podFailed := false
 	podNotReadyMessage := ""
 	if pod == nil {
-		podNotReadyMessage = fmt.Sprintf("cannot find the pod dedicated to prepare the first backing image file")
+		podNotReadyMessage = "cannot find the pod dedicated to prepare the first backing image file"
 	} else if pod.Spec.NodeName != bids.Spec.NodeID {
 		podNotReadyMessage = fmt.Sprintf("pod spec node ID %v doesn't match the desired node ID %v", pod.Spec.NodeName, bids.Spec.NodeID)
 	} else if pod.DeletionTimestamp != nil {
-		podNotReadyMessage = fmt.Sprintf("the pod dedicated to prepare the first backing image file is being deleted")
+		podNotReadyMessage = "the pod dedicated to prepare the first backing image file is being deleted"
 	} else {
 		switch pod.Status.Phase {
 		case v1.PodRunning:
