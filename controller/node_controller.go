@@ -373,7 +373,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 						string(types.NodeConditionReasonKubernetesNodeNotReady),
 						fmt.Sprintf("Kubernetes node %v not ready: %v", node.Name, con.Reason),
 						nc.eventRecorder, node, v1.EventTypeWarning)
-					break
 				}
 			case v1.NodeDiskPressure,
 				v1.NodePIDPressure,
@@ -386,13 +385,11 @@ func (nc *NodeController) syncNode(key string) (err error) {
 						fmt.Sprintf("Kubernetes node %v has pressure: %v, %v", node.Name, con.Reason, con.Message),
 						nc.eventRecorder, node, v1.EventTypeWarning)
 
-					break
 				}
 			default:
 				if con.Status == v1.ConditionTrue {
 					nc.eventRecorder.Eventf(node, v1.EventTypeWarning, types.NodeConditionReasonUnknownNodeConditionTrue, "Unknown condition true of kubernetes node %v: condition type is %v, reason is %v, message is %v", node.Name, con.Type, con.Reason, con.Message)
 				}
-				break
 			}
 		}
 

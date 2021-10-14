@@ -58,7 +58,7 @@ func cryptSetupWithPassphrase(passphrase string, args ...string) (stdout string,
 		cmd.Stdin = strings.NewReader(passphrase)
 	}
 
-	output := string(stdoutBuf.Bytes())
+	output := stdoutBuf.String()
 	if err := cmd.Run(); err != nil {
 		return output, fmt.Errorf("failed to run cryptsetup args: %v output: %v error: %v", args, output, err)
 	}
