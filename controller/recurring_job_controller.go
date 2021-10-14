@@ -258,7 +258,10 @@ func (control *RecurringJobController) createCronJob(cronJob *batchv1beta1.CronJ
 	if err != nil {
 		return err
 	}
-	util.SetAnnotation(cronJob, types.GetLonghornLabelKey(LastAppliedCronJobSpecAnnotationKeySuffix), string(cronJobSpecB))
+	err = util.SetAnnotation(cronJob, types.GetLonghornLabelKey(LastAppliedCronJobSpecAnnotationKeySuffix), string(cronJobSpecB))
+	if err != nil {
+		return err
+	}
 	_, err = control.ds.CreateCronJob(cronJob)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create cron job")

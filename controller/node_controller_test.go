@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/sirupsen/logrus"
 
@@ -662,7 +663,10 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		for _, kubeNode := range tc.kubeNodes {
 			n, err := kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			knIndexer.Add(n)
+			err = knIndexer.Add(n)
+			if err != nil {
+				log.Println(err)
+			}
 		}
 
 		nc := newTestNodeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestNode1)
@@ -670,21 +674,31 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		for _, pod := range tc.pods {
 			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			pIndexer.Add(p)
+			err = pIndexer.Add(p)
+			if err != nil {
+				log.Println(err)
+			}
 		}
 		// create node
 		for _, node := range tc.nodes {
 			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
-			nIndexer.Add(n)
+			err = nIndexer.Add(n)
+			if err != nil {
+				log.Println(err)
+			}
+
 		}
 		// create replicas
 		for _, replica := range tc.replicas {
 			r, err := lhClient.LonghornV1beta1().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(r, NotNil)
-			rIndexer.Add(r)
+			err = rIndexer.Add(r)
+			if err != nil {
+				log.Println(err)
+			}
 		}
 		// create instance managers
 		for _, em := range tc.engineManagers {

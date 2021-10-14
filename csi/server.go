@@ -21,6 +21,7 @@ package csi
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -98,7 +99,10 @@ func (s *NonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 
 	logrus.Infof("Listening for connections on address: %#v", listener.Addr())
 
-	server.Serve(listener)
+	err = server.Serve(listener)
+	if err != nil {
+		log.Println(err)
+	}
 
 }
 

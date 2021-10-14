@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"strconv"
 	"time"
@@ -1460,7 +1461,10 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
-			nIndexer.Add(n)
+			err = nIndexer.Add(n)
+			if err != nil {
+				log.Println(err)
+			}
 
 			knodeCondition := v1.ConditionTrue
 			if node.Status.Conditions[types.NodeConditionTypeReady].Status != types.ConditionStatusTrue {
@@ -1469,7 +1473,10 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			knode := newKubernetesNode(node.Name, knodeCondition, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
 			kn, err := kubeClient.CoreV1().Nodes().Create(context.TODO(), knode, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			knIndexer.Add(kn)
+			err = knIndexer.Add(kn)
+			if err != nil {
+				log.Println(err)
+			}
 		}
 
 		// Need to put it into both fakeclientset and Indexer

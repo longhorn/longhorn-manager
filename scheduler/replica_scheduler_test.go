@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"log"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -699,36 +700,54 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		for _, daemon := range tc.daemons {
 			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), daemon, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			pIndexer.Add(p)
+			err = pIndexer.Add(p)
+			if err != nil {
+				log.Println(err)
+			}
 		}
 		// create node
 		for _, node := range tc.nodes {
 			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
-			nIndexer.Add(n)
+			err = nIndexer.Add(n)
+			if err != nil {
+				log.Println(err)
+			}
 		}
 		// Create engine image
 		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(context.TODO(), tc.engineImage, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(ei, NotNil)
-		eiIndexer.Add(ei)
+		err = eiIndexer.Add(ei)
+		if err != nil {
+			log.Println(err)
+		}
 		// create volume
 		volume, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(context.TODO(), tc.volume, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(volume, NotNil)
-		vIndexer.Add(volume)
+		err = vIndexer.Add(volume)
+		if err != nil {
+			log.Println(err)
+		}
 		// set settings
 		if tc.storageOverProvisioningPercentage != "" && tc.storageMinimalAvailablePercentage != "" {
 			s := initSettings(string(types.SettingNameStorageOverProvisioningPercentage), tc.storageOverProvisioningPercentage)
 			setting, err := lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			sIndexer.Add(setting)
+			err = sIndexer.Add(setting)
+			if err != nil {
+				log.Println(err)
+			}
 
 			s = initSettings(string(types.SettingNameStorageMinimalAvailablePercentage), tc.storageMinimalAvailablePercentage)
 			setting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			sIndexer.Add(setting)
+			err = sIndexer.Add(setting)
+			if err != nil {
+				log.Println(err)
+			}
 		}
 		// Set replica node soft anti-affinity setting
 		if tc.replicaNodeSoftAntiAffinity != "" {
@@ -738,14 +757,20 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			setting, err :=
 				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			sIndexer.Add(setting)
+			err = sIndexer.Add(setting)
+			if err != nil {
+				log.Println(err)
+			}
 		}
 		// validate scheduler
 		for _, replica := range tc.replicas {
 			r, err := lhClient.LonghornV1beta1().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(r, NotNil)
-			rIndexer.Add(r)
+			err = rIndexer.Add(r)
+			if err != nil {
+				log.Println(err)
+			}
 
 			sr, err := s.ScheduleReplica(r, tc.replicas, volume)
 			if tc.err {
