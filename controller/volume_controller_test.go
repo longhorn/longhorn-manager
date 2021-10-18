@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"log"
 	"math"
 	"strconv"
 	"time"
@@ -1462,9 +1461,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
 			err = nIndexer.Add(n)
-			if err != nil {
-				log.Println(err)
-			}
+			c.Assert(err, IsNil)
 
 			knodeCondition := v1.ConditionTrue
 			if node.Status.Conditions[types.NodeConditionTypeReady].Status != types.ConditionStatusTrue {
@@ -1474,9 +1471,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			kn, err := kubeClient.CoreV1().Nodes().Create(context.TODO(), knode, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = knIndexer.Add(kn)
-			if err != nil {
-				log.Println(err)
-			}
+			c.Assert(err, IsNil)
 		}
 
 		// Need to put it into both fakeclientset and Indexer

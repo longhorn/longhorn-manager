@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"log"
 	"sort"
 
 	"github.com/sirupsen/logrus"
@@ -530,9 +529,6 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 			pv, err = kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), tc.pv, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = pvIndexer.Add(pv)
-			if err != nil {
-				log.Println(err)
-			}
 			c.Assert(err, IsNil)
 			if pv.DeletionTimestamp != nil {
 				kc.enqueuePVDeletion(pv)
@@ -543,9 +539,8 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 			pvc, err := kubeClient.CoreV1().PersistentVolumeClaims(TestNamespace).Create(context.TODO(), tc.pvc, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = pvcIndexer.Add(pvc)
-			if err != nil {
-				log.Println(err)
-			}
+			c.Assert(err, IsNil)
+
 		}
 
 		if len(tc.pods) != 0 {
@@ -553,9 +548,7 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 				p, err = kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), p, metav1.CreateOptions{})
 				c.Assert(err, IsNil)
 				err = pIndexer.Add(p)
-				if err != nil {
-					log.Println(err)
-				}
+				c.Assert(err, IsNil)
 			}
 		}
 

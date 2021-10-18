@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/sirupsen/logrus"
 
@@ -664,9 +663,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			n, err := kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = knIndexer.Add(n)
-			if err != nil {
-				log.Println(err)
-			}
+			c.Assert(err, IsNil)
+
 		}
 
 		nc := newTestNodeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestNode1)
@@ -675,9 +673,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = pIndexer.Add(p)
-			if err != nil {
-				log.Println(err)
-			}
+			c.Assert(err, IsNil)
+
 		}
 		// create node
 		for _, node := range tc.nodes {
@@ -685,9 +682,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
 			err = nIndexer.Add(n)
-			if err != nil {
-				log.Println(err)
-			}
+			c.Assert(err, IsNil)
 
 		}
 		// create replicas
@@ -696,9 +691,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			c.Assert(err, IsNil)
 			c.Assert(r, NotNil)
 			err = rIndexer.Add(r)
-			if err != nil {
-				log.Println(err)
-			}
+			c.Assert(err, IsNil)
 		}
 		// create instance managers
 		for _, em := range tc.engineManagers {
