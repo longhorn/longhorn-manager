@@ -626,7 +626,7 @@ func DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(
 	// Check if the disk cfg file exist, delete it
 	if _, err := nsExec.Execute("ls", []string{filePath}); err == nil {
 		if _, err := nsExec.Execute("rm", []string{filePath}); err != nil {
-			_ = errors.Wrapf(err, "error deleting disk cfg file %v on host", filePath)
+			return errors.Wrapf(err, "error deleting disk cfg file %v on host", filePath)
 		}
 	}
 
