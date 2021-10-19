@@ -50,8 +50,12 @@ func (s *Server) volumeList(apiContext *api.ApiContext) (*client.GenericCollecti
 		if err != nil {
 			return nil, err
 		}
+		backups, err := s.m.ListBackupsForVolumeSorted(v.Name)
+		if err != nil {
+			return nil, err
+		}
 
-		resp.Data = append(resp.Data, toVolumeResource(v, controllers, replicas, apiContext))
+		resp.Data = append(resp.Data, toVolumeResource(v, controllers, replicas, backups, apiContext))
 	}
 	resp.ResourceType = "volume"
 	resp.CreateTypes = map[string]string{
@@ -93,8 +97,12 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 	if err != nil {
 		return err
 	}
+	backups, err := s.m.ListBackupsForVolumeSorted(id)
+	if err != nil {
+		return err
+	}
 
-	apiContext.Write(toVolumeResource(v, controllers, replicas, apiContext))
+	apiContext.Write(toVolumeResource(v, controllers, replicas, backups, apiContext))
 	return nil
 }
 
