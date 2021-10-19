@@ -902,10 +902,10 @@ func toSettingCollection(settings []*longhorn.Setting) *client.GenericCollection
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }
 
-func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, apiContext *api.ApiContext) *Volume {
+func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, backups []*longhorn.Backup, apiContext *api.ApiContext) *Volume {
 	var ve *longhorn.Engine
 	controllers := []Controller{}
-	backups := []BackupStatus{}
+	backupStatus := []BackupStatus{}
 	restoreStatus := []RestoreStatus{}
 	var purgeStatuses []PurgeStatus
 	rebuildStatuses := []RebuildStatus{}
@@ -1014,6 +1014,19 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		})
 	}
 
+	for _, b := range backups {
+		backupStatus = append(backupStatus, BackupStatus{
+			Resource:  client.Resource{},
+			Name:      b.Name,
+			Snapshot:  b.Status.SnapshotName,
+			Progress:  b.Status.Progress,
+			BackupURL: b.Status.URL,
+			Error:     b.Status.Error,
+			State:     string(b.Status.State),
+			Replica:   datastore.ReplicaAddressToReplicaName(b.Status.ReplicaAddress, vrs),
+		})
+	}
+
 	// The volume is not ready for workloads if:
 	//   1. It's auto attached.
 	//   2. It fails to schedule replicas during the volume creation,
@@ -1080,7 +1093,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 
 		Controllers:   controllers,
 		Replicas:      replicas,
-		BackupStatus:  backups,
+		BackupStatus:  backupStatus,
 		RestoreStatus: restoreStatus,
 		PurgeStatus:   purgeStatuses,
 		RebuildStatus: rebuildStatuses,

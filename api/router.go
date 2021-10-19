@@ -165,7 +165,7 @@ func NewRouter(s *Server) *mux.Router {
 	r.Path("/v1/ws/settings").Handler(f(schemas, settingListStream))
 	r.Path("/v1/ws/{period}/settings").Handler(f(schemas, settingListStream))
 
-	volumeListStream := NewStreamHandlerFunc("volumes", s.wsc.NewWatcher("volume", "engine", "replica"), s.volumeList)
+	volumeListStream := NewStreamHandlerFunc("volumes", s.wsc.NewWatcher("volume", "engine", "replica", "backup"), s.volumeList)
 	r.Path("/v1/ws/volumes").Handler(f(schemas, volumeListStream))
 	r.Path("/v1/ws/{period}/volumes").Handler(f(schemas, volumeListStream))
 
