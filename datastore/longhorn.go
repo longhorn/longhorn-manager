@@ -87,7 +87,7 @@ func (s *DataStore) UpdateSetting(setting *longhorn.Setting) (*longhorn.Setting,
 // ValidateSetting checks the given setting value types and condition
 func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to set settings with invalid %v", name)
+		err = errors.Wrapf(err, "fail to set the setting %v with invalid value %v", name, value)
 	}()
 	sName := types.SettingName(name)
 
@@ -107,6 +107,31 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 				standbyVolumeNames = append(standbyVolumeNames, k)
 			}
 			return fmt.Errorf("cannot modify BackupTarget since there are existing standby volumes: %v", standbyVolumeNames)
+		}
+	case types.SettingNameBackupTargetCredentialSecret:
+		secret, err := s.GetSecretRO(s.namespace, value)
+		if err != nil {
+			return errors.Wrapf(err, "failed to list the secret %v before modifying backup target credential secret setting", value)
+		}
+		checkKeyList := []string{
+			types.AWSAccessKey,
+			types.AWSIAMRoleAnnotation,
+			types.AWSIAMRoleArn,
+			types.AWSAccessKey,
+			types.AWSSecretKey,
+			types.AWSEndPoint,
+			types.AWSCert,
+			types.HTTPSProxy,
+			types.HTTPProxy,
+			types.NOProxy,
+			types.VirtualHostedStyle,
+		}
+		for _, checkKey := range checkKeyList {
+			if value, ok := secret.Data[checkKey]; ok {
+				if strings.TrimSpace(string(value)) != string(value) {
+					return fmt.Errorf("there is space or new line in %s", checkKey)
+				}
+			}
 		}
 	case types.SettingNameTaintToleration:
 		list, err := s.ListVolumesRO()
