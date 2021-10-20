@@ -272,8 +272,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		kubeNode2 := newKubernetesNode(TestNode2, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
 		err = kubeNodeIndexer.Add(kubeNode2)
 		c.Assert(err, IsNil)
-		_, _ = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode2, metav1.CreateOptions{})
-
+		_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode2, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
 		lhNode2 := newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
 		err = lhNodeIndexer.Add(lhNode2)
 		c.Assert(err, IsNil)

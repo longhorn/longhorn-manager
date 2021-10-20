@@ -318,7 +318,8 @@ func (s *TestSuite) TestIsSameGuaranteedCPURequirement(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, true)
 
-	b.Requests[corev1.ResourceCPU], _ = resource.ParseQuantity("250m")
+	b.Requests[corev1.ResourceCPU], err = resource.ParseQuantity("250m")
+	c.Assert(err, IsNil)
 	a = &corev1.ResourceRequirements{}
 	c.Assert(IsSameGuaranteedCPURequirement(a, b), Equals, false)
 
