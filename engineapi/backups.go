@@ -241,20 +241,20 @@ func (btc *BackupTargetClient) DeleteBackup(backupURL string) error {
 	return nil
 }
 
-func (e *Engine) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, error) {
+func (e *Engine) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error) {
 	if snapName == VolumeHeadName {
-		return "", fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)
+		return "", "", fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)
 	}
 	snap, err := e.SnapshotGet(snapName)
 	if err != nil {
-		return "", errors.Wrapf(err, "error getting snapshot '%s', volume '%s'", snapName, e.name)
+		return "", "", errors.Wrapf(err, "error getting snapshot '%s', volume '%s'", snapName, e.name)
 	}
 	if snap == nil {
-		return "", errors.Errorf("could not find snapshot '%s' to backup, volume '%s'", snapName, e.name)
+		return "", "", errors.Errorf("could not find snapshot '%s' to backup, volume '%s'", snapName, e.name)
 	}
 	version, err := e.Version(true)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	args := []string{"backup", "create", "--dest", backupTarget}
 	if backingImageName != "" {
@@ -277,32 +277,37 @@ func (e *Engine) SnapshotBackup(backupName, snapName, backupTarget, backingImage
 	// get environment variables if backup for s3
 	envs, err := getBackupCredentialEnv(backupTarget, credential)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	output, err := e.ExecuteEngineBinaryWithoutTimeout(envs, args...)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	backupCreateInfo := BackupCreateInfo{}
 	if err := json.Unmarshal([]byte(output), &backupCreateInfo); err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	logrus.Debugf("Backup %v created for volume %v snapshot %v", backupCreateInfo.BackupID, e.Name(), snapName)
-	return backupCreateInfo.BackupID, nil
+	return backupCreateInfo.BackupID, backupCreateInfo.ReplicaAddress, nil
 }
 
-func (e *Engine) SnapshotBackupStatus() (map[string]*longhorn.EngineBackupStatus, error) {
-	args := []string{"backup", "status"}
+func (e *Engine) SnapshotBackupStatus(backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error) {
+	args := []string{"backup", "status", backupName}
+	if replicaAddress != "" {
+		args = append(args, "--replica", replicaAddress)
+	}
+
 	output, err := e.ExecuteEngineBinary(args...)
 	if err != nil {
 		return nil, err
 	}
-	backups := make(map[string]*longhorn.EngineBackupStatus)
-	if err := json.Unmarshal([]byte(output), &backups); err != nil {
+
+	engineBackupStatus := &longhorn.EngineBackupStatus{}
+	if err := json.Unmarshal([]byte(output), engineBackupStatus); err != nil {
 		return nil, err
 	}
-	return backups, nil
+	return engineBackupStatus, nil
 }
 
 // ConvertEngineBackupState converts longhorn engine backup state to Backup CR state

@@ -21,10 +21,11 @@ const (
 type BackupMonitor struct {
 	logger logrus.FieldLogger
 
-	namespace    string
-	backupName   string
-	snapshotName string
-	engineClient EngineClient
+	namespace      string
+	backupName     string
+	snapshotName   string
+	replicaAddress string
+	engineClient   EngineClient
 
 	backupStatus     longhorn.BackupStatus
 	backupStatusLock sync.RWMutex
@@ -58,13 +59,15 @@ func NewBackupMonitor(logger logrus.FieldLogger,
 
 	// Call engine API snapshot backup
 	if backup.Status.State == longhorn.BackupStateNew {
-		_, err := engineClient.SnapshotBackup(backup.Name, backup.Spec.SnapshotName,
+		_, replicaAddress, err := engineClient.SnapshotBackup(backup.Name, backup.Spec.SnapshotName,
 			backupTargetClient.URL, volume.Spec.BackingImage, biChecksum,
 			backup.Spec.Labels, backupTargetClient.Credential)
 		if err != nil {
 			m.logger.WithError(err).Warn("Cannot take snapshot backup")
 			return nil, err
 		}
+
+		m.replicaAddress = replicaAddress
 	}
 
 	// Create a goroutine to monitor the replica backup state/progress
@@ -108,12 +111,11 @@ func (m *BackupMonitor) syncBackups() error {
 		}
 	}()
 
-	engineBackupStatusList, err := m.engineClient.SnapshotBackupStatus()
+	engineBackupStatus, err := m.engineClient.SnapshotBackupStatus(m.backupName, m.replicaAddress)
 	if err != nil {
 		return err
 	}
-	engineBackupStatus, ok := engineBackupStatusList[m.backupName]
-	if !ok || engineBackupStatus == nil {
+	if engineBackupStatus == nil {
 		err = fmt.Errorf("cannot find backup %s status in longhorn engine", m.backupName)
 		return err
 	}
