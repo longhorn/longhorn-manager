@@ -75,8 +75,8 @@ type EngineClient interface {
 	SnapshotRevert(name string) error
 	SnapshotPurge() error
 	SnapshotPurgeStatus() (map[string]*longhorn.PurgeStatus, error)
-	SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, error)
-	SnapshotBackupStatus() (map[string]*longhorn.EngineBackupStatus, error)
+	SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error)
+	SnapshotBackupStatus(backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error)
 	SnapshotCloneStatus() (map[string]*longhorn.SnapshotCloneStatus, error)
 	SnapshotClone(snapshotName, fromControllerAddress string) error
 
@@ -150,8 +150,9 @@ type ConfigMetadata struct {
 }
 
 type BackupCreateInfo struct {
-	BackupID      string
-	IsIncremental bool
+	BackupID       string
+	ReplicaAddress string
+	IsIncremental  bool
 }
 
 type LauncherVolumeInfo struct {
