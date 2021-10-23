@@ -175,11 +175,11 @@ func (e *EngineSimulator) SnapshotPurgeStatus() (map[string]*longhorn.PurgeStatu
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (e *EngineSimulator) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, error) {
-	return "", fmt.Errorf("not implemented")
+func (e *EngineSimulator) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error) {
+	return "", "", fmt.Errorf("not implemented")
 }
 
-func (e *EngineSimulator) SnapshotBackupStatus() (map[string]*longhorn.EngineBackupStatus, error) {
+func (e *EngineSimulator) SnapshotBackupStatus(backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
