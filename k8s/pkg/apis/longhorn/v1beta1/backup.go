@@ -5,14 +5,15 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type BackupState string
 
 const (
+	BackupStateNew        = BackupState("")
 	BackupStateInProgress = BackupState("InProgress")
 	BackupStateCompleted  = BackupState("Completed")
 	BackupStateError      = BackupState("Error")
 	BackupStateUnknown    = BackupState("Unknown")
 )
 
-// SnapshotBackupSpec defines the desired state of the Longhorn backup
-type SnapshotBackupSpec struct {
+// BackupSpec defines the desired state of the Longhorn backup
+type BackupSpec struct {
 	// The time to request run sync the remote backup.
 	// +optional
 	SyncRequestedAt metav1.Time `json:"syncRequestedAt"`
@@ -24,8 +25,8 @@ type SnapshotBackupSpec struct {
 	Labels map[string]string `json:"labels"`
 }
 
-// SnapshotBackupStatus defines the observed state of the Longhorn backup
-type SnapshotBackupStatus struct {
+// BackupStatus defines the observed state of the Longhorn backup
+type BackupStatus struct {
 	// The node ID on which the controller is responsible to reconcile this backup CR.
 	// +optional
 	OwnerID string `json:"ownerID"`
@@ -33,6 +34,15 @@ type SnapshotBackupStatus struct {
 	// Can be "", "InProgress", "Completed", "Error", "Unknown".
 	// +optional
 	State BackupState `json:"state"`
+	// The snapshot backup progress.
+	// +optional
+	Progress int `json:"progress"`
+	// The address of the replica that runs snapshot backup.
+	// +optional
+	ReplicaAddress string `json:"replicaAddress"`
+	// The error message when taking the snapshot backup.
+	// +optional
+	Error string `json:"error,omitempty"`
 	// The snapshot backup URL.
 	// +optional
 	URL string `json:"url"`
@@ -86,8 +96,8 @@ type Backup struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   SnapshotBackupSpec   `json:"spec,omitempty"`
-	Status SnapshotBackupStatus `json:"status,omitempty"`
+	Spec   BackupSpec   `json:"spec,omitempty"`
+	Status BackupStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

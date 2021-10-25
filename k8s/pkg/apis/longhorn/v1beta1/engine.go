@@ -10,7 +10,7 @@ const (
 	ReplicaModeERR = ReplicaMode("ERR")
 )
 
-type BackupStatus struct {
+type EngineBackupStatus struct {
 	// +optional
 	Progress int `json:"progress"`
 	// +optional
@@ -138,7 +138,7 @@ type EngineStatus struct {
 	// +optional
 	LastRestoredBackup string `json:"lastRestoredBackup"`
 	// +optional
-	BackupStatus map[string]*BackupStatus `json:"backupStatus"`
+	BackupStatus map[string]*EngineBackupStatus `json:"backupStatus"`
 	// +optional
 	RestoreStatus map[string]*RestoreStatus `json:"restoreStatus"`
 	// +optional

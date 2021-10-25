@@ -3,7 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -31,10 +31,6 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
-const (
-	BackupStatusQueryInterval = 2 * time.Second
-)
-
 type BackupController struct {
 	*baseController
 
@@ -45,6 +41,9 @@ type BackupController struct {
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
+
+	monitors    map[string]*engineapi.BackupMonitor
+	monitorLock sync.RWMutex
 
 	ds *datastore.DataStore
 
@@ -71,6 +70,9 @@ func NewBackupController(
 		namespace:    namespace,
 		controllerID: controllerID,
 
+		monitors:    map[string]*engineapi.BackupMonitor{},
+		monitorLock: sync.RWMutex{},
+
 		ds: ds,
 
 		kubeClient:    kubeClient,
@@ -94,6 +96,10 @@ func (bc *BackupController) enqueueBackup(obj interface{}) {
 		return
 	}
 
+	bc.queue.AddRateLimited(key)
+}
+
+func (bc *BackupController) enqueueBackupForMonitor(key string) {
 	bc.queue.AddRateLimited(key)
 }
 
@@ -276,30 +282,42 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		}
 	}()
 
-	// Perform backup snapshot to remote backup target
-	if backup.Spec.SnapshotName != "" && backup.Status.State == "" {
-		// Initialize a backup target client
-		backupTargetClient, err := getBackupTargetClient(bc.ds, backupTarget)
+	// Perform backup snapshot to the remote backup target
+	// If the Backup CR is created by the user/API layer (spec.snapshotName != "") and has not been synced (status.lastSyncedAt == ""),
+	// it means creating a backup from a volume snapshot is required.
+	// Hence the source of truth is the engine/replica and the controller needs to sync the status with it.
+	// Otherwise, the Backup CR is created by the backup volume controller, which means the backup already
+	// exists in the remote backup target before the CR creation.
+	// What the controller needs to do for this case is retrieve the info from the remote backup target.
+	if backup.Status.LastSyncedAt.IsZero() && backup.Spec.SnapshotName != "" {
+		volume, err := bc.ds.GetVolume(backupVolumeName)
 		if err != nil {
-			log.WithError(err).Error("Error init backup target client")
+			if !apierrors.IsNotFound(err) {
+				return err
+			}
+			log.WithError(err).Error("Cannot found the corresponding volume")
 			return nil // Ignore error to prevent enqueue
 		}
 
-		// Initialize a engine client
-		engine, err := bc.ds.GetVolumeCurrentEngine(backupVolumeName)
-		if err != nil {
-			return err
-		}
-		engineCollection := &engineapi.EngineCollection{}
-		engineClient, err := GetClientForEngine(engine, engineCollection, engine.Status.CurrentImage)
+		monitor, err := bc.checkMonitor(backup, volume, backupTarget)
 		if err != nil {
 			return err
 		}
 
-		if err := bc.backupCreation(log, engineClient, backupTargetClient.URL, backupTargetClient.Credential, backup); err != nil {
+		if err = bc.syncWithMonitor(backup, volume, monitor); err != nil {
 			return err
 		}
-		return nil
+
+		switch backup.Status.State {
+		case longhorn.BackupStateNew, longhorn.BackupStateInProgress:
+			return nil
+		case longhorn.BackupStateCompleted:
+			bc.disableBackupMonitor(backup.Name)
+		case longhorn.BackupStateError, longhorn.BackupStateUnknown:
+			backup.Status.LastSyncedAt = syncTime
+			bc.disableBackupMonitor(backup.Name)
+			return nil
+		}
 	}
 
 	// The backup config had synced
@@ -308,6 +326,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return nil
 	}
 
+	// The backup creation is complete, then the source of truth becomes the remote backup target
 	// Initialize a backup target client
 	backupTargetClient, err := getBackupTargetClient(bc.ds, backupTarget)
 	if err != nil {
@@ -318,12 +337,11 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	backupURL := backupstore.EncodeBackupURL(backup.Name, backupVolumeName, backupTargetClient.URL)
 	backupInfo, err := backupTargetClient.InspectBackupConfig(backupURL)
 	if err != nil {
-		if !strings.Contains(err.Error(), "in progress") {
-			log.WithError(err).Error("Error inspecting backup config")
-		}
+		log.WithError(err).Error("Error inspecting backup config")
 		return nil // Ignore error to prevent enqueue
 	}
 	if backupInfo == nil {
+		log.Warn("Backup info is nil")
 		return nil
 	}
 
@@ -385,146 +403,169 @@ func (bc *BackupController) getBackupVolumeName(backup *longhorn.Backup) (string
 	return backupVolumeName, nil
 }
 
-func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient engineapi.EngineClient, url string, credential map[string]string, backup *longhorn.Backup) error {
-	volumeName := engineClient.Name()
-
-	log = log.WithFields(
-		logrus.Fields{
-			"vol":      volumeName,
-			"snapshot": backup.Spec.SnapshotName,
-			"label":    backup.Spec.Labels,
-		},
-	)
-
-	event := func(err error, state longhorn.BackupState, backup *longhorn.Backup, volume *longhorn.Volume) {
-		if err != nil {
-			bc.eventRecorder.Eventf(volume, corev1.EventTypeWarning, string(state),
-				"Snapshot %s backup %s label %v: %v", backup.Spec.SnapshotName, backup.Name, backup.Spec.Labels, err)
-			return
-		}
-		bc.eventRecorder.Eventf(volume, corev1.EventTypeNormal, string(state),
-			"Snapshot %s backup %s label %v", backup.Spec.SnapshotName, backup.Name, backup.Spec.Labels)
-	}
-
-	// Get the volume CR
-	volume, err := bc.ds.GetVolume(volumeName)
+func (bc *BackupController) getEngineClient(volumeName string) (engineapi.EngineClient, error) {
+	engine, err := bc.ds.GetVolumeCurrentEngine(volumeName)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	return GetClientForEngine(engine, &engineapi.EngineCollection{}, engine.Status.CurrentImage)
+}
+
+// validateBackingImageChecksum validates backing image checksum
+func (bc *BackupController) validateBackingImageChecksum(volName, biName string) (string, error) {
+	if biName == "" {
+		return "", nil
 	}
 
-	// Backing image validation
-	biName := volume.Spec.BackingImage
-	biChecksum := ""
-	if biName != "" {
-		bi, err := bc.ds.GetBackingImage(biName)
-		if err != nil {
-			return err
-		}
-		bv, err := bc.ds.GetBackupVolumeRO(volumeName)
-		if err != nil && !apierrors.IsNotFound(err) {
-			return err
-		}
-		if bv != nil &&
-			bv.Status.BackingImageChecksum != "" && bi.Status.Checksum != "" &&
-			bv.Status.BackingImageChecksum != bi.Status.Checksum {
-			return fmt.Errorf("the backing image %v checksum %v in the backup volume doesn't match the current checksum %v", biName, bv.Status.BackingImageChecksum, bi.Status.Checksum)
-		}
-		biChecksum = bi.Status.Checksum
+	bi, err := bc.ds.GetBackingImage(biName)
+	if err != nil {
+		return "", err
 	}
 
-	backup.Status.State = longhorn.BackupStateInProgress
-	event(nil, backup.Status.State, backup, volume)
+	bv, err := bc.ds.GetBackupVolumeRO(volName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return "", err
+	}
 
-	go func() {
-		state := backup.Status.State
-		defer func() {
-			backup, err := bc.ds.GetBackup(backup.Name)
-			if err != nil {
-				log.WithError(err).Errorf("Error get backup")
-				return
-			}
-			existingBackup := backup.DeepCopy()
+	if bv != nil &&
+		bv.Status.BackingImageChecksum != "" && bi.Status.Checksum != "" &&
+		bv.Status.BackingImageChecksum != bi.Status.Checksum {
+		return "", fmt.Errorf("the backing image %v checksum %v in the backup volume doesn't match the current checksum %v",
+			biName, bv.Status.BackingImageChecksum, bi.Status.Checksum)
+	}
+	return bi.Status.Checksum, nil
+}
 
-			backup.Status.State = state
-			if reflect.DeepEqual(existingBackup.Status, backup.Status) {
-				return
-			}
-			if _, err := bc.ds.UpdateBackupStatus(backup); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				log.WithError(err).Errorf("Error updating backup status")
-				return
-			}
-		}()
+// checkMonitor checks if the replica monitor existed.
+// If yes, returns the replica monitor. Otherwise, create a new replica monitor.
+func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longhorn.Volume, backupTarget *longhorn.BackupTarget) (*engineapi.BackupMonitor, error) {
+	if backup == nil || volume == nil || backupTarget == nil {
+		return nil, nil
+	}
 
-		if _, err = engineClient.SnapshotBackup(backup.Name, backup.Spec.SnapshotName, url, biName, biChecksum, backup.Spec.Labels, credential); err != nil {
-			state = longhorn.BackupStateError
-			event(err, state, backup, volume)
-			return
-		}
+	// There is a monitor already
+	if monitor := bc.hasMonitor(backup.Name); monitor != nil {
+		return monitor, nil
+	}
 
-		// Monitor snapshot backup progress
-		for {
-			engines, err := bc.ds.ListVolumeEngines(volume.Name)
-			if err != nil {
-				state = longhorn.BackupStateUnknown
-				event(err, state, backup, volume)
-				return
-			}
+	// Backing image checksum validation
+	biChecksum, err := bc.validateBackingImageChecksum(volume.Name, volume.Spec.BackingImage)
+	if err != nil {
+		return nil, err
+	}
 
-			bks := &longhorn.BackupStatus{}
-			for _, e := range engines {
-				backupStatusList := e.Status.BackupStatus
-				for _, b := range backupStatusList {
-					if b.SnapshotName == backup.Spec.SnapshotName {
-						bks = b
-						break
-					}
-				}
-			}
-			if bks == nil {
-				state = longhorn.BackupStateUnknown
-				event(err, state, backup, volume)
-				return
-			}
-			if bks.Error != "" {
-				state = longhorn.BackupStateError
-				event(errors.New(bks.Error), state, backup, volume)
-				return
-			}
+	// Initialize a backup target client
+	backupTargetClient, err := getBackupTargetClient(bc.ds, backupTarget)
+	if err != nil {
+		return nil, err
+	}
 
-			if bks.Progress != 100 {
-				time.Sleep(BackupStatusQueryInterval)
-				continue
-			}
+	// Find the corresponding engine client
+	engineClient, err := bc.getEngineClient(volume.Name)
+	if err != nil {
+		return nil, err
+	}
 
-			// TODO:
-			//   use resource monitoring https://github.com/longhorn/longhorn/issues/2441
-			//   to trigger updates backup volume to run reconcile immediately
-			state = longhorn.BackupStateCompleted
-			event(nil, state, backup, volume)
+	// Enable the backup monitor
+	monitor, err := bc.enableBackupMonitor(backup, volume, backupTargetClient, biChecksum, engineClient)
+	if err != nil {
+		backup.Status.Error = err.Error()
+		backup.Status.State = longhorn.BackupStateError
+		return nil, err
+	}
+	return monitor, nil
+}
 
-			syncTime := metav1.Time{Time: time.Now().UTC()}
-			backupVolume, err := bc.ds.GetBackupVolume(volumeName)
-			if err == nil {
-				// Request backup_volume_controller to reconcile BackupVolume immediately.
-				backupVolume.Spec.SyncRequestedAt = syncTime
-				if _, err = bc.ds.UpdateBackupVolume(backupVolume); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-					log.WithError(err).Errorf("Error updating backup volume %s spec", volume.Name)
-				}
-			} else if err != nil && apierrors.IsNotFound(err) {
-				// Request backup_target_controller to reconcile BackupTarget immediately.
-				backupTarget, err := bc.ds.GetBackupTarget(types.DefaultBackupTargetName)
-				if err != nil {
-					log.WithError(err).Warn("Failed to get backup target")
-					return
-				}
-				backupTarget.Spec.SyncRequestedAt = syncTime
-				if _, err = bc.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-					log.WithError(err).Warn("Failed to update backup target")
-				}
-			}
-			return
-		}
-	}()
+// syncWithMonitor syncs the backup state/progress from the replica monitor
+func (bc *BackupController) syncWithMonitor(backup *longhorn.Backup, volume *longhorn.Volume, monitor *engineapi.BackupMonitor) error {
+	if backup == nil || volume == nil || monitor == nil {
+		return nil
+	}
 
+	existingBackupState := backup.Status.State
+
+	backupStatus := monitor.GetBackupStatus()
+	backup.Status.Progress = backupStatus.Progress
+	backup.Status.URL = backupStatus.URL
+	backup.Status.Error = backupStatus.Error
+	backup.Status.SnapshotName = backupStatus.SnapshotName
+	backup.Status.ReplicaAddress = backupStatus.ReplicaAddress
+	backup.Status.State = backupStatus.State
+
+	if existingBackupState == backup.Status.State {
+		return nil
+	}
+
+	if backup.Status.Error != "" {
+		bc.eventRecorder.Eventf(volume, corev1.EventTypeWarning, string(backup.Status.State),
+			"Snapshot %s backup %s label %v: %s", backup.Spec.SnapshotName, backup.Name, backup.Spec.Labels, backup.Status.Error)
+		return nil
+	}
+	bc.eventRecorder.Eventf(volume, corev1.EventTypeNormal, string(backup.Status.State),
+		"Snapshot %s backup %s label %v", backup.Spec.SnapshotName, backup.Name, backup.Spec.Labels)
+
+	if backup.Status.State == longhorn.BackupStateCompleted {
+		return bc.syncBackupVolume(volume.Name)
+	}
 	return nil
+}
+
+// syncBackupVolume triggers the backup_volume_controller/backup_target_controller
+// to run reconcile immediately
+func (bc *BackupController) syncBackupVolume(volumeName string) error {
+	syncTime := metav1.Time{Time: time.Now().UTC()}
+	backupVolume, err := bc.ds.GetBackupVolume(volumeName)
+	if err == nil {
+		// Request backup_volume_controller to reconcile BackupVolume immediately.
+		backupVolume.Spec.SyncRequestedAt = syncTime
+		if _, err = bc.ds.UpdateBackupVolume(backupVolume); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			bc.logger.WithError(err).Errorf("Error updating backup volume %s spec", volumeName)
+		}
+	} else if err != nil && apierrors.IsNotFound(err) {
+		// Request backup_target_controller to reconcile BackupTarget immediately.
+		backupTarget, err := bc.ds.GetBackupTarget(types.DefaultBackupTargetName)
+		if err != nil {
+			bc.logger.WithError(err).Warn("Failed to get backup target")
+			return err
+		}
+		backupTarget.Spec.SyncRequestedAt = syncTime
+		if _, err = bc.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			bc.logger.WithError(err).Warn("Failed to update backup target")
+		}
+	}
+	return nil
+}
+
+func (bc *BackupController) hasMonitor(backupName string) *engineapi.BackupMonitor {
+	bc.monitorLock.RLock()
+	defer bc.monitorLock.RUnlock()
+	return bc.monitors[backupName]
+}
+
+func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume *longhorn.Volume, backupTargetClient *engineapi.BackupTargetClient, biChecksum string, engineClient engineapi.EngineClient) (*engineapi.BackupMonitor, error) {
+	monitor := bc.hasMonitor(backup.Name)
+	if monitor != nil {
+		return monitor, nil
+	}
+
+	bc.monitorLock.Lock()
+	defer bc.monitorLock.Unlock()
+	monitor, err := engineapi.NewBackupMonitor(bc.logger, backup, volume, backupTargetClient, biChecksum, engineClient, bc.enqueueBackupForMonitor)
+	if err != nil {
+		return nil, err
+	}
+	bc.monitors[backup.Name] = monitor
+	return monitor, nil
+}
+
+func (bc *BackupController) disableBackupMonitor(backupName string) {
+	monitor := bc.hasMonitor(backupName)
+	if monitor == nil {
+		return
+	}
+
+	bc.monitorLock.Lock()
+	defer bc.monitorLock.Unlock()
+	delete(bc.monitors, backupName)
+	monitor.Close()
 }
