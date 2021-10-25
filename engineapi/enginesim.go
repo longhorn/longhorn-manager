@@ -179,7 +179,7 @@ func (e *EngineSimulator) SnapshotBackup(backupName, snapName, backupTarget, bac
 	return "", fmt.Errorf("Not implemented")
 }
 
-func (e *EngineSimulator) SnapshotBackupStatus() (map[string]*longhorn.BackupStatus, error) {
+func (e *EngineSimulator) SnapshotBackupStatus() (map[string]*longhorn.EngineBackupStatus, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 

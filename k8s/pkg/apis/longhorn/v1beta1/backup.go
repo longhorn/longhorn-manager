@@ -5,21 +5,25 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type BackupState string
 
 const (
+	BackupStateNew        = BackupState("")
 	BackupStateInProgress = BackupState("InProgress")
 	BackupStateCompleted  = BackupState("Completed")
 	BackupStateError      = BackupState("Error")
 	BackupStateUnknown    = BackupState("Unknown")
 )
 
-type SnapshotBackupSpec struct {
+type BackupSpec struct {
 	SyncRequestedAt metav1.Time       `json:"syncRequestedAt"`
 	SnapshotName    string            `json:"snapshotName"`
 	Labels          map[string]string `json:"labels"`
 }
 
-type SnapshotBackupStatus struct {
+type BackupStatus struct {
 	OwnerID                string            `json:"ownerID"`
 	State                  BackupState       `json:"state"`
+	Progress               int               `json:"progress"`
+	ReplicaAddress         string            `json:"replicaAddress"`
+	Error                  string            `json:"error,omitempty"`
 	URL                    string            `json:"url"`
 	SnapshotName           string            `json:"snapshotName"`
 	SnapshotCreatedAt      string            `json:"snapshotCreatedAt"`
@@ -40,8 +44,8 @@ type SnapshotBackupStatus struct {
 type Backup struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              SnapshotBackupSpec   `json:"spec"`
-	Status            SnapshotBackupStatus `json:"status"`
+	Spec              BackupSpec   `json:"spec"`
+	Status            BackupStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
