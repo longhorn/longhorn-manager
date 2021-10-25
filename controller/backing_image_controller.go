@@ -707,6 +707,8 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 
 func (bic *BackingImageController) updateStatusWithFileInfo(bi *longhorn.BackingImage,
 	diskUUID, message, checksum string, state types.BackingImageState, progress int) error {
+	log := getLoggerForBackingImage(bic.logger, bi)
+
 	if _, exists := bi.Status.DiskFileStatusMap[diskUUID]; !exists {
 		bi.Status.DiskFileStatusMap[diskUUID] = &types.BackingImageDiskFileStatus{}
 	}
@@ -718,10 +720,18 @@ func (bic *BackingImageController) updateStatusWithFileInfo(bi *longhorn.Backing
 	bi.Status.DiskFileStatusMap[diskUUID].Message = message
 
 	if checksum != "" {
-		if bi.Status.Checksum != "" && bi.Status.Checksum != checksum {
-			return fmt.Errorf("BUG: backing image recorded checksum %v doesn't match the file checksum %v in disk %v", bi.Status.Checksum, checksum, diskUUID)
+		if bi.Status.Checksum == "" {
+			// This is field is immutable once it is set.
+			bi.Status.Checksum = checksum
 		}
-		bi.Status.Checksum = checksum
+		if bi.Status.Checksum != checksum {
+			if bi.Status.DiskFileStatusMap[diskUUID].State != types.BackingImageStateFailed {
+				msg := fmt.Sprintf("Somehow backing image recorded checksum %v doesn't match the file checksum %v in disk %v", bi.Status.Checksum, checksum, diskUUID)
+				log.Warn(msg)
+				bi.Status.DiskFileStatusMap[diskUUID].State = types.BackingImageStateFailed
+				bi.Status.DiskFileStatusMap[diskUUID].Message = msg
+			}
+		}
 	}
 
 	return nil
