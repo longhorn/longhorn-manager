@@ -637,6 +637,9 @@ func (c *BackingImageManagerController) prepareBackingImageFiles(currentBIM *lon
 			if bids.Status.CurrentState != types.BackingImageStateReadyForTransfer {
 				continue
 			}
+			if bids.Spec.DiskUUID != currentBIM.Spec.DiskUUID {
+				continue
+			}
 			sourceFileName := engineapi.GetBackingImageDataSourceFileName(biName, bi.Status.UUID)
 			log.Debugf("Start to fetch the first file %v from the backing image data source work directory %v", sourceFileName, bimtypes.DataSourceDirectoryName)
 			if _, err := cli.Fetch(bi.Name, bi.Status.UUID, sourceFileName, bids.Status.Checksum, bids.Status.Size); err != nil {
