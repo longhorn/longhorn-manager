@@ -292,17 +292,32 @@ func (e *Engine) SnapshotBackup(backupName, snapName, backupTarget, backingImage
 	return backupCreateInfo.BackupID, nil
 }
 
-func (e *Engine) SnapshotBackupStatus() (map[string]*longhorn.BackupStatus, error) {
+func (e *Engine) SnapshotBackupStatus() (map[string]*longhorn.EngineBackupStatus, error) {
 	args := []string{"backup", "status"}
 	output, err := e.ExecuteEngineBinary(args...)
 	if err != nil {
 		return nil, err
 	}
-	backups := make(map[string]*longhorn.BackupStatus)
+	backups := make(map[string]*longhorn.EngineBackupStatus)
 	if err := json.Unmarshal([]byte(output), &backups); err != nil {
 		return nil, err
 	}
 	return backups, nil
+}
+
+// ConvertEngineBackupState converts longhorn engine backup state to Backup CR state
+func ConvertEngineBackupState(state string) longhorn.BackupState {
+	// https://github.com/longhorn/longhorn-engine/blob/9da3616/pkg/replica/backup.go#L20-L22
+	switch state {
+	case BackupStateInProgress:
+		return longhorn.BackupStateInProgress
+	case BackupStateComplete:
+		return longhorn.BackupStateCompleted
+	case BackupStateError:
+		return longhorn.BackupStateError
+	default:
+		return longhorn.BackupStateUnknown
+	}
 }
 
 func (e *Engine) BackupRestore(backupTarget, backupName, backupVolumeName, lastRestored string, credential map[string]string) error {
