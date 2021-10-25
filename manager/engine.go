@@ -164,7 +164,7 @@ func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName stri
 		ObjectMeta: metav1.ObjectMeta{
 			Name: backupName,
 		},
-		Spec: longhorn.SnapshotBackupSpec{
+		Spec: longhorn.BackupSpec{
 			SnapshotName: snapshotName,
 			Labels:       labels,
 		},

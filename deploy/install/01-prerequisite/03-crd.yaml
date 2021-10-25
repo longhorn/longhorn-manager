@@ -412,7 +412,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: SnapshotBackupSpec defines the desired state of the Longhorn backup
+            description: BackupSpec defines the desired state of the Longhorn backup
             properties:
               labels:
                 additionalProperties:
@@ -428,10 +428,13 @@ spec:
                 type: string
             type: object
           status:
-            description: SnapshotBackupStatus defines the observed state of the Longhorn backup
+            description: BackupStatus defines the observed state of the Longhorn backup
             properties:
               backupCreatedAt:
                 description: The snapshot backup upload finished time.
+                type: string
+              error:
+                description: The error message when taking the snapshot backup.
                 type: string
               labels:
                 additionalProperties:
@@ -449,6 +452,12 @@ spec:
                 type: object
               ownerID:
                 description: The node ID on which the controller is responsible to reconcile this backup CR.
+                type: string
+              progress:
+                description: The snapshot backup progress.
+                type: integer
+              replicaAddress:
+                description: The address of the replica that runs snapshot backup.
                 type: string
               size:
                 description: The snapshot size.

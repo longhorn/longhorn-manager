@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 const listBackupVolumeNames = `
@@ -215,4 +217,36 @@ func TestParseConfigMetadata(t *testing.T) {
 	assert.Nil(err)
 
 	assert.Equal(ConfigMetadata{ModificationTime: modificationTime}, *configMetadata)
+}
+
+func TestConvertEngineBackupState(t *testing.T) {
+	tests := []struct {
+		inputState  string
+		expectState longhorn.BackupState
+	}{
+		{
+			inputState:  BackupStateInProgress,
+			expectState: longhorn.BackupStateInProgress,
+		},
+		{
+			inputState:  BackupStateComplete,
+			expectState: longhorn.BackupStateCompleted,
+		},
+		{
+			inputState:  BackupStateError,
+			expectState: longhorn.BackupStateError,
+		},
+		{
+			inputState:  "",
+			expectState: longhorn.BackupStateUnknown,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.inputState, func(t *testing.T) {
+			assert := require.New(t)
+
+			assert.Equal(ConvertEngineBackupState(tt.inputState), tt.expectState)
+		})
+	}
 }
