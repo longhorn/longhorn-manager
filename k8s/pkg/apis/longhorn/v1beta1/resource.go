@@ -1,8 +1,6 @@
-package types
+package v1beta1
 
 import (
-	"time"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -125,7 +123,7 @@ type VolumeSpec struct {
 	BaseImage string `json:"baseImage"`
 
 	// Deprecated. Replaced by a separate resource named "RecurringJob"
-	RecurringJobs []RecurringJob `json:"recurringJobs,omitempty"`
+	RecurringJobs []VolumeRecurringJobSpec `json:"recurringJobs,omitempty"`
 }
 
 type KubernetesStatus struct {
@@ -182,10 +180,10 @@ const (
 	RecurringJobGroupDefault = "default"
 )
 
-// RecurringJob is a deprecated struct.
+// VolumeRecurringJobSpec is a deprecated struct.
 // TODO: Should be removed when recurringJobs gets removed from the volume
 //       spec.
-type RecurringJob struct {
+type VolumeRecurringJobSpec struct {
 	Name        string            `json:"name"`
 	Groups      []string          `json:"groups,omitempty"`
 	Task        RecurringJobType  `json:"task"`
@@ -259,6 +257,14 @@ type EngineSpec struct {
 	DisableFrontend           bool              `json:"disableFrontend"`
 	RevisionCounterDisabled   bool              `json:"revisionCounterDisabled"`
 }
+
+type ReplicaMode string
+
+const (
+	ReplicaModeRW  = ReplicaMode("RW")
+	ReplicaModeWO  = ReplicaMode("WO")
+	ReplicaModeERR = ReplicaMode("ERR")
+)
 
 type EngineStatus struct {
 	InstanceStatus
@@ -719,7 +725,7 @@ type BackupVolumeSpec struct {
 
 type BackupVolumeStatus struct {
 	OwnerID              string            `json:"ownerID"`
-	LastModificationTime time.Time         `json:"lastModificationTime"`
+	LastModificationTime metav1.Time       `json:"lastModificationTime"`
 	Size                 string            `json:"size"`
 	Labels               map[string]string `json:"labels"`
 	CreatedAt            string            `json:"createdAt"`
