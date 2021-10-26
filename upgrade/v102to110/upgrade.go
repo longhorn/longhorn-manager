@@ -14,11 +14,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	"github.com/longhorn/longhorn-manager/types"
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 	"github.com/longhorn/longhorn-manager/util"
-
-	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 )
 
 // This upgrade is needed because we add one more field `controller: true`
@@ -114,7 +114,7 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err erro
 		// we added a new access mode field, that is exposed to the ui
 		// so we add the previously only supported rwo access mode
 		if v.Spec.AccessMode == "" {
-			v.Spec.AccessMode = types.AccessModeReadWriteOnce
+			v.Spec.AccessMode = longhorn.AccessModeReadWriteOnce
 			updatedVolume, err := lhClient.LonghornV1beta1().Volumes(namespace).Update(context.TODO(), &v, metav1.UpdateOptions{})
 			if err != nil {
 				return err
@@ -122,7 +122,7 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err erro
 			v = *updatedVolume
 		}
 
-		if v.Status.Robustness == types.VolumeRobustnessDegraded && v.Status.LastDegradedAt == "" {
+		if v.Status.Robustness == longhorn.VolumeRobustnessDegraded && v.Status.LastDegradedAt == "" {
 			v.Status.LastDegradedAt = util.Now()
 			if _, err := lhClient.LonghornV1beta1().Volumes(namespace).UpdateStatus(context.TODO(), &v, metav1.UpdateOptions{}); err != nil {
 				return err

@@ -29,8 +29,8 @@ type InstanceHandler struct {
 }
 
 type InstanceManagerHandler interface {
-	GetInstance(obj interface{}) (*types.InstanceProcess, error)
-	CreateInstance(obj interface{}) (*types.InstanceProcess, error)
+	GetInstance(obj interface{}) (*longhorn.InstanceProcess, error)
+	CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error)
 	DeleteInstance(obj interface{}) error
 	LogInstance(obj interface{}) (*imapi.LogStream, error)
 }
@@ -43,19 +43,19 @@ func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler Instance
 	}
 }
 
-func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceManager, instanceName string, spec *types.InstanceSpec, status *types.InstanceStatus) {
+func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceManager, instanceName string, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) {
 	defer func() {
-		if status.CurrentState == types.InstanceStateStopped {
+		if status.CurrentState == longhorn.InstanceStateStopped {
 			status.InstanceManagerName = ""
 		}
 	}()
 
-	if im == nil || im.Status.CurrentState == types.InstanceManagerStateUnknown {
+	if im == nil || im.Status.CurrentState == longhorn.InstanceManagerStateUnknown {
 		if status.Started {
 			logrus.Warnf("The related node %v of instance %v is down or deleted, will mark the instance as state UNKNOWN", spec.NodeID, instanceName)
-			status.CurrentState = types.InstanceStateUnknown
+			status.CurrentState = longhorn.InstanceStateUnknown
 		} else {
-			status.CurrentState = types.InstanceStateStopped
+			status.CurrentState = longhorn.InstanceStateStopped
 			status.CurrentImage = ""
 		}
 		status.IP = ""
@@ -63,14 +63,14 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		return
 	}
 
-	if im.Status.CurrentState == types.InstanceManagerStateStopped || im.Status.CurrentState == types.InstanceManagerStateError || im.DeletionTimestamp != nil {
+	if im.Status.CurrentState == longhorn.InstanceManagerStateStopped || im.Status.CurrentState == longhorn.InstanceManagerStateError || im.DeletionTimestamp != nil {
 		if status.Started {
-			if status.CurrentState != types.InstanceStateError {
+			if status.CurrentState != longhorn.InstanceStateError {
 				logrus.Warnf("Cannot find the instance manager for the running instance %v, will mark the instance as state ERROR", instanceName)
-				status.CurrentState = types.InstanceStateError
+				status.CurrentState = longhorn.InstanceStateError
 			}
 		} else {
-			status.CurrentState = types.InstanceStateStopped
+			status.CurrentState = longhorn.InstanceStateStopped
 		}
 		status.CurrentImage = ""
 		status.IP = ""
@@ -78,10 +78,10 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		return
 	}
 
-	if im.Status.CurrentState == types.InstanceManagerStateStarting {
+	if im.Status.CurrentState == longhorn.InstanceManagerStateStarting {
 		if status.Started {
 			logrus.Warnf("The starting instance manager %v shouldn't contain the running instance %v, will mark the instance as state ERROR", im.Name, instanceName)
-			status.CurrentState = types.InstanceStateError
+			status.CurrentState = longhorn.InstanceStateError
 			status.CurrentImage = ""
 			status.IP = ""
 			status.Port = 0
@@ -93,9 +93,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	if !exists {
 		if status.Started {
 			logrus.Warnf("Cannot find the instance status in instance manager %v for the running instance %v, will mark the instance as state ERROR", im.Name, instanceName)
-			status.CurrentState = types.InstanceStateError
+			status.CurrentState = longhorn.InstanceStateError
 		} else {
-			status.CurrentState = types.InstanceStateStopped
+			status.CurrentState = longhorn.InstanceStateStopped
 		}
 		status.CurrentImage = ""
 		status.IP = ""
@@ -115,13 +115,13 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	status.InstanceManagerName = im.Name
 
 	switch instance.Status.State {
-	case types.InstanceStateStarting:
-		status.CurrentState = types.InstanceStateStarting
+	case longhorn.InstanceStateStarting:
+		status.CurrentState = longhorn.InstanceStateStarting
 		status.CurrentImage = ""
 		status.IP = ""
 		status.Port = 0
-	case types.InstanceStateRunning:
-		status.CurrentState = types.InstanceStateRunning
+	case longhorn.InstanceStateRunning:
+		status.CurrentState = longhorn.InstanceStateRunning
 		if status.IP != im.Status.IP {
 			status.IP = im.Status.IP
 			logrus.Debugf("Instance %v starts running, IP %v", instanceName, status.IP)
@@ -135,27 +135,27 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		if status.CurrentImage == "" {
 			status.CurrentImage = spec.EngineImage
 		}
-	case types.InstanceStateStopping:
+	case longhorn.InstanceStateStopping:
 		if status.Started {
-			status.CurrentState = types.InstanceStateError
+			status.CurrentState = longhorn.InstanceStateError
 		} else {
-			status.CurrentState = types.InstanceStateStopping
+			status.CurrentState = longhorn.InstanceStateStopping
 		}
 		status.CurrentImage = ""
 		status.IP = ""
 		status.Port = 0
-	case types.InstanceStateStopped:
+	case longhorn.InstanceStateStopped:
 		if status.Started {
-			status.CurrentState = types.InstanceStateError
+			status.CurrentState = longhorn.InstanceStateError
 		} else {
-			status.CurrentState = types.InstanceStateStopped
+			status.CurrentState = longhorn.InstanceStateStopped
 		}
 		status.CurrentImage = ""
 		status.IP = ""
 		status.Port = 0
 	default:
 		logrus.Warnf("Instance %v is state %v, error message: %v", instanceName, instance.Status.State, instance.Status.ErrorMsg)
-		status.CurrentState = types.InstanceStateError
+		status.CurrentState = longhorn.InstanceStateError
 		status.CurrentImage = ""
 		status.IP = ""
 		status.Port = 0
@@ -172,7 +172,7 @@ func (h *InstanceHandler) getNameFromObj(obj runtime.Object) (string, error) {
 	return metadata.GetName(), nil
 }
 
-func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.InstanceSpec, status *types.InstanceStatus) (err error) {
+func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) (err error) {
 	runtimeObj, ok := obj.(runtime.Object)
 	if !ok {
 		return fmt.Errorf("obj is not a runtime.Object: %v", obj)
@@ -238,7 +238,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 
 	// do nothing for incompatible instance except for deleting
 	switch spec.DesireState {
-	case types.InstanceStateRunning:
+	case longhorn.InstanceStateRunning:
 		if isCLIAPIVersionOne {
 			return nil
 		}
@@ -247,14 +247,14 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 			break
 		}
 
-		if i, exists := im.Status.Instances[instanceName]; exists && i.Status.State == types.InstanceStateRunning {
+		if i, exists := im.Status.Instances[instanceName]; exists && i.Status.State == longhorn.InstanceStateRunning {
 			status.Started = true
 			break
 		}
 
 		// there is a delay between createInstance() invocation and InstanceManager update,
 		// createInstance() may be called multiple times.
-		if status.CurrentState != types.InstanceStateStopped {
+		if status.CurrentState != longhorn.InstanceStateStopped {
 			break
 		}
 
@@ -268,13 +268,13 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 			status.SalvageExecuted = true
 		}
 
-	case types.InstanceStateStopped:
+	case longhorn.InstanceStateStopped:
 		if isCLIAPIVersionOne {
 			if err := h.deleteInstance(instanceName, runtimeObj); err != nil {
 				return err
 			}
 			status.Started = false
-			status.CurrentState = types.InstanceStateStopped
+			status.CurrentState = longhorn.InstanceStateStopped
 			status.CurrentImage = ""
 			status.InstanceManagerName = ""
 			status.IP = ""
@@ -304,18 +304,18 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *types.In
 		logrus.Debugf("Instance handler updated instance %v state, old state %v, new state %v", instanceName, oldState, status.CurrentState)
 	}
 
-	if status.CurrentState == types.InstanceStateRunning {
-		// If `spec.DesireState` is `types.InstanceStateStopped`, `spec.NodeID` has been unset by volume controller.
-		if spec.DesireState != types.InstanceStateStopped {
+	if status.CurrentState == longhorn.InstanceStateRunning {
+		// If `spec.DesireState` is `longhorn.InstanceStateStopped`, `spec.NodeID` has been unset by volume controller.
+		if spec.DesireState != longhorn.InstanceStateStopped {
 			if spec.NodeID != im.Spec.NodeID {
-				status.CurrentState = types.InstanceStateError
+				status.CurrentState = longhorn.InstanceStateError
 				status.IP = ""
 				err := fmt.Errorf("BUG: instance %v NodeID %v is not the same as the instance manager %v NodeID %v", instanceName, spec.NodeID, im.Name, im.Spec.NodeID)
 				logrus.Errorf("%v", err)
 				return err
 			}
 		}
-	} else if status.CurrentState == types.InstanceStateError {
+	} else if status.CurrentState == longhorn.InstanceStateError {
 		if im != nil {
 			if _, exists := im.Status.Instances[instanceName]; exists {
 				logrus.Warnf("Instance %v crashed on Instance Manager %v at %v, try to get log", instanceName, im.Name, im.Spec.NodeID)

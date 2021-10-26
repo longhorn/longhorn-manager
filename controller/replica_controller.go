@@ -382,14 +382,14 @@ func (rc *ReplicaController) getProcessManagerClient(instanceManagerName string)
 	if err != nil {
 		return nil, fmt.Errorf("cannot find Instance Manager %v", instanceManagerName)
 	}
-	if im.Status.CurrentState != types.InstanceManagerStateRunning || im.Status.IP == "" {
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning || im.Status.IP == "" {
 		return nil, fmt.Errorf("invalid Instance Manager %v", instanceManagerName)
 	}
 
 	return imclient.NewProcessManagerClient(imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)), nil
 }
 
-func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstanceProcess, error) {
+func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for replica process creation: %v", obj)
@@ -458,7 +458,7 @@ func (rc *ReplicaController) GetBackingImagePathForReplicaStarting(r *longhorn.R
 		return "", nil
 	}
 	// bi.Spec.Disks[r.Spec.DiskID] exists
-	if fileStatus, exists := bi.Status.DiskFileStatusMap[r.Spec.DiskID]; !exists || fileStatus.State != types.BackingImageStateReady {
+	if fileStatus, exists := bi.Status.DiskFileStatusMap[r.Spec.DiskID]; !exists || fileStatus.State != longhorn.BackingImageStateReady {
 		currentBackingImageState := ""
 		if fileStatus != nil {
 			currentBackingImageState = string(fileStatus.State)
@@ -505,8 +505,8 @@ func (rc *ReplicaController) CanStartRebuildingReplica(r *longhorn.Replica) (boo
 		// Just in case, this means the replica controller will try to recall
 		// in-progress rebuilding replicas even if the longhorn manager pod is restarted.
 		if IsRebuildingReplica(replicaOnTheSameNode) &&
-			(replicaOnTheSameNode.Status.CurrentState == types.InstanceStateStarting ||
-				replicaOnTheSameNode.Status.CurrentState == types.InstanceStateRunning) {
+			(replicaOnTheSameNode.Status.CurrentState == longhorn.InstanceStateStarting ||
+				replicaOnTheSameNode.Status.CurrentState == longhorn.InstanceStateRunning) {
 			rc.inProgressRebuildingMap[replicaOnTheSameNode.Name] = struct{}{}
 		}
 	}
@@ -564,7 +564,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		return nil
 	}
 
-	if im.Status.CurrentState != types.InstanceManagerStateRunning {
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 		return nil
 	}
 
@@ -647,7 +647,7 @@ func (rc *ReplicaController) deleteOldReplicaPod(pod *v1.Pod, r *longhorn.Replic
 	return nil
 }
 
-func (rc *ReplicaController) GetInstance(obj interface{}) (*types.InstanceProcess, error) {
+func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for replica process get: %v", obj)
@@ -712,7 +712,7 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(obj interface{}) {
 	}
 
 	imType, err := datastore.CheckInstanceManagerType(im)
-	if err != nil || imType != types.InstanceManagerTypeReplica {
+	if err != nil || imType != longhorn.InstanceManagerTypeReplica {
 		return
 	}
 

@@ -7,7 +7,6 @@ import (
 	bimclient "github.com/longhorn/backing-image-manager/pkg/client"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
@@ -35,7 +34,7 @@ func CheckBackingImageManagerCompatibilty(bimMinVersion, bimVersion int) error {
 }
 
 func NewBackingImageManagerClient(bim *longhorn.BackingImageManager) (*BackingImageManagerClient, error) {
-	if bim.Status.CurrentState != types.BackingImageManagerStateRunning || bim.Status.IP == "" {
+	if bim.Status.CurrentState != longhorn.BackingImageManagerStateRunning || bim.Status.IP == "" {
 		return nil, fmt.Errorf("invalid Backing Image Manager %v, state: %v, IP: %v", bim.Name, bim.Status.CurrentState, bim.Status.IP)
 	}
 	if bim.Status.APIMinVersion != UnknownBackingImageManagerAPIVersion {
@@ -52,16 +51,16 @@ func NewBackingImageManagerClient(bim *longhorn.BackingImageManager) (*BackingIm
 	}, nil
 }
 
-func (c *BackingImageManagerClient) parseBackingImageFileInfo(bi *bimapi.BackingImage) *types.BackingImageFileInfo {
+func (c *BackingImageManagerClient) parseBackingImageFileInfo(bi *bimapi.BackingImage) *longhorn.BackingImageFileInfo {
 	if bi == nil {
 		return nil
 	}
-	return &types.BackingImageFileInfo{
+	return &longhorn.BackingImageFileInfo{
 		Name: bi.Name,
 		UUID: bi.UUID,
 		Size: bi.Size,
 
-		State:                types.BackingImageState(bi.Status.State),
+		State:                longhorn.BackingImageState(bi.Status.State),
 		CurrentChecksum:      bi.Status.CurrentChecksum,
 		Message:              bi.Status.ErrorMsg,
 		SendingReference:     bi.Status.SendingReference,
@@ -70,7 +69,7 @@ func (c *BackingImageManagerClient) parseBackingImageFileInfo(bi *bimapi.Backing
 	}
 }
 
-func (c *BackingImageManagerClient) Fetch(name, uuid, fileName, checksum string, size int64) (*types.BackingImageFileInfo, error) {
+func (c *BackingImageManagerClient) Fetch(name, uuid, fileName, checksum string, size int64) (*longhorn.BackingImageFileInfo, error) {
 	if err := CheckBackingImageManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -81,7 +80,7 @@ func (c *BackingImageManagerClient) Fetch(name, uuid, fileName, checksum string,
 	return c.parseBackingImageFileInfo(resp), nil
 }
 
-func (c *BackingImageManagerClient) Sync(name, uuid, checksum, fromHost, toHost string, size int64) (*types.BackingImageFileInfo, error) {
+func (c *BackingImageManagerClient) Sync(name, uuid, checksum, fromHost, toHost string, size int64) (*longhorn.BackingImageFileInfo, error) {
 	if err := CheckBackingImageManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -99,7 +98,7 @@ func (c *BackingImageManagerClient) Delete(name string) error {
 	return c.grpcClient.Delete(name)
 }
 
-func (c *BackingImageManagerClient) Get(name string) (*types.BackingImageFileInfo, error) {
+func (c *BackingImageManagerClient) Get(name string) (*longhorn.BackingImageFileInfo, error) {
 	if err := CheckBackingImageManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -110,7 +109,7 @@ func (c *BackingImageManagerClient) Get(name string) (*types.BackingImageFileInf
 	return c.parseBackingImageFileInfo(backingImage), nil
 }
 
-func (c *BackingImageManagerClient) List() (map[string]types.BackingImageFileInfo, error) {
+func (c *BackingImageManagerClient) List() (map[string]longhorn.BackingImageFileInfo, error) {
 	if err := CheckBackingImageManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -118,7 +117,7 @@ func (c *BackingImageManagerClient) List() (map[string]types.BackingImageFileInf
 	if err != nil {
 		return nil, err
 	}
-	result := map[string]types.BackingImageFileInfo{}
+	result := map[string]longhorn.BackingImageFileInfo{}
 	for name, backingImage := range backingImages {
 		result[name] = *c.parseBackingImageFileInfo(backingImage)
 	}

@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/types"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 type NodeCollector struct {
@@ -204,7 +204,7 @@ func (nc *NodeCollector) collectNodeStatus(ch chan<- prometheus.Metric) {
 
 		for _, condition := range node.Status.Conditions {
 			val := 0
-			if condition.Status == types.ConditionStatusTrue {
+			if condition.Status == longhorn.ConditionStatusTrue {
 				val = 1
 			}
 			ch <- prometheus.MustNewConstMetric(nc.statusMetric.Desc, nc.statusMetric.Type, float64(val), nc.currentNodeID, strings.ToLower(condition.Type), condition.Reason)

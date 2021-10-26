@@ -157,9 +157,7 @@ func doAPIVersionUpgrade(namespace string, config *restclient.Config, lhClient *
 			ObjectMeta: metav1.ObjectMeta{
 				Name: string(types.SettingNameCRDAPIVersion),
 			},
-			Setting: types.Setting{
-				Value: "",
-			},
+			Value: "",
 		}
 		crdAPIVersionSetting, err = lhClient.LonghornV1beta1().Settings(namespace).Create(context.TODO(), crdAPIVersionSetting, metav1.CreateOptions{})
 		if err != nil {

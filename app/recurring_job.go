@@ -122,7 +122,7 @@ func recurringJob(c *cli.Context) error {
 	}
 
 	var doBackup bool = false
-	if jobTask == string(types.RecurringJobTypeBackup) {
+	if jobTask == string(longhorn.RecurringJobTypeBackup) {
 		doBackup = true
 	}
 
@@ -274,11 +274,11 @@ func (job *Job) handleVolumeDetachment() {
 			}
 			// !volume.DisableFrontend condition makes sure that volume is detached by this recurring job,
 			// not by the auto-reattachment feature.
-			if volume.State == string(types.VolumeStateDetached) && !volume.DisableFrontend {
+			if volume.State == string(longhorn.VolumeStateDetached) && !volume.DisableFrontend {
 				job.logger.Infof("Volume %v is detached", volumeName)
 				return
 			}
-			if volume.State == string(types.VolumeStateAttached) {
+			if volume.State == string(longhorn.VolumeStateAttached) {
 				job.logger.Infof("Attempting to detach volume %v from all nodes", volumeName)
 				if _, err := volumeAPI.ActionDetach(volume, &longhornclient.DetachInput{HostId: ""}); err != nil {
 					job.logger.WithError(err).Info("Volume detach request failed")
@@ -312,11 +312,11 @@ func (job *Job) run() (err error) {
 
 	defer job.handleVolumeDetachment()
 
-	if volume.State != string(types.VolumeStateAttached) && volume.State != string(types.VolumeStateDetached) {
+	if volume.State != string(longhorn.VolumeStateAttached) && volume.State != string(longhorn.VolumeStateDetached) {
 		return fmt.Errorf("volume %v is in an invalid state for recurring job: %v. Volume must be in state Attached or Detached", volumeName, volume.State)
 	}
 
-	if volume.State == string(types.VolumeStateDetached) {
+	if volume.State == string(longhorn.VolumeStateDetached) {
 		// Find a random ready node to attach the volume
 		// For load balancing purpose, the node need to be random
 		nodeToAttach, err := job.findARandomReadyNode(volume)
@@ -336,7 +336,7 @@ func (job *Job) run() (err error) {
 			return err
 		}
 
-		volume, err = job.waitForVolumeState(string(types.VolumeStateAttached), VolumeAttachTimeout)
+		volume, err = job.waitForVolumeState(string(longhorn.VolumeStateAttached), VolumeAttachTimeout)
 		if err != nil {
 			return err
 		}
@@ -817,26 +817,26 @@ func (job *Job) findARandomReadyNode(v *longhornclient.Volume) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if engineImage.State != types.EngineImageStateDeployed && engineImage.State != types.EngineImageStateDeploying {
+	if engineImage.State != string(longhorn.EngineImageStateDeployed) && engineImage.State != string(longhorn.EngineImageStateDeploying) {
 		return "", fmt.Errorf("error: the volume's engine image %v is in state: %v", engineImage.Name, engineImage.State)
 	}
 
 	var readyNodeList []string
 	for _, node := range nodeCollection.Data {
-		if readyConditionInterface, ok := node.Conditions[types.NodeConditionTypeReady]; ok {
+		if readyConditionInterface, ok := node.Conditions[longhorn.NodeConditionTypeReady]; ok {
 			// convert the interface to json
 			jsonString, err := json.Marshal(readyConditionInterface)
 			if err != nil {
 				return "", err
 			}
 
-			readyCondition := types.Condition{}
+			readyCondition := longhorn.Condition{}
 
 			if err := json.Unmarshal(jsonString, &readyCondition); err != nil {
 				return "", err
 			}
 
-			if readyCondition.Status == types.ConditionStatusTrue && engineImage.NodeDeploymentMap[node.Name] {
+			if readyCondition.Status == longhorn.ConditionStatusTrue && engineImage.NodeDeploymentMap[node.Name] {
 				readyNodeList = append(readyNodeList, node.Name)
 			}
 		}
@@ -921,8 +921,8 @@ func filterVolumesForJob(allowDetached bool, volumes []longhorn.Volume, filterNa
 		if util.Contains(*filterNames, volume.Name) {
 			continue
 		}
-		if volume.Status.Robustness != types.VolumeRobustnessFaulted &&
-			(volume.Status.State == types.VolumeStateAttached || allowDetached) {
+		if volume.Status.Robustness != longhorn.VolumeRobustnessFaulted &&
+			(volume.Status.State == longhorn.VolumeStateAttached || allowDetached) {
 			*filterNames = append(*filterNames, volume.Name)
 			continue
 		}

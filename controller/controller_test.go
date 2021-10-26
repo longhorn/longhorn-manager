@@ -97,9 +97,7 @@ func newSetting(name, value string) *longhorn.Setting {
 			Name:      name,
 			Namespace: TestNamespace,
 		},
-		Setting: types.Setting{
-			Value: value,
-		},
+		Value: value,
 	}
 }
 
@@ -108,13 +106,11 @@ func newDefaultInstanceManagerImageSetting() *longhorn.Setting {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: string(types.SettingNameDefaultInstanceManagerImage),
 		},
-		Setting: types.Setting{
-			Value: TestInstanceManagerImage,
-		},
+		Value: TestInstanceManagerImage,
 	}
 }
 
-func newEngineImage(image string, state types.EngineImageState) *longhorn.EngineImage {
+func newEngineImage(image string, state longhorn.EngineImageState) *longhorn.EngineImage {
 	return &longhorn.EngineImage{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       types.GetEngineImageChecksumName(image),
@@ -122,13 +118,13 @@ func newEngineImage(image string, state types.EngineImageState) *longhorn.Engine
 			UID:        uuid.NewUUID(),
 			Finalizers: []string{longhornFinalizerKey},
 		},
-		Spec: types.EngineImageSpec{
+		Spec: longhorn.EngineImageSpec{
 			Image: image,
 		},
-		Status: types.EngineImageStatus{
+		Status: longhorn.EngineImageStatus{
 			OwnerID: TestNode1,
 			State:   state,
-			EngineVersionDetails: types.EngineVersionDetails{
+			EngineVersionDetails: longhorn.EngineVersionDetails{
 				Version:   "latest",
 				GitCommit: "latest",
 
@@ -139,10 +135,10 @@ func newEngineImage(image string, state types.EngineImageState) *longhorn.Engine
 				DataFormatVersion:       1,
 				DataFormatMinVersion:    1,
 			},
-			Conditions: map[string]types.Condition{
-				types.EngineImageConditionTypeReady: {
-					Type:   types.EngineImageConditionTypeReady,
-					Status: types.ConditionStatusTrue,
+			Conditions: map[string]longhorn.Condition{
+				longhorn.EngineImageConditionTypeReady: {
+					Type:   longhorn.EngineImageConditionTypeReady,
+					Status: longhorn.ConditionStatusTrue,
 				},
 			},
 			NodeDeploymentMap: map[string]bool{},
@@ -203,10 +199,10 @@ func newPod(status *corev1.PodStatus, name, namespace, nodeID string) *corev1.Po
 
 func newInstanceManager(
 	name string,
-	imType types.InstanceManagerType,
-	currentState types.InstanceManagerState,
+	imType longhorn.InstanceManagerType,
+	currentState longhorn.InstanceManagerState,
 	currentOwnerID, nodeID, ip string,
-	instances map[string]types.InstanceProcess,
+	instances map[string]longhorn.InstanceProcess,
 	isDeleting bool) *longhorn.InstanceManager {
 
 	im := &longhorn.InstanceManager{
@@ -216,12 +212,12 @@ func newInstanceManager(
 			UID:       uuid.NewUUID(),
 			Labels:    types.GetInstanceManagerLabels(nodeID, TestInstanceManagerImage, imType),
 		},
-		Spec: types.InstanceManagerSpec{
+		Spec: longhorn.InstanceManagerSpec{
 			Image:  TestInstanceManagerImage,
 			NodeID: nodeID,
 			Type:   imType,
 		},
-		Status: types.InstanceManagerStatus{
+		Status: longhorn.InstanceManagerStatus{
 			OwnerID:      currentOwnerID,
 			CurrentState: currentState,
 			IP:           ip,

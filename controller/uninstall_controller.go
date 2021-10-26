@@ -329,8 +329,8 @@ func (c *UninstallController) checkPreconditions() error {
 	} else if len(vols) > 0 {
 		volumesInUse := false
 		for _, vol := range vols {
-			if vol.Status.State == types.VolumeStateAttaching ||
-				vol.Status.State == types.VolumeStateAttached {
+			if vol.Status.State == longhorn.VolumeStateAttaching ||
+				vol.Status.State == longhorn.VolumeStateAttached {
 				log := getLoggerForVolume(c.logger, vol)
 				log.Warn("Volume in use")
 				volumesInUse = true

@@ -208,10 +208,6 @@ type EngineImageStatus struct {
 	EngineVersionDetails
 }
 
-const (
-	InvalidEngineVersion = -1
-)
-
 type EngineVersionDetails struct {
 	Version   string `json:"version"`
 	GitCommit string `json:"gitCommit"`
