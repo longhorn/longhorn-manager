@@ -53,7 +53,7 @@ func CheckInstanceManagerCompatibilty(imMinVersion, imVersion int) error {
 
 func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerClient, error) {
 	// Do not check the major version here. Since IM cannot get the major version without using this client to call VersionGet().
-	if im.Status.CurrentState != types.InstanceManagerStateRunning || im.Status.IP == "" {
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning || im.Status.IP == "" {
 		return nil, fmt.Errorf("invalid Instance Manager %v, state: %v, IP: %v", im.Name, im.Status.CurrentState, im.Status.IP)
 	}
 
@@ -65,17 +65,17 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 	}, nil
 }
 
-func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *types.InstanceProcess {
+func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *longhorn.InstanceProcess {
 	if p == nil {
 		return nil
 	}
 
-	return &types.InstanceProcess{
-		Spec: types.InstanceProcessSpec{
+	return &longhorn.InstanceProcess{
+		Spec: longhorn.InstanceProcessSpec{
 			Name: p.Name,
 		},
-		Status: types.InstanceProcessStatus{
-			State:     types.InstanceState(p.ProcessStatus.State),
+		Status: longhorn.InstanceProcessStatus{
+			State:     longhorn.InstanceState(p.ProcessStatus.State),
 			ErrorMsg:  p.ProcessStatus.ErrorMsg,
 			PortStart: p.ProcessStatus.PortStart,
 			PortEnd:   p.ProcessStatus.PortEnd,
@@ -89,7 +89,7 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *types.InstancePr
 
 }
 
-func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName, engineImage string, volumeFrontend types.VolumeFrontend, replicaAddressMap map[string]string, revCounterDisabled bool, salvageRequested bool) (*types.InstanceProcess, error) {
+func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName, engineImage string, volumeFrontend longhorn.VolumeFrontend, replicaAddressMap map[string]string, revCounterDisabled bool, salvageRequested bool) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName, engi
 	return c.parseProcess(engineProcess), nil
 }
 
-func (c *InstanceManagerClient) ReplicaProcessCreate(replicaName, engineImage, dataPath, backingImagePath string, size int64, revCounterDisabled bool) (*types.InstanceProcess, error) {
+func (c *InstanceManagerClient) ReplicaProcessCreate(replicaName, engineImage, dataPath, backingImagePath string, size int64, revCounterDisabled bool) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -152,7 +152,7 @@ func (c *InstanceManagerClient) ProcessDelete(name string) error {
 	return nil
 }
 
-func (c *InstanceManagerClient) ProcessGet(name string) (*types.InstanceProcess, error) {
+func (c *InstanceManagerClient) ProcessGet(name string) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -177,7 +177,7 @@ func (c *InstanceManagerClient) ProcessWatch() (*imapi.ProcessStream, error) {
 	return c.grpcClient.ProcessWatch()
 }
 
-func (c *InstanceManagerClient) ProcessList() (map[string]types.InstanceProcess, error) {
+func (c *InstanceManagerClient) ProcessList() (map[string]longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -185,14 +185,14 @@ func (c *InstanceManagerClient) ProcessList() (map[string]types.InstanceProcess,
 	if err != nil {
 		return nil, err
 	}
-	result := map[string]types.InstanceProcess{}
+	result := map[string]longhorn.InstanceProcess{}
 	for name, process := range processes {
 		result[name] = *c.parseProcess(process)
 	}
 	return result, nil
 }
 
-func (c *InstanceManagerClient) EngineProcessUpgrade(engineName, volumeName, engineImage string, volumeFrontend types.VolumeFrontend, replicaAddressMap map[string]string) (*types.InstanceProcess, error) {
+func (c *InstanceManagerClient) EngineProcessUpgrade(engineName, volumeName, engineImage string, volumeFrontend longhorn.VolumeFrontend, replicaAddressMap map[string]string) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}

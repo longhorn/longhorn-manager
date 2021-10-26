@@ -19,9 +19,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 
-	"github.com/longhorn/longhorn-manager/types"
-
 	longhornclient "github.com/longhorn/longhorn-manager/client"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 var VERSION = "v1.1.0"
@@ -362,13 +362,13 @@ func CheckMountPropagationWithNode(managerURL string) error {
 	}
 	nodeCollection, err := apiClient.Node.List(&longhornclient.ListOpts{})
 	for _, node := range nodeCollection.Data {
-		con := node.Conditions[string(types.NodeConditionTypeMountPropagation)]
+		con := node.Conditions[string(longhorn.NodeConditionTypeMountPropagation)]
 		var condition map[string]interface{}
 		if con != nil {
 			condition = con.(map[string]interface{})
 		}
 		for i := 0; i < maxRetryCountForMountPropagationCheck; i++ {
-			if condition != nil && condition["status"] != nil && condition["status"].(string) != string(types.ConditionStatusUnknown) {
+			if condition != nil && condition["status"] != nil && condition["status"].(string) != string(longhorn.ConditionStatusUnknown) {
 				break
 			}
 			time.Sleep(durationSleepForMountPropagationCheck)
@@ -376,11 +376,11 @@ func CheckMountPropagationWithNode(managerURL string) error {
 			if err != nil {
 				return err
 			}
-			if retryNode.Conditions[string(types.NodeConditionTypeMountPropagation)] != nil {
-				condition = retryNode.Conditions[string(types.NodeConditionTypeMountPropagation)].(map[string]interface{})
+			if retryNode.Conditions[string(longhorn.NodeConditionTypeMountPropagation)] != nil {
+				condition = retryNode.Conditions[string(longhorn.NodeConditionTypeMountPropagation)].(map[string]interface{})
 			}
 		}
-		if condition == nil || condition["status"] == nil || condition["status"].(string) != string(types.ConditionStatusTrue) {
+		if condition == nil || condition["status"] == nil || condition["status"].(string) != string(longhorn.ConditionStatusTrue) {
 			return fmt.Errorf("Node %s is not support mount propagation", node.Name)
 		}
 	}

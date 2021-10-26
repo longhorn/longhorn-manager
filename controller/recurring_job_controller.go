@@ -317,9 +317,9 @@ func (control *RecurringJobController) newCronJob(recurringJob *longhorn.Recurri
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      recurringJob.Name,
 			Namespace: recurringJob.Namespace,
-			Labels: types.GetCronJobLabels(&types.RecurringJobSpec{
+			Labels: types.GetCronJobLabels(&longhorn.RecurringJobSpec{
 				Name: recurringJob.Name,
-				Task: types.RecurringJobType(recurringJob.Spec.Task),
+				Task: longhorn.RecurringJobType(recurringJob.Spec.Task),
 			}),
 			OwnerReferences: datastore.GetOwnerReferencesForRecurringJob(recurringJob),
 		},
@@ -333,9 +333,9 @@ func (control *RecurringJobController) newCronJob(recurringJob *longhorn.Recurri
 					Template: corev1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: recurringJob.Name,
-							Labels: types.GetCronJobLabels(&types.RecurringJobSpec{
+							Labels: types.GetCronJobLabels(&longhorn.RecurringJobSpec{
 								Name: recurringJob.Name,
-								Task: types.RecurringJobType(recurringJob.Spec.Task),
+								Task: longhorn.RecurringJobType(recurringJob.Spec.Task),
 							}),
 						},
 						Spec: corev1.PodSpec{

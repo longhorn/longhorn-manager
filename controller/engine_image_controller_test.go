@@ -123,19 +123,19 @@ func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInfo
 
 func getEngineImageControllerTestTemplate() *EngineImageControllerTestCase {
 	tc := &EngineImageControllerTestCase{
-		node:                newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, ""),
+		node:                newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
 		volume:              newVolume(TestVolumeName, 2),
-		engine:              newEngine(TestEngineName, TestEngineImage, TestEngineManagerName, TestNode1, TestIP1, 0, true, types.InstanceStateRunning, types.InstanceStateRunning),
-		upgradedEngineImage: newEngineImage(TestUpgradedEngineImage, types.EngineImageStateDeployed),
+		engine:              newEngine(TestEngineName, TestEngineImage, TestEngineManagerName, TestNode1, TestIP1, 0, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+		upgradedEngineImage: newEngineImage(TestUpgradedEngineImage, longhorn.EngineImageStateDeployed),
 
 		defaultEngineImage: TestEngineImage,
 
-		currentEngineImage: newEngineImage(TestEngineImage, types.EngineImageStateDeployed),
+		currentEngineImage: newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed),
 		currentDaemonSet:   newEngineImageDaemonSet(),
 	}
 
 	tc.volume.Status.CurrentNodeID = TestNode1
-	tc.volume.Status.State = types.VolumeStateAttached
+	tc.volume.Status.State = longhorn.VolumeStateAttached
 	tc.volume.Status.CurrentImage = TestEngineImage
 	tc.currentEngineImage.Status.RefCount = 1
 
@@ -165,6 +165,7 @@ func createEngineImageDaemonSetPod(name string, containerReadyStatus bool, nodeI
 func generateEngineImageControllerTestCases() map[string]*EngineImageControllerTestCase {
 	var tc *EngineImageControllerTestCase
 	testCases := map[string]*EngineImageControllerTestCase{}
+	invalidEngineVersion := -1
 
 	// The TestNode2 is a non-existing node and is just used for node down test.
 	tc = getEngineImageControllerTestTemplate()
@@ -176,15 +177,15 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	testCases["Engine image ownerID node is down"] = tc
 
 	tc = getEngineImageControllerTestTemplate()
-	tc.currentEngineImage.Status.State = types.EngineImageStateDeploying
+	tc.currentEngineImage.Status.State = longhorn.EngineImageStateDeploying
 	tc.currentDaemonSet = nil
 	tc.copyCurrentToExpected()
 	tc.expectedDaemonSet = newEngineImageDaemonSet()
 	tc.expectedDaemonSet.Status.NumberAvailable = 0
-	tc.expectedEngineImage.Status.Conditions[types.EngineImageConditionTypeReady] = types.Condition{
-		Type:   types.EngineImageConditionTypeReady,
-		Status: types.ConditionStatusFalse,
-		Reason: types.EngineImageConditionTypeReadyReasonDaemonSet,
+	tc.expectedEngineImage.Status.Conditions[longhorn.EngineImageConditionTypeReady] = longhorn.Condition{
+		Type:   longhorn.EngineImageConditionTypeReady,
+		Status: longhorn.ConditionStatusFalse,
+		Reason: longhorn.EngineImageConditionTypeReadyReasonDaemonSet,
 	}
 	testCases["Engine image DaemonSet creation"] = tc
 
@@ -192,11 +193,11 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc = getEngineImageControllerTestTemplate()
 	tc.currentDaemonSet.Status.NumberAvailable = 0
 	tc.copyCurrentToExpected()
-	tc.expectedEngineImage.Status.State = types.EngineImageStateDeploying
-	tc.expectedEngineImage.Status.Conditions[types.EngineImageConditionTypeReady] = types.Condition{
-		Type:   types.EngineImageConditionTypeReady,
-		Status: types.ConditionStatusFalse,
-		Reason: types.EngineImageConditionTypeReadyReasonDaemonSet,
+	tc.expectedEngineImage.Status.State = longhorn.EngineImageStateDeploying
+	tc.expectedEngineImage.Status.Conditions[longhorn.EngineImageConditionTypeReady] = longhorn.Condition{
+		Type:   longhorn.EngineImageConditionTypeReady,
+		Status: longhorn.ConditionStatusFalse,
+		Reason: longhorn.EngineImageConditionTypeReadyReasonDaemonSet,
 	}
 	tc.expectedEngineImage.Status.NodeDeploymentMap = map[string]bool{TestNode1: false}
 	testCases["Engine Image DaemonSet pods are suddenly removed"] = tc
@@ -224,25 +225,25 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	testCases["The default engine image won't be cleaned up even if there is no volume using it"] = tc
 
 	tc = getEngineImageControllerTestTemplate()
-	incompatibleVersion := types.EngineVersionDetails{
+	incompatibleVersion := longhorn.EngineVersionDetails{
 		Version:                 "ei.Spec.Image",
 		GitCommit:               "unknown",
 		BuildDate:               "unknown",
-		CLIAPIVersion:           types.InvalidEngineVersion,
-		CLIAPIMinVersion:        types.InvalidEngineVersion,
-		ControllerAPIVersion:    types.InvalidEngineVersion,
-		ControllerAPIMinVersion: types.InvalidEngineVersion,
-		DataFormatVersion:       types.InvalidEngineVersion,
-		DataFormatMinVersion:    types.InvalidEngineVersion,
+		CLIAPIVersion:           invalidEngineVersion,
+		CLIAPIMinVersion:        invalidEngineVersion,
+		ControllerAPIVersion:    invalidEngineVersion,
+		ControllerAPIMinVersion: invalidEngineVersion,
+		DataFormatVersion:       invalidEngineVersion,
+		DataFormatMinVersion:    invalidEngineVersion,
 	}
 	tc.currentEngineImage.Status.EngineVersionDetails = incompatibleVersion
 	tc.currentDaemonSetPod = createEngineImageDaemonSetPod(getTestEngineImageDaemonSetName()+TestPod1, true, TestNode1)
 	tc.copyCurrentToExpected()
-	tc.expectedEngineImage.Status.State = types.EngineImageStateIncompatible
-	tc.expectedEngineImage.Status.Conditions[types.EngineImageConditionTypeReady] = types.Condition{
-		Type:   types.EngineImageConditionTypeReady,
-		Status: types.ConditionStatusFalse,
-		Reason: types.EngineImageConditionTypeReadyReasonBinary,
+	tc.expectedEngineImage.Status.State = longhorn.EngineImageStateIncompatible
+	tc.expectedEngineImage.Status.Conditions[longhorn.EngineImageConditionTypeReady] = longhorn.Condition{
+		Type:   longhorn.EngineImageConditionTypeReady,
+		Status: longhorn.ConditionStatusFalse,
+		Reason: longhorn.EngineImageConditionTypeReadyReasonBinary,
 	}
 	tc.expectedEngineImage.Status.NodeDeploymentMap = map[string]bool{TestNode1: true}
 	testCases["Incompatible engine image"] = tc

@@ -257,7 +257,7 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 	}()
 
 	if backingImage.Status.DiskFileStatusMap == nil {
-		backingImage.Status.DiskFileStatusMap = map[string]*types.BackingImageDiskFileStatus{}
+		backingImage.Status.DiskFileStatusMap = map[string]*longhorn.BackingImageDiskFileStatus{}
 	}
 	if backingImage.Status.DiskLastRefAtMap == nil {
 		backingImage.Status.DiskLastRefAtMap = map[string]string{}
@@ -373,7 +373,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 				readyDiskUUID = diskUUID
 				readyDiskPath = node.Spec.Disks[diskName].Path
 				// Prefer to pick up a disk contains the ready file if possible.
-				if fileStatus, ok := bi.Status.DiskFileStatusMap[diskUUID]; ok && fileStatus.State == types.BackingImageStateReady {
+				if fileStatus, ok := bi.Status.DiskFileStatusMap[diskUUID]; ok && fileStatus.State == longhorn.BackingImageStateReady {
 					isReadyFile = true
 					break
 				}
@@ -385,11 +385,11 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 				return err
 			}
 			for _, node := range nodes {
-				if types.GetCondition(node.Status.Conditions, types.NodeConditionTypeSchedulable).Status != types.ConditionStatusTrue {
+				if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
 					continue
 				}
 				for diskName, diskStatus := range node.Status.DiskStatus {
-					if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status != types.ConditionStatusTrue {
+					if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
 						continue
 					}
 					diskSpec, exists := node.Spec.Disks[diskName]
@@ -416,7 +416,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 				Name:            bi.Name,
 				OwnerReferences: datastore.GetOwnerReferencesForBackingImage(bi),
 			},
-			Spec: types.BackingImageDataSourceSpec{
+			Spec: longhorn.BackingImageDataSourceSpec{
 				NodeID:     readyNodeID,
 				DiskUUID:   readyDiskUUID,
 				DiskPath:   readyDiskPath,
@@ -431,8 +431,8 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		if bids.Spec.Parameters == nil {
 			bids.Spec.Parameters = map[string]string{}
 		}
-		if bids.Spec.SourceType == types.BackingImageDataSourceTypeExportFromVolume {
-			bids.Labels = map[string]string{types.GetLonghornLabelKey(types.LonghornLabelExportFromVolume): bids.Spec.Parameters[types.DataSourceTypeExportFromVolumeParameterVolumeName]}
+		if bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeExportFromVolume {
+			bids.Labels = map[string]string{types.GetLonghornLabelKey(types.LonghornLabelExportFromVolume): bids.Spec.Parameters[DataSourceTypeExportFromVolumeParameterVolumeName]}
 		}
 		if bids, err = bic.ds.CreateBackingImageDataSource(bids); err != nil {
 			return err
@@ -451,7 +451,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 	if bi.Spec.Disks != nil {
 		for diskUUID := range bi.Spec.Disks {
 			fileStatus, ok := bi.Status.DiskFileStatusMap[diskUUID]
-			if !ok || (fileStatus.State != types.BackingImageStateFailed && fileStatus.State != types.BackingImageStateUnknown) {
+			if !ok || (fileStatus.State != longhorn.BackingImageStateFailed && fileStatus.State != longhorn.BackingImageStateUnknown) {
 				allFilesUnavailable = false
 				break
 			}
@@ -475,7 +475,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 			if _, exists := bi.Spec.Disks[diskUUID]; exists {
 				continue
 			}
-			if fileStatus.State != types.BackingImageStateFailed && fileStatus.State != types.BackingImageStateUnknown {
+			if fileStatus.State != longhorn.BackingImageStateFailed && fileStatus.State != longhorn.BackingImageStateUnknown {
 				allFilesUnavailable = false
 				break
 			}
@@ -495,7 +495,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 	}
 
 	// Check if the data source already finished the 1st file preparing.
-	if !bids.Spec.FileTransferred && bids.Status.CurrentState == types.BackingImageStateReadyForTransfer {
+	if !bids.Spec.FileTransferred && bids.Status.CurrentState == longhorn.BackingImageStateReadyForTransfer {
 		// Cannot rely on backingImage.Status.DiskFileStatusMap[bids.Spec.DiskUUID]
 		// Need to make sure the backing image manager take over the file before marking the data source as file transferred
 		defaultImage, err := bic.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
@@ -514,14 +514,14 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 			}
 		}
 		if defaultBIM != nil {
-			if fileInfo, exists := defaultBIM.Status.BackingImageFileMap[bi.Name]; exists && fileInfo.State == types.BackingImageStateReady && fileInfo.UUID == bi.Status.UUID {
+			if fileInfo, exists := defaultBIM.Status.BackingImageFileMap[bi.Name]; exists && fileInfo.State == longhorn.BackingImageStateReady && fileInfo.UUID == bi.Status.UUID {
 				bids.Spec.FileTransferred = true
 				log.Infof("Backing image manager %v already took over the file prepared by the backing image data source, will mark the data source as file transferred", defaultBIM.Name)
 			}
 		}
 	} else if bids.Spec.FileTransferred && allFilesUnavailable {
 		switch bids.Spec.SourceType {
-		case types.BackingImageDataSourceTypeDownload:
+		case longhorn.BackingImageDataSourceTypeDownload:
 			log.Info("Prepare to re-download backing image via backing image data source since all existing files become unavailable")
 			bids.Spec.FileTransferred = false
 		default:
@@ -542,7 +542,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 					if !exists {
 						continue
 					}
-					if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status != types.ConditionStatusTrue {
+					if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
 						continue
 					}
 					bids.Spec.DiskUUID = diskStatus.DiskUUID
@@ -715,11 +715,11 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 }
 
 func (bic *BackingImageController) updateStatusWithFileInfo(bi *longhorn.BackingImage,
-	diskUUID, message, checksum string, state types.BackingImageState, progress int) error {
+	diskUUID, message, checksum string, state longhorn.BackingImageState, progress int) error {
 	log := getLoggerForBackingImage(bic.logger, bi)
 
 	if _, exists := bi.Status.DiskFileStatusMap[diskUUID]; !exists {
-		bi.Status.DiskFileStatusMap[diskUUID] = &types.BackingImageDiskFileStatus{}
+		bi.Status.DiskFileStatusMap[diskUUID] = &longhorn.BackingImageDiskFileStatus{}
 	}
 	if bi.Status.DiskFileStatusMap[diskUUID].State != state {
 		bi.Status.DiskFileStatusMap[diskUUID].LastStateTransitionTime = util.Now()
@@ -734,10 +734,10 @@ func (bic *BackingImageController) updateStatusWithFileInfo(bi *longhorn.Backing
 			bi.Status.Checksum = checksum
 		}
 		if bi.Status.Checksum != checksum {
-			if bi.Status.DiskFileStatusMap[diskUUID].State != types.BackingImageStateFailed {
+			if bi.Status.DiskFileStatusMap[diskUUID].State != longhorn.BackingImageStateFailed {
 				msg := fmt.Sprintf("Somehow backing image recorded checksum %v doesn't match the file checksum %v in disk %v", bi.Status.Checksum, checksum, diskUUID)
 				log.Warn(msg)
-				bi.Status.DiskFileStatusMap[diskUUID].State = types.BackingImageStateFailed
+				bi.Status.DiskFileStatusMap[diskUUID].State = longhorn.BackingImageStateFailed
 				bi.Status.DiskFileStatusMap[diskUUID].Message = msg
 			}
 		}
@@ -778,7 +778,7 @@ func (bic *BackingImageController) generateBackingImageManagerManifest(node *lon
 			Labels: types.GetBackingImageManagerLabels(node.Name, node.Status.DiskStatus[diskName].DiskUUID),
 			Name:   types.GetBackingImageManagerName(defaultImage, node.Status.DiskStatus[diskName].DiskUUID),
 		},
-		Spec: types.BackingImageManagerSpec{
+		Spec: longhorn.BackingImageManagerSpec{
 			Image:         defaultImage,
 			NodeID:        node.Name,
 			DiskUUID:      node.Status.DiskStatus[diskName].DiskUUID,

@@ -248,7 +248,7 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 
 	allocatableMilliCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
 	switch im.Spec.Type {
-	case types.InstanceManagerTypeEngine:
+	case longhorn.InstanceManagerTypeEngine:
 		emCPURequest := lhNode.Spec.EngineManagerCPURequest
 		if emCPURequest == 0 {
 			emCPUSetting, err := ds.GetSetting(types.SettingNameGuaranteedEngineManagerCPU)
@@ -262,7 +262,7 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 			emCPURequest = int(math.Round(allocatableMilliCPU * emCPUPercentage / 100.0))
 		}
 		return ParseResourceRequirement(fmt.Sprintf("%dm", emCPURequest))
-	case types.InstanceManagerTypeReplica:
+	case longhorn.InstanceManagerTypeReplica:
 		rmCPURequest := lhNode.Spec.ReplicaManagerCPURequest
 		if rmCPURequest == 0 {
 			rmCPUSetting, err := ds.GetSetting(types.SettingNameGuaranteedReplicaManagerCPU)

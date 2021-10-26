@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"github.com/longhorn/longhorn-manager/types"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 const (
@@ -29,19 +29,19 @@ func (e *Engine) SnapshotCreate(name string, labels map[string]string) (string, 
 	return strings.TrimSpace(output), nil
 }
 
-func (e *Engine) SnapshotList() (map[string]*types.Snapshot, error) {
+func (e *Engine) SnapshotList() (map[string]*longhorn.Snapshot, error) {
 	output, err := e.ExecuteEngineBinary("snapshot", "info")
 	if err != nil {
 		return nil, errors.Wrapf(err, "error listing snapshot")
 	}
-	data := map[string]*types.Snapshot{}
+	data := map[string]*longhorn.Snapshot{}
 	if err := json.Unmarshal([]byte(output), &data); err != nil {
 		return nil, errors.Wrapf(err, "error parsing snapshot list")
 	}
 	return data, nil
 }
 
-func (e *Engine) SnapshotGet(name string) (*types.Snapshot, error) {
+func (e *Engine) SnapshotGet(name string) (*longhorn.Snapshot, error) {
 	data, err := e.SnapshotList()
 	if err != nil {
 		return nil, err
@@ -77,13 +77,13 @@ func (e *Engine) SnapshotPurge() error {
 	return nil
 }
 
-func (e *Engine) SnapshotPurgeStatus() (map[string]*types.PurgeStatus, error) {
+func (e *Engine) SnapshotPurgeStatus() (map[string]*longhorn.PurgeStatus, error) {
 	output, err := e.ExecuteEngineBinary("snapshot", "purge-status")
 	if err != nil {
 		return nil, errors.Wrapf(err, "error getting snapshot purge status")
 	}
 
-	data := map[string]*types.PurgeStatus{}
+	data := map[string]*longhorn.PurgeStatus{}
 	if err := json.Unmarshal([]byte(output), &data); err != nil {
 		return nil, errors.Wrapf(err, "error parsing snapshot purge status")
 	}
@@ -100,13 +100,13 @@ func (e *Engine) SnapshotClone(snapshotName, fromControllerAddress string) error
 	return nil
 }
 
-func (e *Engine) SnapshotCloneStatus() (map[string]*types.SnapshotCloneStatus, error) {
+func (e *Engine) SnapshotCloneStatus() (map[string]*longhorn.SnapshotCloneStatus, error) {
 	args := []string{"snapshot", "clone-status"}
 	output, err := e.ExecuteEngineBinary(args...)
 	if err != nil {
 		return nil, err
 	}
-	snapshotCloneStatusMap := make(map[string]*types.SnapshotCloneStatus)
+	snapshotCloneStatusMap := make(map[string]*longhorn.SnapshotCloneStatus)
 	if err := json.Unmarshal([]byte(output), &snapshotCloneStatusMap); err != nil {
 		return nil, err
 	}

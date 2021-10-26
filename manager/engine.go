@@ -12,7 +12,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/engineapi"
-	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
@@ -21,7 +20,7 @@ const (
 	BackupStatusQueryInterval = 2 * time.Second
 )
 
-func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*types.Snapshot, error) {
+func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*longhorn.Snapshot, error) {
 	if volumeName == "" {
 		return nil, fmt.Errorf("volume name required")
 	}
@@ -32,7 +31,7 @@ func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*types.Snap
 	return engine.SnapshotList()
 }
 
-func (m *VolumeManager) GetSnapshot(snapshotName, volumeName string) (*types.Snapshot, error) {
+func (m *VolumeManager) GetSnapshot(snapshotName, volumeName string) (*longhorn.Snapshot, error) {
 	if volumeName == "" || snapshotName == "" {
 		return nil, fmt.Errorf("volume and snapshot name required")
 	}
@@ -50,7 +49,7 @@ func (m *VolumeManager) GetSnapshot(snapshotName, volumeName string) (*types.Sna
 	return snapshot, nil
 }
 
-func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]string, volumeName string) (*types.Snapshot, error) {
+func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]string, volumeName string) (*longhorn.Snapshot, error) {
 	if volumeName == "" {
 		return nil, fmt.Errorf("volume name required")
 	}
@@ -165,7 +164,7 @@ func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName stri
 		ObjectMeta: metav1.ObjectMeta{
 			Name: backupName,
 		},
-		Spec: types.SnapshotBackupSpec{
+		Spec: longhorn.SnapshotBackupSpec{
 			SnapshotName: snapshotName,
 			Labels:       labels,
 		},
@@ -204,7 +203,7 @@ func (m *VolumeManager) GetEngineClient(volumeName string) (client engineapi.Eng
 	for _, e = range es {
 		break
 	}
-	if e.Status.CurrentState != types.InstanceStateRunning {
+	if e.Status.CurrentState != longhorn.InstanceStateRunning {
 		return nil, fmt.Errorf("engine is not running")
 	}
 	if isReady, err := m.ds.CheckEngineImageReadiness(e.Status.CurrentImage, m.currentNodeID); !isReady {

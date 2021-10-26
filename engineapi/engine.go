@@ -12,8 +12,16 @@ import (
 
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+)
+
+// Should be the same values as in https://github.com/longhorn/longhorn-engine/blob/master/pkg/types/types.go
+const (
+	ProcessStateInProgress = "in_progress"
+	ProcessStateComplete   = "complete"
+	ProcessStateError      = "error"
 )
 
 type EngineCollection struct{}
@@ -71,9 +79,9 @@ func parseReplica(s string) (*Replica, error) {
 		return nil, errors.Errorf("cannot parse line `%s`", s)
 	}
 	url := fields[0]
-	mode := types.ReplicaMode(fields[1])
-	if mode != types.ReplicaModeRW && mode != types.ReplicaModeWO {
-		mode = types.ReplicaModeERR
+	mode := longhorn.ReplicaMode(fields[1])
+	if mode != longhorn.ReplicaModeRW && mode != longhorn.ReplicaModeWO {
+		mode = longhorn.ReplicaModeERR
 	}
 	return &Replica{
 		URL:  url,
@@ -168,13 +176,13 @@ func (e *Engine) Expand(size int64) error {
 	return nil
 }
 
-func (e *Engine) ReplicaRebuildStatus() (map[string]*types.RebuildStatus, error) {
+func (e *Engine) ReplicaRebuildStatus() (map[string]*longhorn.RebuildStatus, error) {
 	output, err := e.ExecuteEngineBinary("replica-rebuild-status")
 	if err != nil {
 		return nil, errors.Wrapf(err, "error getting replica rebuild status")
 	}
 
-	data := map[string]*types.RebuildStatus{}
+	data := map[string]*longhorn.RebuildStatus{}
 	if err := json.Unmarshal([]byte(output), &data); err != nil {
 		return nil, errors.Wrapf(err, "error parsing replica rebuild status")
 	}
@@ -182,7 +190,7 @@ func (e *Engine) ReplicaRebuildStatus() (map[string]*types.RebuildStatus, error)
 	return data, nil
 }
 
-func (e *Engine) FrontendStart(volumeFrontend types.VolumeFrontend) error {
+func (e *Engine) FrontendStart(volumeFrontend longhorn.VolumeFrontend) error {
 	frontendName, err := GetEngineProcessFrontend(volumeFrontend)
 	if err != nil {
 		return err

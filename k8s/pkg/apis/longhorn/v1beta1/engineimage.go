@@ -5,10 +5,10 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type EngineImageState string
 
 const (
-	EngineImageStateDeploying    = "deploying"
-	EngineImageStateDeployed     = "deployed"
-	EngineImageStateIncompatible = "incompatible"
-	EngineImageStateError        = "error"
+	EngineImageStateDeploying    = EngineImageState("deploying")
+	EngineImageStateDeployed     = EngineImageState("deployed")
+	EngineImageStateIncompatible = EngineImageState("incompatible")
+	EngineImageStateError        = EngineImageState("error")
 )
 
 const (
@@ -16,10 +16,6 @@ const (
 
 	EngineImageConditionTypeReadyReasonDaemonSet = "daemonSet"
 	EngineImageConditionTypeReadyReasonBinary    = "binary"
-)
-
-const (
-	InvalidEngineVersion = -1
 )
 
 type EngineVersionDetails struct {

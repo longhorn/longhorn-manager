@@ -290,9 +290,9 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		}
 		log.Infof("Created daemon set %v for engine image %v (%v)", dsSpec.Name, engineImage.Name, engineImage.Spec.Image)
 		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions,
-			types.EngineImageConditionTypeReady, types.ConditionStatusFalse,
-			types.EngineImageConditionTypeReadyReasonDaemonSet, fmt.Sprintf("creating daemon set %v for %v", dsSpec.Name, engineImage.Spec.Image))
-		engineImage.Status.State = types.EngineImageStateDeploying
+			longhorn.EngineImageConditionTypeReady, longhorn.ConditionStatusFalse,
+			longhorn.EngineImageConditionTypeReadyReasonDaemonSet, fmt.Sprintf("creating daemon set %v for %v", dsSpec.Name, engineImage.Spec.Image))
+		engineImage.Status.State = longhorn.EngineImageStateDeploying
 		return nil
 	}
 
@@ -318,8 +318,8 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	}
 
 	if !ic.engineBinaryChecker(engineImage.Spec.Image) {
-		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, types.EngineImageConditionTypeReady, types.ConditionStatusFalse, types.EngineImageConditionTypeReadyReasonDaemonSet, "engine binary check failed")
-		engineImage.Status.State = types.EngineImageStateDeploying
+		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, longhorn.EngineImageConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.EngineImageConditionTypeReadyReasonDaemonSet, "engine binary check failed")
+		engineImage.Status.State = longhorn.EngineImageStateDeploying
 		return nil
 	}
 
@@ -328,8 +328,8 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	}
 
 	if err := engineapi.CheckCLICompatibilty(engineImage.Status.CLIAPIVersion, engineImage.Status.CLIAPIMinVersion); err != nil {
-		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, types.EngineImageConditionTypeReady, types.ConditionStatusFalse, types.EngineImageConditionTypeReadyReasonBinary, "incompatible")
-		engineImage.Status.State = types.EngineImageStateIncompatible
+		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, longhorn.EngineImageConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.EngineImageConditionTypeReadyReasonBinary, "incompatible")
+		engineImage.Status.State = longhorn.EngineImageStateIncompatible
 		return nil
 	}
 
@@ -346,15 +346,15 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	}
 
 	if deployedNodeCount < len(readyNodes) {
-		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, types.EngineImageConditionTypeReady, types.ConditionStatusFalse,
-			types.EngineImageConditionTypeReadyReasonDaemonSet, fmt.Sprintf("Engine image is not fully deployed on all nodes: %v of %v", deployedNodeCount, len(engineImage.Status.NodeDeploymentMap)))
-		engineImage.Status.State = types.EngineImageStateDeploying
+		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, longhorn.EngineImageConditionTypeReady, longhorn.ConditionStatusFalse,
+			longhorn.EngineImageConditionTypeReadyReasonDaemonSet, fmt.Sprintf("Engine image is not fully deployed on all nodes: %v of %v", deployedNodeCount, len(engineImage.Status.NodeDeploymentMap)))
+		engineImage.Status.State = longhorn.EngineImageStateDeploying
 	} else {
 		engineImage.Status.Conditions = types.SetConditionAndRecord(engineImage.Status.Conditions,
-			types.EngineImageConditionTypeReady, types.ConditionStatusTrue,
+			longhorn.EngineImageConditionTypeReady, longhorn.ConditionStatusTrue,
 			"", fmt.Sprintf("Engine image %v (%v) is fully deployed on all ready nodes", engineImage.Name, engineImage.Spec.Image),
 			ic.eventRecorder, engineImage, v1.EventTypeNormal)
-		engineImage.Status.State = types.EngineImageStateDeployed
+		engineImage.Status.State = longhorn.EngineImageStateDeployed
 	}
 
 	if err := ic.handleAutoUpgradeEngineImageToDefaultEngineImage(engineImage.Spec.Image); err != nil {
@@ -494,7 +494,7 @@ func (ic *EngineImageController) getVolumesForEngineImageUpgrading(volumes map[s
 }
 
 func (ic *EngineImageController) canDoOfflineEngineImageUpgrade(v *longhorn.Volume, newEngineImageResource *longhorn.EngineImage) bool {
-	return v.Status.State == types.VolumeStateDetached
+	return v.Status.State == longhorn.VolumeStateDetached
 }
 
 // canDoLiveEngineImageUpgrade check if it is possible to do live engine upgrade for a volume
@@ -505,10 +505,10 @@ func (ic *EngineImageController) canDoOfflineEngineImageUpgrade(v *longhorn.Volu
 //   4. Volume is not expanding AND
 //   5. The current volume's engine image is compatible with the new engine image
 func (ic *EngineImageController) canDoLiveEngineImageUpgrade(v *longhorn.Volume, newEngineImageResource *longhorn.EngineImage) bool {
-	if v.Status.State != types.VolumeStateAttached {
+	if v.Status.State != longhorn.VolumeStateAttached {
 		return false
 	}
-	if v.Status.Robustness != types.VolumeRobustnessHealthy {
+	if v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
 		return false
 	}
 	if v.Status.IsStandby {

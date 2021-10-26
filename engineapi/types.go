@@ -7,7 +7,7 @@ import (
 
 	devtypes "github.com/longhorn/go-iscsi-helper/types"
 
-	"github.com/longhorn/longhorn-manager/types"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 const (
@@ -46,7 +46,7 @@ const (
 
 type Replica struct {
 	URL  string
-	Mode types.ReplicaMode
+	Mode longhorn.ReplicaMode
 }
 
 type Controller struct {
@@ -61,29 +61,29 @@ type EngineClient interface {
 	Info() (*Volume, error)
 	Expand(size int64) error
 
-	FrontendStart(volumeFrontend types.VolumeFrontend) error
+	FrontendStart(volumeFrontend longhorn.VolumeFrontend) error
 	FrontendShutdown() error
 
 	ReplicaList() (map[string]*Replica, error)
 	ReplicaAdd(url string, isRestoreVolume bool) error
 	ReplicaRemove(url string) error
-	ReplicaRebuildStatus() (map[string]*types.RebuildStatus, error)
+	ReplicaRebuildStatus() (map[string]*longhorn.RebuildStatus, error)
 	ReplicaRebuildVerify(url string) error
 
 	SnapshotCreate(name string, labels map[string]string) (string, error)
-	SnapshotList() (map[string]*types.Snapshot, error)
-	SnapshotGet(name string) (*types.Snapshot, error)
+	SnapshotList() (map[string]*longhorn.Snapshot, error)
+	SnapshotGet(name string) (*longhorn.Snapshot, error)
 	SnapshotDelete(name string) error
 	SnapshotRevert(name string) error
 	SnapshotPurge() error
-	SnapshotPurgeStatus() (map[string]*types.PurgeStatus, error)
+	SnapshotPurgeStatus() (map[string]*longhorn.PurgeStatus, error)
 	SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, error)
-	SnapshotBackupStatus() (map[string]*types.BackupStatus, error)
-	SnapshotCloneStatus() (map[string]*types.SnapshotCloneStatus, error)
+	SnapshotBackupStatus() (map[string]*longhorn.BackupStatus, error)
+	SnapshotCloneStatus() (map[string]*longhorn.SnapshotCloneStatus, error)
 	SnapshotClone(snapshotName, fromControllerAddress string) error
 
 	BackupRestore(backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error
-	BackupRestoreStatus() (map[string]*types.RestoreStatus, error)
+	BackupRestoreStatus() (map[string]*longhorn.RestoreStatus, error)
 }
 
 type EngineClientRequest struct {
@@ -132,19 +132,19 @@ type BackupVolume struct {
 }
 
 type Backup struct {
-	Name                   string            `json:"name"`
-	State                  types.BackupState `json:"state"`
-	URL                    string            `json:"url"`
-	SnapshotName           string            `json:"snapshotName"`
-	SnapshotCreated        string            `json:"snapshotCreated"`
-	Created                string            `json:"created"`
-	Size                   string            `json:"size"`
-	Labels                 map[string]string `json:"labels"`
-	VolumeName             string            `json:"volumeName"`
-	VolumeSize             string            `json:"volumeSize"`
-	VolumeCreated          string            `json:"volumeCreated"`
-	VolumeBackingImageName string            `json:"volumeBackingImageName"`
-	Messages               map[string]string `json:"messages"`
+	Name                   string               `json:"name"`
+	State                  longhorn.BackupState `json:"state"`
+	URL                    string               `json:"url"`
+	SnapshotName           string               `json:"snapshotName"`
+	SnapshotCreated        string               `json:"snapshotCreated"`
+	Created                string               `json:"created"`
+	Size                   string               `json:"size"`
+	Labels                 map[string]string    `json:"labels"`
+	VolumeName             string               `json:"volumeName"`
+	VolumeSize             string               `json:"volumeSize"`
+	VolumeCreated          string               `json:"volumeCreated"`
+	VolumeBackingImageName string               `json:"volumeBackingImageName"`
+	Messages               map[string]string    `json:"messages"`
 }
 
 type ConfigMetadata struct {
@@ -163,8 +163,8 @@ type LauncherVolumeInfo struct {
 }
 
 type EngineVersion struct {
-	ClientVersion *types.EngineVersionDetails `json:"clientVersion"`
-	ServerVersion *types.EngineVersionDetails `json:"serverVersion"`
+	ClientVersion *longhorn.EngineVersionDetails `json:"clientVersion"`
+	ServerVersion *longhorn.EngineVersionDetails `json:"serverVersion"`
 }
 
 type TaskError struct {
@@ -218,13 +218,13 @@ func CheckCLICompatibilty(cliVersion, cliMinVersion int) error {
 	return nil
 }
 
-func GetEngineProcessFrontend(volumeFrontend types.VolumeFrontend) (string, error) {
+func GetEngineProcessFrontend(volumeFrontend longhorn.VolumeFrontend) (string, error) {
 	frontend := ""
-	if volumeFrontend == types.VolumeFrontendBlockDev {
+	if volumeFrontend == longhorn.VolumeFrontendBlockDev {
 		frontend = string(devtypes.FrontendTGTBlockDev)
-	} else if volumeFrontend == types.VolumeFrontendISCSI {
+	} else if volumeFrontend == longhorn.VolumeFrontendISCSI {
 		frontend = string(devtypes.FrontendTGTISCSI)
-	} else if volumeFrontend == types.VolumeFrontend("") {
+	} else if volumeFrontend == longhorn.VolumeFrontend("") {
 		frontend = ""
 	} else {
 		return "", fmt.Errorf("unknown volume frontend %v", volumeFrontend)

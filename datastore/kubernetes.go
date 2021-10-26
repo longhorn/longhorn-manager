@@ -88,9 +88,9 @@ func (s *DataStore) GetManagerNodeIPMap() (map[string]string, error) {
 func (s *DataStore) GetCronJobROByRecurringJob(recurringJob *longhorn.RecurringJob) (*batchv1beta1.CronJob, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: types.GetCronJobLabels(
-			&types.RecurringJobSpec{
+			&longhorn.RecurringJobSpec{
 				Name: recurringJob.Name,
-				Task: types.RecurringJobType(recurringJob.Spec.Task),
+				Task: longhorn.RecurringJobType(recurringJob.Spec.Task),
 			},
 		),
 	})
@@ -353,7 +353,7 @@ func (s *DataStore) ListInstanceManagerPods() ([]*corev1.Pod, error) {
 }
 
 // ListInstanceManagerPodsBy returns a list of instance manager pods that fullfill the below conditions
-func (s *DataStore) ListInstanceManagerPodsBy(node string, image string, imType types.InstanceManagerType) ([]*corev1.Pod, error) {
+func (s *DataStore) ListInstanceManagerPodsBy(node string, image string, imType longhorn.InstanceManagerType) ([]*corev1.Pod, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: types.GetInstanceManagerLabels(node, image, imType),
 	})
@@ -564,7 +564,7 @@ func NewPVManifestForVolume(v *longhorn.Volume, pvName, storageClassName, fsType
 	}
 
 	accessMode := corev1.ReadWriteOnce
-	if v.Spec.AccessMode == types.AccessModeReadWriteMany {
+	if v.Spec.AccessMode == longhorn.AccessModeReadWriteMany {
 		accessMode = corev1.ReadWriteMany
 		volAttributes["migratable"] = strconv.FormatBool(v.Spec.Migratable)
 	}
@@ -608,7 +608,7 @@ func NewPVManifest(size int64, pvName, volumeName, storageClassName, fsType stri
 // NewPVCManifestForVolume returns a new PersistentVolumeClaim object for a longhorn volume
 func NewPVCManifestForVolume(v *longhorn.Volume, pvName, ns, pvcName, storageClassName string) *corev1.PersistentVolumeClaim {
 	accessMode := corev1.ReadWriteOnce
-	if v.Spec.AccessMode == types.AccessModeReadWriteMany {
+	if v.Spec.AccessMode == longhorn.AccessModeReadWriteMany {
 		accessMode = corev1.ReadWriteMany
 	}
 

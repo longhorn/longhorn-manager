@@ -56,9 +56,7 @@ func (s *DataStore) InitSettings() error {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: string(sName),
 					},
-					Setting: types.Setting{
-						Value: definition.Default,
-					},
+					Value: definition.Default,
 				}
 				if _, err := s.CreateSetting(setting); err != nil && !apierrors.IsAlreadyExists(err) {
 					return err
@@ -120,7 +118,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			return errors.Wrapf(err, "failed to list volumes before modifying toleration setting")
 		}
 		for _, v := range list {
-			if v.Status.State != types.VolumeStateDetached {
+			if v.Status.State != longhorn.VolumeStateDetached {
 				return fmt.Errorf("cannot modify toleration setting before all volumes are detached")
 			}
 		}
@@ -130,7 +128,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			return errors.Wrapf(err, "failed to list volumes before modifying node selector for managed components setting")
 		}
 		for _, v := range list {
-			if v.Status.State != types.VolumeStateDetached {
+			if v.Status.State != longhorn.VolumeStateDetached {
 				return fmt.Errorf("cannot modify node selector for managed components setting before all volumes are detached")
 			}
 		}
@@ -145,7 +143,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			return errors.Wrapf(err, "failed to list volumes before modifying priority class setting")
 		}
 		for _, v := range list {
-			if v.Status.State != types.VolumeStateDetached {
+			if v.Status.State != longhorn.VolumeStateDetached {
 				return fmt.Errorf("cannot modify priority class setting before all volumes are detached")
 			}
 		}
@@ -194,9 +192,7 @@ func (s *DataStore) GetSetting(sName types.SettingName) (*longhorn.Setting, erro
 			ObjectMeta: metav1.ObjectMeta{
 				Name: string(sName),
 			},
-			Setting: types.Setting{
-				Value: definition.Default,
-			},
+			Value: definition.Default,
 		}
 	}
 	return resultRO.DeepCopy(), nil
@@ -240,9 +236,7 @@ func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, err
 				ObjectMeta: metav1.ObjectMeta{
 					Name: string(sName),
 				},
-				Setting: types.Setting{
-					Value: definition.Default,
-				},
+				Value: definition.Default,
 			}
 		}
 	}
@@ -747,7 +741,7 @@ func checkReplica(r *longhorn.Replica) error {
 	if r.Name == "" || r.Spec.VolumeName == "" {
 		return fmt.Errorf("BUG: missing required field %+v", r)
 	}
-	if (r.Status.CurrentState == types.InstanceStateRunning) != (r.Status.IP != "") {
+	if (r.Status.CurrentState == longhorn.InstanceStateRunning) != (r.Status.IP != "") {
 		return fmt.Errorf("BUG: instance state and IP wasn't in sync %+v", r)
 	}
 	return nil
@@ -1063,7 +1057,7 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 	if err != nil {
 		return false, fmt.Errorf("unable to get engine image %v: %v", image, err)
 	}
-	if ei.Status.State != types.EngineImageStateDeployed && ei.Status.State != types.EngineImageStateDeploying {
+	if ei.Status.State != longhorn.EngineImageStateDeployed && ei.Status.State != longhorn.EngineImageStateDeploying {
 		return false, nil
 	}
 	nodesHaveEngineImage, err := s.ListNodesWithEngineImage(ei)
@@ -1570,10 +1564,10 @@ func (s *DataStore) ListBackingImageDataSourcesExportingFromVolume(volumeName st
 	}
 	exportingBackingImageDataSources := map[string]*longhorn.BackingImageDataSource{}
 	for _, bids := range bidsList {
-		if bids.Spec.SourceType != types.BackingImageDataSourceTypeExportFromVolume || bids.Spec.FileTransferred {
+		if bids.Spec.SourceType != longhorn.BackingImageDataSourceTypeExportFromVolume || bids.Spec.FileTransferred {
 			continue
 		}
-		if bids.Status.CurrentState == types.BackingImageStateFailed || bids.Status.CurrentState == types.BackingImageStateUnknown {
+		if bids.Status.CurrentState == longhorn.BackingImageStateFailed || bids.Status.CurrentState == longhorn.BackingImageStateUnknown {
 			continue
 		}
 		exportingBackingImageDataSources[bids.Name] = bids
@@ -1660,7 +1654,7 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: types.NodeSpec{
+		Spec: longhorn.NodeSpec{
 			Name:                     name,
 			AllowScheduling:          true,
 			EvictionRequested:        false,
@@ -1715,7 +1709,7 @@ func (s *DataStore) GetReadyDiskNode(diskUUID string) (*longhorn.Node, string, e
 	for _, node := range nodes {
 		for diskName, diskStatus := range node.Status.DiskStatus {
 			if diskStatus.DiskUUID == diskUUID {
-				if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeReady).Status == types.ConditionStatusTrue {
+				if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status == longhorn.ConditionStatusTrue {
 					if _, exists := node.Spec.Disks[diskName]; exists {
 						return node, diskName, nil
 					}
@@ -1801,16 +1795,16 @@ func filterNodes(nodes map[string]*longhorn.Node, predicate func(node *longhorn.
 // filterReadyNodes returns only the nodes that are ready
 func filterReadyNodes(nodes map[string]*longhorn.Node) map[string]*longhorn.Node {
 	return filterNodes(nodes, func(node *longhorn.Node) bool {
-		nodeReadyCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
-		return nodeReadyCondition.Status == types.ConditionStatusTrue
+		nodeReadyCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+		return nodeReadyCondition.Status == longhorn.ConditionStatusTrue
 	})
 }
 
 // filterSchedulableNodes returns only the nodes that are ready
 func filterSchedulableNodes(nodes map[string]*longhorn.Node) map[string]*longhorn.Node {
 	return filterNodes(nodes, func(node *longhorn.Node) bool {
-		nodeSchedulableCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeSchedulable)
-		return nodeSchedulableCondition.Status == types.ConditionStatusTrue
+		nodeSchedulableCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeSchedulable)
+		return nodeSchedulableCondition.Status == longhorn.ConditionStatusTrue
 	})
 }
 
@@ -1837,7 +1831,7 @@ func (s *DataStore) ListReadyNodesWithEngineImage(image string) (map[string]*lon
 	if err != nil {
 		return nil, fmt.Errorf("unable to get engine image %v: %v", image, err)
 	}
-	if ei.Status.State != types.EngineImageStateDeployed && ei.Status.State != types.EngineImageStateDeploying {
+	if ei.Status.State != longhorn.EngineImageStateDeployed && ei.Status.State != longhorn.EngineImageStateDeploying {
 		return map[string]*longhorn.Node{}, nil
 	}
 	nodes, err := s.ListNodesWithEngineImage(ei)
@@ -1854,7 +1848,7 @@ func (s *DataStore) ListReadyNodesWithReadyEngineImage(image string) (map[string
 	if err != nil {
 		return nil, fmt.Errorf("unable to get engine image %v: %v", image, err)
 	}
-	if ei.Status.State != types.EngineImageStateDeployed {
+	if ei.Status.State != longhorn.EngineImageStateDeployed {
 		return map[string]*longhorn.Node{}, nil
 	}
 	nodes, err := s.ListNodesWithEngineImage(ei)
@@ -1889,8 +1883,8 @@ func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
 	}
 
 	for _, node := range nodesRO {
-		readyCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
-		if readyCondition.Status == types.ConditionStatusTrue && node.Spec.AllowScheduling == true {
+		readyCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+		if readyCondition.Status == longhorn.ConditionStatusTrue && node.Spec.AllowScheduling == true {
 			return node.DeepCopy(), nil
 		}
 	}
@@ -1929,11 +1923,11 @@ func (s *DataStore) IsNodeDownOrDeletedOrMissingManager(name string) (bool, erro
 		}
 		return false, err
 	}
-	cond := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
-	if cond.Status == types.ConditionStatusFalse &&
-		(cond.Reason == string(types.NodeConditionReasonKubernetesNodeGone) ||
-			cond.Reason == string(types.NodeConditionReasonKubernetesNodeNotReady) ||
-			cond.Reason == string(types.NodeConditionReasonManagerPodMissing)) {
+	cond := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+	if cond.Status == longhorn.ConditionStatusFalse &&
+		(cond.Reason == string(longhorn.NodeConditionReasonKubernetesNodeGone) ||
+			cond.Reason == string(longhorn.NodeConditionReasonKubernetesNodeNotReady) ||
+			cond.Reason == string(longhorn.NodeConditionReasonManagerPodMissing)) {
 		return true, nil
 	}
 	return false, nil
@@ -1952,10 +1946,10 @@ func (s *DataStore) IsNodeDownOrDeleted(name string) (bool, error) {
 		}
 		return false, err
 	}
-	cond := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
-	if cond.Status == types.ConditionStatusFalse &&
-		(cond.Reason == string(types.NodeConditionReasonKubernetesNodeGone) ||
-			cond.Reason == string(types.NodeConditionReasonKubernetesNodeNotReady)) {
+	cond := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+	if cond.Status == longhorn.ConditionStatusFalse &&
+		(cond.Reason == string(longhorn.NodeConditionReasonKubernetesNodeGone) ||
+			cond.Reason == string(longhorn.NodeConditionReasonKubernetesNodeNotReady)) {
 		return true, nil
 	}
 	return false, nil
@@ -1966,8 +1960,8 @@ func (s *DataStore) IsNodeSchedulable(name string) bool {
 	if err != nil {
 		return false
 	}
-	nodeSchedulableCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeSchedulable)
-	return nodeSchedulableCondition.Status == types.ConditionStatusTrue
+	nodeSchedulableCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeSchedulable)
+	return nodeSchedulableCondition.Status == longhorn.ConditionStatusTrue
 }
 
 func getNodeSelector(nodeName string) (labels.Selector, error) {
@@ -2158,7 +2152,7 @@ func tagRecurringJobDefaultLabel(obj runtime.Object) error {
 		jobLabels = append(jobLabels, label)
 	}
 
-	defaultLabel := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, types.RecurringJobGroupDefault)
+	defaultLabel := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, longhorn.RecurringJobGroupDefault)
 	jobLabelCount := len(jobLabels)
 	if jobLabelCount == 0 {
 		labels[defaultLabel] = types.LonghornLabelValueEnabled
@@ -2373,26 +2367,26 @@ func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, 
 
 // CheckInstanceManagerType checks and returns InstanceManager labels type
 // Returns error if the InstanceManager type is not engine or replica
-func CheckInstanceManagerType(im *longhorn.InstanceManager) (types.InstanceManagerType, error) {
+func CheckInstanceManagerType(im *longhorn.InstanceManager) (longhorn.InstanceManagerType, error) {
 	imTypeLabelkey := types.GetLonghornLabelKey(types.LonghornLabelInstanceManagerType)
 	imType, exist := im.Labels[imTypeLabelkey]
 	if !exist {
-		return types.InstanceManagerType(""), fmt.Errorf("no label %v in instance manager %v", imTypeLabelkey, im.Name)
+		return longhorn.InstanceManagerType(""), fmt.Errorf("no label %v in instance manager %v", imTypeLabelkey, im.Name)
 	}
 
 	switch imType {
-	case string(types.InstanceManagerTypeEngine):
-		return types.InstanceManagerTypeEngine, nil
-	case string(types.InstanceManagerTypeReplica):
-		return types.InstanceManagerTypeReplica, nil
+	case string(longhorn.InstanceManagerTypeEngine):
+		return longhorn.InstanceManagerTypeEngine, nil
+	case string(longhorn.InstanceManagerTypeReplica):
+		return longhorn.InstanceManagerTypeReplica, nil
 	}
 
-	return types.InstanceManagerType(""), fmt.Errorf("unknown type %v for instance manager %v", imType, im.Name)
+	return longhorn.InstanceManagerType(""), fmt.Errorf("unknown type %v for instance manager %v", imType, im.Name)
 }
 
 // ListInstanceManagersBySelector gets a list of InstanceManager by labels for
 // the given namespace. Returns an object contains all InstanceManager
-func (s *DataStore) ListInstanceManagersBySelector(node, instanceManagerImage string, managerType types.InstanceManagerType) (map[string]*longhorn.InstanceManager, error) {
+func (s *DataStore) ListInstanceManagersBySelector(node, instanceManagerImage string, managerType longhorn.InstanceManagerType) (map[string]*longhorn.InstanceManager, error) {
 	itemMap := map[string]*longhorn.InstanceManager{}
 
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
@@ -2418,7 +2412,7 @@ func (s *DataStore) ListInstanceManagersBySelector(node, instanceManagerImage st
 func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.InstanceManager, error) {
 	var (
 		name, nodeID string
-		imType       types.InstanceManagerType
+		imType       longhorn.InstanceManagerType
 	)
 
 	image, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
@@ -2431,12 +2425,12 @@ func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.Ins
 		engine := obj.(*longhorn.Engine)
 		name = engine.Name
 		nodeID = engine.Spec.NodeID
-		imType = types.InstanceManagerTypeEngine
+		imType = longhorn.InstanceManagerTypeEngine
 	case *longhorn.Replica:
 		replica := obj.(*longhorn.Replica)
 		name = replica.Name
 		nodeID = replica.Spec.NodeID
-		imType = types.InstanceManagerTypeReplica
+		imType = longhorn.InstanceManagerTypeReplica
 	default:
 		return nil, fmt.Errorf("unknown type for GetInstanceManagerByInstance, %+v", obj)
 	}
@@ -2458,7 +2452,7 @@ func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.Ins
 }
 
 // ListInstanceManagersByNode returns ListInstanceManagersBySelector
-func (s *DataStore) ListInstanceManagersByNode(node string, imType types.InstanceManagerType) (map[string]*longhorn.InstanceManager, error) {
+func (s *DataStore) ListInstanceManagersByNode(node string, imType longhorn.InstanceManagerType) (map[string]*longhorn.InstanceManager, error) {
 	return s.ListInstanceManagersBySelector(node, "", imType)
 }
 
@@ -3145,11 +3139,11 @@ func (s *DataStore) DeleteRecurringJob(name string) error {
 	)
 }
 
-func ValidateRecurringJob(job types.RecurringJobSpec) error {
+func ValidateRecurringJob(job longhorn.RecurringJobSpec) error {
 	if job.Cron == "" || job.Task == "" || job.Name == "" || job.Retain == 0 {
 		return fmt.Errorf("invalid job %+v", job)
 	}
-	if job.Task != types.RecurringJobTypeBackup && job.Task != types.RecurringJobTypeSnapshot {
+	if job.Task != longhorn.RecurringJobTypeBackup && job.Task != longhorn.RecurringJobTypeSnapshot {
 		return fmt.Errorf("recurring job type %v is not valid", job.Task)
 	}
 	if job.Concurrency == 0 {
@@ -3174,7 +3168,7 @@ func ValidateRecurringJob(job types.RecurringJobSpec) error {
 	return nil
 }
 
-func ValidateRecurringJobs(jobs []types.RecurringJobSpec) error {
+func ValidateRecurringJobs(jobs []longhorn.RecurringJobSpec) error {
 	if jobs == nil {
 		return nil
 	}
