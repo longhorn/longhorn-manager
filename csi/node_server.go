@@ -23,6 +23,7 @@ import (
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/csi/crypto"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	"github.com/longhorn/longhorn-manager/types"
 )
 
@@ -91,12 +92,12 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s invalid controller count %v", volumeID, len(volume.Controllers))
 	}
 
-	if volume.DisableFrontend || volume.Frontend != string(types.VolumeFrontendBlockDev) {
+	if volume.DisableFrontend || volume.Frontend != string(longhorn.VolumeFrontendBlockDev) {
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s invalid frontend type %v is disabled %v", volumeID, volume.Frontend, volume.DisableFrontend)
 	}
 
 	// Check volume attachment status
-	if volume.State != string(types.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
+	if volume.State != string(longhorn.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
 		logrus.Debugf("volume %v hasn't been attached yet, try unmounting potential mount point %v", volumeID, targetPath)
 		if err := unmount(targetPath, mounter); err != nil {
 			logrus.Debugf("failed to unmount error: %v", err)
@@ -313,12 +314,12 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s invalid controller count %v", volumeID, len(volume.Controllers))
 	}
 
-	if volume.DisableFrontend || volume.Frontend != string(types.VolumeFrontendBlockDev) {
+	if volume.DisableFrontend || volume.Frontend != string(longhorn.VolumeFrontendBlockDev) {
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s invalid frontend type %v is disabled %v", volumeID, volume.Frontend, volume.DisableFrontend)
 	}
 
 	// Check volume attachment status
-	if volume.State != string(types.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
+	if volume.State != string(longhorn.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
 		logrus.Debugf("volume %v hasn't been attached yet, try unmounting potential mount point %v", volumeID, targetPath)
 		if err := unmount(targetPath, mounter); err != nil {
 			logrus.Debugf("failed to unmount error: %v", err)
@@ -338,7 +339,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 
 	if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable {
-		if volume.AccessMode != string(types.AccessModeReadWriteMany) {
+		if volume.AccessMode != string(longhorn.AccessModeReadWriteMany) {
 			return nil, status.Errorf(codes.FailedPrecondition, "volume %s requires shared access but is not marked for shared use", volumeID)
 		}
 

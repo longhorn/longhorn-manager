@@ -210,7 +210,7 @@ func (ks *KubernetesSecretController) annotateAWSIAMRoleArn(awsIAMRoleArn string
 		return err
 	}
 
-	imPods, err := ks.ds.ListInstanceManagerPodsBy(ks.controllerID, "", types.InstanceManagerTypeReplica)
+	imPods, err := ks.ds.ListInstanceManagerPodsBy(ks.controllerID, "", longhorn.InstanceManagerTypeReplica)
 	if err != nil {
 		return err
 	}

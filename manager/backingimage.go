@@ -12,12 +12,19 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+)
+
+const (
+	DataSourceTypeExportFromVolumeParameterExportType      = "export-type"
+	DataSourceTypeExportFromVolumeParameterExportTypeRAW   = "raw"
+	DataSourceTypeExportFromVolumeParameterExportTypeQCOW2 = "qcow2"
 )
 
 func (m *VolumeManager) ListBackingImages() (map[string]*longhorn.BackingImage, error) {
@@ -82,14 +89,14 @@ func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, pa
 		parameters[k] = strings.TrimSpace(v)
 	}
 
-	switch types.BackingImageDataSourceType(sourceType) {
-	case types.BackingImageDataSourceTypeDownload:
-		if parameters[types.DataSourceTypeDownloadParameterURL] == "" {
+	switch longhorn.BackingImageDataSourceType(sourceType) {
+	case longhorn.BackingImageDataSourceTypeDownload:
+		if parameters[longhorn.DataSourceTypeDownloadParameterURL] == "" {
 			return nil, fmt.Errorf("invalid parameter %+v for source type %v", parameters, sourceType)
 		}
-	case types.BackingImageDataSourceTypeUpload:
-	case types.BackingImageDataSourceTypeExportFromVolume:
-		volumeName := parameters[types.DataSourceTypeExportFromVolumeParameterVolumeName]
+	case longhorn.BackingImageDataSourceTypeUpload:
+	case longhorn.BackingImageDataSourceTypeExportFromVolume:
+		volumeName := parameters[controller.DataSourceTypeExportFromVolumeParameterVolumeName]
 		if volumeName == "" {
 			return nil, fmt.Errorf("invalid parameter %+v for source type %v", parameters, sourceType)
 		}
@@ -97,7 +104,7 @@ func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, pa
 		if err != nil {
 			return nil, fmt.Errorf("failed to get volume %v before exporting backing image", volumeName)
 		}
-		if v.Status.Robustness == types.VolumeRobustnessFaulted {
+		if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 			return nil, fmt.Errorf("cannot export a backing image from faulted volume %v", volumeName)
 		}
 		eiName := types.GetEngineImageChecksumName(v.Status.CurrentImage)
@@ -109,12 +116,12 @@ func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, pa
 			return nil, fmt.Errorf("engine image %v CLI version %v doesn't support this feature, please upgrade engine for volume %v before exporting backing image from the volume", eiName, ei.Status.CLIAPIVersion, volumeName)
 		}
 		// By default the exported file type is raw.
-		if parameters[types.DataSourceTypeExportFromVolumeParameterExportType] == "" {
-			parameters[types.DataSourceTypeExportFromVolumeParameterExportType] = types.DataSourceTypeExportFromVolumeParameterExportTypeRAW
+		if parameters[DataSourceTypeExportFromVolumeParameterExportType] == "" {
+			parameters[DataSourceTypeExportFromVolumeParameterExportType] = DataSourceTypeExportFromVolumeParameterExportTypeRAW
 		}
-		if parameters[types.DataSourceTypeExportFromVolumeParameterExportType] != types.DataSourceTypeExportFromVolumeParameterExportTypeRAW &&
-			parameters[types.DataSourceTypeExportFromVolumeParameterExportType] != types.DataSourceTypeExportFromVolumeParameterExportTypeQCOW2 {
-			return nil, fmt.Errorf("unsupported export type %v", parameters[types.DataSourceTypeExportFromVolumeParameterExportType])
+		if parameters[DataSourceTypeExportFromVolumeParameterExportType] != DataSourceTypeExportFromVolumeParameterExportTypeRAW &&
+			parameters[DataSourceTypeExportFromVolumeParameterExportType] != DataSourceTypeExportFromVolumeParameterExportTypeQCOW2 {
+			return nil, fmt.Errorf("unsupported export type %v", parameters[DataSourceTypeExportFromVolumeParameterExportType])
 		}
 	default:
 		return nil, fmt.Errorf("unknown backing image source type %v", sourceType)
@@ -131,10 +138,10 @@ func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, pa
 			Name:   name,
 			Labels: types.GetBackingImageLabels(),
 		},
-		Spec: types.BackingImageSpec{
+		Spec: longhorn.BackingImageSpec{
 			Disks:            map[string]struct{}{},
 			Checksum:         checksum,
-			SourceType:       types.BackingImageDataSourceType(sourceType),
+			SourceType:       longhorn.BackingImageDataSourceType(sourceType),
 			SourceParameters: parameters,
 		},
 	}
@@ -223,16 +230,16 @@ func (m *VolumeManager) CleanUpBackingImageDiskFiles(name string, diskFileList [
 		// Consider non-existing files as pending backing image files.
 		fileStatus, exists := bi.Status.DiskFileStatusMap[diskUUID]
 		if !exists {
-			fileStatus = &types.BackingImageDiskFileStatus{}
+			fileStatus = &longhorn.BackingImageDiskFileStatus{}
 		}
 		switch fileStatus.State {
-		case types.BackingImageStateReadyForTransfer, types.BackingImageStateReady:
+		case longhorn.BackingImageStateReadyForTransfer, longhorn.BackingImageStateReady:
 			if _, exists := cleanupFileMap[diskUUID]; !exists {
 				readyActiveFileCount++
 			} else {
 				readyCleanupFileCount++
 			}
-		case types.BackingImageStateFailed:
+		case longhorn.BackingImageStateFailed:
 			if _, exists := cleanupFileMap[diskUUID]; !exists {
 				failedActiveFileCount++
 			} else {

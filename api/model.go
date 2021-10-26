@@ -22,42 +22,42 @@ import (
 type Volume struct {
 	client.Resource
 
-	Name                    string                 `json:"name"`
-	Size                    string                 `json:"size"`
-	Frontend                types.VolumeFrontend   `json:"frontend"`
-	DisableFrontend         bool                   `json:"disableFrontend"`
-	FromBackup              string                 `json:"fromBackup"`
-	DataSource              types.VolumeDataSource `json:"dataSource"`
-	DataLocality            types.DataLocality     `json:"dataLocality"`
-	StaleReplicaTimeout     int                    `json:"staleReplicaTimeout"`
-	State                   types.VolumeState      `json:"state"`
-	Robustness              types.VolumeRobustness `json:"robustness"`
-	EngineImage             string                 `json:"engineImage"`
-	CurrentImage            string                 `json:"currentImage"`
-	BackingImage            string                 `json:"backingImage"`
-	Created                 string                 `json:"created"`
-	LastBackup              string                 `json:"lastBackup"`
-	LastBackupAt            string                 `json:"lastBackupAt"`
-	LastAttachedBy          string                 `json:"lastAttachedBy"`
-	Standby                 bool                   `json:"standby"`
-	RestoreRequired         bool                   `json:"restoreRequired"`
-	RevisionCounterDisabled bool                   `json:"revisionCounterDisabled"`
+	Name                    string                    `json:"name"`
+	Size                    string                    `json:"size"`
+	Frontend                longhorn.VolumeFrontend   `json:"frontend"`
+	DisableFrontend         bool                      `json:"disableFrontend"`
+	FromBackup              string                    `json:"fromBackup"`
+	DataSource              longhorn.VolumeDataSource `json:"dataSource"`
+	DataLocality            longhorn.DataLocality     `json:"dataLocality"`
+	StaleReplicaTimeout     int                       `json:"staleReplicaTimeout"`
+	State                   longhorn.VolumeState      `json:"state"`
+	Robustness              longhorn.VolumeRobustness `json:"robustness"`
+	EngineImage             string                    `json:"engineImage"`
+	CurrentImage            string                    `json:"currentImage"`
+	BackingImage            string                    `json:"backingImage"`
+	Created                 string                    `json:"created"`
+	LastBackup              string                    `json:"lastBackup"`
+	LastBackupAt            string                    `json:"lastBackupAt"`
+	LastAttachedBy          string                    `json:"lastAttachedBy"`
+	Standby                 bool                      `json:"standby"`
+	RestoreRequired         bool                      `json:"restoreRequired"`
+	RevisionCounterDisabled bool                      `json:"revisionCounterDisabled"`
 
-	DiskSelector         []string                   `json:"diskSelector"`
-	NodeSelector         []string                   `json:"nodeSelector"`
-	RecurringJobSelector []types.VolumeRecurringJob `json:"recurringJobSelector"`
+	DiskSelector         []string                      `json:"diskSelector"`
+	NodeSelector         []string                      `json:"nodeSelector"`
+	RecurringJobSelector []longhorn.VolumeRecurringJob `json:"recurringJobSelector"`
 
-	NumberOfReplicas   int                      `json:"numberOfReplicas"`
-	ReplicaAutoBalance types.ReplicaAutoBalance `json:"replicaAutoBalance"`
+	NumberOfReplicas   int                         `json:"numberOfReplicas"`
+	ReplicaAutoBalance longhorn.ReplicaAutoBalance `json:"replicaAutoBalance"`
 
-	Conditions       map[string]types.Condition `json:"conditions"`
-	KubernetesStatus types.KubernetesStatus     `json:"kubernetesStatus"`
-	CloneStatus      types.VolumeCloneStatus    `json:"cloneStatus"`
-	Ready            bool                       `json:"ready"`
+	Conditions       map[string]longhorn.Condition `json:"conditions"`
+	KubernetesStatus longhorn.KubernetesStatus     `json:"kubernetesStatus"`
+	CloneStatus      longhorn.VolumeCloneStatus    `json:"cloneStatus"`
+	Ready            bool                          `json:"ready"`
 
-	AccessMode    types.AccessMode        `json:"accessMode"`
-	ShareEndpoint string                  `json:"shareEndpoint"`
-	ShareState    types.ShareManagerState `json:"shareState"`
+	AccessMode    longhorn.AccessMode        `json:"accessMode"`
+	ShareEndpoint string                     `json:"shareEndpoint"`
+	ShareState    longhorn.ShareManagerState `json:"shareState"`
 
 	Migratable bool `json:"migratable"`
 
@@ -73,7 +73,7 @@ type Volume struct {
 
 type Snapshot struct {
 	client.Resource
-	types.Snapshot
+	longhorn.Snapshot
 }
 
 type BackupTarget struct {
@@ -99,19 +99,19 @@ type BackupVolume struct {
 type Backup struct {
 	client.Resource
 
-	Name                   string            `json:"name"`
-	State                  types.BackupState `json:"state"`
-	URL                    string            `json:"url"`
-	SnapshotName           string            `json:"snapshotName"`
-	SnapshotCreated        string            `json:"snapshotCreated"`
-	Created                string            `json:"created"`
-	Size                   string            `json:"size"`
-	Labels                 map[string]string `json:"labels"`
-	Messages               map[string]string `json:"messages"`
-	VolumeName             string            `json:"volumeName"`
-	VolumeSize             string            `json:"volumeSize"`
-	VolumeCreated          string            `json:"volumeCreated"`
-	VolumeBackingImageName string            `json:"volumeBackingImageName"`
+	Name                   string               `json:"name"`
+	State                  longhorn.BackupState `json:"state"`
+	URL                    string               `json:"url"`
+	SnapshotName           string               `json:"snapshotName"`
+	SnapshotCreated        string               `json:"snapshotCreated"`
+	Created                string               `json:"created"`
+	Size                   string               `json:"size"`
+	Labels                 map[string]string    `json:"labels"`
+	Messages               map[string]string    `json:"messages"`
+	VolumeName             string               `json:"volumeName"`
+	VolumeSize             string               `json:"volumeSize"`
+	VolumeCreated          string               `json:"volumeCreated"`
+	VolumeBackingImageName string               `json:"volumeBackingImageName"`
 }
 
 type Setting struct {
@@ -159,7 +159,7 @@ type EngineImage struct {
 	Name    string `json:"name"`
 	Image   string `json:"image"`
 	Default bool   `json:"default"`
-	types.EngineImageStatus
+	longhorn.EngineImageStatus
 }
 
 type BackingImage struct {
@@ -170,9 +170,9 @@ type BackingImage struct {
 	Parameters       map[string]string `json:"parameters"`
 	ExpectedChecksum string            `json:"expectedChecksum"`
 
-	DiskFileStatusMap map[string]types.BackingImageDiskFileStatus `json:"diskFileStatusMap"`
-	Size              int64                                       `json:"size"`
-	CurrentChecksum   string                                      `json:"currentChecksum"`
+	DiskFileStatusMap map[string]longhorn.BackingImageDiskFileStatus `json:"diskFileStatusMap"`
+	Size              int64                                          `json:"size"`
+	CurrentChecksum   string                                         `json:"currentChecksum"`
 
 	DeletionTimestamp string `json:"deletionTimestamp"`
 }
@@ -251,26 +251,26 @@ type ExpandInput struct {
 
 type Node struct {
 	client.Resource
-	Name                     string                     `json:"name"`
-	Address                  string                     `json:"address"`
-	AllowScheduling          bool                       `json:"allowScheduling"`
-	EvictionRequested        bool                       `json:"evictionRequested"`
-	Disks                    map[string]DiskInfo        `json:"disks"`
-	Conditions               map[string]types.Condition `json:"conditions"`
-	Tags                     []string                   `json:"tags"`
-	Region                   string                     `json:"region"`
-	Zone                     string                     `json:"zone"`
-	EngineManagerCPURequest  int                        `json:"engineManagerCPURequest"`
-	ReplicaManagerCPURequest int                        `json:"replicaManagerCPURequest"`
+	Name                     string                        `json:"name"`
+	Address                  string                        `json:"address"`
+	AllowScheduling          bool                          `json:"allowScheduling"`
+	EvictionRequested        bool                          `json:"evictionRequested"`
+	Disks                    map[string]DiskInfo           `json:"disks"`
+	Conditions               map[string]longhorn.Condition `json:"conditions"`
+	Tags                     []string                      `json:"tags"`
+	Region                   string                        `json:"region"`
+	Zone                     string                        `json:"zone"`
+	EngineManagerCPURequest  int                           `json:"engineManagerCPURequest"`
+	ReplicaManagerCPURequest int                           `json:"replicaManagerCPURequest"`
 }
 
 type DiskInfo struct {
-	types.DiskSpec
-	types.DiskStatus
+	longhorn.DiskSpec
+	longhorn.DiskStatus
 }
 
 type DiskUpdateInput struct {
-	Disks map[string]types.DiskSpec `json:"disks"`
+	Disks map[string]longhorn.DiskSpec `json:"disks"`
 }
 
 type Event struct {
@@ -343,26 +343,26 @@ type RebuildStatus struct {
 
 type InstanceManager struct {
 	client.Resource
-	CurrentState types.InstanceManagerState       `json:"currentState"`
-	Image        string                           `json:"image"`
-	Name         string                           `json:"name"`
-	NodeID       string                           `json:"nodeID"`
-	ManagerType  string                           `json:"managerType"`
-	Instances    map[string]types.InstanceProcess `json:"instances"`
+	CurrentState longhorn.InstanceManagerState       `json:"currentState"`
+	Image        string                              `json:"image"`
+	Name         string                              `json:"name"`
+	NodeID       string                              `json:"nodeID"`
+	ManagerType  string                              `json:"managerType"`
+	Instances    map[string]longhorn.InstanceProcess `json:"instances"`
 }
 
 type RecurringJob struct {
 	client.Resource
-	types.RecurringJobSpec
+	longhorn.RecurringJobSpec
 }
 
 type VolumeRecurringJob struct {
 	client.Resource
-	types.VolumeRecurringJob
+	longhorn.VolumeRecurringJob
 }
 
 type VolumeRecurringJobInput struct {
-	types.VolumeRecurringJob
+	longhorn.VolumeRecurringJob
 }
 
 type BackupListOutput struct {
@@ -398,13 +398,13 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("engineUpgradeInput", EngineUpgradeInput{})
 	schemas.AddType("replica", Replica{})
 	schemas.AddType("controller", Controller{})
-	schemas.AddType("diskUpdate", types.DiskSpec{})
+	schemas.AddType("diskUpdate", longhorn.DiskSpec{})
 	schemas.AddType("UpdateReplicaCountInput", UpdateReplicaCountInput{})
 	schemas.AddType("UpdateReplicaAutoBalanceInput", UpdateReplicaAutoBalanceInput{})
 	schemas.AddType("UpdateDataLocalityInput", UpdateDataLocalityInput{})
 	schemas.AddType("UpdateAccessModeInput", UpdateAccessModeInput{})
-	schemas.AddType("workloadStatus", types.WorkloadStatus{})
-	schemas.AddType("cloneStatus", types.VolumeCloneStatus{})
+	schemas.AddType("workloadStatus", longhorn.WorkloadStatus{})
+	schemas.AddType("cloneStatus", longhorn.VolumeCloneStatus{})
 
 	schemas.AddType("volumeRecurringJob", VolumeRecurringJob{})
 	schemas.AddType("volumeRecurringJobInput", VolumeRecurringJobInput{})
@@ -414,9 +414,9 @@ func NewSchema() *client.Schemas {
 
 	schemas.AddType("settingDefinition", types.SettingDefinition{})
 	// to avoid duplicate name with built-in type condition
-	schemas.AddType("volumeCondition", types.Condition{})
-	schemas.AddType("nodeCondition", types.Condition{})
-	schemas.AddType("diskCondition", types.Condition{})
+	schemas.AddType("volumeCondition", longhorn.Condition{})
+	schemas.AddType("nodeCondition", longhorn.Condition{})
+	schemas.AddType("diskCondition", longhorn.Condition{})
 
 	schemas.AddType("event", Event{})
 	schemas.AddType("supportBundle", SupportBundle{})
@@ -425,9 +425,9 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("tag", Tag{})
 
 	schemas.AddType("instanceManager", InstanceManager{})
-	schemas.AddType("instanceProcess", types.InstanceProcess{})
+	schemas.AddType("instanceProcess", longhorn.InstanceProcess{})
 
-	schemas.AddType("backingImageDiskFileStatus", types.BackingImageDiskFileStatus{})
+	schemas.AddType("backingImageDiskFileStatus", longhorn.BackingImageDiskFileStatus{})
 	schemas.AddType("backingImageCleanupInput", BackingImageCleanupInput{})
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
@@ -440,7 +440,7 @@ func NewSchema() *client.Schemas {
 	nodeSchema(schemas.AddType("node", Node{}))
 	diskSchema(schemas.AddType("diskUpdateInput", DiskUpdateInput{}))
 	diskInfoSchema(schemas.AddType("diskInfo", DiskInfo{}))
-	kubernetesStatusSchema(schemas.AddType("kubernetesStatus", types.KubernetesStatus{}))
+	kubernetesStatusSchema(schemas.AddType("kubernetesStatus", longhorn.KubernetesStatus{}))
 	backupListOutputSchema(schemas.AddType("backupListOutput", BackupListOutput{}))
 	snapshotListOutputSchema(schemas.AddType("snapshotListOutput", SnapshotListOutput{}))
 
@@ -781,12 +781,12 @@ func volumeSchema(volume *client.Schema) {
 
 	volumeDataLocality := volume.ResourceFields["dataLocality"]
 	volumeDataLocality.Create = true
-	volumeDataLocality.Default = types.DataLocalityDisabled
+	volumeDataLocality.Default = longhorn.DataLocalityDisabled
 	volume.ResourceFields["dataLocality"] = volumeDataLocality
 
 	volumeAccessMode := volume.ResourceFields["accessMode"]
 	volumeAccessMode.Create = true
-	volumeAccessMode.Default = types.AccessModeReadWriteOnce
+	volumeAccessMode.Default = longhorn.AccessModeReadWriteOnce
 	volume.ResourceFields["accessMode"] = volumeAccessMode
 
 	volumeStaleReplicaTimeout := volume.ResourceFields["staleReplicaTimeout"]
@@ -923,7 +923,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		controllers = append(controllers, Controller{
 			Instance: Instance{
 				Name:                e.Name,
-				Running:             e.Status.CurrentState == types.InstanceStateRunning,
+				Running:             e.Status.CurrentState == longhorn.InstanceStateRunning,
 				NodeID:              e.Spec.NodeID,
 				Address:             e.Status.IP,
 				EngineImage:         e.Spec.EngineImage,
@@ -1015,7 +1015,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		replicas = append(replicas, Replica{
 			Instance: Instance{
 				Name:                r.Name,
-				Running:             r.Status.CurrentState == types.InstanceStateRunning,
+				Running:             r.Status.CurrentState == longhorn.InstanceStateRunning,
 				Address:             r.Status.IP,
 				NodeID:              r.Spec.NodeID,
 				EngineImage:         r.Spec.EngineImage,
@@ -1039,12 +1039,12 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	//   4. It's restore pending.
 	//   5. It's failed to clone
 	ready := true
-	scheduledCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled)
-	if (v.Spec.NodeID == "" && v.Status.State != types.VolumeStateDetached) ||
-		(v.Status.State == types.VolumeStateDetached && scheduledCondition.Status != types.ConditionStatusTrue) ||
-		v.Status.Robustness == types.VolumeRobustnessFaulted ||
+	scheduledCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled)
+	if (v.Spec.NodeID == "" && v.Status.State != longhorn.VolumeStateDetached) ||
+		(v.Status.State == longhorn.VolumeStateDetached && scheduledCondition.Status != longhorn.ConditionStatusTrue) ||
+		v.Status.Robustness == longhorn.VolumeRobustnessFaulted ||
 		v.Status.RestoreRequired ||
-		v.Status.CloneStatus.State == types.VolumeCloneStateFailed {
+		v.Status.CloneStatus.State == longhorn.VolumeCloneStateFailed {
 		ready = false
 	}
 
@@ -1109,11 +1109,11 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		"detach": {},
 	}
 
-	if v.Status.Robustness == types.VolumeRobustnessFaulted {
+	if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 		actions["salvage"] = struct{}{}
 	} else {
 		switch v.Status.State {
-		case types.VolumeStateDetached:
+		case longhorn.VolumeStateDetached:
 			actions["activate"] = struct{}{}
 			actions["expand"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
@@ -1127,12 +1127,12 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["recurringJobAdd"] = struct{}{}
 			actions["recurringJobDelete"] = struct{}{}
 			actions["recurringJobList"] = struct{}{}
-		case types.VolumeStateAttaching:
+		case longhorn.VolumeStateAttaching:
 			actions["cancelExpansion"] = struct{}{}
 			actions["recurringJobAdd"] = struct{}{}
 			actions["recurringJobDelete"] = struct{}{}
 			actions["recurringJobList"] = struct{}{}
-		case types.VolumeStateAttached:
+		case longhorn.VolumeStateAttached:
 			actions["activate"] = struct{}{}
 			actions["snapshotPurge"] = struct{}{}
 			actions["snapshotCreate"] = struct{}{}
@@ -1162,7 +1162,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	return r
 }
 
-func toSnapshotResource(s *types.Snapshot) *Snapshot {
+func toSnapshotResource(s *longhorn.Snapshot) *Snapshot {
 	if s == nil {
 		logrus.Warn("weird: nil snapshot")
 		return nil
@@ -1176,7 +1176,7 @@ func toSnapshotResource(s *types.Snapshot) *Snapshot {
 	}
 }
 
-func toSnapshotCollection(ss map[string]*types.Snapshot) *client.GenericCollection {
+func toSnapshotCollection(ss map[string]*longhorn.Snapshot) *client.GenericCollection {
 	data := []interface{}{}
 	for _, v := range ss {
 		data = append(data, toSnapshotResource(v))
@@ -1184,7 +1184,7 @@ func toSnapshotCollection(ss map[string]*types.Snapshot) *client.GenericCollecti
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshot"}}
 }
 
-func toVolumeRecurringJobResource(obj *types.VolumeRecurringJob) *VolumeRecurringJob {
+func toVolumeRecurringJobResource(obj *longhorn.VolumeRecurringJob) *VolumeRecurringJob {
 	if obj == nil {
 		logrus.Warn("weird: nil volumeRecurringJob")
 		return nil
@@ -1198,7 +1198,7 @@ func toVolumeRecurringJobResource(obj *types.VolumeRecurringJob) *VolumeRecurrin
 	}
 }
 
-func toVolumeRecurringJobCollection(recurringJobs map[string]*types.VolumeRecurringJob) *client.GenericCollection {
+func toVolumeRecurringJobCollection(recurringJobs map[string]*longhorn.VolumeRecurringJob) *client.GenericCollection {
 	data := []interface{}{}
 	for _, recurringJob := range recurringJobs {
 		data = append(data, toVolumeRecurringJobResource(recurringJob))
@@ -1222,7 +1222,7 @@ func toBackupTargetResource(bt *longhorn.BackupTarget) *BackupTarget {
 			CredentialSecret: bt.Spec.CredentialSecret,
 			PollInterval:     bt.Spec.PollInterval.Duration.String(),
 			Available:        bt.Status.Available,
-			Message:          bt.Status.Conditions[types.BackupTargetConditionTypeUnavailable].Message,
+			Message:          bt.Status.Conditions[longhorn.BackupTargetConditionTypeUnavailable].Message,
 		},
 	}
 	return res
@@ -1347,7 +1347,7 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 	if bi.DeletionTimestamp != nil {
 		deletionTimestamp = bi.DeletionTimestamp.String()
 	}
-	diskFileStatusMap := make(map[string]types.BackingImageDiskFileStatus)
+	diskFileStatusMap := make(map[string]longhorn.BackingImageDiskFileStatus)
 	if bi.Status.DiskFileStatusMap != nil {
 		for diskUUID, diskStatus := range bi.Status.DiskFileStatusMap {
 			diskFileStatusMap[diskUUID] = *diskStatus
@@ -1356,7 +1356,7 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 	if bi.Spec.Disks != nil {
 		for diskUUID := range bi.Spec.Disks {
 			if _, exists := bi.Status.DiskFileStatusMap[diskUUID]; !exists {
-				diskFileStatusMap[diskUUID] = types.BackingImageDiskFileStatus{
+				diskFileStatusMap[diskUUID] = longhorn.BackingImageDiskFileStatus{
 					Message: "File processing is not started",
 				}
 			}
@@ -1544,7 +1544,7 @@ func toRecurringJobResource(recurringJob *longhorn.RecurringJob, apiContext *api
 			Id:   recurringJob.Name,
 			Type: "recurringJob",
 		},
-		RecurringJobSpec: types.RecurringJobSpec{
+		RecurringJobSpec: longhorn.RecurringJobSpec{
 			Name:        recurringJob.Name,
 			Groups:      recurringJob.Spec.Groups,
 			Task:        recurringJob.Spec.Task,

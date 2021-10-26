@@ -6,8 +6,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/types"
-
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
@@ -105,17 +103,17 @@ func (vc *VolumeCollector) Collect(ch chan<- prometheus.Metric) {
 func getVolumeStateValue(v *longhorn.Volume) int {
 	stateValue := 0
 	switch v.Status.State {
-	case types.VolumeStateCreating:
+	case longhorn.VolumeStateCreating:
 		stateValue = 1
-	case types.VolumeStateAttached:
+	case longhorn.VolumeStateAttached:
 		stateValue = 2
-	case types.VolumeStateDetached:
+	case longhorn.VolumeStateDetached:
 		stateValue = 3
-	case types.VolumeStateAttaching:
+	case longhorn.VolumeStateAttaching:
 		stateValue = 4
-	case types.VolumeStateDetaching:
+	case longhorn.VolumeStateDetaching:
 		stateValue = 5
-	case types.VolumeStateDeleting:
+	case longhorn.VolumeStateDeleting:
 		stateValue = 6
 	}
 	return stateValue
@@ -124,13 +122,13 @@ func getVolumeStateValue(v *longhorn.Volume) int {
 func getVolumeRobustnessValue(v *longhorn.Volume) int {
 	robustnessValue := 0
 	switch v.Status.Robustness {
-	case types.VolumeRobustnessUnknown:
+	case longhorn.VolumeRobustnessUnknown:
 		robustnessValue = 0
-	case types.VolumeRobustnessHealthy:
+	case longhorn.VolumeRobustnessHealthy:
 		robustnessValue = 1
-	case types.VolumeRobustnessDegraded:
+	case longhorn.VolumeRobustnessDegraded:
 		robustnessValue = 2
-	case types.VolumeRobustnessFaulted:
+	case longhorn.VolumeRobustnessFaulted:
 		robustnessValue = 3
 	}
 	return robustnessValue

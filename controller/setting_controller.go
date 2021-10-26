@@ -303,7 +303,7 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: types.DefaultBackupTargetName,
 			},
-			Spec: types.BackupTargetSpec{
+			Spec: longhorn.BackupTargetSpec{
 				BackupTargetURL:  targetSetting.Value,
 				CredentialSecret: secretSetting.Value,
 				PollInterval:     metav1.Duration{Duration: pollInterval},
@@ -862,7 +862,7 @@ func (sc *SettingController) updateInstanceManagerCPURequest() error {
 		if err != nil {
 			return err
 		}
-		if types.GetCondition(lhNode.Status.Conditions, types.NodeConditionTypeReady).Status != types.ConditionStatusTrue {
+		if types.GetCondition(lhNode.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
 			continue
 		}
 

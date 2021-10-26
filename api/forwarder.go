@@ -12,6 +12,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 
 	"github.com/longhorn/longhorn-manager/engineapi"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
 )
@@ -178,7 +179,7 @@ func UploadServerAddressFromBackingImage(m *manager.VolumeManager) func(req *htt
 		if err != nil {
 			return "", errors.Wrapf(err, "error getting backing image %s", name)
 		}
-		if bids.Status.CurrentState != types.BackingImageStateStarting {
+		if bids.Status.CurrentState != longhorn.BackingImageStateStarting {
 			return "", fmt.Errorf("upload server for backing image %s has not been initiated", name)
 		}
 		return fmt.Sprintf("%s:%d", pod.Status.PodIP, engineapi.BackingImageDataSourceDefaultPort), nil

@@ -206,7 +206,7 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 
 	// existing volume may be used/reused by pv
 	if volume.Status.KubernetesStatus.PVName != name {
-		volume.Status.KubernetesStatus = types.KubernetesStatus{}
+		volume.Status.KubernetesStatus = longhorn.KubernetesStatus{}
 		kc.eventRecorder.Eventf(volume, v1.EventTypeNormal, EventReasonStart, "Persistent Volume %v started to use/reuse Longhorn volume %v", volume.Name, name)
 	}
 	ks := &volume.Status.KubernetesStatus
@@ -330,7 +330,7 @@ func (kc *KubernetesPVController) enqueueVolumeChange(obj interface{}) {
 		}
 	}
 
-	if volume.Status.State != types.VolumeStateDetached {
+	if volume.Status.State != longhorn.VolumeStateDetached {
 		return
 	}
 	ks := volume.Status.KubernetesStatus
@@ -416,7 +416,7 @@ func filterPods(pods []*v1.Pod, predicate func(pod *v1.Pod) bool) (filtered []*v
 }
 
 // getAssociatedPods returns all pods using this pvc in sorted order based on pod name
-func (kc *KubernetesPVController) getAssociatedPods(ks *types.KubernetesStatus) ([]*v1.Pod, error) {
+func (kc *KubernetesPVController) getAssociatedPods(ks *longhorn.KubernetesStatus) ([]*v1.Pod, error) {
 	if ks.PVStatus != string(v1.VolumeBound) {
 		return nil, nil
 	}
@@ -442,7 +442,7 @@ func (kc *KubernetesPVController) getAssociatedPods(ks *types.KubernetesStatus) 
 	return pods, nil
 }
 
-func (kc *KubernetesPVController) setWorkloads(ks *types.KubernetesStatus, pods []*v1.Pod) {
+func (kc *KubernetesPVController) setWorkloads(ks *longhorn.KubernetesStatus, pods []*v1.Pod) {
 	if len(pods) == 0 {
 		if len(ks.WorkloadsStatus) == 0 || ks.LastPodRefAt != "" {
 			return
@@ -451,10 +451,10 @@ func (kc *KubernetesPVController) setWorkloads(ks *types.KubernetesStatus, pods 
 		return
 	}
 
-	ks.WorkloadsStatus = []types.WorkloadStatus{}
+	ks.WorkloadsStatus = []longhorn.WorkloadStatus{}
 	ks.LastPodRefAt = ""
 	for _, p := range pods {
-		ws := types.WorkloadStatus{
+		ws := longhorn.WorkloadStatus{
 			PodName:   p.Name,
 			PodStatus: string(p.Status.Phase),
 		}

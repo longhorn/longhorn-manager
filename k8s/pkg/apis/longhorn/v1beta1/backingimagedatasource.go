@@ -3,16 +3,7 @@ package v1beta1
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 const (
-	DataSourceTypeDownloadParameterURL                = "url"
-	DataSourceTypeExportFromVolumeParameterVolumeName = "volume-name"
-	DataSourceTypeExportFromVolumeParameterExportType = "export-type"
-
-	DataSourceTypeExportFromVolumeParameterVolumeSize    = "volume-size"
-	DataSourceTypeExportFromVolumeParameterSnapshotName  = "snapshot-name"
-	DataSourceTypeExportFromVolumeParameterSenderAddress = "sender-address"
-
-	DataSourceTypeExportFromVolumeParameterExportTypeRAW   = "raw"
-	DataSourceTypeExportFromVolumeParameterExportTypeQCOW2 = "qcow2"
+	DataSourceTypeDownloadParameterURL = "url"
 )
 
 type BackingImageDataSourceType string

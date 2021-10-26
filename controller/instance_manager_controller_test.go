@@ -32,11 +32,11 @@ type InstanceManagerTestCase struct {
 
 	currentPodStatus *v1.PodStatus
 	currentOwnerID   string
-	currentState     types.InstanceManagerState
+	currentState     longhorn.InstanceManagerState
 
 	expectedPodCount int
-	expectedStatus   types.InstanceManagerStatus
-	expectedType     types.InstanceManagerType
+	expectedStatus   longhorn.InstanceManagerStatus
+	expectedType     longhorn.InstanceManagerType
 }
 
 func newTolerationSetting() *longhorn.Setting {
@@ -44,9 +44,7 @@ func newTolerationSetting() *longhorn.Setting {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: string(types.SettingNameTaintToleration),
 		},
-		Setting: types.Setting{
-			Value: "",
-		},
+		Value: "",
 	}
 }
 
@@ -81,101 +79,101 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager change ownership": {
 			TestNode1, false, TestNode1,
 			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
-			TestNode2, types.InstanceManagerStateUnknown, 1,
-			types.InstanceManagerStatus{
+			TestNode2, longhorn.InstanceManagerStateUnknown, 1,
+			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
-				CurrentState:  types.InstanceManagerStateRunning,
+				CurrentState:  longhorn.InstanceManagerStateRunning,
 				IP:            TestIP1,
 				APIMinVersion: 1,
 				APIVersion:    1,
 			},
-			types.InstanceManagerTypeEngine,
+			longhorn.InstanceManagerTypeEngine,
 		},
 		"instance manager error then restart immediately": {
 			TestNode1, false, TestNode1,
 			&v1.PodStatus{PodIP: "", Phase: v1.PodFailed},
-			TestNode1, types.InstanceManagerStateRunning, 1,
-			types.InstanceManagerStatus{
+			TestNode1, longhorn.InstanceManagerStateRunning, 1,
+			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
-				CurrentState:  types.InstanceManagerStateStarting,
+				CurrentState:  longhorn.InstanceManagerStateStarting,
 				APIMinVersion: 0,
 				APIVersion:    0,
 			},
-			types.InstanceManagerTypeEngine,
+			longhorn.InstanceManagerTypeEngine,
 		},
 		"instance manager node down": {
 			TestNode2, true, TestNode1,
 			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
-			TestNode1, types.InstanceManagerStateRunning, 0,
-			types.InstanceManagerStatus{
+			TestNode1, longhorn.InstanceManagerStateRunning, 0,
+			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode2,
-				CurrentState:  types.InstanceManagerStateUnknown,
+				CurrentState:  longhorn.InstanceManagerStateUnknown,
 				APIMinVersion: 0,
 				APIVersion:    0,
 			},
-			types.InstanceManagerTypeEngine,
+			longhorn.InstanceManagerTypeEngine,
 		},
 		"instance manager restarting after error": {
 			TestNode1, false, TestNode1,
 			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
-			TestNode1, types.InstanceManagerStateError, 1,
-			types.InstanceManagerStatus{
+			TestNode1, longhorn.InstanceManagerStateError, 1,
+			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
-				CurrentState:  types.InstanceManagerStateStarting,
+				CurrentState:  longhorn.InstanceManagerStateStarting,
 				APIMinVersion: 0,
 				APIVersion:    0,
 			},
-			types.InstanceManagerTypeEngine,
+			longhorn.InstanceManagerTypeEngine,
 		},
 		"instance manager running": {
 			TestNode1, false, TestNode1,
 			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
-			TestNode1, types.InstanceManagerStateStarting, 1,
-			types.InstanceManagerStatus{
+			TestNode1, longhorn.InstanceManagerStateStarting, 1,
+			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
-				CurrentState:  types.InstanceManagerStateRunning,
+				CurrentState:  longhorn.InstanceManagerStateRunning,
 				IP:            TestIP1,
 				APIMinVersion: 1,
 				APIVersion:    1,
 			},
-			types.InstanceManagerTypeEngine,
+			longhorn.InstanceManagerTypeEngine,
 		},
 		"instance manager starting engine": {
 			TestNode1, false, TestNode1,
 			nil,
-			TestNode1, types.InstanceManagerStateStopped, 1,
-			types.InstanceManagerStatus{
+			TestNode1, longhorn.InstanceManagerStateStopped, 1,
+			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
-				CurrentState:  types.InstanceManagerStateStarting,
+				CurrentState:  longhorn.InstanceManagerStateStarting,
 				APIMinVersion: 0,
 				APIVersion:    0,
 			},
-			types.InstanceManagerTypeEngine,
+			longhorn.InstanceManagerTypeEngine,
 		},
 		"instance manager starting replica": {
 			TestNode1, false, TestNode1,
 			nil,
-			TestNode1, types.InstanceManagerStateStopped, 1,
-			types.InstanceManagerStatus{
+			TestNode1, longhorn.InstanceManagerStateStopped, 1,
+			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
-				CurrentState:  types.InstanceManagerStateStarting,
+				CurrentState:  longhorn.InstanceManagerStateStarting,
 				APIMinVersion: 0,
 				APIVersion:    0,
 			},
-			types.InstanceManagerTypeReplica,
+			longhorn.InstanceManagerTypeReplica,
 		},
 		"instance manager sync IP": {
 			TestNode1, false, TestNode1,
 			&v1.PodStatus{PodIP: TestIP2, Phase: v1.PodRunning},
-			TestNode1, types.InstanceManagerStateRunning, 1,
-			types.InstanceManagerStatus{
+			TestNode1, longhorn.InstanceManagerStateRunning, 1,
+			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
-				CurrentState:  types.InstanceManagerStateRunning,
+				CurrentState:  longhorn.InstanceManagerStateRunning,
 				IP:            TestIP2,
 				APIMinVersion: 1,
 				APIVersion:    1,
 			},
-			types.InstanceManagerTypeReplica,
+			longhorn.InstanceManagerTypeReplica,
 		},
 	}
 
@@ -216,7 +214,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode1, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 
-			lhNode1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
+			lhNode1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
 			err = lhNodeIndexer.Add(lhNode1)
 			c.Assert(err, IsNil)
 			_, err = lhClient.LonghornV1beta1().Nodes(lhNode1.Namespace).Create(context.TODO(), lhNode1, metav1.CreateOptions{})
@@ -228,14 +226,14 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		c.Assert(err, IsNil)
 		_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode2, metav1.CreateOptions{})
 
-		lhNode2 := newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
+		lhNode2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, "")
 		err = lhNodeIndexer.Add(lhNode2)
 		c.Assert(err, IsNil)
 		_, err = lhClient.LonghornV1beta1().Nodes(lhNode2.Namespace).Create(context.TODO(), lhNode2, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
 		currentIP := ""
-		if tc.currentState == types.InstanceManagerStateRunning || tc.currentState == types.InstanceManagerStateStarting {
+		if tc.currentState == longhorn.InstanceManagerStateRunning || tc.currentState == longhorn.InstanceManagerStateStarting {
 			currentIP = TestIP1
 		}
 		im := newInstanceManager(TestInstanceManagerName1, tc.expectedType, tc.currentState, tc.currentOwnerID, tc.nodeID, currentIP, nil, false)
@@ -263,9 +261,9 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			pod, err := kubeClient.CoreV1().Pods(im.Namespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			switch im.Spec.Type {
-			case types.InstanceManagerTypeEngine:
+			case longhorn.InstanceManagerTypeEngine:
 				c.Assert(pod.Spec.Containers[0].Name, Equals, "engine-manager")
-			case types.InstanceManagerTypeReplica:
+			case longhorn.InstanceManagerTypeReplica:
 				c.Assert(pod.Spec.Containers[0].Name, Equals, "replica-manager")
 			}
 		}

@@ -64,7 +64,7 @@ func (m *VolumeManager) CreateEngineImage(image string) (*longhorn.EngineImage, 
 			Name:   name,
 			Labels: types.GetEngineImageLabels(name),
 		},
-		Spec: types.EngineImageSpec{
+		Spec: longhorn.EngineImageSpec{
 			Image: image,
 		},
 	}

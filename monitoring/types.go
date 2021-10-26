@@ -4,7 +4,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
@@ -32,8 +31,8 @@ type metricInfo struct {
 }
 
 type diskInfo struct {
-	types.DiskSpec
-	types.DiskStatus
+	longhorn.DiskSpec
+	longhorn.DiskStatus
 }
 
 func getDiskListFromNode(node *longhorn.Node) map[string]diskInfo {

@@ -281,7 +281,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	for _, b := range clusterBackups {
 		// Skip the Backup CR which is created from the local cluster and
 		// the snapshot backup hasn't be completed or pulled from the remote backup target yet
-		if b.Spec.SnapshotName != "" && b.Status.State != types.BackupStateCompleted {
+		if b.Spec.SnapshotName != "" && b.Status.State != longhorn.BackupStateCompleted {
 			continue
 		}
 		clustersSet.Insert(b.Name)
@@ -331,7 +331,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	// If there is no backup CR creation/deletion and the backup volume config metadata not changed
 	// skip read the backup volume config
 	if len(backupsToPull) == 0 && len(backupsToDelete) == 0 &&
-		backupVolume.Status.LastModificationTime.Equal(configMetadata.ModificationTime) {
+		backupVolume.Status.LastModificationTime.Time.Equal(configMetadata.ModificationTime) {
 		backupVolume.Status.LastSyncedAt = syncTime
 		return nil
 	}
@@ -358,7 +358,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	}
 
 	// Update BackupVolume CR status
-	backupVolume.Status.LastModificationTime = configMetadata.ModificationTime
+	backupVolume.Status.LastModificationTime = metav1.Time{Time: configMetadata.ModificationTime}
 	backupVolume.Status.Size = backupVolumeInfo.Size
 	backupVolume.Status.Labels = backupVolumeInfo.Labels
 	backupVolume.Status.CreatedAt = backupVolumeInfo.Created
