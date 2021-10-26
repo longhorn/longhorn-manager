@@ -110,13 +110,7 @@ const (
 	KubernetesMinVersion = "v1.18.0"
 )
 
-type ReplicaMode string
-
 const (
-	ReplicaModeRW  = ReplicaMode("RW")
-	ReplicaModeWO  = ReplicaMode("WO")
-	ReplicaModeERR = ReplicaMode("ERR")
-
 	EnvNodeName       = "NODE_NAME"
 	EnvPodNamespace   = "POD_NAMESPACE"
 	EnvPodIP          = "POD_IP"
