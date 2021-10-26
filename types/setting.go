@@ -21,10 +21,6 @@ const (
 	EnvDefaultSettingPath = "DEFAULT_SETTING_PATH"
 )
 
-type Setting struct {
-	Value string `json:"value"`
-}
-
 type SettingType string
 
 const (

@@ -2,8 +2,6 @@ package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/longhorn/longhorn-manager/types"
 )
 
 // +genclient
@@ -12,8 +10,8 @@ import (
 type Volume struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.VolumeSpec   `json:"spec"`
-	Status            types.VolumeStatus `json:"status"`
+	Spec              VolumeSpec   `json:"spec"`
+	Status            VolumeStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -30,8 +28,8 @@ type VolumeList struct {
 type Engine struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.EngineSpec   `json:"spec"`
-	Status            types.EngineStatus `json:"status"`
+	Spec              EngineSpec   `json:"spec"`
+	Status            EngineStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -48,8 +46,8 @@ type EngineList struct {
 type Replica struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.ReplicaSpec   `json:"spec"`
-	Status            types.ReplicaStatus `json:"status"`
+	Spec              ReplicaSpec   `json:"spec"`
+	Status            ReplicaStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -66,7 +64,7 @@ type ReplicaList struct {
 type Setting struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	types.Setting
+	Value             string `json:"value"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -83,8 +81,8 @@ type SettingList struct {
 type EngineImage struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.EngineImageSpec   `json:"spec"`
-	Status            types.EngineImageStatus `json:"status"`
+	Spec              EngineImageSpec   `json:"spec"`
+	Status            EngineImageStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -101,8 +99,8 @@ type EngineImageList struct {
 type Node struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.NodeSpec   `json:"spec"`
-	Status            types.NodeStatus `json:"status"`
+	Spec              NodeSpec   `json:"spec"`
+	Status            NodeStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -119,8 +117,8 @@ type NodeList struct {
 type InstanceManager struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.InstanceManagerSpec   `json:"spec"`
-	Status            types.InstanceManagerStatus `json:"status"`
+	Spec              InstanceManagerSpec   `json:"spec"`
+	Status            InstanceManagerStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -137,8 +135,8 @@ type InstanceManagerList struct {
 type ShareManager struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.ShareManagerSpec   `json:"spec"`
-	Status            types.ShareManagerStatus `json:"status"`
+	Spec              ShareManagerSpec   `json:"spec"`
+	Status            ShareManagerStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -155,8 +153,8 @@ type ShareManagerList struct {
 type BackingImage struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.BackingImageSpec   `json:"spec"`
-	Status            types.BackingImageStatus `json:"status"`
+	Spec              BackingImageSpec   `json:"spec"`
+	Status            BackingImageStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -173,8 +171,8 @@ type BackingImageList struct {
 type BackingImageManager struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.BackingImageManagerSpec   `json:"spec"`
-	Status            types.BackingImageManagerStatus `json:"status"`
+	Spec              BackingImageManagerSpec   `json:"spec"`
+	Status            BackingImageManagerStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -191,8 +189,8 @@ type BackingImageManagerList struct {
 type BackingImageDataSource struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.BackingImageDataSourceSpec   `json:"spec"`
-	Status            types.BackingImageDataSourceStatus `json:"status"`
+	Spec              BackingImageDataSourceSpec   `json:"spec"`
+	Status            BackingImageDataSourceStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -209,8 +207,8 @@ type BackingImageDataSourceList struct {
 type BackupTarget struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.BackupTargetSpec   `json:"spec"`
-	Status            types.BackupTargetStatus `json:"status"`
+	Spec              BackupTargetSpec   `json:"spec"`
+	Status            BackupTargetStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -227,8 +225,8 @@ type BackupTargetList struct {
 type BackupVolume struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.BackupVolumeSpec   `json:"spec"`
-	Status            types.BackupVolumeStatus `json:"status"`
+	Spec              BackupVolumeSpec   `json:"spec"`
+	Status            BackupVolumeStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -245,8 +243,8 @@ type BackupVolumeList struct {
 type Backup struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.SnapshotBackupSpec   `json:"spec"`
-	Status            types.SnapshotBackupStatus `json:"status"`
+	Spec              SnapshotBackupSpec   `json:"spec"`
+	Status            SnapshotBackupStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -263,8 +261,8 @@ type BackupList struct {
 type RecurringJob struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              types.RecurringJobSpec   `json:"spec"`
-	Status            types.RecurringJobStatus `json:"status"`
+	Spec              RecurringJobSpec   `json:"spec"`
+	Status            RecurringJobStatus `json:"status"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
