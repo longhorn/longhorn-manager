@@ -266,13 +266,13 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 
 	// Check the controller should run synchronization
 	if !backupTarget.Status.LastSyncedAt.IsZero() &&
-		!backupTarget.Spec.SyncRequestedAt.After(backupTarget.Status.LastSyncedAt) {
+		!backupTarget.Spec.SyncRequestedAt.After(backupTarget.Status.LastSyncedAt.Time) {
 		return nil
 	}
 
 	var backupTargetClient *engineapi.BackupTargetClient
 	existingBackupTarget := backupTarget.DeepCopy()
-	syncTime := time.Now().UTC()
+	syncTime := metav1.Time{Time: time.Now().UTC()}
 	defer func() {
 		if err != nil {
 			return

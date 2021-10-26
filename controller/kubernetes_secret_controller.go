@@ -255,7 +255,7 @@ func (ks *KubernetesSecretController) triggerSyncBackupTarget(backupTarget *long
 		return nil
 	}
 
-	backupTarget.Spec.SyncRequestedAt = time.Now().UTC()
+	backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
 	if _, err := ks.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 		ks.logger.WithError(err).Warn("Failed to updating backup target")
 	}
