@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -252,7 +253,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 		// Request backup_volume_controller to reconcile BackupVolume immediately if it's the last backup
 		if backupVolume != nil && backupVolume.Status.LastBackupName == backup.Name {
-			backupVolume.Spec.SyncRequestedAt = time.Now().UTC()
+			backupVolume.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
 			if _, err = bc.ds.UpdateBackupVolume(backupVolume); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 				log.WithError(err).Errorf("Error updating backup volume %s spec", backupVolumeName)
 				// Do not return err to enqueue since backup_controller is responsible to
@@ -263,7 +264,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return bc.ds.RemoveFinalizerForBackup(backup)
 	}
 
-	syncTime := time.Now().UTC()
+	syncTime := metav1.Time{Time: time.Now().UTC()}
 	existingBackup := backup.DeepCopy()
 	defer func() {
 		if err != nil {
@@ -306,7 +307,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 	// The backup config had synced
 	if !backup.Status.LastSyncedAt.IsZero() &&
-		!backup.Spec.SyncRequestedAt.After(backup.Status.LastSyncedAt) {
+		!backup.Spec.SyncRequestedAt.After(backup.Status.LastSyncedAt.Time) {
 		return nil
 	}
 
@@ -504,7 +505,7 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 			state = types.BackupStateCompleted
 			event(nil, state, backup, volume)
 
-			syncTime := time.Now().UTC()
+			syncTime := metav1.Time{Time: time.Now().UTC()}
 			backupVolume, err := bc.ds.GetBackupVolume(volumeName)
 			if err == nil {
 				// Request backup_volume_controller to reconcile BackupVolume immediately.

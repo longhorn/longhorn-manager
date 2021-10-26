@@ -237,7 +237,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return bvc.ds.RemoveFinalizerForBackupVolume(backupVolume)
 	}
 
-	syncTime := time.Now().UTC()
+	syncTime := metav1.Time{Time: time.Now().UTC()}
 	existingBackupVolume := backupVolume.DeepCopy()
 	defer func() {
 		if err != nil {
@@ -254,7 +254,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 	// Check the controller should run synchronization
 	if !backupVolume.Status.LastSyncedAt.IsZero() &&
-		!backupVolume.Spec.SyncRequestedAt.After(backupVolume.Status.LastSyncedAt) {
+		!backupVolume.Spec.SyncRequestedAt.After(backupVolume.Status.LastSyncedAt.Time) {
 		return nil
 	}
 
