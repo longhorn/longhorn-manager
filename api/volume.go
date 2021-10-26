@@ -11,7 +11,6 @@ import (
 	"github.com/rancher/go-rancher/client"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
@@ -116,7 +115,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		}
 	} else {
 		if volume.Frontend == "" {
-			volume.Frontend = types.VolumeFrontendBlockDev
+			volume.Frontend = longhorn.VolumeFrontendBlockDev
 		}
 	}
 
@@ -149,7 +148,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		}
 	}
 
-	v, err := s.m.Create(volume.Name, &types.VolumeSpec{
+	v, err := s.m.Create(volume.Name, &longhorn.VolumeSpec{
 		Size:                    size,
 		AccessMode:              volume.AccessMode,
 		Migratable:              volume.Migratable,
@@ -349,7 +348,7 @@ func (s *Server) VolumeUpdateReplicaAutoBalance(rw http.ResponseWriter, req *htt
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.UpdateReplicaAutoBalance(id, types.ReplicaAutoBalance(input.ReplicaAutoBalance))
+		return s.m.UpdateReplicaAutoBalance(id, longhorn.ReplicaAutoBalance(input.ReplicaAutoBalance))
 	})
 	if err != nil {
 		return err
@@ -372,7 +371,7 @@ func (s *Server) VolumeUpdateDataLocality(rw http.ResponseWriter, req *http.Requ
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.UpdateDataLocality(id, types.DataLocality(input.DataLocality))
+		return s.m.UpdateDataLocality(id, longhorn.DataLocality(input.DataLocality))
 	})
 	if err != nil {
 		return err
@@ -394,7 +393,7 @@ func (s *Server) VolumeUpdateAccessMode(rw http.ResponseWriter, req *http.Reques
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.UpdateAccessMode(id, types.AccessMode(input.AccessMode))
+		return s.m.UpdateAccessMode(id, longhorn.AccessMode(input.AccessMode))
 	})
 	if err != nil {
 		return err

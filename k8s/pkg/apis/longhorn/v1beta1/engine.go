@@ -2,13 +2,6 @@ package v1beta1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-// Should be the same values as in https://github.com/longhorn/longhorn-engine/blob/master/pkg/types/types.go
-const (
-	ProcessStateComplete   = "complete"
-	ProcessStateError      = "error"
-	ProcessStateInProgress = "in_progress"
-)
-
 type ReplicaMode string
 
 const (

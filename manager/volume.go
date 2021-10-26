@@ -155,7 +155,7 @@ func (m *VolumeManager) getDefaultReplicaCount() (int, error) {
 	return int(c), nil
 }
 
-func (m *VolumeManager) Create(name string, spec *types.VolumeSpec, recurringJobSelector []types.VolumeRecurringJob) (v *longhorn.Volume, err error) {
+func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurringJobSelector []longhorn.VolumeRecurringJob) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to create volume %v", name)
 		if err != nil {
@@ -225,7 +225,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec, recurringJob
 	}
 
 	if string(spec.ReplicaAutoBalance) == "" {
-		spec.ReplicaAutoBalance = types.ReplicaAutoBalanceIgnored
+		spec.ReplicaAutoBalance = longhorn.ReplicaAutoBalanceIgnored
 		logrus.Infof("Use the %v to inherit global replicas auto-balance setting", spec.ReplicaAutoBalance)
 	}
 	if err := types.ValidateReplicaAutoBalance(spec.ReplicaAutoBalance); err != nil {
@@ -237,17 +237,17 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec, recurringJob
 		if err != nil {
 			return nil, errors.Wrapf(err, "cannot get valid mode for setting default data locality for volume: %v", name)
 		}
-		spec.DataLocality = types.DataLocality(defaultDataLocality)
+		spec.DataLocality = longhorn.DataLocality(defaultDataLocality)
 	}
 	if err := types.ValidateDataLocality(spec.DataLocality); err != nil {
 		return nil, errors.Wrapf(err, "cannot create volume with data locality %v", spec.DataLocality)
 	}
 
 	if string(spec.AccessMode) == "" {
-		spec.AccessMode = types.AccessModeReadWriteOnce
+		spec.AccessMode = longhorn.AccessModeReadWriteOnce
 	}
 
-	if spec.Migratable && spec.AccessMode != types.AccessModeReadWriteMany {
+	if spec.Migratable && spec.AccessMode != longhorn.AccessModeReadWriteMany {
 		return nil, fmt.Errorf("migratable volumes are only supported in ReadWriteMany (rwx) access mode")
 	}
 
@@ -264,7 +264,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec, recurringJob
 	}
 
 	if !spec.Standby {
-		if spec.Frontend != types.VolumeFrontendBlockDev && spec.Frontend != types.VolumeFrontendISCSI {
+		if spec.Frontend != longhorn.VolumeFrontendBlockDev && spec.Frontend != longhorn.VolumeFrontendISCSI {
 			return nil, fmt.Errorf("invalid volume frontend specified: %v", spec.Frontend)
 		}
 	}
@@ -296,7 +296,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec, recurringJob
 			Name:   name,
 			Labels: labels,
 		},
-		Spec: types.VolumeSpec{
+		Spec: longhorn.VolumeSpec{
 			Size:                    size,
 			AccessMode:              spec.AccessMode,
 			Migratable:              spec.Migratable,
@@ -325,7 +325,7 @@ func (m *VolumeManager) Create(name string, spec *types.VolumeSpec, recurringJob
 	return v, nil
 }
 
-func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource types.VolumeDataSource, requestSize int64) (err error) {
+func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.VolumeDataSource, requestSize int64) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to verify data source")
 	}()
@@ -334,8 +334,8 @@ func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource types.Volum
 		return fmt.Errorf("in valid value for data source: %v", dataSource)
 	}
 
-	if dataSource.IsDataFromVolume() {
-		srcVolName := dataSource.GetVolumeName()
+	if types.IsDataFromVolume(dataSource) {
+		srcVolName := types.GetVolumeName(dataSource)
 		srcVol, err := m.ds.GetVolume(srcVolName)
 		if err != nil {
 			return err
@@ -344,7 +344,7 @@ func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource types.Volum
 			return fmt.Errorf("size of target volume (%v bytes) is different than size of source volume (%v bytes)", requestSize, srcVol.Spec.Size)
 		}
 
-		if snapName := dataSource.GetSnapshotName(); snapName != "" {
+		if snapName := types.GetSnapshotName(dataSource); snapName != "" {
 			if _, err := m.GetSnapshot(snapName, srcVolName); err != nil {
 				return err
 			}
@@ -370,8 +370,8 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 	if err != nil {
 		return nil, err
 	}
-	readyCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
-	if readyCondition.Status != types.ConditionStatusTrue {
+	readyCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+	if readyCondition.Status != longhorn.ConditionStatusTrue {
 		return nil, fmt.Errorf("node %v is not ready, couldn't attach volume %v to it", node.Name, name)
 	}
 
@@ -387,8 +387,8 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return nil, fmt.Errorf("cannot attach volume %v because the engine image %v is not deployed on at least one of the the replicas' nodes or the node that the volume is going to attach to", v.Name, v.Spec.EngineImage)
 	}
 
-	restoreCondition := types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeRestore)
-	if restoreCondition.Status == types.ConditionStatusTrue {
+	restoreCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeRestore)
+	if restoreCondition.Status == longhorn.ConditionStatusTrue {
 		return nil, fmt.Errorf("volume %v is restoring data", name)
 	}
 
@@ -406,11 +406,11 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return v, nil
 	}
 
-	if v.Spec.AccessMode != types.AccessModeReadWriteMany && v.Status.State != types.VolumeStateDetached {
+	if v.Spec.AccessMode != longhorn.AccessModeReadWriteMany && v.Status.State != longhorn.VolumeStateDetached {
 		return nil, fmt.Errorf("invalid state %v to attach RWO volume %v", v.Status.State, name)
 	}
 
-	isVolumeShared := v.Spec.AccessMode == types.AccessModeReadWriteMany && !v.Spec.Migratable
+	isVolumeShared := v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable
 	isVolumeDetached := v.Spec.NodeID == ""
 	if isVolumeDetached {
 		if !isVolumeShared || disableFrontend {
@@ -431,10 +431,10 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 			return nil, fmt.Errorf("unable to migrate volume %v from %v to %v since it's already migrating to %v",
 				v.Name, v.Spec.NodeID, nodeID, v.Spec.MigrationNodeID)
 		}
-		if v.Status.State != types.VolumeStateAttached {
+		if v.Status.State != longhorn.VolumeStateAttached {
 			return nil, fmt.Errorf("invalid volume state to start migration %v", v.Status.State)
 		}
-		if v.Status.Robustness != types.VolumeRobustnessHealthy && v.Status.Robustness != types.VolumeRobustnessDegraded {
+		if v.Status.Robustness != longhorn.VolumeRobustnessHealthy && v.Status.Robustness != longhorn.VolumeRobustnessDegraded {
 			return nil, fmt.Errorf("volume must be healthy or degraded to start migration")
 		}
 		if v.Spec.EngineImage != v.Status.CurrentImage {
@@ -482,7 +482,7 @@ func (m *VolumeManager) Detach(name, nodeID string) (v *longhorn.Volume, err err
 	}
 
 	// shared volumes only need to be detached if they are attached in maintenance mode
-	if v.Spec.AccessMode == types.AccessModeReadWriteMany && !v.Spec.Migratable && !v.Spec.DisableFrontend {
+	if v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable && !v.Spec.DisableFrontend {
 		logrus.Infof("No need to detach volume %v since it's shared via %v", v.Name, v.Status.ShareEndpoint)
 		return v, nil
 	}
@@ -524,7 +524,7 @@ func (m *VolumeManager) Detach(name, nodeID string) (v *longhorn.Volume, err err
 func (m *VolumeManager) isVolumeAvailableOnNode(volume, node string) bool {
 	es, _ := m.ds.ListVolumeEngines(volume)
 	for _, e := range es {
-		if e.Spec.NodeID == node && e.Status.CurrentState == types.InstanceStateRunning {
+		if e.Spec.NodeID == node && e.Status.CurrentState == longhorn.InstanceStateRunning {
 			return true
 		}
 	}
@@ -541,10 +541,10 @@ func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *lo
 	if err != nil {
 		return nil, err
 	}
-	if v.Status.State != types.VolumeStateDetached {
+	if v.Status.State != longhorn.VolumeStateDetached {
 		return nil, fmt.Errorf("invalid volume state to salvage: %v", v.Status.State)
 	}
-	if v.Status.Robustness != types.VolumeRobustnessFaulted {
+	if v.Status.Robustness != longhorn.VolumeRobustnessFaulted {
 		return nil, fmt.Errorf("invalid robustness state to salvage: %v", v.Status.Robustness)
 	}
 	v.Spec.NodeID = ""
@@ -575,7 +575,7 @@ func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *lo
 		diskSchedulable := false
 		for _, diskStatus := range node.Status.DiskStatus {
 			if diskStatus.DiskUUID == r.Spec.DiskID {
-				if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status == types.ConditionStatusTrue {
+				if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status == longhorn.ConditionStatusTrue {
 					diskSchedulable = true
 					break
 				}
@@ -615,7 +615,7 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 		return nil, fmt.Errorf("volume %v is being activated", v.Name)
 	}
 
-	if frontend != string(types.VolumeFrontendBlockDev) && frontend != string(types.VolumeFrontendISCSI) {
+	if frontend != string(longhorn.VolumeFrontendBlockDev) && frontend != string(longhorn.VolumeFrontendISCSI) {
 		return nil, fmt.Errorf("invalid frontend %v", frontend)
 	}
 
@@ -643,7 +643,7 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 			v.Name, v.Status.LastBackup, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
 	}
 
-	v.Spec.Frontend = types.VolumeFrontend(frontend)
+	v.Spec.Frontend = longhorn.VolumeFrontend(frontend)
 	v.Spec.Standby = false
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
@@ -664,11 +664,11 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 		return nil, err
 	}
 
-	if v.Status.State != types.VolumeStateDetached {
+	if v.Status.State != longhorn.VolumeStateDetached {
 		return nil, fmt.Errorf("invalid volume state to expand: %v", v.Status.State)
 	}
 
-	if types.GetCondition(v.Status.Conditions, types.VolumeConditionTypeScheduled).Status != types.ConditionStatusTrue {
+	if types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled).Status != longhorn.ConditionStatusTrue {
 		return nil, fmt.Errorf("cannot expand volume before replica scheduling success")
 	}
 
@@ -810,7 +810,7 @@ func (m *VolumeManager) CancelExpansion(volumeName string) (v *longhorn.Volume, 
 	return v, nil
 }
 
-func (m *VolumeManager) AddVolumeRecurringJob(volumeName string, name string, isGroup bool) (volumeRecurringJob map[string]*types.VolumeRecurringJob, err error) {
+func (m *VolumeManager) AddVolumeRecurringJob(volumeName string, name string, isGroup bool) (volumeRecurringJob map[string]*longhorn.VolumeRecurringJob, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to add volume recurring jobs for %v", volumeName)
 	}()
@@ -841,7 +841,7 @@ func (m *VolumeManager) AddVolumeRecurringJob(volumeName string, name string, is
 	return volumeRecurringJob, nil
 }
 
-func (m *VolumeManager) ListVolumeRecurringJob(volumeName string) (map[string]*types.VolumeRecurringJob, error) {
+func (m *VolumeManager) ListVolumeRecurringJob(volumeName string) (map[string]*longhorn.VolumeRecurringJob, error) {
 	var err error
 	defer func() {
 		err = errors.Wrapf(err, "failed to list volume recurring jobs for %v", volumeName)
@@ -854,21 +854,21 @@ func (m *VolumeManager) ListVolumeRecurringJob(volumeName string) (map[string]*t
 	return marshalLabelToVolumeRecurringJob(v.Labels), nil
 }
 
-func marshalLabelToVolumeRecurringJob(labels map[string]string) map[string]*types.VolumeRecurringJob {
+func marshalLabelToVolumeRecurringJob(labels map[string]string) map[string]*longhorn.VolumeRecurringJob {
 	groupPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJobGroup) + "/"
 	jobPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJob) + "/"
-	jobMapVolumeJob := make(map[string]*types.VolumeRecurringJob)
+	jobMapVolumeJob := make(map[string]*longhorn.VolumeRecurringJob)
 	for label := range labels {
 		if strings.HasPrefix(label, groupPrefix) {
 			jobName := strings.TrimPrefix(label, groupPrefix)
-			jobMapVolumeJob[jobName] = &types.VolumeRecurringJob{
+			jobMapVolumeJob[jobName] = &longhorn.VolumeRecurringJob{
 				Name:    jobName,
 				IsGroup: true,
 			}
 			continue
 		} else if strings.HasPrefix(label, jobPrefix) {
 			jobName := strings.TrimPrefix(label, jobPrefix)
-			jobMapVolumeJob[jobName] = &types.VolumeRecurringJob{
+			jobMapVolumeJob[jobName] = &longhorn.VolumeRecurringJob{
 				Name:    jobName,
 				IsGroup: false,
 			}
@@ -1006,7 +1006,7 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 
 	// Note: Rebuild is not supported for old DR volumes and the handling of a degraded DR volume live upgrade will get stuck.
 	//  Hence if you modify this part, the live upgrade should be prevented in API level for all old DR volumes.
-	if v.Status.State == types.VolumeStateAttached && v.Status.Robustness != types.VolumeRobustnessHealthy {
+	if v.Status.State == longhorn.VolumeStateAttached && v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
 		return nil, fmt.Errorf("cannot do live upgrade for a unhealthy volume %v", v.Name)
 	}
 
@@ -1040,7 +1040,7 @@ func (m *VolumeManager) UpdateReplicaCount(name string, count int) (v *longhorn.
 		return nil, err
 	}
 
-	if v.Spec.NodeID == "" || v.Status.State != types.VolumeStateAttached {
+	if v.Spec.NodeID == "" || v.Status.State != longhorn.VolumeStateAttached {
 		return nil, fmt.Errorf("invalid volume state to update replica count%v", v.Status.State)
 	}
 	if v.Spec.EngineImage != v.Status.CurrentImage {
@@ -1061,7 +1061,7 @@ func (m *VolumeManager) UpdateReplicaCount(name string, count int) (v *longhorn.
 	return v, nil
 }
 
-func (m *VolumeManager) UpdateReplicaAutoBalance(name string, inputSpec types.ReplicaAutoBalance) (v *longhorn.Volume, err error) {
+func (m *VolumeManager) UpdateReplicaAutoBalance(name string, inputSpec longhorn.ReplicaAutoBalance) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to update replica auto-balance for volume %v", name)
 	}()
@@ -1091,7 +1091,7 @@ func (m *VolumeManager) UpdateReplicaAutoBalance(name string, inputSpec types.Re
 	return v, nil
 }
 
-func (m *VolumeManager) UpdateDataLocality(name string, dataLocality types.DataLocality) (v *longhorn.Volume, err error) {
+func (m *VolumeManager) UpdateDataLocality(name string, dataLocality longhorn.DataLocality) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to update data locality for volume %v", name)
 	}()
@@ -1121,7 +1121,7 @@ func (m *VolumeManager) UpdateDataLocality(name string, dataLocality types.DataL
 	return v, nil
 }
 
-func (m *VolumeManager) UpdateAccessMode(name string, accessMode types.AccessMode) (v *longhorn.Volume, err error) {
+func (m *VolumeManager) UpdateAccessMode(name string, accessMode longhorn.AccessMode) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to update access mode for volume %v", name)
 	}()
@@ -1140,7 +1140,7 @@ func (m *VolumeManager) UpdateAccessMode(name string, accessMode types.AccessMod
 		return v, nil
 	}
 
-	if v.Spec.NodeID != "" || v.Status.State != types.VolumeStateDetached {
+	if v.Spec.NodeID != "" || v.Status.State != longhorn.VolumeStateDetached {
 		return nil, fmt.Errorf("can only update volume access mode while volume is detached")
 	}
 

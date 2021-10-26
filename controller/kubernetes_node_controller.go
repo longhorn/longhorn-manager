@@ -281,7 +281,7 @@ func (knc *KubernetesNodeController) syncDefaultDisks(node *longhorn.Node) (err 
 	}
 	val = strings.ToLower(val)
 
-	disks := map[string]types.DiskSpec{}
+	disks := map[string]longhorn.DiskSpec{}
 	switch val {
 	case types.NodeCreateDefaultDiskLabelValueTrue:
 		dataPath, err := knc.ds.GetSettingValueExisted(types.SettingNameDefaultDataPath)

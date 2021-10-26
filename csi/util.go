@@ -20,6 +20,7 @@ import (
 	utilexec "k8s.io/utils/exec"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	"github.com/longhorn/longhorn-manager/types"
 )
 
@@ -91,9 +92,9 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		}
 
 		if isShared {
-			vol.AccessMode = string(types.AccessModeReadWriteMany)
+			vol.AccessMode = string(longhorn.AccessModeReadWriteMany)
 		} else {
-			vol.AccessMode = string(types.AccessModeReadWriteOnce)
+			vol.AccessMode = string(longhorn.AccessModeReadWriteOnce)
 		}
 	}
 
@@ -103,7 +104,7 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 			return nil, errors.Wrap(err, "Invalid parameter migratable")
 		}
 
-		if isMigratable && vol.AccessMode != string(types.AccessModeReadWriteMany) {
+		if isMigratable && vol.AccessMode != string(longhorn.AccessModeReadWriteMany) {
 			logrus.Infof("Cannot mark volume %v as migratable, "+
 				"since access mode is not RWX proceeding with RWO non migratable volume creation.", vol.Name)
 			volOptions["migratable"] = strconv.FormatBool(false)
@@ -129,7 +130,7 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 	}
 
 	if replicaAutoBalance, ok := volOptions["replicaAutoBalance"]; ok {
-		err := types.ValidateReplicaAutoBalance(types.ReplicaAutoBalance(replicaAutoBalance))
+		err := types.ValidateReplicaAutoBalance(longhorn.ReplicaAutoBalance(replicaAutoBalance))
 		if err != nil {
 			return nil, errors.Wrap(err, "Invalid parameter replicaAutoBalance")
 		}
@@ -137,7 +138,7 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 	}
 
 	if locality, ok := volOptions["dataLocality"]; ok {
-		if err := types.ValidateDataLocality(types.DataLocality(locality)); err != nil {
+		if err := types.ValidateDataLocality(longhorn.DataLocality(locality)); err != nil {
 			return nil, errors.Wrap(err, "Invalid parameter dataLocality")
 		}
 		vol.DataLocality = locality
@@ -327,7 +328,7 @@ func makeFile(pathname string) error {
 func requiresSharedAccess(vol *longhornclient.Volume, cap *csi.VolumeCapability) bool {
 	isSharedVolume := false
 	if vol != nil {
-		isSharedVolume = vol.AccessMode == string(types.AccessModeReadWriteMany) || vol.Migratable
+		isSharedVolume = vol.AccessMode == string(longhorn.AccessModeReadWriteMany) || vol.Migratable
 	}
 
 	mode := csi.VolumeCapability_AccessMode_UNKNOWN

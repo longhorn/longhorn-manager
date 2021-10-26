@@ -139,7 +139,7 @@ func (m *VolumeManager) ListNodesSorted() ([]*longhorn.Node, error) {
 	return nodes, nil
 }
 
-func (m *VolumeManager) DiskUpdate(name string, updateDisks map[string]types.DiskSpec) (*longhorn.Node, error) {
+func (m *VolumeManager) DiskUpdate(name string, updateDisks map[string]longhorn.DiskSpec) (*longhorn.Node, error) {
 	node, err := m.ds.GetNode(name)
 	if err != nil {
 		return nil, err
@@ -192,11 +192,11 @@ func (m *VolumeManager) DeleteNode(name string) error {
 	if err != nil {
 		return err
 	}
-	condition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
+	condition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
 	// Only could delete node from longhorn if kubernetes node missing or manager pod is missing
-	if condition.Status == types.ConditionStatusTrue ||
-		(condition.Reason != types.NodeConditionReasonKubernetesNodeGone &&
-			condition.Reason != types.NodeConditionReasonManagerPodMissing) ||
+	if condition.Status == longhorn.ConditionStatusTrue ||
+		(condition.Reason != longhorn.NodeConditionReasonKubernetesNodeGone &&
+			condition.Reason != longhorn.NodeConditionReasonManagerPodMissing) ||
 		node.Spec.AllowScheduling || len(replicas) > 0 || len(engines) > 0 {
 		return fmt.Errorf("could not delete node %v with node ready condition is %v, reason is %v, node schedulable %v, and %v replica, %v engine running on it", name,
 			condition.Status, condition.Reason, node.Spec.AllowScheduling, len(replicas), len(engines))

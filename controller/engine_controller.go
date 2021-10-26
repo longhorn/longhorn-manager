@@ -299,14 +299,14 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 
 	// For incompatible engine, skip starting engine monitor and clean up fields when the engine is not running
 	if isCLIAPIVersionOne {
-		if engine.Status.CurrentState != types.InstanceStateRunning {
+		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
 			engine.Status.Endpoint = ""
 			engine.Status.ReplicaModeMap = nil
 		}
 		return nil
 	}
 
-	if engine.Status.CurrentState == types.InstanceStateRunning {
+	if engine.Status.CurrentState == longhorn.InstanceStateRunning {
 		// we allow across monitoring temporaily due to migration case
 		if !ec.isMonitoring(engine) {
 			ec.startMonitoring(engine)
@@ -351,7 +351,7 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 	}
 
 	imType, err := datastore.CheckInstanceManagerType(im)
-	if err != nil || imType != types.InstanceManagerTypeEngine {
+	if err != nil || imType != longhorn.InstanceManagerTypeEngine {
 		return
 	}
 
@@ -375,7 +375,7 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 
 }
 
-func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProcess, error) {
+func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for engine process creation: %v", obj)
@@ -385,7 +385,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*types.InstanceProc
 	}
 	frontend := e.Spec.Frontend
 	if e.Spec.DisableFrontend {
-		frontend = types.VolumeFrontendEmpty
+		frontend = longhorn.VolumeFrontendEmpty
 	}
 
 	im, err := ec.ds.GetInstanceManagerByInstance(obj)
@@ -426,7 +426,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 		return nil
 	}
 
-	if im.Status.CurrentState != types.InstanceManagerStateRunning {
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 		return nil
 	}
 
@@ -517,7 +517,7 @@ func (ec *EngineController) deleteOldEnginePod(pod *v1.Pod, e *longhorn.Engine) 
 	return nil
 }
 
-func (ec *EngineController) GetInstance(obj interface{}) (*types.InstanceProcess, error) {
+func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for engine process get: %v", obj)
@@ -677,7 +677,7 @@ func (m *EngineMonitor) sync() bool {
 		}
 
 		// engine is maybe starting
-		if engine.Status.CurrentState != types.InstanceStateRunning {
+		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
 			return false
 		}
 
@@ -717,7 +717,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
-	currentReplicaModeMap := map[string]types.ReplicaMode{}
+	currentReplicaModeMap := map[string]longhorn.ReplicaMode{}
 	for url, r := range replicaURLModeMap {
 		addr := engineapi.GetAddressFromBackendReplicaURL(url)
 		replica, exists := addressReplicaMap[addr]
@@ -730,11 +730,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		if engine.Status.ReplicaModeMap != nil {
 			if r.Mode != engine.Status.ReplicaModeMap[replica] {
 				switch r.Mode {
-				case types.ReplicaModeERR:
+				case longhorn.ReplicaModeERR:
 					m.eventRecorder.Eventf(engine, v1.EventTypeWarning, EventReasonFaulted, "Detected replica %v (%v) in error", replica, addr)
-				case types.ReplicaModeWO:
+				case longhorn.ReplicaModeWO:
 					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilding, "Detected rebuilding replica %v (%v)", replica, addr)
-				case types.ReplicaModeRW:
+				case longhorn.ReplicaModeRW:
 					m.eventRecorder.Eventf(engine, v1.EventTypeNormal, EventReasonRebuilt, "Detected replica %v (%v) has been rebuilt", replica, addr)
 				default:
 					m.logger.Errorf("Invalid engine replica mode %v", r.Mode)
@@ -746,7 +746,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	snapshots, err := client.SnapshotList()
 	if err != nil {
-		engine.Status.Snapshots = map[string]*types.Snapshot{}
+		engine.Status.Snapshots = map[string]*longhorn.Snapshot{}
 		engine.Status.SnapshotsError = err.Error()
 	} else {
 		engine.Status.Snapshots = snapshots
@@ -782,7 +782,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.LastExpansionError = volumeInfo.LastExpansionError
 		engine.Status.LastExpansionFailedAt = volumeInfo.LastExpansionFailedAt
 
-		if engine.Status.Endpoint == "" && !engine.Spec.DisableFrontend && engine.Spec.Frontend != types.VolumeFrontendEmpty {
+		if engine.Status.Endpoint == "" && !engine.Spec.DisableFrontend && engine.Spec.Frontend != longhorn.VolumeFrontendEmpty {
 			m.logger.Infof("Preparing to start frontend %v", engine.Spec.Frontend)
 			if err := client.FrontendStart(engine.Spec.Frontend); err != nil {
 				return errors.Wrapf(err, "failed to start frontend %v", engine.Spec.Frontend)
@@ -798,7 +798,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	} else {
 		// For incompatible running engine, the current size is always `engine.Spec.VolumeSize`.
 		engine.Status.CurrentSize = engine.Spec.VolumeSize
-		engine.Status.RebuildStatus = map[string]*types.RebuildStatus{}
+		engine.Status.RebuildStatus = map[string]*longhorn.RebuildStatus{}
 	}
 
 	backupStatusList, err := client.SnapshotBackupStatus()
@@ -831,8 +831,8 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			// Cannot tolerate the rebuilding replicas during the expansion
 			hasRebuildingReplicas := false
 			for name, mode := range engine.Status.ReplicaModeMap {
-				if mode == types.ReplicaModeWO {
-					engine.Status.ReplicaModeMap[name] = types.ReplicaModeERR
+				if mode == longhorn.ReplicaModeWO {
+					engine.Status.ReplicaModeMap[name] = longhorn.ReplicaModeERR
 					hasRebuildingReplicas = true
 				}
 			}
@@ -884,7 +884,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 	}
 
-	var snapshotCloneStatusMap map[string]*types.SnapshotCloneStatus
+	var snapshotCloneStatusMap map[string]*longhorn.SnapshotCloneStatus
 	if cliAPIVersion >= engineapi.CLIVersionFive {
 		if snapshotCloneStatusMap, err = client.SnapshotCloneStatus(); err != nil {
 			return err
@@ -906,7 +906,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	return nil
 }
 
-func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, addressReplicaMap map[string]string, cliAPIVersion int, client engineapi.EngineClient, ds *datastore.DataStore) (needRestore bool, err error) {
+func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, addressReplicaMap map[string]string, cliAPIVersion int, client engineapi.EngineClient, ds *datastore.DataStore) (needRestore bool, err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "failed pre-restore check for engine %v", engine.Name)
@@ -944,7 +944,7 @@ func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine, rsM
 	return true, nil
 }
 
-func syncWithRestoreStatus(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus,
+func syncWithRestoreStatus(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus,
 	addressReplicaMap map[string]string, client engineapi.EngineClient) bool {
 	for _, status := range engine.Status.PurgeStatus {
 		if status.IsPurging {
@@ -970,10 +970,10 @@ func syncWithRestoreStatus(log logrus.FieldLogger, engine *longhorn.Engine, rsMa
 			// Verify the rebuilding replica after the restore complete. This call will set the replica mode to RW.
 			if status.LastRestored != "" {
 				replicaName := addressReplicaMap[engineapi.GetAddressFromBackendReplicaURL(url)]
-				if mode, exists := engine.Status.ReplicaModeMap[replicaName]; exists && mode == types.ReplicaModeWO {
+				if mode, exists := engine.Status.ReplicaModeMap[replicaName]; exists && mode == longhorn.ReplicaModeWO {
 					if err := client.ReplicaRebuildVerify(url); err != nil {
 						log.WithError(err).Errorf("Failed to verify the rebuild of replica %v after restore completion", url)
-						engine.Status.ReplicaModeMap[url] = types.ReplicaModeERR
+						engine.Status.ReplicaModeMap[url] = longhorn.ReplicaModeERR
 						return false
 					}
 					log.Infof("Verified the rebuild of replica %v after restore completion", url)
@@ -1006,7 +1006,7 @@ func syncWithRestoreStatus(log logrus.FieldLogger, engine *longhorn.Engine, rsMa
 	return false
 }
 
-func syncWithRestoreStatusForCompatibleEngine(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus) (bool, bool) {
+func syncWithRestoreStatusForCompatibleEngine(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus) (bool, bool) {
 	isRestoring := false
 	isConsensual := true
 	lastRestored := ""
@@ -1078,7 +1078,7 @@ func checkSizeBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine,
 	return true, nil
 }
 
-func restoreBackup(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, client engineapi.EngineClient, cliAPIVersion int, ds *datastore.DataStore) error {
+func restoreBackup(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, client engineapi.EngineClient, cliAPIVersion int, ds *datastore.DataStore) error {
 	// Get default backup target
 	backupTarget, err := ds.GetBackupTargetRO(types.DefaultBackupTargetName)
 	if err != nil {
@@ -1116,7 +1116,7 @@ func restoreBackup(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[st
 	return nil
 }
 
-func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, err error) error {
+func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, err error) error {
 	taskErr, ok := err.(engineapi.TaskError)
 	if !ok {
 		return errors.Wrapf(err, "failed to restore backup %v in engine monitor, will retry the restore later",
@@ -1136,7 +1136,7 @@ func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap m
 	return nil
 }
 
-func handleRestoreErrorForCompatibleEngine(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*types.RestoreStatus, err error) error {
+func handleRestoreErrorForCompatibleEngine(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, err error) error {
 	taskErr, ok := err.(engineapi.TaskError)
 	if !ok {
 		return errors.Wrapf(err, "failed to restore backup %v with last restored backup %v in engine monitor",
@@ -1168,8 +1168,8 @@ func preCloneCheck(engine *longhorn.Engine) (needClone bool, err error) {
 }
 
 func cloneSnapshot(engine *longhorn.Engine, client engineapi.EngineClient, ds *datastore.DataStore) error {
-	sourceVolumeName := engine.Spec.RequestedDataSource.GetVolumeName()
-	snapshotName := engine.Spec.RequestedDataSource.GetSnapshotName()
+	sourceVolumeName := types.GetVolumeName(engine.Spec.RequestedDataSource)
+	snapshotName := types.GetSnapshotName(engine.Spec.RequestedDataSource)
 	sourceEngines, err := ds.ListVolumeEngines(sourceVolumeName)
 	if err != nil {
 		return err
@@ -1187,7 +1187,7 @@ func cloneSnapshot(engine *longhorn.Engine, client engineapi.EngineClient, ds *d
 		// so if the cloning failed, it must be that the replica failed to clone.
 		for _, status := range engine.Status.CloneStatus {
 			status.Error = err.Error()
-			status.State = types.ProcessStateError
+			status.State = engineapi.ProcessStateError
 		}
 		return err
 	}
@@ -1208,7 +1208,7 @@ func GetClientForEngine(e *longhorn.Engine, engines engineapi.EngineClientCollec
 	defer func() {
 		err = errors.Wrapf(err, "cannot get client for engine %v", e.Name)
 	}()
-	if e.Status.CurrentState != types.InstanceStateRunning {
+	if e.Status.CurrentState != longhorn.InstanceStateRunning {
 		return nil, fmt.Errorf("engine is not running")
 	}
 	if image == "" {
@@ -1263,7 +1263,7 @@ func (ec *EngineController) rebuildNewReplica(e *longhorn.Engine) error {
 	replicaExists := make(map[string]bool)
 	for replica, mode := range e.Status.ReplicaModeMap {
 		replicaExists[replica] = true
-		if mode == types.ReplicaModeWO {
+		if mode == longhorn.ReplicaModeWO {
 			rebuildingInProgress = true
 			break
 		}
@@ -1357,7 +1357,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 					return
 				}
 				rep.Spec.FailedAt = util.Now()
-				rep.Spec.DesireState = types.InstanceStateStopped
+				rep.Spec.DesireState = longhorn.InstanceStateStopped
 				if _, err := ec.ds.UpdateReplica(rep); err != nil {
 					log.WithError(err).Errorf("Unable to mark failed rebuild on replica %v", replica)
 					return
@@ -1438,7 +1438,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine) error {
 	frontend := e.Spec.Frontend
 	if e.Spec.DisableFrontend {
-		frontend = types.VolumeFrontendEmpty
+		frontend = longhorn.VolumeFrontendEmpty
 	}
 
 	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)

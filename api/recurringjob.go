@@ -10,7 +10,6 @@ import (
 	"github.com/rancher/go-rancher/client"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 )
 
@@ -54,14 +53,14 @@ func (s *Server) RecurringJobCreate(rw http.ResponseWriter, req *http.Request) e
 		return err
 	}
 
-	if input.Task != types.RecurringJobTypeBackup && input.Task != types.RecurringJobTypeSnapshot {
+	if input.Task != longhorn.RecurringJobTypeBackup && input.Task != longhorn.RecurringJobTypeSnapshot {
 		return fmt.Errorf("recurring job type %v is not valid", input.Task)
 	}
 
-	obj, err := s.m.CreateRecurringJob(&types.RecurringJobSpec{
+	obj, err := s.m.CreateRecurringJob(&longhorn.RecurringJobSpec{
 		Name:        input.Name,
 		Groups:      input.Groups,
-		Task:        types.RecurringJobType(input.Task),
+		Task:        longhorn.RecurringJobType(input.Task),
 		Cron:        input.Cron,
 		Retain:      input.Retain,
 		Concurrency: input.Concurrency,
@@ -84,15 +83,15 @@ func (s *Server) RecurringJobUpdate(rw http.ResponseWriter, req *http.Request) e
 
 	name := mux.Vars(req)["name"]
 
-	if input.Task != types.RecurringJobTypeBackup && input.Task != types.RecurringJobTypeSnapshot {
+	if input.Task != longhorn.RecurringJobTypeBackup && input.Task != longhorn.RecurringJobTypeSnapshot {
 		return fmt.Errorf("recurring job type %v is not valid", input.Task)
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.UpdateRecurringJob(types.RecurringJobSpec{
+		return s.m.UpdateRecurringJob(longhorn.RecurringJobSpec{
 			Name:        name,
 			Groups:      input.Groups,
-			Task:        types.RecurringJobType(input.Task),
+			Task:        longhorn.RecurringJobType(input.Task),
 			Cron:        input.Cron,
 			Retain:      input.Retain,
 			Concurrency: input.Concurrency,

@@ -102,7 +102,7 @@ type recurringJobUpgrade struct {
 	kubeClient *clientset.Clientset
 	lhClient   *lhclientset.Clientset
 
-	recurringJobMapSpec map[string]*types.RecurringJobSpec
+	recurringJobMapSpec map[string]*longhorn.RecurringJobSpec
 	volumeMapLabels     map[string]map[string]string
 
 	storageClass          *storagev1.StorageClass
@@ -122,7 +122,7 @@ func newRecurringJobUpgrade(namespace string, lhClient *lhclientset.Clientset, k
 		namespace:           namespace,
 		kubeClient:          kubeClient,
 		lhClient:            lhClient,
-		recurringJobMapSpec: map[string]*types.RecurringJobSpec{},
+		recurringJobMapSpec: map[string]*longhorn.RecurringJobSpec{},
 		volumeMapLabels:     map[string]map[string]string{},
 	}
 }
@@ -164,7 +164,7 @@ func (run *recurringJobUpgrade) translateStorageClassRecurringJobs() (err error)
 		err = errors.Wrapf(err, upgradeLogPrefix+"translate storage class recurring jobs failed")
 
 		run.log = revertLog
-		run.recurringJobMapSpec = map[string]*types.RecurringJobSpec{}
+		run.recurringJobMapSpec = map[string]*longhorn.RecurringJobSpec{}
 	}()
 	run.log = run.log.WithField("translate", "storage-class-recurring-jobs")
 	run.log.Info(upgradeLogPrefix + "Starting storageClass recurring job translation")
@@ -185,7 +185,7 @@ func (run *recurringJobUpgrade) translateStorageClassRecurringJobs() (err error)
 	if !ok {
 		return nil
 	}
-	scRecurringJobs := []types.RecurringJobSpec{}
+	scRecurringJobs := []longhorn.RecurringJobSpec{}
 	err = json.Unmarshal([]byte(scRecurringJobsJSON), &scRecurringJobs)
 	if err != nil {
 		return errors.Wrapf(err, "failed to unmarshal: %v", scRecurringJobs)
@@ -197,7 +197,7 @@ func (run *recurringJobUpgrade) translateStorageClassRecurringJobs() (err error)
 		if err != nil {
 			return errors.Wrapf(err, "failed to create ID for recurring job %v", recurringJob)
 		}
-		run.recurringJobMapSpec[id] = &types.RecurringJobSpec{
+		run.recurringJobMapSpec[id] = &longhorn.RecurringJobSpec{
 			Name:        id,
 			Task:        recurringJob.Task,
 			Cron:        recurringJob.Cron,
@@ -280,7 +280,7 @@ func (run *recurringJobUpgrade) translateVolumeRecurringJobs() (err error) {
 		err = errors.Wrapf(err, upgradeLogPrefix+"translate volume recurringJobs failed")
 
 		run.log = revertLog
-		run.recurringJobMapSpec = map[string]*types.RecurringJobSpec{}
+		run.recurringJobMapSpec = map[string]*longhorn.RecurringJobSpec{}
 	}()
 	run.log = run.log.WithField("translate", "volume-recurring-jobs")
 	run.log.Info(upgradeLogPrefix + "Starting volume recurring job translation")
@@ -296,7 +296,7 @@ func (run *recurringJobUpgrade) translateVolumeRecurringJobs() (err error) {
 	for _, volume := range run.volumes.Items {
 		addVolumeLabels := map[string]string{}
 		for _, recurringJob := range volume.Spec.RecurringJobs {
-			recurringJobSpec := types.RecurringJobSpec{
+			recurringJobSpec := longhorn.RecurringJobSpec{
 				Name:        recurringJob.Name,
 				Task:        recurringJob.Task,
 				Cron:        recurringJob.Cron,
@@ -454,7 +454,7 @@ func (run *recurringJobUpgrade) initStorageClassObjFromYAML(storageclassYAML str
 	return nil
 }
 
-func createRecurringJobID(recurringJob types.RecurringJobSpec) (key string, err error) {
+func createRecurringJobID(recurringJob longhorn.RecurringJobSpec) (key string, err error) {
 	labelJSON, err := json.Marshal(recurringJob.Labels)
 	if err != nil {
 		return key, errors.Wrapf(err, "failed to marshal JSON %v", recurringJob.Labels)
