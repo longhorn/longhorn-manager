@@ -942,22 +942,6 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		if e.Spec.NodeID == v.Status.CurrentNodeID {
 			ve = e
 		}
-		backupStatus := e.Status.BackupStatus
-		if backupStatus != nil {
-			ids := util.GetSortedKeysFromMap(backupStatus)
-			for _, id := range ids {
-				backups = append(backups, BackupStatus{
-					Resource:  client.Resource{},
-					Name:      id,
-					Snapshot:  backupStatus[id].SnapshotName,
-					Progress:  backupStatus[id].Progress,
-					BackupURL: backupStatus[id].BackupURL,
-					Error:     backupStatus[id].Error,
-					State:     backupStatus[id].State,
-					Replica:   datastore.ReplicaAddressToReplicaName(backupStatus[id].ReplicaAddress, vrs),
-				})
-			}
-		}
 		rs := e.Status.RestoreStatus
 		if rs != nil {
 			replicas := util.GetSortedKeysFromMap(rs)
