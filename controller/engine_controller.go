@@ -817,13 +817,6 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.RebuildStatus = map[string]*longhorn.RebuildStatus{}
 	}
 
-	backupStatusList, err := client.SnapshotBackupStatus()
-	if err != nil {
-		m.logger.WithError(err).Error("failed to get backup status")
-	} else {
-		engine.Status.BackupStatus = backupStatusList
-	}
-
 	// TODO: Check if the purge failure is handled somewhere else
 	purgeStatus, err := client.SnapshotPurgeStatus()
 	if err != nil {
@@ -1445,7 +1438,6 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	e.Status.CurrentReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	// reset ReplicaModeMap to reflect the new replicas
 	e.Status.ReplicaModeMap = nil
-	e.Status.BackupStatus = nil
 	e.Status.RestoreStatus = nil
 	e.Status.RebuildStatus = nil
 	return nil
