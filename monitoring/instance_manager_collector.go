@@ -162,7 +162,7 @@ func (imc *InstanceManagerCollector) collectRequestValues(ch chan<- prometheus.M
 		}
 	}()
 
-	podList, err := imc.ds.ListPodsRO()
+	podList, err := imc.ds.ListPodsRO(imc.namespace)
 	if err != nil {
 		imc.logger.WithError(err).Warn("error during scrape")
 		return

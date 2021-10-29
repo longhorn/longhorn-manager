@@ -420,7 +420,7 @@ func (kc *KubernetesPVController) getAssociatedPods(ks *longhorn.KubernetesStatu
 	if ks.PVStatus != string(v1.VolumeBound) {
 		return nil, nil
 	}
-	ps, err := kc.ds.ListPodsRO()
+	ps, err := kc.ds.ListPodsRO(ks.Namespace)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to list pods in getAssociatedPod")
 	}
