@@ -244,8 +244,8 @@ func (s *DataStore) CreateStorageClass(sc *storagev1.StorageClass) (*storagev1.S
 // ListPodsRO returns a list of all Pods for the given namespace,
 // the list contains direct references to the internal cache objects and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
-func (s *DataStore) ListPodsRO() ([]*corev1.Pod, error) {
-	return s.pLister.Pods(s.namespace).List(labels.Everything())
+func (s *DataStore) ListPodsRO(namespace string) ([]*corev1.Pod, error) {
+	return s.pLister.Pods(namespace).List(labels.Everything())
 }
 
 // GetPod returns a mutable Pod object for the given name and namspace
