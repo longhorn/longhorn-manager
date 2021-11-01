@@ -2885,6 +2885,8 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		return nil
 	}
 
+	log := getLoggerForVolume(vc.logger, v).WithField("migrationNodeID", v.Spec.MigrationNodeID)
+
 	// only process if volume is attached
 	if v.Spec.NodeID == "" || len(es) == 0 {
 		return nil
@@ -2905,7 +2907,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		// in the case of a confirmation we need to switch the v.Status.CurrentNodeID to v.Spec.NodeID
 		// so that currentEngine becomes the migration engine
 		if v.Status.CurrentNodeID != v.Spec.NodeID {
-			vc.logger.Infof("volume migration complete switching current node id from %v to %v", v.Status.CurrentNodeID, v.Spec.NodeID)
+			log.Infof("volume migration complete switching current node id from %v to %v", v.Status.CurrentNodeID, v.Spec.NodeID)
 			v.Status.CurrentNodeID = v.Spec.NodeID
 		}
 
@@ -2966,6 +2968,8 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		es[migrationEngine.Name] = migrationEngine
 	}
 
+	log = log.WithField("migrationEngine", migrationEngine.Name)
+
 	currentAvailableReplicas := map[string]*longhorn.Replica{}
 	migrationReplicas := map[string]*longhorn.Replica{}
 	unknownReplicas := map[string]*longhorn.Replica{}
@@ -2980,7 +2984,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
 		if r.Spec.EngineName == currentEngine.Name {
 			if currentEngine.Status.ReplicaModeMap[r.Name] == longhorn.ReplicaModeWO {
-				logrus.Debugf("Cannot start migration since the current replica %v is mode WriteOnly, which means the rebuilding is in progress", r.Name)
+				log.Debugf("Cannot start migration since the current replica %v is mode WriteOnly, which means the rebuilding is in progress", r.Name)
 				return nil
 			}
 			if currentEngine.Status.ReplicaModeMap[r.Name] != longhorn.ReplicaModeRW {
@@ -2990,7 +2994,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		} else if r.Spec.EngineName == migrationEngine.Name {
 			migrationReplicas[dataPath] = r
 		} else {
-			vc.logger.Warnf("During migration found unknown replica with engine %v", r.Spec.EngineName)
+			log.Warnf("During migration found unknown replica with engine %v", r.Spec.EngineName)
 			unknownReplicas[dataPath] = r
 		}
 	}
@@ -3009,11 +3013,11 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 				return nil
 			}
 			if r.Status.IP == "" {
-				vc.logger.Errorf("BUG: replica %v is running but IP is empty", r.Name)
+				log.Errorf("BUG: replica %v is running but IP is empty", r.Name)
 				continue
 			}
 			if r.Status.Port == 0 {
-				vc.logger.Errorf("BUG: replica %v is running but Port is empty", r.Name)
+				log.Errorf("BUG: replica %v is running but Port is empty", r.Name)
 				continue
 			}
 			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
@@ -3035,7 +3039,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		return nil
 	}
 
-	vc.logger.Infof("volume migration engine on node %v is ready", v.Spec.MigrationNodeID)
+	log.Info("volume migration engine is ready")
 	return nil
 }
 
