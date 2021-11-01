@@ -358,23 +358,6 @@ func (job *Job) doRecurringSnapshot() (err error) {
 		}
 	}()
 
-	volumeAPI := job.api.Volume
-	volumeName := job.volumeName
-
-	volume, err := volumeAPI.ById(volumeName)
-	if err != nil {
-		return errors.Wrapf(err, "could not get volume %v", volumeName)
-	}
-
-	shouldDo, err := job.shouldDoRecurringSnapshot(volume)
-	if err != nil {
-		return err
-	}
-	if !shouldDo {
-		job.logger.Infof("Skipping taking snapshot because the volume %v doesn't have new data in volume-head", volumeName)
-		return nil
-	}
-
 	err = job.doSnapshot()
 	if err != nil {
 		return err
@@ -459,19 +442,6 @@ func (job *Job) doSnapshotCleanup(backupDone bool) (err error) {
 		}
 	}
 	return nil
-}
-
-// shouldDoRecurringSnapshot return whether we should take a new snapshot in the current running of the job
-func (job *Job) shouldDoRecurringSnapshot(volume *longhornclient.Volume) (bool, error) {
-	volumeHeadSize, err := job.getVolumeHeadSize(volume)
-	if err != nil {
-		return false, err
-	}
-	// If volume-head has new data, we need to take snapshot
-	if volumeHeadSize > 0 {
-		return true, nil
-	}
-	return false, nil
 }
 
 type NameWithTimestamp struct {
@@ -561,15 +531,6 @@ func (job *Job) doRecurringBackup() (err error) {
 	volume, err := volumeAPI.ById(volumeName)
 	if err != nil {
 		return errors.Wrapf(err, "could not get volume %v", volumeName)
-	}
-
-	shouldDo, err := job.shouldDoRecurringBackup(volume)
-	if err != nil {
-		return err
-	}
-	if !shouldDo {
-		job.logger.Infof("Skipping taking backup because volume %v is either empty or doesn't have new data since the last backup", volumeName)
-		return nil
 	}
 
 	if err := job.doSnapshot(); err != nil {
@@ -693,40 +654,6 @@ func (job *Job) waitForBackupProcessStart(timeout int) error {
 		time.Sleep(WaitInterval)
 	}
 	return fmt.Errorf("timeout waiting for the backup of the snapshot %v of volume %v to start", snapshot, volumeName)
-}
-
-// shouldDoRecurringBackup return whether the recurring backup should take place
-// We should do recurring backup if there is new data since the last backup
-func (job *Job) shouldDoRecurringBackup(volume *longhornclient.Volume) (bool, error) {
-	volumeHeadSize, err := job.getVolumeHeadSize(volume)
-	if err != nil {
-		return false, err
-	}
-
-	// If volume-head has new data, we need to do backup
-	if volumeHeadSize > 0 {
-		return true, nil
-	}
-
-	lastBackup, err := job.getLastBackup()
-	if err != nil {
-		return false, err
-	}
-
-	lastSnapshot, err := job.getLastSnapshot(volume)
-	if err != nil {
-		return false, err
-	}
-
-	if lastSnapshot == nil {
-		return false, nil
-	}
-
-	if lastBackup != nil && lastBackup.SnapshotName == lastSnapshot.Name {
-		return false, nil
-	}
-
-	return true, nil
 }
 
 // getLastBackup return the last backup of the volume
