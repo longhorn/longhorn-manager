@@ -101,6 +101,8 @@ type Backup struct {
 
 	Name                   string               `json:"name"`
 	State                  longhorn.BackupState `json:"state"`
+	Progress               int                  `json:"progress"`
+	Error                  string               `json:"error"`
 	URL                    string               `json:"url"`
 	SnapshotName           string               `json:"snapshotName"`
 	SnapshotCreated        string               `json:"snapshotCreated"`
@@ -1284,6 +1286,8 @@ func toBackupResource(b *longhorn.Backup) *Backup {
 		},
 		Name:                   b.Name,
 		State:                  b.Status.State,
+		Progress:               b.Status.Progress,
+		Error:                  b.Status.Error,
 		URL:                    b.Status.URL,
 		SnapshotName:           b.Status.SnapshotName,
 		SnapshotCreated:        b.Status.SnapshotCreatedAt,
