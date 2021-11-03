@@ -82,6 +82,30 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 					Tolerations:        tolerations,
 					NodeSelector:       nodeSelector,
 					PriorityClassName:  priorityClass,
+					Affinity: &v1.Affinity{
+						PodAntiAffinity: &v1.PodAntiAffinity{
+							PreferredDuringSchedulingIgnoredDuringExecution: []v1.WeightedPodAffinityTerm{
+								{
+									Weight: 1,
+									PodAffinityTerm: v1.PodAffinityTerm{
+										LabelSelector: &metav1.LabelSelector{
+											MatchExpressions: []metav1.LabelSelectorRequirement{
+												{
+													Key:      "app",
+													Operator: metav1.LabelSelectorOpIn,
+													Values: []string{
+														commonName,
+													},
+												},
+											},
+										},
+
+										TopologyKey: v1.LabelHostname,
+									},
+								},
+							},
+						},
+					},
 					Containers: []v1.Container{
 						{
 							Name:            commonName,
