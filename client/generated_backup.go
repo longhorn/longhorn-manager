@@ -9,11 +9,15 @@ type Backup struct {
 
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`
 
+	Error string `json:"error,omitempty" yaml:"error,omitempty"`
+
 	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 
 	Messages map[string]string `json:"messages,omitempty" yaml:"messages,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	Progress int64 `json:"progress,omitempty" yaml:"progress,omitempty"`
 
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
 
