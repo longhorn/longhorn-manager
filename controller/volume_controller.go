@@ -2696,7 +2696,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 		},
 	}
 
-	if v.Spec.FromBackup != "" {
+	if v.Spec.FromBackup != "" && v.Status.RestoreRequired {
 		backupVolumeName, backupName, err := vc.getInfoFromBackupURL(v)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get backup volume when creating engine object of restored volume %v", v.Name)
