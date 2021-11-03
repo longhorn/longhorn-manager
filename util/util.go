@@ -25,9 +25,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/handlers"
 	"github.com/pkg/errors"
-	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 
 	v1 "k8s.io/api/core/v1"
@@ -142,7 +142,7 @@ func Backoff(maxDuration time.Duration, timeoutMessage string, f func() (bool, e
 }
 
 func UUID() string {
-	return uuid.NewV4().String()
+	return uuid.New().String()
 }
 
 // WaitForDevice timeout in second
