@@ -75,6 +75,7 @@ type EngineSpec struct {
 	RequestedDataSource       VolumeDataSource  `json:"requestedDataSource"`
 	DisableFrontend           bool              `json:"disableFrontend"`
 	RevisionCounterDisabled   bool              `json:"revisionCounterDisabled"`
+	Active                    bool              `json:"active"`
 }
 
 type EngineStatus struct {

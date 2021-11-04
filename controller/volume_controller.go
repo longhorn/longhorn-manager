@@ -979,7 +979,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 	if e == nil {
 		// first time creation
-		e, err = vc.createEngine(v)
+		e, err = vc.createEngine(v, true)
 		if err != nil {
 			return err
 		}
@@ -2653,7 +2653,7 @@ func (vc *VolumeController) getInfoFromBackupURL(v *longhorn.Volume) (string, st
 	return backupVolumeName, backupName, err
 }
 
-func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, error) {
+func (vc *VolumeController) createEngine(v *longhorn.Volume, isNewEngine bool) (*longhorn.Engine, error) {
 	log := getLoggerForVolume(vc.logger, v)
 
 	engine := &longhorn.Engine{
@@ -2685,6 +2685,10 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 
 		log.Debugf("Created engine %v for restored volume, BackupVolume is %v, RequestedBackupRestore is %v",
 			engine.Name, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
+	}
+
+	if isNewEngine {
+		engine.Spec.Active = true
 	}
 
 	return vc.ds.CreateEngine(engine)
@@ -2818,27 +2822,11 @@ func (vc *VolumeController) getEngineImage(image string) (*longhorn.EngineImage,
 	return img, nil
 }
 
-func (vc *VolumeController) getCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.Engine) (currentEngine *longhorn.Engine, otherEngines []*longhorn.Engine, err error) {
-	for _, e := range es {
-		if e.Spec.NodeID == v.Status.CurrentNodeID &&
-			e.Spec.DesireState == longhorn.InstanceStateRunning &&
-			e.Status.CurrentState == longhorn.InstanceStateRunning {
-			currentEngine = e
-		} else {
-			otherEngines = append(otherEngines, e)
-		}
-	}
-	if currentEngine == nil {
-		return nil, nil, fmt.Errorf("volume %v is not attached", v.Name)
-	}
-	return
-}
-
 func (vc *VolumeController) getCurrentEngineAndCleanupOthers(v *longhorn.Volume, es map[string]*longhorn.Engine) (current *longhorn.Engine, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to clean up the extra engines for %v", v.Name)
 	}()
-	current, extras, err := vc.getCurrentEngineAndExtras(v, es)
+	current, extras, err := datastore.GetCurrentEngineAndExtras(v, es)
 	if err != nil {
 		return nil, err
 	}
@@ -2921,11 +2909,26 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 			v.Status.CurrentNodeID = v.Spec.NodeID
 		}
 
-		// current engine is based on the v.Status.CurrentNodeID
-		// so in the case of a rollback all we have to do is cleanup the migration engine
-		currentEngine, err := vc.getCurrentEngineAndCleanupOthers(v, es)
+		// The latest current engine is based on the multiple node related fields of the volume basides all engine desired node ID,
+		// If the new engine matches, it means a migration confirmation then it's time to remove the old engine.
+		// If the old engine matches, it means a migration rollback hence cleaning up the migration engine is required.
+		//
+		// But once the volume is in the mid of the auto-recovery flow during migration rollback, there may be no engine considered as a current engine.
+		// Then all we have to do is waiting for the old engine back and running first. (Corner case)
+		currentEngine, extras, err := datastore.GetNewCurrentEngineAndExtras(v, es)
 		if err != nil {
-			return err
+			log.Warnf("Cannot finish the migration confirmation or rollback, need to wait for the current engine becoming attached first: %v", err)
+			return nil
+		}
+		// The cleanup can be done only after the new current engine is found.
+		for i := range extras {
+			e := extras[i]
+			if e.DeletionTimestamp == nil {
+				if err := vc.deleteEngine(e, es); err != nil {
+					return err
+				}
+				log.Infof("Removing extra engine %v after switching the current engine to %v", e.Name, currentEngine.Name)
+			}
 		}
 
 		// cleanupCorruptedOrStaleReplicas() will take care of old replicas
@@ -2939,12 +2942,12 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 	}
 
 	// volume is migrating
-	currentEngine, extras, err := vc.getCurrentEngineAndExtras(v, es)
+	currentEngine, extras, err := datastore.GetCurrentEngineAndExtras(v, es)
 	if err != nil {
 		return err
 	}
 
-	var activeEngines int
+	var availableEngines int
 	var migrationEngine *longhorn.Engine
 	for _, extra := range extras {
 		if extra.DeletionTimestamp != nil {
@@ -2953,7 +2956,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 
 		// a valid migration engine is either a newly created engine that hasn't been assigned a node yet
 		// or an existing engine that is running on the migration node, any additional extra engines would be unexpected.
-		activeEngines++
+		availableEngines++
 		isValidMigrationEngine := extra.Spec.NodeID == "" || extra.Spec.NodeID == v.Spec.MigrationNodeID
 		if isValidMigrationEngine {
 			migrationEngine = extra
@@ -2961,9 +2964,9 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 	}
 
 	// verify that we are in a valid state for migration
-	// we only consider active engines as candidates for the migration engine
-	unexpectedEngineCount := activeEngines > 1
-	invalidMigrationEngine := activeEngines > 0 && migrationEngine == nil
+	// we only consider engines without a deletion timestamp as candidates for the migration engine
+	unexpectedEngineCount := availableEngines > 1
+	invalidMigrationEngine := availableEngines > 0 && migrationEngine == nil
 	if unexpectedEngineCount || invalidMigrationEngine {
 		_, _ = vc.getCurrentEngineAndCleanupOthers(v, es)
 		return fmt.Errorf("unexpected state for migration, current engine count %v has invalid migration engine %v",
@@ -2971,7 +2974,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 	}
 
 	if migrationEngine == nil {
-		migrationEngine, err = vc.createEngine(v)
+		migrationEngine, err = vc.createEngine(v, false)
 		if err != nil {
 			return err
 		}
