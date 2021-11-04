@@ -119,6 +119,19 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.No
 	return nodeCandidates
 }
 
+// getNodesWithEvictingReplicas returns nodes that have replicas being evicted
+func getNodesWithEvictingReplicas(replicas map[string]*longhorn.Replica, nodeInfo map[string]*longhorn.Node) map[string]*longhorn.Node {
+	nodesWithEvictingReplicas := map[string]*longhorn.Node{}
+	for _, r := range replicas {
+		if r.Status.EvictionRequested {
+			if node, ok := nodeInfo[r.Spec.NodeID]; ok {
+				nodesWithEvictingReplicas[r.Spec.NodeID] = node
+			}
+		}
+	}
+	return nodesWithEvictingReplicas
+}
+
 func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Node, nodeDisksMap map[string]map[string]struct{}, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, requireSchedulingCheck bool) map[string]*Disk {
 	nodeSoftAntiAffinity, err :=
 		rcs.ds.GetSettingAsBool(types.SettingNameReplicaSoftAntiAffinity)
@@ -132,9 +145,18 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		logrus.Errorf("Error getting replica zone soft anti-affinity setting: %v", err)
 	}
 
+	getDiskCandidatesFromNodes := func(nodes map[string]*longhorn.Node) map[string]*Disk {
+		for _, node := range nodes {
+			if diskCandidates := rcs.filterNodeDisksForReplica(node, nodeDisksMap[node.Name], replicas, volume, requireSchedulingCheck); len(diskCandidates) > 0 {
+				return diskCandidates
+			}
+		}
+		return map[string]*Disk{}
+	}
+
 	usedNodes := map[string]*longhorn.Node{}
 	usedZones := map[string]bool{}
-
+	replicasCountPerNode := map[string]int{}
 	// Get current nodes and zones
 	for _, r := range replicas {
 		if r.Spec.NodeID != "" && r.DeletionTimestamp == nil && r.Spec.FailedAt == "" {
@@ -143,90 +165,82 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 				// For empty zone label, we treat them as
 				// one zone.
 				usedZones[node.Status.Zone] = true
+				replicasCountPerNode[r.Spec.NodeID] = replicasCountPerNode[r.Spec.NodeID] + 1
 			}
 		}
 	}
 
-	unusedNodeCandidates := map[string]*longhorn.Node{}
-	unusedNodeWithNewZoneCandidates := map[string]*longhorn.Node{}
+	filterNodesWithLessThanTwoReplicas := func(nodes map[string]*longhorn.Node) map[string]*longhorn.Node {
+		result := map[string]*longhorn.Node{}
+		for nodeName, node := range nodes {
+			if replicasCountPerNode[nodeName] < 2 {
+				result[nodeName] = node
+			}
+		}
+		return result
+	}
 
-	// Get new nodes with new zones
+	unusedNodes := map[string]*longhorn.Node{}
+	unusedNodesInNewZones := map[string]*longhorn.Node{}
+	nodesInUnusedZones := map[string]*longhorn.Node{}
+	nodesWithEvictingReplicas := getNodesWithEvictingReplicas(replicas, nodeInfo)
+
 	for nodeName, node := range nodeInfo {
+		// Filter Nodes. If the Nodes don't match the tags, don't bother marking them as candidates.
+		if !rcs.checkTagsAreFulfilled(node.Spec.Tags, volume.Spec.NodeSelector) {
+			continue
+		}
 		if _, ok := usedNodes[nodeName]; !ok {
-			// Filter Nodes. If the Nodes don't match the tags, don't bother marking them as candidates.
-			if !rcs.checkTagsAreFulfilled(node.Spec.Tags, volume.Spec.NodeSelector) {
-				continue
-			}
-			unusedNodeCandidates[nodeName] = node
+			unusedNodes[nodeName] = node
 			if _, ok := usedZones[node.Status.Zone]; !ok {
-				unusedNodeWithNewZoneCandidates[nodeName] = node
+				unusedNodesInNewZones[nodeName] = node
 			}
+		}
+		if _, ok := usedZones[node.Status.Zone]; !ok {
+			nodesInUnusedZones[nodeName] = node
 		}
 	}
 
-	diskCandidates := map[string]*Disk{}
-
-	// First check if we can schedule replica on new nodes with new zone
-	for _, node := range unusedNodeWithNewZoneCandidates {
-		diskCandidates = rcs.filterNodeDisksForReplica(node, nodeDisksMap[node.Name], replicas, volume, requireSchedulingCheck)
-		if len(diskCandidates) > 0 {
+	switch {
+	case !zoneSoftAntiAffinity && !nodeSoftAntiAffinity:
+		if diskCandidates := getDiskCandidatesFromNodes(unusedNodesInNewZones); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+		if diskCandidates := getDiskCandidatesFromNodes(filterNodesWithLessThanTwoReplicas(nodesWithEvictingReplicas)); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+	case zoneSoftAntiAffinity && !nodeSoftAntiAffinity:
+		if diskCandidates := getDiskCandidatesFromNodes(unusedNodesInNewZones); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+		if diskCandidates := getDiskCandidatesFromNodes(unusedNodes); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+		if diskCandidates := getDiskCandidatesFromNodes(filterNodesWithLessThanTwoReplicas(nodesWithEvictingReplicas)); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+	case !zoneSoftAntiAffinity && nodeSoftAntiAffinity:
+		if diskCandidates := getDiskCandidatesFromNodes(unusedNodesInNewZones); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+		if diskCandidates := getDiskCandidatesFromNodes(nodesInUnusedZones); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+		if diskCandidates := getDiskCandidatesFromNodes(nodesWithEvictingReplicas); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+	case zoneSoftAntiAffinity && nodeSoftAntiAffinity:
+		if diskCandidates := getDiskCandidatesFromNodes(unusedNodesInNewZones); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+		if diskCandidates := getDiskCandidatesFromNodes(unusedNodes); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+		if diskCandidates := getDiskCandidatesFromNodes(usedNodes); len(diskCandidates) > 0 {
 			return diskCandidates
 		}
 	}
-
-	// Hard on zone and hard on node
-	if (!nodeSoftAntiAffinity) && (!zoneSoftAntiAffinity) {
-		return diskCandidates
-	}
-
-	// Then check if we can schedule replica on new nodes with same zone
-	for _, node := range unusedNodeCandidates {
-		diskCandidates = rcs.filterNodeDisksForReplica(node, nodeDisksMap[node.Name], replicas, volume, requireSchedulingCheck)
-		if len(diskCandidates) > 0 {
-			break
-		}
-	}
-
-	// Soft on zone and hard on node
-	if !nodeSoftAntiAffinity {
-		return diskCandidates
-	}
-
-	// On new nodes with soft on zone and soft on node
-	if (zoneSoftAntiAffinity) && (len(diskCandidates) > 0) {
-		return diskCandidates
-	}
-
-	for _, node := range nodeInfo {
-		if _, ok := usedZones[node.Status.Zone]; !ok {
-			// Filter tag unmatched nodes
-			if !rcs.checkTagsAreFulfilled(node.Spec.Tags, volume.Spec.NodeSelector) {
-				continue
-			}
-			diskCandidates = rcs.filterNodeDisksForReplica(node, nodeDisksMap[node.Name], replicas, volume, requireSchedulingCheck)
-			if len(diskCandidates) > 0 {
-				break
-			}
-		}
-	}
-
-	// Hard on zone and soft on node
-	if !zoneSoftAntiAffinity {
-		return diskCandidates
-	}
-
-	// On new zones with soft on zone and soft on node
-	if len(diskCandidates) > 0 {
-		return diskCandidates
-	}
-
-	// Last check if we can schedule replica on existing node regardless the zone
-	// Soft on zone and soft on node
-	for _, node := range usedNodes {
-		diskCandidates = rcs.filterNodeDisksForReplica(node, nodeDisksMap[node.Name], replicas, volume, requireSchedulingCheck)
-	}
-
-	return diskCandidates
+	return map[string]*Disk{}
 }
 
 func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disks map[string]struct{}, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, requireSchedulingCheck bool) map[string]*Disk {
