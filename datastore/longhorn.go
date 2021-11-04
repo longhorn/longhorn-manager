@@ -585,29 +585,68 @@ func checkEngine(engine *longhorn.Engine) error {
 	return nil
 }
 
+// GetCurrentEngineAndExtras pick the current Engine and extra Engines from the Engine list of a volume with the given namespace
+func GetCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.Engine) (currentEngine *longhorn.Engine, extras []*longhorn.Engine, err error) {
+	for _, e := range es {
+		if e.Spec.Active {
+			if currentEngine != nil {
+				return nil, nil, fmt.Errorf("BUG: found the second active engine %v besides %v", e.Name, currentEngine.Name)
+			}
+			currentEngine = e
+		} else {
+			extras = append(extras, e)
+		}
+	}
+	if currentEngine == nil {
+		logrus.Warnf("failed to directly pick up the current one from multiple engines for volume %v, fall back to detect the new current engine, "+
+			"current node %v, desire node %v", v.Name, v.Status.CurrentNodeID, v.Spec.NodeID)
+		return GetNewCurrentEngineAndExtras(v, es)
+	}
+	return
+}
+
+// GetNewCurrentEngineAndExtras detects the new current Engine and extra Engines from the Engine list of a volume with the given namespace during engine switching.
+func GetNewCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.Engine) (currentEngine *longhorn.Engine, extras []*longhorn.Engine, err error) {
+	oldEngineName := ""
+	for name := range es {
+		e := es[name]
+		if e.Spec.Active {
+			oldEngineName = e.Name
+		}
+		if (v.Spec.NodeID != "" && v.Spec.NodeID == e.Spec.NodeID) ||
+			(v.Status.CurrentNodeID != "" && v.Status.CurrentNodeID == e.Spec.NodeID) ||
+			(v.Status.PendingNodeID != "" && v.Status.PendingNodeID == e.Spec.NodeID) {
+			if currentEngine != nil {
+				return nil, nil, fmt.Errorf("BUG: found the second new active engine %v besides %v", e.Name, currentEngine.Name)
+			}
+			currentEngine = e
+			currentEngine.Spec.Active = true
+		} else {
+			extras = append(extras, e)
+		}
+	}
+
+	if currentEngine == nil {
+		return nil, nil, fmt.Errorf("cannot find the current engine for the switching after iterating and cleaning up all engines for volume %v, all engines may be detached or in a transient state", v.Name)
+	}
+
+	if currentEngine.Name != oldEngineName {
+		logrus.Infof("Found the new current engine %v for volume %v, the old one is %v", currentEngine.Name, v.Name, oldEngineName)
+	} else {
+		logrus.Infof("The current engine for volume %v is still %v", v.Name, currentEngine.Name)
+	}
+
+	return
+}
+
 // PickVolumeCurrentEngine pick the current Engine from the Engine list of a volume with the given namespace
 func (s *DataStore) PickVolumeCurrentEngine(v *longhorn.Volume, es map[string]*longhorn.Engine) (*longhorn.Engine, error) {
 	if len(es) == 0 {
 		return nil, nil
 	}
 
-	if len(es) == 1 {
-		for _, e := range es {
-			return e, nil
-		}
-	}
-
-	// len(es) > 1
-	node := v.Status.CurrentNodeID
-	if node != "" {
-		for _, e := range es {
-			if e.Spec.NodeID == node {
-				return e, nil
-			}
-		}
-		return nil, fmt.Errorf("BUG: multiple engines detected but none matched volume %v attached node %v", v.Name, node)
-	}
-	return nil, fmt.Errorf("BUG: multiple engines detected when volume %v is detached", v.Name)
+	e, _, err := GetCurrentEngineAndExtras(v, es)
+	return e, err
 }
 
 // GetVolumeCurrentEngine returns the Engine for a volume with the given namespace
