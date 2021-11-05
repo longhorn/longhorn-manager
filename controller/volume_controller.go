@@ -2885,13 +2885,18 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 
 	log := getLoggerForVolume(vc.logger, v).WithField("migrationNodeID", v.Spec.MigrationNodeID)
 
-	// only process if volume is attached
-	if v.Spec.NodeID == "" || len(es) == 0 {
+	// only process if volume is attached and running
+	if v.Spec.NodeID == "" || v.Status.CurrentNodeID == "" || len(es) == 0 {
+		return nil
+	}
+	if v.Status.Robustness != longhorn.VolumeRobustnessDegraded && v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
+		log.Tracef("Skip the migration processing since the volume current robustness is %v", v.Status.Robustness)
 		return nil
 	}
 
 	// cannot process migrate when upgrading
 	if vc.isVolumeUpgrading(v) {
+		log.Trace("Skip the migration processing since the volume is being upgraded")
 		return nil
 	}
 
@@ -2941,10 +2946,41 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		return nil
 	}
 
+	revertRequired := false
+	defer func() {
+		if !revertRequired {
+			return
+		}
+
+		log.Warnf("The migration engine or all migration replicas crashed, will clean them up now")
+
+		currentEngine, err := vc.getCurrentEngineAndCleanupOthers(v, es)
+		if err != nil {
+			log.Errorf("failed to get the current engine and clean up others during the migration revert: %v", err)
+			return
+		}
+
+		for _, r := range rs {
+			if r.Spec.EngineName == currentEngine.Name {
+				continue
+			}
+			if err := vc.deleteReplica(r, rs); err != nil {
+				log.Errorf("failed to delete the migration replica %v during the migration revert: %v", r.Name, err)
+				return
+			}
+		}
+	}()
+
 	// volume is migrating
 	currentEngine, extras, err := datastore.GetCurrentEngineAndExtras(v, es)
 	if err != nil {
 		return err
+	}
+
+	if currentEngine.Status.CurrentState != longhorn.InstanceStateRunning {
+		revertRequired = true
+		log.Warnf("Need to revert the migration since the current engine %v is state %v", currentEngine.Name, currentEngine.Status.CurrentState)
+		return nil
 	}
 
 	var availableEngines int
@@ -2968,9 +3004,10 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 	unexpectedEngineCount := availableEngines > 1
 	invalidMigrationEngine := availableEngines > 0 && migrationEngine == nil
 	if unexpectedEngineCount || invalidMigrationEngine {
-		_, _ = vc.getCurrentEngineAndCleanupOthers(v, es)
-		return fmt.Errorf("unexpected state for migration, current engine count %v has invalid migration engine %v",
+		revertRequired = true
+		log.Errorf("unexpected state for migration, current engine count %v has invalid migration engine %v",
 			len(es), invalidMigrationEngine)
+		return nil
 	}
 
 	if migrationEngine == nil {
@@ -2983,77 +3020,119 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 
 	log = log.WithField("migrationEngine", migrationEngine.Name)
 
+	allReady := false
+	if allReady, revertRequired, err = vc.prepareReplicasAndEngineForMigration(v, currentEngine, migrationEngine, rs); err != nil {
+		return err
+	}
+	if !allReady || revertRequired {
+		return nil
+	}
+
+	log.Info("volume migration engine is ready")
+	return nil
+}
+
+func (vc *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volume, currentEngine, migrationEngine *longhorn.Engine, rs map[string]*longhorn.Replica) (allReady, revertRequired bool, err error) {
+	log := getLoggerForVolume(vc.logger, v).WithFields(logrus.Fields{"migrationNodeID": v.Spec.MigrationNodeID, "migrationEngine": migrationEngine.Name})
+
+	// Check the migration engine current status
+	if migrationEngine.Spec.NodeID != "" && migrationEngine.Spec.NodeID != v.Spec.MigrationNodeID {
+		log.Errorf("Migration engine is on node %v but volume is somehow required to be migrated to %v, will do revert then restart the migration",
+			migrationEngine.Spec.NodeID, v.Spec.MigrationNodeID)
+		return false, true, nil
+	}
+	if migrationEngine.DeletionTimestamp != nil {
+		log.Warnf("Migration engine is in deletion, will start or continue migration revert")
+		return false, true, nil
+	}
+	if migrationEngine.Spec.DesireState != longhorn.InstanceStateStopped && migrationEngine.Spec.DesireState != longhorn.InstanceStateRunning {
+		log.Warnf("Need to do revert since the migration engine contains an invalid desire state %v", migrationEngine.Spec.DesireState)
+		return false, true, nil
+	}
+	if migrationEngine.Status.CurrentState == longhorn.InstanceStateError {
+		log.Errorf("The migration engine is state %v, need to do revert then retry the migration", migrationEngine.Status.CurrentState)
+		return false, true, nil
+	}
+
+	// Sync migration replicas with old replicas
 	currentAvailableReplicas := map[string]*longhorn.Replica{}
 	migrationReplicas := map[string]*longhorn.Replica{}
-	unknownReplicas := map[string]*longhorn.Replica{}
 	for _, r := range rs {
 		isUnavailable, err := vc.IsReplicaUnavailable(r)
 		if err != nil {
-			return err
+			return false, false, err
 		}
 		if isUnavailable {
 			continue
 		}
 		dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
 		if r.Spec.EngineName == currentEngine.Name {
-			if currentEngine.Status.ReplicaModeMap[r.Name] == longhorn.ReplicaModeWO {
-				log.Debugf("Cannot start migration since the current replica %v is mode WriteOnly, which means the rebuilding is in progress", r.Name)
-				return nil
+			switch currentEngine.Status.ReplicaModeMap[r.Name] {
+			case longhorn.ReplicaModeWO:
+				log.Debugf("Need to revert rather than starting migration since the current replica %v is mode WriteOnly, which means the rebuilding is in progress", r.Name)
+				return false, true, nil
+			case longhorn.ReplicaModeRW:
+				currentAvailableReplicas[dataPath] = r
+			default:
+				log.Warnf("unexpected mode %v for the current replica %v, will ignore it and continue migration", currentEngine.Status.ReplicaModeMap[r.Name], r.Name)
+				continue
 			}
-			if currentEngine.Status.ReplicaModeMap[r.Name] != longhorn.ReplicaModeRW {
-				return fmt.Errorf("unexpected mode %v for the current replica %v, cannot continue migration", currentEngine.Status.ReplicaModeMap[r.Name], r.Name)
-			}
-			currentAvailableReplicas[dataPath] = r
 		} else if r.Spec.EngineName == migrationEngine.Name {
 			migrationReplicas[dataPath] = r
 		} else {
-			log.Warnf("During migration found unknown replica with engine %v", r.Spec.EngineName)
-			unknownReplicas[dataPath] = r
+			log.Warnf("During migration found unknown replica with engine %v, will directly remove it", r.Spec.EngineName)
+			if err := vc.deleteReplica(r, rs); err != nil {
+				return false, false, err
+			}
 		}
 	}
 
 	if err := vc.createAndStartMatchingReplicas(v, rs, currentAvailableReplicas, migrationReplicas, func(r *longhorn.Replica, engineName string) {
 		r.Spec.EngineName = engineName
 	}, migrationEngine.Name); err != nil {
-		return err
+		return false, false, err
 	}
 
-	if migrationEngine.Spec.DesireState != longhorn.InstanceStateRunning {
-		replicaAddressMap := map[string]string{}
-		for _, r := range migrationReplicas {
-			// wait for all potentially available replicas become running
-			if r.Status.CurrentState != longhorn.InstanceStateRunning {
-				return nil
-			}
-			if r.Status.IP == "" {
-				log.Errorf("BUG: replica %v is running but IP is empty", r.Name)
-				continue
-			}
-			if r.Status.Port == 0 {
-				log.Errorf("BUG: replica %v is running but Port is empty", r.Name)
-				continue
-			}
-			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
-		}
-		if len(replicaAddressMap) == 0 {
-			return fmt.Errorf("volume %v: no new replica during migration", v.Name)
-		}
-		if migrationEngine.Spec.NodeID != "" && migrationEngine.Spec.NodeID != v.Spec.MigrationNodeID {
-			return fmt.Errorf("volume %v: engine is on node %v vs volume migration on %v",
-				v.Name, migrationEngine.Spec.NodeID, v.Spec.MigrationNodeID)
-		}
-		migrationEngine.Spec.NodeID = v.Spec.MigrationNodeID
-		migrationEngine.Spec.ReplicaAddressMap = replicaAddressMap
-		migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
-		es[migrationEngine.Name] = migrationEngine
+	if len(migrationReplicas) == 0 {
+		log.Warnf("volume %v: no valid migration replica during the migration, need to do revert first", v.Name)
+		return false, true, nil
 	}
+
+	// Sync the migration engine with migration replicas
+	replicaAddressMap := map[string]string{}
+	for _, r := range migrationReplicas {
+		// wait for all potentially available replicas become running
+		if r.Status.CurrentState == longhorn.InstanceStateError || r.Status.CurrentState == longhorn.InstanceStateUnknown {
+			log.Warnf("Ignore unavailable migration replica %v since the state is %v", r.Name, r.Status.CurrentState)
+			continue
+		}
+		if r.DeletionTimestamp != nil {
+			log.Warnf("Ignore deleting migration replica %v with state %v", r.Name, r.Status.CurrentState)
+			continue
+		}
+		if r.Status.CurrentState != longhorn.InstanceStateRunning {
+			return false, false, nil
+		}
+		if r.Status.IP == "" {
+			log.Errorf("BUG: replica %v is running but IP is empty", r.Name)
+			continue
+		}
+		if r.Status.Port == 0 {
+			log.Errorf("BUG: replica %v is running but Port is empty", r.Name)
+			continue
+		}
+		replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
+	}
+
+	migrationEngine.Spec.NodeID = v.Spec.MigrationNodeID
+	migrationEngine.Spec.ReplicaAddressMap = replicaAddressMap
+	migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
 
 	if migrationEngine.Status.CurrentState != longhorn.InstanceStateRunning {
-		return nil
+		return false, false, nil
 	}
 
-	log.Info("volume migration engine is ready")
-	return nil
+	return true, false, nil
 }
 
 func (vc *VolumeController) IsReplicaUnavailable(r *longhorn.Replica) (bool, error) {
@@ -3062,7 +3141,7 @@ func (vc *VolumeController) IsReplicaUnavailable(r *longhorn.Replica) (bool, err
 		"replicaNodeID": r.Spec.NodeID,
 	})
 
-	if r.Spec.FailedAt != "" || r.Spec.NodeID == "" || r.Spec.DiskID == "" {
+	if r.Spec.NodeID == "" || r.Spec.DiskID == "" || r.Spec.DiskPath == "" || r.Spec.DataDirectoryName == "" {
 		return true, nil
 	}
 
