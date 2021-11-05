@@ -647,10 +647,10 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 	return nil
 }
 
-func getHealthyReplicaCount(rs map[string]*longhorn.Replica) int {
+func getHealthyAndActiveReplicaCount(rs map[string]*longhorn.Replica) int {
 	count := 0
 	for _, r := range rs {
-		if r.Spec.FailedAt == "" && r.Spec.HealthyAt != "" {
+		if r.Spec.FailedAt == "" && r.Spec.HealthyAt != "" && r.Spec.Active {
 			count++
 		}
 	}
@@ -707,7 +707,7 @@ func (vc *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*l
 }
 
 func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
-	healthyCount := getHealthyReplicaCount(rs)
+	healthyCount := getHealthyAndActiveReplicaCount(rs)
 	cleanupLeftoverReplicas := !vc.isVolumeUpgrading(v) && !vc.isVolumeMigrating(v)
 	log := getLoggerForVolume(vc.logger, v)
 
@@ -754,7 +754,7 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 }
 
 func (vc *VolumeController) cleanupFailedToScheduledReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (err error) {
-	healthyCount := getHealthyReplicaCount(rs)
+	healthyCount := getHealthyAndActiveReplicaCount(rs)
 	hasEvictionRequestedReplicas := vc.hasReplicaEvictionRequested(rs)
 
 	if healthyCount >= v.Spec.NumberOfReplicas {
@@ -775,7 +775,7 @@ func (vc *VolumeController) cleanupFailedToScheduledReplicas(v *longhorn.Volume,
 }
 
 func (vc *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
-	healthyCount := getHealthyReplicaCount(rs)
+	healthyCount := getHealthyAndActiveReplicaCount(rs)
 	if healthyCount <= v.Spec.NumberOfReplicas {
 		return nil
 	}
@@ -1095,7 +1095,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		e.Spec.SalvageRequested = false
 	}
 
-	isAutoSalvageNeeded := getHealthyReplicaCount(rs) == 0 && getFailedReplicaCount(rs) > 0
+	isAutoSalvageNeeded := getHealthyAndActiveReplicaCount(rs) == 0 && getFailedReplicaCount(rs) > 0
 	if isAutoSalvageNeeded {
 		v.Status.Robustness = longhorn.VolumeRobustnessFaulted
 		v.Status.CurrentNodeID = ""
