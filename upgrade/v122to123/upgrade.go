@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -117,7 +118,20 @@ func upgradeEngines(namespace string, lhClient *lhclientset.Clientset) (err erro
 		err = errors.Wrapf(err, "upgrade engines failed")
 	}()
 
-	// Remove backupStatus from engine CRs
+	// Do the field update separately to avoid messing up.
+
+	if err := checkAndRemoveEngineBackupStatus(namespace, lhClient); err != nil {
+		return err
+	}
+
+	if err := checkAndUpdateEngineActiveState(namespace, lhClient); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func checkAndRemoveEngineBackupStatus(namespace string, lhClient *lhclientset.Clientset) error {
 	engines, err := lhClient.LonghornV1beta1().Engines(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -132,6 +146,64 @@ func upgradeEngines(namespace string, lhClient *lhclientset.Clientset) (err erro
 			continue
 		}
 		if _, err := lhClient.LonghornV1beta1().Engines(namespace).UpdateStatus(context.TODO(), &engine, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func checkAndUpdateEngineActiveState(namespace string, lhClient *lhclientset.Clientset) error {
+	engines, err := lhClient.LonghornV1beta1().Engines(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	volumeEngineMap := map[string][]*longhorn.Engine{}
+	for i := range engines.Items {
+		e := &engines.Items[i]
+		if e.Spec.VolumeName == "" {
+			// Cannot do anything in the upgrade path if there is really an orphan engine CR.
+			continue
+		}
+		volumeEngineMap[e.Spec.VolumeName] = append(volumeEngineMap[e.Spec.VolumeName], e)
+	}
+
+	for volumeName, engineList := range volumeEngineMap {
+		skip := false
+		for _, e := range engineList {
+			if e.Spec.Active {
+				skip = true
+				break
+			}
+		}
+		if skip {
+			continue
+		}
+
+		var currentEngine *longhorn.Engine
+		if len(engineList) == 1 {
+			currentEngine = engineList[0]
+		} else {
+			v, err := lhClient.LonghornV1beta1().Volumes(namespace).Get(context.TODO(), volumeName, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			for i := range engineList {
+				if (v.Spec.NodeID != "" && v.Spec.NodeID == engineList[i].Spec.NodeID) ||
+					(v.Status.CurrentNodeID != "" && v.Status.CurrentNodeID == engineList[i].Spec.NodeID) ||
+					(v.Status.PendingNodeID != "" && v.Status.PendingNodeID == engineList[i].Spec.NodeID) {
+					currentEngine = engineList[i]
+					break
+				}
+			}
+		}
+		if currentEngine == nil {
+			logrus.Errorf("failed to get the current engine for volume %v during upgrade, will ignore it and continue", volumeName)
+			continue
+		}
+		currentEngine.Spec.Active = true
+		if _, err := lhClient.LonghornV1beta1().Engines(namespace).Update(context.TODO(), currentEngine, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 	}
