@@ -413,22 +413,16 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 	}()
 
-	engine, err := vc.ds.PickVolumeCurrentEngine(volume, engines)
-	if err != nil {
+	if err := vc.ReconcileEngineReplicaState(volume, engines, replicas); err != nil {
 		return err
 	}
-	if len(engines) <= 1 {
-		if err := vc.ReconcileEngineReplicaState(volume, engine, replicas); err != nil {
-			return err
-		}
 
-		if err := vc.updateRecurringJobs(volume); err != nil {
-			return err
-		}
+	if err := vc.updateRecurringJobs(volume); err != nil {
+		return err
+	}
 
-		if err := vc.upgradeEngineForVolume(volume, engine, replicas); err != nil {
-			return err
-		}
+	if err := vc.upgradeEngineForVolume(volume, engines, replicas); err != nil {
+		return err
 	}
 
 	if err := vc.processMigration(volume, engines, replicas); err != nil {
@@ -492,13 +486,18 @@ func (vc *VolumeController) EvictReplicas(v *longhorn.Volume,
 
 // ReconcileEngineReplicaState will get the current main engine e.Status.ReplicaModeMap, e.Status.RestoreStatus,
 // e.Status.purgeStatus, and e.Status.SnapshotCloneStatus then update v and rs accordingly.
-func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
+func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to reconcile engine/replica state for %v", v.Name)
 		if v.Status.Robustness != longhorn.VolumeRobustnessDegraded {
 			v.Status.LastDegradedAt = ""
 		}
 	}()
+
+	e, err := vc.ds.PickVolumeCurrentEngine(v, es)
+	if err != nil {
+		return err
+	}
 	if e == nil {
 		return nil
 	}
@@ -587,6 +586,10 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 			r.Spec.DesireState = longhorn.InstanceStateStopped
 		}
 	}
+
+	// Cannot continue evicting or replenishing replicas during engine migration.
+	isMigratingDone := !vc.isVolumeMigrating(v) && len(es) == 1
+
 	oldRobustness := v.Status.Robustness
 	if healthyCount == 0 { // no healthy replica exists, going to faulted
 		// ReconcileVolumeState() will deal with the faulted case
@@ -597,27 +600,29 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonHealthy, "volume %v became healthy", v.Name)
 		}
 
-		// Evict replicas for the volume
-		if err := vc.EvictReplicas(v, e, rs, healthyCount); err != nil {
-			return err
-		}
-
-		// Migrate local replica when Data Locality is on
-		// We turn off data locality while doing auto-attaching or restoring (e.g. frontend is disabled)
-		if v.Status.State == longhorn.VolumeStateAttached && !v.Status.FrontendDisabled &&
-			!isDataLocalityDisabled(v) && !hasLocalReplicaOnSameNodeAsEngine(e, rs) {
-			if err := vc.replenishReplicas(v, e, rs, e.Spec.NodeID); err != nil {
+		if isMigratingDone {
+			// Evict replicas for the volume
+			if err := vc.EvictReplicas(v, e, rs, healthyCount); err != nil {
 				return err
 			}
-		}
 
-		setting, err := vc.getAutoBalancedReplicasSetting(v)
-		if err != nil {
-			vc.logger.Warnf(err.Error())
-		}
-		if setting != longhorn.ReplicaAutoBalanceDisabled {
-			if err := vc.replenishReplicas(v, e, rs, ""); err != nil {
-				return err
+			// Migrate local replica when Data Locality is on
+			// We turn off data locality while doing auto-attaching or restoring (e.g. frontend is disabled)
+			if v.Status.State == longhorn.VolumeStateAttached && !v.Status.FrontendDisabled &&
+				!isDataLocalityDisabled(v) && !hasLocalReplicaOnSameNodeAsEngine(e, rs) {
+				if err := vc.replenishReplicas(v, e, rs, e.Spec.NodeID); err != nil {
+					return err
+				}
+			}
+
+			setting, err := vc.getAutoBalancedReplicasSetting(v)
+			if err != nil {
+				vc.logger.Warnf(err.Error())
+			}
+			if setting != longhorn.ReplicaAutoBalanceDisabled {
+				if err := vc.replenishReplicas(v, e, rs, ""); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -633,10 +638,12 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 			return err
 		}
 		// Rebuild is not supported when:
-		//   1. the volume is old restore/DR volumes.
-		//   2. the volume is expanding size.
-		if !((v.Status.IsStandby || v.Status.RestoreRequired) && cliAPIVersion < engineapi.CLIVersionFour) &&
-			v.Spec.Size == e.Status.CurrentSize {
+		//   1. the volume is being migrating to another node.
+		//   2. the volume is old restore/DR volumes.
+		//   3. the volume is expanding size.
+		isOldRestoreVolume := (v.Status.IsStandby || v.Status.RestoreRequired) && cliAPIVersion < engineapi.CLIVersionFour
+		isInExpansion := v.Spec.Size != e.Status.CurrentSize
+		if isMigratingDone && !isOldRestoreVolume && !isInExpansion {
 			if err := vc.replenishReplicas(v, e, rs, ""); err != nil {
 				return err
 			}
@@ -2135,12 +2142,24 @@ func (vc *VolumeController) hasEngineStatusSynced(e *longhorn.Engine, rs map[str
 	return true
 }
 
-func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
+func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) error {
 	var err error
+
+	if len(es) > 1 {
+		return nil
+	}
+
+	e, err := vc.ds.PickVolumeCurrentEngine(v, es)
+	if err != nil {
+		return err
+	}
+	if e == nil {
+		return nil
+	}
 
 	if !vc.isVolumeUpgrading(v) {
 		// it must be a rollback
-		if e != nil && e.Spec.EngineImage != v.Spec.EngineImage {
+		if e.Spec.EngineImage != v.Spec.EngineImage {
 			e.Spec.EngineImage = v.Spec.EngineImage
 			e.Spec.UpgradedReplicaAddressMap = map[string]string{}
 		}
