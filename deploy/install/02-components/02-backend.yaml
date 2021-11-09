@@ -14,3 +14,25 @@ spec:
   - name: manager
     port: 9500
     targetPort: manager
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: longhorn-engine-manager
+  namespace: longhorn-system
+spec:
+  clusterIP: None
+  selector:
+    longhorn.io/component: instance-manager
+    longhorn.io/instance-manager-type: engine
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: longhorn-replica-manager
+  namespace: longhorn-system
+spec:
+  clusterIP: None
+  selector:
+    longhorn.io/component: instance-manager
+    longhorn.io/instance-manager-type: replica
