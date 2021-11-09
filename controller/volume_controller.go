@@ -2862,6 +2862,22 @@ func (vc *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 	return nil
 }
 
+func (vc *VolumeController) deleteInvalidMigrationReplicas(rs, pathToOldRs, pathToNewRs map[string]*longhorn.Replica) error {
+	for path, r := range pathToNewRs {
+		matchTheOldReplica := pathToOldRs[path] != nil && r.Spec.DesireState == pathToOldRs[path].Spec.DesireState
+		newReplicaIsAvailable := r.DeletionTimestamp == nil && r.Spec.DesireState == longhorn.InstanceStateRunning &&
+			r.Status.CurrentState != longhorn.InstanceStateError && r.Status.CurrentState != longhorn.InstanceStateUnknown && r.Status.CurrentState != longhorn.InstanceStateStopping
+		if matchTheOldReplica && newReplicaIsAvailable {
+			continue
+		}
+		delete(pathToNewRs, path)
+		if err := vc.deleteReplica(r, rs); err != nil {
+			return errors.Wrapf(err, "failed to delete the new replica %v when there is no matching old replica in path %v", r.Name, path)
+		}
+	}
+	return nil
+}
+
 func (vc *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica,
 	activeCondFunc func(r *longhorn.Replica, obj string) bool, obj string) error {
 
@@ -3087,6 +3103,10 @@ func (vc *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Vol
 		}
 	}
 
+	if err := vc.deleteInvalidMigrationReplicas(rs, currentAvailableReplicas, migrationReplicas); err != nil {
+		return false, false, err
+	}
+
 	if err := vc.createAndStartMatchingReplicas(v, rs, currentAvailableReplicas, migrationReplicas, func(r *longhorn.Replica, engineName string) {
 		r.Spec.EngineName = engineName
 	}, migrationEngine.Name); err != nil {
@@ -3102,15 +3122,6 @@ func (vc *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Vol
 	replicaAddressMap := map[string]string{}
 	allMigrationReplicasReady := true
 	for _, r := range migrationReplicas {
-		// wait for all potentially available replicas become running
-		if r.Status.CurrentState == longhorn.InstanceStateError || r.Status.CurrentState == longhorn.InstanceStateUnknown {
-			log.Warnf("Ignore unavailable migration replica %v since the state is %v", r.Name, r.Status.CurrentState)
-			continue
-		}
-		if r.DeletionTimestamp != nil {
-			log.Warnf("Ignore deleting migration replica %v with state %v", r.Name, r.Status.CurrentState)
-			continue
-		}
 		if r.Status.CurrentState != longhorn.InstanceStateRunning {
 			allMigrationReplicasReady = false
 			continue
