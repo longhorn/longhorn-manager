@@ -3100,6 +3100,7 @@ func (vc *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Vol
 
 	// Sync the migration engine with migration replicas
 	replicaAddressMap := map[string]string{}
+	allMigrationReplicasReady := true
 	for _, r := range migrationReplicas {
 		// wait for all potentially available replicas become running
 		if r.Status.CurrentState == longhorn.InstanceStateError || r.Status.CurrentState == longhorn.InstanceStateUnknown {
@@ -3111,7 +3112,8 @@ func (vc *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Vol
 			continue
 		}
 		if r.Status.CurrentState != longhorn.InstanceStateRunning {
-			return false, false, nil
+			allMigrationReplicasReady = false
+			continue
 		}
 		if r.Status.IP == "" {
 			log.Errorf("BUG: replica %v is running but IP is empty", r.Name)
@@ -3122,6 +3124,25 @@ func (vc *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Vol
 			continue
 		}
 		replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
+	}
+	if migrationEngine.Spec.DesireState != longhorn.InstanceStateStopped {
+		if len(replicaAddressMap) == 0 {
+			log.Warn("No available migration replica for the current running engine, will direct do revert")
+			return false, true, nil
+		}
+		// If there are some migration replicas not ready yet or not in the engine, need to restart the engine so that
+		// the missed replicas can be added to the engine without rebuilding.
+		if !allMigrationReplicasReady || !reflect.DeepEqual(migrationEngine.Spec.ReplicaAddressMap, replicaAddressMap) {
+			log.Warn("The current available migration replicas do not match the record in the migration engine status, will restart the migration engine then update the replica map")
+			migrationEngine.Spec.NodeID = ""
+			migrationEngine.Spec.ReplicaAddressMap = map[string]string{}
+			migrationEngine.Spec.DesireState = longhorn.InstanceStateStopped
+			return false, false, nil
+		}
+	} else { // migrationEngine.Spec.DesireState == longhorn.InstanceStateStopped
+		if migrationEngine.Status.CurrentState != longhorn.InstanceStateStopped || !allMigrationReplicasReady {
+			return false, false, nil
+		}
 	}
 
 	migrationEngine.Spec.NodeID = v.Spec.MigrationNodeID
