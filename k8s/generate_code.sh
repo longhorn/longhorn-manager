@@ -1,29 +1,32 @@
 #!/bin/bash
 
-APIS_DIR="github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn"
-VERSION="v1beta1"
-APIS_VERSION_DIR="${APIS_DIR}/${VERSION}"
-OUTPUT_DIR="github.com/longhorn/longhorn-manager/k8s/pkg/client"
-CLIENTSET_DIR="${OUTPUT_DIR}/clientset"
-LISTERS_DIR="${OUTPUT_DIR}/listers"
-INFORMERS_DIR="${OUTPUT_DIR}/informers"
+set -o errexit
+set -o nounset
+set -o pipefail
 
-echo Generating deepcopy
-deepcopy-gen --input-dirs ${APIS_VERSION_DIR} \
-	-O zz_generated.deepcopy --bounding-dirs ${APIS_DIR}
+LH_MANAGER_DIR="github.com/longhorn/longhorn-manager"
+OUTPUT_DIR="${LH_MANAGER_DIR}/k8s/pkg/client"
+APIS_DIR="${LH_MANAGER_DIR}/k8s/pkg/apis"
+GROUP_VERSION="longhorn:v1beta1"
+CODE_GENERATOR_VERSION="v0.18.0"
 
-echo Generating clientset
-client-gen --clientset-name versioned \
-	--input-base '' --input ${APIS_VERSION_DIR} \
-	--clientset-path ${CLIENTSET_DIR}
+if [[ -z "${GOPATH}" ]]; then
+  GOPATH=~/go
+fi
 
-echo Generating lister
-lister-gen --input-dirs ${APIS_VERSION_DIR} \
-	--output-package ${LISTERS_DIR}
+# https://github.com/kubernetes/code-generator/blob/v0.18.0/generate-groups.sh
+if [[ ! -d "${GOPATH}/src/k8s.io/code-generator" ]]; then
+  echo "${GOPATH}/src/k8s.io/code-generator is missing"
+  echo "Prepare to install code-generator"
+	mkdir -p ${GOPATH}/src/k8s.io
+	pushd ${GOPATH}/src/k8s.io
+	git clone -b ${CODE_GENERATOR_VERSION} https://github.com/kubernetes/code-generator 2>/dev/null || true
+	popd
+fi
 
-echo Generating informer
-informer-gen --input-dirs ${APIS_VERSION_DIR} \
-	--versioned-clientset-package "${CLIENTSET_DIR}/versioned" \
-	--listers-package ${LISTERS_DIR} \
-	--output-package ${INFORMERS_DIR}
-
+bash ${GOPATH}/src/k8s.io/code-generator/generate-groups.sh \
+  deepcopy,client,lister,informer \
+  ${OUTPUT_DIR} \
+  ${APIS_DIR} \
+  ${GROUP_VERSION} \
+  $@
