@@ -735,7 +735,8 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 	for _, r := range rs {
 		if cleanupLeftoverReplicas {
 			if !r.Spec.Active {
-				// Leftover by live upgrade. Successful or not, there are replicas left to clean up
+				// Leftover by live upgrade or migration. Successful or not, there are replicas left to clean up
+				log.Infof("Removing inactive replica %v", r.Name)
 				if err := vc.deleteReplica(r, rs); err != nil {
 					return err
 				}
@@ -2161,6 +2162,11 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[st
 		return nil
 	}
 
+	log := getLoggerForVolume(vc.logger, v).WithFields(logrus.Fields{
+		"engine":                   e.Name,
+		"volumeDesiredEngineImage": v.Spec.EngineImage,
+	})
+
 	if !vc.isVolumeUpgrading(v) {
 		// it must be a rollback
 		if e.Spec.EngineImage != v.Spec.EngineImage {
@@ -2183,6 +2189,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[st
 				rs[r.Name] = r
 			}
 			if !r.Spec.Active {
+				log.Infof("Removing inactive replica %v when the volume is detached accidentally during the live upgrade", r.Name)
 				if err := vc.deleteReplica(r, rs); err != nil {
 					return err
 				}
@@ -2198,8 +2205,6 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[st
 	if v.Status.State != longhorn.VolumeStateAttached || v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
 		return nil
 	}
-
-	log := getLoggerForVolume(vc.logger, v)
 
 	volumeAndReplicaNodes := []string{v.Status.CurrentNodeID}
 	for _, r := range rs {
@@ -2867,6 +2872,7 @@ func (vc *VolumeController) getCurrentEngineAndCleanupOthers(v *longhorn.Volume,
 func (vc *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 	rs, pathToOldRs, pathToNewRs map[string]*longhorn.Replica,
 	fixupFunc func(r *longhorn.Replica, obj string), obj string) error {
+	log := getLoggerForVolume(vc.logger, v)
 	for path, r := range pathToOldRs {
 		if pathToNewRs[path] != nil {
 			continue
@@ -2879,6 +2885,7 @@ func (vc *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 		if err != nil {
 			return errors.Wrapf(err, "cannot create matching replica %v for volume %v", clone.Name, v.Name)
 		}
+		log.Infof("Cloned a new matching replica %v from %v", newReplica.Name, r.Name)
 		pathToNewRs[path] = newReplica
 		rs[newReplica.Name] = newReplica
 	}
@@ -2908,7 +2915,10 @@ func (vc *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica
 	// delete the volume data on the disk.
 	// Set `active` at last to prevent data loss
 	for _, r := range rs {
-		r.Spec.Active = activeCondFunc(r, obj)
+		if r.Spec.Active != activeCondFunc(r, obj) {
+			logrus.Infof("Switch replica %v active state from %v to %v due to %v", r.Name, r.Spec.Active, !r.Spec.Active, obj)
+			r.Spec.Active = !r.Spec.Active
+		}
 	}
 	return nil
 }
