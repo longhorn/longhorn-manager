@@ -139,7 +139,7 @@ func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, pa
 			Labels: types.GetBackingImageLabels(),
 		},
 		Spec: longhorn.BackingImageSpec{
-			Disks:            map[string]struct{}{},
+			Disks:            map[string]string{},
 			Checksum:         checksum,
 			SourceType:       longhorn.BackingImageDataSourceType(sourceType),
 			SourceParameters: parameters,

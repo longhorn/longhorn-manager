@@ -423,7 +423,7 @@ func (rc *ReplicaController) GetBackingImagePathForReplicaStarting(r *longhorn.R
 		return "", nil
 	}
 	if _, exists := bi.Spec.Disks[r.Spec.DiskID]; !exists {
-		bi.Spec.Disks[r.Spec.DiskID] = struct{}{}
+		bi.Spec.Disks[r.Spec.DiskID] = ""
 		log.Debugf("Replica %v will ask backing image %v to download file to node %v disk %v",
 			r.Name, bi.Name, r.Spec.NodeID, r.Spec.DiskID)
 		if _, err := rc.ds.UpdateBackingImage(bi); err != nil {

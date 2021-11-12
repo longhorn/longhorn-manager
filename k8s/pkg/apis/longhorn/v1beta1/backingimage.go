@@ -25,7 +25,7 @@ type BackingImageDiskFileStatus struct {
 }
 
 type BackingImageSpec struct {
-	Disks            map[string]struct{}        `json:"disks"`
+	Disks            map[string]string          `json:"disks"`
 	Checksum         string                     `json:"checksum"`
 	SourceType       BackingImageDataSourceType `json:"sourceType"`
 	SourceParameters map[string]string          `json:"sourceParameters"`
