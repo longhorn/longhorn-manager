@@ -11,6 +11,7 @@ GROUP_VERSION="longhorn:v1beta1"
 CODE_GENERATOR_VERSION="v0.18.0"
 CRDS_DIR="crds"
 CONTROLLER_TOOLS_VERSION="v0.7.0"
+KUSTOMIZE_VERSION="kustomize/v3.10.0"
 
 if [[ -z "${GOPATH}" ]]; then
   GOPATH=~/go
@@ -26,14 +27,26 @@ if [[ ! -d "${GOPATH}/src/k8s.io/code-generator" ]]; then
 	popd
 fi
 
+# https://github.com/kubernetes-sigs/controller-tools/tree/v0.7.0/cmd/controller-gen
 if ! command -v controller-gen > /dev/null; then
   echo "controller-gen is missing"
   echo "Prepare to install controller-gen"
   go install sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_TOOLS_VERSION}
 fi
 
-# https://github.com/kubernetes-sigs/controller-tools/tree/v0.7.0/cmd/controller-gen
-${GOPATH}/src/k8s.io/code-generator/generate-groups.sh \
+# https://github.com/kubernetes-sigs/kustomize/tree/kustomize/v3.10.0/kustomize
+if ! command -v kustomize > /dev/null; then
+  echo "kustomize is missing"
+  echo "Prepare to install kustomize"
+	mkdir -p ${GOPATH}/src/github.com/kubernetes-sigs
+	pushd ${GOPATH}/src/github.com/kubernetes-sigs
+	git clone -b ${KUSTOMIZE_VERSION} git@github.com:kubernetes-sigs/kustomize.git 2>/dev/null || true
+	cd kustomize/kustomize
+	go install .
+	popd
+fi
+
+bash ${GOPATH}/src/k8s.io/code-generator/generate-groups.sh \
   deepcopy,client,lister,informer \
   ${OUTPUT_DIR} \
   ${APIS_DIR} \
@@ -42,6 +55,9 @@ ${GOPATH}/src/k8s.io/code-generator/generate-groups.sh \
 
 echo Generating CRD
 controller-gen crd paths=${APIS_DIR}/... output:crd:dir=${CRDS_DIR}
-for crd in ${CRDS_DIR}/*.yaml; do
-  cat $crd > deploy/install/01-prerequisite/03-crd.yaml
-done
+pushd ${CRDS_DIR}
+kustomize create --autodetect 2>/dev/null || true
+kustomize edit add label longhorn-manager: 2>/dev/null || true
+popd
+kustomize build ${CRDS_DIR} > ${GOPATH}/src/${LH_MANAGER_DIR}/deploy/install/01-prerequisite/03-crd.yaml
+rm -r ${CRDS_DIR}
