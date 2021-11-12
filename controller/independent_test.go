@@ -70,10 +70,10 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 			Namespace: TestNamespace,
 		},
 		Spec: longhorn.BackingImageSpec{
-			Disks: map[string]struct{}{
-				TestDiskID1: {},
-				TestDiskID2: {},
-				TestDiskID3: {},
+			Disks: map[string]string{
+				TestDiskID1: "",
+				TestDiskID2: "",
+				TestDiskID3: "",
 			},
 		},
 		Status: longhorn.BackingImageStatus{
@@ -104,9 +104,9 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 	// Test case 1: clean up unused ready disk file when there are enough ready files
 	bi := biTemplate.DeepCopy()
 	expectedBI := bi.DeepCopy()
-	expectedBI.Spec.Disks = map[string]struct{}{
-		TestDiskID1: {},
-		TestDiskID2: {},
+	expectedBI.Spec.Disks = map[string]string{
+		TestDiskID1: "",
+		TestDiskID2: "",
 	}
 	BackingImageDiskFileCleanup(node, bi, bidsTemplate, time.Duration(0), 2)
 	c.Assert(bi.Spec.Disks, DeepEquals, expectedBI.Spec.Disks)
@@ -134,8 +134,8 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 		TestDiskID2: util.Now(),
 	}
 	expectedBI = bi.DeepCopy()
-	expectedBI.Spec.Disks = map[string]struct{}{
-		TestDiskID3: {},
+	expectedBI.Spec.Disks = map[string]string{
+		TestDiskID3: "",
 	}
 	BackingImageDiskFileCleanup(node, bi, bidsTemplate, time.Duration(0), 1)
 	c.Assert(bi.Spec.Disks, DeepEquals, expectedBI.Spec.Disks)
@@ -152,9 +152,9 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 		TestDiskID2: util.Now(),
 	}
 	expectedBI = bi.DeepCopy()
-	expectedBI.Spec.Disks = map[string]struct{}{
-		TestDiskID2: {},
-		TestDiskID3: {},
+	expectedBI.Spec.Disks = map[string]string{
+		TestDiskID2: "",
+		TestDiskID3: "",
 	}
 	BackingImageDiskFileCleanup(node, bi, bidsTemplate, time.Duration(0), 2)
 	c.Assert(bi.Spec.Disks, DeepEquals, expectedBI.Spec.Disks)

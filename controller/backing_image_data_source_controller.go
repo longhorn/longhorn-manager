@@ -340,12 +340,12 @@ func (c *BackingImageDataSourceController) syncBackingImage(bids *longhorn.Backi
 	}()
 
 	if bi.Spec.Disks == nil {
-		bi.Spec.Disks = map[string]struct{}{}
+		bi.Spec.Disks = map[string]string{}
 	}
 
 	if !bids.Spec.FileTransferred {
 		if _, exists := bi.Spec.Disks[bids.Spec.DiskUUID]; !exists {
-			bi.Spec.Disks[bids.Spec.DiskUUID] = struct{}{}
+			bi.Spec.Disks[bids.Spec.DiskUUID] = ""
 		}
 	}
 
