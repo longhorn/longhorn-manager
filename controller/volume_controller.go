@@ -1220,7 +1220,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 						// so we just unset PendingNodeID.
 						v.Status.PendingNodeID = v.Spec.NodeID
 						v.Status.RemountRequestedAt = vc.nowHandler()
-						msg := fmt.Sprintf("Volume %v requested remount at %v", v.Name, v.Status.RemountRequestedAt)
+						msg := fmt.Sprintf("Volume %v requested remount at %v after automatically salvaging replicas", v.Name, v.Status.RemountRequestedAt)
 						vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonRemount, msg)
 						v.Status.Robustness = longhorn.VolumeRobustnessUnknown
 					}
@@ -1345,6 +1345,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			if isReady, err := vc.ds.CheckEngineImageReadiness(v.Status.CurrentImage, v.Status.PendingNodeID); !isReady {
 				log.WithError(err).Warnf("skip auto attach because current image %v is not ready", v.Status.CurrentImage)
 			} else {
+				log.Infof("Prepare to reattach the volume to %v after the detachment success", v.Status.PendingNodeID)
 				v.Status.CurrentNodeID = v.Status.PendingNodeID
 				v.Status.PendingNodeID = ""
 			}
