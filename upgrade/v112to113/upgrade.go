@@ -1,6 +1,7 @@
 package v112to113
 
 import (
+	"context"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
@@ -43,26 +44,26 @@ func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, 
 	}
 	for _, imPod := range imPodList {
 		if imPod.OwnerReferences == nil || len(imPod.OwnerReferences) == 0 {
-			im, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).Get(imPod.Name, metav1.GetOptions{})
+			im, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).Get(context.TODO(), imPod.Name, metav1.GetOptions{})
 			if err != nil {
 				logrus.Errorf("cannot find the instance manager CR for the instance manager pod %v that has no owner reference during v1.2.0 upgrade: %v", imPod.Name, err)
 				continue
 			}
 			imPod.OwnerReferences = datastore.GetOwnerReferencesForInstanceManager(im)
-			if _, err = kubeClient.CoreV1().Pods(namespace).Update(&imPod); err != nil {
+			if _, err = kubeClient.CoreV1().Pods(namespace).Update(context.TODO(), &imPod, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 			continue
 		}
 		if imPod.OwnerReferences[0].BlockOwnerDeletion == nil || !*imPod.OwnerReferences[0].BlockOwnerDeletion {
 			imPod.OwnerReferences[0].BlockOwnerDeletion = &blockOwnerDeletion
-			if _, err = kubeClient.CoreV1().Pods(namespace).Update(&imPod); err != nil {
+			if _, err = kubeClient.CoreV1().Pods(namespace).Update(context.TODO(), &imPod, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
 
-	imList, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).List(metav1.ListOptions{})
+	imList, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -74,7 +75,7 @@ func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, 
 		if err := util.RemoveFinalizer(longhornFinalizerKey, &im); err != nil {
 			return err
 		}
-		if _, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).Update(&im); err != nil {
+		if _, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).Update(context.TODO(), &im, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 	}

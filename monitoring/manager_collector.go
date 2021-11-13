@@ -1,6 +1,7 @@
 package monitoring
 
 import (
+	"context"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -78,7 +79,7 @@ func (mc *ManagerCollector) Collect(ch chan<- prometheus.Metric) {
 		return
 	}
 
-	podMetrics, err := mc.kubeMetricsClient.MetricsV1beta1().PodMetricses(mc.namespace).List(metav1.ListOptions{
+	podMetrics, err := mc.kubeMetricsClient.MetricsV1beta1().PodMetricses(mc.namespace).List(context.TODO(), metav1.ListOptions{
 		FieldSelector: "metadata.name=" + managerPodName,
 	})
 	if err != nil {

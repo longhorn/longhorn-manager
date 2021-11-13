@@ -19,6 +19,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"context"
 	time "time"
 
 	longhornv1alpha1 "github.com/longhorn/longhorn-manager/upgrade/v1alpha1/k8s/pkg/apis/longhorn/v1alpha1"
@@ -61,13 +62,13 @@ func NewFilteredEngineInformer(client versioned.Interface, namespace string, res
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.LonghornV1alpha1().Engines(namespace).List(options)
+				return client.LonghornV1alpha1().Engines(namespace).List(context.TODO(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.LonghornV1alpha1().Engines(namespace).Watch(options)
+				return client.LonghornV1alpha1().Engines(namespace).Watch(context.TODO(), options)
 			},
 		},
 		&longhornv1alpha1.Engine{},

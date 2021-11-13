@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -70,7 +71,7 @@ func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInfo
 	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
-	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
+	csiDriverInformer := kubeInformerFactory.Storage().V1().CSIDrivers()
 	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
 	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
@@ -265,50 +266,50 @@ func (s *TestSuite) TestEngineImage(c *C) {
 
 		ic := newTestEngineImageController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
 
-		setting, err := lhClient.LonghornV1beta1().Settings(TestNamespace).Create(newSetting(string(types.SettingNameDefaultEngineImage), tc.defaultEngineImage))
+		setting, err := lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), newSetting(string(types.SettingNameDefaultEngineImage), tc.defaultEngineImage), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = settingIndexer.Add(setting)
 		c.Assert(err, IsNil)
 		// For DaemonSet creation test
-		setting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(newSetting(string(types.SettingNameTaintToleration), ""))
+		setting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), newSetting(string(types.SettingNameTaintToleration), ""), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = settingIndexer.Add(setting)
 		c.Assert(err, IsNil)
 
-		node, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(tc.node)
+		node, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(context.TODO(), tc.node, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = nodeIndexer.Add(node)
 		c.Assert(err, IsNil)
 
-		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(tc.currentEngineImage)
+		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(context.TODO(), tc.currentEngineImage, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
-		ei, err = lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(tc.upgradedEngineImage)
+		ei, err = lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(context.TODO(), tc.upgradedEngineImage, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
 
 		if tc.volume != nil {
-			v, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(tc.volume)
+			v, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(context.TODO(), tc.volume, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = vIndexer.Add(v)
 			c.Assert(err, IsNil)
 		}
 		if tc.engine != nil {
-			e, err := lhClient.LonghornV1beta1().Engines(TestNamespace).Create(tc.engine)
+			e, err := lhClient.LonghornV1beta1().Engines(TestNamespace).Create(context.TODO(), tc.engine, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = eIndexer.Add(e)
 			c.Assert(err, IsNil)
 		}
 		if tc.currentDaemonSet != nil {
-			ds, err := kubeClient.AppsV1().DaemonSets(TestNamespace).Create(tc.currentDaemonSet)
+			ds, err := kubeClient.AppsV1().DaemonSets(TestNamespace).Create(context.TODO(), tc.currentDaemonSet, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = dsIndexer.Add(ds)
 			c.Assert(err, IsNil)
 		}
 		if tc.currentDaemonSetPod != nil {
-			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(tc.currentDaemonSetPod)
+			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), tc.currentDaemonSetPod, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = podIndexer.Add(p)
 			c.Assert(err, IsNil)
@@ -317,7 +318,7 @@ func (s *TestSuite) TestEngineImage(c *C) {
 		err = ic.syncEngineImage(engineImageControllerKey)
 		c.Assert(err, IsNil)
 
-		ei, err = lhClient.LonghornV1beta1().EngineImages(TestNamespace).Get(getTestEngineImageName(), metav1.GetOptions{})
+		ei, err = lhClient.LonghornV1beta1().EngineImages(TestNamespace).Get(context.TODO(), getTestEngineImageName(), metav1.GetOptions{})
 		if tc.expectedEngineImage == nil {
 			c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
 		} else {
@@ -330,7 +331,7 @@ func (s *TestSuite) TestEngineImage(c *C) {
 			c.Assert(ei.Status, DeepEquals, tc.expectedEngineImage.Status)
 		}
 
-		ds, err := kubeClient.AppsV1().DaemonSets(TestNamespace).Get(getTestEngineImageDaemonSetName(), metav1.GetOptions{})
+		ds, err := kubeClient.AppsV1().DaemonSets(TestNamespace).Get(context.TODO(), getTestEngineImageDaemonSetName(), metav1.GetOptions{})
 		if tc.expectedDaemonSet == nil {
 			c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
 		} else {

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strconv"
@@ -86,7 +87,7 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	secretInformer := kubeInformerFactory.Core().V1().Secrets()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
-	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
+	csiDriverInformer := kubeInformerFactory.Storage().V1().CSIDrivers()
 	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
 	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
@@ -1340,26 +1341,30 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 		// Need to create daemon pod for node
 		daemon1 := newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
-		p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(daemon1)
+		p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), daemon1, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		pIndexer.Add(p)
 		daemon2 := newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, nil)
-		p, err = kubeClient.CoreV1().Pods(TestNamespace).Create(daemon2)
+		p, err = kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), daemon2, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		pIndexer.Add(p)
 
-		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(tc.engineImage)
+		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(context.TODO(), tc.engineImage, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		eiIndexer := lhInformerFactory.Longhorn().V1beta1().EngineImages().Informer().GetIndexer()
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
 
 		rm1, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(
+			context.TODO(),
 			newInstanceManager(TestReplicaManagerName+"-"+TestNode1, types.InstanceManagerTypeReplica, types.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]types.InstanceProcess{}, false),
+			metav1.CreateOptions{},
 		)
 		c.Assert(err, IsNil)
 		rm2, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(
+			context.TODO(),
 			newInstanceManager(TestReplicaManagerName+"-"+TestNode2, types.InstanceManagerTypeReplica, types.InstanceManagerStateRunning, TestOwnerID2, TestNode2, TestIP1, map[string]types.InstanceProcess{}, false),
+			metav1.CreateOptions{},
 		)
 		c.Assert(err, IsNil)
 		imIndexer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers().Informer().GetIndexer()
@@ -1374,7 +1379,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				string(types.SettingNameReplicaSoftAntiAffinity),
 				tc.replicaNodeSoftAntiAffinity)
 			setting, err :=
-				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
+				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			sIndexer.Add(setting)
 		}
@@ -1384,7 +1389,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				string(types.SettingNameAutoSalvage),
 				tc.volumeAutoSalvage)
 			setting, err :=
-				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
+				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			sIndexer.Add(setting)
 		}
@@ -1393,7 +1398,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			s := initSettingsNameValue(
 				string(types.SettingNameReplicaReplenishmentWaitInterval), tc.replicaReplenishmentWaitInterval)
 			setting, err :=
-				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
+				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			sIndexer.Add(setting)
 		}
@@ -1401,20 +1406,20 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		s := initSettingsNameValue(
 			string(types.SettingNameDefaultEngineImage), TestEngineImage)
 		setting, err :=
-			lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
+			lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		sIndexer.Add(setting)
 		// Set Default Instance Manager Image
 		s = initSettingsNameValue(
 			string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage)
 		setting, err =
-			lhClient.LonghornV1beta1().Settings(TestNamespace).Create(s)
+			lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		sIndexer.Add(setting)
 
 		// need to create default node
 		for _, node := range tc.nodes {
-			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(node)
+			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
 			nIndexer.Add(n)
@@ -1424,20 +1429,20 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				knodeCondition = v1.ConditionFalse
 			}
 			knode := newKubernetesNode(node.Name, knodeCondition, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
-			kn, err := kubeClient.CoreV1().Nodes().Create(knode)
+			kn, err := kubeClient.CoreV1().Nodes().Create(context.TODO(), knode, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			knIndexer.Add(kn)
 		}
 
 		// Need to put it into both fakeclientset and Indexer
-		v, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(tc.volume)
+		v, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(context.TODO(), tc.volume, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = vIndexer.Add(v)
 		c.Assert(err, IsNil)
 
 		if tc.engines != nil {
 			for _, e := range tc.engines {
-				e, err := lhClient.LonghornV1beta1().Engines(TestNamespace).Create(e)
+				e, err := lhClient.LonghornV1beta1().Engines(TestNamespace).Create(context.TODO(), e, metav1.CreateOptions{})
 				c.Assert(err, IsNil)
 				err = eIndexer.Add(e)
 				c.Assert(err, IsNil)
@@ -1446,7 +1451,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 		if tc.replicas != nil {
 			for _, r := range tc.replicas {
-				r, err = lhClient.LonghornV1beta1().Replicas(TestNamespace).Create(r)
+				r, err = lhClient.LonghornV1beta1().Replicas(TestNamespace).Create(context.TODO(), r, metav1.CreateOptions{})
 				c.Assert(err, IsNil)
 				err = rIndexer.Add(r)
 				c.Assert(err, IsNil)
@@ -1456,7 +1461,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		err = vc.syncVolume(getKey(v, c))
 		c.Assert(err, IsNil)
 
-		retV, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Get(v.Name, metav1.GetOptions{})
+		retV, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Get(context.TODO(), v.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(retV.Spec, DeepEquals, tc.expectVolume.Spec)
 		// mask timestamps
@@ -1466,7 +1471,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		}
 		c.Assert(retV.Status, DeepEquals, tc.expectVolume.Status)
 
-		retEs, err := lhClient.LonghornV1beta1().Engines(TestNamespace).List(metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
+		retEs, err := lhClient.LonghornV1beta1().Engines(TestNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
 		c.Assert(err, IsNil)
 		c.Assert(retEs.Items, HasLen, len(tc.expectEngines))
 		for _, retE := range retEs.Items {
@@ -1484,7 +1489,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			}
 		}
 
-		retRs, err := lhClient.LonghornV1beta1().Replicas(TestNamespace).List(metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
+		retRs, err := lhClient.LonghornV1beta1().Replicas(TestNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
 		c.Assert(err, IsNil)
 		c.Assert(retRs.Items, HasLen, len(tc.expectReplicas))
 		for _, retR := range retRs.Items {

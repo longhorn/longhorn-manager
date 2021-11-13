@@ -1,6 +1,7 @@
 package csi
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -14,7 +15,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"k8s.io/kubernetes/pkg/util/mount"
+	utilexec "k8s.io/utils/exec"
+	"k8s.io/utils/mount"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/types"
@@ -25,16 +27,16 @@ const (
 	defaultStaleReplicaTimeout = 2880
 )
 
-// NewForcedParamsOsExec creates a osExecutor that allows for adding additional params to later occurring Run calls
-func NewForcedParamsOsExec(cmdParamMapping map[string]string) mount.Exec {
+// NewForcedParamsExec creates a osExecutor that allows for adding additional params to later occurring Run calls
+func NewForcedParamsExec(cmdParamMapping map[string]string) utilexec.Interface {
 	return &forcedParamsOsExec{
-		osExec:          mount.NewOSExec(),
+		exec:            utilexec.New(),
 		cmdParamMapping: cmdParamMapping,
 	}
 }
 
 type forcedParamsOsExec struct {
-	osExec          mount.Exec
+	exec            utilexec.Interface
 	cmdParamMapping map[string]string
 }
 
@@ -48,7 +50,7 @@ type volumeFilesystemStatistics struct {
 	usedInodes      int64
 }
 
-func (e *forcedParamsOsExec) Run(cmd string, args ...string) ([]byte, error) {
+func (e *forcedParamsOsExec) Command(cmd string, args ...string) utilexec.Cmd {
 	var params []string
 	if param := e.cmdParamMapping[cmd]; param != "" {
 		// we prepend the user params, since options are conventionally before the final args
@@ -56,7 +58,15 @@ func (e *forcedParamsOsExec) Run(cmd string, args ...string) ([]byte, error) {
 		params = append(params, param)
 	}
 	params = append(params, args...)
-	return e.osExec.Run(cmd, params...)
+	return e.exec.Command(cmd, params...)
+}
+
+func (e *forcedParamsOsExec) CommandContext(ctx context.Context, cmd string, args ...string) utilexec.Cmd {
+	return e.exec.CommandContext(ctx, cmd, args...)
+}
+
+func (e *forcedParamsOsExec) LookPath(file string) (string, error) {
+	return e.exec.LookPath(file)
 }
 
 func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, error) {
