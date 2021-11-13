@@ -1,7 +1,9 @@
 package controller
 
 import (
+	"context"
 	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"time"
 
 	"github.com/pkg/errors"
@@ -225,7 +227,7 @@ func (ks *KubernetesSecretController) annotateAWSIAMRoleArn(awsIAMRoleArn string
 			continue
 		}
 
-		if _, err = ks.kubeClient.CoreV1().Pods(pod.Namespace).Update(pod); err != nil {
+		if _, err = ks.kubeClient.CoreV1().Pods(pod.Namespace).Update(context.TODO(), pod, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 

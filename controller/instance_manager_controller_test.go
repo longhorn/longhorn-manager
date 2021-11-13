@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -80,7 +81,7 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 	secretInformer := kubeInformerFactory.Core().V1().Secrets()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
-	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
+	csiDriverInformer := kubeInformerFactory.Storage().V1().CSIDrivers()
 	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
 	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
@@ -236,12 +237,12 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		// Controller logic depends on the existence of DefaultInstanceManagerImage Setting and Toleration Setting.
 		tolerationSetting := newTolerationSetting()
-		tolerationSetting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(tolerationSetting)
+		tolerationSetting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), tolerationSetting, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = sIndexer.Add(tolerationSetting)
 		c.Assert(err, IsNil)
 		imImageSetting := newDefaultInstanceManagerImageSetting()
-		imImageSetting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(imImageSetting)
+		imImageSetting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = sIndexer.Add(imImageSetting)
 		c.Assert(err, IsNil)
@@ -251,25 +252,25 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			kubeNode1 := newKubernetesNode(TestNode1, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
 			err = kubeNodeIndexer.Add(kubeNode1)
 			c.Assert(err, IsNil)
-			_, err = kubeClient.CoreV1().Nodes().Create(kubeNode1)
+			_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode1, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 
 			lhNode1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, "")
 			err = lhNodeIndexer.Add(lhNode1)
 			c.Assert(err, IsNil)
-			_, err = lhClient.LonghornV1beta1().Nodes(lhNode1.Namespace).Create(lhNode1)
+			_, err = lhClient.LonghornV1beta1().Nodes(lhNode1.Namespace).Create(context.TODO(), lhNode1, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 		}
 
 		kubeNode2 := newKubernetesNode(TestNode2, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
 		err = kubeNodeIndexer.Add(kubeNode2)
 		c.Assert(err, IsNil)
-		_, err = kubeClient.CoreV1().Nodes().Create(kubeNode2)
+		_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode2, metav1.CreateOptions{})
 
 		lhNode2 := newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue, "")
 		err = lhNodeIndexer.Add(lhNode2)
 		c.Assert(err, IsNil)
-		_, err = lhClient.LonghornV1beta1().Nodes(lhNode2.Namespace).Create(lhNode2)
+		_, err = lhClient.LonghornV1beta1().Nodes(lhNode2.Namespace).Create(context.TODO(), lhNode2, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
 		currentIP := ""
@@ -279,26 +280,26 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		im := newInstanceManager(TestInstanceManagerName1, tc.expectedType, tc.currentState, tc.currentOwnerID, tc.nodeID, currentIP, nil, false)
 		err = imIndexer.Add(im)
 		c.Assert(err, IsNil)
-		_, err = lhClient.LonghornV1beta1().InstanceManagers(im.Namespace).Create(im)
+		_, err = lhClient.LonghornV1beta1().InstanceManagers(im.Namespace).Create(context.TODO(), im, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
 		if tc.currentPodStatus != nil {
 			pod := newPod(tc.currentPodStatus, im.Name, im.Namespace, im.Spec.NodeID)
 			err = pIndexer.Add(pod)
 			c.Assert(err, IsNil)
-			_, err = kubeClient.CoreV1().Pods(im.Namespace).Create(pod)
+			_, err = kubeClient.CoreV1().Pods(im.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 		}
 
 		err = imc.syncInstanceManager(getKey(im, c))
 		c.Assert(err, IsNil)
-		podList, err := kubeClient.CoreV1().Pods(im.Namespace).List(metav1.ListOptions{})
+		podList, err := kubeClient.CoreV1().Pods(im.Namespace).List(context.TODO(), metav1.ListOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(podList.Items, HasLen, tc.expectedPodCount)
 
 		// Check the Pod that was created by the Instance Manager.
 		if tc.currentPodStatus == nil {
-			pod, err := kubeClient.CoreV1().Pods(im.Namespace).Get(im.Name, metav1.GetOptions{})
+			pod, err := kubeClient.CoreV1().Pods(im.Namespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			switch im.Spec.Type {
 			case types.InstanceManagerTypeEngine:
@@ -310,7 +311,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		// Skip checking imc.instanceManagerMonitorMap since the monitor doesn't work in the unit test.
 
-		updatedIM, err := lhClient.LonghornV1beta1().InstanceManagers(im.Namespace).Get(im.Name, metav1.GetOptions{})
+		updatedIM, err := lhClient.LonghornV1beta1().InstanceManagers(im.Namespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(updatedIM.Status, DeepEquals, tc.expectedStatus)
 	}

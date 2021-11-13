@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -87,6 +88,7 @@ func (u *postUpgrader) waitManagerUpgradeComplete() error {
 	complete := false
 	for i := 0; i < RetryCounts; i++ {
 		ds, err := u.kubeClient.AppsV1().DaemonSets(u.namespace).Get(
+			context.TODO(),
 			types.LonghornManagerDaemonSetName, metav1.GetOptions{})
 		if err != nil {
 			logrus.Warningf("couldn't get daemonset: %v", err)
@@ -97,7 +99,7 @@ func (u *postUpgrader) waitManagerUpgradeComplete() error {
 			continue
 		}
 
-		podList, err := u.kubeClient.CoreV1().Pods(u.namespace).List(metav1.ListOptions{})
+		podList, err := u.kubeClient.CoreV1().Pods(u.namespace).List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
 			logrus.Warningf("couldn't list pods: %v", err)
 			continue

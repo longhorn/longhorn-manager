@@ -1,6 +1,7 @@
 package datastore
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -102,20 +103,20 @@ func (s *DataStore) ListVolumeCronJobROs(volumeName string) (map[string]*batchv1
 
 // CreateVolumeCronJob creates a CronJob resource for the given namespace
 func (s *DataStore) CreateVolumeCronJob(volumeName string, cronJob *batchv1beta1.CronJob) (*batchv1beta1.CronJob, error) {
-	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Create(cronJob)
+	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Create(context.TODO(), cronJob, metav1.CreateOptions{})
 }
 
 // UpdateVolumeCronJob updates CronJobs for the given namespace
 func (s *DataStore) UpdateVolumeCronJob(volumeName string, cronJob *batchv1beta1.CronJob) (*batchv1beta1.CronJob, error) {
-	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Update(cronJob)
+	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Update(context.TODO(), cronJob, metav1.UpdateOptions{})
 }
 
 // DeleteCronJob delete CronJob for the given name and namespace.
 // The dependents will be deleted in the background
 func (s *DataStore) DeleteCronJob(cronJobName string) error {
 	propagation := metav1.DeletePropagationBackground
-	err := s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Delete(cronJobName,
-		&metav1.DeleteOptions{
+	err := s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Delete(context.TODO(), cronJobName,
+		metav1.DeleteOptions{
 			PropagationPolicy: &propagation,
 		})
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -133,7 +134,7 @@ func (s *DataStore) CreateEngineImageDaemonSet(ds *appsv1.DaemonSet) error {
 	for k, v := range types.GetEngineImageLabels(types.GetEngineImageNameFromDaemonSetName(ds.Name)) {
 		ds.Labels[k] = v
 	}
-	if _, err := s.kubeClient.AppsV1().DaemonSets(s.namespace).Create(ds); err != nil {
+	if _, err := s.kubeClient.AppsV1().DaemonSets(s.namespace).Create(context.TODO(), ds, metav1.CreateOptions{}); err != nil {
 		return err
 	}
 	return nil
@@ -165,12 +166,12 @@ func (s *DataStore) ListEngineImageDaemonSetPodsFromEngineImageName(EIName strin
 
 // CreatePDB creates a PodDisruptionBudget resource for the given PDB object and namespace
 func (s *DataStore) CreatePDB(pdp *policyv1beta1.PodDisruptionBudget) (*policyv1beta1.PodDisruptionBudget, error) {
-	return s.kubeClient.PolicyV1beta1().PodDisruptionBudgets(s.namespace).Create(pdp)
+	return s.kubeClient.PolicyV1beta1().PodDisruptionBudgets(s.namespace).Create(context.TODO(), pdp, metav1.CreateOptions{})
 }
 
 // DeletePDB deletes PodDisruptionBudget for the given name and namespace
 func (s *DataStore) DeletePDB(name string) error {
-	return s.kubeClient.PolicyV1beta1().PodDisruptionBudgets(s.namespace).Delete(name, nil)
+	return s.kubeClient.PolicyV1beta1().PodDisruptionBudgets(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
 // GetPDBRO gets PDB for the given name and namespace.
@@ -198,17 +199,17 @@ func (s *DataStore) ListPDBs() (map[string]*policyv1beta1.PodDisruptionBudget, e
 
 // CreatePod creates a Pod resource for the given pod object and namespace
 func (s *DataStore) CreatePod(pod *corev1.Pod) (*corev1.Pod, error) {
-	return s.kubeClient.CoreV1().Pods(s.namespace).Create(pod)
+	return s.kubeClient.CoreV1().Pods(s.namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 }
 
 // DeletePod deletes Pod for the given name and namespace
 func (s *DataStore) DeletePod(name string) error {
-	return s.kubeClient.CoreV1().Pods(s.namespace).Delete(name, nil)
+	return s.kubeClient.CoreV1().Pods(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
 // DeleteLease deletes Lease with the given name in s.namespace
 func (s *DataStore) DeleteLease(name string) error {
-	return s.kubeClient.CoordinationV1().Leases(s.namespace).Delete(name, nil)
+	return s.kubeClient.CoordinationV1().Leases(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
 // GetStorageClassRO gets StorageClass with the given name
@@ -220,12 +221,12 @@ func (s *DataStore) GetStorageClassRO(scName string) (*storagev1.StorageClass, e
 
 // DeleteStorageClass deletes StorageClass with the given name
 func (s *DataStore) DeleteStorageClass(scName string) error {
-	return s.kubeClient.StorageV1().StorageClasses().Delete(scName, nil)
+	return s.kubeClient.StorageV1().StorageClasses().Delete(context.TODO(), scName, metav1.DeleteOptions{})
 }
 
 // CreateStorageClass creates StorageClass with the given object
 func (s *DataStore) CreateStorageClass(sc *storagev1.StorageClass) (*storagev1.StorageClass, error) {
-	return s.kubeClient.StorageV1().StorageClasses().Create(sc)
+	return s.kubeClient.StorageV1().StorageClasses().Create(context.TODO(), sc, metav1.CreateOptions{})
 }
 
 // GetPod returns a mutable Pod object for the given name and namspace
@@ -260,14 +261,14 @@ func (s *DataStore) ListDaemonSetWithLabels(labels map[string]string) ([]*appsv1
 
 // UpdateDaemonSet updates the DaemonSet for the given DaemonSet object and namespace
 func (s *DataStore) UpdateDaemonSet(obj *appsv1.DaemonSet) (*appsv1.DaemonSet, error) {
-	return s.kubeClient.AppsV1().DaemonSets(s.namespace).Update(obj)
+	return s.kubeClient.AppsV1().DaemonSets(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
 }
 
 // DeleteDaemonSet deletes DaemonSet for the given name and namespace.
 // The dependents will be deleted in the foreground
 func (s *DataStore) DeleteDaemonSet(name string) error {
 	propagation := metav1.DeletePropagationForeground
-	return s.kubeClient.AppsV1().DaemonSets(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
+	return s.kubeClient.AppsV1().DaemonSets(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
 }
 
 // GetDeployment gets the Deployment for the given name and namespace
@@ -290,19 +291,19 @@ func (s *DataStore) ListDeploymentWithLabels(labels map[string]string) ([]*appsv
 
 // UpdateDeployment updates Deployment for the given Deployment object and namespace
 func (s *DataStore) UpdateDeployment(obj *appsv1.Deployment) (*appsv1.Deployment, error) {
-	return s.kubeClient.AppsV1().Deployments(s.namespace).Update(obj)
+	return s.kubeClient.AppsV1().Deployments(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
 }
 
 // DeleteDeployment deletes Deployment for the given name and namespace.
 // The dependents will be deleted in the foreground
 func (s *DataStore) DeleteDeployment(name string) error {
 	propagation := metav1.DeletePropagationForeground
-	return s.kubeClient.AppsV1().Deployments(s.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
+	return s.kubeClient.AppsV1().Deployments(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
 }
 
 // DeleteCSIDriver deletes CSIDriver for the given name and namespace
 func (s *DataStore) DeleteCSIDriver(name string) error {
-	return s.kubeClient.StorageV1beta1().CSIDrivers().Delete(name, &metav1.DeleteOptions{})
+	return s.kubeClient.StorageV1beta1().CSIDrivers().Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
 // ListManagerPods returns a list of Pods marked with app=longhorn-manager
@@ -385,19 +386,19 @@ func (s *DataStore) GetKubernetesNode(name string) (*corev1.Node, error) {
 // CreatePersistentVolume creates a PersistentVolume resource for the given
 // PersistentVolume object
 func (s *DataStore) CreatePersistentVolume(pv *corev1.PersistentVolume) (*corev1.PersistentVolume, error) {
-	return s.kubeClient.CoreV1().PersistentVolumes().Create(pv)
+	return s.kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), pv, metav1.CreateOptions{})
 }
 
 // DeletePersistentVolume deletes the PersistentVolume for the given
 // PersistentVolume name
 func (s *DataStore) DeletePersistentVolume(pvName string) error {
-	return s.kubeClient.CoreV1().PersistentVolumes().Delete(pvName, &metav1.DeleteOptions{})
+	return s.kubeClient.CoreV1().PersistentVolumes().Delete(context.TODO(), pvName, metav1.DeleteOptions{})
 }
 
 // UpdatePersistentVolume updates the PersistentVolume for the given
 // PersistentVolume object
 func (s *DataStore) UpdatePersistentVolume(pv *corev1.PersistentVolume) (*corev1.PersistentVolume, error) {
-	return s.kubeClient.CoreV1().PersistentVolumes().Update(pv)
+	return s.kubeClient.CoreV1().PersistentVolumes().Update(context.TODO(), pv, metav1.UpdateOptions{})
 }
 
 // GetPersistentVolumeRO gets the PersistentVolume from the index for the
@@ -421,19 +422,19 @@ func (s *DataStore) GetPersistentVolume(pvName string) (*corev1.PersistentVolume
 // CreatePersistentVolumeClaim creates a PersistentVolumeClaim resource
 // for the given PersistentVolumeclaim object and namespace
 func (s *DataStore) CreatePersistentVolumeClaim(ns string, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
-	return s.kubeClient.CoreV1().PersistentVolumeClaims(ns).Create(pvc)
+	return s.kubeClient.CoreV1().PersistentVolumeClaims(ns).Create(context.TODO(), pvc, metav1.CreateOptions{})
 }
 
 // DeletePersistentVolumeClaim deletes the PersistentVolumeClaim for the
 // given name and namespace
 func (s *DataStore) DeletePersistentVolumeClaim(ns, pvcName string) error {
-	return s.kubeClient.CoreV1().PersistentVolumeClaims(ns).Delete(pvcName, &metav1.DeleteOptions{})
+	return s.kubeClient.CoreV1().PersistentVolumeClaims(ns).Delete(context.TODO(), pvcName, metav1.DeleteOptions{})
 }
 
 // UpdatePersistentVolumeClaim expand the PersistentVolumeClaim from the
 // index for the given name and namespace
 func (s *DataStore) UpdatePersistentVolumeClaim(namespace string, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
-	return s.kubeClient.CoreV1().PersistentVolumeClaims(namespace).Update(pvc)
+	return s.kubeClient.CoreV1().PersistentVolumeClaims(namespace).Update(context.TODO(), pvc, metav1.UpdateOptions{})
 }
 
 // GetPersistentVolumeClaimRO gets the PersistentVolumeClaim from the
@@ -511,7 +512,7 @@ func (s *DataStore) GetKubernetesVersion() (*version.Info, error) {
 // CreateService creates a Service resource
 // for the given CreateService object and namespace
 func (s *DataStore) CreateService(ns string, service *corev1.Service) (*corev1.Service, error) {
-	return s.kubeClient.CoreV1().Services(ns).Create(service)
+	return s.kubeClient.CoreV1().Services(ns).Create(context.TODO(), service, metav1.CreateOptions{})
 }
 
 // GetService gets the Service for the given name and namespace
@@ -521,7 +522,7 @@ func (s *DataStore) GetService(namespace, name string) (*corev1.Service, error) 
 
 // DeleteService deletes the Service for the given name and namespace
 func (s *DataStore) DeleteService(namespace, name string) error {
-	return s.kubeClient.CoreV1().Services(namespace).Delete(name, nil)
+	return s.kubeClient.CoreV1().Services(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
 // NewPVManifestForVolume returns a new PersistentVolume object for a longhorn volume

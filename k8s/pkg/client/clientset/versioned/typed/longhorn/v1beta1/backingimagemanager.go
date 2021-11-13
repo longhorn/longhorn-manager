@@ -19,6 +19,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	"context"
 	"time"
 
 	v1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
@@ -37,15 +38,15 @@ type BackingImageManagersGetter interface {
 
 // BackingImageManagerInterface has methods to work with BackingImageManager resources.
 type BackingImageManagerInterface interface {
-	Create(*v1beta1.BackingImageManager) (*v1beta1.BackingImageManager, error)
-	Update(*v1beta1.BackingImageManager) (*v1beta1.BackingImageManager, error)
-	UpdateStatus(*v1beta1.BackingImageManager) (*v1beta1.BackingImageManager, error)
-	Delete(name string, options *v1.DeleteOptions) error
-	DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error
-	Get(name string, options v1.GetOptions) (*v1beta1.BackingImageManager, error)
-	List(opts v1.ListOptions) (*v1beta1.BackingImageManagerList, error)
-	Watch(opts v1.ListOptions) (watch.Interface, error)
-	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1beta1.BackingImageManager, err error)
+	Create(ctx context.Context, backingImageManager *v1beta1.BackingImageManager, opts v1.CreateOptions) (*v1beta1.BackingImageManager, error)
+	Update(ctx context.Context, backingImageManager *v1beta1.BackingImageManager, opts v1.UpdateOptions) (*v1beta1.BackingImageManager, error)
+	UpdateStatus(ctx context.Context, backingImageManager *v1beta1.BackingImageManager, opts v1.UpdateOptions) (*v1beta1.BackingImageManager, error)
+	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
+	DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error
+	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1beta1.BackingImageManager, error)
+	List(ctx context.Context, opts v1.ListOptions) (*v1beta1.BackingImageManagerList, error)
+	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.BackingImageManager, err error)
 	BackingImageManagerExpansion
 }
 
@@ -64,20 +65,20 @@ func newBackingImageManagers(c *LonghornV1beta1Client, namespace string) *backin
 }
 
 // Get takes name of the backingImageManager, and returns the corresponding backingImageManager object, and an error if there is any.
-func (c *backingImageManagers) Get(name string, options v1.GetOptions) (result *v1beta1.BackingImageManager, err error) {
+func (c *backingImageManagers) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.BackingImageManager, err error) {
 	result = &v1beta1.BackingImageManager{}
 	err = c.client.Get().
 		Namespace(c.ns).
 		Resource("backingimagemanagers").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // List takes label and field selectors, and returns the list of BackingImageManagers that match those selectors.
-func (c *backingImageManagers) List(opts v1.ListOptions) (result *v1beta1.BackingImageManagerList, err error) {
+func (c *backingImageManagers) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.BackingImageManagerList, err error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -88,13 +89,13 @@ func (c *backingImageManagers) List(opts v1.ListOptions) (result *v1beta1.Backin
 		Resource("backingimagemanagers").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Watch returns a watch.Interface that watches the requested backingImageManagers.
-func (c *backingImageManagers) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *backingImageManagers) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -105,87 +106,90 @@ func (c *backingImageManagers) Watch(opts v1.ListOptions) (watch.Interface, erro
 		Resource("backingimagemanagers").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Watch()
+		Watch(ctx)
 }
 
 // Create takes the representation of a backingImageManager and creates it.  Returns the server's representation of the backingImageManager, and an error, if there is any.
-func (c *backingImageManagers) Create(backingImageManager *v1beta1.BackingImageManager) (result *v1beta1.BackingImageManager, err error) {
+func (c *backingImageManagers) Create(ctx context.Context, backingImageManager *v1beta1.BackingImageManager, opts v1.CreateOptions) (result *v1beta1.BackingImageManager, err error) {
 	result = &v1beta1.BackingImageManager{}
 	err = c.client.Post().
 		Namespace(c.ns).
 		Resource("backingimagemanagers").
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(backingImageManager).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Update takes the representation of a backingImageManager and updates it. Returns the server's representation of the backingImageManager, and an error, if there is any.
-func (c *backingImageManagers) Update(backingImageManager *v1beta1.BackingImageManager) (result *v1beta1.BackingImageManager, err error) {
+func (c *backingImageManagers) Update(ctx context.Context, backingImageManager *v1beta1.BackingImageManager, opts v1.UpdateOptions) (result *v1beta1.BackingImageManager, err error) {
 	result = &v1beta1.BackingImageManager{}
 	err = c.client.Put().
 		Namespace(c.ns).
 		Resource("backingimagemanagers").
 		Name(backingImageManager.Name).
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(backingImageManager).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-
-func (c *backingImageManagers) UpdateStatus(backingImageManager *v1beta1.BackingImageManager) (result *v1beta1.BackingImageManager, err error) {
+func (c *backingImageManagers) UpdateStatus(ctx context.Context, backingImageManager *v1beta1.BackingImageManager, opts v1.UpdateOptions) (result *v1beta1.BackingImageManager, err error) {
 	result = &v1beta1.BackingImageManager{}
 	err = c.client.Put().
 		Namespace(c.ns).
 		Resource("backingimagemanagers").
 		Name(backingImageManager.Name).
 		SubResource("status").
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(backingImageManager).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Delete takes name of the backingImageManager and deletes it. Returns an error if one occurs.
-func (c *backingImageManagers) Delete(name string, options *v1.DeleteOptions) error {
+func (c *backingImageManagers) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	return c.client.Delete().
 		Namespace(c.ns).
 		Resource("backingimagemanagers").
 		Name(name).
-		Body(options).
-		Do().
+		Body(&opts).
+		Do(ctx).
 		Error()
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *backingImageManagers) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
+func (c *backingImageManagers) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
 	var timeout time.Duration
-	if listOptions.TimeoutSeconds != nil {
-		timeout = time.Duration(*listOptions.TimeoutSeconds) * time.Second
+	if listOpts.TimeoutSeconds != nil {
+		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
 		Namespace(c.ns).
 		Resource("backingimagemanagers").
-		VersionedParams(&listOptions, scheme.ParameterCodec).
+		VersionedParams(&listOpts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Body(options).
-		Do().
+		Body(&opts).
+		Do(ctx).
 		Error()
 }
 
 // Patch applies the patch and returns the patched backingImageManager.
-func (c *backingImageManagers) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1beta1.BackingImageManager, err error) {
+func (c *backingImageManagers) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.BackingImageManager, err error) {
 	result = &v1beta1.BackingImageManager{}
 	err = c.client.Patch(pt).
 		Namespace(c.ns).
 		Resource("backingimagemanagers").
-		SubResource(subresources...).
 		Name(name).
+		SubResource(subresources...).
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(data).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
