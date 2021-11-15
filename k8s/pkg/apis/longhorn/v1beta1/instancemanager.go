@@ -19,6 +19,7 @@ const (
 	InstanceManagerStateUnknown  = InstanceManagerState("unknown")
 )
 
+// +kubebuilder:validation:Enum=engine;replica
 type InstanceManagerType string
 
 const (

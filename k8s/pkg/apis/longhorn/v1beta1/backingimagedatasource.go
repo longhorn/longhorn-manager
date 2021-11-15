@@ -6,6 +6,7 @@ const (
 	DataSourceTypeDownloadParameterURL = "url"
 )
 
+// +kubebuilder:validation:Enum=download;upload;export-from-volume
 type BackingImageDataSourceType string
 
 const (
