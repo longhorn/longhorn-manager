@@ -22,6 +22,7 @@ const (
 	VolumeRobustnessUnknown  = VolumeRobustness("unknown")
 )
 
+// +kubebuilder:validation:Enum=blockdev;iscsi;""
 type VolumeFrontend string
 
 const (
@@ -30,14 +31,17 @@ const (
 	VolumeFrontendEmpty    = VolumeFrontend("")
 )
 
+// +kubebuilder:validation:Enum="";backup;snapshot;volume
 type VolumeDataSource string
 
 const (
+	VolumeDataSourceTypeNone     = VolumeDataSource("")
 	VolumeDataSourceTypeBackup   = VolumeDataSource("backup") // Planing to move FromBackup field into DataSource field
 	VolumeDataSourceTypeSnapshot = VolumeDataSource("snapshot")
 	VolumeDataSourceTypeVolume   = VolumeDataSource("volume")
 )
 
+// +kubebuilder:validation:Enum=disabled;best-effort
 type DataLocality string
 
 const (
@@ -45,6 +49,7 @@ const (
 	DataLocalityBestEffort = DataLocality("best-effort")
 )
 
+// +kubebuilder:validation:Enum=rwo;rwx
 type AccessMode string
 
 const (
@@ -52,6 +57,7 @@ const (
 	AccessModeReadWriteMany = AccessMode("rwx")
 )
 
+// +kubebuilder:validation:Enum=ignored;disabled;least-effort;best-effort
 type ReplicaAutoBalance string
 
 const (
