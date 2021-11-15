@@ -52,6 +52,7 @@ const (
 type InstanceSpec struct {
 	// +optional
 	VolumeName string `json:"volumeName"`
+	// +kubebuilder:validation:Type=string
 	// +optional
 	VolumeSize int64 `json:"volumeSize,string"`
 	// +optional

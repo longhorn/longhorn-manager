@@ -144,6 +144,7 @@ type WorkloadStatus struct {
 }
 
 type VolumeSpec struct {
+	// +kubebuilder:validation:Type=string
 	// +optional
 	Size int64 `json:"size,string"`
 	// +optional
