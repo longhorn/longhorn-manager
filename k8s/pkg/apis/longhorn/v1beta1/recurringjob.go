@@ -26,8 +26,10 @@ type RecurringJobSpec struct {
 	Task RecurringJobType `json:"task"`
 	// +optional
 	Cron string `json:"cron"`
+	// +kubebuilder:validation:Minimum=1
 	// +optional
 	Retain int `json:"retain"`
+	// +kubebuilder:validation:Minimum=1
 	// +optional
 	Concurrency int `json:"concurrency"`
 	// +optional
