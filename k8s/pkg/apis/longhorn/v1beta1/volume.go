@@ -33,9 +33,9 @@ const (
 type VolumeDataSource string
 
 const (
-	VolumeDataSourceTypeBackup   = "backup" // Planing to move FromBackup field into DataSource field
-	VolumeDataSourceTypeSnapshot = "snapshot"
-	VolumeDataSourceTypeVolume   = "volume"
+	VolumeDataSourceTypeBackup   = VolumeDataSource("backup") // Planing to move FromBackup field into DataSource field
+	VolumeDataSourceTypeSnapshot = VolumeDataSource("snapshot")
+	VolumeDataSourceTypeVolume   = VolumeDataSource("volume")
 )
 
 type DataLocality string
