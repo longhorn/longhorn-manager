@@ -66,7 +66,7 @@ type Snapshot struct {
 }
 
 type EngineSpec struct {
-	InstanceSpec
+	InstanceSpec              `json:""`
 	Frontend                  VolumeFrontend    `json:"frontend"`
 	ReplicaAddressMap         map[string]string `json:"replicaAddressMap"`
 	UpgradedReplicaAddressMap map[string]string `json:"upgradedReplicaAddressMap"`
@@ -78,7 +78,7 @@ type EngineSpec struct {
 }
 
 type EngineStatus struct {
-	InstanceStatus
+	InstanceStatus           `json:""`
 	CurrentSize              int64                           `json:"currentSize,string"`
 	CurrentReplicaAddressMap map[string]string               `json:"currentReplicaAddressMap"`
 	ReplicaModeMap           map[string]ReplicaMode          `json:"replicaModeMap"`

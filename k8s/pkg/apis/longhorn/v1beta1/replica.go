@@ -3,7 +3,7 @@ package v1beta1
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 type ReplicaSpec struct {
-	InstanceSpec
+	InstanceSpec            `json:""`
 	EngineName              string `json:"engineName"`
 	HealthyAt               string `json:"healthyAt"`
 	FailedAt                string `json:"failedAt"`
@@ -23,7 +23,7 @@ type ReplicaSpec struct {
 }
 
 type ReplicaStatus struct {
-	InstanceStatus
+	InstanceStatus    `json:""`
 	EvictionRequested bool `json:"evictionRequested"`
 }
 
