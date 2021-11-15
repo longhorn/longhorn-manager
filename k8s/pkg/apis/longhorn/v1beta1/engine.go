@@ -126,6 +126,7 @@ type EngineSpec struct {
 type EngineStatus struct {
 	InstanceStatus `json:""`
 
+	// +kubebuilder:validation:Type=string
 	// +optional
 	CurrentSize int64 `json:"currentSize,string"`
 	// +optional
