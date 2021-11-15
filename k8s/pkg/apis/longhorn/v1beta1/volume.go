@@ -241,7 +241,14 @@ type VolumeStatus struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
+// +kubebuilder:resource:shortName=lhv
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`,description="The state of the volume"
+// +kubebuilder:printcolumn:name="Robustness",type=string,JSONPath=`.status.robustness`,description="The robustness of the volume"
+// +kubebuilder:printcolumn:name="Scheduled",type=string,JSONPath=`.status.conditions['scheduled']['status']`,description="The scheduled condition of the volume"
+// +kubebuilder:printcolumn:name="Size",type=string,JSONPath=`.spec.size`,description="The size of the volume"
+// +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.status.currentNodeID`,description="The node that the volume is currently attaching to"
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type Volume struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

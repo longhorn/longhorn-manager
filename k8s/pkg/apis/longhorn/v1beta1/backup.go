@@ -53,7 +53,13 @@ type SnapshotBackupStatus struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
+// +kubebuilder:resource:shortName=lhb
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="SnapshotName",type=string,JSONPath=`.status.snapshotName`,description="The snapshot name"
+// +kubebuilder:printcolumn:name="SnapshotSize",type=string,JSONPath=`.status.size`,description="The snapshot size"
+// +kubebuilder:printcolumn:name="SnapshotCreatedAt",type=string,JSONPath=`.status.snapshotCreatedAt`,description="The snapshot creation time"
+// +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`,description="The backup state"
+// +kubebuilder:printcolumn:name="LastSyncedAt",type=string,JSONPath=`.status.lastSyncedAt`,description="The backup last synced time"
 type Backup struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

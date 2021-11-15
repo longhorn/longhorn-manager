@@ -72,7 +72,14 @@ type BackingImageManagerStatus struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
+// +kubebuilder:resource:shortName=lhbim
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.currentState`,description="The current state of the manager"
+// +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.image`,description="The image the manager pod will use"
+// +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.spec.nodeID`,description="The node the manager is on"
+// +kubebuilder:printcolumn:name="DiskUUID",type=string,JSONPath=`.spec.diskUUID`,description="The disk the manager is responsible for"
+// +kubebuilder:printcolumn:name="DiskPath",type=string,JSONPath=`.spec.diskPath`,description="The disk path the manager is using"
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type BackingImageManager struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
