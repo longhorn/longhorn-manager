@@ -65,7 +65,10 @@ type BackingImageStatus struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
+// +kubebuilder:resource:shortName=lhbi
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.image`,description="The backing image name"
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type BackingImage struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

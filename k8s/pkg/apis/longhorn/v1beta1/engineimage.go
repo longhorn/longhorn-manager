@@ -62,7 +62,13 @@ type EngineImageStatus struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
+// +kubebuilder:resource:shortName=lhei
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`,description="State of the engine image"
+// +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.image`,description="The Longhorn engine image"
+// +kubebuilder:printcolumn:name="RefCount",type=integer,JSONPath=`.status.refCount`,description="Number of volumes are using the engine image"
+// +kubebuilder:printcolumn:name="BuildDate",type=date,JSONPath=`.status.buildDate`,description="The build date of the engine image"
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type EngineImage struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

@@ -36,7 +36,12 @@ type BackupVolumeStatus struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
+// +kubebuilder:resource:shortName=lhbv
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="CreatedAt",type=string,JSONPath=`.status.createdAt`,description="The backup volume creation time"
+// +kubebuilder:printcolumn:name="LastBackupName",type=string,JSONPath=`.status.lastBackupName`,description="The backup volume last backup name"
+// +kubebuilder:printcolumn:name="LastBackupAt",type=string,JSONPath=`.status.lastBackupAt`,description="The backup volume last backup time"
+// +kubebuilder:printcolumn:name="LastSyncedAt",type=string,JSONPath=`.status.lastSyncedAt`,description="The backup volume last synced time"
 type BackupVolume struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

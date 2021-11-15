@@ -89,7 +89,12 @@ type NodeStatus struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
+// +kubebuilder:resource:shortName=lhn
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions['Ready']['status']`,description="Indicate whether the node is ready"
+// +kubebuilder:printcolumn:name="AllowScheduling",type=boolean,JSONPath=`.spec.allowScheduling`,description="Indicate whether the user disabled/enabled replica scheduling for the node"
+// +kubebuilder:printcolumn:name="Schedulable",type=string,JSONPath=`.status.conditions['Schedulable']['status']`,description="Indicate whether Longhorn can schedule replicas on the node"
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type Node struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
