@@ -42,7 +42,7 @@ type EngineImageStatus struct {
 	Conditions        map[string]Condition `json:"conditions"`
 	NodeDeploymentMap map[string]bool      `json:"nodeDeploymentMap"`
 
-	EngineVersionDetails
+	EngineVersionDetails `json:""`
 }
 
 // +genclient
