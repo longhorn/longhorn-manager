@@ -411,19 +411,30 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 		return err
 	}
 
-	// Not assigned, safe to delete
+	var im *longhorn.InstanceManager
+	var err error
+	// Not assigned or not updated, try best to delete
 	if e.Status.InstanceManagerName == "" {
-		return nil
-	}
-
-	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
+		if e.Spec.NodeID == "" {
+			log.Warnf("Engine %v does not set instance manager name and node ID, will skip the actual process deletion", e.Name)
+			return nil
 		}
-		// The related node may be directly deleted.
-		log.Warnf("The engine instance manager %v is gone during the engine instance %v deletion. Will do nothing for the deletion", e.Status.InstanceManagerName, e.Name)
-		return nil
+		im, err = ec.ds.GetInstanceManagerByInstance(obj)
+		if err != nil {
+			log.Warnf("Failed to detect instance manager for engine %v, will skip the actual process deletion: %v", e.Name, err)
+			return nil
+		}
+		log.Infof("Try best to clean up the process for engine %v in instance manager %v", e.Name, im.Name)
+	} else {
+		im, err = ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return err
+			}
+			// The related node may be directly deleted.
+			log.Warnf("The engine instance manager %v is gone during the engine instance %v deletion. Will do nothing for the deletion", e.Status.InstanceManagerName, e.Name)
+			return nil
+		}
 	}
 
 	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
