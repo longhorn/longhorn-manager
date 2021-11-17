@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -11,9 +10,6 @@ import (
 	"github.com/rancher/go-rancher/client"
 
 	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util"
-
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 func (s *Server) SettingList(w http.ResponseWriter, req *http.Request) error {
@@ -57,21 +53,15 @@ func (s *Server) SettingSet(w http.ResponseWriter, req *http.Request) error {
 
 	name := mux.Vars(req)["name"]
 	sName := types.SettingName(name)
-
-	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		si, err := s.m.GetSetting(sName)
-		if err != nil {
-			return nil, err
-		}
-		si.Value = strings.TrimSpace(setting.Value)
-		return s.m.CreateOrUpdateSetting(si)
-	})
+	si, err := s.m.GetSetting(sName)
 	if err != nil {
 		return err
 	}
-	si, ok := obj.(*longhorn.Setting)
-	if !ok {
-		return fmt.Errorf("BUG: cannot convert to setting %v object", name)
+
+	si.Value = strings.TrimSpace(setting.Value)
+	si, err = s.m.CreateOrUpdateSetting(si)
+	if err != nil {
+		return err
 	}
 
 	apiContext.Write(toSettingResource(si))
