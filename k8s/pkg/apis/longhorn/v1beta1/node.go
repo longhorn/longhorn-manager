@@ -59,6 +59,7 @@ type DiskStatus struct {
 	DiskUUID string `json:"diskUUID"`
 }
 
+// NodeSpec defines the desired state of the Longhorn node
 type NodeSpec struct {
 	// +optional
 	Name string `json:"name"`
@@ -80,6 +81,7 @@ type NodeSpec struct {
 	ReplicaManagerCPURequest int `json:"replicaManagerCPURequest"`
 }
 
+// NodeStatus defines the observed state of the Longhorn node
 type NodeStatus struct {
 	// +optional
 	Conditions map[string]Condition `json:"conditions"`
@@ -99,6 +101,8 @@ type NodeStatus struct {
 // +kubebuilder:printcolumn:name="AllowScheduling",type=boolean,JSONPath=`.spec.allowScheduling`,description="Indicate whether the user disabled/enabled replica scheduling for the node"
 // +kubebuilder:printcolumn:name="Schedulable",type=string,JSONPath=`.status.conditions['Schedulable']['status']`,description="Indicate whether Longhorn can schedule replicas on the node"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// Node is where Longhorn stores Longhorn node object.
 type Node struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -109,6 +113,7 @@ type Node struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
+// NodeList is a list of Nodes.
 type NodeList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

@@ -2,9 +2,9 @@ package v1beta1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+// ReplicaSpec defines the desired state of the Longhorn replica
 type ReplicaSpec struct {
 	InstanceSpec `json:""`
-
 	// +optional
 	EngineName string `json:"engineName"`
 	// +optional
@@ -35,9 +35,9 @@ type ReplicaSpec struct {
 	BaseImage string `json:"baseImage"`
 }
 
+// ReplicaStatus defines the observed state of the Longhorn replica
 type ReplicaStatus struct {
 	InstanceStatus `json:""`
-
 	// +optional
 	EvictionRequested bool `json:"evictionRequested"`
 }
@@ -52,6 +52,8 @@ type ReplicaStatus struct {
 // +kubebuilder:printcolumn:name="InstanceManager",type=string,JSONPath=`.status.instanceManagerName`,description="The instance manager of the replica"
 // +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.status.currentImage`,description="The current image of the replica"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// Replica is where Longhorn stores replica object.
 type Replica struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -62,6 +64,7 @@ type Replica struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
+// ReplicaList is a list of Replicas.
 type ReplicaList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

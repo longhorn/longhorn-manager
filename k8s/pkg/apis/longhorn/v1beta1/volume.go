@@ -149,6 +149,7 @@ type WorkloadStatus struct {
 	WorkloadType string `json:"workloadType"`
 }
 
+// VolumeSpec defines the desired state of the Longhorn volume
 type VolumeSpec struct {
 	// +kubebuilder:validation:Type=string
 	// +optional
@@ -202,6 +203,7 @@ type VolumeSpec struct {
 	RecurringJobs []VolumeRecurringJobSpec `json:"recurringJobs,omitempty"`
 }
 
+// VolumeStatus defines the observed state of the Longhorn volume
 type VolumeStatus struct {
 	// +optional
 	OwnerID string `json:"ownerID"`
@@ -257,6 +259,8 @@ type VolumeStatus struct {
 // +kubebuilder:printcolumn:name="Size",type=string,JSONPath=`.spec.size`,description="The size of the volume"
 // +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.status.currentNodeID`,description="The node that the volume is currently attaching to"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// Volume is where Longhorn stores volume object.
 type Volume struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -267,6 +271,7 @@ type Volume struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
+// VolumeList is a list of Volumes.
 type VolumeList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

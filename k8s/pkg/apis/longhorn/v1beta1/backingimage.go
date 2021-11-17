@@ -28,6 +28,7 @@ type BackingImageDiskFileStatus struct {
 	LastStateTransitionTime string `json:"lastStateTransitionTime"`
 }
 
+// BackingImageSpec defines the desired state of the Longhorn backing image
 type BackingImageSpec struct {
 	// +optional
 	Disks map[string]string `json:"disks"`
@@ -42,6 +43,7 @@ type BackingImageSpec struct {
 	ImageURL string `json:"imageURL"`
 }
 
+// BackingImageStatus defines the observed state of the Longhorn backing image status
 type BackingImageStatus struct {
 	// +optional
 	OwnerID string `json:"ownerID"`
@@ -69,6 +71,8 @@ type BackingImageStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.image`,description="The backing image name"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// BackingImage is where Longhorn stores backing image object.
 type BackingImage struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -79,6 +83,7 @@ type BackingImage struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
+// BackingImageList is a list of BackingImages.
 type BackingImageList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
