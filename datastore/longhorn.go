@@ -111,7 +111,10 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	case types.SettingNameBackupTargetCredentialSecret:
 		secret, err := s.GetSecretRO(s.namespace, value)
 		if err != nil {
-			return errors.Wrapf(err, "failed to list the secret %v before modifying backup target credential secret setting", value)
+			if !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to get the secret before modifying backup target credential secret setting")
+			}
+			return nil
 		}
 		checkKeyList := []string{
 			types.AWSAccessKey,
