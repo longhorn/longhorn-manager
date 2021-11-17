@@ -9,17 +9,25 @@ const (
 )
 
 type BackupTargetSpec struct {
-	BackupTargetURL  string          `json:"backupTargetURL"`
-	CredentialSecret string          `json:"credentialSecret"`
-	PollInterval     metav1.Duration `json:"pollInterval"`
-	SyncRequestedAt  metav1.Time     `json:"syncRequestedAt"`
+	// +optional
+	BackupTargetURL string `json:"backupTargetURL"`
+	// +optional
+	CredentialSecret string `json:"credentialSecret"`
+	// +optional
+	PollInterval metav1.Duration `json:"pollInterval"`
+	// +optional
+	SyncRequestedAt metav1.Time `json:"syncRequestedAt"`
 }
 
 type BackupTargetStatus struct {
-	OwnerID      string               `json:"ownerID"`
-	Available    bool                 `json:"available"`
-	Conditions   map[string]Condition `json:"conditions"`
-	LastSyncedAt metav1.Time          `json:"lastSyncedAt"`
+	// +optional
+	OwnerID string `json:"ownerID"`
+	// +optional
+	Available bool `json:"available"`
+	// +optional
+	Conditions map[string]Condition `json:"conditions"`
+	// +optional
+	LastSyncedAt metav1.Time `json:"lastSyncedAt"`
 }
 
 // +genclient
@@ -27,15 +35,16 @@ type BackupTargetStatus struct {
 
 type BackupTarget struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
-	Spec              BackupTargetSpec   `json:"spec"`
-	Status            BackupTargetStatus `json:"status"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   BackupTargetSpec   `json:"spec,omitempty"`
+	Status BackupTargetStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type BackupTargetList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []BackupTarget `json:"items"`
 }

@@ -19,28 +19,43 @@ const (
 )
 
 type EngineVersionDetails struct {
-	Version   string `json:"version"`
+	// +optional
+	Version string `json:"version"`
+	// +optional
 	GitCommit string `json:"gitCommit"`
+	// +optional
 	BuildDate string `json:"buildDate"`
-
-	CLIAPIVersion           int `json:"cliAPIVersion"`
-	CLIAPIMinVersion        int `json:"cliAPIMinVersion"`
-	ControllerAPIVersion    int `json:"controllerAPIVersion"`
+	// +optional
+	CLIAPIVersion int `json:"cliAPIVersion"`
+	// +optional
+	CLIAPIMinVersion int `json:"cliAPIMinVersion"`
+	// +optional
+	ControllerAPIVersion int `json:"controllerAPIVersion"`
+	// +optional
 	ControllerAPIMinVersion int `json:"controllerAPIMinVersion"`
-	DataFormatVersion       int `json:"dataFormatVersion"`
-	DataFormatMinVersion    int `json:"dataFormatMinVersion"`
+	// +optional
+	DataFormatVersion int `json:"dataFormatVersion"`
+	// +optional
+	DataFormatMinVersion int `json:"dataFormatMinVersion"`
 }
 
 type EngineImageSpec struct {
+	// +optional
 	Image string `json:"image"`
 }
 type EngineImageStatus struct {
-	OwnerID           string               `json:"ownerID"`
-	State             EngineImageState     `json:"state"`
-	RefCount          int                  `json:"refCount"`
-	NoRefSince        string               `json:"noRefSince"`
-	Conditions        map[string]Condition `json:"conditions"`
-	NodeDeploymentMap map[string]bool      `json:"nodeDeploymentMap"`
+	// +optional
+	OwnerID string `json:"ownerID"`
+	// +optional
+	State EngineImageState `json:"state"`
+	// +optional
+	RefCount int `json:"refCount"`
+	// +optional
+	NoRefSince string `json:"noRefSince"`
+	// +optional
+	Conditions map[string]Condition `json:"conditions"`
+	// +optional
+	NodeDeploymentMap map[string]bool `json:"nodeDeploymentMap"`
 
 	EngineVersionDetails `json:""`
 }
@@ -50,15 +65,16 @@ type EngineImageStatus struct {
 
 type EngineImage struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
-	Spec              EngineImageSpec   `json:"spec"`
-	Status            EngineImageStatus `json:"status"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   EngineImageSpec   `json:"spec,omitempty"`
+	Status EngineImageStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type EngineImageList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []EngineImage `json:"items"`
 }

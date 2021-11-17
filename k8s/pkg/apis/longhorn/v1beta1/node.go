@@ -32,37 +32,59 @@ const (
 )
 
 type DiskSpec struct {
-	Path              string   `json:"path"`
-	AllowScheduling   bool     `json:"allowScheduling"`
-	EvictionRequested bool     `json:"evictionRequested"`
-	StorageReserved   int64    `json:"storageReserved"`
-	Tags              []string `json:"tags"`
+	// +optional
+	Path string `json:"path"`
+	// +optional
+	AllowScheduling bool `json:"allowScheduling"`
+	// +optional
+	EvictionRequested bool `json:"evictionRequested"`
+	// +optional
+	StorageReserved int64 `json:"storageReserved"`
+	// +optional
+	Tags []string `json:"tags"`
 }
 
 type DiskStatus struct {
-	Conditions       map[string]Condition `json:"conditions"`
-	StorageAvailable int64                `json:"storageAvailable"`
-	StorageScheduled int64                `json:"storageScheduled"`
-	StorageMaximum   int64                `json:"storageMaximum"`
-	ScheduledReplica map[string]int64     `json:"scheduledReplica"`
-	DiskUUID         string               `json:"diskUUID"`
+	// +optional
+	Conditions map[string]Condition `json:"conditions"`
+	// +optional
+	StorageAvailable int64 `json:"storageAvailable"`
+	// +optional
+	StorageScheduled int64 `json:"storageScheduled"`
+	// +optional
+	StorageMaximum int64 `json:"storageMaximum"`
+	// +optional
+	ScheduledReplica map[string]int64 `json:"scheduledReplica"`
+	// +optional
+	DiskUUID string `json:"diskUUID"`
 }
 
 type NodeSpec struct {
-	Name                     string              `json:"name"`
-	Disks                    map[string]DiskSpec `json:"disks"`
-	AllowScheduling          bool                `json:"allowScheduling"`
-	EvictionRequested        bool                `json:"evictionRequested"`
-	Tags                     []string            `json:"tags"`
-	EngineManagerCPURequest  int                 `json:"engineManagerCPURequest"`
-	ReplicaManagerCPURequest int                 `json:"replicaManagerCPURequest"`
+	// +optional
+	Name string `json:"name"`
+	// +optional
+	Disks map[string]DiskSpec `json:"disks"`
+	// +optional
+	AllowScheduling bool `json:"allowScheduling"`
+	// +optional
+	EvictionRequested bool `json:"evictionRequested"`
+	// +optional
+	Tags []string `json:"tags"`
+	// +optional
+	EngineManagerCPURequest int `json:"engineManagerCPURequest"`
+	// +optional
+	ReplicaManagerCPURequest int `json:"replicaManagerCPURequest"`
 }
 
 type NodeStatus struct {
-	Conditions map[string]Condition   `json:"conditions"`
+	// +optional
+	Conditions map[string]Condition `json:"conditions"`
+	// +optional
 	DiskStatus map[string]*DiskStatus `json:"diskStatus"`
-	Region     string                 `json:"region"`
-	Zone       string                 `json:"zone"`
+	// +optional
+	Region string `json:"region"`
+	// +optional
+	Zone string `json:"zone"`
 }
 
 // +genclient
@@ -70,15 +92,16 @@ type NodeStatus struct {
 
 type Node struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
-	Spec              NodeSpec   `json:"spec"`
-	Status            NodeStatus `json:"status"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   NodeSpec   `json:"spec,omitempty"`
+	Status NodeStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type NodeList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Node `json:"items"`
 }

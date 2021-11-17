@@ -15,23 +15,37 @@ const (
 )
 
 type BackingImageDataSourceSpec struct {
-	NodeID          string                     `json:"nodeID"`
-	DiskUUID        string                     `json:"diskUUID"`
-	DiskPath        string                     `json:"diskPath"`
-	Checksum        string                     `json:"checksum"`
-	SourceType      BackingImageDataSourceType `json:"sourceType"`
-	Parameters      map[string]string          `json:"parameters"`
-	FileTransferred bool                       `json:"fileTransferred"`
+	// +optional
+	NodeID string `json:"nodeID"`
+	// +optional
+	DiskUUID string `json:"diskUUID"`
+	// +optional
+	DiskPath string `json:"diskPath"`
+	// +optional
+	Checksum string `json:"checksum"`
+	// +optional
+	SourceType BackingImageDataSourceType `json:"sourceType"`
+	// +optional
+	Parameters map[string]string `json:"parameters"`
+	// +optional
+	FileTransferred bool `json:"fileTransferred"`
 }
 
 type BackingImageDataSourceStatus struct {
-	OwnerID           string            `json:"ownerID"`
+	// +optional
+	OwnerID string `json:"ownerID"`
+	// +optional
 	RunningParameters map[string]string `json:"runningParameters"`
-	CurrentState      BackingImageState `json:"currentState"`
-	Size              int64             `json:"size"`
-	Progress          int               `json:"progress"`
-	Checksum          string            `json:"checksum"`
-	Message           string            `json:"message"`
+	// +optional
+	CurrentState BackingImageState `json:"currentState"`
+	// +optional
+	Size int64 `json:"size"`
+	// +optional
+	Progress int `json:"progress"`
+	// +optional
+	Checksum string `json:"checksum"`
+	// +optional
+	Message string `json:"message"`
 }
 
 // +genclient
@@ -39,15 +53,16 @@ type BackingImageDataSourceStatus struct {
 
 type BackingImageDataSource struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
-	Spec              BackingImageDataSourceSpec   `json:"spec"`
-	Status            BackingImageDataSourceStatus `json:"status"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   BackingImageDataSourceSpec   `json:"spec,omitempty"`
+	Status BackingImageDataSourceStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type BackingImageDataSourceList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []BackingImageDataSource `json:"items"`
 }

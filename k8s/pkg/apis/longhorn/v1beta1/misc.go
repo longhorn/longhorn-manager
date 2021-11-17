@@ -9,10 +9,16 @@ const (
 )
 
 type Condition struct {
-	Type               string          `json:"type"`
-	Status             ConditionStatus `json:"status"`
-	LastProbeTime      string          `json:"lastProbeTime"`
-	LastTransitionTime string          `json:"lastTransitionTime"`
-	Reason             string          `json:"reason"`
-	Message            string          `json:"message"`
+	// +optional
+	Type string `json:"type"`
+	// +optional
+	Status ConditionStatus `json:"status"`
+	// +optional
+	LastProbeTime string `json:"lastProbeTime"`
+	// +optional
+	LastTransitionTime string `json:"lastTransitionTime"`
+	// +optional
+	Reason string `json:"reason"`
+	// +optional
+	Message string `json:"message"`
 }

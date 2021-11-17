@@ -14,13 +14,17 @@ const (
 )
 
 type ShareManagerSpec struct {
+	// +optional
 	Image string `json:"image"`
 }
 
 type ShareManagerStatus struct {
-	OwnerID  string            `json:"ownerID"`
-	State    ShareManagerState `json:"state"`
-	Endpoint string            `json:"endpoint"`
+	// +optional
+	OwnerID string `json:"ownerID"`
+	// +optional
+	State ShareManagerState `json:"state"`
+	// +optional
+	Endpoint string `json:"endpoint"`
 }
 
 // +genclient
@@ -28,15 +32,16 @@ type ShareManagerStatus struct {
 
 type ShareManager struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
-	Spec              ShareManagerSpec   `json:"spec"`
-	Status            ShareManagerStatus `json:"status"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ShareManagerSpec   `json:"spec,omitempty"`
+	Status ShareManagerStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type ShareManagerList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ShareManager `json:"items"`
 }

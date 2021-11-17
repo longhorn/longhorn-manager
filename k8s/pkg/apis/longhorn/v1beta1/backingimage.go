@@ -18,33 +18,48 @@ const (
 )
 
 type BackingImageDiskFileStatus struct {
-	State                   BackingImageState `json:"state"`
-	Progress                int               `json:"progress"`
-	Message                 string            `json:"message"`
-	LastStateTransitionTime string            `json:"lastStateTransitionTime"`
+	// +optional
+	State BackingImageState `json:"state"`
+	// +optional
+	Progress int `json:"progress"`
+	// +optional
+	Message string `json:"message"`
+	// +optional
+	LastStateTransitionTime string `json:"lastStateTransitionTime"`
 }
 
 type BackingImageSpec struct {
-	Disks            map[string]string          `json:"disks"`
-	Checksum         string                     `json:"checksum"`
-	SourceType       BackingImageDataSourceType `json:"sourceType"`
-	SourceParameters map[string]string          `json:"sourceParameters"`
-
+	// +optional
+	Disks map[string]string `json:"disks"`
+	// +optional
+	Checksum string `json:"checksum"`
+	// +optional
+	SourceType BackingImageDataSourceType `json:"sourceType"`
+	// +optional
+	SourceParameters map[string]string `json:"sourceParameters"`
 	// Deprecated: This kind of info will be included in the related BackingImageDataSource.
+	// +optional
 	ImageURL string `json:"imageURL"`
 }
 
 type BackingImageStatus struct {
-	OwnerID           string                                 `json:"ownerID"`
-	UUID              string                                 `json:"uuid"`
-	Size              int64                                  `json:"size"`
-	Checksum          string                                 `json:"checksum"`
+	// +optional
+	OwnerID string `json:"ownerID"`
+	// +optional
+	UUID string `json:"uuid"`
+	// +optional
+	Size int64 `json:"size"`
+	// +optional
+	Checksum string `json:"checksum"`
+	// +optional
 	DiskFileStatusMap map[string]*BackingImageDiskFileStatus `json:"diskFileStatusMap"`
-	DiskLastRefAtMap  map[string]string                      `json:"diskLastRefAtMap"`
-
+	// +optional
+	DiskLastRefAtMap map[string]string `json:"diskLastRefAtMap"`
 	// Deprecated: Replaced by field `State` in `DiskFileStatusMap`.
+	// +optional
 	DiskDownloadStateMap map[string]BackingImageDownloadState `json:"diskDownloadStateMap"`
 	// Deprecated: Replaced by field `Progress` in `DiskFileStatusMap`.
+	// +optional
 	DiskDownloadProgressMap map[string]int `json:"diskDownloadProgressMap"`
 }
 
@@ -53,15 +68,16 @@ type BackingImageStatus struct {
 
 type BackingImage struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
-	Spec              BackingImageSpec   `json:"spec"`
-	Status            BackingImageStatus `json:"status"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   BackingImageSpec   `json:"spec,omitempty"`
+	Status BackingImageStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type BackingImageList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []BackingImage `json:"items"`
 }
