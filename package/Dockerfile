@@ -1,6 +1,11 @@
-FROM ubuntu:18.04
+FROM ubuntu:20.04
 
-RUN apt-get update && apt-get install -y curl vim nfs-common iproute2 dnsutils iputils-ping telnet zip xfsprogs
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get dist-upgrade -y && \
+    apt-get install -y curl vim nfs-common iproute2 dnsutils iputils-ping telnet zip xfsprogs && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY bin package/launch-manager /usr/local/sbin/
 
