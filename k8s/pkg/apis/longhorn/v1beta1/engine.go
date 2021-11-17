@@ -11,89 +11,151 @@ const (
 )
 
 type BackupStatus struct {
-	Progress       int    `json:"progress"`
-	BackupURL      string `json:"backupURL,omitempty"`
-	Error          string `json:"error,omitempty"`
-	SnapshotName   string `json:"snapshotName"`
-	State          string `json:"state"`
+	// +optional
+	Progress int `json:"progress"`
+	// +optional
+	BackupURL string `json:"backupURL,omitempty"`
+	// +optional
+	Error string `json:"error,omitempty"`
+	// +optional
+	SnapshotName string `json:"snapshotName"`
+	// +optional
+	State string `json:"state"`
+	// +optional
 	ReplicaAddress string `json:"replicaAddress"`
 }
 
 type RestoreStatus struct {
-	IsRestoring            bool   `json:"isRestoring"`
-	LastRestored           string `json:"lastRestored"`
+	// +optional
+	IsRestoring bool `json:"isRestoring"`
+	// +optional
+	LastRestored string `json:"lastRestored"`
+	// +optional
 	CurrentRestoringBackup string `json:"currentRestoringBackup"`
-	Progress               int    `json:"progress,omitempty"`
-	Error                  string `json:"error,omitempty"`
-	Filename               string `json:"filename,omitempty"`
-	State                  string `json:"state"`
-	BackupURL              string `json:"backupURL"`
+	// +optional
+	Progress int `json:"progress,omitempty"`
+	// +optional
+	Error string `json:"error,omitempty"`
+	// +optional
+	Filename string `json:"filename,omitempty"`
+	// +optional
+	State string `json:"state"`
+	// +optional
+	BackupURL string `json:"backupURL"`
 }
 
 type PurgeStatus struct {
-	Error     string `json:"error"`
-	IsPurging bool   `json:"isPurging"`
-	Progress  int    `json:"progress"`
-	State     string `json:"state"`
+	// +optional
+	Error string `json:"error"`
+	// +optional
+	IsPurging bool `json:"isPurging"`
+	// +optional
+	Progress int `json:"progress"`
+	// +optional
+	State string `json:"state"`
 }
 
 type RebuildStatus struct {
-	Error              string `json:"error"`
-	IsRebuilding       bool   `json:"isRebuilding"`
-	Progress           int    `json:"progress"`
-	State              string `json:"state"`
+	// +optional
+	Error string `json:"error"`
+	// +optional
+	IsRebuilding bool `json:"isRebuilding"`
+	// +optional
+	Progress int `json:"progress"`
+	// +optional
+	State string `json:"state"`
+	// +optional
 	FromReplicaAddress string `json:"fromReplicaAddress"`
 }
 
 type SnapshotCloneStatus struct {
-	IsCloning          bool   `json:"isCloning"`
-	Error              string `json:"error"`
-	Progress           int    `json:"progress"`
-	State              string `json:"state"`
+	// +optional
+	IsCloning bool `json:"isCloning"`
+	// +optional
+	Error string `json:"error"`
+	// +optional
+	Progress int `json:"progress"`
+	// +optional
+	State string `json:"state"`
+	// +optional
 	FromReplicaAddress string `json:"fromReplicaAddress"`
-	SnapshotName       string `json:"snapshotName"`
+	// +optional
+	SnapshotName string `json:"snapshotName"`
 }
 
 type Snapshot struct {
-	Name        string            `json:"name"`
-	Parent      string            `json:"parent"`
-	Children    map[string]bool   `json:"children"`
-	Removed     bool              `json:"removed"`
-	UserCreated bool              `json:"usercreated"`
-	Created     string            `json:"created"`
-	Size        string            `json:"size"`
-	Labels      map[string]string `json:"labels"`
+	// +optional
+	Name string `json:"name"`
+	// +optional
+	Parent string `json:"parent"`
+	// +optional
+	Children map[string]bool `json:"children"`
+	// +optional
+	Removed bool `json:"removed"`
+	// +optional
+	UserCreated bool `json:"usercreated"`
+	// +optional
+	Created string `json:"created"`
+	// +optional
+	Size string `json:"size"`
+	// +optional
+	Labels map[string]string `json:"labels"`
 }
 
 type EngineSpec struct {
-	InstanceSpec              `json:""`
-	Frontend                  VolumeFrontend    `json:"frontend"`
-	ReplicaAddressMap         map[string]string `json:"replicaAddressMap"`
+	InstanceSpec `json:""`
+
+	// +optional
+	Frontend VolumeFrontend `json:"frontend"`
+	// +optional
+	ReplicaAddressMap map[string]string `json:"replicaAddressMap"`
+	// +optional
 	UpgradedReplicaAddressMap map[string]string `json:"upgradedReplicaAddressMap"`
-	BackupVolume              string            `json:"backupVolume"`
-	RequestedBackupRestore    string            `json:"requestedBackupRestore"`
-	RequestedDataSource       VolumeDataSource  `json:"requestedDataSource"`
-	DisableFrontend           bool              `json:"disableFrontend"`
-	RevisionCounterDisabled   bool              `json:"revisionCounterDisabled"`
+	// +optional
+	BackupVolume string `json:"backupVolume"`
+	// +optional
+	RequestedBackupRestore string `json:"requestedBackupRestore"`
+	// +optional
+	RequestedDataSource VolumeDataSource `json:"requestedDataSource"`
+	// +optional
+	DisableFrontend bool `json:"disableFrontend"`
+	// +optional
+	RevisionCounterDisabled bool `json:"revisionCounterDisabled"`
 }
 
 type EngineStatus struct {
-	InstanceStatus           `json:""`
-	CurrentSize              int64                           `json:"currentSize,string"`
-	CurrentReplicaAddressMap map[string]string               `json:"currentReplicaAddressMap"`
-	ReplicaModeMap           map[string]ReplicaMode          `json:"replicaModeMap"`
-	Endpoint                 string                          `json:"endpoint"`
-	LastRestoredBackup       string                          `json:"lastRestoredBackup"`
-	BackupStatus             map[string]*BackupStatus        `json:"backupStatus"`
-	RestoreStatus            map[string]*RestoreStatus       `json:"restoreStatus"`
-	PurgeStatus              map[string]*PurgeStatus         `json:"purgeStatus"`
-	RebuildStatus            map[string]*RebuildStatus       `json:"rebuildStatus"`
-	CloneStatus              map[string]*SnapshotCloneStatus `json:"cloneStatus"`
-	Snapshots                map[string]*Snapshot            `json:"snapshots"`
-	SnapshotsError           string                          `json:"snapshotsError"`
-	IsExpanding              bool                            `json:"isExpanding"`
-	LastExpansionError       string                          `json:"lastExpansionError"`
-	LastExpansionFailedAt    string                          `json:"lastExpansionFailedAt"`
+	InstanceStatus `json:""`
+
+	// +optional
+	CurrentSize int64 `json:"currentSize,string"`
+	// +optional
+	CurrentReplicaAddressMap map[string]string `json:"currentReplicaAddressMap"`
+	// +optional
+	ReplicaModeMap map[string]ReplicaMode `json:"replicaModeMap"`
+	// +optional
+	Endpoint string `json:"endpoint"`
+	// +optional
+	LastRestoredBackup string `json:"lastRestoredBackup"`
+	// +optional
+	BackupStatus map[string]*BackupStatus `json:"backupStatus"`
+	// +optional
+	RestoreStatus map[string]*RestoreStatus `json:"restoreStatus"`
+	// +optional
+	PurgeStatus map[string]*PurgeStatus `json:"purgeStatus"`
+	// +optional
+	RebuildStatus map[string]*RebuildStatus `json:"rebuildStatus"`
+	// +optional
+	CloneStatus map[string]*SnapshotCloneStatus `json:"cloneStatus"`
+	// +optional
+	Snapshots map[string]*Snapshot `json:"snapshots"`
+	// +optional
+	SnapshotsError string `json:"snapshotsError"`
+	// +optional
+	IsExpanding bool `json:"isExpanding"`
+	// +optional
+	LastExpansionError string `json:"lastExpansionError"`
+	// +optional
+	LastExpansionFailedAt string `json:"lastExpansionFailedAt"`
 }
 
 // +genclient
@@ -101,15 +163,16 @@ type EngineStatus struct {
 
 type Engine struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
-	Spec              EngineSpec   `json:"spec"`
-	Status            EngineStatus `json:"status"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   EngineSpec   `json:"spec,omitempty"`
+	Status EngineStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type EngineList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Engine `json:"items"`
 }

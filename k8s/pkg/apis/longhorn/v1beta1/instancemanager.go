@@ -27,11 +27,14 @@ const (
 )
 
 type InstanceProcess struct {
-	Spec   InstanceProcessSpec   `json:"spec"`
+	// +optional
+	Spec InstanceProcessSpec `json:"spec"`
+	// +optional
 	Status InstanceProcessStatus `json:"status"`
 }
 
 type InstanceProcessSpec struct {
+	// +optional
 	Name string `json:"name"`
 }
 
@@ -47,54 +50,87 @@ const (
 )
 
 type InstanceSpec struct {
-	VolumeName       string        `json:"volumeName"`
-	VolumeSize       int64         `json:"volumeSize,string"`
-	NodeID           string        `json:"nodeID"`
-	EngineImage      string        `json:"engineImage"`
-	DesireState      InstanceState `json:"desireState"`
-	LogRequested     bool          `json:"logRequested"`
-	SalvageRequested bool          `json:"salvageRequested"`
+	// +optional
+	VolumeName string `json:"volumeName"`
+	// +optional
+	VolumeSize int64 `json:"volumeSize,string"`
+	// +optional
+	NodeID string `json:"nodeID"`
+	// +optional
+	EngineImage string `json:"engineImage"`
+	// +optional
+	DesireState InstanceState `json:"desireState"`
+	// +optional
+	LogRequested bool `json:"logRequested"`
+	// +optional
+	SalvageRequested bool `json:"salvageRequested"`
 }
 
 type InstanceStatus struct {
-	OwnerID             string        `json:"ownerID"`
-	InstanceManagerName string        `json:"instanceManagerName"`
-	CurrentState        InstanceState `json:"currentState"`
-	CurrentImage        string        `json:"currentImage"`
-	IP                  string        `json:"ip"`
-	Port                int           `json:"port"`
-	Started             bool          `json:"started"`
-	LogFetched          bool          `json:"logFetched"`
-	SalvageExecuted     bool          `json:"salvageExecuted"`
+	// +optional
+	OwnerID string `json:"ownerID"`
+	// +optional
+	InstanceManagerName string `json:"instanceManagerName"`
+	// +optional
+	CurrentState InstanceState `json:"currentState"`
+	// +optional
+	CurrentImage string `json:"currentImage"`
+	// +optional
+	IP string `json:"ip"`
+	// +optional
+	Port int `json:"port"`
+	// +optional
+	Started bool `json:"started"`
+	// +optional
+	LogFetched bool `json:"logFetched"`
+	// +optional
+	SalvageExecuted bool `json:"salvageExecuted"`
 }
 
 type InstanceProcessStatus struct {
-	Endpoint        string        `json:"endpoint"`
-	ErrorMsg        string        `json:"errorMsg"`
-	Listen          string        `json:"listen"`
-	PortEnd         int32         `json:"portEnd"`
-	PortStart       int32         `json:"portStart"`
-	State           InstanceState `json:"state"`
-	Type            InstanceType  `json:"type"`
-	ResourceVersion int64         `json:"resourceVersion"`
+	// +optional
+	Endpoint string `json:"endpoint"`
+	// +optional
+	ErrorMsg string `json:"errorMsg"`
+	// +optional
+	Listen string `json:"listen"`
+	// +optional
+	PortEnd int32 `json:"portEnd"`
+	// +optional
+	PortStart int32 `json:"portStart"`
+	// +optional
+	State InstanceState `json:"state"`
+	// +optional
+	Type InstanceType `json:"type"`
+	// +optional
+	ResourceVersion int64 `json:"resourceVersion"`
 }
 
 type InstanceManagerSpec struct {
-	Image  string              `json:"image"`
-	NodeID string              `json:"nodeID"`
-	Type   InstanceManagerType `json:"type"`
-
+	// +optional
+	Image string `json:"image"`
+	// +optional
+	NodeID string `json:"nodeID"`
+	// +optional
+	Type InstanceManagerType `json:"type"`
 	// TODO: deprecate this field
+	// +optional
 	EngineImage string `json:"engineImage"`
 }
 
 type InstanceManagerStatus struct {
-	OwnerID       string                     `json:"ownerID"`
-	CurrentState  InstanceManagerState       `json:"currentState"`
-	Instances     map[string]InstanceProcess `json:"instances"`
-	IP            string                     `json:"ip"`
-	APIMinVersion int                        `json:"apiMinVersion"`
-	APIVersion    int                        `json:"apiVersion"`
+	// +optional
+	OwnerID string `json:"ownerID"`
+	// +optional
+	CurrentState InstanceManagerState `json:"currentState"`
+	// +optional
+	Instances map[string]InstanceProcess `json:"instances"`
+	// +optional
+	IP string `json:"ip"`
+	// +optional
+	APIMinVersion int `json:"apiMinVersion"`
+	// +optional
+	APIVersion int `json:"apiVersion"`
 }
 
 // +genclient
@@ -102,15 +138,16 @@ type InstanceManagerStatus struct {
 
 type InstanceManager struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
-	Spec              InstanceManagerSpec   `json:"spec"`
-	Status            InstanceManagerStatus `json:"status"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   InstanceManagerSpec   `json:"spec,omitempty"`
+	Status InstanceManagerStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type InstanceManagerList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []InstanceManager `json:"items"`
 }

@@ -71,9 +71,12 @@ const (
 )
 
 type VolumeCloneStatus struct {
-	SourceVolume string           `json:"sourceVolume"`
-	Snapshot     string           `json:"snapshot"`
-	State        VolumeCloneState `json:"state"`
+	// +optional
+	SourceVolume string `json:"sourceVolume"`
+	// +optional
+	Snapshot string `json:"snapshot"`
+	// +optional
+	State VolumeCloneState `json:"state"`
 }
 
 const (
@@ -94,90 +97,146 @@ const (
 // TODO: Should be removed when recurringJobs gets removed from the volume
 //       spec.
 type VolumeRecurringJobSpec struct {
-	Name        string            `json:"name"`
-	Groups      []string          `json:"groups,omitempty"`
-	Task        RecurringJobType  `json:"task"`
-	Cron        string            `json:"cron"`
-	Retain      int               `json:"retain"`
-	Concurrency int               `json:"concurrency"`
-	Labels      map[string]string `json:"labels,omitempty"`
+	// +optional
+	Name string `json:"name"`
+	// +optional
+	Groups []string `json:"groups,omitempty"`
+	// +optional
+	Task RecurringJobType `json:"task"`
+	// +optional
+	Cron string `json:"cron"`
+	// +optional
+	Retain int `json:"retain"`
+	// +optional
+	Concurrency int `json:"concurrency"`
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 type KubernetesStatus struct {
-	PVName   string `json:"pvName"`
+	// +optional
+	PVName string `json:"pvName"`
+	// +optional
 	PVStatus string `json:"pvStatus"`
-
 	// determine if PVC/Namespace is history or not
-	Namespace    string `json:"namespace"`
-	PVCName      string `json:"pvcName"`
+	// +optional
+	Namespace string `json:"namespace"`
+	// +optional
+	PVCName string `json:"pvcName"`
+	// +optional
 	LastPVCRefAt string `json:"lastPVCRefAt"`
-
 	// determine if Pod/Workload is history or not
+	// +optional
 	WorkloadsStatus []WorkloadStatus `json:"workloadsStatus"`
-	LastPodRefAt    string           `json:"lastPodRefAt"`
+	// +optional
+	LastPodRefAt string `json:"lastPodRefAt"`
 }
 
 type WorkloadStatus struct {
-	PodName      string `json:"podName"`
-	PodStatus    string `json:"podStatus"`
+	// +optional
+	PodName string `json:"podName"`
+	// +optional
+	PodStatus string `json:"podStatus"`
+	// +optional
 	WorkloadName string `json:"workloadName"`
+	// +optional
 	WorkloadType string `json:"workloadType"`
 }
 
 type VolumeSpec struct {
-	Size                    int64            `json:"size,string"`
-	Frontend                VolumeFrontend   `json:"frontend"`
-	FromBackup              string           `json:"fromBackup"`
-	DataSource              VolumeDataSource `json:"dataSource"`
-	DataLocality            DataLocality     `json:"dataLocality"`
-	StaleReplicaTimeout     int              `json:"staleReplicaTimeout"`
-	NodeID                  string           `json:"nodeID"`
-	MigrationNodeID         string           `json:"migrationNodeID"`
-	EngineImage             string           `json:"engineImage"`
-	BackingImage            string           `json:"backingImage"`
-	Standby                 bool             `json:"Standby"`
-	DiskSelector            []string         `json:"diskSelector"`
-	NodeSelector            []string         `json:"nodeSelector"`
-	DisableFrontend         bool             `json:"disableFrontend"`
-	RevisionCounterDisabled bool             `json:"revisionCounterDisabled"`
-	LastAttachedBy          string           `json:"lastAttachedBy"`
-	AccessMode              AccessMode       `json:"accessMode"`
-	Migratable              bool             `json:"migratable"`
-
+	// +optional
+	Size int64 `json:"size,string"`
+	// +optional
+	Frontend VolumeFrontend `json:"frontend"`
+	// +optional
+	FromBackup string `json:"fromBackup"`
+	// +optional
+	DataSource VolumeDataSource `json:"dataSource"`
+	// +optional
+	DataLocality DataLocality `json:"dataLocality"`
+	// +optional
+	StaleReplicaTimeout int `json:"staleReplicaTimeout"`
+	// +optional
+	NodeID string `json:"nodeID"`
+	// +optional
+	MigrationNodeID string `json:"migrationNodeID"`
+	// +optional
+	EngineImage string `json:"engineImage"`
+	// +optional
+	BackingImage string `json:"backingImage"`
+	// +optional
+	Standby bool `json:"Standby"`
+	// +optional
+	DiskSelector []string `json:"diskSelector"`
+	// +optional
+	NodeSelector []string `json:"nodeSelector"`
+	// +optional
+	DisableFrontend bool `json:"disableFrontend"`
+	// +optional
+	RevisionCounterDisabled bool `json:"revisionCounterDisabled"`
+	// +optional
+	LastAttachedBy string `json:"lastAttachedBy"`
+	// +optional
+	AccessMode AccessMode `json:"accessMode"`
+	// +optional
+	Migratable bool `json:"migratable"`
+	// +optional
 	Encrypted bool `json:"encrypted"`
-
-	NumberOfReplicas   int                `json:"numberOfReplicas"`
+	// +optional
+	NumberOfReplicas int `json:"numberOfReplicas"`
+	// +optional
 	ReplicaAutoBalance ReplicaAutoBalance `json:"replicaAutoBalance"`
-
 	// Deprecated. Rename to BackingImage
+	// +optional
 	BaseImage string `json:"baseImage"`
-
 	// Deprecated. Replaced by a separate resource named "RecurringJob"
+	// +optional
 	RecurringJobs []VolumeRecurringJobSpec `json:"recurringJobs,omitempty"`
 }
 
 type VolumeStatus struct {
-	OwnerID            string               `json:"ownerID"`
-	State              VolumeState          `json:"state"`
-	Robustness         VolumeRobustness     `json:"robustness"`
-	CurrentNodeID      string               `json:"currentNodeID"`
-	CurrentImage       string               `json:"currentImage"`
-	KubernetesStatus   KubernetesStatus     `json:"kubernetesStatus"`
-	Conditions         map[string]Condition `json:"conditions"`
-	LastBackup         string               `json:"lastBackup"`
-	LastBackupAt       string               `json:"lastBackupAt"`
-	PendingNodeID      string               `json:"pendingNodeID"`
-	FrontendDisabled   bool                 `json:"frontendDisabled"`
-	RestoreRequired    bool                 `json:"restoreRequired"`
-	RestoreInitiated   bool                 `json:"restoreInitiated"`
-	CloneStatus        VolumeCloneStatus    `json:"cloneStatus"`
-	RemountRequestedAt string               `json:"remountRequestedAt"`
-	ExpansionRequired  bool                 `json:"expansionRequired"`
-	IsStandby          bool                 `json:"isStandby"`
-	ActualSize         int64                `json:"actualSize"`
-	LastDegradedAt     string               `json:"lastDegradedAt"`
-	ShareEndpoint      string               `json:"shareEndpoint"`
-	ShareState         ShareManagerState    `json:"shareState"`
+	// +optional
+	OwnerID string `json:"ownerID"`
+	// +optional
+	State VolumeState `json:"state"`
+	// +optional
+	Robustness VolumeRobustness `json:"robustness"`
+	// +optional
+	CurrentNodeID string `json:"currentNodeID"`
+	// +optional
+	CurrentImage string `json:"currentImage"`
+	// +optional
+	KubernetesStatus KubernetesStatus `json:"kubernetesStatus"`
+	// +optional
+	Conditions map[string]Condition `json:"conditions"`
+	// +optional
+	LastBackup string `json:"lastBackup"`
+	// +optional
+	LastBackupAt string `json:"lastBackupAt"`
+	// +optional
+	PendingNodeID string `json:"pendingNodeID"`
+	// +optional
+	FrontendDisabled bool `json:"frontendDisabled"`
+	// +optional
+	RestoreRequired bool `json:"restoreRequired"`
+	// +optional
+	RestoreInitiated bool `json:"restoreInitiated"`
+	// +optional
+	CloneStatus VolumeCloneStatus `json:"cloneStatus"`
+	// +optional
+	RemountRequestedAt string `json:"remountRequestedAt"`
+	// +optional
+	ExpansionRequired bool `json:"expansionRequired"`
+	// +optional
+	IsStandby bool `json:"isStandby"`
+	// +optional
+	ActualSize int64 `json:"actualSize"`
+	// +optional
+	LastDegradedAt string `json:"lastDegradedAt"`
+	// +optional
+	ShareEndpoint string `json:"shareEndpoint"`
+	// +optional
+	ShareState ShareManagerState `json:"shareState"`
 }
 
 // +genclient
@@ -185,15 +244,16 @@ type VolumeStatus struct {
 
 type Volume struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
-	Spec              VolumeSpec   `json:"spec"`
-	Status            VolumeStatus `json:"status"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   VolumeSpec   `json:"spec,omitempty"`
+	Status VolumeStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type VolumeList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Volume `json:"items"`
 }
