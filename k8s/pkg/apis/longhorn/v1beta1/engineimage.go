@@ -39,10 +39,13 @@ type EngineVersionDetails struct {
 	DataFormatMinVersion int `json:"dataFormatMinVersion"`
 }
 
+// EngineImageSpec defines the desired state of the Longhorn engine image
 type EngineImageSpec struct {
 	// +optional
 	Image string `json:"image"`
 }
+
+// EngineImageStatus defines the observed state of the Longhorn engine image
 type EngineImageStatus struct {
 	// +optional
 	OwnerID string `json:"ownerID"`
@@ -55,8 +58,7 @@ type EngineImageStatus struct {
 	// +optional
 	Conditions map[string]Condition `json:"conditions"`
 	// +optional
-	NodeDeploymentMap map[string]bool `json:"nodeDeploymentMap"`
-
+	NodeDeploymentMap    map[string]bool `json:"nodeDeploymentMap"`
 	EngineVersionDetails `json:""`
 }
 
@@ -69,6 +71,8 @@ type EngineImageStatus struct {
 // +kubebuilder:printcolumn:name="RefCount",type=integer,JSONPath=`.status.refCount`,description="Number of volumes are using the engine image"
 // +kubebuilder:printcolumn:name="BuildDate",type=date,JSONPath=`.status.buildDate`,description="The build date of the engine image"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// EngineImage is where Longhorn stores engine image object.
 type EngineImage struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -79,6 +83,7 @@ type EngineImage struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
+// EngineImageList is a list of EngineImages.
 type EngineImageList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

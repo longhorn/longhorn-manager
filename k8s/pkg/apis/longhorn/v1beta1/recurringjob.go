@@ -17,26 +17,37 @@ type VolumeRecurringJob struct {
 	IsGroup bool   `json:"isGroup"`
 }
 
+// RecurringJobSpec defines the desired state of the Longhorn recurring job
 type RecurringJobSpec struct {
+	// The recurring job name.
 	// +optional
 	Name string `json:"name"`
+	// The recurring job group.
 	// +optional
 	Groups []string `json:"groups,omitempty"`
+	// The recurring job type.
+	// Can be "snapshot" or "backup".
 	// +optional
 	Task RecurringJobType `json:"task"`
+	// The cron setting.
 	// +optional
 	Cron string `json:"cron"`
+	// The retain count of the snapshot/backup.
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	Retain int `json:"retain"`
+	// The concurrency of taking the snapshot/backup.
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	Concurrency int `json:"concurrency"`
+	// The label of the snapshot/backup.
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
 }
 
+// RecurringJobStatus defines the observed state of the Longhorn recurring job
 type RecurringJobStatus struct {
+	// The owner ID which is responsible to reconcile this recurring job CR.
 	// +optional
 	OwnerID string `json:"ownerID"`
 }
@@ -52,6 +63,8 @@ type RecurringJobStatus struct {
 // +kubebuilder:printcolumn:name="Concurrency",type=integer,JSONPath=`.spec.concurrency`,description="The concurrent job to run by each cron job"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +kubebuilder:printcolumn:name="Labels",type=string,JSONPath=`.spec.labels`,description="Specify the labels"
+
+// RecurringJob is where Longhorn stores recurring job object.
 type RecurringJob struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -62,6 +75,7 @@ type RecurringJob struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
+// RecurringJobList is a list of RecurringJobs.
 type RecurringJobList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

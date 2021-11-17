@@ -15,6 +15,7 @@ const (
 	BackingImageDataSourceTypeExportFromVolume = BackingImageDataSourceType("export-from-volume")
 )
 
+// BackingImageDataSourceSpec defines the desired state of the Longhorn backing image data source
 type BackingImageDataSourceSpec struct {
 	// +optional
 	NodeID string `json:"nodeID"`
@@ -32,6 +33,7 @@ type BackingImageDataSourceSpec struct {
 	FileTransferred bool `json:"fileTransferred"`
 }
 
+// BackingImageDataSourceStatus defines the observed state of the Longhorn backing image data source
 type BackingImageDataSourceStatus struct {
 	// +optional
 	OwnerID string `json:"ownerID"`
@@ -58,6 +60,8 @@ type BackingImageDataSourceStatus struct {
 // +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.spec.nodeID`,description="The node the backing image file will be prepared on"
 // +kubebuilder:printcolumn:name="DiskUUID",type=string,JSONPath=`.spec.diskUUID`,description="The disk the backing image file will be prepared on"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// BackingImageDataSource is where Longhorn stores backing image data source object.
 type BackingImageDataSource struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -68,6 +72,7 @@ type BackingImageDataSource struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
+// BackingImageDataSourceList is a list of BackingImageDataSources.
 type BackingImageDataSourceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

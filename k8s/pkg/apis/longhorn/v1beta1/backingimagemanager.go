@@ -42,6 +42,7 @@ type BackingImageFileInfo struct {
 	DownloadProgress int `json:"downloadProgress"`
 }
 
+// BackingImageManagerSpec defines the desired state of the Longhorn backing image manager
 type BackingImageManagerSpec struct {
 	// +optional
 	Image string `json:"image"`
@@ -55,6 +56,7 @@ type BackingImageManagerSpec struct {
 	BackingImages map[string]string `json:"backingImages"`
 }
 
+// BackingImageManagerStatus defines the observed state of the Longhorn backing image manager
 type BackingImageManagerStatus struct {
 	// +optional
 	OwnerID string `json:"ownerID"`
@@ -80,6 +82,8 @@ type BackingImageManagerStatus struct {
 // +kubebuilder:printcolumn:name="DiskUUID",type=string,JSONPath=`.spec.diskUUID`,description="The disk the manager is responsible for"
 // +kubebuilder:printcolumn:name="DiskPath",type=string,JSONPath=`.spec.diskPath`,description="The disk path the manager is using"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// BackingImageManager is where Longhorn stores backing image manager object.
 type BackingImageManager struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -90,6 +94,7 @@ type BackingImageManager struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
+// BackingImageManagerList is a list of BackingImageManagers.
 type BackingImageManagerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
