@@ -1,17 +1,19 @@
-FROM ubuntu:18.04
-# FROM arm64=arm64v8/ubuntu:18.04
+FROM ubuntu:20.04
 
 ARG DAPPER_HOST_ARCH=amd64
 ARG http_proxy
 ARG https_proxy
 ENV HOST_ARCH=${DAPPER_HOST_ARCH} ARCH=${DAPPER_HOST_ARCH}
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt-get update && \
-    apt-get install -y gcc ca-certificates git wget curl vim less file python-tox python-dev iptables libdevmapper-dev libltdl7 && \
+    apt-get dist-upgrade -y && \
+    apt-get install -y gcc ca-certificates git wget curl vim less file tox python-dev iptables libdevmapper-dev libltdl7 && \
     rm -f /bin/sh && ln -s /bin/bash /bin/sh
 
-ENV DOCKER_URL_amd64=https://download.docker.com/linux/ubuntu/dists/bionic/pool/stable/amd64/docker-ce_18.06.3~ce~3-0~ubuntu_amd64.deb \
-    DOCKER_URL_arm64=https://download.docker.com/linux/ubuntu/dists/bionic/pool/stable/arm64/docker-ce_18.06.3~ce~3-0~ubuntu_arm64.deb \
+ENV DOCKER_URL_amd64=https://download.docker.com/linux/ubuntu/dists/focal/pool/stable/amd64/docker-ce-cli_20.10.7~3-0~ubuntu-focal_amd64.deb \
+    DOCKER_URL_arm64=https://download.docker.com/linux/ubuntu/dists/focal/pool/stable/arm64/docker-ce-cli_20.10.7~3-0~ubuntu-focal_arm64.deb \
     DOCKER_URL=DOCKER_URL_${ARCH}
 
 RUN wget ${!DOCKER_URL} -O docker_ce_${ARCH} && dpkg -i docker_ce_${ARCH}

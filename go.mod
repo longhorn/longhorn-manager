@@ -37,7 +37,7 @@ require (
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.3
-	github.com/gorilla/websocket v1.4.0
+	github.com/gorilla/websocket v1.4.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.11.3 // indirect
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
@@ -58,6 +58,7 @@ require (
 	github.com/stretchr/testify v1.7.0
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/urfave/cli v1.22.1
+	golang.org/x/crypto v0.0.0-20201216223049-8b5274cf687f // indirect
 	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
 	golang.org/x/sys v0.0.0-20201112073958-5cba982894dd
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0
