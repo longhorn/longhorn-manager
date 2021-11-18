@@ -1,7 +1,6 @@
 package monitoring
 
 import (
-	"context"
 	"strings"
 	"sync"
 
@@ -116,7 +115,7 @@ func (imc *InstanceManagerCollector) collectActualUsage(ch chan<- prometheus.Met
 		}
 	}()
 
-	podMetrics, err := imc.kubeMetricsClient.MetricsV1beta1().PodMetricses(imc.namespace).List(context.TODO(), metav1.ListOptions{
+	podMetrics, err := imc.kubeMetricsClient.MetricsV1beta1().PodMetricses(imc.namespace).List(metav1.ListOptions{
 		LabelSelector: makeInstanceManagerLabelSelector(imc.currentNodeID),
 	})
 	if err != nil {

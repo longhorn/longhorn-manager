@@ -3,37 +3,40 @@ module github.com/longhorn/longhorn-manager
 go 1.13
 
 replace (
-	k8s.io/api => k8s.io/api v0.18.19
-	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.18.19
-	k8s.io/apimachinery => k8s.io/apimachinery v0.18.19
-	k8s.io/apiserver => k8s.io/apiserver v0.18.19
-	k8s.io/cli-runtime => k8s.io/cli-runtime v0.18.19
-	k8s.io/client-go => k8s.io/client-go v0.18.19
-	k8s.io/cloud-provider => k8s.io/cloud-provider v0.18.19
-	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.18.19
-	k8s.io/code-generator => k8s.io/code-generator v0.18.19
-	k8s.io/component-base => k8s.io/component-base v0.18.19
-	k8s.io/cri-api => k8s.io/cri-api v0.18.19
-	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.18.19
-	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.18.19
-	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.18.19
-	k8s.io/kube-proxy => k8s.io/kube-proxy v0.18.19
-	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.18.19
-	k8s.io/kubectl => k8s.io/kubectl v0.18.19
-	k8s.io/kubelet => k8s.io/kubelet v0.18.19
-	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.18.19
-	k8s.io/metrics => k8s.io/metrics v0.18.19
-	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.18.19
+	k8s.io/api => k8s.io/api v0.16.15
+	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.16.15
+	k8s.io/apimachinery => k8s.io/apimachinery v0.16.15
+	k8s.io/apiserver => k8s.io/apiserver v0.16.15
+	k8s.io/cli-runtime => k8s.io/cli-runtime v0.16.15
+	k8s.io/client-go => k8s.io/client-go v0.16.15
+	k8s.io/cloud-provider => k8s.io/cloud-provider v0.16.15
+	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.16.15
+	k8s.io/code-generator => k8s.io/code-generator v0.16.16-rc.0
+	k8s.io/component-base => k8s.io/component-base v0.16.15
+	k8s.io/cri-api => k8s.io/cri-api v0.16.16-rc.0
+	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.16.15
+	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.16.15
+	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.16.15
+	k8s.io/kube-proxy => k8s.io/kube-proxy v0.16.15
+	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.16.15
+	k8s.io/kubectl => k8s.io/kubectl v0.16.15
+	k8s.io/kubelet => k8s.io/kubelet v0.16.15
+	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.16.15
+	k8s.io/metrics => k8s.io/metrics v0.16.15
+	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.16.15
 )
 
 require (
+	github.com/Microsoft/go-winio v0.4.14 // indirect
 	github.com/c9s/goprocinfo v0.0.0-20190309065803-0b2ad9ac246b // indirect
-	github.com/container-storage-interface/spec v1.2.0
+	github.com/container-storage-interface/spec v1.1.0
 	github.com/coreos/go-systemd v0.0.0-20190719114852-fd7a80b32e1f // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/docker/go-connections v0.3.0
+	github.com/gogo/protobuf v1.3.1 // indirect
 	github.com/golang/groupcache v0.0.0-20191002201903-404acd9df4cc // indirect
 	github.com/golang/protobuf v1.3.3-0.20190920234318-1680a479a2cf
+	github.com/google/btree v1.0.0 // indirect
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.3
@@ -55,6 +58,7 @@ require (
 	github.com/robfig/cron v1.2.0
 	github.com/satori/go.uuid v1.2.0
 	github.com/sirupsen/logrus v1.4.2
+	github.com/soheilhy/cmux v0.1.4 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/urfave/cli v1.22.1
@@ -62,15 +66,15 @@ require (
 	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
 	golang.org/x/sys v0.0.0-20201112073958-5cba982894dd
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0
-	google.golang.org/grpc v1.26.0
+	google.golang.org/grpc v1.23.0
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127
 	gopkg.in/square/go-jose.v2 v2.3.1 // indirect
 	gopkg.in/yaml.v2 v2.2.8
-	k8s.io/api v0.18.19
+	k8s.io/api v0.16.15
 	k8s.io/apiextensions-apiserver v0.0.0
-	k8s.io/apimachinery v0.18.19
-	k8s.io/client-go v0.18.19
-	k8s.io/kubernetes v1.18.19
-	k8s.io/metrics v0.18.19
-	k8s.io/utils v0.0.0-20200324210504-a9aa75ae1b89
+	k8s.io/apimachinery v0.16.15
+	k8s.io/client-go v0.16.15
+	k8s.io/kubernetes v1.16.15
+	k8s.io/metrics v0.16.15
+	k8s.io/utils v0.0.0-20190801114015-581e00157fb1
 )

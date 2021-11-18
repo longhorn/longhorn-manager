@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -218,7 +217,7 @@ func (kc *KubernetesPodController) handlePodDeletionIfNodeDown(pod *v1.Pod, node
 	}
 
 	gracePeriod := int64(0)
-	err = kc.kubeClient.CoreV1().Pods(namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{
+	err = kc.kubeClient.CoreV1().Pods(namespace).Delete(pod.Name, &metav1.DeleteOptions{
 		GracePeriodSeconds: &gracePeriod,
 	})
 	if err != nil {
@@ -276,7 +275,7 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 
 		if podStartTime.Before(remountRequestedAt) && timeNow.After(remountRequestedAt.Add(delayDuration)) {
 			gracePeriod := int64(30)
-			err := kc.kubeClient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.GetName(), metav1.DeleteOptions{
+			err := kc.kubeClient.CoreV1().Pods(pod.Namespace).Delete(pod.GetName(), &metav1.DeleteOptions{
 				GracePeriodSeconds: &gracePeriod,
 			})
 			if err != nil && !datastore.ErrorIsNotFound(err) {

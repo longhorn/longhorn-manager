@@ -8,6 +8,7 @@ import (
 	policyinformers "k8s.io/client-go/informers/policy/v1beta1"
 	schedulinginformers "k8s.io/client-go/informers/scheduling/v1"
 	storageinformers_v1 "k8s.io/client-go/informers/storage/v1"
+	storageinformers "k8s.io/client-go/informers/storage/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	batchlisters_v1beta1 "k8s.io/client-go/listers/batch/v1beta1"
@@ -15,6 +16,7 @@ import (
 	policylisters "k8s.io/client-go/listers/policy/v1beta1"
 	schedulinglisters "k8s.io/client-go/listers/scheduling/v1"
 	storagelisters_v1 "k8s.io/client-go/listers/storage/v1"
+	storagelisters "k8s.io/client-go/listers/storage/v1beta1"
 	"k8s.io/client-go/tools/cache"
 
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -74,7 +76,7 @@ type DataStore struct {
 	knStoreSynced      cache.InformerSynced
 	pcLister           schedulinglisters.PriorityClassLister
 	pcStoreSynced      cache.InformerSynced
-	csiDriverLister    storagelisters_v1.CSIDriverLister
+	csiDriverLister    storagelisters.CSIDriverLister
 	csiDriverSynced    cache.InformerSynced
 	storageclassLister storagelisters_v1.StorageClassLister
 	storageclassSynced cache.InformerSynced
@@ -108,7 +110,7 @@ func NewDataStore(
 	secretInformer coreinformers.SecretInformer,
 	kubeNodeInformer coreinformers.NodeInformer,
 	priorityClassInformer schedulinginformers.PriorityClassInformer,
-	csiDriverInformer storageinformers_v1.CSIDriverInformer,
+	csiDriverInformer storageinformers.CSIDriverInformer,
 	storageclassInformer storageinformers_v1.StorageClassInformer,
 	pdbInformer policyinformers.PodDisruptionBudgetInformer,
 	serviceInformer coreinformers.ServiceInformer,

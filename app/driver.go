@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -183,9 +182,9 @@ func checkKubernetesVersion(kubeClient *clientset.Clientset) error {
 		return errors.Wrap(err, "failed to get Kubernetes server version")
 	}
 	currentVersion := version.MustParseSemantic(serverVersion.GitVersion)
-	minVersion := version.MustParseSemantic(types.KubernetesMinVersion)
+	minVersion := version.MustParseSemantic(types.CSIMinVersion)
 	if !currentVersion.AtLeast(minVersion) {
-		return fmt.Errorf("Kubernetes version need to be at least %v, but it's %v", types.KubernetesMinVersion, serverVersion.GitVersion)
+		return fmt.Errorf("Kubernetes version need to be at least %v, but it's %v", types.CSIMinVersion, serverVersion.GitVersion)
 	}
 	return nil
 }
@@ -207,7 +206,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
 	rootDir := c.String(FlagKubeletRootDir)
 
-	tolerationSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameTaintToleration), metav1.GetOptions{})
+	tolerationSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameTaintToleration), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -220,7 +219,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	nodeSelectorSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameSystemManagedComponentsNodeSelector), metav1.GetOptions{})
+	nodeSelectorSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameSystemManagedComponentsNodeSelector), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -229,19 +228,19 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	priorityClassSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNamePriorityClass), metav1.GetOptions{})
+	priorityClassSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNamePriorityClass), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 	priorityClass := priorityClassSetting.Value
 
-	registrySecretSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameRegistrySecret), metav1.GetOptions{})
+	registrySecretSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameRegistrySecret), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 	registrySecret := registrySecretSetting.Value
 
-	imagePullPolicySetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameSystemManagedPodsImagePullPolicy), metav1.GetOptions{})
+	imagePullPolicySetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameSystemManagedPodsImagePullPolicy), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -270,6 +269,16 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		logrus.Infof("User specified root dir: %v", rootDir)
 	}
 
+	volumeExpansionEnabled, err := util.IsKubernetesVersionAtLeast(kubeClient, types.CSIVolumeExpansionMinVersion)
+	if err != nil {
+		return err
+	}
+
+	snapshotSupportEnabled, err := util.IsKubernetesVersionAtLeast(kubeClient, types.CSISnapshotterMinVersion)
+	if err != nil {
+		return err
+	}
+
 	if err := upgradeLonghornRelatedComponents(kubeClient, namespace); err != nil {
 		return err
 	}
@@ -289,14 +298,18 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	resizerDeployment := csi.NewResizerDeployment(namespace, serviceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
-	if err := resizerDeployment.Deploy(kubeClient); err != nil {
-		return err
+	if volumeExpansionEnabled {
+		resizerDeployment := csi.NewResizerDeployment(namespace, serviceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
+		if err := resizerDeployment.Deploy(kubeClient); err != nil {
+			return err
+		}
 	}
 
-	snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
-	if err := snapshotterDeployment.Deploy(kubeClient); err != nil {
-		return err
+	if snapshotSupportEnabled {
+		snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
+		if err := snapshotterDeployment.Deploy(kubeClient); err != nil {
+			return err
+		}
 	}
 
 	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, managerImage, managerURL, rootDir, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
@@ -330,7 +343,7 @@ func newDaemonSetOps(kubeClient *clientset.Clientset) (*DaemonSetOps, error) {
 }
 
 func (ops *DaemonSetOps) Get(name string) (*appsv1.DaemonSet, error) {
-	d, err := ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	d, err := ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Get(name, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
@@ -341,10 +354,10 @@ func (ops *DaemonSetOps) Get(name string) (*appsv1.DaemonSet, error) {
 }
 
 func (ops *DaemonSetOps) Create(name string, d *appsv1.DaemonSet) (*appsv1.DaemonSet, error) {
-	return ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Create(context.TODO(), d, metav1.CreateOptions{})
+	return ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Create(d)
 }
 
 func (ops *DaemonSetOps) Delete(name string) error {
 	propagation := metav1.DeletePropagationForeground
-	return ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
+	return ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Delete(name, &metav1.DeleteOptions{PropagationPolicy: &propagation})
 }

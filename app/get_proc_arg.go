@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"github.com/pkg/errors"
 	"os"
@@ -117,9 +116,9 @@ func getProcCmdline(kubeClient *clientset.Clientset, managerImage, serviceAccoun
 		return "", fmt.Errorf("failed to detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
 	}
 
-	if _, err := kubeClient.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{}); err == nil {
+	if _, err := kubeClient.CoreV1().Pods(namespace).Get(name, metav1.GetOptions{}); err == nil {
 		logrus.Warnf("Found old detection pod %v, need to clean up it before deploying new one", name)
-		if err := kubeClient.CoreV1().Pods(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{}); err != nil {
+		if err := kubeClient.CoreV1().Pods(namespace).Delete(name, &metav1.DeleteOptions{}); err != nil {
 			return "", errors.Wrapf(err, "failed to clean up old detection pod %v", name)
 		}
 	}
@@ -129,14 +128,14 @@ func getProcCmdline(kubeClient *clientset.Clientset, managerImage, serviceAccoun
 	}
 
 	defer func() {
-		if err := kubeClient.CoreV1().Pods(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{}); err != nil {
+		if err := kubeClient.CoreV1().Pods(namespace).Delete(name, &metav1.DeleteOptions{}); err != nil {
 			logrus.Warnf("failed to delete proc cmdline detection pod %v: %v", name, err)
 		}
 	}()
 
 	completed := false
 	for i := 0; i < DetectPodMaxPolls; i++ {
-		if pod, err := kubeClient.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{}); err != nil {
+		if pod, err := kubeClient.CoreV1().Pods(namespace).Get(name, metav1.GetOptions{}); err != nil {
 			logrus.Warnf("failed to get proc cmdline detection pod %v: %v", name, err)
 		} else if pod.Status.Phase == v1.PodSucceeded {
 			completed = true
@@ -195,7 +194,7 @@ func deployDetectionPod(kubeClient *clientset.Clientset, namespace, managerImage
 		}
 	}
 
-	_, err := kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), detectionPodSpec, metav1.CreateOptions{})
+	_, err := kubeClient.CoreV1().Pods(namespace).Create(detectionPodSpec)
 
 	return err
 }
@@ -206,7 +205,7 @@ func getPodLogAsString(kubeClient *clientset.Clientset, namespace, name string) 
 		return "", fmt.Errorf("getPodLogAsString for %v/%v returns empty request path, may due to unit test run: %+v", namespace, name, req)
 	}
 
-	logs, err := req.DoRaw(context.TODO())
+	logs, err := req.DoRaw()
 	if err != nil {
 		return "", err
 	}

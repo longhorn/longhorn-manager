@@ -1,7 +1,6 @@
 package v110to111
 
 import (
-	"context"
 	"encoding/json"
 	"math"
 	"reflect"
@@ -105,7 +104,7 @@ func upgradeLonghornNodes(namespace string, lhClient *lhclientset.Clientset) (er
 		err = errors.Wrapf(err, "upgrade longhorn node failed")
 	}()
 
-	deprecatedCPUSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameGuaranteedEngineCPU), metav1.GetOptions{})
+	deprecatedCPUSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameGuaranteedEngineCPU), metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -123,7 +122,7 @@ func upgradeLonghornNodes(namespace string, lhClient *lhclientset.Clientset) (er
 	// Convert to milli value
 	requestedMilliCPU := int(math.Round(requestedCPU * 1000))
 
-	nodeList, err := lhClient.LonghornV1beta1().Nodes(namespace).List(context.TODO(), metav1.ListOptions{})
+	nodeList, err := lhClient.LonghornV1beta1().Nodes(namespace).List(metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -142,14 +141,14 @@ func upgradeLonghornNodes(namespace string, lhClient *lhclientset.Clientset) (er
 			updateRequired = true
 		}
 		if updateRequired == true {
-			if _, err := lhClient.LonghornV1beta1().Nodes(namespace).Update(context.TODO(), &node, metav1.UpdateOptions{}); err != nil {
+			if _, err := lhClient.LonghornV1beta1().Nodes(namespace).Update(&node); err != nil {
 				return err
 			}
 		}
 	}
 
 	deprecatedCPUSetting.Value = ""
-	if _, err := lhClient.LonghornV1beta1().Settings(namespace).Update(context.TODO(), deprecatedCPUSetting, metav1.UpdateOptions{}); err != nil {
+	if _, err := lhClient.LonghornV1beta1().Settings(namespace).Update(deprecatedCPUSetting); err != nil {
 		return err
 	}
 
@@ -161,7 +160,7 @@ func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset) 
 		err = errors.Wrapf(err, "upgrade instance manager failed")
 	}()
 
-	imList, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	imList, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).List(metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -188,7 +187,7 @@ func upgradeLabelsForInstanceManager(im *longhorn.InstanceManager, lhClient *lhc
 	}
 
 	metadata.SetLabels(newInstanceManagerLabels)
-	if _, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).Update(context.TODO(), im, metav1.UpdateOptions{}); err != nil {
+	if _, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).Update(im); err != nil {
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to update the spec for instance manager %v during the instance managers upgrade", im.Name)
 	}
 	return nil
@@ -198,7 +197,7 @@ func upgradeShareManagers(namespace string, lhClient *lhclientset.Clientset) (er
 	defer func() {
 		err = errors.Wrapf(err, "upgrade share manager failed")
 	}()
-	smList, err := lhClient.LonghornV1beta1().ShareManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	smList, err := lhClient.LonghornV1beta1().ShareManagers(namespace).List(metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -224,7 +223,7 @@ func upgradeLabelsForShareManager(sm *longhorn.ShareManager, lhClient *lhclients
 		return nil
 	}
 	metadata.SetLabels(newShareManagerLabels)
-	if _, err := lhClient.LonghornV1beta1().ShareManagers(namespace).Update(context.TODO(), sm, metav1.UpdateOptions{}); err != nil {
+	if _, err := lhClient.LonghornV1beta1().ShareManagers(namespace).Update(sm); err != nil {
 		return err
 	}
 	return nil
@@ -235,7 +234,7 @@ func upgradeEngineImages(namespace string, lhClient *lhclientset.Clientset) (err
 		err = errors.Wrapf(err, "upgrade engine image failed")
 	}()
 
-	eiList, err := lhClient.LonghornV1beta1().EngineImages(namespace).List(context.TODO(), metav1.ListOptions{})
+	eiList, err := lhClient.LonghornV1beta1().EngineImages(namespace).List(metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -261,7 +260,7 @@ func upgradeLabelsForEngineImage(ei *longhorn.EngineImage, lhClient *lhclientset
 		return nil
 	}
 	metadata.SetLabels(newEngineImageLabels)
-	if _, err := lhClient.LonghornV1beta1().EngineImages(namespace).Update(context.TODO(), ei, metav1.UpdateOptions{}); err != nil {
+	if _, err := lhClient.LonghornV1beta1().EngineImages(namespace).Update(ei); err != nil {
 		return err
 	}
 	return nil
@@ -276,7 +275,7 @@ func upgradeShareManagerPods(namespace string, lhClient *lhclientset.Clientset, 
 		return err
 	}
 	for _, pod := range smPods {
-		sm, err := lhClient.LonghornV1beta1().ShareManagers(namespace).Get(context.TODO(), types.GetShareManagerNameFromShareManagerPodName(pod.Name), metav1.GetOptions{})
+		sm, err := lhClient.LonghornV1beta1().ShareManagers(namespace).Get(types.GetShareManagerNameFromShareManagerPodName(pod.Name), metav1.GetOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
@@ -304,7 +303,7 @@ func upgradeShareManagerPodsLabels(pod *v1.Pod, sm *longhorn.ShareManager, kubeC
 		return nil
 	}
 	metadata.SetLabels(newPodLabels)
-	if _, err := kubeClient.CoreV1().Pods(namespace).Update(context.TODO(), pod, metav1.UpdateOptions{}); err != nil {
+	if _, err := kubeClient.CoreV1().Pods(namespace).Update(pod); err != nil {
 		return err
 	}
 	return nil
@@ -346,7 +345,7 @@ func updateIMPodLastAppliedTolerationsAnnotation(pod *v1.Pod, kubeClient *client
 	if err := util.SetAnnotation(pod, types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix), string(appliedTolerationsByte)); err != nil {
 		return err
 	}
-	if _, err = kubeClient.CoreV1().Pods(namespace).Update(context.TODO(), pod, metav1.UpdateOptions{}); err != nil {
+	if _, err = kubeClient.CoreV1().Pods(namespace).Update(pod); err != nil {
 		return errors.Wrapf(err, "failed to update toleration annotation for instance manager pod %v", pod.GetName())
 	}
 	return nil
@@ -357,7 +356,7 @@ func upgradeCSIDeploymentsLabels(kubeClient *clientset.Clientset, namespace stri
 		err = errors.Wrapf(err, "upgradeCSIDeploymentsLabels failed")
 	}()
 	for _, dpName := range []string{types.CSIAttacherName, types.CSIProvisionerName, types.CSIResizerName, types.CSISnapshotterName} {
-		dp, err := kubeClient.AppsV1().Deployments(namespace).Get(context.TODO(), dpName, metav1.GetOptions{})
+		dp, err := kubeClient.AppsV1().Deployments(namespace).Get(dpName, metav1.GetOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
@@ -385,7 +384,7 @@ func upgradeLabelsForDeployment(dp *appsv1.Deployment, kubeClient *clientset.Cli
 		return nil
 	}
 	metadata.SetLabels(newDPLabels)
-	if _, err := kubeClient.AppsV1().Deployments(namespace).Update(context.TODO(), dp, metav1.UpdateOptions{}); err != nil {
+	if _, err := kubeClient.AppsV1().Deployments(namespace).Update(dp); err != nil {
 		return err
 	}
 	return nil
@@ -397,7 +396,7 @@ func upgradeCSIDaemonSetsLabels(kubeClient *clientset.Clientset, namespace strin
 	}()
 	dsList := []*appsv1.DaemonSet{}
 
-	eiDaemonSetList, err := kubeClient.AppsV1().DaemonSets(namespace).List(context.TODO(), metav1.ListOptions{
+	eiDaemonSetList, err := kubeClient.AppsV1().DaemonSets(namespace).List(metav1.ListOptions{
 		LabelSelector: labels.Set(types.GetEngineImageComponentLabel()).String(),
 	})
 	if err != nil {
@@ -407,7 +406,7 @@ func upgradeCSIDaemonSetsLabels(kubeClient *clientset.Clientset, namespace strin
 		dsList = append(dsList, &ds)
 	}
 
-	csiPluginDaemonSet, err := kubeClient.AppsV1().DaemonSets(namespace).Get(context.TODO(), types.CSIPluginName, metav1.GetOptions{})
+	csiPluginDaemonSet, err := kubeClient.AppsV1().DaemonSets(namespace).Get(types.CSIPluginName, metav1.GetOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
@@ -437,7 +436,7 @@ func upgradeLabelsForDaemonSet(ds *appsv1.DaemonSet, kubeClient *clientset.Clien
 		return nil
 	}
 	metadata.SetLabels(newDSLabels)
-	if _, err := kubeClient.AppsV1().DaemonSets(namespace).Update(context.TODO(), ds, metav1.UpdateOptions{}); err != nil {
+	if _, err := kubeClient.AppsV1().DaemonSets(namespace).Update(ds); err != nil {
 		return err
 	}
 	return nil
@@ -448,7 +447,7 @@ func upgradeCSIServicesLabels(kubeClient *clientset.Clientset, namespace string)
 		err = errors.Wrapf(err, "upgradeCSIServicesLabels failed")
 	}()
 	for _, svName := range []string{types.CSIAttacherName, types.CSIProvisionerName, types.CSIResizerName, types.CSISnapshotterName} {
-		sv, err := kubeClient.CoreV1().Services(namespace).Get(context.TODO(), svName, metav1.GetOptions{})
+		sv, err := kubeClient.CoreV1().Services(namespace).Get(svName, metav1.GetOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
@@ -466,7 +465,7 @@ func upgradeShareManagerServicesLabels(kubeClient *clientset.Clientset, namespac
 	defer func() {
 		err = errors.Wrapf(err, "upgradeShareManagerServicesLabels failed")
 	}()
-	svList, err := kubeClient.CoreV1().Services(namespace).List(context.TODO(), metav1.ListOptions{
+	svList, err := kubeClient.CoreV1().Services(namespace).List(metav1.ListOptions{
 		LabelSelector: types.GetLonghornLabelKey(types.LonghornLabelShareManager),
 	})
 	if err != nil {
@@ -491,7 +490,7 @@ func upgradeLabelsForService(sv *v1.Service, kubeClient *clientset.Clientset, na
 		return nil
 	}
 	metadata.SetLabels(newSVLabels)
-	if _, err := kubeClient.CoreV1().Services(namespace).Update(context.TODO(), sv, metav1.UpdateOptions{}); err != nil {
+	if _, err := kubeClient.CoreV1().Services(namespace).Update(sv); err != nil {
 		return err
 	}
 	return nil
@@ -501,7 +500,7 @@ func updateCSIDaemonSetsLastAppliedTolerationsAnnotation(kubeClient *clientset.C
 	defer func() {
 		err = errors.Wrapf(err, "updateCSIDaemonSetsLastAppliedTolerationsAnnotation failed")
 	}()
-	daemonsetList, err := kubeClient.AppsV1().DaemonSets(namespace).List(context.TODO(), metav1.ListOptions{
+	daemonsetList, err := kubeClient.AppsV1().DaemonSets(namespace).List(metav1.ListOptions{
 		LabelSelector: labels.Set(types.GetBaseLabelsForSystemManagedComponent()).String(),
 	})
 	if err != nil {
@@ -527,7 +526,7 @@ func updateCSIDaemonSetsLastAppliedTolerationsAnnotation(kubeClient *clientset.C
 		if err := util.SetAnnotation(dsp, types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix), string(appliedTolerationsByte)); err != nil {
 			return err
 		}
-		if _, err := kubeClient.AppsV1().DaemonSets(namespace).Update(context.TODO(), dsp, metav1.UpdateOptions{}); err != nil {
+		if _, err := kubeClient.AppsV1().DaemonSets(namespace).Update(dsp); err != nil {
 			return err
 		}
 	}
@@ -538,7 +537,7 @@ func updateCSIDeploymentsLastAppliedTolerationsAnnotation(kubeClient *clientset.
 	defer func() {
 		err = errors.Wrapf(err, "updateCSIDeploymentsLastAppliedTolerationsAnnotation failed")
 	}()
-	deploymentList, err := kubeClient.AppsV1().Deployments(namespace).List(context.TODO(), metav1.ListOptions{
+	deploymentList, err := kubeClient.AppsV1().Deployments(namespace).List(metav1.ListOptions{
 		LabelSelector: labels.Set(types.GetBaseLabelsForSystemManagedComponent()).String(),
 	})
 	if err != nil {
@@ -565,7 +564,7 @@ func updateCSIDeploymentsLastAppliedTolerationsAnnotation(kubeClient *clientset.
 		if err := util.SetAnnotation(dpp, types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix), string(appliedTolerationsByte)); err != nil {
 			return err
 		}
-		if _, err := kubeClient.AppsV1().Deployments(namespace).Update(context.TODO(), dpp, metav1.UpdateOptions{}); err != nil {
+		if _, err := kubeClient.AppsV1().Deployments(namespace).Update(dpp); err != nil {
 			return err
 		}
 	}

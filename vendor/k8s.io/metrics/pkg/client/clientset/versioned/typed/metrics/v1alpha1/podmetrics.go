@@ -19,7 +19,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"context"
 	"time"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,9 +36,9 @@ type PodMetricsesGetter interface {
 
 // PodMetricsInterface has methods to work with PodMetrics resources.
 type PodMetricsInterface interface {
-	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1alpha1.PodMetrics, error)
-	List(ctx context.Context, opts v1.ListOptions) (*v1alpha1.PodMetricsList, error)
-	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
+	Get(name string, options v1.GetOptions) (*v1alpha1.PodMetrics, error)
+	List(opts v1.ListOptions) (*v1alpha1.PodMetricsList, error)
+	Watch(opts v1.ListOptions) (watch.Interface, error)
 	PodMetricsExpansion
 }
 
@@ -58,20 +57,20 @@ func newPodMetricses(c *MetricsV1alpha1Client, namespace string) *podMetricses {
 }
 
 // Get takes name of the podMetrics, and returns the corresponding podMetrics object, and an error if there is any.
-func (c *podMetricses) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.PodMetrics, err error) {
+func (c *podMetricses) Get(name string, options v1.GetOptions) (result *v1alpha1.PodMetrics, err error) {
 	result = &v1alpha1.PodMetrics{}
 	err = c.client.Get().
 		Namespace(c.ns).
 		Resource("pods").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
-		Do(ctx).
+		Do().
 		Into(result)
 	return
 }
 
 // List takes label and field selectors, and returns the list of PodMetricses that match those selectors.
-func (c *podMetricses) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.PodMetricsList, err error) {
+func (c *podMetricses) List(opts v1.ListOptions) (result *v1alpha1.PodMetricsList, err error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -82,13 +81,13 @@ func (c *podMetricses) List(ctx context.Context, opts v1.ListOptions) (result *v
 		Resource("pods").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Do(ctx).
+		Do().
 		Into(result)
 	return
 }
 
 // Watch returns a watch.Interface that watches the requested podMetricses.
-func (c *podMetricses) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+func (c *podMetricses) Watch(opts v1.ListOptions) (watch.Interface, error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -99,5 +98,5 @@ func (c *podMetricses) Watch(ctx context.Context, opts v1.ListOptions) (watch.In
 		Resource("pods").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Watch(ctx)
+		Watch()
 }

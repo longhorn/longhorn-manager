@@ -331,7 +331,7 @@ func (m *VolumeManager) generateSupportBundleLogs(logsDir string, errLog io.Writ
 		for _, container := range pod.Spec.Containers {
 			req := m.ds.GetPodContainerLogRequest(podName, container.Name)
 			logFileName := filepath.Join(podDir, container.Name+".log")
-			stream, err := req.Stream(context.Background())
+			stream, err := req.Context(context.Background()).Stream()
 			if err != nil {
 				fmt.Fprintf(errLog, "BUG: Support bundle: cannot get log for pod %v container %v: %v\n",
 					podName, container.Name, err)

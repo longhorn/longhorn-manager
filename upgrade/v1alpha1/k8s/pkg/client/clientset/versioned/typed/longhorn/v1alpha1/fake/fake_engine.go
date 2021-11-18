@@ -19,8 +19,6 @@ limitations under the License.
 package fake
 
 import (
-	"context"
-
 	v1alpha1 "github.com/longhorn/longhorn-manager/upgrade/v1alpha1/k8s/pkg/apis/longhorn/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
@@ -41,7 +39,7 @@ var enginesResource = schema.GroupVersionResource{Group: "longhorn.rancher.io", 
 var enginesKind = schema.GroupVersionKind{Group: "longhorn.rancher.io", Version: "v1alpha1", Kind: "Engine"}
 
 // Get takes name of the engine, and returns the corresponding engine object, and an error if there is any.
-func (c *FakeEngines) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Engine, err error) {
+func (c *FakeEngines) Get(name string, options v1.GetOptions) (result *v1alpha1.Engine, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewGetAction(enginesResource, c.ns, name), &v1alpha1.Engine{})
 
@@ -52,7 +50,7 @@ func (c *FakeEngines) Get(ctx context.Context, name string, options v1.GetOption
 }
 
 // List takes label and field selectors, and returns the list of Engines that match those selectors.
-func (c *FakeEngines) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.EngineList, err error) {
+func (c *FakeEngines) List(opts v1.ListOptions) (result *v1alpha1.EngineList, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewListAction(enginesResource, enginesKind, c.ns, opts), &v1alpha1.EngineList{})
 
@@ -74,14 +72,14 @@ func (c *FakeEngines) List(ctx context.Context, opts v1.ListOptions) (result *v1
 }
 
 // Watch returns a watch.Interface that watches the requested engines.
-func (c *FakeEngines) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeEngines) Watch(opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewWatchAction(enginesResource, c.ns, opts))
 
 }
 
 // Create takes the representation of a engine and creates it.  Returns the server's representation of the engine, and an error, if there is any.
-func (c *FakeEngines) Create(ctx context.Context, engine *v1alpha1.Engine, opts v1.CreateOptions) (result *v1alpha1.Engine, err error) {
+func (c *FakeEngines) Create(engine *v1alpha1.Engine) (result *v1alpha1.Engine, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewCreateAction(enginesResource, c.ns, engine), &v1alpha1.Engine{})
 
@@ -92,7 +90,7 @@ func (c *FakeEngines) Create(ctx context.Context, engine *v1alpha1.Engine, opts 
 }
 
 // Update takes the representation of a engine and updates it. Returns the server's representation of the engine, and an error, if there is any.
-func (c *FakeEngines) Update(ctx context.Context, engine *v1alpha1.Engine, opts v1.UpdateOptions) (result *v1alpha1.Engine, err error) {
+func (c *FakeEngines) Update(engine *v1alpha1.Engine) (result *v1alpha1.Engine, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewUpdateAction(enginesResource, c.ns, engine), &v1alpha1.Engine{})
 
@@ -103,7 +101,7 @@ func (c *FakeEngines) Update(ctx context.Context, engine *v1alpha1.Engine, opts 
 }
 
 // Delete takes name of the engine and deletes it. Returns an error if one occurs.
-func (c *FakeEngines) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+func (c *FakeEngines) Delete(name string, options *v1.DeleteOptions) error {
 	_, err := c.Fake.
 		Invokes(testing.NewDeleteAction(enginesResource, c.ns, name), &v1alpha1.Engine{})
 
@@ -111,15 +109,15 @@ func (c *FakeEngines) Delete(ctx context.Context, name string, opts v1.DeleteOpt
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeEngines) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewDeleteCollectionAction(enginesResource, c.ns, listOpts)
+func (c *FakeEngines) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
+	action := testing.NewDeleteCollectionAction(enginesResource, c.ns, listOptions)
 
 	_, err := c.Fake.Invokes(action, &v1alpha1.EngineList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched engine.
-func (c *FakeEngines) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Engine, err error) {
+func (c *FakeEngines) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.Engine, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewPatchSubresourceAction(enginesResource, c.ns, name, pt, data, subresources...), &v1alpha1.Engine{})
 

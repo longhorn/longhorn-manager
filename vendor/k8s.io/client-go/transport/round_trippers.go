@@ -340,7 +340,6 @@ func (r *requestInfo) toCurl() string {
 	headers := ""
 	for key, values := range r.RequestHeaders {
 		for _, value := range values {
-			value = maskValue(key, value)
 			headers += fmt.Sprintf(` -H %q`, fmt.Sprintf("%s: %s", key, value))
 		}
 	}

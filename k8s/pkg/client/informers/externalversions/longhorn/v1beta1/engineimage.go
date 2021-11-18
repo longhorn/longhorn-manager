@@ -19,7 +19,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
 	time "time"
 
 	longhornv1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
@@ -62,13 +61,13 @@ func NewFilteredEngineImageInformer(client versioned.Interface, namespace string
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.LonghornV1beta1().EngineImages(namespace).List(context.TODO(), options)
+				return client.LonghornV1beta1().EngineImages(namespace).List(options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.LonghornV1beta1().EngineImages(namespace).Watch(context.TODO(), options)
+				return client.LonghornV1beta1().EngineImages(namespace).Watch(options)
 			},
 		},
 		&longhornv1beta1.EngineImage{},

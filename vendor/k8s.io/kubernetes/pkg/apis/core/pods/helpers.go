@@ -88,8 +88,7 @@ func ConvertDownwardAPIFieldLabel(version, label, value string) (string, string,
 		"spec.schedulerName",
 		"status.phase",
 		"status.hostIP",
-		"status.podIP",
-		"status.podIPs":
+		"status.podIP":
 		return label, value, nil
 	// This is for backwards compatibility with old v1 clients which send spec.host
 	case "spec.host":

@@ -19,7 +19,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"context"
 	"time"
 
 	v1alpha1 "github.com/longhorn/longhorn-manager/upgrade/v1alpha1/k8s/pkg/apis/longhorn/v1alpha1"
@@ -38,14 +37,14 @@ type VolumesGetter interface {
 
 // VolumeInterface has methods to work with Volume resources.
 type VolumeInterface interface {
-	Create(ctx context.Context, volume *v1alpha1.Volume, opts v1.CreateOptions) (*v1alpha1.Volume, error)
-	Update(ctx context.Context, volume *v1alpha1.Volume, opts v1.UpdateOptions) (*v1alpha1.Volume, error)
-	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
-	DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error
-	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1alpha1.Volume, error)
-	List(ctx context.Context, opts v1.ListOptions) (*v1alpha1.VolumeList, error)
-	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
-	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Volume, err error)
+	Create(*v1alpha1.Volume) (*v1alpha1.Volume, error)
+	Update(*v1alpha1.Volume) (*v1alpha1.Volume, error)
+	Delete(name string, options *v1.DeleteOptions) error
+	DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error
+	Get(name string, options v1.GetOptions) (*v1alpha1.Volume, error)
+	List(opts v1.ListOptions) (*v1alpha1.VolumeList, error)
+	Watch(opts v1.ListOptions) (watch.Interface, error)
+	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.Volume, err error)
 	VolumeExpansion
 }
 
@@ -64,20 +63,20 @@ func newVolumes(c *LonghornV1alpha1Client, namespace string) *volumes {
 }
 
 // Get takes name of the volume, and returns the corresponding volume object, and an error if there is any.
-func (c *volumes) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Volume, err error) {
+func (c *volumes) Get(name string, options v1.GetOptions) (result *v1alpha1.Volume, err error) {
 	result = &v1alpha1.Volume{}
 	err = c.client.Get().
 		Namespace(c.ns).
 		Resource("volumes").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
-		Do(ctx).
+		Do().
 		Into(result)
 	return
 }
 
 // List takes label and field selectors, and returns the list of Volumes that match those selectors.
-func (c *volumes) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.VolumeList, err error) {
+func (c *volumes) List(opts v1.ListOptions) (result *v1alpha1.VolumeList, err error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -88,13 +87,13 @@ func (c *volumes) List(ctx context.Context, opts v1.ListOptions) (result *v1alph
 		Resource("volumes").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Do(ctx).
+		Do().
 		Into(result)
 	return
 }
 
 // Watch returns a watch.Interface that watches the requested volumes.
-func (c *volumes) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+func (c *volumes) Watch(opts v1.ListOptions) (watch.Interface, error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -105,74 +104,71 @@ func (c *volumes) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interfa
 		Resource("volumes").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Watch(ctx)
+		Watch()
 }
 
 // Create takes the representation of a volume and creates it.  Returns the server's representation of the volume, and an error, if there is any.
-func (c *volumes) Create(ctx context.Context, volume *v1alpha1.Volume, opts v1.CreateOptions) (result *v1alpha1.Volume, err error) {
+func (c *volumes) Create(volume *v1alpha1.Volume) (result *v1alpha1.Volume, err error) {
 	result = &v1alpha1.Volume{}
 	err = c.client.Post().
 		Namespace(c.ns).
 		Resource("volumes").
-		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(volume).
-		Do(ctx).
+		Do().
 		Into(result)
 	return
 }
 
 // Update takes the representation of a volume and updates it. Returns the server's representation of the volume, and an error, if there is any.
-func (c *volumes) Update(ctx context.Context, volume *v1alpha1.Volume, opts v1.UpdateOptions) (result *v1alpha1.Volume, err error) {
+func (c *volumes) Update(volume *v1alpha1.Volume) (result *v1alpha1.Volume, err error) {
 	result = &v1alpha1.Volume{}
 	err = c.client.Put().
 		Namespace(c.ns).
 		Resource("volumes").
 		Name(volume.Name).
-		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(volume).
-		Do(ctx).
+		Do().
 		Into(result)
 	return
 }
 
 // Delete takes name of the volume and deletes it. Returns an error if one occurs.
-func (c *volumes) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+func (c *volumes) Delete(name string, options *v1.DeleteOptions) error {
 	return c.client.Delete().
 		Namespace(c.ns).
 		Resource("volumes").
 		Name(name).
-		Body(&opts).
-		Do(ctx).
+		Body(options).
+		Do().
 		Error()
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *volumes) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+func (c *volumes) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
 	var timeout time.Duration
-	if listOpts.TimeoutSeconds != nil {
-		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
+	if listOptions.TimeoutSeconds != nil {
+		timeout = time.Duration(*listOptions.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
 		Namespace(c.ns).
 		Resource("volumes").
-		VersionedParams(&listOpts, scheme.ParameterCodec).
+		VersionedParams(&listOptions, scheme.ParameterCodec).
 		Timeout(timeout).
-		Body(&opts).
-		Do(ctx).
+		Body(options).
+		Do().
 		Error()
 }
 
 // Patch applies the patch and returns the patched volume.
-func (c *volumes) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Volume, err error) {
+func (c *volumes) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.Volume, err error) {
 	result = &v1alpha1.Volume{}
 	err = c.client.Patch(pt).
 		Namespace(c.ns).
 		Resource("volumes").
-		Name(name).
 		SubResource(subresources...).
-		VersionedParams(&opts, scheme.ParameterCodec).
+		Name(name).
 		Body(data).
-		Do(ctx).
+		Do().
 		Into(result)
 	return
 }

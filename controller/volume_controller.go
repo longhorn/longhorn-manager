@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -2301,7 +2300,7 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 		// TODO: Will Remove this reference kind correcting after all Longhorn components having used the new kinds
 		if len(job.OwnerReferences) < 1 || job.OwnerReferences[0].Kind != types.LonghornKindVolume {
 			job.OwnerReferences = datastore.GetOwnerReferencesForVolume(v)
-			job, err = vc.kubeClient.BatchV1beta1().CronJobs(vc.namespace).Update(context.TODO(), job, metav1.UpdateOptions{})
+			job, err = vc.kubeClient.BatchV1beta1().CronJobs(vc.namespace).Update(job)
 			if err != nil {
 				return err
 			}

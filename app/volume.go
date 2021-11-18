@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -676,11 +675,11 @@ func (job *Job) listBackupsForCleanup(backups []longhornclient.Backup) []string 
 }
 
 func (job *Job) GetVolume(name string) (*longhorn.Volume, error) {
-	return job.lhClient.LonghornV1beta1().Volumes(job.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	return job.lhClient.LonghornV1beta1().Volumes(job.namespace).Get(name, metav1.GetOptions{})
 }
 
 func (job *Job) UpdateVolumeStatus(v *longhorn.Volume) (*longhorn.Volume, error) {
-	return job.lhClient.LonghornV1beta1().Volumes(job.namespace).UpdateStatus(context.TODO(), v, metav1.UpdateOptions{})
+	return job.lhClient.LonghornV1beta1().Volumes(job.namespace).UpdateStatus(v)
 }
 
 // waitForVolumeState timeout in second
