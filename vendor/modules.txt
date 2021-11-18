@@ -24,7 +24,7 @@ github.com/docker/go-connections/sockets
 github.com/evanphx/json-patch
 # github.com/glycerine/go-unsnap-stream v0.0.0-20181221182339-f9677308dec2
 github.com/glycerine/go-unsnap-stream
-# github.com/gogo/protobuf v1.3.1
+# github.com/gogo/protobuf v1.3.2
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/sortkeys
 # github.com/golang/groupcache v0.0.0-20191002201903-404acd9df4cc
