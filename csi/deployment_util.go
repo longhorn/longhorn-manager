@@ -1,7 +1,6 @@
 package csi
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
 	"reflect"
@@ -12,7 +11,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
+	storagev1beta "k8s.io/api/storage/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -275,21 +274,20 @@ func serviceCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) erro
 	if !ok {
 		return fmt.Errorf("BUG: cannot convert back the object")
 	}
-	_, err := kubeClient.CoreV1().Services(o.Namespace).Create(context.TODO(), o, metav1.CreateOptions{})
+	_, err := kubeClient.CoreV1().Services(o.Namespace).Create(o)
 	return err
 }
 
 func serviceDeleteFunc(kubeClient *clientset.Clientset, name, namespace string) error {
 	propagation := metav1.DeletePropagationForeground
 	return kubeClient.CoreV1().Services(namespace).Delete(
-		context.TODO(),
 		name,
-		metav1.DeleteOptions{PropagationPolicy: &propagation},
+		&metav1.DeleteOptions{PropagationPolicy: &propagation},
 	)
 }
 
 func serviceGetFunc(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error) {
-	return kubeClient.CoreV1().Services(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	return kubeClient.CoreV1().Services(namespace).Get(name, metav1.GetOptions{})
 }
 
 func deploymentCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
@@ -297,21 +295,20 @@ func deploymentCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) e
 	if !ok {
 		return fmt.Errorf("BUG: cannot convert back the object")
 	}
-	_, err := kubeClient.AppsV1().Deployments(o.Namespace).Create(context.TODO(), o, metav1.CreateOptions{})
+	_, err := kubeClient.AppsV1().Deployments(o.Namespace).Create(o)
 	return err
 }
 
 func deploymentDeleteFunc(kubeClient *clientset.Clientset, name, namespace string) error {
 	propagation := metav1.DeletePropagationForeground
 	return kubeClient.AppsV1().Deployments(namespace).Delete(
-		context.TODO(),
 		name,
-		metav1.DeleteOptions{PropagationPolicy: &propagation},
+		&metav1.DeleteOptions{PropagationPolicy: &propagation},
 	)
 }
 
 func deploymentGetFunc(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error) {
-	return kubeClient.AppsV1().Deployments(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	return kubeClient.AppsV1().Deployments(namespace).Get(name, metav1.GetOptions{})
 }
 
 func daemonSetCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
@@ -319,38 +316,37 @@ func daemonSetCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) er
 	if !ok {
 		return fmt.Errorf("BUG: cannot convert back the object")
 	}
-	_, err := kubeClient.AppsV1().DaemonSets(o.Namespace).Create(context.TODO(), o, metav1.CreateOptions{})
+	_, err := kubeClient.AppsV1().DaemonSets(o.Namespace).Create(o)
 	return err
 }
 
 func daemonSetDeleteFunc(kubeClient *clientset.Clientset, name, namespace string) error {
 	propagation := metav1.DeletePropagationForeground
 	return kubeClient.AppsV1().DaemonSets(namespace).Delete(
-		context.TODO(),
 		name,
-		metav1.DeleteOptions{PropagationPolicy: &propagation},
+		&metav1.DeleteOptions{PropagationPolicy: &propagation},
 	)
 }
 
 func daemonSetGetFunc(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error) {
-	return kubeClient.AppsV1().DaemonSets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	return kubeClient.AppsV1().DaemonSets(namespace).Get(name, metav1.GetOptions{})
 }
 
 func csiDriverObjectCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
-	o, ok := obj.(*storagev1.CSIDriver)
+	o, ok := obj.(*storagev1beta.CSIDriver)
 	if !ok {
 		return fmt.Errorf("BUG: cannot convert back the object")
 	}
-	_, err := kubeClient.StorageV1().CSIDrivers().Create(context.TODO(), o, metav1.CreateOptions{})
+	_, err := kubeClient.StorageV1beta1().CSIDrivers().Create(o)
 	return err
 }
 
 func csiDriverObjectDeleteFunc(kubeClient *clientset.Clientset, name, namespace string) error {
-	return kubeClient.StorageV1().CSIDrivers().Delete(context.TODO(), name, metav1.DeleteOptions{})
+	return kubeClient.StorageV1beta1().CSIDrivers().Delete(name, &metav1.DeleteOptions{})
 }
 
 func csiDriverObjectGetFunc(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error) {
-	return kubeClient.StorageV1().CSIDrivers().Get(context.TODO(), name, metav1.GetOptions{})
+	return kubeClient.StorageV1beta1().CSIDrivers().Get(name, metav1.GetOptions{})
 }
 
 // CheckMountPropagationWithNode https://github.com/kubernetes/kubernetes/issues/66086#issuecomment-404346854

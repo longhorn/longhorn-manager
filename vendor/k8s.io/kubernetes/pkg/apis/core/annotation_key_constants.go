@@ -26,7 +26,7 @@ const (
 	// PodPresetOptOutAnnotationKey represents the annotation key for a pod to exempt itself from pod preset manipulation
 	PodPresetOptOutAnnotationKey string = "podpreset.admission.kubernetes.io/exclude"
 
-	// MirrorPodAnnotationKey represents the annotation key set by kubelets when creating mirror pods
+	// MirrorAnnotationKey represents the annotation key set by kubelets when creating mirror pods
 	MirrorPodAnnotationKey string = "kubernetes.io/config.mirror"
 
 	// TolerationsAnnotationKey represents the key of tolerations data (json serialized)
@@ -56,7 +56,7 @@ const (
 	// in the Annotations of a Node.
 	PreferAvoidPodsAnnotationKey string = "scheduler.alpha.kubernetes.io/preferAvoidPods"
 
-	// ObjectTTLAnnotationKey represents a suggestion for kubelet for how long it can cache
+	// ObjectTTLAnnotations represents a suggestion for kubelet for how long it can cache
 	// an object (e.g. secret, config map) before fetching it again from apiserver.
 	// This annotation can be attached to node.
 	ObjectTTLAnnotationKey string = "node.alpha.kubernetes.io/ttl"
@@ -65,7 +65,7 @@ const (
 	// the kubelet prior to running
 	BootstrapCheckpointAnnotationKey string = "node.kubernetes.io/bootstrap-checkpoint"
 
-	// NonConvertibleAnnotationPrefix annotation key prefix used to identify non-convertible json paths.
+	// annotation key prefix used to identify non-convertible json paths.
 	NonConvertibleAnnotationPrefix = "non-convertible.kubernetes.io"
 
 	kubectlPrefix = "kubectl.kubernetes.io/"

@@ -1,7 +1,6 @@
 package v070to080
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/pkg/errors"
@@ -50,7 +49,7 @@ func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset)
 	}()
 
 	nodeMap := map[string]longhorn.Node{}
-	nodeList, err := lhClient.LonghornV1beta1().Nodes(namespace).List(context.TODO(), metav1.ListOptions{})
+	nodeList, err := lhClient.LonghornV1beta1().Nodes(namespace).List(metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -61,7 +60,7 @@ func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset)
 		nodeMap[node.Name] = node
 	}
 
-	imList, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	imList, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).List(metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -74,7 +73,7 @@ func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset)
 		}
 		im := &im
 		if types.ValidateEngineImageChecksumName(im.Spec.EngineImage) {
-			ei, err := lhClient.LonghornV1beta1().EngineImages(namespace).Get(context.TODO(), im.Spec.EngineImage, metav1.GetOptions{})
+			ei, err := lhClient.LonghornV1beta1().EngineImages(namespace).Get(im.Spec.EngineImage, metav1.GetOptions{})
 			if err != nil {
 				return errors.Wrapf(err, upgradeLogPrefix+"failed to find out the related engine image %v during the instance managers upgrade", im.Spec.EngineImage)
 			}
@@ -91,13 +90,13 @@ func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset)
 		}
 		metadata.SetOwnerReferences(datastore.GetOwnerReferencesForNode(&node))
 		metadata.SetLabels(types.GetInstanceManagerLabels(im.Spec.NodeID, im.Spec.Image, im.Spec.Type))
-		if im, err = lhClient.LonghornV1beta1().InstanceManagers(namespace).Update(context.TODO(), im, metav1.UpdateOptions{}); err != nil {
+		if im, err = lhClient.LonghornV1beta1().InstanceManagers(namespace).Update(im); err != nil {
 			return errors.Wrapf(err, upgradeLogPrefix+"failed to update the spec for instance manager %v during the instance managers upgrade", im.Name)
 		}
 
 		im.Status.APIMinVersion = engineapi.IncompatibleInstanceManagerAPIVersion
 		im.Status.APIVersion = engineapi.IncompatibleInstanceManagerAPIVersion
-		if _, err = lhClient.LonghornV1beta1().InstanceManagers(namespace).UpdateStatus(context.TODO(), im, metav1.UpdateOptions{}); err != nil {
+		if _, err = lhClient.LonghornV1beta1().InstanceManagers(namespace).UpdateStatus(im); err != nil {
 			return errors.Wrapf(err, upgradeLogPrefix+"failed to update the version status for instance manager %v during the instance managers upgrade", im.Name)
 		}
 	}

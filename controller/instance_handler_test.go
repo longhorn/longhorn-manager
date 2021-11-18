@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -391,26 +390,26 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 
 		h := newTestInstanceHandler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
 
-		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(context.TODO(), newEngineImage(TestEngineImage, types.EngineImageStateDeployed), metav1.CreateOptions{})
+		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(newEngineImage(TestEngineImage, types.EngineImageStateDeployed))
 		c.Assert(err, IsNil)
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
 
 		imImageSetting := newDefaultInstanceManagerImageSetting()
-		imImageSetting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
+		imImageSetting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(imImageSetting)
 		c.Assert(err, IsNil)
 		err = sIndexer.Add(imImageSetting)
 		c.Assert(err, IsNil)
 
 		if tc.instanceManager != nil {
-			im, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(context.TODO(), tc.instanceManager, metav1.CreateOptions{})
+			im, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(tc.instanceManager)
 			c.Assert(err, IsNil)
 			imIndexer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers().Informer().GetIndexer()
 			err = imIndexer.Add(im)
 			c.Assert(err, IsNil)
 		}
 
-		node, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(context.TODO(), newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, ""), metav1.CreateOptions{})
+		node, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, ""))
 		c.Assert(err, IsNil)
 		nodeIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
 		err = nodeIndexer.Add(node)
@@ -462,7 +461,7 @@ func newTestInstanceHandler(lhInformerFactory lhinformerfactory.SharedInformerFa
 	secretInformer := kubeInformerFactory.Core().V1().Secrets()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
-	csiDriverInformer := kubeInformerFactory.Storage().V1().CSIDrivers()
+	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
 	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
 	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 	serviceInformer := kubeInformerFactory.Core().V1().Services()

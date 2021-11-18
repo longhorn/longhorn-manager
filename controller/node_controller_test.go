@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -71,7 +70,7 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
 	secretInformer := kubeInformerFactory.Core().V1().Secrets()
 	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
-	csiDriverInformer := kubeInformerFactory.Storage().V1().CSIDrivers()
+	csiDriverInformer := kubeInformerFactory.Storage().V1beta1().CSIDrivers()
 	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
 	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
@@ -646,14 +645,14 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		imIndexer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers().Informer().GetIndexer()
 
 		imImageSetting := newDefaultInstanceManagerImageSetting()
-		imImageSetting, err := lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
+		imImageSetting, err := lhClient.LonghornV1beta1().Settings(TestNamespace).Create(imImageSetting)
 		c.Assert(err, IsNil)
 		err = sIndexer.Add(imImageSetting)
 		c.Assert(err, IsNil)
 
 		// create kuberentes node
 		for _, kubeNode := range tc.kubeNodes {
-			n, err := kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
+			n, err := kubeClient.CoreV1().Nodes().Create(kubeNode)
 			c.Assert(err, IsNil)
 			knIndexer.Add(n)
 		}
@@ -661,33 +660,33 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		nc := newTestNodeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestNode1)
 		// create manager pod
 		for _, pod := range tc.pods {
-			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(pod)
 			c.Assert(err, IsNil)
 			pIndexer.Add(p)
 		}
 		// create node
 		for _, node := range tc.nodes {
-			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(node)
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
 			nIndexer.Add(n)
 		}
 		// create replicas
 		for _, replica := range tc.replicas {
-			r, err := lhClient.LonghornV1beta1().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
+			r, err := lhClient.LonghornV1beta1().Replicas(TestNamespace).Create(replica)
 			c.Assert(err, IsNil)
 			c.Assert(r, NotNil)
 			rIndexer.Add(r)
 		}
 		// create instance managers
 		for _, em := range tc.engineManagers {
-			em, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(context.TODO(), em, metav1.CreateOptions{})
+			em, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(em)
 			c.Assert(err, IsNil)
 			err = imIndexer.Add(em)
 			c.Assert(err, IsNil)
 		}
 		for _, rm := range tc.replicaManagers {
-			rm, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(context.TODO(), rm, metav1.CreateOptions{})
+			rm, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(rm)
 			c.Assert(err, IsNil)
 			err = imIndexer.Add(rm)
 			c.Assert(err, IsNil)
@@ -697,7 +696,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			err := nc.syncNode(getKey(node, c))
 			c.Assert(err, IsNil)
 
-			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
+			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Get(node.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			for ctype, condition := range n.Status.Conditions {
 				condition.LastTransitionTime = ""
@@ -723,7 +722,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		}
 
 		for emName := range tc.engineManagers {
-			em, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Get(context.TODO(), emName, metav1.GetOptions{})
+			em, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Get(emName, metav1.GetOptions{})
 			if expectEM, exist := tc.expectEngineManagers[emName]; !exist {
 				c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
 			} else {
@@ -731,7 +730,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			}
 		}
 		for rmName := range tc.replicaManagers {
-			rm, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Get(context.TODO(), rmName, metav1.GetOptions{})
+			rm, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Get(rmName, metav1.GetOptions{})
 			if expectRM, exist := tc.expectReplicaManagers[rmName]; !exist {
 				c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
 			} else {

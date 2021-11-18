@@ -8,7 +8,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
+	storagev1beta "k8s.io/api/storage/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
@@ -18,11 +18,11 @@ import (
 )
 
 const (
-	DefaultCSIAttacherImage            = "longhornio/csi-attacher:v3.2.1"
-	DefaultCSIProvisionerImage         = "longhornio/csi-provisioner:v2.1.2"
-	DefaultCSIResizerImage             = "longhornio/csi-resizer:v1.2.0"
-	DefaultCSISnapshotterImage         = "longhornio/csi-snapshotter:v3.0.3"
-	DefaultCSINodeDriverRegistrarImage = "longhornio/csi-node-driver-registrar:v2.3.0"
+	DefaultCSIAttacherImage            = "longhornio/csi-attacher:v2.2.1-lh2"
+	DefaultCSIProvisionerImage         = "longhornio/csi-provisioner:v1.6.0-lh2"
+	DefaultCSIResizerImage             = "longhornio/csi-resizer:v0.5.1-lh2"
+	DefaultCSISnapshotterImage         = "longhornio/csi-snapshotter:v2.1.1-lh2"
+	DefaultCSINodeDriverRegistrarImage = "longhornio/csi-node-driver-registrar:v1.2.0-lh1"
 
 	DefaultCSIAttacherReplicaCount    = 3
 	DefaultCSIProvisionerReplicaCount = 3
@@ -131,9 +131,9 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 			"--v=5",
 			"--csi-address=$(ADDRESS)",
 			"--timeout=1m50s",
-			"--leader-election",
+			"--enable-leader-election",
+			"--leader-election-type=leases",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
-			"--default-fstype=ext4",
 		},
 		int32(replicaCount),
 		tolerations,
@@ -197,7 +197,7 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 		[]string{
 			"--v=5",
 			"--csi-address=$(ADDRESS)",
-			"--timeout=1m50s",
+			"--csiTimeout=1m50s", // TODO: change this to timeout once, we upgrade the external resizer version.
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 		},
@@ -563,16 +563,16 @@ func (p *PluginDeployment) Cleanup(kubeClient *clientset.Clientset) {
 }
 
 type DriverObjectDeployment struct {
-	obj *storagev1.CSIDriver
+	obj *storagev1beta.CSIDriver
 }
 
 func NewCSIDriverObject() *DriverObjectDeployment {
 	falseFlag := true
-	obj := &storagev1.CSIDriver{
+	obj := &storagev1beta.CSIDriver{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: types.LonghornDriverName,
 		},
-		Spec: storagev1.CSIDriverSpec{
+		Spec: storagev1beta.CSIDriverSpec{
 			PodInfoOnMount: &falseFlag,
 		},
 	}

@@ -19,7 +19,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
 	"time"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,9 +36,9 @@ type NodeMetricsesGetter interface {
 
 // NodeMetricsInterface has methods to work with NodeMetrics resources.
 type NodeMetricsInterface interface {
-	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1beta1.NodeMetrics, error)
-	List(ctx context.Context, opts v1.ListOptions) (*v1beta1.NodeMetricsList, error)
-	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
+	Get(name string, options v1.GetOptions) (*v1beta1.NodeMetrics, error)
+	List(opts v1.ListOptions) (*v1beta1.NodeMetricsList, error)
+	Watch(opts v1.ListOptions) (watch.Interface, error)
 	NodeMetricsExpansion
 }
 
@@ -56,19 +55,19 @@ func newNodeMetricses(c *MetricsV1beta1Client) *nodeMetricses {
 }
 
 // Get takes name of the nodeMetrics, and returns the corresponding nodeMetrics object, and an error if there is any.
-func (c *nodeMetricses) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.NodeMetrics, err error) {
+func (c *nodeMetricses) Get(name string, options v1.GetOptions) (result *v1beta1.NodeMetrics, err error) {
 	result = &v1beta1.NodeMetrics{}
 	err = c.client.Get().
 		Resource("nodes").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
-		Do(ctx).
+		Do().
 		Into(result)
 	return
 }
 
 // List takes label and field selectors, and returns the list of NodeMetricses that match those selectors.
-func (c *nodeMetricses) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.NodeMetricsList, err error) {
+func (c *nodeMetricses) List(opts v1.ListOptions) (result *v1beta1.NodeMetricsList, err error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -78,13 +77,13 @@ func (c *nodeMetricses) List(ctx context.Context, opts v1.ListOptions) (result *
 		Resource("nodes").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Do(ctx).
+		Do().
 		Into(result)
 	return
 }
 
 // Watch returns a watch.Interface that watches the requested nodeMetricses.
-func (c *nodeMetricses) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+func (c *nodeMetricses) Watch(opts v1.ListOptions) (watch.Interface, error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -94,5 +93,5 @@ func (c *nodeMetricses) Watch(ctx context.Context, opts v1.ListOptions) (watch.I
 		Resource("nodes").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Watch(ctx)
+		Watch()
 }

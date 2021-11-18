@@ -1,7 +1,6 @@
 package util
 
 import (
-	"context"
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
@@ -13,7 +12,7 @@ import (
 )
 
 func ListShareManagerPods(namespace string, kubeClient *clientset.Clientset) ([]v1.Pod, error) {
-	smPodsList, err := kubeClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
+	smPodsList, err := kubeClient.CoreV1().Pods(namespace).List(metav1.ListOptions{
 		LabelSelector: labels.Set(types.GetShareManagerComponentLabel()).String(),
 	})
 	if err != nil {
@@ -23,7 +22,7 @@ func ListShareManagerPods(namespace string, kubeClient *clientset.Clientset) ([]
 }
 
 func ListIMPods(namespace string, kubeClient *clientset.Clientset) ([]v1.Pod, error) {
-	imPodsList, err := kubeClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
+	imPodsList, err := kubeClient.CoreV1().Pods(namespace).List(metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s", types.GetLonghornLabelComponentKey(), types.LonghornLabelInstanceManager),
 	})
 	if err != nil {
