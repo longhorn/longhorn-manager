@@ -48,15 +48,15 @@ spec:
           # For AirGap Installation
           # Replace PREFIX with your private registry
           #- name: CSI_ATTACHER_IMAGE
-          #  value: PREFIX/csi-attacher:v2.2.1-lh1
+          #  value: PREFIX/csi-attacher:v2.2.1-lh2
           #- name: CSI_PROVISIONER_IMAGE
-          #  value: PREFIX/csi-provisioner:v1.6.0-lh1
+          #  value: PREFIX/csi-provisioner:v1.6.0-lh2
           #- name: CSI_NODE_DRIVER_REGISTRAR_IMAGE
           #  value: PREFIX/csi-node-driver-registrar:v1.2.0-lh1
           #- name: CSI_RESIZER_IMAGE
-          #  value: PREFIX/csi-resizer:v0.5.1-lh1
+          #  value: PREFIX/csi-resizer:v0.5.1-lh2
           #- name: CSI_SNAPSHOTTER_IMAGE
-          #  value: PREFIX/csi-snapshotter:v2.1.1-lh1
+          #  value: PREFIX/csi-snapshotter:v2.1.1-lh2
           # Manually specify number of CSI attacher replicas
           #- name: CSI_ATTACHER_REPLICA_COUNT
           #  value: "3"
