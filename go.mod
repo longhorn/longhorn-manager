@@ -57,6 +57,7 @@ require (
 	github.com/stretchr/testify v1.7.0
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/urfave/cli v1.22.1
+	golang.org/x/crypto v0.0.0-20201216223049-8b5274cf687f // indirect
 	golang.org/x/sys v0.0.0-20201112073958-5cba982894dd
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0
 	google.golang.org/grpc v1.26.0
