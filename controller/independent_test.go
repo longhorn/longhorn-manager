@@ -6,7 +6,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	. "gopkg.in/check.v1"
@@ -18,9 +17,9 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 			Name:      TestNode1,
 			Namespace: TestNamespace,
 		},
-		Spec: types.NodeSpec{
+		Spec: longhorn.NodeSpec{
 			AllowScheduling: true,
-			Disks: map[string]types.DiskSpec{
+			Disks: map[string]longhorn.DiskSpec{
 				TestDiskID1: {
 					Path:            TestDefaultDataPath + "1",
 					AllowScheduling: true,
@@ -35,30 +34,30 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 				},
 			},
 		},
-		Status: types.NodeStatus{
-			Conditions: map[string]types.Condition{
-				types.NodeConditionTypeSchedulable: newNodeCondition(types.NodeConditionTypeSchedulable, types.ConditionStatusTrue, ""),
-				types.NodeConditionTypeReady:       newNodeCondition(types.NodeConditionTypeReady, types.ConditionStatusTrue, ""),
+		Status: longhorn.NodeStatus{
+			Conditions: map[string]longhorn.Condition{
+				longhorn.NodeConditionTypeSchedulable: newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+				longhorn.NodeConditionTypeReady:       newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 			},
-			DiskStatus: map[string]*types.DiskStatus{
+			DiskStatus: map[string]*longhorn.DiskStatus{
 				TestDiskID1: {
-					Conditions: map[string]types.Condition{
-						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
-						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
+					Conditions: map[string]longhorn.Condition{
+						longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+						longhorn.DiskConditionTypeReady:       newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					DiskUUID: TestDiskID1,
 				},
 				TestDiskID2: {
-					Conditions: map[string]types.Condition{
-						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
-						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
+					Conditions: map[string]longhorn.Condition{
+						longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+						longhorn.DiskConditionTypeReady:       newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					DiskUUID: TestDiskID2,
 				},
 				TestDiskID3: {
-					Conditions: map[string]types.Condition{
-						types.DiskConditionTypeSchedulable: newNodeCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue, ""),
-						types.DiskConditionTypeReady:       newNodeCondition(types.DiskConditionTypeReady, types.ConditionStatusTrue, ""),
+					Conditions: map[string]longhorn.Condition{
+						longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+						longhorn.DiskConditionTypeReady:       newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					DiskUUID: TestDiskID3,
 				},
@@ -70,18 +69,18 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 			Name:      TestBackingImage,
 			Namespace: TestNamespace,
 		},
-		Spec: types.BackingImageSpec{
+		Spec: longhorn.BackingImageSpec{
 			Disks: map[string]struct{}{
 				TestDiskID1: {},
 				TestDiskID2: {},
 				TestDiskID3: {},
 			},
 		},
-		Status: types.BackingImageStatus{
-			DiskFileStatusMap: map[string]*types.BackingImageDiskFileStatus{
-				TestDiskID1: {State: types.BackingImageStateReady},
-				TestDiskID2: {State: types.BackingImageStateReady},
-				TestDiskID3: {State: types.BackingImageStateReady},
+		Status: longhorn.BackingImageStatus{
+			DiskFileStatusMap: map[string]*longhorn.BackingImageDiskFileStatus{
+				TestDiskID1: {State: longhorn.BackingImageStateReady},
+				TestDiskID2: {State: longhorn.BackingImageStateReady},
+				TestDiskID3: {State: longhorn.BackingImageStateReady},
 			},
 			DiskLastRefAtMap: map[string]string{
 				TestDiskID3: util.Now(),
@@ -93,13 +92,13 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 			Name:      TestBackingImage,
 			Namespace: TestNamespace,
 		},
-		Spec: types.BackingImageDataSourceSpec{
+		Spec: longhorn.BackingImageDataSourceSpec{
 			NodeID:          TestNode1,
 			DiskUUID:        TestDiskID1,
 			DiskPath:        TestDefaultDataPath,
 			FileTransferred: true,
 		},
-		Status: types.BackingImageDataSourceStatus{},
+		Status: longhorn.BackingImageDataSourceStatus{},
 	}
 
 	// Test case 1: clean up unused ready disk file when there are enough ready files
@@ -114,10 +113,10 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 
 	// Test case 2: cannot delete the unused ready disk file if there are no enough ready files
 	bi = biTemplate.DeepCopy()
-	bi.Status.DiskFileStatusMap = map[string]*types.BackingImageDiskFileStatus{
-		TestDiskID1: {State: types.BackingImageStatePending},
-		TestDiskID2: {State: types.BackingImageStateInProgress},
-		TestDiskID3: {State: types.BackingImageStateReady},
+	bi.Status.DiskFileStatusMap = map[string]*longhorn.BackingImageDiskFileStatus{
+		TestDiskID1: {State: longhorn.BackingImageStatePending},
+		TestDiskID2: {State: longhorn.BackingImageStateInProgress},
+		TestDiskID3: {State: longhorn.BackingImageStateReady},
 	}
 	expectedBI = bi.DeepCopy()
 	BackingImageDiskFileCleanup(node, bi, bidsTemplate, time.Duration(0), 1)
@@ -125,10 +124,10 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 
 	// Test case 2: clean up all unused files when there are enough ready files
 	bi = biTemplate.DeepCopy()
-	bi.Status.DiskFileStatusMap = map[string]*types.BackingImageDiskFileStatus{
-		TestDiskID1: {State: types.BackingImageStatePending},
-		TestDiskID2: {State: types.BackingImageStateInProgress},
-		TestDiskID3: {State: types.BackingImageStateReady},
+	bi.Status.DiskFileStatusMap = map[string]*longhorn.BackingImageDiskFileStatus{
+		TestDiskID1: {State: longhorn.BackingImageStatePending},
+		TestDiskID2: {State: longhorn.BackingImageStateInProgress},
+		TestDiskID3: {State: longhorn.BackingImageStateReady},
 	}
 	bi.Status.DiskLastRefAtMap = map[string]string{
 		TestDiskID1: util.Now(),
@@ -143,10 +142,10 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 
 	// Test case 3: retain (some) unused handling files if there are no enough ready files.
 	bi = biTemplate.DeepCopy()
-	bi.Status.DiskFileStatusMap = map[string]*types.BackingImageDiskFileStatus{
-		TestDiskID1: {State: types.BackingImageStateFailed},
+	bi.Status.DiskFileStatusMap = map[string]*longhorn.BackingImageDiskFileStatus{
+		TestDiskID1: {State: longhorn.BackingImageStateFailed},
 		TestDiskID2: {},
-		TestDiskID3: {State: types.BackingImageStateReady},
+		TestDiskID3: {State: longhorn.BackingImageStateReady},
 	}
 	bi.Status.DiskLastRefAtMap = map[string]string{
 		TestDiskID1: util.Now(),
@@ -162,10 +161,10 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 
 	// Test case 3: retain all files if there are no enough files.
 	bi = biTemplate.DeepCopy()
-	bi.Status.DiskFileStatusMap = map[string]*types.BackingImageDiskFileStatus{
-		TestDiskID1: {State: types.BackingImageStateFailed},
+	bi.Status.DiskFileStatusMap = map[string]*longhorn.BackingImageDiskFileStatus{
+		TestDiskID1: {State: longhorn.BackingImageStateFailed},
 		TestDiskID2: {},
-		TestDiskID3: {State: types.BackingImageStateReady},
+		TestDiskID3: {State: longhorn.BackingImageStateReady},
 	}
 	bi.Status.DiskLastRefAtMap = map[string]string{
 		TestDiskID1: util.Now(),
@@ -178,7 +177,7 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 
 	// Test case 4: retain the 1st file anyway
 	bi = biTemplate.DeepCopy()
-	bi.Status.DiskFileStatusMap = map[string]*types.BackingImageDiskFileStatus{
+	bi.Status.DiskFileStatusMap = map[string]*longhorn.BackingImageDiskFileStatus{
 		TestDiskID1: {},
 	}
 	bi.Status.DiskLastRefAtMap = map[string]string{

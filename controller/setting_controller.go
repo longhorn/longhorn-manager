@@ -32,7 +32,6 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 const (
@@ -57,9 +56,7 @@ type SettingController struct {
 
 	ds *datastore.DataStore
 
-	sStoreSynced  cache.InformerSynced
-	nStoreSynced  cache.InformerSynced
-	btStoreSynced cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 
 	// upgrade checker
 	lastUpgradeCheckedTimestamp time.Time
@@ -97,9 +94,6 @@ func NewSettingController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	settingInformer lhinformers.SettingInformer,
-	nodeInformer lhinformers.NodeInformer,
-	backupTargetInfomer lhinformers.BackupTargetInformer,
 	kubeClient clientset.Interface,
 	namespace, controllerID, version string) *SettingController {
 
@@ -119,28 +113,27 @@ func NewSettingController(
 
 		ds: ds,
 
-		sStoreSynced:  settingInformer.Informer().HasSynced,
-		nStoreSynced:  nodeInformer.Informer().HasSynced,
-		btStoreSynced: backupTargetInfomer.Informer().HasSynced,
-
 		version: version,
 	}
 
-	settingInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.enqueueSetting,
 		UpdateFunc: func(old, cur interface{}) { sc.enqueueSetting(cur) },
 		DeleteFunc: sc.enqueueSetting,
 	}, settingControllerResyncPeriod)
+	sc.cacheSyncs = append(sc.cacheSyncs, ds.SettingInformer.HasSynced)
 
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.NodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.enqueueSettingForNode,
 		UpdateFunc: func(old, cur interface{}) { sc.enqueueSettingForNode(cur) },
 		DeleteFunc: sc.enqueueSettingForNode,
 	})
+	sc.cacheSyncs = append(sc.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	backupTargetInfomer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.BackupTargetInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: sc.enqueueSettingForBackupTarget,
 	})
+	sc.cacheSyncs = append(sc.cacheSyncs, ds.BackupTargetInformer.HasSynced)
 
 	return sc
 }
@@ -152,7 +145,7 @@ func (sc *SettingController) Run(stopCh <-chan struct{}) {
 	sc.logger.Info("Start Longhorn Setting controller")
 	defer sc.logger.Info("Shutting down Longhorn Setting controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn settings", stopCh, sc.sStoreSynced, sc.nStoreSynced, sc.btStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn settings", stopCh, sc.cacheSyncs...) {
 		return
 	}
 
@@ -310,7 +303,7 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: types.DefaultBackupTargetName,
 			},
-			Spec: types.BackupTargetSpec{
+			Spec: longhorn.BackupTargetSpec{
 				BackupTargetURL:  targetSetting.Value,
 				CredentialSecret: secretSetting.Value,
 				PollInterval:     metav1.Duration{Duration: pollInterval},
@@ -329,7 +322,7 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 		backupTarget.Spec.PollInterval = metav1.Duration{Duration: pollInterval}
 		if !reflect.DeepEqual(existingBackupTarget.Spec, backupTarget.Spec) {
 			// Force sync backup target once the BackupTarget spec be updated
-			backupTarget.Spec.SyncRequestedAt = time.Now().UTC()
+			backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
 			if _, err = sc.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 				sc.logger.WithError(err).Warn("Failed to update backup target")
 			}
@@ -681,7 +674,7 @@ func (bst *BackupStoreTimer) Start() {
 			return false, err
 		}
 
-		backupTarget.Spec.SyncRequestedAt = time.Now().UTC()
+		backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
 		if _, err = bst.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 			log.WithError(err).Warn("Failed to updating backup target")
 		}
@@ -714,7 +707,7 @@ func (sc *SettingController) syncUpgradeChecker() error {
 		return err
 	}
 
-	if upgradeCheckerEnabled == false {
+	if !upgradeCheckerEnabled {
 		if latestLonghornVersion.Value != "" {
 			latestLonghornVersion.Value = ""
 			if _, err := sc.ds.UpdateSetting(latestLonghornVersion); err != nil {
@@ -869,7 +862,7 @@ func (sc *SettingController) updateInstanceManagerCPURequest() error {
 		if err != nil {
 			return err
 		}
-		if types.GetCondition(lhNode.Status.Conditions, types.NodeConditionTypeReady).Status != types.ConditionStatusTrue {
+		if types.GetCondition(lhNode.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
 			continue
 		}
 

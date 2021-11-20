@@ -10,23 +10,19 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	listerv1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 )
@@ -42,14 +38,7 @@ type KubernetesPVController struct {
 
 	ds *datastore.DataStore
 
-	pvLister  listerv1.PersistentVolumeLister
-	pvcLister listerv1.PersistentVolumeClaimLister
-	pLister   listerv1.PodLister
-
-	vStoreSynced   cache.InformerSynced
-	pvStoreSynced  cache.InformerSynced
-	pvcStoreSynced cache.InformerSynced
-	pStoreSynced   cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 
 	// key is <PVName>, value is <VolumeName>
 	pvToVolumeCache sync.Map
@@ -62,10 +51,6 @@ func NewKubernetesPVController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	volumeInformer lhinformers.VolumeInformer,
-	persistentVolumeInformer coreinformers.PersistentVolumeInformer,
-	persistentVolumeClaimInformer coreinformers.PersistentVolumeClaimInformer,
-	podInformer coreinformers.PodInformer,
 	kubeClient clientset.Interface,
 	controllerID string) *KubernetesPVController {
 
@@ -84,21 +69,12 @@ func NewKubernetesPVController(
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-kubernetes-pv-controller"}),
 
-		pvLister:  persistentVolumeInformer.Lister(),
-		pvcLister: persistentVolumeClaimInformer.Lister(),
-		pLister:   podInformer.Lister(),
-
-		vStoreSynced:   volumeInformer.Informer().HasSynced,
-		pvStoreSynced:  persistentVolumeInformer.Informer().HasSynced,
-		pvcStoreSynced: persistentVolumeClaimInformer.Informer().HasSynced,
-		pStoreSynced:   podInformer.Informer().HasSynced,
-
 		pvToVolumeCache: sync.Map{},
 
 		nowHandler: util.Now,
 	}
 
-	persistentVolumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.PersistentVolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    kc.enqueuePersistentVolume,
 		UpdateFunc: func(old, cur interface{}) { kc.enqueuePersistentVolume(cur) },
 		DeleteFunc: func(obj interface{}) {
@@ -106,17 +82,14 @@ func NewKubernetesPVController(
 			kc.enqueuePVDeletion(obj)
 		},
 	})
+	kc.cacheSyncs = append(kc.cacheSyncs, ds.PersistentVolumeInformer.HasSynced)
 
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.PodInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    kc.enqueuePodChange,
 		UpdateFunc: func(old, cur interface{}) { kc.enqueuePodChange(cur) },
 		DeleteFunc: kc.enqueuePodChange,
 	})
-
-	// after volume becomes detached, try to delete the VA of lost node
-	volumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(old, cur interface{}) { kc.enqueueVolumeChange(cur) },
-	})
+	kc.cacheSyncs = append(kc.cacheSyncs, ds.PodInformer.HasSynced)
 
 	return kc
 }
@@ -128,8 +101,7 @@ func (kc *KubernetesPVController) Run(workers int, stopCh <-chan struct{}) {
 	logrus.Infof("Start kubernetes controller")
 	defer logrus.Infof("Shutting down kubernetes controller")
 
-	if !cache.WaitForNamedCacheSync("kubernetes", stopCh,
-		kc.vStoreSynced, kc.pvStoreSynced, kc.pvcStoreSynced, kc.pStoreSynced) {
+	if !cache.WaitForNamedCacheSync("kubernetes", stopCh, kc.cacheSyncs...) {
 		return
 	}
 
@@ -193,7 +165,7 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 		return nil
 	}
 
-	pv, err := kc.pvLister.Get(name)
+	pv, err := kc.ds.GetPersistentVolumeRO(name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
 			return nil
@@ -234,7 +206,7 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 
 	// existing volume may be used/reused by pv
 	if volume.Status.KubernetesStatus.PVName != name {
-		volume.Status.KubernetesStatus = types.KubernetesStatus{}
+		volume.Status.KubernetesStatus = longhorn.KubernetesStatus{}
 		kc.eventRecorder.Eventf(volume, v1.EventTypeNormal, EventReasonStart, "Persistent Volume %v started to use/reuse Longhorn volume %v", volume.Name, name)
 	}
 	ks := &volume.Status.KubernetesStatus
@@ -299,7 +271,7 @@ func (kc *KubernetesPVController) enqueuePersistentVolume(obj interface{}) {
 		return
 	}
 	kc.queue.AddRateLimited(key)
-	return
+
 }
 
 func (kc *KubernetesPVController) enqueuePodChange(obj interface{}) {
@@ -325,7 +297,7 @@ func (kc *KubernetesPVController) enqueuePodChange(obj interface{}) {
 			continue
 		}
 
-		pvc, err := kc.pvcLister.PersistentVolumeClaims(pod.Namespace).Get(claim.ClaimName)
+		pvc, err := kc.ds.GetPersistentVolumeClaimRO(pod.Namespace, claim.ClaimName)
 		if err != nil {
 			if !datastore.ErrorIsNotFound(err) {
 				utilruntime.HandleError(fmt.Errorf("couldn't get pvc %#v: %v", claim.ClaimName, err))
@@ -338,7 +310,7 @@ func (kc *KubernetesPVController) enqueuePodChange(obj interface{}) {
 			kc.queue.AddRateLimited(pvName)
 		}
 	}
-	return
+
 }
 
 func (kc *KubernetesPVController) enqueueVolumeChange(obj interface{}) {
@@ -358,7 +330,7 @@ func (kc *KubernetesPVController) enqueueVolumeChange(obj interface{}) {
 		}
 	}
 
-	if volume.Status.State != types.VolumeStateDetached {
+	if volume.Status.State != longhorn.VolumeStateDetached {
 		return
 	}
 	ks := volume.Status.KubernetesStatus
@@ -366,7 +338,7 @@ func (kc *KubernetesPVController) enqueueVolumeChange(obj interface{}) {
 		ks.LastPodRefAt == "" {
 		kc.queue.AddRateLimited(volume.Status.KubernetesStatus.PVName)
 	}
-	return
+
 }
 
 func (kc *KubernetesPVController) enqueuePVDeletion(obj interface{}) {
@@ -389,7 +361,7 @@ func (kc *KubernetesPVController) enqueuePVDeletion(obj interface{}) {
 	if pv.Spec.CSI != nil && pv.Spec.CSI.VolumeHandle != "" {
 		kc.pvToVolumeCache.Store(pv.Name, pv.Spec.CSI.VolumeHandle)
 	}
-	return
+
 }
 
 func (kc *KubernetesPVController) cleanupForPVDeletion(pvName string) (bool, error) {
@@ -409,7 +381,7 @@ func (kc *KubernetesPVController) cleanupForPVDeletion(pvName string) (bool, err
 		kc.pvToVolumeCache.Delete(pvName)
 		return true, nil
 	}
-	pv, err := kc.pvLister.Get(pvName)
+	pv, err := kc.ds.GetPersistentVolumeRO(pvName)
 	if err != nil && !datastore.ErrorIsNotFound(err) {
 		return false, errors.Wrapf(err, "failed to get associated pv in cleanupForPVDeletion")
 	}
@@ -444,11 +416,11 @@ func filterPods(pods []*v1.Pod, predicate func(pod *v1.Pod) bool) (filtered []*v
 }
 
 // getAssociatedPods returns all pods using this pvc in sorted order based on pod name
-func (kc *KubernetesPVController) getAssociatedPods(ks *types.KubernetesStatus) ([]*v1.Pod, error) {
+func (kc *KubernetesPVController) getAssociatedPods(ks *longhorn.KubernetesStatus) ([]*v1.Pod, error) {
 	if ks.PVStatus != string(v1.VolumeBound) {
 		return nil, nil
 	}
-	ps, err := kc.pLister.Pods(ks.Namespace).List(labels.Everything())
+	ps, err := kc.ds.ListPodsRO(ks.Namespace)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to list pods in getAssociatedPod")
 	}
@@ -470,7 +442,7 @@ func (kc *KubernetesPVController) getAssociatedPods(ks *types.KubernetesStatus) 
 	return pods, nil
 }
 
-func (kc *KubernetesPVController) setWorkloads(ks *types.KubernetesStatus, pods []*v1.Pod) {
+func (kc *KubernetesPVController) setWorkloads(ks *longhorn.KubernetesStatus, pods []*v1.Pod) {
 	if len(pods) == 0 {
 		if len(ks.WorkloadsStatus) == 0 || ks.LastPodRefAt != "" {
 			return
@@ -479,17 +451,17 @@ func (kc *KubernetesPVController) setWorkloads(ks *types.KubernetesStatus, pods 
 		return
 	}
 
-	ks.WorkloadsStatus = []types.WorkloadStatus{}
+	ks.WorkloadsStatus = []longhorn.WorkloadStatus{}
 	ks.LastPodRefAt = ""
 	for _, p := range pods {
-		ws := types.WorkloadStatus{
+		ws := longhorn.WorkloadStatus{
 			PodName:   p.Name,
 			PodStatus: string(p.Status.Phase),
 		}
 		ws.WorkloadName, ws.WorkloadType = kc.detectWorkload(p)
 		ks.WorkloadsStatus = append(ks.WorkloadsStatus, ws)
 	}
-	return
+
 }
 
 func (kc *KubernetesPVController) detectWorkload(p *v1.Pod) (string, string) {

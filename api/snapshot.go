@@ -12,6 +12,7 @@ import (
 
 	bsutil "github.com/longhorn/backupstore/util"
 
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 )
@@ -173,7 +174,7 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 	}
 
 	// Cannot directly compare the structs since KubernetesStatus contains a slice which cannot be compared.
-	if !reflect.DeepEqual(vol.Status.KubernetesStatus, types.KubernetesStatus{}) {
+	if !reflect.DeepEqual(vol.Status.KubernetesStatus, longhorn.KubernetesStatus{}) {
 		kubeStatus, err := json.Marshal(vol.Status.KubernetesStatus)
 		if err != nil {
 			return errors.Wrapf(err, "BUG: could not convert volume %v's KubernetesStatus to json", volName)

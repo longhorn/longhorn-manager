@@ -7,13 +7,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -40,14 +39,13 @@ type KubernetesConfigMapController struct {
 
 	ds *datastore.DataStore
 
-	cfmStoreSynced cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 }
 
 func NewKubernetesConfigMapController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	configMapInformer coreinformers.ConfigMapInformer,
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string) *KubernetesConfigMapController {
@@ -68,15 +66,14 @@ func NewKubernetesConfigMapController(
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-kubernetes-configmap-controller"}),
-
-		cfmStoreSynced: configMapInformer.Informer().HasSynced,
 	}
 
-	configMapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.ConfigMapInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    kc.enqueueConfigMapChange,
 		UpdateFunc: func(old, cur interface{}) { kc.enqueueConfigMapChange(cur) },
 		DeleteFunc: kc.enqueueConfigMapChange,
 	})
+	kc.cacheSyncs = append(kc.cacheSyncs, ds.ConfigMapInformer.HasSynced)
 
 	return kc
 }
@@ -88,7 +85,7 @@ func (kc *KubernetesConfigMapController) Run(workers int, stopCh <-chan struct{}
 	kc.logger.Infof("Start")
 	defer kc.logger.Infof("Shutting down")
 
-	if !cache.WaitForNamedCacheSync(kc.name, stopCh, kc.cfmStoreSynced) {
+	if !cache.WaitForNamedCacheSync(kc.name, stopCh, kc.cacheSyncs...) {
 		return
 	}
 	for i := 0; i < workers; i++ {

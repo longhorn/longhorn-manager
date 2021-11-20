@@ -3,7 +3,7 @@ package engineapi
 import (
 	"testing"
 
-	"github.com/longhorn/longhorn-manager/types"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 
 	. "gopkg.in/check.v1"
 )
@@ -52,8 +52,8 @@ func (s *TestSuite) TestBasic(c *C) {
 	replicas, err := sim.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
-	c.Assert(replicas[Replica1Addr].Mode, Equals, types.ReplicaModeRW)
-	c.Assert(replicas[Replica2Addr].Mode, Equals, types.ReplicaModeRW)
+	c.Assert(replicas[Replica1Addr].Mode, Equals, longhorn.ReplicaModeRW)
+	c.Assert(replicas[Replica2Addr].Mode, Equals, longhorn.ReplicaModeRW)
 
 	err = sim.ReplicaRemove(Replica2Addr)
 	c.Assert(err, IsNil)
@@ -61,14 +61,14 @@ func (s *TestSuite) TestBasic(c *C) {
 	replicas, err = sim.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 1)
-	c.Assert(replicas[Replica1Addr].Mode, Equals, types.ReplicaModeRW)
+	c.Assert(replicas[Replica1Addr].Mode, Equals, longhorn.ReplicaModeRW)
 
 	_ = sim.ReplicaAdd(Replica3Addr, false)
 	replicas, err = sim.ReplicaList()
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
-	c.Assert(replicas[Replica1Addr].Mode, Equals, types.ReplicaModeRW)
-	c.Assert(replicas[Replica3Addr].Mode, Equals, types.ReplicaModeRW)
+	c.Assert(replicas[Replica1Addr].Mode, Equals, longhorn.ReplicaModeRW)
+	c.Assert(replicas[Replica3Addr].Mode, Equals, longhorn.ReplicaModeRW)
 
 	err = coll.DeleteEngineSimulator(VolumeName)
 	c.Assert(err, IsNil)

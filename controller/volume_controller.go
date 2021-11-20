@@ -35,7 +35,6 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 var (
@@ -61,21 +60,14 @@ type VolumeController struct {
 	// which namespace controller is running with
 	namespace string
 	// use as the OwnerID of the controller
-	controllerID   string
-	ManagerImage   string
-	ServiceAccount string
+	controllerID string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
 	ds *datastore.DataStore
 
-	vStoreSynced    cache.InformerSynced
-	eStoreSynced    cache.InformerSynced
-	rStoreSynced    cache.InformerSynced
-	smStoreSynced   cache.InformerSynced
-	bvStoreSynced   cache.InformerSynced
-	bidsStoreSynced cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 
 	scheduler *scheduler.ReplicaScheduler
 
@@ -89,15 +81,10 @@ func NewVolumeController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	volumeInformer lhinformers.VolumeInformer,
-	engineInformer lhinformers.EngineInformer,
-	replicaInformer lhinformers.ReplicaInformer,
-	shareManagerInformer lhinformers.ShareManagerInformer,
-	backupVolumeInformer lhinformers.BackupVolumeInformer,
-	bidsInformer lhinformers.BackingImageDataSourceInformer,
 	kubeClient clientset.Interface,
-	namespace, controllerID, serviceAccount string,
-	managerImage string) *VolumeController {
+	namespace,
+	controllerID string,
+) *VolumeController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -107,21 +94,12 @@ func NewVolumeController(
 	vc := &VolumeController{
 		baseController: newBaseController("longhorn-volume", logger),
 
-		ds:             ds,
-		namespace:      namespace,
-		controllerID:   controllerID,
-		ManagerImage:   managerImage,
-		ServiceAccount: serviceAccount,
+		ds:           ds,
+		namespace:    namespace,
+		controllerID: controllerID,
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-volume-controller"}),
-
-		vStoreSynced:    volumeInformer.Informer().HasSynced,
-		eStoreSynced:    engineInformer.Informer().HasSynced,
-		rStoreSynced:    replicaInformer.Informer().HasSynced,
-		smStoreSynced:   shareManagerInformer.Informer().HasSynced,
-		bvStoreSynced:   backupVolumeInformer.Informer().HasSynced,
-		bidsStoreSynced: bidsInformer.Informer().HasSynced,
 
 		backoff: flowcontrol.NewBackOff(time.Minute, time.Minute*3),
 
@@ -130,35 +108,47 @@ func NewVolumeController(
 
 	vc.scheduler = scheduler.NewReplicaScheduler(ds)
 
-	volumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueVolume,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolume(cur) },
 		DeleteFunc: vc.enqueueVolume,
 	})
-	engineInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	vc.cacheSyncs = append(vc.cacheSyncs, ds.VolumeInformer.HasSynced)
+
+	ds.EngineInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueControlleeChange(cur) },
 		DeleteFunc: vc.enqueueControlleeChange,
 	})
-	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	vc.cacheSyncs = append(vc.cacheSyncs, ds.EngineInformer.HasSynced)
+
+	ds.ReplicaInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueControlleeChange(cur) },
 		DeleteFunc: vc.enqueueControlleeChange,
 	})
-	shareManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	vc.cacheSyncs = append(vc.cacheSyncs, ds.ReplicaInformer.HasSynced)
+
+	ds.ShareManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueVolumesForShareManager,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForShareManager(cur) },
 		DeleteFunc: vc.enqueueVolumesForShareManager,
 	})
-	backupVolumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	vc.cacheSyncs = append(vc.cacheSyncs, ds.ShareManagerInformer.HasSynced)
+
+	ds.BackupVolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForBackupVolume(cur) },
 		DeleteFunc: vc.enqueueVolumesForBackupVolume,
 	})
-	bidsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	vc.cacheSyncs = append(vc.cacheSyncs, ds.BackupVolumeInformer.HasSynced)
+
+	ds.BackingImageDataSourceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueVolumesForBackingImageDataSource,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForBackingImageDataSource(cur) },
 		DeleteFunc: vc.enqueueVolumesForBackingImageDataSource,
 	})
+	vc.cacheSyncs = append(vc.cacheSyncs, ds.BackingImageDataSourceInformer.HasSynced)
+
 	return vc
 }
 
@@ -169,7 +159,7 @@ func (vc *VolumeController) Run(workers int, stopCh <-chan struct{}) {
 	vc.logger.Infof("Start Longhorn volume controller")
 	defer vc.logger.Infof("Shutting down Longhorn volume controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn engines", stopCh, vc.vStoreSynced, vc.eStoreSynced, vc.rStoreSynced, vc.smStoreSynced, vc.bvStoreSynced, vc.bidsStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn engines", stopCh, vc.cacheSyncs...) {
 		return
 	}
 
@@ -228,7 +218,7 @@ func getLoggerForVolume(logger logrus.FieldLogger, v *longhorn.Volume) *logrus.E
 		},
 	)
 
-	if v.Spec.AccessMode == types.AccessModeReadWriteMany {
+	if v.Spec.AccessMode == longhorn.AccessModeReadWriteMany {
 		log = log.WithFields(
 			logrus.Fields{
 				"shareState":    v.Status.ShareState,
@@ -298,8 +288,8 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	}
 
 	if volume.DeletionTimestamp != nil {
-		if volume.Status.State != types.VolumeStateDeleting {
-			volume.Status.State = types.VolumeStateDeleting
+		if volume.Status.State != longhorn.VolumeStateDeleting {
+			volume.Status.State = longhorn.VolumeStateDeleting
 			volume, err = vc.ds.UpdateVolumeStatus(volume)
 			if err != nil {
 				return err
@@ -307,7 +297,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			vc.eventRecorder.Eventf(volume, v1.EventTypeNormal, EventReasonDelete, "Deleting volume %v", volume.Name)
 		}
 
-		if volume.Spec.AccessMode == types.AccessModeReadWriteMany {
+		if volume.Spec.AccessMode == longhorn.AccessModeReadWriteMany {
 			log.Info("Removing share manager for deleted volume")
 			if err := vc.ds.DeleteShareManager(volume.Name); err != nil && !datastore.ErrorIsNotFound(err) {
 				return err
@@ -455,7 +445,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 }
 
 // handleConditionLastTransitionTime rollback to the existing condition object if condition's values hasn't changed
-func handleConditionLastTransitionTime(existingStatus, newStatus *types.VolumeStatus) {
+func handleConditionLastTransitionTime(existingStatus, newStatus *longhorn.VolumeStatus) {
 	for conditionType, condition := range newStatus.Conditions {
 		existingCondition, ok := existingStatus.Conditions[conditionType]
 		if ok &&
@@ -473,7 +463,7 @@ func (vc *VolumeController) EvictReplicas(v *longhorn.Volume,
 	log := getLoggerForVolume(vc.logger, v)
 
 	for _, replica := range rs {
-		if replica.Status.EvictionRequested == true &&
+		if replica.Status.EvictionRequested &&
 			healthyCount == v.Spec.NumberOfReplicas {
 			if err := vc.replenishReplicas(v, e, rs, ""); err != nil {
 				log.WithError(err).Error("Failed to create new replica for replica eviction")
@@ -495,7 +485,7 @@ func (vc *VolumeController) EvictReplicas(v *longhorn.Volume,
 func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to reconcile engine/replica state for %v", v.Name)
-		if v.Status.Robustness != types.VolumeRobustnessDegraded {
+		if v.Status.Robustness != longhorn.VolumeRobustnessDegraded {
 			v.Status.LastDegradedAt = ""
 		}
 	}()
@@ -503,14 +493,14 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		return nil
 	}
 
-	if e.Status.CurrentState == types.InstanceStateUnknown {
-		if v.Status.Robustness != types.VolumeRobustnessUnknown {
-			v.Status.Robustness = types.VolumeRobustnessUnknown
+	if e.Status.CurrentState == longhorn.InstanceStateUnknown {
+		if v.Status.Robustness != longhorn.VolumeRobustnessUnknown {
+			v.Status.Robustness = longhorn.VolumeRobustnessUnknown
 			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonUnknown, "volume %v robustness is unknown", v.Name)
 		}
 		return nil
 	}
-	if e.Status.CurrentState != types.InstanceStateRunning {
+	if e.Status.CurrentState != longhorn.InstanceStateRunning {
 		return nil
 	}
 
@@ -524,7 +514,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		replicaList = append(replicaList, r)
 	}
 
-	restoreStatusMap := map[string]*types.RestoreStatus{}
+	restoreStatusMap := map[string]*longhorn.RestoreStatus{}
 	for addr, status := range e.Status.RestoreStatus {
 		rName := datastore.ReplicaAddressToReplicaName(addr, replicaList)
 		if _, exists := rs[rName]; exists {
@@ -532,7 +522,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		}
 	}
 
-	purgeStatusMap := map[string]*types.PurgeStatus{}
+	purgeStatusMap := map[string]*longhorn.PurgeStatus{}
 	for addr, status := range e.Status.PurgeStatus {
 		rName := datastore.ReplicaAddressToReplicaName(addr, replicaList)
 		if _, exists := rs[rName]; exists {
@@ -550,7 +540,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		}
 		restoreStatus := restoreStatusMap[rName]
 		purgeStatus := purgeStatusMap[rName]
-		if mode == types.ReplicaModeERR ||
+		if mode == longhorn.ReplicaModeERR ||
 			(restoreStatus != nil && restoreStatus.Error != "") ||
 			(purgeStatus != nil && purgeStatus.Error != "") {
 			if restoreStatus != nil && restoreStatus.Error != "" {
@@ -564,8 +554,8 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 				e.Spec.LogRequested = true
 				r.Spec.LogRequested = true
 			}
-			r.Spec.DesireState = types.InstanceStateStopped
-		} else if mode == types.ReplicaModeRW {
+			r.Spec.DesireState = longhorn.InstanceStateStopped
+		} else if mode == longhorn.ReplicaModeRW {
 			// record once replica became healthy, so if it
 			// failed in the future, we can tell it apart
 			// from replica failed during rebuilding
@@ -580,11 +570,11 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 	// If a replica failed at attaching stage,
 	// there is no record in e.Status.ReplicaModeMap
 	for _, r := range rs {
-		if r.Spec.FailedAt == "" && r.Status.CurrentState == types.InstanceStateError {
+		if r.Spec.FailedAt == "" && r.Status.CurrentState == longhorn.InstanceStateError {
 			e.Spec.LogRequested = true
 			r.Spec.LogRequested = true
 			r.Spec.FailedAt = vc.nowHandler()
-			r.Spec.DesireState = types.InstanceStateStopped
+			r.Spec.DesireState = longhorn.InstanceStateStopped
 		}
 	}
 	oldRobustness := v.Status.Robustness
@@ -592,8 +582,8 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		// ReconcileVolumeState() will deal with the faulted case
 		return nil
 	} else if healthyCount >= v.Spec.NumberOfReplicas {
-		v.Status.Robustness = types.VolumeRobustnessHealthy
-		if oldRobustness == types.VolumeRobustnessDegraded {
+		v.Status.Robustness = longhorn.VolumeRobustnessHealthy
+		if oldRobustness == longhorn.VolumeRobustnessDegraded {
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonHealthy, "volume %v became healthy", v.Name)
 		}
 
@@ -604,7 +594,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 
 		// Migrate local replica when Data Locality is on
 		// We turn off data locality while doing auto-attaching or restoring (e.g. frontend is disabled)
-		if v.Status.State == types.VolumeStateAttached && !v.Status.FrontendDisabled &&
+		if v.Status.State == longhorn.VolumeStateAttached && !v.Status.FrontendDisabled &&
 			!isDataLocalityDisabled(v) && !hasLocalReplicaOnSameNodeAsEngine(e, rs) {
 			if err := vc.replenishReplicas(v, e, rs, e.Spec.NodeID); err != nil {
 				return err
@@ -615,15 +605,15 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 		if err != nil {
 			vc.logger.Warnf(err.Error())
 		}
-		if setting != types.ReplicaAutoBalanceDisabled {
+		if setting != longhorn.ReplicaAutoBalanceDisabled {
 			if err := vc.replenishReplicas(v, e, rs, ""); err != nil {
 				return err
 			}
 		}
 
 	} else { // healthyCount < v.Spec.NumberOfReplicas
-		v.Status.Robustness = types.VolumeRobustnessDegraded
-		if oldRobustness != types.VolumeRobustnessDegraded {
+		v.Status.Robustness = longhorn.VolumeRobustnessDegraded
+		if oldRobustness != longhorn.VolumeRobustnessDegraded {
 			v.Status.LastDegradedAt = vc.nowHandler()
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonDegraded, "volume %v became degraded", v.Name)
 		}
@@ -645,11 +635,11 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, e *l
 	}
 
 	for _, status := range e.Status.CloneStatus {
-		if status != nil && status.State == types.ProcessStateComplete && v.Status.CloneStatus.State != types.VolumeCloneStateCompleted {
-			v.Status.CloneStatus.State = types.VolumeCloneStateCompleted
+		if status != nil && status.State == engineapi.ProcessStateComplete && v.Status.CloneStatus.State != longhorn.VolumeCloneStateCompleted {
+			v.Status.CloneStatus.State = longhorn.VolumeCloneStateCompleted
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonVolumeCloneCompleted, "finished cloning snapshot %v from source volume %v", v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
-		} else if status != nil && status.State == types.ProcessStateError && v.Status.CloneStatus.State != types.VolumeCloneStateFailed {
-			v.Status.CloneStatus.State = types.VolumeCloneStateFailed
+		} else if status != nil && status.State == engineapi.ProcessStateError && v.Status.CloneStatus.State != longhorn.VolumeCloneStateFailed {
+			v.Status.CloneStatus.State = longhorn.VolumeCloneStateFailed
 			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonVolumeCloneFailed, "failed to clone snapshot %v from source volume %v: %v", v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume, status.Error)
 		}
 	}
@@ -679,7 +669,7 @@ func getFailedReplicaCount(rs map[string]*longhorn.Replica) int {
 
 func (vc *VolumeController) hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 	for _, r := range rs {
-		if r.Status.EvictionRequested == true {
+		if r.Status.EvictionRequested {
 			return true
 		}
 	}
@@ -830,12 +820,12 @@ func (vc *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *l
 	if err != nil {
 		log.Warnf(err.Error())
 	}
-	if setting == types.ReplicaAutoBalanceDisabled {
+	if setting == longhorn.ReplicaAutoBalanceDisabled {
 		return false, nil
 	}
 
 	var rNames []string
-	if setting == types.ReplicaAutoBalanceBestEffort {
+	if setting == longhorn.ReplicaAutoBalanceBestEffort {
 		_, rNames, _ = vc.getReplicaCountForAutoBalanceBestEffort(v, e, rs, vc.getReplicaCountForAutoBalanceNode)
 		if len(rNames) == 0 {
 			_, rNames, _ = vc.getReplicaCountForAutoBalanceBestEffort(v, e, rs, vc.getReplicaCountForAutoBalanceZone)
@@ -890,11 +880,11 @@ func (vc *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *l
 	return false, nil
 }
 
-func (vc *VolumeController) getAutoBalancedReplicasSetting(v *longhorn.Volume) (types.ReplicaAutoBalance, error) {
-	var setting types.ReplicaAutoBalance
+func (vc *VolumeController) getAutoBalancedReplicasSetting(v *longhorn.Volume) (longhorn.ReplicaAutoBalance, error) {
+	var setting longhorn.ReplicaAutoBalance
 
 	volumeSetting := v.Spec.ReplicaAutoBalance
-	if volumeSetting != types.ReplicaAutoBalanceIgnored {
+	if volumeSetting != longhorn.ReplicaAutoBalanceIgnored {
 		setting = volumeSetting
 	}
 
@@ -902,16 +892,16 @@ func (vc *VolumeController) getAutoBalancedReplicasSetting(v *longhorn.Volume) (
 	if setting == "" {
 		globalSetting, _ := vc.ds.GetSettingValueExisted(types.SettingNameReplicaAutoBalance)
 
-		if globalSetting == string(types.ReplicaAutoBalanceIgnored) {
-			globalSetting = string(types.ReplicaAutoBalanceDisabled)
+		if globalSetting == string(longhorn.ReplicaAutoBalanceIgnored) {
+			globalSetting = string(longhorn.ReplicaAutoBalanceDisabled)
 		}
 
-		setting = types.ReplicaAutoBalance(globalSetting)
+		setting = longhorn.ReplicaAutoBalance(globalSetting)
 	}
 
-	err = types.ValidateReplicaAutoBalance(types.ReplicaAutoBalance(setting))
+	err = types.ValidateReplicaAutoBalance(longhorn.ReplicaAutoBalance(setting))
 	if err != nil {
-		setting = types.ReplicaAutoBalanceDisabled
+		setting = longhorn.ReplicaAutoBalanceDisabled
 	}
 	return setting, errors.Wrapf(err, "replica auto-balance is disabled")
 }
@@ -953,7 +943,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		// `PendingNodeID != ""` means the engine dead unexpectedly.
 		// The volume will be detached by cleaning up `CurrentNodeID` then be reattached by `v.Status.CurrentNodeID = v.Status.PendingNodeID`.
 		// Hence this auto attachment logic shouldn't set `CurrentNodeID` in this case.
-		if v.Status.PendingNodeID == "" && v.Status.Robustness != types.VolumeRobustnessFaulted {
+		if v.Status.PendingNodeID == "" && v.Status.Robustness != longhorn.VolumeRobustnessFaulted {
 			v.Status.CurrentNodeID = v.Spec.NodeID
 		}
 	} else if v.Spec.NodeID != "" && v.Spec.NodeID != v.Status.CurrentNodeID {
@@ -1002,11 +992,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 	if len(e.Status.Snapshots) > VolumeSnapshotsWarningThreshold {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			types.VolumeConditionTypeTooManySnapshots, types.ConditionStatusTrue,
-			types.VolumeConditionReasonTooManySnapshots, fmt.Sprintf("Snapshots count is %v over the warning threshold %v", len(e.Status.Snapshots), VolumeSnapshotsWarningThreshold))
+			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusTrue,
+			longhorn.VolumeConditionReasonTooManySnapshots, fmt.Sprintf("Snapshots count is %v over the warning threshold %v", len(e.Status.Snapshots), VolumeSnapshotsWarningThreshold))
 	} else {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			types.VolumeConditionTypeTooManySnapshots, types.ConditionStatusFalse,
+			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusFalse,
 			"", "")
 	}
 
@@ -1043,13 +1033,13 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			if r.Spec.HardNodeAffinity == "" {
 				log.WithField("replica", r.Name).Error("unable to schedule replica")
 				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-					types.VolumeConditionTypeScheduled, types.ConditionStatusFalse,
-					types.VolumeConditionReasonReplicaSchedulingFailure, "")
+					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
+					longhorn.VolumeConditionReasonReplicaSchedulingFailure, "")
 			} else {
 				log.WithField("replica", r.Name).Errorf("unable to schedule replica of volume with HardNodeAffinity = %v", r.Spec.HardNodeAffinity)
 				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-					types.VolumeConditionTypeScheduled, types.ConditionStatusFalse,
-					types.VolumeConditionReasonLocalReplicaSchedulingFailure, "")
+					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
+					longhorn.VolumeConditionReasonLocalReplicaSchedulingFailure, "")
 			}
 			scheduled = false
 		} else {
@@ -1058,7 +1048,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	}
 	if scheduled {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			types.VolumeConditionTypeScheduled, types.ConditionStatusTrue, "", "")
+			longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusTrue, "", "")
 	} else if v.Status.CurrentNodeID == "" {
 		allowCreateDegraded, err := vc.ds.GetSettingAsBool(types.SettingNameAllowVolumeCreationWithDegradedAvailability)
 		if err != nil {
@@ -1074,7 +1064,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			}
 			if atLeastOneReplicaAvailable {
 				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-					types.VolumeConditionTypeScheduled, types.ConditionStatusTrue, "",
+					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusTrue, "",
 					"Reset schedulable due to allow volume creation with degraded availability")
 				scheduled = true
 			}
@@ -1107,7 +1097,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 	isAutoSalvageNeeded := getHealthyReplicaCount(rs) == 0 && getFailedReplicaCount(rs) > 0
 	if isAutoSalvageNeeded {
-		v.Status.Robustness = types.VolumeRobustnessFaulted
+		v.Status.Robustness = longhorn.VolumeRobustnessFaulted
 		v.Status.CurrentNodeID = ""
 
 		autoSalvage, err := vc.ds.GetSettingAsBool(types.SettingNameAutoSalvage)
@@ -1119,7 +1109,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		// More explanation: when all replicas fails, Longhorn tries to set `e.Spec.SalvageRequested=true`
 		// and try to detach the volume by setting `v.Status.CurrentNodeID = ""`.
 		// Because at the end of volume syncVolume(), Longhorn updates CRs in the order: replicas, engine, volume,
-		// when volume changes from v.Status.State == types.VolumeStateAttached to v.Status.State == types.VolumeStateDetached,
+		// when volume changes from v.Status.State == longhorn.VolumeStateAttached to v.Status.State == longhorn.VolumeStateDetached,
 		// we know that volume RS has been updated and therefore the engine RS also has been updated and persisted in ETCD.
 		// At this moment, Longhorn goes into the IF statement below this IF statement and salvage all replicas.
 		if autoSalvage && !v.Status.IsStandby && !v.Status.RestoreRequired {
@@ -1128,7 +1118,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			log.Infof("All replicas are failed, set engine salvageRequested to %v", e.Spec.SalvageRequested)
 		}
 		// make sure the volume is detached before automatically salvage replicas
-		if autoSalvage && v.Status.State == types.VolumeStateDetached && !v.Status.IsStandby && !v.Status.RestoreRequired {
+		if autoSalvage && v.Status.State == longhorn.VolumeStateDetached && !v.Status.IsStandby && !v.Status.RestoreRequired {
 			// There is no need to auto salvage (and reattach) a volume on an unavailable node
 			// If we return error we will loop forever, instead we can do auto salvage even if the volume should be detached
 			// since all auto salvage does is unset the failure state for the replicas
@@ -1166,7 +1156,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 					diskSchedulable := false
 					for _, diskStatus := range node.Status.DiskStatus {
 						if diskStatus.DiskUUID == r.Spec.DiskID {
-							if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status == types.ConditionStatusTrue {
+							if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status == longhorn.ConditionStatusTrue {
 								diskSchedulable = true
 								break
 							}
@@ -1210,14 +1200,14 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 						v.Status.RemountRequestedAt = vc.nowHandler()
 						msg := fmt.Sprintf("Volume %v requested remount at %v", v.Name, v.Status.RemountRequestedAt)
 						vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonRemount, msg)
-						v.Status.Robustness = types.VolumeRobustnessUnknown
+						v.Status.Robustness = longhorn.VolumeRobustnessUnknown
 					}
 				}
 			}
 		}
 	} else { // !isAutoSalvageNeeded
-		if v.Status.Robustness == types.VolumeRobustnessFaulted {
-			v.Status.Robustness = types.VolumeRobustnessUnknown
+		if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
+			v.Status.Robustness = longhorn.VolumeRobustnessUnknown
 			// The volume was faulty and there are usable replicas.
 			// Therefore, we set RemountRequestedAt so that KubernetesPodController restarts the workload pod
 			v.Status.RemountRequestedAt = vc.nowHandler()
@@ -1226,19 +1216,19 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 
 		// reattach volume if detached unexpected and there are still healthy replicas
-		if e.Status.CurrentState == types.InstanceStateError && v.Status.CurrentNodeID != "" {
+		if e.Status.CurrentState == longhorn.InstanceStateError && v.Status.CurrentNodeID != "" {
 			v.Status.PendingNodeID = v.Status.CurrentNodeID
 			log.Warn("Engine of volume dead unexpectedly, reattach the volume")
 			msg := fmt.Sprintf("Engine of volume %v dead unexpectedly, reattach the volume", v.Name)
 			vc.eventRecorder.Event(v, v1.EventTypeWarning, EventReasonDetachedUnexpectly, msg)
 			e.Spec.LogRequested = true
 			for _, r := range rs {
-				if r.Status.CurrentState == types.InstanceStateRunning {
+				if r.Status.CurrentState == longhorn.InstanceStateRunning {
 					r.Spec.LogRequested = true
 					rs[r.Name] = r
 				}
 			}
-			v.Status.Robustness = types.VolumeRobustnessFaulted
+			v.Status.Robustness = longhorn.VolumeRobustnessFaulted
 			v.Status.CurrentNodeID = ""
 		}
 	}
@@ -1247,20 +1237,20 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	if v.Status.CurrentNodeID == "" {
 		// the final state will be determined at the end of the clause
 		if newVolume {
-			v.Status.State = types.VolumeStateCreating
-		} else if v.Status.State != types.VolumeStateDetached {
-			v.Status.State = types.VolumeStateDetaching
+			v.Status.State = longhorn.VolumeStateCreating
+		} else if v.Status.State != longhorn.VolumeStateDetached {
+			v.Status.State = longhorn.VolumeStateDetaching
 		}
 
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			types.VolumeConditionTypeRestore, types.ConditionStatusFalse, "", "")
+			longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, "", "")
 
-		if v.Status.Robustness != types.VolumeRobustnessFaulted {
-			v.Status.Robustness = types.VolumeRobustnessUnknown
+		if v.Status.Robustness != longhorn.VolumeRobustnessFaulted {
+			v.Status.Robustness = longhorn.VolumeRobustnessUnknown
 		} else {
 			if v.Status.RestoreRequired || v.Status.IsStandby {
 				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-					types.VolumeConditionTypeRestore, types.ConditionStatusFalse, types.VolumeConditionReasonRestoreFailure, "All replica restore failed and the volume became Faulted")
+					longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, longhorn.VolumeConditionReasonRestoreFailure, "All replica restore failed and the volume became Faulted")
 			}
 		}
 
@@ -1277,13 +1267,13 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			for _, r := range rs {
 				if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" {
 					r.Spec.FailedAt = vc.nowHandler()
-					r.Spec.DesireState = types.InstanceStateStopped
+					r.Spec.DesireState = longhorn.InstanceStateStopped
 					rs[r.Name] = r
 				}
 			}
 		}
-		if e.Spec.DesireState != types.InstanceStateStopped || e.Spec.NodeID != "" {
-			if v.Status.Robustness == types.VolumeRobustnessFaulted {
+		if e.Spec.DesireState != longhorn.InstanceStateStopped || e.Spec.NodeID != "" {
+			if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 				e.Spec.LogRequested = true
 			}
 			// Prevent this field from being unset when restore/DR volumes crash unexpectedly.
@@ -1292,24 +1282,24 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			}
 			e.Spec.RequestedBackupRestore = ""
 			e.Spec.NodeID = ""
-			e.Spec.DesireState = types.InstanceStateStopped
+			e.Spec.DesireState = longhorn.InstanceStateStopped
 		}
 		// must make sure engine stopped first before stopping replicas
 		// otherwise we may corrupt the data
-		if e.Status.CurrentState != types.InstanceStateStopped {
+		if e.Status.CurrentState != longhorn.InstanceStateStopped {
 			return nil
 		}
 
 		allReplicasStopped := true
 		for _, r := range rs {
-			if r.Spec.DesireState != types.InstanceStateStopped {
-				if v.Status.Robustness == types.VolumeRobustnessFaulted {
+			if r.Spec.DesireState != longhorn.InstanceStateStopped {
+				if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 					r.Spec.LogRequested = true
 				}
-				r.Spec.DesireState = types.InstanceStateStopped
+				r.Spec.DesireState = longhorn.InstanceStateStopped
 				rs[r.Name] = r
 			}
-			if r.Status.CurrentState != types.InstanceStateStopped {
+			if r.Status.CurrentState != longhorn.InstanceStateStopped {
 				allReplicasStopped = false
 			}
 		}
@@ -1317,7 +1307,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			return nil
 		}
 
-		v.Status.State = types.VolumeStateDetached
+		v.Status.State = longhorn.VolumeStateDetached
 		if oldState != v.Status.State {
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonDetached, "volume %v has been detached", v.Name)
 		}
@@ -1340,15 +1330,15 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 	} else {
 		// wait for offline engine upgrade to finish
-		if v.Status.State == types.VolumeStateDetached && v.Status.CurrentImage != v.Spec.EngineImage {
+		if v.Status.State == longhorn.VolumeStateDetached && v.Status.CurrentImage != v.Spec.EngineImage {
 			log.Debug("Wait for offline volume upgrade to finish")
 			return nil
 		}
 		// if engine was running, then we are attached already
 		// (but we may still need to start rebuilding replicas)
-		if e.Status.CurrentState != types.InstanceStateRunning && e.Status.CurrentState != types.InstanceStateUnknown {
+		if e.Status.CurrentState != longhorn.InstanceStateRunning && e.Status.CurrentState != longhorn.InstanceStateUnknown {
 			// the final state will be determined at the end of the clause
-			v.Status.State = types.VolumeStateAttaching
+			v.Status.State = longhorn.VolumeStateAttaching
 			e.Spec.UpgradedReplicaAddressMap = map[string]string{}
 		}
 
@@ -1373,10 +1363,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				if r.Spec.FailedAt == "" {
 					r.Spec.FailedAt = vc.nowHandler()
 				}
-				r.Spec.DesireState = types.InstanceStateStopped
+				r.Spec.DesireState = longhorn.InstanceStateStopped
 			} else if r.Spec.FailedAt == "" && r.Spec.EngineImage == v.Status.CurrentImage {
-				if r.Status.CurrentState == types.InstanceStateStopped {
-					r.Spec.DesireState = types.InstanceStateRunning
+				if r.Status.CurrentState == longhorn.InstanceStateStopped {
+					r.Spec.DesireState = longhorn.InstanceStateRunning
 				}
 			}
 			rs[r.Name] = r
@@ -1396,11 +1386,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			if r.Spec.FailedAt != "" {
 				continue
 			}
-			if r.Status.CurrentState == types.InstanceStateError {
+			if r.Status.CurrentState == longhorn.InstanceStateError {
 				continue
 			}
 			// wait for all potentially healthy replicas become running
-			if r.Status.CurrentState != types.InstanceStateRunning {
+			if r.Status.CurrentState != longhorn.InstanceStateRunning {
 				return nil
 			}
 			if r.Status.IP == "" {
@@ -1426,18 +1416,18 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 		e.Spec.NodeID = v.Status.CurrentNodeID
 		e.Spec.ReplicaAddressMap = replicaAddressMap
-		e.Spec.DesireState = types.InstanceStateRunning
+		e.Spec.DesireState = longhorn.InstanceStateRunning
 		// The volume may be activated
 		e.Spec.DisableFrontend = v.Status.FrontendDisabled
 		e.Spec.Frontend = v.Spec.Frontend
 		// wait for engine to be up
-		if e.Status.CurrentState != types.InstanceStateRunning {
+		if e.Status.CurrentState != longhorn.InstanceStateRunning {
 			return nil
 		}
 
 		if e.Spec.RequestedBackupRestore != "" {
 			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-				types.VolumeConditionTypeRestore, types.ConditionStatusTrue, types.VolumeConditionReasonRestoreInProgress, "")
+				longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonRestoreInProgress, "")
 		}
 
 		// The engine expansion is complete
@@ -1447,7 +1437,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			e.Spec.DisableFrontend = false
 		}
 
-		v.Status.State = types.VolumeStateAttached
+		v.Status.State = longhorn.VolumeStateAttached
 		if oldState != v.Status.State {
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
 		}
@@ -1471,8 +1461,8 @@ func (vc *VolumeController) canInstanceManagerLaunchReplica(r *longhorn.Replica)
 	if err != nil {
 		return false, errors.Wrapf(err, "cannot find instance manager for replica %v", r.Name)
 	}
-	return defaultIM.Status.CurrentState == types.InstanceManagerStateRunning ||
-		defaultIM.Status.CurrentState == types.InstanceManagerStateStarting, nil
+	return defaultIM.Status.CurrentState == longhorn.InstanceManagerStateRunning ||
+		defaultIM.Status.CurrentState == longhorn.InstanceManagerStateStarting, nil
 }
 
 func (vc *VolumeController) getPreferredReplicaCandidatesForDeletion(rs map[string]*longhorn.Replica) ([]string, error) {
@@ -1532,7 +1522,7 @@ func findValueWithBiggestLength(m map[string][]string) []string {
 }
 
 func isDataLocalityDisabled(v *longhorn.Volume) bool {
-	return string(v.Spec.DataLocality) == "" || v.Spec.DataLocality == types.DataLocalityDisabled
+	return string(v.Spec.DataLocality) == "" || v.Spec.DataLocality == longhorn.DataLocalityDisabled
 }
 
 // hasLocalReplicaOnSameNodeAsEngine returns true if one of the following condition is satisfied:
@@ -1566,7 +1556,7 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		return nil
 	}
 
-	if (len(rs) != 0) && v.Status.State != types.VolumeStateAttached {
+	if (len(rs) != 0) && v.Status.State != longhorn.VolumeStateAttached {
 		return nil
 	}
 
@@ -1635,7 +1625,7 @@ func getRebuildingReplicaCount(e *longhorn.Engine) int {
 	// replicas are currently rebuilding
 	for replica, mode := range e.Status.ReplicaModeMap {
 		replicaExists[replica] = true
-		if mode == types.ReplicaModeWO {
+		if mode == longhorn.ReplicaModeWO {
 			rebuilding++
 		}
 	}
@@ -1652,7 +1642,7 @@ type replicaAutoBalanceCount func(*longhorn.Volume, *longhorn.Engine, map[string
 
 func (vc *VolumeController) getReplicaCountForAutoBalanceLeastEffort(v *longhorn.Volume, e *longhorn.Engine,
 	rs map[string]*longhorn.Replica, fnCount replicaAutoBalanceCount) int {
-	log := getLoggerForVolume(vc.logger, v).WithField("replicaAutoBalanceOption", types.ReplicaAutoBalanceLeastEffort)
+	log := getLoggerForVolume(vc.logger, v).WithField("replicaAutoBalanceOption", longhorn.ReplicaAutoBalanceLeastEffort)
 
 	var err error
 	defer func() {
@@ -1666,14 +1656,14 @@ func (vc *VolumeController) getReplicaCountForAutoBalanceLeastEffort(v *longhorn
 	// replica auto-balance to always try adjusting replica count with
 	// `least-effort` first to achieve minimal redundancy.
 	enabled := []string{
-		string(types.ReplicaAutoBalanceLeastEffort),
-		string(types.ReplicaAutoBalanceBestEffort),
+		string(longhorn.ReplicaAutoBalanceLeastEffort),
+		string(longhorn.ReplicaAutoBalanceBestEffort),
 	}
 	if err != nil || !util.Contains(enabled, string(setting)) {
 		return 0
 	}
 
-	if v.Status.Robustness != types.VolumeRobustnessHealthy {
+	if v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
 		log.Debugf("Cannot auto-balance volume in %s state", v.Status.Robustness)
 		return 0
 	}
@@ -1690,7 +1680,7 @@ func (vc *VolumeController) getReplicaCountForAutoBalanceLeastEffort(v *longhorn
 func (vc *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.Volume, e *longhorn.Engine,
 	rs map[string]*longhorn.Replica,
 	fnCount replicaAutoBalanceCount) (int, []string, []string) {
-	log := getLoggerForVolume(vc.logger, v).WithField("replicaAutoBalanceOption", types.ReplicaAutoBalanceBestEffort)
+	log := getLoggerForVolume(vc.logger, v).WithField("replicaAutoBalanceOption", longhorn.ReplicaAutoBalanceBestEffort)
 
 	var err error
 	defer func() {
@@ -1700,11 +1690,11 @@ func (vc *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.
 	}()
 
 	setting, err := vc.getAutoBalancedReplicasSetting(v)
-	if err != nil || setting != types.ReplicaAutoBalanceBestEffort {
+	if err != nil || setting != longhorn.ReplicaAutoBalanceBestEffort {
 		return 0, nil, []string{}
 	}
 
-	if v.Status.Robustness != types.VolumeRobustnessHealthy {
+	if v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
 		log.Debugf("Cannot auto-balance volume in %s state", v.Status.Robustness)
 		return 0, nil, []string{}
 	}
@@ -1769,7 +1759,7 @@ func (vc *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume
 		}
 	}
 	for _, r := range rs {
-		if r.Status.CurrentState != types.InstanceStateRunning {
+		if r.Status.CurrentState != longhorn.InstanceStateRunning {
 			continue
 		}
 
@@ -1859,7 +1849,7 @@ func (vc *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume
 	}
 	nodeExtraRs := make(map[string][]string)
 	for _, r := range rs {
-		if r.Status.CurrentState != types.InstanceStateRunning {
+		if r.Status.CurrentState != longhorn.InstanceStateRunning {
 			continue
 		}
 
@@ -2018,7 +2008,7 @@ func (vc *VolumeController) getIsSchedulableToDiskNodes(v *longhorn.Volume, node
 				continue
 			}
 
-			if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status != types.ConditionStatusTrue {
+			if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
 				continue
 			}
 
@@ -2042,7 +2032,7 @@ func (vc *VolumeController) getIsSchedulableToDiskNodes(v *longhorn.Volume, node
 func (vc *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, zones []string) (candidateNames []string) {
 	log := getLoggerForVolume(vc.logger, v).WithFields(
 		logrus.Fields{
-			"replicaAutoBalanceOption": types.ReplicaAutoBalanceBestEffort,
+			"replicaAutoBalanceOption": longhorn.ReplicaAutoBalanceBestEffort,
 			"replicaAutoBalanceType":   "zone",
 		},
 	)
@@ -2058,7 +2048,7 @@ func (vc *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volu
 		return candidateNames
 	}
 
-	if v.Status.Robustness != types.VolumeRobustnessHealthy {
+	if v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
 		log.Debugf("Cannot auto-balance volume in %s state", v.Status.Robustness)
 		return candidateNames
 	}
@@ -2128,7 +2118,7 @@ func (vc *VolumeController) hasEngineStatusSynced(e *longhorn.Engine, rs map[str
 		if !exists {
 			return false
 		}
-		if mode == types.ReplicaModeERR {
+		if mode == longhorn.ReplicaModeERR {
 			return false
 		}
 	}
@@ -2149,7 +2139,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 
 	// If volume is detached accidentally during the live upgrade,
 	// the live upgrade info and the inactive replicas are meaningless.
-	if v.Status.State == types.VolumeStateDetached {
+	if v.Status.State == longhorn.VolumeStateDetached {
 		if e.Spec.EngineImage != v.Spec.EngineImage {
 			e.Spec.EngineImage = v.Spec.EngineImage
 			e.Spec.UpgradedReplicaAddressMap = map[string]string{}
@@ -2172,7 +2162,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 	}
 
 	// only start live upgrade if volume is healthy
-	if v.Status.State != types.VolumeStateAttached || v.Status.Robustness != types.VolumeRobustnessHealthy {
+	if v.Status.State != longhorn.VolumeStateAttached || v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
 		return nil
 	}
 
@@ -2222,7 +2212,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 	dataPathToNewReplica := map[string]*longhorn.Replica{}
 	for _, r := range rs {
 		dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
-		if r.Spec.EngineImage == v.Status.CurrentImage && r.Status.CurrentState == types.InstanceStateRunning && r.Spec.HealthyAt != "" {
+		if r.Spec.EngineImage == v.Status.CurrentImage && r.Status.CurrentState == longhorn.InstanceStateRunning && r.Spec.HealthyAt != "" {
 			dataPathToOldRunningReplica[dataPath] = r
 		} else if r.Spec.EngineImage == v.Spec.EngineImage {
 			dataPathToNewReplica[dataPath] = r
@@ -2247,7 +2237,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		replicaAddressMap := map[string]string{}
 		for _, r := range dataPathToNewReplica {
 			// wait for all potentially healthy replicas become running
-			if r.Status.CurrentState != types.InstanceStateRunning {
+			if r.Status.CurrentState != longhorn.InstanceStateRunning {
 				return nil
 			}
 			if r.Status.IP == "" {
@@ -2275,7 +2265,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, e *longho
 		}
 	}
 	if e.Status.CurrentImage != v.Spec.EngineImage ||
-		e.Status.CurrentState != types.InstanceStateRunning {
+		e.Status.CurrentState != longhorn.InstanceStateRunning {
 		return nil
 	}
 
@@ -2349,7 +2339,7 @@ func (vc *VolumeController) checkAndInitVolumeRestore(v *longhorn.Volume) error 
 	v.Status.ActualSize = size
 
 	// If KubernetesStatus is set on Backup, restore it.
-	kubeStatus := &types.KubernetesStatus{}
+	kubeStatus := &longhorn.KubernetesStatus{}
 	if statusJSON, ok := backup.Status.Labels[types.KubernetesStatusLabel]; ok {
 		if err := json.Unmarshal([]byte(statusJSON), kubeStatus); err != nil {
 			log.WithError(err).Warnf("Ignore KubernetesStatus JSON for backup %v", backup.Name)
@@ -2387,8 +2377,8 @@ func (vc *VolumeController) updateRequestedDataSourceForVolumeCloning(v *longhor
 	if e == nil {
 		return nil
 	}
-	if isTargetVolumeOfCloning(v) && v.Status.CloneStatus.State == types.VolumeCloneStateInitiated {
-		ds, err := types.NewVolumeDataSource(types.VolumeDataSourceTypeSnapshot, map[string]string{
+	if isTargetVolumeOfCloning(v) && v.Status.CloneStatus.State == longhorn.VolumeCloneStateInitiated {
+		ds, err := types.NewVolumeDataSource(longhorn.VolumeDataSourceTypeSnapshot, map[string]string{
 			types.VolumeNameKey:   v.Status.CloneStatus.SourceVolume,
 			types.SnapshotNameKey: v.Status.CloneStatus.Snapshot,
 		})
@@ -2408,23 +2398,23 @@ func (vc *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume) (err err
 	}()
 
 	dataSource := v.Spec.DataSource
-	if !dataSource.IsDataFromVolume() || v.Status.CloneStatus.State != types.VolumeCloneStateEmpty {
+	if !types.IsDataFromVolume(dataSource) || v.Status.CloneStatus.State != longhorn.VolumeCloneStateEmpty {
 		return nil
 	}
 
-	sourceVolName := dataSource.GetVolumeName()
-	snapshotName := dataSource.GetSnapshotName()
+	sourceVolName := types.GetVolumeName(dataSource)
+	snapshotName := types.GetSnapshotName(dataSource)
 	sourceVol, err := vc.ds.GetVolume(sourceVolName)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			v.Status.CloneStatus.State = types.VolumeCloneStateFailed
+			v.Status.CloneStatus.State = longhorn.VolumeCloneStateFailed
 			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonVolumeCloneFailed, "cannot find the source volume %v", sourceVolName)
 			return nil
 		}
 		return err
 	}
 	// Wait for the source volume to be attach
-	if sourceVol.Status.State != types.VolumeStateAttached {
+	if sourceVol.Status.State != longhorn.VolumeStateAttached {
 		return nil
 	}
 	if snapshotName == "" {
@@ -2440,7 +2430,7 @@ func (vc *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume) (err err
 	// persit in the volume spec before continue
 	v.Status.CloneStatus.SourceVolume = sourceVolName
 	v.Status.CloneStatus.Snapshot = snapshotName
-	v.Status.CloneStatus.State = types.VolumeCloneStateInitiated
+	v.Status.CloneStatus.State = longhorn.VolumeCloneStateInitiated
 	vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonVolumeCloneInitiated, "source volume %v, snapshot %v", sourceVolName, snapshotName)
 
 	return nil
@@ -2448,9 +2438,9 @@ func (vc *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume) (err err
 
 // isTargetVolumeOfCloning checks if the input volume is the target volume of an on-going cloning process
 func isTargetVolumeOfCloning(v *longhorn.Volume) bool {
-	isCloningDesired := v.Spec.DataSource.IsDataFromVolume()
-	isCloningDone := v.Status.CloneStatus.State == types.VolumeCloneStateCompleted ||
-		v.Status.CloneStatus.State == types.VolumeCloneStateFailed
+	isCloningDesired := types.IsDataFromVolume(v.Spec.DataSource)
+	isCloningDone := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted ||
+		v.Status.CloneStatus.State == longhorn.VolumeCloneStateFailed
 	return isCloningDesired && !isCloningDone
 }
 
@@ -2461,7 +2451,7 @@ func (vc *VolumeController) isSourceVolumeOfCloning(v *longhorn.Volume) (bool, e
 		return false, err
 	}
 	for _, vol := range vols {
-		if isTargetVolumeOfCloning(vol) && vol.Spec.DataSource.GetVolumeName() == v.Name {
+		if isTargetVolumeOfCloning(vol) && types.GetVolumeName(vol.Spec.DataSource) == v.Name {
 			return true, nil
 		}
 	}
@@ -2504,7 +2494,7 @@ func (vc *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longho
 	if v.Spec.NodeID != "" || v.Status.CurrentNodeID != "" {
 		return nil
 	}
-	if !(v.Status.State == "" || v.Status.State == types.VolumeStateDetached) {
+	if !(v.Status.State == "" || v.Status.State == longhorn.VolumeStateDetached) {
 		return nil
 	}
 	// Do not intervene the auto reattachment workflow during the engine crashing and volume recovery.
@@ -2628,13 +2618,13 @@ func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longho
 		} else if isDownOrDeleted {
 			continue
 		}
-		if mode := e.Status.ReplicaModeMap[r.Name]; mode != types.ReplicaModeRW {
+		if mode := e.Status.ReplicaModeMap[r.Name]; mode != longhorn.ReplicaModeRW {
 			allScheduledReplicasIncluded = false
 			break
 		}
 	}
-	if (cliAPIVersion >= engineapi.CLIVersionFour && !isPurging && (v.Status.Robustness == types.VolumeRobustnessHealthy || v.Status.Robustness == types.VolumeRobustnessDegraded) && allScheduledReplicasIncluded) ||
-		(cliAPIVersion < engineapi.CLIVersionFour && (v.Status.Robustness == types.VolumeRobustnessHealthy || v.Status.Robustness == types.VolumeRobustnessDegraded)) {
+	if (cliAPIVersion >= engineapi.CLIVersionFour && !isPurging && (v.Status.Robustness == longhorn.VolumeRobustnessHealthy || v.Status.Robustness == longhorn.VolumeRobustnessDegraded) && allScheduledReplicasIncluded) ||
+		(cliAPIVersion < engineapi.CLIVersionFour && (v.Status.Robustness == longhorn.VolumeRobustnessHealthy || v.Status.Robustness == longhorn.VolumeRobustnessDegraded)) {
 		log.Info("Prepare to do auto detachment for restore/DR volume")
 		v.Status.CurrentNodeID = ""
 		v.Status.IsStandby = false
@@ -2661,12 +2651,12 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 			Name:            types.GenerateEngineNameForVolume(v.Name),
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
-		Spec: types.EngineSpec{
-			InstanceSpec: types.InstanceSpec{
+		Spec: longhorn.EngineSpec{
+			InstanceSpec: longhorn.InstanceSpec{
 				VolumeName:  v.Name,
 				VolumeSize:  v.Spec.Size,
 				EngineImage: v.Status.CurrentImage,
-				DesireState: types.InstanceStateStopped,
+				DesireState: longhorn.InstanceStateStopped,
 			},
 			Frontend:                  v.Spec.Frontend,
 			ReplicaAddressMap:         map[string]string{},
@@ -2675,7 +2665,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume) (*longhorn.Engine, 
 		},
 	}
 
-	if v.Spec.FromBackup != "" {
+	if v.Spec.FromBackup != "" && v.Status.RestoreRequired {
 		backupVolumeName, backupName, err := vc.getInfoFromBackupURL(v)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get backup volume when creating engine object of restored volume %v", v.Name)
@@ -2698,12 +2688,12 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 			Name:            types.GenerateReplicaNameForVolume(v.Name),
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
-		Spec: types.ReplicaSpec{
-			InstanceSpec: types.InstanceSpec{
+		Spec: longhorn.ReplicaSpec{
+			InstanceSpec: longhorn.InstanceSpec{
 				VolumeName:  v.Name,
 				VolumeSize:  v.Spec.Size,
 				EngineImage: v.Status.CurrentImage,
-				DesireState: types.InstanceStateStopped,
+				DesireState: longhorn.InstanceStateStopped,
 			},
 			EngineName:              e.Name,
 			Active:                  true,
@@ -2821,8 +2811,8 @@ func (vc *VolumeController) getEngineImage(image string) (*longhorn.EngineImage,
 func (vc *VolumeController) getCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.Engine) (currentEngine *longhorn.Engine, otherEngines []*longhorn.Engine, err error) {
 	for _, e := range es {
 		if e.Spec.NodeID == v.Status.CurrentNodeID &&
-			e.Spec.DesireState == types.InstanceStateRunning &&
-			e.Status.CurrentState == types.InstanceStateRunning {
+			e.Spec.DesireState == longhorn.InstanceStateRunning &&
+			e.Status.CurrentState == longhorn.InstanceStateRunning {
 			currentEngine = e
 		} else {
 			otherEngines = append(otherEngines, e)
@@ -2861,7 +2851,7 @@ func (vc *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 			continue
 		}
 		clone := vc.duplicateReplica(r, v)
-		clone.Spec.DesireState = types.InstanceStateRunning
+		clone.Spec.DesireState = longhorn.InstanceStateRunning
 		clone.Spec.Active = false
 		fixupFunc(clone, obj)
 		newReplica, err := vc.ds.CreateReplica(clone)
@@ -2891,9 +2881,11 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		err = errors.Wrapf(err, "fail to process migration for %v", v.Name)
 	}()
 
-	if !v.Spec.Migratable || v.Spec.AccessMode != types.AccessModeReadWriteMany {
+	if !v.Spec.Migratable || v.Spec.AccessMode != longhorn.AccessModeReadWriteMany {
 		return nil
 	}
+
+	log := getLoggerForVolume(vc.logger, v).WithField("migrationNodeID", v.Spec.MigrationNodeID)
 
 	// only process if volume is attached
 	if v.Spec.NodeID == "" || len(es) == 0 {
@@ -2915,7 +2907,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		// in the case of a confirmation we need to switch the v.Status.CurrentNodeID to v.Spec.NodeID
 		// so that currentEngine becomes the migration engine
 		if v.Status.CurrentNodeID != v.Spec.NodeID {
-			vc.logger.Infof("volume migration complete switching current node id from %v to %v", v.Status.CurrentNodeID, v.Spec.NodeID)
+			log.Infof("volume migration complete switching current node id from %v to %v", v.Status.CurrentNodeID, v.Spec.NodeID)
 			v.Status.CurrentNodeID = v.Spec.NodeID
 		}
 
@@ -2976,6 +2968,8 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		es[migrationEngine.Name] = migrationEngine
 	}
 
+	log = log.WithField("migrationEngine", migrationEngine.Name)
+
 	currentAvailableReplicas := map[string]*longhorn.Replica{}
 	migrationReplicas := map[string]*longhorn.Replica{}
 	unknownReplicas := map[string]*longhorn.Replica{}
@@ -2989,18 +2983,18 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		}
 		dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
 		if r.Spec.EngineName == currentEngine.Name {
-			if currentEngine.Status.ReplicaModeMap[r.Name] == types.ReplicaModeWO {
-				logrus.Debugf("Cannot start migration since the current replica %v is mode WriteOnly, which means the rebuilding is in progress", r.Name)
+			if currentEngine.Status.ReplicaModeMap[r.Name] == longhorn.ReplicaModeWO {
+				log.Debugf("Cannot start migration since the current replica %v is mode WriteOnly, which means the rebuilding is in progress", r.Name)
 				return nil
 			}
-			if currentEngine.Status.ReplicaModeMap[r.Name] != types.ReplicaModeRW {
+			if currentEngine.Status.ReplicaModeMap[r.Name] != longhorn.ReplicaModeRW {
 				return fmt.Errorf("unexpected mode %v for the current replica %v, cannot continue migration", currentEngine.Status.ReplicaModeMap[r.Name], r.Name)
 			}
 			currentAvailableReplicas[dataPath] = r
 		} else if r.Spec.EngineName == migrationEngine.Name {
 			migrationReplicas[dataPath] = r
 		} else {
-			vc.logger.Warnf("During migration found unknown replica with engine %v", r.Spec.EngineName)
+			log.Warnf("During migration found unknown replica with engine %v", r.Spec.EngineName)
 			unknownReplicas[dataPath] = r
 		}
 	}
@@ -3011,19 +3005,19 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		return err
 	}
 
-	if migrationEngine.Spec.DesireState != types.InstanceStateRunning {
+	if migrationEngine.Spec.DesireState != longhorn.InstanceStateRunning {
 		replicaAddressMap := map[string]string{}
 		for _, r := range migrationReplicas {
 			// wait for all potentially available replicas become running
-			if r.Status.CurrentState != types.InstanceStateRunning {
+			if r.Status.CurrentState != longhorn.InstanceStateRunning {
 				return nil
 			}
 			if r.Status.IP == "" {
-				vc.logger.Errorf("BUG: replica %v is running but IP is empty", r.Name)
+				log.Errorf("BUG: replica %v is running but IP is empty", r.Name)
 				continue
 			}
 			if r.Status.Port == 0 {
-				vc.logger.Errorf("BUG: replica %v is running but Port is empty", r.Name)
+				log.Errorf("BUG: replica %v is running but Port is empty", r.Name)
 				continue
 			}
 			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
@@ -3037,15 +3031,15 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		}
 		migrationEngine.Spec.NodeID = v.Spec.MigrationNodeID
 		migrationEngine.Spec.ReplicaAddressMap = replicaAddressMap
-		migrationEngine.Spec.DesireState = types.InstanceStateRunning
+		migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
 		es[migrationEngine.Name] = migrationEngine
 	}
 
-	if migrationEngine.Status.CurrentState != types.InstanceStateRunning {
+	if migrationEngine.Status.CurrentState != longhorn.InstanceStateRunning {
 		return nil
 	}
 
-	vc.logger.Infof("volume migration engine on node %v is ready", v.Spec.MigrationNodeID)
+	log.Info("volume migration engine is ready")
 	return nil
 }
 
@@ -3077,7 +3071,7 @@ func (vc *VolumeController) IsReplicaUnavailable(r *longhorn.Replica) (bool, err
 		if diskStatus.DiskUUID != r.Spec.DiskID {
 			continue
 		}
-		if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeReady).Status != types.ConditionStatusTrue {
+		if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status != longhorn.ConditionStatusTrue {
 			return true, nil
 		}
 	}
@@ -3184,7 +3178,7 @@ func (vc *VolumeController) ReconcileShareManagerState(volume *longhorn.Volume) 
 		return err
 	}
 
-	if volume.Spec.AccessMode != types.AccessModeReadWriteMany || volume.Spec.Migratable {
+	if volume.Spec.AccessMode != longhorn.AccessModeReadWriteMany || volume.Spec.Migratable {
 		if sm != nil {
 			log.Info("Removing share manager for non shared volume")
 			if err := vc.ds.DeleteShareManager(volume.Name); err != nil && !datastore.ErrorIsNotFound(err) {
@@ -3221,7 +3215,7 @@ func (vc *VolumeController) ReconcileShareManagerState(volume *longhorn.Volume) 
 	// kill the workload pods, when the share manager goes into error state
 	// easiest approach is to set the RemountRequestedAt variable,
 	// since that is already responsible for killing the workload pods
-	if sm.Status.State == types.ShareManagerStateError || sm.Status.State == types.ShareManagerStateUnknown {
+	if sm.Status.State == longhorn.ShareManagerStateError || sm.Status.State == longhorn.ShareManagerStateUnknown {
 		volume.Status.RemountRequestedAt = vc.nowHandler()
 		msg := fmt.Sprintf("Volume %v requested remount at %v", volume.Name, volume.Status.RemountRequestedAt)
 		vc.eventRecorder.Eventf(volume, v1.EventTypeNormal, EventReasonRemount, msg)
@@ -3241,7 +3235,7 @@ func (vc *VolumeController) createShareManagerForVolume(volume *longhorn.Volume,
 			Labels:          types.GetShareManagerLabels(volume.Name, image),
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(volume),
 		},
-		Spec: types.ShareManagerSpec{
+		Spec: longhorn.ShareManagerSpec{
 			Image: image,
 		},
 	}
@@ -3355,7 +3349,7 @@ func (vc *VolumeController) ReconcileBackupVolumeState(volume *longhorn.Volume) 
 // TODO: this block of code is duplicated of CreateSnapshot in MANAGER package.
 // Once we have Snapshot CR, we should refactor this
 
-func (vc *VolumeController) createSnapshot(snapshotName string, labels map[string]string, volume *longhorn.Volume) (*types.Snapshot, error) {
+func (vc *VolumeController) createSnapshot(snapshotName string, labels map[string]string, volume *longhorn.Volume) (*longhorn.Snapshot, error) {
 	if volume.Name == "" {
 		return nil, fmt.Errorf("volume name required")
 	}
@@ -3408,7 +3402,7 @@ func (vc *VolumeController) getEngineClient(volumeName string) (client engineapi
 	for _, e = range es {
 		break
 	}
-	if e.Status.CurrentState != types.InstanceStateRunning {
+	if e.Status.CurrentState != longhorn.InstanceStateRunning {
 		return nil, fmt.Errorf("engine is not running")
 	}
 	if isReady, err := vc.ds.CheckEngineImageReadiness(e.Status.CurrentImage, vc.controllerID); !isReady {

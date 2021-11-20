@@ -69,7 +69,10 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 		v := &longhorn.Volume{}
 
 		copyObjectMetaFromV1alpha1(&v.ObjectMeta, &old.ObjectMeta)
-		copier.Copy(&v.Spec, &old.Spec)
+		err = copier.Copy(&v.Spec, &old.Spec)
+		if err != nil {
+			return err
+		}
 		v, err = lhClient.LonghornV1beta1().Volumes(namespace).Create(context.TODO(), v, metav1.CreateOptions{})
 		if err != nil {
 			if !apierrors.IsAlreadyExists(err) {
@@ -82,7 +85,10 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 			}
 		}
 
-		copier.Copy(&v.Status, &old.Status)
+		err = copier.Copy(&v.Status, &old.Status)
+		if err != nil {
+			return err
+		}
 		v.Status.OwnerID = old.Spec.OwnerID
 		// The volume cannot be in the intermediate state, e.g. restoring
 		v.Status.CurrentNodeID = old.Spec.NodeID
@@ -117,7 +123,10 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 				e.ObjectMeta.OwnerReferences = datastore.GetOwnerReferencesForVolume(volumeMap[name])
 			}
 		}
-		copier.Copy(&e.Spec, &old.Spec)
+		err = copier.Copy(&e.Spec, &old.Spec)
+		if err != nil {
+			return err
+		}
 		e, err = lhClient.LonghornV1beta1().Engines(namespace).Create(context.TODO(), e, metav1.CreateOptions{})
 		if err != nil {
 			if !apierrors.IsAlreadyExists(err) {
@@ -171,7 +180,10 @@ func UpgradeFromV1alpha1ToV1beta1(config *restclient.Config, namespace string, l
 			}
 		}
 
-		copier.Copy(&new.Status, &old.Status)
+		err = copier.Copy(&new.Status, &old.Status)
+		if err != nil {
+			return err
+		}
 		new.Status.OwnerID = old.Spec.OwnerID
 		new.Status.LogFetched = old.Spec.LogRequested
 		_, err = lhClient.LonghornV1beta1().Replicas(namespace).UpdateStatus(context.TODO(), new, metav1.UpdateOptions{})

@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	"github.com/longhorn/longhorn-manager/types"
 )
 
@@ -145,10 +146,10 @@ func makeInstanceManagerLabelSelector(nodeID string) string {
 
 func getInstanceManagerTypeFromInstanceManagerName(imName string) string {
 	switch {
-	case strings.Contains(imName, types.GetInstanceManagerPrefix(types.InstanceManagerTypeEngine)):
-		return string(types.InstanceManagerTypeEngine)
-	case strings.Contains(imName, types.GetInstanceManagerPrefix(types.InstanceManagerTypeReplica)):
-		return string(types.InstanceManagerTypeReplica)
+	case strings.Contains(imName, types.GetInstanceManagerPrefix(longhorn.InstanceManagerTypeEngine)):
+		return string(longhorn.InstanceManagerTypeEngine)
+	case strings.Contains(imName, types.GetInstanceManagerPrefix(longhorn.InstanceManagerTypeReplica)):
+		return string(longhorn.InstanceManagerTypeReplica)
 	default:
 		return ""
 	}
@@ -161,7 +162,7 @@ func (imc *InstanceManagerCollector) collectRequestValues(ch chan<- prometheus.M
 		}
 	}()
 
-	podList, err := imc.ds.ListPodsRO()
+	podList, err := imc.ds.ListPodsRO(imc.namespace)
 	if err != nil {
 		imc.logger.WithError(err).Warn("error during scrape")
 		return

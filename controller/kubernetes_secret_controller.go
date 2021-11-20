@@ -14,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -41,14 +40,13 @@ type KubernetesSecretController struct {
 
 	ds *datastore.DataStore
 
-	secretSynced cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 }
 
 func NewKubernetesSecretController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	secretInformer coreinformers.SecretInformer,
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string) *KubernetesSecretController {
@@ -69,11 +67,9 @@ func NewKubernetesSecretController(
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-kubernetes-secret-controller"}),
-
-		secretSynced: secretInformer.Informer().HasSynced,
 	}
 
-	secretInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.SecretInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: ks.enqueueSecretChange,
 		UpdateFunc: func(old, cur interface{}) {
 			oldSecret := old.(*v1.Secret)
@@ -88,6 +84,7 @@ func NewKubernetesSecretController(
 		},
 		DeleteFunc: ks.enqueueSecretChange,
 	})
+	ks.cacheSyncs = append(ks.cacheSyncs, ds.SecretInformer.HasSynced)
 
 	return ks
 }
@@ -99,7 +96,7 @@ func (ks *KubernetesSecretController) Run(workers int, stopCh <-chan struct{}) {
 	ks.logger.Info("Start Longhorn Kubernetes secret controller")
 	defer ks.logger.Info("Shutting down Longhorn Kubernetes secret controller")
 
-	if !cache.WaitForNamedCacheSync(ks.name, stopCh, ks.secretSynced) {
+	if !cache.WaitForNamedCacheSync(ks.name, stopCh, ks.cacheSyncs...) {
 		return
 	}
 	for i := 0; i < workers; i++ {
@@ -213,7 +210,7 @@ func (ks *KubernetesSecretController) annotateAWSIAMRoleArn(awsIAMRoleArn string
 		return err
 	}
 
-	imPods, err := ks.ds.ListInstanceManagerPodsBy(ks.controllerID, "", types.InstanceManagerTypeReplica)
+	imPods, err := ks.ds.ListInstanceManagerPodsBy(ks.controllerID, "", longhorn.InstanceManagerTypeReplica)
 	if err != nil {
 		return err
 	}
@@ -255,7 +252,7 @@ func (ks *KubernetesSecretController) triggerSyncBackupTarget(backupTarget *long
 		return nil
 	}
 
-	backupTarget.Spec.SyncRequestedAt = time.Now().UTC()
+	backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
 	if _, err := ks.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 		ks.logger.WithError(err).Warn("Failed to updating backup target")
 	}

@@ -25,8 +25,6 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
-	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
-	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -34,7 +32,6 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 var (
@@ -59,11 +56,7 @@ type ReplicaController struct {
 
 	ds *datastore.DataStore
 
-	nStoreSynced  cache.InformerSynced
-	rStoreSynced  cache.InformerSynced
-	imStoreSynced cache.InformerSynced
-	biStoreSynced cache.InformerSynced
-	sStoreSynced  cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 
 	instanceHandler *InstanceHandler
 
@@ -75,11 +68,6 @@ func NewReplicaController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	nodeInformer lhinformers.NodeInformer,
-	replicaInformer lhinformers.ReplicaInformer,
-	instanceManagerInformer lhinformers.InstanceManagerInformer,
-	backingImageInformer lhinformers.BackingImageInformer,
-	settingInformer lhinformers.SettingInformer,
 	kubeClient clientset.Interface,
 	namespace string, controllerID string) *ReplicaController {
 
@@ -101,16 +89,10 @@ func NewReplicaController(
 
 		rebuildingLock:          &sync.Mutex{},
 		inProgressRebuildingMap: map[string]struct{}{},
-
-		nStoreSynced:  nodeInformer.Informer().HasSynced,
-		rStoreSynced:  replicaInformer.Informer().HasSynced,
-		imStoreSynced: instanceManagerInformer.Informer().HasSynced,
-		biStoreSynced: backingImageInformer.Informer().HasSynced,
-		sStoreSynced:  settingInformer.Informer().HasSynced,
 	}
 	rc.instanceHandler = NewInstanceHandler(ds, rc, rc.eventRecorder)
 
-	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.ReplicaInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: rc.enqueueReplica,
 		UpdateFunc: func(old, cur interface{}) {
 			rc.enqueueReplica(cur)
@@ -123,28 +105,33 @@ func NewReplicaController(
 		},
 		DeleteFunc: rc.enqueueReplica,
 	})
+	rc.cacheSyncs = append(rc.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
-	instanceManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.InstanceManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueInstanceManagerChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueInstanceManagerChange(cur) },
 		DeleteFunc: rc.enqueueInstanceManagerChange,
 	})
+	rc.cacheSyncs = append(rc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.NodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueNodeChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueNodeChange(cur) },
 		DeleteFunc: rc.enqueueNodeChange,
 	})
+	rc.cacheSyncs = append(rc.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	backingImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.BackingImageInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueBackingImageChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueBackingImageChange(cur) },
 		DeleteFunc: rc.enqueueBackingImageChange,
 	})
+	rc.cacheSyncs = append(rc.cacheSyncs, ds.BackingImageInformer.HasSynced)
 
-	settingInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.SettingInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueSettingChange(cur) },
 	})
+	rc.cacheSyncs = append(rc.cacheSyncs, ds.SettingInformer.HasSynced)
 
 	return rc
 }
@@ -156,7 +143,7 @@ func (rc *ReplicaController) Run(workers int, stopCh <-chan struct{}) {
 	rc.logger.Info("Start Longhorn replica controller")
 	defer rc.logger.Info("Shutting down Longhorn replica controller")
 
-	if !cache.WaitForNamedCacheSync("longhorn replicas", stopCh, rc.nStoreSynced, rc.rStoreSynced, rc.imStoreSynced, rc.biStoreSynced, rc.sStoreSynced) {
+	if !cache.WaitForNamedCacheSync("longhorn replicas", stopCh, rc.cacheSyncs...) {
 		return
 	}
 
@@ -238,7 +225,7 @@ func (rc *ReplicaController) isEvictionRequested(replica *longhorn.Replica) bool
 	}
 
 	// Check if node has been request eviction.
-	if node.Spec.EvictionRequested == true {
+	if node.Spec.EvictionRequested {
 		return true
 	}
 
@@ -263,19 +250,18 @@ func (rc *ReplicaController) UpdateReplicaEvictionStatus(replica *longhorn.Repli
 
 	// Check if eviction has been requested on this replica
 	if rc.isEvictionRequested(replica) &&
-		(replica.Status.EvictionRequested == false) {
+		!replica.Status.EvictionRequested {
 		replica.Status.EvictionRequested = true
 		log.Debug("Replica has requested eviction")
 	}
 
 	// Check if eviction has been cancelled on this replica
 	if !rc.isEvictionRequested(replica) &&
-		(replica.Status.EvictionRequested == true) {
+		replica.Status.EvictionRequested {
 		replica.Status.EvictionRequested = false
 		log.Debug("Replica has cancelled eviction")
 	}
 
-	return
 }
 
 func (rc *ReplicaController) syncReplica(key string) (err error) {
@@ -377,19 +363,7 @@ func (rc *ReplicaController) enqueueReplica(obj interface{}) {
 	rc.queue.AddRateLimited(key)
 }
 
-func (rc *ReplicaController) getProcessManagerClient(instanceManagerName string) (*imclient.ProcessManagerClient, error) {
-	im, err := rc.ds.GetInstanceManager(instanceManagerName)
-	if err != nil {
-		return nil, fmt.Errorf("cannot find Instance Manager %v", instanceManagerName)
-	}
-	if im.Status.CurrentState != types.InstanceManagerStateRunning || im.Status.IP == "" {
-		return nil, fmt.Errorf("invalid Instance Manager %v", instanceManagerName)
-	}
-
-	return imclient.NewProcessManagerClient(imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)), nil
-}
-
-func (rc *ReplicaController) CreateInstance(obj interface{}) (*types.InstanceProcess, error) {
+func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for replica process creation: %v", obj)
@@ -458,7 +432,7 @@ func (rc *ReplicaController) GetBackingImagePathForReplicaStarting(r *longhorn.R
 		return "", nil
 	}
 	// bi.Spec.Disks[r.Spec.DiskID] exists
-	if fileStatus, exists := bi.Status.DiskFileStatusMap[r.Spec.DiskID]; !exists || fileStatus.State != types.BackingImageStateReady {
+	if fileStatus, exists := bi.Status.DiskFileStatusMap[r.Spec.DiskID]; !exists || fileStatus.State != longhorn.BackingImageStateReady {
 		currentBackingImageState := ""
 		if fileStatus != nil {
 			currentBackingImageState = string(fileStatus.State)
@@ -505,8 +479,8 @@ func (rc *ReplicaController) CanStartRebuildingReplica(r *longhorn.Replica) (boo
 		// Just in case, this means the replica controller will try to recall
 		// in-progress rebuilding replicas even if the longhorn manager pod is restarted.
 		if IsRebuildingReplica(replicaOnTheSameNode) &&
-			(replicaOnTheSameNode.Status.CurrentState == types.InstanceStateStarting ||
-				replicaOnTheSameNode.Status.CurrentState == types.InstanceStateRunning) {
+			(replicaOnTheSameNode.Status.CurrentState == longhorn.InstanceStateStarting ||
+				replicaOnTheSameNode.Status.CurrentState == longhorn.InstanceStateRunning) {
 			rc.inProgressRebuildingMap[replicaOnTheSameNode.Name] = struct{}{}
 		}
 	}
@@ -564,7 +538,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		return nil
 	}
 
-	if im.Status.CurrentState != types.InstanceManagerStateRunning {
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 		return nil
 	}
 
@@ -647,7 +621,7 @@ func (rc *ReplicaController) deleteOldReplicaPod(pod *v1.Pod, r *longhorn.Replic
 	return nil
 }
 
-func (rc *ReplicaController) GetInstance(obj interface{}) (*types.InstanceProcess, error) {
+func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for replica process get: %v", obj)
@@ -712,7 +686,7 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(obj interface{}) {
 	}
 
 	imType, err := datastore.CheckInstanceManagerType(im)
-	if err != nil || imType != types.InstanceManagerTypeReplica {
+	if err != nil || imType != longhorn.InstanceManagerTypeReplica {
 		return
 	}
 
@@ -726,7 +700,7 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(obj interface{}) {
 	for _, r := range replicasRO {
 		rc.enqueueReplica(r)
 	}
-	return
+
 }
 
 func (rc *ReplicaController) enqueueNodeChange(obj interface{}) {
@@ -758,7 +732,6 @@ func (rc *ReplicaController) enqueueNodeChange(obj interface{}) {
 		}
 	}
 
-	return
 }
 
 func (rc *ReplicaController) enqueueBackingImageChange(obj interface{}) {
@@ -789,7 +762,6 @@ func (rc *ReplicaController) enqueueBackingImageChange(obj interface{}) {
 		}
 	}
 
-	return
 }
 
 func (rc *ReplicaController) enqueueSettingChange(obj interface{}) {
@@ -815,7 +787,6 @@ func (rc *ReplicaController) enqueueSettingChange(obj interface{}) {
 
 	rc.enqueueAllRebuildingReplicaOnCurrentNode()
 
-	return
 }
 
 func (rc *ReplicaController) enqueueAllRebuildingReplicaOnCurrentNode() {

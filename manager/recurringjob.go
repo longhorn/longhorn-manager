@@ -12,7 +12,6 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 )
 
@@ -37,13 +36,13 @@ func (m *VolumeManager) ListRecurringJobsSorted() ([]*longhorn.RecurringJob, err
 	return jobs, nil
 }
 
-func (m *VolumeManager) CreateRecurringJob(spec *types.RecurringJobSpec) (*longhorn.RecurringJob, error) {
+func (m *VolumeManager) CreateRecurringJob(spec *longhorn.RecurringJobSpec) (*longhorn.RecurringJob, error) {
 	name := util.AutoCorrectName(spec.Name, datastore.NameMaximumLength)
 	if !util.ValidateName(name) {
 		return nil, fmt.Errorf("invalid name %v", name)
 	}
 
-	jobs := []types.RecurringJobSpec{
+	jobs := []longhorn.RecurringJobSpec{
 		{
 			Name:        spec.Name,
 			Groups:      spec.Groups,
@@ -72,13 +71,13 @@ func (m *VolumeManager) CreateRecurringJob(spec *types.RecurringJobSpec) (*longh
 	return job, nil
 }
 
-func (m *VolumeManager) UpdateRecurringJob(spec types.RecurringJobSpec) (*longhorn.RecurringJob, error) {
+func (m *VolumeManager) UpdateRecurringJob(spec longhorn.RecurringJobSpec) (*longhorn.RecurringJob, error) {
 	var err error
 	defer func() {
 		err = errors.Wrapf(err, "unable to update %v recurring job", spec.Name)
 	}()
 
-	jobs := []types.RecurringJobSpec{
+	jobs := []longhorn.RecurringJobSpec{
 		{
 			Name:        spec.Name,
 			Groups:      spec.Groups,

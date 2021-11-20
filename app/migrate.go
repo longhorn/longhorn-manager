@@ -16,9 +16,9 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/types"
-
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
@@ -99,7 +99,7 @@ func migratePVAndPVCForPre070Volume(kubeClient *kubeclientset.Clientset, lhClien
 	}
 	ks := v.Status.KubernetesStatus
 
-	if v.Status.State != types.VolumeStateDetached {
+	if v.Status.State != longhorn.VolumeStateDetached {
 		logrus.Infof("Invalid state %v for migrating volume %v", v.Status.State, volumeName)
 		return nil
 	}

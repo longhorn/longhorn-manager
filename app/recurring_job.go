@@ -122,7 +122,7 @@ func recurringJob(c *cli.Context) error {
 	}
 
 	var doBackup bool = false
-	if jobTask == string(types.RecurringJobTypeBackup) {
+	if jobTask == string(longhorn.RecurringJobTypeBackup) {
 		doBackup = true
 	}
 
@@ -200,7 +200,7 @@ func recurringJob(c *cli.Context) error {
 func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName string, labels map[string]string, retain int, backup bool) (*Job, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
-		return nil, fmt.Errorf("Cannot detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
+		return nil, fmt.Errorf("cannot detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
 	}
 
 	config, err := rest.InClusterConfig()
@@ -274,11 +274,11 @@ func (job *Job) handleVolumeDetachment() {
 			}
 			// !volume.DisableFrontend condition makes sure that volume is detached by this recurring job,
 			// not by the auto-reattachment feature.
-			if volume.State == string(types.VolumeStateDetached) && !volume.DisableFrontend {
+			if volume.State == string(longhorn.VolumeStateDetached) && !volume.DisableFrontend {
 				job.logger.Infof("Volume %v is detached", volumeName)
 				return
 			}
-			if volume.State == string(types.VolumeStateAttached) {
+			if volume.State == string(longhorn.VolumeStateAttached) {
 				job.logger.Infof("Attempting to detach volume %v from all nodes", volumeName)
 				if _, err := volumeAPI.ActionDetach(volume, &longhornclient.DetachInput{HostId: ""}); err != nil {
 					job.logger.WithError(err).Info("Volume detach request failed")
@@ -312,11 +312,11 @@ func (job *Job) run() (err error) {
 
 	defer job.handleVolumeDetachment()
 
-	if volume.State != string(types.VolumeStateAttached) && volume.State != string(types.VolumeStateDetached) {
+	if volume.State != string(longhorn.VolumeStateAttached) && volume.State != string(longhorn.VolumeStateDetached) {
 		return fmt.Errorf("volume %v is in an invalid state for recurring job: %v. Volume must be in state Attached or Detached", volumeName, volume.State)
 	}
 
-	if volume.State == string(types.VolumeStateDetached) {
+	if volume.State == string(longhorn.VolumeStateDetached) {
 		// Find a random ready node to attach the volume
 		// For load balancing purpose, the node need to be random
 		nodeToAttach, err := job.findARandomReadyNode(volume)
@@ -336,7 +336,7 @@ func (job *Job) run() (err error) {
 			return err
 		}
 
-		volume, err = job.waitForVolumeState(string(types.VolumeStateAttached), VolumeAttachTimeout)
+		volume, err = job.waitForVolumeState(string(longhorn.VolumeStateAttached), VolumeAttachTimeout)
 		if err != nil {
 			return err
 		}
@@ -357,23 +357,6 @@ func (job *Job) doRecurringSnapshot() (err error) {
 			job.logger.Info("Finish running recurring snapshot")
 		}
 	}()
-
-	volumeAPI := job.api.Volume
-	volumeName := job.volumeName
-
-	volume, err := volumeAPI.ById(volumeName)
-	if err != nil {
-		return errors.Wrapf(err, "could not get volume %v", volumeName)
-	}
-
-	shouldDo, err := job.shouldDoRecurringSnapshot(volume)
-	if err != nil {
-		return err
-	}
-	if !shouldDo {
-		job.logger.Infof("Skipping taking snapshot because the volume %v doesn't have new data in volume-head", volumeName)
-		return nil
-	}
 
 	err = job.doSnapshot()
 	if err != nil {
@@ -459,19 +442,6 @@ func (job *Job) doSnapshotCleanup(backupDone bool) (err error) {
 		}
 	}
 	return nil
-}
-
-// shouldDoRecurringSnapshot return whether we should take a new snapshot in the current running of the job
-func (job *Job) shouldDoRecurringSnapshot(volume *longhornclient.Volume) (bool, error) {
-	volumeHeadSize, err := job.getVolumeHeadSize(volume)
-	if err != nil {
-		return false, err
-	}
-	// If volume-head has new data, we need to take snapshot
-	if volumeHeadSize > 0 {
-		return true, nil
-	}
-	return false, nil
 }
 
 type NameWithTimestamp struct {
@@ -563,15 +533,6 @@ func (job *Job) doRecurringBackup() (err error) {
 		return errors.Wrapf(err, "could not get volume %v", volumeName)
 	}
 
-	shouldDo, err := job.shouldDoRecurringBackup(volume)
-	if err != nil {
-		return err
-	}
-	if !shouldDo {
-		job.logger.Infof("Skipping taking backup because volume %v is either empty or doesn't have new data since the last backup", volumeName)
-		return nil
-	}
-
 	if err := job.doSnapshot(); err != nil {
 		return err
 	}
@@ -661,7 +622,7 @@ func (job *Job) doRecurringBackup() (err error) {
 		if _, err := backupAPI.ActionBackupDelete(backupVolume, &longhornclient.BackupInput{
 			Name: backup,
 		}); err != nil {
-			return fmt.Errorf("Cleaned up backup %v failed for %v: %v", backup, volumeName, err)
+			return fmt.Errorf("cleaned up backup %v failed for %v: %v", backup, volumeName, err)
 		}
 		job.logger.Debugf("Cleaned up backup %v for %v", backup, volumeName)
 	}
@@ -693,40 +654,6 @@ func (job *Job) waitForBackupProcessStart(timeout int) error {
 		time.Sleep(WaitInterval)
 	}
 	return fmt.Errorf("timeout waiting for the backup of the snapshot %v of volume %v to start", snapshot, volumeName)
-}
-
-// shouldDoRecurringBackup return whether the recurring backup should take place
-// We should do recurring backup if there is new data since the last backup
-func (job *Job) shouldDoRecurringBackup(volume *longhornclient.Volume) (bool, error) {
-	volumeHeadSize, err := job.getVolumeHeadSize(volume)
-	if err != nil {
-		return false, err
-	}
-
-	// If volume-head has new data, we need to do backup
-	if volumeHeadSize > 0 {
-		return true, nil
-	}
-
-	lastBackup, err := job.getLastBackup()
-	if err != nil {
-		return false, err
-	}
-
-	lastSnapshot, err := job.getLastSnapshot(volume)
-	if err != nil {
-		return false, err
-	}
-
-	if lastSnapshot == nil {
-		return false, nil
-	}
-
-	if lastBackup != nil && lastBackup.SnapshotName == lastSnapshot.Name {
-		return false, nil
-	}
-
-	return true, nil
 }
 
 // getLastBackup return the last backup of the volume
@@ -817,26 +744,26 @@ func (job *Job) findARandomReadyNode(v *longhornclient.Volume) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if engineImage.State != types.EngineImageStateDeployed && engineImage.State != types.EngineImageStateDeploying {
+	if engineImage.State != string(longhorn.EngineImageStateDeployed) && engineImage.State != string(longhorn.EngineImageStateDeploying) {
 		return "", fmt.Errorf("error: the volume's engine image %v is in state: %v", engineImage.Name, engineImage.State)
 	}
 
 	var readyNodeList []string
 	for _, node := range nodeCollection.Data {
-		if readyConditionInterface, ok := node.Conditions[types.NodeConditionTypeReady]; ok {
+		if readyConditionInterface, ok := node.Conditions[longhorn.NodeConditionTypeReady]; ok {
 			// convert the interface to json
 			jsonString, err := json.Marshal(readyConditionInterface)
 			if err != nil {
 				return "", err
 			}
 
-			readyCondition := types.Condition{}
+			readyCondition := longhorn.Condition{}
 
 			if err := json.Unmarshal(jsonString, &readyCondition); err != nil {
 				return "", err
 			}
 
-			if readyCondition.Status == types.ConditionStatusTrue && engineImage.NodeDeploymentMap[node.Name] {
+			if readyCondition.Status == longhorn.ConditionStatusTrue && engineImage.NodeDeploymentMap[node.Name] {
 				readyNodeList = append(readyNodeList, node.Name)
 			}
 		}
@@ -921,8 +848,8 @@ func filterVolumesForJob(allowDetached bool, volumes []longhorn.Volume, filterNa
 		if util.Contains(*filterNames, volume.Name) {
 			continue
 		}
-		if volume.Status.Robustness != types.VolumeRobustnessFaulted &&
-			(volume.Status.State == types.VolumeStateAttached || allowDetached) {
+		if volume.Status.Robustness != longhorn.VolumeRobustnessFaulted &&
+			(volume.Status.State == longhorn.VolumeStateAttached || allowDetached) {
 			*filterNames = append(*filterNames, volume.Name)
 			continue
 		}

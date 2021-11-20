@@ -162,67 +162,16 @@ func newPodWithPVC(podName string) *apiv1.Pod {
 
 func newTestKubernetesPVController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *KubernetesPVController {
-
-	volumeInformer := lhInformerFactory.Longhorn().V1beta1().Volumes()
-	engineInformer := lhInformerFactory.Longhorn().V1beta1().Engines()
-	replicaInformer := lhInformerFactory.Longhorn().V1beta1().Replicas()
-	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
-	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
-	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
-	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
-	shareManagerInformer := lhInformerFactory.Longhorn().V1beta1().ShareManagers()
-	backingImageInformer := lhInformerFactory.Longhorn().V1beta1().BackingImages()
-	backingImageManagerInformer := lhInformerFactory.Longhorn().V1beta1().BackingImageManagers()
-	backingImageDataSourceInformer := lhInformerFactory.Longhorn().V1beta1().BackingImageDataSources()
-	backupTargetInformer := lhInformerFactory.Longhorn().V1beta1().BackupTargets()
-	backupVolumeInformer := lhInformerFactory.Longhorn().V1beta1().BackupVolumes()
-	backupInformer := lhInformerFactory.Longhorn().V1beta1().Backups()
-	recurringJobInformer := lhInformerFactory.Longhorn().V1beta1().RecurringJobs()
-
-	podInformer := kubeInformerFactory.Core().V1().Pods()
-	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
-	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
-	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
-	secretInformer := kubeInformerFactory.Core().V1().Secrets()
-	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
-	daemonSetInformer := kubeInformerFactory.Apps().V1().DaemonSets()
-	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
-	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
-	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
-	csiDriverInformer := kubeInformerFactory.Storage().V1().CSIDrivers()
-	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
-	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
-	serviceInformer := kubeInformerFactory.Core().V1().Services()
-
-	ds := datastore.NewDataStore(
-		volumeInformer, engineInformer, replicaInformer,
-		engineImageInformer, nodeInformer, settingInformer,
-		imInformer, shareManagerInformer,
-		backingImageInformer, backingImageManagerInformer, backingImageDataSourceInformer,
-		backupTargetInformer, backupVolumeInformer, backupInformer,
-		recurringJobInformer,
-		lhClient,
-		podInformer, cronJobInformer, daemonSetInformer,
-		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
-		configMapInformer, secretInformer, kubeNodeInformer, priorityClassInformer,
-		csiDriverInformer, storageclassInformer,
-		pdbInformer,
-		serviceInformer,
-		kubeClient, TestNamespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, TestNamespace)
 
 	logger := logrus.StandardLogger()
-	kc := NewKubernetesPVController(logger,
-		ds, scheme.Scheme,
-		volumeInformer, persistentVolumeInformer, persistentVolumeClaimInformer, podInformer,
-		kubeClient, TestNode1)
+	kc := NewKubernetesPVController(logger, ds, scheme.Scheme, kubeClient, TestNode1)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	kc.eventRecorder = fakeRecorder
-
-	kc.pvStoreSynced = alwaysReady
-	kc.pvcStoreSynced = alwaysReady
-	kc.pStoreSynced = alwaysReady
-
+	for index := range kc.cacheSyncs {
+		kc.cacheSyncs[index] = alwaysReady
+	}
 	kc.nowHandler = getTestNow
 
 	return kc
@@ -230,7 +179,7 @@ func newTestKubernetesPVController(lhInformerFactory lhinformerfactory.SharedInf
 
 func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	deleteTime := metav1.Now()
-	var workloads []types.WorkloadStatus
+	var workloads []longhorn.WorkloadStatus
 	var tc *KubernetesTestCase
 	testCases := map[string]*KubernetesTestCase{}
 
@@ -239,9 +188,9 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	tc.copyCurrentToExpect()
 	tc.pv.Status.Phase = apiv1.VolumeBound
 	tc.pods = append(tc.pods, newPodWithPVC(TestPod2))
-	workloads = []types.WorkloadStatus{}
+	workloads = []longhorn.WorkloadStatus{}
 	for _, p := range tc.pods {
-		ws := types.WorkloadStatus{
+		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
@@ -249,7 +198,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 		}
 		workloads = append(workloads, ws)
 	}
-	tc.expectVolume.Status.KubernetesStatus = types.KubernetesStatus{
+	tc.expectVolume.Status.KubernetesStatus = longhorn.KubernetesStatus{
 		PVName:          TestPVName,
 		PVStatus:        string(apiv1.VolumeBound),
 		Namespace:       TestNamespace,
@@ -263,9 +212,9 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	tc.copyCurrentToExpect()
 	tc.volume = nil
 	tc.pv.Status.Phase = apiv1.VolumeBound
-	workloads = []types.WorkloadStatus{}
+	workloads = []longhorn.WorkloadStatus{}
 	for _, p := range tc.pods {
-		ws := types.WorkloadStatus{
+		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
@@ -273,16 +222,16 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 		}
 		workloads = append(workloads, ws)
 	}
-	tc.expectVolume.Status.KubernetesStatus = types.KubernetesStatus{}
+	tc.expectVolume.Status.KubernetesStatus = longhorn.KubernetesStatus{}
 	testCases["volume unset"] = tc
 
 	// pv unset
 	tc = generateKubernetesTestCaseTemplate()
 	tc.copyCurrentToExpect()
 	tc.pv = nil
-	workloads = []types.WorkloadStatus{}
+	workloads = []longhorn.WorkloadStatus{}
 	for _, p := range tc.pods {
-		ws := types.WorkloadStatus{
+		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
@@ -290,7 +239,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 		}
 		workloads = append(workloads, ws)
 	}
-	tc.expectVolume.Status.KubernetesStatus = types.KubernetesStatus{}
+	tc.expectVolume.Status.KubernetesStatus = longhorn.KubernetesStatus{}
 	testCases["pv unset"] = tc
 
 	// pvc unset
@@ -299,7 +248,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	tc.pv.Status.Phase = apiv1.VolumeAvailable
 	tc.pv.Spec.ClaimRef = nil
 	tc.pvc = nil
-	tc.expectVolume.Status.KubernetesStatus = types.KubernetesStatus{
+	tc.expectVolume.Status.KubernetesStatus = longhorn.KubernetesStatus{
 		PVName:   TestPVName,
 		PVStatus: string(apiv1.VolumeAvailable),
 	}
@@ -310,7 +259,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	tc.copyCurrentToExpect()
 	tc.pv.Status.Phase = apiv1.VolumeBound
 	tc.pods = nil
-	tc.expectVolume.Status.KubernetesStatus = types.KubernetesStatus{
+	tc.expectVolume.Status.KubernetesStatus = longhorn.KubernetesStatus{
 		PVName:    TestPVName,
 		PVStatus:  string(apiv1.VolumeBound),
 		Namespace: TestNamespace,
@@ -323,16 +272,16 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	tc.copyCurrentToExpect()
 	tc.pv.Status.Phase = apiv1.VolumeBound
 	tc.pods = append(tc.pods, newPodWithPVC(TestPod2))
-	workloads = []types.WorkloadStatus{}
+	workloads = []longhorn.WorkloadStatus{}
 	for _, p := range tc.pods {
 		p.ObjectMeta.OwnerReferences = nil
-		ws := types.WorkloadStatus{
+		ws := longhorn.WorkloadStatus{
 			PodName:   p.Name,
 			PodStatus: string(p.Status.Phase),
 		}
 		workloads = append(workloads, ws)
 	}
-	tc.expectVolume.Status.KubernetesStatus = types.KubernetesStatus{
+	tc.expectVolume.Status.KubernetesStatus = longhorn.KubernetesStatus{
 		PVName:          TestPVName,
 		PVStatus:        string(apiv1.VolumeBound),
 		Namespace:       TestNamespace,
@@ -344,9 +293,9 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	// pod phase updated: running -> failed
 	tc = generateKubernetesTestCaseTemplate()
 	tc.pv.Status.Phase = apiv1.VolumeBound
-	workloads = []types.WorkloadStatus{}
+	workloads = []longhorn.WorkloadStatus{}
 	for _, p := range tc.pods {
-		ws := types.WorkloadStatus{
+		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
@@ -354,7 +303,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 		}
 		workloads = append(workloads, ws)
 	}
-	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
+	tc.volume.Status.KubernetesStatus = longhorn.KubernetesStatus{
 		PVName:          TestPVName,
 		PVStatus:        string(apiv1.VolumeBound),
 		Namespace:       TestNamespace,
@@ -362,10 +311,10 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 		WorkloadsStatus: workloads,
 	}
 	tc.copyCurrentToExpect()
-	workloads = []types.WorkloadStatus{}
+	workloads = []longhorn.WorkloadStatus{}
 	for _, p := range tc.pods {
 		p.Status.Phase = apiv1.PodFailed
-		ws := types.WorkloadStatus{
+		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
@@ -379,10 +328,10 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	// pod deletion requested (retain workload status)
 	tc = generateKubernetesTestCaseTemplate()
 	tc.pv.Status.Phase = apiv1.VolumeBound
-	workloads = []types.WorkloadStatus{}
+	workloads = []longhorn.WorkloadStatus{}
 	for _, p := range tc.pods {
 		p.DeletionTimestamp = &deleteTime
-		ws := types.WorkloadStatus{
+		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
@@ -390,7 +339,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 		}
 		workloads = append(workloads, ws)
 	}
-	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
+	tc.volume.Status.KubernetesStatus = longhorn.KubernetesStatus{
 		PVName:          TestPVName,
 		PVStatus:        string(apiv1.VolumeBound),
 		Namespace:       TestNamespace,
@@ -404,10 +353,10 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	// pod deleted (set podLastRefAt)
 	tc = generateKubernetesTestCaseTemplate()
 	tc.pv.Status.Phase = apiv1.VolumeBound
-	workloads = []types.WorkloadStatus{}
+	workloads = []longhorn.WorkloadStatus{}
 	for _, p := range tc.pods {
 		p.DeletionTimestamp = &deleteTime
-		ws := types.WorkloadStatus{
+		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
@@ -415,7 +364,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 		}
 		workloads = append(workloads, ws)
 	}
-	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
+	tc.volume.Status.KubernetesStatus = longhorn.KubernetesStatus{
 		PVName:          TestPVName,
 		PVStatus:        string(apiv1.VolumeBound),
 		Namespace:       TestNamespace,
@@ -430,9 +379,9 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	// pv phase updated: bound -> failed
 	tc = generateKubernetesTestCaseTemplate()
 	tc.pv.Status.Phase = apiv1.VolumeFailed
-	workloads = []types.WorkloadStatus{}
+	workloads = []longhorn.WorkloadStatus{}
 	for _, p := range tc.pods {
-		ws := types.WorkloadStatus{
+		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
@@ -440,7 +389,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 		}
 		workloads = append(workloads, ws)
 	}
-	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
+	tc.volume.Status.KubernetesStatus = longhorn.KubernetesStatus{
 		PVName:          TestPVName,
 		PVStatus:        string(apiv1.VolumeBound),
 		Namespace:       TestNamespace,
@@ -457,9 +406,9 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	tc = generateKubernetesTestCaseTemplate()
 	tc.pv.Status.Phase = apiv1.VolumeBound
 	tc.pv.DeletionTimestamp = &deleteTime
-	workloads = []types.WorkloadStatus{}
+	workloads = []longhorn.WorkloadStatus{}
 	for _, p := range tc.pods {
-		ws := types.WorkloadStatus{
+		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
@@ -467,7 +416,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 		}
 		workloads = append(workloads, ws)
 	}
-	tc.volume.Status.KubernetesStatus = types.KubernetesStatus{
+	tc.volume.Status.KubernetesStatus = longhorn.KubernetesStatus{
 		Namespace:       TestNamespace,
 		PVCName:         TestPVCName,
 		WorkloadsStatus: workloads,
@@ -528,7 +477,7 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		if tc.pv != nil {
 			pv, err = kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), tc.pv, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			pvIndexer.Add(pv)
+			err = pvIndexer.Add(pv)
 			c.Assert(err, IsNil)
 			if pv.DeletionTimestamp != nil {
 				kc.enqueuePVDeletion(pv)
@@ -538,14 +487,17 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		if tc.pvc != nil {
 			pvc, err := kubeClient.CoreV1().PersistentVolumeClaims(TestNamespace).Create(context.TODO(), tc.pvc, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			pvcIndexer.Add(pvc)
+			err = pvcIndexer.Add(pvc)
+			c.Assert(err, IsNil)
+
 		}
 
 		if len(tc.pods) != 0 {
 			for _, p := range tc.pods {
 				p, err = kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), p, metav1.CreateOptions{})
 				c.Assert(err, IsNil)
-				pIndexer.Add(p)
+				err = pIndexer.Add(p)
+				c.Assert(err, IsNil)
 			}
 		}
 

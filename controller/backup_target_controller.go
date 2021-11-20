@@ -28,7 +28,6 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 type BackupTargetController struct {
@@ -44,15 +43,13 @@ type BackupTargetController struct {
 
 	ds *datastore.DataStore
 
-	btStoreSynced cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 }
 
 func NewBackupTargetController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	backupTargetInformer lhinformers.BackupTargetInformer,
-	engineImageInformer lhinformers.EngineImageInformer,
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string) *BackupTargetController {
@@ -73,16 +70,15 @@ func NewBackupTargetController(
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-backup-target-controller"}),
-
-		btStoreSynced: backupTargetInformer.Informer().HasSynced,
 	}
 
-	backupTargetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.BackupTargetInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    btc.enqueueBackupTarget,
 		UpdateFunc: func(old, cur interface{}) { btc.enqueueBackupTarget(cur) },
 	})
+	btc.cacheSyncs = append(btc.cacheSyncs, ds.BackupTargetInformer.HasSynced)
 
-	engineImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.EngineImageInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) {
 			oldEI := old.(*longhorn.EngineImage)
 			curEI := cur.(*longhorn.EngineImage)
@@ -95,6 +91,7 @@ func NewBackupTargetController(
 			btc.enqueueEngineImage(cur)
 		},
 	})
+	btc.cacheSyncs = append(btc.cacheSyncs, ds.EngineImageInformer.HasSynced)
 
 	return btc
 }
@@ -117,7 +114,7 @@ func (btc *BackupTargetController) enqueueEngineImage(obj interface{}) {
 
 	defaultEngineImage, err := btc.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	// Enqueue the backup target only when the default engine image becomes ready
-	if err != nil || ei.Spec.Image != defaultEngineImage || ei.Status.State != types.EngineImageStateDeployed {
+	if err != nil || ei.Spec.Image != defaultEngineImage || ei.Status.State != longhorn.EngineImageStateDeployed {
 		return
 	}
 	// For now, we only support a default backup target
@@ -133,7 +130,7 @@ func (btc *BackupTargetController) Run(workers int, stopCh <-chan struct{}) {
 	btc.logger.Infof("Start Longhorn Backup Target controller")
 	defer btc.logger.Infof("Shutting down Longhorn Backup Target controller")
 
-	if !cache.WaitForNamedCacheSync(btc.name, stopCh, btc.btStoreSynced) {
+	if !cache.WaitForNamedCacheSync(btc.name, stopCh, btc.cacheSyncs...) {
 		return
 	}
 	for i := 0; i < workers; i++ {
@@ -219,7 +216,7 @@ func getBackupTargetClient(ds *datastore.DataStore, backupTarget *longhorn.Backu
 	var credential map[string]string
 	if backupType == types.BackupStoreTypeS3 {
 		if backupTarget.Spec.CredentialSecret == "" {
-			return nil, fmt.Errorf("Could not access %s without credential secret", types.BackupStoreTypeS3)
+			return nil, fmt.Errorf("could not access %s without credential secret", types.BackupStoreTypeS3)
 		}
 		credential, err = ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
 		if err != nil {
@@ -266,13 +263,13 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 
 	// Check the controller should run synchronization
 	if !backupTarget.Status.LastSyncedAt.IsZero() &&
-		!backupTarget.Spec.SyncRequestedAt.After(backupTarget.Status.LastSyncedAt) {
+		!backupTarget.Spec.SyncRequestedAt.After(backupTarget.Status.LastSyncedAt.Time) {
 		return nil
 	}
 
 	var backupTargetClient *engineapi.BackupTargetClient
 	existingBackupTarget := backupTarget.DeepCopy()
-	syncTime := time.Now().UTC()
+	syncTime := metav1.Time{Time: time.Now().UTC()}
 	defer func() {
 		if err != nil {
 			return
@@ -295,8 +292,8 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	if backupTarget.Spec.BackupTargetURL == "" {
 		backupTarget.Status.Available = false
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
-			types.BackupTargetConditionTypeUnavailable, types.ConditionStatusTrue,
-			types.BackupTargetConditionReasonUnavailable, "backup target URL is empty")
+			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusTrue,
+			longhorn.BackupTargetConditionReasonUnavailable, "backup target URL is empty")
 		// Clean up all BackupVolume CRs
 		if err := btc.cleanupBackupVolumes(); err != nil {
 			log.WithError(err).Error("Error deleting backup volumes")
@@ -310,8 +307,8 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	if err != nil {
 		backupTarget.Status.Available = false
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
-			types.BackupTargetConditionTypeUnavailable, types.ConditionStatusTrue,
-			types.BackupTargetConditionReasonUnavailable, err.Error())
+			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusTrue,
+			longhorn.BackupTargetConditionReasonUnavailable, err.Error())
 		log.WithError(err).Error("Error init backup target client")
 		return nil // Ignore error to allow status update as well as preventing enqueue
 	}
@@ -321,8 +318,8 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	if err != nil {
 		backupTarget.Status.Available = false
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
-			types.BackupTargetConditionTypeUnavailable, types.ConditionStatusTrue,
-			types.BackupTargetConditionReasonUnavailable, err.Error())
+			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusTrue,
+			longhorn.BackupTargetConditionReasonUnavailable, err.Error())
 		log.WithError(err).Error("Error listing backup volumes from backup target")
 		return nil // Ignore error to allow status update as well as preventing enqueue
 	}
@@ -386,7 +383,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	// Update the backup target status
 	backupTarget.Status.Available = true
 	backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
-		types.BackupTargetConditionTypeUnavailable, types.ConditionStatusFalse,
+		longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusFalse,
 		"", "")
 	return nil
 }

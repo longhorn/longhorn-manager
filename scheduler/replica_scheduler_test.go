@@ -57,53 +57,7 @@ func newReplicaScheduler(lhInformerFactory lhinformerfactory.SharedInformerFacto
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *ReplicaScheduler {
 	fmt.Printf("testing NewReplicaScheduler\n")
 
-	volumeInformer := lhInformerFactory.Longhorn().V1beta1().Volumes()
-	engineInformer := lhInformerFactory.Longhorn().V1beta1().Engines()
-	replicaInformer := lhInformerFactory.Longhorn().V1beta1().Replicas()
-	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
-	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
-	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
-	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
-	shareManagerInformer := lhInformerFactory.Longhorn().V1beta1().ShareManagers()
-	backingImageInformer := lhInformerFactory.Longhorn().V1beta1().BackingImages()
-	backingImageManagerInformer := lhInformerFactory.Longhorn().V1beta1().BackingImageManagers()
-	backingImageDataSourceInformer := lhInformerFactory.Longhorn().V1beta1().BackingImageDataSources()
-	backupTargetInformer := lhInformerFactory.Longhorn().V1beta1().BackupTargets()
-	backupVolumeInformer := lhInformerFactory.Longhorn().V1beta1().BackupVolumes()
-	backupInformer := lhInformerFactory.Longhorn().V1beta1().Backups()
-	recurringJobInformer := lhInformerFactory.Longhorn().V1beta1().RecurringJobs()
-
-	podInformer := kubeInformerFactory.Core().V1().Pods()
-	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
-	daemonSetInformer := kubeInformerFactory.Apps().V1().DaemonSets()
-	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
-	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
-	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
-	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
-	secretInformer := kubeInformerFactory.Core().V1().Secrets()
-	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
-	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
-	csiDriverInformer := kubeInformerFactory.Storage().V1().CSIDrivers()
-	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
-	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
-	serviceInformer := kubeInformerFactory.Core().V1().Services()
-
-	ds := datastore.NewDataStore(
-		volumeInformer, engineInformer, replicaInformer,
-		engineImageInformer, nodeInformer, settingInformer,
-		imInformer, shareManagerInformer,
-		backingImageInformer, backingImageManagerInformer, backingImageDataSourceInformer,
-		backupTargetInformer, backupVolumeInformer, backupInformer,
-		recurringJobInformer,
-		lhClient,
-		podInformer, cronJobInformer, daemonSetInformer,
-		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
-		configMapInformer, secretInformer, kubeNodeInformer, priorityClassInformer,
-		csiDriverInformer, storageclassInformer,
-		pdbInformer,
-		serviceInformer,
-		kubeClient, TestNamespace)
-
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, TestNamespace)
 	return NewReplicaScheduler(ds)
 }
 
@@ -126,25 +80,25 @@ func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string) *v1.
 	}
 }
 
-func newNode(name, namespace string, allowScheduling bool, status types.ConditionStatus) *longhorn.Node {
+func newNode(name, namespace string, allowScheduling bool, status longhorn.ConditionStatus) *longhorn.Node {
 	return &longhorn.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: types.NodeSpec{
+		Spec: longhorn.NodeSpec{
 			AllowScheduling: allowScheduling,
 		},
-		Status: types.NodeStatus{
-			Conditions: map[string]types.Condition{
-				types.NodeConditionTypeSchedulable: newCondition(types.NodeConditionTypeSchedulable, status),
-				types.NodeConditionTypeReady:       newCondition(types.NodeConditionTypeReady, status),
+		Status: longhorn.NodeStatus{
+			Conditions: map[string]longhorn.Condition{
+				longhorn.NodeConditionTypeSchedulable: newCondition(longhorn.NodeConditionTypeSchedulable, status),
+				longhorn.NodeConditionTypeReady:       newCondition(longhorn.NodeConditionTypeReady, status),
 			},
 		},
 	}
 }
 
-func newEngineImage(image string, state types.EngineImageState) *longhorn.EngineImage {
+func newEngineImage(image string, state longhorn.EngineImageState) *longhorn.EngineImage {
 	return &longhorn.EngineImage{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       types.GetEngineImageChecksumName(image),
@@ -152,13 +106,13 @@ func newEngineImage(image string, state types.EngineImageState) *longhorn.Engine
 			UID:        uuid.NewUUID(),
 			Finalizers: []string{longhornFinalizerKey},
 		},
-		Spec: types.EngineImageSpec{
+		Spec: longhorn.EngineImageSpec{
 			Image: image,
 		},
-		Status: types.EngineImageStatus{
+		Status: longhorn.EngineImageStatus{
 			OwnerID: TestNode1,
 			State:   state,
-			EngineVersionDetails: types.EngineVersionDetails{
+			EngineVersionDetails: longhorn.EngineVersionDetails{
 				Version:   "latest",
 				GitCommit: "latest",
 
@@ -169,10 +123,10 @@ func newEngineImage(image string, state types.EngineImageState) *longhorn.Engine
 				DataFormatVersion:       1,
 				DataFormatMinVersion:    1,
 			},
-			Conditions: map[string]types.Condition{
-				types.EngineImageConditionTypeReady: {
-					Type:   types.EngineImageConditionTypeReady,
-					Status: types.ConditionStatusTrue,
+			Conditions: map[string]longhorn.Condition{
+				longhorn.EngineImageConditionTypeReady: {
+					Type:   longhorn.EngineImageConditionTypeReady,
+					Status: longhorn.ConditionStatusTrue,
 				},
 			},
 			NodeDeploymentMap: map[string]bool{},
@@ -180,8 +134,8 @@ func newEngineImage(image string, state types.EngineImageState) *longhorn.Engine
 	}
 }
 
-func newCondition(conditionType string, status types.ConditionStatus) types.Condition {
-	return types.Condition{
+func newCondition(conditionType string, status longhorn.ConditionStatus) longhorn.Condition {
+	return longhorn.Condition{
 		Type:    conditionType,
 		Status:  status,
 		Reason:  "",
@@ -189,8 +143,8 @@ func newCondition(conditionType string, status types.ConditionStatus) types.Cond
 	}
 }
 
-func newDisk(path string, allowScheduling bool, storageReserved int64) types.DiskSpec {
-	return types.DiskSpec{
+func newDisk(path string, allowScheduling bool, storageReserved int64) longhorn.DiskSpec {
+	return longhorn.DiskSpec{
 		Path:            path,
 		AllowScheduling: allowScheduling,
 		StorageReserved: storageReserved,
@@ -205,13 +159,13 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 				longhorn.SchemeGroupVersion.Group,
 			},
 		},
-		Spec: types.VolumeSpec{
+		Spec: longhorn.VolumeSpec{
 			NumberOfReplicas:    replicaCount,
 			Size:                TestVolumeSize,
 			StaleReplicaTimeout: TestVolumeStaleTimeout,
 			EngineImage:         TestEngineImage,
 		},
-		Status: types.VolumeStatus{
+		Status: longhorn.VolumeStatus{
 			OwnerID: TestOwnerID1,
 		},
 	}
@@ -225,16 +179,16 @@ func newReplicaForVolume(v *longhorn.Volume) *longhorn.Replica {
 				"longhornvolume": v.Name,
 			},
 		},
-		Spec: types.ReplicaSpec{
-			InstanceSpec: types.InstanceSpec{
+		Spec: longhorn.ReplicaSpec{
+			InstanceSpec: longhorn.InstanceSpec{
 				VolumeName:  v.Name,
 				VolumeSize:  v.Spec.Size,
 				EngineImage: TestEngineImage,
-				DesireState: types.InstanceStateStopped,
+				DesireState: longhorn.InstanceStateStopped,
 			},
 		},
-		Status: types.ReplicaStatus{
-			InstanceStatus: types.InstanceStatus{
+		Status: longhorn.ReplicaStatus{
+			InstanceStatus: longhorn.InstanceStatus{
 				OwnerID: v.Status.OwnerID,
 			},
 		},
@@ -250,9 +204,7 @@ func initSettings(name, value string) *longhorn.Setting {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Setting: types.Setting{
-			Value: value,
-		},
+		Value: value,
 	}
 	return setting
 }
@@ -293,7 +245,7 @@ func generateSchedulerTestCase() *ReplicaSchedulerTestCase {
 		replica1.Name: replica1,
 		replica2.Name: replica2,
 	}
-	engineImage := newEngineImage(TestEngineImage, types.EngineImageStateDeployed)
+	engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
 	return &ReplicaSchedulerTestCase{
 		volume:      v,
 		replicas:    replicas,
@@ -313,29 +265,29 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon2,
 		daemon3,
 	}
-	node1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
+	node1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
 	disk := newDisk(TestDefaultDataPath, true, 0)
-	node1.Spec.Disks = map[string]types.DiskSpec{
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode1, "1"): disk,
 	}
-	node1.Status.DiskStatus = map[string]*types.DiskStatus{
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		getDiskID(TestNode1, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]types.Condition{
-				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			Conditions: map[string]longhorn.Condition{
+				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
 		},
 	}
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
-	node2 := newNode(TestNode2, TestNamespace, false, types.ConditionStatusTrue)
+	node2 := newNode(TestNode2, TestNamespace, false, longhorn.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, 0)
-	node2.Spec.Disks = map[string]types.DiskSpec{
+	node2.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode2, "1"): disk,
 	}
-	node2.Status.DiskStatus = map[string]*types.DiskStatus{
+	node2.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		getDiskID(TestNode2, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
@@ -344,12 +296,12 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		},
 	}
 	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
-	node3 := newNode(TestNode3, TestNamespace, true, types.ConditionStatusFalse)
+	node3 := newNode(TestNode3, TestNamespace, true, longhorn.ConditionStatusFalse)
 	disk = newDisk(TestDefaultDataPath, true, 0)
-	node3.Spec.Disks = map[string]types.DiskSpec{
+	node3.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode3, "1"): disk,
 	}
-	node3.Status.DiskStatus = map[string]*types.DiskStatus{
+	node3.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		getDiskID(TestNode3, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
@@ -382,9 +334,9 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon1,
 		daemon2,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
+	node1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
-	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
+	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
 	nodes = map[string]*longhorn.Node{
 		TestNode1: node1,
@@ -405,34 +357,34 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon1,
 		daemon2,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
+	node1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, 0)
-	node1.Spec.Disks = map[string]types.DiskSpec{
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode1, "1"): disk,
 	}
-	node1.Status.DiskStatus = map[string]*types.DiskStatus{
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		getDiskID(TestNode1, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]types.Condition{
-				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			Conditions: map[string]longhorn.Condition{
+				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
 		},
 	}
-	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
+	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, 0)
-	node2.Spec.Disks = map[string]types.DiskSpec{
+	node2.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode2, "1"): disk,
 	}
-	node2.Status.DiskStatus = map[string]*types.DiskStatus{
+	node2.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		getDiskID(TestNode2, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]types.Condition{
-				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			Conditions: map[string]longhorn.Condition{
+				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "1"),
 		},
@@ -456,22 +408,22 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon1,
 		daemon2,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
+	node1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 := newDisk(TestDefaultDataPath, true, TestDiskSize)
-	node1.Spec.Disks = map[string]types.DiskSpec{
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode1, "1"): disk,
 		getDiskID(TestNode1, "2"): disk2,
 	}
 
-	node1.Status.DiskStatus = map[string]*types.DiskStatus{
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		getDiskID(TestNode1, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]types.Condition{
-				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			Conditions: map[string]longhorn.Condition{
+				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
 		},
@@ -479,31 +431,31 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]types.Condition{
-				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			Conditions: map[string]longhorn.Condition{
+				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "2"),
 		},
 	}
-	expectNode1 := newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
-	expectNode1.Spec.Disks = map[string]types.DiskSpec{
+	expectNode1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
+	expectNode1.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode1, "1"): disk,
 	}
-	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
+	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, 0)
-	node2.Spec.Disks = map[string]types.DiskSpec{
+	node2.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode2, "1"): disk,
 		getDiskID(TestNode2, "2"): disk2,
 	}
-	node2.Status.DiskStatus = map[string]*types.DiskStatus{
+	node2.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		getDiskID(TestNode2, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]types.Condition{
-				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			Conditions: map[string]longhorn.Condition{
+				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "1"),
 		},
@@ -511,14 +463,14 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]types.Condition{
-				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse),
+			Conditions: map[string]longhorn.Condition{
+				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse),
 			},
 			DiskUUID: getDiskID(TestNode2, "2"),
 		},
 	}
-	expectNode2 := newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
-	expectNode2.Spec.Disks = map[string]types.DiskSpec{
+	expectNode2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
+	expectNode2.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode2, "1"): disk,
 	}
 	nodes = map[string]*longhorn.Node{
@@ -553,38 +505,38 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon1,
 		daemon2,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
+	node1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, TestDiskSize)
-	node1.Spec.Disks = map[string]types.DiskSpec{
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode1, "1"): disk,
 	}
-	node1.Status.DiskStatus = map[string]*types.DiskStatus{
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		getDiskID(TestNode1, "1"): {
 			StorageAvailable: 0,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]types.Condition{
-				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			Conditions: map[string]longhorn.Condition{
+				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
 		},
 	}
-	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
+	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, 0)
-	node2.Spec.Disks = map[string]types.DiskSpec{
+	node2.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode2, "1"): disk,
 		getDiskID(TestNode2, "2"): disk2,
 	}
-	node2.Status.DiskStatus = map[string]*types.DiskStatus{
+	node2.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		getDiskID(TestNode2, "1"): {
 			StorageAvailable: 0,
 			StorageScheduled: TestDiskAvailableSize,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]types.Condition{
-				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			Conditions: map[string]longhorn.Condition{
+				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "1"),
 		},
@@ -592,8 +544,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]types.Condition{
-				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusFalse),
+			Conditions: map[string]longhorn.Condition{
+				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse),
 			},
 			DiskUUID: getDiskID(TestNode2, "2"),
 		},
@@ -619,38 +571,38 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon1,
 		daemon2,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue)
+	node1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, TestDiskSize)
-	node1.Spec.Disks = map[string]types.DiskSpec{
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode1, "1"): disk,
 	}
-	node1.Status.DiskStatus = map[string]*types.DiskStatus{
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		getDiskID(TestNode1, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]types.Condition{
-				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			Conditions: map[string]longhorn.Condition{
+				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
 		},
 	}
-	node2 = newNode(TestNode2, TestNamespace, true, types.ConditionStatusTrue)
+	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, 0)
-	node2.Spec.Disks = map[string]types.DiskSpec{
+	node2.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode2, "1"): disk,
 		getDiskID(TestNode2, "2"): disk2,
 	}
-	node2.Status.DiskStatus = map[string]*types.DiskStatus{
+	node2.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		getDiskID(TestNode2, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]types.Condition{
-				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			Conditions: map[string]longhorn.Condition{
+				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "1"),
 		},
@@ -658,8 +610,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]types.Condition{
-				types.DiskConditionTypeSchedulable: newCondition(types.DiskConditionTypeSchedulable, types.ConditionStatusTrue),
+			Conditions: map[string]longhorn.Condition{
+				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "2"),
 		},
@@ -699,36 +651,42 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		for _, daemon := range tc.daemons {
 			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), daemon, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			pIndexer.Add(p)
+			err = pIndexer.Add(p)
+			c.Assert(err, IsNil)
 		}
 		// create node
 		for _, node := range tc.nodes {
 			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
-			nIndexer.Add(n)
+			err = nIndexer.Add(n)
+			c.Assert(err, IsNil)
 		}
 		// Create engine image
 		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(context.TODO(), tc.engineImage, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(ei, NotNil)
-		eiIndexer.Add(ei)
+		err = eiIndexer.Add(ei)
+		c.Assert(err, IsNil)
 		// create volume
 		volume, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(context.TODO(), tc.volume, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(volume, NotNil)
-		vIndexer.Add(volume)
+		err = vIndexer.Add(volume)
+		c.Assert(err, IsNil)
 		// set settings
 		if tc.storageOverProvisioningPercentage != "" && tc.storageMinimalAvailablePercentage != "" {
 			s := initSettings(string(types.SettingNameStorageOverProvisioningPercentage), tc.storageOverProvisioningPercentage)
 			setting, err := lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			sIndexer.Add(setting)
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
 
 			s = initSettings(string(types.SettingNameStorageMinimalAvailablePercentage), tc.storageMinimalAvailablePercentage)
 			setting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			sIndexer.Add(setting)
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
 		}
 		// Set replica node soft anti-affinity setting
 		if tc.replicaNodeSoftAntiAffinity != "" {
@@ -738,14 +696,16 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			setting, err :=
 				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			sIndexer.Add(setting)
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
 		}
 		// validate scheduler
 		for _, replica := range tc.replicas {
 			r, err := lhClient.LonghornV1beta1().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(r, NotNil)
-			rIndexer.Add(r)
+			err = rIndexer.Add(r)
+			c.Assert(err, IsNil)
 
 			sr, err := s.ScheduleReplica(r, tc.replicas, volume)
 			if tc.err {

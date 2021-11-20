@@ -19,6 +19,7 @@ import (
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/datastore"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 )
@@ -122,8 +123,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 					return nil, status.Errorf(codes.OutOfRange, "cannot clone volume: the requested size (%v bytes) is different than the source volume size (%v bytes)", reqVolSizeBytes, srcVolSizeBytes)
 				}
 
-				dataSource, _ := types.NewVolumeDataSource(types.VolumeDataSourceTypeVolume, map[string]string{types.VolumeNameKey: srcVolume.VolumeId})
-				volumeParameters["dataSource"] = dataSource.ToString()
+				dataSource, _ := types.NewVolumeDataSource(longhorn.VolumeDataSourceTypeVolume, map[string]string{types.VolumeNameKey: srcVolume.VolumeId})
+				volumeParameters["dataSource"] = string(dataSource)
 			}
 		default:
 			return nil, status.Errorf(codes.InvalidArgument, "%v not a proper volume source", volumeSource)
@@ -185,10 +186,10 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	for _, recurringJob := range vol.RecurringJobs {
 		recurringJob.Concurrency = types.DefaultRecurringJobConcurrency
 
-		if err := datastore.ValidateRecurringJob(types.RecurringJobSpec{
+		if err := datastore.ValidateRecurringJob(longhorn.RecurringJobSpec{
 			Name:        recurringJob.Name,
 			Groups:      recurringJob.Groups,
-			Task:        types.RecurringJobType(recurringJob.Task),
+			Task:        longhorn.RecurringJobType(recurringJob.Task),
 			Cron:        recurringJob.Cron,
 			Retain:      int(recurringJob.Retain),
 			Concurrency: int(recurringJob.Concurrency),
@@ -227,7 +228,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	// Do we have a better condition than this?
 	checkVolumeCreated := func(vol *longhornclient.Volume) bool {
-		return vol.State == string(types.VolumeStateDetached)
+		return vol.State == string(longhorn.VolumeStateDetached)
 	}
 
 	if !cs.waitForVolumeState(resVol.Id, "volume created", checkVolumeCreated, true, false) {
@@ -268,15 +269,15 @@ func (cs *ControllerServer) checkAndPrepareBackingImage(volumeName, backingImage
 	//   2. The data source is valid for CSI. Notice that the CSI plugin cannot create a backing image with type `upload`.
 	if existingBackingImage == nil || existingBackingImage.Name == "" {
 		switch bidsType {
-		case string(types.BackingImageDataSourceTypeUpload):
+		case string(longhorn.BackingImageDataSourceTypeUpload):
 			return fmt.Errorf("cannot upload backing image %v via CSI", backingImageName)
 		case "":
 			// backward compatibility
 			if volumeParameters["backingImageURL"] == "" {
 				return fmt.Errorf("volume %s missing backing image %v unable to create volume", volumeName, backingImageName)
 			}
-			bidsType = string(types.BackingImageDataSourceTypeDownload)
-			bidsParameters[types.DataSourceTypeDownloadParameterURL] = volumeParameters["backingImageURL"]
+			bidsType = string(longhorn.BackingImageDataSourceTypeDownload)
+			bidsParameters[longhorn.DataSourceTypeDownloadParameterURL] = volumeParameters["backingImageURL"]
 		}
 
 		_, err = cs.apiClient.BackingImage.Create(&longhornclient.BackingImage{
@@ -395,12 +396,12 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Errorf(codes.NotFound, "volume %s not found", volumeID)
 	}
 
-	if volume.Frontend != string(types.VolumeFrontendBlockDev) {
+	if volume.Frontend != string(longhorn.VolumeFrontendBlockDev) {
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s invalid frontend type %s", volumeID, volume.Frontend)
 	}
 
 	if requiresSharedAccess(volume, volumeCapability) {
-		volume, err = cs.updateVolumeAccessMode(volume, types.AccessModeReadWriteMany)
+		volume, err = cs.updateVolumeAccessMode(volume, longhorn.AccessModeReadWriteMany)
 		if err != nil {
 			return nil, err
 		}
@@ -417,7 +418,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 	// TODO: JM if volume is already attached to a different node, return code `codes.FailedPrecondition`
 	//  this should be handled by the processing of the api return code
 	if !requiresSharedAccess(volume, volumeCapability) &&
-		volume.State == string(types.VolumeStateAttached) &&
+		volume.State == string(longhorn.VolumeStateAttached) &&
 		len(volume.Controllers) > 0 && volume.Controllers[0].HostId != nodeID {
 		return nil, status.Errorf(codes.FailedPrecondition, "volume %s cannot be attached to node %s is already attached to node %s",
 			volumeID, nodeID, volume.Controllers[0].HostId)
@@ -457,7 +458,7 @@ func (cs *ControllerServer) publishVolume(volume *longhornclient.Volume, nodeID 
 	return &csi.ControllerPublishVolumeResponse{}, nil
 }
 
-func (cs *ControllerServer) updateVolumeAccessMode(volume *longhornclient.Volume, accessMode types.AccessMode) (*longhornclient.Volume, error) {
+func (cs *ControllerServer) updateVolumeAccessMode(volume *longhornclient.Volume, accessMode longhorn.AccessMode) (*longhornclient.Volume, error) {
 	mode := string(accessMode)
 	if volume.AccessMode == mode {
 		return volume, nil
@@ -737,7 +738,7 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s invalid controller count %v", volumeID, len(existVol.Controllers))
 	}
 	// Support offline expansion only
-	if existVol.State != string(types.VolumeStateDetached) {
+	if existVol.State != string(longhorn.VolumeStateDetached) {
 		return nil, status.Errorf(codes.FailedPrecondition, "volume %s invalid state %v for expansion", volumeID, existVol.State)
 	}
 	existingSize, err := strconv.ParseInt(existVol.Size, 10, 64)
@@ -791,12 +792,12 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 
 // isVolumeAvailableOn checks that the volume is attached and that an engine is running on the requested node
 func isVolumeAvailableOn(vol *longhornclient.Volume, node string) bool {
-	return vol.State == string(types.VolumeStateAttached) && isEngineOnNodeAvailable(vol, node)
+	return vol.State == string(longhorn.VolumeStateAttached) && isEngineOnNodeAvailable(vol, node)
 }
 
 // isVolumeUnavailableOn checks that the volume is not attached to the requested node
 func isVolumeUnavailableOn(vol *longhornclient.Volume, node string) bool {
-	isValidState := vol.State == string(types.VolumeStateAttached) || vol.State == string(types.VolumeStateDetached)
+	isValidState := vol.State == string(longhorn.VolumeStateAttached) || vol.State == string(longhorn.VolumeStateDetached)
 	return isValidState && !isEngineOnNodeAvailable(vol, node)
 }
 
@@ -811,8 +812,8 @@ func isEngineOnNodeAvailable(vol *longhornclient.Volume, node string) bool {
 }
 
 func isVolumeShareAvailable(vol *longhornclient.Volume) bool {
-	return vol.AccessMode == string(types.AccessModeReadWriteMany) &&
-		vol.ShareState == string(types.ShareManagerStateRunning) && vol.ShareEndpoint != ""
+	return vol.AccessMode == string(longhorn.AccessModeReadWriteMany) &&
+		vol.ShareState == string(longhorn.ShareManagerStateRunning) && vol.ShareEndpoint != ""
 }
 
 func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription string,

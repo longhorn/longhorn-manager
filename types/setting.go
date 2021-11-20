@@ -14,16 +14,13 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	"github.com/longhorn/longhorn-manager/util"
 )
 
 const (
 	EnvDefaultSettingPath = "DEFAULT_SETTING_PATH"
 )
-
-type Setting struct {
-	Value string `json:"value"`
-}
 
 type SettingType string
 
@@ -66,7 +63,6 @@ const (
 	SettingNameRegistrySecret                               = SettingName("registry-secret")
 	SettingNameDisableSchedulingOnCordonedNode              = SettingName("disable-scheduling-on-cordoned-node")
 	SettingNameReplicaZoneSoftAntiAffinity                  = SettingName("replica-zone-soft-anti-affinity")
-	SettingNameVolumeAttachmentRecoveryPolicy               = SettingName("volume-attachment-recovery-policy")
 	SettingNameNodeDownPodDeletionPolicy                    = SettingName("node-down-pod-deletion-policy")
 	SettingNameAllowNodeDrainWithLastHealthyReplica         = SettingName("allow-node-drain-with-last-healthy-replica")
 	SettingNameMkfsExt4Parameters                           = SettingName("mkfs-ext4-parameters")
@@ -116,7 +112,6 @@ var (
 		SettingNameRegistrySecret,
 		SettingNameDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity,
-		SettingNameVolumeAttachmentRecoveryPolicy,
 		SettingNameNodeDownPodDeletionPolicy,
 		SettingNameAllowNodeDrainWithLastHealthyReplica,
 		SettingNameMkfsExt4Parameters,
@@ -187,7 +182,6 @@ var (
 		SettingNameRegistrySecret:                               SettingDefinitionRegistrySecret,
 		SettingNameDisableSchedulingOnCordonedNode:              SettingDefinitionDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity:                  SettingDefinitionReplicaZoneSoftAntiAffinity,
-		SettingNameVolumeAttachmentRecoveryPolicy:               SettingDefinitionVolumeAttachmentRecoveryPolicy,
 		SettingNameNodeDownPodDeletionPolicy:                    SettingDefinitionNodeDownPodDeletionPolicy,
 		SettingNameAllowNodeDrainWithLastHealthyReplica:         SettingDefinitionAllowNodeDrainWithLastHealthyReplica,
 		SettingNameMkfsExt4Parameters:                           SettingDefinitionMkfsExt4Parameters,
@@ -331,11 +325,11 @@ var (
 		Type:     SettingTypeString,
 		Required: true,
 		ReadOnly: false,
-		Default:  string(ReplicaAutoBalanceDisabled),
+		Default:  string(longhorn.ReplicaAutoBalanceDisabled),
 		Choices: []string{
-			string(ReplicaAutoBalanceDisabled),
-			string(ReplicaAutoBalanceLeastEffort),
-			string(ReplicaAutoBalanceBestEffort),
+			string(longhorn.ReplicaAutoBalanceDisabled),
+			string(longhorn.ReplicaAutoBalanceLeastEffort),
+			string(longhorn.ReplicaAutoBalanceBestEffort),
 		},
 	}
 
@@ -408,10 +402,10 @@ var (
 		Type:     SettingTypeString,
 		Required: true,
 		ReadOnly: false,
-		Default:  string(DataLocalityDisabled),
+		Default:  string(longhorn.DataLocalityDisabled),
 		Choices: []string{
-			string(DataLocalityDisabled),
-			string(DataLocalityBestEffort),
+			string(longhorn.DataLocalityDisabled),
+			string(longhorn.DataLocalityBestEffort),
 		},
 	}
 
@@ -533,23 +527,6 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "true",
-	}
-	SettingDefinitionVolumeAttachmentRecoveryPolicy = SettingDefinition{
-		DisplayName: "Volume Attachment Recovery Policy",
-		Description: "Defines the Longhorn action when a Volume is stuck with a Deployment Pod on a failed node.\n" +
-			"- **wait** leads to the deletion of the volume attachment as soon as the pods deletion time has passed.\n" +
-			"- **never** is the default Kubernetes behavior of never deleting volume attachments on terminating pods.\n" +
-			"- **immediate** leads to the deletion of the volume attachment as soon as all workload pods are pending.\n",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeDeprecated,
-		Required: true,
-		ReadOnly: false,
-		Default:  string(VolumeAttachmentRecoveryPolicyWait),
-		Choices: []string{
-			string(VolumeAttachmentRecoveryPolicyNever),
-			string(VolumeAttachmentRecoveryPolicyWait),
-			string(VolumeAttachmentRecoveryPolicyImmediate),
-		},
 	}
 	SettingDefinitionNodeDownPodDeletionPolicy = SettingDefinition{
 		DisplayName: "Pod Deletion Policy When Node is Down",
@@ -758,14 +735,6 @@ var (
 	}
 )
 
-type VolumeAttachmentRecoveryPolicy string
-
-const (
-	VolumeAttachmentRecoveryPolicyNever     = VolumeAttachmentRecoveryPolicy("never") // Kubernetes default behavior
-	VolumeAttachmentRecoveryPolicyWait      = VolumeAttachmentRecoveryPolicy("wait")  // Longhorn default behavior
-	VolumeAttachmentRecoveryPolicyImmediate = VolumeAttachmentRecoveryPolicy("immediate")
-)
-
 type NodeDownPodDeletionPolicy string
 
 const (
@@ -793,7 +762,7 @@ func ValidateInitSetting(name, value string) (err error) {
 	if !ok {
 		return fmt.Errorf("setting %v is not supported", sName)
 	}
-	if definition.Required == true && value == "" {
+	if definition.Required && value == "" {
 		return fmt.Errorf("required setting %v shouldn't be empty", sName)
 	}
 
@@ -858,7 +827,7 @@ func ValidateInitSetting(name, value string) (err error) {
 			return fmt.Errorf("value %v: %v", c, err)
 		}
 	case SettingNameReplicaAutoBalance:
-		if err := ValidateReplicaAutoBalance(ReplicaAutoBalance(value)); err != nil {
+		if err := ValidateReplicaAutoBalance(longhorn.ReplicaAutoBalance(value)); err != nil {
 			return fmt.Errorf("value %v: %v", value, err)
 		}
 	case SettingNameGuaranteedEngineCPU:
@@ -893,8 +862,6 @@ func ValidateInitSetting(name, value string) (err error) {
 		}
 
 	// multi-choices
-	case SettingNameVolumeAttachmentRecoveryPolicy:
-		fallthrough
 	case SettingNameNodeDownPodDeletionPolicy:
 		fallthrough
 	case SettingNameDefaultDataLocality:

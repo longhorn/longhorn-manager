@@ -13,11 +13,11 @@ import (
 var VERSION = "dev"
 
 func cmdNotFound(c *cli.Context, command string) {
-	panic(fmt.Errorf("Unrecognized command: %s", command))
+	panic(fmt.Errorf("unrecognized command: %s", command))
 }
 
 func onUsageError(c *cli.Context, err error, isSubcommand bool) error {
-	panic(fmt.Errorf("Usage error, please check your command"))
+	panic(fmt.Errorf("usage error, please check your command"))
 }
 
 func main() {

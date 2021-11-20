@@ -56,22 +56,22 @@ func upgradeBackingImages(namespace string, lhClient *lhclientset.Clientset) (er
 	for _, bi := range biList.Items {
 		existingBI := bi.DeepCopy()
 		if bi.Status.DiskFileStatusMap == nil {
-			bi.Status.DiskFileStatusMap = map[string]*types.BackingImageDiskFileStatus{}
+			bi.Status.DiskFileStatusMap = map[string]*longhorn.BackingImageDiskFileStatus{}
 		}
 		for diskUUID, state := range bi.Status.DiskDownloadStateMap {
 			if _, exists := bi.Status.DiskFileStatusMap[diskUUID]; !exists {
-				bi.Status.DiskFileStatusMap[diskUUID] = &types.BackingImageDiskFileStatus{}
+				bi.Status.DiskFileStatusMap[diskUUID] = &longhorn.BackingImageDiskFileStatus{}
 			}
 			switch string(state) {
 			case DeprecatedBackingImageStateDownloaded:
-				bi.Status.DiskFileStatusMap[diskUUID].State = types.BackingImageStateReady
+				bi.Status.DiskFileStatusMap[diskUUID].State = longhorn.BackingImageStateReady
 			case DeprecatedBackingImageStateDownloading:
-				bi.Status.DiskFileStatusMap[diskUUID].State = types.BackingImageStateInProgress
+				bi.Status.DiskFileStatusMap[diskUUID].State = longhorn.BackingImageStateInProgress
 			default:
-				bi.Status.DiskFileStatusMap[diskUUID].State = types.BackingImageState(state)
+				bi.Status.DiskFileStatusMap[diskUUID].State = longhorn.BackingImageState(state)
 			}
 		}
-		bi.Status.DiskDownloadStateMap = map[string]types.BackingImageDownloadState{}
+		bi.Status.DiskDownloadStateMap = map[string]longhorn.BackingImageDownloadState{}
 
 		for diskUUID, progress := range bi.Status.DiskDownloadProgressMap {
 			if _, exists := bi.Status.DiskFileStatusMap[diskUUID]; !exists {
@@ -96,8 +96,8 @@ func upgradeBackingImages(namespace string, lhClient *lhclientset.Clientset) (er
 				return err
 			}
 			bi.Spec.ImageURL = ""
-			bi.Spec.SourceType = types.BackingImageDataSourceTypeDownload
-			bi.Spec.SourceParameters = map[string]string{types.DataSourceTypeDownloadParameterURL: bi.Spec.ImageURL}
+			bi.Spec.SourceType = longhorn.BackingImageDataSourceTypeDownload
+			bi.Spec.SourceParameters = map[string]string{longhorn.DataSourceTypeDownloadParameterURL: bi.Spec.ImageURL}
 			if _, err := lhClient.LonghornV1beta1().BackingImages(namespace).Update(context.TODO(), bi, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
@@ -143,12 +143,12 @@ func checkAndCreateBackingImageDataSource(namespace string, lhClient *lhclientse
 				Name:            bi.Name,
 				OwnerReferences: datastore.GetOwnerReferencesForBackingImage(bi),
 			},
-			Spec: types.BackingImageDataSourceSpec{
+			Spec: longhorn.BackingImageDataSourceSpec{
 				NodeID:          availableNode,
 				DiskUUID:        availableDiskUUID,
 				DiskPath:        availableDiskPath,
-				SourceType:      types.BackingImageDataSourceTypeDownload,
-				Parameters:      map[string]string{types.DataSourceTypeDownloadParameterURL: bi.Spec.ImageURL},
+				SourceType:      longhorn.BackingImageDataSourceTypeDownload,
+				Parameters:      map[string]string{longhorn.DataSourceTypeDownloadParameterURL: bi.Spec.ImageURL},
 				FileTransferred: true,
 			},
 		}

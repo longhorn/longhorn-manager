@@ -19,9 +19,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 
-	"github.com/longhorn/longhorn-manager/types"
-
 	longhornclient "github.com/longhorn/longhorn-manager/client"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 var VERSION = "v1.1.0"
@@ -82,6 +82,30 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 					Tolerations:        tolerations,
 					NodeSelector:       nodeSelector,
 					PriorityClassName:  priorityClass,
+					Affinity: &v1.Affinity{
+						PodAntiAffinity: &v1.PodAntiAffinity{
+							PreferredDuringSchedulingIgnoredDuringExecution: []v1.WeightedPodAffinityTerm{
+								{
+									Weight: 1,
+									PodAffinityTerm: v1.PodAffinityTerm{
+										LabelSelector: &metav1.LabelSelector{
+											MatchExpressions: []metav1.LabelSelectorRequirement{
+												{
+													Key:      "app",
+													Operator: metav1.LabelSelectorOpIn,
+													Values: []string{
+														commonName,
+													},
+												},
+											},
+										},
+
+										TopologyKey: v1.LabelHostname,
+									},
+								},
+							},
+						},
+					},
 					Containers: []v1.Container{
 						{
 							Name:            commonName,
@@ -151,7 +175,7 @@ func waitForDeletion(kubeClient *clientset.Clientset, name, namespace, resource 
 		}
 		time.Sleep(time.Duration(1) * time.Second)
 	}
-	return fmt.Errorf("Foreground deletion of %s %s timed out", resource, name)
+	return fmt.Errorf("foreground deletion of %s %s timed out", resource, name)
 }
 
 func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
@@ -362,13 +386,13 @@ func CheckMountPropagationWithNode(managerURL string) error {
 	}
 	nodeCollection, _ := apiClient.Node.List(&longhornclient.ListOpts{})
 	for _, node := range nodeCollection.Data {
-		con := node.Conditions[string(types.NodeConditionTypeMountPropagation)]
+		con := node.Conditions[string(longhorn.NodeConditionTypeMountPropagation)]
 		var condition map[string]interface{}
 		if con != nil {
 			condition = con.(map[string]interface{})
 		}
 		for i := 0; i < maxRetryCountForMountPropagationCheck; i++ {
-			if condition != nil && condition["status"] != nil && condition["status"].(string) != string(types.ConditionStatusUnknown) {
+			if condition != nil && condition["status"] != nil && condition["status"].(string) != string(longhorn.ConditionStatusUnknown) {
 				break
 			}
 			time.Sleep(durationSleepForMountPropagationCheck)
@@ -376,12 +400,12 @@ func CheckMountPropagationWithNode(managerURL string) error {
 			if err != nil {
 				return err
 			}
-			if retryNode.Conditions[string(types.NodeConditionTypeMountPropagation)] != nil {
-				condition = retryNode.Conditions[string(types.NodeConditionTypeMountPropagation)].(map[string]interface{})
+			if retryNode.Conditions[string(longhorn.NodeConditionTypeMountPropagation)] != nil {
+				condition = retryNode.Conditions[string(longhorn.NodeConditionTypeMountPropagation)].(map[string]interface{})
 			}
 		}
-		if condition == nil || condition["status"] == nil || condition["status"].(string) != string(types.ConditionStatusTrue) {
-			return fmt.Errorf("Node %s is not support mount propagation", node.Name)
+		if condition == nil || condition["status"] == nil || condition["status"].(string) != string(longhorn.ConditionStatusTrue) {
+			return fmt.Errorf("node %s is not support mount propagation", node.Name)
 		}
 	}
 

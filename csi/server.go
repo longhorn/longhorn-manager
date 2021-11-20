@@ -21,6 +21,7 @@ package csi
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -47,7 +48,6 @@ func (s *NonBlockingGRPCServer) Start(endpoint string, ids csi.IdentityServer, c
 
 	go s.serve(endpoint, ids, cs, ns)
 
-	return
 }
 
 func (s *NonBlockingGRPCServer) Wait() {
@@ -99,7 +99,10 @@ func (s *NonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 
 	logrus.Infof("Listening for connections on address: %#v", listener.Addr())
 
-	server.Serve(listener)
+	err = server.Serve(listener)
+	if err != nil {
+		log.Println(err)
+	}
 
 }
 
@@ -110,7 +113,7 @@ func parseEndpoint(ep string) (string, string, error) {
 			return s[0], s[1], nil
 		}
 	}
-	return "", "", fmt.Errorf("Invalid endpoint: %v", ep)
+	return "", "", fmt.Errorf("invalid endpoint: %v", ep)
 }
 
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {

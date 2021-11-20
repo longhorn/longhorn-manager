@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/longhorn/longhorn-manager/types"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 )
 
 type EngineSimulatorRequest struct {
@@ -111,7 +111,7 @@ func (e *EngineSimulator) ReplicaAdd(url string, isRestoreVolume bool) error {
 	defer e.mutex.Unlock()
 
 	for name, replica := range e.replicas {
-		if replica.Mode == types.ReplicaModeERR {
+		if replica.Mode == longhorn.ReplicaModeERR {
 			return fmt.Errorf("replica %v is in ERR mode, cannot add new replica", name)
 		}
 	}
@@ -120,7 +120,7 @@ func (e *EngineSimulator) ReplicaAdd(url string, isRestoreVolume bool) error {
 	}
 	e.replicas[url] = &Replica{
 		URL:  url,
-		Mode: types.ReplicaModeRW,
+		Mode: longhorn.ReplicaModeRW,
 	}
 	return nil
 }
@@ -143,7 +143,7 @@ func (e *EngineSimulator) SimulateStopReplica(addr string) error {
 	if e.replicas[addr] == nil {
 		return fmt.Errorf("unable to find replica %v", addr)
 	}
-	e.replicas[addr].Mode = types.ReplicaModeERR
+	e.replicas[addr].Mode = longhorn.ReplicaModeERR
 	return nil
 }
 
@@ -151,11 +151,11 @@ func (e *EngineSimulator) SnapshotCreate(name string, labels map[string]string) 
 	return "", fmt.Errorf("not implemented")
 }
 
-func (e *EngineSimulator) SnapshotList() (map[string]*types.Snapshot, error) {
+func (e *EngineSimulator) SnapshotList() (map[string]*longhorn.Snapshot, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (e *EngineSimulator) SnapshotGet(name string) (*types.Snapshot, error) {
+func (e *EngineSimulator) SnapshotGet(name string) (*longhorn.Snapshot, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
@@ -171,15 +171,15 @@ func (e *EngineSimulator) SnapshotPurge() error {
 	return fmt.Errorf("not implemented")
 }
 
-func (e *EngineSimulator) SnapshotPurgeStatus() (map[string]*types.PurgeStatus, error) {
+func (e *EngineSimulator) SnapshotPurgeStatus() (map[string]*longhorn.PurgeStatus, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
 func (e *EngineSimulator) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, error) {
-	return "", fmt.Errorf("Not implemented")
+	return "", fmt.Errorf("not implemented")
 }
 
-func (e *EngineSimulator) SnapshotBackupStatus() (map[string]*types.BackupStatus, error) {
+func (e *EngineSimulator) SnapshotBackupStatus() (map[string]*longhorn.BackupStatus, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
@@ -203,19 +203,19 @@ func (e *EngineSimulator) SnapshotClone(snapshotName, fromControllerAddress stri
 	return fmt.Errorf("not implemented")
 }
 
-func (e *EngineSimulator) BackupRestoreStatus() (map[string]*types.RestoreStatus, error) {
+func (e *EngineSimulator) BackupRestoreStatus() (map[string]*longhorn.RestoreStatus, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (e *EngineSimulator) SnapshotCloneStatus() (map[string]*types.SnapshotCloneStatus, error) {
+func (e *EngineSimulator) SnapshotCloneStatus() (map[string]*longhorn.SnapshotCloneStatus, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (e *EngineSimulator) ReplicaRebuildStatus() (map[string]*types.RebuildStatus, error) {
+func (e *EngineSimulator) ReplicaRebuildStatus() (map[string]*longhorn.RebuildStatus, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (e *EngineSimulator) FrontendStart(volumeFrontend types.VolumeFrontend) error {
+func (e *EngineSimulator) FrontendStart(volumeFrontend longhorn.VolumeFrontend) error {
 	return fmt.Errorf("not implemented")
 }
 func (e *EngineSimulator) FrontendShutdown() error {

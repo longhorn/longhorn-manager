@@ -24,8 +24,8 @@ type ReplicaScheduler struct {
 }
 
 type Disk struct {
-	types.DiskSpec
-	*types.DiskStatus
+	longhorn.DiskSpec
+	*longhorn.DiskStatus
 	NodeID string
 }
 
@@ -76,7 +76,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 			if !diskSpec.AllowScheduling || diskSpec.EvictionRequested {
 				continue
 			}
-			if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status != types.ConditionStatusTrue {
+			if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
 				continue
 			}
 			disks[diskStatus.DiskUUID] = struct{}{}
@@ -119,6 +119,19 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.No
 	return nodeCandidates
 }
 
+// getNodesWithEvictingReplicas returns nodes that have replicas being evicted
+func getNodesWithEvictingReplicas(replicas map[string]*longhorn.Replica, nodeInfo map[string]*longhorn.Node) map[string]*longhorn.Node {
+	nodesWithEvictingReplicas := map[string]*longhorn.Node{}
+	for _, r := range replicas {
+		if r.Status.EvictionRequested {
+			if node, ok := nodeInfo[r.Spec.NodeID]; ok {
+				nodesWithEvictingReplicas[r.Spec.NodeID] = node
+			}
+		}
+	}
+	return nodesWithEvictingReplicas
+}
+
 func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Node, nodeDisksMap map[string]map[string]struct{}, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, requireSchedulingCheck bool) map[string]*Disk {
 	nodeSoftAntiAffinity, err :=
 		rcs.ds.GetSettingAsBool(types.SettingNameReplicaSoftAntiAffinity)
@@ -132,9 +145,18 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		logrus.Errorf("Error getting replica zone soft anti-affinity setting: %v", err)
 	}
 
+	getDiskCandidatesFromNodes := func(nodes map[string]*longhorn.Node) map[string]*Disk {
+		for _, node := range nodes {
+			if diskCandidates := rcs.filterNodeDisksForReplica(node, nodeDisksMap[node.Name], replicas, volume, requireSchedulingCheck); len(diskCandidates) > 0 {
+				return diskCandidates
+			}
+		}
+		return map[string]*Disk{}
+	}
+
 	usedNodes := map[string]*longhorn.Node{}
 	usedZones := map[string]bool{}
-
+	replicasCountPerNode := map[string]int{}
 	// Get current nodes and zones
 	for _, r := range replicas {
 		if r.Spec.NodeID != "" && r.DeletionTimestamp == nil && r.Spec.FailedAt == "" {
@@ -143,90 +165,82 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 				// For empty zone label, we treat them as
 				// one zone.
 				usedZones[node.Status.Zone] = true
+				replicasCountPerNode[r.Spec.NodeID] = replicasCountPerNode[r.Spec.NodeID] + 1
 			}
 		}
 	}
 
-	unusedNodeCandidates := map[string]*longhorn.Node{}
-	unusedNodeWithNewZoneCandidates := map[string]*longhorn.Node{}
+	filterNodesWithLessThanTwoReplicas := func(nodes map[string]*longhorn.Node) map[string]*longhorn.Node {
+		result := map[string]*longhorn.Node{}
+		for nodeName, node := range nodes {
+			if replicasCountPerNode[nodeName] < 2 {
+				result[nodeName] = node
+			}
+		}
+		return result
+	}
 
-	// Get new nodes with new zones
+	unusedNodes := map[string]*longhorn.Node{}
+	unusedNodesInNewZones := map[string]*longhorn.Node{}
+	nodesInUnusedZones := map[string]*longhorn.Node{}
+	nodesWithEvictingReplicas := getNodesWithEvictingReplicas(replicas, nodeInfo)
+
 	for nodeName, node := range nodeInfo {
+		// Filter Nodes. If the Nodes don't match the tags, don't bother marking them as candidates.
+		if !rcs.checkTagsAreFulfilled(node.Spec.Tags, volume.Spec.NodeSelector) {
+			continue
+		}
 		if _, ok := usedNodes[nodeName]; !ok {
-			// Filter Nodes. If the Nodes don't match the tags, don't bother marking them as candidates.
-			if !rcs.checkTagsAreFulfilled(node.Spec.Tags, volume.Spec.NodeSelector) {
-				continue
-			}
-			unusedNodeCandidates[nodeName] = node
+			unusedNodes[nodeName] = node
 			if _, ok := usedZones[node.Status.Zone]; !ok {
-				unusedNodeWithNewZoneCandidates[nodeName] = node
+				unusedNodesInNewZones[nodeName] = node
 			}
+		}
+		if _, ok := usedZones[node.Status.Zone]; !ok {
+			nodesInUnusedZones[nodeName] = node
 		}
 	}
 
-	diskCandidates := map[string]*Disk{}
-
-	// First check if we can schedule replica on new nodes with new zone
-	for _, node := range unusedNodeWithNewZoneCandidates {
-		diskCandidates = rcs.filterNodeDisksForReplica(node, nodeDisksMap[node.Name], replicas, volume, requireSchedulingCheck)
-		if len(diskCandidates) > 0 {
+	switch {
+	case !zoneSoftAntiAffinity && !nodeSoftAntiAffinity:
+		if diskCandidates := getDiskCandidatesFromNodes(unusedNodesInNewZones); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+		if diskCandidates := getDiskCandidatesFromNodes(filterNodesWithLessThanTwoReplicas(nodesWithEvictingReplicas)); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+	case zoneSoftAntiAffinity && !nodeSoftAntiAffinity:
+		if diskCandidates := getDiskCandidatesFromNodes(unusedNodesInNewZones); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+		if diskCandidates := getDiskCandidatesFromNodes(unusedNodes); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+		if diskCandidates := getDiskCandidatesFromNodes(filterNodesWithLessThanTwoReplicas(nodesWithEvictingReplicas)); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+	case !zoneSoftAntiAffinity && nodeSoftAntiAffinity:
+		if diskCandidates := getDiskCandidatesFromNodes(unusedNodesInNewZones); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+		if diskCandidates := getDiskCandidatesFromNodes(nodesInUnusedZones); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+		if diskCandidates := getDiskCandidatesFromNodes(nodesWithEvictingReplicas); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+	case zoneSoftAntiAffinity && nodeSoftAntiAffinity:
+		if diskCandidates := getDiskCandidatesFromNodes(unusedNodesInNewZones); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+		if diskCandidates := getDiskCandidatesFromNodes(unusedNodes); len(diskCandidates) > 0 {
+			return diskCandidates
+		}
+		if diskCandidates := getDiskCandidatesFromNodes(usedNodes); len(diskCandidates) > 0 {
 			return diskCandidates
 		}
 	}
-
-	// Hard on zone and hard on node
-	if (!nodeSoftAntiAffinity) && (!zoneSoftAntiAffinity) {
-		return diskCandidates
-	}
-
-	// Then check if we can schedule replica on new nodes with same zone
-	for _, node := range unusedNodeCandidates {
-		diskCandidates = rcs.filterNodeDisksForReplica(node, nodeDisksMap[node.Name], replicas, volume, requireSchedulingCheck)
-		if len(diskCandidates) > 0 {
-			break
-		}
-	}
-
-	// Soft on zone and hard on node
-	if !nodeSoftAntiAffinity {
-		return diskCandidates
-	}
-
-	// On new nodes with soft on zone and soft on node
-	if (zoneSoftAntiAffinity) && (len(diskCandidates) > 0) {
-		return diskCandidates
-	}
-
-	for _, node := range nodeInfo {
-		if _, ok := usedZones[node.Status.Zone]; !ok {
-			// Filter tag unmatched nodes
-			if !rcs.checkTagsAreFulfilled(node.Spec.Tags, volume.Spec.NodeSelector) {
-				continue
-			}
-			diskCandidates = rcs.filterNodeDisksForReplica(node, nodeDisksMap[node.Name], replicas, volume, requireSchedulingCheck)
-			if len(diskCandidates) > 0 {
-				break
-			}
-		}
-	}
-
-	// Hard on zone and soft on node
-	if !zoneSoftAntiAffinity {
-		return diskCandidates
-	}
-
-	// On new zones with soft on zone and soft on node
-	if len(diskCandidates) > 0 {
-		return diskCandidates
-	}
-
-	// Last check if we can schedule replica on existing node regardless the zone
-	// Soft on zone and soft on node
-	for _, node := range usedNodes {
-		diskCandidates = rcs.filterNodeDisksForReplica(node, nodeDisksMap[node.Name], replicas, volume, requireSchedulingCheck)
-	}
-
-	return diskCandidates
+	return map[string]*Disk{}
 }
 
 func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disks map[string]struct{}, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, requireSchedulingCheck bool) map[string]*Disk {
@@ -234,11 +248,11 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 	// find disk that fit for current replica
 	for diskUUID := range disks {
 		var fsid string
-		var diskSpec types.DiskSpec
-		var diskStatus *types.DiskStatus
+		var diskSpec longhorn.DiskSpec
+		var diskStatus *longhorn.DiskStatus
 		diskFound := false
 		for fsid, diskStatus = range node.Status.DiskStatus {
-			if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status == types.ConditionStatusTrue &&
+			if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status == longhorn.ConditionStatusTrue &&
 				diskStatus.DiskUUID == diskUUID {
 				diskFound = true
 				diskSpec = node.Spec.Disks[fsid]
@@ -311,14 +325,14 @@ func (rcs *ReplicaScheduler) getNodeInfo() (map[string]*longhorn.Node, error) {
 
 	for _, node := range nodeInfo {
 		// First check node ready condition
-		nodeReadyCondition := types.GetCondition(node.Status.Conditions, types.NodeConditionTypeReady)
+		nodeReadyCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
 		// Get Schedulable condition
 		nodeSchedulableCondition :=
 			types.GetCondition(node.Status.Conditions,
-				types.NodeConditionTypeSchedulable)
+				longhorn.NodeConditionTypeSchedulable)
 		if node != nil && node.DeletionTimestamp == nil &&
-			nodeReadyCondition.Status == types.ConditionStatusTrue &&
-			nodeSchedulableCondition.Status == types.ConditionStatusTrue &&
+			nodeReadyCondition.Status == longhorn.ConditionStatusTrue &&
+			nodeSchedulableCondition.Status == longhorn.ConditionStatusTrue &&
 			node.Spec.AllowScheduling {
 			scheduledNode[node.Name] = node
 		}
@@ -400,7 +414,7 @@ func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*lon
 //   4. there is no potential reusable replica
 //   5. there is potential reusable replica but the replica replenishment wait interval is passed.
 func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Replica, volume *longhorn.Volume, hardNodeAffinity string) bool {
-	if volume.Status.Robustness != types.VolumeRobustnessDegraded {
+	if volume.Status.Robustness != longhorn.VolumeRobustnessDegraded {
 		return true
 	}
 	if hardNodeAffinity != "" {
@@ -464,10 +478,10 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 	}
 	diskFound := false
 	for diskName, diskStatus := range node.Status.DiskStatus {
-		if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeReady).Status != types.ConditionStatusTrue {
+		if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status != longhorn.ConditionStatusTrue {
 			continue
 		}
-		if types.GetCondition(diskStatus.Conditions, types.DiskConditionTypeSchedulable).Status != types.ConditionStatusTrue {
+		if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
 			continue
 		}
 		if diskStatus.DiskUUID == r.Spec.DiskID {
@@ -493,7 +507,7 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 		logrus.Errorf("failed to get instance manager when checking replica %v is reusable: %v", r.Name, err)
 		return false
 	}
-	if im.DeletionTimestamp != nil || im.Status.CurrentState != types.InstanceManagerStateRunning {
+	if im.DeletionTimestamp != nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 		return false
 	}
 
@@ -550,7 +564,7 @@ func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, requiredStorage int
 		(size+info.StorageScheduled) <= int64(float64(info.StorageMaximum-info.StorageReserved)*float64(info.OverProvisioningPercentage)/100)
 }
 
-func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk types.DiskSpec, diskStatus *types.DiskStatus) (*DiskSchedulingInfo, error) {
+func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk longhorn.DiskSpec, diskStatus *longhorn.DiskStatus) (*DiskSchedulingInfo, error) {
 	// get StorageOverProvisioningPercentage and StorageMinimalAvailablePercentage settings
 	overProvisioningPercentage, err := rcs.ds.GetSettingAsInt(types.SettingNameStorageOverProvisioningPercentage)
 	if err != nil {
@@ -613,12 +627,12 @@ func (rcs *ReplicaScheduler) CheckReplicasSizeExpansion(v *longhorn.Volume, oldS
 	return nil
 }
 
-func findDiskSpecAndDiskStatusInNode(diskUUID string, node *longhorn.Node) (types.DiskSpec, types.DiskStatus, bool) {
+func findDiskSpecAndDiskStatusInNode(diskUUID string, node *longhorn.Node) (longhorn.DiskSpec, longhorn.DiskStatus, bool) {
 	for diskName, diskStatus := range node.Status.DiskStatus {
 		if diskStatus.DiskUUID == diskUUID {
 			diskSpec := node.Spec.Disks[diskName]
 			return diskSpec, *diskStatus, true
 		}
 	}
-	return types.DiskSpec{}, types.DiskStatus{}, false
+	return longhorn.DiskSpec{}, longhorn.DiskStatus{}, false
 }

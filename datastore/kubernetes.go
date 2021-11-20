@@ -88,9 +88,9 @@ func (s *DataStore) GetManagerNodeIPMap() (map[string]string, error) {
 func (s *DataStore) GetCronJobROByRecurringJob(recurringJob *longhorn.RecurringJob) (*batchv1beta1.CronJob, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: types.GetCronJobLabels(
-			&types.RecurringJobSpec{
+			&longhorn.RecurringJobSpec{
 				Name: recurringJob.Name,
-				Task: types.RecurringJobType(recurringJob.Spec.Task),
+				Task: longhorn.RecurringJobType(recurringJob.Spec.Task),
 			},
 		),
 	})
@@ -241,6 +241,13 @@ func (s *DataStore) CreateStorageClass(sc *storagev1.StorageClass) (*storagev1.S
 	return s.kubeClient.StorageV1().StorageClasses().Create(context.TODO(), sc, metav1.CreateOptions{})
 }
 
+// ListPodsRO returns a list of all Pods for the given namespace,
+// the list contains direct references to the internal cache objects and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) ListPodsRO(namespace string) ([]*corev1.Pod, error) {
+	return s.pLister.Pods(namespace).List(labels.Everything())
+}
+
 // GetPod returns a mutable Pod object for the given name and namspace
 func (s *DataStore) GetPod(name string) (*corev1.Pod, error) {
 	resultRO, err := s.pLister.Pods(s.namespace).Get(name)
@@ -251,6 +258,10 @@ func (s *DataStore) GetPod(name string) (*corev1.Pod, error) {
 		return nil, err
 	}
 	return resultRO.DeepCopy(), nil
+}
+
+func (s *DataStore) GetPodRO(namespace, name string) (*corev1.Pod, error) {
+	return s.pLister.Pods(namespace).Get(name)
 }
 
 // GetPodContainerLog dumps the log of a container in a Pod object for the given name and namespace.
@@ -353,7 +364,7 @@ func (s *DataStore) ListInstanceManagerPods() ([]*corev1.Pod, error) {
 }
 
 // ListInstanceManagerPodsBy returns a list of instance manager pods that fullfill the below conditions
-func (s *DataStore) ListInstanceManagerPodsBy(node string, image string, imType types.InstanceManagerType) ([]*corev1.Pod, error) {
+func (s *DataStore) ListInstanceManagerPodsBy(node string, image string, imType longhorn.InstanceManagerType) ([]*corev1.Pod, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: types.GetInstanceManagerLabels(node, image, imType),
 	})
@@ -398,6 +409,13 @@ func (s *DataStore) ListPodsBySelector(selector labels.Selector) ([]*corev1.Pod,
 		res = append(res, item.DeepCopy())
 	}
 	return res, nil
+}
+
+// ListKubeNodesRO returns a list of all Kubernetes Nodes for the given namespace,
+// the list contains direct references to the internal cache objects and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) ListKubeNodesRO() ([]*corev1.Node, error) {
+	return s.knLister.List(labels.Everything())
 }
 
 // GetKubernetesNode gets the Node from the index for the given name
@@ -564,7 +582,7 @@ func NewPVManifestForVolume(v *longhorn.Volume, pvName, storageClassName, fsType
 	}
 
 	accessMode := corev1.ReadWriteOnce
-	if v.Spec.AccessMode == types.AccessModeReadWriteMany {
+	if v.Spec.AccessMode == longhorn.AccessModeReadWriteMany {
 		accessMode = corev1.ReadWriteMany
 		volAttributes["migratable"] = strconv.FormatBool(v.Spec.Migratable)
 	}
@@ -608,7 +626,7 @@ func NewPVManifest(size int64, pvName, volumeName, storageClassName, fsType stri
 // NewPVCManifestForVolume returns a new PersistentVolumeClaim object for a longhorn volume
 func NewPVCManifestForVolume(v *longhorn.Volume, pvName, ns, pvcName, storageClassName string) *corev1.PersistentVolumeClaim {
 	accessMode := corev1.ReadWriteOnce
-	if v.Spec.AccessMode == types.AccessModeReadWriteMany {
+	if v.Spec.AccessMode == longhorn.AccessModeReadWriteMany {
 		accessMode = corev1.ReadWriteMany
 	}
 

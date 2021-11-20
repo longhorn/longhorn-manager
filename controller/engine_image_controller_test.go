@@ -50,70 +50,22 @@ type EngineImageControllerTestCase struct {
 func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *EngineImageController {
 
-	volumeInformer := lhInformerFactory.Longhorn().V1beta1().Volumes()
-	engineInformer := lhInformerFactory.Longhorn().V1beta1().Engines()
-	replicaInformer := lhInformerFactory.Longhorn().V1beta1().Replicas()
-	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
-	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
-	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
-	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
-	shareManagerInformer := lhInformerFactory.Longhorn().V1beta1().ShareManagers()
-	backingImageInformer := lhInformerFactory.Longhorn().V1beta1().BackingImages()
-	backingImageManagerInformer := lhInformerFactory.Longhorn().V1beta1().BackingImageManagers()
-	backingImageDataSourceInformer := lhInformerFactory.Longhorn().V1beta1().BackingImageDataSources()
-	backupTargetInformer := lhInformerFactory.Longhorn().V1beta1().BackupTargets()
-	backupVolumeInformer := lhInformerFactory.Longhorn().V1beta1().BackupVolumes()
-	backupInformer := lhInformerFactory.Longhorn().V1beta1().Backups()
-	recurringJobInformer := lhInformerFactory.Longhorn().V1beta1().RecurringJobs()
-
-	podInformer := kubeInformerFactory.Core().V1().Pods()
-	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
-	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
-	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
-	secretInformer := kubeInformerFactory.Core().V1().Secrets()
-	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
-	daemonSetInformer := kubeInformerFactory.Apps().V1().DaemonSets()
-	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
-	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
-	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
-	csiDriverInformer := kubeInformerFactory.Storage().V1().CSIDrivers()
-	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
-	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
-	serviceInformer := kubeInformerFactory.Core().V1().Services()
-
 	// Skip the Lister check that occurs on creation of an Instance Manager.
 	datastore.SkipListerCheck = true
 
-	ds := datastore.NewDataStore(
-		volumeInformer, engineInformer, replicaInformer,
-		engineImageInformer, nodeInformer, settingInformer,
-		imInformer, shareManagerInformer,
-		backingImageInformer, backingImageManagerInformer, backingImageDataSourceInformer,
-		backupTargetInformer, backupVolumeInformer, backupInformer,
-		recurringJobInformer,
-		lhClient,
-		podInformer, cronJobInformer, daemonSetInformer,
-		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
-		configMapInformer, secretInformer, kubeNodeInformer, priorityClassInformer,
-		csiDriverInformer, storageclassInformer,
-		pdbInformer,
-		serviceInformer,
-		kubeClient, TestNamespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, TestNamespace)
 
 	logger := logrus.StandardLogger()
 	ic := NewEngineImageController(
 		logger,
 		ds, scheme.Scheme,
-		engineImageInformer, volumeInformer, daemonSetInformer,
 		kubeClient, TestNamespace, TestNode1, TestServiceAccount)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	ic.eventRecorder = fakeRecorder
-
-	ic.iStoreSynced = alwaysReady
-	ic.vStoreSynced = alwaysReady
-	ic.dsStoreSynced = alwaysReady
-
+	for index := range ic.cacheSyncs {
+		ic.cacheSyncs[index] = alwaysReady
+	}
 	ic.nowHandler = getTestNow
 	ic.engineBinaryChecker = fakeEngineBinaryChecker
 	ic.engineImageVersionUpdater = fakeEngineImageUpdater
@@ -123,19 +75,19 @@ func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInfo
 
 func getEngineImageControllerTestTemplate() *EngineImageControllerTestCase {
 	tc := &EngineImageControllerTestCase{
-		node:                newNode(TestNode1, TestNamespace, true, types.ConditionStatusTrue, ""),
+		node:                newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
 		volume:              newVolume(TestVolumeName, 2),
-		engine:              newEngine(TestEngineName, TestEngineImage, TestEngineManagerName, TestNode1, TestIP1, 0, true, types.InstanceStateRunning, types.InstanceStateRunning),
-		upgradedEngineImage: newEngineImage(TestUpgradedEngineImage, types.EngineImageStateDeployed),
+		engine:              newEngine(TestEngineName, TestEngineImage, TestEngineManagerName, TestNode1, TestIP1, 0, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+		upgradedEngineImage: newEngineImage(TestUpgradedEngineImage, longhorn.EngineImageStateDeployed),
 
 		defaultEngineImage: TestEngineImage,
 
-		currentEngineImage: newEngineImage(TestEngineImage, types.EngineImageStateDeployed),
+		currentEngineImage: newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed),
 		currentDaemonSet:   newEngineImageDaemonSet(),
 	}
 
 	tc.volume.Status.CurrentNodeID = TestNode1
-	tc.volume.Status.State = types.VolumeStateAttached
+	tc.volume.Status.State = longhorn.VolumeStateAttached
 	tc.volume.Status.CurrentImage = TestEngineImage
 	tc.currentEngineImage.Status.RefCount = 1
 
@@ -165,6 +117,7 @@ func createEngineImageDaemonSetPod(name string, containerReadyStatus bool, nodeI
 func generateEngineImageControllerTestCases() map[string]*EngineImageControllerTestCase {
 	var tc *EngineImageControllerTestCase
 	testCases := map[string]*EngineImageControllerTestCase{}
+	invalidEngineVersion := -1
 
 	// The TestNode2 is a non-existing node and is just used for node down test.
 	tc = getEngineImageControllerTestTemplate()
@@ -176,15 +129,15 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	testCases["Engine image ownerID node is down"] = tc
 
 	tc = getEngineImageControllerTestTemplate()
-	tc.currentEngineImage.Status.State = types.EngineImageStateDeploying
+	tc.currentEngineImage.Status.State = longhorn.EngineImageStateDeploying
 	tc.currentDaemonSet = nil
 	tc.copyCurrentToExpected()
 	tc.expectedDaemonSet = newEngineImageDaemonSet()
 	tc.expectedDaemonSet.Status.NumberAvailable = 0
-	tc.expectedEngineImage.Status.Conditions[types.EngineImageConditionTypeReady] = types.Condition{
-		Type:   types.EngineImageConditionTypeReady,
-		Status: types.ConditionStatusFalse,
-		Reason: types.EngineImageConditionTypeReadyReasonDaemonSet,
+	tc.expectedEngineImage.Status.Conditions[longhorn.EngineImageConditionTypeReady] = longhorn.Condition{
+		Type:   longhorn.EngineImageConditionTypeReady,
+		Status: longhorn.ConditionStatusFalse,
+		Reason: longhorn.EngineImageConditionTypeReadyReasonDaemonSet,
 	}
 	testCases["Engine image DaemonSet creation"] = tc
 
@@ -192,11 +145,11 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc = getEngineImageControllerTestTemplate()
 	tc.currentDaemonSet.Status.NumberAvailable = 0
 	tc.copyCurrentToExpected()
-	tc.expectedEngineImage.Status.State = types.EngineImageStateDeploying
-	tc.expectedEngineImage.Status.Conditions[types.EngineImageConditionTypeReady] = types.Condition{
-		Type:   types.EngineImageConditionTypeReady,
-		Status: types.ConditionStatusFalse,
-		Reason: types.EngineImageConditionTypeReadyReasonDaemonSet,
+	tc.expectedEngineImage.Status.State = longhorn.EngineImageStateDeploying
+	tc.expectedEngineImage.Status.Conditions[longhorn.EngineImageConditionTypeReady] = longhorn.Condition{
+		Type:   longhorn.EngineImageConditionTypeReady,
+		Status: longhorn.ConditionStatusFalse,
+		Reason: longhorn.EngineImageConditionTypeReadyReasonDaemonSet,
 	}
 	tc.expectedEngineImage.Status.NodeDeploymentMap = map[string]bool{TestNode1: false}
 	testCases["Engine Image DaemonSet pods are suddenly removed"] = tc
@@ -224,25 +177,25 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	testCases["The default engine image won't be cleaned up even if there is no volume using it"] = tc
 
 	tc = getEngineImageControllerTestTemplate()
-	incompatibleVersion := types.EngineVersionDetails{
+	incompatibleVersion := longhorn.EngineVersionDetails{
 		Version:                 "ei.Spec.Image",
 		GitCommit:               "unknown",
 		BuildDate:               "unknown",
-		CLIAPIVersion:           types.InvalidEngineVersion,
-		CLIAPIMinVersion:        types.InvalidEngineVersion,
-		ControllerAPIVersion:    types.InvalidEngineVersion,
-		ControllerAPIMinVersion: types.InvalidEngineVersion,
-		DataFormatVersion:       types.InvalidEngineVersion,
-		DataFormatMinVersion:    types.InvalidEngineVersion,
+		CLIAPIVersion:           invalidEngineVersion,
+		CLIAPIMinVersion:        invalidEngineVersion,
+		ControllerAPIVersion:    invalidEngineVersion,
+		ControllerAPIMinVersion: invalidEngineVersion,
+		DataFormatVersion:       invalidEngineVersion,
+		DataFormatMinVersion:    invalidEngineVersion,
 	}
 	tc.currentEngineImage.Status.EngineVersionDetails = incompatibleVersion
 	tc.currentDaemonSetPod = createEngineImageDaemonSetPod(getTestEngineImageDaemonSetName()+TestPod1, true, TestNode1)
 	tc.copyCurrentToExpected()
-	tc.expectedEngineImage.Status.State = types.EngineImageStateIncompatible
-	tc.expectedEngineImage.Status.Conditions[types.EngineImageConditionTypeReady] = types.Condition{
-		Type:   types.EngineImageConditionTypeReady,
-		Status: types.ConditionStatusFalse,
-		Reason: types.EngineImageConditionTypeReadyReasonBinary,
+	tc.expectedEngineImage.Status.State = longhorn.EngineImageStateIncompatible
+	tc.expectedEngineImage.Status.Conditions[longhorn.EngineImageConditionTypeReady] = longhorn.Condition{
+		Type:   longhorn.EngineImageConditionTypeReady,
+		Status: longhorn.ConditionStatusFalse,
+		Reason: longhorn.EngineImageConditionTypeReadyReasonBinary,
 	}
 	tc.expectedEngineImage.Status.NodeDeploymentMap = map[string]bool{TestNode1: true}
 	testCases["Incompatible engine image"] = tc

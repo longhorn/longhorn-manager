@@ -249,8 +249,10 @@ func (rancherClient *RancherBaseClientImpl) doDelete(url string) error {
 	}
 	defer resp.Body.Close()
 
-	io.Copy(ioutil.Discard, resp.Body)
-
+	_, err = io.Copy(ioutil.Discard, resp.Body)
+	if err != nil {
+		return err
+	}
 	if resp.StatusCode >= 300 {
 		return newApiError(resp, url)
 	}
@@ -353,7 +355,7 @@ func (rancherClient *RancherBaseClientImpl) Post(url string, createObj interface
 func (rancherClient *RancherBaseClientImpl) GetLink(resource Resource, link string, respObject interface{}) error {
 	url := resource.Links[link]
 	if url == "" {
-		return fmt.Errorf("Failed to find link: %s", link)
+		return fmt.Errorf("failed to find link: %s", link)
 	}
 
 	return rancherClient.doGet(url, &ListOpts{}, respObject)

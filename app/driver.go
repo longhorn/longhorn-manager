@@ -10,9 +10,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
-	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	v1 "k8s.io/api/core/v1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/version"
 	clientset "k8s.io/client-go/kubernetes"
@@ -185,7 +184,7 @@ func checkKubernetesVersion(kubeClient *clientset.Clientset) error {
 	currentVersion := version.MustParseSemantic(serverVersion.GitVersion)
 	minVersion := version.MustParseSemantic(types.KubernetesMinVersion)
 	if !currentVersion.AtLeast(minVersion) {
-		return fmt.Errorf("Kubernetes version need to be at least %v, but it's %v", types.KubernetesMinVersion, serverVersion.GitVersion)
+		return fmt.Errorf("kubernetes version need to be at least %v, but it's %v", types.KubernetesMinVersion, serverVersion.GitVersion)
 	}
 	return nil
 }
@@ -312,39 +311,4 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 	<-done
 
 	return nil
-}
-
-type DaemonSetOps struct {
-	namespace  string
-	kubeClient *clientset.Clientset
-}
-
-func newDaemonSetOps(kubeClient *clientset.Clientset) (*DaemonSetOps, error) {
-	namespace := os.Getenv(types.EnvPodNamespace)
-	if namespace == "" {
-		return nil, fmt.Errorf("Cannot detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
-	}
-	return &DaemonSetOps{
-		namespace, kubeClient,
-	}, nil
-}
-
-func (ops *DaemonSetOps) Get(name string) (*appsv1.DaemonSet, error) {
-	d, err := ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Get(context.TODO(), name, metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return d, nil
-}
-
-func (ops *DaemonSetOps) Create(name string, d *appsv1.DaemonSet) (*appsv1.DaemonSet, error) {
-	return ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Create(context.TODO(), d, metav1.CreateOptions{})
-}
-
-func (ops *DaemonSetOps) Delete(name string) error {
-	propagation := metav1.DeletePropagationForeground
-	return ops.kubeClient.AppsV1().DaemonSets(ops.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
 }

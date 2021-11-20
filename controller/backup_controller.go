@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -28,7 +29,6 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/longhorn/v1beta1"
 )
 
 const (
@@ -48,14 +48,13 @@ type BackupController struct {
 
 	ds *datastore.DataStore
 
-	bStoreSynced cache.InformerSynced
+	cacheSyncs []cache.InformerSynced
 }
 
 func NewBackupController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
-	backupInformer lhinformers.BackupInformer,
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string) *BackupController {
@@ -76,15 +75,14 @@ func NewBackupController(
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-backup-controller"}),
-
-		bStoreSynced: backupInformer.Informer().HasSynced,
 	}
 
-	backupInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.BackupInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    bc.enqueueBackup,
 		UpdateFunc: func(old, cur interface{}) { bc.enqueueBackup(cur) },
 		DeleteFunc: bc.enqueueBackup,
 	})
+	bc.cacheSyncs = append(bc.cacheSyncs, ds.BackupInformer.HasSynced)
 
 	return bc
 }
@@ -106,7 +104,7 @@ func (bc *BackupController) Run(workers int, stopCh <-chan struct{}) {
 	bc.logger.Infof("Start Longhorn Backup controller")
 	defer bc.logger.Infof("Shutting down Longhorn Backup controller")
 
-	if !cache.WaitForNamedCacheSync(bc.name, stopCh, bc.bStoreSynced) {
+	if !cache.WaitForNamedCacheSync(bc.name, stopCh, bc.cacheSyncs...) {
 		return
 	}
 	for i := 0; i < workers; i++ {
@@ -252,7 +250,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 		// Request backup_volume_controller to reconcile BackupVolume immediately if it's the last backup
 		if backupVolume != nil && backupVolume.Status.LastBackupName == backup.Name {
-			backupVolume.Spec.SyncRequestedAt = time.Now().UTC()
+			backupVolume.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
 			if _, err = bc.ds.UpdateBackupVolume(backupVolume); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 				log.WithError(err).Errorf("Error updating backup volume %s spec", backupVolumeName)
 				// Do not return err to enqueue since backup_controller is responsible to
@@ -263,7 +261,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return bc.ds.RemoveFinalizerForBackup(backup)
 	}
 
-	syncTime := time.Now().UTC()
+	syncTime := metav1.Time{Time: time.Now().UTC()}
 	existingBackup := backup.DeepCopy()
 	defer func() {
 		if err != nil {
@@ -306,7 +304,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 	// The backup config had synced
 	if !backup.Status.LastSyncedAt.IsZero() &&
-		!backup.Spec.SyncRequestedAt.After(backup.Status.LastSyncedAt) {
+		!backup.Spec.SyncRequestedAt.After(backup.Status.LastSyncedAt.Time) {
 		return nil
 	}
 
@@ -330,7 +328,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	}
 
 	// Update Backup CR status
-	backup.Status.State = types.BackupStateCompleted
+	backup.Status.State = longhorn.BackupStateCompleted
 	backup.Status.URL = backupInfo.URL
 	backup.Status.SnapshotName = backupInfo.SnapshotName
 	backup.Status.SnapshotCreatedAt = backupInfo.SnapshotCreated
@@ -398,7 +396,7 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 		},
 	)
 
-	event := func(err error, state types.BackupState, backup *longhorn.Backup, volume *longhorn.Volume) {
+	event := func(err error, state longhorn.BackupState, backup *longhorn.Backup, volume *longhorn.Volume) {
 		if err != nil {
 			bc.eventRecorder.Eventf(volume, corev1.EventTypeWarning, string(state),
 				"Snapshot %s backup %s label %v: %v", backup.Spec.SnapshotName, backup.Name, backup.Spec.Labels, err)
@@ -434,7 +432,7 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 		biChecksum = bi.Status.Checksum
 	}
 
-	backup.Status.State = types.BackupStateInProgress
+	backup.Status.State = longhorn.BackupStateInProgress
 	event(nil, backup.Status.State, backup, volume)
 
 	go func() {
@@ -458,7 +456,7 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 		}()
 
 		if _, err = engineClient.SnapshotBackup(backup.Name, backup.Spec.SnapshotName, url, biName, biChecksum, backup.Spec.Labels, credential); err != nil {
-			state = types.BackupStateError
+			state = longhorn.BackupStateError
 			event(err, state, backup, volume)
 			return
 		}
@@ -467,12 +465,12 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 		for {
 			engines, err := bc.ds.ListVolumeEngines(volume.Name)
 			if err != nil {
-				state = types.BackupStateUnknown
+				state = longhorn.BackupStateUnknown
 				event(err, state, backup, volume)
 				return
 			}
 
-			bks := &types.BackupStatus{}
+			bks := &longhorn.BackupStatus{}
 			for _, e := range engines {
 				backupStatusList := e.Status.BackupStatus
 				for _, b := range backupStatusList {
@@ -483,12 +481,12 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 				}
 			}
 			if bks == nil {
-				state = types.BackupStateUnknown
+				state = longhorn.BackupStateUnknown
 				event(err, state, backup, volume)
 				return
 			}
 			if bks.Error != "" {
-				state = types.BackupStateError
+				state = longhorn.BackupStateError
 				event(errors.New(bks.Error), state, backup, volume)
 				return
 			}
@@ -501,10 +499,10 @@ func (bc *BackupController) backupCreation(log logrus.FieldLogger, engineClient 
 			// TODO:
 			//   use resource monitoring https://github.com/longhorn/longhorn/issues/2441
 			//   to trigger updates backup volume to run reconcile immediately
-			state = types.BackupStateCompleted
+			state = longhorn.BackupStateCompleted
 			event(nil, state, backup, volume)
 
-			syncTime := time.Now().UTC()
+			syncTime := metav1.Time{Time: time.Now().UTC()}
 			backupVolume, err := bc.ds.GetBackupVolume(volumeName)
 			if err == nil {
 				// Request backup_volume_controller to reconcile BackupVolume immediately.

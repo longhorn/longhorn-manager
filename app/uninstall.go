@@ -78,51 +78,7 @@ func uninstall(c *cli.Context) error {
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
 	lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, time.Second*30)
 
-	replicaInformer := lhInformerFactory.Longhorn().V1beta1().Replicas()
-	engineInformer := lhInformerFactory.Longhorn().V1beta1().Engines()
-	volumeInformer := lhInformerFactory.Longhorn().V1beta1().Volumes()
-	engineImageInformer := lhInformerFactory.Longhorn().V1beta1().EngineImages()
-	nodeInformer := lhInformerFactory.Longhorn().V1beta1().Nodes()
-	settingInformer := lhInformerFactory.Longhorn().V1beta1().Settings()
-	imInformer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers()
-	smInformer := lhInformerFactory.Longhorn().V1beta1().ShareManagers()
-	backingImageInformer := lhInformerFactory.Longhorn().V1beta1().BackingImages()
-	backingImageManagerInformer := lhInformerFactory.Longhorn().V1beta1().BackingImageManagers()
-	backingImageDataSourceInformer := lhInformerFactory.Longhorn().V1beta1().BackingImageDataSources()
-	backupTargetInformer := lhInformerFactory.Longhorn().V1beta1().BackupTargets()
-	backupVolumeInformer := lhInformerFactory.Longhorn().V1beta1().BackupVolumes()
-	backupInformer := lhInformerFactory.Longhorn().V1beta1().Backups()
-	recurringJobInformer := lhInformerFactory.Longhorn().V1beta1().RecurringJobs()
-
-	podInformer := kubeInformerFactory.Core().V1().Pods()
-	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
-	daemonSetInformer := kubeInformerFactory.Apps().V1().DaemonSets()
-	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
-	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
-	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
-	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
-	secretInformer := kubeInformerFactory.Core().V1().Secrets()
-	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
-	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
-	csiDriverInformer := kubeInformerFactory.Storage().V1().CSIDrivers()
-	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
-	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
-	serviceInformer := kubeInformerFactory.Core().V1().Services()
-
-	ds := datastore.NewDataStore(
-		volumeInformer, engineInformer, replicaInformer,
-		engineImageInformer, nodeInformer, settingInformer, imInformer, smInformer,
-		backingImageInformer, backingImageManagerInformer, backingImageDataSourceInformer,
-		backupTargetInformer, backupVolumeInformer, backupInformer,
-		recurringJobInformer,
-		lhClient,
-		podInformer, cronJobInformer, daemonSetInformer,
-		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
-		configMapInformer, secretInformer, kubeNodeInformer, priorityClassInformer,
-		csiDriverInformer, storageclassInformer,
-		pdbInformer,
-		serviceInformer,
-		kubeClient, namespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, namespace)
 
 	logger := logrus.StandardLogger()
 
@@ -134,23 +90,6 @@ func uninstall(c *cli.Context) error {
 		ds,
 		doneCh,
 		extensionsClient,
-		volumeInformer,
-		engineInformer,
-		replicaInformer,
-		engineImageInformer,
-		nodeInformer,
-		imInformer,
-		smInformer,
-		backingImageInformer,
-		backingImageManagerInformer,
-		backingImageDataSourceInformer,
-		backupTargetInformer,
-		backupVolumeInformer,
-		backupInformer,
-		recurringJobInformer,
-		daemonSetInformer,
-		deploymentInformer,
-		csiDriverInformer,
 	)
 	go lhInformerFactory.Start(doneCh)
 	go kubeInformerFactory.Start(doneCh)
