@@ -13,6 +13,8 @@ spec:
         - "daemon"
         - "--listen"
         - "0.0.0.0:8500"
+      ports:
+        - containerPort: 8500
       securityContext:
         privileged: true
       volumeMounts:
