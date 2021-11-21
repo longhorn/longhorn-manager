@@ -3,9 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
-
 	"github.com/sirupsen/logrus"
-
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -13,6 +11,8 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
+	"path"
+	"runtime"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -177,6 +177,10 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		},
 	}
 
+	// Determine the path to local manifests dir
+	_, src, _, _ := runtime.Caller(0)
+	manifestsDir := path.Join(path.Dir(src), "..", "manifests")
+
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
 
@@ -193,6 +197,13 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		imc := newTestInstanceManagerController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient,
 			tc.controllerID)
+
+		// Set the manifests directory
+		manifestsDirSetting := newSetting(string(types.SettingNameManifestsPath), manifestsDir)
+		manifestsDirSetting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), manifestsDirSetting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(manifestsDirSetting)
+		c.Assert(err, IsNil)
 
 		// Controller logic depends on the existence of DefaultInstanceManagerImage Setting and Toleration Setting.
 		tolerationSetting := newTolerationSetting()

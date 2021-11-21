@@ -79,6 +79,7 @@ const (
 	SettingNameBackingImageRecoveryWaitInterval             = SettingName("backing-image-recovery-wait-interval")
 	SettingNameGuaranteedEngineManagerCPU                   = SettingName("guaranteed-engine-manager-cpu")
 	SettingNameGuaranteedReplicaManagerCPU                  = SettingName("guaranteed-replica-manager-cpu")
+	SettingNameManifestsPath								= SettingName("manifests-path")
 )
 
 var (
@@ -128,6 +129,7 @@ var (
 		SettingNameBackingImageRecoveryWaitInterval,
 		SettingNameGuaranteedEngineManagerCPU,
 		SettingNameGuaranteedReplicaManagerCPU,
+		SettingNameManifestsPath,
 	}
 )
 
@@ -198,6 +200,7 @@ var (
 		SettingNameBackingImageRecoveryWaitInterval:             SettingDefinitionBackingImageRecoveryWaitInterval,
 		SettingNameGuaranteedEngineManagerCPU:                   SettingDefinitionGuaranteedEngineManagerCPU,
 		SettingNameGuaranteedReplicaManagerCPU:                  SettingDefinitionGuaranteedReplicaManagerCPU,
+		SettingNameManifestsPath:                                SettingDefinitionManifestsPath,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -732,6 +735,16 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "12",
+	}
+
+	SettingDefinitionManifestsPath = SettingDefinition{
+		DisplayName: "Manifests Path",
+		Description: "This setting controls where Longhorn will load Kubernetes manifests from when controlling pods and jobs. \n\n",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "/var/longhorn/manifests",
 	}
 )
 

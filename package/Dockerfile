@@ -8,6 +8,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 COPY bin package/launch-manager package/nsmounter /usr/local/sbin/
+COPY manifests /var/longhorn/manifests/
 
 VOLUME /usr/local/sbin
 EXPOSE 9500

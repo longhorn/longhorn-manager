@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  OwnerReferencess: []
+  annotations: {}
+  labels: {}
+spec:
+  containers:
+    - name: engine-manager
+      args:
+        - "engine-manager"
+        - "--debug"
+        - "daemon"
+        - "--listen"
+        - "0.0.0.0:8500"
+      securityContext:
+        privileged: true
+      volumeMounts:
+        - mountPath: "/host/dev"
+          name: "dev"
+        - mountPath: "/host/proc"
+          name: "proc"
+        - mountPath: "/engine-binaries/"
+          name: "engine-binaries"
+          mountPropagation: "HostToContainer"
+      livenessProbe:
+        tcpSocket:
+          port: 8500
+        initialDelaySeconds: 3
+        periodSeconds: 5
+        timeoutSeconds: 4
+        failureThreshold: 3
+  restartPolicy: Never
+  volumes:
+    - name: "dev"
+      hostPath:
+        path: "/dev"
+    - name: "proc"
+      hostPath:
+        path: "/proc"
+    - name: "engine-binaries"
+      hostPath:
+        path: "/var/lib/longhorn/engine-binaries/"

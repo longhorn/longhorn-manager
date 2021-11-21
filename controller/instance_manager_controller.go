@@ -799,6 +799,44 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	return nil
 }
 
+// decorateManagerPod applies common values to instance manager pods
+//
+// An error is returned if the provided tolerations cannot be marshalled to
+// JSON or if types.SettingNamePriorityClass's value cannot be retrieved.
+func (imc *InstanceManagerController) decorateManagerPod(pod *v1.Pod, im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string, nodeSelector map[string]string) error {
+
+	// Metadata
+	pod.Name = im.Name
+	pod.Namespace = imc.namespace
+	pod.OwnerReferences = append(pod.OwnerReferences, datastore.GetOwnerReferencesForInstanceManager(im)...)
+	if pod.Annotations == nil {
+		pod.Annotations = map[string]string{}
+	}
+	if tb, e := json.Marshal(tolerations); e == nil {
+		pod.Annotations[types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix)] = string(tb)
+	} else {
+		return e
+	}
+
+	// PodSpec
+	pod.Spec.NodeName = im.Spec.NodeID
+	pod.Spec.ServiceAccountName = imc.serviceAccount
+	pod.Spec.Tolerations = util.GetDistinctTolerations(append(pod.Spec.Tolerations, tolerations...))
+	if pod.Spec.NodeSelector == nil {
+		pod.Spec.NodeSelector = nodeSelector
+	}
+	for k, v := range nodeSelector {
+		pod.Spec.NodeSelector[k] = v
+	}
+	if pc, e := imc.ds.GetSetting(types.SettingNamePriorityClass); e == nil {
+		pod.Spec.PriorityClassName = pc.Value
+	} else {
+		return e
+	}
+
+	return nil
+}
+
 func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string, nodeSelector map[string]string) (*v1.Pod, error) {
 	tolerationsByte, err := json.Marshal(tolerations)
 	if err != nil {
@@ -875,58 +913,41 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 }
 
 func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string, nodeSelector map[string]string) (*v1.Pod, error) {
-	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret, nodeSelector)
-	if err != nil {
-		return nil, err
+
+	var pod *v1.Pod
+	if p, e := imc.ds.GetPodManifest(datastore.ManifestEngineManager); e == nil {
+		if e := imc.decorateManagerPod(p, im, tolerations, registrySecret, nodeSelector); e != nil {
+			return nil, e
+		}
+		pod = p
+	} else {
+		return nil, e
 	}
 
-	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeEngine)
-	podSpec.Spec.Containers[0].Name = "engine-manager"
-	podSpec.Spec.Containers[0].Args = []string{
-		"engine-manager", "--debug", "daemon", "--listen", "0.0.0.0:8500",
+	if pod.Labels == nil {
+		pod.Labels = map[string]string{}
 	}
-	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
-		{
-			MountPath: "/host/dev",
-			Name:      "dev",
-		},
-		{
-			MountPath: "/host/proc",
-			Name:      "proc",
-		},
-		{
-			MountPath:        types.EngineBinaryDirectoryInContainer,
-			Name:             "engine-binaries",
-			MountPropagation: &hostToContainer,
-		},
+	for k, v := range types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeEngine) {
+		pod.Labels[k] = v
 	}
-	podSpec.Spec.Volumes = []v1.Volume{
-		{
-			Name: "dev",
-			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
-					Path: "/dev",
-				},
-			},
-		},
-		{
-			Name: "proc",
-			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
-					Path: "/proc",
-				},
-			},
-		},
-		{
-			Name: "engine-binaries",
-			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
-					Path: types.EngineBinaryDirectoryOnHost,
-				},
-			},
-		},
+
+	if registrySecret != "" {
+		pod.Spec.ImagePullSecrets = append(pod.Spec.ImagePullSecrets, v1.LocalObjectReference{Name: registrySecret})
 	}
-	return podSpec, nil
+
+	for i := range pod.Spec.Containers {
+		if pod.Spec.Containers[i].Name == "engine-manager" {
+			pod.Spec.Containers[i].Image = im.Spec.Image
+			if p, e := imc.ds.GetSettingImagePullPolicy(); e == nil {
+				pod.Spec.Containers[i].ImagePullPolicy = p
+			} else {
+				return nil, e
+			}
+			break
+		}
+	}
+
+	return pod, nil
 }
 
 func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string, nodeSelector map[string]string) (*v1.Pod, error) {
