@@ -79,7 +79,7 @@ const (
 	SettingNameBackingImageRecoveryWaitInterval             = SettingName("backing-image-recovery-wait-interval")
 	SettingNameGuaranteedEngineManagerCPU                   = SettingName("guaranteed-engine-manager-cpu")
 	SettingNameGuaranteedReplicaManagerCPU                  = SettingName("guaranteed-replica-manager-cpu")
-	SettingNameManifestsPath								= SettingName("manifests-path")
+	SettingNameManifestsPath                                = SettingName("manifests-path")
 )
 
 var (

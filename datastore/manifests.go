@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/pkg/errors"
+	"io"
 	"io/ioutil"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -28,11 +29,13 @@ func (d *DataStore) GetPodManifest(m manifest) (*v1.Pod, error) {
 	} else {
 		return nil, e
 	}
+	var data io.Reader
 	if b, e := ioutil.ReadFile(src); e == nil {
-		p := &v1.Pod{}
-		err := yaml.NewYAMLToJSONDecoder(bytes.NewReader(b)).Decode(p)
-		return p, err
+		data = bytes.NewReader(b)
 	} else {
-		return nil, errors.Wrap(e, "Unable to read manifest file")
+		return nil, errors.Wrapf(e, "Unable to read manifest file %s: %v", src, e)
 	}
+	p := &v1.Pod{}
+	err := yaml.NewYAMLToJSONDecoder(data).Decode(p)
+	return p, err
 }
