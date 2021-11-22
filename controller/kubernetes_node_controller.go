@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -194,15 +195,6 @@ func (knc *KubernetesNodeController) syncKubernetesNode(key string) (err error) 
 		return nil
 	}
 
-	defer func() {
-		// requeue if it's conflict
-		if apierrors.IsConflict(errors.Cause(err)) {
-			logrus.Debugf("Requeue %v due to conflict: %v", key, err)
-			knc.enqueueNode(kubeNode)
-			err = nil
-		}
-	}()
-
 	if knc.controllerID != kubeNode.Name {
 		return nil
 	}
@@ -212,6 +204,19 @@ func (knc *KubernetesNodeController) syncKubernetesNode(key string) (err error) 
 		// cannot find the Longhorn node, may be hasn't been created yet, don't need to to sync
 		return nil
 	}
+
+	existingNode := node.DeepCopy()
+	defer func() {
+		if err == nil && !reflect.DeepEqual(existingNode.Spec, node.Spec) {
+			_, err = knc.ds.UpdateNode(node)
+		}
+		// requeue if it's conflict
+		if apierrors.IsConflict(errors.Cause(err)) {
+			logrus.Debugf("Requeue %v due to conflict: %v", key, err)
+			knc.enqueueLonghornNode(node)
+			err = nil
+		}
+	}()
 
 	// sync default disks on labeled Nodes
 	if err := knc.syncDefaultDisks(node); err != nil {
@@ -322,11 +327,6 @@ func (knc *KubernetesNodeController) syncDefaultDisks(node *longhorn.Node) (err 
 
 	node.Spec.Disks = disks
 
-	updatedNode, err := knc.ds.UpdateNode(node)
-	if err != nil {
-		return err
-	}
-	node = updatedNode
 	return nil
 }
 
@@ -347,12 +347,6 @@ func (knc *KubernetesNodeController) syncDefaultNodeTags(node *longhorn.Node) er
 			return nil
 		}
 		node.Spec.Tags = tags
-
-		updatedNode, err := knc.ds.UpdateNode(node)
-		if err != nil {
-			return err
-		}
-		node = updatedNode
 	}
 	return nil
 }
