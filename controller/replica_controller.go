@@ -523,19 +523,30 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		return err
 	}
 
-	// Not assigned, safe to delete
+	var im *longhorn.InstanceManager
+	var err error
+	// Not assigned or not updated, try best to delete
 	if r.Status.InstanceManagerName == "" {
-		return nil
-	}
-
-	im, err := rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
+		if r.Spec.NodeID == "" {
+			log.Warnf("Replica %v does not set instance manager name and node ID, will skip the actual process deletion", r.Name)
+			return nil
 		}
-		// The related node may be directly deleted.
-		log.Warnf("The replica instance manager %v is gone during the replica instance %v deletion. Will do nothing for the deletion", r.Status.InstanceManagerName, r.Name)
-		return nil
+		im, err = rc.ds.GetInstanceManagerByInstance(obj)
+		if err != nil {
+			log.Warnf("Failed to detect instance manager for replica %v, will skip the actual process deletion: %v", r.Name, err)
+			return nil
+		}
+		log.Infof("Try best to clean up the process for replica %v in instance manager %v", r.Name, im.Name)
+	} else {
+		im, err = rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return err
+			}
+			// The related node may be directly deleted.
+			log.Warnf("The replica instance manager %v is gone during the replica instance %v deletion. Will do nothing for the deletion", r.Status.InstanceManagerName, r.Name)
+			return nil
+		}
 	}
 
 	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
