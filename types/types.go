@@ -12,7 +12,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/util"
 )
 
@@ -30,7 +30,8 @@ const (
 
 	CRDAPIVersionV1alpha1 = "longhorn.rancher.io/v1alpha1"
 	CRDAPIVersionV1beta1  = "longhorn.io/v1beta1"
-	CurrentCRDAPIVersion  = CRDAPIVersionV1beta1
+	CRDAPIVersionV1beta2  = "longhorn.io/v1beta2"
+	CurrentCRDAPIVersion  = CRDAPIVersionV1beta2
 )
 
 const (

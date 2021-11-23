@@ -3,7 +3,7 @@ package monitoring
 import (
 	"github.com/prometheus/client_golang/prometheus"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (

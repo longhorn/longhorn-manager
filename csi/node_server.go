@@ -23,7 +23,7 @@ import (
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/csi/crypto"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 )
 

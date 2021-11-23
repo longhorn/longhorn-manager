@@ -16,7 +16,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	"github.com/longhorn/longhorn-manager/types"
 )
@@ -65,7 +65,7 @@ func migrateForPre070Volumes(c *cli.Context) error {
 	}
 
 	if migrateAllVolumes {
-		vs, err := lhClient.LonghornV1beta1().Volumes(lhNamespace).List(context.TODO(), metav1.ListOptions{})
+		vs, err := lhClient.LonghornV1beta2().Volumes(lhNamespace).List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
 			return err
 		}
@@ -93,7 +93,7 @@ func migratePVAndPVCForPre070Volume(kubeClient *kubeclientset.Clientset, lhClien
 		}
 	}()
 
-	v, err := lhClient.LonghornV1beta1().Volumes(lhNamespace).Get(context.TODO(), volumeName, metav1.GetOptions{})
+	v, err := lhClient.LonghornV1beta2().Volumes(lhNamespace).Get(context.TODO(), volumeName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -132,7 +132,7 @@ func migratePVAndPVCForPre070Volume(kubeClient *kubeclientset.Clientset, lhClien
 	// 3) If we choose to use the StorageClass, we need to make sure:
 	//     1) the StorageClass used by the old PV and PVC still exists;
 	//     2) its parameters are the same as oldPV.Spec.CSI.VolumeAttributes.
-	staticStorageClass, err := lhClient.LonghornV1beta1().Settings(lhNamespace).Get(
+	staticStorageClass, err := lhClient.LonghornV1beta2().Settings(lhNamespace).Get(
 		context.TODO(),
 		string(types.SettingNameDefaultLonghornStaticStorageClass), metav1.GetOptions{})
 	if err != nil {
@@ -172,7 +172,7 @@ func migratePVAndPVCForPre070Volume(kubeClient *kubeclientset.Clientset, lhClien
 
 	pvDeleted := false
 	for i := 0; i < datastore.KubeStatusPollCount; i++ {
-		v, err = lhClient.LonghornV1beta1().Volumes(lhNamespace).Get(context.TODO(), volumeName, metav1.GetOptions{})
+		v, err = lhClient.LonghornV1beta2().Volumes(lhNamespace).Get(context.TODO(), volumeName, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
