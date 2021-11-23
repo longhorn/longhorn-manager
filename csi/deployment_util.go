@@ -20,7 +20,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 )
 

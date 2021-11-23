@@ -14,7 +14,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/util"
 )
 
@@ -471,7 +471,7 @@ var (
 
 	SettingDefinitionCRDAPIVersion = SettingDefinition{
 		DisplayName: "Custom Resource API Version",
-		Description: "The current customer resource's API version, e.g. longhorn.io/v1beta1. Set by manager automatically",
+		Description: "The current customer resource's API version, e.g. longhorn.io/v1beta2. Set by manager automatically",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
 		Required:    true,

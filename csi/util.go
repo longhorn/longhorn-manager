@@ -20,7 +20,7 @@ import (
 	utilexec "k8s.io/utils/exec"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 )
 

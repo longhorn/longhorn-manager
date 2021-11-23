@@ -12,7 +12,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 
 	"github.com/longhorn/longhorn-manager/engineapi"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
 )

@@ -206,7 +206,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 	serviceAccountName := os.Getenv(types.EnvServiceAccount)
 	rootDir := c.String(FlagKubeletRootDir)
 
-	tolerationSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameTaintToleration), metav1.GetOptions{})
+	tolerationSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameTaintToleration), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -219,7 +219,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	nodeSelectorSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameSystemManagedComponentsNodeSelector), metav1.GetOptions{})
+	nodeSelectorSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameSystemManagedComponentsNodeSelector), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -228,19 +228,19 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	priorityClassSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNamePriorityClass), metav1.GetOptions{})
+	priorityClassSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNamePriorityClass), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 	priorityClass := priorityClassSetting.Value
 
-	registrySecretSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameRegistrySecret), metav1.GetOptions{})
+	registrySecretSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameRegistrySecret), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 	registrySecret := registrySecretSetting.Value
 
-	imagePullPolicySetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameSystemManagedPodsImagePullPolicy), metav1.GetOptions{})
+	imagePullPolicySetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameSystemManagedPodsImagePullPolicy), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
