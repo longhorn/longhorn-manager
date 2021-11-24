@@ -28,10 +28,6 @@ const (
 
 	commonTimeout = 1 * time.Minute
 
-	BackupStateComplete   = "complete"
-	BackupStateError      = "error"
-	BackupStateInProgress = "in_progress"
-
 	// MaxPollCount, MinPollCount, PollInterval determines how often
 	// we sync with others
 
