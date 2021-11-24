@@ -16,6 +16,12 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 )
 
+const (
+	backupStateInProgress = "in_progress"
+	backupStateComplete   = "complete"
+	backupStateError      = "error"
+)
+
 type BackupTargetClient struct {
 	Image      string
 	URL        string
@@ -314,11 +320,11 @@ func (e *Engine) SnapshotBackupStatus(backupName, replicaAddress string) (*longh
 func ConvertEngineBackupState(state string) longhorn.BackupState {
 	// https://github.com/longhorn/longhorn-engine/blob/9da3616/pkg/replica/backup.go#L20-L22
 	switch state {
-	case BackupStateInProgress:
+	case backupStateInProgress:
 		return longhorn.BackupStateInProgress
-	case BackupStateComplete:
+	case backupStateComplete:
 		return longhorn.BackupStateCompleted
-	case BackupStateError:
+	case backupStateError:
 		return longhorn.BackupStateError
 	default:
 		return longhorn.BackupStateUnknown
