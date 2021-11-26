@@ -498,7 +498,9 @@ func (m *VolumeManager) Detach(name, nodeID string) (v *longhorn.Volume, err err
 
 	// Since all invalid/unexcepted cases have been handled above, we only need to take care of regular detach or migration here.
 	if isMigrationConfirmation {
-		if !m.isVolumeAvailableOnNode(name, v.Spec.MigrationNodeID) {
+		// Need to make sure both engines are running.
+		// If the old one crashes, the volume will fall into the auto reattachment flow. Then allowing migration confirmation will mess up the volume.
+		if !m.isVolumeAvailableOnNode(name, v.Spec.MigrationNodeID) || !m.isVolumeAvailableOnNode(name, v.Spec.NodeID) {
 			return nil, fmt.Errorf("migration is not ready yet")
 		}
 		v.Spec.NodeID = v.Spec.MigrationNodeID
@@ -524,9 +526,23 @@ func (m *VolumeManager) Detach(name, nodeID string) (v *longhorn.Volume, err err
 func (m *VolumeManager) isVolumeAvailableOnNode(volume, node string) bool {
 	es, _ := m.ds.ListVolumeEngines(volume)
 	for _, e := range es {
-		if e.Spec.NodeID == node && e.Status.CurrentState == longhorn.InstanceStateRunning {
-			return true
+		if e.Spec.NodeID != node {
+			continue
 		}
+		if e.DeletionTimestamp != nil {
+			continue
+		}
+		if e.Spec.DesireState != longhorn.InstanceStateRunning || e.Status.CurrentState != longhorn.InstanceStateRunning {
+			continue
+		}
+		hasAvailableReplica := false
+		for _, mode := range e.Status.ReplicaModeMap {
+			hasAvailableReplica = hasAvailableReplica || mode == longhorn.ReplicaModeRW
+		}
+		if !hasAvailableReplica {
+			continue
+		}
+		return true
 	}
 
 	return false

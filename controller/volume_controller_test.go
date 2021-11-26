@@ -1081,6 +1081,7 @@ func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 			Frontend:                  longhorn.VolumeFrontendBlockDev,
 			ReplicaAddressMap:         map[string]string{},
 			UpgradedReplicaAddressMap: map[string]string{},
+			Active:                    true,
 		},
 	}
 }
