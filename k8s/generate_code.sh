@@ -7,7 +7,7 @@ set -o pipefail
 LH_MANAGER_DIR="github.com/longhorn/longhorn-manager"
 OUTPUT_DIR="${LH_MANAGER_DIR}/k8s/pkg/client"
 APIS_DIR="${LH_MANAGER_DIR}/k8s/pkg/apis"
-GROUP_VERSION="longhorn:v1beta1"
+GROUP_VERSION="longhorn:v1beta1,v1beta2"
 CODE_GENERATOR_VERSION="v0.18.0"
 CRDS_DIR="crds"
 CONTROLLER_TOOLS_VERSION="v0.7.0"
