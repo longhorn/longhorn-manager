@@ -200,6 +200,10 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 			"--timeout=1m50s",
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
+			"--leader-election-namespace=$(POD_NAMESPACE)",
+			// Issue: https://github.com/longhorn/longhorn/issues/3303
+			// TODO: Remove this after upgrading the CSI resizer version that contains the fix of https://github.com/kubernetes-csi/external-resizer/issues/175
+			"--handle-volume-inuse-error=false",
 		},
 		int32(replicaCount),
 		tolerations,
