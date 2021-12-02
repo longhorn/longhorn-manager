@@ -90,9 +90,9 @@ func newNode(name, namespace string, allowScheduling bool, status longhorn.Condi
 			AllowScheduling: allowScheduling,
 		},
 		Status: longhorn.NodeStatus{
-			Conditions: map[string]longhorn.Condition{
-				longhorn.NodeConditionTypeSchedulable: newCondition(longhorn.NodeConditionTypeSchedulable, status),
-				longhorn.NodeConditionTypeReady:       newCondition(longhorn.NodeConditionTypeReady, status),
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.NodeConditionTypeSchedulable, status),
+				newCondition(longhorn.NodeConditionTypeReady, status),
 			},
 		},
 	}
@@ -123,8 +123,8 @@ func newEngineImage(image string, state longhorn.EngineImageState) *longhorn.Eng
 				DataFormatVersion:       1,
 				DataFormatMinVersion:    1,
 			},
-			Conditions: map[string]longhorn.Condition{
-				longhorn.EngineImageConditionTypeReady: {
+			Conditions: []longhorn.Condition{
+				{
 					Type:   longhorn.EngineImageConditionTypeReady,
 					Status: longhorn.ConditionStatusTrue,
 				},
@@ -275,8 +275,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
 		},
@@ -367,8 +367,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
 		},
@@ -383,8 +383,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "1"),
 		},
@@ -422,8 +422,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
 		},
@@ -431,8 +431,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "2"),
 		},
@@ -454,8 +454,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "1"),
 		},
@@ -463,8 +463,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse),
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse),
 			},
 			DiskUUID: getDiskID(TestNode2, "2"),
 		},
@@ -516,8 +516,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: 0,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
 		},
@@ -535,8 +535,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: 0,
 			StorageScheduled: TestDiskAvailableSize,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "1"),
 		},
@@ -544,8 +544,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse),
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse),
 			},
 			DiskUUID: getDiskID(TestNode2, "2"),
 		},
@@ -582,8 +582,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
 		},
@@ -601,8 +601,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "1"),
 		},
@@ -610,8 +610,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageAvailable: TestDiskAvailableSize,
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "2"),
 		},
@@ -639,11 +639,11 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 
-		vIndexer := lhInformerFactory.Longhorn().V1beta1().Volumes().Informer().GetIndexer()
-		rIndexer := lhInformerFactory.Longhorn().V1beta1().Replicas().Informer().GetIndexer()
-		nIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
-		eiIndexer := lhInformerFactory.Longhorn().V1beta1().EngineImages().Informer().GetIndexer()
-		sIndexer := lhInformerFactory.Longhorn().V1beta1().Settings().Informer().GetIndexer()
+		vIndexer := lhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+		rIndexer := lhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+		nIndexer := lhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+		eiIndexer := lhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+		sIndexer := lhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
 		s := newReplicaScheduler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
@@ -656,20 +656,20 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		}
 		// create node
 		for _, node := range tc.nodes {
-			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+			n, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
 			err = nIndexer.Add(n)
 			c.Assert(err, IsNil)
 		}
 		// Create engine image
-		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(context.TODO(), tc.engineImage, metav1.CreateOptions{})
+		ei, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), tc.engineImage, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(ei, NotNil)
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
 		// create volume
-		volume, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(context.TODO(), tc.volume, metav1.CreateOptions{})
+		volume, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), tc.volume, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(volume, NotNil)
 		err = vIndexer.Add(volume)
@@ -677,13 +677,13 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		// set settings
 		if tc.storageOverProvisioningPercentage != "" && tc.storageMinimalAvailablePercentage != "" {
 			s := initSettings(string(types.SettingNameStorageOverProvisioningPercentage), tc.storageOverProvisioningPercentage)
-			setting, err := lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+			setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = sIndexer.Add(setting)
 			c.Assert(err, IsNil)
 
 			s = initSettings(string(types.SettingNameStorageMinimalAvailablePercentage), tc.storageMinimalAvailablePercentage)
-			setting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+			setting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = sIndexer.Add(setting)
 			c.Assert(err, IsNil)
@@ -694,14 +694,14 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				string(types.SettingNameReplicaSoftAntiAffinity),
 				tc.replicaNodeSoftAntiAffinity)
 			setting, err :=
-				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+				lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = sIndexer.Add(setting)
 			c.Assert(err, IsNil)
 		}
 		// validate scheduler
 		for _, replica := range tc.replicas {
-			r, err := lhClient.LonghornV1beta1().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
+			r, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(r, NotNil)
 			err = rIndexer.Add(r)

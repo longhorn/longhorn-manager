@@ -187,21 +187,21 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
-		imIndexer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers().Informer().GetIndexer()
-		sIndexer := lhInformerFactory.Longhorn().V1beta1().Settings().Informer().GetIndexer()
-		lhNodeIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
+		imIndexer := lhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		sIndexer := lhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		lhNodeIndexer := lhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
 
 		imc := newTestInstanceManagerController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient,
 			tc.controllerID)
 
 		// Controller logic depends on the existence of DefaultInstanceManagerImage Setting and Toleration Setting.
 		tolerationSetting := newTolerationSetting()
-		tolerationSetting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), tolerationSetting, metav1.CreateOptions{})
+		tolerationSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), tolerationSetting, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = sIndexer.Add(tolerationSetting)
 		c.Assert(err, IsNil)
 		imImageSetting := newDefaultInstanceManagerImageSetting()
-		imImageSetting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
+		imImageSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = sIndexer.Add(imImageSetting)
 		c.Assert(err, IsNil)
@@ -217,7 +217,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			lhNode1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
 			err = lhNodeIndexer.Add(lhNode1)
 			c.Assert(err, IsNil)
-			_, err = lhClient.LonghornV1beta1().Nodes(lhNode1.Namespace).Create(context.TODO(), lhNode1, metav1.CreateOptions{})
+			_, err = lhClient.LonghornV1beta2().Nodes(lhNode1.Namespace).Create(context.TODO(), lhNode1, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 		}
 
@@ -229,7 +229,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		lhNode2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, "")
 		err = lhNodeIndexer.Add(lhNode2)
 		c.Assert(err, IsNil)
-		_, err = lhClient.LonghornV1beta1().Nodes(lhNode2.Namespace).Create(context.TODO(), lhNode2, metav1.CreateOptions{})
+		_, err = lhClient.LonghornV1beta2().Nodes(lhNode2.Namespace).Create(context.TODO(), lhNode2, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
 		currentIP := ""
@@ -239,7 +239,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		im := newInstanceManager(TestInstanceManagerName1, tc.expectedType, tc.currentState, tc.currentOwnerID, tc.nodeID, currentIP, nil, false)
 		err = imIndexer.Add(im)
 		c.Assert(err, IsNil)
-		_, err = lhClient.LonghornV1beta1().InstanceManagers(im.Namespace).Create(context.TODO(), im, metav1.CreateOptions{})
+		_, err = lhClient.LonghornV1beta2().InstanceManagers(im.Namespace).Create(context.TODO(), im, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
 		if tc.currentPodStatus != nil {
@@ -270,7 +270,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		// Skip checking imc.instanceManagerMonitorMap since the monitor doesn't work in the unit test.
 
-		updatedIM, err := lhClient.LonghornV1beta1().InstanceManagers(im.Namespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
+		updatedIM, err := lhClient.LonghornV1beta2().InstanceManagers(im.Namespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(updatedIM.Status, DeepEquals, tc.expectedStatus)
 	}

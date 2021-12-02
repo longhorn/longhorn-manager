@@ -440,13 +440,14 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 
 // handleConditionLastTransitionTime rollback to the existing condition object if condition's values hasn't changed
 func handleConditionLastTransitionTime(existingStatus, newStatus *longhorn.VolumeStatus) {
-	for conditionType, condition := range newStatus.Conditions {
-		existingCondition, ok := existingStatus.Conditions[conditionType]
-		if ok &&
-			existingCondition.Status == condition.Status &&
-			existingCondition.Reason == condition.Reason &&
-			existingCondition.Message == condition.Message {
-			newStatus.Conditions[conditionType] = existingCondition
+	for i, newCondition := range newStatus.Conditions {
+		for _, existingCondition := range existingStatus.Conditions {
+			if existingCondition.Type == newCondition.Type &&
+				existingCondition.Status == newCondition.Status &&
+				existingCondition.Reason == newCondition.Reason &&
+				existingCondition.Message == newCondition.Message {
+				newStatus.Conditions[i] = existingCondition
+			}
 		}
 	}
 }

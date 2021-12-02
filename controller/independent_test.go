@@ -35,29 +35,29 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 			},
 		},
 		Status: longhorn.NodeStatus{
-			Conditions: map[string]longhorn.Condition{
-				longhorn.NodeConditionTypeSchedulable: newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeReady:       newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 			},
 			DiskStatus: map[string]*longhorn.DiskStatus{
 				TestDiskID1: {
-					Conditions: map[string]longhorn.Condition{
-						longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-						longhorn.DiskConditionTypeReady:       newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					Conditions: []longhorn.Condition{
+						newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					DiskUUID: TestDiskID1,
 				},
 				TestDiskID2: {
-					Conditions: map[string]longhorn.Condition{
-						longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-						longhorn.DiskConditionTypeReady:       newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					Conditions: []longhorn.Condition{
+						newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					DiskUUID: TestDiskID2,
 				},
 				TestDiskID3: {
-					Conditions: map[string]longhorn.Condition{
-						longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-						longhorn.DiskConditionTypeReady:       newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					Conditions: []longhorn.Condition{
+						newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					DiskUUID: TestDiskID3,
 				},

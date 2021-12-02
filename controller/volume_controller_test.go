@@ -35,19 +35,8 @@ func getVolumeLabelSelector(volumeName string) string {
 	return "longhornvolume=" + volumeName
 }
 
-func setVolumeConditionWithoutTimestamp(originConditions map[string]longhorn.Condition, conditionType string, conditionValue longhorn.ConditionStatus, reason, message string) map[string]longhorn.Condition {
-	conditions := map[string]longhorn.Condition{}
-	if originConditions != nil {
-		conditions = originConditions
-	}
-	condition := longhorn.Condition{
-		Type:    conditionType,
-		Status:  conditionValue,
-		Reason:  reason,
-		Message: message,
-	}
-	conditions[conditionType] = condition
-	return conditions
+func setVolumeConditionWithoutTimestamp(originConditions []longhorn.Condition, conditionType string, conditionValue longhorn.ConditionStatus, reason, message string) []longhorn.Condition {
+	return types.SetConditionWithoutTimestamp(originConditions, conditionType, conditionValue, reason, message)
 }
 
 func initSettingsNameValue(name, value string) *longhorn.Setting {
@@ -111,7 +100,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.State = longhorn.VolumeStateCreating
 	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessUnknown
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
-	tc.volume.Status.Conditions = map[string]longhorn.Condition{}
+	tc.volume.Status.Conditions = []longhorn.Condition{}
 	tc.engines = nil
 	tc.replicas = nil
 	// Set replica node soft anti-affinity
@@ -769,7 +758,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc = generateVolumeTestCaseTemplate()
 	now := metav1.NewTime(time.Now())
 	tc.volume.SetDeletionTimestamp(&now)
-	tc.volume.Status.Conditions = map[string]longhorn.Condition{}
+	tc.volume.Status.Conditions = []longhorn.Condition{}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = longhorn.VolumeStateDeleting
 	tc.expectEngines = nil
@@ -1044,17 +1033,17 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 		},
 		Status: longhorn.VolumeStatus{
 			OwnerID: TestOwnerID1,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.VolumeConditionTypeScheduled: {
+			Conditions: []longhorn.Condition{
+				{
+					Type:   string(longhorn.VolumeConditionTypeTooManySnapshots),
+					Status: longhorn.ConditionStatusFalse,
+				},
+				{
 					Type:   string(longhorn.VolumeConditionTypeScheduled),
 					Status: longhorn.ConditionStatusTrue,
 				},
-				longhorn.VolumeConditionTypeRestore: {
+				{
 					Type:   string(longhorn.VolumeConditionTypeRestore),
-					Status: longhorn.ConditionStatusFalse,
-				},
-				longhorn.VolumeConditionTypeTooManySnapshots: {
-					Type:   string(longhorn.VolumeConditionTypeTooManySnapshots),
 					Status: longhorn.ConditionStatusFalse,
 				},
 			},
@@ -1173,18 +1162,18 @@ func newNode(name, namespace string, allowScheduling bool, status longhorn.Condi
 			},
 		},
 		Status: longhorn.NodeStatus{
-			Conditions: map[string]longhorn.Condition{
-				longhorn.NodeConditionTypeSchedulable: newNodeCondition(longhorn.NodeConditionTypeSchedulable, status, reason),
-				longhorn.NodeConditionTypeReady:       newNodeCondition(longhorn.NodeConditionTypeReady, status, reason),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.NodeConditionTypeSchedulable, status, reason),
+				newNodeCondition(longhorn.NodeConditionTypeReady, status, reason),
 			},
 			DiskStatus: map[string]*longhorn.DiskStatus{
 				TestDiskID1: {
 					StorageAvailable: TestDiskAvailableSize,
 					StorageScheduled: 0,
 					StorageMaximum:   TestDiskSize,
-					Conditions: map[string]longhorn.Condition{
-						longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-						longhorn.DiskConditionTypeReady:       newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					Conditions: []longhorn.Condition{
+						newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					DiskUUID: TestDiskID1,
 				},
@@ -1289,14 +1278,14 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
-		vIndexer := lhInformerFactory.Longhorn().V1beta1().Volumes().Informer().GetIndexer()
-		eIndexer := lhInformerFactory.Longhorn().V1beta1().Engines().Informer().GetIndexer()
-		rIndexer := lhInformerFactory.Longhorn().V1beta1().Replicas().Informer().GetIndexer()
-		nIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
+		vIndexer := lhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+		eIndexer := lhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
+		rIndexer := lhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+		nIndexer := lhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
 
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 		knIndexer := kubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
-		sIndexer := lhInformerFactory.Longhorn().V1beta1().Settings().Informer().GetIndexer()
+		sIndexer := lhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 
 		vc := newTestVolumeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestOwnerID1)
 
@@ -1310,25 +1299,25 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		c.Assert(err, IsNil)
 		pIndexer.Add(p)
 
-		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(context.TODO(), tc.engineImage, metav1.CreateOptions{})
+		ei, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), tc.engineImage, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
-		eiIndexer := lhInformerFactory.Longhorn().V1beta1().EngineImages().Informer().GetIndexer()
+		eiIndexer := lhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
 
-		rm1, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(
+		rm1, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(
 			context.TODO(),
 			newInstanceManager(TestReplicaManagerName+"-"+TestNode1, longhorn.InstanceManagerTypeReplica, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
 			metav1.CreateOptions{},
 		)
 		c.Assert(err, IsNil)
-		rm2, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(
+		rm2, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(
 			context.TODO(),
 			newInstanceManager(TestReplicaManagerName+"-"+TestNode2, longhorn.InstanceManagerTypeReplica, longhorn.InstanceManagerStateRunning, TestOwnerID2, TestNode2, TestIP1, map[string]longhorn.InstanceProcess{}, false),
 			metav1.CreateOptions{},
 		)
 		c.Assert(err, IsNil)
-		imIndexer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers().Informer().GetIndexer()
+		imIndexer := lhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
 		err = imIndexer.Add(rm1)
 		c.Assert(err, IsNil)
 		err = imIndexer.Add(rm2)
@@ -1350,9 +1339,9 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				},
 			}
 
-			bv, err := lhClient.LonghornV1beta1().BackupVolumes(TestNamespace).Create(context.TODO(), backupVolume, metav1.CreateOptions{})
+			bv, err := lhClient.LonghornV1beta2().BackupVolumes(TestNamespace).Create(context.TODO(), backupVolume, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			bvIndexer := lhInformerFactory.Longhorn().V1beta1().BackupVolumes().Informer().GetIndexer()
+			bvIndexer := lhInformerFactory.Longhorn().V1beta2().BackupVolumes().Informer().GetIndexer()
 			err = bvIndexer.Add(bv)
 			c.Assert(err, IsNil)
 		}
@@ -1363,7 +1352,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				string(types.SettingNameReplicaSoftAntiAffinity),
 				tc.replicaNodeSoftAntiAffinity)
 			setting, err :=
-				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+				lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			sIndexer.Add(setting)
 		}
@@ -1373,7 +1362,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				string(types.SettingNameAutoSalvage),
 				tc.volumeAutoSalvage)
 			setting, err :=
-				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+				lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			sIndexer.Add(setting)
 		}
@@ -1382,7 +1371,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			s := initSettingsNameValue(
 				string(types.SettingNameReplicaReplenishmentWaitInterval), tc.replicaReplenishmentWaitInterval)
 			setting, err :=
-				lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+				lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			sIndexer.Add(setting)
 		}
@@ -1390,27 +1379,29 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		s := initSettingsNameValue(
 			string(types.SettingNameDefaultEngineImage), TestEngineImage)
 		setting, err :=
-			lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		sIndexer.Add(setting)
 		// Set Default Instance Manager Image
 		s = initSettingsNameValue(
 			string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage)
 		setting, err =
-			lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		sIndexer.Add(setting)
 
 		// need to create default node
 		for _, node := range tc.nodes {
-			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+			n, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
 			err = nIndexer.Add(n)
 			c.Assert(err, IsNil)
 
 			knodeCondition := v1.ConditionTrue
-			if node.Status.Conditions[longhorn.NodeConditionTypeReady].Status != longhorn.ConditionStatusTrue {
+
+			condition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+			if condition.Status != longhorn.ConditionStatusTrue {
 				knodeCondition = v1.ConditionFalse
 			}
 			knode := newKubernetesNode(node.Name, knodeCondition, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
@@ -1421,14 +1412,14 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		}
 
 		// Need to put it into both fakeclientset and Indexer
-		v, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(context.TODO(), tc.volume, metav1.CreateOptions{})
+		v, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), tc.volume, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = vIndexer.Add(v)
 		c.Assert(err, IsNil)
 
 		if tc.engines != nil {
 			for _, e := range tc.engines {
-				e, err := lhClient.LonghornV1beta1().Engines(TestNamespace).Create(context.TODO(), e, metav1.CreateOptions{})
+				e, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Create(context.TODO(), e, metav1.CreateOptions{})
 				c.Assert(err, IsNil)
 				err = eIndexer.Add(e)
 				c.Assert(err, IsNil)
@@ -1437,7 +1428,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 		if tc.replicas != nil {
 			for _, r := range tc.replicas {
-				r, err = lhClient.LonghornV1beta1().Replicas(TestNamespace).Create(context.TODO(), r, metav1.CreateOptions{})
+				r, err = lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), r, metav1.CreateOptions{})
 				c.Assert(err, IsNil)
 				err = rIndexer.Add(r)
 				c.Assert(err, IsNil)
@@ -1447,7 +1438,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		err = vc.syncVolume(getKey(v, c))
 		c.Assert(err, IsNil)
 
-		retV, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Get(context.TODO(), v.Name, metav1.GetOptions{})
+		retV, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Get(context.TODO(), v.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(retV.Spec, DeepEquals, tc.expectVolume.Spec)
 		// mask timestamps
@@ -1457,7 +1448,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		}
 		c.Assert(retV.Status, DeepEquals, tc.expectVolume.Status)
 
-		retEs, err := lhClient.LonghornV1beta1().Engines(TestNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
+		retEs, err := lhClient.LonghornV1beta2().Engines(TestNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
 		c.Assert(err, IsNil)
 		c.Assert(retEs.Items, HasLen, len(tc.expectEngines))
 		for _, retE := range retEs.Items {
@@ -1475,7 +1466,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			}
 		}
 
-		retRs, err := lhClient.LonghornV1beta1().Replicas(TestNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
+		retRs, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
 		c.Assert(err, IsNil)
 		c.Assert(retRs.Items, HasLen, len(tc.expectReplicas))
 		for _, retR := range retRs.Items {
