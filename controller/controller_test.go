@@ -133,8 +133,8 @@ func newEngineImage(image string, state longhorn.EngineImageState) *longhorn.Eng
 				DataFormatVersion:       1,
 				DataFormatMinVersion:    1,
 			},
-			Conditions: map[string]longhorn.Condition{
-				longhorn.EngineImageConditionTypeReady: {
+			Conditions: []longhorn.Condition{
+				{
 					Type:   longhorn.EngineImageConditionTypeReady,
 					Status: longhorn.ConditionStatusTrue,
 				},

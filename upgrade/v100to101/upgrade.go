@@ -15,7 +15,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 )
 
@@ -34,7 +34,7 @@ func UpgradeInstanceManagerPods(namespace string, lhClient *lhclientset.Clientse
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance manager pods failed")
 	}()
 
-	imList, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	imList, err := lhClient.LonghornV1beta2().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -90,7 +90,7 @@ func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset)
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance manager failed")
 	}()
 
-	imList, err := lhClient.LonghornV1beta1().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	imList, err := lhClient.LonghornV1beta2().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -120,7 +120,7 @@ func upgradeInstanceManagersLabels(im *longhorn.InstanceManager, lhClient *lhcli
 	}
 
 	metadata.SetLabels(newInstanceManagerLabels)
-	if im, err = lhClient.LonghornV1beta1().InstanceManagers(namespace).Update(context.TODO(), im, metav1.UpdateOptions{}); err != nil {
+	if im, err = lhClient.LonghornV1beta2().InstanceManagers(namespace).Update(context.TODO(), im, metav1.UpdateOptions{}); err != nil {
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to update the spec for instance manager %v during the instance managers upgrade", im.Name)
 	}
 	return nil

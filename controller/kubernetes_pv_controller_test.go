@@ -456,7 +456,7 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
-		vIndexer := lhInformerFactory.Longhorn().V1beta1().Volumes().Informer().GetIndexer()
+		vIndexer := lhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
 
 		pvIndexer := kubeInformerFactory.Core().V1().PersistentVolumes().Informer().GetIndexer()
 		pvcIndexer := kubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
@@ -467,7 +467,7 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		// Need to create pv, pvc, pod and longhorn volume
 		var v *longhorn.Volume
 		if tc.volume != nil {
-			v, err = lhClient.LonghornV1beta1().Volumes(TestNamespace).Create(context.TODO(), tc.volume, metav1.CreateOptions{})
+			v, err = lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), tc.volume, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = vIndexer.Add(v)
 			c.Assert(err, IsNil)
@@ -507,7 +507,7 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		}
 
 		if v != nil {
-			retV, err := lhClient.LonghornV1beta1().Volumes(TestNamespace).Get(context.TODO(), v.Name, metav1.GetOptions{})
+			retV, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Get(context.TODO(), v.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(retV.Spec, DeepEquals, tc.expectVolume.Spec)
 			sort.Slice(retV.Status.KubernetesStatus.WorkloadsStatus, func(i, j int) bool {

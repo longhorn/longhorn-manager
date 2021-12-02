@@ -583,7 +583,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node) error {
 		}
 		diskStatus := node.Status.DiskStatus[id]
 		if diskStatus.Conditions == nil {
-			diskStatus.Conditions = map[string]longhorn.Condition{}
+			diskStatus.Conditions = []longhorn.Condition{}
 		}
 		if diskStatus.ScheduledReplica == nil {
 			diskStatus.ScheduledReplica = map[string]int64{}

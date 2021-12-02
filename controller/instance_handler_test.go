@@ -386,33 +386,33 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 
-		eiIndexer := lhInformerFactory.Longhorn().V1beta1().EngineImages().Informer().GetIndexer()
-		sIndexer := lhInformerFactory.Longhorn().V1beta1().Settings().Informer().GetIndexer()
+		eiIndexer := lhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+		sIndexer := lhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 
 		h := newTestInstanceHandler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
 
-		ei, err := lhClient.LonghornV1beta1().EngineImages(TestNamespace).Create(context.TODO(), newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed), metav1.CreateOptions{})
+		ei, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
 
 		imImageSetting := newDefaultInstanceManagerImageSetting()
-		imImageSetting, err = lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
+		imImageSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = sIndexer.Add(imImageSetting)
 		c.Assert(err, IsNil)
 
 		if tc.instanceManager != nil {
-			im, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(context.TODO(), tc.instanceManager, metav1.CreateOptions{})
+			im, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), tc.instanceManager, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			imIndexer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers().Informer().GetIndexer()
+			imIndexer := lhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
 			err = imIndexer.Add(im)
 			c.Assert(err, IsNil)
 		}
 
-		node, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(context.TODO(), newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""), metav1.CreateOptions{})
+		node, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
-		nodeIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
+		nodeIndexer := lhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
 		err = nodeIndexer.Add(node)
 		c.Assert(err, IsNil)
 

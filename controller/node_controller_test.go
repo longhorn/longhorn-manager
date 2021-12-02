@@ -145,64 +145,64 @@ func kubeObjStatusSyncTest(testType string) *NodeTestCase {
 	case ManagerPodUp:
 		nodeStatus = map[string]longhorn.NodeStatus{
 			TestNode1: {
-				Conditions: map[string]longhorn.Condition{
-					longhorn.NodeConditionTypeSchedulable:      newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-					longhorn.NodeConditionTypeReady:            newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
-					longhorn.NodeConditionTypeMountPropagation: newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+				Conditions: []longhorn.Condition{
+					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 				},
 			},
 			TestNode2: {
-				Conditions: map[string]longhorn.Condition{
-					longhorn.NodeConditionTypeSchedulable: newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-					longhorn.NodeConditionTypeReady:       newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+				Conditions: []longhorn.Condition{
+					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 				},
 			},
 		}
 	case ManagerPodDown:
 		nodeStatus = map[string]longhorn.NodeStatus{
 			TestNode1: {
-				Conditions: map[string]longhorn.Condition{
-					longhorn.NodeConditionTypeSchedulable:      newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-					longhorn.NodeConditionTypeReady:            newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonManagerPodDown),
-					longhorn.NodeConditionTypeMountPropagation: newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonNoMountPropagationSupport),
+				Conditions: []longhorn.Condition{
+					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonManagerPodDown),
+					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonNoMountPropagationSupport),
 				},
 			},
 			TestNode2: {
-				Conditions: map[string]longhorn.Condition{
-					longhorn.NodeConditionTypeSchedulable: newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-					longhorn.NodeConditionTypeReady:       newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+				Conditions: []longhorn.Condition{
+					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 				},
 			},
 		}
 	case KubeNodeDown:
 		nodeStatus = map[string]longhorn.NodeStatus{
 			TestNode1: {
-				Conditions: map[string]longhorn.Condition{
-					longhorn.NodeConditionTypeSchedulable:      newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-					longhorn.NodeConditionTypeReady:            newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKubernetesNodeNotReady),
-					longhorn.NodeConditionTypeMountPropagation: newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+				Conditions: []longhorn.Condition{
+					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKubernetesNodeNotReady),
+					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 				},
 			},
 			TestNode2: {
-				Conditions: map[string]longhorn.Condition{
-					longhorn.NodeConditionTypeSchedulable: newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-					longhorn.NodeConditionTypeReady:       newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+				Conditions: []longhorn.Condition{
+					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 				},
 			},
 		}
 	case KubeNodePressure:
 		nodeStatus = map[string]longhorn.NodeStatus{
 			TestNode1: {
-				Conditions: map[string]longhorn.Condition{
-					longhorn.NodeConditionTypeSchedulable:      newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-					longhorn.NodeConditionTypeReady:            newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKubernetesNodePressure),
-					longhorn.NodeConditionTypeMountPropagation: newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+				Conditions: []longhorn.Condition{
+					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKubernetesNodePressure),
+					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 				},
 			},
 			TestNode2: {
-				Conditions: map[string]longhorn.Condition{
-					longhorn.NodeConditionTypeSchedulable: newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-					longhorn.NodeConditionTypeReady:       newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+				Conditions: []longhorn.Condition{
+					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 				},
 			},
 		}
@@ -236,8 +236,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
 			},
 		},
 	}
@@ -254,17 +254,17 @@ func (s *TestSuite) TestSyncNode(c *C) {
 
 	tc.expectNodeStatus = map[string]longhorn.NodeStatus{
 		TestNode1: {
-			Conditions: map[string]longhorn.Condition{
-				longhorn.NodeConditionTypeSchedulable:      newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeReady:            newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeMountPropagation: newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 			},
 			DiskStatus: map[string]*longhorn.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: TestVolumeSize,
-					Conditions: map[string]longhorn.Condition{
-						longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
-						longhorn.DiskConditionTypeReady:       newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					Conditions: []longhorn.Condition{
+						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+						newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
 					},
 					ScheduledReplica: map[string]int64{
 						replica1.Name: replica1.Spec.VolumeSize,
@@ -274,16 +274,16 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 		TestNode2: {
-			Conditions: map[string]longhorn.Condition{
-				longhorn.NodeConditionTypeSchedulable: newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeReady:       newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 			},
 			DiskStatus: map[string]*longhorn.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
-					Conditions: map[string]longhorn.Condition{
-						longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
+					Conditions: []longhorn.Condition{
+						newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
 					},
 				},
 			},
@@ -299,15 +299,15 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 			},
 		},
 		"unavailable-disk": {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 			},
 		},
 	}
@@ -324,18 +324,18 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	}
 	tc.expectNodeStatus = map[string]longhorn.NodeStatus{
 		TestNode1: {
-			Conditions: map[string]longhorn.Condition{
-				longhorn.NodeConditionTypeSchedulable:      newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeReady:            newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeMountPropagation: newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 			},
 			DiskStatus: map[string]*longhorn.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
-					Conditions: map[string]longhorn.Condition{
-						longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
-						longhorn.DiskConditionTypeReady:       newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					Conditions: []longhorn.Condition{
+						newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
+						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					ScheduledReplica: map[string]int64{},
 					DiskUUID:         TestDiskID1,
@@ -343,9 +343,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 		TestNode2: {
-			Conditions: map[string]longhorn.Condition{
-				longhorn.NodeConditionTypeSchedulable: newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeReady:       newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 			},
 			DiskStatus: map[string]*longhorn.DiskStatus{
 				TestDiskID1: {
@@ -373,9 +373,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
 			StorageMaximum:   TestDiskSize,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-				longhorn.DiskConditionTypeReady:       newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 			},
 			DiskUUID: "new-uuid",
 		},
@@ -393,18 +393,18 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	}
 	tc.expectNodeStatus = map[string]longhorn.NodeStatus{
 		TestNode1: {
-			Conditions: map[string]longhorn.Condition{
-				longhorn.NodeConditionTypeSchedulable:      newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeReady:            newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeMountPropagation: newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 			},
 			DiskStatus: map[string]*longhorn.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
-					Conditions: map[string]longhorn.Condition{
-						longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskNotReady)),
-						longhorn.DiskConditionTypeReady:       newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskFilesystemChanged)),
+					Conditions: []longhorn.Condition{
+						newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskNotReady)),
+						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskFilesystemChanged)),
 					},
 					ScheduledReplica: map[string]int64{},
 					DiskUUID:         "new-uuid",
@@ -412,9 +412,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 		TestNode2: {
-			Conditions: map[string]longhorn.Condition{
-				longhorn.NodeConditionTypeSchedulable: newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeReady:       newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 			},
 			DiskStatus: map[string]*longhorn.DiskStatus{
 				TestDiskID1: {
@@ -434,8 +434,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 			},
 		},
 	}
@@ -444,18 +444,18 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	}
 	tc.expectNodeStatus = map[string]longhorn.NodeStatus{
 		TestNode1: {
-			Conditions: map[string]longhorn.Condition{
-				longhorn.NodeConditionTypeSchedulable:      newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeReady:            newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeMountPropagation: newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 			},
 			DiskStatus: map[string]*longhorn.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
-					Conditions: map[string]longhorn.Condition{
-						longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
-						longhorn.DiskConditionTypeReady:       newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					Conditions: []longhorn.Condition{
+						newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
+						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					ScheduledReplica: map[string]int64{},
 					DiskUUID:         TestDiskID1,
@@ -479,8 +479,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
-			Conditions: map[string]longhorn.Condition{
-				longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 			},
 		},
 	}
@@ -489,18 +489,18 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	}
 	tc.expectNodeStatus = map[string]longhorn.NodeStatus{
 		TestNode1: {
-			Conditions: map[string]longhorn.Condition{
-				longhorn.NodeConditionTypeSchedulable:      newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeReady:            newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeMountPropagation: newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 			},
 			DiskStatus: map[string]*longhorn.DiskStatus{
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
-					Conditions: map[string]longhorn.Condition{
-						longhorn.DiskConditionTypeSchedulable: newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
-						longhorn.DiskConditionTypeReady:       newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					Conditions: []longhorn.Condition{
+						newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
+						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					ScheduledReplica: map[string]int64{},
 					DiskUUID:         TestDiskID1,
@@ -551,10 +551,10 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	}
 	tc.expectNodeStatus = map[string]longhorn.NodeStatus{
 		TestNode1: {
-			Conditions: map[string]longhorn.Condition{
-				longhorn.NodeConditionTypeSchedulable:      newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeReady:            newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
-				longhorn.NodeConditionTypeMountPropagation: newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+				newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 			},
 			DiskStatus: map[string]*longhorn.DiskStatus{},
 		},
@@ -593,17 +593,17 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 
-		nIndexer := lhInformerFactory.Longhorn().V1beta1().Nodes().Informer().GetIndexer()
+		nIndexer := lhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
-		rIndexer := lhInformerFactory.Longhorn().V1beta1().Replicas().Informer().GetIndexer()
+		rIndexer := lhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
 		knIndexer := kubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
 
-		sIndexer := lhInformerFactory.Longhorn().V1beta1().Settings().Informer().GetIndexer()
-		imIndexer := lhInformerFactory.Longhorn().V1beta1().InstanceManagers().Informer().GetIndexer()
+		sIndexer := lhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		imIndexer := lhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
 
 		imImageSetting := newDefaultInstanceManagerImageSetting()
-		imImageSetting, err := lhClient.LonghornV1beta1().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
+		imImageSetting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		err = sIndexer.Add(imImageSetting)
 		c.Assert(err, IsNil)
@@ -628,7 +628,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		}
 		// create node
 		for _, node := range tc.nodes {
-			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+			n, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(n, NotNil)
 			err = nIndexer.Add(n)
@@ -637,7 +637,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		}
 		// create replicas
 		for _, replica := range tc.replicas {
-			r, err := lhClient.LonghornV1beta1().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
+			r, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(r, NotNil)
 			err = rIndexer.Add(r)
@@ -645,13 +645,13 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		}
 		// create instance managers
 		for _, em := range tc.engineManagers {
-			em, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(context.TODO(), em, metav1.CreateOptions{})
+			em, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), em, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = imIndexer.Add(em)
 			c.Assert(err, IsNil)
 		}
 		for _, rm := range tc.replicaManagers {
-			rm, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Create(context.TODO(), rm, metav1.CreateOptions{})
+			rm, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), rm, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = imIndexer.Add(rm)
 			c.Assert(err, IsNil)
@@ -661,7 +661,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			err := nc.syncNode(getKey(node, c))
 			c.Assert(err, IsNil)
 
-			n, err := lhClient.LonghornV1beta1().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
+			n, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			for ctype, condition := range n.Status.Conditions {
 				condition.LastTransitionTime = ""
@@ -687,7 +687,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		}
 
 		for emName := range tc.engineManagers {
-			em, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Get(context.TODO(), emName, metav1.GetOptions{})
+			em, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Get(context.TODO(), emName, metav1.GetOptions{})
 			if expectEM, exist := tc.expectEngineManagers[emName]; !exist {
 				c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
 			} else {
@@ -695,7 +695,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			}
 		}
 		for rmName := range tc.replicaManagers {
-			rm, err := lhClient.LonghornV1beta1().InstanceManagers(TestNamespace).Get(context.TODO(), rmName, metav1.GetOptions{})
+			rm, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Get(context.TODO(), rmName, metav1.GetOptions{})
 			if expectRM, exist := tc.expectReplicaManagers[rmName]; !exist {
 				c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
 			} else {

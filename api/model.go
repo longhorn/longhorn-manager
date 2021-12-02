@@ -266,9 +266,20 @@ type Node struct {
 	ReplicaManagerCPURequest int                           `json:"replicaManagerCPURequest"`
 }
 
+type DiskStatus struct {
+	Conditions       map[string]longhorn.Condition `json:"conditions"`
+	StorageAvailable int64                         `json:"storageAvailable"`
+	StorageScheduled int64                         `json:"storageScheduled"`
+	StorageMaximum   int64                         `json:"storageMaximum"`
+	ScheduledReplica map[string]int64              `json:"scheduledReplica"`
+	DiskUUID         string                        `json:"diskUUID"`
+}
+
 type DiskInfo struct {
 	longhorn.DiskSpec
-	longhorn.DiskStatus
+	// To convert CR status.Conditions from datatype map to slice, replace longhorn.DiskStatus with DiskStatus to keep it use datatype map.
+	// Therefore, the UI (RESTful endpoint) does not need to do any changes.
+	DiskStatus
 }
 
 type DiskUpdateInput struct {
@@ -1089,7 +1100,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 
 		Encrypted: v.Spec.Encrypted,
 
-		Conditions:       v.Status.Conditions,
+		Conditions:       sliceToMap(v.Status.Conditions),
 		KubernetesStatus: v.Status.KubernetesStatus,
 		CloneStatus:      v.Status.CloneStatus,
 
@@ -1210,6 +1221,7 @@ func toBackupTargetResource(bt *longhorn.BackupTarget) *BackupTarget {
 		logrus.Warnf("weird: nil backupTarget")
 		return nil
 	}
+
 	res := &BackupTarget{
 		Resource: client.Resource{
 			Id:    bt.Name,
@@ -1221,7 +1233,7 @@ func toBackupTargetResource(bt *longhorn.BackupTarget) *BackupTarget {
 			CredentialSecret: bt.Spec.CredentialSecret,
 			PollInterval:     bt.Spec.PollInterval.Duration.String(),
 			Available:        bt.Status.Available,
-			Message:          bt.Status.Conditions[longhorn.BackupTargetConditionTypeUnavailable].Message,
+			Message:          types.GetCondition(bt.Status.Conditions, longhorn.BackupTargetConditionTypeUnavailable).Message,
 		},
 	}
 	return res
@@ -1423,7 +1435,7 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 		Address:                  address,
 		AllowScheduling:          node.Spec.AllowScheduling,
 		EvictionRequested:        node.Spec.EvictionRequested,
-		Conditions:               node.Status.Conditions,
+		Conditions:               sliceToMap(node.Status.Conditions),
 		Tags:                     node.Spec.Tags,
 		Region:                   node.Status.Region,
 		Zone:                     node.Status.Zone,
@@ -1437,7 +1449,14 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 			DiskSpec: disk,
 		}
 		if node.Status.DiskStatus != nil && node.Status.DiskStatus[name] != nil {
-			di.DiskStatus = *node.Status.DiskStatus[name]
+			di.DiskStatus = DiskStatus{
+				Conditions:       sliceToMap(node.Status.DiskStatus[name].Conditions),
+				StorageAvailable: node.Status.DiskStatus[name].StorageAvailable,
+				StorageScheduled: node.Status.DiskStatus[name].StorageScheduled,
+				StorageMaximum:   node.Status.DiskStatus[name].StorageMaximum,
+				ScheduledReplica: node.Status.DiskStatus[name].ScheduledReplica,
+				DiskUUID:         node.Status.DiskStatus[name].DiskUUID,
+			}
 		}
 		disks[name] = di
 	}
@@ -1563,4 +1582,12 @@ func toRecurringJobCollection(jobs []*longhorn.RecurringJob, apiContext *api.Api
 		data = append(data, toRecurringJobResource(job, apiContext))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "recurringJob"}}
+}
+
+func sliceToMap(conditions []longhorn.Condition) map[string]longhorn.Condition {
+	converted := map[string]longhorn.Condition{}
+	for _, c := range conditions {
+		converted[c.Type] = c
+	}
+	return converted
 }
