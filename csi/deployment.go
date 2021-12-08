@@ -266,6 +266,7 @@ func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootD
 		[]string{
 			"--v=2",
 			"--csi-address=$(ADDRESS)",
+			"--timeout=1m50s",
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 		},
