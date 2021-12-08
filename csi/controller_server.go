@@ -30,6 +30,7 @@ const (
 	tickAttachDetach        = 2 * time.Second
 	timeoutBackupInitiation = 60 * time.Second
 	tickBackupInitiation    = 5 * time.Second
+	backupStateCompleted    = "Completed"
 )
 
 type ControllerServer struct {
@@ -565,10 +566,8 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 		}
 	}
 
-	// since there is a backup file for this on the backupstore we can assume successful completion
-	// since the backup.cfg only gets written after all the blocks have been transferred
 	if backup != nil {
-		rsp := createSnapshotResponse(backup.VolumeName, backup.Name, backup.SnapshotCreated, backup.VolumeSize, 100)
+		rsp := createSnapshotResponse(backup.VolumeName, backup.Name, backup.SnapshotCreated, backup.VolumeSize, backup.State)
 		return rsp, nil
 	}
 
@@ -590,23 +589,6 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 			snapshot = &snap
 			break
 		}
-	}
-
-	// if a backup has been deleted from the backupstore but the runtime information is still present in the volume
-	// we want to create a new backup same as if the backup operation has failed
-	backupStatus, err := cs.getBackupStatus(csiVolumeName, csiSnapshotName)
-	if err != nil {
-		return nil, err
-	}
-
-	if backupStatus != nil && backupStatus.Progress != 100 && backupStatus.Error == "" {
-		var creationTime string
-		if snapshot != nil {
-			creationTime = snapshot.Created
-		}
-
-		rsp := createSnapshotResponse(csiVolumeName, backupStatus.Id, creationTime, existVol.Size, int(backupStatus.Progress))
-		return rsp, nil
 	}
 
 	// no existing backup and no local snapshot, create a new one
@@ -636,18 +618,18 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	}
 
 	// we need to wait for backup initiation since we only know the backupID after the fact
-	backupStatus, err = cs.waitForBackupInitiation(csiVolumeName, csiSnapshotName)
+	backupStatus, err := cs.waitForBackupInitiation(csiVolumeName, csiSnapshotName)
 	if err != nil {
 		return nil, err
 	}
 
 	logrus.Infof("CreateSnapshot: volume %s backup %s of snapshot %s in progress", existVol.Name, backupStatus.Id, csiSnapshotName)
-	rsp := createSnapshotResponse(existVol.Name, backupStatus.Id, snapshot.Created, existVol.Size, int(backupStatus.Progress))
+	rsp := createSnapshotResponse(existVol.Name, backupStatus.Id, snapshot.Created, existVol.Size, backupStatus.State)
 	logrus.Debugf("ControllerServer CreateSnapshot rsp: %v", rsp)
 	return rsp, nil
 }
 
-func createSnapshotResponse(volumeName, backupName, snapshotTime, volumeSize string, progress int) *csi.CreateSnapshotResponse {
+func createSnapshotResponse(volumeName, backupName, snapshotTime, volumeSize string, backupState string) *csi.CreateSnapshotResponse {
 	creationTime, err := toProtoTimestamp(snapshotTime)
 	if err != nil {
 		logrus.Errorf("Failed to parse creation time %v for backup %v", snapshotTime, backupName)
@@ -662,7 +644,7 @@ func createSnapshotResponse(volumeName, backupName, snapshotTime, volumeSize str
 			SnapshotId:     snapshotID,
 			SourceVolumeId: volumeName,
 			CreationTime:   creationTime,
-			ReadyToUse:     progress == 100,
+			ReadyToUse:     backupState == backupStateCompleted,
 		},
 	}
 }
