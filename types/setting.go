@@ -2,24 +2,16 @@ package types
 
 import (
 	"fmt"
-	"io/ioutil"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v2"
 
 	v1 "k8s.io/api/core/v1"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	"github.com/longhorn/longhorn-manager/util"
-)
-
-const (
-	EnvDefaultSettingPath = "DEFAULT_SETTING_PATH"
 )
 
 type SettingType string
@@ -925,92 +917,6 @@ func isValidChoice(choices []string, value string) bool {
 		}
 	}
 	return len(choices) == 0
-}
-
-func GetCustomizedDefaultSettings() (map[string]string, error) {
-	settingPath := os.Getenv(EnvDefaultSettingPath)
-	defaultSettings := map[string]string{}
-	if settingPath != "" {
-		data, err := ioutil.ReadFile(settingPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read default setting file %v: %v", settingPath, err)
-		}
-
-		// `yaml.Unmarshal()` can return a partial result. We shouldn't allow it
-		if err := yaml.Unmarshal(data, &defaultSettings); err != nil {
-			logrus.Errorf("Failed to unmarshal customized default settings from yaml data %v, will give up using them: %v", string(data), err)
-			defaultSettings = map[string]string{}
-		}
-	}
-
-	// won't accept partially valid result
-	for name, value := range defaultSettings {
-		value = strings.Trim(value, " ")
-		definition, exist := SettingDefinitions[SettingName(name)]
-		if !exist {
-			logrus.Errorf("Customized settings are invalid, will give up using them: undefined setting %v", name)
-			defaultSettings = map[string]string{}
-			break
-		}
-		if value == "" {
-			continue
-		}
-		// Make sure the value of boolean setting is always "true" or "false" in Longhorn.
-		// Otherwise the Longhorn UI cannot display the boolean setting correctly.
-		if definition.Type == SettingTypeBool {
-			result, err := strconv.ParseBool(value)
-			if err != nil {
-				logrus.Errorf("Invalid value %v for the boolean setting %v: %v", value, name, err)
-				defaultSettings = map[string]string{}
-				break
-			}
-			value = strconv.FormatBool(result)
-		}
-		if err := ValidateInitSetting(name, value); err != nil {
-			logrus.Errorf("Customized settings are invalid, will give up using them: the value of customized setting %v is invalid: %v", name, err)
-			defaultSettings = map[string]string{}
-			break
-		}
-		defaultSettings[name] = value
-	}
-
-	guaranteedEngineManagerCPU := SettingDefinitionGuaranteedEngineManagerCPU.Default
-	if defaultSettings[string(SettingNameGuaranteedEngineManagerCPU)] != "" {
-		guaranteedEngineManagerCPU = defaultSettings[string(SettingNameGuaranteedEngineManagerCPU)]
-	}
-	guaranteedReplicaManagerCPU := SettingDefinitionGuaranteedReplicaManagerCPU.Default
-	if defaultSettings[string(SettingNameGuaranteedReplicaManagerCPU)] != "" {
-		guaranteedReplicaManagerCPU = defaultSettings[string(SettingNameGuaranteedReplicaManagerCPU)]
-	}
-	if err := ValidateCPUReservationValues(guaranteedEngineManagerCPU, guaranteedReplicaManagerCPU); err != nil {
-		logrus.Errorf("Customized settings GuaranteedEngineManagerCPU and GuaranteedReplicaManagerCPU are invalid, will give up using them: %v", err)
-		defaultSettings = map[string]string{}
-	}
-
-	return defaultSettings, nil
-}
-
-func OverwriteBuiltInSettingsWithCustomizedValues() error {
-	logrus.Infof("Start overwriting built-in settings with customized values")
-	customizedDefaultSettings, err := GetCustomizedDefaultSettings()
-	if err != nil {
-		return err
-	}
-
-	for _, sName := range SettingNameList {
-		definition, ok := SettingDefinitions[sName]
-		if !ok {
-			return fmt.Errorf("BUG: setting %v is not defined", sName)
-		}
-
-		value, exists := customizedDefaultSettings[string(sName)]
-		if exists && value != "" {
-			definition.Default = value
-			SettingDefinitions[sName] = definition
-		}
-	}
-
-	return nil
 }
 
 func ValidateAndUnmarshalToleration(s string) (*v1.Toleration, error) {
