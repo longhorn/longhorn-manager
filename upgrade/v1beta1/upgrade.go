@@ -3,12 +3,14 @@ package v1beta1
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	restclient "k8s.io/client-go/rest"
@@ -74,7 +76,9 @@ func CanUpgrade(config *restclient.Config, namespace string) (bool, error) {
 }
 
 func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) error {
-	volumes, err := lhClient.LonghornV1beta1().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
+	volumes, err := lhClient.LonghornV1beta1().Volumes(namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: getLabelSelectorNotEqualV1beta2APIVersion(),
+	})
 	if err != nil {
 		return errors.Wrapf(err, "unable to list volumes")
 	}
@@ -100,9 +104,16 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) error {
 			return errors.Wrap(err, "failed to copy volume Status.CloneStatus")
 		}
 
-		_, err = lhClient.LonghornV1beta2().Volumes(namespace).UpdateStatus(context.TODO(), &new, metav1.UpdateOptions{})
+		obj, err := lhClient.LonghornV1beta2().Volumes(namespace).UpdateStatus(context.TODO(), &new, metav1.UpdateOptions{})
 		if err != nil {
-			return errors.Wrapf(err, "failed to update for %v status %v", old.Kind, old.Name)
+			return errors.Wrapf(err, "failed to update for %v status %v", new.Kind, new.Name)
+		}
+
+		if err := tagCRLabelCRDAPIversion(obj); err != nil {
+			return errors.Wrapf(err, "failed to add label to %v %v", obj.Kind, obj.Name)
+		}
+		if _, err := lhClient.LonghornV1beta2().Volumes(namespace).Update(context.TODO(), obj, metav1.UpdateOptions{}); err != nil {
+			return errors.Wrapf(err, "failed to update for %v %v", obj.Kind, obj.Name)
 		}
 	}
 	logrus.Info("Finished upgrading volumes")
@@ -110,7 +121,9 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) error {
 }
 
 func upgradeEngineImages(namespace string, lhClient *lhclientset.Clientset) error {
-	engineImages, err := lhClient.LonghornV1beta1().EngineImages(namespace).List(context.TODO(), metav1.ListOptions{})
+	engineImages, err := lhClient.LonghornV1beta1().EngineImages(namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: getLabelSelectorNotEqualV1beta2APIVersion(),
+	})
 	if err != nil {
 		return errors.Wrapf(err, "unable to list engineImages")
 	}
@@ -132,9 +145,16 @@ func upgradeEngineImages(namespace string, lhClient *lhclientset.Clientset) erro
 			return errors.Wrap(err, "failed to copy engineImage Status.EngineVersionDetails")
 		}
 
-		_, err = lhClient.LonghornV1beta2().EngineImages(namespace).UpdateStatus(context.TODO(), &new, metav1.UpdateOptions{})
+		obj, err := lhClient.LonghornV1beta2().EngineImages(namespace).UpdateStatus(context.TODO(), &new, metav1.UpdateOptions{})
 		if err != nil {
-			return errors.Wrapf(err, "failed to update for %v status %v", old.Kind, old.Name)
+			return errors.Wrapf(err, "failed to update for %v status %v", new.Kind, new.Name)
+		}
+
+		if err := tagCRLabelCRDAPIversion(obj); err != nil {
+			return errors.Wrapf(err, "failed to add label to %v %v", obj.Kind, obj.Name)
+		}
+		if _, err := lhClient.LonghornV1beta2().EngineImages(namespace).Update(context.TODO(), obj, metav1.UpdateOptions{}); err != nil {
+			return errors.Wrapf(err, "failed to update for %v %v", obj.Kind, obj.Name)
 		}
 	}
 	logrus.Info("Finished upgrading engineImages")
@@ -142,7 +162,9 @@ func upgradeEngineImages(namespace string, lhClient *lhclientset.Clientset) erro
 }
 
 func upgradeBackupTargets(namespace string, lhClient *lhclientset.Clientset) error {
-	backupTargets, err := lhClient.LonghornV1beta1().BackupTargets(namespace).List(context.TODO(), metav1.ListOptions{})
+	backupTargets, err := lhClient.LonghornV1beta1().BackupTargets(namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: getLabelSelectorNotEqualV1beta2APIVersion(),
+	})
 	if err != nil {
 		return errors.Wrapf(err, "unable to list backupTargets")
 	}
@@ -160,9 +182,16 @@ func upgradeBackupTargets(namespace string, lhClient *lhclientset.Clientset) err
 		}
 		new.Status.Conditions = conditions
 
-		_, err = lhClient.LonghornV1beta2().BackupTargets(namespace).UpdateStatus(context.TODO(), &new, metav1.UpdateOptions{})
+		obj, err := lhClient.LonghornV1beta2().BackupTargets(namespace).UpdateStatus(context.TODO(), &new, metav1.UpdateOptions{})
 		if err != nil {
-			return errors.Wrapf(err, "failed to update for %v status %v", old.Kind, old.Name)
+			return errors.Wrapf(err, "failed to update for %v status %v", new.Kind, new.Name)
+		}
+
+		if err := tagCRLabelCRDAPIversion(obj); err != nil {
+			return errors.Wrapf(err, "failed to add label to %v %v", obj.Kind, obj.Name)
+		}
+		if _, err := lhClient.LonghornV1beta2().BackupTargets(namespace).Update(context.TODO(), obj, metav1.UpdateOptions{}); err != nil {
+			return errors.Wrapf(err, "failed to update for %v %v", obj.Kind, obj.Name)
 		}
 	}
 	logrus.Info("Finished upgrading backupTargets")
@@ -170,7 +199,9 @@ func upgradeBackupTargets(namespace string, lhClient *lhclientset.Clientset) err
 }
 
 func upgradeNodes(namespace string, lhClient *lhclientset.Clientset) error {
-	nodes, err := lhClient.LonghornV1beta1().Nodes(namespace).List(context.TODO(), metav1.ListOptions{})
+	nodes, err := lhClient.LonghornV1beta1().Nodes(namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: getLabelSelectorNotEqualV1beta2APIVersion(),
+	})
 	if err != nil {
 		return errors.Wrapf(err, "unable to list nodes")
 	}
@@ -192,13 +223,41 @@ func upgradeNodes(namespace string, lhClient *lhclientset.Clientset) error {
 			return errors.Wrap(err, "failed to copy node Status.DiskStatus")
 		}
 
-		_, err = lhClient.LonghornV1beta2().Nodes(namespace).UpdateStatus(context.TODO(), &new, metav1.UpdateOptions{})
+		obj, err := lhClient.LonghornV1beta2().Nodes(namespace).UpdateStatus(context.TODO(), &new, metav1.UpdateOptions{})
 		if err != nil {
-			return errors.Wrapf(err, "failed to update for %v status %v", old.Kind, old.Name)
+			return errors.Wrapf(err, "failed to update for %v status %v", new.Kind, new.Name)
+		}
+
+		if err := tagCRLabelCRDAPIversion(obj); err != nil {
+			return errors.Wrapf(err, "failed to add label to %v %v", obj.Kind, obj.Name)
+		}
+		if _, err := lhClient.LonghornV1beta2().Nodes(namespace).Update(context.TODO(), obj, metav1.UpdateOptions{}); err != nil {
+			return errors.Wrapf(err, "failed to update for %v %v", obj.Kind, obj.Name)
 		}
 	}
 	logrus.Info("Finished upgrading nodes")
 	return nil
+}
+
+func tagCRLabelCRDAPIversion(obj runtime.Object) error {
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+
+	labels[types.GetLonghornLabelCRDAPIVersionKey()] = strings.Split(types.CRDAPIVersionV1beta2, "/")[1]
+	metadata.SetLabels(labels)
+
+	return nil
+}
+
+func getLabelSelectorNotEqualV1beta2APIVersion() string {
+	return types.GetLonghornLabelCRDAPIVersionKey() + "!=" + strings.Split(types.CRDAPIVersionV1beta2, "/")[1]
 }
 
 func copyConditions(srcConditions map[string]longhornV1beta1.Condition) ([]longhorn.Condition, error) {

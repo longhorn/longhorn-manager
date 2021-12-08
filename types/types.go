@@ -84,6 +84,7 @@ const (
 	LonghornLabelBackupVolume             = "backup-volume"
 	LonghornLabelRecurringJob             = "job"
 	LonghornLabelRecurringJobGroup        = "job-group"
+	LonghornLabelCRDAPIVersion            = "crd-api-version"
 
 	LonghornLabelValueEnabled = "enabled"
 
@@ -254,6 +255,10 @@ func GetBaseLabelsForSystemManagedComponent() map[string]string {
 
 func GetLonghornLabelComponentKey() string {
 	return GetLonghornLabelKey("component")
+}
+
+func GetLonghornLabelCRDAPIVersionKey() string {
+	return GetLonghornLabelKey(LonghornLabelCRDAPIVersion)
 }
 
 func GetEngineImageLabels(engineImageName string) map[string]string {
