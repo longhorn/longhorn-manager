@@ -109,21 +109,10 @@ func startManager(c *cli.Context) error {
 	}
 	kubeconfigPath := c.String(FlagKubeConfig)
 
-	defaultSettingPath := os.Getenv(types.EnvDefaultSettingPath)
-
 	if err := environmentCheck(); err != nil {
 		logrus.Errorf("Failed environment check, please make sure you " +
 			"have iscsiadm/open-iscsi installed on the host")
 		return fmt.Errorf("environment check failed: %v", err)
-	}
-
-	if defaultSettingPath != "" {
-		if _, err := os.Stat(defaultSettingPath); err != nil {
-			return fmt.Errorf("cannot find customized default setting file on %v: %v", defaultSettingPath, err)
-		}
-	}
-	if err := types.OverwriteBuiltInSettingsWithCustomizedValues(); err != nil {
-		return fmt.Errorf("failed to overwrite built-in settings with customized values: %v", err)
 	}
 
 	currentNodeID, err := util.GetRequiredEnv(types.EnvNodeName)
