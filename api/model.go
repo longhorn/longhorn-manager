@@ -321,6 +321,7 @@ type BackupStatus struct {
 	Error     string `json:"error"`
 	State     string `json:"state"`
 	Replica   string `json:"replica"`
+	Size      string `json:"size"`
 }
 
 type RestoreStatus struct {
@@ -1037,6 +1038,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			Error:     b.Status.Error,
 			State:     string(b.Status.State),
 			Replica:   datastore.ReplicaAddressToReplicaName(b.Status.ReplicaAddress, vrs),
+			Size:      b.Status.Size,
 		})
 	}
 
