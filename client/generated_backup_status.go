@@ -15,6 +15,8 @@ type BackupStatus struct {
 
 	Replica string `json:"replica,omitempty" yaml:"replica,omitempty"`
 
+	Size string `json:"size,omitempty" yaml:"size,omitempty"`
+
 	Snapshot string `json:"snapshot,omitempty" yaml:"snapshot,omitempty"`
 
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
