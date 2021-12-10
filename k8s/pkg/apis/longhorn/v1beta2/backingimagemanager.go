@@ -63,6 +63,7 @@ type BackingImageManagerStatus struct {
 	// +optional
 	CurrentState BackingImageManagerState `json:"currentState"`
 	// +optional
+	// +nullable
 	BackingImageFileMap map[string]BackingImageFileInfo `json:"backingImageFileMap"`
 	// +optional
 	IP string `json:"ip"`

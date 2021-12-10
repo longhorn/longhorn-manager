@@ -16,6 +16,7 @@ const (
 type BackupSpec struct {
 	// The time to request run sync the remote backup.
 	// +optional
+	// +nullable
 	SyncRequestedAt metav1.Time `json:"syncRequestedAt"`
 	// The snapshot name.
 	// +optional
@@ -60,9 +61,11 @@ type BackupStatus struct {
 	Size string `json:"size"`
 	// The labels of snapshot backup.
 	// +optional
+	// +nullable
 	Labels map[string]string `json:"labels"`
 	// The error messages when calling longhorn engine on listing or inspecting backups.
 	// +optional
+	// +nullable
 	Messages map[string]string `json:"messages"`
 	// The volume name.
 	// +optional
@@ -78,6 +81,7 @@ type BackupStatus struct {
 	VolumeBackingImageName string `json:"volumeBackingImageName"`
 	// The last time that the backup was synced with the remote backup target.
 	// +optional
+	// +nullable
 	LastSyncedAt metav1.Time `json:"lastSyncedAt"`
 }
 

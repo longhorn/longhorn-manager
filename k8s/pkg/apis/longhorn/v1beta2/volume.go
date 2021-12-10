@@ -133,6 +133,7 @@ type KubernetesStatus struct {
 	LastPVCRefAt string `json:"lastPVCRefAt"`
 	// determine if Pod/Workload is history or not
 	// +optional
+	// +nullable
 	WorkloadsStatus []WorkloadStatus `json:"workloadsStatus"`
 	// +optional
 	LastPodRefAt string `json:"lastPodRefAt"`
@@ -218,6 +219,7 @@ type VolumeStatus struct {
 	// +optional
 	KubernetesStatus KubernetesStatus `json:"kubernetesStatus"`
 	// +optional
+	// +nullable
 	Conditions []Condition `json:"conditions"`
 	// +optional
 	LastBackup string `json:"lastBackup"`

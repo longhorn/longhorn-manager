@@ -132,24 +132,32 @@ type EngineStatus struct {
 	// +optional
 	CurrentSize int64 `json:"currentSize,string"`
 	// +optional
+	// +nullable
 	CurrentReplicaAddressMap map[string]string `json:"currentReplicaAddressMap"`
 	// +optional
+	// +nullable
 	ReplicaModeMap map[string]ReplicaMode `json:"replicaModeMap"`
 	// +optional
 	Endpoint string `json:"endpoint"`
 	// +optional
 	LastRestoredBackup string `json:"lastRestoredBackup"`
 	// +optional
+	// +nullable
 	BackupStatus map[string]*EngineBackupStatus `json:"backupStatus"`
 	// +optional
+	// +nullable
 	RestoreStatus map[string]*RestoreStatus `json:"restoreStatus"`
 	// +optional
+	// +nullable
 	PurgeStatus map[string]*PurgeStatus `json:"purgeStatus"`
 	// +optional
+	// +nullable
 	RebuildStatus map[string]*RebuildStatus `json:"rebuildStatus"`
 	// +optional
+	// +nullable
 	CloneStatus map[string]*SnapshotCloneStatus `json:"cloneStatus"`
 	// +optional
+	// +nullable
 	Snapshots map[string]*Snapshot `json:"snapshots"`
 	// +optional
 	SnapshotsError string `json:"snapshotsError"`
