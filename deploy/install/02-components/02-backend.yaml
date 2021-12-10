@@ -18,6 +18,23 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  labels:
+    app: longhorn-webhook
+  name: longhorn-webhook
+  namespace: longhorn-system
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  selector:
+    app: longhorn-webhook
+  ports:
+  - name: webhook
+    port: 9443
+    targetPort: webhook
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: longhorn-engine-manager
   namespace: longhorn-system
 spec:
