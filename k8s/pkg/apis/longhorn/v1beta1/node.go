@@ -46,6 +46,7 @@ type DiskSpec struct {
 
 type DiskStatus struct {
 	// +optional
+	// +nullable
 	Conditions map[string]Condition `json:"conditions"`
 	// +optional
 	StorageAvailable int64 `json:"storageAvailable"`
@@ -54,6 +55,7 @@ type DiskStatus struct {
 	// +optional
 	StorageMaximum int64 `json:"storageMaximum"`
 	// +optional
+	// +nullable
 	ScheduledReplica map[string]int64 `json:"scheduledReplica"`
 	// +optional
 	DiskUUID string `json:"diskUUID"`
@@ -82,8 +84,10 @@ type NodeSpec struct {
 // NodeStatus defines the observed state of the Longhorn node
 type NodeStatus struct {
 	// +optional
+	// +nullable
 	Conditions map[string]Condition `json:"conditions"`
 	// +optional
+	// +nullable
 	DiskStatus map[string]*DiskStatus `json:"diskStatus"`
 	// +optional
 	Region string `json:"region"`

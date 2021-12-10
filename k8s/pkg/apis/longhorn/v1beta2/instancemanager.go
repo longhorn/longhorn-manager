@@ -128,6 +128,7 @@ type InstanceManagerStatus struct {
 	// +optional
 	CurrentState InstanceManagerState `json:"currentState"`
 	// +optional
+	// +nullable
 	Instances map[string]InstanceProcess `json:"instances"`
 	// +optional
 	IP string `json:"ip"`
