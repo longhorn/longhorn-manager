@@ -627,6 +627,7 @@ func CreateDefaultDisk(dataPath string) (map[string]longhorn.DiskSpec, error) {
 			AllowScheduling:   true,
 			EvictionRequested: false,
 			StorageReserved:   diskInfo.StorageMaximum * 30 / 100,
+			Tags:              []string{},
 		},
 	}, nil
 }
