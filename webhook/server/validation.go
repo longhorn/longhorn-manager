@@ -7,11 +7,14 @@ import (
 
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	"github.com/longhorn/longhorn-manager/webhook/client"
+	"github.com/longhorn/longhorn-manager/webhook/resources/setting"
 )
 
 func Validation(client *client.Client) (http.Handler, []admission.Resource, error) {
 	resources := []admission.Resource{}
-	validators := []admission.Validator{}
+	validators := []admission.Validator{
+		setting.NewValidator(client.Datastore),
+	}
 
 	router := webhook.NewRouter()
 	for _, v := range validators {
