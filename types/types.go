@@ -35,7 +35,11 @@ const (
 )
 
 const (
-	DefaultAPIPort = 9500
+	DefaultAPIPort           = 9500
+	DefaultWebhookServerPort = 9443
+
+	ValidatingWebhookName = "longhorn-webhook-validator"
+	MutatingWebhookName   = "longhorn-webhook-mutator"
 
 	EngineBinaryDirectoryInContainer = "/engine-binaries/"
 	EngineBinaryDirectoryOnHost      = "/var/lib/longhorn/engine-binaries/"

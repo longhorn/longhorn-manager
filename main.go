@@ -54,6 +54,7 @@ func main() {
 		app.RecurringJobCmd(),
 		app.DeployDriverCmd(),
 		app.CSICommand(),
+		app.WebhookServerCommand(),
 		app.PostUpgradeCmd(),
 		app.UninstallCmd(),
 		// TODO: Remove MigrateForPre070VolumesCmd() after v0.8.1
