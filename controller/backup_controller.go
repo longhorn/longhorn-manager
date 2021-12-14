@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -339,7 +340,9 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	backupURL := backupstore.EncodeBackupURL(backup.Name, backupVolumeName, backupTargetClient.URL)
 	backupInfo, err := backupTargetClient.InspectBackupConfig(backupURL)
 	if err != nil {
-		log.WithError(err).Error("Error inspecting backup config")
+		if !strings.Contains(err.Error(), "in progress") {
+			log.WithError(err).Error("Error inspecting backup config")
+		}
 		return nil // Ignore error to prevent enqueue
 	}
 	if backupInfo == nil {
