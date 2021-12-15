@@ -29,224 +29,224 @@
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: default-data-path
-#namespace: longhorn-system
+#  name: default-data-path
+#  namespace: longhorn-system
 #value: "/var/lib/longhorn/"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: replica-soft-anti-affinity
-#namespace: longhorn-system
+#  name: replica-soft-anti-affinity
+#  namespace: longhorn-system
 #value: "false"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: replica-auto-balance
-#namespace: longhorn-system
+#  name: replica-auto-balance
+#  namespace: longhorn-system
 #value: "disabled"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: storage-over-provisioning-percentage
-#namespace: longhorn-system
+#  name: storage-over-provisioning-percentage
+#  namespace: longhorn-system
 #value: "200"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: storage-minimal-available-percentage
-#namespace: longhorn-system
+#  name: storage-minimal-available-percentage
+#  namespace: longhorn-system
 #value: "25"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: upgrade-checker
-#namespace: longhorn-system
+#  name: upgrade-checker
+#  namespace: longhorn-system
 #value: "true"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: default-replica-count
-#namespace: longhorn-system
+#  name: default-replica-count
+#  namespace: longhorn-system
 #value: "3"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: default-data-locality
-#namespace: longhorn-system
+#  name: default-data-locality
+#  namespace: longhorn-system
 #value: "disabled"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: default-longhorn-static-storage-class
-#namespace: longhorn-system
+#  name: default-longhorn-static-storage-class
+#  namespace: longhorn-system
 #value: "longhorn-static"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: backupstore-poll-interval
-#namespace: longhorn-system
+#  name: backupstore-poll-interval
+#  namespace: longhorn-system
 #value: "300"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: taint-toleration
-#namespace: longhorn-system
+#  name: taint-toleration
+#  namespace: longhorn-system
 #value: ""
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: system-managed-components-node-selector
-#namespace: longhorn-system
+#  name: system-managed-components-node-selector
+#  namespace: longhorn-system
 #value: ""
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: priority-class
-#namespace: longhorn-system
+#  name: priority-class
+#  namespace: longhorn-system
 #value: ""
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: auto-salvage
-#namespace: longhorn-system
+#  name: auto-salvage
+#  namespace: longhorn-system
 #value: "true"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: auto-delete-pod-when-volume-detached-unexpectedly
-#namespace: longhorn-system
+#  name: auto-delete-pod-when-volume-detached-unexpectedly
+#  namespace: longhorn-system
 #value: "true"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: disable-scheduling-on-cordoned-node
-#namespace: longhorn-system
+#  name: disable-scheduling-on-cordoned-node
+#  namespace: longhorn-system
 #value: "true"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: replica-zone-soft-anti-affinity
-#namespace: longhorn-system
+#  name: replica-zone-soft-anti-affinity
+#  namespace: longhorn-system
 #value: "false"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: node-down-pod-deletion-policy
-#namespace: longhorn-system
+#  name: node-down-pod-deletion-policy
+#  namespace: longhorn-system
 #value: "do-nothing"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: allow-node-drain-with-last-healthy-replica
-#namespace: longhorn-system
+#  name: allow-node-drain-with-last-healthy-replica
+#  namespace: longhorn-system
 #value: "false"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: mkfs-ext4-parameters
-#namespace: longhorn-system
+#  name: mkfs-ext4-parameters
+#  namespace: longhorn-system
 #value: ""
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: disable-replica-rebuild
-#namespace: longhorn-system
+#  name: disable-replica-rebuild
+#  namespace: longhorn-system
 #value: "false"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: replica-replenishment-wait-interval
-#namespace: longhorn-system
+#  name: replica-replenishment-wait-interval
+#  namespace: longhorn-system
 #value: "600"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: concurrent-replica-rebuild-per-node-limit
-#namespace: longhorn-system
+#  name: concurrent-replica-rebuild-per-node-limit
+#  namespace: longhorn-system
 #value: "5"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: disable-revision-counter
-#namespace: longhorn-system
+#  name: disable-revision-counter
+#  namespace: longhorn-system
 #value: "false"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: system-managed-pods-image-pull-policy
-#namespace: longhorn-system
+#  name: system-managed-pods-image-pull-policy
+#  namespace: longhorn-system
 #value: "if-not-present"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: allow-volume-creation-with-degraded-availability
-#namespace: longhorn-system
+#  name: allow-volume-creation-with-degraded-availability
+#  namespace: longhorn-system
 #value: "true"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: auto-cleanup-system-generated-snapshot
-#namespace: longhorn-system
+#  name: auto-cleanup-system-generated-snapshot
+#  namespace: longhorn-system
 #value: "true"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: concurrent-automatic-engine-upgrade-per-node-limit
-#namespace: longhorn-system
+#  name: concurrent-automatic-engine-upgrade-per-node-limit
+#  namespace: longhorn-system
 #value: "0"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: backing-image-cleanup-wait-interval
-#namespace: longhorn-system
+#  name: backing-image-cleanup-wait-interval
+#  namespace: longhorn-system
 #value: "60"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: backing-image-recovery-wait-interval
-#namespace: longhorn-system
+#  name: backing-image-recovery-wait-interval
+#  namespace: longhorn-system
 #value: "300"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: guaranteed-engine-manager-cpu
-#namespace: longhorn-system
+#  name: guaranteed-engine-manager-cpu
+#  namespace: longhorn-system
 #value: "12"
 #---
 #apiVersion: longhorn.io/v1beta2
 #kind: Setting
 #metadata:
-#name: guaranteed-replica-manager-cpu
-#namespace: longhorn-system
+#  name: guaranteed-replica-manager-cpu
+#  namespace: longhorn-system
 #value: "12"
 #---

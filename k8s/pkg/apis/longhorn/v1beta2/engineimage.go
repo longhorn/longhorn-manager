@@ -56,8 +56,10 @@ type EngineImageStatus struct {
 	// +optional
 	NoRefSince string `json:"noRefSince"`
 	// +optional
+	// +nullable
 	Conditions []Condition `json:"conditions"`
 	// +optional
+	// +nullable
 	NodeDeploymentMap    map[string]bool `json:"nodeDeploymentMap"`
 	EngineVersionDetails `json:""`
 }

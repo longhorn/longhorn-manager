@@ -54,14 +54,18 @@ type BackingImageStatus struct {
 	// +optional
 	Checksum string `json:"checksum"`
 	// +optional
+	// +nullable
 	DiskFileStatusMap map[string]*BackingImageDiskFileStatus `json:"diskFileStatusMap"`
 	// +optional
+	// +nullable
 	DiskLastRefAtMap map[string]string `json:"diskLastRefAtMap"`
 	// Deprecated: Replaced by field `State` in `DiskFileStatusMap`.
 	// +optional
+	// +nullable
 	DiskDownloadStateMap map[string]BackingImageDownloadState `json:"diskDownloadStateMap"`
 	// Deprecated: Replaced by field `Progress` in `DiskFileStatusMap`.
 	// +optional
+	// +nullable
 	DiskDownloadProgressMap map[string]int `json:"diskDownloadProgressMap"`
 }
 

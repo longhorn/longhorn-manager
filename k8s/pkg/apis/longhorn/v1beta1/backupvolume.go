@@ -6,6 +6,7 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type BackupVolumeSpec struct {
 	// The time to request run sync the remote backup volume.
 	// +optional
+	// +nullable
 	SyncRequestedAt metav1.Time `json:"syncRequestedAt"`
 }
 
@@ -16,12 +17,14 @@ type BackupVolumeStatus struct {
 	OwnerID string `json:"ownerID"`
 	// The backup volume config last modification time.
 	// +optional
+	// +nullable
 	LastModificationTime metav1.Time `json:"lastModificationTime"`
 	// The backup volume size.
 	// +optional
 	Size string `json:"size"`
 	// The backup volume labels.
 	// +optional
+	// +nullable
 	Labels map[string]string `json:"labels"`
 	// The backup volume creation time.
 	// +optional
@@ -37,6 +40,7 @@ type BackupVolumeStatus struct {
 	DataStored string `json:"dataStored"`
 	// The error messages when call longhorn engine on list or inspect backup volumes.
 	// +optional
+	// +nullable
 	Messages map[string]string `json:"messages"`
 	// The backing image name.
 	// +optional
@@ -46,6 +50,7 @@ type BackupVolumeStatus struct {
 	BackingImageChecksum string `json:"backingImageChecksum"`
 	// The last time that the backup volume was synced into the cluster.
 	// +optional
+	// +nullable
 	LastSyncedAt metav1.Time `json:"lastSyncedAt"`
 }
 

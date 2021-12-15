@@ -21,6 +21,7 @@ type BackupTargetSpec struct {
 	PollInterval metav1.Duration `json:"pollInterval"`
 	// The time to request run sync the remote backup target.
 	// +optional
+	// +nullable
 	SyncRequestedAt metav1.Time `json:"syncRequestedAt"`
 }
 
@@ -34,9 +35,11 @@ type BackupTargetStatus struct {
 	Available bool `json:"available"`
 	// Records the reason on why the backup target is unavailable.
 	// +optional
+	// +nullable
 	Conditions []Condition `json:"conditions"`
 	// The last time that the controller synced with the remote backup target.
 	// +optional
+	// +nullable
 	LastSyncedAt metav1.Time `json:"lastSyncedAt"`
 }
 

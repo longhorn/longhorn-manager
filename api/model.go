@@ -1292,6 +1292,14 @@ func toBackupResource(b *longhorn.Backup) *Backup {
 		logrus.Warnf("weird: nil backup")
 		return nil
 	}
+
+	getSnapshotNameFromBackup := func(b *longhorn.Backup) string {
+		if b.Spec.SnapshotName != "" {
+			return b.Spec.SnapshotName
+		}
+		return b.Status.SnapshotName
+	}
+
 	ret := &Backup{
 		Resource: client.Resource{
 			Id:    b.Name,
@@ -1303,7 +1311,7 @@ func toBackupResource(b *longhorn.Backup) *Backup {
 		Progress:               b.Status.Progress,
 		Error:                  b.Status.Error,
 		URL:                    b.Status.URL,
-		SnapshotName:           b.Status.SnapshotName,
+		SnapshotName:           getSnapshotNameFromBackup(b),
 		SnapshotCreated:        b.Status.SnapshotCreatedAt,
 		Created:                b.Status.BackupCreatedAt,
 		Size:                   b.Status.Size,

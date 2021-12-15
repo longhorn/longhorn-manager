@@ -38,6 +38,7 @@ type BackingImageDataSourceStatus struct {
 	// +optional
 	OwnerID string `json:"ownerID"`
 	// +optional
+	// +nullable
 	RunningParameters map[string]string `json:"runningParameters"`
 	// +optional
 	CurrentState BackingImageState `json:"currentState"`
