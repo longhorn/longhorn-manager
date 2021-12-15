@@ -714,7 +714,7 @@ func (c *BackingImageDataSourceController) enqueueBackingImageDataSource(backing
 func isBackingImageDataSourcePod(obj interface{}) bool {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			return false
 		}
@@ -732,7 +732,7 @@ func isBackingImageDataSourcePod(obj interface{}) bool {
 func (c *BackingImageDataSourceController) enqueueForBackingImage(obj interface{}) {
 	backingImage, ok := obj.(*longhorn.BackingImage)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
@@ -760,7 +760,7 @@ func (c *BackingImageDataSourceController) enqueueForBackingImage(obj interface{
 func (c *BackingImageDataSourceController) enqueueForVolume(obj interface{}) {
 	volume, ok := obj.(*longhorn.Volume)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
@@ -787,7 +787,7 @@ func (c *BackingImageDataSourceController) enqueueForVolume(obj interface{}) {
 func (c *BackingImageDataSourceController) enqueueForLonghornNode(obj interface{}) {
 	node, ok := obj.(*longhorn.Node)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
@@ -830,7 +830,7 @@ func (c *BackingImageDataSourceController) enqueueForLonghornNode(obj interface{
 func (c *BackingImageDataSourceController) enqueueForBackingImageDataSourcePod(obj interface{}) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return

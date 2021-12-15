@@ -92,7 +92,7 @@ func NewKubernetesNodeController(
 func isSettingCreateDefaultDiskLabeledNodes(obj interface{}) bool {
 	setting, ok := obj.(*longhorn.Setting)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			return false
 		}
@@ -234,7 +234,7 @@ func (knc *KubernetesNodeController) enqueueSetting(obj interface{}) {
 func (knc *KubernetesNodeController) enqueueLonghornNode(obj interface{}) {
 	lhNode, ok := obj.(*longhorn.Node)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return

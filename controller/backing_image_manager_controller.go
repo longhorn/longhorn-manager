@@ -855,7 +855,7 @@ func (c *BackingImageManagerController) enqueueBackingImageManager(backingImageM
 func isBackingImageManagerPod(obj interface{}) bool {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			return false
 		}
@@ -876,7 +876,7 @@ func isBackingImageManagerPod(obj interface{}) bool {
 func (c *BackingImageManagerController) enqueueForBackingImage(obj interface{}) {
 	backingImage, ok := obj.(*longhorn.BackingImage)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
@@ -919,7 +919,7 @@ func (c *BackingImageManagerController) enqueueForBackingImage(obj interface{}) 
 func (c *BackingImageManagerController) enqueueForLonghornNode(obj interface{}) {
 	node, ok := obj.(*longhorn.Node)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
@@ -962,7 +962,7 @@ func (c *BackingImageManagerController) enqueueForLonghornNode(obj interface{}) 
 func (c *BackingImageManagerController) enqueueForBackingImageManagerPod(obj interface{}) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return

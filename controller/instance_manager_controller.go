@@ -157,7 +157,7 @@ func NewInstanceManagerController(
 func isInstanceManagerPod(obj interface{}) bool {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			return false
 		}
@@ -669,7 +669,7 @@ func (imc *InstanceManagerController) enqueueInstanceManager(instanceManager int
 func (imc *InstanceManagerController) enqueueInstanceManagerPod(obj interface{}) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
@@ -698,7 +698,7 @@ func (imc *InstanceManagerController) enqueueInstanceManagerPod(obj interface{})
 func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 	kubernetesNode, ok := obj.(*v1.Node)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
