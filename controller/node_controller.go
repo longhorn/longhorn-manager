@@ -140,7 +140,7 @@ func NewNodeController(
 func (nc *NodeController) isResponsibleForSetting(obj interface{}) bool {
 	setting, ok := obj.(*longhorn.Setting)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			return false
 		}
@@ -159,7 +159,7 @@ func (nc *NodeController) isResponsibleForSetting(obj interface{}) bool {
 func (nc *NodeController) isResponsibleForReplica(obj interface{}) bool {
 	replica, ok := obj.(*longhorn.Replica)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			return false
 		}
@@ -177,7 +177,7 @@ func (nc *NodeController) isResponsibleForReplica(obj interface{}) bool {
 func isManagerPod(obj interface{}) bool {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			return false
 		}
@@ -471,7 +471,7 @@ func (nc *NodeController) enqueueSetting(obj interface{}) {
 func (nc *NodeController) enqueueReplica(obj interface{}) {
 	replica, ok := obj.(*longhorn.Replica)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
@@ -510,7 +510,7 @@ func (nc *NodeController) enqueueManagerPod(obj interface{}) {
 func (nc *NodeController) enqueueKubernetesNode(obj interface{}) {
 	kubernetesNode, ok := obj.(*v1.Node)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return

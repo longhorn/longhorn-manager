@@ -2773,7 +2773,7 @@ func (vc *VolumeController) enqueueVolume(obj interface{}) {
 }
 
 func (vc *VolumeController) enqueueControlleeChange(obj interface{}) {
-	if deletedState, ok := obj.(*cache.DeletedFinalStateUnknown); ok {
+	if deletedState, ok := obj.(cache.DeletedFinalStateUnknown); ok {
 		obj = deletedState.Obj
 	}
 
@@ -3298,7 +3298,7 @@ func (vc *VolumeController) deleteEngine(e *longhorn.Engine, es map[string]*long
 func (vc *VolumeController) enqueueVolumesForShareManager(obj interface{}) {
 	sm, isShareManager := obj.(*longhorn.ShareManager)
 	if !isShareManager {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
@@ -3397,7 +3397,7 @@ func (vc *VolumeController) createShareManagerForVolume(volume *longhorn.Volume,
 func (vc *VolumeController) enqueueVolumesForBackupVolume(obj interface{}) {
 	bv, isBackupVolume := obj.(*longhorn.BackupVolume)
 	if !isBackupVolume {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
@@ -3439,7 +3439,7 @@ func (vc *VolumeController) enqueueVolumesForBackupVolume(obj interface{}) {
 func (vc *VolumeController) enqueueVolumesForBackingImageDataSource(obj interface{}) {
 	bids, isBackingImageDataSource := obj.(*longhorn.BackingImageDataSource)
 	if !isBackingImageDataSource {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return

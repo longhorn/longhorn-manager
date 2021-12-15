@@ -792,7 +792,7 @@ func (bic *BackingImageController) enqueueBackingImage(obj interface{}) {
 func (bic *BackingImageController) enqueueBackingImageForBackingImageManager(obj interface{}) {
 	bim, isBIM := obj.(*longhorn.BackingImageManager)
 	if !isBIM {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
@@ -822,7 +822,7 @@ func (bic *BackingImageController) enqueueBackingImageForBackingImageDataSource(
 func (bic *BackingImageController) enqueueBackingImageForReplica(obj interface{}) {
 	replica, isReplica := obj.(*longhorn.Replica)
 	if !isReplica {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return

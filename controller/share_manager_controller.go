@@ -127,7 +127,7 @@ func (c *ShareManagerController) enqueueShareManager(obj interface{}) {
 func (c *ShareManagerController) enqueueShareManagerForVolume(obj interface{}) {
 	volume, isVolume := obj.(*longhorn.Volume)
 	if !isVolume {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
@@ -154,7 +154,7 @@ func (c *ShareManagerController) enqueueShareManagerForVolume(obj interface{}) {
 func (c *ShareManagerController) enqueueShareManagerForPod(obj interface{}) {
 	pod, isPod := obj.(*v1.Pod)
 	if !isPod {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
@@ -180,7 +180,7 @@ func (c *ShareManagerController) enqueueShareManagerForPod(obj interface{}) {
 func isShareManagerPod(obj interface{}) bool {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			return false
 		}

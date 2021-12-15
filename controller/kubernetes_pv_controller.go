@@ -277,7 +277,7 @@ func (kc *KubernetesPVController) enqueuePersistentVolume(obj interface{}) {
 func (kc *KubernetesPVController) enqueuePodChange(obj interface{}) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
@@ -316,7 +316,7 @@ func (kc *KubernetesPVController) enqueuePodChange(obj interface{}) {
 func (kc *KubernetesPVController) enqueueVolumeChange(obj interface{}) {
 	volume, ok := obj.(*longhorn.Volume)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
@@ -344,7 +344,7 @@ func (kc *KubernetesPVController) enqueueVolumeChange(obj interface{}) {
 func (kc *KubernetesPVController) enqueuePVDeletion(obj interface{}) {
 	pv, ok := obj.(*v1.PersistentVolume)
 	if !ok {
-		deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return

@@ -615,7 +615,7 @@ func (ic *EngineImageController) enqueueVolumes(volumes ...interface{}) {
 	for _, obj := range volumes {
 		v, isVolume := obj.(*longhorn.Volume)
 		if !isVolume {
-			deletedState, ok := obj.(*cache.DeletedFinalStateUnknown)
+			deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 			if !ok {
 				utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 				continue
@@ -649,7 +649,7 @@ func (ic *EngineImageController) enqueueVolumes(volumes ...interface{}) {
 }
 
 func (ic *EngineImageController) enqueueControlleeChange(obj interface{}) {
-	if deletedState, ok := obj.(*cache.DeletedFinalStateUnknown); ok {
+	if deletedState, ok := obj.(cache.DeletedFinalStateUnknown); ok {
 		obj = deletedState.Obj
 	}
 
