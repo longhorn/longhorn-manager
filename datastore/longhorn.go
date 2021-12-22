@@ -96,7 +96,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	}()
 	sName := types.SettingName(name)
 
-	if err := types.ValidateInitSetting(name, value); err != nil {
+	if err := types.ValidateSetting(name, value); err != nil {
 		return err
 	}
 
