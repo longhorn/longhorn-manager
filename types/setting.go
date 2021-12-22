@@ -744,7 +744,7 @@ const (
 	SystemManagedPodsImagePullPolicyAlways       = SystemManagedPodsImagePullPolicy("always")
 )
 
-func ValidateInitSetting(name, value string) (err error) {
+func ValidateSetting(name, value string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "value %v of settings %v is invalid", value, name)
 	}()
