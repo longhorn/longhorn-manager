@@ -94,3 +94,7 @@ type BackingImageList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []BackingImage `json:"items"`
 }
+
+// Hub defines the current version (v1beta2) is the storage version
+// so mark this as Hub
+func (bi *BackingImage) Hub() {}

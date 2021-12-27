@@ -1,6 +1,15 @@
 package v1beta1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	"fmt"
+
+	"github.com/jinzhu/copier"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/conversion"
+
+	"github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+)
 
 const (
 	BackupTargetConditionTypeUnavailable = "Unavailable"
@@ -62,4 +71,54 @@ type BackupTargetList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []BackupTarget `json:"items"`
+}
+
+// ConvertTo converts from spoke verion (v1beta1) to hub version (v1beta2)
+func (bt *BackupTarget) ConvertTo(dst conversion.Hub) error {
+	switch t := dst.(type) {
+	case *v1beta2.BackupTarget:
+		btV1beta2 := dst.(*v1beta2.BackupTarget)
+		btV1beta2.ObjectMeta = bt.ObjectMeta
+		if err := copier.Copy(&btV1beta2.Spec, &bt.Spec); err != nil {
+			return err
+		}
+		if err := copier.Copy(&btV1beta2.Status, &bt.Status); err != nil {
+			return err
+		}
+
+		// Copy status.conditions from map to slice
+		dstConditions, err := copyConditionsFromMapToSlice(bt.Status.Conditions)
+		if err != nil {
+			return err
+		}
+		btV1beta2.Status.Conditions = dstConditions
+		return nil
+	default:
+		return fmt.Errorf("unsupported type %v", t)
+	}
+}
+
+// ConvertFrom converts from hub version (v1beta2) to spoke version (v1beta1)
+func (bt *BackupTarget) ConvertFrom(src conversion.Hub) error {
+	switch t := src.(type) {
+	case *v1beta2.BackupTarget:
+		btV1beta2 := src.(*v1beta2.BackupTarget)
+		bt.ObjectMeta = btV1beta2.ObjectMeta
+		if err := copier.Copy(&bt.Spec, &btV1beta2.Spec); err != nil {
+			return err
+		}
+		if err := copier.Copy(&bt.Status, &btV1beta2.Status); err != nil {
+			return err
+		}
+
+		// Copy status.conditions from slice to map
+		dstConditions, err := copyConditionFromSliceToMap(btV1beta2.Status.Conditions)
+		if err != nil {
+			return err
+		}
+		bt.Status.Conditions = dstConditions
+		return nil
+	default:
+		return fmt.Errorf("unsupported type %v", t)
+	}
 }

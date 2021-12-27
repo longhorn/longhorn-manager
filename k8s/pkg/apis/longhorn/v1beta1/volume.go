@@ -1,6 +1,15 @@
 package v1beta1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	"fmt"
+
+	"github.com/jinzhu/copier"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/conversion"
+
+	"github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+)
 
 type VolumeState string
 
@@ -215,4 +224,68 @@ type VolumeList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Volume `json:"items"`
+}
+
+// ConvertTo converts from spoke verion (v1beta1) to hub version (v1beta2)
+func (v *Volume) ConvertTo(dst conversion.Hub) error {
+	switch t := dst.(type) {
+	case *v1beta2.Volume:
+		vV1beta2 := dst.(*v1beta2.Volume)
+		vV1beta2.ObjectMeta = v.ObjectMeta
+		if err := copier.Copy(&vV1beta2.Spec, &v.Spec); err != nil {
+			return err
+		}
+		if err := copier.Copy(&vV1beta2.Status, &v.Status); err != nil {
+			return err
+		}
+
+		// Copy status.conditions from map to slice
+		dstConditions, err := copyConditionsFromMapToSlice(v.Status.Conditions)
+		if err != nil {
+			return err
+		}
+		vV1beta2.Status.Conditions = dstConditions
+
+		// Copy status.KubernetesStatus
+		if err := copier.Copy(&vV1beta2.Status.KubernetesStatus, &v.Status.KubernetesStatus); err != nil {
+			return err
+		}
+
+		// Copy status.CloneStatus
+		return copier.Copy(&vV1beta2.Status.CloneStatus, &v.Status.CloneStatus)
+	default:
+		return fmt.Errorf("unsupported type %v", t)
+	}
+}
+
+// ConvertFrom converts from hub version (v1beta2) to spoke version (v1beta1)
+func (v *Volume) ConvertFrom(src conversion.Hub) error {
+	switch t := src.(type) {
+	case *v1beta2.Volume:
+		vV1beta2 := src.(*v1beta2.Volume)
+		v.ObjectMeta = vV1beta2.ObjectMeta
+		if err := copier.Copy(&v.Spec, &vV1beta2.Spec); err != nil {
+			return err
+		}
+		if err := copier.Copy(&v.Status, &vV1beta2.Status); err != nil {
+			return err
+		}
+
+		// Copy status.conditions from slice to map
+		dstConditions, err := copyConditionFromSliceToMap(vV1beta2.Status.Conditions)
+		if err != nil {
+			return err
+		}
+		v.Status.Conditions = dstConditions
+
+		// Copy status.KubernetesStatus
+		if err := copier.Copy(&v.Status.KubernetesStatus, &vV1beta2.Status.KubernetesStatus); err != nil {
+			return err
+		}
+
+		// Copy status.CloneStatus
+		return copier.Copy(&v.Status.CloneStatus, &vV1beta2.Status.CloneStatus)
+	default:
+		return fmt.Errorf("unsupported type %v", t)
+	}
 }

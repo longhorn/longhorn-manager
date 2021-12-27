@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -13,6 +14,7 @@ import (
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 
@@ -22,7 +24,7 @@ import (
 )
 
 const (
-	WebhookServiceName = "longhorn-webhook"
+	webhookServiceName = "longhorn-webhook"
 
 	caName   = "longhorn-webhook-ca"
 	certName = "longhorn-webhook-tls"
@@ -31,6 +33,7 @@ const (
 var (
 	validationPath = "/v1/webhook/" + admission.AdmissionTypeValidation
 	mutationPath   = "/v1/webhook/" + admission.AdmissionTypeMutation
+	conversionPath = "/v1/webhook/conversion"
 
 	failPolicyFail   = admissionregv1.Fail
 	failPolicyIgnore = admissionregv1.Ignore
@@ -58,6 +61,10 @@ func (s *WebhookServer) ListenAndServe() error {
 		return err
 	}
 
+	conversionHandler, conversionResources, err := Conversion()
+	if err != nil {
+		return err
+	}
 	validationHandler, validationResources, err := Validation(client)
 	if err != nil {
 		return err
@@ -68,19 +75,16 @@ func (s *WebhookServer) ListenAndServe() error {
 	}
 
 	router := mux.NewRouter()
+	router.Handle(conversionPath, conversionHandler)
 	router.Handle(validationPath, validationHandler)
 	router.Handle(mutationPath, mutationHandler)
-	if err := s.listenAndServe(client, router, validationResources, mutationResources); err != nil {
+	if err := s.listenAndServe(client, router, conversionResources, validationResources, mutationResources); err != nil {
 		return err
 	}
-
-	if err := client.Start(s.context); err != nil {
-		return err
-	}
-	return nil
+	return client.Start(s.context)
 }
 
-func (s *WebhookServer) listenAndServe(client *client.Client, handler http.Handler, validationResources []admission.Resource, mutationResources []admission.Resource) error {
+func (s *WebhookServer) listenAndServe(client *client.Client, handler http.Handler, conversionResources []string, validationResources []admission.Resource, mutationResources []admission.Resource) error {
 	apply := client.Apply.WithDynamicLookup()
 	client.Core.Secret().OnChange(s.context, "secrets", func(key string, secret *corev1.Secret) (*corev1.Secret, error) {
 		if secret == nil || secret.Name != caName || secret.Namespace != s.namespace || len(secret.Data[corev1.TLSCertKey]) == 0 {
@@ -90,12 +94,45 @@ func (s *WebhookServer) listenAndServe(client *client.Client, handler http.Handl
 		// Sleep here to make sure server is listening and all caches are primed
 		time.Sleep(15 * time.Second)
 
-		logrus.Debugf("Building validation rules...")
+		port := int32(types.DefaultWebhookServerPort)
+
+		logrus.Infof("Building conversion rules...")
+		for _, name := range conversionResources {
+			crd, err := client.CRD.CustomResourceDefinition().Get(name, metav1.GetOptions{})
+			if err != nil {
+				return secret, err
+			}
+
+			existingCRD := crd.DeepCopy()
+			crd.Spec.Conversion = &apiextv1.CustomResourceConversion{
+				Strategy: apiextv1.WebhookConverter,
+				Webhook: &apiextv1.WebhookConversion{
+					ClientConfig: &apiextv1.WebhookClientConfig{
+						Service: &apiextv1.ServiceReference{
+							Namespace: s.namespace,
+							Name:      webhookServiceName,
+							Path:      &conversionPath,
+							Port:      &port,
+						},
+						CABundle: secret.Data[corev1.TLSCertKey],
+					},
+					ConversionReviewVersions: []string{"v1beta2", "v1beta1"},
+				},
+			}
+
+			if !reflect.DeepEqual(existingCRD, crd) {
+				logrus.Infof("Update CRD for %+v", name)
+				if _, err = client.CRD.CustomResourceDefinition().Update(crd); err != nil {
+					return secret, err
+				}
+			}
+		}
+
+		logrus.Info("Building validation rules...")
 		validationRules := s.buildRules(validationResources)
-		logrus.Debugf("Building mutation rules...")
+		logrus.Info("Building mutation rules...")
 		mutationRules := s.buildRules(mutationResources)
 
-		port := int32(types.DefaultWebhookServerPort)
 		validatingWebhookConfiguration := &admissionregv1.ValidatingWebhookConfiguration{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: types.ValidatingWebhookName,
@@ -106,7 +143,7 @@ func (s *WebhookServer) listenAndServe(client *client.Client, handler http.Handl
 					ClientConfig: admissionregv1.WebhookClientConfig{
 						Service: &admissionregv1.ServiceReference{
 							Namespace: s.namespace,
-							Name:      WebhookServiceName,
+							Name:      webhookServiceName,
 							Path:      &validationPath,
 							Port:      &port,
 						},
@@ -130,7 +167,7 @@ func (s *WebhookServer) listenAndServe(client *client.Client, handler http.Handl
 					ClientConfig: admissionregv1.WebhookClientConfig{
 						Service: &admissionregv1.ServiceReference{
 							Namespace: s.namespace,
-							Name:      WebhookServiceName,
+							Name:      webhookServiceName,
 							Path:      &mutationPath,
 							Port:      &port,
 						},
@@ -147,7 +184,7 @@ func (s *WebhookServer) listenAndServe(client *client.Client, handler http.Handl
 		return secret, apply.WithOwner(secret).ApplyObjects(validatingWebhookConfiguration, mutatingWebhookConfiguration)
 	})
 
-	tlsName := fmt.Sprintf("%s.%s.svc", WebhookServiceName, s.namespace)
+	tlsName := fmt.Sprintf("%s.%s.svc", webhookServiceName, s.namespace)
 
 	return server.ListenAndServe(s.context, types.DefaultWebhookServerPort, 0, handler, &server.ListenOpts{
 		Secrets:       client.Core.Secret(),
