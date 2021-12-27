@@ -71,3 +71,7 @@ type BackupTargetList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []BackupTarget `json:"items"`
 }
+
+// Hub defines the current version (v1beta2) is the storage version
+// so mark this as Hub
+func (bt *BackupTarget) Hub() {}

@@ -122,3 +122,7 @@ type NodeList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Node `json:"items"`
 }
+
+// Hub defines the current version (v1beta2) is the storage version
+// so mark this as Hub
+func (n *Node) Hub() {}

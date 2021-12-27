@@ -1,6 +1,15 @@
 package v1beta1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	"fmt"
+
+	"github.com/jinzhu/copier"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/conversion"
+
+	"github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+)
 
 // BackingImageDownloadState is replaced by BackingImageState.
 type BackingImageDownloadState string
@@ -77,4 +86,50 @@ type BackingImageList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []BackingImage `json:"items"`
+}
+
+// ConvertTo converts from spoke verion (v1beta1) to hub version (v1beta2)
+func (bi *BackingImage) ConvertTo(dst conversion.Hub) error {
+	switch t := dst.(type) {
+	case *v1beta2.BackingImage:
+		biV1beta2 := dst.(*v1beta2.BackingImage)
+		biV1beta2.ObjectMeta = bi.ObjectMeta
+		if err := copier.Copy(&biV1beta2.Spec, &bi.Spec); err != nil {
+			return err
+		}
+		if err := copier.Copy(&biV1beta2.Status, &bi.Status); err != nil {
+			return err
+		}
+
+		// Copy spec.disks from map[string]struct{} to map[string]string
+		for name := range bi.Spec.Disks {
+			biV1beta2.Spec.Disks[name] = ""
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported type %v", t)
+	}
+}
+
+// ConvertFrom converts from hub version (v1beta2) to spoke version (v1beta1)
+func (bi *BackingImage) ConvertFrom(src conversion.Hub) error {
+	switch t := src.(type) {
+	case *v1beta2.BackingImage:
+		biV1beta2 := src.(*v1beta2.BackingImage)
+		bi.ObjectMeta = biV1beta2.ObjectMeta
+		if err := copier.Copy(&bi.Spec, &biV1beta2.Spec); err != nil {
+			return err
+		}
+		if err := copier.Copy(&bi.Status, &biV1beta2.Status); err != nil {
+			return err
+		}
+
+		// Copy spec.disks from map[string]string to map[string]struct{}
+		for name := range biV1beta2.Spec.Disks {
+			bi.Spec.Disks[name] = struct{}{}
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported type %v", t)
+	}
 }
