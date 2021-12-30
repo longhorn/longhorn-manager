@@ -550,6 +550,8 @@ github.com/rancher/go-rancher v0.1.1-0.20190307222549-9756097e5e4c h1:qOpIX3tKM+
 github.com/rancher/go-rancher v0.1.1-0.20190307222549-9756097e5e4c/go.mod h1:7oQvGNiJsGvrUgB+7AH8bmdzuR0uhULfwKb43Ht0hUk=
 github.com/rancher/lasso v0.0.0-20210616224652-fc3ebd901c08 h1:NxR8Fh0eE7/5/5Zvlog9B5NVjWKqBSb1WYMUF7/IE5c=
 github.com/rancher/lasso v0.0.0-20210616224652-fc3ebd901c08/go.mod h1:9qZd/S8DqWzfKtjKGgSoHqGEByYmUE3qRaBaaAHwfEM=
+github.com/rancher/lasso v0.0.0-20211217013041-3c6118a30611 h1:JZIc0g9A1blYZUBIk6nIqja0ZhtddvmeDXbB8i6vkGM=
+github.com/rancher/lasso v0.0.0-20211217013041-3c6118a30611/go.mod h1:9qZd/S8DqWzfKtjKGgSoHqGEByYmUE3qRaBaaAHwfEM=
 github.com/rancher/pkg v0.0.0-20181214184433-b04c0947ad2f h1:4hjjSE+f+X4ucA8IPsH4v1dmu5ZtqYkU07sPN64obTM=
 github.com/rancher/pkg v0.0.0-20181214184433-b04c0947ad2f/go.mod h1:XbYHTPaXuw8ZY9bylhYKQh/nJxDaTKk3YhAxPl4Qy/k=
 github.com/rancher/wrangler v0.8.9/go.mod h1:Lte9WjPtGYxYacIWeiS9qawvu2R4NujFU9xuXWJvc/0=
