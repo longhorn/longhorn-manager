@@ -89,6 +89,7 @@ func uninstall(c *cli.Context) error {
 		c.Bool(FlagForce),
 		ds,
 		doneCh,
+		kubeClient,
 		extensionsClient,
 	)
 	go lhInformerFactory.Start(doneCh)
