@@ -411,6 +411,9 @@ func (bc *BackupController) getEngineClient(volumeName string) (engineapi.Engine
 	if err != nil {
 		return nil, err
 	}
+	if engine == nil {
+		return nil, fmt.Errorf("cannot get the client since the engine is nil")
+	}
 	return GetClientForEngine(engine, &engineapi.EngineCollection{}, engine.Status.CurrentImage)
 }
 
