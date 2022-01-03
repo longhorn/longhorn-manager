@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
@@ -55,6 +56,8 @@ type UninstallController struct {
 	ds        *datastore.DataStore
 	stopCh    chan struct{}
 
+	kubeClient clientset.Interface
+
 	cacheSyncs []cache.InformerSynced
 }
 
@@ -64,6 +67,7 @@ func NewUninstallController(
 	force bool,
 	ds *datastore.DataStore,
 	stopCh chan struct{},
+	kubeClient clientset.Interface,
 	extensionsClient apiextension.Interface,
 ) *UninstallController {
 	c := &UninstallController{
@@ -77,6 +81,8 @@ func NewUninstallController(
 		force:     force,
 		ds:        ds,
 		stopCh:    stopCh,
+
+		kubeClient: kubeClient,
 	}
 
 	ds.CSIDriverInformer.AddEventHandler(c.controlleeHandler())
@@ -276,6 +282,14 @@ func (c *UninstallController) uninstall() error {
 	// cleanup without a running manager.
 	gracePeriod = 0 * time.Second
 	if waitForUpdate, err := c.deleteCRDs(); err != nil || waitForUpdate {
+		return err
+	}
+
+	if waitForUpdate, err := c.deleteWebhookDeployment(); err != nil || waitForUpdate {
+		return err
+	}
+
+	if err := c.deleteWebhookConfiguration(); err != nil {
 		return err
 	}
 
@@ -745,6 +759,51 @@ func (c *UninstallController) deleteManager() (bool, error) {
 	}
 	log.Info("Already marked for deletion")
 	return true, nil
+}
+
+func (c *UninstallController) deleteWebhookDeployment() (bool, error) {
+	log := getLoggerForUninstallDeployment(c.logger, types.LonghornWebhookDeploymentName)
+
+	if ds, err := c.ds.GetDeployment(types.LonghornWebhookDeploymentName); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return true, err
+	} else if ds.DeletionTimestamp == nil {
+		if err := c.ds.DeleteDeployment(types.LonghornWebhookDeploymentName); err != nil {
+			log.Warn("failed to mark for deletion")
+			return true, err
+		}
+		log.Info("Marked for deletion")
+		return true, nil
+	}
+	log.Info("Already marked for deletion")
+	return true, nil
+}
+
+func (c *UninstallController) deleteWebhookConfiguration() error {
+	validatingCfg, err := c.kubeClient.AdmissionregistrationV1().ValidatingWebhookConfigurations().Get(context.TODO(), types.ValidatingWebhookName, metav1.GetOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	if validatingCfg != nil {
+		if err := c.kubeClient.AdmissionregistrationV1().ValidatingWebhookConfigurations().Delete(context.TODO(), types.ValidatingWebhookName, metav1.DeleteOptions{}); err != nil {
+			return err
+		}
+		c.logger.Infof("Successfully clean up the validating webhook configuration %s", types.ValidatingWebhookName)
+	}
+
+	mutatingCfg, err := c.kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), types.MutatingWebhookName, metav1.GetOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	if mutatingCfg != nil {
+		if err := c.kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Delete(context.TODO(), types.MutatingWebhookName, metav1.DeleteOptions{}); err != nil {
+			return err
+		}
+		c.logger.Infof("Successfully clean up the mutating webhook configuration %s", types.MutatingWebhookName)
+	}
+	return nil
 }
 
 func (c *UninstallController) managerReady() (bool, error) {
