@@ -410,6 +410,14 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 		return true, nil
 	}
 
+	// Delete the BackupTarget CRs
+	if backupTargets, err := c.ds.ListBackupTargets(); err != nil {
+		return true, err
+	} else if len(backupTargets) > 0 {
+		c.logger.Infof("Found %d backuptargets remaining", len(backupTargets))
+		return true, c.deleteBackupTargets(backupTargets)
+	}
+
 	if engineImages, err := c.ds.ListEngineImages(); err != nil {
 		return true, err
 	} else if len(engineImages) > 0 {
@@ -539,6 +547,22 @@ func (c *UninstallController) deleteReplicas(replicas map[string]*longhorn.Repli
 				return
 			}
 			log.Info("Removed finalizer")
+		}
+	}
+	return
+}
+
+func (c *UninstallController) deleteBackupTargets(backupTargets map[string]*longhorn.BackupTarget) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "Failed to delete backup targets")
+	}()
+	for _, bt := range backupTargets {
+		log := getLoggerForBackupTarget(c.logger, bt)
+		if bt.DeletionTimestamp == nil {
+			if err = c.ds.DeleteBackupTarget(bt.Name); err != nil {
+				return errors.Wrapf(err, "Failed to mark for deletion")
+			}
+			log.Info("Marked for deletion")
 		}
 	}
 	return
