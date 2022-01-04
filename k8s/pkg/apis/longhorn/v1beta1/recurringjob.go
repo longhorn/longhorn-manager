@@ -34,6 +34,7 @@ type RecurringJobSpec struct {
 	Cron string `json:"cron"`
 	// The retain count of the snapshot/backup.
 	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=50
 	// +optional
 	Retain int `json:"retain"`
 	// The concurrency of taking the snapshot/backup.
