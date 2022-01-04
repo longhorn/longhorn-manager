@@ -142,10 +142,7 @@ func startManager(c *cli.Context) error {
 
 	monitoring.InitMonitoringSystem(logger, currentNodeID, ds, kubeconfigPath)
 
-	if err := ds.InitSettings(); err != nil {
-		return err
-	}
-
+	// Initialize the required settings first
 	if err := updateDefaultImageSetting(m, types.SettingNameDefaultEngineImage, engineImage); err != nil {
 		return err
 	}
@@ -159,6 +156,11 @@ func startManager(c *cli.Context) error {
 	}
 
 	if err := updateDefaultImageSetting(m, types.SettingNameDefaultBackingImageManagerImage, backingImageManagerImage); err != nil {
+		return err
+	}
+
+	// Initialize the rest settings
+	if err := ds.InitSettings(); err != nil {
 		return err
 	}
 
