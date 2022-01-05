@@ -146,7 +146,7 @@ func NewUninstallController(
 		ds.BackupInformer.AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, ds.BackupInformer.HasSynced)
 	}
-	if _, err := extensionsClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), CRDRecurringJobName, metav1.GetOptions{}); err == nil {
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDRecurringJobName, metav1.GetOptions{}); err == nil {
 		ds.RecurringJobInformer.AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, ds.RecurringJobInformer.HasSynced)
 	}
