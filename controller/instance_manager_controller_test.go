@@ -2,20 +2,18 @@ package controller
 
 import (
 	"fmt"
-
 	"github.com/sirupsen/logrus"
+	"k8s.io/kubernetes/pkg/controller"
 
+	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/types"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/kubernetes/pkg/controller"
-
-	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/engineapi"
-	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
@@ -135,7 +133,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			TestNode1, types.InstanceManagerStateRunning, 1,
 			types.InstanceManagerStatus{
 				OwnerID:       TestNode1,
-				CurrentState:  types.InstanceManagerStateStarting,
+				CurrentState:  types.InstanceManagerStateError, // The state will become InstanceManagerStateStarting in the next reconcile loop
+				IP:            TestIP1,
 				APIMinVersion: 0,
 				APIVersion:    0,
 			},
@@ -144,18 +143,19 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager node down": {
 			TestNode2, true, TestNode1,
 			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
-			TestNode1, types.InstanceManagerStateRunning, 0,
+			TestNode2, types.InstanceManagerStateRunning, 1,
 			types.InstanceManagerStatus{
 				OwnerID:       TestNode2,
 				CurrentState:  types.InstanceManagerStateUnknown,
-				APIMinVersion: 0,
-				APIVersion:    0,
+				IP:            TestIP1,
+				APIMinVersion: 1,
+				APIVersion:    1,
 			},
 			types.InstanceManagerTypeEngine,
 		},
 		"instance manager restarting after error": {
 			TestNode1, false, TestNode1,
-			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
+			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodPending},
 			TestNode1, types.InstanceManagerStateError, 1,
 			types.InstanceManagerStatus{
 				OwnerID:       TestNode1,
@@ -184,7 +184,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			TestNode1, types.InstanceManagerStateStopped, 1,
 			types.InstanceManagerStatus{
 				OwnerID:       TestNode1,
-				CurrentState:  types.InstanceManagerStateStarting,
+				CurrentState:  types.InstanceManagerStateStopped, // The state will become InstanceManagerStateStarting in the next reconcile loop
 				APIMinVersion: 0,
 				APIVersion:    0,
 			},
@@ -196,7 +196,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			TestNode1, types.InstanceManagerStateStopped, 1,
 			types.InstanceManagerStatus{
 				OwnerID:       TestNode1,
-				CurrentState:  types.InstanceManagerStateStarting,
+				CurrentState:  types.InstanceManagerStateStopped, // The state will become InstanceManagerStateStarting in the next reconcile loop
 				APIMinVersion: 0,
 				APIVersion:    0,
 			},
