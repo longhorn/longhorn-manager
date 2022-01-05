@@ -143,19 +143,19 @@ func startManager(c *cli.Context) error {
 	monitoring.InitMonitoringSystem(logger, currentNodeID, ds, kubeconfigPath)
 
 	// Initialize the required settings first
-	if err := updateDefaultImageSetting(m, types.SettingNameDefaultEngineImage, engineImage); err != nil {
+	if err := createOrUpdateDefaultImageSetting(m, types.SettingNameDefaultEngineImage, engineImage); err != nil {
 		return err
 	}
 
-	if err := updateDefaultImageSetting(m, types.SettingNameDefaultInstanceManagerImage, instanceManagerImage); err != nil {
+	if err := createOrUpdateDefaultImageSetting(m, types.SettingNameDefaultInstanceManagerImage, instanceManagerImage); err != nil {
 		return err
 	}
 
-	if err := updateDefaultImageSetting(m, types.SettingNameDefaultShareManagerImage, shareManagerImage); err != nil {
+	if err := createOrUpdateDefaultImageSetting(m, types.SettingNameDefaultShareManagerImage, shareManagerImage); err != nil {
 		return err
 	}
 
-	if err := updateDefaultImageSetting(m, types.SettingNameDefaultBackingImageManagerImage, backingImageManagerImage); err != nil {
+	if err := createOrUpdateDefaultImageSetting(m, types.SettingNameDefaultBackingImageManagerImage, backingImageManagerImage); err != nil {
 		return err
 	}
 
@@ -220,7 +220,7 @@ func environmentCheck() error {
 	return nil
 }
 
-func updateDefaultImageSetting(m *manager.VolumeManager, settingName types.SettingName, image string) error {
+func createOrUpdateDefaultImageSetting(m *manager.VolumeManager, settingName types.SettingName, image string) error {
 	settingDefaultImage, err := m.GetSetting(settingName)
 	if err != nil {
 		return err
