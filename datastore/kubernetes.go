@@ -45,8 +45,8 @@ func labelMapToLabelSelector(labels map[string]string) (labels.Selector, error) 
 
 func (s *DataStore) getManagerLabel() map[string]string {
 	return map[string]string{
-		//TODO standardize key
-		//longhornSystemKey: longhornSystemManager,
+		// TODO standardize key
+		// longhornSystemKey: longhornSystemManager,
 		"app": types.LonghornManagerDaemonSetName,
 	}
 }
@@ -421,6 +421,16 @@ func (s *DataStore) ListKubeNodesRO() ([]*corev1.Node, error) {
 // GetKubernetesNode gets the Node from the index for the given name
 func (s *DataStore) GetKubernetesNode(name string) (*corev1.Node, error) {
 	return s.knLister.Get(name)
+}
+
+// IsKubeNodeUnschedulable checks if the Kubernetes Node resource is
+// unschedulable
+func (s *DataStore) IsKubeNodeUnschedulable(nodeName string) (bool, error) {
+	kubeNode, err := s.GetKubernetesNode(nodeName)
+	if err != nil {
+		return false, err
+	}
+	return kubeNode.Spec.Unschedulable, nil
 }
 
 // CreatePersistentVolume creates a PersistentVolume resource for the given
