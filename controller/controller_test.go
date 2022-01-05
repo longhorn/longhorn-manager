@@ -18,9 +18,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/kubernetes/pkg/controller"
 
-	"github.com/longhorn/longhorn-manager/types"
-
+	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	"github.com/longhorn/longhorn-manager/types"
 
 	. "gopkg.in/check.v1"
 )
@@ -223,6 +223,11 @@ func newInstanceManager(
 			IP:           ip,
 			Instances:    instances,
 		},
+	}
+
+	if currentState == longhorn.InstanceManagerStateRunning {
+		im.Status.APIMinVersion = engineapi.CurrentInstanceManagerAPIVersion
+		im.Status.APIVersion = engineapi.CurrentInstanceManagerAPIVersion
 	}
 
 	if isDeleting {

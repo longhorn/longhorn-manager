@@ -141,7 +141,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			TestNode1, longhorn.InstanceManagerStateRunning, 1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
-				CurrentState:  longhorn.InstanceManagerStateStarting,
+				CurrentState:  longhorn.InstanceManagerStateError, // The state will become InstanceManagerStateStarting in the next reconcile loop
+				IP:            TestIP1,
 				APIMinVersion: 0,
 				APIVersion:    0,
 			},
@@ -150,18 +151,19 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager node down": {
 			TestNode2, true, TestNode1,
 			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
-			TestNode1, longhorn.InstanceManagerStateRunning, 0,
+			TestNode2, longhorn.InstanceManagerStateRunning, 1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode2,
 				CurrentState:  longhorn.InstanceManagerStateUnknown,
-				APIMinVersion: 0,
-				APIVersion:    0,
+				IP:            TestIP1,
+				APIMinVersion: 1,
+				APIVersion:    1,
 			},
 			longhorn.InstanceManagerTypeEngine,
 		},
 		"instance manager restarting after error": {
 			TestNode1, false, TestNode1,
-			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
+			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodPending},
 			TestNode1, longhorn.InstanceManagerStateError, 1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
@@ -190,7 +192,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			TestNode1, longhorn.InstanceManagerStateStopped, 1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
-				CurrentState:  longhorn.InstanceManagerStateStarting,
+				CurrentState:  longhorn.InstanceManagerStateStopped, // The state will become InstanceManagerStateStarting in the next reconcile loop
 				APIMinVersion: 0,
 				APIVersion:    0,
 			},
@@ -202,7 +204,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			TestNode1, longhorn.InstanceManagerStateStopped, 1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
-				CurrentState:  longhorn.InstanceManagerStateStarting,
+				CurrentState:  longhorn.InstanceManagerStateStopped, // The state will become InstanceManagerStateStarting in the next reconcile loop
 				APIMinVersion: 0,
 				APIVersion:    0,
 			},
