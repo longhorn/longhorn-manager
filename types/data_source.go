@@ -17,7 +17,7 @@ const (
 	SnapshotNameKey = "snapshotName"
 )
 
-func NewVolumeDataSource(volumeDataSourceType longhorn.VolumeDataSource, parameters map[string]string) (dataSource longhorn.VolumeDataSource, err error) {
+func NewVolumeDataSource(volumeDataSourceType longhorn.VolumeDataSourceType, parameters map[string]string) (dataSource longhorn.VolumeDataSource, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "cannot create new longhorn.VolumeDataSource of type %v with parameters %v", volumeDataSourceType, parameters)
 	}()
@@ -71,7 +71,7 @@ func IsValidVolumeDataSource(vds longhorn.VolumeDataSource) bool {
 	}
 }
 
-func getType(vds longhorn.VolumeDataSource) longhorn.VolumeDataSource {
+func getType(vds longhorn.VolumeDataSource) longhorn.VolumeDataSourceType {
 	split := strings.Split(string(vds), "://")
 	if len(split) != 2 {
 		return ""
