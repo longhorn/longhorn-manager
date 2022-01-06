@@ -31,14 +31,14 @@ const (
 	VolumeFrontendEmpty    = VolumeFrontend("")
 )
 
-// +kubebuilder:validation:Enum="";backup;snapshot;volume
 type VolumeDataSource string
 
+type VolumeDataSourceType string
+
 const (
-	VolumeDataSourceTypeNone     = VolumeDataSource("")
-	VolumeDataSourceTypeBackup   = VolumeDataSource("backup") // Planing to move FromBackup field into DataSource field
-	VolumeDataSourceTypeSnapshot = VolumeDataSource("snapshot")
-	VolumeDataSourceTypeVolume   = VolumeDataSource("volume")
+	VolumeDataSourceTypeBackup   = VolumeDataSourceType("backup") // Planing to move FromBackup field into DataSource field
+	VolumeDataSourceTypeSnapshot = VolumeDataSourceType("snapshot")
+	VolumeDataSourceTypeVolume   = VolumeDataSourceType("volume")
 )
 
 // +kubebuilder:validation:Enum=disabled;best-effort
