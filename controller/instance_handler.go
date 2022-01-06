@@ -52,7 +52,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 
 	if im == nil || im.Status.CurrentState == types.InstanceManagerStateUnknown {
 		if status.Started {
-			logrus.Warnf("The related node %v of instance %v is down or deleted, will mark the instance as state UNKNOWN", spec.NodeID, instanceName)
+			if status.CurrentState != types.InstanceStateUnknown {
+				logrus.Warnf("The related node %v of instance %v is down or deleted, will mark the instance as state UNKNOWN", spec.NodeID, instanceName)
+			}
 			status.CurrentState = types.InstanceStateUnknown
 		} else {
 			status.CurrentState = types.InstanceStateStopped
@@ -67,8 +69,8 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		if status.Started {
 			if status.CurrentState != types.InstanceStateError {
 				logrus.Warnf("Cannot find the instance manager for the running instance %v, will mark the instance as state ERROR", instanceName)
-				status.CurrentState = types.InstanceStateError
 			}
+			status.CurrentState = types.InstanceStateError
 		} else {
 			status.CurrentState = types.InstanceStateStopped
 		}
@@ -80,7 +82,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 
 	if im.Status.CurrentState == types.InstanceManagerStateStarting {
 		if status.Started {
-			logrus.Warnf("The starting instance manager %v shouldn't contain the running instance %v, will mark the instance as state ERROR", im.Name, instanceName)
+			if status.CurrentState != types.InstanceStateError {
+				logrus.Warnf("The starting instance manager %v shouldn't contain the running instance %v, will mark the instance as state ERROR", im.Name, instanceName)
+			}
 			status.CurrentState = types.InstanceStateError
 			status.CurrentImage = ""
 			status.IP = ""
@@ -92,7 +96,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	instance, exists := im.Status.Instances[instanceName]
 	if !exists {
 		if status.Started {
-			logrus.Warnf("Cannot find the instance status in instance manager %v for the running instance %v, will mark the instance as state ERROR", im.Name, instanceName)
+			if status.CurrentState != types.InstanceStateError {
+				logrus.Warnf("Cannot find the instance status in instance manager %v for the running instance %v, will mark the instance as state ERROR", im.Name, instanceName)
+			}
 			status.CurrentState = types.InstanceStateError
 		} else {
 			status.CurrentState = types.InstanceStateStopped
@@ -154,7 +160,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.Port = 0
 	default:
-		logrus.Warnf("Instance %v is state %v, error message: %v", instanceName, instance.Status.State, instance.Status.ErrorMsg)
+		if status.CurrentState != types.InstanceStateError {
+			logrus.Warnf("Instance %v is state %v, error message: %v", instanceName, instance.Status.State, instance.Status.ErrorMsg)
+		}
 		status.CurrentState = types.InstanceStateError
 		status.CurrentImage = ""
 		status.IP = ""
