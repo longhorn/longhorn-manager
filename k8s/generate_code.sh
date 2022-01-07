@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# This script only works with go v1.17 or above
+
 set -o errexit
 set -o nounset
 set -o pipefail
@@ -40,7 +42,7 @@ if ! command -v kustomize > /dev/null; then
   echo "Prepare to install kustomize"
 	mkdir -p ${GOPATH}/src/github.com/kubernetes-sigs
 	pushd ${GOPATH}/src/github.com/kubernetes-sigs
-	git clone -b ${KUSTOMIZE_VERSION} git@github.com:kubernetes-sigs/kustomize.git 2>/dev/null || true
+	git clone -b ${KUSTOMIZE_VERSION} https://github.com/kubernetes-sigs/kustomize.git 2>/dev/null || true
 	cd kustomize/kustomize
 	go install .
 	popd
