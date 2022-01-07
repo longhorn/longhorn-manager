@@ -397,7 +397,8 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 								},
 								AllowPrivilegeEscalation: pointer.BoolPtr(true),
 							},
-							Image: managerImage,
+							Image:           managerImage,
+							ImagePullPolicy: imagePullPolicy,
 							Lifecycle: &v1.Lifecycle{
 								PreStop: &v1.Handler{
 									Exec: &v1.ExecAction{
