@@ -31,7 +31,7 @@ type BackingImageDiskFileStatus struct {
 // BackingImageSpec defines the desired state of the Longhorn backing image
 type BackingImageSpec struct {
 	// +optional
-	Disks map[string]string `json:"disks"`
+	Disks map[string]struct{} `json:"disks"`
 	// +optional
 	Checksum string `json:"checksum"`
 	// +optional
@@ -81,7 +81,11 @@ type BackingImage struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   BackingImageSpec   `json:"spec,omitempty"`
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Spec BackingImageSpec `json:"spec,omitempty"`
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
 	Status BackingImageStatus `json:"status,omitempty"`
 }
 
