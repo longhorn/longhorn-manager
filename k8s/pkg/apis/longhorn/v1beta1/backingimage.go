@@ -18,54 +18,35 @@ const (
 )
 
 type BackingImageDiskFileStatus struct {
-	// +optional
-	State BackingImageState `json:"state"`
-	// +optional
-	Progress int `json:"progress"`
-	// +optional
-	Message string `json:"message"`
-	// +optional
-	LastStateTransitionTime string `json:"lastStateTransitionTime"`
+	State                   BackingImageState `json:"state"`
+	Progress                int               `json:"progress"`
+	Message                 string            `json:"message"`
+	LastStateTransitionTime string            `json:"lastStateTransitionTime"`
 }
 
 // BackingImageSpec defines the desired state of the Longhorn backing image
 type BackingImageSpec struct {
-	// +optional
-	Disks map[string]struct{} `json:"disks"`
-	// +optional
-	Checksum string `json:"checksum"`
-	// +optional
-	SourceType BackingImageDataSourceType `json:"sourceType"`
-	// +optional
-	SourceParameters map[string]string `json:"sourceParameters"`
+	Disks            map[string]struct{}        `json:"disks"`
+	Checksum         string                     `json:"checksum"`
+	SourceType       BackingImageDataSourceType `json:"sourceType"`
+	SourceParameters map[string]string          `json:"sourceParameters"`
+
 	// Deprecated: This kind of info will be included in the related BackingImageDataSource.
-	// +optional
 	ImageURL string `json:"imageURL"`
 }
 
 // BackingImageStatus defines the observed state of the Longhorn backing image status
 type BackingImageStatus struct {
-	// +optional
-	OwnerID string `json:"ownerID"`
-	// +optional
-	UUID string `json:"uuid"`
-	// +optional
-	Size int64 `json:"size"`
-	// +optional
-	Checksum string `json:"checksum"`
-	// +optional
-	// +nullable
+	OwnerID           string                                 `json:"ownerID"`
+	UUID              string                                 `json:"uuid"`
+	Size              int64                                  `json:"size"`
+	Checksum          string                                 `json:"checksum"`
 	DiskFileStatusMap map[string]*BackingImageDiskFileStatus `json:"diskFileStatusMap"`
-	// +optional
-	// +nullable
-	DiskLastRefAtMap map[string]string `json:"diskLastRefAtMap"`
+	DiskLastRefAtMap  map[string]string                      `json:"diskLastRefAtMap"`
+
 	// Deprecated: Replaced by field `State` in `DiskFileStatusMap`.
-	// +optional
-	// +nullable
 	DiskDownloadStateMap map[string]BackingImageDownloadState `json:"diskDownloadStateMap"`
 	// Deprecated: Replaced by field `Progress` in `DiskFileStatusMap`.
-	// +optional
-	// +nullable
 	DiskDownloadProgressMap map[string]int `json:"diskDownloadProgressMap"`
 }
 

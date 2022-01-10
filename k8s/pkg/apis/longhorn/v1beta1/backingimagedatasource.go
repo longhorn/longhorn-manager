@@ -6,7 +6,6 @@ const (
 	DataSourceTypeDownloadParameterURL = "url"
 )
 
-// +kubebuilder:validation:Enum=download;upload;export-from-volume
 type BackingImageDataSourceType string
 
 const (
@@ -17,39 +16,24 @@ const (
 
 // BackingImageDataSourceSpec defines the desired state of the Longhorn backing image data source
 type BackingImageDataSourceSpec struct {
-	// +optional
-	NodeID string `json:"nodeID"`
-	// +optional
-	DiskUUID string `json:"diskUUID"`
-	// +optional
-	DiskPath string `json:"diskPath"`
-	// +optional
-	Checksum string `json:"checksum"`
-	// +optional
-	SourceType BackingImageDataSourceType `json:"sourceType"`
-	// +optional
-	Parameters map[string]string `json:"parameters"`
-	// +optional
-	FileTransferred bool `json:"fileTransferred"`
+	NodeID          string                     `json:"nodeID"`
+	DiskUUID        string                     `json:"diskUUID"`
+	DiskPath        string                     `json:"diskPath"`
+	Checksum        string                     `json:"checksum"`
+	SourceType      BackingImageDataSourceType `json:"sourceType"`
+	Parameters      map[string]string          `json:"parameters"`
+	FileTransferred bool                       `json:"fileTransferred"`
 }
 
 // BackingImageDataSourceStatus defines the observed state of the Longhorn backing image data source
 type BackingImageDataSourceStatus struct {
-	// +optional
-	OwnerID string `json:"ownerID"`
-	// +optional
-	// +nullable
+	OwnerID           string            `json:"ownerID"`
 	RunningParameters map[string]string `json:"runningParameters"`
-	// +optional
-	CurrentState BackingImageState `json:"currentState"`
-	// +optional
-	Size int64 `json:"size"`
-	// +optional
-	Progress int `json:"progress"`
-	// +optional
-	Checksum string `json:"checksum"`
-	// +optional
-	Message string `json:"message"`
+	CurrentState      BackingImageState `json:"currentState"`
+	Size              int64             `json:"size"`
+	Progress          int               `json:"progress"`
+	Checksum          string            `json:"checksum"`
+	Message           string            `json:"message"`
 }
 
 // +genclient

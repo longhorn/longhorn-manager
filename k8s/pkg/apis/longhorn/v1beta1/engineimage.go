@@ -19,48 +19,32 @@ const (
 )
 
 type EngineVersionDetails struct {
-	// +optional
-	Version string `json:"version"`
-	// +optional
+	Version   string `json:"version"`
 	GitCommit string `json:"gitCommit"`
-	// +optional
 	BuildDate string `json:"buildDate"`
-	// +optional
-	CLIAPIVersion int `json:"cliAPIVersion"`
-	// +optional
-	CLIAPIMinVersion int `json:"cliAPIMinVersion"`
-	// +optional
-	ControllerAPIVersion int `json:"controllerAPIVersion"`
-	// +optional
+
+	CLIAPIVersion           int `json:"cliAPIVersion"`
+	CLIAPIMinVersion        int `json:"cliAPIMinVersion"`
+	ControllerAPIVersion    int `json:"controllerAPIVersion"`
 	ControllerAPIMinVersion int `json:"controllerAPIMinVersion"`
-	// +optional
-	DataFormatVersion int `json:"dataFormatVersion"`
-	// +optional
-	DataFormatMinVersion int `json:"dataFormatMinVersion"`
+	DataFormatVersion       int `json:"dataFormatVersion"`
+	DataFormatMinVersion    int `json:"dataFormatMinVersion"`
 }
 
 // EngineImageSpec defines the desired state of the Longhorn engine image
 type EngineImageSpec struct {
-	// +optional
 	Image string `json:"image"`
 }
 
 // EngineImageStatus defines the observed state of the Longhorn engine image
 type EngineImageStatus struct {
-	// +optional
-	OwnerID string `json:"ownerID"`
-	// +optional
-	State EngineImageState `json:"state"`
-	// +optional
-	RefCount int `json:"refCount"`
-	// +optional
-	NoRefSince string `json:"noRefSince"`
-	// +optional
-	// +nullable
-	Conditions map[string]Condition `json:"conditions"`
-	// +optional
-	// +nullable
-	NodeDeploymentMap    map[string]bool `json:"nodeDeploymentMap"`
+	OwnerID           string               `json:"ownerID"`
+	State             EngineImageState     `json:"state"`
+	RefCount          int                  `json:"refCount"`
+	NoRefSince        string               `json:"noRefSince"`
+	Conditions        map[string]Condition `json:"conditions"`
+	NodeDeploymentMap map[string]bool      `json:"nodeDeploymentMap"`
+
 	EngineVersionDetails `json:""`
 }
 

@@ -4,41 +4,28 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // ReplicaSpec defines the desired state of the Longhorn replica
 type ReplicaSpec struct {
-	InstanceSpec `json:""`
-	// +optional
-	EngineName string `json:"engineName"`
-	// +optional
-	HealthyAt string `json:"healthyAt"`
-	// +optional
-	FailedAt string `json:"failedAt"`
-	// +optional
-	DiskID string `json:"diskID"`
-	// +optional
-	DiskPath string `json:"diskPath"`
-	// +optional
-	DataDirectoryName string `json:"dataDirectoryName"`
-	// +optional
-	BackingImage string `json:"backingImage"`
-	// +optional
-	Active bool `json:"active"`
-	// +optional
-	HardNodeAffinity string `json:"hardNodeAffinity"`
-	// +optional
-	RevisionCounterDisabled bool `json:"revisionCounterDisabled"`
-	// +optional
+	InstanceSpec            `json:""`
+	EngineName              string `json:"engineName"`
+	HealthyAt               string `json:"healthyAt"`
+	FailedAt                string `json:"failedAt"`
+	DiskID                  string `json:"diskID"`
+	DiskPath                string `json:"diskPath"`
+	DataDirectoryName       string `json:"dataDirectoryName"`
+	BackingImage            string `json:"backingImage"`
+	Active                  bool   `json:"active"`
+	HardNodeAffinity        string `json:"hardNodeAffinity"`
+	RevisionCounterDisabled bool   `json:"revisionCounterDisabled"`
+
 	RebuildRetryCount int `json:"rebuildRetryCount"`
 	// Deprecated
-	// +optional
 	DataPath string `json:"dataPath"`
 	// Deprecated. Rename to BackingImage
-	// +optional
 	BaseImage string `json:"baseImage"`
 }
 
 // ReplicaStatus defines the observed state of the Longhorn replica
 type ReplicaStatus struct {
-	InstanceStatus `json:""`
-	// +optional
+	InstanceStatus    `json:""`
 	EvictionRequested bool `json:"evictionRequested"`
 }
 

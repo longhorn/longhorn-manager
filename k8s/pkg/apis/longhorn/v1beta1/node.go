@@ -32,67 +32,39 @@ const (
 )
 
 type DiskSpec struct {
-	// +optional
-	Path string `json:"path"`
-	// +optional
-	AllowScheduling bool `json:"allowScheduling"`
-	// +optional
-	EvictionRequested bool `json:"evictionRequested"`
-	// +optional
-	StorageReserved int64 `json:"storageReserved"`
-	// +optional
-	Tags []string `json:"tags"`
+	Path              string   `json:"path"`
+	AllowScheduling   bool     `json:"allowScheduling"`
+	EvictionRequested bool     `json:"evictionRequested"`
+	StorageReserved   int64    `json:"storageReserved"`
+	Tags              []string `json:"tags"`
 }
 
 type DiskStatus struct {
-	// +optional
-	// +nullable
-	Conditions map[string]Condition `json:"conditions"`
-	// +optional
-	StorageAvailable int64 `json:"storageAvailable"`
-	// +optional
-	StorageScheduled int64 `json:"storageScheduled"`
-	// +optional
-	StorageMaximum int64 `json:"storageMaximum"`
-	// +optional
-	// +nullable
-	ScheduledReplica map[string]int64 `json:"scheduledReplica"`
-	// +optional
-	DiskUUID string `json:"diskUUID"`
+	Conditions       map[string]Condition `json:"conditions"`
+	StorageAvailable int64                `json:"storageAvailable"`
+	StorageScheduled int64                `json:"storageScheduled"`
+	StorageMaximum   int64                `json:"storageMaximum"`
+	ScheduledReplica map[string]int64     `json:"scheduledReplica"`
+	DiskUUID         string               `json:"diskUUID"`
 }
 
 // NodeSpec defines the desired state of the Longhorn node
 type NodeSpec struct {
-	// +optional
-	Name string `json:"name"`
-	// +optional
-	Disks map[string]DiskSpec `json:"disks"`
-	// +optional
-	AllowScheduling bool `json:"allowScheduling"`
-	// +optional
-	EvictionRequested bool `json:"evictionRequested"`
-	// +optional
-	Tags []string `json:"tags"`
-	// +kubebuilder:validation:Minimum=0
-	// +optional
-	EngineManagerCPURequest int `json:"engineManagerCPURequest"`
-	// +kubebuilder:validation:Minimum=0
-	// +optional
-	ReplicaManagerCPURequest int `json:"replicaManagerCPURequest"`
+	Name                     string              `json:"name"`
+	Disks                    map[string]DiskSpec `json:"disks"`
+	AllowScheduling          bool                `json:"allowScheduling"`
+	EvictionRequested        bool                `json:"evictionRequested"`
+	Tags                     []string            `json:"tags"`
+	EngineManagerCPURequest  int                 `json:"engineManagerCPURequest"`
+	ReplicaManagerCPURequest int                 `json:"replicaManagerCPURequest"`
 }
 
 // NodeStatus defines the observed state of the Longhorn node
 type NodeStatus struct {
-	// +optional
-	// +nullable
-	Conditions map[string]Condition `json:"conditions"`
-	// +optional
-	// +nullable
+	Conditions map[string]Condition   `json:"conditions"`
 	DiskStatus map[string]*DiskStatus `json:"diskStatus"`
-	// +optional
-	Region string `json:"region"`
-	// +optional
-	Zone string `json:"zone"`
+	Region     string                 `json:"region"`
+	Zone       string                 `json:"zone"`
 }
 
 // +genclient

@@ -19,7 +19,6 @@ const (
 	InstanceManagerStateUnknown  = InstanceManagerState("unknown")
 )
 
-// +kubebuilder:validation:Enum=engine;replica
 type InstanceManagerType string
 
 const (
@@ -28,14 +27,11 @@ const (
 )
 
 type InstanceProcess struct {
-	// +optional
-	Spec InstanceProcessSpec `json:"spec"`
-	// +optional
+	Spec   InstanceProcessSpec   `json:"spec"`
 	Status InstanceProcessStatus `json:"status"`
 }
 
 type InstanceProcessSpec struct {
-	// +optional
 	Name string `json:"name"`
 }
 
@@ -51,91 +47,56 @@ const (
 )
 
 type InstanceSpec struct {
-	// +optional
-	VolumeName string `json:"volumeName"`
-	// +kubebuilder:validation:Type=string
-	// +optional
-	VolumeSize int64 `json:"volumeSize,string"`
-	// +optional
-	NodeID string `json:"nodeID"`
-	// +optional
-	EngineImage string `json:"engineImage"`
-	// +optional
-	DesireState InstanceState `json:"desireState"`
-	// +optional
-	LogRequested bool `json:"logRequested"`
-	// +optional
-	SalvageRequested bool `json:"salvageRequested"`
+	VolumeName       string        `json:"volumeName"`
+	VolumeSize       int64         `json:"volumeSize,string"`
+	NodeID           string        `json:"nodeID"`
+	EngineImage      string        `json:"engineImage"`
+	DesireState      InstanceState `json:"desireState"`
+	LogRequested     bool          `json:"logRequested"`
+	SalvageRequested bool          `json:"salvageRequested"`
 }
 
 type InstanceStatus struct {
-	// +optional
-	OwnerID string `json:"ownerID"`
-	// +optional
-	InstanceManagerName string `json:"instanceManagerName"`
-	// +optional
-	CurrentState InstanceState `json:"currentState"`
-	// +optional
-	CurrentImage string `json:"currentImage"`
-	// +optional
-	IP string `json:"ip"`
-	// +optional
-	Port int `json:"port"`
-	// +optional
-	Started bool `json:"started"`
-	// +optional
-	LogFetched bool `json:"logFetched"`
-	// +optional
-	SalvageExecuted bool `json:"salvageExecuted"`
+	OwnerID             string        `json:"ownerID"`
+	InstanceManagerName string        `json:"instanceManagerName"`
+	CurrentState        InstanceState `json:"currentState"`
+	CurrentImage        string        `json:"currentImage"`
+	IP                  string        `json:"ip"`
+	Port                int           `json:"port"`
+	Started             bool          `json:"started"`
+	LogFetched          bool          `json:"logFetched"`
+	SalvageExecuted     bool          `json:"salvageExecuted"`
 }
 
 type InstanceProcessStatus struct {
-	// +optional
-	Endpoint string `json:"endpoint"`
-	// +optional
-	ErrorMsg string `json:"errorMsg"`
-	// +optional
-	Listen string `json:"listen"`
-	// +optional
-	PortEnd int32 `json:"portEnd"`
-	// +optional
-	PortStart int32 `json:"portStart"`
-	// +optional
-	State InstanceState `json:"state"`
-	// +optional
-	Type InstanceType `json:"type"`
-	// +optional
-	ResourceVersion int64 `json:"resourceVersion"`
+	Endpoint        string        `json:"endpoint"`
+	ErrorMsg        string        `json:"errorMsg"`
+	Listen          string        `json:"listen"`
+	PortEnd         int32         `json:"portEnd"`
+	PortStart       int32         `json:"portStart"`
+	State           InstanceState `json:"state"`
+	Type            InstanceType  `json:"type"`
+	ResourceVersion int64         `json:"resourceVersion"`
 }
 
 // InstanceManagerSpec defines the desired state of the Longhorn instancer manager
 type InstanceManagerSpec struct {
-	// +optional
-	Image string `json:"image"`
-	// +optional
-	NodeID string `json:"nodeID"`
-	// +optional
-	Type InstanceManagerType `json:"type"`
+	Image  string              `json:"image"`
+	NodeID string              `json:"nodeID"`
+	Type   InstanceManagerType `json:"type"`
+
 	// TODO: deprecate this field
-	// +optional
 	EngineImage string `json:"engineImage"`
 }
 
 // InstanceManagerStatus defines the observed state of the Longhorn instance manager
 type InstanceManagerStatus struct {
-	// +optional
-	OwnerID string `json:"ownerID"`
-	// +optional
-	CurrentState InstanceManagerState `json:"currentState"`
-	// +optional
-	// +nullable
-	Instances map[string]InstanceProcess `json:"instances"`
-	// +optional
-	IP string `json:"ip"`
-	// +optional
-	APIMinVersion int `json:"apiMinVersion"`
-	// +optional
-	APIVersion int `json:"apiVersion"`
+	OwnerID       string                     `json:"ownerID"`
+	CurrentState  InstanceManagerState       `json:"currentState"`
+	Instances     map[string]InstanceProcess `json:"instances"`
+	IP            string                     `json:"ip"`
+	APIMinVersion int                        `json:"apiMinVersion"`
+	APIVersion    int                        `json:"apiVersion"`
 }
 
 // +genclient
