@@ -5,52 +5,34 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // BackupVolumeSpec defines the desired state of the Longhorn backup volume
 type BackupVolumeSpec struct {
 	// The time to request run sync the remote backup volume.
-	// +optional
-	// +nullable
 	SyncRequestedAt metav1.Time `json:"syncRequestedAt"`
 }
 
 // BackupVolumeStatus defines the observed state of the Longhorn backup volume
 type BackupVolumeStatus struct {
 	// The node ID on which the controller is responsible to reconcile this backup volume CR.
-	// +optional
 	OwnerID string `json:"ownerID"`
 	// The backup volume config last modification time.
-	// +optional
-	// +nullable
 	LastModificationTime metav1.Time `json:"lastModificationTime"`
 	// The backup volume size.
-	// +optional
 	Size string `json:"size"`
 	// The backup volume labels.
-	// +optional
-	// +nullable
 	Labels map[string]string `json:"labels"`
 	// The backup volume creation time.
-	// +optional
 	CreatedAt string `json:"createdAt"`
 	// The latest volume backup name.
-	// +optional
 	LastBackupName string `json:"lastBackupName"`
 	// The latest volume backup time.
-	// +optional
 	LastBackupAt string `json:"lastBackupAt"`
 	// The backup volume block count.
-	// +optional
 	DataStored string `json:"dataStored"`
 	// The error messages when call longhorn engine on list or inspect backup volumes.
-	// +optional
-	// +nullable
 	Messages map[string]string `json:"messages"`
 	// The backing image name.
-	// +optional
 	BackingImageName string `json:"backingImageName"`
 	// the backing image checksum.
-	// +optional
 	BackingImageChecksum string `json:"backingImageChecksum"`
 	// The last time that the backup volume was synced into the cluster.
-	// +optional
-	// +nullable
 	LastSyncedAt metav1.Time `json:"lastSyncedAt"`
 }
 

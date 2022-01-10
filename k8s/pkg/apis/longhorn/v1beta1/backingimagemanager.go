@@ -13,64 +13,41 @@ const (
 )
 
 type BackingImageFileInfo struct {
-	// +optional
-	Name string `json:"name"`
-	// +optional
-	UUID string `json:"uuid"`
-	// +optional
-	Size int64 `json:"size"`
-	// +optional
-	State BackingImageState `json:"state"`
-	// +optional
-	CurrentChecksum string `json:"currentChecksum"`
-	// +optional
-	Message string `json:"message"`
-	// +optional
-	SendingReference int `json:"sendingReference"`
-	// +optional
-	SenderManagerAddress string `json:"senderManagerAddress"`
-	// +optional
-	Progress int `json:"progress"`
+	Name                 string            `json:"name"`
+	UUID                 string            `json:"uuid"`
+	Size                 int64             `json:"size"`
+	State                BackingImageState `json:"state"`
+	CurrentChecksum      string            `json:"currentChecksum"`
+	Message              string            `json:"message"`
+	SendingReference     int               `json:"sendingReference"`
+	SenderManagerAddress string            `json:"senderManagerAddress"`
+	Progress             int               `json:"progress"`
+
 	// Deprecated: This field is useless now. The manager of backing image files doesn't care if a file is downloaded and how.
-	// +optional
 	URL string `json:"url"`
 	// Deprecated: This field is useless.
-	// +optional
 	Directory string `json:"directory"`
 	// Deprecated: This field is renamed to `Progress`.
-	// +optional
 	DownloadProgress int `json:"downloadProgress"`
 }
 
 // BackingImageManagerSpec defines the desired state of the Longhorn backing image manager
 type BackingImageManagerSpec struct {
-	// +optional
-	Image string `json:"image"`
-	// +optional
-	NodeID string `json:"nodeID"`
-	// +optional
-	DiskUUID string `json:"diskUUID"`
-	// +optional
-	DiskPath string `json:"diskPath"`
-	// +optional
+	Image         string            `json:"image"`
+	NodeID        string            `json:"nodeID"`
+	DiskUUID      string            `json:"diskUUID"`
+	DiskPath      string            `json:"diskPath"`
 	BackingImages map[string]string `json:"backingImages"`
 }
 
 // BackingImageManagerStatus defines the observed state of the Longhorn backing image manager
 type BackingImageManagerStatus struct {
-	// +optional
-	OwnerID string `json:"ownerID"`
-	// +optional
-	CurrentState BackingImageManagerState `json:"currentState"`
-	// +optional
-	// +nullable
+	OwnerID             string                          `json:"ownerID"`
+	CurrentState        BackingImageManagerState        `json:"currentState"`
 	BackingImageFileMap map[string]BackingImageFileInfo `json:"backingImageFileMap"`
-	// +optional
-	IP string `json:"ip"`
-	// +optional
-	APIMinVersion int `json:"apiMinVersion"`
-	// +optional
-	APIVersion int `json:"apiVersion"`
+	IP                  string                          `json:"ip"`
+	APIMinVersion       int                             `json:"apiMinVersion"`
+	APIVersion          int                             `json:"apiVersion"`
 }
 
 // +genclient

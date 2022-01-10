@@ -11,35 +11,24 @@ const (
 // BackupTargetSpec defines the desired state of the Longhorn backup target
 type BackupTargetSpec struct {
 	// The backup target URL.
-	// +optional
 	BackupTargetURL string `json:"backupTargetURL"`
 	// The backup target credential secret.
-	// +optional
 	CredentialSecret string `json:"credentialSecret"`
 	// The interval that the cluster needs to run sync with the backup target.
-	// +optional
 	PollInterval metav1.Duration `json:"pollInterval"`
 	// The time to request run sync the remote backup target.
-	// +optional
-	// +nullable
 	SyncRequestedAt metav1.Time `json:"syncRequestedAt"`
 }
 
 // BackupTargetStatus defines the observed state of the Longhorn backup target
 type BackupTargetStatus struct {
 	// The node ID on which the controller is responsible to reconcile this backup target CR.
-	// +optional
 	OwnerID string `json:"ownerID"`
 	// Available indicates if the remote backup target is available or not.
-	// +optional
 	Available bool `json:"available"`
 	// Records the reason on why the backup target is unavailable.
-	// +optional
-	// +nullable
 	Conditions map[string]Condition `json:"conditions"`
 	// The last time that the controller synced with the remote backup target.
-	// +optional
-	// +nullable
 	LastSyncedAt metav1.Time `json:"lastSyncedAt"`
 }
 
