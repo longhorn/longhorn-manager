@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/rancher/dynamiclistener"
@@ -92,9 +91,6 @@ func (s *WebhookServer) listenAndServe(client *client.Client, handler http.Handl
 		if secret == nil || secret.Name != caName || secret.Namespace != s.namespace || len(secret.Data[corev1.TLSCertKey]) == 0 {
 			return nil, nil
 		}
-		logrus.Info("Sleeping for 15 seconds then applying webhook config")
-		// Sleep here to make sure server is listening and all caches are primed
-		time.Sleep(15 * time.Second)
 
 		port := int32(types.DefaultWebhookServerPort)
 
