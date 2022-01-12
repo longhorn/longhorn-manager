@@ -75,6 +75,8 @@ func (s *WebhookServer) ListenAndServe() error {
 	}
 
 	router := mux.NewRouter()
+
+	router.Handle("/v1/healthz", newhealthzHandler())
 	router.Handle(conversionPath, conversionHandler)
 	router.Handle(validationPath, validationHandler)
 	router.Handle(mutationPath, mutationHandler)
