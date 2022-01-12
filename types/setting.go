@@ -11,6 +11,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/util"
 )
 
@@ -40,6 +41,7 @@ const (
 	SettingNameStorageOverProvisioningPercentage            = SettingName("storage-over-provisioning-percentage")
 	SettingNameStorageMinimalAvailablePercentage            = SettingName("storage-minimal-available-percentage")
 	SettingNameUpgradeChecker                               = SettingName("upgrade-checker")
+	SettingNameCurrentLonghornVersion                       = SettingName("current-longhorn-version")
 	SettingNameLatestLonghornVersion                        = SettingName("latest-longhorn-version")
 	SettingNameStableLonghornVersions                       = SettingName("stable-longhorn-versions")
 	SettingNameDefaultReplicaCount                          = SettingName("default-replica-count")
@@ -89,6 +91,7 @@ var (
 		SettingNameStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage,
 		SettingNameUpgradeChecker,
+		SettingNameCurrentLonghornVersion,
 		SettingNameLatestLonghornVersion,
 		SettingNameStableLonghornVersions,
 		SettingNameDefaultReplicaCount,
@@ -159,6 +162,7 @@ var (
 		SettingNameStorageOverProvisioningPercentage:            SettingDefinitionStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage:            SettingDefinitionStorageMinimalAvailablePercentage,
 		SettingNameUpgradeChecker:                               SettingDefinitionUpgradeChecker,
+		SettingNameCurrentLonghornVersion:                       SettingDefinitionCurrentLonghornVersion,
 		SettingNameLatestLonghornVersion:                        SettingDefinitionLatestLonghornVersion,
 		SettingNameStableLonghornVersions:                       SettingDefinitionStableLonghornVersions,
 		SettingNameDefaultReplicaCount:                          SettingDefinitionDefaultReplicaCount,
@@ -353,6 +357,16 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "true",
+	}
+
+	SettingDefinitionCurrentLonghornVersion = SettingDefinition{
+		DisplayName: "Current Longhorn Version",
+		Description: "The current Longhorn version.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    false,
+		ReadOnly:    true,
+		Default:     meta.Version,
 	}
 
 	SettingDefinitionLatestLonghornVersion = SettingDefinition{
