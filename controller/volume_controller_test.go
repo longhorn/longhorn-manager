@@ -21,6 +21,7 @@ import (
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -54,8 +55,10 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	controllerID string) *VolumeController {
 	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, TestNamespace)
 
+	proxyHandler := &engineapi.EngineClientProxyHandler{Clients: make(map[string]engineapi.Client)}
+
 	logger := logrus.StandardLogger()
-	vc := NewVolumeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID)
+	vc := NewVolumeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, proxyHandler)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	vc.eventRecorder = fakeRecorder

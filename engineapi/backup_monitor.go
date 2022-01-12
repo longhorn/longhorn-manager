@@ -32,6 +32,9 @@ type BackupMonitor struct {
 	replicaAddress string
 	engineClient   EngineClient
 
+	engine            *longhorn.Engine
+	engineClientProxy Client
+
 	backupStatus     longhorn.BackupStatus
 	backupStatusLock sync.RWMutex
 
@@ -46,14 +49,18 @@ type BackupMonitor struct {
 
 func NewBackupMonitor(logger logrus.FieldLogger,
 	backup *longhorn.Backup, volume *longhorn.Volume, backupTargetClient *BackupTargetClient,
-	biChecksum string, engineClient EngineClient, syncCallback func(key string)) (*BackupMonitor, error) {
+	biChecksum string, engineCliClient EngineClient, engine *longhorn.Engine, engineClientProxy Client,
+	syncCallback func(key string)) (*BackupMonitor, error) {
 	ctx, quit := context.WithCancel(context.Background())
 	m := &BackupMonitor{
 		logger: logger.WithFields(logrus.Fields{"backup": backup.Name}),
 
 		backupName:   backup.Name,
 		snapshotName: backup.Spec.SnapshotName,
-		engineClient: engineClient,
+		engineClient: engineCliClient,
+
+		engine:            engine,
+		engineClientProxy: engineClientProxy,
 
 		backupStatusLock: sync.RWMutex{},
 
@@ -66,7 +73,7 @@ func NewBackupMonitor(logger logrus.FieldLogger,
 
 	// Call engine API snapshot backup
 	if backup.Status.State == longhorn.BackupStateNew {
-		_, replicaAddress, err := engineClient.SnapshotBackup(backup.Name, backup.Spec.SnapshotName,
+		_, replicaAddress, err := engineCliClient.SnapshotBackup(backup.Name, backup.Spec.SnapshotName,
 			backupTargetClient.URL, volume.Spec.BackingImage, biChecksum,
 			backup.Spec.Labels, backupTargetClient.Credential)
 		if err != nil {

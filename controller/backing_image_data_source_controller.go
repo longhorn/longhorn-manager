@@ -63,6 +63,8 @@ type BackingImageDataSourceController struct {
 
 	lock       *sync.RWMutex
 	monitorMap map[string]chan struct{}
+
+	proxyHandler *engineapi.EngineClientProxyHandler
 }
 
 type BackingImageDataSourceMonitor struct {
@@ -82,7 +84,8 @@ func NewBackingImageDataSourceController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace, controllerID, serviceAccount string) *BackingImageDataSourceController {
+	namespace, controllerID, serviceAccount string,
+	proxyHandler *engineapi.EngineClientProxyHandler) *BackingImageDataSourceController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -104,6 +107,8 @@ func NewBackingImageDataSourceController(
 
 		lock:       &sync.RWMutex{},
 		monitorMap: map[string]chan struct{}{},
+
+		proxyHandler: proxyHandler,
 	}
 
 	ds.BackingImageDataSourceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{

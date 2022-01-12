@@ -86,7 +86,7 @@ github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/rpc
 github.com/longhorn/backing-image-manager/pkg/types
-# github.com/longhorn/backupstore v0.0.0-20210817080617-8ea3843e6b0d
+# github.com/longhorn/backupstore v0.0.0-20211109055147-56ddc538b859
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/util
@@ -94,7 +94,12 @@ github.com/longhorn/backupstore/util
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/longhorn-instance-manager v0.0.0-20220512102241-1be3ba51ffef
+# github.com/longhorn/longhorn-engine v1.3.0-preview1
+github.com/longhorn/longhorn-engine/pkg/meta
+github.com/longhorn/longhorn-engine/pkg/types
+github.com/longhorn/longhorn-engine/pkg/util
+github.com/longhorn/longhorn-engine/proto/ptypes
+# github.com/longhorn/longhorn-instance-manager v0.0.0-20220516140138-ca4a9ddfa51c
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/imrpc
@@ -193,8 +198,6 @@ github.com/rancher/wrangler/pkg/webhook
 github.com/robfig/cron
 # github.com/russross/blackfriday/v2 v2.0.1
 github.com/russross/blackfriday/v2
-# github.com/satori/go.uuid v1.2.0
-github.com/satori/go.uuid
 # github.com/shurcooL/sanitized_anchor_name v1.0.0
 github.com/shurcooL/sanitized_anchor_name
 # github.com/sirupsen/logrus v1.8.1

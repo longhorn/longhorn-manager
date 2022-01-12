@@ -44,6 +44,8 @@ type BackupTargetController struct {
 	ds *datastore.DataStore
 
 	cacheSyncs []cache.InformerSynced
+
+	proxyHandler *engineapi.EngineClientProxyHandler
 }
 
 func NewBackupTargetController(
@@ -52,7 +54,8 @@ func NewBackupTargetController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	controllerID string,
-	namespace string) *BackupTargetController {
+	namespace string,
+	proxyHandler *engineapi.EngineClientProxyHandler) *BackupTargetController {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -70,6 +73,8 @@ func NewBackupTargetController(
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-backup-target-controller"}),
+
+		proxyHandler: proxyHandler,
 	}
 
 	ds.BackupTargetInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{

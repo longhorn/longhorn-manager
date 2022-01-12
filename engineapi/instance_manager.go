@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	CurrentInstanceManagerAPIVersion = 1
+	CurrentInstanceManagerAPIVersion = 2
 	UnknownInstanceManagerAPIVersion = 0
 
 	DefaultEnginePortCount  = 1
@@ -27,6 +27,7 @@ const (
 
 	// IncompatibleInstanceManagerAPIVersion means the instance manager version in v0.7.0
 	IncompatibleInstanceManagerAPIVersion = -1
+	InstanceManagerProxyMinAPIVersion     = 2
 	DeprecatedInstanceManagerBinaryName   = "longhorn-instance-manager"
 )
 
@@ -56,6 +57,13 @@ func CheckInstanceManagerCompatibilty(imMinVersion, imVersion int) error {
 	if CurrentInstanceManagerAPIVersion > imVersion || CurrentInstanceManagerAPIVersion < imMinVersion {
 		return fmt.Errorf("current InstanceManager version %v is not compatible with InstanceManagerAPIVersion %v and InstanceManagerAPIMinVersion %v",
 			CurrentInstanceManagerAPIVersion, imVersion, imMinVersion)
+	}
+	return nil
+}
+
+func CheckInstanceManagerProxyCompatibility(im *longhorn.InstanceManager) error {
+	if im.Status.APIVersion < InstanceManagerProxyMinAPIVersion {
+		return fmt.Errorf("%v api version does not support gRPC proxy", im.Name)
 	}
 	return nil
 }

@@ -75,6 +75,8 @@ type VolumeController struct {
 
 	// for unit test
 	nowHandler func() string
+
+	proxyHandler *engineapi.EngineClientProxyHandler
 }
 
 func NewVolumeController(
@@ -84,6 +86,7 @@ func NewVolumeController(
 	kubeClient clientset.Interface,
 	namespace,
 	controllerID string,
+	proxyHandler *engineapi.EngineClientProxyHandler,
 ) *VolumeController {
 
 	eventBroadcaster := record.NewBroadcaster()
@@ -104,6 +107,8 @@ func NewVolumeController(
 		backoff: flowcontrol.NewBackOff(time.Minute, time.Minute*3),
 
 		nowHandler: util.Now,
+
+		proxyHandler: proxyHandler,
 	}
 
 	vc.scheduler = scheduler.NewReplicaScheduler(ds)
@@ -3597,15 +3602,15 @@ func (vc *VolumeController) createSnapshot(snapshotName string, labels map[strin
 		return nil, err
 	}
 
-	engine, err := vc.getEngineClient(volume.Name)
+	engineCliClient, err := vc.getEngineBinaryClient(volume.Name)
 	if err != nil {
 		return nil, err
 	}
-	snapshotName, err = engine.SnapshotCreate(snapshotName, labels)
+	snapshotName, err = engineCliClient.SnapshotCreate(snapshotName, labels)
 	if err != nil {
 		return nil, err
 	}
-	snap, err := engine.SnapshotGet(snapshotName)
+	snap, err := engineCliClient.SnapshotGet(snapshotName)
 	if err != nil {
 		return nil, err
 	}
@@ -3616,7 +3621,7 @@ func (vc *VolumeController) createSnapshot(snapshotName string, labels map[strin
 	return snap, nil
 }
 
-func (vc *VolumeController) getEngineClient(volumeName string) (client engineapi.EngineClient, err error) {
+func (vc *VolumeController) getEngineBinaryClient(volumeName string) (client engineapi.EngineClient, err error) {
 	var e *longhorn.Engine
 
 	defer func() {

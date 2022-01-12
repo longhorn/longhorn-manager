@@ -24,6 +24,7 @@ import (
 	"github.com/longhorn/backupstore"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -43,6 +44,8 @@ type BackupVolumeController struct {
 	ds *datastore.DataStore
 
 	cacheSyncs []cache.InformerSynced
+
+	proxyHandler *engineapi.EngineClientProxyHandler
 }
 
 func NewBackupVolumeController(
@@ -51,7 +54,8 @@ func NewBackupVolumeController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	controllerID string,
-	namespace string) *BackupVolumeController {
+	namespace string,
+	proxyHandler *engineapi.EngineClientProxyHandler) *BackupVolumeController {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -69,6 +73,8 @@ func NewBackupVolumeController(
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-backup-volume-controller"}),
+
+		proxyHandler: proxyHandler,
 	}
 
 	ds.BackupVolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{

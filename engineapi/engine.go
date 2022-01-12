@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -22,11 +24,13 @@ const (
 	ProcessStateInProgress = "in_progress"
 	ProcessStateComplete   = "complete"
 	ProcessStateError      = "error"
+
+	ErrNotImplement = "not implemented"
 )
 
 type EngineCollection struct{}
 
-type Engine struct {
+type EngineBinary struct {
 	name  string
 	image string
 	ip    string
@@ -39,9 +43,9 @@ func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (Engine
 		return nil, fmt.Errorf("invalid empty engine image from request")
 	}
 	if request.IP != "" && request.Port == 0 {
-		return nil, fmt.Errorf("Invalid empty port from request with valid IP")
+		return nil, fmt.Errorf("invalid empty port from request with valid IP")
 	}
-	return &Engine{
+	return &EngineBinary{
 		name:  request.VolumeName,
 		image: request.EngineImage,
 		ip:    request.IP,
@@ -50,25 +54,25 @@ func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (Engine
 	}, nil
 }
 
-func (e *Engine) Name() string {
+func (e *EngineBinary) Name() string {
 	return e.name
 }
 
-func (e *Engine) LonghornEngineBinary() string {
+func (e *EngineBinary) LonghornEngineBinary() string {
 	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(e.image), "longhorn")
 }
 
-func (e *Engine) ExecuteEngineBinary(args ...string) (string, error) {
+func (e *EngineBinary) ExecuteEngineBinary(args ...string) (string, error) {
 	args = append([]string{"--url", e.cURL}, args...)
 	return util.Execute([]string{}, e.LonghornEngineBinary(), args...)
 }
 
-func (e *Engine) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...string) (string, error) {
+func (e *EngineBinary) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...string) (string, error) {
 	args = append([]string{"--url", e.cURL}, args...)
 	return util.ExecuteWithTimeout(timeout, []string{}, e.LonghornEngineBinary(), args...)
 }
 
-func (e *Engine) ExecuteEngineBinaryWithoutTimeout(envs []string, args ...string) (string, error) {
+func (e *EngineBinary) ExecuteEngineBinaryWithoutTimeout(envs []string, args ...string) (string, error) {
 	args = append([]string{"--url", e.cURL}, args...)
 	return util.ExecuteWithoutTimeout(envs, e.LonghornEngineBinary(), args...)
 }
@@ -89,7 +93,23 @@ func parseReplica(s string) (*Replica, error) {
 	}, nil
 }
 
-func (e *Engine) ReplicaList() (map[string]*Replica, error) {
+func (e *EngineBinary) IsGRPC() bool {
+	return false
+}
+
+func (e *EngineBinary) Start(*longhorn.InstanceManager, logrus.FieldLogger, *datastore.DataStore) error {
+	return errors.Errorf(ErrNotImplement)
+}
+
+func (e *EngineBinary) Stop(string) error {
+	return nil
+}
+
+func (e *EngineBinary) Ping() error {
+	return errors.Errorf(ErrNotImplement)
+}
+
+func (e *EngineBinary) ReplicaList() (map[string]*Replica, error) {
 	output, err := e.ExecuteEngineBinary("ls")
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to list replicas from controller '%s'", e.name)
@@ -112,7 +132,7 @@ func (e *Engine) ReplicaList() (map[string]*Replica, error) {
 	return replicas, nil
 }
 
-func (e *Engine) ReplicaAdd(url string, isRestoreVolume bool) error {
+func (e *EngineBinary) ReplicaAdd(url string, isRestoreVolume bool) error {
 	if err := ValidateReplicaURL(url); err != nil {
 		return err
 	}
@@ -126,7 +146,7 @@ func (e *Engine) ReplicaAdd(url string, isRestoreVolume bool) error {
 	return nil
 }
 
-func (e *Engine) ReplicaRemove(url string) error {
+func (e *EngineBinary) ReplicaRemove(url string) error {
 	if err := ValidateReplicaURL(url); err != nil {
 		return err
 	}
@@ -136,7 +156,7 @@ func (e *Engine) ReplicaRemove(url string) error {
 	return nil
 }
 
-func (e *Engine) Info() (*Volume, error) {
+func (e *EngineBinary) Info() (*Volume, error) {
 	output, err := e.ExecuteEngineBinary("info")
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot get volume info")
@@ -149,7 +169,7 @@ func (e *Engine) Info() (*Volume, error) {
 	return info, nil
 }
 
-func (e *Engine) Version(clientOnly bool) (*EngineVersion, error) {
+func (e *EngineBinary) Version(clientOnly bool) (*EngineVersion, error) {
 	cmdline := []string{"version"}
 	if clientOnly {
 		cmdline = append(cmdline, "--client-only")
@@ -168,7 +188,7 @@ func (e *Engine) Version(clientOnly bool) (*EngineVersion, error) {
 	return version, nil
 }
 
-func (e *Engine) Expand(size int64) error {
+func (e *EngineBinary) Expand(size int64) error {
 	if _, err := e.ExecuteEngineBinary("expand", "--size", strconv.FormatInt(size, 10)); err != nil {
 		return errors.Wrapf(err, "cannot get expand volume engine to size %v", size)
 	}
@@ -176,7 +196,7 @@ func (e *Engine) Expand(size int64) error {
 	return nil
 }
 
-func (e *Engine) ReplicaRebuildStatus() (map[string]*longhorn.RebuildStatus, error) {
+func (e *EngineBinary) ReplicaRebuildStatus() (map[string]*longhorn.RebuildStatus, error) {
 	output, err := e.ExecuteEngineBinary("replica-rebuild-status")
 	if err != nil {
 		return nil, errors.Wrapf(err, "error getting replica rebuild status")
@@ -190,7 +210,7 @@ func (e *Engine) ReplicaRebuildStatus() (map[string]*longhorn.RebuildStatus, err
 	return data, nil
 }
 
-func (e *Engine) FrontendStart(volumeFrontend longhorn.VolumeFrontend) error {
+func (e *EngineBinary) FrontendStart(volumeFrontend longhorn.VolumeFrontend) error {
 	frontendName, err := GetEngineProcessFrontend(volumeFrontend)
 	if err != nil {
 		return err
@@ -206,7 +226,7 @@ func (e *Engine) FrontendStart(volumeFrontend longhorn.VolumeFrontend) error {
 	return nil
 }
 
-func (e *Engine) FrontendShutdown() error {
+func (e *EngineBinary) FrontendShutdown() error {
 	if _, err := e.ExecuteEngineBinary("frontend", "shutdown"); err != nil {
 		return errors.Wrapf(err, "error shutting down the frontend")
 	}
@@ -214,7 +234,7 @@ func (e *Engine) FrontendShutdown() error {
 	return nil
 }
 
-func (e *Engine) ReplicaRebuildVerify(url string) error {
+func (e *EngineBinary) ReplicaRebuildVerify(url string) error {
 	if err := ValidateReplicaURL(url); err != nil {
 		return err
 	}

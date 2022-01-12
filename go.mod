@@ -42,9 +42,9 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v0.0.0-20220414053138-691e27b07b7e
-	github.com/longhorn/backupstore v0.0.0-20210817080617-8ea3843e6b0d
+	github.com/longhorn/backupstore v0.0.0-20211109055147-56ddc538b859
 	github.com/longhorn/go-iscsi-helper v0.0.0-20210330030558-49a327fb024e
-	github.com/longhorn/longhorn-instance-manager v0.0.0-20220512102241-1be3ba51ffef
+	github.com/longhorn/longhorn-instance-manager v0.0.0-20220516140138-ca4a9ddfa51c
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.1
@@ -57,6 +57,7 @@ require (
 	github.com/stretchr/testify v1.7.0
 	github.com/urfave/cli v1.22.1
 	golang.org/x/mod v0.5.1
+	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110
 	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0
 	google.golang.org/grpc v1.26.0

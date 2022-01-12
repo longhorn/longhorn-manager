@@ -61,7 +61,10 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, TestNamespace)
 
 	logger := logrus.StandardLogger()
-	imc := NewInstanceManagerController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestServiceAccount)
+
+	proxyHandler := engineapi.NewEngineClientProxyHandler(logger, ds)
+
+	imc := NewInstanceManagerController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestServiceAccount, proxyHandler)
 	fakeRecorder := record.NewFakeRecorder(100)
 	imc.eventRecorder = fakeRecorder
 	for index := range imc.cacheSyncs {
@@ -84,8 +87,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateRunning,
 				IP:            TestIP1,
-				APIMinVersion: 1,
-				APIVersion:    1,
+				APIMinVersion: 2,
+				APIVersion:    2,
 			},
 			longhorn.InstanceManagerTypeEngine,
 		},
@@ -110,8 +113,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				OwnerID:       TestNode2,
 				CurrentState:  longhorn.InstanceManagerStateUnknown,
 				IP:            TestIP1,
-				APIMinVersion: 1,
-				APIVersion:    1,
+				APIMinVersion: 2,
+				APIVersion:    2,
 			},
 			longhorn.InstanceManagerTypeEngine,
 		},
@@ -135,8 +138,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateRunning,
 				IP:            TestIP1,
-				APIMinVersion: 1,
-				APIVersion:    1,
+				APIMinVersion: 2,
+				APIVersion:    2,
 			},
 			longhorn.InstanceManagerTypeEngine,
 		},
@@ -172,8 +175,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateRunning,
 				IP:            TestIP2,
-				APIMinVersion: 1,
-				APIVersion:    1,
+				APIMinVersion: 2,
+				APIVersion:    2,
 			},
 			longhorn.InstanceManagerTypeReplica,
 		},

@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/sirupsen/logrus"
+
+	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -94,6 +97,22 @@ func (e *EngineSimulator) Name() string {
 	return e.volumeName
 }
 
+func (e *EngineSimulator) IsGRPC() bool {
+	return false
+}
+
+func (e *EngineSimulator) Start(*longhorn.InstanceManager, logrus.FieldLogger, *datastore.DataStore) error {
+	return fmt.Errorf(ErrNotImplement)
+}
+
+func (e *EngineSimulator) Stop(*longhorn.InstanceManager) error {
+	return fmt.Errorf(ErrNotImplement)
+}
+
+func (e *EngineSimulator) Ping() error {
+	return fmt.Errorf(ErrNotImplement)
+}
+
 func (e *EngineSimulator) ReplicaList() (map[string]*Replica, error) {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
@@ -148,80 +167,80 @@ func (e *EngineSimulator) SimulateStopReplica(addr string) error {
 }
 
 func (e *EngineSimulator) SnapshotCreate(name string, labels map[string]string) (string, error) {
-	return "", fmt.Errorf("not implemented")
+	return "", fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) SnapshotList() (map[string]*longhorn.Snapshot, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) SnapshotGet(name string) (*longhorn.Snapshot, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) SnapshotDelete(name string) error {
-	return fmt.Errorf("not implemented")
+	return fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) SnapshotRevert(name string) error {
-	return fmt.Errorf("not implemented")
+	return fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) SnapshotPurge() error {
-	return fmt.Errorf("not implemented")
+	return fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) SnapshotPurgeStatus() (map[string]*longhorn.PurgeStatus, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error) {
-	return "", "", fmt.Errorf("not implemented")
+	return "", "", fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) SnapshotBackupStatus(backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) Version(clientOnly bool) (*EngineVersion, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) Info() (*Volume, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) Expand(size int64) error {
-	return fmt.Errorf("not implemented")
+	return fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) BackupRestore(backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error {
-	return fmt.Errorf("not implemented")
+	return fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) SnapshotClone(snapshotName, fromControllerAddress string) error {
-	return fmt.Errorf("not implemented")
+	return fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) BackupRestoreStatus() (map[string]*longhorn.RestoreStatus, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) SnapshotCloneStatus() (map[string]*longhorn.SnapshotCloneStatus, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) ReplicaRebuildStatus() (map[string]*longhorn.RebuildStatus, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) FrontendStart(volumeFrontend longhorn.VolumeFrontend) error {
-	return fmt.Errorf("not implemented")
+	return fmt.Errorf(ErrNotImplement)
 }
 func (e *EngineSimulator) FrontendShutdown() error {
-	return fmt.Errorf("not implemented")
+	return fmt.Errorf(ErrNotImplement)
 }
 
 func (e *EngineSimulator) ReplicaRebuildVerify(url string) error {
-	return fmt.Errorf("not implemented")
+	return fmt.Errorf(ErrNotImplement)
 }
