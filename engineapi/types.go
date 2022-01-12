@@ -21,7 +21,8 @@ const (
 	CLIVersionFour = 4
 	CLIVersionFive = 5
 
-	InstanceManagerDefaultPort = 8500
+	InstanceManagerDefaultPort      = 8500
+	InstanceManagerProxyDefaultPort = InstanceManagerDefaultPort + 1
 
 	DefaultISCSIPort = "3260"
 	DefaultISCSILUN  = "1"

@@ -2445,7 +2445,7 @@ func (s *DataStore) CreateInstanceManager(im *longhorn.InstanceManager) (*longho
 	}
 
 	obj, err := verifyCreation(ret.Name, "instance manager", func(name string) (runtime.Object, error) {
-		return s.getInstanceManagerRO(name)
+		return s.GetInstanceManagerRO(name)
 	})
 	if err != nil {
 		return nil, err
@@ -2465,14 +2465,14 @@ func (s *DataStore) DeleteInstanceManager(name string) error {
 	return s.lhClient.LonghornV1beta2().InstanceManagers(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
 }
 
-func (s *DataStore) getInstanceManagerRO(name string) (*longhorn.InstanceManager, error) {
+func (s *DataStore) GetInstanceManagerRO(name string) (*longhorn.InstanceManager, error) {
 	return s.imLister.InstanceManagers(s.namespace).Get(name)
 }
 
 // GetInstanceManager gets the InstanceManager for the given name and namespace.
 // Returns new InstanceManager object
 func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, error) {
-	resultRO, err := s.getInstanceManagerRO(name)
+	resultRO, err := s.GetInstanceManagerRO(name)
 	if err != nil {
 		return nil, err
 	}
@@ -2595,7 +2595,7 @@ func (s *DataStore) UpdateInstanceManager(im *longhorn.InstanceManager) (*longho
 		return nil, err
 	}
 	verifyUpdate(im.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getInstanceManagerRO(name)
+		return s.GetInstanceManagerRO(name)
 	})
 	return obj, nil
 }
@@ -2608,7 +2608,7 @@ func (s *DataStore) UpdateInstanceManagerStatus(im *longhorn.InstanceManager) (*
 		return nil, err
 	}
 	verifyUpdate(im.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getInstanceManagerRO(name)
+		return s.GetInstanceManagerRO(name)
 	})
 	return obj, nil
 }

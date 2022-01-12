@@ -33,7 +33,7 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
-func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controllerID, serviceAccount, managerImage, kubeconfigPath, version string) (*datastore.DataStore, *WebsocketController, error) {
+func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controllerID, serviceAccount, managerImage, kubeconfigPath, version string) (*datastore.DataStore, *engineapi.EngineClientProxyHandler, *WebsocketController, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, "+
@@ -43,22 +43,22 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "unable to get client config")
+		return nil, nil, nil, errors.Wrap(err, "unable to get client config")
 	}
 
 	kubeClient, err := clientset.NewForConfig(config)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "unable to get k8s client")
+		return nil, nil, nil, errors.Wrap(err, "unable to get k8s client")
 	}
 
 	lhClient, err := lhclientset.NewForConfig(config)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "unable to get clientset")
+		return nil, nil, nil, errors.Wrap(err, "unable to get clientset")
 	}
 
 	scheme := runtime.NewScheme()
 	if err := longhorn.SchemeBuilder.AddToScheme(scheme); err != nil {
-		return nil, nil, errors.Wrap(err, "unable to create scheme")
+		return nil, nil, nil, errors.Wrap(err, "unable to create scheme")
 	}
 
 	// TODO: there shouldn't be a need for a 30s resync period unless our code is buggy and our controllers aren't really
@@ -71,21 +71,24 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, time.Second*30)
 
 	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, namespace)
+
+	proxyHandler := engineapi.NewEngineClientProxyHandler(logger, ds)
+
 	rc := NewReplicaController(logger, ds, scheme, kubeClient, namespace, controllerID)
-	ec := NewEngineController(logger, ds, scheme, kubeClient, &engineapi.EngineCollection{}, namespace, controllerID)
-	vc := NewVolumeController(logger, ds, scheme, kubeClient, namespace, controllerID)
+	ec := NewEngineController(logger, ds, scheme, kubeClient, &engineapi.EngineCollection{}, namespace, controllerID, proxyHandler)
+	vc := NewVolumeController(logger, ds, scheme, kubeClient, namespace, controllerID, proxyHandler)
 	ic := NewEngineImageController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
 	nc := NewNodeController(logger, ds, scheme, kubeClient, namespace, controllerID)
 	ws := NewWebsocketController(logger, ds)
 	sc := NewSettingController(logger, ds, scheme, kubeClient, namespace, controllerID, version)
-	btc := NewBackupTargetController(logger, ds, scheme, kubeClient, controllerID, namespace)
-	bvc := NewBackupVolumeController(logger, ds, scheme, kubeClient, controllerID, namespace)
-	bc := NewBackupController(logger, ds, scheme, kubeClient, controllerID, namespace)
-	imc := NewInstanceManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
+	btc := NewBackupTargetController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyHandler)
+	bvc := NewBackupVolumeController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyHandler)
+	bc := NewBackupController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyHandler)
+	imc := NewInstanceManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, proxyHandler)
 	smc := NewShareManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
 	bic := NewBackingImageController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
 	bimc := NewBackingImageManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
-	bidsc := NewBackingImageDataSourceController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
+	bidsc := NewBackingImageDataSourceController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, proxyHandler)
 	rjc := NewRecurringJobController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, managerImage)
 	oc := NewOrphanController(logger, ds, scheme, kubeClient, controllerID, namespace)
 	kpvc := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID)
@@ -97,7 +100,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	go kubeInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
 	if !ds.Sync(stopCh) {
-		return nil, nil, fmt.Errorf("datastore cache sync up failed")
+		return nil, nil, nil, fmt.Errorf("datastore cache sync up failed")
 	}
 	go rc.Run(Workers, stopCh)
 	go ec.Run(Workers, stopCh)
@@ -123,7 +126,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	go kcfmc.Run(Workers, stopCh)
 	go ksc.Run(Workers, stopCh)
 
-	return ds, ws, nil
+	return ds, proxyHandler, ws, nil
 }
 
 func ParseResourceRequirement(val string) (*corev1.ResourceRequirements, error) {

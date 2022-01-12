@@ -15,7 +15,7 @@ const (
 	VolumeHeadName = "volume-head"
 )
 
-func (e *Engine) SnapshotCreate(name string, labels map[string]string) (string, error) {
+func (e *EngineBinary) SnapshotCreate(name string, labels map[string]string) (string, error) {
 	args := []string{"snapshot", "create"}
 	for k, v := range labels {
 		args = append(args, "--label", k+"="+v)
@@ -29,7 +29,7 @@ func (e *Engine) SnapshotCreate(name string, labels map[string]string) (string, 
 	return strings.TrimSpace(output), nil
 }
 
-func (e *Engine) SnapshotList() (map[string]*longhorn.Snapshot, error) {
+func (e *EngineBinary) SnapshotList() (map[string]*longhorn.Snapshot, error) {
 	output, err := e.ExecuteEngineBinary("snapshot", "info")
 	if err != nil {
 		return nil, errors.Wrapf(err, "error listing snapshot")
@@ -41,7 +41,7 @@ func (e *Engine) SnapshotList() (map[string]*longhorn.Snapshot, error) {
 	return data, nil
 }
 
-func (e *Engine) SnapshotGet(name string) (*longhorn.Snapshot, error) {
+func (e *EngineBinary) SnapshotGet(name string) (*longhorn.Snapshot, error) {
 	data, err := e.SnapshotList()
 	if err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func (e *Engine) SnapshotGet(name string) (*longhorn.Snapshot, error) {
 	return data[name], nil
 }
 
-func (e *Engine) SnapshotDelete(name string) error {
+func (e *EngineBinary) SnapshotDelete(name string) error {
 	if name == VolumeHeadName {
 		return fmt.Errorf("invalid operation: cannot remove %v", VolumeHeadName)
 	}
@@ -59,7 +59,7 @@ func (e *Engine) SnapshotDelete(name string) error {
 	return nil
 }
 
-func (e *Engine) SnapshotRevert(name string) error {
+func (e *EngineBinary) SnapshotRevert(name string) error {
 	if name == VolumeHeadName {
 		return fmt.Errorf("invalid operation: cannot revert to %v", VolumeHeadName)
 	}
@@ -69,7 +69,7 @@ func (e *Engine) SnapshotRevert(name string) error {
 	return nil
 }
 
-func (e *Engine) SnapshotPurge() error {
+func (e *EngineBinary) SnapshotPurge() error {
 	if _, err := e.ExecuteEngineBinaryWithoutTimeout([]string{}, "snapshot", "purge", "--skip-if-in-progress"); err != nil {
 		return errors.Wrapf(err, "error starting snapshot purge")
 	}
@@ -77,7 +77,7 @@ func (e *Engine) SnapshotPurge() error {
 	return nil
 }
 
-func (e *Engine) SnapshotPurgeStatus() (map[string]*longhorn.PurgeStatus, error) {
+func (e *EngineBinary) SnapshotPurgeStatus() (map[string]*longhorn.PurgeStatus, error) {
 	output, err := e.ExecuteEngineBinary("snapshot", "purge-status")
 	if err != nil {
 		return nil, errors.Wrapf(err, "error getting snapshot purge status")
@@ -91,7 +91,7 @@ func (e *Engine) SnapshotPurgeStatus() (map[string]*longhorn.PurgeStatus, error)
 	return data, nil
 }
 
-func (e *Engine) SnapshotClone(snapshotName, fromControllerAddress string) error {
+func (e *EngineBinary) SnapshotClone(snapshotName, fromControllerAddress string) error {
 	args := []string{"snapshot", "clone", "--snapshot-name", snapshotName, "--from-controller-address", fromControllerAddress}
 	if _, err := e.ExecuteEngineBinaryWithoutTimeout([]string{}, args...); err != nil {
 		return errors.Wrapf(err, "error starting snapshot clone")
@@ -100,7 +100,7 @@ func (e *Engine) SnapshotClone(snapshotName, fromControllerAddress string) error
 	return nil
 }
 
-func (e *Engine) SnapshotCloneStatus() (map[string]*longhorn.SnapshotCloneStatus, error) {
+func (e *EngineBinary) SnapshotCloneStatus() (map[string]*longhorn.SnapshotCloneStatus, error) {
 	args := []string{"snapshot", "clone-status"}
 	output, err := e.ExecuteEngineBinary(args...)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/longhorn/backupstore"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -247,7 +248,23 @@ func (btc *BackupTargetClient) DeleteBackup(backupURL string) error {
 	return nil
 }
 
-func (e *Engine) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error) {
+func (btc *BackupTargetClient) IsGRPC() bool {
+	return false
+}
+
+func (btc *BackupTargetClient) Start(*longhorn.InstanceManager, logrus.FieldLogger, *datastore.DataStore) error {
+	return errors.Errorf(ErrNotImplement)
+}
+
+func (btc *BackupTargetClient) Stop(string) error {
+	return errors.Errorf(ErrNotImplement)
+}
+
+func (btc *BackupTargetClient) Ping() error {
+	return errors.Errorf(ErrNotImplement)
+}
+
+func (e *EngineBinary) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error) {
 	if snapName == VolumeHeadName {
 		return "", "", fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)
 	}
@@ -298,7 +315,7 @@ func (e *Engine) SnapshotBackup(backupName, snapName, backupTarget, backingImage
 	return backupCreateInfo.BackupID, backupCreateInfo.ReplicaAddress, nil
 }
 
-func (e *Engine) SnapshotBackupStatus(backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error) {
+func (e *EngineBinary) SnapshotBackupStatus(backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error) {
 	args := []string{"backup", "status", backupName}
 	if replicaAddress != "" {
 		args = append(args, "--replica", replicaAddress)
@@ -331,7 +348,7 @@ func ConvertEngineBackupState(state string) longhorn.BackupState {
 	}
 }
 
-func (e *Engine) BackupRestore(backupTarget, backupName, backupVolumeName, lastRestored string, credential map[string]string) error {
+func (e *EngineBinary) BackupRestore(backupTarget, backupName, backupVolumeName, lastRestored string, credential map[string]string) error {
 	backup := backupstore.EncodeBackupURL(backupName, backupVolumeName, backupTarget)
 
 	// get environment variables if backup for s3
@@ -360,7 +377,7 @@ func (e *Engine) BackupRestore(backupTarget, backupName, backupVolumeName, lastR
 	return nil
 }
 
-func (e *Engine) BackupRestoreStatus() (map[string]*longhorn.RestoreStatus, error) {
+func (e *EngineBinary) BackupRestoreStatus() (map[string]*longhorn.RestoreStatus, error) {
 	args := []string{"backup", "restore-status"}
 	output, err := e.ExecuteEngineBinary(args...)
 	if err != nil {
