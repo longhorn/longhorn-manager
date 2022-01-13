@@ -4,64 +4,58 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	restclient "k8s.io/client-go/rest"
 
 	longhornV1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-
-	"github.com/longhorn/longhorn-manager/types"
-
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
-	upgradeLogPrefix = "upgrade from v1beta1 to v1beta2:"
+	fixupCRLogPrefix = "fix up CRs:"
 )
 
-func UpgradeCRFromV1beta1ToV1beta2(config *restclient.Config, namespace string, lhClient *lhclientset.Clientset) (err error) {
+// FixupCRs initialize the old CR spec which is with the `null` field.
+// Since start from longhorn.io/v1beta2, we introduce the CRD structural schema.
+// However, for the Kubernetes < 1.20, there is an issue that it does not allow
+// the `null` field because of the CRD validation failure.
+// Reference issue: https://github.com/kubernetes/kubernetes/issues/86811`
+func FixupCRs(config *restclient.Config, namespace string, lhClient *lhclientset.Clientset) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+" failed")
+		err = errors.Wrapf(err, fixupCRLogPrefix+" failed")
 	}()
 
-	if err := upgradeVolumes(namespace, lhClient); err != nil {
+	if err := fixupVolumes(namespace, lhClient); err != nil {
 		return err
 	}
-	if err := upgradeEngineImages(namespace, lhClient); err != nil {
+	if err := fixupNodes(namespace, lhClient); err != nil {
 		return err
 	}
-	if err := upgradeBackupTargets(namespace, lhClient); err != nil {
+	if err := fixupRecurringJobs(namespace, lhClient); err != nil {
 		return err
 	}
-	if err := upgradeNodes(namespace, lhClient); err != nil {
+	if err := fixupBackups(namespace, lhClient); err != nil {
 		return err
 	}
-	if err := upgradeRecurringJobs(namespace, lhClient); err != nil {
+	if err := fixupBackingImageDataSources(namespace, lhClient); err != nil {
 		return err
 	}
-	if err := upgradeBackups(namespace, lhClient); err != nil {
+	if err := fixupBackingImageManagers(namespace, lhClient); err != nil {
 		return err
 	}
-	if err := upgradeBackingImageDataSources(namespace, lhClient); err != nil {
-		return err
-	}
-	if err := upgradeBackingImageManagers(namespace, lhClient); err != nil {
-		return err
-	}
-	if err := upgradeBackingImages(namespace, lhClient); err != nil {
+	if err := fixupBackingImages(namespace, lhClient); err != nil {
 		return err
 	}
 
-	logrus.Infof("%v completed", upgradeLogPrefix)
+	logrus.Infof("%v completed", fixupCRLogPrefix)
 	return nil
 }
 
@@ -91,59 +85,8 @@ func CanUpgrade(config *restclient.Config, namespace string) (bool, error) {
 	return false, errors.Wrapf(err, "unable to upgrade from v1alpha1 directly")
 }
 
-func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) error {
-	if err := fixupVolumes(namespace, lhClient); err != nil {
-		return errors.Wrapf(err, "unable to fix up volumes")
-	}
-
-	volumes, err := lhClient.LonghornV1beta1().Volumes(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: getLabelSelectorNotEqualV1beta2APIVersion(),
-	})
-	if err != nil {
-		return errors.Wrapf(err, "unable to list volumes")
-	}
-
-	for _, old := range volumes.Items {
-		new := longhorn.Volume{}
-
-		if err := copier.Copy(&new, &old); err != nil {
-			return errors.Wrap(err, "fail to copy volume")
-		}
-
-		conditions, err := copyConditions(old.Status.Conditions)
-		if err != nil {
-			return errors.Wrap(err, "fail to copy volume Status.Conditions")
-		}
-		new.Status.Conditions = conditions
-
-		if err := copier.Copy(&new.Status.KubernetesStatus, &old.Status.KubernetesStatus); err != nil {
-			return errors.Wrap(err, "failed to copy volume Status.KubernetesStatus")
-		}
-
-		if err := copier.Copy(&new.Status.CloneStatus, &old.Status.CloneStatus); err != nil {
-			return errors.Wrap(err, "failed to copy volume Status.CloneStatus")
-		}
-
-		obj, err := lhClient.LonghornV1beta2().Volumes(namespace).UpdateStatus(context.TODO(), &new, metav1.UpdateOptions{})
-		if err != nil {
-			return errors.Wrapf(err, "failed to update for %v status %v", new.Kind, new.Name)
-		}
-
-		if err := tagCRLabelCRDAPIversion(obj); err != nil {
-			return errors.Wrapf(err, "failed to add label to %v %v", obj.Kind, obj.Name)
-		}
-		if _, err := lhClient.LonghornV1beta2().Volumes(namespace).Update(context.TODO(), obj, metav1.UpdateOptions{}); err != nil {
-			return errors.Wrapf(err, "failed to update for %v %v", obj.Kind, obj.Name)
-		}
-	}
-	logrus.Info("Finished upgrading volumes")
-	return nil
-}
-
 func fixupVolumes(namespace string, lhClient *lhclientset.Clientset) error {
-	volumes, err := lhClient.LonghornV1beta1().Volumes(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: getLabelSelectorNotEqualV1beta2APIVersion(),
-	})
+	volumes, err := lhClient.LonghornV1beta1().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -173,7 +116,7 @@ func fixupVolumes(namespace string, lhClient *lhclientset.Clientset) error {
 			}
 			obj.Spec.RecurringJobs[i] = dst
 		}
-		if reflect.DeepEqual(&obj, existing) {
+		if reflect.DeepEqual(obj, existing) {
 			continue
 		}
 		if _, err = lhClient.LonghornV1beta1().Volumes(namespace).Update(context.TODO(), &obj, metav1.UpdateOptions{}); err != nil {
@@ -183,134 +126,8 @@ func fixupVolumes(namespace string, lhClient *lhclientset.Clientset) error {
 	return nil
 }
 
-func upgradeEngineImages(namespace string, lhClient *lhclientset.Clientset) error {
-	engineImages, err := lhClient.LonghornV1beta1().EngineImages(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: getLabelSelectorNotEqualV1beta2APIVersion(),
-	})
-	if err != nil {
-		return errors.Wrapf(err, "unable to list engineImages")
-	}
-
-	for _, old := range engineImages.Items {
-		new := longhorn.EngineImage{}
-
-		if err := copier.Copy(&new, &old); err != nil {
-			return errors.Wrap(err, "fail to copy engineImage")
-		}
-
-		conditions, err := copyConditions(old.Status.Conditions)
-		if err != nil {
-			return errors.Wrap(err, "failed to copy engineImage Status.Conditions")
-		}
-		new.Status.Conditions = conditions
-
-		if err := copier.Copy(&new.Status.EngineVersionDetails, &old.Status.EngineVersionDetails); err != nil {
-			return errors.Wrap(err, "failed to copy engineImage Status.EngineVersionDetails")
-		}
-
-		obj, err := lhClient.LonghornV1beta2().EngineImages(namespace).UpdateStatus(context.TODO(), &new, metav1.UpdateOptions{})
-		if err != nil {
-			return errors.Wrapf(err, "failed to update for %v status %v", new.Kind, new.Name)
-		}
-
-		if err := tagCRLabelCRDAPIversion(obj); err != nil {
-			return errors.Wrapf(err, "failed to add label to %v %v", obj.Kind, obj.Name)
-		}
-		if _, err := lhClient.LonghornV1beta2().EngineImages(namespace).Update(context.TODO(), obj, metav1.UpdateOptions{}); err != nil {
-			return errors.Wrapf(err, "failed to update for %v %v", obj.Kind, obj.Name)
-		}
-	}
-	logrus.Info("Finished upgrading engineImages")
-	return nil
-}
-
-func upgradeBackupTargets(namespace string, lhClient *lhclientset.Clientset) error {
-	backupTargets, err := lhClient.LonghornV1beta1().BackupTargets(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: getLabelSelectorNotEqualV1beta2APIVersion(),
-	})
-	if err != nil {
-		return errors.Wrapf(err, "unable to list backupTargets")
-	}
-
-	for _, old := range backupTargets.Items {
-		new := longhorn.BackupTarget{}
-
-		if err := copier.Copy(&new, &old); err != nil {
-			return errors.Wrap(err, "fail to copy backupTarget")
-		}
-
-		conditions, err := copyConditions(old.Status.Conditions)
-		if err != nil {
-			return errors.Wrap(err, "failed to copy backupTarget Status.Conditions")
-		}
-		new.Status.Conditions = conditions
-
-		obj, err := lhClient.LonghornV1beta2().BackupTargets(namespace).UpdateStatus(context.TODO(), &new, metav1.UpdateOptions{})
-		if err != nil {
-			return errors.Wrapf(err, "failed to update for %v status %v", new.Kind, new.Name)
-		}
-
-		if err := tagCRLabelCRDAPIversion(obj); err != nil {
-			return errors.Wrapf(err, "failed to add label to %v %v", obj.Kind, obj.Name)
-		}
-		if _, err := lhClient.LonghornV1beta2().BackupTargets(namespace).Update(context.TODO(), obj, metav1.UpdateOptions{}); err != nil {
-			return errors.Wrapf(err, "failed to update for %v %v", obj.Kind, obj.Name)
-		}
-	}
-	logrus.Info("Finished upgrading backupTargets")
-	return nil
-}
-
-func upgradeNodes(namespace string, lhClient *lhclientset.Clientset) error {
-	if err := fixupNodes(namespace, lhClient); err != nil {
-		return errors.Wrapf(err, "unable to fix up nodes")
-	}
-
-	nodes, err := lhClient.LonghornV1beta1().Nodes(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: getLabelSelectorNotEqualV1beta2APIVersion(),
-	})
-	if err != nil {
-		return errors.Wrapf(err, "unable to list nodes")
-	}
-
-	for _, old := range nodes.Items {
-		new := longhorn.Node{}
-
-		if err := copier.Copy(&new, &old); err != nil {
-			return errors.Wrap(err, "fail to copy node")
-		}
-
-		new.Status.Conditions, err = copyConditions(old.Status.Conditions)
-		if err != nil {
-			return errors.Wrap(err, "failed to copy node Status.Conditions")
-		}
-
-		new.Status.DiskStatus, err = copyDiskStatus(old.Status.DiskStatus)
-		if err != nil {
-			return errors.Wrap(err, "failed to copy node Status.DiskStatus")
-		}
-
-		obj, err := lhClient.LonghornV1beta2().Nodes(namespace).UpdateStatus(context.TODO(), &new, metav1.UpdateOptions{})
-		if err != nil {
-			return errors.Wrapf(err, "failed to update for %v status %v", new.Kind, new.Name)
-		}
-
-		if err := tagCRLabelCRDAPIversion(obj); err != nil {
-			return errors.Wrapf(err, "failed to add label to %v %v", obj.Kind, obj.Name)
-		}
-
-		if _, err := lhClient.LonghornV1beta2().Nodes(namespace).Update(context.TODO(), obj, metav1.UpdateOptions{}); err != nil {
-			return errors.Wrapf(err, "failed to update for %v %v", obj.Kind, obj.Name)
-		}
-	}
-	logrus.Info("Finished upgrading nodes")
-	return nil
-}
-
 func fixupNodes(namespace string, lhClient *lhclientset.Clientset) error {
-	nodes, err := lhClient.LonghornV1beta1().Nodes(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: getLabelSelectorNotEqualV1beta2APIVersion(),
-	})
+	nodes, err := lhClient.LonghornV1beta1().Nodes(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -324,19 +141,17 @@ func fixupNodes(namespace string, lhClient *lhclientset.Clientset) error {
 		for key, src := range obj.Spec.Disks {
 			if src.Tags == nil {
 				dst := longhornV1beta1.DiskSpec{}
-
 				if err := copier.Copy(&dst, &src); err != nil {
 					return err
 				}
 				dst.Tags = []string{}
-
 				obj.Spec.Disks[key] = dst
 			}
 		}
 		if obj.Spec.Tags == nil {
 			obj.Spec.Tags = []string{}
 		}
-		if reflect.DeepEqual(&obj, existing) {
+		if reflect.DeepEqual(obj, existing) {
 			continue
 		}
 		if _, err = lhClient.LonghornV1beta1().Nodes(namespace).Update(context.TODO(), &obj, metav1.UpdateOptions{}); err != nil {
@@ -346,17 +161,8 @@ func fixupNodes(namespace string, lhClient *lhclientset.Clientset) error {
 	return nil
 }
 
-func upgradeRecurringJobs(namespace string, lhClient *lhclientset.Clientset) error {
-	if err := fixupRecurringJobs(namespace, lhClient); err != nil {
-		return errors.Wrapf(err, "unable to fix up recurringJobs")
-	}
-	return nil
-}
-
 func fixupRecurringJobs(namespace string, lhClient *lhclientset.Clientset) error {
-	recurringJobs, err := lhClient.LonghornV1beta1().RecurringJobs(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: getLabelSelectorNotEqualV1beta2APIVersion(),
-	})
+	recurringJobs, err := lhClient.LonghornV1beta1().RecurringJobs(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -370,7 +176,7 @@ func fixupRecurringJobs(namespace string, lhClient *lhclientset.Clientset) error
 		if obj.Spec.Labels == nil {
 			obj.Spec.Labels = make(map[string]string, 0)
 		}
-		if reflect.DeepEqual(&obj, existing) {
+		if reflect.DeepEqual(obj, existing) {
 			continue
 		}
 		if _, err = lhClient.LonghornV1beta1().RecurringJobs(namespace).Update(context.TODO(), &obj, metav1.UpdateOptions{}); err != nil {
@@ -380,17 +186,8 @@ func fixupRecurringJobs(namespace string, lhClient *lhclientset.Clientset) error
 	return nil
 }
 
-func upgradeBackups(namespace string, lhClient *lhclientset.Clientset) error {
-	if err := fixupBackups(namespace, lhClient); err != nil {
-		return errors.Wrapf(err, "unable to fix up backups")
-	}
-	return nil
-}
-
 func fixupBackups(namespace string, lhClient *lhclientset.Clientset) error {
-	backups, err := lhClient.LonghornV1beta1().Backups(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: getLabelSelectorNotEqualV1beta2APIVersion(),
-	})
+	backups, err := lhClient.LonghornV1beta1().Backups(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -401,7 +198,7 @@ func fixupBackups(namespace string, lhClient *lhclientset.Clientset) error {
 		if obj.Spec.Labels == nil {
 			obj.Spec.Labels = make(map[string]string, 0)
 		}
-		if reflect.DeepEqual(&obj, existing) {
+		if reflect.DeepEqual(obj, existing) {
 			continue
 		}
 		if _, err = lhClient.LonghornV1beta1().Backups(namespace).Update(context.TODO(), &obj, metav1.UpdateOptions{}); err != nil {
@@ -411,17 +208,8 @@ func fixupBackups(namespace string, lhClient *lhclientset.Clientset) error {
 	return nil
 }
 
-func upgradeBackingImageDataSources(namespace string, lhClient *lhclientset.Clientset) error {
-	if err := fixupBackingImageDataSources(namespace, lhClient); err != nil {
-		return errors.Wrapf(err, "unable to fix up backingImageDataSources")
-	}
-	return nil
-}
-
 func fixupBackingImageDataSources(namespace string, lhClient *lhclientset.Clientset) error {
-	backingImageDataSources, err := lhClient.LonghornV1beta1().BackingImageDataSources(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: getLabelSelectorNotEqualV1beta2APIVersion(),
-	})
+	backingImageDataSources, err := lhClient.LonghornV1beta1().BackingImageDataSources(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -432,7 +220,7 @@ func fixupBackingImageDataSources(namespace string, lhClient *lhclientset.Client
 		if obj.Spec.Parameters == nil {
 			obj.Spec.Parameters = make(map[string]string, 0)
 		}
-		if reflect.DeepEqual(&obj, existing) {
+		if reflect.DeepEqual(obj, existing) {
 			continue
 		}
 		if _, err = lhClient.LonghornV1beta1().BackingImageDataSources(namespace).Update(context.TODO(), &obj, metav1.UpdateOptions{}); err != nil {
@@ -442,17 +230,8 @@ func fixupBackingImageDataSources(namespace string, lhClient *lhclientset.Client
 	return nil
 }
 
-func upgradeBackingImageManagers(namespace string, lhClient *lhclientset.Clientset) error {
-	if err := fixupBackingImageManagers(namespace, lhClient); err != nil {
-		return errors.Wrapf(err, "unable to fix up backingImageManagers")
-	}
-	return nil
-}
-
 func fixupBackingImageManagers(namespace string, lhClient *lhclientset.Clientset) error {
-	backingImageManagers, err := lhClient.LonghornV1beta1().BackingImageManagers(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: getLabelSelectorNotEqualV1beta2APIVersion(),
-	})
+	backingImageManagers, err := lhClient.LonghornV1beta1().BackingImageManagers(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -463,7 +242,7 @@ func fixupBackingImageManagers(namespace string, lhClient *lhclientset.Clientset
 		if obj.Spec.BackingImages == nil {
 			obj.Spec.BackingImages = make(map[string]string, 0)
 		}
-		if reflect.DeepEqual(&obj, existing) {
+		if reflect.DeepEqual(obj, existing) {
 			continue
 		}
 		if _, err = lhClient.LonghornV1beta1().BackingImageManagers(namespace).Update(context.TODO(), &obj, metav1.UpdateOptions{}); err != nil {
@@ -473,17 +252,8 @@ func fixupBackingImageManagers(namespace string, lhClient *lhclientset.Clientset
 	return nil
 }
 
-func upgradeBackingImages(namespace string, lhClient *lhclientset.Clientset) error {
-	if err := fixupBackingImages(namespace, lhClient); err != nil {
-		return errors.Wrapf(err, "unable to fix up backingImages")
-	}
-	return nil
-}
-
 func fixupBackingImages(namespace string, lhClient *lhclientset.Clientset) error {
-	backingImages, err := lhClient.LonghornV1beta1().BackingImages(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: getLabelSelectorNotEqualV1beta2APIVersion(),
-	})
+	backingImages, err := lhClient.LonghornV1beta1().BackingImages(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -492,12 +262,12 @@ func fixupBackingImages(namespace string, lhClient *lhclientset.Clientset) error
 		existing := obj.DeepCopy()
 
 		if obj.Spec.Disks == nil {
-			obj.Spec.Disks = make(map[string]string, 0)
+			obj.Spec.Disks = make(map[string]struct{}, 0)
 		}
 		if obj.Spec.SourceParameters == nil {
 			obj.Spec.SourceParameters = make(map[string]string, 0)
 		}
-		if reflect.DeepEqual(&obj, existing) {
+		if reflect.DeepEqual(obj, existing) {
 			continue
 		}
 		if _, err = lhClient.LonghornV1beta1().BackingImages(namespace).Update(context.TODO(), &obj, metav1.UpdateOptions{}); err != nil {
@@ -505,57 +275,4 @@ func fixupBackingImages(namespace string, lhClient *lhclientset.Clientset) error
 		}
 	}
 	return nil
-}
-
-func tagCRLabelCRDAPIversion(obj runtime.Object) error {
-	metadata, err := meta.Accessor(obj)
-	if err != nil {
-		return err
-	}
-
-	labels := metadata.GetLabels()
-	if labels == nil {
-		labels = map[string]string{}
-	}
-
-	labels[types.GetLonghornLabelCRDAPIVersionKey()] = strings.Split(types.CRDAPIVersionV1beta2, "/")[1]
-	metadata.SetLabels(labels)
-
-	return nil
-}
-
-func getLabelSelectorNotEqualV1beta2APIVersion() string {
-	return types.GetLonghornLabelCRDAPIVersionKey() + "!=" + strings.Split(types.CRDAPIVersionV1beta2, "/")[1]
-}
-
-func copyConditions(srcConditions map[string]longhornV1beta1.Condition) ([]longhorn.Condition, error) {
-	dstConditions := []longhorn.Condition{}
-	for _, src := range srcConditions {
-		dst := longhorn.Condition{}
-		if err := copier.Copy(&dst, &src); err != nil {
-			return nil, err
-		}
-		dstConditions = append(dstConditions, dst)
-	}
-	return dstConditions, nil
-}
-
-func copyDiskStatus(srcDiskStatus map[string]*longhornV1beta1.DiskStatus) (map[string]*longhorn.DiskStatus, error) {
-	dstDiskStatus := make(map[string]*longhorn.DiskStatus)
-	for key, src := range srcDiskStatus {
-		dst := &longhorn.DiskStatus{}
-		if err := copier.Copy(dst, src); err != nil {
-			return nil, err
-		}
-
-		conditions, err := copyConditions(src.Conditions)
-		if err != nil {
-			return nil, err
-		}
-		dst.Conditions = conditions
-
-		dstDiskStatus[key] = dst
-	}
-
-	return dstDiskStatus, nil
 }

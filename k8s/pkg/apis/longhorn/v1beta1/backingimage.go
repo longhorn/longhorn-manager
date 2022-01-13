@@ -1,6 +1,15 @@
 package v1beta1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	"fmt"
+
+	"github.com/jinzhu/copier"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/conversion"
+
+	"github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+)
 
 // BackingImageDownloadState is replaced by BackingImageState.
 type BackingImageDownloadState string
@@ -18,54 +27,35 @@ const (
 )
 
 type BackingImageDiskFileStatus struct {
-	// +optional
-	State BackingImageState `json:"state"`
-	// +optional
-	Progress int `json:"progress"`
-	// +optional
-	Message string `json:"message"`
-	// +optional
-	LastStateTransitionTime string `json:"lastStateTransitionTime"`
+	State                   BackingImageState `json:"state"`
+	Progress                int               `json:"progress"`
+	Message                 string            `json:"message"`
+	LastStateTransitionTime string            `json:"lastStateTransitionTime"`
 }
 
 // BackingImageSpec defines the desired state of the Longhorn backing image
 type BackingImageSpec struct {
-	// +optional
-	Disks map[string]string `json:"disks"`
-	// +optional
-	Checksum string `json:"checksum"`
-	// +optional
-	SourceType BackingImageDataSourceType `json:"sourceType"`
-	// +optional
-	SourceParameters map[string]string `json:"sourceParameters"`
+	Disks            map[string]struct{}        `json:"disks"`
+	Checksum         string                     `json:"checksum"`
+	SourceType       BackingImageDataSourceType `json:"sourceType"`
+	SourceParameters map[string]string          `json:"sourceParameters"`
+
 	// Deprecated: This kind of info will be included in the related BackingImageDataSource.
-	// +optional
 	ImageURL string `json:"imageURL"`
 }
 
 // BackingImageStatus defines the observed state of the Longhorn backing image status
 type BackingImageStatus struct {
-	// +optional
-	OwnerID string `json:"ownerID"`
-	// +optional
-	UUID string `json:"uuid"`
-	// +optional
-	Size int64 `json:"size"`
-	// +optional
-	Checksum string `json:"checksum"`
-	// +optional
-	// +nullable
+	OwnerID           string                                 `json:"ownerID"`
+	UUID              string                                 `json:"uuid"`
+	Size              int64                                  `json:"size"`
+	Checksum          string                                 `json:"checksum"`
 	DiskFileStatusMap map[string]*BackingImageDiskFileStatus `json:"diskFileStatusMap"`
-	// +optional
-	// +nullable
-	DiskLastRefAtMap map[string]string `json:"diskLastRefAtMap"`
+	DiskLastRefAtMap  map[string]string                      `json:"diskLastRefAtMap"`
+
 	// Deprecated: Replaced by field `State` in `DiskFileStatusMap`.
-	// +optional
-	// +nullable
 	DiskDownloadStateMap map[string]BackingImageDownloadState `json:"diskDownloadStateMap"`
 	// Deprecated: Replaced by field `Progress` in `DiskFileStatusMap`.
-	// +optional
-	// +nullable
 	DiskDownloadProgressMap map[string]int `json:"diskDownloadProgressMap"`
 }
 
@@ -81,7 +71,11 @@ type BackingImage struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   BackingImageSpec   `json:"spec,omitempty"`
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Spec BackingImageSpec `json:"spec,omitempty"`
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
 	Status BackingImageStatus `json:"status,omitempty"`
 }
 
@@ -92,4 +86,50 @@ type BackingImageList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []BackingImage `json:"items"`
+}
+
+// ConvertTo converts from spoke verion (v1beta1) to hub version (v1beta2)
+func (bi *BackingImage) ConvertTo(dst conversion.Hub) error {
+	switch t := dst.(type) {
+	case *v1beta2.BackingImage:
+		biV1beta2 := dst.(*v1beta2.BackingImage)
+		biV1beta2.ObjectMeta = bi.ObjectMeta
+		if err := copier.Copy(&biV1beta2.Spec, &bi.Spec); err != nil {
+			return err
+		}
+		if err := copier.Copy(&biV1beta2.Status, &bi.Status); err != nil {
+			return err
+		}
+
+		// Copy spec.disks from map[string]struct{} to map[string]string
+		for name := range bi.Spec.Disks {
+			biV1beta2.Spec.Disks[name] = ""
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported type %v", t)
+	}
+}
+
+// ConvertFrom converts from hub version (v1beta2) to spoke version (v1beta1)
+func (bi *BackingImage) ConvertFrom(src conversion.Hub) error {
+	switch t := src.(type) {
+	case *v1beta2.BackingImage:
+		biV1beta2 := src.(*v1beta2.BackingImage)
+		bi.ObjectMeta = biV1beta2.ObjectMeta
+		if err := copier.Copy(&bi.Spec, &biV1beta2.Spec); err != nil {
+			return err
+		}
+		if err := copier.Copy(&bi.Status, &biV1beta2.Status); err != nil {
+			return err
+		}
+
+		// Copy spec.disks from map[string]string to map[string]struct{}
+		for name := range biV1beta2.Spec.Disks {
+			bi.Spec.Disks[name] = struct{}{}
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported type %v", t)
+	}
 }

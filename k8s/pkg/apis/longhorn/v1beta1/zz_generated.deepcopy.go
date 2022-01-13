@@ -337,7 +337,7 @@ func (in *BackingImageSpec) DeepCopyInto(out *BackingImageSpec) {
 	*out = *in
 	if in.Disks != nil {
 		in, out := &in.Disks, &out.Disks
-		*out = make(map[string]string, len(*in))
+		*out = make(map[string]struct{}, len(*in))
 		for key, val := range *in {
 			(*out)[key] = val
 		}

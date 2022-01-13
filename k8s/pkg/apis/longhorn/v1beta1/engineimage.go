@@ -1,6 +1,15 @@
 package v1beta1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	"fmt"
+
+	"github.com/jinzhu/copier"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/conversion"
+
+	"github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+)
 
 type EngineImageState string
 
@@ -19,48 +28,32 @@ const (
 )
 
 type EngineVersionDetails struct {
-	// +optional
-	Version string `json:"version"`
-	// +optional
+	Version   string `json:"version"`
 	GitCommit string `json:"gitCommit"`
-	// +optional
 	BuildDate string `json:"buildDate"`
-	// +optional
-	CLIAPIVersion int `json:"cliAPIVersion"`
-	// +optional
-	CLIAPIMinVersion int `json:"cliAPIMinVersion"`
-	// +optional
-	ControllerAPIVersion int `json:"controllerAPIVersion"`
-	// +optional
+
+	CLIAPIVersion           int `json:"cliAPIVersion"`
+	CLIAPIMinVersion        int `json:"cliAPIMinVersion"`
+	ControllerAPIVersion    int `json:"controllerAPIVersion"`
 	ControllerAPIMinVersion int `json:"controllerAPIMinVersion"`
-	// +optional
-	DataFormatVersion int `json:"dataFormatVersion"`
-	// +optional
-	DataFormatMinVersion int `json:"dataFormatMinVersion"`
+	DataFormatVersion       int `json:"dataFormatVersion"`
+	DataFormatMinVersion    int `json:"dataFormatMinVersion"`
 }
 
 // EngineImageSpec defines the desired state of the Longhorn engine image
 type EngineImageSpec struct {
-	// +optional
 	Image string `json:"image"`
 }
 
 // EngineImageStatus defines the observed state of the Longhorn engine image
 type EngineImageStatus struct {
-	// +optional
-	OwnerID string `json:"ownerID"`
-	// +optional
-	State EngineImageState `json:"state"`
-	// +optional
-	RefCount int `json:"refCount"`
-	// +optional
-	NoRefSince string `json:"noRefSince"`
-	// +optional
-	// +nullable
-	Conditions map[string]Condition `json:"conditions"`
-	// +optional
-	// +nullable
-	NodeDeploymentMap    map[string]bool `json:"nodeDeploymentMap"`
+	OwnerID           string               `json:"ownerID"`
+	State             EngineImageState     `json:"state"`
+	RefCount          int                  `json:"refCount"`
+	NoRefSince        string               `json:"noRefSince"`
+	Conditions        map[string]Condition `json:"conditions"`
+	NodeDeploymentMap map[string]bool      `json:"nodeDeploymentMap"`
+
 	EngineVersionDetails `json:""`
 }
 
@@ -79,7 +72,11 @@ type EngineImage struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   EngineImageSpec   `json:"spec,omitempty"`
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Spec EngineImageSpec `json:"spec,omitempty"`
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
 	Status EngineImageStatus `json:"status,omitempty"`
 }
 
@@ -90,4 +87,58 @@ type EngineImageList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []EngineImage `json:"items"`
+}
+
+// ConvertTo converts from spoke verion (v1beta1) to hub version (v1beta2)
+func (ei *EngineImage) ConvertTo(dst conversion.Hub) error {
+	switch t := dst.(type) {
+	case *v1beta2.EngineImage:
+		eiV1beta2 := dst.(*v1beta2.EngineImage)
+		eiV1beta2.ObjectMeta = ei.ObjectMeta
+		if err := copier.Copy(&eiV1beta2.Spec, &ei.Spec); err != nil {
+			return err
+		}
+		if err := copier.Copy(&eiV1beta2.Status, &ei.Status); err != nil {
+			return err
+		}
+
+		// Copy status.conditions from map to slice
+		dstConditions, err := copyConditionsFromMapToSlice(ei.Status.Conditions)
+		if err != nil {
+			return err
+		}
+		eiV1beta2.Status.Conditions = dstConditions
+
+		// Copy status.EngineVersionDetails
+		return copier.Copy(&eiV1beta2.Status.EngineVersionDetails, &ei.Status.EngineVersionDetails)
+	default:
+		return fmt.Errorf("unsupported type %v", t)
+	}
+}
+
+// ConvertFrom converts from hub version (v1beta2) to spoke version (v1beta1)
+func (ei *EngineImage) ConvertFrom(src conversion.Hub) error {
+	switch t := src.(type) {
+	case *v1beta2.EngineImage:
+		eiV1beta2 := src.(*v1beta2.EngineImage)
+		ei.ObjectMeta = eiV1beta2.ObjectMeta
+		if err := copier.Copy(&ei.Spec, &eiV1beta2.Spec); err != nil {
+			return err
+		}
+		if err := copier.Copy(&ei.Status, &eiV1beta2.Status); err != nil {
+			return err
+		}
+
+		// Copy status.conditions from slice to map
+		dstConditions, err := copyConditionFromSliceToMap(eiV1beta2.Status.Conditions)
+		if err != nil {
+			return err
+		}
+		ei.Status.Conditions = dstConditions
+
+		// Copy status.EngineVersionDetails
+		return copier.Copy(&ei.Status.EngineVersionDetails, &eiV1beta2.Status.EngineVersionDetails)
+	default:
+		return fmt.Errorf("unsupported type %v", t)
+	}
 }

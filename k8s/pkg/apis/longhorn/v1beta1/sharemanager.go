@@ -15,18 +15,14 @@ const (
 
 // ShareManagerSpec defines the desired state of the Longhorn share manager
 type ShareManagerSpec struct {
-	// +optional
 	Image string `json:"image"`
 }
 
 // ShareManagerStatus defines the observed state of the Longhorn share manager
 type ShareManagerStatus struct {
-	// +optional
-	OwnerID string `json:"ownerID"`
-	// +optional
-	State ShareManagerState `json:"state"`
-	// +optional
-	Endpoint string `json:"endpoint"`
+	OwnerID  string            `json:"ownerID"`
+	State    ShareManagerState `json:"state"`
+	Endpoint string            `json:"endpoint"`
 }
 
 // +genclient
@@ -42,7 +38,11 @@ type ShareManager struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ShareManagerSpec   `json:"spec,omitempty"`
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Spec ShareManagerSpec `json:"spec,omitempty"`
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
 	Status ShareManagerStatus `json:"status,omitempty"`
 }
 

@@ -92,3 +92,7 @@ type EngineImageList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []EngineImage `json:"items"`
 }
+
+// Hub defines the current version (v1beta2) is the storage version
+// so mark this as Hub
+func (ei *EngineImage) Hub() {}

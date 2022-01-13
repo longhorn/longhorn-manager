@@ -2,7 +2,6 @@ package v1beta1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-// +kubebuilder:validation:Enum=snapshot;backup
 type RecurringJobType string
 
 const (
@@ -20,36 +19,25 @@ type VolumeRecurringJob struct {
 // RecurringJobSpec defines the desired state of the Longhorn recurring job
 type RecurringJobSpec struct {
 	// The recurring job name.
-	// +optional
 	Name string `json:"name"`
 	// The recurring job group.
-	// +optional
 	Groups []string `json:"groups,omitempty"`
 	// The recurring job type.
 	// Can be "snapshot" or "backup".
-	// +optional
 	Task RecurringJobType `json:"task"`
 	// The cron setting.
-	// +optional
 	Cron string `json:"cron"`
 	// The retain count of the snapshot/backup.
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=50
-	// +optional
 	Retain int `json:"retain"`
 	// The concurrency of taking the snapshot/backup.
-	// +kubebuilder:validation:Minimum=1
-	// +optional
 	Concurrency int `json:"concurrency"`
 	// The label of the snapshot/backup.
-	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // RecurringJobStatus defines the observed state of the Longhorn recurring job
 type RecurringJobStatus struct {
 	// The owner ID which is responsible to reconcile this recurring job CR.
-	// +optional
 	OwnerID string `json:"ownerID"`
 }
 
@@ -70,7 +58,11 @@ type RecurringJob struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   RecurringJobSpec   `json:"spec,omitempty"`
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Spec RecurringJobSpec `json:"spec,omitempty"`
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
 	Status RecurringJobStatus `json:"status,omitempty"`
 }
 
