@@ -231,29 +231,60 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 	defer func() {
 		err = errors.Wrap(err, "upgrade resources failed")
 	}()
-	if err := v070to080.UpgradeResources(namespace, lhClient); err != nil {
+
+	lhVersionBeforeUpgrade, err := upgradeutil.GetCurrentLonghornVersion(namespace, lhClient)
+	if err != nil {
 		return err
 	}
-	if err := v100to101.UpgradeResources(namespace, lhClient, kubeClient); err != nil {
-		return err
+
+	if semver.Compare(lhVersionBeforeUpgrade, "v0.8.0") < 0 {
+		logrus.Debugf("Walking through the upgrade path v0.7.0 to v0.8.0")
+		if err := v070to080.UpgradeResources(namespace, lhClient); err != nil {
+			return err
+		}
 	}
-	if err := v102to110.UpgradeResources(namespace, lhClient, kubeClient); err != nil {
-		return err
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.0.1") < 0 {
+		logrus.Debugf("Walking through the upgrade path v1.0.0 to v1.0.1")
+		if err := v100to101.UpgradeResources(namespace, lhClient, kubeClient); err != nil {
+			return err
+		}
 	}
-	if err := v110to111.UpgradeResources(namespace, lhClient, kubeClient); err != nil {
-		return err
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.1.0") < 0 {
+		logrus.Debugf("Walking through the upgrade path v1.0.2 to v1.1.0")
+		if err := v102to110.UpgradeResources(namespace, lhClient, kubeClient); err != nil {
+			return err
+		}
 	}
-	if err := v110to120.UpgradeResources(namespace, lhClient, kubeClient); err != nil {
-		return err
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.1.1") < 0 {
+		logrus.Debugf("Walking through the upgrade path v1.1.0 to v1.1.1")
+		if err := v110to111.UpgradeResources(namespace, lhClient, kubeClient); err != nil {
+			return err
+		}
 	}
-	if err := v111to120.UpgradeResources(namespace, lhClient); err != nil {
-		return err
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.2.0") < 0 {
+		logrus.Debugf("Walking through the upgrade path v1.1.0 to v1.2.0")
+		if err := v110to120.UpgradeResources(namespace, lhClient, kubeClient); err != nil {
+			return err
+		}
 	}
-	if err := v120to121.UpgradeResources(namespace, lhClient); err != nil {
-		return err
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.2.0") < 0 {
+		logrus.Debugf("Walking through the upgrade path v1.1.1 to v1.2.0")
+		if err := v111to120.UpgradeResources(namespace, lhClient); err != nil {
+			return err
+		}
 	}
-	if err := v122to123.UpgradeResources(namespace, lhClient); err != nil {
-		return err
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.2.1") < 0 {
+		logrus.Debugf("Walking through the upgrade path v1.2.0 to v1.2.1")
+		if err := v120to121.UpgradeResources(namespace, lhClient); err != nil {
+			return err
+		}
 	}
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.2.3") < 0 {
+		logrus.Debugf("Walking through the upgrade path v1.2.2 to v1.2.3")
+		if err := v122to123.UpgradeResources(namespace, lhClient); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
