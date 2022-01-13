@@ -8,6 +8,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/mod/semver"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -19,11 +20,12 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 
-	"github.com/longhorn/longhorn-manager/types"
-
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
+	"github.com/longhorn/longhorn-manager/types"
+	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 
+	"github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/upgrade/v070to080"
 	"github.com/longhorn/longhorn-manager/upgrade/v100to101"
 	"github.com/longhorn/longhorn-manager/upgrade/v102to110"
@@ -81,6 +83,17 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 	ctx, cancel := context.WithCancel(context.Background())
 	var err error
 	defer cancel()
+
+	// If the current Longhorn is already the latest version,
+	// the leader election & the whole upgrade path could be skipped.
+	lhVersionBeforeUpgrade, err := upgradeutil.GetCurrentLonghornVersion(namespace, lhClient)
+	if err != nil {
+		return err
+	}
+	if semver.IsValid(meta.Version) && semver.Compare(lhVersionBeforeUpgrade, meta.Version) >= 0 {
+		logrus.Infof("Skip the leader election for the upgrade since the current Longhorn system is already up to date")
+		return nil
+	}
 
 	lock := &resourcelock.LeaseLock{
 		LeaseMeta: metav1.ObjectMeta{
