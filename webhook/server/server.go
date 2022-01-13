@@ -150,7 +150,7 @@ func (s *WebhookServer) listenAndServe(client *client.Client, handler http.Handl
 					Rules:                   validationRules,
 					FailurePolicy:           &failPolicyFail,
 					SideEffects:             &sideEffectClassNone,
-					AdmissionReviewVersions: []string{"v1", "v1beta1"},
+					AdmissionReviewVersions: []string{"v1"},
 				},
 			},
 		}
@@ -174,7 +174,7 @@ func (s *WebhookServer) listenAndServe(client *client.Client, handler http.Handl
 					Rules:                   mutationRules,
 					FailurePolicy:           &failPolicyIgnore,
 					SideEffects:             &sideEffectClassNone,
-					AdmissionReviewVersions: []string{"v1", "v1beta1"},
+					AdmissionReviewVersions: []string{"v1"},
 				},
 			},
 		}
