@@ -5,10 +5,12 @@ import (
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	clientset "k8s.io/client-go/kubernetes"
 
+	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	"github.com/longhorn/longhorn-manager/types"
 )
 
@@ -41,4 +43,16 @@ func MergeStringMaps(baseMap, overwriteMap map[string]string) map[string]string 
 		result[k] = v
 	}
 	return result
+}
+
+func GetCurrentLonghornVersion(namespace string, lhClient *lhclientset.Clientset) (string, error) {
+	currentLHVersionSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameCurrentLonghornVersion), metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	return currentLHVersionSetting.Value, nil
 }
