@@ -30,7 +30,6 @@ import (
 	"github.com/longhorn/longhorn-manager/upgrade/v100to101"
 	"github.com/longhorn/longhorn-manager/upgrade/v102to110"
 	"github.com/longhorn/longhorn-manager/upgrade/v110to111"
-	"github.com/longhorn/longhorn-manager/upgrade/v112to113"
 	"github.com/longhorn/longhorn-manager/upgrade/v1alpha1"
 )
 
@@ -123,16 +122,7 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 				if err = doAPIVersionUpgrade(namespace, config, lhClient); err != nil {
 					return
 				}
-				if err = doCRUpgrade(namespace, lhClient, kubeClient); err != nil {
-					return
-				}
-				if err = doPodsUpgrade(namespace, lhClient, kubeClient); err != nil {
-					return
-				}
-				if err = doServicesUpgrade(namespace, kubeClient); err != nil {
-					return
-				}
-				if err = doDeploymentAndDaemonSetUpgrade(namespace, kubeClient); err != nil {
+				if err = doResourceUpgrade(namespace, lhClient, kubeClient); err != nil {
 					return
 				}
 			},
@@ -235,62 +225,22 @@ func upgradeLocalNode() (err error) {
 	return nil
 }
 
-func doCRUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
+func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
 	defer func() {
-		err = errors.Wrap(err, "upgrade CRD failed")
+		err = errors.Wrap(err, "upgrade resources failed")
 	}()
-	if err := v070to080.UpgradeCRs(namespace, lhClient); err != nil {
+	if err := v070to080.UpgradeResources(namespace, lhClient); err != nil {
 		return err
 	}
-	if err := v100to101.UpgradeCRs(namespace, lhClient); err != nil {
+	if err := v100to101.UpgradeResources(namespace, lhClient, kubeClient); err != nil {
 		return err
 	}
-	if err := v102to110.UpgradeCRs(namespace, lhClient); err != nil {
+	if err := v102to110.UpgradeResources(namespace, lhClient, kubeClient); err != nil {
 		return err
 	}
-	if err := v110to111.UpgradeCRs(namespace, lhClient); err != nil {
-		return err
-	}
-
-	if err := v112to113.UpgradeCRs(namespace, lhClient, kubeClient); err != nil {
+	if err := v110to111.UpgradeResources(namespace, lhClient, kubeClient); err != nil {
 		return err
 	}
 
-	return nil
-}
-
-func doPodsUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
-	defer func() {
-		err = errors.Wrap(err, "upgrade Pods failed")
-	}()
-	if err = v100to101.UpgradeInstanceManagerPods(namespace, lhClient, kubeClient); err != nil {
-		return err
-	}
-	if err = v102to110.UpgradePods(namespace, kubeClient); err != nil {
-		return err
-	}
-	if err = v110to111.UpgradePods(namespace, lhClient, kubeClient); err != nil {
-		return err
-	}
-	return nil
-}
-
-func doServicesUpgrade(namespace string, kubeClient *clientset.Clientset) (err error) {
-	defer func() {
-		err = errors.Wrap(err, "doServicesUpgrade failed")
-	}()
-	if err = v110to111.UpgradeServices(namespace, kubeClient); err != nil {
-		return err
-	}
-	return nil
-}
-
-func doDeploymentAndDaemonSetUpgrade(namespace string, kubeClient *clientset.Clientset) (err error) {
-	defer func() {
-		err = errors.Wrap(err, "doDeploymentAndDaemonSetUpgrade failed")
-	}()
-	if err = v110to111.UpgradeDeploymentAndDaemonSet(namespace, kubeClient); err != nil {
-		return err
-	}
 	return nil
 }
