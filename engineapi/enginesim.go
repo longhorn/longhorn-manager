@@ -113,7 +113,7 @@ func (e *EngineSimulator) Ping() error {
 	return fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) ReplicaList() (map[string]*Replica, error) {
+func (e *EngineSimulator) ReplicaList(*longhorn.Engine) (map[string]*Replica, error) {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
 

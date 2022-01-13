@@ -736,7 +736,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
-	replicaURLModeMap, err := engineCliClient.ReplicaList()
+	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(engine, engineCliClient)
+	if err != nil {
+		return err
+	}
+
+	replicaURLModeMap, err := engineClientProxy.ReplicaList(engine)
 	if err != nil {
 		return err
 	}
@@ -1299,17 +1304,19 @@ func (ec *EngineController) rebuildNewReplica(e *longhorn.Engine) error {
 	return nil
 }
 
-func doesAddressExistInEngine(addr string, client engineapi.EngineClient) (bool, error) {
-	replicaURLModeMap, err := client.ReplicaList()
+func doesAddressExistInEngine(e *longhorn.Engine, addr string, engineClientProxy engineapi.Client) (bool, error) {
+	replicaURLModeMap, err := engineClientProxy.ReplicaList(e)
 	if err != nil {
 		return false, err
 	}
+
 	for url := range replicaURLModeMap {
 		// the replica has been rebuilt or in the process already
 		if addr == engineapi.GetAddressFromBackendReplicaURL(url) {
 			return true, nil
 		}
 	}
+
 	return false, nil
 }
 
@@ -1323,9 +1330,14 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 		return err
 	}
 
+	engineClientProxy, err := ec.proxyHandler.GetCompatibleClient(e, engineCliClient)
+	if err != nil {
+		return err
+	}
+
 	// we need to know the current status, since ReplicaAddressMap may
 	// haven't been updated since last rebuild
-	alreadyExists, err := doesAddressExistInEngine(addr, engineCliClient)
+	alreadyExists, err := doesAddressExistInEngine(e, addr, engineClientProxy)
 	if err != nil {
 		return err
 	}
@@ -1410,7 +1422,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 	}()
 	//wait until engine confirmed that rebuild started
 	if err := wait.PollImmediate(EnginePollInterval, EnginePollTimeout, func() (bool, error) {
-		return doesAddressExistInEngine(addr, engineCliClient)
+		return doesAddressExistInEngine(e, addr, engineClientProxy)
 	}); err != nil {
 		return err
 	}

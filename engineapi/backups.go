@@ -264,6 +264,10 @@ func (btc *BackupTargetClient) Ping() error {
 	return errors.Errorf(ErrNotImplement)
 }
 
+func (btc *BackupTargetClient) ReplicaList(*longhorn.Engine) (map[string]*Replica, error) {
+	return nil, errors.Errorf(ErrNotImplement)
+}
+
 func (e *EngineBinary) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error) {
 	if snapName == VolumeHeadName {
 		return "", "", fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)

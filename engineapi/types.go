@@ -59,7 +59,7 @@ type EngineClient interface {
 	FrontendStart(volumeFrontend longhorn.VolumeFrontend) error
 	FrontendShutdown() error
 
-	ReplicaList() (map[string]*Replica, error)
+	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)
 	ReplicaAdd(url string, isRestoreVolume bool) error
 	ReplicaRemove(url string) error
 	ReplicaRebuildStatus() (map[string]*longhorn.RebuildStatus, error)

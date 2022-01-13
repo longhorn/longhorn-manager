@@ -109,7 +109,9 @@ func (e *EngineBinary) Ping() error {
 	return errors.Errorf(ErrNotImplement)
 }
 
-func (e *EngineBinary) ReplicaList() (map[string]*Replica, error) {
+// ReplicaList calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) ReplicaList(*longhorn.Engine) (map[string]*Replica, error) {
 	output, err := e.ExecuteEngineBinary("ls")
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to list replicas from controller '%s'", e.name)
