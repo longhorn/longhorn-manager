@@ -37,6 +37,8 @@ type Client interface {
 	Start(*longhorn.InstanceManager, logrus.FieldLogger, *datastore.DataStore) error
 	Stop(string) error
 	Ping() error
+
+	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)
 }
 
 type EngineClientProxyHandler struct {

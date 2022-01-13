@@ -49,7 +49,8 @@ func (s *TestSuite) TestBasic(c *C) {
 	sim, err = coll.GetEngineSimulator(VolumeName)
 	c.Assert(err, IsNil)
 
-	replicas, err := sim.ReplicaList()
+	e := &longhorn.Engine{}
+	replicas, err := sim.ReplicaList(e)
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
 	c.Assert(replicas[Replica1Addr].Mode, Equals, longhorn.ReplicaModeRW)
@@ -58,13 +59,13 @@ func (s *TestSuite) TestBasic(c *C) {
 	err = sim.ReplicaRemove(Replica2Addr)
 	c.Assert(err, IsNil)
 
-	replicas, err = sim.ReplicaList()
+	replicas, err = sim.ReplicaList(e)
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 1)
 	c.Assert(replicas[Replica1Addr].Mode, Equals, longhorn.ReplicaModeRW)
 
 	err = sim.ReplicaAdd(Replica3Addr, false)
-	replicas, err = sim.ReplicaList()
+	replicas, err = sim.ReplicaList(e)
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)
 	c.Assert(replicas[Replica1Addr].Mode, Equals, longhorn.ReplicaModeRW)
