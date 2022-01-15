@@ -94,6 +94,9 @@ func fixupVolumes(namespace string, lhClient *lhclientset.Clientset) error {
 	for _, obj := range volumes.Items {
 		existing := obj.DeepCopy()
 
+		if obj.Spec.ReplicaAutoBalance == "" {
+			obj.Spec.ReplicaAutoBalance = longhornV1beta1.ReplicaAutoBalanceIgnored
+		}
 		if obj.Spec.DiskSelector == nil {
 			obj.Spec.DiskSelector = []string{}
 		}
