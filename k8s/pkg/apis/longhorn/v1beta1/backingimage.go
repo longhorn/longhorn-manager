@@ -102,6 +102,7 @@ func (bi *BackingImage) ConvertTo(dst conversion.Hub) error {
 		}
 
 		// Copy spec.disks from map[string]struct{} to map[string]string
+		biV1beta2.Spec.Disks = make(map[string]string)
 		for name := range bi.Spec.Disks {
 			biV1beta2.Spec.Disks[name] = ""
 		}
@@ -125,6 +126,7 @@ func (bi *BackingImage) ConvertFrom(src conversion.Hub) error {
 		}
 
 		// Copy spec.disks from map[string]string to map[string]struct{}
+		bi.Spec.Disks = make(map[string]struct{})
 		for name := range biV1beta2.Spec.Disks {
 			bi.Spec.Disks[name] = struct{}{}
 		}
