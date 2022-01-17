@@ -1354,11 +1354,11 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 		if e.Spec.RequestedBackupRestore != "" {
 			if e.Spec.NodeID != "" {
 				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v with Address %v for restore engine %v", replica, addr, e.Spec.VolumeName)
-				err = engineCliClient.ReplicaAdd(replicaURL, true)
+				err = engineClientProxy.ReplicaAdd(e, replicaURL, true)
 			}
 		} else {
 			ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v with Address %v for normal engine %v", replica, addr, e.Spec.VolumeName)
-			err = engineCliClient.ReplicaAdd(replicaURL, false)
+			err = engineClientProxy.ReplicaAdd(e, replicaURL, false)
 		}
 		if err != nil {
 			log.WithError(err).Errorf("Failed rebuilding of replica %v", addr)

@@ -264,6 +264,10 @@ func (btc *BackupTargetClient) Ping() error {
 	return errors.Errorf(ErrNotImplement)
 }
 
+func (btc *BackupTargetClient) ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume bool) error {
+	return errors.Errorf(ErrNotImplement)
+}
+
 func (btc *BackupTargetClient) ReplicaList(*longhorn.Engine) (map[string]*Replica, error) {
 	return nil, errors.Errorf(ErrNotImplement)
 }
