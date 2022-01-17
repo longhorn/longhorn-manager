@@ -53,7 +53,7 @@ type EngineClient interface {
 	Name() string
 	Version(clientOnly bool) (*EngineVersion, error)
 
-	Info() (*Volume, error)
+	VolumeGet(*longhorn.Engine) (*Volume, error)
 	Expand(size int64) error
 
 	FrontendStart(volumeFrontend longhorn.VolumeFrontend) error

@@ -162,7 +162,9 @@ func (e *EngineBinary) ReplicaRemove(engine *longhorn.Engine, url string) error 
 	return nil
 }
 
-func (e *EngineBinary) Info() (*Volume, error) {
+// VolumeGet calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) VolumeGet(*longhorn.Engine) (*Volume, error) {
 	output, err := e.ExecuteEngineBinary("info")
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot get volume info")

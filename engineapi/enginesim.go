@@ -206,7 +206,7 @@ func (e *EngineSimulator) Version(clientOnly bool) (*EngineVersion, error) {
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) Info() (*Volume, error) {
+func (e *EngineSimulator) VolumeGet(*longhorn.Engine) (*Volume, error) {
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 

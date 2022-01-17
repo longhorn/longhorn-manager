@@ -38,6 +38,8 @@ type Client interface {
 	Stop(string) error
 	Ping() error
 
+	VolumeGet(*longhorn.Engine) (volume *Volume, err error)
+
 	ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume bool) error
 	ReplicaRemove(engine *longhorn.Engine, address string) error
 	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)

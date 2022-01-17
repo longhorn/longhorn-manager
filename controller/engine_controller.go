@@ -788,11 +788,10 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 	if cliAPIVersion >= engineapi.MinCLIVersion {
-		volumeInfo, err := engineCliClient.Info()
+		volumeInfo, err := engineClientProxy.VolumeGet(engine)
 		if err != nil {
 			return err
 		}
-
 		endpoint, err := engineapi.GetEngineEndpoint(volumeInfo, engine.Status.IP)
 		if err != nil {
 			return err
