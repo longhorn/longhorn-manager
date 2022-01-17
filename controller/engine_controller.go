@@ -1268,9 +1268,15 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 	if err != nil {
 		return err
 	}
+
+	engineClientProxy, err := ec.proxyHandler.GetCompatibleClient(e, engineCliClient)
+	if err != nil {
+		return err
+	}
+
 	for _, url := range unknownReplicaURLs {
 		go func(url string) {
-			if err := engineCliClient.ReplicaRemove(url); err != nil {
+			if err := engineClientProxy.ReplicaRemove(e, url); err != nil {
 				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting, "Failed to remove unknown replica %v from engine: %v", url, err)
 			} else {
 				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonDelete, "Removed unknown replica %v from engine", url)
@@ -1368,7 +1374,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 			// reaction to create numerous new replicas if we set
 			// the replica to failed.
 			// user can decide to delete it then we will try again
-			if err := engineCliClient.ReplicaRemove(replicaURL); err != nil {
+			if err := engineClientProxy.ReplicaRemove(e, replicaURL); err != nil {
 				log.WithError(err).Errorf("Failed to remove rebuilding replica %v", addr)
 				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting,
 					"Failed to remove rebuilding replica %v with address %v for %v due to rebuilding failure: %v", replica, addr, e.Spec.VolumeName, err)
