@@ -134,7 +134,9 @@ func (e *EngineBinary) ReplicaList(*longhorn.Engine) (map[string]*Replica, error
 	return replicas, nil
 }
 
-func (e *EngineBinary) ReplicaAdd(url string, isRestoreVolume bool) error {
+// ReplicaAdd calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume bool) error {
 	if err := ValidateReplicaURL(url); err != nil {
 		return err
 	}
