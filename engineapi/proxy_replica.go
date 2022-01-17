@@ -8,6 +8,10 @@ func (p *Proxy) ReplicaAdd(e *longhorn.Engine, address string, restore bool) (er
 	return p.grpcClient.ReplicaAdd(p.DirectToURL(e), address, restore)
 }
 
+func (p *Proxy) ReplicaRemove(e *longhorn.Engine, address string) (err error) {
+	return p.grpcClient.ReplicaRemove(p.DirectToURL(e), address)
+}
+
 func (p *Proxy) ReplicaList(e *longhorn.Engine) (replicas map[string]*Replica, err error) {
 	resp, err := p.grpcClient.ReplicaList(p.DirectToURL(e))
 	if err != nil {

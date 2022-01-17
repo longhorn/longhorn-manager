@@ -268,6 +268,10 @@ func (btc *BackupTargetClient) ReplicaAdd(engine *longhorn.Engine, url string, i
 	return errors.Errorf(ErrNotImplement)
 }
 
+func (btc *BackupTargetClient) ReplicaRemove(engine *longhorn.Engine, address string) error {
+	return errors.Errorf(ErrNotImplement)
+}
+
 func (btc *BackupTargetClient) ReplicaList(*longhorn.Engine) (map[string]*Replica, error) {
 	return nil, errors.Errorf(ErrNotImplement)
 }
