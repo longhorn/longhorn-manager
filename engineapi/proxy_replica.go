@@ -31,3 +31,16 @@ func (p *Proxy) ReplicaList(e *longhorn.Engine) (replicas map[string]*Replica, e
 	}
 	return replicas, nil
 }
+
+func (p *Proxy) ReplicaRebuildStatus(e *longhorn.Engine) (status map[string]*longhorn.RebuildStatus, err error) {
+	recv, err := p.grpcClient.ReplicaRebuildingStatus(p.DirectToURL(e))
+	if err != nil {
+		return nil, err
+	}
+
+	status = make(map[string]*longhorn.RebuildStatus)
+	for k, v := range recv {
+		status[k] = (*longhorn.RebuildStatus)(v)
+	}
+	return status, nil
+}

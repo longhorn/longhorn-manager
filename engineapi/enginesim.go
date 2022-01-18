@@ -230,7 +230,7 @@ func (e *EngineSimulator) SnapshotCloneStatus() (map[string]*longhorn.SnapshotCl
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) ReplicaRebuildStatus() (map[string]*longhorn.RebuildStatus, error) {
+func (e *EngineSimulator) ReplicaRebuildStatus(*longhorn.Engine) (map[string]*longhorn.RebuildStatus, error) {
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 
