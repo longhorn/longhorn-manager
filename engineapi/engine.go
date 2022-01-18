@@ -225,8 +225,10 @@ func (e *EngineBinary) ReplicaRebuildStatus(*longhorn.Engine) (map[string]*longh
 	return data, nil
 }
 
-func (e *EngineBinary) FrontendStart(volumeFrontend longhorn.VolumeFrontend) error {
-	frontendName, err := GetEngineProcessFrontend(volumeFrontend)
+// VolumeFrontendStart calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) VolumeFrontendStart(engine *longhorn.Engine) error {
+	frontendName, err := GetEngineProcessFrontend(engine.Spec.Frontend)
 	if err != nil {
 		return err
 	}
