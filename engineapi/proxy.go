@@ -38,6 +38,8 @@ type Client interface {
 	Stop(string) error
 	Ping() error
 
+	VersionGet(engine *longhorn.Engine, clientOnly bool) (version *EngineVersion, err error)
+
 	VolumeGet(*longhorn.Engine) (volume *Volume, err error)
 
 	ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume bool) error
@@ -290,4 +292,25 @@ func (p *Proxy) DirectToURL(e *longhorn.Engine) string {
 
 func (p *Proxy) Ping() (err error) {
 	return p.grpcClient.Ping()
+}
+
+func (p *Proxy) VersionGet(e *longhorn.Engine, clientOnly bool) (version *EngineVersion, err error) {
+	recvClientVersion := p.grpcClient.ClientVersionGet()
+	clientVersion := (*longhorn.EngineVersionDetails)(&recvClientVersion)
+
+	if clientOnly {
+		return &EngineVersion{
+			ClientVersion: clientVersion,
+		}, nil
+	}
+
+	recvServerVersion, err := p.grpcClient.ServerVersionGet(p.DirectToURL(e))
+	if err != nil {
+		return nil, err
+	}
+
+	return &EngineVersion{
+		ClientVersion: clientVersion,
+		ServerVersion: (*longhorn.EngineVersionDetails)(recvServerVersion),
+	}, nil
 }

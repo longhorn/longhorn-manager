@@ -177,7 +177,9 @@ func (e *EngineBinary) VolumeGet(*longhorn.Engine) (*Volume, error) {
 	return info, nil
 }
 
-func (e *EngineBinary) Version(clientOnly bool) (*EngineVersion, error) {
+// VersionGet calls engine binary to get client version and request gRPC proxy
+// for server version.
+func (e *EngineBinary) VersionGet(engine *longhorn.Engine, clientOnly bool) (*EngineVersion, error) {
 	cmdline := []string{"version"}
 	if clientOnly {
 		cmdline = append(cmdline, "--client-only")

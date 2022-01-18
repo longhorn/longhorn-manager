@@ -202,7 +202,7 @@ func (e *EngineSimulator) SnapshotBackupStatus(backupName, replicaAddress string
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) Version(clientOnly bool) (*EngineVersion, error) {
+func (e *EngineSimulator) VersionGet(engine *longhorn.Engine, clientOnly bool) (*EngineVersion, error) {
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 
