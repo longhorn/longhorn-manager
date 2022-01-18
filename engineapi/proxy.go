@@ -46,6 +46,7 @@ type Client interface {
 	ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume bool) error
 	ReplicaRemove(engine *longhorn.Engine, address string) error
 	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)
+	ReplicaRebuildStatus(engine *longhorn.Engine) (status map[string]*longhorn.RebuildStatus, err error)
 }
 
 type EngineClientProxyHandler struct {

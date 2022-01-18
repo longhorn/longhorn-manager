@@ -818,7 +818,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 
 		// The rebuild failure will be handled by ec.startRebuilding()
-		rebuildStatus, err := engineCliClient.ReplicaRebuildStatus()
+		rebuildStatus, err := engineClientProxy.ReplicaRebuildStatus(engine)
 		if err != nil {
 			return err
 		}

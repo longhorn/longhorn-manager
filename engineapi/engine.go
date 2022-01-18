@@ -209,7 +209,9 @@ func (e *EngineBinary) VolumeExpand(engine *longhorn.Engine) error {
 	return nil
 }
 
-func (e *EngineBinary) ReplicaRebuildStatus() (map[string]*longhorn.RebuildStatus, error) {
+// ReplicaRebuildStatus calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) ReplicaRebuildStatus(*longhorn.Engine) (map[string]*longhorn.RebuildStatus, error) {
 	output, err := e.ExecuteEngineBinary("replica-rebuild-status")
 	if err != nil {
 		return nil, errors.Wrapf(err, "error getting replica rebuild status")
