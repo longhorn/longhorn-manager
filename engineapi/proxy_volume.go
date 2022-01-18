@@ -31,3 +31,7 @@ func (p *Proxy) VolumeFrontendStart(e *longhorn.Engine) (err error) {
 
 	return p.grpcClient.VolumeFrontendStart(p.DirectToURL(e), frontendName)
 }
+
+func (p *Proxy) VolumeFrontendShutdown(e *longhorn.Engine) (err error) {
+	return p.grpcClient.VolumeFrontendShutdown(p.DirectToURL(e))
+}

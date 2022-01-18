@@ -43,6 +43,7 @@ type Client interface {
 	VolumeGet(*longhorn.Engine) (volume *Volume, err error)
 	VolumeExpand(engine *longhorn.Engine) error
 	VolumeFrontendStart(e *longhorn.Engine) error
+	VolumeFrontendShutdown(*longhorn.Engine) error
 
 	ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume bool) error
 	ReplicaRemove(engine *longhorn.Engine, address string) error
