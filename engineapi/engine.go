@@ -198,7 +198,10 @@ func (e *EngineBinary) VersionGet(engine *longhorn.Engine, clientOnly bool) (*En
 	return version, nil
 }
 
-func (e *EngineBinary) Expand(size int64) error {
+// VolumeExpand calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) VolumeExpand(engine *longhorn.Engine) error {
+	size := engine.Spec.VolumeSize
 	if _, err := e.ExecuteEngineBinary("expand", "--size", strconv.FormatInt(size, 10)); err != nil {
 		return errors.Wrapf(err, "cannot get expand volume engine to size %v", size)
 	}
