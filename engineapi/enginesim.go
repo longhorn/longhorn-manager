@@ -241,6 +241,6 @@ func (e *EngineSimulator) VolumeFrontendShutdown(*longhorn.Engine) error {
 	return fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) ReplicaRebuildVerify(url string) error {
+func (e *EngineSimulator) ReplicaRebuildVerify(engine *longhorn.Engine, url string) error {
 	return fmt.Errorf(ErrNotImplement)
 }

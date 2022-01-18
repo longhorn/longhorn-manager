@@ -253,7 +253,9 @@ func (e *EngineBinary) VolumeFrontendShutdown(*longhorn.Engine) error {
 	return nil
 }
 
-func (e *EngineBinary) ReplicaRebuildVerify(url string) error {
+// ReplicaRebuildVerify calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) ReplicaRebuildVerify(engine *longhorn.Engine, url string) error {
 	if err := ValidateReplicaURL(url); err != nil {
 		return err
 	}

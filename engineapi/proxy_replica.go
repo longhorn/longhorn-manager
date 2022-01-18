@@ -44,3 +44,11 @@ func (p *Proxy) ReplicaRebuildStatus(e *longhorn.Engine) (status map[string]*lon
 	}
 	return status, nil
 }
+
+func (p *Proxy) ReplicaRebuildVerify(e *longhorn.Engine, url string) (err error) {
+	if err := ValidateReplicaURL(url); err != nil {
+		return err
+	}
+
+	return p.grpcClient.ReplicaVerifyRebuild(p.DirectToURL(e), url)
+}
