@@ -276,6 +276,10 @@ func (btc *BackupTargetClient) VolumeExpand(engine *longhorn.Engine) error {
 	return errors.Errorf(ErrNotImplement)
 }
 
+func (btc *BackupTargetClient) VolumeFrontendStart(e *longhorn.Engine) error {
+	return errors.Errorf(ErrNotImplement)
+}
+
 func (btc *BackupTargetClient) ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume bool) error {
 	return errors.Errorf(ErrNotImplement)
 }

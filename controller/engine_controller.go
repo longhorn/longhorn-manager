@@ -812,7 +812,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 		if engine.Status.Endpoint == "" && !engine.Spec.DisableFrontend && engine.Spec.Frontend != longhorn.VolumeFrontendEmpty {
 			m.logger.Infof("Preparing to start frontend %v", engine.Spec.Frontend)
-			if err := engineCliClient.FrontendStart(engine.Spec.Frontend); err != nil {
+			if err := engineClientProxy.VolumeFrontendStart(engine); err != nil {
 				return errors.Wrapf(err, "failed to start frontend %v", engine.Spec.Frontend)
 			}
 		}

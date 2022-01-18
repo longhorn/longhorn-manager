@@ -56,7 +56,7 @@ type EngineClient interface {
 	VolumeGet(*longhorn.Engine) (*Volume, error)
 	VolumeExpand(*longhorn.Engine) error
 
-	FrontendStart(volumeFrontend longhorn.VolumeFrontend) error
+	VolumeFrontendStart(*longhorn.Engine) error
 	FrontendShutdown() error
 
 	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)
