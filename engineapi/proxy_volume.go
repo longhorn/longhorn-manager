@@ -12,3 +12,7 @@ func (p *Proxy) VolumeGet(e *longhorn.Engine) (volume *Volume, err error) {
 
 	return (*Volume)(recv), nil
 }
+
+func (p *Proxy) VolumeExpand(e *longhorn.Engine) (err error) {
+	return p.grpcClient.VolumeExpand(p.DirectToURL(e), e.Spec.VolumeSize)
+}

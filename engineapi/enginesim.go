@@ -210,7 +210,7 @@ func (e *EngineSimulator) VolumeGet(*longhorn.Engine) (*Volume, error) {
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) Expand(size int64) error {
+func (e *EngineSimulator) VolumeExpand(*longhorn.Engine) error {
 	return fmt.Errorf(ErrNotImplement)
 }
 

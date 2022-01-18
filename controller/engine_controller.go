@@ -864,7 +864,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			if !engine.Status.IsExpanding && !m.expansionBackoff.IsInBackOffSince(engine.Name, time.Now()) {
 				m.logger.Infof("start engine expansion from %v to %v", engine.Status.CurrentSize, engine.Spec.VolumeSize)
 				// The error info and the backoff interval will be updated later.
-				if err := engineCliClient.Expand(engine.Spec.VolumeSize); err != nil {
+				if err := engineClientProxy.VolumeExpand(engine); err != nil {
 					return err
 				}
 			}
