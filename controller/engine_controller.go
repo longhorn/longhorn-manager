@@ -893,7 +893,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 	}()
 
-	needRestore, err := preRestoreCheckAndSync(m.logger, engine, rsMap, addressReplicaMap, cliAPIVersion, engineCliClient, m.ds)
+	needRestore, err := preRestoreCheckAndSync(m.logger, engine, rsMap, addressReplicaMap, cliAPIVersion, m.ds, engineClientProxy)
 	if err != nil {
 		return err
 	}
@@ -927,7 +927,9 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	return nil
 }
 
-func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, addressReplicaMap map[string]string, cliAPIVersion int, client engineapi.EngineClient, ds *datastore.DataStore) (needRestore bool, err error) {
+func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine,
+	rsMap map[string]*longhorn.RestoreStatus, addressReplicaMap map[string]string,
+	cliAPIVersion int, ds *datastore.DataStore, engineClientProxy engineapi.Client) (needRestore bool, err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "failed pre-restore check for engine %v", engine.Name)
@@ -949,7 +951,7 @@ func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine, rsM
 			return false, nil
 		}
 	} else {
-		if !syncWithRestoreStatus(log, engine, rsMap, addressReplicaMap, client) {
+		if !syncWithRestoreStatus(log, engine, rsMap, addressReplicaMap, engineClientProxy) {
 			return false, nil
 		}
 	}
@@ -966,7 +968,7 @@ func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine, rsM
 }
 
 func syncWithRestoreStatus(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus,
-	addressReplicaMap map[string]string, client engineapi.EngineClient) bool {
+	addressReplicaMap map[string]string, engineClientProxy engineapi.Client) bool {
 	for _, status := range engine.Status.PurgeStatus {
 		if status.IsPurging {
 			return false
@@ -992,7 +994,7 @@ func syncWithRestoreStatus(log logrus.FieldLogger, engine *longhorn.Engine, rsMa
 			if status.LastRestored != "" {
 				replicaName := addressReplicaMap[engineapi.GetAddressFromBackendReplicaURL(url)]
 				if mode, exists := engine.Status.ReplicaModeMap[replicaName]; exists && mode == longhorn.ReplicaModeWO {
-					if err := client.ReplicaRebuildVerify(url); err != nil {
+					if err := engineClientProxy.ReplicaRebuildVerify(engine, url); err != nil {
 						log.WithError(err).Errorf("Failed to verify the rebuild of replica %v after restore completion", url)
 						engine.Status.ReplicaModeMap[url] = longhorn.ReplicaModeERR
 						return false
