@@ -539,7 +539,7 @@ func updateEngineImageVersion(ei *longhorn.EngineImage) error {
 	if err != nil {
 		return errors.Wrapf(err, "cannot get engine client to check engine version")
 	}
-	version, err := client.Version(true)
+	version, err := client.VersionGet(nil, true)
 	if err != nil {
 		return errors.Wrapf(err, "cannot get engine version for %v (%v)", ei.Name, ei.Spec.Image)
 	}

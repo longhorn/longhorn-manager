@@ -1444,7 +1444,13 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	if err != nil {
 		return err
 	}
-	version, err := engineCliClient.Version(false)
+
+	engineClientProxy, err := ec.proxyHandler.GetCompatibleClient(e, engineCliClient)
+	if err != nil {
+		return err
+	}
+
+	version, err := engineClientProxy.VersionGet(e, false)
 	if err != nil {
 		return err
 	}

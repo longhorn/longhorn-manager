@@ -264,6 +264,10 @@ func (btc *BackupTargetClient) Ping() error {
 	return errors.Errorf(ErrNotImplement)
 }
 
+func (btc *BackupTargetClient) VersionGet(e *longhorn.Engine, binary EngineClient, clientOnly bool) (version *EngineVersion, err error) {
+	return nil, errors.Errorf(ErrNotImplement)
+}
+
 func (btc *BackupTargetClient) VolumeGet(*longhorn.Engine) (volume *Volume, err error) {
 	return nil, errors.Errorf(ErrNotImplement)
 }
@@ -291,7 +295,7 @@ func (e *EngineBinary) SnapshotBackup(backupName, snapName, backupTarget, backin
 	if snap == nil {
 		return "", "", errors.Errorf("could not find snapshot '%s' to backup, volume '%s'", snapName, e.name)
 	}
-	version, err := e.Version(true)
+	version, err := e.VersionGet(nil, true)
 	if err != nil {
 		return "", "", err
 	}
