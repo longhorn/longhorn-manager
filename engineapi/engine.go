@@ -243,7 +243,9 @@ func (e *EngineBinary) VolumeFrontendStart(engine *longhorn.Engine) error {
 	return nil
 }
 
-func (e *EngineBinary) FrontendShutdown() error {
+// VolumeFrontendShutdown calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) VolumeFrontendShutdown(*longhorn.Engine) error {
 	if _, err := e.ExecuteEngineBinary("frontend", "shutdown"); err != nil {
 		return errors.Wrapf(err, "error shutting down the frontend")
 	}

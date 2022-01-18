@@ -237,7 +237,7 @@ func (e *EngineSimulator) ReplicaRebuildStatus(*longhorn.Engine) (map[string]*lo
 func (e *EngineSimulator) VolumeFrontendStart(*longhorn.Engine) error {
 	return fmt.Errorf(ErrNotImplement)
 }
-func (e *EngineSimulator) FrontendShutdown() error {
+func (e *EngineSimulator) VolumeFrontendShutdown(*longhorn.Engine) error {
 	return fmt.Errorf(ErrNotImplement)
 }
 
