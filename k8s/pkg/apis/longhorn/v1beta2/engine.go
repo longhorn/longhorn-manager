@@ -89,6 +89,7 @@ type Snapshot struct {
 	// +optional
 	Parent string `json:"parent"`
 	// +optional
+	// +nullable
 	Children map[string]bool `json:"children"`
 	// +optional
 	Removed bool `json:"removed"`
@@ -99,6 +100,7 @@ type Snapshot struct {
 	// +optional
 	Size string `json:"size"`
 	// +optional
+	// +nullable
 	Labels map[string]string `json:"labels"`
 }
 
