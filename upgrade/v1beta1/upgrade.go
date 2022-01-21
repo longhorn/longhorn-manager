@@ -39,6 +39,9 @@ func FixupCRs(config *restclient.Config, namespace string, lhClient *lhclientset
 	if err := fixupNodes(namespace, lhClient); err != nil {
 		return err
 	}
+	if err := fixupEngines(namespace, lhClient); err != nil {
+		return err
+	}
 	if err := fixupRecurringJobs(namespace, lhClient); err != nil {
 		return err
 	}
@@ -158,6 +161,31 @@ func fixupNodes(namespace string, lhClient *lhclientset.Clientset) error {
 			continue
 		}
 		if _, err = lhClient.LonghornV1beta1().Nodes(namespace).Update(context.TODO(), &obj, metav1.UpdateOptions{}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func fixupEngines(namespace string, lhClient *lhclientset.Clientset) error {
+	engines, err := lhClient.LonghornV1beta1().Engines(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	for _, obj := range engines.Items {
+		existing := obj.DeepCopy()
+
+		if obj.Spec.ReplicaAddressMap == nil {
+			obj.Spec.ReplicaAddressMap = make(map[string]string, 0)
+		}
+		if obj.Spec.UpgradedReplicaAddressMap == nil {
+			obj.Spec.UpgradedReplicaAddressMap = make(map[string]string, 0)
+		}
+		if reflect.DeepEqual(obj, existing) {
+			continue
+		}
+		if _, err = lhClient.LonghornV1beta1().Engines(namespace).Update(context.TODO(), &obj, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 	}
