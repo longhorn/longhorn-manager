@@ -15,7 +15,9 @@ const (
 	VolumeHeadName = "volume-head"
 )
 
-func (e *EngineBinary) SnapshotCreate(name string, labels map[string]string) (string, error) {
+// SnapshotCreate calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) SnapshotCreate(engine *longhorn.Engine, name string, labels map[string]string) (string, error) {
 	args := []string{"snapshot", "create"}
 	for k, v := range labels {
 		args = append(args, "--label", k+"="+v)

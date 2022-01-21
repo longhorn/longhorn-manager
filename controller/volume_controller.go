@@ -2488,9 +2488,15 @@ func (vc *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume) (err err
 	if sourceVol.Status.State != longhorn.VolumeStateAttached {
 		return nil
 	}
+
+	e, err := vc.ds.GetVolumeCurrentEngine(sourceVolName)
+	if err != nil {
+		return err
+	}
+
 	if snapshotName == "" {
 		labels := map[string]string{types.GetLonghornLabelKey(types.LonghornLabelSnapshotForCloningVolume): v.Name}
-		snapshot, err := vc.createSnapshot("", labels, sourceVol)
+		snapshot, err := vc.createSnapshot("", labels, sourceVol, e)
 		if err != nil {
 			return errors.Wrapf(err, "failed to create snapshot of source volume %v", sourceVol.Name)
 		}
@@ -3587,7 +3593,7 @@ func (vc *VolumeController) ReconcileBackupVolumeState(volume *longhorn.Volume) 
 // TODO: this block of code is duplicated of CreateSnapshot in MANAGER package.
 // Once we have Snapshot CR, we should refactor this
 
-func (vc *VolumeController) createSnapshot(snapshotName string, labels map[string]string, volume *longhorn.Volume) (*longhorn.Snapshot, error) {
+func (vc *VolumeController) createSnapshot(snapshotName string, labels map[string]string, volume *longhorn.Volume, e *longhorn.Engine) (*longhorn.Snapshot, error) {
 	if volume.Name == "" {
 		return nil, fmt.Errorf("volume name required")
 	}
@@ -3606,10 +3612,17 @@ func (vc *VolumeController) createSnapshot(snapshotName string, labels map[strin
 	if err != nil {
 		return nil, err
 	}
-	snapshotName, err = engineCliClient.SnapshotCreate(snapshotName, labels)
+
+	engineClientProxy, err := vc.proxyHandler.GetCompatibleClient(e, engineCliClient)
 	if err != nil {
 		return nil, err
 	}
+
+	snapshotName, err = engineClientProxy.SnapshotCreate(e, snapshotName, labels)
+	if err != nil {
+		return nil, err
+	}
+
 	snap, err := engineCliClient.SnapshotGet(snapshotName)
 	if err != nil {
 		return nil, err
