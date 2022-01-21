@@ -665,7 +665,7 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 	}
 	if newSnapshotRequired {
 		engineCollection := &engineapi.EngineCollection{}
-		client, err := engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
+		engineCliClient, err := engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
 			EngineImage: e.Status.CurrentImage,
 			VolumeName:  volumeName,
 			IP:          e.Status.IP,
@@ -674,8 +674,14 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 		if err != nil {
 			return err
 		}
+
+		engineClientProxy, err := c.proxyHandler.GetCompatibleClient(e, engineCliClient)
+		if err != nil {
+			return err
+		}
+
 		snapLabels := map[string]string{types.GetLonghornLabelKey(types.LonghornLabelSnapshotForExportingBackingImage): bids.Name}
-		snapshotName, err := client.SnapshotCreate(bids.Name+"-"+util.RandomID(), snapLabels)
+		snapshotName, err := engineClientProxy.SnapshotCreate(e, bids.Name+"-"+util.RandomID(), snapLabels)
 		if err != nil {
 			return err
 		}

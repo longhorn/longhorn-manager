@@ -304,6 +304,10 @@ func (btc *BackupTargetClient) ReplicaRebuildVerify(engine *longhorn.Engine, url
 	return errors.Errorf(ErrNotImplement)
 }
 
+func (btc *BackupTargetClient) SnapshotCreate(engine *longhorn.Engine, name string, labels map[string]string) (string, error) {
+	return "", errors.Errorf(ErrNotImplement)
+}
+
 func (e *EngineBinary) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error) {
 	if snapName == VolumeHeadName {
 		return "", "", fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)

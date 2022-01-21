@@ -50,6 +50,8 @@ type Client interface {
 	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)
 	ReplicaRebuildStatus(engine *longhorn.Engine) (status map[string]*longhorn.RebuildStatus, err error)
 	ReplicaRebuildVerify(engine *longhorn.Engine, url string) error
+
+	SnapshotCreate(engine *longhorn.Engine, name string, labels map[string]string) (string, error)
 }
 
 type EngineClientProxyHandler struct {

@@ -68,7 +68,18 @@ func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]st
 	if err != nil {
 		return nil, err
 	}
-	snapshotName, err = engineCliClient.SnapshotCreate(snapshotName, labels)
+
+	e, err := m.GetRunningEngineByVolume(volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(e, engineCliClient)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshotName, err = engineClientProxy.SnapshotCreate(e, snapshotName, labels)
 	if err != nil {
 		return nil, err
 	}
@@ -223,6 +234,41 @@ func (m *VolumeManager) GetEngineBinaryClient(volumeName string) (client enginea
 		IP:          e.Status.IP,
 		Port:        e.Status.Port,
 	})
+}
+
+func (m *VolumeManager) GetRunningEngineByVolume(name string) (e *longhorn.Engine, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "cannot get %v volume engine", name)
+	}()
+
+	es, err := m.ds.ListVolumeEngines(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(es) == 0 {
+		return nil, errors.Errorf("cannot find engine")
+	}
+
+	if len(es) != 1 {
+		return nil, errors.Errorf("more than one engine exists")
+	}
+
+	for _, e = range es {
+		break
+	}
+	if e.Status.CurrentState != longhorn.InstanceStateRunning {
+		return nil, errors.Errorf("engine is not running")
+	}
+
+	if isReady, err := m.ds.CheckEngineImageReadiness(e.Status.CurrentImage, m.currentNodeID); !isReady {
+		if err != nil {
+			return nil, errors.Errorf("cannot get engine with image %v: %v", e.Status.CurrentImage, err)
+		}
+		return nil, errors.Errorf("cannot get engine with image %v because it isn't deployed on this node", e.Status.CurrentImage)
+	}
+
+	return e, nil
 }
 
 func (m *VolumeManager) ListBackupTargetsSorted() ([]*longhorn.BackupTarget, error) {
