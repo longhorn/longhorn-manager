@@ -24,11 +24,23 @@ func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*longhorn.S
 	if volumeName == "" {
 		return nil, fmt.Errorf("volume name required")
 	}
+
 	engineCliClient, err := m.GetEngineBinaryClient(volumeName)
 	if err != nil {
 		return nil, err
 	}
-	return engineCliClient.SnapshotList()
+
+	engine, err := m.GetRunningEngineByVolume(volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(engine, engineCliClient)
+	if err != nil {
+		return nil, err
+	}
+
+	return engineClientProxy.SnapshotList(engine)
 }
 
 func (m *VolumeManager) GetSnapshot(snapshotName, volumeName string) (*longhorn.Snapshot, error) {

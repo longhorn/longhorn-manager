@@ -773,7 +773,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 	engine.Status.ReplicaModeMap = currentReplicaModeMap
 
-	snapshots, err := engineCliClient.SnapshotList()
+	snapshots, err := engineClientProxy.SnapshotList(engine)
 	if err != nil {
 		engine.Status.Snapshots = map[string]*longhorn.Snapshot{}
 		engine.Status.SnapshotsError = err.Error()

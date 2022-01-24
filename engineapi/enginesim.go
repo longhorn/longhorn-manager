@@ -170,7 +170,7 @@ func (e *EngineSimulator) SnapshotCreate(engine *longhorn.Engine, name string, l
 	return "", fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotList() (map[string]*longhorn.Snapshot, error) {
+func (e *EngineSimulator) SnapshotList(engine *longhorn.Engine) (map[string]*longhorn.Snapshot, error) {
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 

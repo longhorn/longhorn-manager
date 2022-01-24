@@ -31,7 +31,9 @@ func (e *EngineBinary) SnapshotCreate(engine *longhorn.Engine, name string, labe
 	return strings.TrimSpace(output), nil
 }
 
-func (e *EngineBinary) SnapshotList() (map[string]*longhorn.Snapshot, error) {
+// SnapshotList calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) SnapshotList(*longhorn.Engine) (map[string]*longhorn.Snapshot, error) {
 	output, err := e.ExecuteEngineBinary("snapshot", "info")
 	if err != nil {
 		return nil, errors.Wrapf(err, "error listing snapshot")
@@ -44,7 +46,7 @@ func (e *EngineBinary) SnapshotList() (map[string]*longhorn.Snapshot, error) {
 }
 
 func (e *EngineBinary) SnapshotGet(name string) (*longhorn.Snapshot, error) {
-	data, err := e.SnapshotList()
+	data, err := e.SnapshotList(nil)
 	if err != nil {
 		return nil, err
 	}
