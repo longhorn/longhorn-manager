@@ -308,6 +308,10 @@ func (btc *BackupTargetClient) SnapshotCreate(engine *longhorn.Engine, name stri
 	return "", errors.Errorf(ErrNotImplement)
 }
 
+func (btc *BackupTargetClient) SnapshotList(e *longhorn.Engine) (snapshots map[string]*longhorn.Snapshot, err error) {
+	return nil, errors.Errorf(ErrNotImplement)
+}
+
 func (e *EngineBinary) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error) {
 	if snapName == VolumeHeadName {
 		return "", "", fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)

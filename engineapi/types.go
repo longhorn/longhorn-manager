@@ -66,7 +66,7 @@ type EngineClient interface {
 	ReplicaRebuildVerify(engine *longhorn.Engine, url string) error
 
 	SnapshotCreate(engine *longhorn.Engine, name string, labels map[string]string) (string, error)
-	SnapshotList() (map[string]*longhorn.Snapshot, error)
+	SnapshotList(engine *longhorn.Engine) (map[string]*longhorn.Snapshot, error)
 	SnapshotGet(name string) (*longhorn.Snapshot, error)
 	SnapshotDelete(name string) error
 	SnapshotRevert(name string) error
