@@ -174,7 +174,7 @@ func (e *EngineSimulator) SnapshotList(engine *longhorn.Engine) (map[string]*lon
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotGet(name string) (*longhorn.Snapshot, error) {
+func (e *EngineSimulator) SnapshotGet(engine *longhorn.Engine, name string) (*longhorn.Snapshot, error) {
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 

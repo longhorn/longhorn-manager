@@ -3623,13 +3623,15 @@ func (vc *VolumeController) createSnapshot(snapshotName string, labels map[strin
 		return nil, err
 	}
 
-	snap, err := engineCliClient.SnapshotGet(snapshotName)
+	snap, err := engineClientProxy.SnapshotGet(e, snapshotName)
 	if err != nil {
 		return nil, err
 	}
+
 	if snap == nil {
 		return nil, fmt.Errorf("cannot found just created snapshot '%s', for volume '%s'", snapshotName, volume.Name)
 	}
+
 	logrus.Debugf("Created snapshot %v with labels %+v for volume %v", snapshotName, labels, volume.Name)
 	return snap, nil
 }

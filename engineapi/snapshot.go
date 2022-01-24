@@ -45,7 +45,9 @@ func (e *EngineBinary) SnapshotList(*longhorn.Engine) (map[string]*longhorn.Snap
 	return data, nil
 }
 
-func (e *EngineBinary) SnapshotGet(name string) (*longhorn.Snapshot, error) {
+// SnapshotGet calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) SnapshotGet(engine *longhorn.Engine, name string) (*longhorn.Snapshot, error) {
 	data, err := e.SnapshotList(nil)
 	if err != nil {
 		return nil, err
