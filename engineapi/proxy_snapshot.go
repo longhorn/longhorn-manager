@@ -20,3 +20,12 @@ func (p *Proxy) SnapshotList(e *longhorn.Engine) (snapshots map[string]*longhorn
 	}
 	return snapshots, nil
 }
+
+func (p *Proxy) SnapshotGet(e *longhorn.Engine, name string) (snapshot *longhorn.Snapshot, err error) {
+	recv, err := p.SnapshotList(e)
+	if err != nil {
+		return nil, err
+	}
+
+	return recv[name], nil
+}

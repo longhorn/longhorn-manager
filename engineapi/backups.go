@@ -308,6 +308,10 @@ func (btc *BackupTargetClient) SnapshotCreate(engine *longhorn.Engine, name stri
 	return "", errors.Errorf(ErrNotImplement)
 }
 
+func (btc *BackupTargetClient) SnapshotGet(engine *longhorn.Engine, name string) (snapshot *longhorn.Snapshot, err error) {
+	return nil, errors.Errorf(ErrNotImplement)
+}
+
 func (btc *BackupTargetClient) SnapshotList(e *longhorn.Engine) (snapshots map[string]*longhorn.Snapshot, err error) {
 	return nil, errors.Errorf(ErrNotImplement)
 }
@@ -316,7 +320,8 @@ func (e *EngineBinary) SnapshotBackup(backupName, snapName, backupTarget, backin
 	if snapName == VolumeHeadName {
 		return "", "", fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)
 	}
-	snap, err := e.SnapshotGet(snapName)
+	// TODO: update when replacing this function
+	snap, err := e.SnapshotGet(nil, snapName)
 	if err != nil {
 		return "", "", errors.Wrapf(err, "error getting snapshot '%s', volume '%s'", snapName, e.name)
 	}

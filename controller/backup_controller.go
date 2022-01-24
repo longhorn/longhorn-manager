@@ -628,14 +628,29 @@ func (bc *BackupController) syncBackupStatusWithSnapshotCreationTimeAndVolumeSiz
 		bc.logger.Warnf("syncBackupStatusWithSnapshotCreationTimeAndVolumeSize: failed to get engine client: %v", err)
 		return
 	}
-	snap, err := engineCliClient.SnapshotGet(backup.Spec.SnapshotName)
+
+	e, err := bc.ds.GetVolumeCurrentEngine(volume.Name)
+	if err != nil {
+		bc.logger.Warnf("syncBackupStatusWithSnapshotCreationTimeAndVolumeSize: failed to get engine: %v", err)
+		return
+	}
+
+	proxy, err := bc.ProxyHandler.GetCompatibleClient(e, engineCliClient)
+	if err != nil {
+		bc.logger.Warnf("syncBackupStatusWithSnapshotCreationTimeAndVolumeSize: failed to get proxy: %v", err)
+		return
+	}
+
+	snap, err := proxy.SnapshotGet(e, backup.Spec.SnapshotName)
 	if err != nil {
 		bc.logger.Warnf("syncBackupStatusWithSnapshotCreationTimeAndVolumeSize: failed to get snapshot %v: %v", backup.Spec.SnapshotName, err)
 		return
 	}
+
 	if snap == nil {
 		bc.logger.Warnf("syncBackupStatusWithSnapshotCreationTimeAndVolumeSize: couldn't find the snapshot %v in volume %v ", backup.Spec.SnapshotName, volume.Name)
 		return
 	}
+
 	backup.Status.SnapshotCreatedAt = snap.Created
 }

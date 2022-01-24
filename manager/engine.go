@@ -47,17 +47,31 @@ func (m *VolumeManager) GetSnapshot(snapshotName, volumeName string) (*longhorn.
 	if volumeName == "" || snapshotName == "" {
 		return nil, fmt.Errorf("volume and snapshot name required")
 	}
+
 	engineCliClient, err := m.GetEngineBinaryClient(volumeName)
 	if err != nil {
 		return nil, err
 	}
-	snapshot, err := engineCliClient.SnapshotGet(snapshotName)
+
+	engine, err := m.GetRunningEngineByVolume(volumeName)
 	if err != nil {
 		return nil, err
 	}
+
+	proxy, err := m.proxyHandler.GetCompatibleClient(engine, engineCliClient)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshot, err := proxy.SnapshotGet(engine, snapshotName)
+	if err != nil {
+		return nil, err
+	}
+
 	if snapshot == nil {
 		return nil, fmt.Errorf("cannot find snapshot '%s' for volume '%s'", snapshotName, volumeName)
 	}
+
 	return snapshot, nil
 }
 
@@ -95,13 +109,16 @@ func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]st
 	if err != nil {
 		return nil, err
 	}
-	snap, err := engineCliClient.SnapshotGet(snapshotName)
+
+	snap, err := engineClientProxy.SnapshotGet(e, snapshotName)
 	if err != nil {
 		return nil, err
 	}
+
 	if snap == nil {
 		return nil, fmt.Errorf("cannot found just created snapshot '%s', for volume '%s'", snapshotName, volumeName)
 	}
+
 	logrus.Debugf("Created snapshot %v with labels %+v for volume %v", snapshotName, labels, volumeName)
 	return snap, nil
 }
@@ -139,19 +156,34 @@ func (m *VolumeManager) RevertSnapshot(snapshotName, volumeName string) error {
 	if err != nil {
 		return err
 	}
-	snapshot, err := engineCliClient.SnapshotGet(snapshotName)
+
+	e, err := m.GetRunningEngineByVolume(volumeName)
 	if err != nil {
 		return err
 	}
+
+	proxy, err := m.proxyHandler.GetCompatibleClient(e, engineCliClient)
+	if err != nil {
+		return err
+	}
+
+	snapshot, err := proxy.SnapshotGet(e, snapshotName)
+	if err != nil {
+		return err
+	}
+
 	if snapshot == nil {
 		return fmt.Errorf("not found snapshot '%s', for volume '%s'", snapshotName, volumeName)
 	}
+
 	if snapshot.Removed {
 		return fmt.Errorf("not revert to snapshot '%s' for volume '%s' since it's marked as Removed", snapshotName, volumeName)
 	}
+
 	if err := engineCliClient.SnapshotRevert(snapshotName); err != nil {
 		return err
 	}
+
 	logrus.Debugf("Revert to snapshot %v for volume %v", snapshotName, volumeName)
 	return nil
 }
