@@ -54,6 +54,8 @@ type Client interface {
 	SnapshotCreate(engine *longhorn.Engine, name string, labels map[string]string) (string, error)
 	SnapshotGet(engine *longhorn.Engine, name string) (snapshot *longhorn.Snapshot, err error)
 	SnapshotList(engine *longhorn.Engine) (snapshots map[string]*longhorn.Snapshot, err error)
+
+	SnapshotBackup(engine *longhorn.Engine, snapshotName, backupName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (backupID string, replicaAddress string, err error)
 }
 
 type EngineClientProxyHandler struct {

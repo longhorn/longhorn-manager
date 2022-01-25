@@ -635,13 +635,13 @@ func (bc *BackupController) syncBackupStatusWithSnapshotCreationTimeAndVolumeSiz
 		return
 	}
 
-	proxy, err := bc.ProxyHandler.GetCompatibleClient(e, engineCliClient)
+	engineClientProxy, err := bc.ProxyHandler.GetCompatibleClient(e, engineCliClient)
 	if err != nil {
 		bc.logger.Warnf("syncBackupStatusWithSnapshotCreationTimeAndVolumeSize: failed to get proxy: %v", err)
 		return
 	}
 
-	snap, err := proxy.SnapshotGet(e, backup.Spec.SnapshotName)
+	snap, err := engineClientProxy.SnapshotGet(e, backup.Spec.SnapshotName)
 	if err != nil {
 		bc.logger.Warnf("syncBackupStatusWithSnapshotCreationTimeAndVolumeSize: failed to get snapshot %v: %v", backup.Spec.SnapshotName, err)
 		return

@@ -58,12 +58,12 @@ func (m *VolumeManager) GetSnapshot(snapshotName, volumeName string) (*longhorn.
 		return nil, err
 	}
 
-	proxy, err := m.proxyHandler.GetCompatibleClient(engine, engineCliClient)
+	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(engine, engineCliClient)
 	if err != nil {
 		return nil, err
 	}
 
-	snapshot, err := proxy.SnapshotGet(engine, snapshotName)
+	snapshot, err := engineClientProxy.SnapshotGet(engine, snapshotName)
 	if err != nil {
 		return nil, err
 	}
@@ -162,12 +162,12 @@ func (m *VolumeManager) RevertSnapshot(snapshotName, volumeName string) error {
 		return err
 	}
 
-	proxy, err := m.proxyHandler.GetCompatibleClient(e, engineCliClient)
+	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(e, engineCliClient)
 	if err != nil {
 		return err
 	}
 
-	snapshot, err := proxy.SnapshotGet(e, snapshotName)
+	snapshot, err := engineClientProxy.SnapshotGet(e, snapshotName)
 	if err != nil {
 		return err
 	}

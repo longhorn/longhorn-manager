@@ -73,8 +73,9 @@ func NewBackupMonitor(logger logrus.FieldLogger,
 
 	// Call engine API snapshot backup
 	if backup.Status.State == longhorn.BackupStateNew {
-		_, replicaAddress, err := engineCliClient.SnapshotBackup(backup.Name, backup.Spec.SnapshotName,
-			backupTargetClient.URL, volume.Spec.BackingImage, biChecksum,
+		_, replicaAddress, err := engineClientProxy.SnapshotBackup(engine,
+			backup.Spec.SnapshotName, backup.Name, backupTargetClient.URL,
+			volume.Spec.BackingImage, biChecksum,
 			backup.Spec.Labels, backupTargetClient.Credential)
 		if err != nil {
 			if !strings.Contains(err.Error(), "DeadlineExceeded") {
