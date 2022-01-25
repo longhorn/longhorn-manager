@@ -316,7 +316,16 @@ func (btc *BackupTargetClient) SnapshotList(e *longhorn.Engine) (snapshots map[s
 	return nil, errors.Errorf(ErrNotImplement)
 }
 
-func (e *EngineBinary) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error) {
+func (btc *BackupTargetClient) SnapshotBackup(engine *longhorn.Engine, snapshotName, backupName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (backupID string, replicaAddress string, err error) {
+	return "", "", errors.Errorf(ErrNotImplement)
+}
+
+// SnapshotBackup calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) SnapshotBackup(engine *longhorn.Engine,
+	snapName, backupName, backupTarget,
+	backingImageName, backingImageChecksum string,
+	labels, credential map[string]string) (string, string, error) {
 	if snapName == VolumeHeadName {
 		return "", "", fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)
 	}

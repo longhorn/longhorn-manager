@@ -194,7 +194,7 @@ func (e *EngineSimulator) SnapshotPurgeStatus() (map[string]*longhorn.PurgeStatu
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotBackup(backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error) {
+func (e *EngineSimulator) SnapshotBackup(engine *longhorn.Engine, backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error) {
 	return "", "", fmt.Errorf(ErrNotImplement)
 }
 
