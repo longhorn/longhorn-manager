@@ -186,7 +186,7 @@ func (e *EngineSimulator) SnapshotRevert(engine *longhorn.Engine, name string) e
 	return fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotPurge() error {
+func (e *EngineSimulator) SnapshotPurge(*longhorn.Engine) error {
 	return fmt.Errorf(ErrNotImplement)
 }
 
