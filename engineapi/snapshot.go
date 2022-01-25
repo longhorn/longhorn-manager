@@ -55,7 +55,9 @@ func (e *EngineBinary) SnapshotGet(engine *longhorn.Engine, name string) (*longh
 	return data[name], nil
 }
 
-func (e *EngineBinary) SnapshotDelete(name string) error {
+// SnapshotDelete calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) SnapshotDelete(engine *longhorn.Engine, name string) error {
 	if name == VolumeHeadName {
 		return fmt.Errorf("invalid operation: cannot remove %v", VolumeHeadName)
 	}

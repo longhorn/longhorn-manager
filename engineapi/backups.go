@@ -308,6 +308,10 @@ func (btc *BackupTargetClient) SnapshotCreate(engine *longhorn.Engine, name stri
 	return "", errors.Errorf(ErrNotImplement)
 }
 
+func (btc *BackupTargetClient) SnapshotDelete(engine *longhorn.Engine, name string) error {
+	return errors.Errorf(ErrNotImplement)
+}
+
 func (btc *BackupTargetClient) SnapshotGet(engine *longhorn.Engine, name string) (snapshot *longhorn.Snapshot, err error) {
 	return nil, errors.Errorf(ErrNotImplement)
 }

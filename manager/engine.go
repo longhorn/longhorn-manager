@@ -136,9 +136,21 @@ func (m *VolumeManager) DeleteSnapshot(snapshotName, volumeName string) error {
 	if err != nil {
 		return err
 	}
-	if err := engineCliClient.SnapshotDelete(snapshotName); err != nil {
+
+	engine, err := m.GetRunningEngineByVolume(volumeName)
+	if err != nil {
 		return err
 	}
+
+	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(engine, engineCliClient)
+	if err != nil {
+		return err
+	}
+
+	if err := engineClientProxy.SnapshotDelete(engine, snapshotName); err != nil {
+		return err
+	}
+
 	logrus.Debugf("Deleted snapshot %v for volume %v", snapshotName, volumeName)
 	return nil
 }
