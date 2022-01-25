@@ -67,7 +67,9 @@ func (e *EngineBinary) SnapshotDelete(engine *longhorn.Engine, name string) erro
 	return nil
 }
 
-func (e *EngineBinary) SnapshotRevert(name string) error {
+// SnapshotRevert calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) SnapshotRevert(engine *longhorn.Engine, name string) error {
 	if name == VolumeHeadName {
 		return fmt.Errorf("invalid operation: cannot revert to %v", VolumeHeadName)
 	}

@@ -55,6 +55,7 @@ type Client interface {
 	SnapshotDelete(engine *longhorn.Engine, name string) error
 	SnapshotGet(engine *longhorn.Engine, name string) (snapshot *longhorn.Snapshot, err error)
 	SnapshotList(engine *longhorn.Engine) (snapshots map[string]*longhorn.Snapshot, err error)
+	SnapshotRevert(engine *longhorn.Engine, name string) error
 
 	SnapshotBackup(engine *longhorn.Engine, snapshotName, backupName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (backupID string, replicaAddress string, err error)
 }
