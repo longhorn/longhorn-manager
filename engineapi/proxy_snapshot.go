@@ -29,3 +29,7 @@ func (p *Proxy) SnapshotGet(e *longhorn.Engine, name string) (snapshot *longhorn
 
 	return recv[name], nil
 }
+
+func (p *Proxy) SnapshotDelete(e *longhorn.Engine, name string) (err error) {
+	return p.grpcClient.SnapshotRemove(p.DirectToURL(e), []string{name})
+}

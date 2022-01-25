@@ -178,7 +178,7 @@ func (e *EngineSimulator) SnapshotGet(engine *longhorn.Engine, name string) (*lo
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotDelete(name string) error {
+func (e *EngineSimulator) SnapshotDelete(engine *longhorn.Engine, name string) error {
 	return fmt.Errorf(ErrNotImplement)
 }
 

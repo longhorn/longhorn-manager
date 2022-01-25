@@ -68,7 +68,7 @@ type EngineClient interface {
 	SnapshotCreate(engine *longhorn.Engine, name string, labels map[string]string) (string, error)
 	SnapshotList(engine *longhorn.Engine) (map[string]*longhorn.Snapshot, error)
 	SnapshotGet(engine *longhorn.Engine, name string) (*longhorn.Snapshot, error)
-	SnapshotDelete(name string) error
+	SnapshotDelete(engine *longhorn.Engine, name string) error
 	SnapshotRevert(name string) error
 	SnapshotPurge() error
 	SnapshotPurgeStatus() (map[string]*longhorn.PurgeStatus, error)
