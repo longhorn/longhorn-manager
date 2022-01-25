@@ -182,7 +182,7 @@ func (e *EngineSimulator) SnapshotDelete(engine *longhorn.Engine, name string) e
 	return fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotRevert(name string) error {
+func (e *EngineSimulator) SnapshotRevert(engine *longhorn.Engine, name string) error {
 	return fmt.Errorf(ErrNotImplement)
 }
 

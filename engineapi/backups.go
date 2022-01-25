@@ -320,6 +320,10 @@ func (btc *BackupTargetClient) SnapshotList(e *longhorn.Engine) (snapshots map[s
 	return nil, errors.Errorf(ErrNotImplement)
 }
 
+func (btc *BackupTargetClient) SnapshotRevert(engine *longhorn.Engine, name string) error {
+	return errors.Errorf(ErrNotImplement)
+}
+
 func (btc *BackupTargetClient) SnapshotBackup(engine *longhorn.Engine, snapshotName, backupName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (backupID string, replicaAddress string, err error) {
 	return "", "", errors.Errorf(ErrNotImplement)
 }

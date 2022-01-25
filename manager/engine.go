@@ -169,17 +169,17 @@ func (m *VolumeManager) RevertSnapshot(snapshotName, volumeName string) error {
 		return err
 	}
 
-	e, err := m.GetRunningEngineByVolume(volumeName)
+	engine, err := m.GetRunningEngineByVolume(volumeName)
 	if err != nil {
 		return err
 	}
 
-	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(e, engineCliClient)
+	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(engine, engineCliClient)
 	if err != nil {
 		return err
 	}
 
-	snapshot, err := engineClientProxy.SnapshotGet(e, snapshotName)
+	snapshot, err := engineClientProxy.SnapshotGet(engine, snapshotName)
 	if err != nil {
 		return err
 	}
@@ -192,7 +192,7 @@ func (m *VolumeManager) RevertSnapshot(snapshotName, volumeName string) error {
 		return fmt.Errorf("not revert to snapshot '%s' for volume '%s' since it's marked as Removed", snapshotName, volumeName)
 	}
 
-	if err := engineCliClient.SnapshotRevert(snapshotName); err != nil {
+	if err := engineClientProxy.SnapshotRevert(engine, snapshotName); err != nil {
 		return err
 	}
 
