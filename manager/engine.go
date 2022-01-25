@@ -214,9 +214,20 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 		return err
 	}
 
-	if err := engineCliClient.SnapshotPurge(); err != nil {
+	engine, err := m.GetRunningEngineByVolume(volumeName)
+	if err != nil {
 		return err
 	}
+
+	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(engine, engineCliClient)
+	if err != nil {
+		return err
+	}
+
+	if err := engineClientProxy.SnapshotPurge(engine); err != nil {
+		return err
+	}
+
 	logrus.Debugf("Started snapshot purge for volume %v", volumeName)
 	return nil
 }

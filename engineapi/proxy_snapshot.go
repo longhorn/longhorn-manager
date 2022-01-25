@@ -34,6 +34,10 @@ func (p *Proxy) SnapshotRevert(e *longhorn.Engine, name string) (err error) {
 	return p.grpcClient.SnapshotRevert(p.DirectToURL(e), name)
 }
 
+func (p *Proxy) SnapshotPurge(e *longhorn.Engine) (err error) {
+	return p.grpcClient.SnapshotPurge(p.DirectToURL(e), true)
+}
+
 func (p *Proxy) SnapshotDelete(e *longhorn.Engine, name string) (err error) {
 	return p.grpcClient.SnapshotRemove(p.DirectToURL(e), []string{name})
 }

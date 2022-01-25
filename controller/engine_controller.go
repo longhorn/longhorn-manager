@@ -1419,7 +1419,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 		}
 		// If enabled, call SnapshotPurge to clean up system generated snapshot.
 		if autoCleanupSystemGeneratedSnapshot {
-			if err := engineCliClient.SnapshotPurge(); err != nil {
+			if err := engineClientProxy.SnapshotPurge(e); err != nil {
 				log.WithError(err).Errorf("Failed to start snapshot purge for volume %v", e.Spec.VolumeName)
 				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedStartingSnapshotPurge, "Failed to start snapshot purge for volume %v: %v", e.Spec.VolumeName, err)
 				return
