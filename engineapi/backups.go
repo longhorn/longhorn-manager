@@ -344,6 +344,10 @@ func (btc *BackupTargetClient) SnapshotBackup(engine *longhorn.Engine, snapshotN
 	return "", "", errors.Errorf(ErrNotImplement)
 }
 
+func (btc *BackupTargetClient) SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress string) (status *longhorn.EngineBackupStatus, err error) {
+	return nil, errors.Errorf(ErrNotImplement)
+}
+
 // SnapshotBackup calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
 func (e *EngineBinary) SnapshotBackup(engine *longhorn.Engine,
@@ -401,7 +405,9 @@ func (e *EngineBinary) SnapshotBackup(engine *longhorn.Engine,
 	return backupCreateInfo.BackupID, backupCreateInfo.ReplicaAddress, nil
 }
 
-func (e *EngineBinary) SnapshotBackupStatus(backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error) {
+// SnapshotBackupStatus calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error) {
 	args := []string{"backup", "status", backupName}
 	if replicaAddress != "" {
 		args = append(args, "--replica", replicaAddress)
