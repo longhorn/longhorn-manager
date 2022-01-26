@@ -51,7 +51,7 @@ require (
 	github.com/rancher/dynamiclistener v0.3.1
 	github.com/rancher/go-rancher v0.1.1-0.20190307222549-9756097e5e4c
 	github.com/rancher/lasso v0.0.0-20211217013041-3c6118a30611 // indirect
-	github.com/rancher/pkg v0.0.0-20181214184433-b04c0947ad2f
+	github.com/rancher/pkg v0.0.0-20181214184433-b04c0947ad2f // indirect
 	github.com/rancher/wrangler v0.8.10
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.4.2
