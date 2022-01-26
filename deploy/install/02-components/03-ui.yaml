@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: longhorn-ui
-        image: longhornio/longhorn-ui:master-head
+        image: longhornio/longhorn-ui:v1.2.x-head
         imagePullPolicy: IfNotPresent
         securityContext:
           runAsUser: 0
