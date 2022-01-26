@@ -830,7 +830,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	// TODO: Check if the purge failure is handled somewhere else
-	purgeStatus, err := engineCliClient.SnapshotPurgeStatus()
+	purgeStatus, err := engineClientProxy.SnapshotPurgeStatus(engine)
 	if err != nil {
 		m.logger.WithError(err).Error("failed to get snapshot purge status")
 	} else {

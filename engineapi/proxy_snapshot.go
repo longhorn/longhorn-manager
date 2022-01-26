@@ -38,6 +38,19 @@ func (p *Proxy) SnapshotPurge(e *longhorn.Engine) (err error) {
 	return p.grpcClient.SnapshotPurge(p.DirectToURL(e), true)
 }
 
+func (p *Proxy) SnapshotPurgeStatus(e *longhorn.Engine) (status map[string]*longhorn.PurgeStatus, err error) {
+	recv, err := p.grpcClient.SnapshotPurgeStatus(p.DirectToURL(e))
+	if err != nil {
+		return nil, err
+	}
+
+	status = map[string]*longhorn.PurgeStatus{}
+	for k, v := range recv {
+		status[k] = (*longhorn.PurgeStatus)(v)
+	}
+	return status, nil
+}
+
 func (p *Proxy) SnapshotDelete(e *longhorn.Engine, name string) (err error) {
 	return p.grpcClient.SnapshotRemove(p.DirectToURL(e), []string{name})
 }
