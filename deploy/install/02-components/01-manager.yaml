@@ -15,9 +15,9 @@ spec:
         app: longhorn-manager
     spec:
       initContainers:
-      - name: wait-longhorn-webhook
+      - name: wait-longhorn-admission-webhook
         image: longhornio/longhorn-manager:master-head
-        command: ['sh', '-c', 'while [ $(curl -m 1 -s -o /dev/null -w "%{http_code}" -k https://longhorn-webhook:9443/v1/healthz) != "200" ]; do echo waiting; sleep 2; done']
+        command: ['sh', '-c', 'while [ $(curl -m 1 -s -o /dev/null -w "%{http_code}" -k https://longhorn-admission-webhook:9443/v1/healthz) != "200" ]; do echo waiting; sleep 2; done']
       containers:
       - name: longhorn-manager
         image: longhornio/longhorn-manager:master-head
