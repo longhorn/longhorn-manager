@@ -30,6 +30,10 @@ func (p *Proxy) SnapshotGet(e *longhorn.Engine, name string) (snapshot *longhorn
 	return recv[name], nil
 }
 
+func (p *Proxy) SnapshotClone(e *longhorn.Engine, name, fromController string) (err error) {
+	return p.grpcClient.SnapshotClone(p.DirectToURL(e), name, fromController)
+}
+
 func (p *Proxy) SnapshotRevert(e *longhorn.Engine, name string) (err error) {
 	return p.grpcClient.SnapshotRevert(p.DirectToURL(e), name)
 }

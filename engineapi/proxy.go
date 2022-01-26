@@ -58,6 +58,7 @@ type Client interface {
 	SnapshotRevert(engine *longhorn.Engine, name string) error
 	SnapshotPurge(engine *longhorn.Engine) error
 	SnapshotPurgeStatus(engine *longhorn.Engine) (status map[string]*longhorn.PurgeStatus, err error)
+	SnapshotClone(engine *longhorn.Engine, name, fromController string) (err error)
 
 	SnapshotBackup(engine *longhorn.Engine, snapshotName, backupName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (backupID string, replicaAddress string, err error)
 }
