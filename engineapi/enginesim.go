@@ -190,7 +190,7 @@ func (e *EngineSimulator) SnapshotPurge(*longhorn.Engine) error {
 	return fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotPurgeStatus() (map[string]*longhorn.PurgeStatus, error) {
+func (e *EngineSimulator) SnapshotPurgeStatus(*longhorn.Engine) (map[string]*longhorn.PurgeStatus, error) {
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 

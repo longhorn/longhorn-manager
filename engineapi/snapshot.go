@@ -89,7 +89,9 @@ func (e *EngineBinary) SnapshotPurge(*longhorn.Engine) error {
 	return nil
 }
 
-func (e *EngineBinary) SnapshotPurgeStatus() (map[string]*longhorn.PurgeStatus, error) {
+// SnapshotPurgeStatus calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) SnapshotPurgeStatus(*longhorn.Engine) (map[string]*longhorn.PurgeStatus, error) {
 	output, err := e.ExecuteEngineBinary("snapshot", "purge-status")
 	if err != nil {
 		return nil, errors.Wrapf(err, "error getting snapshot purge status")

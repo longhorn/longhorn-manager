@@ -328,6 +328,10 @@ func (btc *BackupTargetClient) SnapshotPurge(engine *longhorn.Engine) error {
 	return errors.Errorf(ErrNotImplement)
 }
 
+func (btc *BackupTargetClient) SnapshotPurgeStatus(engine *longhorn.Engine) (status map[string]*longhorn.PurgeStatus, err error) {
+	return nil, errors.Errorf(ErrNotImplement)
+}
+
 func (btc *BackupTargetClient) SnapshotBackup(engine *longhorn.Engine, snapshotName, backupName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (backupID string, replicaAddress string, err error) {
 	return "", "", errors.Errorf(ErrNotImplement)
 }
