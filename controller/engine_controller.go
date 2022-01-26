@@ -907,7 +907,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	var snapshotCloneStatusMap map[string]*longhorn.SnapshotCloneStatus
 	if cliAPIVersion >= engineapi.CLIVersionFive {
-		if snapshotCloneStatusMap, err = engineCliClient.SnapshotCloneStatus(); err != nil {
+		if snapshotCloneStatusMap, err = engineClientProxy.SnapshotCloneStatus(engine); err != nil {
 			return err
 		}
 	}

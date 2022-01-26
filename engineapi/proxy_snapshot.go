@@ -34,6 +34,19 @@ func (p *Proxy) SnapshotClone(e *longhorn.Engine, name, fromController string) (
 	return p.grpcClient.SnapshotClone(p.DirectToURL(e), name, fromController)
 }
 
+func (p *Proxy) SnapshotCloneStatus(e *longhorn.Engine) (status map[string]*longhorn.SnapshotCloneStatus, err error) {
+	recv, err := p.grpcClient.SnapshotCloneStatus(p.DirectToURL(e))
+	if err != nil {
+		return nil, err
+	}
+
+	status = map[string]*longhorn.SnapshotCloneStatus{}
+	for k, v := range recv {
+		status[k] = (*longhorn.SnapshotCloneStatus)(v)
+	}
+	return status, nil
+}
+
 func (p *Proxy) SnapshotRevert(e *longhorn.Engine, name string) (err error) {
 	return p.grpcClient.SnapshotRevert(p.DirectToURL(e), name)
 }
