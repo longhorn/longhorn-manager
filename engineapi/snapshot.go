@@ -105,7 +105,9 @@ func (e *EngineBinary) SnapshotPurgeStatus(*longhorn.Engine) (map[string]*longho
 	return data, nil
 }
 
-func (e *EngineBinary) SnapshotClone(snapshotName, fromControllerAddress string) error {
+// SnapshotClone calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) SnapshotClone(engine *longhorn.Engine, snapshotName, fromControllerAddress string) error {
 	args := []string{"snapshot", "clone", "--snapshot-name", snapshotName, "--from-controller-address", fromControllerAddress}
 	if _, err := e.ExecuteEngineBinaryWithoutTimeout([]string{}, args...); err != nil {
 		return errors.Wrapf(err, "error starting snapshot clone")

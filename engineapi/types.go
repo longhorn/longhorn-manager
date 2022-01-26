@@ -75,7 +75,7 @@ type EngineClient interface {
 	SnapshotBackup(engine *longhorn.Engine, backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error)
 	SnapshotBackupStatus(backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error)
 	SnapshotCloneStatus() (map[string]*longhorn.SnapshotCloneStatus, error)
-	SnapshotClone(snapshotName, fromControllerAddress string) error
+	SnapshotClone(engine *longhorn.Engine, snapshotName, fromControllerAddress string) error
 
 	BackupRestore(backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error
 	BackupRestoreStatus() (map[string]*longhorn.RestoreStatus, error)

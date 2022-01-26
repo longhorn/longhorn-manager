@@ -919,7 +919,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 	if needClone {
-		if err = cloneSnapshot(engine, engineCliClient, m.ds); err != nil {
+		if err = cloneSnapshot(engine, engineClientProxy, m.ds); err != nil {
 			return err
 		}
 	}
@@ -1190,7 +1190,7 @@ func preCloneCheck(engine *longhorn.Engine) (needClone bool, err error) {
 	return true, nil
 }
 
-func cloneSnapshot(engine *longhorn.Engine, client engineapi.EngineClient, ds *datastore.DataStore) error {
+func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.Client, ds *datastore.DataStore) error {
 	sourceVolumeName := types.GetVolumeName(engine.Spec.RequestedDataSource)
 	snapshotName := types.GetSnapshotName(engine.Spec.RequestedDataSource)
 	sourceEngines, err := ds.ListVolumeEngines(sourceVolumeName)
@@ -1205,7 +1205,7 @@ func cloneSnapshot(engine *longhorn.Engine, client engineapi.EngineClient, ds *d
 		sourceEngine = e
 	}
 	sourceEngineControllerURL := imutil.GetURL(sourceEngine.Status.IP, sourceEngine.Status.Port)
-	if err := client.SnapshotClone(snapshotName, sourceEngineControllerURL); err != nil {
+	if err := engineClientProxy.SnapshotClone(engine, snapshotName, sourceEngineControllerURL); err != nil {
 		// There is only 1 replica during volume cloning,
 		// so if the cloning failed, it must be that the replica failed to clone.
 		for _, status := range engine.Status.CloneStatus {
