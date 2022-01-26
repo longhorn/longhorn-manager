@@ -285,7 +285,11 @@ func (c *UninstallController) uninstall() error {
 		return err
 	}
 
-	if waitForUpdate, err := c.deleteWebhookDeployment(); err != nil || waitForUpdate {
+	if waitForUpdate, err := c.deleteWebhookDeployment(types.LonghornAdmissionWebhookDeploymentName); err != nil || waitForUpdate {
+		return err
+	}
+
+	if waitForUpdate, err := c.deleteWebhookDeployment(types.LonghornConversionWebhookDeploymentName); err != nil || waitForUpdate {
 		return err
 	}
 
@@ -785,16 +789,16 @@ func (c *UninstallController) deleteManager() (bool, error) {
 	return true, nil
 }
 
-func (c *UninstallController) deleteWebhookDeployment() (bool, error) {
-	log := getLoggerForUninstallDeployment(c.logger, types.LonghornWebhookDeploymentName)
+func (c *UninstallController) deleteWebhookDeployment(deployment string) (bool, error) {
+	log := getLoggerForUninstallDeployment(c.logger, deployment)
 
-	if ds, err := c.ds.GetDeployment(types.LonghornWebhookDeploymentName); err != nil {
+	if ds, err := c.ds.GetDeployment(deployment); err != nil {
 		if apierrors.IsNotFound(err) {
 			return false, nil
 		}
 		return true, err
 	} else if ds.DeletionTimestamp == nil {
-		if err := c.ds.DeleteDeployment(types.LonghornWebhookDeploymentName); err != nil {
+		if err := c.ds.DeleteDeployment(deployment); err != nil {
 			log.Warn("failed to mark for deletion")
 			return true, err
 		}
