@@ -2,12 +2,14 @@ package engineapi
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/pkg/errors"
 
 	"github.com/longhorn/backupstore"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 func (p *Proxy) SnapshotBackup(e *longhorn.Engine,
@@ -77,4 +79,63 @@ func (p *Proxy) BackupRestoreStatus(e *longhorn.Engine) (status map[string]*long
 		status[k] = (*longhorn.RestoreStatus)(v)
 	}
 	return status, nil
+}
+
+func (p *Proxy) BackupNameList(destURL, volumeName string, credential map[string]string) (names []string, err error) {
+	if volumeName == "" {
+		return nil, nil
+	}
+
+	// get environment variables if backup for s3
+	envs, err := getBackupCredentialEnv(destURL, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	recv, err := p.grpcClient.BackupVolumeList(destURL, volumeName, false, envs)
+	if err != nil {
+		if types.ErrorIsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	volume, ok := recv[volumeName]
+	if !ok {
+		return nil, fmt.Errorf("cannot find %s in the backups", volumeName)
+	}
+
+	names = []string{}
+	if volume.Messages[string(backupstore.MessageTypeError)] != "" {
+		return names, errors.New(volume.Messages[string(backupstore.MessageTypeError)])
+	}
+
+	for backupName := range volume.Backups {
+		names = append(names, backupName)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+func (p *Proxy) BackupVolumeNameList(destURL string, credential map[string]string) (names []string, err error) {
+	// get environment variables if backup for s3
+	envs, err := getBackupCredentialEnv(destURL, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	recv, err := p.grpcClient.BackupVolumeList(destURL, "", true, envs)
+	if err != nil {
+		if types.ErrorIsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	names = []string{}
+	for volumeName := range recv {
+		names = append(names, volumeName)
+	}
+	sort.Strings(names)
+	return names, nil
 }

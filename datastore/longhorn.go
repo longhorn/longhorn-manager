@@ -2480,6 +2480,32 @@ func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, 
 	return resultRO.DeepCopy(), nil
 }
 
+// GetDefaultEngineInstanceManagerByNode returns the given node's engine InstanceManager
+// that is using the default instance manager image.
+func (s *DataStore) GetDefaultEngineInstanceManagerByNode(name string) (*longhorn.InstanceManager, error) {
+	defaultInstanceManagerImage, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return nil, err
+	}
+
+	engineIMs, err := s.ListInstanceManagersBySelector(name, defaultInstanceManagerImage, longhorn.InstanceManagerTypeEngine)
+	if err != nil {
+		return nil, err
+	}
+
+	engineIM := &longhorn.InstanceManager{}
+	for _, im := range engineIMs {
+		engineIM = im
+
+		if len(engineIMs) != 1 {
+			logrus.Warnf("Found more than 1 %v instance manager with %v on %v, use %v", longhorn.InstanceManagerTypeEngine, defaultInstanceManagerImage, name, engineIM.Name)
+			break
+		}
+	}
+
+	return engineIM, nil
+}
+
 // CheckInstanceManagerType checks and returns InstanceManager labels type
 // Returns error if the InstanceManager type is not engine or replica
 func CheckInstanceManagerType(im *longhorn.InstanceManager) (longhorn.InstanceManagerType, error) {
