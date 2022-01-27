@@ -5,6 +5,8 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/longhorn/backupstore"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -50,4 +52,16 @@ func (p *Proxy) SnapshotBackupStatus(e *longhorn.Engine, backupName, replicaAddr
 	}
 
 	return (*longhorn.EngineBackupStatus)(recv), nil
+}
+
+func (p *Proxy) BackupRestore(e *longhorn.Engine, backupTarget, backupName, backupVolumeName, lastRestored string, credential map[string]string) error {
+	backupURL := backupstore.EncodeBackupURL(backupName, backupVolumeName, backupTarget)
+
+	// get environment variables if backup for s3
+	envs, err := getBackupCredentialEnv(backupTarget, credential)
+	if err != nil {
+		return err
+	}
+
+	return p.grpcClient.BackupRestore(p.DirectToURL(e), backupURL, backupTarget, backupVolumeName, envs)
 }

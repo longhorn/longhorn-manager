@@ -214,7 +214,7 @@ func (e *EngineSimulator) VolumeExpand(*longhorn.Engine) error {
 	return fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) BackupRestore(backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error {
+func (e *EngineSimulator) BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error {
 	return fmt.Errorf(ErrNotImplement)
 }
 
