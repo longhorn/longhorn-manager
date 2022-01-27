@@ -5,13 +5,20 @@ if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
     DIRTY="-dirty"
 fi
 
-COMMIT=$(git rev-parse --short HEAD)
+VERSION=$(cat $(dirname $0)/../version)
 GIT_TAG=$(git tag -l --contains HEAD | head -n 1)
 
 if [[ -z "$DIRTY" && -n "$GIT_TAG" ]]; then
-    VER=$GIT_TAG
+    if [[ "$VERSION" != "$GIT_TAG" ]]; then
+      echo "The git tag is not the same as the value in file 'version'"
+      exit 1
+    fi
+    VERSION=$GIT_TAG
+    IMAGE_TAG_PREFIX=$GIT_TAG
 else
-    VER="${COMMIT}${DIRTY}"
+    IMAGE_TAG_PREFIX="$(git rev-parse --short HEAD)${DIRTY}"
 fi
 
-echo ${VER}
+GITCOMMIT="$(git rev-parse HEAD)${DIRTY}"
+BUILDDATE=$(date -u --rfc-3339=seconds)
+BUILDDATE=${BUILDDATE// /T}
