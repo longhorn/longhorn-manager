@@ -69,6 +69,8 @@ type Client interface {
 
 	BackupNameList(destURL, volumeName string, credential map[string]string) (names []string, err error)
 	BackupVolumeNameList(destURL string, credential map[string]string) (names []string, err error)
+	BackupDelete(destURL string, credential map[string]string) (err error)
+	BackupVolumeDelete(destURL, volumeName string, credential map[string]string) (err error)
 }
 
 type EngineClientProxyHandler struct {

@@ -261,6 +261,11 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return err
 	}
 
+	engine, err := bc.ds.GetVolumeCurrentEngine(backupVolumeName)
+	if err != nil {
+		return err
+	}
+
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backup.DeletionTimestamp.IsZero() {
 		backupVolume, err := bc.ds.GetBackupVolume(backupVolumeName)
@@ -277,8 +282,13 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 				return nil // Ignore error to prevent enqueue
 			}
 
+			engineClientProxy, err := bc.ProxyHandler.GetCompatibleClient(engine, backupTargetClient)
+			if err != nil {
+				return err
+			}
+
 			backupURL := backupstore.EncodeBackupURL(backup.Name, backupVolumeName, backupTargetClient.URL)
-			if err := backupTargetClient.DeleteBackup(backupURL); err != nil {
+			if err := engineClientProxy.BackupDelete(backupURL, backupTargetClient.Credential); err != nil {
 				log.WithError(err).Error("Error deleting remote backup")
 				return err
 			}

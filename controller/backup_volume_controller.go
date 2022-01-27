@@ -237,7 +237,12 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 				return nil // Ignore error to prevent enqueue
 			}
 
-			if err := backupTargetClient.DeleteBackupVolume(backupVolumeName); err != nil {
+			engineClientProxy, err := bvc.proxyHandler.GetClient(engineIM)
+			if err != nil {
+				return err
+			}
+
+			if err := engineClientProxy.BackupVolumeDelete(backupTargetClient.URL, backupVolumeName, backupTargetClient.Credential); err != nil {
 				log.WithError(err).Error("Error clean up remote backup volume")
 				return err
 			}

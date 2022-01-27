@@ -273,3 +273,11 @@ func (e *EngineBinary) BackupNameList(destURL, volumeName string, credential map
 func (e *EngineBinary) BackupVolumeNameList(destURL string, credential map[string]string) (names []string, err error) {
 	return nil, errors.Errorf(ErrNotImplement)
 }
+
+func (e *EngineBinary) BackupDelete(destURL string, credential map[string]string) (err error) {
+	return errors.Errorf(ErrNotImplement)
+}
+
+func (e *EngineBinary) BackupVolumeDelete(destURL, volumeName string, credential map[string]string) (err error) {
+	return errors.Errorf(ErrNotImplement)
+}
