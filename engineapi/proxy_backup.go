@@ -65,3 +65,16 @@ func (p *Proxy) BackupRestore(e *longhorn.Engine, backupTarget, backupName, back
 
 	return p.grpcClient.BackupRestore(p.DirectToURL(e), backupURL, backupTarget, backupVolumeName, envs)
 }
+
+func (p *Proxy) BackupRestoreStatus(e *longhorn.Engine) (status map[string]*longhorn.RestoreStatus, err error) {
+	recv, err := p.grpcClient.BackupRestoreStatus(p.DirectToURL(e))
+	if err != nil {
+		return nil, err
+	}
+
+	status = map[string]*longhorn.RestoreStatus{}
+	for k, v := range recv {
+		status[k] = (*longhorn.RestoreStatus)(v)
+	}
+	return status, nil
+}

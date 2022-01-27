@@ -64,6 +64,7 @@ type Client interface {
 	SnapshotBackup(engine *longhorn.Engine, snapshotName, backupName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (backupID string, replicaAddress string, err error)
 	SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress string) (status *longhorn.EngineBackupStatus, err error)
 	BackupRestore(e *longhorn.Engine, backupTarget, backupName, backupVolumeName, lastRestored string, credential map[string]string) error
+	BackupRestoreStatus(engine *longhorn.Engine) (status map[string]*longhorn.RestoreStatus, err error)
 }
 
 type EngineClientProxyHandler struct {

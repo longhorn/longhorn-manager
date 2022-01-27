@@ -879,7 +879,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		m.expansionBackoff.DeleteEntry(engine.Name)
 	}
 
-	rsMap, err := engineCliClient.BackupRestoreStatus()
+	rsMap, err := engineClientProxy.BackupRestoreStatus(engine)
 	if err != nil {
 		return err
 	}
