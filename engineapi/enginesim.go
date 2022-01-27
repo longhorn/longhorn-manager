@@ -222,7 +222,7 @@ func (e *EngineSimulator) SnapshotClone(engine *longhorn.Engine, snapshotName, f
 	return fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) BackupRestoreStatus() (map[string]*longhorn.RestoreStatus, error) {
+func (e *EngineSimulator) BackupRestoreStatus(*longhorn.Engine) (map[string]*longhorn.RestoreStatus, error) {
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 

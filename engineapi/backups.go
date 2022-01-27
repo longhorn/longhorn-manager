@@ -352,6 +352,10 @@ func (btc *BackupTargetClient) BackupRestore(e *longhorn.Engine, backupTarget, b
 	return errors.Errorf(ErrNotImplement)
 }
 
+func (btc *BackupTargetClient) BackupRestoreStatus(engine *longhorn.Engine) (status map[string]*longhorn.RestoreStatus, err error) {
+	return nil, errors.Errorf(ErrNotImplement)
+}
+
 // SnapshotBackup calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
 func (e *EngineBinary) SnapshotBackup(engine *longhorn.Engine,
@@ -475,7 +479,9 @@ func (e *EngineBinary) BackupRestore(engine *longhorn.Engine, backupTarget, back
 	return nil
 }
 
-func (e *EngineBinary) BackupRestoreStatus() (map[string]*longhorn.RestoreStatus, error) {
+// BackupRestoreStatus calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) BackupRestoreStatus(*longhorn.Engine) (map[string]*longhorn.RestoreStatus, error) {
 	args := []string{"backup", "restore-status"}
 	output, err := e.ExecuteEngineBinary(args...)
 	if err != nil {
