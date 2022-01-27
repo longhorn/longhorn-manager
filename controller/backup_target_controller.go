@@ -318,8 +318,18 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		return nil // Ignore error to allow status update as well as preventing enqueue
 	}
 
+	engineIM, err := btc.ds.GetDefaultEngineInstanceManagerByNode(btc.controllerID)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get default engine instance manager for proxy client")
+	}
+
+	engineClientProxy, err := btc.proxyHandler.GetClient(engineIM)
+	if err != nil {
+		return err
+	}
+
 	// Get a list of all the backup volumes that are stored in the backup target
-	res, err := backupTargetClient.ListBackupVolumeNames()
+	res, err := engineClientProxy.BackupVolumeNameList(backupTargetClient.URL, backupTargetClient.Credential)
 	if err != nil {
 		backupTarget.Status.Available = false
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,

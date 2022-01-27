@@ -23,6 +23,11 @@ const (
 	backupStateError      = "error"
 )
 
+type BackupTargetBinaryClient interface {
+	BackupNameList(destURL, volumeName string, credential map[string]string) (names []string, err error)
+	BackupVolumeNameList(destURL string, credential map[string]string) (names []string, err error)
+}
+
 type BackupTargetClient struct {
 	Image      string
 	URL        string
@@ -109,8 +114,9 @@ func parseBackupVolumeNamesList(output string) ([]string, error) {
 	return volumeNames, nil
 }
 
-// ListBackupVolumeNames returns a list of backup volume names
-func (btc *BackupTargetClient) ListBackupVolumeNames() ([]string, error) {
+// BackupVolumeNameList returns a list of backup volume names
+// TODO: Deprecated, replaced by gRPC proxy
+func (btc *BackupTargetClient) BackupVolumeNameList(destURL string, credential map[string]string) ([]string, error) {
 	output, err := btc.ExecuteEngineBinary("backup", "ls", "--volume-only", btc.URL)
 	if err != nil {
 		if types.ErrorIsNotFound(err) {
@@ -144,8 +150,9 @@ func parseBackupNamesList(output, volumeName string) ([]string, error) {
 	return backupNames, nil
 }
 
-// ListBackupNames returns a list of backup names
-func (btc *BackupTargetClient) ListBackupNames(volumeName string) ([]string, error) {
+// BackupNameList returns a list of backup names
+// TODO: Deprecated, replaced by gRPC proxy
+func (btc *BackupTargetClient) BackupNameList(destURL, volumeName string, credential map[string]string) ([]string, error) {
 	if volumeName == "" {
 		return nil, nil
 	}

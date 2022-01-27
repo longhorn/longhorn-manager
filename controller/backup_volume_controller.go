@@ -216,6 +216,11 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return nil
 	}
 
+	engineIM, err := bvc.ds.GetDefaultEngineInstanceManagerByNode(bvc.controllerID)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get default engine instance manager for proxy client")
+	}
+
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backupVolume.DeletionTimestamp.IsZero() {
 		if err := bvc.ds.DeleteAllBackupsForBackupVolume(backupVolumeName); err != nil {
@@ -268,8 +273,13 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return nil // Ignore error to prevent enqueue
 	}
 
+	engineClientProxy, err := bvc.proxyHandler.GetClient(engineIM)
+	if err != nil {
+		return err
+	}
+
 	// Get a list of all the backups that are stored in the backup target
-	res, err := backupTargetClient.ListBackupNames(backupVolumeName)
+	res, err := engineClientProxy.BackupNameList(backupTargetClient.URL, backupVolumeName, backupTargetClient.Credential)
 	if err != nil {
 		log.WithError(err).Error("Error listing backups from backup target")
 		return nil // Ignore error to prevent enqueue

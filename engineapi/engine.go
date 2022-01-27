@@ -265,3 +265,11 @@ func (e *EngineBinary) ReplicaRebuildVerify(engine *longhorn.Engine, url string)
 	}
 	return nil
 }
+
+func (e *EngineBinary) BackupNameList(destURL, volumeName string, credential map[string]string) (names []string, err error) {
+	return nil, errors.Errorf(ErrNotImplement)
+}
+
+func (e *EngineBinary) BackupVolumeNameList(destURL string, credential map[string]string) (names []string, err error) {
+	return nil, errors.Errorf(ErrNotImplement)
+}
