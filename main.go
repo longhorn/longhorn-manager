@@ -8,9 +8,8 @@ import (
 	"github.com/urfave/cli"
 
 	"github.com/longhorn/longhorn-manager/app"
+	"github.com/longhorn/longhorn-manager/meta"
 )
-
-var VERSION = "dev"
 
 func cmdNotFound(c *cli.Context, command string) {
 	panic(fmt.Errorf("Unrecognized command: %s", command))
@@ -24,8 +23,8 @@ func main() {
 	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
 
 	a := cli.NewApp()
-	a.Version = VERSION
 	a.Usage = "Longhorn Manager"
+	a.Version = meta.Version
 
 	a.Before = func(c *cli.Context) error {
 		if c.GlobalBool("debug") {
@@ -61,8 +60,6 @@ func main() {
 	}
 	a.CommandNotFound = cmdNotFound
 	a.OnUsageError = onUsageError
-
-	app.VERSION = VERSION
 
 	if err := a.Run(os.Args); err != nil {
 		logrus.Fatalf("Critical error: %v", err)

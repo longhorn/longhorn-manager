@@ -21,10 +21,9 @@ import (
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	longhornmeta "github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/types"
 )
-
-var VERSION = "v1.1.0"
 
 const (
 	maxRetryCountForMountPropagationCheck = 10
@@ -194,7 +193,8 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 	if annos == nil {
 		annos = map[string]string{}
 	}
-	annos[AnnotationCSIVersion] = VERSION
+	annos[AnnotationCSIGitCommit] = longhornmeta.GitCommit
+	annos[AnnotationCSIVersion] = longhornmeta.Version
 	annos[AnnotationKubernetesVersion] = kubeVersion.GitVersion
 	objMeta.SetAnnotations(annos)
 	name := objMeta.GetName()
@@ -212,13 +212,14 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 		}
 		annos := objMeta.GetAnnotations()
 		existingAnnos := existingMeta.GetAnnotations()
-		if annos[AnnotationCSIVersion] == existingAnnos[AnnotationCSIVersion] &&
+		if annos[AnnotationCSIGitCommit] == existingAnnos[AnnotationCSIGitCommit] &&
+			annos[AnnotationCSIVersion] == existingAnnos[AnnotationCSIVersion] &&
 			annos[AnnotationKubernetesVersion] == existingAnnos[AnnotationKubernetesVersion] &&
 			existingMeta.GetDeletionTimestamp() == nil &&
 			!needToUpdateImage(existing, obj) {
 			// deployment of correct version already deployed
-			logrus.Debugf("Detected %v %v CSI version %v Kubernetes version %v has already been deployed",
-				resource, name, annos[AnnotationCSIVersion], annos[AnnotationKubernetesVersion])
+			logrus.Debugf("Detected %v %v CSI Git commit %v version %v Kubernetes version %v has already been deployed",
+				resource, name, annos[AnnotationCSIGitCommit], annos[AnnotationCSIVersion], annos[AnnotationKubernetesVersion])
 			return nil
 		}
 	}
