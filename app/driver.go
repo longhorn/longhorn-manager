@@ -137,8 +137,6 @@ func DeployDriverCmd() cli.Command {
 }
 
 func deployDriver(c *cli.Context) error {
-	csi.VERSION = VERSION
-
 	managerImage := c.String(FlagManagerImage)
 	if managerImage == "" {
 		return fmt.Errorf("require %v", FlagManagerImage)
