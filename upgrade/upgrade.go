@@ -286,5 +286,5 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 		}
 	}
 
-	return nil
+	return upgradeutil.CreateOrUpdateLonghornVersionSetting(namespace, lhClient)
 }
