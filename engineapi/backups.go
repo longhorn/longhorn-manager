@@ -348,6 +348,10 @@ func (btc *BackupTargetClient) SnapshotBackupStatus(engine *longhorn.Engine, bac
 	return nil, errors.Errorf(ErrNotImplement)
 }
 
+func (btc *BackupTargetClient) BackupRestore(e *longhorn.Engine, backupTarget, backupName, backupVolumeName, lastRestored string, credential map[string]string) error {
+	return errors.Errorf(ErrNotImplement)
+}
+
 // SnapshotBackup calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
 func (e *EngineBinary) SnapshotBackup(engine *longhorn.Engine,
@@ -440,7 +444,9 @@ func ConvertEngineBackupState(state string) longhorn.BackupState {
 	}
 }
 
-func (e *EngineBinary) BackupRestore(backupTarget, backupName, backupVolumeName, lastRestored string, credential map[string]string) error {
+// BackupRestore calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolumeName, lastRestored string, credential map[string]string) error {
 	backup := backupstore.EncodeBackupURL(backupName, backupVolumeName, backupTarget)
 
 	// get environment variables if backup for s3
