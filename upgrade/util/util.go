@@ -9,7 +9,9 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	clientset "k8s.io/client-go/kubernetes"
 
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
+	"github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/types"
 )
 
@@ -45,7 +47,7 @@ func MergeStringMaps(baseMap, overwriteMap map[string]string) map[string]string 
 }
 
 func GetCurrentLonghornVersion(namespace string, lhClient *lhclientset.Clientset) (string, error) {
-	currentLHVersionSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(context.TODO(), string(types.SettingNameCurrentLonghornVersion), metav1.GetOptions{})
+	currentLHVersionSetting, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameCurrentLonghornVersion), metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return "", nil
@@ -54,4 +56,31 @@ func GetCurrentLonghornVersion(namespace string, lhClient *lhclientset.Clientset
 	}
 
 	return currentLHVersionSetting.Value, nil
+}
+
+func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient *lhclientset.Clientset) error {
+	s, err := lhClient.LonghornV1beta1().Settings(namespace).Get(string(types.SettingNameCurrentLonghornVersion), metav1.GetOptions{})
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+
+		s = &longhorn.Setting{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: string(types.SettingNameCurrentLonghornVersion),
+			},
+			Setting: types.Setting{
+				Value: meta.Version,
+			},
+		}
+		_, err := lhClient.LonghornV1beta1().Settings(namespace).Create(s)
+		return err
+	}
+
+	if s.Value != meta.Version {
+		s.Value = meta.Version
+		_, err = lhClient.LonghornV1beta1().Settings(namespace).Update(s)
+		return err
+	}
+	return nil
 }
