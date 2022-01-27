@@ -252,3 +252,11 @@ func (e *EngineSimulator) BackupNameList(destURL, volumeName string, credential 
 func (e *EngineSimulator) BackupVolumeNameList(destURL string, credential map[string]string) (names []string, err error) {
 	return nil, fmt.Errorf(ErrNotImplement)
 }
+
+func (e *EngineSimulator) BackupDelete(destURL string, credential map[string]string) (err error) {
+	return fmt.Errorf(ErrNotImplement)
+}
+
+func (e *EngineSimulator) BackupVolumeDelete(destURL, volumeName string, credential map[string]string) (err error) {
+	return fmt.Errorf(ErrNotImplement)
+}

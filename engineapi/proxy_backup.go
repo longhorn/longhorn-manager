@@ -139,3 +139,34 @@ func (p *Proxy) BackupVolumeNameList(destURL string, credential map[string]strin
 	sort.Strings(names)
 	return names, nil
 }
+
+func (p *Proxy) BackupDelete(destURL string, credential map[string]string) (err error) {
+	// get environment variables if backup for s3
+	envs, err := getBackupCredentialEnv(destURL, credential)
+	if err != nil {
+		return err
+	}
+
+	err = p.grpcClient.BackupRemove(destURL, "", envs)
+	if err != nil {
+		if types.ErrorIsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (p *Proxy) BackupVolumeDelete(destURL, volumeName string, credential map[string]string) (err error) {
+	// get environment variables if backup for s3
+	envs, err := getBackupCredentialEnv(destURL, credential)
+	if err != nil {
+		if types.ErrorIsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	return p.grpcClient.BackupRemove(destURL, volumeName, envs)
+}

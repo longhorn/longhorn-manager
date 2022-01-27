@@ -26,6 +26,8 @@ const (
 type BackupTargetBinaryClient interface {
 	BackupNameList(destURL, volumeName string, credential map[string]string) (names []string, err error)
 	BackupVolumeNameList(destURL string, credential map[string]string) (names []string, err error)
+	BackupDelete(destURL string, credential map[string]string) (err error)
+	BackupVolumeDelete(destURL, volumeName string, credential map[string]string) (err error)
 }
 
 type BackupTargetClient struct {
@@ -166,8 +168,9 @@ func (btc *BackupTargetClient) BackupNameList(destURL, volumeName string, creden
 	return parseBackupNamesList(output, volumeName)
 }
 
-// DeleteBackupVolume deletes the backup volume from the remote backup target
-func (btc *BackupTargetClient) DeleteBackupVolume(volumeName string) error {
+// BackupVolumeDelete deletes the backup volume from the remote backup target
+// TODO: Deprecated, replaced by gRPC proxy
+func (btc *BackupTargetClient) BackupVolumeDelete(destURL, volumeName string, credential map[string]string) error {
 	_, err := btc.ExecuteEngineBinaryWithoutTimeout("backup", "rm", "--volume", volumeName, btc.URL)
 	if err != nil {
 		if types.ErrorIsNotFound(err) {
@@ -242,8 +245,9 @@ func (btc *BackupTargetClient) GetConfigMetadata(url string) (*ConfigMetadata, e
 	return parseConfigMetadata(output)
 }
 
-// DeleteBackup deletes the backup from the remote backup target
-func (btc *BackupTargetClient) DeleteBackup(backupURL string) error {
+// BackupDelete deletes the backup from the remote backup target
+// TODO: Deprecated, replaced by gRPC proxy
+func (btc *BackupTargetClient) BackupDelete(backupURL string, credential map[string]string) error {
 	_, err := btc.ExecuteEngineBinaryWithoutTimeout("backup", "rm", backupURL)
 	if err != nil {
 		if types.ErrorIsNotFound(err) {
