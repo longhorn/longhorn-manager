@@ -36,6 +36,7 @@ const (
 	DefaultInContainerCSISocketDir       = "/csi/"
 	DefaultInContainerCSIRegistrationDir = "/registration"
 
+	AnnotationCSIGitCommit      = types.LonghornDriverName + "/git-commit"
 	AnnotationCSIVersion        = types.LonghornDriverName + "/version"
 	AnnotationKubernetesVersion = types.LonghornDriverName + "/kubernetes-version"
 )
