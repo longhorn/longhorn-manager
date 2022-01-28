@@ -340,7 +340,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	}
 
 	backupVolumeMetadataURL := backupstore.EncodeBackupURL("", backupVolumeName, backupTargetClient.URL)
-	configMetadata, err := backupTargetClient.GetConfigMetadata(backupVolumeMetadataURL)
+	configMetadata, err := engineClientProxy.BackupConfigMetaGet(backupVolumeMetadataURL, backupTargetClient.Credential)
 	if err != nil {
 		log.WithError(err).Error("Error getting backup volume config metadata from backup target")
 		return nil // Ignore error to prevent enqueue

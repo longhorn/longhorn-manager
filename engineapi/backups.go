@@ -30,6 +30,7 @@ type BackupTargetBinaryClient interface {
 	BackupVolumeNameList(destURL string, credential map[string]string) (names []string, err error)
 	BackupDelete(destURL string, credential map[string]string) (err error)
 	BackupVolumeDelete(destURL, volumeName string, credential map[string]string) (err error)
+	BackupConfigMetaGet(destURL string, credential map[string]string) (*ConfigMetadata, error)
 }
 
 type BackupTargetClient struct {
@@ -237,8 +238,9 @@ func parseConfigMetadata(output string) (*ConfigMetadata, error) {
 	return metadata, nil
 }
 
-// GetConfigMetadata returns the config metadata with the given URL
-func (btc *BackupTargetClient) GetConfigMetadata(url string) (*ConfigMetadata, error) {
+// BackupConfigMetaGet returns the config metadata with the given URL
+// TODO: Deprecated, replaced by gRPC proxy
+func (btc *BackupTargetClient) BackupConfigMetaGet(url string, credential map[string]string) (*ConfigMetadata, error) {
 	output, err := btc.ExecuteEngineBinary("backup", "head", url)
 	if err != nil {
 		if types.ErrorIsNotFound(err) {

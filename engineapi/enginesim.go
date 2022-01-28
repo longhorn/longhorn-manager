@@ -268,3 +268,7 @@ func (e *EngineSimulator) BackupDelete(destURL string, credential map[string]str
 func (e *EngineSimulator) BackupVolumeDelete(destURL, volumeName string, credential map[string]string) (err error) {
 	return fmt.Errorf(ErrNotImplement)
 }
+
+func (e *EngineSimulator) BackupConfigMetaGet(destURL string, credential map[string]string) (*ConfigMetadata, error) {
+	return nil, fmt.Errorf(ErrNotImplement)
+}
