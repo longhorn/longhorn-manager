@@ -24,6 +24,7 @@ const (
 )
 
 type BackupTargetBinaryClient interface {
+	BackupGet(destURL string, credential map[string]string) (*Backup, error)
 	BackupVolumeGet(destURL string, credential map[string]string) (volume *BackupVolume, err error)
 	BackupNameList(destURL, volumeName string, credential map[string]string) (names []string, err error)
 	BackupVolumeNameList(destURL string, credential map[string]string) (names []string, err error)
@@ -214,8 +215,9 @@ func parseBackupConfig(output string) (*Backup, error) {
 	return backup, nil
 }
 
-// InspectBackupConfig inspects a backup config with the given backup config URL
-func (btc *BackupTargetClient) InspectBackupConfig(backupConfigURL string) (*Backup, error) {
+// BackupGet inspects a backup config with the given backup config URL
+// TODO: Deprecated, replaced by gRPC proxy
+func (btc *BackupTargetClient) BackupGet(backupConfigURL string, credential map[string]string) (*Backup, error) {
 	output, err := btc.ExecuteEngineBinary("backup", "inspect", backupConfigURL)
 	if err != nil {
 		if types.ErrorIsNotFound(err) {

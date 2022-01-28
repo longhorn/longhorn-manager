@@ -266,6 +266,10 @@ func (e *EngineBinary) ReplicaRebuildVerify(engine *longhorn.Engine, url string)
 	return nil
 }
 
+func (e *EngineBinary) BackupGet(destURL string, credential map[string]string) (*Backup, error) {
+	return nil, errors.Errorf(ErrNotImplement)
+}
+
 func (e *EngineBinary) BackupVolumeGet(destURL string, credential map[string]string) (volume *BackupVolume, err error) {
 	return nil, errors.Errorf(ErrNotImplement)
 }
