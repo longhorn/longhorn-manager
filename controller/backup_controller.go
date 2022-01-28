@@ -282,7 +282,12 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 				return nil // Ignore error to prevent enqueue
 			}
 
-			engineClientProxy, err := bc.ProxyHandler.GetCompatibleClient(engine, backupTargetClient)
+			im, err := bc.ds.GetInstanceManager(engine.Status.InstanceManagerName)
+			if err != nil {
+				return err
+			}
+
+			engineClientProxy, err := bc.ProxyHandler.GetClient(im)
 			if err != nil {
 				return err
 			}

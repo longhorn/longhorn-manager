@@ -3,10 +3,13 @@ package engineapi
 import (
 	"fmt"
 	"sort"
+	"strconv"
 
 	"github.com/pkg/errors"
 
 	"github.com/longhorn/backupstore"
+
+	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
@@ -79,6 +82,63 @@ func (p *Proxy) BackupRestoreStatus(e *longhorn.Engine) (status map[string]*long
 		status[k] = (*longhorn.RestoreStatus)(v)
 	}
 	return status, nil
+}
+
+func (p *Proxy) BackupVolumeGet(destURL string, credential map[string]string) (volume *BackupVolume, err error) {
+	// get environment variables if backup for s3
+	envs, err := getBackupCredentialEnv(destURL, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	recv, err := p.grpcClient.BackupVolumeGet(destURL, envs)
+	if err != nil {
+		if types.ErrorIsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	parseBackups := func(in map[string]*imclient.EngineBackupInfo) (out map[string]*Backup) {
+		out = map[string]*Backup{}
+		for k, v := range in {
+			out[k] = parseBackup(v)
+		}
+		return out
+	}
+
+	volume = &BackupVolume{
+		Name:                 recv.Name,
+		Size:                 strconv.FormatInt(recv.Size, 10),
+		Labels:               recv.Labels,
+		Created:              recv.Created,
+		LastBackupName:       recv.LastBackupName,
+		LastBackupAt:         recv.LastBackupAt,
+		DataStored:           strconv.FormatInt(recv.DataStored, 10),
+		Messages:             recv.Messages,
+		Backups:              parseBackups(recv.Backups),
+		BackingImageName:     recv.BackingImageName,
+		BackingImageChecksum: recv.BackingImageChecksum,
+	}
+	return volume, nil
+}
+
+func parseBackup(in *imclient.EngineBackupInfo) (out *Backup) {
+	return &Backup{
+		Name:                   in.Name,
+		State:                  "",
+		URL:                    in.URL,
+		SnapshotName:           in.SnapshotName,
+		SnapshotCreated:        in.SnapshotCreated,
+		Created:                in.Created,
+		Size:                   strconv.FormatInt(in.Size, 10),
+		Labels:                 in.Labels,
+		VolumeName:             in.VolumeName,
+		VolumeSize:             strconv.FormatInt(in.VolumeSize, 10),
+		VolumeCreated:          in.VolumeCreated,
+		VolumeBackingImageName: in.VolumeBackingImageName,
+		Messages:               in.Messages,
+	}
 }
 
 func (p *Proxy) BackupNameList(destURL, volumeName string, credential map[string]string) (names []string, err error) {
