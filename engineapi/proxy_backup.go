@@ -248,3 +248,20 @@ func (p *Proxy) BackupVolumeDelete(destURL, volumeName string, credential map[st
 
 	return p.grpcClient.BackupRemove(destURL, volumeName, envs)
 }
+
+func (p *Proxy) BackupConfigMetaGet(destURL string, credential map[string]string) (*ConfigMetadata, error) {
+	envs, err := getBackupCredentialEnv(destURL, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	recv, err := p.grpcClient.BackupConfigMetaGet(destURL, envs)
+	if err != nil {
+		if types.ErrorIsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return (*ConfigMetadata)(recv), nil
+}

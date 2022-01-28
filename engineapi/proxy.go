@@ -73,6 +73,7 @@ type Client interface {
 	BackupVolumeNameList(destURL string, credential map[string]string) (names []string, err error)
 	BackupDelete(destURL string, credential map[string]string) (err error)
 	BackupVolumeDelete(destURL, volumeName string, credential map[string]string) (err error)
+	BackupConfigMetaGet(destURL string, credential map[string]string) (*ConfigMetadata, error)
 }
 
 type EngineClientProxyHandler struct {

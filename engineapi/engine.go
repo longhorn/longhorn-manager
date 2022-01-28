@@ -289,3 +289,7 @@ func (e *EngineBinary) BackupDelete(destURL string, credential map[string]string
 func (e *EngineBinary) BackupVolumeDelete(destURL, volumeName string, credential map[string]string) (err error) {
 	return errors.Errorf(ErrNotImplement)
 }
+
+func (e *EngineBinary) BackupConfigMetaGet(destURL string, credential map[string]string) (*ConfigMetadata, error) {
+	return nil, errors.Errorf(ErrNotImplement)
+}
