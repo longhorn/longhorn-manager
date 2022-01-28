@@ -245,6 +245,10 @@ func (e *EngineSimulator) ReplicaRebuildVerify(engine *longhorn.Engine, url stri
 	return fmt.Errorf(ErrNotImplement)
 }
 
+func (e *EngineSimulator) BackupVolumeGet(destURL string, credential map[string]string) (volume *BackupVolume, err error) {
+	return nil, fmt.Errorf(ErrNotImplement)
+}
+
 func (e *EngineSimulator) BackupNameList(destURL, volumeName string, credential map[string]string) (names []string, err error) {
 	return nil, fmt.Errorf(ErrNotImplement)
 }

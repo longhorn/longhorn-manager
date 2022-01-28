@@ -67,6 +67,7 @@ type Client interface {
 	BackupRestore(e *longhorn.Engine, backupTarget, backupName, backupVolumeName, lastRestored string, credential map[string]string) error
 	BackupRestoreStatus(engine *longhorn.Engine) (status map[string]*longhorn.RestoreStatus, err error)
 
+	BackupVolumeGet(destURL string, credential map[string]string) (volume *BackupVolume, err error)
 	BackupNameList(destURL, volumeName string, credential map[string]string) (names []string, err error)
 	BackupVolumeNameList(destURL string, credential map[string]string) (names []string, err error)
 	BackupDelete(destURL string, credential map[string]string) (err error)
