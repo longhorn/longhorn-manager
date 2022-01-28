@@ -84,6 +84,24 @@ func (p *Proxy) BackupRestoreStatus(e *longhorn.Engine) (status map[string]*long
 	return status, nil
 }
 
+func (p *Proxy) BackupGet(destURL string, credential map[string]string) (*Backup, error) {
+	// get environment variables if backup for s3
+	envs, err := getBackupCredentialEnv(destURL, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	recv, err := p.grpcClient.BackupGet(destURL, envs)
+	if err != nil {
+		if types.ErrorIsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return parseBackup(recv), nil
+}
+
 func (p *Proxy) BackupVolumeGet(destURL string, credential map[string]string) (volume *BackupVolume, err error) {
 	// get environment variables if backup for s3
 	envs, err := getBackupCredentialEnv(destURL, credential)

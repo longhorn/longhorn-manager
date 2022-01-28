@@ -266,6 +266,11 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return err
 	}
 
+	im, err := bc.ds.GetInstanceManager(engine.Status.InstanceManagerName)
+	if err != nil {
+		return err
+	}
+
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backup.DeletionTimestamp.IsZero() {
 		backupVolume, err := bc.ds.GetBackupVolume(backupVolumeName)
@@ -280,11 +285,6 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			if err != nil {
 				log.WithError(err).Error("Error init backup target client")
 				return nil // Ignore error to prevent enqueue
-			}
-
-			im, err := bc.ds.GetInstanceManager(engine.Status.InstanceManagerName)
-			if err != nil {
-				return err
 			}
 
 			engineClientProxy, err := bc.ProxyHandler.GetClient(im)
@@ -383,8 +383,13 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return nil // Ignore error to prevent enqueue
 	}
 
+	engineClientProxy, err := bc.ProxyHandler.GetClient(im)
+	if err != nil {
+		return err
+	}
+
 	backupURL := backupstore.EncodeBackupURL(backup.Name, backupVolumeName, backupTargetClient.URL)
-	backupInfo, err := backupTargetClient.InspectBackupConfig(backupURL)
+	backupInfo, err := engineClientProxy.BackupGet(backupURL, backupTargetClient.Credential)
 	if err != nil {
 		if !strings.Contains(err.Error(), "in progress") {
 			log.WithError(err).Error("Error inspecting backup config")
