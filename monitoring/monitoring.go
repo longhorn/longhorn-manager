@@ -1,7 +1,6 @@
 package monitoring
 
 import (
-	"net/http"
 	"os"
 
 	"github.com/pkg/errors"
@@ -11,36 +10,21 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/monitoring/registry"
+	_ "github.com/longhorn/longhorn-manager/monitoring/workqueue" // load the workqueue metrics
 	"github.com/longhorn/longhorn-manager/types"
 )
-
-// longhornCustomRegistry exposes Longhorn metrics only.
-// We use longhornCustomRegistry to get rid of all default Prometheus go-client metrics
-var longhornCustomRegistry = prometheus.NewRegistry()
-
-// Register registers the provided Collector with the longhornCustomRegistry
-func Register(collector prometheus.Collector) error {
-	return longhornCustomRegistry.Register(collector)
-}
-
-// Handler returns an http.Handler for longhornCustomRegistry, using default HandlerOpts
-func Handler() http.Handler {
-	return promhttp.HandlerFor(longhornCustomRegistry, promhttp.HandlerOpts{})
-}
 
 func InitMonitoringSystem(logger logrus.FieldLogger, currentNodeID string, ds *datastore.DataStore, kubeconfigPath string) {
 	vc := NewVolumeCollector(logger, currentNodeID, ds)
 	dc := NewDiskCollector(logger, currentNodeID, ds)
 
-	if err := Register(vc); err != nil {
+	if err := registry.Register(vc); err != nil {
 		logger.WithField("collector", subsystemVolume).WithError(err).Warn("failed to register collector")
 	}
 
-	if err := Register(dc); err != nil {
+	if err := registry.Register(dc); err != nil {
 		logger.WithField("collector", subsystemDisk).WithError(err).Warn("failed to register collector")
 	}
 
@@ -58,13 +42,13 @@ func InitMonitoringSystem(logger logrus.FieldLogger, currentNodeID string, ds *d
 		nc := NewNodeCollector(logger, currentNodeID, ds, kubeMetricsClient)
 		mc := NewManagerCollector(logger, currentNodeID, ds, kubeMetricsClient, namespace)
 
-		if err := Register(imc); err != nil {
+		if err := registry.Register(imc); err != nil {
 			logger.WithField("collector", subsystemInstanceManager).WithError(err).Warn("failed to register collector")
 		}
-		if err := Register(nc); err != nil {
+		if err := registry.Register(nc); err != nil {
 			logger.WithField("collector", subsystemNode).WithError(err).Warn("failed to register collector")
 		}
-		if err := Register(mc); err != nil {
+		if err := registry.Register(mc); err != nil {
 			logger.WithField("collector", subsystemManager).WithError(err).Warn("failed to register collector")
 		}
 	}
