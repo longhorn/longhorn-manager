@@ -187,7 +187,7 @@ func (c *UninstallController) namespacedControlleeHandler() cache.ResourceEventH
 }
 
 func (c *UninstallController) enqueueControlleeChange() {
-	c.queue.AddRateLimited("uninstall")
+	c.queue.Add("uninstall")
 }
 
 func (c *UninstallController) enqueueNamespacedControlleeChange(obj interface{}) {

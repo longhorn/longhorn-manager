@@ -333,7 +333,7 @@ func (ec *EngineController) enqueueEngine(obj interface{}) {
 		return
 	}
 
-	ec.queue.AddRateLimited(key)
+	ec.queue.Add(key)
 }
 
 func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {

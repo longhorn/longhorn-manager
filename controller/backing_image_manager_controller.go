@@ -860,7 +860,7 @@ func (c *BackingImageManagerController) enqueueBackingImageManager(backingImageM
 		return
 	}
 
-	c.queue.AddRateLimited(key)
+	c.queue.Add(key)
 }
 
 func isBackingImageManagerPod(obj interface{}) bool {
