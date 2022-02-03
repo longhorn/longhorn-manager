@@ -90,7 +90,7 @@ func (control *RecurringJobController) enqueueRecurringJob(obj interface{}) {
 		return
 	}
 
-	control.queue.AddRateLimited(key)
+	control.queue.Add(key)
 }
 
 func (control *RecurringJobController) Run(workers int, stopCh <-chan struct{}) {
