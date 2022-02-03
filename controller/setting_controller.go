@@ -835,7 +835,7 @@ func (sc *SettingController) enqueueSetting(obj interface{}) {
 		return
 	}
 
-	sc.queue.AddRateLimited(key)
+	sc.queue.Add(key)
 }
 
 func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
@@ -844,8 +844,8 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 		return
 	}
 
-	sc.queue.AddRateLimited(sc.namespace + "/" + string(types.SettingNameGuaranteedEngineManagerCPU))
-	sc.queue.AddRateLimited(sc.namespace + "/" + string(types.SettingNameGuaranteedReplicaManagerCPU))
+	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedEngineManagerCPU))
+	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedReplicaManagerCPU))
 }
 
 func (sc *SettingController) updateInstanceManagerCPURequest() error {

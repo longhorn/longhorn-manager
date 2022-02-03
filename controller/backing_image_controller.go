@@ -495,7 +495,7 @@ func (bic *BackingImageController) enqueueBackingImage(obj interface{}) {
 		return
 	}
 
-	bic.queue.AddRateLimited(key)
+	bic.queue.Add(key)
 }
 
 func (bic *BackingImageController) enqueueBackingImageForBackingImageManager(obj interface{}) {
@@ -516,11 +516,11 @@ func (bic *BackingImageController) enqueueBackingImageForBackingImageManager(obj
 
 	for biName := range bim.Spec.BackingImages {
 		key := bim.Namespace + "/" + biName
-		bic.queue.AddRateLimited(key)
+		bic.queue.Add(key)
 	}
 	for biName := range bim.Status.BackingImageFileMap {
 		key := bim.Namespace + "/" + biName
-		bic.queue.AddRateLimited(key)
+		bic.queue.Add(key)
 	}
 }
 
@@ -543,7 +543,7 @@ func (bic *BackingImageController) enqueueBackingImageForReplica(obj interface{}
 	if replica.Spec.BackingImage != "" {
 		bic.logger.WithField("replica", replica.Name).WithField("backingImage", replica.Spec.BackingImage).Trace("Enqueuing backing image for replica")
 		key := replica.Namespace + "/" + replica.Spec.BackingImage
-		bic.queue.AddRateLimited(key)
+		bic.queue.Add(key)
 		return
 	}
 }

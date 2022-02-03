@@ -614,7 +614,7 @@ func (ic *EngineImageController) enqueueEngineImage(obj interface{}) {
 		return
 	}
 
-	ic.queue.AddRateLimited(key)
+	ic.queue.Add(key)
 }
 
 func (ic *EngineImageController) enqueueVolumes(volumes ...interface{}) {
