@@ -351,7 +351,7 @@ func (rc *ReplicaController) enqueueReplica(obj interface{}) {
 		return
 	}
 
-	rc.queue.AddRateLimited(key)
+	rc.queue.Add(key)
 }
 
 func (rc *ReplicaController) getProcessManagerClient(instanceManagerName string) (*imclient.ProcessManagerClient, error) {
