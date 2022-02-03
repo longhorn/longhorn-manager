@@ -88,7 +88,7 @@ func (bvc *BackupVolumeController) enqueueBackupVolume(obj interface{}) {
 		return
 	}
 
-	bvc.queue.AddRateLimited(key)
+	bvc.queue.Add(key)
 }
 
 func (bvc *BackupVolumeController) Run(workers int, stopCh <-chan struct{}) {

@@ -360,7 +360,7 @@ func (rc *ReplicaController) enqueueReplica(obj interface{}) {
 		return
 	}
 
-	rc.queue.AddRateLimited(key)
+	rc.queue.Add(key)
 }
 
 func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {

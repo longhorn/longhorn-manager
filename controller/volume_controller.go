@@ -2769,7 +2769,7 @@ func (vc *VolumeController) enqueueVolume(obj interface{}) {
 		return
 	}
 
-	vc.queue.AddRateLimited(key)
+	vc.queue.Add(key)
 }
 
 func (vc *VolumeController) enqueueControlleeChange(obj interface{}) {
@@ -3315,7 +3315,7 @@ func (vc *VolumeController) enqueueVolumesForShareManager(obj interface{}) {
 	// we can queue the key directly since a share manager only manages a single volume from it's own namespace
 	// and there is no need for us to retrieve the whole object, since we already know the volume name
 	key := sm.Namespace + "/" + sm.Name
-	vc.queue.AddRateLimited(key)
+	vc.queue.Add(key)
 }
 
 // ReconcileShareManagerState is responsible for syncing the state of shared volumes with their share manager
@@ -3417,7 +3417,7 @@ func (vc *VolumeController) enqueueVolumesForBackupVolume(obj interface{}) {
 	if err == nil {
 		matchedVolumeName = bv.Name
 		key := bv.Namespace + "/" + bv.Name
-		vc.queue.AddRateLimited(key)
+		vc.queue.Add(key)
 	}
 
 	// Update last backup for DR volumes
@@ -3432,7 +3432,7 @@ func (vc *VolumeController) enqueueVolumesForBackupVolume(obj interface{}) {
 		}
 
 		key := bv.Namespace + "/" + volumeName
-		vc.queue.AddRateLimited(key)
+		vc.queue.Add(key)
 	}
 }
 
@@ -3455,7 +3455,7 @@ func (vc *VolumeController) enqueueVolumesForBackingImageDataSource(obj interfac
 
 	if volumeName := bids.Labels[types.GetLonghornLabelKey(types.LonghornLabelExportFromVolume)]; volumeName != "" {
 		key := bids.Namespace + "/" + volumeName
-		vc.queue.AddRateLimited(key)
+		vc.queue.Add(key)
 	}
 }
 
