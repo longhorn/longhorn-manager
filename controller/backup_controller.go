@@ -99,11 +99,11 @@ func (bc *BackupController) enqueueBackup(obj interface{}) {
 		return
 	}
 
-	bc.queue.AddRateLimited(key)
+	bc.queue.Add(key)
 }
 
 func (bc *BackupController) enqueueBackupForMonitor(key string) {
-	bc.queue.AddRateLimited(key)
+	bc.queue.Add(key)
 }
 
 func (bc *BackupController) Run(workers int, stopCh <-chan struct{}) {

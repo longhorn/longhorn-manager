@@ -267,7 +267,7 @@ func (knc *KubernetesNodeController) enqueueNode(node interface{}) {
 		return
 	}
 
-	knc.queue.AddRateLimited(key)
+	knc.queue.Add(key)
 }
 
 // syncDefaultDisks handles creation of the customized default Disk if the setting create-default-disk-labeled-nodes is enabled.

@@ -29,6 +29,8 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 )
 
+var nodeControllerResyncPeriod = 30 * time.Second
+
 type NodeController struct {
 	*baseController
 
@@ -103,11 +105,13 @@ func NewNodeController(
 
 	nc.scheduler = scheduler.NewReplicaScheduler(ds)
 
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	// We want to check the real time usage of disk on nodes.
+	// Therefore, we add a small resync for the NodeInformer here
+	nodeInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    nc.enqueueNode,
 		UpdateFunc: func(old, cur interface{}) { nc.enqueueNode(cur) },
 		DeleteFunc: nc.enqueueNode,
-	})
+	}, nodeControllerResyncPeriod)
 
 	settingInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{

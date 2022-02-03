@@ -694,7 +694,7 @@ func (imc *InstanceManagerController) enqueueInstanceManager(instanceManager int
 		return
 	}
 
-	imc.queue.AddRateLimited(key)
+	imc.queue.Add(key)
 }
 
 func (imc *InstanceManagerController) enqueueInstanceManagerPod(obj interface{}) {
