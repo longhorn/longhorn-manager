@@ -118,8 +118,8 @@ func (ic *EngineImageController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer ic.queue.ShutDown()
 
-	logrus.Infof("Start Longhorn Engine Image controller")
-	defer logrus.Infof("Shutting down Longhorn Engine Image controller")
+	ic.logger.Info("Start Longhorn Engine Image controller")
+	defer ic.logger.Info("Shutting down Longhorn Engine Image controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn engine images", stopCh, ic.cacheSyncs...) {
 		return
@@ -157,19 +157,25 @@ func (ic *EngineImageController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := ic.logger.WithField("engineImage", key)
 	if ic.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn engine image %v: %v", key, err)
+		log.WithError(err).Warn("Error syncing Longhorn engine image")
 		ic.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Longhorn engine image %v out of the queue: %v", key, err)
+	log.WithError(err).Warn("Dropping Longhorn engine image out of the queue")
 	ic.queue.Forget(key)
 }
 
 func getLoggerForEngineImage(logger logrus.FieldLogger, ei *longhorn.EngineImage) *logrus.Entry {
-	return logger.WithField("engineImage", ei.Name)
+	return logger.WithFields(
+		logrus.Fields{
+			"engineImage": ei.Name,
+			"image":       ei.Spec.Image,
+		},
+	)
 }
 
 func (ic *EngineImageController) syncEngineImage(key string) (err error) {
@@ -590,7 +596,8 @@ func (ic *EngineImageController) cleanupExpiredEngineImage(ei *longhorn.EngineIm
 			return nil
 		}
 
-		logrus.Infof("Engine image %v (%v) expired, clean it up", ei.Name, ei.Spec.Image)
+		log := getLoggerForEngineImage(ic.logger, ei)
+		log.Info("Engine image expired, clean it up")
 		// TODO: Need to consider if the engine image can be removed in engine image controller
 		if err := ic.ds.DeleteEngineImage(ei.Name); err != nil {
 			return err
@@ -654,8 +661,9 @@ func (ic *EngineImageController) enqueueControlleeChange(obj interface{}) {
 	}
 
 	metaObj, err := meta.Accessor(obj)
+
 	if err != nil {
-		logrus.Warnf("BUG: %v cannot be convert to metav1.Object: %v", obj, err)
+		ic.logger.WithError(err).Warnf("BUG: cannot convert obj %v to metav1.Object", obj)
 		return
 	}
 	ownerRefs := metaObj.GetOwnerReferences()
