@@ -1,12 +1,11 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"os"
 
 	"github.com/pkg/errors"
-	"github.com/rancher/pkg/signals"
+	"github.com/rancher/wrangler/pkg/signals"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
@@ -17,13 +16,21 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/server"
 )
 
-func WebhookServerCommand() cli.Command {
+func AdmissionWebhookServerCommand() cli.Command {
+	return webhookServerCommand(types.WebhookTypeAdmission)
+}
+
+func ConversionWebhookServerCommand() cli.Command {
+	return webhookServerCommand(types.WebhookTypeConversion)
+}
+
+func webhookServerCommand(webhookType string) cli.Command {
 	return cli.Command{
-		Name: "webhook",
+		Name: fmt.Sprintf("%v-webhook", webhookType),
 		Flags: []cli.Flag{
 			cli.StringFlag{
 				Name:  FlagServiceAccount,
-				Usage: "Specify service account for webhook",
+				Usage: fmt.Sprintf("Specify service account for %v webhook", webhookType),
 			},
 			cli.StringFlag{
 				Name:  FlagKubeConfig,
@@ -31,15 +38,17 @@ func WebhookServerCommand() cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) {
-			if err := runWebhookServer(c); err != nil {
-				logrus.Fatalf("Error starting longhorn webhook server: %v", err)
+			if err := runWebhookServer(c, webhookType); err != nil {
+				logrus.Fatalf("Error starting longhorn %v webhook server: %v", webhookType, err)
 			}
 		},
 	}
 }
 
-func runWebhookServer(c *cli.Context) error {
-	logrus.Info("Starting longhorn webhook server")
+func runWebhookServer(c *cli.Context, webhookType string) error {
+	logrus.Infof("Starting longhorn %s webhook server", webhookType)
+
+	ctx := signals.SetupSignalContext()
 
 	serviceAccount := c.String(FlagServiceAccount)
 	if serviceAccount == "" {
@@ -59,12 +68,10 @@ func runWebhookServer(c *cli.Context) error {
 		return errors.Wrap(err, "unable to get client config")
 	}
 
-	s := server.New(context.Background(), cfg, namespace)
+	s := server.New(ctx, cfg, namespace, webhookType)
 	if err := s.ListenAndServe(); err != nil {
 		return err
 	}
-
-	stopCh := signals.SetupSignalHandler()
-	<-stopCh
+	<-ctx.Done()
 	return nil
 }
