@@ -708,7 +708,7 @@ func (c *BackingImageDataSourceController) enqueueBackingImageDataSource(backing
 		return
 	}
 
-	c.queue.AddRateLimited(key)
+	c.queue.Add(key)
 }
 
 func isBackingImageDataSourcePod(obj interface{}) bool {

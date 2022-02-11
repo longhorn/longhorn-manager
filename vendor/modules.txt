@@ -154,8 +154,6 @@ github.com/rancher/lasso/pkg/dynamic
 github.com/rancher/lasso/pkg/log
 github.com/rancher/lasso/pkg/mapper
 github.com/rancher/lasso/pkg/scheme
-# github.com/rancher/pkg v0.0.0-20181214184433-b04c0947ad2f
-github.com/rancher/pkg/signals
 # github.com/rancher/wrangler v0.8.10
 github.com/rancher/wrangler/pkg/apply
 github.com/rancher/wrangler/pkg/apply/injectors
@@ -186,6 +184,7 @@ github.com/rancher/wrangler/pkg/objectset
 github.com/rancher/wrangler/pkg/patch
 github.com/rancher/wrangler/pkg/ratelimit
 github.com/rancher/wrangler/pkg/schemes
+github.com/rancher/wrangler/pkg/signals
 github.com/rancher/wrangler/pkg/start
 github.com/rancher/wrangler/pkg/webhook
 # github.com/robfig/cron v1.2.0

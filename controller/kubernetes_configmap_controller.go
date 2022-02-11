@@ -232,5 +232,5 @@ func (kc *KubernetesConfigMapController) enqueueConfigMapChange(obj interface{})
 		return
 	}
 
-	kc.queue.AddRateLimited(key)
+	kc.queue.Add(key)
 }
