@@ -1,6 +1,8 @@
 package backingimagedatasource
 
 import (
+	"fmt"
+
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -44,6 +46,10 @@ func mutateBackingImageDatasource(newObj runtime.Object) (admission.PatchOps, er
 	var patchOps admission.PatchOps
 
 	backingimagedatasource := newObj.(*longhorn.BackingImageDataSource)
+
+	if backingimagedatasource.Spec.SourceType == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/sourceType", "value": "%s"}`, longhorn.BackingImageDataSourceTypeDownload))
+	}
 
 	if backingimagedatasource.Spec.Parameters == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/parameters", "value": {}}`)
