@@ -470,7 +470,7 @@ func (nc *NodeController) enqueueNode(obj interface{}) {
 		return
 	}
 
-	nc.queue.AddRateLimited(key)
+	nc.queue.Add(key)
 }
 
 func (nc *NodeController) enqueueSetting(obj interface{}) {
