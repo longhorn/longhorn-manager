@@ -627,6 +627,16 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 		}
 	}
 
+	storageNetwork, err := c.ds.GetSetting(types.SettingNameStorageNetwork)
+	if err != nil {
+		return nil, err
+	}
+
+	nadAnnot := string(types.CNIAnnotationNetworks)
+	if storageNetwork.Value != types.CniNetworkNone {
+		podSpec.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork)
+	}
+
 	return podSpec, nil
 }
 
@@ -700,7 +710,7 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 			continue
 		}
 		rAddress := e.Status.CurrentReplicaAddressMap[rName]
-		if rAddress == "" || rAddress != fmt.Sprintf("%s:%d", r.Status.IP, r.Status.Port) {
+		if rAddress == "" || rAddress != fmt.Sprintf("%s:%d", r.Status.StorageIP, r.Status.Port) {
 			continue
 		}
 		bids.Status.RunningParameters[DataSourceTypeExportFromVolumeParameterSenderAddress] = rAddress
