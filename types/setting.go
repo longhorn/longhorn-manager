@@ -83,6 +83,7 @@ const (
 	SettingNameGuaranteedReplicaManagerCPU                  = SettingName("guaranteed-replica-manager-cpu")
 	SettingNameKubernetesClusterAutoscalerEnabled           = SettingName("kubernetes-cluster-autoscaler-enabled")
 	SettingNameOrphanAutoDeletion                           = SettingName("orphan-auto-deletion")
+	SettingNameStorageNetwork                               = SettingName("storage-network")
 )
 
 var (
@@ -135,6 +136,7 @@ var (
 		SettingNameGuaranteedReplicaManagerCPU,
 		SettingNameKubernetesClusterAutoscalerEnabled,
 		SettingNameOrphanAutoDeletion,
+		SettingNameStorageNetwork,
 	}
 )
 
@@ -209,6 +211,7 @@ var (
 		SettingNameGuaranteedReplicaManagerCPU:                  SettingDefinitionGuaranteedReplicaManagerCPU,
 		SettingNameKubernetesClusterAutoscalerEnabled:           SettingDefinitionKubernetesClusterAutoscalerEnabled,
 		SettingNameOrphanAutoDeletion:                           SettingDefinitionOrphanAutoDeletion,
+		SettingNameStorageNetwork:                               SettingDefinitionStorageNetwork,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -780,6 +783,21 @@ var (
 		ReadOnly: false,
 		Default:  "false",
 	}
+
+	SettingDefinitionStorageNetwork = SettingDefinition{
+		DisplayName: "Storage Network",
+		Description: "Longhorn uses the storage network for in-cluster data traffic. Leave this blank to use the Kubernetes cluster network. \n\n" +
+			"To segregate the storage network, input the pre-existing NetworkAttachmentDefinition in **<namespace>/<name>** format. \n\n" +
+			"WARNING: \n\n" +
+			"  - The cluster must have pre-existing Multus installed, and NetworkAttachmentDefinition IPs are reachable between nodes. \n\n" +
+			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will try to block this setting update when there are attached volumes. \n\n" +
+			"  - When applying the setting, Longhorn will restart all manager, instance-manager, and backing-image-manager pods. \n\n",
+		Category: SettingCategoryDangerZone,
+		Type:     SettingTypeString,
+		Required: false,
+		ReadOnly: false,
+		Default:  CniNetworkNone,
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -909,6 +927,10 @@ func ValidateSetting(name, value string) (err error) {
 		}
 	case SettingNameSystemManagedComponentsNodeSelector:
 		if _, err = UnmarshalNodeSelector(value); err != nil {
+			return fmt.Errorf("the value of %v is invalid: %v", sName, err)
+		}
+	case SettingNameStorageNetwork:
+		if err = ValidateStorageNetwork(value); err != nil {
 			return fmt.Errorf("the value of %v is invalid: %v", sName, err)
 		}
 

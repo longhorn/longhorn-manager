@@ -43,3 +43,4 @@ data:
     guaranteed-replica-manager-cpu:
     kubernetes-cluster-autoscaler-enabled:
     orphan-auto-deletion:
+    storage-network:
