@@ -126,6 +126,8 @@ const (
 	DefaultRecurringJobConcurrency = 10
 
 	PVAnnotationLonghornVolumeSchedulingError = "longhorn.io/volume-scheduling-error"
+
+	CniNetworkNone = ""
 )
 
 const (
@@ -532,6 +534,18 @@ func ValidateDataLocality(mode longhorn.DataLocality) error {
 func ValidateAccessMode(mode longhorn.AccessMode) error {
 	if mode != longhorn.AccessModeReadWriteMany && mode != longhorn.AccessModeReadWriteOnce {
 		return fmt.Errorf("invalid access mode: %v", mode)
+	}
+	return nil
+}
+
+func ValidateStorageNetwork(value string) (err error) {
+	if value == CniNetworkNone {
+		return nil
+	}
+
+	parts := strings.Split(value, "/")
+	if len(parts) != 2 {
+		return errors.Errorf("storage network must be in <NAMESPACE>/<NETWORK-ATTACHMENT-DEFINITION> format: %v", value)
 	}
 	return nil
 }
