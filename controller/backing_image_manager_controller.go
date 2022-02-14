@@ -460,6 +460,26 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 			}
 
 			if bim.Status.CurrentState == longhorn.BackingImageManagerStateRunning {
+				storageNetwork, err := c.ds.GetSetting(types.SettingNameStorageNetwork)
+				if err != nil {
+					logrus.WithError(err).Errorf("failed to get value from setting %v", types.SettingNameStorageNetwork)
+				}
+
+				storageIP, err := types.GetCniIPFromPod(storageNetwork.Value, pod)
+				if err != nil {
+					logrus.WithError(err).Errorf("failed to get %v IP from backing image manager pod %v", storageNetwork.Value, pod.Name)
+				}
+
+				if storageIP == types.CniNetworkNone {
+					logrus.Debugf("Cannot find storage-network IP from pod %v to update backing image status, use cluster IP %v", pod.Name, pod.Status.PodIP)
+					storageIP = pod.Status.PodIP
+				}
+
+				if bim.Status.StorageIP != storageIP {
+					bim.Status.StorageIP = storageIP
+					logrus.Debugf("Inconsistent storage-network IP from pod %v, update backing image status IP %v", pod.Name, bim.Status.IP)
+				}
+
 				bim.Status.IP = pod.Status.PodIP
 			}
 		default:
@@ -704,18 +724,18 @@ func (c *BackingImageManagerController) prepareBackingImageFiles(currentBIM *lon
 		}
 
 		if senderCandidate != nil {
-			log.WithFields(logrus.Fields{"fromHost": senderCandidate.Status.IP, "toHost": currentBIM.Status.IP, "size": bi.Status.Size}).Debugf("Start to sync backing image")
-			if _, err := cli.Sync(biName, bi.Status.UUID, bi.Status.Checksum, senderCandidate.Status.IP, currentBIM.Status.IP, bi.Status.Size); err != nil {
+			log.WithFields(logrus.Fields{"fromHost": senderCandidate.Status.StorageIP, "toHost": currentBIM.Status.StorageIP, "size": bi.Status.Size}).Debugf("Start to sync backing image")
+			if _, err := cli.Sync(biName, bi.Status.UUID, bi.Status.Checksum, senderCandidate.Status.StorageIP, currentBIM.Status.StorageIP, bi.Status.Size); err != nil {
 				if types.ErrorAlreadyExists(err) {
-					log.WithFields(logrus.Fields{"fromHost": senderCandidate.Status.IP, "toHost": currentBIM.Status.IP, "size": bi.Status.Size}).Debugf("Backing image already exists, no need to sync from others")
+					log.WithFields(logrus.Fields{"fromHost": senderCandidate.Status.StorageIP, "toHost": currentBIM.Status.StorageIP, "size": bi.Status.Size}).Debugf("Backing image already exists, no need to sync from others")
 					continue
 				}
 				backoff.Next(bi.Name, time.Now())
 				return err
 			}
 			backoff.Next(bi.Name, time.Now())
-			log.WithFields(logrus.Fields{"fromHost": senderCandidate.Status.IP, "toHost": currentBIM.Status.IP, "size": bi.Status.Size}).Debugf("Syncing backing image")
-			c.eventRecorder.Eventf(currentBIM, v1.EventTypeNormal, EventReasonSyncing, "Syncing backing image %v in disk %v on node %v from %v(%v)", bi.Name, currentBIM.Spec.DiskUUID, currentBIM.Spec.NodeID, senderCandidate.Name, senderCandidate.Status.IP)
+			log.WithFields(logrus.Fields{"fromHost": senderCandidate.Status.StorageIP, "toHost": currentBIM.Status.StorageIP, "size": bi.Status.Size}).Debugf("Syncing backing image")
+			c.eventRecorder.Eventf(currentBIM, v1.EventTypeNormal, EventReasonSyncing, "Syncing backing image %v in disk %v on node %v from %v(%v)", bi.Name, currentBIM.Spec.DiskUUID, currentBIM.Spec.NodeID, senderCandidate.Name, senderCandidate.Status.StorageIP)
 			continue
 		}
 	}
@@ -837,6 +857,16 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 				Name: registrySecret,
 			},
 		}
+	}
+
+	storageNetwork, err := c.ds.GetSetting(types.SettingNameStorageNetwork)
+	if err != nil {
+		return nil, err
+	}
+
+	nadAnnot := string(types.CNIAnnotationNetworks)
+	if storageNetwork.Value != types.CniNetworkNone {
+		podSpec.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork)
 	}
 
 	return podSpec, nil

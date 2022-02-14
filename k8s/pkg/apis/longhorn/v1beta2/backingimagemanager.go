@@ -68,6 +68,8 @@ type BackingImageManagerStatus struct {
 	// +optional
 	IP string `json:"ip"`
 	// +optional
+	StorageIP string `json:"storageIP"`
+	// +optional
 	APIMinVersion int `json:"apiMinVersion"`
 	// +optional
 	APIVersion int `json:"apiVersion"`
