@@ -1447,6 +1447,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				log.WithField("replica", r.Name).Error("BUG: replica is running but IP is empty")
 				continue
 			}
+			if r.Status.StorageIP == "" {
+				log.WithField("replica", r.Name).Error("BUG: replica is running but storage IP is empty")
+				continue
+			}
 			if r.Status.Port == 0 {
 				// Do not skip this replica if its engine image is CLIAPIVersion 1.
 				if !isCLIAPIVersionOne {
@@ -1454,7 +1458,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 					continue
 				}
 			}
-			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
+			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.StorageIP, r.Status.Port)
 		}
 		if len(replicaAddressMap) == 0 {
 			return fmt.Errorf("no healthy or scheduled replica for starting")
@@ -2315,11 +2319,15 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[st
 				log.WithField("replica", r.Name).Error("BUG: replica is running but IP is empty")
 				continue
 			}
+			if r.Status.StorageIP == "" {
+				log.WithField("replica", r.Name).Error("BUG: replica is running but storage IP is empty")
+				continue
+			}
 			if r.Status.Port == 0 {
 				log.WithField("replica", r.Name).Error("BUG: replica is running but port is 0")
 				continue
 			}
-			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
+			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.StorageIP, r.Status.Port)
 		}
 		// Only upgrade e.Spec.EngineImage if there are enough new upgraded replica.
 		// This prevent the deadlock in the case that an upgrade from engine image
@@ -3212,11 +3220,15 @@ func (vc *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Vol
 			log.Errorf("BUG: replica %v is running but IP is empty", r.Name)
 			continue
 		}
+		if r.Status.StorageIP == "" {
+			log.Errorf("BUG: replica %v is running but storage IP is empty", r.Name)
+			continue
+		}
 		if r.Status.Port == 0 {
 			log.Errorf("BUG: replica %v is running but Port is empty", r.Name)
 			continue
 		}
-		replicaAddressMap[r.Name] = imutil.GetURL(r.Status.IP, r.Status.Port)
+		replicaAddressMap[r.Name] = imutil.GetURL(r.Status.StorageIP, r.Status.Port)
 	}
 	if migrationEngine.Spec.DesireState != longhorn.InstanceStateStopped {
 		if len(replicaAddressMap) == 0 {

@@ -316,7 +316,7 @@ func (p *Proxy) DirectToURL(e *longhorn.Engine) string {
 		return ""
 	}
 
-	return imutil.GetURL(e.Status.IP, e.Status.Port)
+	return imutil.GetURL(e.Status.StorageIP, e.Status.Port)
 }
 
 func (p *Proxy) Ping() (err error) {

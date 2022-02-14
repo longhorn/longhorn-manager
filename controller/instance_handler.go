@@ -63,6 +63,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			status.CurrentImage = ""
 		}
 		status.IP = ""
+		status.StorageIP = ""
 		status.Port = 0
 		return
 	}
@@ -78,6 +79,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		}
 		status.CurrentImage = ""
 		status.IP = ""
+		status.StorageIP = ""
 		status.Port = 0
 		return
 	}
@@ -90,6 +92,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			status.CurrentState = longhorn.InstanceStateError
 			status.CurrentImage = ""
 			status.IP = ""
+			status.StorageIP = ""
 			status.Port = 0
 		}
 		return
@@ -107,6 +110,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		}
 		status.CurrentImage = ""
 		status.IP = ""
+		status.StorageIP = ""
 		status.Port = 0
 		return
 	}
@@ -127,9 +131,43 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.CurrentState = longhorn.InstanceStateStarting
 		status.CurrentImage = ""
 		status.IP = ""
+		status.StorageIP = ""
 		status.Port = 0
 	case longhorn.InstanceStateRunning:
 		status.CurrentState = longhorn.InstanceStateRunning
+
+		storageNetwork, err := h.ds.GetSetting(types.SettingNameStorageNetwork)
+		if err != nil {
+			logrus.WithError(err).Errorf("failed to get value from setting %v", types.SettingNameStorageNetwork)
+			return
+		}
+
+		imPod, err := h.ds.GetPod(im.Name)
+		if err != nil {
+			logrus.WithError(err).Errorf("failed to get instance manager pod from %v", im.Name)
+			return
+		}
+
+		if imPod == nil {
+			logrus.Debugf("instance manager pod from %v not exist in datastore", im.Name)
+			return
+		}
+
+		storageIP, err := types.GetCniIPFromPod(storageNetwork.Value, imPod)
+		if err != nil {
+			logrus.WithError(err).Errorf("failed to get instance manager %v IP from pod %v", storageNetwork.Value, imPod.Name)
+			return
+		}
+
+		if storageIP == types.CniNetworkNone {
+			storageIP = im.Status.IP
+		}
+
+		if status.StorageIP != storageIP {
+			status.StorageIP = storageIP
+			logrus.Debugf("Instance %v starts running, Storage IP %v", instanceName, status.StorageIP)
+		}
+
 		if status.IP != im.Status.IP {
 			status.IP = im.Status.IP
 			logrus.Debugf("Instance %v starts running, IP %v", instanceName, status.IP)
@@ -151,6 +189,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		}
 		status.CurrentImage = ""
 		status.IP = ""
+		status.StorageIP = ""
 		status.Port = 0
 	case longhorn.InstanceStateStopped:
 		if status.Started {
@@ -160,6 +199,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		}
 		status.CurrentImage = ""
 		status.IP = ""
+		status.StorageIP = ""
 		status.Port = 0
 	default:
 		if status.CurrentState != longhorn.InstanceStateError {
@@ -168,6 +208,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.CurrentState = longhorn.InstanceStateError
 		status.CurrentImage = ""
 		status.IP = ""
+		status.StorageIP = ""
 		status.Port = 0
 	}
 }
@@ -288,6 +329,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			status.CurrentImage = ""
 			status.InstanceManagerName = ""
 			status.IP = ""
+			status.StorageIP = ""
 			status.Port = 0
 			return nil
 		}
@@ -320,6 +362,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			if spec.NodeID != im.Spec.NodeID {
 				status.CurrentState = longhorn.InstanceStateError
 				status.IP = ""
+				status.StorageIP = ""
 				err := fmt.Errorf("BUG: instance %v NodeID %v is not the same as the instance manager %v NodeID %v", instanceName, spec.NodeID, im.Name, im.Spec.NodeID)
 				logrus.Errorf("%v", err)
 				return err

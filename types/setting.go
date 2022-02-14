@@ -817,6 +817,13 @@ const (
 	SystemManagedPodsImagePullPolicyAlways       = SystemManagedPodsImagePullPolicy("always")
 )
 
+type CNIAnnotation string
+
+const (
+	CNIAnnotationNetworks      = CNIAnnotation("k8s.v1.cni.cncf.io/networks")
+	CNIAnnotationNetworkStatus = CNIAnnotation("k8s.v1.cni.cncf.io/networks-status")
+)
+
 func ValidateSetting(name, value string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "value %v of settings %v is invalid", value, name)

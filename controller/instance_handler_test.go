@@ -6,6 +6,7 @@ import (
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -96,6 +97,7 @@ func newEngine(name, currentImage, imName, nodeName, ip string, port int, starte
 				CurrentImage:        currentImage,
 				InstanceManagerName: imName,
 				IP:                  ip,
+				StorageIP:           ip,
 				Port:                port,
 				Started:             started,
 			},
@@ -389,6 +391,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 
 		eiIndexer := lhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
 		sIndexer := lhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
 		h := newTestInstanceHandler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
 
@@ -408,6 +411,12 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 			c.Assert(err, IsNil)
 			imIndexer := lhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
 			err = imIndexer.Add(im)
+			c.Assert(err, IsNil)
+
+			pod := newPod(&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning}, im.Name, im.Namespace, im.Spec.NodeID)
+			err = pIndexer.Add(pod)
+			c.Assert(err, IsNil)
+			_, err = kubeClient.CoreV1().Pods(im.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 		}
 
