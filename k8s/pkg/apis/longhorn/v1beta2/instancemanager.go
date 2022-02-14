@@ -80,6 +80,8 @@ type InstanceStatus struct {
 	// +optional
 	IP string `json:"ip"`
 	// +optional
+	StorageIP string `json:"storageIP"`
+	// +optional
 	Port int `json:"port"`
 	// +optional
 	Started bool `json:"started"`

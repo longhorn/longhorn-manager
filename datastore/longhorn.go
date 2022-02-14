@@ -193,8 +193,47 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if err := types.ValidateCPUReservationValues(guaranteedEngineManagerCPU.Value, guaranteedReplicaManagerCPU.Value); err != nil {
 			return err
 		}
+	case types.SettingNameStorageNetwork:
+		volumesDetached, err := s.AreAllVolumesDetached()
+		if err != nil {
+			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameStorageNetwork)
+		}
+
+		if !volumesDetached {
+			return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameStorageNetwork)
+		}
 	}
 	return nil
+}
+
+func (s *DataStore) AreAllVolumesDetached() (bool, error) {
+	image, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return false, err
+	}
+
+	nodes, err := s.ListNodes()
+	if err != nil {
+		return false, err
+	}
+
+	for node := range nodes {
+		engineIMs, err := s.ListInstanceManagersBySelector(node, image, longhorn.InstanceManagerTypeEngine)
+		if err != nil {
+			if ErrorIsNotFound(err) {
+				return true, nil
+			}
+			return false, err
+		}
+
+		for _, engineIM := range engineIMs {
+			if len(engineIM.Status.Instances) > 0 {
+				return false, nil
+			}
+		}
+	}
+
+	return true, nil
 }
 
 func (s *DataStore) getSettingRO(name string) (*longhorn.Setting, error) {
@@ -839,6 +878,9 @@ func checkReplica(r *longhorn.Replica) error {
 	if (r.Status.CurrentState == longhorn.InstanceStateRunning) != (r.Status.IP != "") {
 		return fmt.Errorf("BUG: instance state and IP wasn't in sync %+v", r)
 	}
+	if (r.Status.CurrentState == longhorn.InstanceStateRunning) != (r.Status.StorageIP != "") {
+		return fmt.Errorf("BUG: instance state and storage IP wasn't in sync %+v", r)
+	}
 	return nil
 }
 
@@ -1010,7 +1052,7 @@ func ReplicaAddressToReplicaName(address string, rs []*longhorn.Replica) string 
 		return address
 	}
 	for _, r := range rs {
-		if addressComponents[0] == r.Status.IP && addressComponents[1] == strconv.Itoa(r.Status.Port) {
+		if addressComponents[0] == r.Status.StorageIP && addressComponents[1] == strconv.Itoa(r.Status.Port) {
 			return r.Name
 		}
 	}

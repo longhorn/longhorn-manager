@@ -963,6 +963,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	if err != nil {
 		return errors.Wrapf(err, "failed to get taint toleration setting before creating instance manager pod")
 	}
+
 	nodeSelector, err := imc.ds.GetSettingSystemManagedComponentsNodeSelector()
 	if err != nil {
 		return errors.Wrapf(err, "failed to get node selector setting before creating instance manager pod")
@@ -972,6 +973,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	if err != nil {
 		return errors.Wrapf(err, "failed to get registry secret setting before creating instance manager pod")
 	}
+
 	registrySecret := registrySecretSetting.Value
 
 	var podSpec *v1.Pod
@@ -983,6 +985,16 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	}
 	if err != nil {
 		return err
+	}
+
+	storageNetwork, err := imc.ds.GetSetting(types.SettingNameStorageNetwork)
+	if err != nil {
+		return err
+	}
+
+	nadAnnot := string(types.CNIAnnotationNetworks)
+	if storageNetwork.Value != types.CniNetworkNone {
+		podSpec.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork)
 	}
 
 	if _, err := imc.ds.CreatePod(podSpec); err != nil {

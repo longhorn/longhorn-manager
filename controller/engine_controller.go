@@ -1204,7 +1204,7 @@ func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.Client, 
 	for _, e := range sourceEngines {
 		sourceEngine = e
 	}
-	sourceEngineControllerURL := imutil.GetURL(sourceEngine.Status.IP, sourceEngine.Status.Port)
+	sourceEngineControllerURL := imutil.GetURL(sourceEngine.Status.StorageIP, sourceEngine.Status.Port)
 	if err := engineClientProxy.SnapshotClone(engine, snapshotName, sourceEngineControllerURL); err != nil {
 		// There is only 1 replica during volume cloning,
 		// so if the cloning failed, it must be that the replica failed to clone.
