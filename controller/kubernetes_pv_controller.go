@@ -270,7 +270,7 @@ func (kc *KubernetesPVController) enqueuePersistentVolume(obj interface{}) {
 		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
 		return
 	}
-	kc.queue.AddRateLimited(key)
+	kc.queue.Add(key)
 
 }
 
@@ -307,7 +307,7 @@ func (kc *KubernetesPVController) enqueuePodChange(obj interface{}) {
 		}
 
 		if pvName := pvc.Spec.VolumeName; pvName != "" {
-			kc.queue.AddRateLimited(pvName)
+			kc.queue.Add(pvName)
 		}
 	}
 
@@ -336,7 +336,7 @@ func (kc *KubernetesPVController) enqueueVolumeChange(obj interface{}) {
 	ks := volume.Status.KubernetesStatus
 	if ks.PVName != "" && ks.PVStatus == string(v1.VolumeBound) &&
 		ks.LastPodRefAt == "" {
-		kc.queue.AddRateLimited(volume.Status.KubernetesStatus.PVName)
+		kc.queue.Add(volume.Status.KubernetesStatus.PVName)
 	}
 
 }
