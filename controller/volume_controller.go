@@ -149,6 +149,13 @@ func NewVolumeController(
 	})
 	vc.cacheSyncs = append(vc.cacheSyncs, ds.BackingImageDataSourceInformer.HasSynced)
 
+	ds.NodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    vc.enqueueNodeChange,
+		UpdateFunc: func(old, cur interface{}) { vc.enqueueNodeChange(cur) },
+		DeleteFunc: vc.enqueueNodeChange,
+	})
+	vc.cacheSyncs = append(vc.cacheSyncs, ds.NodeInformer.HasSynced)
+
 	return vc
 }
 
@@ -3456,6 +3463,40 @@ func (vc *VolumeController) enqueueVolumesForBackingImageDataSource(obj interfac
 	if volumeName := bids.Labels[types.GetLonghornLabelKey(types.LonghornLabelExportFromVolume)]; volumeName != "" {
 		key := bids.Namespace + "/" + volumeName
 		vc.queue.Add(key)
+	}
+}
+
+func (vc *VolumeController) enqueueNodeChange(obj interface{}) {
+	node, ok := obj.(*longhorn.Node)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		node, ok = deletedState.Obj.(*longhorn.Node)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	replicas, err := vc.ds.ListReplicasRO()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list replicas when enqueuing node %v: %v", node.Name, err))
+		return
+	}
+	for _, r := range replicas {
+		if r.Spec.NodeID == "" || r.Spec.FailedAt != "" {
+			vol, err := vc.ds.GetVolumeRO(r.Spec.VolumeName)
+			if err != nil {
+				utilruntime.HandleError(fmt.Errorf("failed to get volume %v of replica %v when enqueuing node %v: %v", r.Spec.VolumeName, r.Name, node.Name, err))
+				continue
+			}
+			vc.enqueueVolume(vol)
+		}
 	}
 }
 
