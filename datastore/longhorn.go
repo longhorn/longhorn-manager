@@ -408,7 +408,7 @@ func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	}
 
 	obj, err := verifyCreation(v.Name, "volume", func(name string) (runtime.Object, error) {
-		return s.getVolumeRO(name)
+		return s.GetVolumeRO(name)
 	})
 	if err != nil {
 		return nil, err
@@ -464,7 +464,7 @@ func (s *DataStore) UpdateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 		return nil, err
 	}
 	verifyUpdate(v.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getVolumeRO(name)
+		return s.GetVolumeRO(name)
 	})
 	return obj, nil
 }
@@ -476,7 +476,7 @@ func (s *DataStore) UpdateVolumeStatus(v *longhorn.Volume) (*longhorn.Volume, er
 		return nil, err
 	}
 	verifyUpdate(v.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getVolumeRO(name)
+		return s.GetVolumeRO(name)
 	})
 	return obj, nil
 }
@@ -507,7 +507,7 @@ func (s *DataStore) RemoveFinalizerForVolume(obj *longhorn.Volume) error {
 	return nil
 }
 
-func (s *DataStore) getVolumeRO(name string) (*longhorn.Volume, error) {
+func (s *DataStore) GetVolumeRO(name string) (*longhorn.Volume, error) {
 	return s.vLister.Volumes(s.namespace).Get(name)
 }
 
@@ -685,7 +685,7 @@ func (s *DataStore) GetVolumeCurrentEngine(volumeName string) (*longhorn.Engine,
 	if err != nil {
 		return nil, err
 	}
-	v, err := s.getVolumeRO(volumeName)
+	v, err := s.GetVolumeRO(volumeName)
 	if err != nil {
 		return nil, err
 	}
@@ -986,6 +986,11 @@ func (s *DataStore) listReplicas(selector labels.Selector) (map[string]*longhorn
 // ListReplicas returns an object contains all Replicas for the given namespace
 func (s *DataStore) ListReplicas() (map[string]*longhorn.Replica, error) {
 	return s.listReplicas(labels.Everything())
+}
+
+// ListReplicasRO returns a list of all replicas for the given namespace
+func (s *DataStore) ListReplicasRO() ([]*longhorn.Replica, error) {
+	return s.rLister.Replicas(s.namespace).List(labels.Everything())
 }
 
 // ListVolumeReplicas returns an object contains all Replica with the given
