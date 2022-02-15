@@ -18,13 +18,12 @@ import (
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/manager"
+	"github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/monitoring"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/upgrade"
 	"github.com/longhorn/longhorn-manager/util"
 )
-
-var VERSION = "VERSION_PLACEHOLDER"
 
 const (
 	FlagEngineImage              = "engine-image"
@@ -82,7 +81,6 @@ func startManager(c *cli.Context) error {
 		err error
 	)
 
-	manager.VERSION = VERSION
 	engineImage := c.String(FlagEngineImage)
 	if engineImage == "" {
 		return fmt.Errorf("require %v", FlagEngineImage)
@@ -133,7 +131,7 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	ds, wsc, err := controller.StartControllers(logger, done, currentNodeID, serviceAccount, managerImage, kubeconfigPath, VERSION)
+	ds, wsc, err := controller.StartControllers(logger, done, currentNodeID, serviceAccount, managerImage, kubeconfigPath, meta.Version)
 	if err != nil {
 		return err
 	}

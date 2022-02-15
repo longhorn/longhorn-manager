@@ -1,15 +1,15 @@
 #!/bin/bash
 set -e
 
+source $(dirname $0)/version
+
 cd $(dirname $0)/..
 
 ARCH=${ARCH:-amd64}
 SUFFIX=""
 [ "${ARCH}" != "amd64" ] && SUFFIX="_${ARCH}"
 
-export VERSION=${VERSION:-$(./scripts/version)}
-
-TAG=${TAG:-${VERSION}${SUFFIX}}
+TAG=${TAG:-${IMAGE_TAG_PREFIX}${SUFFIX}}
 REPO=${REPO:-longhornio}
 IMAGE=${IMAGE:-${REPO}/longhorn-manager:${TAG}}
 
