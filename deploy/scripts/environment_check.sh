@@ -112,7 +112,6 @@ spec:
       labels:
         app: longhorn-environment-check
     spec:
-      hostNetwork: true
       hostPID: true
       containers:
       - name: longhorn-environment-check
