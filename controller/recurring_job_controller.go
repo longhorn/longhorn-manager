@@ -196,6 +196,10 @@ func (control *RecurringJobController) syncRecurringJob(key string) (err error) 
 		log.Infof("Recurring Job got new owner %v", control.controllerID)
 	}
 
+	if recurringJob.DeletionTimestamp != nil {
+		return control.cleanupVolumeRecurringJob(recurringJob)
+	}
+
 	existingRecurringJob := recurringJob.DeepCopy()
 	defer func() {
 		if err != nil {
@@ -217,6 +221,58 @@ func (control *RecurringJobController) syncRecurringJob(key string) (err error) 
 		log.WithError(err).Error("failed to reconcile recurring job")
 	}
 
+	return nil
+}
+
+func (control *RecurringJobController) cleanupVolumeRecurringJob(recurringJob *longhorn.RecurringJob) error {
+	// Check if each group of the recurring job contains other recurring jobs.
+	// If No, it means the recurring job is the last job of the group then
+	// Longhorn will clean up this group labels for all volumes.
+	checkRecurringJobs, err := control.ds.ListRecurringJobs()
+	if err != nil {
+		return err
+	}
+	rmGroups := []string{}
+	for _, group := range recurringJob.Spec.Groups {
+		inUse := false
+		for _, checkRecurringJob := range checkRecurringJobs {
+			if checkRecurringJob.Name == recurringJob.Name {
+				continue
+			}
+			if util.Contains(checkRecurringJob.Spec.Groups, group) {
+				inUse = true
+				break
+			}
+		}
+		if !inUse {
+			rmGroups = append(rmGroups, group)
+		}
+	}
+
+	// delete volume labels
+	volumes, err := control.ds.ListVolumes()
+	if err != nil {
+		return err
+	}
+	for _, vol := range volumes {
+		jobs := datastore.MarshalLabelToVolumeRecurringJob(vol.Labels)
+		for jobName, job := range jobs {
+			if job.IsGroup {
+				if !util.Contains(rmGroups, jobName) {
+					continue
+				}
+				control.logger.Debugf("Clean up volume recurring job-group %v for %v", jobName, vol.Name)
+				if _, err := control.ds.DeleteVolumeRecurringJob(jobName, true, vol); err != nil {
+					return err
+				}
+			} else if jobName == recurringJob.Name {
+				control.logger.Debugf("Clean up volume recurring job %v for %v", jobName, vol.Name)
+				if _, err := control.ds.DeleteVolumeRecurringJob(jobName, false, vol); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	return nil
 }
 
