@@ -14,10 +14,12 @@ const (
 	subsystemDisk            = "disk"
 	subsystemInstanceManager = "instance_manager"
 	subsystemManager         = "manager"
+	subsystemBackup          = "backup"
 
 	nodeLabel            = "node"
 	diskLabel            = "disk"
 	volumeLabel          = "volume"
+	backupLabel          = "backup"
 	conditionLabel       = "condition"
 	conditionReasonLabel = "condition_reason"
 	instanceManagerLabel = "instance_manager"
