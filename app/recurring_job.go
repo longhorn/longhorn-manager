@@ -710,6 +710,10 @@ func (job *Job) GetVolume(name string) (*longhorn.Volume, error) {
 	return job.lhClient.LonghornV1beta2().Volumes(job.namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
 
+func (job *Job) GetEngineImage(name string) (*longhorn.EngineImage, error) {
+	return job.lhClient.LonghornV1beta2().EngineImages(job.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
 func (job *Job) UpdateVolumeStatus(v *longhorn.Volume) (*longhorn.Volume, error) {
 	return job.lhClient.LonghornV1beta2().Volumes(job.namespace).UpdateStatus(context.TODO(), v, metav1.UpdateOptions{})
 }
@@ -740,12 +744,12 @@ func (job *Job) findARandomReadyNode(v *longhornclient.Volume) (string, error) {
 		return "", err
 	}
 
-	engineImage, err := job.api.EngineImage.ById(types.GetEngineImageChecksumName(v.CurrentImage))
+	engineImage, err := job.GetEngineImage(types.GetEngineImageChecksumName(v.CurrentImage))
 	if err != nil {
 		return "", err
 	}
-	if engineImage.State != string(longhorn.EngineImageStateDeployed) && engineImage.State != string(longhorn.EngineImageStateDeploying) {
-		return "", fmt.Errorf("error: the volume's engine image %v is in state: %v", engineImage.Name, engineImage.State)
+	if engineImage.Status.State != longhorn.EngineImageStateDeployed && engineImage.Status.State != longhorn.EngineImageStateDeploying {
+		return "", fmt.Errorf("error: the volume's engine image %v is in state: %v", engineImage.Name, engineImage.Status.State)
 	}
 
 	var readyNodeList []string
@@ -771,7 +775,7 @@ func (job *Job) findARandomReadyNode(v *longhornclient.Volume) (string, error) {
 				return "", err
 			}
 
-			if readyCondition.Status == longhorn.ConditionStatusTrue && engineImage.NodeDeploymentMap[node.Name] {
+			if readyCondition.Status == longhorn.ConditionStatusTrue && engineImage.Status.NodeDeploymentMap[node.Name] {
 				readyNodeList = append(readyNodeList, node.Name)
 			}
 		}
