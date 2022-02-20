@@ -14,6 +14,7 @@ const (
 	subsystemDisk            = "disk"
 	subsystemInstanceManager = "instance_manager"
 	subsystemManager         = "manager"
+	subsystemBackups         = "backups"
 
 	nodeLabel            = "node"
 	diskLabel            = "disk"
@@ -23,6 +24,7 @@ const (
 	instanceManagerLabel = "instance_manager"
 	instanceManagerType  = "instance_manager_type"
 	managerLabel         = "manager"
+	backupsLabel         = "backups"
 )
 
 type metricInfo struct {
