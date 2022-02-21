@@ -2590,7 +2590,6 @@ func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.Ins
 		for _, im := range imMap {
 			return im, nil
 		}
-
 	}
 	return nil, fmt.Errorf("can not find the only available instance manager for instance %v, node %v, instance manager image %v, type %v", name, nodeID, image, imType)
 }
@@ -3127,6 +3126,11 @@ func (s *DataStore) ListBackups() (map[string]*longhorn.Backup, error) {
 		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
+}
+
+// ListBackupsRO returns a list of all Backups for the given namespace
+func (s *DataStore) ListBackupsRO() ([]*longhorn.Backup, error) {
+	return s.bLister.Backups(s.namespace).List(labels.Everything())
 }
 
 // GetBackupRO returns the Backup with the given backup name in the cluster

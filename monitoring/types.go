@@ -20,6 +20,7 @@ const (
 	diskLabel            = "disk"
 	volumeLabel          = "volume"
 	backupLabel          = "backup"
+	backupVolumeLabel    = "backup_volume"
 	conditionLabel       = "condition"
 	conditionReasonLabel = "condition_reason"
 	instanceManagerLabel = "instance_manager"
