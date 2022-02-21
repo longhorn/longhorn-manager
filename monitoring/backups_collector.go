@@ -30,8 +30,8 @@ func NewBackupsCollector(
 	vc.sizeMetric = metricInfo{
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemBackups, "actual_size_bytes"),
-			"Actual space used by each backup of the snapshot on the corresponding node",
-			[]string{nodeLabel, backupsLabel},
+			"Actual size of this backup",
+			[]string{volumeLabel, backupsLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -39,9 +39,9 @@ func NewBackupsCollector(
 
 	vc.stateMetric = metricInfo{
 		Desc: prometheus.NewDesc(
-			prometheus.BuildFQName(longhornName, subsystemBackups, "stats_backup_status"),
+			prometheus.BuildFQName(longhornName, subsystemBackups, "state"),
 			"State of this backup",
-			[]string{nodeLabel, backupsLabel},
+			[]string{volumeLabel, backupsLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -62,7 +62,7 @@ func (vc *BackupsCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}()
 
-	backupsLists, err := vc.ds.ListBackups()
+	backupsLists, err := vc.ds.ListBackupsRO()
 	if err != nil {
 		vc.logger.WithError(err).Warn("error during scrape ")
 		return
@@ -74,8 +74,8 @@ func (vc *BackupsCollector) Collect(ch chan<- prometheus.Metric) {
 			if size, err = strconv.ParseFloat(v.Status.Size, 64); err != nil {
 				vc.logger.WithError(err).Warn("error get size")
 			}
-			ch <- prometheus.MustNewConstMetric(vc.sizeMetric.Desc, vc.sizeMetric.Type, size, vc.currentNodeID, v.Name)
-			ch <- prometheus.MustNewConstMetric(vc.stateMetric.Desc, vc.stateMetric.Type, float64(getBackupsStateValue(v)), vc.currentNodeID, v.Name)
+			ch <- prometheus.MustNewConstMetric(vc.sizeMetric.Desc, vc.sizeMetric.Type, size, v.Status.VolumeName, v.Name)
+			ch <- prometheus.MustNewConstMetric(vc.stateMetric.Desc, vc.stateMetric.Type, float64(getBackupsStateValue(v)), v.Status.VolumeName, v.Name)
 		}
 	}
 }
@@ -89,6 +89,10 @@ func getBackupsStateValue(v *longhorn.Backup) int {
 		stateValue = 1
 	case longhorn.BackupStateError:
 		stateValue = 2
+	case longhorn.BackupStateNew:
+		stateValue = 3
+	case longhorn.BackupStateUnknown:
+		stateValue = 4
 	}
 	return stateValue
 }
