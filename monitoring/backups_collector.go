@@ -9,6 +9,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 type BackupsCollector struct {
@@ -64,7 +65,7 @@ func (vc *BackupsCollector) Collect(ch chan<- prometheus.Metric) {
 
 	backupsLists, err := vc.ds.ListBackupsRO()
 	if err != nil {
-		vc.logger.WithError(err).Warn("error during scrape ")
+		vc.logger.WithError(err).Warn("error during scrape")
 		return
 	}
 
@@ -74,8 +75,12 @@ func (vc *BackupsCollector) Collect(ch chan<- prometheus.Metric) {
 			if size, err = strconv.ParseFloat(v.Status.Size, 64); err != nil {
 				vc.logger.WithError(err).Warn("error get size")
 			}
-			ch <- prometheus.MustNewConstMetric(vc.sizeMetric.Desc, vc.sizeMetric.Type, size, v.Status.VolumeName, v.Name)
-			ch <- prometheus.MustNewConstMetric(vc.stateMetric.Desc, vc.stateMetric.Type, float64(getBackupsStateValue(v)), v.Status.VolumeName, v.Name)
+			backupVolumeName, ok := v.Labels[types.LonghornLabelBackupVolume]
+			if !ok {
+				vc.logger.WithError(err).Warn("error get backup volume label")
+			}
+			ch <- prometheus.MustNewConstMetric(vc.sizeMetric.Desc, vc.sizeMetric.Type, size, backupVolumeName, v.Name)
+			ch <- prometheus.MustNewConstMetric(vc.stateMetric.Desc, vc.stateMetric.Type, float64(getBackupsStateValue(v)), backupVolumeName, v.Name)
 		}
 	}
 }
@@ -83,13 +88,13 @@ func (vc *BackupsCollector) Collect(ch chan<- prometheus.Metric) {
 func getBackupsStateValue(v *longhorn.Backup) int {
 	stateValue := 0
 	switch v.Status.State {
-	case longhorn.BackupStateInProgress:
-		stateValue = 0
-	case longhorn.BackupStateCompleted:
-		stateValue = 1
-	case longhorn.BackupStateError:
-		stateValue = 2
 	case longhorn.BackupStateNew:
+		stateValue = 0
+	case longhorn.BackupStateInProgress:
+		stateValue = 1
+	case longhorn.BackupStateCompleted:
+		stateValue = 2
+	case longhorn.BackupStateError:
 		stateValue = 3
 	case longhorn.BackupStateUnknown:
 		stateValue = 4
