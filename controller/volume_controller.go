@@ -3489,12 +3489,16 @@ func (vc *VolumeController) enqueueNodeChange(obj interface{}) {
 		return
 	}
 	for _, r := range replicas {
-		if r.Spec.NodeID == "" || r.Spec.FailedAt != "" {
-			vol, err := vc.ds.GetVolumeRO(r.Spec.VolumeName)
-			if err != nil {
-				utilruntime.HandleError(fmt.Errorf("failed to get volume %v of replica %v when enqueuing node %v: %v", r.Spec.VolumeName, r.Name, node.Name, err))
-				continue
-			}
+		vol, err := vc.ds.GetVolumeRO(r.Spec.VolumeName)
+		if err != nil {
+			utilruntime.HandleError(fmt.Errorf("failed to get volume %v of replica %v when enqueuing node %v: %v", r.Spec.VolumeName, r.Name, node.Name, err))
+			continue
+		}
+		replicaAutoBalance, err := vc.getAutoBalancedReplicasSetting(vol)
+		if err != nil {
+			vc.logger.Warnf(err.Error())
+		}
+		if r.Spec.NodeID == "" || r.Spec.FailedAt != "" || replicaAutoBalance != longhorn.ReplicaAutoBalanceDisabled {
 			vc.enqueueVolume(vol)
 		}
 	}
