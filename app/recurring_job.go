@@ -148,8 +148,8 @@ func recurringJob(c *cli.Context) error {
 	}
 	logger.Infof("Found %v volumes with recurring job %v", len(filteredVolumes), jobName)
 
-	var wg sync.WaitGroup
 	concurrentLimiter := make(chan struct{}, jobConcurrent)
+	var wg sync.WaitGroup
 	defer wg.Wait()
 	for _, volumeName := range filteredVolumes {
 		wg.Add(1)
@@ -257,6 +257,11 @@ func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 // It should detach the volume when:
 // 1. The volume is attached by this recurring job
 // 2. The volume state is VolumeStateAttached
+// NOTE:
+//   The volume could remain attached when the recurring job pod gets force
+//   terminated and unable to complete detachment within the grace period. Thus
+//   there is a workaround in the recurring job controller to handle the
+//   detachment again (detachVolumeAutoAttachedByRecurringJob).
 func (job *Job) handleVolumeDetachment() {
 	volumeAPI := job.api.Volume
 	volumeName := job.volumeName
