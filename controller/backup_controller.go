@@ -32,6 +32,16 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+var (
+	// maxRetriesOnAcquireLockError should guarantee the cumulative retry time
+	// is larger than 150 seconds.
+	// With the current rate-limiter in use (5ms*2^(maxRetries-1)) the following numbers represent the times
+	// a deployment is going to be requeued:
+	//
+	// 5ms, 10ms, 20ms, ... , 81.92s, 163.84s
+	maxRetriesOnAcquireLockError = 16
+)
+
 type BackupController struct {
 	*baseController
 
@@ -142,10 +152,23 @@ func (bc *BackupController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	if bc.queue.NumRequeues(key) < maxRetries {
-		bc.logger.WithError(err).Warnf("Error syncing Longhorn backup %v", key)
-		bc.queue.AddRateLimited(key)
-		return
+	// The resync period of the backup is one hour and the maxRetries is 3.
+	// Thus, the deletion failure of the backup in error state is caused by the shutdown of the replica during backing up,
+	// if the lock hold by the backup job is not released.
+	// The workaround is to increase the maxRetries number and to retry the deletion until the lock acquisition
+	// of the backup is timeout after 150 seconds.
+	if strings.Contains(err.Error(), "failed lock") {
+		if bc.queue.NumRequeues(key) < maxRetriesOnAcquireLockError {
+			bc.logger.WithError(err).Warnf("Error syncing Longhorn backup %v because of the failure of lock acquisition", key)
+			bc.queue.AddRateLimited(key)
+			return
+		}
+	} else {
+		if bc.queue.NumRequeues(key) < maxRetries {
+			bc.logger.WithError(err).Warnf("Error syncing Longhorn backup %v", key)
+			bc.queue.AddRateLimited(key)
+			return
+		}
 	}
 
 	utilruntime.HandleError(err)
