@@ -175,6 +175,24 @@ func (control *RecurringJobController) syncRecurringJob(key string) (err error) 
 			return err
 		}
 		log.Debug("Cannot find recurring job, may have been deleted")
+
+		// The detachVolumeAutoAttachedByRecurringJob is a workaround to
+		// resolve volume unable to detach via the recurring job. The volume
+		// could remain attached via recurringjob auto-attachment when the
+		// recurring job pod gets force terminated and unable to complete
+		// detachment within the grace period.
+		// This should be handled when a separate controller is introduced for
+		// attachment and detachment handling.
+		// https://github.com/longhorn/longhorn-manager/pull/1223#discussion_r814655791
+		volumes, err := control.ds.ListVolumes()
+		if err != nil {
+			return err
+		}
+		for _, vol := range volumes {
+			if err := control.detachVolumeAutoAttachedByRecurringJob(name, vol); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 
@@ -271,6 +289,20 @@ func (control *RecurringJobController) cleanupVolumeRecurringJob(recurringJob *l
 					return err
 				}
 			}
+		}
+	}
+	return nil
+}
+
+func (control *RecurringJobController) detachVolumeAutoAttachedByRecurringJob(name string, v *longhorn.Volume) error {
+	if v.Spec.LastAttachedBy != name {
+		return nil
+	}
+	if v.Status.State == longhorn.VolumeStateAttached {
+		control.logger.Infof("requesting auto-attached volume %v to detach from node %v", v.Name, v.Spec.NodeID)
+		v.Spec.NodeID = ""
+		if _, err := control.ds.UpdateVolume(v); err != nil {
+			return err
 		}
 	}
 	return nil
