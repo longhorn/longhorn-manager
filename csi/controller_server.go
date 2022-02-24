@@ -32,8 +32,10 @@ const (
 	tickBackupInitiation    = 5 * time.Second
 	backupStateCompleted    = "Completed"
 
-	csiSnapshotTypeLonghornSnapshot = "ss"
-	csiSnapshotTypeLonghornBackup   = "bs"
+	csiSnapshotTypeLonghornSnapshotLongName = "snapshot"
+	csiSnapshotTypeLonghornBackupLongName   = "backup"
+	csiSnapshotTypeLonghornSnapshot         = "ss"
+	csiSnapshotTypeLonghornBackup           = "bs"
 )
 
 type ControllerServer struct {
@@ -562,13 +564,13 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	}()
 
 	csiSnapshotType := req.Parameters["type"]
-	if csiSnapshotType == csiSnapshotTypeLonghornSnapshot {
+	if csiSnapshotType == csiSnapshotTypeLonghornSnapshotLongName {
 		rsp, err = cs.createCSISnapshotTypeLonghornSnapshot(req)
-	} else if csiSnapshotType == "" || csiSnapshotType == csiSnapshotTypeLonghornBackup {
-		// For backward compatibility, empty type is considered as csiSnapshotTypeLonghornBackup
+	} else if csiSnapshotType == "" || csiSnapshotType == csiSnapshotTypeLonghornBackupLongName {
+		// For backward compatibility, empty type is considered as csiSnapshotTypeLonghornBackupLongName
 		rsp, err = cs.createCSISnapshotTypeLonghornBackup(req)
 	} else {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid csi snapshot type: %v. Must be %v or %v or \"\"", csiSnapshotType, csiSnapshotTypeLonghornSnapshot, csiSnapshotTypeLonghornBackup)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid csi snapshot type: %v. Must be %v or %v or empty", csiSnapshotType, csiSnapshotTypeLonghornSnapshotLongName, csiSnapshotTypeLonghornBackupLongName)
 	}
 
 	return rsp, err
