@@ -41,7 +41,7 @@ type EngineVersionDetails struct {
 
 // EngineImageSpec defines the desired state of the Longhorn engine image
 type EngineImageSpec struct {
-	// +optional
+	// +kubebuilder:validation:MinLength:=1
 	Image string `json:"image"`
 }
 
