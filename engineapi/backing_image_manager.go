@@ -12,8 +12,8 @@ import (
 const (
 	BackingImageManagerDefaultPort = 8000
 
-	CurrentBackingImageManagerAPIVersion = 2
-	MinBackingImageManagerAPIVersion     = 2
+	CurrentBackingImageManagerAPIVersion = 3
+	MinBackingImageManagerAPIVersion     = 3
 	UnknownBackingImageManagerAPIVersion = 0
 )
 
