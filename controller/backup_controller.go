@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -323,6 +324,10 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			return nil // Ignore error to prevent enqueue
 		}
 
+		if backup.Status.SnapshotCreatedAt == "" || backup.Status.VolumeSize == "" {
+			bc.syncBackupStatusWithSnapshotCreationTimeAndVolumeSize(volume, backup)
+		}
+
 		monitor, err := bc.checkMonitor(backup, volume, backupTarget)
 		if err != nil {
 			return err
@@ -597,4 +602,23 @@ func (bc *BackupController) disableBackupMonitor(backupName string) {
 	defer bc.monitorLock.Unlock()
 	delete(bc.monitors, backupName)
 	monitor.Close()
+}
+
+func (bc *BackupController) syncBackupStatusWithSnapshotCreationTimeAndVolumeSize(volume *longhorn.Volume, backup *longhorn.Backup) {
+	backup.Status.VolumeSize = strconv.FormatInt(volume.Spec.Size, 10)
+	engineClient, err := bc.getEngineClient(volume.Name)
+	if err != nil {
+		bc.logger.Warnf("syncBackupStatusWithSnapshotCreationTimeAndVolumeSize: failed to get engine client: %v", err)
+		return
+	}
+	snap, err := engineClient.SnapshotGet(backup.Spec.SnapshotName)
+	if err != nil {
+		bc.logger.Warnf("syncBackupStatusWithSnapshotCreationTimeAndVolumeSize: failed to get snapshot %v: %v", backup.Spec.SnapshotName, err)
+		return
+	}
+	if snap == nil {
+		bc.logger.Warnf("syncBackupStatusWithSnapshotCreationTimeAndVolumeSize: couldn't find the snapshot %v in volume %v ", backup.Spec.SnapshotName, volume.Name)
+		return
+	}
+	backup.Status.SnapshotCreatedAt = snap.Created
 }
