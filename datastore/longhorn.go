@@ -3081,9 +3081,6 @@ func (s *DataStore) RemoveFinalizerForBackupVolume(backupVolume *longhorn.Backup
 
 // CreateBackup creates a Longhorn Backup CR and verifies creation
 func (s *DataStore) CreateBackup(backup *longhorn.Backup, backupVolumeName string) (*longhorn.Backup, error) {
-	if err := initBackup(backup); err != nil {
-		return nil, err
-	}
 	if err := tagBackupVolumeLabel(backupVolumeName, backup); err != nil {
 		return nil, err
 	}
@@ -3109,13 +3106,6 @@ func (s *DataStore) CreateBackup(backup *longhorn.Backup, backupVolumeName strin
 		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for Backup")
 	}
 	return ret.DeepCopy(), nil
-}
-
-func initBackup(backup *longhorn.Backup) error {
-	if backup.Spec.Labels == nil {
-		backup.Spec.Labels = make(map[string]string, 0)
-	}
-	return nil
 }
 
 // ListBackupsWithBackupVolumeName returns an object contains all backups in the cluster Backups CR
