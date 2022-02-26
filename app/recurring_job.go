@@ -118,7 +118,7 @@ func recurringJob(c *cli.Context) error {
 	jobLabelMap[types.RecurringJobLabel] = recurringJob.Name
 	labelJSON, err := json.Marshal(jobLabelMap)
 	if err != nil {
-		return errors.Wrap(err, "Failed to get JSON encoding for labels")
+		return errors.Wrap(err, "failed to get JSON encoding for labels")
 	}
 
 	var doBackup bool = false
