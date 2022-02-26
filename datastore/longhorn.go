@@ -1266,9 +1266,6 @@ func (s *DataStore) CheckEngineImageReadyOnAllVolumeReplicas(image, volumeName, 
 // CreateBackingImage creates a Longhorn BackingImage resource and verifies
 // creation
 func (s *DataStore) CreateBackingImage(backingImage *longhorn.BackingImage) (*longhorn.BackingImage, error) {
-	if err := initBackingImage(backingImage); err != nil {
-		return nil, err
-	}
 	if err := util.AddFinalizer(longhornFinalizerKey, backingImage); err != nil {
 		return nil, err
 	}
@@ -1294,22 +1291,11 @@ func (s *DataStore) CreateBackingImage(backingImage *longhorn.BackingImage) (*lo
 	return ret.DeepCopy(), nil
 }
 
-func initBackingImage(backingImage *longhorn.BackingImage) error {
-	if backingImage.Spec.Disks == nil {
-		backingImage.Spec.Disks = make(map[string]string, 0)
-	}
-	if backingImage.Spec.SourceParameters == nil {
-		backingImage.Spec.SourceParameters = make(map[string]string, 0)
-	}
-	return nil
-}
-
 // UpdateBackingImage updates Longhorn BackingImage and verifies update
 func (s *DataStore) UpdateBackingImage(backingImage *longhorn.BackingImage) (*longhorn.BackingImage, error) {
 	if err := util.AddFinalizer(longhornFinalizerKey, backingImage); err != nil {
 		return nil, err
 	}
-
 	obj, err := s.lhClient.LonghornV1beta2().BackingImages(s.namespace).Update(context.TODO(), backingImage, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
