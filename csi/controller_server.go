@@ -32,8 +32,9 @@ const (
 	tickBackupInitiation    = 5 * time.Second
 	backupStateCompleted    = "Completed"
 
-	csiSnapshotTypeLonghornSnapshot = "ss"
-	csiSnapshotTypeLonghornBackup   = "bs"
+	csiSnapshotTypeLonghornSnapshot         = "snap"
+	csiSnapshotTypeLonghornBackup           = "bak"
+	deprecatedCSISnapshotTypeLonghornBackup = "bs"
 )
 
 type ControllerServer struct {
@@ -561,7 +562,7 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 		}
 	}()
 
-	csiSnapshotType := req.Parameters["type"]
+	csiSnapshotType := normalizeCSISnapshotType(req.Parameters["type"])
 	if csiSnapshotType == csiSnapshotTypeLonghornSnapshot {
 		rsp, err = cs.createCSISnapshotTypeLonghornSnapshot(req)
 	} else if csiSnapshotType == "" || csiSnapshotType == csiSnapshotTypeLonghornBackup {
@@ -738,6 +739,7 @@ func createSnapshotResponse(sourceVolumeName, snapshotID, snapshotTime, sourceVo
 }
 
 func encodeSnapshotID(csiSnapshotType, sourceVolumeName, id string) string {
+	csiSnapshotType = normalizeCSISnapshotType(csiSnapshotType)
 	if csiSnapshotType == csiSnapshotTypeLonghornSnapshot || csiSnapshotType == csiSnapshotTypeLonghornBackup {
 		return fmt.Sprintf("%s://%s/%s", csiSnapshotType, sourceVolumeName, id)
 	}
@@ -757,7 +759,15 @@ func decodeSnapshotID(snapshotID string) (csiSnapshotType, sourceVolumeName, id 
 	}
 	sourceVolumeName = split[0]
 	id = split[1]
-	return csiSnapshotType, sourceVolumeName, id
+	return normalizeCSISnapshotType(csiSnapshotType), sourceVolumeName, id
+}
+
+// normalizeCSISnapshotType coverts the deprecated CSISnapshotType to the its new value
+func normalizeCSISnapshotType(cSISnapshotType string) string {
+	if cSISnapshotType == deprecatedCSISnapshotTypeLonghornBackup {
+		return csiSnapshotTypeLonghornBackup
+	}
+	return cSISnapshotType
 }
 
 func (cs *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
