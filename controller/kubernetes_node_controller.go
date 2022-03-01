@@ -79,20 +79,19 @@ func NewKubernetesNodeController(
 		DeleteFunc: knc.enqueueLonghornNode,
 	})
 
-	settingInformer.Informer().AddEventHandler(
+	settingInformer.Informer().AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: isSettingCreateDefaultDiskLabeledNodes,
 			Handler: cache.ResourceEventHandlerFuncs{
 				AddFunc:    knc.enqueueSetting,
 				UpdateFunc: func(old, cur interface{}) { knc.enqueueSetting(cur) },
 			},
-		},
-	)
+		}, 0)
 
-	kubeNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	kubeNodeInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { knc.enqueueNode(cur) },
 		DeleteFunc: knc.enqueueNode,
-	})
+	}, 0)
 
 	return knc
 }

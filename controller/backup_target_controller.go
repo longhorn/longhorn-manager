@@ -82,7 +82,7 @@ func NewBackupTargetController(
 		UpdateFunc: func(old, cur interface{}) { btc.enqueueBackupTarget(cur) },
 	})
 
-	engineImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	engineImageInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) {
 			oldEI := old.(*longhorn.EngineImage)
 			curEI := cur.(*longhorn.EngineImage)
@@ -94,7 +94,7 @@ func NewBackupTargetController(
 			}
 			btc.enqueueEngineImage(cur)
 		},
-	})
+	}, 0)
 
 	return btc
 }

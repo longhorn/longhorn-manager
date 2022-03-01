@@ -107,17 +107,17 @@ func NewEngineImageController(
 		DeleteFunc: ic.enqueueEngineImage,
 	})
 
-	volumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	volumeInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(obj interface{}) { ic.enqueueVolumes(obj) },
 		UpdateFunc: func(old, cur interface{}) { ic.enqueueVolumes(old, cur) },
 		DeleteFunc: func(obj interface{}) { ic.enqueueVolumes(obj) },
-	})
+	}, 0)
 
-	dsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	dsInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ic.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { ic.enqueueControlleeChange(cur) },
 		DeleteFunc: ic.enqueueControlleeChange,
-	})
+	}, 0)
 
 	return ic
 }
