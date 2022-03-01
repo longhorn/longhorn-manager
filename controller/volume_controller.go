@@ -135,30 +135,30 @@ func NewVolumeController(
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolume(cur) },
 		DeleteFunc: vc.enqueueVolume,
 	})
-	engineInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	engineInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueControlleeChange(cur) },
 		DeleteFunc: vc.enqueueControlleeChange,
-	})
-	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	}, 0)
+	replicaInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueControlleeChange(cur) },
 		DeleteFunc: vc.enqueueControlleeChange,
-	})
-	shareManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	}, 0)
+	shareManagerInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueVolumesForShareManager,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForShareManager(cur) },
 		DeleteFunc: vc.enqueueVolumesForShareManager,
-	})
-	backupVolumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	}, 0)
+	backupVolumeInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForBackupVolume(cur) },
 		DeleteFunc: vc.enqueueVolumesForBackupVolume,
-	})
-	bidsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	}, 0)
+	bidsInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueVolumesForBackingImageDataSource,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForBackingImageDataSource(cur) },
 		DeleteFunc: vc.enqueueVolumesForBackingImageDataSource,
-	})
+	}, 0)
 	return vc
 }
 
