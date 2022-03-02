@@ -52,6 +52,12 @@ const (
 	BackingImageManagerDirectory = "/backing-images/"
 	BackingImageFileName         = "backing"
 
+	TLSDirectoryInContainer = "/tls-files/"
+	TLSSecretName           = "longhorn-grpc-tls"
+	TLSCAFile               = "ca.crt"
+	TLSCertFile             = "tls.crt"
+	TLSKeyFile              = "tls.key"
+
 	DefaultBackupTargetName = "default"
 
 	LonghornNodeKey     = "longhornnode"
