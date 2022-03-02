@@ -54,6 +54,8 @@ spec:
         - name: longhorn
           mountPath: /var/lib/longhorn/
           mountPropagation: Bidirectional
+        - name: longhorn-grpc-tls
+          mountPath: /tls-files/
         env:
         - name: POD_NAMESPACE
           valueFrom:
@@ -77,6 +79,11 @@ spec:
       - name: longhorn
         hostPath:
           path: /var/lib/longhorn/
+      - name: longhorn-grpc-tls
+        secret:
+          secretName: longhorn-grpc-tls
+          optional: true
+
 #      imagePullSecrets:
 #      - name: ""
 #      priorityClassName:
