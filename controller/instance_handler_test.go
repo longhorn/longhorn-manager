@@ -68,7 +68,7 @@ func (imh *MockInstanceManagerHandler) DeleteInstance(obj interface{}) error {
 	return nil
 }
 
-func (imh *MockInstanceManagerHandler) LogInstance(obj interface{}) (*imapi.LogStream, error) {
+func (imh *MockInstanceManagerHandler) LogInstance(ctx context.Context, obj interface{}) (*imapi.LogStream, error) {
 	return nil, fmt.Errorf("LogInstance is not mocked")
 }
 

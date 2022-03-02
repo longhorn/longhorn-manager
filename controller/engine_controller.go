@@ -557,7 +557,7 @@ func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProc
 	return c.ProcessGet(e.Name)
 }
 
-func (ec *EngineController) LogInstance(obj interface{}) (*imapi.LogStream, error) {
+func (ec *EngineController) LogInstance(ctx context.Context, obj interface{}) (*imapi.LogStream, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return nil, fmt.Errorf("BUG: invalid object for engine process log: %v", obj)
@@ -572,7 +572,7 @@ func (ec *EngineController) LogInstance(obj interface{}) (*imapi.LogStream, erro
 		return nil, err
 	}
 
-	return c.ProcessLog(e.Name)
+	return c.ProcessLog(ctx, e.Name)
 }
 
 func (ec *EngineController) isMonitoring(e *longhorn.Engine) bool {

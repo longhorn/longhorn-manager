@@ -1081,10 +1081,17 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 		return nil, err
 	}
 
+	secretIsOptional := true
 	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeEngine)
 	podSpec.Spec.Containers[0].Name = "engine-manager"
 	podSpec.Spec.Containers[0].Args = []string{
 		"engine-manager", "--debug", "daemon", "--listen", "0.0.0.0:8500",
+	}
+	podSpec.Spec.Containers[0].Env = []v1.EnvVar{
+		{
+			Name:  "TLS_DIR",
+			Value: types.TLSDirectoryInContainer,
+		},
 	}
 	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
 		{
@@ -1099,6 +1106,10 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 			MountPath:        types.EngineBinaryDirectoryInContainer,
 			Name:             "engine-binaries",
 			MountPropagation: &hostToContainer,
+		},
+		{
+			MountPath: types.TLSDirectoryInContainer,
+			Name:      "longhorn-grpc-tls",
 		},
 	}
 	podSpec.Spec.Volumes = []v1.Volume{
@@ -1126,6 +1137,15 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 				},
 			},
 		},
+		{
+			Name: "longhorn-grpc-tls",
+			VolumeSource: v1.VolumeSource{
+				Secret: &v1.SecretVolumeSource{
+					SecretName: types.TLSSecretName,
+					Optional:   &secretIsOptional,
+				},
+			},
+		},
 	}
 	return podSpec, nil
 }
@@ -1136,16 +1156,27 @@ func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.I
 		return nil, err
 	}
 
+	secretIsOptional := true
 	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeReplica)
 	podSpec.Spec.Containers[0].Name = "replica-manager"
 	podSpec.Spec.Containers[0].Args = []string{
 		"longhorn-instance-manager", "--debug", "daemon", "--listen", "0.0.0.0:8500",
+	}
+	podSpec.Spec.Containers[0].Env = []v1.EnvVar{
+		{
+			Name:  "TLS_DIR",
+			Value: types.TLSDirectoryInContainer,
+		},
 	}
 	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
 		{
 			MountPath:        "/host",
 			Name:             "host",
 			MountPropagation: &hostToContainer,
+		},
+		{
+			MountPath: types.TLSDirectoryInContainer,
+			Name:      "longhorn-grpc-tls",
 		},
 	}
 	podSpec.Spec.Volumes = []v1.Volume{
@@ -1157,23 +1188,36 @@ func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.I
 				},
 			},
 		},
+		{
+			Name: "longhorn-grpc-tls",
+			VolumeSource: v1.VolumeSource{
+				Secret: &v1.SecretVolumeSource{
+					SecretName: types.TLSSecretName,
+					Optional:   &secretIsOptional,
+				},
+			},
+		},
 	}
 	return podSpec, nil
 }
 
-func NewInstanceManagerUpdater(im *longhorn.InstanceManager) *InstanceManagerUpdater {
-	c, _ := engineapi.NewInstanceManagerClient(im)
+func NewInstanceManagerUpdater(im *longhorn.InstanceManager) (*InstanceManagerUpdater, error) {
+	c, err := engineapi.NewInstanceManagerClient(im)
+	if err != nil {
+		return nil, err
+	}
+
 	return &InstanceManagerUpdater{
 		client: c,
-	}
+	}, nil
 }
 
 func (updater *InstanceManagerUpdater) Poll() (map[string]longhorn.InstanceProcess, error) {
 	return updater.client.ProcessList()
 }
 
-func (updater *InstanceManagerUpdater) GetNotifier() (*InstanceManagerNotifier, error) {
-	watch, err := updater.client.ProcessWatch()
+func (updater *InstanceManagerUpdater) GetNotifier(ctx context.Context) (*InstanceManagerNotifier, error) {
+	watch, err := updater.client.ProcessWatch(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1194,10 +1238,6 @@ func (notifier *InstanceManagerNotifier) Recv() (struct{}, error) {
 	return struct{}{}, nil
 }
 
-func (notifier *InstanceManagerNotifier) Close() {
-	notifier.stream.Close()
-}
-
 func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManager) {
 	log := imc.logger.WithField("instance manager", im.Name)
 
@@ -1213,6 +1253,13 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		return
 	}
 
+	// TODO: #2441 refactor this when we do the resource monitoring refactor
+	imUpdater, err := NewInstanceManagerUpdater(im)
+	if err != nil {
+		log.Errorf("failed to initialize im updater before monitoring")
+		return
+	}
+
 	stopCh := make(chan struct{}, 1)
 	monitorVoluntaryStopCh := make(chan struct{})
 	monitor := &InstanceManagerMonitor{
@@ -1220,7 +1267,7 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		Name:                   im.Name,
 		controllerID:           imc.controllerID,
 		ds:                     imc.ds,
-		instanceManagerUpdater: NewInstanceManagerUpdater(im),
+		instanceManagerUpdater: imUpdater,
 		lock:                   &sync.RWMutex{},
 		stopCh:                 stopCh,
 		done:                   false,
@@ -1239,7 +1286,7 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		<-monitorVoluntaryStopCh
 		imc.instanceManagerMonitorMutex.Lock()
 		delete(imc.instanceManagerMonitorMap, im.Name)
-		imc.logger.WithField("instance manager", im.Name).Debug("removed the instance manager from imc.instanceManagerMonitorMap")
+		log.Debug("removed the instance manager from imc.instanceManagerMonitorMap")
 		imc.instanceManagerMonitorMutex.Unlock()
 	}()
 }
@@ -1266,16 +1313,19 @@ func (m *InstanceManagerMonitor) Run() {
 	m.logger.Debugf("Start monitoring instance manager %v", m.Name)
 
 	// TODO: this function will error out in unit tests. Need to find a way to skip this for unit tests.
-	notifier, err := m.instanceManagerUpdater.GetNotifier()
+	// TODO: #2441 refactor this when we do the resource monitoring refactor
+	ctx, cancel := context.WithCancel(context.TODO())
+	notifier, err := m.instanceManagerUpdater.GetNotifier(ctx)
 	if err != nil {
 		m.logger.Errorf("Failed to get the notifier for monitoring: %v", err)
+		cancel()
 		close(m.monitorVoluntaryStopCh)
 		return
 	}
 
 	defer func() {
 		m.logger.Debugf("Stop monitoring instance manager %v", m.Name)
-		notifier.Close()
+		cancel()
 		m.StopMonitorWithLock()
 		close(m.monitorVoluntaryStopCh)
 	}()
@@ -1307,10 +1357,9 @@ func (m *InstanceManagerMonitor) Run() {
 	timer := 0
 	ticker := time.NewTicker(engineapi.MinPollCount * engineapi.PollInterval)
 	defer ticker.Stop()
-	tick := ticker.C
 	for {
 		select {
-		case <-tick:
+		case <-ticker.C:
 			if m.CheckMonitorStoppedWithLock() {
 				return
 			}

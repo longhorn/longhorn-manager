@@ -1,6 +1,7 @@
 package engineapi
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -38,6 +39,14 @@ type InstanceManagerClient struct {
 	grpcClient *imclient.ProcessManagerClient
 }
 
+func (c *InstanceManagerClient) Close() error {
+	if c.grpcClient == nil {
+		return nil
+	}
+
+	return c.grpcClient.Close()
+}
+
 func GetDeprecatedInstanceManagerBinary(image string) string {
 	cname := types.GetImageCanonicalName(image)
 	return filepath.Join(types.EngineBinaryDirectoryOnHost, cname, DeprecatedInstanceManagerBinaryName)
@@ -56,12 +65,52 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning || im.Status.IP == "" {
 		return nil, fmt.Errorf("invalid Instance Manager %v, state: %v, IP: %v", im.Name, im.Status.CurrentState, im.Status.IP)
 	}
+	// HACK: TODO: fix me
+	endpoint := "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerDefaultPort)
+
+	initTLSClient := func() (*imclient.ProcessManagerClient, error) {
+		// check for tls cert file presence
+		pmClient, err := imclient.NewProcessManagerClientWithTLS(endpoint,
+			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
+			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
+			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
+			"longhorn-backend.longhorn-system",
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load Instance Manager Client TLS files Error: %w", err)
+		}
+
+		if _, err = pmClient.VersionGet(); err != nil {
+			return nil, fmt.Errorf("failed to check check version of Instance Manager Client with TLS connection Error: %w", err)
+		}
+
+		return pmClient, nil
+	}
+
+	pmClient, err := initTLSClient()
+	if err != nil {
+		// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
+		// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
+		pmClient, err = imclient.NewProcessManagerClient(endpoint, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize Instance Manager Client for %v, state: %v, IP: %v, TLS: %v, Error: %w",
+				im.Name, im.Status.CurrentState, im.Status.IP, false, err)
+		}
+
+		if _, err = pmClient.VersionGet(); err != nil {
+			return nil, fmt.Errorf("failed to get Version of Instance Manager Client for %v, state: %v, IP: %v, TLS: %v, Error: %w",
+				im.Name, im.Status.CurrentState, im.Status.IP, false, err)
+		}
+	}
+
+	// TODO: consider evaluating im client version since we do the call anyway to validate the connection, i.e. fallback to non tls
+	//  This way we don't need the per call compatibility check, ref: `CheckInstanceManagerCompatibilty`
 
 	return &InstanceManagerClient{
 		ip:            im.Status.IP,
 		apiMinVersion: im.Status.APIMinVersion,
 		apiVersion:    im.Status.APIVersion,
-		grpcClient:    imclient.NewProcessManagerClient(imutil.GetURL(im.Status.IP, InstanceManagerDefaultPort)),
+		grpcClient:    pmClient,
 	}, nil
 }
 
@@ -163,18 +212,20 @@ func (c *InstanceManagerClient) ProcessGet(name string) (*longhorn.InstanceProce
 	return c.parseProcess(process), nil
 }
 
-func (c *InstanceManagerClient) ProcessLog(name string) (*imapi.LogStream, error) {
+// ProcessLog returns a grpc stream that will be closed when the passed context is cancelled or the underlying grpc client is closed
+func (c *InstanceManagerClient) ProcessLog(ctx context.Context, name string) (*imapi.LogStream, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
-	return c.grpcClient.ProcessLog(name)
+	return c.grpcClient.ProcessLog(ctx, name)
 }
 
-func (c *InstanceManagerClient) ProcessWatch() (*imapi.ProcessStream, error) {
+// ProcessWatch returns a grpc stream that will be closed when the passed context is cancelled or the underlying grpc client is closed
+func (c *InstanceManagerClient) ProcessWatch(ctx context.Context) (*imapi.ProcessStream, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
-	return c.grpcClient.ProcessWatch()
+	return c.grpcClient.ProcessWatch(ctx)
 }
 
 func (c *InstanceManagerClient) ProcessList() (map[string]longhorn.InstanceProcess, error) {

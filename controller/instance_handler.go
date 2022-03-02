@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -32,7 +33,7 @@ type InstanceManagerHandler interface {
 	GetInstance(obj interface{}) (*longhorn.InstanceProcess, error)
 	CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error)
 	DeleteInstance(obj interface{}) error
-	LogInstance(obj interface{}) (*imapi.LogStream, error)
+	LogInstance(ctx context.Context, obj interface{}) (*imapi.LogStream, error)
 }
 
 func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler InstanceManagerHandler, eventRecorder record.EventRecorder) *InstanceHandler {
@@ -337,11 +338,12 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 }
 
 func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Object) error {
-	stream, err := h.instanceManagerHandler.LogInstance(obj)
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+	stream, err := h.instanceManagerHandler.LogInstance(ctx, obj)
 	if err != nil {
 		return err
 	}
-	defer stream.Close()
 	for {
 		line, err := stream.Recv()
 		if err == io.EOF {
