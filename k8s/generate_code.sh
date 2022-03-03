@@ -60,6 +60,10 @@ controller-gen crd paths=${APIS_DIR}/... output:crd:dir=${CRDS_DIR}
 pushd ${CRDS_DIR}
 kustomize create --autodetect 2>/dev/null || true
 kustomize edit add label longhorn-manager: 2>/dev/null || true
+if [ -e ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/patches/crd ]; then
+  cp -a ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/patches/crd patches
+  find patches -type f | xargs -i sh -c 'kustomize edit add patch --path {}'
+fi
 popd
 kustomize build ${CRDS_DIR} > ${GOPATH}/src/${LH_MANAGER_DIR}/deploy/install/01-prerequisite/03-crd.yaml
 rm -r ${CRDS_DIR}
