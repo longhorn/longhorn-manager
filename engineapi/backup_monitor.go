@@ -70,18 +70,16 @@ func NewBackupMonitor(logger logrus.FieldLogger,
 	}
 
 	// Call engine API snapshot backup
-	if backup.Status.State == longhorn.BackupStateNew {
-		engineBackupName, replicaAddress, err := engineClient.SnapshotBackup(backup.Name, backup.Spec.SnapshotName,
-			backupTargetClient.URL, volume.Spec.BackingImage, biChecksum,
-			backup.Spec.Labels, backupTargetClient.Credential)
-		if err != nil {
-			m.logger.WithError(err).Warn("Cannot take snapshot backup")
-			return nil, err
-		}
-
-		m.engineBackupName = engineBackupName
-		m.replicaAddress = replicaAddress
+	engineBackupName, replicaAddress, err := engineClient.SnapshotBackup(backup.Name, backup.Spec.SnapshotName,
+		backupTargetClient.URL, volume.Spec.BackingImage, biChecksum,
+		backup.Spec.Labels, backupTargetClient.Credential)
+	if err != nil {
+		m.logger.WithError(err).Warn("Cannot take snapshot backup")
+		return nil, err
 	}
+
+	m.engineBackupName = engineBackupName
+	m.replicaAddress = replicaAddress
 
 	// Create a goroutine to monitor the replica backup state/progress
 	go m.monitorBackups()
