@@ -148,8 +148,8 @@ func recurringJob(c *cli.Context) error {
 	}
 	logger.Infof("Found %v volumes with recurring job %v", len(filteredVolumes), jobName)
 
-	var wg sync.WaitGroup
 	concurrentLimiter := make(chan struct{}, jobConcurrent)
+	var wg sync.WaitGroup
 	defer wg.Wait()
 	for _, volumeName := range filteredVolumes {
 		wg.Add(1)
@@ -257,6 +257,11 @@ func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 // It should detach the volume when:
 // 1. The volume is attached by this recurring job
 // 2. The volume state is VolumeStateAttached
+// NOTE:
+//   The volume could remain attached when the recurring job pod gets force
+//   terminated and unable to complete detachment within the grace period. Thus
+//   there is a workaround in the recurring job controller to handle the
+//   detachment again (detachVolumeAutoAttachedByRecurringJob).
 func (job *Job) handleVolumeDetachment() {
 	volumeAPI := job.api.Volume
 	volumeName := job.volumeName
@@ -710,6 +715,10 @@ func (job *Job) GetVolume(name string) (*longhorn.Volume, error) {
 	return job.lhClient.LonghornV1beta1().Volumes(job.namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
 
+func (job *Job) GetEngineImage(name string) (*longhorn.EngineImage, error) {
+	return job.lhClient.LonghornV1beta1().EngineImages(job.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
 func (job *Job) UpdateVolumeStatus(v *longhorn.Volume) (*longhorn.Volume, error) {
 	return job.lhClient.LonghornV1beta1().Volumes(job.namespace).UpdateStatus(context.TODO(), v, metav1.UpdateOptions{})
 }
@@ -740,12 +749,12 @@ func (job *Job) findARandomReadyNode(v *longhornclient.Volume) (string, error) {
 		return "", err
 	}
 
-	engineImage, err := job.api.EngineImage.ById(types.GetEngineImageChecksumName(v.CurrentImage))
+	engineImage, err := job.GetEngineImage(types.GetEngineImageChecksumName(v.CurrentImage))
 	if err != nil {
 		return "", err
 	}
-	if engineImage.State != string(longhorn.EngineImageStateDeployed) && engineImage.State != string(longhorn.EngineImageStateDeploying) {
-		return "", fmt.Errorf("error: the volume's engine image %v is in state: %v", engineImage.Name, engineImage.State)
+	if engineImage.Status.State != longhorn.EngineImageStateDeployed && engineImage.Status.State != longhorn.EngineImageStateDeploying {
+		return "", fmt.Errorf("error: the volume's engine image %v is in state: %v", engineImage.Name, engineImage.Status.State)
 	}
 
 	var readyNodeList []string
@@ -763,7 +772,7 @@ func (job *Job) findARandomReadyNode(v *longhornclient.Volume) (string, error) {
 				return "", err
 			}
 
-			if readyCondition.Status == longhorn.ConditionStatusTrue && engineImage.NodeDeploymentMap[node.Name] {
+			if readyCondition.Status == longhorn.ConditionStatusTrue && engineImage.Status.NodeDeploymentMap[node.Name] {
 				readyNodeList = append(readyNodeList, node.Name)
 			}
 		}
