@@ -357,7 +357,6 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 	// Update Backup CR status
 	backup.Status.State = longhorn.BackupStateCompleted
-	backup.Status.Progress = 100
 	backup.Status.URL = backupInfo.URL
 	backup.Status.SnapshotName = backupInfo.SnapshotName
 	backup.Status.SnapshotCreatedAt = backupInfo.SnapshotCreated
