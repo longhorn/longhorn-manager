@@ -107,16 +107,16 @@ func NewKubernetesPVController(
 		},
 	})
 
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	podInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    kc.enqueuePodChange,
 		UpdateFunc: func(old, cur interface{}) { kc.enqueuePodChange(cur) },
 		DeleteFunc: kc.enqueuePodChange,
-	})
+	}, 0)
 
 	// after volume becomes detached, try to delete the VA of lost node
-	volumeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	volumeInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { kc.enqueueVolumeChange(cur) },
-	})
+	}, 0)
 
 	return kc
 }

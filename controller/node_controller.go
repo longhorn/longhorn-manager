@@ -114,17 +114,16 @@ func NewNodeController(
 		DeleteFunc: nc.enqueueNode,
 	}, nodeControllerResyncPeriod)
 
-	settingInformer.Informer().AddEventHandler(
+	settingInformer.Informer().AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: nc.isResponsibleForSetting,
 			Handler: cache.ResourceEventHandlerFuncs{
 				AddFunc:    nc.enqueueSetting,
 				UpdateFunc: func(old, cur interface{}) { nc.enqueueSetting(cur) },
 			},
-		},
-	)
+		}, 0)
 
-	replicaInformer.Informer().AddEventHandler(
+	replicaInformer.Informer().AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: nc.isResponsibleForReplica,
 			Handler: cache.ResourceEventHandlerFuncs{
@@ -132,10 +131,9 @@ func NewNodeController(
 				UpdateFunc: func(old, cur interface{}) { nc.enqueueReplica(cur) },
 				DeleteFunc: nc.enqueueReplica,
 			},
-		},
-	)
+		}, 0)
 
-	podInformer.Informer().AddEventHandler(
+	podInformer.Informer().AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: isManagerPod,
 			Handler: cache.ResourceEventHandlerFuncs{
@@ -143,13 +141,12 @@ func NewNodeController(
 				UpdateFunc: func(old, cur interface{}) { nc.enqueueManagerPod(cur) },
 				DeleteFunc: nc.enqueueManagerPod,
 			},
-		},
-	)
+		}, 0)
 
-	kubeNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	kubeNodeInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { nc.enqueueKubernetesNode(cur) },
 		DeleteFunc: nc.enqueueKubernetesNode,
-	})
+	}, 0)
 
 	return nc
 }

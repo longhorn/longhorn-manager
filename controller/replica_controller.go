@@ -105,23 +105,23 @@ func NewReplicaController(
 		DeleteFunc: rc.enqueueReplica,
 	})
 
-	instanceManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	instanceManagerInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueInstanceManagerChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueInstanceManagerChange(cur) },
 		DeleteFunc: rc.enqueueInstanceManagerChange,
-	})
+	}, 0)
 
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	nodeInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueNodeChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueNodeChange(cur) },
 		DeleteFunc: rc.enqueueNodeChange,
-	})
+	}, 0)
 
-	backingImageInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	backingImageInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueBackingImageChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueBackingImageChange(cur) },
 		DeleteFunc: rc.enqueueBackingImageChange,
-	})
+	}, 0)
 
 	return rc
 }

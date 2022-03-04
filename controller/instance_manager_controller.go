@@ -145,19 +145,19 @@ func NewInstanceManagerController(
 		DeleteFunc: imc.enqueueInstanceManager,
 	})
 
-	pInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+	pInformer.Informer().AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: isInstanceManagerPod,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    imc.enqueueInstanceManagerPod,
 			UpdateFunc: func(old, cur interface{}) { imc.enqueueInstanceManagerPod(cur) },
 			DeleteFunc: imc.enqueueInstanceManagerPod,
 		},
-	})
+	}, 0)
 
-	kubeNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	kubeNodeInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(oldObj, cur interface{}) { imc.enqueueKubernetesNode(cur) },
 		DeleteFunc: imc.enqueueKubernetesNode,
-	})
+	}, 0)
 
 	return imc
 }

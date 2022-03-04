@@ -134,10 +134,10 @@ func NewSettingController(
 		DeleteFunc: sc.enqueueSetting,
 	}, settingControllerResyncPeriod)
 
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	nodeInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.enqueueSettingForNode,
 		UpdateFunc: func(old, cur interface{}) { sc.enqueueSettingForNode(cur) },
-	})
+	}, 0)
 
 	return sc
 }

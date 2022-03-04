@@ -85,17 +85,17 @@ func NewBackingImageController(
 		DeleteFunc: bic.enqueueBackingImage,
 	})
 
-	backingImageManagerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	backingImageManagerInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    bic.enqueueBackingImageForBackingImageManager,
 		UpdateFunc: func(old, cur interface{}) { bic.enqueueBackingImageForBackingImageManager(cur) },
 		DeleteFunc: bic.enqueueBackingImageForBackingImageManager,
-	})
+	}, 0)
 
-	replicaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	replicaInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    bic.enqueueBackingImageForReplica,
 		UpdateFunc: func(old, cur interface{}) { bic.enqueueBackingImageForReplica(cur) },
 		DeleteFunc: bic.enqueueBackingImageForReplica,
-	})
+	}, 0)
 
 	return bic
 }
