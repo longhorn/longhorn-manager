@@ -1062,6 +1062,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 					longhorn.VolumeConditionReasonLocalReplicaSchedulingFailure, "")
 			}
 			scheduled = false
+			// requeue the volume to retry to schedule the replica after 30s
+			vc.enqueueVolumeAfter(v, 30*time.Second)
 		} else {
 			rs[r.Name] = scheduledReplica
 		}
@@ -1630,11 +1632,16 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 			}
 			log.Debugf("Cannot reuse failed replica %v immediately, backoff period is %v now",
 				reusableFailedReplica.Name, vc.backoff.Get(reusableFailedReplica.Name).Seconds())
+			// Couldn't reuse the replica. Add the volume back to the workqueue to check it later
+			vc.enqueueVolumeAfter(v, vc.backoff.Get(reusableFailedReplica.Name))
 		}
-		if vc.scheduler.RequireNewReplica(rs, v, hardNodeAffinity) {
+		if checkBackDuration := vc.scheduler.RequireNewReplica(rs, v, hardNodeAffinity); checkBackDuration == 0 {
 			if err := vc.createReplica(v, e, rs, hardNodeAffinity, !newVolume); err != nil {
 				return err
 			}
+		} else {
+			// Couldn't create new replica. Add the volume back to the workqueue to check it later
+			vc.enqueueVolumeAfter(v, checkBackDuration)
 		}
 	}
 	return nil
@@ -2777,6 +2784,16 @@ func (vc *VolumeController) enqueueVolume(obj interface{}) {
 	}
 
 	vc.queue.Add(key)
+}
+
+func (vc *VolumeController) enqueueVolumeAfter(obj interface{}, duration time.Duration) {
+	key, err := controller.KeyFunc(obj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("enqueueVolumeAfter: couldn't get key for object %#v: %v", obj, err))
+		return
+	}
+
+	vc.queue.AddAfter(key, duration)
 }
 
 func (vc *VolumeController) enqueueControlleeChange(obj interface{}) {
