@@ -73,11 +73,16 @@ func NewKubernetesNodeController(
 		knStoreSynced: kubeNodeInformer.Informer().HasSynced,
 	}
 
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	kubeNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old, cur interface{}) { knc.enqueueNode(cur) },
+		DeleteFunc: knc.enqueueNode,
+	})
+
+	nodeInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    knc.enqueueLonghornNode,
 		UpdateFunc: func(old, cur interface{}) { knc.enqueueLonghornNode(cur) },
 		DeleteFunc: knc.enqueueLonghornNode,
-	})
+	}, 0)
 
 	settingInformer.Informer().AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
@@ -87,11 +92,6 @@ func NewKubernetesNodeController(
 				UpdateFunc: func(old, cur interface{}) { knc.enqueueSetting(cur) },
 			},
 		}, 0)
-
-	kubeNodeInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(old, cur interface{}) { knc.enqueueNode(cur) },
-		DeleteFunc: knc.enqueueNode,
-	}, 0)
 
 	return knc
 }
