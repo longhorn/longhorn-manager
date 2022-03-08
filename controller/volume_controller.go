@@ -2775,8 +2775,33 @@ func (vc *VolumeController) enqueueVolume(obj interface{}) {
 		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
 		return
 	}
-
 	vc.queue.Add(key)
+
+	// try to enqueue the source of the volume clone
+	_, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		return
+	}
+
+	v, err := vc.ds.GetVolume(name)
+	if err != nil {
+		return
+	}
+
+	if isTargetVolumeOfCloning(v) {
+		sourceVolName := types.GetVolumeName(v.Spec.DataSource)
+		sourceVol, err := vc.ds.GetVolume(sourceVolName)
+		if err != nil {
+			return
+		}
+		key, err := controller.KeyFunc(sourceVol)
+		if err != nil {
+			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
+			return
+		}
+
+		vc.queue.Add(key)
+	}
 }
 
 func (vc *VolumeController) enqueueControlleeChange(obj interface{}) {
