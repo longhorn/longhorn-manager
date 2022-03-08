@@ -457,6 +457,10 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 									MountPath: "/sys",
 								},
 								{
+									Name:      "host-tmp", // path is required to pass csi-sanity
+									MountPath: "/tmp",
+								},
+								{
 									Name:             "host",
 									MountPath:        "/rootfs", // path is required for namespaced mounter
 									MountPropagation: &MountPropagationBidirectional,
@@ -519,6 +523,14 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
 									Path: "/sys",
+								},
+							},
+						},
+						{
+							Name: "host-tmp",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: "/tmp",
 								},
 							},
 						},
