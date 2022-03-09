@@ -484,6 +484,7 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	if err != nil {
 		backup.Status.Error = err.Error()
 		backup.Status.State = longhorn.BackupStateError
+		backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
 		return nil, err
 	}
 	return monitor, nil
