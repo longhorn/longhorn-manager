@@ -53,7 +53,7 @@ require (
 	github.com/longhorn/longhorn-instance-manager v0.0.0-20210729081215-50c310f97378
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.2.1
+	github.com/prometheus/client_golang v1.11.1
 	github.com/rancher/go-rancher v0.1.1-0.20190307222549-9756097e5e4c
 	github.com/robfig/cron v1.2.0
 	github.com/satori/go.uuid v1.2.0
