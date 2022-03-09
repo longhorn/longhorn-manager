@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,7 +49,6 @@ func NewBackupMonitor(logger logrus.FieldLogger,
 		snapshotName: backup.Spec.SnapshotName,
 		engineClient: engineClient,
 
-		backupStatus:     backup.Status,
 		backupStatusLock: sync.RWMutex{},
 
 		syncCallback: syncCallback,
@@ -63,10 +63,29 @@ func NewBackupMonitor(logger logrus.FieldLogger,
 			backupTargetClient.URL, volume.Spec.BackingImage, biChecksum,
 			backup.Spec.Labels, backupTargetClient.Credential)
 		if err != nil {
-			m.logger.WithError(err).Warn("Cannot take snapshot backup")
-			return nil, err
+			if !strings.Contains(err.Error(), "DeadlineExceeded") {
+				m.logger.WithError(err).Warn("Cannot take snapshot backup")
+				return nil, err
+			}
+
+			// [Workaround]
+			// Special handling the RPC call return code DeadlineExceeded, mark it as Pending state.
+			// The snapshot backup initialization _probably_ succeeded in the replica sync agent server.
+			// Use the backup monitor routine to monitor the backup status stays in Error state or change
+			// to InProgress/Completed state with the maximum retry count mechanism.
+			// [TODO]
+			// Since API engineclient.SnapshotBackup is not idempotent, this controller cannot blindly
+			// retry the call when error DeadlineExceeded is triggered.
+			// Instead, it has to mark the backup as a kind of special state Pending, then relies on the
+			// backup monitor routine periodically checking if the backup creation actually started.
+			// After making the API call idempotent and being able to deprecate the old version
+			// engine image, we can remove this part.
+			// https://github.com/longhorn/longhorn/issues/3545
+			m.logger.WithError(err).Warnf("Snapshot backup timeout")
+			backup.Status.State = longhorn.BackupStatePending
 		}
 
+		m.backupStatus = backup.Status
 		m.replicaAddress = replicaAddress
 	}
 
