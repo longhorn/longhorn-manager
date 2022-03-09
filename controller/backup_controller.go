@@ -317,7 +317,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		}
 
 		switch backup.Status.State {
-		case longhorn.BackupStateNew, longhorn.BackupStateInProgress:
+		case longhorn.BackupStateNew, longhorn.BackupStatePending, longhorn.BackupStateInProgress:
 			return nil
 		case longhorn.BackupStateCompleted:
 			bc.disableBackupMonitor(backup.Name)

@@ -6,6 +6,7 @@ type BackupState string
 
 const (
 	BackupStateNew        = BackupState("")
+	BackupStatePending    = BackupState("Pending")
 	BackupStateInProgress = BackupState("InProgress")
 	BackupStateCompleted  = BackupState("Completed")
 	BackupStateError      = BackupState("Error")
