@@ -519,6 +519,7 @@ func (bc *BackupController) syncWithMonitor(backup *longhorn.Backup, volume *lon
 	existingBackupState := backup.Status.State
 
 	backupStatus := monitor.GetBackupStatus()
+	backup.Status.EngineBackupName = backupStatus.EngineBackupName
 	backup.Status.Progress = backupStatus.Progress
 	backup.Status.URL = backupStatus.URL
 	backup.Status.Error = backupStatus.Error

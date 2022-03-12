@@ -21,16 +21,17 @@ const (
 type BackupMonitor struct {
 	logger logrus.FieldLogger
 
-	namespace      string
-	backupName     string
-	snapshotName   string
-	replicaAddress string
-	engineClient   EngineClient
+	backupName       string
+	engineBackupName string
+	snapshotName     string
+	replicaAddress   string
+	engineClient     EngineClient
 
 	backupStatus     longhorn.BackupStatus
 	backupStatusLock sync.RWMutex
 
 	syncCallback func(key string)
+	callbackKey  string
 
 	ctx  context.Context
 	quit context.CancelFunc
@@ -41,17 +42,18 @@ func NewBackupMonitor(logger logrus.FieldLogger,
 	biChecksum string, engineClient EngineClient, syncCallback func(key string)) (*BackupMonitor, error) {
 	ctx, quit := context.WithCancel(context.Background())
 	m := &BackupMonitor{
-		logger: logger,
+		logger: logger.WithFields(logrus.Fields{"backup": backup.Name}),
 
-		namespace:    backup.Namespace,
-		backupName:   backup.Name,
-		snapshotName: backup.Spec.SnapshotName,
-		engineClient: engineClient,
+		backupName:       backup.Name,
+		engineBackupName: backup.Status.EngineBackupName,
+		snapshotName:     backup.Spec.SnapshotName,
+		engineClient:     engineClient,
 
 		backupStatus:     backup.Status,
 		backupStatusLock: sync.RWMutex{},
 
 		syncCallback: syncCallback,
+		callbackKey:  backup.Namespace + "/" + backup.Name,
 
 		ctx:  ctx,
 		quit: quit,
@@ -59,7 +61,7 @@ func NewBackupMonitor(logger logrus.FieldLogger,
 
 	// Call engine API snapshot backup
 	if backup.Status.State == longhorn.BackupStateNew {
-		_, replicaAddress, err := engineClient.SnapshotBackup(backup.Name, backup.Spec.SnapshotName,
+		engineBackupName, replicaAddress, err := engineClient.SnapshotBackup(backup.Name, backup.Spec.SnapshotName,
 			backupTargetClient.URL, volume.Spec.BackingImage, biChecksum,
 			backup.Spec.Labels, backupTargetClient.Credential)
 		if err != nil {
@@ -67,6 +69,7 @@ func NewBackupMonitor(logger logrus.FieldLogger,
 			return nil, err
 		}
 
+		m.engineBackupName = engineBackupName
 		m.replicaAddress = replicaAddress
 	}
 
@@ -106,21 +109,20 @@ func (m *BackupMonitor) syncBackups() error {
 		defer m.backupStatusLock.Unlock()
 		if !reflect.DeepEqual(m.backupStatus, currentBackupStatus) {
 			m.backupStatus = currentBackupStatus
-			key := m.namespace + "/" + m.backupName
-			m.syncCallback(key)
+			m.syncCallback(m.callbackKey)
 		}
 	}()
 
-	engineBackupStatus, err := m.engineClient.SnapshotBackupStatus(m.backupName, m.replicaAddress)
+	engineBackupStatus, err := m.engineClient.SnapshotBackupStatus(m.engineBackupName, m.replicaAddress)
 	if err != nil {
 		return err
 	}
 	if engineBackupStatus == nil {
-		err = fmt.Errorf("cannot find backup %s status in longhorn engine", m.backupName)
+		err = fmt.Errorf("cannot find backup %s/%s status in longhorn engine", m.backupName, m.engineBackupName)
 		return err
 	}
 	if engineBackupStatus.SnapshotName != m.snapshotName {
-		err = fmt.Errorf("cannot find matched snapshot %s/%s of backup %s status in longhorn engine", engineBackupStatus.SnapshotName, m.snapshotName, m.backupName)
+		err = fmt.Errorf("cannot find matched snapshot %s/%s of backup %s/%s status in longhorn engine", engineBackupStatus.SnapshotName, m.snapshotName, m.backupName, m.engineBackupName)
 		return err
 	}
 

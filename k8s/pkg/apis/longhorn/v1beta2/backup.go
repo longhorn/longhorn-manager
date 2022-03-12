@@ -35,6 +35,12 @@ type BackupStatus struct {
 	// Can be "", "InProgress", "Completed", "Error", "Unknown".
 	// +optional
 	State BackupState `json:"state"`
+	// The backup name is generated inside the longhorn engine.
+	// It is for backward compatibility with the longhorn engine < 1.2.0.
+	// This field can be deprecated once the longhorn manager no longer
+	// supports the longhorn engine < 1.2.0.
+	// +optional
+	EngineBackupName string `json:"engineBackupName"`
 	// The snapshot backup progress.
 	// +optional
 	Progress int `json:"progress"`

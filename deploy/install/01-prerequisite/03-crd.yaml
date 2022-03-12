@@ -612,6 +612,9 @@ spec:
               backupCreatedAt:
                 description: The snapshot backup upload finished time.
                 type: string
+              engineBackupName:
+                description: The backup name is generated inside the longhorn engine. It is for backward compatibility with the longhorn engine < 1.2.0. This field can be deprecated once the longhorn manager no longer supports the longhorn engine < 1.2.0.
+                type: string
               error:
                 description: The error message when taking the snapshot backup.
                 type: string
