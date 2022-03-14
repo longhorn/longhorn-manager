@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
@@ -19,8 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
-
-	"github.com/longhorn/backupstore"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -295,7 +292,7 @@ func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]strin
 	return credentialSecret, nil
 }
 
-func checkVolume(v *longhorn.Volume) error {
+func CheckVolume(v *longhorn.Volume) error {
 	size, err := util.ConvertSize(v.Spec.Size)
 	if err != nil {
 		return err
@@ -376,12 +373,6 @@ func GetOwnerReferencesForRecurringJob(recurringJob *longhorn.RecurringJob) []me
 
 // CreateVolume creates a Longhorn Volume resource and verifies creation
 func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
-	if err := initVolume(v); err != nil {
-		return nil, err
-	}
-	if err := checkVolume(v); err != nil {
-		return nil, err
-	}
 	if err := fixupMetadata(v.Name, v); err != nil {
 		return nil, err
 	}
@@ -389,16 +380,6 @@ func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 		return nil, err
 	}
 
-	// Add backup volume name label to the restore/DR volume
-	if v.Spec.FromBackup != "" {
-		_, backupVolumeName, _, err := backupstore.DecodeBackupURL(v.Spec.FromBackup)
-		if err != nil {
-			return nil, fmt.Errorf("cannot decode backup URL %v: %v", v.Spec.FromBackup, err)
-		}
-		if err := tagBackupVolumeLabel(backupVolumeName, v); err != nil {
-			return nil, err
-		}
-	}
 	ret, err := s.lhClient.LonghornV1beta2().Volumes(s.namespace).Create(context.TODO(), v, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
@@ -421,37 +402,8 @@ func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	return ret.DeepCopy(), nil
 }
 
-func initVolume(v *longhorn.Volume) error {
-	if v.Spec.DiskSelector == nil {
-		v.Spec.DiskSelector = []string{}
-	}
-	if v.Spec.NodeSelector == nil {
-		v.Spec.NodeSelector = []string{}
-	}
-	if v.Spec.RecurringJobs == nil {
-		v.Spec.RecurringJobs = make([]longhorn.VolumeRecurringJobSpec, 0)
-	}
-	for i, src := range v.Spec.RecurringJobs {
-		dst := longhorn.VolumeRecurringJobSpec{}
-		if err := copier.Copy(&dst, &src); err != nil {
-			return err
-		}
-		if dst.Groups == nil {
-			dst.Groups = []string{}
-		}
-		if dst.Labels == nil {
-			dst.Labels = make(map[string]string, 0)
-		}
-		v.Spec.RecurringJobs[i] = dst
-	}
-	return nil
-}
-
 // UpdateVolume updates Longhorn Volume and verifies update
 func (s *DataStore) UpdateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
-	if err := checkVolume(v); err != nil {
-		return nil, err
-	}
 	if err := fixupMetadata(v.Name, v); err != nil {
 		return nil, err
 	}
