@@ -1798,9 +1798,6 @@ func GetOwnerReferencesForBackingImageDataSource(backingImageDataSource *longhor
 
 // CreateNode creates a Longhorn Node resource and verifies creation
 func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
-	if err := initNode(node); err != nil {
-		return nil, err
-	}
 	if err := util.AddFinalizer(longhornFinalizerKey, node); err != nil {
 		return nil, err
 	}
@@ -1824,26 +1821,6 @@ func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	}
 
 	return ret.DeepCopy(), nil
-}
-
-func initNode(node *longhorn.Node) error {
-	if node.Spec.Disks == nil {
-		node.Spec.Disks = make(map[string]longhorn.DiskSpec, 0)
-	}
-	for key, src := range node.Spec.Disks {
-		if src.Tags == nil {
-			dst := longhorn.DiskSpec{}
-			if err := copier.Copy(&dst, &src); err != nil {
-				return err
-			}
-			dst.Tags = []string{}
-			node.Spec.Disks[key] = dst
-		}
-	}
-	if node.Spec.Tags == nil {
-		node.Spec.Tags = []string{}
-	}
-	return nil
 }
 
 // CreateDefaultNode will create the default Disk at the value of the
