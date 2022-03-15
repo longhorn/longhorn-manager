@@ -87,13 +87,6 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/numberOfReplicas", "value": %v}`, numberOfReplicas))
 	}
 
-	if string(volume.Spec.ReplicaAutoBalance) == "" {
-		replicaAutoBalance := longhorn.ReplicaAutoBalanceIgnored
-		logrus.Infof("Use the %v to inherit global replicas auto-balance setting", replicaAutoBalance)
-
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaAutoBalance", "value": "%s"}`, string(replicaAutoBalance)))
-	}
-
 	if string(volume.Spec.DataLocality) == "" {
 		defaultDataLocality, err := v.ds.GetSettingValueExisted(types.SettingNameDefaultDataLocality)
 		if err != nil {
