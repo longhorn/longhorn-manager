@@ -82,7 +82,7 @@ github.com/konsorten/go-windows-terminal-sequences
 github.com/kr/text
 # github.com/kubernetes-csi/csi-lib-utils v0.6.1
 github.com/kubernetes-csi/csi-lib-utils/protosanitizer
-# github.com/longhorn/backing-image-manager v0.0.0-20210809125601-48e29abcd637
+# github.com/longhorn/backing-image-manager v0.0.0-20220318061141-6bcb81541be8
 github.com/longhorn/backing-image-manager/api
 github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
