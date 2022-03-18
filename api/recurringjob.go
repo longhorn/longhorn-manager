@@ -53,10 +53,6 @@ func (s *Server) RecurringJobCreate(rw http.ResponseWriter, req *http.Request) e
 		return err
 	}
 
-	if input.Task != longhorn.RecurringJobTypeBackup && input.Task != longhorn.RecurringJobTypeSnapshot {
-		return fmt.Errorf("recurring job type %v is not valid", input.Task)
-	}
-
 	obj, err := s.m.CreateRecurringJob(&longhorn.RecurringJobSpec{
 		Name:        input.Name,
 		Groups:      input.Groups,
@@ -82,10 +78,6 @@ func (s *Server) RecurringJobUpdate(rw http.ResponseWriter, req *http.Request) e
 	}
 
 	name := mux.Vars(req)["name"]
-
-	if input.Task != longhorn.RecurringJobTypeBackup && input.Task != longhorn.RecurringJobTypeSnapshot {
-		return fmt.Errorf("recurring job type %v is not valid", input.Task)
-	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.UpdateRecurringJob(longhorn.RecurringJobSpec{

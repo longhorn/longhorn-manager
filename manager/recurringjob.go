@@ -1,7 +1,6 @@
 package manager
 
 import (
-	"fmt"
 	"reflect"
 	"sort"
 
@@ -38,24 +37,6 @@ func (m *VolumeManager) ListRecurringJobsSorted() ([]*longhorn.RecurringJob, err
 
 func (m *VolumeManager) CreateRecurringJob(spec *longhorn.RecurringJobSpec) (*longhorn.RecurringJob, error) {
 	name := util.AutoCorrectName(spec.Name, datastore.NameMaximumLength)
-	if !util.ValidateName(name) {
-		return nil, fmt.Errorf("invalid name %v", name)
-	}
-
-	jobs := []longhorn.RecurringJobSpec{
-		{
-			Name:        spec.Name,
-			Groups:      spec.Groups,
-			Task:        spec.Task,
-			Cron:        spec.Cron,
-			Retain:      spec.Retain,
-			Concurrency: spec.Concurrency,
-			Labels:      spec.Labels,
-		},
-	}
-	if err := datastore.ValidateRecurringJobs(jobs); err != nil {
-		return nil, err
-	}
 
 	job := &longhorn.RecurringJob{
 		ObjectMeta: metav1.ObjectMeta{
@@ -63,6 +44,7 @@ func (m *VolumeManager) CreateRecurringJob(spec *longhorn.RecurringJobSpec) (*lo
 		},
 		Spec: *spec,
 	}
+
 	job, err := m.ds.CreateRecurringJob(job)
 	if err != nil {
 		return nil, err
@@ -76,21 +58,6 @@ func (m *VolumeManager) UpdateRecurringJob(spec longhorn.RecurringJobSpec) (*lon
 	defer func() {
 		err = errors.Wrapf(err, "unable to update %v recurring job", spec.Name)
 	}()
-
-	jobs := []longhorn.RecurringJobSpec{
-		{
-			Name:        spec.Name,
-			Groups:      spec.Groups,
-			Task:        spec.Task,
-			Cron:        spec.Cron,
-			Retain:      spec.Retain,
-			Concurrency: spec.Concurrency,
-			Labels:      spec.Labels,
-		},
-	}
-	if err = datastore.ValidateRecurringJobs(jobs); err != nil {
-		return nil, err
-	}
 
 	recurringJob, err := m.ds.GetRecurringJob(spec.Name)
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
@@ -19,8 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
-
-	"github.com/longhorn/backupstore"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -295,7 +292,7 @@ func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]strin
 	return credentialSecret, nil
 }
 
-func checkVolume(v *longhorn.Volume) error {
+func CheckVolume(v *longhorn.Volume) error {
 	size, err := util.ConvertSize(v.Spec.Size)
 	if err != nil {
 		return err
@@ -376,12 +373,6 @@ func GetOwnerReferencesForRecurringJob(recurringJob *longhorn.RecurringJob) []me
 
 // CreateVolume creates a Longhorn Volume resource and verifies creation
 func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
-	if err := initVolume(v); err != nil {
-		return nil, err
-	}
-	if err := checkVolume(v); err != nil {
-		return nil, err
-	}
 	if err := fixupMetadata(v.Name, v); err != nil {
 		return nil, err
 	}
@@ -389,16 +380,6 @@ func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 		return nil, err
 	}
 
-	// Add backup volume name label to the restore/DR volume
-	if v.Spec.FromBackup != "" {
-		_, backupVolumeName, _, err := backupstore.DecodeBackupURL(v.Spec.FromBackup)
-		if err != nil {
-			return nil, fmt.Errorf("cannot decode backup URL %v: %v", v.Spec.FromBackup, err)
-		}
-		if err := tagBackupVolumeLabel(backupVolumeName, v); err != nil {
-			return nil, err
-		}
-	}
 	ret, err := s.lhClient.LonghornV1beta2().Volumes(s.namespace).Create(context.TODO(), v, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
@@ -421,37 +402,8 @@ func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	return ret.DeepCopy(), nil
 }
 
-func initVolume(v *longhorn.Volume) error {
-	if v.Spec.DiskSelector == nil {
-		v.Spec.DiskSelector = []string{}
-	}
-	if v.Spec.NodeSelector == nil {
-		v.Spec.NodeSelector = []string{}
-	}
-	if v.Spec.RecurringJobs == nil {
-		v.Spec.RecurringJobs = make([]longhorn.VolumeRecurringJobSpec, 0)
-	}
-	for i, src := range v.Spec.RecurringJobs {
-		dst := longhorn.VolumeRecurringJobSpec{}
-		if err := copier.Copy(&dst, &src); err != nil {
-			return err
-		}
-		if dst.Groups == nil {
-			dst.Groups = []string{}
-		}
-		if dst.Labels == nil {
-			dst.Labels = make(map[string]string, 0)
-		}
-		v.Spec.RecurringJobs[i] = dst
-	}
-	return nil
-}
-
 // UpdateVolume updates Longhorn Volume and verifies update
 func (s *DataStore) UpdateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
-	if err := checkVolume(v); err != nil {
-		return nil, err
-	}
 	if err := fixupMetadata(v.Name, v); err != nil {
 		return nil, err
 	}
@@ -555,6 +507,52 @@ func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
+}
+
+func MarshalLabelToVolumeRecurringJob(labels map[string]string) map[string]*longhorn.VolumeRecurringJob {
+	groupPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJobGroup) + "/"
+	jobPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJob) + "/"
+	jobMapVolumeJob := make(map[string]*longhorn.VolumeRecurringJob)
+	for label := range labels {
+		if strings.HasPrefix(label, groupPrefix) {
+			jobName := strings.TrimPrefix(label, groupPrefix)
+			jobMapVolumeJob[jobName] = &longhorn.VolumeRecurringJob{
+				Name:    jobName,
+				IsGroup: true,
+			}
+			continue
+		} else if strings.HasPrefix(label, jobPrefix) {
+			jobName := strings.TrimPrefix(label, jobPrefix)
+			jobMapVolumeJob[jobName] = &longhorn.VolumeRecurringJob{
+				Name:    jobName,
+				IsGroup: false,
+			}
+		}
+	}
+	return jobMapVolumeJob
+}
+
+func (s *DataStore) DeleteVolumeRecurringJob(name string, isGroup bool, v *longhorn.Volume) (volume *longhorn.Volume, err error) {
+	vName := v.Name
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete volume recurring jobs for %v", vName)
+	}()
+
+	key := ""
+	if isGroup {
+		key = types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, name)
+	} else {
+		key = types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJob, name)
+	}
+	if _, exist := v.Labels[key]; exist {
+		delete(v.Labels, key)
+		v, err = s.UpdateVolume(v)
+		if err != nil {
+			return nil, err
+		}
+		logrus.Debugf("Updated volume %v labels to %+v", v.Name, v.Labels)
+	}
+	return v, nil
 }
 
 // ListDRVolumesRO returns a single object contains all DR Volumes
@@ -1220,9 +1218,6 @@ func (s *DataStore) CheckEngineImageReadyOnAllVolumeReplicas(image, volumeName, 
 // CreateBackingImage creates a Longhorn BackingImage resource and verifies
 // creation
 func (s *DataStore) CreateBackingImage(backingImage *longhorn.BackingImage) (*longhorn.BackingImage, error) {
-	if err := initBackingImage(backingImage); err != nil {
-		return nil, err
-	}
 	if err := util.AddFinalizer(longhornFinalizerKey, backingImage); err != nil {
 		return nil, err
 	}
@@ -1248,22 +1243,11 @@ func (s *DataStore) CreateBackingImage(backingImage *longhorn.BackingImage) (*lo
 	return ret.DeepCopy(), nil
 }
 
-func initBackingImage(backingImage *longhorn.BackingImage) error {
-	if backingImage.Spec.Disks == nil {
-		backingImage.Spec.Disks = make(map[string]string, 0)
-	}
-	if backingImage.Spec.SourceParameters == nil {
-		backingImage.Spec.SourceParameters = make(map[string]string, 0)
-	}
-	return nil
-}
-
 // UpdateBackingImage updates Longhorn BackingImage and verifies update
 func (s *DataStore) UpdateBackingImage(backingImage *longhorn.BackingImage) (*longhorn.BackingImage, error) {
 	if err := util.AddFinalizer(longhornFinalizerKey, backingImage); err != nil {
 		return nil, err
 	}
-
 	obj, err := s.lhClient.LonghornV1beta2().BackingImages(s.namespace).Update(context.TODO(), backingImage, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
@@ -1752,9 +1736,6 @@ func GetOwnerReferencesForBackingImageDataSource(backingImageDataSource *longhor
 
 // CreateNode creates a Longhorn Node resource and verifies creation
 func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
-	if err := initNode(node); err != nil {
-		return nil, err
-	}
 	if err := util.AddFinalizer(longhornFinalizerKey, node); err != nil {
 		return nil, err
 	}
@@ -1778,26 +1759,6 @@ func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	}
 
 	return ret.DeepCopy(), nil
-}
-
-func initNode(node *longhorn.Node) error {
-	if node.Spec.Disks == nil {
-		node.Spec.Disks = make(map[string]longhorn.DiskSpec, 0)
-	}
-	for key, src := range node.Spec.Disks {
-		if src.Tags == nil {
-			dst := longhorn.DiskSpec{}
-			if err := copier.Copy(&dst, &src); err != nil {
-				return err
-			}
-			dst.Tags = []string{}
-			node.Spec.Disks[key] = dst
-		}
-	}
-	if node.Spec.Tags == nil {
-		node.Spec.Tags = []string{}
-	}
-	return nil
 }
 
 // CreateDefaultNode will create the default Disk at the value of the
@@ -3058,9 +3019,6 @@ func (s *DataStore) RemoveFinalizerForBackupVolume(backupVolume *longhorn.Backup
 
 // CreateBackup creates a Longhorn Backup CR and verifies creation
 func (s *DataStore) CreateBackup(backup *longhorn.Backup, backupVolumeName string) (*longhorn.Backup, error) {
-	if err := initBackup(backup); err != nil {
-		return nil, err
-	}
 	if err := tagBackupVolumeLabel(backupVolumeName, backup); err != nil {
 		return nil, err
 	}
@@ -3086,13 +3044,6 @@ func (s *DataStore) CreateBackup(backup *longhorn.Backup, backupVolumeName strin
 		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for Backup")
 	}
 	return ret.DeepCopy(), nil
-}
-
-func initBackup(backup *longhorn.Backup) error {
-	if backup.Spec.Labels == nil {
-		backup.Spec.Labels = make(map[string]string, 0)
-	}
-	return nil
 }
 
 // ListBackupsWithBackupVolumeName returns an object contains all backups in the cluster Backups CR
@@ -3206,9 +3157,6 @@ func (s *DataStore) RemoveFinalizerForBackup(backup *longhorn.Backup) error {
 // CreateRecurringJob creates a Longhorn RecurringJob resource and verifies
 // creation
 func (s *DataStore) CreateRecurringJob(recurringJob *longhorn.RecurringJob) (*longhorn.RecurringJob, error) {
-	if err := initRecurringJob(recurringJob); err != nil {
-		return nil, err
-	}
 	ret, err := s.lhClient.LonghornV1beta2().RecurringJobs(s.namespace).Create(context.TODO(), recurringJob, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
@@ -3229,16 +3177,6 @@ func (s *DataStore) CreateRecurringJob(recurringJob *longhorn.RecurringJob) (*lo
 	}
 
 	return ret.DeepCopy(), nil
-}
-
-func initRecurringJob(recurringJob *longhorn.RecurringJob) error {
-	if recurringJob.Spec.Groups == nil {
-		recurringJob.Spec.Groups = []string{}
-	}
-	if recurringJob.Spec.Labels == nil {
-		recurringJob.Spec.Labels = make(map[string]string, 0)
-	}
-	return nil
 }
 
 // ListRecurringJobs returns a map of RecurringJobPolicies indexed by name

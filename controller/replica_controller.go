@@ -34,15 +34,6 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-var (
-	// maxRetries is the number of times a deployment will be retried before it is dropped out of the queue.
-	// With the current rate-limiter in use (5ms*2^(maxRetries-1)) the following numbers represent the times
-	// a deployment is going to be requeued:
-	//
-	// 5ms, 10ms, 20ms
-	maxRetries = 3
-)
-
 type ReplicaController struct {
 	*baseController
 
@@ -115,9 +106,9 @@ func NewReplicaController(
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
 	ds.NodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    rc.enqueueNodeChange,
-		UpdateFunc: func(old, cur interface{}) { rc.enqueueNodeChange(cur) },
-		DeleteFunc: rc.enqueueNodeChange,
+		AddFunc:    rc.enqueueNodeAddOrDelete,
+		UpdateFunc: rc.enqueueNodeChange,
+		DeleteFunc: rc.enqueueNodeAddOrDelete,
 	})
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.NodeInformer.HasSynced)
 
@@ -714,7 +705,7 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(obj interface{}) {
 
 }
 
-func (rc *ReplicaController) enqueueNodeChange(obj interface{}) {
+func (rc *ReplicaController) enqueueNodeAddOrDelete(obj interface{}) {
 	node, ok := obj.(*longhorn.Node)
 	if !ok {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -731,10 +722,57 @@ func (rc *ReplicaController) enqueueNodeChange(obj interface{}) {
 		}
 	}
 
-	// Add eviction requested replicas to the workqueue
-	for diskName, diskSpec := range node.Spec.Disks {
-		evictionRequested := node.Spec.EvictionRequested || diskSpec.EvictionRequested
-		if diskStatus, existed := node.Status.DiskStatus[diskName]; existed && evictionRequested {
+	for diskName := range node.Spec.Disks {
+		if diskStatus, existed := node.Status.DiskStatus[diskName]; existed {
+			for replicaName := range diskStatus.ScheduledReplica {
+				if replica, err := rc.ds.GetReplica(replicaName); err == nil {
+					rc.enqueueReplica(replica)
+				}
+			}
+		}
+	}
+
+}
+
+func (rc *ReplicaController) enqueueNodeChange(oldObj, currObj interface{}) {
+	oldNode, ok := oldObj.(*longhorn.Node)
+	if !ok {
+		deletedState, ok := oldObj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", oldObj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		oldNode, ok = deletedState.Obj.(*longhorn.Node)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	currNode, ok := currObj.(*longhorn.Node)
+	if !ok {
+		deletedState, ok := currObj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", currObj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		currNode, ok = deletedState.Obj.(*longhorn.Node)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	// if a node or disk changes its EvictionRequested, enqueue all replicas on that node/disk
+	evictionRequestedChangeOnNodeLevel := currNode.Spec.EvictionRequested != oldNode.Spec.EvictionRequested
+	for diskName, newDiskSpec := range currNode.Spec.Disks {
+		oldDiskSpec, ok := oldNode.Spec.Disks[diskName]
+		evictionRequestedChangeOnDiskLevel := !ok || (newDiskSpec.EvictionRequested != oldDiskSpec.EvictionRequested)
+		if diskStatus, existed := currNode.Status.DiskStatus[diskName]; existed && (evictionRequestedChangeOnNodeLevel || evictionRequestedChangeOnDiskLevel) {
 			for replicaName := range diskStatus.ScheduledReplica {
 				if replica, err := rc.ds.GetReplica(replicaName); err == nil {
 					rc.enqueueReplica(replica)
@@ -753,7 +791,6 @@ func (rc *ReplicaController) enqueueBackingImageChange(obj interface{}) {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
 			return
 		}
-
 		// use the last known state, to enqueue, dependent objects
 		backingImage, ok = deletedState.Obj.(*longhorn.BackingImage)
 		if !ok {
