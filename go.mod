@@ -44,7 +44,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v0.0.0-20220318061141-6bcb81541be8
 	github.com/longhorn/backupstore v0.0.0-20210817080617-8ea3843e6b0d
-	github.com/longhorn/go-iscsi-helper v0.0.0-20201111045018-ee87992ec536
+	github.com/longhorn/go-iscsi-helper v0.0.0-20210330030558-49a327fb024e
 	github.com/longhorn/longhorn-instance-manager v0.0.0-20210729081215-50c310f97378
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.1
