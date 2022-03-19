@@ -19,7 +19,7 @@ import (
 func InitMonitoringSystem(logger logrus.FieldLogger, currentNodeID string, ds *datastore.DataStore, kubeconfigPath string) {
 	vc := NewVolumeCollector(logger, currentNodeID, ds)
 	dc := NewDiskCollector(logger, currentNodeID, ds)
-	bc := NewBackupsCollector(logger, currentNodeID, ds)
+	bc := NewBackupCollector(logger, currentNodeID, ds)
 
 	if err := registry.Register(vc); err != nil {
 		logger.WithField("collector", subsystemVolume).WithError(err).Warn("failed to register collector")
@@ -30,7 +30,7 @@ func InitMonitoringSystem(logger logrus.FieldLogger, currentNodeID string, ds *d
 	}
 
 	if err := registry.Register(bc); err != nil {
-		logger.WithField("collect", subsystemBackups).WithError(err).Warn("failed to register collector")
+		logger.WithField("collect", subsystemBackup).WithError(err).Warn("failed to register collector")
 	}
 
 	namespace := os.Getenv(types.EnvPodNamespace)
