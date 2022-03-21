@@ -407,12 +407,12 @@ github.com/libopenstorage/openstorage v1.0.0/go.mod h1:Sp1sIObHjat1BeXhfMqLZ14wn
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
 github.com/lithammer/dedent v1.1.0/go.mod h1:jrXYCQtgg0nJiN+StA2KgR7w6CiQNv9Fd/Z9BP0jIOc=
 github.com/logrusorgru/aurora v0.0.0-20181002194514-a7b3b318ed4e/go.mod h1:7rIyQOR62GCctdiQpZ/zOJlFyk6y+94wXzv6RNZgaR4=
-github.com/longhorn/backing-image-manager v0.0.0-20210809125601-48e29abcd637 h1:4LEP9pRcxAzPjPMwH9MjXn6WAWoRntGXFnWdVtFTqME=
-github.com/longhorn/backing-image-manager v0.0.0-20210809125601-48e29abcd637/go.mod h1:iMOliDoSNuDwtz6MB2oFRR1+7sUmN2BdNkUlyOW9qsE=
+github.com/longhorn/backing-image-manager v0.0.0-20220318061141-6bcb81541be8 h1:1jN1CXXkFM9K16WHOHKCW5VF5T4BQoS6rCCfYEbho58=
+github.com/longhorn/backing-image-manager v0.0.0-20220318061141-6bcb81541be8/go.mod h1:J6PTXyXw5Dvzx+0Aeixl+7TPBWPWQzdIQHh+GeSCjsg=
 github.com/longhorn/backupstore v0.0.0-20210817080617-8ea3843e6b0d h1:pj7Gmj7aQbesCQth+t2X9TN2zv2GdPqgdBzh4pwF4i4=
 github.com/longhorn/backupstore v0.0.0-20210817080617-8ea3843e6b0d/go.mod h1:FUjQNWqcEXSFIrQpfWLxFFHXywk14mM5w9TNRuBrKzY=
-github.com/longhorn/go-iscsi-helper v0.0.0-20201111045018-ee87992ec536 h1:+Z/mGnoCdY+YCX+y4X19E2YT4FsVA3aVm7uLj1tg/wM=
-github.com/longhorn/go-iscsi-helper v0.0.0-20201111045018-ee87992ec536/go.mod h1:9z/y9glKmWEdV50tjlUPxFwi1goQfIrrsoZbnMyIZbY=
+github.com/longhorn/go-iscsi-helper v0.0.0-20210330030558-49a327fb024e h1:hz4quJkaJWDo+xW+G6wTF6d6/95QvJ+o2D0+bB/tJ1U=
+github.com/longhorn/go-iscsi-helper v0.0.0-20210330030558-49a327fb024e/go.mod h1:9z/y9glKmWEdV50tjlUPxFwi1goQfIrrsoZbnMyIZbY=
 github.com/longhorn/longhorn-instance-manager v0.0.0-20210729081215-50c310f97378 h1:lxSMLEkPpZB/s6qAUcP9XLZV6g5FprgwU1fTQqbHe/A=
 github.com/longhorn/longhorn-instance-manager v0.0.0-20210729081215-50c310f97378/go.mod h1:6Ng1ShE4YRvWDscr1XhEhiTufv55LHBBfN5ln8S7diU=
 github.com/longhorn/nsfilelock v0.0.0-20200723175406-fa7c83ad0003/go.mod h1:0CLeXlf59Lg6C0kjLSDf47ft73Dh37CwymYRKWwAn04=
