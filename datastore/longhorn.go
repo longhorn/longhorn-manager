@@ -3066,6 +3066,11 @@ func (s *DataStore) ListBackupsWithBackupVolumeName(backupVolumeName string) (ma
 	return itemMap, nil
 }
 
+// ListBackupsRO returns a list of all Backups for the given namespace
+func (s *DataStore) ListBackupsRO() ([]*longhorn.Backup, error) {
+	return s.bLister.Backups(s.namespace).List(labels.Everything())
+}
+
 // ListBackups returns an object contains all backups in the cluster Backups CR
 func (s *DataStore) ListBackups() (map[string]*longhorn.Backup, error) {
 	list, err := s.bLister.Backups(s.namespace).List(labels.Everything())
