@@ -30,7 +30,7 @@ func InitMonitoringSystem(logger logrus.FieldLogger, currentNodeID string, ds *d
 	}
 
 	if err := registry.Register(bc); err != nil {
-		logger.WithField("collect", subsystemBackup).WithError(err).Warn("failed to register collector")
+		logger.WithField("collector", subsystemBackup).WithError(err).Warn("failed to register collector")
 	}
 
 	namespace := os.Getenv(types.EnvPodNamespace)
