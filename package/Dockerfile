@@ -1,11 +1,8 @@
-FROM ubuntu:20.04
+FROM registry.suse.com/bci/bci-base:15.3
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update && \
-    apt-get dist-upgrade -y && \
-    apt-get install -y curl vim nfs-common iproute2 dnsutils iputils-ping telnet zip xfsprogs && \
-    rm -rf /var/lib/apt/lists/*
+RUN zypper -n install curl nfs-client iproute2 bind-utils iputils telnet \
+              zip e2fsprogs e2fsprogs-devel xfsprogs xfsprogs-devel && \
+    rm -rf /var/cache/zypp/*
 
 COPY bin package/launch-manager package/nsmounter /usr/local/sbin/
 
