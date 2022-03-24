@@ -204,6 +204,9 @@ func fixupRecurringJobs(namespace string, lhClient *lhclientset.Clientset) error
 	for _, obj := range recurringJobs.Items {
 		existing := obj.DeepCopy()
 
+		if obj.Spec.Name == "" {
+			obj.Spec.Name = obj.Name
+		}
 		if obj.Spec.Groups == nil {
 			obj.Spec.Groups = []string{}
 		}
