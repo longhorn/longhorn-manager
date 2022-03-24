@@ -59,6 +59,9 @@ func (r *recurringJobMutator) Update(request *admission.Request, oldObj runtime.
 
 	newRecurringjob := newObj.(*longhorn.RecurringJob)
 
+	if newRecurringjob.Spec.Name == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/name", "value": "%s"}`, newRecurringjob.Name))
+	}
 	if newRecurringjob.Spec.Groups == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/groups", "value": []}`)
 	}
