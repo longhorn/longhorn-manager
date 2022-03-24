@@ -34,7 +34,6 @@ func (n *nodeValidator) Resource() admission.Resource {
 		ObjectType: &longhorn.Node{},
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Update,
-			admissionregv1.Delete,
 		},
 	}
 }
@@ -112,32 +111,6 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 				return werror.NewInvalidError(fmt.Sprintf("Delete Disk on node %v error: Please disable the disk %v and remove all replicas first ", name, disk.Path), "")
 			}
 		}
-	}
-
-	return nil
-}
-
-func (n *nodeValidator) Delete(request *admission.Request, oldObj runtime.Object) error {
-	node := oldObj.(*longhorn.Node)
-
-	// Only remove node from longhorn without any volumes on it
-	replicas, err := n.ds.ListReplicasByNodeRO(node.Name)
-	if err != nil {
-		return werror.NewInvalidError(fmt.Sprintf("could not delete node %v since listing replicas encountered %v", node.Name, err.Error()), "")
-	}
-	engines, err := n.ds.ListEnginesByNodeRO(node.Name)
-	if err != nil {
-		return werror.NewInvalidError(fmt.Sprintf("could not delete node %v since listing engines encountered %v", node.Name, err.Error()), "")
-	}
-
-	condition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
-	// Only could delete node from longhorn if kubernetes node missing or manager pod is missing
-	if condition.Status == longhorn.ConditionStatusTrue ||
-		(condition.Reason != longhorn.NodeConditionReasonKubernetesNodeGone &&
-			condition.Reason != longhorn.NodeConditionReasonManagerPodMissing) ||
-		node.Spec.AllowScheduling || len(replicas) > 0 || len(engines) > 0 {
-		return werror.NewInvalidError(fmt.Sprintf("could not delete node %v with node ready condition is %v, reason is %v, node schedulable %v, and %v replica, %v engine running on it", node.Name,
-			condition.Status, condition.Reason, node.Spec.AllowScheduling, len(replicas), len(engines)), "")
 	}
 
 	return nil
