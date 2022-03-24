@@ -100,6 +100,9 @@ func fixupVolumes(namespace string, lhClient *lhclientset.Clientset) error {
 		if obj.Spec.ReplicaAutoBalance == "" {
 			obj.Spec.ReplicaAutoBalance = longhornV1beta1.ReplicaAutoBalanceIgnored
 		}
+		if obj.Spec.AccessMode == "" {
+			obj.Spec.AccessMode = longhornV1beta1.AccessModeReadWriteOnce
+		}
 		if obj.Spec.DiskSelector == nil {
 			obj.Spec.DiskSelector = []string{}
 		}
@@ -248,6 +251,9 @@ func fixupBackingImageDataSources(namespace string, lhClient *lhclientset.Client
 	for _, obj := range backingImageDataSources.Items {
 		existing := obj.DeepCopy()
 
+		if obj.Spec.SourceType == "" {
+			obj.Spec.SourceType = longhornV1beta1.BackingImageDataSourceTypeDownload
+		}
 		if obj.Spec.Parameters == nil {
 			obj.Spec.Parameters = make(map[string]string, 0)
 		}
@@ -292,6 +298,9 @@ func fixupBackingImages(namespace string, lhClient *lhclientset.Clientset) error
 	for _, obj := range backingImages.Items {
 		existing := obj.DeepCopy()
 
+		if obj.Spec.SourceType == "" {
+			obj.Spec.SourceType = longhornV1beta1.BackingImageDataSourceTypeDownload
+		}
 		if obj.Spec.Disks == nil {
 			obj.Spec.Disks = make(map[string]struct{}, 0)
 		}

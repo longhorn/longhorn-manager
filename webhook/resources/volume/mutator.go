@@ -181,6 +181,9 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	if volume.Spec.ReplicaAutoBalance == "" {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/replicaAutoBalance", "value": "ignored"}`)
 	}
+	if volume.Spec.AccessMode == "" {
+		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/accessMode", "value": "rwo"}`)
+	}
 	if volume.Spec.DiskSelector == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/diskSelector", "value": []}`)
 	}
