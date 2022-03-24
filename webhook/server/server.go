@@ -38,6 +38,9 @@ var (
 	failPolicyFail   = admissionregv1.Fail
 	failPolicyIgnore = admissionregv1.Ignore
 
+	matchPolicyEquivalent = admissionregv1.Equivalent
+	matchPolicyExact      = admissionregv1.Exact
+
 	sideEffectClassNone = admissionregv1.SideEffectClassNone
 )
 
@@ -149,6 +152,7 @@ func (s *WebhookServer) runAdmissionWebhookListenAndServe(client *client.Client,
 					},
 					Rules:                   validationRules,
 					FailurePolicy:           &failPolicyFail,
+					MatchPolicy:             &matchPolicyExact,
 					SideEffects:             &sideEffectClassNone,
 					AdmissionReviewVersions: []string{"v1"},
 				},
@@ -173,6 +177,7 @@ func (s *WebhookServer) runAdmissionWebhookListenAndServe(client *client.Client,
 					},
 					Rules:                   mutationRules,
 					FailurePolicy:           &failPolicyIgnore,
+					MatchPolicy:             &matchPolicyExact,
 					SideEffects:             &sideEffectClassNone,
 					AdmissionReviewVersions: []string{"v1"},
 				},
