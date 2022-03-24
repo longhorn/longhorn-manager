@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/pkg/errors"
@@ -76,6 +77,16 @@ func (m *VolumeManager) DeleteEngineImageByName(name string) error {
 			return nil
 		}
 		return errors.Wrapf(err, "unable to get engine image '%s'", name)
+	}
+	defaultImage, err := m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+	if err != nil {
+		return errors.Wrap(err, "unable to delete engine image")
+	}
+	if ei.Spec.Image == defaultImage {
+		return fmt.Errorf("unable to delete the default engine image")
+	}
+	if ei.Status.RefCount != 0 {
+		return fmt.Errorf("unable to delete the engine image while being used")
 	}
 	if err := m.ds.DeleteEngineImage(name); err != nil {
 		return err
