@@ -90,14 +90,16 @@ func getBackupStateValue(v *longhorn.Backup) int {
 	switch v.Status.State {
 	case longhorn.BackupStateNew:
 		stateValue = 0
-	case longhorn.BackupStateInProgress:
+	case longhorn.BackupStatePending:
 		stateValue = 1
-	case longhorn.BackupStateCompleted:
+	case longhorn.BackupStateInProgress:
 		stateValue = 2
-	case longhorn.BackupStateError:
+	case longhorn.BackupStateCompleted:
 		stateValue = 3
-	case longhorn.BackupStateUnknown:
+	case longhorn.BackupStateError:
 		stateValue = 4
+	case longhorn.BackupStateUnknown:
+		stateValue = 5
 	}
 	return stateValue
 }
