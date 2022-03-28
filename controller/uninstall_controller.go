@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/pkg/errors"
@@ -42,7 +43,7 @@ const (
 	CRDBackupName                 = "backups.longhorn.io"
 	CRDRecurringJobName           = "recurringjobs.longhorn.io"
 
-	LonghornNamespace = "longhorn-system"
+	EnvLonghornNamespace = "LONGHORN_NAMESPACE"
 )
 
 var (
@@ -183,7 +184,7 @@ func (c *UninstallController) enqueueNamespacedControlleeChange(obj interface{})
 		return
 	}
 
-	if metadata.GetNamespace() == LonghornNamespace {
+	if metadata.GetNamespace() == os.Getenv(EnvLonghornNamespace) {
 		c.enqueueControlleeChange()
 	}
 }
