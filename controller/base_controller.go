@@ -11,8 +11,8 @@ var (
 	// With the current rate-limiter in use (5ms*2^(maxRetries-1)) the following numbers represent the times
 	// a deployment is going to be requeued:
 	//
-	// 5ms, 10ms, 20ms
-	maxRetries = 3
+	// 5ms, 10ms, 20ms, 40ms, 80ms, 160ms, 320ms, 640ms, 1.28s, 2.56s, 5.12s, 10.24s, ....
+	maxRetries = 12
 )
 
 type baseController struct {
