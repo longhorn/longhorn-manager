@@ -103,6 +103,8 @@ const (
 	KubernetesTopologyRegionLabelKey      = "topology.kubernetes.io/region"
 	KubernetesTopologyZoneLabelKey        = "topology.kubernetes.io/zone"
 
+	KubernetesClusterAutoscalerSafeToEvictKey = "cluster-autoscaler.kubernetes.io/safe-to-evict"
+
 	LonghornDriverName = "driver.longhorn.io"
 
 	DefaultDiskPrefix = "default-disk-"
