@@ -73,6 +73,8 @@ type InstanceManagerMonitor struct {
 	done                   bool
 	// used to notify the controller that monitoring has stopped
 	monitorVoluntaryStopCh chan struct{}
+
+	nodeCallback func(obj interface{})
 }
 
 type InstanceManagerUpdater struct {
@@ -149,7 +151,34 @@ func NewInstanceManagerController(
 	}, 0)
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
+	ds.SettingInformer.AddEventHandlerWithResyncPeriod(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: imc.isResponsibleForSetting,
+			Handler: cache.ResourceEventHandlerFuncs{
+				UpdateFunc: func(old, cur interface{}) { imc.enqueueSettingChange(cur) },
+			},
+		}, 0)
+	imc.cacheSyncs = append(imc.cacheSyncs, ds.SettingInformer.HasSynced)
+
 	return imc
+}
+
+func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) bool {
+	setting, ok := obj.(*longhorn.Setting)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			return false
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		setting, ok = deletedState.Obj.(*longhorn.Setting)
+		if !ok {
+			return false
+		}
+	}
+
+	return types.SettingName(setting.Name) == types.SettingNameKubernetesClusterAutoscalerEnabled
 }
 
 func isInstanceManagerPod(obj interface{}) bool {
@@ -468,19 +497,63 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 		return err
 	}
 
-	// When current node is unschedulable, it is a signal that the node is being cordoned/drained.
+	// When current node is unschedulable, it is a signal that the node is being
+	// cordoned/drained. The replica IM PDB can be delete when there is least one
+	// IM PDB on another schedulable node to protect detached volume data.
+	//
+	// During Cluster Autoscaler scale down, when a node is marked unschedulable
+	// means CA already decided that this node is not blocked by any pod PDB limit.
+	// Hence there is no need to check when Cluster Autoscaler is enabled.
 	if unschedulable {
 		if imPDB == nil {
 			return nil
 		}
-		canDelete, err := imc.canDeleteInstanceManagerPDB(im)
+
+		isPDBRequired, err := imc.canDeleteInstanceManagerPDB(im)
 		if err != nil {
 			return err
 		}
-		if !canDelete {
+
+		if !isPDBRequired {
 			return nil
 		}
+
+		imc.logger.Debugf("Node %v is marked unschedulable, try to remove %v PDB", imc.controllerID, im.Name)
 		return imc.deleteInstanceManagerPDB(im)
+	}
+
+	// If the setting is enabled, Longhorn needs to retain the least IM PDBs as
+	// possible. Each volume will have at least one replica under the protection
+	// of an IM PDB while no redundant PDB blocking the Cluster Autoscaler from
+	// scale down.
+	// CA considers a node is unremovable when there are strict PDB limits
+	// protecting the pods on the node.
+	//
+	// If the setting is disabled, Longhorn will blindly create IM PDBs for all
+	// engine and replica IMs.
+	clusterAutoscalerEnabled, err := imc.ds.GetSettingAsBool(types.SettingNameKubernetesClusterAutoscalerEnabled)
+	if err != nil {
+		return err
+	}
+
+	if clusterAutoscalerEnabled {
+		isPDBRequired, err := imc.canDeleteInstanceManagerPDB(im)
+		if err != nil {
+			return err
+		}
+
+		if !isPDBRequired {
+			if imPDB == nil {
+				return imc.createInstanceManagerPDB(im)
+			}
+			return nil
+		}
+
+		if imPDB != nil {
+			return imc.deleteInstanceManagerPDB(im)
+		}
+
+		return nil
 	}
 
 	// Make sure that there is a PodDisruptionBudget to protect this instance manager in normal case.
@@ -533,10 +606,12 @@ func (imc *InstanceManagerController) cleanUpPDBForNonExistingIM() error {
 }
 
 func (imc *InstanceManagerController) deleteInstanceManagerPDB(im *longhorn.InstanceManager) error {
-	err := imc.ds.DeletePDB(imc.getPDBName(im))
+	name := imc.getPDBName(im)
+	err := imc.ds.DeletePDB(name)
 	if err != nil && !datastore.ErrorIsNotFound(err) {
 		return err
 	}
+	imc.logger.Infof("Deleted %v PDB", name)
 	return nil
 }
 
@@ -557,7 +632,8 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 	}
 
 	// Must wait for all volumes detached from the current node first.
-	// This also means that we must wait until the PDB of engine instance manager on the current node is deleted
+	// This also means that we must wait until the PDB of engine instance manager
+	// on the current node is deleted
 	allVolumeDetached, err := imc.areAllVolumesDetachedFromCurrentNode()
 	if err != nil {
 		return false, err
@@ -583,7 +659,8 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 	}
 
 	// For each replica process in the current node,
-	// find out whether there is a healthy replica of the same volume on another node
+	// find out whether there is a PDB protected healthy replica of the same
+	// volume on another schedulable node.
 	for _, replica := range replicasOnCurrentNode {
 		vol, err := imc.ds.GetVolume(replica.Spec.VolumeName)
 		if err != nil {
@@ -595,25 +672,49 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 			return false, err
 		}
 
-		hasHealthyReplicaOnAnotherNode := false
+		hasPDBOnAnotherNode := false
 		isUnusedReplicaOnCurrentNode := false
 		for _, r := range replicas {
-			if r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" && r.Spec.NodeID != imc.controllerID {
-				hasHealthyReplicaOnAnotherNode = true
-				break
+			hasOtherHealthyReplicas := r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" && r.Spec.NodeID != imc.controllerID
+			if hasOtherHealthyReplicas {
+				unschedulable, err := imc.ds.IsKubeNodeUnschedulable(r.Spec.NodeID)
+				if err != nil {
+					return false, err
+				}
+				if unschedulable {
+					continue
+				}
+
+				var rIM *longhorn.InstanceManager
+				rIM, err = imc.getRunningReplicaInstancManager(r)
+				if err != nil {
+					return false, err
+				}
+				if rIM == nil {
+					continue
+				}
+
+				pdb, err := imc.ds.GetPDBRO(imc.getPDBName(rIM))
+				if err != nil && !datastore.ErrorIsNotFound(err) {
+					return false, err
+				}
+				if pdb != nil {
+					hasPDBOnAnotherNode = true
+					break
+				}
 			}
 			// If a replica has never been started, there is no data stored in this replica, and
 			// retaining it makes no sense for HA.
 			// Hence Longhorn doesn't need to block the PDB removal for the replica.
 			// This case typically happens on a newly created volume that hasn't been attached to any node.
 			// https://github.com/longhorn/longhorn/issues/2673
-			if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" && r.Spec.NodeID == imc.controllerID {
-				isUnusedReplicaOnCurrentNode = true
+			isUnusedReplicaOnCurrentNode := r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" && r.Spec.NodeID == imc.controllerID
+			if isUnusedReplicaOnCurrentNode {
 				break
 			}
 		}
 
-		if !hasHealthyReplicaOnAnotherNode && !isUnusedReplicaOnCurrentNode {
+		if !hasPDBOnAnotherNode && !isUnusedReplicaOnCurrentNode {
 			return false, nil
 		}
 	}
@@ -621,16 +722,43 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 	return true, nil
 }
 
+func (imc *InstanceManagerController) getRunningReplicaInstancManager(r *longhorn.Replica) (im *longhorn.InstanceManager, err error) {
+	if r.Status.InstanceManagerName == "" {
+		im, err = imc.ds.GetInstanceManagerByInstance(r)
+		if err != nil && !types.ErrorIsNotFound(err) {
+			return nil, err
+		}
+	} else {
+		im, err = imc.ds.GetInstanceManager(r.Status.InstanceManagerName)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return nil, err
+		}
+	}
+	if im == nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return nil, nil
+	}
+	return im, nil
+}
+
 func (imc *InstanceManagerController) areAllVolumesDetachedFromCurrentNode() (bool, error) {
-	engineIMs, err := imc.ds.ListInstanceManagersByNode(imc.controllerID, longhorn.InstanceManagerTypeEngine)
+	detached, err := imc.areAllInstanceRemovedFromCurrentNodeByType(longhorn.InstanceManagerTypeEngine)
+	if err != nil {
+		return false, err
+	}
+	return detached, nil
+}
+
+func (imc *InstanceManagerController) areAllInstanceRemovedFromCurrentNodeByType(imType longhorn.InstanceManagerType) (bool, error) {
+	ims, err := imc.ds.ListInstanceManagersByNode(imc.controllerID, imType)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
 			return true, nil
 		}
 		return false, err
 	}
-	for _, engineIM := range engineIMs {
-		if len(engineIM.Status.Instances) > 0 {
+
+	for _, im := range ims {
+		if len(im.Status.Instances) > 0 {
 			return false, nil
 		}
 	}
@@ -642,11 +770,12 @@ func (imc *InstanceManagerController) createInstanceManagerPDB(im *longhorn.Inst
 	instanceManagerPDB := imc.generateInstanceManagerPDBManifest(im)
 	if _, err := imc.ds.CreatePDB(instanceManagerPDB); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			imc.logger.Warnf("PDB %s is already exists", instanceManagerPDB.GetName())
+			imc.logger.Debugf("The %s PDB is already exists", instanceManagerPDB.GetName())
 			return nil
 		}
 		return err
 	}
+	imc.logger.Infof("Created %v PDB", instanceManagerPDB.Name)
 	return nil
 }
 
@@ -759,6 +888,16 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 			imc.enqueueInstanceManager(im)
 		}
 	}
+}
+
+func (imc *InstanceManagerController) enqueueSettingChange(obj interface{}) {
+	node, err := imc.ds.GetNode(imc.controllerID)
+	if err != nil {
+		utilruntime.HandleError(errors.Wrapf(err, "failed to get node %v for instance manager", imc.controllerID))
+		return
+	}
+
+	imc.enqueueKubernetesNode(node)
 }
 
 func (imc *InstanceManagerController) cleanupInstanceManager(imName string) error {
@@ -1046,6 +1185,8 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		monitorVoluntaryStopCh: monitorVoluntaryStopCh,
 		// notify monitor to update the instance map
 		updateNotification: false,
+
+		nodeCallback: imc.enqueueKubernetesNode,
 	}
 
 	imc.instanceManagerMonitorMap[im.Name] = stopCh
@@ -1184,6 +1325,28 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 	if _, err := m.ds.UpdateInstanceManagerStatus(im); err != nil {
 		utilruntime.HandleError(errors.Wrapf(err, "failed to update instance map for instance manager %v", m.Name))
 		return false
+	}
+
+	clusterAutoscalerEnabled, err := m.ds.GetSettingAsBool(types.SettingNameKubernetesClusterAutoscalerEnabled)
+	if err != nil {
+		utilruntime.HandleError(errors.Wrapf(err, "failed to get %v setting for instance manager %v", types.SettingNameKubernetesClusterAutoscalerEnabled, m.Name))
+		return false
+	}
+
+	// During volume attaching/detaching, it is likely both the engine and replica
+	// IMs enqueue at the same time. If the replica IM queued before the engine IM,
+	// then the instance in the engine manager possibly still not updated.
+	// When ClusterAutoscaler is enabled, Longhorn cannot remove the redundant
+	// replica IM PDB in this case. So enqueue the node IMs again to sync replica
+	// IM PDB.
+	if clusterAutoscalerEnabled && im.Spec.Type == longhorn.InstanceManagerTypeEngine {
+		node, err := m.ds.GetNode(m.controllerID)
+		if err != nil {
+			utilruntime.HandleError(errors.Wrapf(err, "failed to get node for instance manager %v", m.Name))
+			return false
+		}
+
+		m.nodeCallback(node)
 	}
 
 	return false
