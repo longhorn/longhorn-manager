@@ -43,6 +43,10 @@ func (r *recurringJobValidator) Create(request *admission.Request, newObj runtim
 		return werror.NewInvalidError(fmt.Sprintf("invalid name %v", recurringJob.Name), "")
 	}
 
+	if recurringJob.Spec.Retain < 1 || recurringJob.Spec.Retain > datastore.MaxRecurringJobRetain {
+		return werror.NewInvalidError(fmt.Sprintf("retain in body should be less than or equal to %v", datastore.MaxRecurringJobRetain), "")
+	}
+
 	jobs := []longhorn.RecurringJobSpec{
 		{
 			Name:        recurringJob.Spec.Name,
@@ -64,6 +68,10 @@ func (r *recurringJobValidator) Create(request *admission.Request, newObj runtim
 
 func (r *recurringJobValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
 	newRecurringJob := newObj.(*longhorn.RecurringJob)
+
+	if newRecurringJob.Spec.Retain < 1 || newRecurringJob.Spec.Retain > datastore.MaxRecurringJobRetain {
+		return werror.NewInvalidError(fmt.Sprintf("retain in body should be less than or equal to %v", datastore.MaxRecurringJobRetain), "")
+	}
 
 	jobs := []longhorn.RecurringJobSpec{
 		{
