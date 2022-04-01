@@ -191,7 +191,6 @@ type VolumeSpec struct {
 	Migratable bool `json:"migratable"`
 	// +optional
 	Encrypted bool `json:"encrypted"`
-	// +kubebuilder:validation:Minimum=1
 	// +optional
 	NumberOfReplicas int `json:"numberOfReplicas"`
 	// +optional

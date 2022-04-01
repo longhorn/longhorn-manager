@@ -38,9 +38,31 @@ func (n *nodeValidator) Resource() admission.Resource {
 	}
 }
 
+func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object) error {
+	node := newObj.(*longhorn.Node)
+
+	if node.Spec.EngineManagerCPURequest < 0 {
+		return werror.NewInvalidError("engineManagerCPURequest should be greater than or equal to 0", "")
+	}
+
+	if node.Spec.ReplicaManagerCPURequest < 0 {
+		return werror.NewInvalidError("replicaManagerCPURequest should be greater than or equal to 0", "")
+	}
+
+	return nil
+}
+
 func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
 	oldNode := oldObj.(*longhorn.Node)
 	newNode := newObj.(*longhorn.Node)
+
+	if newNode.Spec.EngineManagerCPURequest < 0 {
+		return werror.NewInvalidError("engineManagerCPURequest should be greater than or equal to 0", "")
+	}
+
+	if newNode.Spec.ReplicaManagerCPURequest < 0 {
+		return werror.NewInvalidError("replicaManagerCPURequest should be greater than or equal to 0", "")
+	}
 
 	// Only scheduling disabled node can be evicted
 	// Can not enable scheduling on an evicting node
