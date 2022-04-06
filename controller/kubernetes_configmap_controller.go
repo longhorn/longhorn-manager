@@ -73,6 +73,17 @@ func NewKubernetesConfigMapController(
 		UpdateFunc: func(old, cur interface{}) { kc.enqueueConfigMapChange(cur) },
 		DeleteFunc: kc.enqueueConfigMapChange,
 	})
+
+	ds.StorageClassInformer.AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: isLonghornStorageClass,
+			Handler: cache.ResourceEventHandlerFuncs{
+				UpdateFunc: func(old, cur interface{}) { kc.enqueueConfigMapForStorageClassChange(cur) },
+				DeleteFunc: kc.enqueueConfigMapForStorageClassChange,
+			},
+		},
+	)
+
 	kc.cacheSyncs = append(kc.cacheSyncs, ds.ConfigMapInformer.HasSynced)
 
 	return kc
@@ -233,4 +244,27 @@ func (kc *KubernetesConfigMapController) enqueueConfigMapChange(obj interface{})
 	}
 
 	kc.queue.Add(key)
+}
+
+func (kc *KubernetesConfigMapController) enqueueConfigMapForStorageClassChange(obj interface{}) {
+	kc.queue.Add(kc.namespace + "/" + types.DefaultStorageClassConfigMapName)
+}
+
+func isLonghornStorageClass(obj interface{}) bool {
+	sc, isSC := obj.(*storagev1.StorageClass)
+	if !isSC {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return false
+		}
+
+		sc, ok = deletedState.Obj.(*storagev1.StorageClass)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non StorageClass object: %#v", deletedState.Obj))
+			return false
+		}
+	}
+
+	return sc.Provisioner == types.LonghornDriverName
 }
