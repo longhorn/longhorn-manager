@@ -266,5 +266,5 @@ func isLonghornStorageClass(obj interface{}) bool {
 		}
 	}
 
-	return sc.Provisioner == types.LonghornDriverName
+	return sc.Name == types.DefaultStorageClassName && sc.Provisioner == types.LonghornDriverName
 }
