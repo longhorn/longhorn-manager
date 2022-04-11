@@ -23,6 +23,8 @@ spec:
         env:
           - name: LONGHORN_MANAGER_IP
             value: "http://longhorn-backend:9500"
+          - name: LONGHORN_UI_PORT
+            value: "8000"
       serviceAccountName: longhorn-service-account
 ---
 kind: Service
