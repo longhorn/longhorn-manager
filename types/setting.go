@@ -73,6 +73,7 @@ const (
 	SettingNameBackingImageRecoveryWaitInterval             = SettingName("backing-image-recovery-wait-interval")
 	SettingNameGuaranteedEngineManagerCPU                   = SettingName("guaranteed-engine-manager-cpu")
 	SettingNameGuaranteedReplicaManagerCPU                  = SettingName("guaranteed-replica-manager-cpu")
+	SettingNameKubernetesClusterAutoscalerEnabled           = SettingName("kubernetes-cluster-autoscaler-enabled")
 )
 
 var (
@@ -123,6 +124,7 @@ var (
 		SettingNameBackingImageRecoveryWaitInterval,
 		SettingNameGuaranteedEngineManagerCPU,
 		SettingNameGuaranteedReplicaManagerCPU,
+		SettingNameKubernetesClusterAutoscalerEnabled,
 	}
 )
 
@@ -194,6 +196,7 @@ var (
 		SettingNameBackingImageRecoveryWaitInterval:             SettingDefinitionBackingImageRecoveryWaitInterval,
 		SettingNameGuaranteedEngineManagerCPU:                   SettingDefinitionGuaranteedEngineManagerCPU,
 		SettingNameGuaranteedReplicaManagerCPU:                  SettingDefinitionGuaranteedReplicaManagerCPU,
+		SettingNameKubernetesClusterAutoscalerEnabled:           SettingDefinitionKubernetesClusterAutoscalerEnabled,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -739,6 +742,21 @@ var (
 		ReadOnly: false,
 		Default:  "12",
 	}
+
+	SettingDefinitionKubernetesClusterAutoscalerEnabled = SettingDefinition{
+		DisplayName: "Kubernetes Cluster Autoscaler Enabled (Experimental)",
+		Description: "Enabling this setting will notify Longhorn that the cluster is using Kubernetes Cluster Autoscaler. \n\n" +
+			"Longhorn prevents data loss by only allowing the Cluster Autoscaler to scale down a node that met all conditions: \n\n" +
+			"  - No volume attached \n\n" +
+			"  - Is not the last node containing the replica of a detached volume. \n\n" +
+			"  - Is not running backing image components pod. \n\n" +
+			"  - Is not running share manager components pod. \n\n",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -800,6 +818,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameAutoCleanupSystemGeneratedSnapshot:
 		fallthrough
 	case SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly:
+		fallthrough
+	case SettingNameKubernetesClusterAutoscalerEnabled:
 		fallthrough
 	case SettingNameUpgradeChecker:
 		if value != "true" && value != "false" {
