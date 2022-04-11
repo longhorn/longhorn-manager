@@ -16,6 +16,7 @@ import (
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 )
@@ -33,7 +34,7 @@ type InstanceManagerHandler interface {
 	GetInstance(obj interface{}) (*longhorn.InstanceProcess, error)
 	CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error)
 	DeleteInstance(obj interface{}) error
-	LogInstance(ctx context.Context, obj interface{}) (*imapi.LogStream, error)
+	LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error)
 }
 
 func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler InstanceManagerHandler, eventRecorder record.EventRecorder) *InstanceHandler {
@@ -340,10 +341,11 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Object) error {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
-	stream, err := h.instanceManagerHandler.LogInstance(ctx, obj)
+	client, stream, err := h.instanceManagerHandler.LogInstance(ctx, obj)
 	if err != nil {
 		return err
 	}
+	defer client.Close()
 	for {
 		line, err := stream.Recv()
 		if err == io.EOF {

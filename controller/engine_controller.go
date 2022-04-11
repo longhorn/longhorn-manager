@@ -560,22 +560,24 @@ func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProc
 	return c.ProcessGet(e.Name)
 }
 
-func (ec *EngineController) LogInstance(ctx context.Context, obj interface{}) (*imapi.LogStream, error) {
+func (ec *EngineController) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
-		return nil, fmt.Errorf("BUG: invalid object for engine process log: %v", obj)
+		return nil, nil, fmt.Errorf("BUG: invalid object for engine process log: %v", obj)
 	}
 
 	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	c, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return c.ProcessLog(ctx, e.Name)
+	// TODO: #2441 refactor this when we do the resource monitoring refactor
+	stream, err := c.ProcessLog(ctx, e.Name)
+	return c, stream, err
 }
 
 func (ec *EngineController) isMonitoring(e *longhorn.Engine) bool {
