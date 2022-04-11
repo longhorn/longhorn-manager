@@ -25,8 +25,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
-	"github.com/longhorn/longhorn-instance-manager/pkg/api"
-
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -66,24 +64,17 @@ type InstanceManagerMonitor struct {
 	Name         string
 	controllerID string
 
-	instanceManagerUpdater *InstanceManagerUpdater
-	ds                     *datastore.DataStore
-	lock                   *sync.RWMutex
-	updateNotification     bool
-	stopCh                 chan struct{}
-	done                   bool
+	ds                 *datastore.DataStore
+	lock               *sync.RWMutex
+	updateNotification bool
+	stopCh             chan struct{}
+	done               bool
 	// used to notify the controller that monitoring has stopped
 	monitorVoluntaryStopCh chan struct{}
 
 	nodeCallback func(obj interface{})
-}
 
-type InstanceManagerUpdater struct {
 	client *engineapi.InstanceManagerClient
-}
-
-type InstanceManagerNotifier struct {
-	stream *api.ProcessStream
 }
 
 func updateInstanceManagerVersion(im *longhorn.InstanceManager) error {
@@ -1202,43 +1193,6 @@ func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.I
 	return podSpec, nil
 }
 
-func NewInstanceManagerUpdater(im *longhorn.InstanceManager) (*InstanceManagerUpdater, error) {
-	c, err := engineapi.NewInstanceManagerClient(im)
-	if err != nil {
-		return nil, err
-	}
-
-	return &InstanceManagerUpdater{
-		client: c,
-	}, nil
-}
-
-func (updater *InstanceManagerUpdater) Poll() (map[string]longhorn.InstanceProcess, error) {
-	return updater.client.ProcessList()
-}
-
-func (updater *InstanceManagerUpdater) GetNotifier(ctx context.Context) (*InstanceManagerNotifier, error) {
-	watch, err := updater.client.ProcessWatch(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return NewInstanceManagerNotifier(watch), nil
-}
-
-func NewInstanceManagerNotifier(stream *api.ProcessStream) *InstanceManagerNotifier {
-	return &InstanceManagerNotifier{
-		stream: stream,
-	}
-}
-
-func (notifier *InstanceManagerNotifier) Recv() (struct{}, error) {
-	if _, err := notifier.stream.Recv(); err != nil {
-		return struct{}{}, err
-	}
-
-	return struct{}{}, nil
-}
-
 func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManager) {
 	log := imc.logger.WithField("instance manager", im.Name)
 
@@ -1255,9 +1209,9 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 	}
 
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
-	imUpdater, err := NewInstanceManagerUpdater(im)
+	client, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
-		log.Errorf("failed to initialize im updater before monitoring")
+		log.Errorf("failed to initialize im client before monitoring")
 		return
 	}
 
@@ -1268,13 +1222,13 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		Name:                   im.Name,
 		controllerID:           imc.controllerID,
 		ds:                     imc.ds,
-		instanceManagerUpdater: imUpdater,
 		lock:                   &sync.RWMutex{},
 		stopCh:                 stopCh,
 		done:                   false,
 		monitorVoluntaryStopCh: monitorVoluntaryStopCh,
 		// notify monitor to update the instance map
 		updateNotification: false,
+		client:             client,
 
 		nodeCallback: imc.enqueueKubernetesNode,
 	}
@@ -1285,6 +1239,7 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 
 	go func() {
 		<-monitorVoluntaryStopCh
+		client.Close()
 		imc.instanceManagerMonitorMutex.Lock()
 		delete(imc.instanceManagerMonitorMap, im.Name)
 		log.Debug("removed the instance manager from imc.instanceManagerMonitorMap")
@@ -1316,7 +1271,7 @@ func (m *InstanceManagerMonitor) Run() {
 	// TODO: this function will error out in unit tests. Need to find a way to skip this for unit tests.
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
 	ctx, cancel := context.WithCancel(context.TODO())
-	notifier, err := m.instanceManagerUpdater.GetNotifier(ctx)
+	notifier, err := m.client.ProcessWatch(ctx)
 	if err != nil {
 		m.logger.Errorf("Failed to get the notifier for monitoring: %v", err)
 		cancel()
@@ -1404,7 +1359,7 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 		return true
 	}
 
-	resp, err := m.instanceManagerUpdater.Poll()
+	resp, err := m.client.ProcessList()
 	if err != nil {
 		utilruntime.HandleError(errors.Wrapf(err, "failed to poll instance info to update instance manager %v", m.Name))
 		return false
