@@ -396,6 +396,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 	if err != nil {
 		return nil, err
 	}
+	defer c.Close()
 
 	return c.EngineProcessCreate(e.Name, e.Spec.VolumeName, e.Spec.EngineImage, frontend, e.Status.CurrentReplicaAddressMap, e.Spec.RevisionCounterDisabled, e.Spec.SalvageRequested)
 }
@@ -462,6 +463,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 	if err != nil {
 		return err
 	}
+	defer c.Close()
 	if err := c.ProcessDelete(e.Name); err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
@@ -553,6 +555,7 @@ func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProc
 	if err != nil {
 		return nil, err
 	}
+	defer c.Close()
 
 	return c.ProcessGet(e.Name)
 }
@@ -1452,6 +1455,7 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine) error {
 	if err != nil {
 		return err
 	}
+	defer c.Close()
 
 	engineProcess, err := c.EngineProcessUpgrade(e.Name, e.Spec.VolumeName, e.Spec.EngineImage, frontend, e.Spec.UpgradedReplicaAddressMap)
 	if err != nil {

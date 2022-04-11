@@ -394,6 +394,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 	if err != nil {
 		return nil, err
 	}
+	defer c.Close()
 
 	return c.ReplicaProcessCreate(r.Name, r.Spec.EngineImage, dataPath, backingImagePath, r.Spec.VolumeSize, r.Spec.RevisionCounterDisabled)
 }
@@ -548,6 +549,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	if err != nil {
 		return err
 	}
+	defer c.Close()
 	if err := c.ProcessDelete(r.Name); err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
@@ -648,6 +650,7 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 	if err != nil {
 		return nil, err
 	}
+	defer c.Close()
 
 	return c.ProcessGet(r.Name)
 }
