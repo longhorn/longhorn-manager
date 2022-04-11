@@ -250,3 +250,10 @@
 #  namespace: longhorn-system
 #value: "12"
 #---
+#apiVersion: longhorn.io/v1beta2
+#kind: Setting
+#metadata:
+#  name: kubernetes-cluster-autoscaler-enabled
+#  namespace: longhorn-system
+#value: "false"
+#---
