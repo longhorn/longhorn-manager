@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -68,8 +69,8 @@ func (imh *MockInstanceManagerHandler) DeleteInstance(obj interface{}) error {
 	return nil
 }
 
-func (imh *MockInstanceManagerHandler) LogInstance(ctx context.Context, obj interface{}) (*imapi.LogStream, error) {
-	return nil, fmt.Errorf("LogInstance is not mocked")
+func (imh *MockInstanceManagerHandler) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
+	return nil, nil, fmt.Errorf("LogInstance is not mocked")
 }
 
 func newEngine(name, currentImage, imName, nodeName, ip string, port int, started bool, currentState, desireState longhorn.InstanceState) *longhorn.Engine {

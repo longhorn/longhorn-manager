@@ -655,22 +655,24 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 	return c.ProcessGet(r.Name)
 }
 
-func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (*imapi.LogStream, error) {
+func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
-		return nil, fmt.Errorf("BUG: invalid object for replica process log: %v", obj)
+		return nil, nil, fmt.Errorf("BUG: invalid object for replica process log: %v", obj)
 	}
 
 	im, err := rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	c, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return c.ProcessLog(ctx, r.Name)
+	// TODO: #2441 refactor this when we do the resource monitoring refactor
+	stream, err := c.ProcessLog(ctx, r.Name)
+	return c, stream, err
 }
 
 func (rc *ReplicaController) enqueueInstanceManagerChange(obj interface{}) {
