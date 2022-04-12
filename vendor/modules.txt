@@ -96,11 +96,11 @@ github.com/longhorn/backupstore/util
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/longhorn-instance-manager v0.0.0-20210729081215-50c310f97378
+# github.com/longhorn/longhorn-instance-manager v0.0.0-20220412150124-6cc9d60a9c8e
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
+github.com/longhorn/longhorn-instance-manager/pkg/imrpc
 github.com/longhorn/longhorn-instance-manager/pkg/meta
-github.com/longhorn/longhorn-instance-manager/pkg/rpc
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
