@@ -84,7 +84,7 @@ func NewKubernetesConfigMapController(
 		},
 	)
 
-	kc.cacheSyncs = append(kc.cacheSyncs, ds.ConfigMapInformer.HasSynced)
+	kc.cacheSyncs = append(kc.cacheSyncs, ds.ConfigMapInformer.HasSynced, ds.StorageClassInformer.HasSynced)
 
 	return kc
 }
