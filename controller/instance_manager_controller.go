@@ -642,7 +642,7 @@ func (imc *InstanceManagerController) createInstanceManagerPDB(im *longhorn.Inst
 	instanceManagerPDB := imc.generateInstanceManagerPDBManifest(im)
 	if _, err := imc.ds.CreatePDB(instanceManagerPDB); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			imc.logger.Warn("PDB %s is already exists", instanceManagerPDB.GetName())
+			imc.logger.Warnf("PDB %s is already exists", instanceManagerPDB.GetName())
 			return nil
 		}
 		return err
