@@ -98,18 +98,17 @@ func NewNodeController(
 
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	ds.SettingInformer.AddEventHandler(
+	ds.SettingInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: nc.isResponsibleForSetting,
 			Handler: cache.ResourceEventHandlerFuncs{
 				AddFunc:    nc.enqueueSetting,
 				UpdateFunc: func(old, cur interface{}) { nc.enqueueSetting(cur) },
 			},
-		},
-	)
+		}, 0)
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.SettingInformer.HasSynced)
 
-	ds.ReplicaInformer.AddEventHandler(
+	ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: nc.isResponsibleForReplica,
 			Handler: cache.ResourceEventHandlerFuncs{
@@ -117,11 +116,10 @@ func NewNodeController(
 				UpdateFunc: func(old, cur interface{}) { nc.enqueueReplica(cur) },
 				DeleteFunc: nc.enqueueReplica,
 			},
-		},
-	)
+		}, 0)
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
-	ds.PodInformer.AddEventHandler(
+	ds.PodInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: isManagerPod,
 			Handler: cache.ResourceEventHandlerFuncs{
@@ -129,14 +127,13 @@ func NewNodeController(
 				UpdateFunc: func(old, cur interface{}) { nc.enqueueManagerPod(cur) },
 				DeleteFunc: nc.enqueueManagerPod,
 			},
-		},
-	)
+		}, 0)
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.PodInformer.HasSynced)
 
-	ds.KubeNodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { nc.enqueueKubernetesNode(cur) },
 		DeleteFunc: nc.enqueueKubernetesNode,
-	})
+	}, 0)
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
 	return nc

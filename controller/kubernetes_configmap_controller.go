@@ -74,15 +74,14 @@ func NewKubernetesConfigMapController(
 		DeleteFunc: kc.enqueueConfigMapChange,
 	})
 
-	ds.StorageClassInformer.AddEventHandler(
+	ds.StorageClassInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: isLonghornStorageClass,
 			Handler: cache.ResourceEventHandlerFuncs{
 				UpdateFunc: func(old, cur interface{}) { kc.enqueueConfigMapForStorageClassChange(cur) },
 				DeleteFunc: kc.enqueueConfigMapForStorageClassChange,
 			},
-		},
-	)
+		}, 0)
 
 	kc.cacheSyncs = append(kc.cacheSyncs, ds.ConfigMapInformer.HasSynced, ds.StorageClassInformer.HasSynced)
 

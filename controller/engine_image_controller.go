@@ -97,18 +97,18 @@ func NewEngineImageController(
 	})
 	ic.cacheSyncs = append(ic.cacheSyncs, ds.EngineImageInformer.HasSynced)
 
-	ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(obj interface{}) { ic.enqueueVolumes(obj) },
 		UpdateFunc: func(old, cur interface{}) { ic.enqueueVolumes(old, cur) },
 		DeleteFunc: func(obj interface{}) { ic.enqueueVolumes(obj) },
-	})
+	}, 0)
 	ic.cacheSyncs = append(ic.cacheSyncs, ds.VolumeInformer.HasSynced)
 
-	ds.DaemonSetInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.DaemonSetInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ic.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { ic.enqueueControlleeChange(cur) },
 		DeleteFunc: ic.enqueueControlleeChange,
-	})
+	}, 0)
 	ic.cacheSyncs = append(ic.cacheSyncs, ds.DaemonSetInformer.HasSynced)
 
 	return ic

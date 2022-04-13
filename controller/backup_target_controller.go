@@ -78,7 +78,7 @@ func NewBackupTargetController(
 	})
 	btc.cacheSyncs = append(btc.cacheSyncs, ds.BackupTargetInformer.HasSynced)
 
-	ds.EngineImageInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.EngineImageInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) {
 			oldEI := old.(*longhorn.EngineImage)
 			curEI := cur.(*longhorn.EngineImage)
@@ -90,7 +90,7 @@ func NewBackupTargetController(
 			}
 			btc.enqueueEngineImage(cur)
 		},
-	})
+	}, 0)
 	btc.cacheSyncs = append(btc.cacheSyncs, ds.EngineImageInformer.HasSynced)
 
 	return btc

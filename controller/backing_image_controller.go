@@ -76,25 +76,25 @@ func NewBackingImageController(
 	})
 	bic.cacheSyncs = append(bic.cacheSyncs, ds.BackingImageInformer.HasSynced)
 
-	ds.BackingImageManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.BackingImageManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    bic.enqueueBackingImageForBackingImageManager,
 		UpdateFunc: func(old, cur interface{}) { bic.enqueueBackingImageForBackingImageManager(cur) },
 		DeleteFunc: bic.enqueueBackingImageForBackingImageManager,
-	})
+	}, 0)
 	bic.cacheSyncs = append(bic.cacheSyncs, ds.BackingImageManagerInformer.HasSynced)
 
-	ds.BackingImageDataSourceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.BackingImageDataSourceInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    bic.enqueueBackingImageForBackingImageDataSource,
 		UpdateFunc: func(old, cur interface{}) { bic.enqueueBackingImageForBackingImageDataSource(cur) },
 		DeleteFunc: bic.enqueueBackingImageForBackingImageDataSource,
-	})
+	}, 0)
 	bic.cacheSyncs = append(bic.cacheSyncs, ds.BackingImageDataSourceInformer.HasSynced)
 
-	ds.ReplicaInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    bic.enqueueBackingImageForReplica,
 		UpdateFunc: func(old, cur interface{}) { bic.enqueueBackingImageForReplica(cur) },
 		DeleteFunc: bic.enqueueBackingImageForReplica,
-	})
+	}, 0)
 	bic.cacheSyncs = append(bic.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
 	return bic
