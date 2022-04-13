@@ -31,11 +31,11 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20190719114852-fd7a80b32e1f // indirect
 	github.com/docker/go-connections v0.3.0
 	github.com/golang/groupcache v0.0.0-20191002201903-404acd9df4cc // indirect
-	github.com/golang/protobuf v1.3.3-0.20190920234318-1680a479a2cf
+	github.com/golang/protobuf v1.4.3
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.3
-	github.com/gorilla/websocket v1.4.2
+	github.com/gorilla/websocket v1.5.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.11.3 // indirect
 	github.com/imdario/mergo v0.3.8 // indirect
@@ -44,11 +44,12 @@ require (
 	github.com/longhorn/backing-image-manager v0.0.0-20220318061141-6bcb81541be8
 	github.com/longhorn/backupstore v0.0.0-20210817080617-8ea3843e6b0d
 	github.com/longhorn/go-iscsi-helper v0.0.0-20210330030558-49a327fb024e
-	github.com/longhorn/longhorn-instance-manager v0.0.0-20210729081215-50c310f97378
+	github.com/longhorn/longhorn-instance-manager v0.0.0-20220412150124-6cc9d60a9c8e
+	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.2.1
+	github.com/prometheus/client_golang v1.11.1
 	github.com/rancher/dynamiclistener v0.3.1
-	github.com/rancher/go-rancher v0.1.1-0.20190307222549-9756097e5e4c
+	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/lasso v0.0.0-20211217013041-3c6118a30611 // indirect
 	github.com/rancher/wrangler v0.8.10
 	github.com/robfig/cron v1.2.0

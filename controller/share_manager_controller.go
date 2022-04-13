@@ -82,22 +82,22 @@ func NewShareManagerController(
 	c.cacheSyncs = append(c.cacheSyncs, ds.ShareManagerInformer.HasSynced)
 
 	// need information for volumes, to be able to claim them
-	ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueShareManagerForVolume,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueShareManagerForVolume(cur) },
 		DeleteFunc: c.enqueueShareManagerForVolume,
-	})
+	}, 0)
 	c.cacheSyncs = append(c.cacheSyncs, ds.VolumeInformer.HasSynced)
 
 	// we are only interested in pods for which we are responsible for managing
-	ds.PodInformer.AddEventHandler(cache.FilteringResourceEventHandler{
+	ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: isShareManagerPod,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.enqueueShareManagerForPod,
 			UpdateFunc: func(old, cur interface{}) { c.enqueueShareManagerForPod(cur) },
 			DeleteFunc: c.enqueueShareManagerForPod,
 		},
-	})
+	}, 0)
 	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
 
 	return c

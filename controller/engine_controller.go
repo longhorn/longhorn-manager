@@ -130,11 +130,11 @@ func NewEngineController(
 	})
 	ec.cacheSyncs = append(ec.cacheSyncs, ds.EngineInformer.HasSynced)
 
-	ds.InstanceManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.InstanceManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ec.enqueueInstanceManagerChange,
 		UpdateFunc: func(old, cur interface{}) { ec.enqueueInstanceManagerChange(cur) },
 		DeleteFunc: ec.enqueueInstanceManagerChange,
-	})
+	}, 0)
 	ec.cacheSyncs = append(ec.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
 	return ec
