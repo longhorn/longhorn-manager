@@ -2553,7 +2553,7 @@ func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.Ins
 		}
 
 	}
-	return nil, fmt.Errorf("can not find the only available instance manager for instance %v, node %v, instance manager image %v, type %v", name, nodeID, image, imType)
+	return nil, fmt.Errorf("cannot find the only available instance manager for instance %v, node %v, instance manager image %v, type %v", name, nodeID, image, imType)
 }
 
 // ListInstanceManagersByNode returns ListInstanceManagersBySelector
