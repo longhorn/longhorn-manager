@@ -62,29 +62,28 @@ func NewKubernetesNodeController(
 		ds: ds,
 	}
 
-	ds.NodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.KubeNodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old, cur interface{}) { knc.enqueueNode(cur) },
+		DeleteFunc: knc.enqueueNode,
+	})
+	knc.cacheSyncs = append(knc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
+
+	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    knc.enqueueLonghornNode,
 		UpdateFunc: func(old, cur interface{}) { knc.enqueueLonghornNode(cur) },
 		DeleteFunc: knc.enqueueLonghornNode,
-	})
+	}, 0)
 	knc.cacheSyncs = append(knc.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	ds.SettingInformer.AddEventHandler(
+	ds.SettingInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: isSettingCreateDefaultDiskLabeledNodes,
 			Handler: cache.ResourceEventHandlerFuncs{
 				AddFunc:    knc.enqueueSetting,
 				UpdateFunc: func(old, cur interface{}) { knc.enqueueSetting(cur) },
 			},
-		},
-	)
+		}, 0)
 	knc.cacheSyncs = append(knc.cacheSyncs, ds.SettingInformer.HasSynced)
-
-	ds.KubeNodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(old, cur interface{}) { knc.enqueueNode(cur) },
-		DeleteFunc: knc.enqueueNode,
-	})
-	knc.cacheSyncs = append(knc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
 	return knc
 }

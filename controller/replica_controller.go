@@ -98,30 +98,30 @@ func NewReplicaController(
 	})
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
-	ds.InstanceManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.InstanceManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueInstanceManagerChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueInstanceManagerChange(cur) },
 		DeleteFunc: rc.enqueueInstanceManagerChange,
-	})
+	}, 0)
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
-	ds.NodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueNodeAddOrDelete,
 		UpdateFunc: rc.enqueueNodeChange,
 		DeleteFunc: rc.enqueueNodeAddOrDelete,
-	})
+	}, 0)
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	ds.BackingImageInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.BackingImageInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueBackingImageChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueBackingImageChange(cur) },
 		DeleteFunc: rc.enqueueBackingImageChange,
-	})
+	}, 0)
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.BackingImageInformer.HasSynced)
 
-	ds.SettingInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueSettingChange(cur) },
-	})
+	}, 0)
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.SettingInformer.HasSynced)
 
 	return rc

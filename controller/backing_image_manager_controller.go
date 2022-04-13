@@ -132,27 +132,27 @@ func NewBackingImageManagerController(
 	})
 	c.cacheSyncs = append(c.cacheSyncs, ds.BackingImageManagerInformer.HasSynced)
 
-	ds.BackingImageInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.BackingImageInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueForBackingImage,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueForBackingImage(cur) },
 		DeleteFunc: c.enqueueForBackingImage,
-	})
+	}, 0)
 	c.cacheSyncs = append(c.cacheSyncs, ds.BackingImageInformer.HasSynced)
 
-	ds.NodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(oldObj, cur interface{}) { c.enqueueForLonghornNode(cur) },
 		DeleteFunc: c.enqueueForLonghornNode,
-	})
+	}, 0)
 	c.cacheSyncs = append(c.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	ds.PodInformer.AddEventHandler(cache.FilteringResourceEventHandler{
+	ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: isBackingImageManagerPod,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.enqueueForBackingImageManagerPod,
 			UpdateFunc: func(old, cur interface{}) { c.enqueueForBackingImageManagerPod(cur) },
 			DeleteFunc: c.enqueueForBackingImageManagerPod,
 		},
-	})
+	}, 0)
 	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
 
 	return c

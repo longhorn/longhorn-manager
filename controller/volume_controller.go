@@ -115,45 +115,45 @@ func NewVolumeController(
 	})
 	vc.cacheSyncs = append(vc.cacheSyncs, ds.VolumeInformer.HasSynced)
 
-	ds.EngineInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.EngineInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueControlleeChange(cur) },
 		DeleteFunc: vc.enqueueControlleeChange,
-	})
+	}, 0)
 	vc.cacheSyncs = append(vc.cacheSyncs, ds.EngineInformer.HasSynced)
 
-	ds.ReplicaInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueControlleeChange(cur) },
 		DeleteFunc: vc.enqueueControlleeChange,
-	})
+	}, 0)
 	vc.cacheSyncs = append(vc.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
-	ds.ShareManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.ShareManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueVolumesForShareManager,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForShareManager(cur) },
 		DeleteFunc: vc.enqueueVolumesForShareManager,
-	})
+	}, 0)
 	vc.cacheSyncs = append(vc.cacheSyncs, ds.ShareManagerInformer.HasSynced)
 
-	ds.BackupVolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.BackupVolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForBackupVolume(cur) },
 		DeleteFunc: vc.enqueueVolumesForBackupVolume,
-	})
+	}, 0)
 	vc.cacheSyncs = append(vc.cacheSyncs, ds.BackupVolumeInformer.HasSynced)
 
-	ds.BackingImageDataSourceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.BackingImageDataSourceInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueVolumesForBackingImageDataSource,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueVolumesForBackingImageDataSource(cur) },
 		DeleteFunc: vc.enqueueVolumesForBackingImageDataSource,
-	})
+	}, 0)
 	vc.cacheSyncs = append(vc.cacheSyncs, ds.BackingImageDataSourceInformer.HasSynced)
 
-	ds.NodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vc.enqueueNodeChange,
 		UpdateFunc: func(old, cur interface{}) { vc.enqueueNodeChange(cur) },
 		DeleteFunc: vc.enqueueNodeChange,
-	})
+	}, 0)
 	vc.cacheSyncs = append(vc.cacheSyncs, ds.NodeInformer.HasSynced)
 
 	return vc

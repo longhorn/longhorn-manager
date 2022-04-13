@@ -84,11 +84,11 @@ func NewKubernetesPVController(
 	})
 	kc.cacheSyncs = append(kc.cacheSyncs, ds.PersistentVolumeInformer.HasSynced)
 
-	ds.PodInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    kc.enqueuePodChange,
 		UpdateFunc: func(old, cur interface{}) { kc.enqueuePodChange(cur) },
 		DeleteFunc: kc.enqueuePodChange,
-	})
+	}, 0)
 	kc.cacheSyncs = append(kc.cacheSyncs, ds.PodInformer.HasSynced)
 
 	return kc
