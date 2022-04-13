@@ -30,6 +30,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -786,4 +787,18 @@ func Contains(list []string, item string) bool {
 		}
 	}
 	return false
+}
+
+// HasLocalStorageInDeployment returns true if deployment has any local storage.
+func HasLocalStorageInDeployment(deployment *appsv1.Deployment) bool {
+	for _, volume := range deployment.Spec.Template.Spec.Volumes {
+		if isLocalVolume(&volume) {
+			return true
+		}
+	}
+	return false
+}
+
+func isLocalVolume(volume *v1.Volume) bool {
+	return volume.HostPath != nil || volume.EmptyDir != nil
 }

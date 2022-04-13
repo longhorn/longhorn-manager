@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -224,6 +225,10 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		}
 	case string(types.SettingNamePriorityClass):
 		if err := sc.updatePriorityClass(); err != nil {
+			return err
+		}
+	case string(types.SettingNameKubernetesClusterAutoscalerEnabled):
+		if err := sc.updateKubernetesClusterAutoscalerEnabled(); err != nil {
 			return err
 		}
 	default:
@@ -560,6 +565,59 @@ func (sc *SettingController) updatePriorityClass() error {
 		}
 	}
 
+	return nil
+}
+
+func (sc *SettingController) updateKubernetesClusterAutoscalerEnabled() error {
+	// IM pods annotation will be handled in the instance manager controller
+
+	clusterAutoscalerEnabled, err := sc.ds.GetSettingAsBool(types.SettingNameKubernetesClusterAutoscalerEnabled)
+	if err != nil {
+		return err
+	}
+
+	evictKey := types.KubernetesClusterAutoscalerSafeToEvictKey
+
+	longhornUI, err := sc.ds.GetDeployment(types.LonghornUIDeploymentName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return errors.Wrapf(err, "failed to get %v deployment", types.LonghornUIDeploymentName)
+	}
+
+	deploymentList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	if err != nil {
+		return errors.Wrapf(err, "failed to list Longhorn deployments for %v annotation update", types.KubernetesClusterAutoscalerSafeToEvictKey)
+	}
+
+	deploymentList = append(deploymentList, longhornUI)
+	for _, dp := range deploymentList {
+		if !util.HasLocalStorageInDeployment(dp) {
+			continue
+		}
+
+		anno := dp.Spec.Template.Annotations
+		if anno == nil {
+			anno = map[string]string{}
+		}
+		if clusterAutoscalerEnabled {
+			if value, exists := anno[evictKey]; exists && value == strconv.FormatBool(clusterAutoscalerEnabled) {
+				continue
+			}
+
+			anno[evictKey] = strconv.FormatBool(clusterAutoscalerEnabled)
+			sc.logger.Infof("Update the %v annotation to %v for %v", types.KubernetesClusterAutoscalerSafeToEvictKey, clusterAutoscalerEnabled, dp.Name)
+		} else {
+			if _, exists := anno[evictKey]; !exists {
+				continue
+			}
+
+			delete(anno, evictKey)
+			sc.logger.Infof("Delete the %v annotation for %v", types.KubernetesClusterAutoscalerSafeToEvictKey, clusterAutoscalerEnabled, dp.Name)
+		}
+		dp.Spec.Template.Annotations = anno
+		if _, err := sc.ds.UpdateDeployment(dp); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
