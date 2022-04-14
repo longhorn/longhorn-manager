@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -416,6 +417,11 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 }
 
 func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) error {
+	err := imc.annotateCASafeToEvict(im)
+	if err != nil {
+		return err
+	}
+
 	if im.Status.CurrentState != longhorn.InstanceManagerStateError && im.Status.CurrentState != longhorn.InstanceManagerStateStopped {
 		return nil
 	}
@@ -439,6 +445,42 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 	}
 	// The instance manager state will be updated in the next reconcile loop.
 
+	return nil
+}
+
+func (imc *InstanceManagerController) annotateCASafeToEvict(im *longhorn.InstanceManager) error {
+	pod, err := imc.ds.GetPod(im.Name)
+	if err != nil {
+		return errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)
+	}
+	if pod == nil {
+		return nil
+	}
+
+	clusterAutoscalerEnabled, err := imc.ds.GetSettingAsBool(types.SettingNameKubernetesClusterAutoscalerEnabled)
+	if err != nil {
+		return err
+	}
+
+	if pod.Annotations == nil {
+		pod.Annotations = make(map[string]string)
+	}
+	val, exist := pod.Annotations[types.KubernetesClusterAutoscalerSafeToEvictKey]
+	updateAnnotation := clusterAutoscalerEnabled && (!exist || val != "true")
+	deleteAnnotation := !clusterAutoscalerEnabled && exist
+	if updateAnnotation {
+		pod.Annotations[types.KubernetesClusterAutoscalerSafeToEvictKey] = "true"
+	} else if deleteAnnotation {
+		delete(pod.Annotations, types.KubernetesClusterAutoscalerSafeToEvictKey)
+	} else {
+		return nil
+	}
+
+	if _, err := imc.kubeClient.CoreV1().Pods(pod.Namespace).Update(context.TODO(), pod, metav1.UpdateOptions{}); err != nil {
+		return err
+	}
+
+	imc.logger.Infof("Updated annotation %v for pod %v/%v", types.KubernetesClusterAutoscalerSafeToEvictKey, pod.Namespace, pod.Name)
 	return nil
 }
 
