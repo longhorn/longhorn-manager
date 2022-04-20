@@ -161,6 +161,12 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 		labels[key] = types.LonghornLabelValueEnabled
 	}
 
+	if spec.DataSource != "" {
+		if err := m.verifyDataSourceForVolumeCreation(spec.DataSource, spec.Size); err != nil {
+			return nil, err
+		}
+	}
+
 	v = &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
@@ -953,4 +959,32 @@ func (m *VolumeManager) UpdateAccessMode(name string, accessMode longhorn.Access
 
 	logrus.Infof("Updated volume %v access mode from %v to %v", v.Name, oldAccessMode, accessMode)
 	return v, nil
+}
+
+func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.VolumeDataSource, requestSize int64) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to verify data source")
+	}()
+
+	if !types.IsValidVolumeDataSource(dataSource) {
+		return fmt.Errorf("invalid value for data source: %v", dataSource)
+	}
+
+	if types.IsDataFromVolume(dataSource) {
+		srcVolName := types.GetVolumeName(dataSource)
+		srcVol, err := m.ds.GetVolume(srcVolName)
+		if err != nil {
+			return err
+		}
+		if requestSize != srcVol.Spec.Size {
+			return fmt.Errorf("size of target volume (%v bytes) is different than size of source volume (%v bytes)", requestSize, srcVol.Spec.Size)
+		}
+
+		if snapName := types.GetSnapshotName(dataSource); snapName != "" {
+			if _, err := m.GetSnapshot(snapName, srcVolName); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
