@@ -298,6 +298,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 	if err != nil {
 		return err
 	}
+	snapshots, err := vc.ds.ListVolumeSnapshotsRO(volume.Name)
+	if err != nil {
+		return err
+	}
 
 	if volume.DeletionTimestamp != nil {
 		if volume.Status.State != longhorn.VolumeStateDeleting {
@@ -316,6 +320,13 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			}
 		}
 
+		for _, snap := range snapshots {
+			if snap.DeletionTimestamp == nil {
+				if err := vc.ds.DeleteSnapshot(snap.Name); err != nil {
+					return err
+				}
+			}
+		}
 		for _, e := range engines {
 			if e.DeletionTimestamp == nil {
 				if err := vc.ds.DeleteEngine(e.Name); err != nil {
@@ -349,8 +360,12 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			}
 		}
 
-		// now replicas and engines have been marked for deletion
-
+		// now snapshots, replicas, and engines have been marked for deletion
+		if snapshots, err := vc.ds.ListVolumeSnapshotsRO(volume.Name); err != nil {
+			return err
+		} else if len(snapshots) > 0 {
+			return nil
+		}
 		if engines, err := vc.ds.ListVolumeEngines(volume.Name); err != nil {
 			return err
 		} else if len(engines) > 0 {
@@ -361,8 +376,8 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		} else if len(replicas) > 0 {
 			return nil
 		}
-		// now replicas and engines are deleted
 
+		// now snapshots, replicas, and engines are deleted
 		return vc.ds.RemoveFinalizerForVolume(volume)
 	}
 
@@ -3605,7 +3620,7 @@ func (vc *VolumeController) ReconcileBackupVolumeState(volume *longhorn.Volume) 
 // TODO: this block of code is duplicated of CreateSnapshot in MANAGER package.
 // Once we have Snapshot CR, we should refactor this
 
-func (vc *VolumeController) createSnapshot(snapshotName string, labels map[string]string, volume *longhorn.Volume, e *longhorn.Engine) (*longhorn.Snapshot, error) {
+func (vc *VolumeController) createSnapshot(snapshotName string, labels map[string]string, volume *longhorn.Volume, e *longhorn.Engine) (*longhorn.SnapshotInfo, error) {
 	if volume.Name == "" {
 		return nil, fmt.Errorf("volume name required")
 	}

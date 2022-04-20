@@ -48,4 +48,6 @@ type SettingExpansion interface{}
 
 type ShareManagerExpansion interface{}
 
+type SnapshotExpansion interface{}
+
 type VolumeExpansion interface{}

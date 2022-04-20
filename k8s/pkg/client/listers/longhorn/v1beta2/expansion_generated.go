@@ -138,6 +138,14 @@ type ShareManagerListerExpansion interface{}
 // ShareManagerNamespaceLister.
 type ShareManagerNamespaceListerExpansion interface{}
 
+// SnapshotListerExpansion allows custom methods to be added to
+// SnapshotLister.
+type SnapshotListerExpansion interface{}
+
+// SnapshotNamespaceListerExpansion allows custom methods to be added to
+// SnapshotNamespaceLister.
+type SnapshotNamespaceListerExpansion interface{}
+
 // VolumeListerExpansion allows custom methods to be added to
 // VolumeLister.
 type VolumeListerExpansion interface{}

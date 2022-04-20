@@ -41,6 +41,7 @@ type LonghornV1beta2Interface interface {
 	ReplicasGetter
 	SettingsGetter
 	ShareManagersGetter
+	SnapshotsGetter
 	VolumesGetter
 }
 
@@ -107,6 +108,10 @@ func (c *LonghornV1beta2Client) Settings(namespace string) SettingInterface {
 
 func (c *LonghornV1beta2Client) ShareManagers(namespace string) ShareManagerInterface {
 	return newShareManagers(c, namespace)
+}
+
+func (c *LonghornV1beta2Client) Snapshots(namespace string) SnapshotInterface {
+	return newSnapshots(c, namespace)
 }
 
 func (c *LonghornV1beta2Client) Volumes(namespace string) VolumeInterface {

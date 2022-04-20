@@ -54,7 +54,7 @@ type SnapshotCloneStatus struct {
 	SnapshotName       string `json:"snapshotName"`
 }
 
-type Snapshot struct {
+type SnapshotInfo struct {
 	Name        string            `json:"name"`
 	Parent      string            `json:"parent"`
 	Children    map[string]bool   `json:"children"`
@@ -92,7 +92,7 @@ type EngineStatus struct {
 	PurgeStatus              map[string]*PurgeStatus         `json:"purgeStatus"`
 	RebuildStatus            map[string]*RebuildStatus       `json:"rebuildStatus"`
 	CloneStatus              map[string]*SnapshotCloneStatus `json:"cloneStatus"`
-	Snapshots                map[string]*Snapshot            `json:"snapshots"`
+	Snapshots                map[string]*SnapshotInfo        `json:"snapshots"`
 	SnapshotsError           string                          `json:"snapshotsError"`
 	IsExpanding              bool                            `json:"isExpanding"`
 	LastExpansionError       string                          `json:"lastExpansionError"`

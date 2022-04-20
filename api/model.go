@@ -73,7 +73,7 @@ type Volume struct {
 
 type Snapshot struct {
 	client.Resource
-	longhorn.Snapshot
+	longhorn.SnapshotInfo
 }
 
 type BackupTarget struct {
@@ -1181,7 +1181,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	return r
 }
 
-func toSnapshotResource(s *longhorn.Snapshot) *Snapshot {
+func toSnapshotResource(s *longhorn.SnapshotInfo) *Snapshot {
 	if s == nil {
 		logrus.Warn("weird: nil snapshot")
 		return nil
@@ -1191,11 +1191,11 @@ func toSnapshotResource(s *longhorn.Snapshot) *Snapshot {
 			Id:   s.Name,
 			Type: "snapshot",
 		},
-		Snapshot: *s,
+		SnapshotInfo: *s,
 	}
 }
 
-func toSnapshotCollection(ss map[string]*longhorn.Snapshot) *client.GenericCollection {
+func toSnapshotCollection(ss map[string]*longhorn.SnapshotInfo) *client.GenericCollection {
 	data := []interface{}{}
 	for _, v := range ss {
 		data = append(data, toSnapshotResource(v))

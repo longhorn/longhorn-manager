@@ -54,6 +54,8 @@ type Interface interface {
 	Settings() SettingInformer
 	// ShareManagers returns a ShareManagerInformer.
 	ShareManagers() ShareManagerInformer
+	// Snapshots returns a SnapshotInformer.
+	Snapshots() SnapshotInformer
 	// Volumes returns a VolumeInformer.
 	Volumes() VolumeInformer
 }
@@ -142,6 +144,11 @@ func (v *version) Settings() SettingInformer {
 // ShareManagers returns a ShareManagerInformer.
 func (v *version) ShareManagers() ShareManagerInformer {
 	return &shareManagerInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// Snapshots returns a SnapshotInformer.
+func (v *version) Snapshots() SnapshotInformer {
+	return &snapshotInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Volumes returns a VolumeInformer.

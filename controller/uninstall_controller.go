@@ -14,6 +14,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
@@ -43,6 +44,7 @@ const (
 	CRDBackupName                 = "backups.longhorn.io"
 	CRDRecurringJobName           = "recurringjobs.longhorn.io"
 	CRDOrphanName                 = "orphans.longhorn.io"
+	CRDSnapshotName               = "snapshots.longhorn.io"
 
 	EnvLonghornNamespace = "LONGHORN_NAMESPACE"
 )
@@ -155,6 +157,10 @@ func NewUninstallController(
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDOrphanName, metav1.GetOptions{}); err == nil {
 		ds.OrphanInformer.AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, ds.OrphanInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDSnapshotName, metav1.GetOptions{}); err == nil {
+		ds.SnapshotInformer.AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, ds.SnapshotInformer.HasSynced)
 	}
 
 	c.cacheSyncs = cacheSyncs
@@ -372,6 +378,15 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 		return true, c.deleteVolumes(volumes)
 	}
 
+	if snapshots, err := c.ds.ListSnapshots(labels.Everything()); err != nil {
+		return true, err
+	} else if len(snapshots) > 0 {
+		// We deleted all volume CRs before deleting snapshot CRs in the above steps.
+		// Since at this step the volume is already gone, we can delete all snapshot CRs in the system
+		c.logger.Infof("Found %d snapshots remaining", len(snapshots))
+		return true, c.deleteSnapshots(snapshots)
+	}
+
 	if engines, err := c.ds.ListEngines(); err != nil {
 		return true, err
 	} else if len(engines) > 0 {
@@ -510,6 +525,31 @@ func (c *UninstallController) deleteVolumes(vols map[string]*longhorn.Volume) (e
 			log.Info("Marked for deletion")
 		} else if vol.DeletionTimestamp.Before(&timeout) {
 			if err = c.ds.RemoveFinalizerForVolume(vol); err != nil {
+				err = errors.Wrapf(err, "Failed to remove finalizer")
+				return
+			}
+			log.Info("Removed finalizer")
+		}
+	}
+	return
+}
+
+func (c *UninstallController) deleteSnapshots(snapshots map[string]*longhorn.Snapshot) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "Failed to delete snapshots")
+	}()
+	for _, snap := range snapshots {
+		log := getLoggerForSnapshot(c.logger, snap)
+
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if snap.DeletionTimestamp == nil {
+			if err = c.ds.DeleteSnapshot(snap.Name); err != nil {
+				err = errors.Wrapf(err, "Failed to mark for deletion")
+				return
+			}
+			log.Info("Marked for deletion")
+		} else if snap.DeletionTimestamp.Before(&timeout) {
+			if err = c.ds.RemoveFinalizerForSnapshot(snap); err != nil {
 				err = errors.Wrapf(err, "Failed to remove finalizer")
 				return
 			}

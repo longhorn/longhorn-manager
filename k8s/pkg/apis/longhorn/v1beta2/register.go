@@ -53,6 +53,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&RecurringJobList{},
 		&Orphan{},
 		&OrphanList{},
+		&Snapshot{},
+		&SnapshotList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil
