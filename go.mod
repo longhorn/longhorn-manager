@@ -48,9 +48,10 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20210817080617-8ea3843e6b0d
 	github.com/longhorn/go-iscsi-helper v0.0.0-20201111045018-ee87992ec536
 	github.com/longhorn/longhorn-instance-manager v0.0.0-20210729081215-50c310f97378
+	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.2.1
-	github.com/rancher/go-rancher v0.1.1-0.20190307222549-9756097e5e4c
+	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/robfig/cron v1.2.0
 	github.com/satori/go.uuid v1.2.0
 	github.com/sirupsen/logrus v1.4.2
