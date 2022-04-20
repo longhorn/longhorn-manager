@@ -83,7 +83,7 @@ type SnapshotCloneStatus struct {
 	SnapshotName string `json:"snapshotName"`
 }
 
-type Snapshot struct {
+type SnapshotInfo struct {
 	// +optional
 	Name string `json:"name"`
 	// +optional
@@ -160,7 +160,7 @@ type EngineStatus struct {
 	CloneStatus map[string]*SnapshotCloneStatus `json:"cloneStatus"`
 	// +optional
 	// +nullable
-	Snapshots map[string]*Snapshot `json:"snapshots"`
+	Snapshots map[string]*SnapshotInfo `json:"snapshots"`
 	// +optional
 	SnapshotsError string `json:"snapshotsError"`
 	// +optional

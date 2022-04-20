@@ -397,6 +397,15 @@ func GetOwnerReferencesForVolume(v *longhorn.Volume) []metav1.OwnerReference {
 	}
 }
 
+func GetObjectReferencesForVolume(v *longhorn.Volume) corev1.ObjectReference {
+	return corev1.ObjectReference{
+		APIVersion: longhorn.SchemeGroupVersion.String(),
+		Kind:       types.LonghornKindVolume,
+		Name:       v.Name,
+		UID:        v.UID,
+	}
+}
+
 // GetOwnerReferencesForRecurringJob returns a list contains single OwnerReference for the
 // given recurringJob name
 func GetOwnerReferencesForRecurringJob(recurringJob *longhorn.RecurringJob) []metav1.OwnerReference {
@@ -749,8 +758,8 @@ func (s *DataStore) CreateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "engine", func(name string) (runtime.Object, error) {
-		return s.getEngineRO(name)
+	obj, err := verifyCreation(e.Name, "engine", func(name string) (runtime.Object, error) {
+		return s.GetEngineRO(name)
 	})
 	if err != nil {
 		return nil, err
@@ -780,7 +789,7 @@ func (s *DataStore) UpdateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 		return nil, err
 	}
 	verifyUpdate(e.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getEngineRO(name)
+		return s.GetEngineRO(name)
 	})
 	return obj, nil
 }
@@ -792,7 +801,7 @@ func (s *DataStore) UpdateEngineStatus(e *longhorn.Engine) (*longhorn.Engine, er
 		return nil, err
 	}
 	verifyUpdate(e.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getEngineRO(name)
+		return s.GetEngineRO(name)
 	})
 	return obj, nil
 }
@@ -823,13 +832,13 @@ func (s *DataStore) RemoveFinalizerForEngine(obj *longhorn.Engine) error {
 	return nil
 }
 
-func (s *DataStore) getEngineRO(name string) (*longhorn.Engine, error) {
+func (s *DataStore) GetEngineRO(name string) (*longhorn.Engine, error) {
 	return s.eLister.Engines(s.namespace).Get(name)
 }
 
 // GetEngine returns the Engine for the given name and namespace
 func (s *DataStore) GetEngine(name string) (*longhorn.Engine, error) {
-	resultRO, err := s.getEngineRO(name)
+	resultRO, err := s.GetEngineRO(name)
 	if err != nil {
 		return nil, err
 	}
@@ -3221,6 +3230,113 @@ func (s *DataStore) RemoveFinalizerForBackup(backup *longhorn.Backup) error {
 		return errors.Wrapf(err, "unable to remove finalizer for backup %s", backup.Name)
 	}
 	return nil
+}
+
+// CreateSnapshot creates a Longhorn snapshot CR and verifies creation
+func (s *DataStore) CreateSnapshot(snapshot *longhorn.Snapshot) (*longhorn.Snapshot, error) {
+	ret, err := s.lhClient.LonghornV1beta2().Snapshots(s.namespace).Create(context.TODO(), snapshot, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(snapshot.Name, "snapshot", func(name string) (runtime.Object, error) {
+		return s.GetSnapshotRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.Snapshot)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for Snapshot")
+	}
+	return ret.DeepCopy(), nil
+}
+
+// GetSnapshotRO returns the Snapshot with the given snapshot name in the cluster
+func (s *DataStore) GetSnapshotRO(snapName string) (*longhorn.Snapshot, error) {
+	return s.snapLister.Snapshots(s.namespace).Get(snapName)
+}
+
+// GetSnapshot returns a copy of Snapshot with the given snapshot name in the cluster
+func (s *DataStore) GetSnapshot(name string) (*longhorn.Snapshot, error) {
+	resultRO, err := s.GetSnapshotRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// UpdateSnapshotStatus updates the given Longhorn snapshot status verifies update
+func (s *DataStore) UpdateSnapshotStatus(snap *longhorn.Snapshot) (*longhorn.Snapshot, error) {
+	obj, err := s.lhClient.LonghornV1beta2().Snapshots(s.namespace).UpdateStatus(context.TODO(), snap, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(snap.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetSnapshotRO(name)
+	})
+	return obj, nil
+}
+
+// RemoveFinalizerForSnapshot will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForSnapshot(snapshot *longhorn.Snapshot) error {
+	if !util.FinalizerExists(longhornFinalizerKey, snapshot) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, snapshot); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().Snapshots(s.namespace).Update(context.TODO(), snapshot, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if snapshot.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for snapshot %s", snapshot.Name)
+	}
+	return nil
+}
+
+func (s *DataStore) ListSnapshotsRO(selector labels.Selector) (map[string]*longhorn.Snapshot, error) {
+	list, err := s.snapLister.Snapshots(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	snapshots := make(map[string]*longhorn.Snapshot)
+	for _, snap := range list {
+		snapshots[snap.Name] = snap
+	}
+	return snapshots, nil
+}
+
+func (s *DataStore) ListSnapshots(selector labels.Selector) (map[string]*longhorn.Snapshot, error) {
+	list, err := s.snapLister.Snapshots(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	itemMap := make(map[string]*longhorn.Snapshot)
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+func (s *DataStore) ListVolumeSnapshotsRO(volumeName string) (map[string]*longhorn.Snapshot, error) {
+	selector, err := getVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	return s.ListSnapshotsRO(selector)
+}
+
+// DeleteSnapshot won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteSnapshot(snapshotName string) error {
+	return s.lhClient.LonghornV1beta2().Snapshots(s.namespace).Delete(context.TODO(), snapshotName, metav1.DeleteOptions{})
 }
 
 // CreateRecurringJob creates a Longhorn RecurringJob resource and verifies

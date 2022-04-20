@@ -88,6 +88,10 @@ func (c *FakeLonghornV1beta2) ShareManagers(namespace string) v1beta2.ShareManag
 	return &FakeShareManagers{c, namespace}
 }
 
+func (c *FakeLonghornV1beta2) Snapshots(namespace string) v1beta2.SnapshotInterface {
+	return &FakeSnapshots{c, namespace}
+}
+
 func (c *FakeLonghornV1beta2) Volumes(namespace string) v1beta2.VolumeInterface {
 	return &FakeVolumes{c, namespace}
 }

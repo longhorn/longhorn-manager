@@ -32,7 +32,7 @@ func GetLonghornFinalizerPatchOp(obj runtime.Object) (string, error) {
 	}
 	bytes, err := json.Marshal(finalizers)
 	if err != nil {
-		return "", errors.Wrapf(err, "failed to get JSON encoding for backup %v finalizers", metadata.GetName())
+		return "", errors.Wrapf(err, "failed to get JSON encoding finalizers of object %v ", metadata.GetName())
 	}
 
 	return fmt.Sprintf(`{"op": "replace", "path": "/metadata/finalizers", "value": %v}`, string(bytes)), nil
@@ -55,7 +55,7 @@ func GetLonghornLabelsPatchOp(obj runtime.Object, longhornLabels map[string]stri
 
 	bytes, err := json.Marshal(labels)
 	if err != nil {
-		return "", errors.Wrapf(err, "failed to get JSON encoding for %v labels", metadata.GetName())
+		return "", errors.Wrapf(err, "failed to get JSON encoding labels of %v ", metadata.GetName())
 	}
 
 	return fmt.Sprintf(`{"op": "replace", "path": "/metadata/labels", "value": %v}`, string(bytes)), nil

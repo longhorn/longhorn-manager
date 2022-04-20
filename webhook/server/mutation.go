@@ -18,6 +18,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/orphan"
 	"github.com/longhorn/longhorn-manager/webhook/resources/recurringjob"
 	"github.com/longhorn/longhorn-manager/webhook/resources/sharemanager"
+	"github.com/longhorn/longhorn-manager/webhook/resources/snapshot"
 	"github.com/longhorn/longhorn-manager/webhook/resources/volume"
 )
 
@@ -36,6 +37,7 @@ func Mutation(client *client.Client) (http.Handler, []admission.Resource, error)
 		orphan.NewMutator(client.Datastore),
 		sharemanager.NewMutator(client.Datastore),
 		backupvolume.NewMutator(client.Datastore),
+		snapshot.NewMutator(client.Datastore),
 	}
 
 	router := webhook.NewRouter()

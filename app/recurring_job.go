@@ -171,7 +171,7 @@ func recurringJob(c *cli.Context) error {
 			})
 			log.Info("Creating job")
 
-			snapshotName := types.GetCronJobNameForRecurringJob(jobName) + "-" + util.RandomID()
+			snapshotName := sliceStringSafely(types.GetCronJobNameForRecurringJob(jobName), 0, 8) + "-" + util.UUID()
 			job, err := NewJob(
 				logger,
 				managerURL,
@@ -195,6 +195,16 @@ func recurringJob(c *cli.Context) error {
 	}
 
 	return nil
+}
+
+func sliceStringSafely(s string, begin, end int) string {
+	if begin < 0 {
+		begin = 0
+	}
+	if end > len(s) {
+		end = len(s)
+	}
+	return s[begin:end]
 }
 
 func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName string, labels map[string]string, retain int, backup bool) (*Job, error) {

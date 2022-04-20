@@ -28,7 +28,7 @@ const (
 	DefaultISCSILUN  = "1"
 
 	// MaxPollCount, MinPollCount, PollInterval determines how often
-	// we sync with others
+	// we sync with othersq
 
 	MaxPollCount = 60
 	MinPollCount = 1
@@ -66,8 +66,8 @@ type EngineClient interface {
 	ReplicaRebuildVerify(engine *longhorn.Engine, url string) error
 
 	SnapshotCreate(engine *longhorn.Engine, name string, labels map[string]string) (string, error)
-	SnapshotList(engine *longhorn.Engine) (map[string]*longhorn.Snapshot, error)
-	SnapshotGet(engine *longhorn.Engine, name string) (*longhorn.Snapshot, error)
+	SnapshotList(engine *longhorn.Engine) (map[string]*longhorn.SnapshotInfo, error)
+	SnapshotGet(engine *longhorn.Engine, name string) (*longhorn.SnapshotInfo, error)
 	SnapshotDelete(engine *longhorn.Engine, name string) error
 	SnapshotRevert(engine *longhorn.Engine, name string) error
 	SnapshotPurge(engine *longhorn.Engine) error

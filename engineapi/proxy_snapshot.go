@@ -8,20 +8,20 @@ func (p *Proxy) SnapshotCreate(e *longhorn.Engine, name string, labels map[strin
 	return p.grpcClient.VolumeSnapshot(p.DirectToURL(e), name, labels)
 }
 
-func (p *Proxy) SnapshotList(e *longhorn.Engine) (snapshots map[string]*longhorn.Snapshot, err error) {
+func (p *Proxy) SnapshotList(e *longhorn.Engine) (snapshots map[string]*longhorn.SnapshotInfo, err error) {
 	recv, err := p.grpcClient.SnapshotList(p.DirectToURL(e))
 	if err != nil {
 		return nil, err
 	}
 
-	snapshots = map[string]*longhorn.Snapshot{}
+	snapshots = map[string]*longhorn.SnapshotInfo{}
 	for k, v := range recv {
-		snapshots[k] = (*longhorn.Snapshot)(v)
+		snapshots[k] = (*longhorn.SnapshotInfo)(v)
 	}
 	return snapshots, nil
 }
 
-func (p *Proxy) SnapshotGet(e *longhorn.Engine, name string) (snapshot *longhorn.Snapshot, err error) {
+func (p *Proxy) SnapshotGet(e *longhorn.Engine, name string) (snapshot *longhorn.SnapshotInfo, err error) {
 	recv, err := p.SnapshotList(e)
 	if err != nil {
 		return nil, err
