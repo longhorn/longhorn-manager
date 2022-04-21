@@ -91,12 +91,6 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		}
 	}
 
-	if volume.Spec.DataSource != "" {
-		if err := v.verifyDataSourceForVolumeCreation(v.currentNodeID, volume.Spec.DataSource, volume.Spec.Size); err != nil {
-			return werror.NewInvalidError(err.Error(), "")
-		}
-	}
-
 	if err := datastore.CheckVolume(volume); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
@@ -140,88 +134,4 @@ func (v *volumeValidator) canDisableRevisionCounter(engineImage string) (bool, e
 	}
 
 	return true, nil
-}
-
-func (v *volumeValidator) verifyDataSourceForVolumeCreation(currentNodeID string, dataSource longhorn.VolumeDataSource, requestSize int64) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "failed to verify data source")
-	}()
-
-	if !types.IsValidVolumeDataSource(dataSource) {
-		return fmt.Errorf("in valid value for data source: %v", dataSource)
-	}
-
-	if types.IsDataFromVolume(dataSource) {
-		srcVolName := types.GetVolumeName(dataSource)
-		srcVol, err := v.ds.GetVolume(srcVolName)
-		if err != nil {
-			return err
-		}
-		if requestSize != srcVol.Spec.Size {
-			return fmt.Errorf("size of target volume (%v bytes) is different than size of source volume (%v bytes)", requestSize, srcVol.Spec.Size)
-		}
-
-		if snapName := types.GetSnapshotName(dataSource); snapName != "" {
-			if _, err := v.getSnapshot(currentNodeID, snapName, srcVolName); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (v *volumeValidator) getSnapshot(currentNodeID, snapshotName, volumeName string) (*longhorn.Snapshot, error) {
-	if currentNodeID == "" || volumeName == "" || snapshotName == "" {
-		return nil, fmt.Errorf("currentNodeID, volume and snapshot name required")
-	}
-	engine, err := v.getEngineClient(currentNodeID, volumeName)
-	if err != nil {
-		return nil, err
-	}
-	snapshot, err := engine.SnapshotGet(snapshotName)
-	if err != nil {
-		return nil, err
-	}
-	if snapshot == nil {
-		return nil, fmt.Errorf("cannot find snapshot '%s' for volume '%s'", snapshotName, volumeName)
-	}
-	return snapshot, nil
-}
-
-func (v *volumeValidator) getEngineClient(currentNodeID, volumeName string) (client engineapi.EngineClient, err error) {
-	var e *longhorn.Engine
-
-	defer func() {
-		err = errors.Wrapf(err, "cannot get client for volume %v", volumeName)
-	}()
-	es, err := v.ds.ListVolumeEngines(volumeName)
-	if err != nil {
-		return nil, err
-	}
-	if len(es) == 0 {
-		return nil, fmt.Errorf("cannot find engine")
-	}
-	if len(es) != 1 {
-		return nil, fmt.Errorf("more than one engine exists")
-	}
-	for _, e = range es {
-		break
-	}
-	if e.Status.CurrentState != longhorn.InstanceStateRunning {
-		return nil, fmt.Errorf("engine is not running")
-	}
-	if isReady, err := v.ds.CheckEngineImageReadiness(e.Status.CurrentImage, currentNodeID); !isReady {
-		if err != nil {
-			return nil, fmt.Errorf("cannot get engine client with image %v: %v", e.Status.CurrentImage, err)
-		}
-		return nil, fmt.Errorf("cannot get engine client with image %v because it isn't deployed on this node", e.Status.CurrentImage)
-	}
-
-	engineCollection := &engineapi.EngineCollection{}
-	return engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:  e.Spec.VolumeName,
-		EngineImage: e.Status.CurrentImage,
-		IP:          e.Status.IP,
-		Port:        e.Status.Port,
-	})
 }
