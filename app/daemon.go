@@ -19,7 +19,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/meta"
-	"github.com/longhorn/longhorn-manager/monitoring"
+	metricsCollector "github.com/longhorn/longhorn-manager/metrics_collector"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/upgrade"
 	"github.com/longhorn/longhorn-manager/util"
@@ -138,7 +138,7 @@ func startManager(c *cli.Context) error {
 
 	m := manager.NewVolumeManager(currentNodeID, ds)
 
-	monitoring.InitMonitoringSystem(logger, currentNodeID, ds, kubeconfigPath)
+	metricsCollector.InitMetricsCollectorSystem(logger, currentNodeID, ds, kubeconfigPath)
 
 	// Initialize the required settings first
 	if err := createOrUpdateDefaultImageSetting(m, types.SettingNameDefaultEngineImage, engineImage); err != nil {

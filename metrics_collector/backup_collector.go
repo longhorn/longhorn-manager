@@ -1,4 +1,4 @@
-package monitoring
+package metricscollector
 
 import (
 	"strconv"

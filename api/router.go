@@ -12,7 +12,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
-	"github.com/longhorn/longhorn-manager/monitoring/registry"
+	"github.com/longhorn/longhorn-manager/metrics_collector/registry"
 )
 
 var (
