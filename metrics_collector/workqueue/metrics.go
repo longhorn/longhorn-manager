@@ -5,7 +5,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/longhorn/longhorn-manager/monitoring/registry"
+	"github.com/longhorn/longhorn-manager/metrics_collector/registry"
 )
 
 // Package workqueue sets the workqueue DefaultMetricsFactory to produce

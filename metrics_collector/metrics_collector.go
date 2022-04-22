@@ -1,4 +1,4 @@
-package monitoring
+package metricscollector
 
 import (
 	"os"
@@ -11,12 +11,12 @@ import (
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/monitoring/registry"
-	_ "github.com/longhorn/longhorn-manager/monitoring/workqueue" // load the workqueue metrics
+	"github.com/longhorn/longhorn-manager/metrics_collector/registry"
+	_ "github.com/longhorn/longhorn-manager/metrics_collector/workqueue" // load the workqueue metrics
 	"github.com/longhorn/longhorn-manager/types"
 )
 
-func InitMonitoringSystem(logger logrus.FieldLogger, currentNodeID string, ds *datastore.DataStore, kubeconfigPath string) {
+func InitMetricsCollectorSystem(logger logrus.FieldLogger, currentNodeID string, ds *datastore.DataStore, kubeconfigPath string) {
 	vc := NewVolumeCollector(logger, currentNodeID, ds)
 	dc := NewDiskCollector(logger, currentNodeID, ds)
 	bc := NewBackupCollector(logger, currentNodeID, ds)
