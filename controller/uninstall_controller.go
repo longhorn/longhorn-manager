@@ -42,6 +42,7 @@ const (
 	CRDBackupVolumeName           = "backupvolumes.longhorn.io"
 	CRDBackupName                 = "backups.longhorn.io"
 	CRDRecurringJobName           = "recurringjobs.longhorn.io"
+	CRDOrphanName                 = "orphans.longhorn.io"
 
 	EnvLonghornNamespace = "LONGHORN_NAMESPACE"
 )
@@ -150,6 +151,10 @@ func NewUninstallController(
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDRecurringJobName, metav1.GetOptions{}); err == nil {
 		ds.RecurringJobInformer.AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, ds.RecurringJobInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDOrphanName, metav1.GetOptions{}); err == nil {
+		ds.OrphanInformer.AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, ds.OrphanInformer.HasSynced)
 	}
 
 	c.cacheSyncs = cacheSyncs
@@ -479,6 +484,13 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 		return true, c.deleteInstanceManagers(instanceManagers)
 	}
 
+	if orphans, err := c.ds.ListOrphans(); err != nil {
+		return true, err
+	} else if len(orphans) > 0 {
+		c.logger.Infof("Found %d orphans remaining", len(orphans))
+		return true, c.deleteOrphans(orphans)
+	}
+
 	return false, nil
 }
 
@@ -762,6 +774,22 @@ func (c *UninstallController) deleteRecurringJobs(recurringJobs map[string]*long
 		log := getLoggerForRecurringJob(c.logger, job)
 		if job.DeletionTimestamp == nil {
 			if err = c.ds.DeleteRecurringJob(job.Name); err != nil {
+				return errors.Wrapf(err, "Failed to mark for deletion")
+			}
+			log.Info("Marked for deletion")
+		}
+	}
+	return nil
+}
+
+func (c *UninstallController) deleteOrphans(orphans map[string]*longhorn.Orphan) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "Failed to delete orphans")
+	}()
+	for _, orphan := range orphans {
+		log := getLoggerForOrphan(c.logger, orphan)
+		if orphan.DeletionTimestamp == nil {
+			if err = c.ds.DeleteOrphan(orphan.Name); err != nil {
 				return errors.Wrapf(err, "Failed to mark for deletion")
 			}
 			log.Info("Marked for deletion")

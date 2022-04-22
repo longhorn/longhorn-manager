@@ -36,6 +36,7 @@ type LonghornV1beta2Interface interface {
 	EngineImagesGetter
 	InstanceManagersGetter
 	NodesGetter
+	OrphansGetter
 	RecurringJobsGetter
 	ReplicasGetter
 	SettingsGetter
@@ -86,6 +87,10 @@ func (c *LonghornV1beta2Client) InstanceManagers(namespace string) InstanceManag
 
 func (c *LonghornV1beta2Client) Nodes(namespace string) NodeInterface {
 	return newNodes(c, namespace)
+}
+
+func (c *LonghornV1beta2Client) Orphans(namespace string) OrphanInterface {
+	return newOrphans(c, namespace)
 }
 
 func (c *LonghornV1beta2Client) RecurringJobs(namespace string) RecurringJobInterface {
