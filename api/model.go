@@ -370,6 +370,12 @@ type RecurringJob struct {
 	longhorn.RecurringJobSpec
 }
 
+type Orphan struct {
+	client.Resource
+	Name string `json:"name"`
+	longhorn.OrphanSpec
+}
+
 type VolumeRecurringJob struct {
 	client.Resource
 	longhorn.VolumeRecurringJob
@@ -402,6 +408,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("backup", Backup{})
 	schemas.AddType("backupInput", BackupInput{})
 	schemas.AddType("backupStatus", BackupStatus{})
+	schemas.AddType("orphan", Orphan{})
 	schemas.AddType("restoreStatus", RestoreStatus{})
 	schemas.AddType("purgeStatus", PurgeStatus{})
 	schemas.AddType("rebuildStatus", RebuildStatus{})
@@ -1592,6 +1599,29 @@ func toRecurringJobCollection(jobs []*longhorn.RecurringJob, apiContext *api.Api
 		data = append(data, toRecurringJobResource(job, apiContext))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "recurringJob"}}
+}
+
+func toOrphanResource(orphan *longhorn.Orphan) *Orphan {
+	return &Orphan{
+		Resource: client.Resource{
+			Id:   orphan.Name,
+			Type: "orphan",
+		},
+		Name: orphan.Name,
+		OrphanSpec: longhorn.OrphanSpec{
+			NodeID:     orphan.Spec.NodeID,
+			Type:       orphan.Spec.Type,
+			Parameters: orphan.Spec.Parameters,
+		},
+	}
+}
+
+func toOrphanCollection(orphans map[string]*longhorn.Orphan) *client.GenericCollection {
+	var data []interface{}
+	for _, orphan := range orphans {
+		data = append(data, toOrphanResource(orphan))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "orphan"}}
 }
 
 func sliceToMap(conditions []longhorn.Condition) map[string]longhorn.Condition {
