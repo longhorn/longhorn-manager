@@ -224,6 +224,9 @@ steps:
     tag: "${DRONE_BRANCH}-head-s390x"
     username:
       from_secret: docker_username
+  volumes:
+  - name: socket
+    path: /var/run/docker.sock
   when:
     event:
     - push
@@ -241,6 +244,9 @@ steps:
     tag: "${DRONE_TAG}-s390x"
     username:
       from_secret: docker_username
+  volumes:
+  - name: socket
+    path: /var/run/docker.sock
   when:
     event:
     - tag
