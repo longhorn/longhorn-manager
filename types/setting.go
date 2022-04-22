@@ -74,6 +74,7 @@ const (
 	SettingNameGuaranteedEngineManagerCPU                   = SettingName("guaranteed-engine-manager-cpu")
 	SettingNameGuaranteedReplicaManagerCPU                  = SettingName("guaranteed-replica-manager-cpu")
 	SettingNameKubernetesClusterAutoscalerEnabled           = SettingName("kubernetes-cluster-autoscaler-enabled")
+	SettingNameOrphanAutoDeletion                           = SettingName("orphan-auto-deletion")
 )
 
 var (
@@ -125,6 +126,7 @@ var (
 		SettingNameGuaranteedEngineManagerCPU,
 		SettingNameGuaranteedReplicaManagerCPU,
 		SettingNameKubernetesClusterAutoscalerEnabled,
+		SettingNameOrphanAutoDeletion,
 	}
 )
 
@@ -133,6 +135,7 @@ type SettingCategory string
 const (
 	SettingCategoryGeneral    = SettingCategory("general")
 	SettingCategoryBackup     = SettingCategory("backup")
+	SettingCategoryOrphan     = SettingCategory("orphan")
 	SettingCategoryScheduling = SettingCategory("scheduling")
 	SettingCategoryDangerZone = SettingCategory("danger Zone")
 )
@@ -197,6 +200,7 @@ var (
 		SettingNameGuaranteedEngineManagerCPU:                   SettingDefinitionGuaranteedEngineManagerCPU,
 		SettingNameGuaranteedReplicaManagerCPU:                  SettingDefinitionGuaranteedReplicaManagerCPU,
 		SettingNameKubernetesClusterAutoscalerEnabled:           SettingDefinitionKubernetesClusterAutoscalerEnabled,
+		SettingNameOrphanAutoDeletion:                           SettingDefinitionOrphanAutoDeletion,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -757,6 +761,17 @@ var (
 		ReadOnly: false,
 		Default:  "false",
 	}
+
+	SettingDefinitionOrphanAutoDeletion = SettingDefinition{
+		DisplayName: "Orphan Auto-Deletion",
+		Description: "This setting allows Longhorn to delete the orphan resource and its corresponding orphaned data automatically. \n\n" +
+			"Orphan resources on down or unknown nodes will not be cleaned up automatically. \n\n",
+		Category: SettingCategoryOrphan,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -820,6 +835,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly:
 		fallthrough
 	case SettingNameKubernetesClusterAutoscalerEnabled:
+		fallthrough
+	case SettingNameOrphanAutoDeletion:
 		fallthrough
 	case SettingNameUpgradeChecker:
 		if value != "true" && value != "false" {
@@ -908,7 +925,6 @@ func ValidateSetting(name, value string) (err error) {
 			return fmt.Errorf("guaranteed engine/replica cpu value %v should be between 0 to 40", value)
 		}
 	}
-
 	return nil
 }
 

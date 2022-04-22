@@ -257,3 +257,10 @@
 #  namespace: longhorn-system
 #value: "false"
 #---
+#apiVersion: longhorn.io/v1beta2
+#kind: Setting
+#metadata:
+#  name: orphan-auto-deletion
+#  namespace: longhorn-system
+#value: "false"
+#---
