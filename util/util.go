@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
@@ -59,6 +60,8 @@ const (
 
 	SizeAlignment     = 2 * 1024 * 1024
 	MinimalVolumeSize = 10 * 1024 * 1024
+
+	RandomIDLenth = 8
 )
 
 var (
@@ -77,7 +80,7 @@ type MetadataConfig struct {
 	DriverContainerName string
 }
 
-type DiskInfo struct {
+type DiskStat struct {
 	Fsid             string
 	Path             string
 	Type             string
@@ -162,7 +165,13 @@ func WaitForDevice(dev string, timeout int) error {
 }
 
 func RandomID() string {
-	return UUID()[:8]
+	return UUID()[:RandomIDLenth]
+}
+
+func ValidateRandomID(id string) bool {
+	regex := fmt.Sprintf(`^[a-zA-Z0-9]{%d}$`, RandomIDLenth)
+	validName := regexp.MustCompile(regex)
+	return validName.MatchString(id)
 }
 
 func GetLocalIPs() ([]string, error) {
@@ -398,6 +407,15 @@ func GetChecksumSHA512(data []byte) string {
 	return hex.EncodeToString(checksum[:])
 }
 
+func GetStringChecksumSHA256(data string) string {
+	return GetChecksumSHA256([]byte(data))
+}
+
+func GetChecksumSHA256(data []byte) string {
+	checksum := sha256.Sum256(data)
+	return hex.EncodeToString(checksum[:])
+}
+
 func GetStringHash(data string) string {
 	hash := fnv.New32a()
 	hash.Write([]byte(data))
@@ -413,9 +431,9 @@ func CheckBackupType(backupTarget string) (string, error) {
 	return u.Scheme, nil
 }
 
-func GetDiskInfo(directory string) (info *DiskInfo, err error) {
+func GetDiskStat(directory string) (stat *DiskStat, err error) {
 	defer func() {
-		err = errors.Wrapf(err, "cannot get disk info of directory %v", directory)
+		err = errors.Wrapf(err, "cannot get disk stat of directory %v", directory)
 	}()
 	initiatorNSPath := iscsi_util.GetHostNamespacePath(HostProcPath)
 	mountPath := fmt.Sprintf("--mount=%s/mnt", initiatorNSPath)
@@ -425,16 +443,16 @@ func GetDiskInfo(directory string) (info *DiskInfo, err error) {
 	}
 	output = strings.Replace(output, "\n", "", -1)
 
-	diskInfo := &DiskInfo{}
-	err = json.Unmarshal([]byte(output), diskInfo)
+	diskStat := &DiskStat{}
+	err = json.Unmarshal([]byte(output), diskStat)
 	if err != nil {
 		return nil, err
 	}
 
-	diskInfo.StorageMaximum = diskInfo.TotalBlock * diskInfo.BlockSize
-	diskInfo.StorageAvailable = diskInfo.FreeBlock * diskInfo.BlockSize
+	diskStat.StorageMaximum = diskStat.TotalBlock * diskStat.BlockSize
+	diskStat.StorageAvailable = diskStat.FreeBlock * diskStat.BlockSize
 
-	return diskInfo, nil
+	return diskStat, nil
 }
 
 func RetryOnConflictCause(fn func() (interface{}, error)) (interface{}, error) {
@@ -801,4 +819,79 @@ func HasLocalStorageInDeployment(deployment *appsv1.Deployment) bool {
 
 func isLocalVolume(volume *v1.Volume) bool {
 	return volume.HostPath != nil || volume.EmptyDir != nil
+}
+
+func GetPossibleReplicaDirectoryNames(diskPath string) (replicaDirectoryNames map[string]string, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "cannot list replica directories in the disk %v", diskPath)
+	}()
+
+	replicaDirectoryNames = make(map[string]string, 0)
+
+	directory := filepath.Join(diskPath, "replicas")
+
+	initiatorNSPath := iscsi_util.GetHostNamespacePath(HostProcPath)
+	mountPath := fmt.Sprintf("--mount=%s/mnt", initiatorNSPath)
+	command := fmt.Sprintf("find %s -type d -maxdepth 1 -mindepth 1 -regextype posix-extended -regex \".*-[a-zA-Z0-9]{8}$\" -exec basename {} \\;", directory)
+	output, err := Execute([]string{}, "nsenter", mountPath, "sh", "-c", command)
+	if err != nil {
+		return replicaDirectoryNames, err
+	}
+
+	names := strings.Split(output, "\n")
+	for _, name := range names {
+		if name != "" {
+			replicaDirectoryNames[name] = ""
+		}
+	}
+
+	return replicaDirectoryNames, nil
+}
+
+func DeleteReplicaDirectoryName(diskPath, replicaDirectoryName string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "cannot delete replica directory %v in disk %v", replicaDirectoryName, diskPath)
+	}()
+
+	path := filepath.Join(diskPath, "replicas", replicaDirectoryName)
+
+	initiatorNSPath := iscsi_util.GetHostNamespacePath(HostProcPath)
+	mountPath := fmt.Sprintf("--mount=%s/mnt", initiatorNSPath)
+	_, err = Execute([]string{}, "nsenter", mountPath, "rm", "-rf", path)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type VolumeMeta struct {
+	Size            int64
+	Head            string
+	Dirty           bool
+	Rebuilding      bool
+	Error           string
+	Parent          string
+	SectorSize      int64
+	BackingFilePath string
+	BackingFile     interface{}
+}
+
+func GetVolumeMeta(path string) (*VolumeMeta, error) {
+	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
+	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := nsExec.Execute("cat", []string{path})
+	if err != nil {
+		return nil, fmt.Errorf("cannot find volume meta %v on host: %v", path, err)
+	}
+
+	meta := &VolumeMeta{}
+	if err := json.Unmarshal([]byte(output), meta); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal %v content %v on host: %v", path, output, err)
+	}
+	return meta, nil
 }

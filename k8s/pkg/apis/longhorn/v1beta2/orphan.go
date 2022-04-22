@@ -26,6 +26,11 @@ const (
 	OrphanDiskPath = "DiskPath"
 )
 
+const (
+	OrphanCRStatusCreated = "created"
+	OrphanCRStatusDeleted = "deleted"
+)
+
 // OrphanSpec defines the desired state of the Longhorn orphaned data
 type OrphanSpec struct {
 	// The node ID on which the controller is responsible to reconcile this orphan CR.
