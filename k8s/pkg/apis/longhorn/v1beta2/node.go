@@ -22,6 +22,7 @@ const (
 const (
 	DiskConditionTypeSchedulable = "Schedulable"
 	DiskConditionTypeReady       = "Ready"
+	DiskConditionTypeError       = "Error"
 )
 
 const (
