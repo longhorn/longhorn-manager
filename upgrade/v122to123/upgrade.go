@@ -14,6 +14,7 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/upgrade/util"
 )
 
 const (
@@ -41,8 +42,10 @@ func upgradeBackups(namespace string, lhClient *lhclientset.Clientset) (err erro
 		return err
 	}
 
+	progressMonitor := util.NewProgressMonitor("upgradeBackups", 0, len(backups.Items))
 	// Loop all the backup CRs
 	for _, backup := range backups.Items {
+		progressMonitor.Inc()
 		// Get volume name from label
 		volumeName, exist := backup.Labels[types.LonghornLabelBackupVolume]
 		if !exist {
@@ -134,7 +137,9 @@ func checkAndRemoveEngineBackupStatus(namespace string, lhClient *lhclientset.Cl
 		return err
 	}
 
+	progressMonitor := util.NewProgressMonitor("checkAndRemoveEngineBackupStatus", 0, len(engines.Items))
 	for _, engine := range engines.Items {
+		progressMonitor.Inc()
 		existingEngine := engine.DeepCopy()
 
 		engine.Status.BackupStatus = nil
@@ -166,7 +171,9 @@ func checkAndUpdateEngineActiveState(namespace string, lhClient *lhclientset.Cli
 		volumeEngineMap[e.Spec.VolumeName] = append(volumeEngineMap[e.Spec.VolumeName], e)
 	}
 
+	progressMonitor := util.NewProgressMonitor("checkAndUpdateEngineActiveState", 0, len(volumeEngineMap))
 	for volumeName, engineList := range volumeEngineMap {
+		progressMonitor.Inc()
 		skip := false
 		for _, e := range engineList {
 			if e.Spec.Active {
