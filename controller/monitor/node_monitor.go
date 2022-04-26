@@ -99,7 +99,7 @@ func (m *NodeMonitor) GetCollectedData() (interface{}, error) {
 	defer m.collectedDataLock.RUnlock()
 
 	data := make(map[string]*CollectedDiskInfo, 0)
-	if err := copier.Copy(&data, &m.collectedData); err != nil {
+	if err := copier.CopyWithOption(&data, &m.collectedData, copier.Option{IgnoreEmpty: true, DeepCopy: true}); err != nil {
 		return data, errors.Wrap(err, "failed to copy node monitor collected data")
 	}
 
