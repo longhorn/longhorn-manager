@@ -15,8 +15,9 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+	monitor "github.com/longhorn/longhorn-manager/controller/monitor"
 	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/util"
+	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
@@ -32,7 +33,9 @@ const (
 	KubeNodePressure = "kubeNodePressure"
 )
 
-var MountPropagationBidirectional = v1.MountPropagationBidirectional
+var (
+	MountPropagationBidirectional = v1.MountPropagationBidirectional
+)
 
 type NodeTestCase struct {
 	nodes           map[string]*longhorn.Node
@@ -45,6 +48,7 @@ type NodeTestCase struct {
 	expectNodeStatus      map[string]longhorn.NodeStatus
 	expectEngineManagers  map[string]*longhorn.InstanceManager
 	expectReplicaManagers map[string]*longhorn.InstanceManager
+	expectOrphans         []*longhorn.Orphan
 }
 
 func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
@@ -55,44 +59,25 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 	nc := NewNodeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID)
 	fakeRecorder := record.NewFakeRecorder(100)
 	nc.eventRecorder = fakeRecorder
-	nc.getDiskInfoHandler = fakeGetDiskInfo
 	nc.topologyLabelsChecker = fakeTopologyLabelsChecker
-	nc.getDiskConfig = fakeGetDiskConfig
-	nc.generateDiskConfig = fakeGenerateDiskConfig
+
+	enqueueNodeForMonitor := func(key string) {
+		nc.queue.Add(key)
+	}
+	mon, err := monitor.NewFakeNodeMonitor(nc.logger, nc.ds, controllerID, enqueueNodeForMonitor)
+	if err != nil {
+		return nil
+	}
+	nc.monitor = mon
+
 	for index := range nc.cacheSyncs {
 		nc.cacheSyncs[index] = alwaysReady
 	}
 	return nc
 }
 
-func fakeGetDiskInfo(directory string) (*util.DiskInfo, error) {
-	return &util.DiskInfo{
-		Fsid:       "fsid",
-		Path:       directory,
-		Type:       "ext4",
-		FreeBlock:  0,
-		TotalBlock: 0,
-		BlockSize:  0,
-
-		StorageMaximum:   0,
-		StorageAvailable: 0,
-	}, nil
-}
-
 func fakeTopologyLabelsChecker(kubeClient clientset.Interface, vers string) (bool, error) {
 	return false, nil
-}
-
-func fakeGetDiskConfig(path string) (*util.DiskConfig, error) {
-	return &util.DiskConfig{
-		DiskUUID: TestDiskID1,
-	}, nil
-}
-
-func fakeGenerateDiskConfig(path string) (*util.DiskConfig, error) {
-	return &util.DiskConfig{
-		DiskUUID: TestDiskID1,
-	}, nil
 }
 
 func generateKubeNodes(testType string) map[string]*v1.Node {
@@ -211,6 +196,24 @@ func kubeObjStatusSyncTest(testType string) *NodeTestCase {
 
 	tc.expectNodeStatus = nodeStatus
 
+	tc.expectOrphans = []*longhorn.Orphan{
+		{
+			Spec: longhorn.OrphanSpec{
+				NodeID: TestNode1,
+				Type:   longhorn.OrphanTypeReplica,
+				Parameters: map[string]string{
+					longhorn.OrphanDataName: monitor.TestOrphanedReplicaDirectoryName,
+					longhorn.OrphanDiskName: TestDiskID1,
+					longhorn.OrphanDiskUUID: TestDiskID1,
+					longhorn.OrphanDiskPath: TestDefaultDataPath,
+				},
+			},
+			Status: longhorn.OrphanStatus{
+				OwnerID: TestNode1,
+			},
+		},
+	}
+
 	return tc
 }
 
@@ -289,6 +292,24 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 	}
+
+	tc.expectOrphans = []*longhorn.Orphan{
+		{
+			Spec: longhorn.OrphanSpec{
+				NodeID: TestNode1,
+				Type:   longhorn.OrphanTypeReplica,
+				Parameters: map[string]string{
+					longhorn.OrphanDataName: monitor.TestOrphanedReplicaDirectoryName,
+					longhorn.OrphanDiskName: TestDiskID1,
+					longhorn.OrphanDiskUUID: TestDiskID1,
+					longhorn.OrphanDiskPath: TestDefaultDataPath,
+				},
+			},
+			Status: longhorn.OrphanStatus{
+				OwnerID: TestNode1,
+			},
+		},
+	}
 	testCases["only disk on node1 should be updated status"] = tc
 
 	tc = &NodeTestCase{}
@@ -352,6 +373,24 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
 				},
+			},
+		},
+	}
+
+	tc.expectOrphans = []*longhorn.Orphan{
+		{
+			Spec: longhorn.OrphanSpec{
+				NodeID: TestNode1,
+				Type:   longhorn.OrphanTypeReplica,
+				Parameters: map[string]string{
+					longhorn.OrphanDataName: monitor.TestOrphanedReplicaDirectoryName,
+					longhorn.OrphanDiskName: TestDiskID1,
+					longhorn.OrphanDiskUUID: TestDiskID1,
+					longhorn.OrphanDiskPath: TestDefaultDataPath,
+				},
+			},
+			Status: longhorn.OrphanStatus{
+				OwnerID: TestNode1,
 			},
 		},
 	}
@@ -424,6 +463,23 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 	}
+	tc.expectOrphans = []*longhorn.Orphan{
+		{
+			Spec: longhorn.OrphanSpec{
+				NodeID: TestNode1,
+				Type:   longhorn.OrphanTypeReplica,
+				Parameters: map[string]string{
+					longhorn.OrphanDataName: monitor.TestOrphanedReplicaDirectoryName,
+					longhorn.OrphanDiskName: TestDiskID1,
+					longhorn.OrphanDiskUUID: TestDiskID1,
+					longhorn.OrphanDiskPath: TestDefaultDataPath,
+				},
+			},
+			Status: longhorn.OrphanStatus{
+				OwnerID: TestNode1,
+			},
+		},
+	}
 	testCases["test disable disk when file system changed"] = tc
 
 	tc = &NodeTestCase{}
@@ -468,6 +524,23 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	}
 	tc.expectReplicaManagers = map[string]*longhorn.InstanceManager{
 		TestReplicaManagerName: newInstanceManager(TestReplicaManagerName, longhorn.InstanceManagerTypeReplica, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
+	}
+	tc.expectOrphans = []*longhorn.Orphan{
+		{
+			Spec: longhorn.OrphanSpec{
+				NodeID: TestNode1,
+				Type:   longhorn.OrphanTypeReplica,
+				Parameters: map[string]string{
+					longhorn.OrphanDataName: monitor.TestOrphanedReplicaDirectoryName,
+					longhorn.OrphanDiskName: TestDiskID1,
+					longhorn.OrphanDiskUUID: TestDiskID1,
+					longhorn.OrphanDiskPath: TestDefaultDataPath,
+				},
+			},
+			Status: longhorn.OrphanStatus{
+				OwnerID: TestNode1,
+			},
+		},
 	}
 	testCases["create default instance managers after node up"] = tc
 
@@ -538,6 +611,23 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.expectReplicaManagers = map[string]*longhorn.InstanceManager{
 		TestReplicaManagerName: newInstanceManager(TestReplicaManagerName, longhorn.InstanceManagerTypeReplica, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
 	}
+	tc.expectOrphans = []*longhorn.Orphan{
+		{
+			Spec: longhorn.OrphanSpec{
+				NodeID: TestNode1,
+				Type:   longhorn.OrphanTypeReplica,
+				Parameters: map[string]string{
+					longhorn.OrphanDataName: monitor.TestOrphanedReplicaDirectoryName,
+					longhorn.OrphanDiskName: TestDiskID1,
+					longhorn.OrphanDiskUUID: TestDiskID1,
+					longhorn.OrphanDiskPath: TestDefaultDataPath,
+				},
+			},
+			Status: longhorn.OrphanStatus{
+				OwnerID: TestNode1,
+			},
+		},
+	}
 	testCases["clean up redundant instance managers only if there is no running instances"] = tc
 
 	tc = &NodeTestCase{}
@@ -583,6 +673,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestEngineManagerName: newInstanceManager(TestEngineManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
 	}
 	tc.expectReplicaManagers = map[string]*longhorn.InstanceManager{}
+	tc.expectOrphans = []*longhorn.Orphan{}
 	testCases["clean up all replica managers if there is no disk on the node"] = tc
 
 	for name, tc := range testCases {
@@ -618,6 +709,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		}
 
 		nc := newTestNodeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestNode1)
+		c.Assert(err, IsNil)
+
 		// create manager pod
 		for _, pod := range tc.pods {
 			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
@@ -656,9 +749,15 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			err = imIndexer.Add(rm)
 			c.Assert(err, IsNil)
 		}
+
 		// sync node status
 		for nodeName, node := range tc.nodes {
-			err := nc.syncNode(getKey(node, c))
+			if nc.controllerID == node.Name {
+				err = nc.monitor.SyncCollectedData()
+				c.Assert(err, IsNil)
+			}
+
+			err = nc.syncNode(getKey(node, c))
 			c.Assert(err, IsNil)
 
 			n, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
@@ -703,5 +802,20 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			}
 		}
 
+		if orphanList, err := lhClient.LonghornV1beta2().Orphans(TestNamespace).List(context.TODO(), metav1.ListOptions{}); err == nil {
+			c.Assert(len(orphanList.Items), Equals, len(tc.expectOrphans))
+		} else {
+			c.Assert(len(tc.expectOrphans), Equals, 0)
+		}
+
+		for _, orphan := range tc.expectOrphans {
+			orphanName := types.GetOrphanChecksumNameForOrphanedDirectory(orphan.Spec.NodeID,
+				orphan.Spec.Parameters[longhorn.OrphanDiskName],
+				orphan.Spec.Parameters[longhorn.OrphanDiskPath],
+				orphan.Spec.Parameters[longhorn.OrphanDiskUUID],
+				orphan.Spec.Parameters[longhorn.OrphanDataName])
+			_, err := lhClient.LonghornV1beta2().Orphans(TestNamespace).Get(context.TODO(), orphanName, metav1.GetOptions{})
+			c.Assert(err, IsNil)
+		}
 	}
 }

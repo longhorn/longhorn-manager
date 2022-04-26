@@ -1841,6 +1841,28 @@ func (s *DataStore) GetReadyDiskNode(diskUUID string) (*longhorn.Node, string, e
 	return nil, "", fmt.Errorf("cannot find the corresponding ready node and disk with disk UUID %v", diskUUID)
 }
 
+// GetReadyDisk find disk name by the given nodeName and diskUUD
+// Returns a disk name
+func (s *DataStore) GetReadyDisk(nodeName string, diskUUID string) (string, error) {
+	node, err := s.GetNode(nodeName)
+	if err != nil {
+		return "", err
+	}
+
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		if diskStatus.DiskUUID == diskUUID {
+			condition := types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady)
+			if condition.Status == longhorn.ConditionStatusTrue {
+				if _, exists := node.Spec.Disks[diskName]; exists {
+					return diskName, nil
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("cannot find the ready disk with UUID %v", diskUUID)
+}
+
 // UpdateNode updates Longhorn Node resource and verifies update
 func (s *DataStore) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	obj, err := s.lhClient.LonghornV1beta2().Nodes(s.namespace).Update(context.TODO(), node, metav1.UpdateOptions{})
@@ -3295,4 +3317,122 @@ func ValidateRecurringJobs(jobs []longhorn.RecurringJobSpec) error {
 		return fmt.Errorf("job Can't retain more than %d snapshots", MaxRecurringJobRetain)
 	}
 	return nil
+}
+
+// CreateOrphan creates a Longhorn Orphan resource and verifies creation
+func (s *DataStore) CreateOrphan(orphan *longhorn.Orphan) (*longhorn.Orphan, error) {
+	ret, err := s.lhClient.LonghornV1beta2().Orphans(s.namespace).Create(context.TODO(), orphan, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(orphan.Name, "orphan", func(name string) (runtime.Object, error) {
+		return s.GetOrphanRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.Orphan)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for orphan")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// GetOrphanRO returns the Orphan with the given orphan name in the cluster
+func (s *DataStore) GetOrphanRO(orphanName string) (*longhorn.Orphan, error) {
+	return s.oLister.Orphans(s.namespace).Get(orphanName)
+}
+
+// GetOrphan returns a copy of Orphan with the given orphan name in the cluster
+func (s *DataStore) GetOrphan(name string) (*longhorn.Orphan, error) {
+	resultRO, err := s.GetOrphanRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// UpdateOrphan updates the given Longhorn orphan in the cluster Orphan CR and verifies update
+func (s *DataStore) UpdateOrphan(orphan *longhorn.Orphan) (*longhorn.Orphan, error) {
+	obj, err := s.lhClient.LonghornV1beta2().Orphans(s.namespace).Update(context.TODO(), orphan, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(orphan.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetOrphanRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateOrphanStatus updates the given Longhorn orphan status in the cluster Orphans CR status and verifies update
+func (s *DataStore) UpdateOrphanStatus(orphan *longhorn.Orphan) (*longhorn.Orphan, error) {
+	obj, err := s.lhClient.LonghornV1beta2().Orphans(s.namespace).UpdateStatus(context.TODO(), orphan, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(orphan.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetOrphanRO(name)
+	})
+	return obj, nil
+}
+
+// RemoveFinalizerForOrphan will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForOrphan(orphan *longhorn.Orphan) error {
+	if !util.FinalizerExists(longhornFinalizerKey, orphan) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, orphan); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().Orphans(s.namespace).Update(context.TODO(), orphan, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if orphan.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for orphan %s", orphan.Name)
+	}
+	return nil
+}
+
+// ListOrphans returns an object contains all orphans in the cluster Orphans CR
+func (s *DataStore) ListOrphans() (map[string]*longhorn.Orphan, error) {
+	list, err := s.oLister.Orphans(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.Orphan{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListOrphansRO returns a list of all Orphans for the given namespace
+func (s *DataStore) ListOrphansRO() ([]*longhorn.Orphan, error) {
+	return s.oLister.Orphans(s.namespace).List(labels.Everything())
+}
+
+// ListOrphansByNodeRO returns a list of all Orphans on node Name for the given namespace,
+// the list contains direct references to the internal cache objects and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) ListOrphansByNodeRO(name string) ([]*longhorn.Orphan, error) {
+	nodeSelector, err := getNodeSelector(name)
+	if err != nil {
+		return nil, err
+	}
+	return s.oLister.Orphans(s.namespace).List(nodeSelector)
+}
+
+// DeleteOrphan won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteOrphan(orphanName string) error {
+	return s.lhClient.LonghornV1beta2().Orphans(s.namespace).Delete(context.TODO(), orphanName, metav1.DeleteOptions{})
 }

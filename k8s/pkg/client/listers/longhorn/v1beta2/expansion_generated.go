@@ -98,6 +98,14 @@ type NodeListerExpansion interface{}
 // NodeNamespaceLister.
 type NodeNamespaceListerExpansion interface{}
 
+// OrphanListerExpansion allows custom methods to be added to
+// OrphanLister.
+type OrphanListerExpansion interface{}
+
+// OrphanNamespaceListerExpansion allows custom methods to be added to
+// OrphanNamespaceLister.
+type OrphanNamespaceListerExpansion interface{}
+
 // RecurringJobListerExpansion allows custom methods to be added to
 // RecurringJobLister.
 type RecurringJobListerExpansion interface{}

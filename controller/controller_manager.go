@@ -87,6 +87,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	bimc := NewBackingImageManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
 	bidsc := NewBackingImageDataSourceController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
 	rjc := NewRecurringJobController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, managerImage)
+	oc := NewOrphanController(logger, ds, scheme, kubeClient, controllerID, namespace)
 	kpvc := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID)
 	knc := NewKubernetesNodeController(logger, ds, scheme, kubeClient, controllerID)
 	kpc := NewKubernetesPodController(logger, ds, scheme, kubeClient, controllerID)
@@ -114,6 +115,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	go bvc.Run(Workers, stopCh)
 	go bc.Run(Workers, stopCh)
 	go rjc.Run(Workers, stopCh)
+	go oc.Run(Workers, stopCh)
 
 	go kpvc.Run(Workers, stopCh)
 	go knc.Run(Workers, stopCh)

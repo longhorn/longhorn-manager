@@ -1,4 +1,4 @@
-package monitoring
+package metricscollector
 
 import (
 	"github.com/prometheus/client_golang/prometheus"

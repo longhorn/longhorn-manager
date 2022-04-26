@@ -267,6 +267,9 @@ func (m *VolumeManager) generateSupportBundleYAMLsForLonghorn(dir string, errLog
 	getObjectMapAndEncodeToYAML("recurringjobs", func() (interface{}, error) {
 		return m.ds.ListRecurringJobs()
 	}, dir, errLog)
+	getObjectMapAndEncodeToYAML("orphans", func() (interface{}, error) {
+		return m.ds.ListOrphans()
+	}, dir, errLog)
 }
 
 func getObjectMapAndEncodeToYAML(name string, getMapFunc GetObjectMapFunc, yamlsDir string, errLog io.Writer) {
