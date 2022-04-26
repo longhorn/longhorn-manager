@@ -38,13 +38,15 @@ type EngineBinary struct {
 	cURL  string
 }
 
-func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (EngineClient, error) {
+func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (*EngineBinary, error) {
 	if request.EngineImage == "" {
 		return nil, fmt.Errorf("invalid empty engine image from request")
 	}
+
 	if request.IP != "" && request.Port == 0 {
 		return nil, fmt.Errorf("invalid empty port from request with valid IP")
 	}
+
 	return &EngineBinary{
 		name:  request.VolumeName,
 		image: request.EngineImage,

@@ -459,7 +459,7 @@ func (bc *BackupController) getBackupVolumeName(backup *longhorn.Backup) (string
 	return backupVolumeName, nil
 }
 
-func (bc *BackupController) getEngineBinaryClient(volumeName string) (engineapi.EngineClient, error) {
+func (bc *BackupController) getEngineBinaryClient(volumeName string) (*engineapi.EngineBinary, error) {
 	engine, err := bc.ds.GetVolumeCurrentEngine(volumeName)
 	if err != nil {
 		return nil, err
@@ -602,7 +602,7 @@ func (bc *BackupController) hasMonitor(backupName string) *engineapi.BackupMonit
 	return bc.monitors[backupName]
 }
 
-func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume *longhorn.Volume, backupTargetClient *engineapi.BackupTargetClient, biChecksum string, engineCliClient engineapi.EngineClient) (*engineapi.BackupMonitor, error) {
+func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume *longhorn.Volume, backupTargetClient *engineapi.BackupTargetClient, biChecksum string, engineCliClient *engineapi.EngineBinary) (*engineapi.BackupMonitor, error) {
 	monitor := bc.hasMonitor(backup.Name)
 	if monitor != nil {
 		return monitor, nil
