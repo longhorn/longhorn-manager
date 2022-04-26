@@ -929,7 +929,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine,
 	rsMap map[string]*longhorn.RestoreStatus, addressReplicaMap map[string]string,
-	cliAPIVersion int, ds *datastore.DataStore, engineClientProxy engineapi.Client) (needRestore bool, err error) {
+	cliAPIVersion int, ds *datastore.DataStore, engineClientProxy engineapi.EngineClientProxy) (needRestore bool, err error) {
 	defer func() {
 		if err != nil {
 			err = errors.Wrapf(err, "failed pre-restore check for engine %v", engine.Name)
@@ -968,7 +968,7 @@ func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine,
 }
 
 func syncWithRestoreStatus(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus,
-	addressReplicaMap map[string]string, engineClientProxy engineapi.Client) bool {
+	addressReplicaMap map[string]string, engineClientProxy engineapi.EngineClientProxy) bool {
 	for _, status := range engine.Status.PurgeStatus {
 		if status.IsPurging {
 			return false
@@ -1101,7 +1101,7 @@ func checkSizeBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine,
 	return true, nil
 }
 
-func restoreBackup(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, cliAPIVersion int, ds *datastore.DataStore, engineClientProxy engineapi.Client) error {
+func restoreBackup(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, cliAPIVersion int, ds *datastore.DataStore, engineClientProxy engineapi.EngineClientProxy) error {
 	// Get default backup target
 	backupTarget, err := ds.GetBackupTargetRO(types.DefaultBackupTargetName)
 	if err != nil {
@@ -1190,7 +1190,7 @@ func preCloneCheck(engine *longhorn.Engine) (needClone bool, err error) {
 	return true, nil
 }
 
-func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.Client, ds *datastore.DataStore) error {
+func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy, ds *datastore.DataStore) error {
 	sourceVolumeName := types.GetVolumeName(engine.Spec.RequestedDataSource)
 	snapshotName := types.GetSnapshotName(engine.Spec.RequestedDataSource)
 	sourceEngines, err := ds.ListVolumeEngines(sourceVolumeName)
@@ -1227,7 +1227,7 @@ func (ec *EngineController) ReconcileEngineState(e *longhorn.Engine) error {
 	return nil
 }
 
-func GetBinaryClientForEngine(e *longhorn.Engine, engines engineapi.EngineClientCollection, image string) (client engineapi.EngineClient, err error) {
+func GetBinaryClientForEngine(e *longhorn.Engine, engines engineapi.EngineClientCollection, image string) (client *engineapi.EngineBinary, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "cannot get client for engine %v", e.Name)
 	}()
@@ -1311,7 +1311,7 @@ func (ec *EngineController) rebuildNewReplica(e *longhorn.Engine) error {
 	return nil
 }
 
-func doesAddressExistInEngine(e *longhorn.Engine, addr string, engineClientProxy engineapi.Client) (bool, error) {
+func doesAddressExistInEngine(e *longhorn.Engine, addr string, engineClientProxy engineapi.EngineClientProxy) (bool, error) {
 	replicaURLModeMap, err := engineClientProxy.ReplicaList(e)
 	if err != nil {
 		return false, err

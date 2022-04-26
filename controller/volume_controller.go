@@ -3648,7 +3648,7 @@ func (vc *VolumeController) createSnapshot(snapshotName string, labels map[strin
 	return snap, nil
 }
 
-func (vc *VolumeController) getEngineBinaryClient(volumeName string) (client engineapi.EngineClient, err error) {
+func (vc *VolumeController) getEngineBinaryClient(volumeName string) (client *engineapi.EngineBinary, err error) {
 	var e *longhorn.Engine
 
 	defer func() {

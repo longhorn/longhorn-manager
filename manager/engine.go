@@ -265,7 +265,7 @@ func (m *VolumeManager) checkVolumeNotInMigration(volumeName string) error {
 	return nil
 }
 
-func (m *VolumeManager) GetEngineBinaryClient(volumeName string) (client engineapi.EngineClient, err error) {
+func (m *VolumeManager) GetEngineBinaryClient(volumeName string) (client *engineapi.EngineBinary, err error) {
 	var e *longhorn.Engine
 
 	defer func() {

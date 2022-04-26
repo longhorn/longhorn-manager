@@ -281,6 +281,10 @@ func (btc *BackupTargetClient) Ping() error {
 	return errors.Errorf(ErrNotImplement)
 }
 
+func (btc *BackupTargetClient) Name() string {
+	return btc.URL
+}
+
 func (btc *BackupTargetClient) VersionGet(e *longhorn.Engine, binary EngineClient, clientOnly bool) (version *EngineVersion, err error) {
 	return nil, errors.Errorf(ErrNotImplement)
 }

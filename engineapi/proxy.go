@@ -32,52 +32,8 @@ type EngineClientProxy interface {
 	Ping() error
 }
 
-// TODO: replace with EngineClientProxy interface later
-type Client interface {
-	IsGRPC() bool
-	Start(*longhorn.InstanceManager, logrus.FieldLogger, *datastore.DataStore) error
-	Stop(string) error
-	Ping() error
-
-	VersionGet(engine *longhorn.Engine, clientOnly bool) (version *EngineVersion, err error)
-
-	VolumeGet(*longhorn.Engine) (volume *Volume, err error)
-	VolumeExpand(engine *longhorn.Engine) error
-	VolumeFrontendStart(e *longhorn.Engine) error
-	VolumeFrontendShutdown(*longhorn.Engine) error
-
-	ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume bool) error
-	ReplicaRemove(engine *longhorn.Engine, address string) error
-	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)
-	ReplicaRebuildStatus(engine *longhorn.Engine) (status map[string]*longhorn.RebuildStatus, err error)
-	ReplicaRebuildVerify(engine *longhorn.Engine, url string) error
-
-	SnapshotCreate(engine *longhorn.Engine, name string, labels map[string]string) (string, error)
-	SnapshotDelete(engine *longhorn.Engine, name string) error
-	SnapshotGet(engine *longhorn.Engine, name string) (snapshot *longhorn.Snapshot, err error)
-	SnapshotList(engine *longhorn.Engine) (snapshots map[string]*longhorn.Snapshot, err error)
-	SnapshotRevert(engine *longhorn.Engine, name string) error
-	SnapshotPurge(engine *longhorn.Engine) error
-	SnapshotPurgeStatus(engine *longhorn.Engine) (status map[string]*longhorn.PurgeStatus, err error)
-	SnapshotClone(engine *longhorn.Engine, name, fromController string) (err error)
-	SnapshotCloneStatus(engine *longhorn.Engine) (status map[string]*longhorn.SnapshotCloneStatus, err error)
-
-	SnapshotBackup(engine *longhorn.Engine, snapshotName, backupName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (backupID string, replicaAddress string, err error)
-	SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress string) (status *longhorn.EngineBackupStatus, err error)
-	BackupRestore(e *longhorn.Engine, backupTarget, backupName, backupVolumeName, lastRestored string, credential map[string]string) error
-	BackupRestoreStatus(engine *longhorn.Engine) (status map[string]*longhorn.RestoreStatus, err error)
-
-	BackupGet(destURL string, credential map[string]string) (*Backup, error)
-	BackupVolumeGet(destURL string, credential map[string]string) (volume *BackupVolume, err error)
-	BackupNameList(destURL, volumeName string, credential map[string]string) (names []string, err error)
-	BackupVolumeNameList(destURL string, credential map[string]string) (names []string, err error)
-	BackupDelete(destURL string, credential map[string]string) (err error)
-	BackupVolumeDelete(destURL, volumeName string, credential map[string]string) (err error)
-	BackupConfigMetaGet(destURL string, credential map[string]string) (*ConfigMetadata, error)
-}
-
 type EngineClientProxyHandler struct {
-	Clients map[string]Client
+	Clients map[string]EngineClientProxy
 
 	logger logrus.FieldLogger
 
@@ -88,7 +44,7 @@ type EngineClientProxyHandler struct {
 
 func NewEngineClientProxyHandler(logger logrus.FieldLogger, ds *datastore.DataStore) *EngineClientProxyHandler {
 	return &EngineClientProxyHandler{
-		Clients: make(map[string]Client),
+		Clients: make(map[string]EngineClientProxy),
 		logger:  logger,
 		ds:      ds,
 		lock:    &sync.RWMutex{},
@@ -103,7 +59,7 @@ func getLoggerForProxy(logger logrus.FieldLogger, image string) *logrus.Entry {
 	)
 }
 
-func (h *EngineClientProxyHandler) GetCompatibleClient(e *longhorn.Engine, fallBack interface{}) (c Client, err error) {
+func (h *EngineClientProxyHandler) GetCompatibleClient(e *longhorn.Engine, fallBack interface{}) (c EngineClientProxy, err error) {
 	if e == nil {
 		return nil, errors.Errorf("BUG: failed to get proxy client due to missing engine")
 	}
@@ -139,7 +95,7 @@ func (h *EngineClientProxyHandler) GetCompatibleClient(e *longhorn.Engine, fallB
 	return h.GetClient(im)
 }
 
-func (h *EngineClientProxyHandler) GetClient(im *longhorn.InstanceManager) (c Client, err error) {
+func (h *EngineClientProxyHandler) GetClient(im *longhorn.InstanceManager) (c EngineClientProxy, err error) {
 	if im == nil {
 		return nil, errors.Errorf("BUG: failed to get proxy client due to missing instance manager")
 	}
@@ -166,7 +122,7 @@ func (h *EngineClientProxyHandler) GetClient(im *longhorn.InstanceManager) (c Cl
 	return h.NewClient(log, im)
 }
 
-func (h *EngineClientProxyHandler) NewClient(log logrus.FieldLogger, im *longhorn.InstanceManager) (Client, error) {
+func (h *EngineClientProxyHandler) NewClient(log logrus.FieldLogger, im *longhorn.InstanceManager) (EngineClientProxy, error) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 
@@ -321,6 +277,10 @@ func (p *Proxy) DirectToURL(e *longhorn.Engine) string {
 
 func (p *Proxy) Ping() (err error) {
 	return p.grpcClient.Ping()
+}
+
+func (p *Proxy) Name() string {
+	return p.InstanceManagerName
 }
 
 func (p *Proxy) VersionGet(e *longhorn.Engine, clientOnly bool) (version *EngineVersion, err error) {

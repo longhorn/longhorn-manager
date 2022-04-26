@@ -55,7 +55,7 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	controllerID string) *VolumeController {
 	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, TestNamespace)
 
-	proxyHandler := &engineapi.EngineClientProxyHandler{Clients: make(map[string]engineapi.Client)}
+	proxyHandler := &engineapi.EngineClientProxyHandler{Clients: make(map[string]engineapi.EngineClientProxy)}
 
 	logger := logrus.StandardLogger()
 	vc := NewVolumeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, proxyHandler)
