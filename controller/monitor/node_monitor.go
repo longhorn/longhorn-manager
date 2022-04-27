@@ -45,6 +45,7 @@ type NodeMonitor struct {
 
 type CollectedDiskInfo struct {
 	Path                          string
+	NodeOrDiskEvicted             bool
 	DiskStat                      *util.DiskStat
 	DiskUUID                      string
 	Condition                     *longhorn.Condition
@@ -131,11 +132,12 @@ func (m *NodeMonitor) SyncCollectedData() error {
 func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*CollectedDiskInfo {
 	diskInfoMap := make(map[string]*CollectedDiskInfo, 0)
 	orphanedReplicaDirectoryNames := map[string]string{}
+	nodeOrDiskEvicted := isNodeOrDiskEvicted(node)
 
 	for diskName, disk := range node.Spec.Disks {
 		stat, err := m.getDiskStatHandler(disk.Path)
 		if err != nil {
-			diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nil, orphanedReplicaDirectoryNames,
+			diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nodeOrDiskEvicted, nil, orphanedReplicaDirectoryNames,
 				string(longhorn.DiskConditionReasonNoDiskInfo),
 				fmt.Sprintf("Disk %v(%v) on node %v is not ready: Get disk information error: %v",
 					diskName, node.Spec.Disks[diskName].Path, node.Name, err))
@@ -145,7 +147,7 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		diskConfig, err := m.getDiskConfig(disk.Path)
 		if err != nil {
 			if !types.ErrorIsNotFound(err) {
-				diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nil, orphanedReplicaDirectoryNames,
+				diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nodeOrDiskEvicted, nil, orphanedReplicaDirectoryNames,
 					string(longhorn.DiskConditionReasonNoDiskInfo),
 					fmt.Sprintf("Disk %v(%v) on node %v is not ready: failed to get disk config: error: %v",
 						diskName, disk.Path, node.Name, err))
@@ -154,7 +156,7 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 			// Blindly check or generate disk config.
 			// The handling of all disks containing the same fsid will be done in NodeController.
 			if diskConfig, err = m.generateDiskConfig(node.Spec.Disks[diskName].Path); err != nil {
-				diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nil, orphanedReplicaDirectoryNames,
+				diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nodeOrDiskEvicted, nil, orphanedReplicaDirectoryNames,
 					string(longhorn.DiskConditionReasonNoDiskInfo),
 					fmt.Sprintf("Disk %v(%v) on node %v is not ready: failed to generate disk config: error: %v",
 						diskName, disk.Path, node.Name, err))
@@ -165,11 +167,24 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		replicaDirectoryNames := m.getPossibleReplicaDirectoryNames(node, diskName, diskConfig.DiskUUID, disk.Path)
 		orphanedReplicaDirectoryNames = m.getOrphanedReplicaDirectoryNames(node, diskName, diskConfig.DiskUUID, disk.Path, replicaDirectoryNames)
 
-		diskInfoMap[diskName] = NewDiskInfo(disk.Path, diskConfig.DiskUUID, stat, orphanedReplicaDirectoryNames,
+		diskInfoMap[diskName] = NewDiskInfo(disk.Path, diskConfig.DiskUUID, nodeOrDiskEvicted, stat, orphanedReplicaDirectoryNames,
 			string(longhorn.DiskConditionReasonNoDiskInfo), "")
 	}
 
 	return diskInfoMap
+}
+
+func isNodeOrDiskEvicted(node *longhorn.Node) bool {
+	if node.Spec.EvictionRequested {
+		return true
+	}
+	for _, disk := range node.Spec.Disks {
+		if disk.EvictionRequested {
+			return true
+		}
+	}
+
+	return false
 }
 
 func getPossibleReplicaDirectoryNames(node *longhorn.Node, diskName, diskUUID, diskPath string) map[string]string {
@@ -196,9 +211,10 @@ func canCollectDiskData(node *longhorn.Node, diskName, diskUUID, diskPath string
 		types.GetCondition(node.Status.DiskStatus[diskName].Conditions, longhorn.DiskConditionTypeReady).Status == longhorn.ConditionStatusTrue
 }
 
-func NewDiskInfo(path, diskUUID string, stat *util.DiskStat, orphanedReplicaDirectoryNames map[string]string, errorReason, errorMessage string) *CollectedDiskInfo {
+func NewDiskInfo(path, diskUUID string, nodeOrDiskEvicted bool, stat *util.DiskStat, orphanedReplicaDirectoryNames map[string]string, errorReason, errorMessage string) *CollectedDiskInfo {
 	diskInfo := &CollectedDiskInfo{
 		Path:                          path,
+		NodeOrDiskEvicted:             nodeOrDiskEvicted,
 		DiskUUID:                      diskUUID,
 		DiskStat:                      stat,
 		OrphanedReplicaDirectoryNames: orphanedReplicaDirectoryNames,

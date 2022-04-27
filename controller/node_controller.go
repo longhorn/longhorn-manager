@@ -445,6 +445,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	if err := nc.syncDiskStatus(node, collectedDiskInfo); err != nil {
 		return err
 	}
+
 	// sync mount propagation status on current node
 	for _, pod := range managerPods {
 		if pod.Spec.NodeName == node.Name {
@@ -611,7 +612,8 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 
 			if errorMessage != "" {
 				notReadyDiskInfoMap[fsid][diskName] =
-					monitor.NewDiskInfo(diskInfo.Path, diskInfo.DiskUUID, diskInfo.DiskStat, diskInfo.OrphanedReplicaDirectoryNames,
+					monitor.NewDiskInfo(diskInfo.Path, diskInfo.DiskUUID,
+						diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat, diskInfo.OrphanedReplicaDirectoryNames,
 						string(longhorn.DiskConditionReasonDiskFilesystemChanged), errorMessage)
 				continue
 			}
@@ -630,7 +632,8 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 			if nc.isFSIDDuplicatedWithExistingReadyDisk(diskName, diskInfoMap, node.Status.DiskStatus) ||
 				isReadyDiskFound(readyDiskInfoMap[fsid]) {
 				notReadyDiskInfoMap[fsid][diskName] =
-					monitor.NewDiskInfo(diskInfo.Path, diskInfo.DiskUUID, diskInfo.DiskStat, diskInfo.OrphanedReplicaDirectoryNames,
+					monitor.NewDiskInfo(diskInfo.Path, diskInfo.DiskUUID, diskInfo.NodeOrDiskEvicted,
+						diskInfo.DiskStat, diskInfo.OrphanedReplicaDirectoryNames,
 						string(longhorn.DiskConditionReasonDiskFilesystemChanged),
 						fmt.Sprintf("Disk %v(%v) on node %v is not ready: disk has same file system ID %v as other disks %+v",
 							diskName, diskInfoMap[diskName].Path, node.Name, fsid, monitor.GetDiskNamesFromDiskMap(diskInfoMap)))
@@ -1067,7 +1070,6 @@ func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, di
 				if err := nc.ds.DeleteOrphan(orphan.Name); err != nil && !apierrors.IsNotFound(err) {
 					return errors.Wrapf(err, "failed to delete orphan %v", orphan.Name)
 				}
-				diskInfo.OrphanedReplicaDirectoryNames[orphan.Spec.Parameters[longhorn.OrphanDataName]] = longhorn.OrphanCRStatusDeleted
 				continue
 			}
 		}
@@ -1081,7 +1083,6 @@ func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, di
 			if err := nc.ds.DeleteOrphan(orphan.Name); err != nil && !apierrors.IsNotFound(err) {
 				return errors.Wrapf(err, "failed to delete orphan %v", orphan.Name)
 			}
-			diskInfo.OrphanedReplicaDirectoryNames[orphan.Spec.Parameters[longhorn.OrphanDataName]] = longhorn.OrphanCRStatusDeleted
 		}
 	}
 	return nil
@@ -1103,16 +1104,11 @@ func (nc *NodeController) isOnDiskDataMissing(orphan *longhorn.Orphan, diskInfo 
 }
 
 func (nc *NodeController) createOrphans(node *longhorn.Node, diskName string, diskInfo *monitor.CollectedDiskInfo) error {
-	for dirName, created := range diskInfo.OrphanedReplicaDirectoryNames {
-		// If the orphan CR for the orphaned replica directory is created, we don't have to retry to create it again.
-		if created == longhorn.OrphanCRStatusCreated {
-			continue
-		}
+	for dirName := range diskInfo.OrphanedReplicaDirectoryNames {
 		if err := nc.createOrphan(node, diskName, dirName, diskInfo); err != nil && !apierrors.IsAlreadyExists(err) {
 			return errors.Wrapf(err, "unable to create orphan for orphaned replica directory %v in disk %v on node %v",
 				dirName, node.Spec.Disks[diskName].Path, node.Name)
 		}
-		diskInfo.OrphanedReplicaDirectoryNames[dirName] = longhorn.OrphanCRStatusCreated
 	}
 	return nil
 }
@@ -1153,34 +1149,12 @@ func (nc *NodeController) syncWithMonitor(mon monitor.Monitor, node *longhorn.No
 	}
 
 	collectedDiskInfo := v.(map[string]*monitor.CollectedDiskInfo)
-	if matched, err := isDiskMatched(node, collectedDiskInfo); !matched {
+	if matched := isDiskMatched(node, collectedDiskInfo); !matched {
 		return map[string]*monitor.CollectedDiskInfo{},
-			errors.Wrap(err, "mismatching disks in node resource object and monitor collected data")
+			errors.New("mismatching disks in node resource object and monitor collected data")
 	}
-
-	// Compare with last collectedDiskInfo.
-	// If the orphan CR is created, avoid trying to recreate it.
-	collectedDiskInfo = nc.updateOrphanedReplicaDirectoryNamesStatus(collectedDiskInfo)
 
 	return collectedDiskInfo, nil
-}
-
-func (nc *NodeController) updateOrphanedReplicaDirectoryNamesStatus(collectedDiskInfo map[string]*monitor.CollectedDiskInfo) map[string]*monitor.CollectedDiskInfo {
-	for diskName, newDiskInfo := range collectedDiskInfo {
-		oldDiskInfo, ok := nc.collectedDiskInfo[diskName]
-		if !ok {
-			continue
-		}
-		for name := range newDiskInfo.OrphanedReplicaDirectoryNames {
-			status, ok := oldDiskInfo.OrphanedReplicaDirectoryNames[name]
-			if !ok {
-				continue
-			}
-			collectedDiskInfo[diskName].OrphanedReplicaDirectoryNames[name] = status
-		}
-	}
-
-	return collectedDiskInfo
 }
 
 // Check all disks in the same filesystem ID are in ready status
@@ -1203,11 +1177,11 @@ func alignDiskSpecAndStatus(node *longhorn.Node) {
 		node.Status.DiskStatus = map[string]*longhorn.DiskStatus{}
 	}
 
-	for id := range node.Spec.Disks {
-		if node.Status.DiskStatus[id] == nil {
-			node.Status.DiskStatus[id] = &longhorn.DiskStatus{}
+	for diskName := range node.Spec.Disks {
+		if node.Status.DiskStatus[diskName] == nil {
+			node.Status.DiskStatus[diskName] = &longhorn.DiskStatus{}
 		}
-		diskStatus := node.Status.DiskStatus[id]
+		diskStatus := node.Status.DiskStatus[diskName]
 		if diskStatus.Conditions == nil {
 			diskStatus.Conditions = []longhorn.Condition{}
 		}
@@ -1217,12 +1191,12 @@ func alignDiskSpecAndStatus(node *longhorn.Node) {
 		// When condition are not ready, the old storage data should be cleaned.
 		diskStatus.StorageMaximum = 0
 		diskStatus.StorageAvailable = 0
-		node.Status.DiskStatus[id] = diskStatus
+		node.Status.DiskStatus[diskName] = diskStatus
 	}
 
-	for id := range node.Status.DiskStatus {
-		if _, exists := node.Spec.Disks[id]; !exists {
-			delete(node.Status.DiskStatus, id)
+	for diskName := range node.Status.DiskStatus {
+		if _, exists := node.Spec.Disks[diskName]; !exists {
+			delete(node.Status.DiskStatus, diskName)
 		}
 	}
 }
@@ -1231,22 +1205,27 @@ func isReadyDiskFound(diskInfoMap map[string]*monitor.CollectedDiskInfo) bool {
 	return len(diskInfoMap) > 0
 }
 
-func isDiskMatched(node *longhorn.Node, collectedDiskInfo map[string]*monitor.CollectedDiskInfo) (bool, error) {
+func isDiskMatched(node *longhorn.Node, collectedDiskInfo map[string]*monitor.CollectedDiskInfo) bool {
 	if len(node.Spec.Disks) != len(collectedDiskInfo) {
-		return false, errors.New(fmt.Sprintf("number of node disks %v and collected disk info %v are not equal",
-			len(node.Spec.Disks), len(collectedDiskInfo)))
+		logrus.Warnf("number of node disks %v and collected disk info %v are not equal",
+			len(node.Spec.Disks), len(collectedDiskInfo))
+		return false
 	}
 
 	for diskName, diskInfo := range collectedDiskInfo {
 		disk, ok := node.Spec.Disks[diskName]
 		if !ok {
-			return false, errors.New(fmt.Sprintf("disk %v is not found in node %v", diskName, node.Name))
+			logrus.Warnf("disk %v is not found in node %v", diskName, node.Name)
+			return false
 		}
-		if disk.Path != diskInfo.Path {
-			return false, errors.New(fmt.Sprintf("disk path %v is not equal to collected path %v for disk %v",
-				disk.Path, diskInfo.Path, diskName))
+
+		nodeOrDiskEvicted := node.Spec.EvictionRequested || disk.EvictionRequested
+		if nodeOrDiskEvicted != diskInfo.NodeOrDiskEvicted ||
+			disk.Path != diskInfo.Path {
+			logrus.Warnf("disk data %v is mismatched with collected data %v for disk %v", disk, diskInfo, diskName)
+			return false
 		}
 	}
 
-	return true, nil
+	return true
 }
