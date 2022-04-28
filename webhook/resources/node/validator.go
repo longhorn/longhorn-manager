@@ -71,6 +71,11 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 			oldNode.Name), "")
 	}
 
+	// Ensure the node controller already syncs the disk spec and status.
+	if len(oldNode.Spec.Disks) != len(oldNode.Status.DiskStatus) {
+		return werror.NewConflict(fmt.Sprintf("spec and status of disks on node %v are being syncing and please retry later.", oldNode.Name))
+	}
+
 	// We need to make sure the tags passed in are valid before updating the node.
 	_, err := util.ValidateTags(newNode.Spec.Tags)
 	if err != nil {
