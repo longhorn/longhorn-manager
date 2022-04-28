@@ -44,12 +44,13 @@ type NodeMonitor struct {
 }
 
 type CollectedDiskInfo struct {
-	Path                          string
-	NodeOrDiskEvicted             bool
-	DiskStat                      *util.DiskStat
-	DiskUUID                      string
-	Condition                     *longhorn.Condition
-	OrphanedReplicaDirectoryNames map[string]string
+	Path                                 string
+	NodeOrDiskEvicted                    bool
+	DiskStat                             *util.DiskStat
+	DiskUUID                             string
+	Condition                            *longhorn.Condition
+	NewOrphanedReplicaDirectoryNames     map[string]string
+	MissingOrphanedReplicaDirectoryNames map[string]string
 }
 
 type GetDiskStatHandler func(string) (*util.DiskStat, error)
@@ -131,13 +132,15 @@ func (m *NodeMonitor) SyncCollectedData() error {
 // Collect disk data and generate disk UUID blindly.
 func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*CollectedDiskInfo {
 	diskInfoMap := make(map[string]*CollectedDiskInfo, 0)
-	orphanedReplicaDirectoryNames := map[string]string{}
+	newOrphanedReplicaDirectoryNames := map[string]string{}
+	missingOrphanedReplicaDirectoryNames := map[string]string{}
 	nodeOrDiskEvicted := isNodeOrDiskEvicted(node)
 
 	for diskName, disk := range node.Spec.Disks {
 		stat, err := m.getDiskStatHandler(disk.Path)
 		if err != nil {
-			diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nodeOrDiskEvicted, nil, orphanedReplicaDirectoryNames,
+			diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nodeOrDiskEvicted, nil,
+				newOrphanedReplicaDirectoryNames, missingOrphanedReplicaDirectoryNames,
 				string(longhorn.DiskConditionReasonNoDiskInfo),
 				fmt.Sprintf("Disk %v(%v) on node %v is not ready: Get disk information error: %v",
 					diskName, node.Spec.Disks[diskName].Path, node.Name, err))
@@ -147,7 +150,8 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		diskConfig, err := m.getDiskConfig(disk.Path)
 		if err != nil {
 			if !types.ErrorIsNotFound(err) {
-				diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nodeOrDiskEvicted, nil, orphanedReplicaDirectoryNames,
+				diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nodeOrDiskEvicted, nil,
+					newOrphanedReplicaDirectoryNames, missingOrphanedReplicaDirectoryNames,
 					string(longhorn.DiskConditionReasonNoDiskInfo),
 					fmt.Sprintf("Disk %v(%v) on node %v is not ready: failed to get disk config: error: %v",
 						diskName, disk.Path, node.Name, err))
@@ -156,7 +160,8 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 			// Blindly check or generate disk config.
 			// The handling of all disks containing the same fsid will be done in NodeController.
 			if diskConfig, err = m.generateDiskConfig(node.Spec.Disks[diskName].Path); err != nil {
-				diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nodeOrDiskEvicted, nil, orphanedReplicaDirectoryNames,
+				diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nodeOrDiskEvicted, nil,
+					newOrphanedReplicaDirectoryNames, missingOrphanedReplicaDirectoryNames,
 					string(longhorn.DiskConditionReasonNoDiskInfo),
 					fmt.Sprintf("Disk %v(%v) on node %v is not ready: failed to generate disk config: error: %v",
 						diskName, disk.Path, node.Name, err))
@@ -165,9 +170,11 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		}
 
 		replicaDirectoryNames := m.getPossibleReplicaDirectoryNames(node, diskName, diskConfig.DiskUUID, disk.Path)
-		orphanedReplicaDirectoryNames = m.getOrphanedReplicaDirectoryNames(node, diskName, diskConfig.DiskUUID, disk.Path, replicaDirectoryNames)
+		newOrphanedReplicaDirectoryNames, missingOrphanedReplicaDirectoryNames :=
+			m.getOrphanedReplicaDirectoryNames(node, diskName, diskConfig.DiskUUID, disk.Path, replicaDirectoryNames)
 
-		diskInfoMap[diskName] = NewDiskInfo(disk.Path, diskConfig.DiskUUID, nodeOrDiskEvicted, stat, orphanedReplicaDirectoryNames,
+		diskInfoMap[diskName] = NewDiskInfo(disk.Path, diskConfig.DiskUUID, nodeOrDiskEvicted, stat,
+			newOrphanedReplicaDirectoryNames, missingOrphanedReplicaDirectoryNames,
 			string(longhorn.DiskConditionReasonNoDiskInfo), "")
 	}
 
@@ -211,13 +218,14 @@ func canCollectDiskData(node *longhorn.Node, diskName, diskUUID, diskPath string
 		types.GetCondition(node.Status.DiskStatus[diskName].Conditions, longhorn.DiskConditionTypeReady).Status == longhorn.ConditionStatusTrue
 }
 
-func NewDiskInfo(path, diskUUID string, nodeOrDiskEvicted bool, stat *util.DiskStat, orphanedReplicaDirectoryNames map[string]string, errorReason, errorMessage string) *CollectedDiskInfo {
+func NewDiskInfo(path, diskUUID string, nodeOrDiskEvicted bool, stat *util.DiskStat, newOrphanedReplicaDirectoryNames map[string]string, missingOrphanedReplicaDirectoryNames map[string]string, errorReason, errorMessage string) *CollectedDiskInfo {
 	diskInfo := &CollectedDiskInfo{
-		Path:                          path,
-		NodeOrDiskEvicted:             nodeOrDiskEvicted,
-		DiskUUID:                      diskUUID,
-		DiskStat:                      stat,
-		OrphanedReplicaDirectoryNames: orphanedReplicaDirectoryNames,
+		Path:                                 path,
+		NodeOrDiskEvicted:                    nodeOrDiskEvicted,
+		DiskUUID:                             diskUUID,
+		DiskStat:                             stat,
+		NewOrphanedReplicaDirectoryNames:     newOrphanedReplicaDirectoryNames,
+		MissingOrphanedReplicaDirectoryNames: missingOrphanedReplicaDirectoryNames,
 	}
 
 	if errorMessage != "" {
@@ -232,16 +240,15 @@ func NewDiskInfo(path, diskUUID string, nodeOrDiskEvicted bool, stat *util.DiskS
 	return diskInfo
 }
 
-func (m *NodeMonitor) getOrphanedReplicaDirectoryNames(node *longhorn.Node, diskName, diskUUID, diskPath string, replicaDirectoryNames map[string]string) map[string]string {
-	if len(replicaDirectoryNames) == 0 {
-		return map[string]string{}
-	}
+func (m *NodeMonitor) getOrphanedReplicaDirectoryNames(node *longhorn.Node, diskName, diskUUID, diskPath string, replicaDirectoryNames map[string]string) (map[string]string, map[string]string) {
+	newOrphanedReplicaDirectoryNames := make(map[string]string, 0)
+	missingOrphanedReplicaDirectoryNames := make(map[string]string, 0)
 
-	// Find out the orphaned directories by checking with replica and orphan CRs
+	// Find out the orphaned directories by checking with replica CRs
 	replicas, err := m.ds.ListReplicasByDiskUUID(diskUUID)
 	if err != nil {
 		logrus.Errorf("unable to list replicas for disk UUID %v since %v", diskUUID, err.Error())
-		return map[string]string{}
+		return map[string]string{}, map[string]string{}
 	}
 
 	for _, replica := range replicas {
@@ -250,15 +257,42 @@ func (m *NodeMonitor) getOrphanedReplicaDirectoryNames(node *longhorn.Node, disk
 		}
 	}
 
+	// Find out the new/missing orphaned directories by checking with orphan CRs
+	orphans, err := m.ds.ListOrphansByNode(m.nodeName)
+	if err != nil {
+		logrus.Errorf("unable to list orphans for node %v since %v", m.nodeName, err.Error())
+		return map[string]string{}, map[string]string{}
+	}
+
+	for dirName := range replicaDirectoryNames {
+		orphanName := types.GetOrphanChecksumNameForOrphanedDirectory(m.nodeName, diskName, diskPath, diskUUID, dirName)
+		if _, ok := orphans[orphanName]; !ok {
+			newOrphanedReplicaDirectoryNames[dirName] = ""
+		}
+	}
+
+	for _, orphan := range orphans {
+		if orphan.Spec.Parameters[longhorn.OrphanDiskName] != diskName ||
+			orphan.Spec.Parameters[longhorn.OrphanDiskUUID] != diskUUID ||
+			orphan.Spec.Parameters[longhorn.OrphanDiskPath] != diskPath {
+			continue
+		}
+
+		dirName := orphan.Spec.Parameters[longhorn.OrphanDataName]
+		if _, ok := replicaDirectoryNames[dirName]; !ok {
+			missingOrphanedReplicaDirectoryNames[dirName] = ""
+		}
+	}
+
 	if m.checkVolumeMeta {
-		for name := range replicaDirectoryNames {
+		for name := range newOrphanedReplicaDirectoryNames {
 			if err := isVolumeMetaFileExist(diskPath, name); err != nil {
-				delete(replicaDirectoryNames, name)
+				delete(newOrphanedReplicaDirectoryNames, name)
 			}
 		}
 	}
 
-	return replicaDirectoryNames
+	return newOrphanedReplicaDirectoryNames, missingOrphanedReplicaDirectoryNames
 }
 
 func isVolumeMetaFileExist(diskPath, replicaDirectoryName string) error {

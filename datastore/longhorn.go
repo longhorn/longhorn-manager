@@ -3402,18 +3402,32 @@ func (s *DataStore) RemoveFinalizerForOrphan(orphan *longhorn.Orphan) error {
 	return nil
 }
 
-// ListOrphans returns an object contains all orphans in the cluster Orphans CR
-func (s *DataStore) ListOrphans() (map[string]*longhorn.Orphan, error) {
-	list, err := s.oLister.Orphans(s.namespace).List(labels.Everything())
+func (s *DataStore) listOrphans(selector labels.Selector) (map[string]*longhorn.Orphan, error) {
+	list, err := s.oLister.Orphans(s.namespace).List(selector)
 	if err != nil {
 		return nil, err
 	}
 
 	itemMap := map[string]*longhorn.Orphan{}
 	for _, itemRO := range list {
+		// Cannot use cached object from lister
 		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
+}
+
+// ListOrphans returns an object contains all Orphans for the given namespace
+func (s *DataStore) ListOrphans() (map[string]*longhorn.Orphan, error) {
+	return s.listOrphans(labels.Everything())
+}
+
+// ListOrphansByNode gets a map of Orphans on the node Name for the given namespace.
+func (s *DataStore) ListOrphansByNode(name string) (map[string]*longhorn.Orphan, error) {
+	nodeSelector, err := getNodeSelector(name)
+	if err != nil {
+		return nil, err
+	}
+	return s.listOrphans(nodeSelector)
 }
 
 // ListOrphansRO returns a list of all Orphans for the given namespace
