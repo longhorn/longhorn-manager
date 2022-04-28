@@ -426,6 +426,8 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return nil
 	}
 
+	alignDiskSpecAndStatus(node)
+
 	mon, err := nc.checkMonitor(nc.controllerID)
 	if err != nil {
 		return err
@@ -559,8 +561,6 @@ func (nc *NodeController) enqueueKubernetesNode(obj interface{}) {
 }
 
 func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo map[string]*monitor.CollectedDiskInfo) error {
-	alignDiskSpecAndStatus(node)
-
 	notReadyDiskInfoMap, readyDiskInfoMap := nc.findNotReadyAndReadyDiskMaps(node, collectedDataInfo)
 
 	for _, diskInfoMap := range notReadyDiskInfoMap {
@@ -613,7 +613,8 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 			if errorMessage != "" {
 				notReadyDiskInfoMap[fsid][diskName] =
 					monitor.NewDiskInfo(diskInfo.Path, diskInfo.DiskUUID,
-						diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat, diskInfo.OrphanedReplicaDirectoryNames,
+						diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat,
+						diskInfo.NewOrphanedReplicaDirectoryNames, diskInfo.MissingOrphanedReplicaDirectoryNames,
 						string(longhorn.DiskConditionReasonDiskFilesystemChanged), errorMessage)
 				continue
 			}
@@ -632,8 +633,8 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 			if nc.isFSIDDuplicatedWithExistingReadyDisk(diskName, diskInfoMap, node.Status.DiskStatus) ||
 				isReadyDiskFound(readyDiskInfoMap[fsid]) {
 				notReadyDiskInfoMap[fsid][diskName] =
-					monitor.NewDiskInfo(diskInfo.Path, diskInfo.DiskUUID, diskInfo.NodeOrDiskEvicted,
-						diskInfo.DiskStat, diskInfo.OrphanedReplicaDirectoryNames,
+					monitor.NewDiskInfo(diskInfo.Path, diskInfo.DiskUUID, diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat,
+						diskInfo.NewOrphanedReplicaDirectoryNames, diskInfo.MissingOrphanedReplicaDirectoryNames,
 						string(longhorn.DiskConditionReasonDiskFilesystemChanged),
 						fmt.Sprintf("Disk %v(%v) on node %v is not ready: disk has same file system ID %v as other disks %+v",
 							diskName, diskInfoMap[diskName].Path, node.Name, fsid, monitor.GetDiskNamesFromDiskMap(diskInfoMap)))
@@ -1049,6 +1050,13 @@ func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, di
 		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameOrphanAutoDeletion)
 	}
 
+	for dirName := range diskInfo.MissingOrphanedReplicaDirectoryNames {
+		orphanName := types.GetOrphanChecksumNameForOrphanedDirectory(node.Name, diskName, diskInfo.Path, diskInfo.DiskUUID, dirName)
+		if err := nc.ds.DeleteOrphan(orphanName); err != nil && !apierrors.IsNotFound(err) {
+			return errors.Wrapf(err, "failed to delete orphan %v", orphanName)
+		}
+	}
+
 	orphans, err := nc.ds.ListOrphans()
 	if err != nil {
 		return errors.Wrap(err, "unable to list orphans")
@@ -1057,21 +1065,6 @@ func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, di
 	for _, orphan := range orphans {
 		if orphan.Status.OwnerID != nc.controllerID {
 			continue
-		}
-
-		switch {
-		case orphan.Spec.Type == longhorn.OrphanTypeReplica:
-			// Alignment between the orphan CRs and the collected orphaned directory names list.
-			// If the on-disk data is missing, e.g. deleted by users by manual, we need to delete the orphaned CR.
-			// Orphan controller won't stat/check the on-disk data and isn't aware of the missing replica directory,
-			// If the on-disk data is missing, i.e. not found in the orphaned directory names list,
-			// we need to delete the orphaned CR.
-			if onDiskDataMissing := nc.isOnDiskDataMissing(orphan, diskInfo); onDiskDataMissing {
-				if err := nc.ds.DeleteOrphan(orphan.Name); err != nil && !apierrors.IsNotFound(err) {
-					return errors.Wrapf(err, "failed to delete orphan %v", orphan.Name)
-				}
-				continue
-			}
 		}
 
 		dataCleanableCondition := types.GetCondition(orphan.Status.Conditions, longhorn.OrphanConditionTypeDataCleanable)
@@ -1088,23 +1081,8 @@ func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, di
 	return nil
 }
 
-func (nc *NodeController) isOnDiskDataMissing(orphan *longhorn.Orphan, diskInfo *monitor.CollectedDiskInfo) bool {
-	if orphan.Spec.NodeID != orphan.Status.OwnerID ||
-		orphan.Spec.Parameters[longhorn.OrphanDiskUUID] != diskInfo.DiskUUID ||
-		orphan.Spec.Parameters[longhorn.OrphanDiskPath] != diskInfo.Path {
-		return false
-	}
-
-	replicaDirectoryName := orphan.Spec.Parameters[longhorn.OrphanDataName]
-	if _, exist := diskInfo.OrphanedReplicaDirectoryNames[replicaDirectoryName]; exist {
-		return false
-	}
-
-	return true
-}
-
 func (nc *NodeController) createOrphans(node *longhorn.Node, diskName string, diskInfo *monitor.CollectedDiskInfo) error {
-	for dirName := range diskInfo.OrphanedReplicaDirectoryNames {
+	for dirName := range diskInfo.NewOrphanedReplicaDirectoryNames {
 		if err := nc.createOrphan(node, diskName, dirName, diskInfo); err != nil && !apierrors.IsAlreadyExists(err) {
 			return errors.Wrapf(err, "unable to create orphan for orphaned replica directory %v in disk %v on node %v",
 				dirName, node.Spec.Disks[diskName].Path, node.Name)
