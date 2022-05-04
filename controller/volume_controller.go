@@ -1040,15 +1040,18 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	}
 
 	scheduled := true
+	aggregatedReplicaScheduledError := util.NewMultiError()
 	for _, r := range rs {
 		// check whether the replica need to be scheduled
 		if r.Spec.NodeID != "" {
 			continue
 		}
-		scheduledReplica, err := vc.scheduler.ScheduleReplica(r, rs, v)
+		scheduledReplica, multiError, err := vc.scheduler.ScheduleReplica(r, rs, v)
 		if err != nil {
 			return err
 		}
+		aggregatedReplicaScheduledError.Append(multiError)
+
 		if scheduledReplica == nil {
 			if r.Spec.HardNodeAffinity == "" {
 				log.WithField("replica", r.Name).Error("unable to schedule replica")
@@ -1068,6 +1071,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			rs[r.Name] = scheduledReplica
 		}
 	}
+
+	failureMessage := ""
 	if scheduled {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusTrue, "", "")
@@ -1091,6 +1096,23 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				scheduled = true
 			}
 		}
+
+		if !scheduled {
+			if len(aggregatedReplicaScheduledError) == 0 {
+				aggregatedReplicaScheduledError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleSchedulingFailed))
+			}
+			failureMessage = aggregatedReplicaScheduledError.Join()
+			scheduledCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled)
+			if scheduledCondition.Status == longhorn.ConditionStatusFalse {
+				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
+					scheduledCondition.Reason, failureMessage)
+			}
+		}
+	}
+
+	if err := vc.updatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessage); err != nil {
+		log.Warnf("Cannot update PV annotation for volume %v", v.Name)
 	}
 
 	if err := vc.reconcileVolumeSize(v, e, rs); err != nil {
@@ -3637,4 +3659,26 @@ func (vc *VolumeController) checkVolumeNotInMigration(volume *longhorn.Volume) e
 		return fmt.Errorf("cannot operate during migration")
 	}
 	return nil
+}
+
+func (vc *VolumeController) updatePVAnnotation(volume *longhorn.Volume, annotationKey, annotationVal string) error {
+	pv, err := vc.ds.GetPersistentVolume(volume.Status.KubernetesStatus.PVName)
+	if err != nil {
+		return err
+	}
+
+	if pv.Annotations == nil {
+		pv.Annotations = map[string]string{}
+	}
+
+	val, ok := pv.Annotations[annotationKey]
+	if ok && val == annotationVal {
+		return nil
+	}
+
+	pv.Annotations[annotationKey] = annotationVal
+
+	_, err = vc.ds.UpdatePersistentVolume(pv)
+
+	return err
 }
