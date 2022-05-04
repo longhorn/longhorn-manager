@@ -388,7 +388,7 @@ func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(v.Name, "volume", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "volume", func(name string) (runtime.Object, error) {
 		return s.GetVolumeRO(name)
 	})
 	if err != nil {
@@ -710,7 +710,7 @@ func (s *DataStore) CreateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(e.Name, "engine", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "engine", func(name string) (runtime.Object, error) {
 		return s.getEngineRO(name)
 	})
 	if err != nil {
@@ -868,7 +868,7 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(r.Name, "replica", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "replica", func(name string) (runtime.Object, error) {
 		return s.getReplicaRO(name)
 	})
 	if err != nil {
@@ -1047,7 +1047,7 @@ func (s *DataStore) CreateEngineImage(img *longhorn.EngineImage) (*longhorn.Engi
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(img.Name, "engine image", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "engine image", func(name string) (runtime.Object, error) {
 		return s.getEngineImageRO(name)
 	})
 	if err != nil {
@@ -1229,7 +1229,7 @@ func (s *DataStore) CreateBackingImage(backingImage *longhorn.BackingImage) (*lo
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(backingImage.Name, "backing image", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "backing image", func(name string) (runtime.Object, error) {
 		return s.getBackingImageRO(name)
 	})
 	if err != nil {
@@ -1370,7 +1370,7 @@ func (s *DataStore) CreateBackingImageManager(backingImageManager *longhorn.Back
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(backingImageManager.Name, "backing image manager", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "backing image manager", func(name string) (runtime.Object, error) {
 		return s.getBackingImageManagerRO(name)
 	})
 	if err != nil {
@@ -1570,7 +1570,7 @@ func (s *DataStore) CreateBackingImageDataSource(backingImageDataSource *longhor
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(backingImageDataSource.Name, "backing image data source", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "backing image data source", func(name string) (runtime.Object, error) {
 		return s.getBackingImageDataSourceRO(name)
 	})
 	if err != nil {
@@ -1747,7 +1747,7 @@ func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(node.Name, "node", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "node", func(name string) (runtime.Object, error) {
 		return s.GetNodeRO(name)
 	})
 	if err != nil {
@@ -2456,7 +2456,7 @@ func (s *DataStore) CreateInstanceManager(im *longhorn.InstanceManager) (*longho
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(im.Name, "instance manager", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "instance manager", func(name string) (runtime.Object, error) {
 		return s.getInstanceManagerRO(name)
 	})
 	if err != nil {
@@ -2752,7 +2752,7 @@ func (s *DataStore) CreateShareManager(sm *longhorn.ShareManager) (*longhorn.Sha
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(sm.Name, "share manager", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "share manager", func(name string) (runtime.Object, error) {
 		return s.getShareManagerRO(name)
 	})
 	if err != nil {
@@ -2858,7 +2858,7 @@ func (s *DataStore) CreateBackupTarget(backupTarget *longhorn.BackupTarget) (*lo
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(backupTarget.Name, "backup target", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "backup target", func(name string) (runtime.Object, error) {
 		return s.GetBackupTargetRO(name)
 	})
 	if err != nil {
@@ -2942,7 +2942,7 @@ func (s *DataStore) CreateBackupVolume(backupVolume *longhorn.BackupVolume) (*lo
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(backupVolume.Name, "backup volume", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "backup volume", func(name string) (runtime.Object, error) {
 		return s.GetBackupVolumeRO(name)
 	})
 	if err != nil {
@@ -3055,7 +3055,7 @@ func (s *DataStore) CreateBackup(backup *longhorn.Backup, backupVolumeName strin
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(backup.Name, "backup", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "backup", func(name string) (runtime.Object, error) {
 		return s.GetBackupRO(name)
 	})
 	if err != nil {
@@ -3187,7 +3187,7 @@ func (s *DataStore) CreateRecurringJob(recurringJob *longhorn.RecurringJob) (*lo
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(recurringJob.Name, "recurring job", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "recurring job", func(name string) (runtime.Object, error) {
 		return s.getRecurringJobRO(name)
 	})
 	if err != nil {
@@ -3329,7 +3329,7 @@ func (s *DataStore) CreateOrphan(orphan *longhorn.Orphan) (*longhorn.Orphan, err
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(orphan.Name, "orphan", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "orphan", func(name string) (runtime.Object, error) {
 		return s.GetOrphanRO(name)
 	})
 	if err != nil {
