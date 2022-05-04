@@ -118,6 +118,8 @@ const (
 	ControlPlaneName                 = "longhorn-manager"
 
 	DefaultRecurringJobConcurrency = 10
+
+	PVAnnotationLonghornVolumeSchedulingError = "longhorn.io/volume-scheduling-error"
 )
 
 const (
