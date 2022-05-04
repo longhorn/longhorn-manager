@@ -32,6 +32,19 @@ const (
 	DiskConditionReasonDiskNotReady          = "DiskNotReady"
 )
 
+const (
+	ErrorReplicaScheduleInsufficientStorage              = "insufficient storage"
+	ErrorReplicaScheduleDiskNotFound                     = "disk not found"
+	ErrorReplicaScheduleDiskUnavailable                  = "disks are unavailable"
+	ErrorReplicaScheduleSchedulingSettingsRetrieveFailed = "failed to retrieve scheduling settings failed to retrieve"
+	ErrorReplicaScheduleTagsNotFulfilled                 = "tags not fulfilled"
+	ErrorReplicaScheduleNodeNotFound                     = "node not found"
+	ErrorReplicaScheduleNodeUnavailable                  = "nodes are unavailable"
+	ErrorReplicaScheduleEngineImageNotReady              = "none of the node candidates contains a ready engine image"
+	ErrorReplicaScheduleHardNodeAffinityNotSatisfied     = "hard affinity cannot be satisfied"
+	ErrorReplicaScheduleSchedulingFailed                 = "replica scheduling failed"
+)
+
 type DiskSpec struct {
 	// +optional
 	Path string `json:"path"`
