@@ -426,8 +426,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return nil
 	}
 
-	alignDiskSpecAndStatus(node)
-
 	mon, err := nc.checkMonitor(nc.controllerID)
 	if err != nil {
 		return err
@@ -561,6 +559,8 @@ func (nc *NodeController) enqueueKubernetesNode(obj interface{}) {
 }
 
 func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo map[string]*monitor.CollectedDiskInfo) error {
+	alignDiskSpecAndStatus(node)
+
 	notReadyDiskInfoMap, readyDiskInfoMap := nc.findNotReadyAndReadyDiskMaps(node, collectedDataInfo)
 
 	for _, diskInfoMap := range notReadyDiskInfoMap {
