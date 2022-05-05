@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/pkg/errors"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -14,8 +15,8 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
+	"github.com/longhorn/longhorn-manager/webhook/common"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
-	"github.com/pkg/errors"
 )
 
 type backingImageMutator struct {
@@ -79,29 +80,27 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/disks", "value": {}}`)
 	}
 
-	// Merge the user created and longhorn specific labels
-	labels := backingImage.Labels
-	if labels == nil {
-		labels = map[string]string{}
-	}
 	longhornLabels := types.GetBackingImageLabels()
-	for k, v := range longhornLabels {
-		labels[k] = v
-	}
-	bytes, err = json.Marshal(labels)
+	patchOp, err := common.GetLonghornLabelsPatchOp(backingImage, longhornLabels)
 	if err != nil {
-		err = errors.Wrapf(err, "failed to get JSON encoding for backing image %v labels", backingImage.Name)
+		err := errors.Wrapf(err, "failed to get label patch for backingImage %v", backingImage.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")
 	}
-	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/metadata/labels", "value": %v}`, string(bytes)))
+	patchOps = append(patchOps, patchOp)
+
+	patchOp, err = common.GetLonghornFinalizerPatchOp(backingImage)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get finalizer patch for backingImage %v", backingImage.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	patchOps = append(patchOps, patchOp)
 
 	return patchOps, nil
 }
 
 func (b *backingImageMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
-	var patchOps admission.PatchOps
-
 	backingImage := newObj.(*longhorn.BackingImage)
+	var patchOps admission.PatchOps
 
 	// Backward compatibility
 	// SourceType is set to "download" if it is empty
