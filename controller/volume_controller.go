@@ -3664,6 +3664,9 @@ func (vc *VolumeController) checkVolumeNotInMigration(volume *longhorn.Volume) e
 func (vc *VolumeController) updatePVAnnotation(volume *longhorn.Volume, annotationKey, annotationVal string) error {
 	pv, err := vc.ds.GetPersistentVolume(volume.Status.KubernetesStatus.PVName)
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
 		return err
 	}
 
