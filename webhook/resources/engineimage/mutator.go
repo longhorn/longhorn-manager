@@ -1,10 +1,10 @@
 package engineimage
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
+	"github.com/pkg/errors"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -12,8 +12,8 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
+	common "github.com/longhorn/longhorn-manager/webhook/common"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
-	"github.com/pkg/errors"
 )
 
 type engineImageMutator struct {
@@ -39,9 +39,8 @@ func (e *engineImageMutator) Resource() admission.Resource {
 }
 
 func (e *engineImageMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	var patchOps admission.PatchOps
-
 	engineImage := newObj.(*longhorn.EngineImage)
+	var patchOps admission.PatchOps
 
 	image := strings.TrimSpace(engineImage.Spec.Image)
 	if image != engineImage.Spec.Image {
@@ -53,21 +52,20 @@ func (e *engineImageMutator) Create(request *admission.Request, newObj runtime.O
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/metadata/name", "value": "%s"}`, name))
 	}
 
-	// Merge the user created and longhorn specific labels
-	labels := engineImage.Labels
-	if labels == nil {
-		labels = map[string]string{}
-	}
 	longhornLabels := types.GetEngineImageLabels(name)
-	for k, v := range longhornLabels {
-		labels[k] = v
-	}
-	bytes, err := json.Marshal(labels)
+	patchOp, err := common.GetLonghornLabelsPatchOp(engineImage, longhornLabels)
 	if err != nil {
-		err = errors.Wrapf(err, "failed to get JSON encoding for engine image %v labels", engineImage.Name)
+		err := errors.Wrapf(err, "failed to get label patch for engineImage %v", engineImage.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")
 	}
-	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/metadata/labels", "value": %v}`, string(bytes)))
+	patchOps = append(patchOps, patchOp)
+
+	patchOp, err = common.GetLonghornFinalizerPatchOp(engineImage)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get finalizer patch for engineImage %v", engineImage.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	patchOps = append(patchOps, patchOp)
 
 	return patchOps, nil
 }

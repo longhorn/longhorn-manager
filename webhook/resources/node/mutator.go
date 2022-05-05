@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/pkg/errors"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
+	common "github.com/longhorn/longhorn-manager/webhook/common"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
-	"github.com/pkg/errors"
 )
 
 type nodeMutator struct {
@@ -39,18 +40,29 @@ func (n *nodeMutator) Resource() admission.Resource {
 }
 
 func (n *nodeMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	newNode := newObj.(*longhorn.Node)
+	node := newObj.(*longhorn.Node)
 
-	return mutateNode(newNode)
+	patchOps, err := mutate(newObj)
+	if err != nil {
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+
+	patchOp, err := common.GetLonghornFinalizerPatchOp(node)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get finalizer patch for node %v", node.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	patchOps = append(patchOps, patchOp)
+
+	return patchOps, nil
 }
 
 func (n *nodeMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
-	newNode := newObj.(*longhorn.Node)
-
-	return mutateNode(newNode)
+	return mutate(newObj)
 }
 
-func mutateNode(node *longhorn.Node) (admission.PatchOps, error) {
+func mutate(newObj runtime.Object) (admission.PatchOps, error) {
+	node := newObj.(*longhorn.Node)
 	var patchOps admission.PatchOps
 
 	if node.Spec.Tags == nil {
