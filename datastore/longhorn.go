@@ -1036,9 +1036,6 @@ func GetOwnerReferencesForEngineImage(ei *longhorn.EngineImage) []metav1.OwnerRe
 // CreateEngineImage creates a Longhorn EngineImage resource and verifies
 // creation
 func (s *DataStore) CreateEngineImage(img *longhorn.EngineImage) (*longhorn.EngineImage, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, img); err != nil {
-		return nil, err
-	}
 	ret, err := s.lhClient.LonghornV1beta2().EngineImages(s.namespace).Create(context.TODO(), img, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
@@ -1218,9 +1215,6 @@ func (s *DataStore) CheckEngineImageReadyOnAllVolumeReplicas(image, volumeName, 
 // CreateBackingImage creates a Longhorn BackingImage resource and verifies
 // creation
 func (s *DataStore) CreateBackingImage(backingImage *longhorn.BackingImage) (*longhorn.BackingImage, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, backingImage); err != nil {
-		return nil, err
-	}
 	ret, err := s.lhClient.LonghornV1beta2().BackingImages(s.namespace).Create(context.TODO(), backingImage, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
@@ -1350,9 +1344,6 @@ func GetOwnerReferencesForBackingImage(backingImage *longhorn.BackingImage) []me
 // creation
 func (s *DataStore) CreateBackingImageManager(backingImageManager *longhorn.BackingImageManager) (*longhorn.BackingImageManager, error) {
 	if err := initBackingImageManager(backingImageManager); err != nil {
-		return nil, err
-	}
-	if err := util.AddFinalizer(longhornFinalizerKey, backingImageManager); err != nil {
 		return nil, err
 	}
 	if err := tagLonghornNodeLabel(backingImageManager.Spec.NodeID, backingImageManager); err != nil {
@@ -1736,9 +1727,6 @@ func GetOwnerReferencesForBackingImageDataSource(backingImageDataSource *longhor
 
 // CreateNode creates a Longhorn Node resource and verifies creation
 func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, node); err != nil {
-		return nil, err
-	}
 	ret, err := s.lhClient.LonghornV1beta2().Nodes(s.namespace).Create(context.TODO(), node, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
@@ -2741,9 +2729,6 @@ func GetOwnerReferencesForShareManager(sm *longhorn.ShareManager, isController b
 // CreateShareManager creates a Longhorn ShareManager resource and
 // verifies creation
 func (s *DataStore) CreateShareManager(sm *longhorn.ShareManager) (*longhorn.ShareManager, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, sm); err != nil {
-		return nil, err
-	}
 	ret, err := s.lhClient.LonghornV1beta2().ShareManagers(s.namespace).Create(context.TODO(), sm, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
@@ -2931,9 +2916,6 @@ func (s *DataStore) DeleteBackupTarget(backupTargetName string) error {
 
 // CreateBackupVolume creates a Longhorn BackupVolumes CR and verifies creation
 func (s *DataStore) CreateBackupVolume(backupVolume *longhorn.BackupVolume) (*longhorn.BackupVolume, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, backupVolume); err != nil {
-		return nil, err
-	}
 	ret, err := s.lhClient.LonghornV1beta2().BackupVolumes(s.namespace).Create(context.TODO(), backupVolume, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
@@ -3042,9 +3024,6 @@ func (s *DataStore) RemoveFinalizerForBackupVolume(backupVolume *longhorn.Backup
 // CreateBackup creates a Longhorn Backup CR and verifies creation
 func (s *DataStore) CreateBackup(backup *longhorn.Backup, backupVolumeName string) (*longhorn.Backup, error) {
 	if err := tagBackupVolumeLabel(backupVolumeName, backup); err != nil {
-		return nil, err
-	}
-	if err := util.AddFinalizer(longhornFinalizerKey, backup); err != nil {
 		return nil, err
 	}
 	ret, err := s.lhClient.LonghornV1beta2().Backups(s.namespace).Create(context.TODO(), backup, metav1.CreateOptions{})
