@@ -181,7 +181,8 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectVolume.Status.Robustness = types.VolumeRobustnessUnknown
 	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.expectVolume.Status.Conditions,
-		types.VolumeConditionTypeScheduled, types.ConditionStatusFalse, types.VolumeConditionReasonReplicaSchedulingFailure, "")
+		types.VolumeConditionTypeScheduled, types.ConditionStatusFalse, types.VolumeConditionReasonReplicaSchedulingFailure,
+		types.ErrorReplicaScheduleNodeUnavailable)
 	testCases["volume create - replica scheduling failure"] = tc
 
 	// after creation, volume in detached state

@@ -86,6 +86,8 @@ const (
 	DefaultStorageClassConfigMapName = "longhorn-storageclass"
 	DefaultStorageClassName          = "longhorn"
 	ControlPlaneName                 = "longhorn-manager"
+
+	PVAnnotationLonghornVolumeSchedulingError = "longhorn.io/volume-scheduling-error"
 )
 
 const (
