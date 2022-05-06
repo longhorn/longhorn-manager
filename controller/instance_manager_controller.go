@@ -82,7 +82,8 @@ func updateInstanceManagerVersion(im *longhorn.InstanceManager) error {
 	if err != nil {
 		return err
 	}
-	cli.Close()
+	defer cli.Close()
+
 	apiMinVersion, apiVersion, err := cli.VersionGet()
 	if err != nil {
 		return err
