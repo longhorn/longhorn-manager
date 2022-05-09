@@ -147,6 +147,14 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 		return err
 	}
 
+	ok, err := m.ds.IsStorageSpaceSufficientForSnapshotPurge(volumeName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to check if storage space is sufficient for snapshot purge for volume %v", volumeName)
+	}
+	if !ok {
+		return fmt.Errorf("storage space is insufficient for snapshot purge for volume %v", volumeName)
+	}
+
 	if err := engine.SnapshotPurge(); err != nil {
 		return err
 	}
