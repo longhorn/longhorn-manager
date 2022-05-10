@@ -73,7 +73,7 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 
 	// Ensure the node controller already syncs the disk spec and status.
 	if !isNodeDiskSpecAndStatusSynced(oldNode) {
-		return werror.NewConflict(fmt.Sprintf("spec and status of disks on node %v are being syncing and please retry later.", oldNode.Name))
+		return werror.NewForbiddenError(fmt.Sprintf("spec and status of disks on node %v are being syncing and please retry later.", oldNode.Name))
 	}
 
 	// We need to make sure the tags passed in are valid before updating the node.
