@@ -85,3 +85,12 @@ func NewInternalError(message string) AdmitError {
 		reason:  metav1.StatusReasonInternalError,
 	}
 }
+
+// NewForbiddenError returns HTTP status code 403
+func NewForbiddenError(message string) AdmitError {
+	return AdmitError{
+		code:    http.StatusForbidden,
+		message: message,
+		reason:  metav1.StatusReasonForbidden,
+	}
+}
