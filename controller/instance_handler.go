@@ -136,12 +136,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	case longhorn.InstanceStateRunning:
 		status.CurrentState = longhorn.InstanceStateRunning
 
-		storageNetwork, err := h.ds.GetSetting(types.SettingNameStorageNetwork)
-		if err != nil {
-			logrus.WithError(err).Errorf("failed to get value from setting %v", types.SettingNameStorageNetwork)
-			return
-		}
-
 		imPod, err := h.ds.GetPod(im.Name)
 		if err != nil {
 			logrus.WithError(err).Errorf("failed to get instance manager pod from %v", im.Name)
@@ -153,16 +147,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			return
 		}
 
-		storageIP, err := types.GetCniIPFromPod(storageNetwork.Value, imPod)
-		if err != nil {
-			logrus.WithError(err).Errorf("failed to get instance manager %v IP from pod %v", storageNetwork.Value, imPod.Name)
-			return
-		}
-
-		if storageIP == types.CniNetworkNone {
-			storageIP = im.Status.IP
-		}
-
+		storageIP := h.ds.GetStorageIPFromPod(imPod)
 		if status.StorageIP != storageIP {
 			status.StorageIP = storageIP
 			logrus.Debugf("Instance %v starts running, Storage IP %v", instanceName, status.StorageIP)

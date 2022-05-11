@@ -460,24 +460,10 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 			}
 
 			if bim.Status.CurrentState == longhorn.BackingImageManagerStateRunning {
-				storageNetwork, err := c.ds.GetSetting(types.SettingNameStorageNetwork)
-				if err != nil {
-					logrus.WithError(err).Errorf("failed to get value from setting %v", types.SettingNameStorageNetwork)
-				}
-
-				storageIP, err := types.GetCniIPFromPod(storageNetwork.Value, pod)
-				if err != nil {
-					logrus.WithError(err).Errorf("failed to get %v IP from backing image manager pod %v", storageNetwork.Value, pod.Name)
-				}
-
-				if storageIP == types.CniNetworkNone {
-					logrus.Debugf("Cannot find storage-network IP from pod %v to update backing image status, use cluster IP %v", pod.Name, pod.Status.PodIP)
-					storageIP = pod.Status.PodIP
-				}
-
+				storageIP := c.ds.GetStorageIPFromPod(pod)
 				if bim.Status.StorageIP != storageIP {
 					bim.Status.StorageIP = storageIP
-					logrus.Debugf("Inconsistent storage-network IP from pod %v, update backing image status IP %v", pod.Name, bim.Status.IP)
+					logrus.Debugf("Inconsistent storage IP from pod %v, update backing image status storage IP %v", pod.Name, bim.Status.StorageIP)
 				}
 
 				bim.Status.IP = pod.Status.PodIP

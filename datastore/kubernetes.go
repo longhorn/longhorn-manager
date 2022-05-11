@@ -2,10 +2,14 @@ package datastore
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sirupsen/logrus"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1beta1 "k8s.io/api/batch/v1beta1"
@@ -663,4 +667,69 @@ func NewPVCManifest(size int64, pvName, ns, pvcName, storageClassName string, ac
 			VolumeName:       pvName,
 		},
 	}
+}
+
+// GetStorageIPFromPod returns the given pod network-status IP of the name matching the storage-network setting value.
+// If the storage-network setting is empty or encountered an error, return the pod IP instead.
+// For below example, given "kube-system/demo-192-168-0-0" will return "192.168.1.175".
+//
+// apiVersion: v1
+// kind: Pod
+// metadata:
+//   annotations:
+//     k8s.v1.cni.cncf.io/network-status: |-
+//       [{
+//     	  "name": "cbr0",
+//     	  "interface": "eth0",
+//     	  "ips": [
+//     		  "10.42.0.175"
+//     	  ],
+//     	  "mac": "be:67:b2:19:17:84",
+//     	  "default": true,
+//     	  "dns": {}
+//       },{
+//     	  "name": "kube-system/demo-192-168-0-0",
+//     	  "interface": "lhnet1",
+//     	  "ips": [
+//     		  "192.168.1.175"
+//     	  ],
+//     	  "mac": "02:59:e5:d4:ae:ea",
+//     	  "dns": {}
+//       }]
+func (s *DataStore) GetStorageIPFromPod(pod *corev1.Pod) string {
+	storageNetwork, err := s.GetSetting(types.SettingNameStorageNetwork)
+	if err != nil {
+		logrus.Warnf("Failed to get %v setting, use %v pod IP %v", types.SettingNameStorageNetwork, pod.Name, pod.Status.PodIP)
+		return pod.Status.PodIP
+	}
+
+	if storageNetwork.Value == types.CniNetworkNone {
+		logrus.Debugf("Found %v setting is empty, use %v pod IP %v", types.SettingNameStorageNetwork, pod.Name, pod.Status.PodIP)
+		return pod.Status.PodIP
+	}
+
+	status, ok := pod.Annotations[string(types.CNIAnnotationNetworkStatus)]
+	if !ok {
+		logrus.Warnf("Missing %v annotation, use %v pod IP %v", types.CNIAnnotationNetworkStatus, pod.Name, pod.Status.PodIP)
+		return pod.Status.PodIP
+	}
+
+	nets := []types.CniNetwork{}
+	err = json.Unmarshal([]byte(status), &nets)
+	if err != nil {
+		logrus.Warnf("Failed to unmarshal %v annotation, use %v pod IP %v", types.CNIAnnotationNetworkStatus, pod.Name, pod.Status.PodIP)
+		return pod.Status.PodIP
+	}
+
+	for _, net := range nets {
+		if net.Name != storageNetwork.Value {
+			continue
+		}
+
+		sort.Strings(net.IPs)
+		return net.IPs[0]
+	}
+
+	logrus.Warnf("Failed to get storage IP from %v pod, use IP %v", pod.Name, pod.Status.PodIP)
+	return pod.Status.PodIP
 }

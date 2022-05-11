@@ -7,13 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
-
-	corev1 "k8s.io/api/core/v1"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/util"
@@ -701,61 +698,6 @@ func ValidateCPUReservationValues(engineManagerCPUStr, replicaManagerCPUStr stri
 type CniNetwork struct {
 	Name string   `json:"name"`
 	IPs  []string `json:"ips,omitempty"`
-}
-
-// GetCniIPFromPod gets the network IP of the given pod.
-// The "netName" will be the storage-network setting value.
-// For below example, given "kube-system/demo-192-168-0-0" will return "192.168.1.175".
-//
-// apiVersion: v1
-// kind: Pod
-// metadata:
-//   annotations:
-//     k8s.v1.cni.cncf.io/network-status: |-
-//       [{
-//     	  "name": "cbr0",
-//     	  "interface": "eth0",
-//     	  "ips": [
-//     		  "10.42.0.175"
-//     	  ],
-//     	  "mac": "be:67:b2:19:17:84",
-//     	  "default": true,
-//     	  "dns": {}
-//       },{
-//     	  "name": "kube-system/demo-192-168-0-0",
-//     	  "interface": "lhnet1",
-//     	  "ips": [
-//     		  "192.168.1.175"
-//     	  ],
-//     	  "mac": "02:59:e5:d4:ae:ea",
-//     	  "dns": {}
-//       }]
-func GetCniIPFromPod(netName string, pod *corev1.Pod) (string, error) {
-	if netName == CniNetworkNone {
-		return "", nil
-	}
-
-	status, ok := pod.Annotations[string(CNIAnnotationNetworkStatus)]
-	if !ok {
-		return "", nil
-	}
-
-	nets := []CniNetwork{}
-	err := json.Unmarshal([]byte(status), &nets)
-	if err != nil {
-		return "", err
-	}
-
-	for _, net := range nets {
-		if net.Name != netName {
-			continue
-		}
-
-		sort.Strings(net.IPs)
-		return net.IPs[0], nil
-	}
-
-	return "", nil
 }
 
 func CreateCniAnnotationFromSetting(storageNetwork *longhorn.Setting) string {
