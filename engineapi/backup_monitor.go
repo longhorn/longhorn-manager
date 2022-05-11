@@ -30,7 +30,6 @@ type BackupMonitor struct {
 	backupName     string
 	snapshotName   string
 	replicaAddress string
-	engineClient   *EngineBinary
 
 	engine            *longhorn.Engine
 	engineClientProxy EngineClientProxy
@@ -49,7 +48,7 @@ type BackupMonitor struct {
 
 func NewBackupMonitor(logger logrus.FieldLogger,
 	backup *longhorn.Backup, volume *longhorn.Volume, backupTargetClient *BackupTargetClient,
-	biChecksum string, engineCliClient *EngineBinary, engine *longhorn.Engine, engineClientProxy EngineClientProxy,
+	biChecksum string, engine *longhorn.Engine, engineClientProxy EngineClientProxy,
 	syncCallback func(key string)) (*BackupMonitor, error) {
 	ctx, quit := context.WithCancel(context.Background())
 	m := &BackupMonitor{
@@ -57,7 +56,6 @@ func NewBackupMonitor(logger logrus.FieldLogger,
 
 		backupName:   backup.Name,
 		snapshotName: backup.Spec.SnapshotName,
-		engineClient: engineCliClient,
 
 		engine:            engine,
 		engineClientProxy: engineClientProxy,

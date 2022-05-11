@@ -491,20 +491,13 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		return nil, err
 	}
 
-	// Initialize a backup target client
-	backupTargetClient, err := getBackupTargetClient(bc.ds, backupTarget)
-	if err != nil {
-		return nil, err
-	}
-
-	// Find the corresponding engine client
-	engineCliClient, err := bc.getEngineBinaryClient(volume.Name)
+	proxy, backupTargetClient, err := getBackupTargetClients(bc.controllerID, backupTarget, bc.ProxyHandler, bc.ds, bc.logger)
 	if err != nil {
 		return nil, err
 	}
 
 	// Enable the backup monitor
-	monitor, err := bc.enableBackupMonitor(backup, volume, backupTargetClient, biChecksum, engineCliClient)
+	monitor, err := bc.enableBackupMonitor(backup, volume, backupTargetClient, biChecksum, proxy)
 	if err != nil {
 		backup.Status.Error = err.Error()
 		backup.Status.State = longhorn.BackupStateError
@@ -580,7 +573,7 @@ func (bc *BackupController) hasMonitor(backupName string) *engineapi.BackupMonit
 	return bc.monitors[backupName]
 }
 
-func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume *longhorn.Volume, backupTargetClient *engineapi.BackupTargetClient, biChecksum string, engineCliClient *engineapi.EngineBinary) (*engineapi.BackupMonitor, error) {
+func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume *longhorn.Volume, backupTargetClient *engineapi.BackupTargetClient, biChecksum string, engineClientProxy engineapi.EngineClientProxy) (*engineapi.BackupMonitor, error) {
 	monitor := bc.hasMonitor(backup.Name)
 	if monitor != nil {
 		return monitor, nil
@@ -594,12 +587,7 @@ func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume 
 		return nil, err
 	}
 
-	engineClientProxy, err := bc.ProxyHandler.GetCompatibleClient(engine, engineCliClient)
-	if err != nil {
-		return nil, err
-	}
-
-	monitor, err = engineapi.NewBackupMonitor(bc.logger, backup, volume, backupTargetClient, biChecksum, engineCliClient, engine, engineClientProxy, bc.enqueueBackupForMonitor)
+	monitor, err = engineapi.NewBackupMonitor(bc.logger, backup, volume, backupTargetClient, biChecksum, engine, engineClientProxy, bc.enqueueBackupForMonitor)
 	if err != nil {
 		return nil, err
 	}
