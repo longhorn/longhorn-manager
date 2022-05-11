@@ -210,12 +210,22 @@ func loadCertificate(caFile, certFile, keyFile string) (certPool *x509.CertPool,
 	return
 }
 
-func parseEndpoint(ep string) (string, string, error) {
-	if strings.HasPrefix(strings.ToLower(ep), "unix://") || strings.HasPrefix(strings.ToLower(ep), "tcp://") {
-		s := strings.SplitN(ep, "://", 2)
-		if s[1] != "" {
-			return s[0], s[1], nil
-		}
+// parseEndpoint splits ep string into proto and address
+// the supported protocols are "tcp" and "unix" unsupported protocols will return error
+// if the ep (url) does not contain a protocol, we return "tcp" for backwards compatibility
+func parseEndpoint(ep string) (proto string, address string, err error) {
+	s := strings.SplitN(ep, "://", 2)
+	if len(s) == 0 {
+		return "", "", fmt.Errorf("invalid endpoint: %v", ep)
 	}
-	return "", "", fmt.Errorf("invalid endpoint: %v", ep)
+
+	if len(s) > 1 && s[1] != "" {
+		if s[0] != "unix" && s[0] != "tcp" {
+			return "", "", fmt.Errorf("invalid endpoint: %v unsupported proto: %v", ep, s[0])
+		}
+		return s[0], s[1], nil
+	}
+
+	// default protocol tcp to be backwards compatible
+	return "tcp", s[0], nil
 }
