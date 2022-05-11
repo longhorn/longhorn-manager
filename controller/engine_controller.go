@@ -206,6 +206,15 @@ func getLoggerForEngine(logger logrus.FieldLogger, e *longhorn.Engine) *logrus.E
 	return logger.WithField("engine", e.Name)
 }
 
+func (ec *EngineController) getEngineClientProxy(e *longhorn.Engine) (engineapi.EngineClientProxy, error) {
+	engineCliClient, err := GetBinaryClientForEngine(e, ec.engines, e.Status.CurrentImage)
+	if err != nil {
+		return nil, err
+	}
+
+	return ec.proxyHandler.GetCompatibleClient(e, engineCliClient)
+}
+
 func (ec *EngineController) syncEngine(key string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to sync engine for %v", key)
@@ -1265,12 +1274,7 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 		return nil
 	}
 
-	engineCliClient, err := GetBinaryClientForEngine(e, ec.engines, e.Status.CurrentImage)
-	if err != nil {
-		return err
-	}
-
-	engineClientProxy, err := ec.proxyHandler.GetCompatibleClient(e, engineCliClient)
+	engineClientProxy, err := ec.getEngineClientProxy(e)
 	if err != nil {
 		return err
 	}
@@ -1332,12 +1336,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 		err = errors.Wrapf(err, "fail to start rebuild for %v of %v", replica, e.Name)
 	}()
 
-	engineCliClient, err := GetBinaryClientForEngine(e, ec.engines, e.Status.CurrentImage)
-	if err != nil {
-		return err
-	}
-
-	engineClientProxy, err := ec.proxyHandler.GetCompatibleClient(e, engineCliClient)
+	engineClientProxy, err := ec.getEngineClientProxy(e)
 	if err != nil {
 		return err
 	}
@@ -1442,12 +1441,8 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	}()
 
 	log := ec.logger.WithField("volume", e.Spec.VolumeName)
-	engineCliClient, err := GetBinaryClientForEngine(e, ec.engines, e.Spec.EngineImage)
-	if err != nil {
-		return err
-	}
 
-	engineClientProxy, err := ec.proxyHandler.GetCompatibleClient(e, engineCliClient)
+	engineClientProxy, err := ec.getEngineClientProxy(e)
 	if err != nil {
 		return err
 	}

@@ -215,6 +215,21 @@ func getLoggerForBackingImageDataSource(logger logrus.FieldLogger, bids *longhor
 	)
 }
 
+func (c *BackingImageDataSourceController) getEngineClientProxy(e *longhorn.Engine) (engineapi.EngineClientProxy, error) {
+	engineCollection := &engineapi.EngineCollection{}
+	engineCliClient, err := engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
+		EngineImage: e.Status.CurrentImage,
+		VolumeName:  e.Spec.VolumeName,
+		IP:          e.Status.IP,
+		Port:        e.Status.Port,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return c.proxyHandler.GetCompatibleClient(e, engineCliClient)
+}
+
 func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "BackingImageDataSourceController failed to sync %v", key)
@@ -674,18 +689,7 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 		}
 	}
 	if newSnapshotRequired {
-		engineCollection := &engineapi.EngineCollection{}
-		engineCliClient, err := engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
-			EngineImage: e.Status.CurrentImage,
-			VolumeName:  volumeName,
-			IP:          e.Status.IP,
-			Port:        e.Status.Port,
-		})
-		if err != nil {
-			return err
-		}
-
-		engineClientProxy, err := c.proxyHandler.GetCompatibleClient(e, engineCliClient)
+		engineClientProxy, err := c.getEngineClientProxy(e)
 		if err != nil {
 			return err
 		}
