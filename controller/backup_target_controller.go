@@ -209,6 +209,26 @@ func getLoggerForBackupTarget(logger logrus.FieldLogger, backupTarget *longhorn.
 	)
 }
 
+func getBackupTargetClients(controllerID string, backupTarget *longhorn.BackupTarget, proxyHandler *engineapi.EngineClientProxyHandler, ds *datastore.DataStore, log logrus.FieldLogger) (engineapi.EngineClientProxy, *engineapi.BackupTargetClient, error) {
+	// Initialize a backup target client
+	backupTargetClient, err := getBackupTargetClient(ds, backupTarget)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to init backup target client")
+	}
+
+	engineIM, err := ds.GetDefaultEngineInstanceManagerByNode(controllerID)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to get default engine instance manager for proxy client")
+	}
+
+	engineClientProxy, err := proxyHandler.GetClient(engineIM)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return engineClientProxy, backupTargetClient, nil
+}
+
 func getBackupTargetClient(ds *datastore.DataStore, backupTarget *longhorn.BackupTarget) (*engineapi.BackupTargetClient, error) {
 	defaultEngineImage, err := ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if err != nil {
@@ -308,24 +328,14 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	}
 
 	// Initialize a backup target client
-	backupTargetClient, err = getBackupTargetClient(btc.ds, backupTarget)
+	engineClientProxy, backupTargetClient, err := getBackupTargetClients(btc.controllerID, backupTarget, btc.proxyHandler, btc.ds, log)
 	if err != nil {
 		backupTarget.Status.Available = false
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
 			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusTrue,
 			longhorn.BackupTargetConditionReasonUnavailable, err.Error())
-		log.WithError(err).Error("Error init backup target client")
+		log.WithError(err).Error("Error init backup target clients")
 		return nil // Ignore error to allow status update as well as preventing enqueue
-	}
-
-	engineIM, err := btc.ds.GetDefaultEngineInstanceManagerByNode(btc.controllerID)
-	if err != nil {
-		return errors.Wrapf(err, "failed to get default engine instance manager for proxy client")
-	}
-
-	engineClientProxy, err := btc.proxyHandler.GetClient(engineIM)
-	if err != nil {
-		return err
 	}
 
 	// Get a list of all the backup volumes that are stored in the backup target

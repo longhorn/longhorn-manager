@@ -261,16 +261,6 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return err
 	}
 
-	engine, err := bc.ds.GetVolumeCurrentEngine(backupVolumeName)
-	if err != nil {
-		return err
-	}
-
-	im, err := bc.ds.GetInstanceManager(engine.Status.InstanceManagerName)
-	if err != nil {
-		return err
-	}
-
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backup.DeletionTimestamp.IsZero() {
 		backupVolume, err := bc.ds.GetBackupVolume(backupVolumeName)
@@ -280,16 +270,10 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 		if backupTarget.Spec.BackupTargetURL != "" &&
 			backupVolume != nil && backupVolume.DeletionTimestamp == nil {
-			// Initialize a backup target client
-			backupTargetClient, err := getBackupTargetClient(bc.ds, backupTarget)
+			engineClientProxy, backupTargetClient, err := getBackupTargetClients(bc.controllerID, backupTarget, bc.ProxyHandler, bc.ds, log)
 			if err != nil {
-				log.WithError(err).Error("Error init backup target client")
+				log.WithError(err).Error("Error init backup target clients")
 				return nil // Ignore error to prevent enqueue
-			}
-
-			engineClientProxy, err := bc.ProxyHandler.GetClient(im)
-			if err != nil {
-				return err
 			}
 
 			backupURL := backupstore.EncodeBackupURL(backup.Name, backupVolumeName, backupTargetClient.URL)
@@ -376,16 +360,10 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	}
 
 	// The backup creation is complete, then the source of truth becomes the remote backup target
-	// Initialize a backup target client
-	backupTargetClient, err := getBackupTargetClient(bc.ds, backupTarget)
+	engineClientProxy, backupTargetClient, err := getBackupTargetClients(bc.controllerID, backupTarget, bc.ProxyHandler, bc.ds, log)
 	if err != nil {
-		log.WithError(err).Error("Error init a backup target client")
+		log.WithError(err).Error("Error init backup target clients")
 		return nil // Ignore error to prevent enqueue
-	}
-
-	engineClientProxy, err := bc.ProxyHandler.GetClient(im)
-	if err != nil {
-		return err
 	}
 
 	backupURL := backupstore.EncodeBackupURL(backup.Name, backupVolumeName, backupTargetClient.URL)

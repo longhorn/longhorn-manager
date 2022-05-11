@@ -216,11 +216,6 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return nil
 	}
 
-	engineIM, err := bvc.ds.GetDefaultEngineInstanceManagerByNode(bvc.controllerID)
-	if err != nil {
-		return errors.Wrapf(err, "failed to get default engine instance manager for proxy client")
-	}
-
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backupVolume.DeletionTimestamp.IsZero() {
 		if err := bvc.ds.DeleteAllBackupsForBackupVolume(backupVolumeName); err != nil {
@@ -230,16 +225,10 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 		// Delete the backup volume from the remote backup target
 		if backupTarget.Spec.BackupTargetURL != "" {
-			// Initialize a backup target client
-			backupTargetClient, err := getBackupTargetClient(bvc.ds, backupTarget)
-			if err != nil {
-				log.WithError(err).Error("Error init backup target client")
+			engineClientProxy, backupTargetClient, err := getBackupTargetClients(bvc.controllerID, backupTarget, bvc.proxyHandler, bvc.ds, log)
+			if err != nil || engineClientProxy == nil {
+				log.WithError(err).Error("Error init backup target clients")
 				return nil // Ignore error to prevent enqueue
-			}
-
-			engineClientProxy, err := bvc.proxyHandler.GetClient(engineIM)
-			if err != nil {
-				return err
 			}
 
 			if err := engineClientProxy.BackupVolumeDelete(backupTargetClient.URL, backupVolumeName, backupTargetClient.Credential); err != nil {
@@ -271,16 +260,10 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return nil
 	}
 
-	// Initialize a backup target client
-	backupTargetClient, err := getBackupTargetClient(bvc.ds, backupTarget)
+	engineClientProxy, backupTargetClient, err := getBackupTargetClients(bvc.controllerID, backupTarget, bvc.proxyHandler, bvc.ds, log)
 	if err != nil {
-		log.WithError(err).Error("Error init backup target client")
+		log.WithError(err).Error("Error init backup target clients")
 		return nil // Ignore error to prevent enqueue
-	}
-
-	engineClientProxy, err := bvc.proxyHandler.GetClient(engineIM)
-	if err != nil {
-		return err
 	}
 
 	// Get a list of all the backups that are stored in the backup target
