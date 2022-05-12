@@ -1673,6 +1673,10 @@ spec:
                 type: string
               ownerID:
                 type: string
+              proxyApiMinVersion:
+                type: integer
+              proxyApiVersion:
+                type: integer
             type: object
         type: object
     served: true

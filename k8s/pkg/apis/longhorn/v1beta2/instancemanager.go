@@ -138,6 +138,10 @@ type InstanceManagerStatus struct {
 	APIMinVersion int `json:"apiMinVersion"`
 	// +optional
 	APIVersion int `json:"apiVersion"`
+	// +optional
+	ProxyAPIMinVersion int `json:"proxyApiMinVersion"`
+	// +optional
+	ProxyAPIVersion int `json:"proxyApiVersion"`
 }
 
 // +genclient
