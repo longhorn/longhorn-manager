@@ -11,6 +11,7 @@ import (
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	_ "github.com/longhorn/longhorn-manager/metrics_collector/client_go_adaper" // load the client-go metrics
 	"github.com/longhorn/longhorn-manager/metrics_collector/registry"
 	_ "github.com/longhorn/longhorn-manager/metrics_collector/workqueue" // load the workqueue metrics
 	"github.com/longhorn/longhorn-manager/types"
