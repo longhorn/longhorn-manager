@@ -16,8 +16,11 @@ import (
 )
 
 const (
-	CurrentInstanceManagerAPIVersion = 2
+	CurrentInstanceManagerAPIVersion = 1
 	UnknownInstanceManagerAPIVersion = 0
+
+	CurrentInstanceManagerProxyAPIVersion = 1
+	UnknownInstanceManagerProxyAPIVersion = 0
 
 	DefaultEnginePortCount  = 1
 	DefaultReplicaPortCount = 15
@@ -27,7 +30,6 @@ const (
 
 	// IncompatibleInstanceManagerAPIVersion means the instance manager version in v0.7.0
 	IncompatibleInstanceManagerAPIVersion = -1
-	InstanceManagerProxyMinAPIVersion     = 2
 	DeprecatedInstanceManagerBinaryName   = "longhorn-instance-manager"
 )
 
@@ -62,8 +64,9 @@ func CheckInstanceManagerCompatibilty(imMinVersion, imVersion int) error {
 }
 
 func CheckInstanceManagerProxyCompatibility(im *longhorn.InstanceManager) error {
-	if im.Status.APIVersion < InstanceManagerProxyMinAPIVersion {
-		return fmt.Errorf("%v api version does not support gRPC proxy", im.Name)
+	if CurrentInstanceManagerProxyAPIVersion > im.Status.ProxyAPIVersion || CurrentInstanceManagerProxyAPIVersion < im.Status.ProxyAPIMinVersion {
+		return fmt.Errorf("current InstanceManager proxy version %v is not compatible with InstanceManagerProxyAPIVersion %v and InstanceManagerProxyAPIMinVersion %v",
+			CurrentInstanceManagerAPIVersion, im.Status.ProxyAPIVersion, im.Status.ProxyAPIMinVersion)
 	}
 	return nil
 }
@@ -273,10 +276,11 @@ func (c *InstanceManagerClient) EngineProcessUpgrade(engineName, volumeName, eng
 	return c.parseProcess(engineProcess), nil
 }
 
-func (c *InstanceManagerClient) VersionGet() (int, int, error) {
+func (c *InstanceManagerClient) VersionGet() (int, int, int, int, error) {
 	output, err := c.grpcClient.VersionGet()
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, 0, err
 	}
-	return output.InstanceManagerAPIMinVersion, output.InstanceManagerAPIVersion, nil
+	return output.InstanceManagerAPIMinVersion, output.InstanceManagerAPIVersion,
+		output.InstanceManagerProxyAPIMinVersion, output.InstanceManagerProxyAPIVersion, nil
 }

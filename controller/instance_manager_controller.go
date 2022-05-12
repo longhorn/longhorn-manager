@@ -85,12 +85,14 @@ func updateInstanceManagerVersion(im *longhorn.InstanceManager) error {
 		return err
 	}
 	defer cli.Close()
-	apiMinVersion, apiVersion, err := cli.VersionGet()
+	apiMinVersion, apiVersion, proxyAPIMinVersion, proxyAPIVersion, err := cli.VersionGet()
 	if err != nil {
 		return err
 	}
 	im.Status.APIMinVersion = apiMinVersion
 	im.Status.APIVersion = apiVersion
+	im.Status.ProxyAPIMinVersion = proxyAPIMinVersion
+	im.Status.ProxyAPIVersion = proxyAPIVersion
 	return nil
 }
 
@@ -491,7 +493,9 @@ func (imc *InstanceManagerController) syncInstanceManagerAPIVersion(im *longhorn
 		return nil
 	}
 
-	if im.Status.CurrentState == longhorn.InstanceManagerStateRunning && im.Status.APIVersion == engineapi.UnknownInstanceManagerAPIVersion {
+	shouldUpdateAPIVersion := im.Status.APIVersion == engineapi.UnknownInstanceManagerAPIVersion
+	shouldUpdateProxyAPIVersion := im.Status.ProxyAPIVersion == engineapi.UnknownInstanceManagerProxyAPIVersion
+	if im.Status.CurrentState == longhorn.InstanceManagerStateRunning && (shouldUpdateAPIVersion || shouldUpdateProxyAPIVersion) {
 		if err := imc.versionUpdater(im); err != nil {
 			return err
 		}
