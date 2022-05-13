@@ -46,6 +46,9 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 		return nil, nil, errors.Wrap(err, "unable to get client config")
 	}
 
+	config.Burst = 100
+	config.QPS = 50
+
 	kubeClient, err := clientset.NewForConfig(config)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "unable to get k8s client")
