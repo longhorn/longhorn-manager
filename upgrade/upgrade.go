@@ -53,6 +53,11 @@ func Upgrade(kubeconfigPath, currentNodeID string) error {
 		return errors.Wrap(err, "unable to get client config")
 	}
 
+	// There is only one leading Longhorn manager that is doing modification to the CRs.
+	// Increase this value so that leading Longhorn manager can finish upgrading faster
+	config.Burst = 1000
+	config.QPS = 1000
+
 	kubeClient, err := clientset.NewForConfig(config)
 	if err != nil {
 		return errors.Wrap(err, "unable to get k8s client")
