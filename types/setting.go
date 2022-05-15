@@ -28,7 +28,8 @@ import (
 )
 
 const (
-	EnvDefaultSettingPath = "DEFAULT_SETTING_PATH"
+	EnvDefaultSettingPath      = "DEFAULT_SETTING_PATH"
+	EnvDefaultSettingConfigMap = "DEFAULT_SETTING_CONFIGMAP"
 )
 
 type SettingType string
@@ -1053,7 +1054,12 @@ func OverwriteBuiltInSettingsWithCustomizedValues(kubeconfigPath string) error {
 		return err
 	}
 
-	defaultSettingConfigMap, err := kubeClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), "longhorn-default-setting", metav1.GetOptions{})
+	defaultSettingConfigMapName := os.Getenv(EnvDefaultSettingConfigMap)
+	if defaultSettingConfigMapName == "" {
+		return fmt.Errorf("cannot detect environment variable %v is missing", EnvDefaultSettingConfigMap)
+	}
+
+	defaultSettingConfigMap, err := kubeClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), defaultSettingConfigMapName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
