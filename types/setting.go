@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -12,9 +13,16 @@ import (
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	"github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/util"
 )
@@ -149,14 +157,15 @@ const (
 )
 
 type SettingDefinition struct {
-	DisplayName string          `json:"displayName"`
-	Description string          `json:"description"`
-	Category    SettingCategory `json:"category"`
-	Type        SettingType     `json:"type"`
-	Required    bool            `json:"required"`
-	ReadOnly    bool            `json:"readOnly"`
-	Default     string          `json:"default"`
-	Choices     []string        `json:"options,omitempty"` // +optional
+	DisplayName              string          `json:"displayName"`
+	Description              string          `json:"description"`
+	Category                 SettingCategory `json:"category"`
+	Type                     SettingType     `json:"type"`
+	Required                 bool            `json:"required"`
+	ReadOnly                 bool            `json:"readOnly"`
+	Default                  string          `json:"default"`
+	Choices                  []string        `json:"options,omitempty"`                  // +optional
+	ConfigMapResourceVersion string          `json:"configMapResourceVersion,omitempty"` // +optional
 }
 
 var (
@@ -1010,9 +1019,41 @@ func GetCustomizedDefaultSettings() (map[string]string, error) {
 	return defaultSettings, nil
 }
 
-func OverwriteBuiltInSettingsWithCustomizedValues() error {
+func OverwriteBuiltInSettingsWithCustomizedValues(kubeconfigPath string) error {
 	logrus.Infof("Start overwriting built-in settings with customized values")
+	namespace := os.Getenv(EnvPodNamespace)
+	if namespace == "" {
+		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, "+
+			"using default namespace", EnvPodNamespace)
+		namespace = corev1.NamespaceDefault
+	}
+
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		return errors.Wrap(err, "unable to get client config")
+	}
+
+	kubeClient, err := clientset.NewForConfig(config)
+	if err != nil {
+		return errors.Wrap(err, "unable to get k8s client")
+	}
+
+	lhClient, err := lhclientset.NewForConfig(config)
+	if err != nil {
+		return errors.Wrap(err, "unable to get clientset")
+	}
+
+	scheme := runtime.NewScheme()
+	if err := longhorn.SchemeBuilder.AddToScheme(scheme); err != nil {
+		return errors.Wrap(err, "unable to create scheme")
+	}
+
 	customizedDefaultSettings, err := GetCustomizedDefaultSettings()
+	if err != nil {
+		return err
+	}
+
+	defaultSettingConfigMap, err := kubeClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), "longhorn-default-setting", metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -1023,11 +1064,24 @@ func OverwriteBuiltInSettingsWithCustomizedValues() error {
 			return fmt.Errorf("BUG: setting %v is not defined", sName)
 		}
 
-		value, exists := customizedDefaultSettings[string(sName)]
-		if exists && value != "" {
-			definition.Default = value
-			SettingDefinitions[sName] = definition
+		s, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(sName), metav1.GetOptions{})
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return err
+			}
+		} else {
+			definition.Default = s.Value
 		}
+
+		if err != nil || s.ConfigMapResourceVersion != defaultSettingConfigMap.ResourceVersion {
+			value, exists := customizedDefaultSettings[string(sName)]
+			if exists && value != "" {
+				definition.Default = value
+				definition.ConfigMapResourceVersion = defaultSettingConfigMap.ResourceVersion
+			}
+		}
+
+		SettingDefinitions[sName] = definition
 	}
 
 	return nil
