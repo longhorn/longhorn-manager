@@ -120,7 +120,7 @@ func startManager(c *cli.Context) error {
 			return fmt.Errorf("cannot find customized default setting file on %v: %v", defaultSettingPath, err)
 		}
 	}
-	if err := types.OverwriteBuiltInSettingsWithCustomizedValues(kubeconfigPath); err != nil {
+	if err := types.OverwriteBuiltInSettingsWithCustomizedValues(); err != nil {
 		return fmt.Errorf("failed to overwrite built-in settings with customized values: %v", err)
 	}
 
@@ -168,6 +168,7 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
+	// Initialize the rest settings
 	if err := ds.InitSettings(); err != nil {
 		return err
 	}
@@ -237,10 +238,6 @@ func createOrUpdateDefaultImageSetting(m *manager.VolumeManager, settingName typ
 		settingDefaultImage.Value = image
 		if _, err := m.CreateOrUpdateSetting(settingDefaultImage); err != nil {
 			return err
-		}
-		if definition, exist := types.SettingDefinitions[settingName]; exist {
-			definition.Default = image
-			types.SettingDefinitions[settingName] = definition
 		}
 	}
 	return nil

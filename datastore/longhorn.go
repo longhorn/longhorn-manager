@@ -43,54 +43,27 @@ var (
 
 // InitSettings creates all Settings in SettingNameList if not already exist
 func (s *DataStore) InitSettings() error {
-	logrus.Debugf("Updating customized default settings")
-
 	for _, sName := range types.SettingNameList {
 		definition, ok := types.SettingDefinitions[sName]
 		if !ok {
 			return fmt.Errorf("BUG: setting %v is not defined", sName)
 		}
-
-		err := s.CreateOrUpdateSetting(sName, definition)
-		if err != nil {
-			return err
+		if _, err := s.sLister.Settings(s.namespace).Get(string(sName)); err != nil {
+			if ErrorIsNotFound(err) {
+				setting := &longhorn.Setting{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: string(sName),
+					},
+					Value: definition.Default,
+				}
+				if _, err := s.CreateSetting(setting); err != nil && !apierrors.IsAlreadyExists(err) {
+					return err
+				}
+			} else {
+				return err
+			}
 		}
 	}
-	return nil
-}
-
-func (s *DataStore) CreateOrUpdateSetting(name types.SettingName, definition types.SettingDefinition) error {
-	setting, err := s.sLister.Settings(s.namespace).Get(string(name))
-	if err != nil {
-		if !ErrorIsNotFound(err) {
-			return err
-		}
-		setting = &longhorn.Setting{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: string(name),
-			},
-			Value:                    definition.Default,
-			ConfigMapResourceVersion: definition.ConfigMapResourceVersion,
-		}
-		_, err := s.CreateSetting(setting)
-		if err != nil && !apierrors.IsAlreadyExists(err) {
-			return nil
-		}
-		return err
-	}
-
-	if definition.Default == "" {
-		return nil
-	}
-
-	if setting.Value != definition.Default {
-		setting.Value = definition.Default
-		setting.ConfigMapResourceVersion = definition.ConfigMapResourceVersion
-
-		_, err = s.UpdateSetting(setting)
-		return err
-	}
-
 	return nil
 }
 
