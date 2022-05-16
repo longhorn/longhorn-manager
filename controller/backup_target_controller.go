@@ -209,46 +209,45 @@ func getLoggerForBackupTarget(logger logrus.FieldLogger, backupTarget *longhorn.
 	)
 }
 
-func getBackupTargetClients(controllerID string, backupTarget *longhorn.BackupTarget, proxyHandler *engineapi.EngineClientProxyHandler, ds *datastore.DataStore, log logrus.FieldLogger) (engineapi.EngineClientProxy, *engineapi.BackupTargetClient, error) {
-	// Initialize a backup target client
-	backupTargetClient, err := getBackupTargetClient(ds, backupTarget)
-	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to init backup target client")
-	}
-
+func getBackupTarget(controllerID string, backupTarget *longhorn.BackupTarget, proxyHandler *engineapi.EngineClientProxyHandler, ds *datastore.DataStore, log logrus.FieldLogger) (engineClientProxy engineapi.EngineClientProxy, backupTargetConfig *engineapi.BackupTargetConfig, err error) {
 	engineIM, err := ds.GetDefaultEngineInstanceManagerByNode(controllerID)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to get default engine instance manager for proxy client")
 	}
 
-	engineClientProxy, err := proxyHandler.GetClient(engineIM)
+	engineClientProxy, err = proxyHandler.GetClient(engineIM)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return engineClientProxy, backupTargetClient, nil
+	backupTargetConfig, err = getBackupTargetConfig(ds, backupTarget)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return engineClientProxy, backupTargetConfig, nil
 }
 
-func getBackupTargetClient(ds *datastore.DataStore, backupTarget *longhorn.BackupTarget) (*engineapi.BackupTargetClient, error) {
-	defaultEngineImage, err := ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
-	if err != nil {
-		return nil, err
-	}
+func getBackupTargetConfig(ds *datastore.DataStore, backupTarget *longhorn.BackupTarget) (backupTargetConfig *engineapi.BackupTargetConfig, err error) {
 	backupType, err := util.CheckBackupType(backupTarget.Spec.BackupTargetURL)
 	if err != nil {
 		return nil, err
 	}
-	var credential map[string]string
+
+	var cred map[string]string
 	if backupType == types.BackupStoreTypeS3 {
 		if backupTarget.Spec.CredentialSecret == "" {
 			return nil, fmt.Errorf("could not access %s without credential secret", types.BackupStoreTypeS3)
 		}
-		credential, err = ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
+		cred, err = ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential), nil
+	return &engineapi.BackupTargetConfig{
+		URL:        backupTarget.Spec.BackupTargetURL,
+		Credential: cred,
+	}, nil
 }
 
 func (btc *BackupTargetController) reconcile(name string) (err error) {
@@ -292,14 +291,14 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		return nil
 	}
 
-	var backupTargetClient *engineapi.BackupTargetClient
+	var backupTargetConfig *engineapi.BackupTargetConfig
 	existingBackupTarget := backupTarget.DeepCopy()
 	syncTime := metav1.Time{Time: time.Now().UTC()}
 	defer func() {
 		if err != nil {
 			return
 		}
-		if backupTargetClient != nil {
+		if backupTargetConfig != nil {
 			// If there is something wrong with the backup target config and Longhorn cannot launch the client,
 			// lacking the credential for example, Longhorn won't even try to connect with the remote backupstore.
 			// In this case, the controller should not update `Status.LastSyncedAt`.
@@ -328,7 +327,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	}
 
 	// Initialize a backup target client
-	engineClientProxy, backupTargetClient, err := getBackupTargetClients(btc.controllerID, backupTarget, btc.proxyHandler, btc.ds, log)
+	engineClientProxy, backupTargetConfig, err := getBackupTarget(btc.controllerID, backupTarget, btc.proxyHandler, btc.ds, log)
 	if err != nil {
 		backupTarget.Status.Available = false
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
@@ -339,7 +338,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	}
 
 	// Get a list of all the backup volumes that are stored in the backup target
-	res, err := engineClientProxy.BackupVolumeNameList(backupTargetClient.URL, backupTargetClient.Credential)
+	res, err := engineClientProxy.BackupVolumeNameList(backupTargetConfig.URL, backupTargetConfig.Credential)
 	if err != nil {
 		backupTarget.Status.Available = false
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
