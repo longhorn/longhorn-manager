@@ -3,7 +3,6 @@ package engineapi
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"sort"
 
 	"github.com/pkg/errors"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/longhorn/backupstore"
 
-	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -33,23 +31,9 @@ type BackupTargetBinaryClient interface {
 	BackupConfigMetaGet(destURL string, credential map[string]string) (*ConfigMetadata, error)
 }
 
-type BackupTargetClient struct {
-	Image      string
+type BackupTargetConfig struct {
 	URL        string
 	Credential map[string]string
-}
-
-// NewBackupTargetClient returns the backup target client
-func NewBackupTargetClient(defaultEngineImage, url string, credential map[string]string) *BackupTargetClient {
-	return &BackupTargetClient{
-		Image:      defaultEngineImage,
-		URL:        url,
-		Credential: credential,
-	}
-}
-
-func (btc *BackupTargetClient) LonghornEngineBinary() string {
-	return filepath.Join(types.GetEngineBinaryDirectoryOnHostForImage(btc.Image), "longhorn")
 }
 
 // getBackupCredentialEnv returns the environment variables as KEY=VALUE in string slice
@@ -88,22 +72,6 @@ func getBackupCredentialEnv(backupTarget string, credential map[string]string) (
 	return envs, nil
 }
 
-func (btc *BackupTargetClient) ExecuteEngineBinary(args ...string) (string, error) {
-	envs, err := getBackupCredentialEnv(btc.URL, btc.Credential)
-	if err != nil {
-		return "", err
-	}
-	return util.Execute(envs, btc.LonghornEngineBinary(), args...)
-}
-
-func (btc *BackupTargetClient) ExecuteEngineBinaryWithoutTimeout(args ...string) (string, error) {
-	envs, err := getBackupCredentialEnv(btc.URL, btc.Credential)
-	if err != nil {
-		return "", err
-	}
-	return util.ExecuteWithoutTimeout(envs, btc.LonghornEngineBinary(), args...)
-}
-
 // parseBackupVolumeNamesList parses a list of backup volume names into a sorted string slice
 func parseBackupVolumeNamesList(output string) ([]string, error) {
 	data := map[string]struct{}{}
@@ -117,19 +85,6 @@ func parseBackupVolumeNamesList(output string) ([]string, error) {
 	}
 	sort.Strings(volumeNames)
 	return volumeNames, nil
-}
-
-// BackupVolumeNameList returns a list of backup volume names
-// TODO: Deprecated, replaced by gRPC proxy
-func (btc *BackupTargetClient) BackupVolumeNameList(destURL string, credential map[string]string) ([]string, error) {
-	output, err := btc.ExecuteEngineBinary("backup", "ls", "--volume-only", btc.URL)
-	if err != nil {
-		if types.ErrorIsNotFound(err) {
-			return nil, nil
-		}
-		return nil, errors.Wrapf(err, "error listing backup volume names")
-	}
-	return parseBackupVolumeNamesList(output)
 }
 
 // parseBackupNamesList parses a list of backup names into a sorted string slice
@@ -155,36 +110,6 @@ func parseBackupNamesList(output, volumeName string) ([]string, error) {
 	return backupNames, nil
 }
 
-// BackupNameList returns a list of backup names
-// TODO: Deprecated, replaced by gRPC proxy
-func (btc *BackupTargetClient) BackupNameList(destURL, volumeName string, credential map[string]string) ([]string, error) {
-	if volumeName == "" {
-		return nil, nil
-	}
-	output, err := btc.ExecuteEngineBinary("backup", "ls", "--volume", volumeName, btc.URL)
-	if err != nil {
-		if types.ErrorIsNotFound(err) {
-			return nil, nil
-		}
-		return nil, errors.Wrapf(err, "error listing volume %s backup", volumeName)
-	}
-	return parseBackupNamesList(output, volumeName)
-}
-
-// BackupVolumeDelete deletes the backup volume from the remote backup target
-// TODO: Deprecated, replaced by gRPC proxy
-func (btc *BackupTargetClient) BackupVolumeDelete(destURL, volumeName string, credential map[string]string) error {
-	_, err := btc.ExecuteEngineBinaryWithoutTimeout("backup", "rm", "--volume", volumeName, btc.URL)
-	if err != nil {
-		if types.ErrorIsNotFound(err) {
-			return nil
-		}
-		return errors.Wrapf(err, "error deleting backup volume")
-	}
-	logrus.Infof("Complete deleting backup volume %s", volumeName)
-	return nil
-}
-
 // parseBackupVolumeConfig parses a backup volume config
 func parseBackupVolumeConfig(output string) (*BackupVolume, error) {
 	backupVolume := new(BackupVolume)
@@ -192,19 +117,6 @@ func parseBackupVolumeConfig(output string) (*BackupVolume, error) {
 		return nil, errors.Wrapf(err, "error parsing one backup volume config: \n%s", output)
 	}
 	return backupVolume, nil
-}
-
-// BackupVolumeGet inspects a backup volume config with the given volume config URL
-// TODO: Deprecated, replaced by gRPC proxy
-func (btc *BackupTargetClient) BackupVolumeGet(backupVolumeURL string, credential map[string]string) (*BackupVolume, error) {
-	output, err := btc.ExecuteEngineBinary("backup", "inspect-volume", backupVolumeURL)
-	if err != nil {
-		if types.ErrorIsNotFound(err) {
-			return nil, nil
-		}
-		return nil, errors.Wrapf(err, "error getting backup volume config %s", backupVolumeURL)
-	}
-	return parseBackupVolumeConfig(output)
 }
 
 // parseBackupConfig parses a backup config
@@ -216,19 +128,6 @@ func parseBackupConfig(output string) (*Backup, error) {
 	return backup, nil
 }
 
-// BackupGet inspects a backup config with the given backup config URL
-// TODO: Deprecated, replaced by gRPC proxy
-func (btc *BackupTargetClient) BackupGet(backupConfigURL string, credential map[string]string) (*Backup, error) {
-	output, err := btc.ExecuteEngineBinary("backup", "inspect", backupConfigURL)
-	if err != nil {
-		if types.ErrorIsNotFound(err) {
-			return nil, nil
-		}
-		return nil, errors.Wrapf(err, "error getting backup config %s", backupConfigURL)
-	}
-	return parseBackupConfig(output)
-}
-
 // parseConfigMetadata parses the config metadata
 func parseConfigMetadata(output string) (*ConfigMetadata, error) {
 	metadata := new(ConfigMetadata)
@@ -236,145 +135,6 @@ func parseConfigMetadata(output string) (*ConfigMetadata, error) {
 		return nil, errors.Wrapf(err, "error parsing config metadata: \n%s", output)
 	}
 	return metadata, nil
-}
-
-// BackupConfigMetaGet returns the config metadata with the given URL
-// TODO: Deprecated, replaced by gRPC proxy
-func (btc *BackupTargetClient) BackupConfigMetaGet(url string, credential map[string]string) (*ConfigMetadata, error) {
-	output, err := btc.ExecuteEngineBinary("backup", "head", url)
-	if err != nil {
-		if types.ErrorIsNotFound(err) {
-			return nil, nil
-		}
-		return nil, errors.Wrapf(err, "error getting config metadata %s", url)
-	}
-	return parseConfigMetadata(output)
-}
-
-// BackupDelete deletes the backup from the remote backup target
-// TODO: Deprecated, replaced by gRPC proxy
-func (btc *BackupTargetClient) BackupDelete(backupURL string, credential map[string]string) error {
-	_, err := btc.ExecuteEngineBinaryWithoutTimeout("backup", "rm", backupURL)
-	if err != nil {
-		if types.ErrorIsNotFound(err) {
-			return nil
-		}
-		return errors.Wrapf(err, "error deleting backup %v", backupURL)
-	}
-	logrus.Infof("Complete deleting backup %s", backupURL)
-	return nil
-}
-
-func (btc *BackupTargetClient) IsGRPC() bool {
-	return false
-}
-
-func (btc *BackupTargetClient) Start(*longhorn.InstanceManager, logrus.FieldLogger, *datastore.DataStore) error {
-	return errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) Stop(string) error {
-	return errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) Ping() error {
-	return errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) Name() string {
-	return btc.URL
-}
-
-func (btc *BackupTargetClient) VersionGet(e *longhorn.Engine, binary EngineClient, clientOnly bool) (version *EngineVersion, err error) {
-	return nil, errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) VolumeGet(*longhorn.Engine) (volume *Volume, err error) {
-	return nil, errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) VolumeExpand(engine *longhorn.Engine) error {
-	return errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) VolumeFrontendStart(e *longhorn.Engine) error {
-	return errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) VolumeFrontendShutdown(*longhorn.Engine) error {
-	return errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume bool) error {
-	return errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) ReplicaRemove(engine *longhorn.Engine, address string) error {
-	return errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) ReplicaList(*longhorn.Engine) (map[string]*Replica, error) {
-	return nil, errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) ReplicaRebuildStatus(engine *longhorn.Engine) (status map[string]*longhorn.RebuildStatus, err error) {
-	return nil, errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) ReplicaRebuildVerify(engine *longhorn.Engine, url string) error {
-	return errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) SnapshotCreate(engine *longhorn.Engine, name string, labels map[string]string) (string, error) {
-	return "", errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) SnapshotDelete(engine *longhorn.Engine, name string) error {
-	return errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) SnapshotGet(engine *longhorn.Engine, name string) (snapshot *longhorn.Snapshot, err error) {
-	return nil, errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) SnapshotList(e *longhorn.Engine) (snapshots map[string]*longhorn.Snapshot, err error) {
-	return nil, errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) SnapshotRevert(engine *longhorn.Engine, name string) error {
-	return errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) SnapshotPurge(engine *longhorn.Engine) error {
-	return errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) SnapshotPurgeStatus(engine *longhorn.Engine) (status map[string]*longhorn.PurgeStatus, err error) {
-	return nil, errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) SnapshotClone(engine *longhorn.Engine, name, fromController string) (err error) {
-	return errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) SnapshotCloneStatus(engine *longhorn.Engine) (status map[string]*longhorn.SnapshotCloneStatus, err error) {
-	return nil, errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) SnapshotBackup(engine *longhorn.Engine, snapshotName, backupName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (backupID string, replicaAddress string, err error) {
-	return "", "", errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress string) (status *longhorn.EngineBackupStatus, err error) {
-	return nil, errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) BackupRestore(e *longhorn.Engine, backupTarget, backupName, backupVolumeName, lastRestored string, credential map[string]string) error {
-	return errors.Errorf(ErrNotImplement)
-}
-
-func (btc *BackupTargetClient) BackupRestoreStatus(engine *longhorn.Engine) (status map[string]*longhorn.RestoreStatus, err error) {
-	return nil, errors.Errorf(ErrNotImplement)
 }
 
 // SnapshotBackup calls engine binary
