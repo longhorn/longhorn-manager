@@ -15,8 +15,7 @@ type Setting struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	ConfigMapResourceVersion string `json:"configMapResourceVersion"`
-	Value                    string `json:"value"`
+	Value string `json:"value"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
