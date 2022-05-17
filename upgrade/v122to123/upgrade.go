@@ -42,6 +42,24 @@ func upgradeBackups(namespace string, lhClient *lhclientset.Clientset) (err erro
 		return err
 	}
 
+	engines, err := lhClient.LonghornV1beta2().Engines(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	volumeNameToEngines := make(map[string][]*longhorn.Engine)
+	for _, e := range engines.Items {
+		volumeNameToEngines[e.Labels[types.LonghornLabelVolume]] = append(volumeNameToEngines[e.Labels[types.LonghornLabelVolume]], &e)
+	}
+
+	volumes, err := lhClient.LonghornV1beta2().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	volumeMap := make(map[string]*longhorn.Volume)
+	for _, v := range volumes.Items {
+		volumeMap[v.Name] = &v
+	}
+
 	progressMonitor := util.NewProgressMonitor("upgradeBackups", 0, len(backups.Items))
 	// Loop all the backup CRs
 	for _, backup := range backups.Items {
@@ -52,33 +70,22 @@ func upgradeBackups(namespace string, lhClient *lhclientset.Clientset) (err erro
 			continue
 		}
 
-		// Get the corresponding volume's engine
-		engines, err := lhClient.LonghornV1beta2().Engines(namespace).List(context.TODO(), metav1.ListOptions{
-			LabelSelector: types.LonghornLabelVolume + "=" + volumeName,
-		})
-		if err != nil {
-			return err
-		}
+		engines := volumeNameToEngines[volumeName]
 
 		// No engine CR found
-		var engine longhorn.Engine
-		switch len(engines.Items) {
+		var engine *longhorn.Engine
+		switch len(engines) {
 		case 0:
 			continue
 		case 1:
-			engine = engines.Items[0]
+			engine = engines[0]
 		default:
-			// If more than 2 engines found, use the current volume's engine
-			v, err := lhClient.LonghornV1beta2().Volumes(namespace).Get(context.TODO(), volumeName, metav1.GetOptions{})
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					// Cannot found the correspoding volume
-					continue
-				}
-				return err
+			v, ok := volumeMap[volumeName]
+			if !ok {
+				continue
 			}
 
-			for _, e := range engines.Items {
+			for _, e := range engines {
 				if e.Spec.NodeID == v.Status.CurrentNodeID &&
 					e.Spec.DesireState == longhorn.InstanceStateRunning &&
 					e.Status.CurrentState == longhorn.InstanceStateRunning {
