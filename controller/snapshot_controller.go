@@ -91,30 +91,6 @@ func (sc *SnapshotController) enqueueSnapshot(obj interface{}) {
 		return
 	}
 
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
-	if err != nil {
-		return
-	}
-	if namespace != sc.namespace {
-		return
-	}
-
-	snap, err := sc.ds.GetSnapshot(name)
-	if err != nil {
-		sc.queue.Add(key)
-		return
-	}
-
-	vol, err := sc.ds.GetVolumeRO(snap.Spec.Volume)
-	if err != nil {
-		sc.queue.Add(key)
-		return
-	}
-
-	if vol.Status.OwnerID != sc.controllerID {
-		return
-	}
-
 	sc.queue.Add(key)
 }
 
