@@ -47,7 +47,8 @@ func upgradeBackups(namespace string, lhClient *lhclientset.Clientset) (err erro
 		return err
 	}
 	volumeNameToEngines := make(map[string][]*longhorn.Engine)
-	for _, e := range engines.Items {
+	for i := range engines.Items {
+		e := engines.Items[i]
 		volumeNameToEngines[e.Labels[types.LonghornLabelVolume]] = append(volumeNameToEngines[e.Labels[types.LonghornLabelVolume]], &e)
 	}
 
@@ -56,7 +57,8 @@ func upgradeBackups(namespace string, lhClient *lhclientset.Clientset) (err erro
 		return err
 	}
 	volumeMap := make(map[string]*longhorn.Volume)
-	for _, v := range volumes.Items {
+	for i := range volumes.Items {
+		v := volumes.Items[i]
 		volumeMap[v.Name] = &v
 	}
 
