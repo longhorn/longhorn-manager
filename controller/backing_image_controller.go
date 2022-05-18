@@ -294,16 +294,16 @@ func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.Back
 		if bim.DeletionTimestamp != nil {
 			continue
 		}
-
+		bimLog := log.WithField("backingImageManager", bim.Name)
 		// Directly clean up old backing image managers (including incompatible managers).
 		// New backing image managers can detect and reuse the existing backing image files if necessary.
 		if bim.Spec.Image != defaultImage {
-			log.WithField("backingImageManager", bim.Name).Info("Start to delete old backing image manager")
+			bimLog.Info("Deleting old/non-default backing image manager")
 			if err := bic.ds.DeleteBackingImageManager(bim.Name); err != nil && !apierrors.IsNotFound(err) {
 				return err
 			}
-			log.WithField("backingImageManager", bim.Name).Info("Deleting old backing image manager")
-			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonDelete, "delete old backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
+			bimLog.Info("Deleted old/non-default backing image manager")
+			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonDelete, "deleted old/non-default backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
 			continue
 		}
 
@@ -325,12 +325,12 @@ func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.Back
 			return err
 		}
 		if len(bim.Spec.BackingImages) == 0 {
-			log.WithField("backingImageManager", bim.Name).Info("Start to delete unused backing image manager")
+			bimLog.Info("Deleting unused backing image manager")
 			if err := bic.ds.DeleteBackingImageManager(bim.Name); err != nil && !apierrors.IsNotFound(err) {
 				return err
 			}
-			log.WithField("backingImageManager", bim.Name).Info("Deleting unused backing image manager")
-			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonDelete, "delete unused backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
+			bimLog.Info("Deleted unused backing image manager")
+			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonDelete, "deleted unused backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
 			continue
 		}
 	}
@@ -432,6 +432,10 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 	}
 	existingBIDS := bids.DeepCopy()
 
+	if bids.Spec.UUID == "" {
+		bids.Spec.UUID = bi.Status.UUID
+	}
+
 	recoveryWaitIntervalSettingValue, err := bic.ds.GetSettingAsInt(types.SettingNameBackingImageRecoveryWaitInterval)
 	if err != nil {
 		return err
@@ -443,7 +447,10 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 	if bi.Spec.Disks != nil {
 		for diskUUID := range bi.Spec.Disks {
 			fileStatus, ok := bi.Status.DiskFileStatusMap[diskUUID]
-			if !ok || (fileStatus.State != longhorn.BackingImageStateFailed && fileStatus.State != longhorn.BackingImageStateUnknown) {
+			if !ok {
+				continue
+			}
+			if fileStatus.State != longhorn.BackingImageStateFailed {
 				allFilesUnavailable = false
 				break
 			}
@@ -467,7 +474,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 			if _, exists := bi.Spec.Disks[diskUUID]; exists {
 				continue
 			}
-			if fileStatus.State != longhorn.BackingImageStateFailed && fileStatus.State != longhorn.BackingImageStateUnknown {
+			if fileStatus.State != longhorn.BackingImageStateFailed {
 				allFilesUnavailable = false
 				break
 			}

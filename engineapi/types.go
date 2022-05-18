@@ -24,6 +24,10 @@ const (
 	InstanceManagerDefaultPort      = 8500
 	InstanceManagerProxyDefaultPort = InstanceManagerDefaultPort + 1
 
+	BackingImageManagerDefaultPort    = 8000
+	BackingImageDataSourceDefaultPort = 8000
+	BackingImageSyncServerDefaultPort = 8001
+
 	DefaultISCSIPort = "3260"
 	DefaultISCSILUN  = "1"
 
