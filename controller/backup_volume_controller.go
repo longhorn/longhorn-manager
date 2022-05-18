@@ -24,6 +24,7 @@ import (
 	"github.com/longhorn/backupstore"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -43,6 +44,8 @@ type BackupVolumeController struct {
 	ds *datastore.DataStore
 
 	cacheSyncs []cache.InformerSynced
+
+	engineClientProxyHandler *engineapi.EngineClientProxyHandler
 }
 
 func NewBackupVolumeController(
@@ -52,7 +55,7 @@ func NewBackupVolumeController(
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string,
-) *BackupVolumeController {
+	engineClientProxyHandler *engineapi.EngineClientProxyHandler) *BackupVolumeController {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -70,6 +73,8 @@ func NewBackupVolumeController(
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-backup-volume-controller"}),
+
+		engineClientProxyHandler: engineClientProxyHandler,
 	}
 
 	ds.BackupVolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -220,12 +225,12 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 		// Delete the backup volume from the remote backup target
 		if backupTarget.Spec.BackupTargetURL != "" {
-			engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log)
+			engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.engineClientProxyHandler, bvc.ds, log)
 			if err != nil || engineClientProxy == nil {
 				log.WithError(err).Error("Error init backup target clients")
 				return nil // Ignore error to prevent enqueue
 			}
-			defer engineClientProxy.Close()
+			defer engineClientProxy.Done()
 
 			if err := backupTargetClient.BackupVolumeDelete(backupTargetClient.URL, backupVolumeName, backupTargetClient.Credential); err != nil {
 				log.WithError(err).Error("Error clean up remote backup volume")
@@ -256,12 +261,12 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return nil
 	}
 
-	engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log)
+	engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.engineClientProxyHandler, bvc.ds, log)
 	if err != nil {
 		log.WithError(err).Error("Error init backup target clients")
 		return nil // Ignore error to prevent enqueue
 	}
-	defer engineClientProxy.Close()
+	defer engineClientProxy.Done()
 
 	// Get a list of all the backups that are stored in the backup target
 	res, err := backupTargetClient.BackupNameList(backupTargetClient.URL, backupVolumeName, backupTargetClient.Credential)

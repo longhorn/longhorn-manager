@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -62,7 +63,9 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 
 	logger := logrus.StandardLogger()
 
-	imc := NewInstanceManagerController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestServiceAccount)
+	engineClientProxyHandler := engineapi.NewEngineClientProxyHandler(logger, ds, time.Second*5, make(chan struct{}))
+
+	imc := NewInstanceManagerController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestServiceAccount, engineClientProxyHandler)
 	fakeRecorder := record.NewFakeRecorder(100)
 	imc.eventRecorder = fakeRecorder
 	for index := range imc.cacheSyncs {

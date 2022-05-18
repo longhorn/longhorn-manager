@@ -131,12 +131,12 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	ds, wsc, err := controller.StartControllers(logger, done, currentNodeID, serviceAccount, managerImage, kubeconfigPath, meta.Version)
+	ds, engineClientProxyHandler, wsc, err := controller.StartControllers(logger, done, currentNodeID, serviceAccount, managerImage, kubeconfigPath, meta.Version)
 	if err != nil {
 		return err
 	}
 
-	m := manager.NewVolumeManager(currentNodeID, ds)
+	m := manager.NewVolumeManager(currentNodeID, ds, engineClientProxyHandler)
 
 	metricsCollector.InitMetricsCollectorSystem(logger, currentNodeID, ds, kubeconfigPath)
 

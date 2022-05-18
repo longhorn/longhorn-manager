@@ -236,6 +236,6 @@ func (m *BackupMonitor) GetBackupStatus() longhorn.BackupStatus {
 }
 
 func (m *BackupMonitor) Close() {
-	m.engineClientProxy.Close()
+	m.engineClientProxy.Done()
 	m.quit()
 }

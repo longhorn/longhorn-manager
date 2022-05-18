@@ -39,6 +39,8 @@ type SnapshotController struct {
 	ds                     *datastore.DataStore
 	cacheSyncs             []cache.InformerSynced
 	engineClientCollection engineapi.EngineClientCollection
+
+	engineClientProxyHandler *engineapi.EngineClientProxyHandler
 }
 
 func NewSnapshotController(
@@ -49,7 +51,7 @@ func NewSnapshotController(
 	namespace string,
 	controllerID string,
 	engineClientCollection engineapi.EngineClientCollection,
-) *SnapshotController {
+	engineClientProxyHandler *engineapi.EngineClientProxyHandler) *SnapshotController {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -60,12 +62,13 @@ func NewSnapshotController(
 	sc := &SnapshotController{
 		baseController: newBaseController("longhorn-snapshot", logger),
 
-		namespace:              namespace,
-		controllerID:           controllerID,
-		kubeClient:             kubeClient,
-		eventRecorder:          eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-snapshot-controller"}),
-		ds:                     ds,
-		engineClientCollection: engineClientCollection,
+		namespace:                namespace,
+		controllerID:             controllerID,
+		kubeClient:               kubeClient,
+		eventRecorder:            eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-snapshot-controller"}),
+		ds:                       ds,
+		engineClientCollection:   engineClientCollection,
+		engineClientProxyHandler: engineClientProxyHandler,
 	}
 
 	ds.SnapshotInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
@@ -434,12 +437,11 @@ func (sc *SnapshotController) handleSnapshotCreate(snapshot *longhorn.Snapshot, 
 	if err != nil {
 		return err
 	}
-
-	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, sc.ds, sc.logger)
+	engineClientProxy, err := sc.engineClientProxyHandler.GetCompatibleClient(engine, engineCliClient)
 	if err != nil {
 		return err
 	}
-	defer engineClientProxy.Close()
+	defer engineClientProxy.Done()
 
 	snapshotInfo, err := engineClientProxy.SnapshotGet(engine, snapshot.Name)
 	if err != nil {
@@ -461,11 +463,11 @@ func (sc *SnapshotController) handleSnapshotDeletion(snapshot *longhorn.Snapshot
 	if err != nil {
 		return err
 	}
-	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, sc.ds, sc.logger)
+	engineClientProxy, err := sc.engineClientProxyHandler.GetCompatibleClient(engine, engineCliClient)
 	if err != nil {
 		return err
 	}
-	defer engineClientProxy.Close()
+	defer engineClientProxy.Done()
 
 	snapshotInfo, err := engineClientProxy.SnapshotGet(engine, snapshot.Name)
 	if err != nil {

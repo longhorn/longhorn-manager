@@ -63,6 +63,8 @@ type BackingImageDataSourceController struct {
 
 	lock       *sync.RWMutex
 	monitorMap map[string]chan struct{}
+
+	engineClientProxyHandler *engineapi.EngineClientProxyHandler
 }
 
 type BackingImageDataSourceMonitor struct {
@@ -83,7 +85,7 @@ func NewBackingImageDataSourceController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	namespace, controllerID, serviceAccount string,
-) *BackingImageDataSourceController {
+	engineClientProxyHandler *engineapi.EngineClientProxyHandler) *BackingImageDataSourceController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -105,6 +107,8 @@ func NewBackingImageDataSourceController(
 
 		lock:       &sync.RWMutex{},
 		monitorMap: map[string]chan struct{}{},
+
+		engineClientProxyHandler: engineClientProxyHandler,
 	}
 
 	ds.BackingImageDataSourceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -223,7 +227,7 @@ func (c *BackingImageDataSourceController) getEngineClientProxy(e *longhorn.Engi
 		return nil, err
 	}
 
-	return engineapi.GetCompatibleClient(e, engineCliClient, c.ds, c.logger)
+	return c.engineClientProxyHandler.GetCompatibleClient(e, engineCliClient)
 }
 
 func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string) (err error) {
@@ -703,7 +707,7 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 		if err != nil {
 			return err
 		}
-		defer engineClientProxy.Close()
+		defer engineClientProxy.Done()
 
 		snapLabels := map[string]string{types.GetLonghornLabelKey(types.LonghornLabelSnapshotForExportingBackingImage): bids.Name}
 		snapshotName, err := engineClientProxy.SnapshotCreate(e, bids.Name+"-"+util.RandomID(), snapLabels)

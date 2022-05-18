@@ -44,6 +44,8 @@ type BackupTargetController struct {
 	ds *datastore.DataStore
 
 	cacheSyncs []cache.InformerSynced
+
+	engineClientProxyHandler *engineapi.EngineClientProxyHandler
 }
 
 func NewBackupTargetController(
@@ -52,7 +54,8 @@ func NewBackupTargetController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	controllerID string,
-	namespace string) *BackupTargetController {
+	namespace string,
+	engineClientProxyHandler *engineapi.EngineClientProxyHandler) *BackupTargetController {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -70,6 +73,8 @@ func NewBackupTargetController(
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-backup-target-controller"}),
+
+		engineClientProxyHandler: engineClientProxyHandler,
 	}
 
 	ds.BackupTargetInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -204,13 +209,13 @@ func getLoggerForBackupTarget(logger logrus.FieldLogger, backupTarget *longhorn.
 	)
 }
 
-func getBackupTarget(controllerID string, backupTarget *longhorn.BackupTarget, ds *datastore.DataStore, log logrus.FieldLogger) (engineClientProxy engineapi.EngineClientProxy, backupTargetClient *engineapi.BackupTargetClient, err error) {
+func getBackupTarget(controllerID string, backupTarget *longhorn.BackupTarget, engineClientProxyHandler *engineapi.EngineClientProxyHandler, ds *datastore.DataStore, log logrus.FieldLogger) (engineClientProxy engineapi.EngineClientProxy, backupTargetClient *engineapi.BackupTargetClient, err error) {
 	engineIM, err := ds.GetDefaultEngineInstanceManagerByNode(controllerID)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to get default engine instance manager for proxy client")
 	}
 
-	engineClientProxy, err = engineapi.NewEngineClientProxy(engineIM, log)
+	engineClientProxy, err = engineClientProxyHandler.GetClientByInstanceManager(engineIM)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -322,7 +327,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	}
 
 	// Initialize a backup target client
-	engineClientProxy, backupTargetClient, err := getBackupTarget(btc.controllerID, backupTarget, btc.ds, log)
+	engineClientProxy, backupTargetClient, err := getBackupTarget(btc.controllerID, backupTarget, btc.engineClientProxyHandler, btc.ds, log)
 	if err != nil {
 		backupTarget.Status.Available = false
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
@@ -331,7 +336,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		log.WithError(err).Error("Error init backup target clients")
 		return nil // Ignore error to allow status update as well as preventing enqueue
 	}
-	defer engineClientProxy.Close()
+	defer engineClientProxy.Done()
 
 	// Get a list of all the backup volumes that are stored in the backup target
 	res, err := backupTargetClient.BackupVolumeNameList(backupTargetClient.URL, backupTargetClient.Credential)

@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -28,14 +29,18 @@ type VolumeManager struct {
 
 	currentNodeID string
 	sb            *SupportBundle
+
+	engineClientProxyHandler *engineapi.EngineClientProxyHandler
 }
 
-func NewVolumeManager(currentNodeID string, ds *datastore.DataStore) *VolumeManager {
+func NewVolumeManager(currentNodeID string, ds *datastore.DataStore, engineClientProxyHandler *engineapi.EngineClientProxyHandler) *VolumeManager {
 	return &VolumeManager{
 		ds:        ds,
 		scheduler: scheduler.NewReplicaScheduler(ds),
 
 		currentNodeID: currentNodeID,
+
+		engineClientProxyHandler: engineClientProxyHandler,
 	}
 }
 

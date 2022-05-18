@@ -60,6 +60,8 @@ type BackupController struct {
 	ds *datastore.DataStore
 
 	cacheSyncs []cache.InformerSynced
+
+	engineClientProxyHandler *engineapi.EngineClientProxyHandler
 }
 
 func NewBackupController(
@@ -69,7 +71,7 @@ func NewBackupController(
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string,
-) *BackupController {
+	engineClientProxyHandler *engineapi.EngineClientProxyHandler) *BackupController {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -90,6 +92,8 @@ func NewBackupController(
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-backup-controller"}),
+
+		engineClientProxyHandler: engineClientProxyHandler,
 	}
 
 	ds.BackupInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -487,7 +491,7 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		return nil, err
 	}
 
-	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger)
+	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.engineClientProxyHandler, bc.ds, bc.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -617,12 +621,12 @@ func (bc *BackupController) syncBackupStatusWithSnapshotCreationTimeAndVolumeSiz
 		return
 	}
 
-	engineClientProxy, err := engineapi.GetCompatibleClient(e, engineCliClient, bc.ds, bc.logger)
+	engineClientProxy, err := bc.engineClientProxyHandler.GetCompatibleClient(e, engineCliClient)
 	if err != nil {
 		bc.logger.Warnf("syncBackupStatusWithSnapshotCreationTimeAndVolumeSize: failed to get proxy: %v", err)
 		return
 	}
-	defer engineClientProxy.Close()
+	defer engineClientProxy.Done()
 
 	snap, err := engineClientProxy.SnapshotGet(e, backup.Spec.SnapshotName)
 	if err != nil {

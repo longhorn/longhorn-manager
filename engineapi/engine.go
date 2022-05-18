@@ -250,7 +250,15 @@ func (e *EngineBinary) ReplicaRebuildVerify(engine *longhorn.Engine, url string)
 	return nil
 }
 
-// Close engine proxy client connection.
+func (e *EngineBinary) getEngineClientProxy() engineClientProxy {
+	panic(ErrNotImplement)
+}
+
+func (e *EngineBinary) use() {
+	panic(ErrNotImplement)
+}
+
+// Done decrements the number of an engine proxy client concurrent use count.
 // Do not panic this method because this is could be called by the fallback client.
-func (e *EngineBinary) Close() {
+func (e *EngineBinary) Done() {
 }

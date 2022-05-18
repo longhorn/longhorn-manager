@@ -75,6 +75,8 @@ type VolumeController struct {
 
 	// for unit test
 	nowHandler func() string
+
+	engineClientProxyHandler *engineapi.EngineClientProxyHandler
 }
 
 func NewVolumeController(
@@ -84,6 +86,7 @@ func NewVolumeController(
 	kubeClient clientset.Interface,
 	namespace,
 	controllerID string,
+	engineClientProxyHandler *engineapi.EngineClientProxyHandler,
 ) *VolumeController {
 
 	eventBroadcaster := record.NewBroadcaster()
@@ -104,6 +107,8 @@ func NewVolumeController(
 		backoff: flowcontrol.NewBackOff(time.Minute, time.Minute*3),
 
 		nowHandler: util.Now,
+
+		engineClientProxyHandler: engineClientProxyHandler,
 	}
 
 	vc.scheduler = scheduler.NewReplicaScheduler(ds)
@@ -3635,11 +3640,11 @@ func (vc *VolumeController) createSnapshot(snapshotName string, labels map[strin
 		return nil, err
 	}
 
-	engineClientProxy, err := engineapi.GetCompatibleClient(e, engineCliClient, vc.ds, vc.logger)
+	engineClientProxy, err := vc.engineClientProxyHandler.GetCompatibleClient(e, engineCliClient)
 	if err != nil {
 		return nil, err
 	}
-	defer engineClientProxy.Close()
+	defer engineClientProxy.Done()
 
 	snapshotName, err = engineClientProxy.SnapshotCreate(e, snapshotName, labels)
 	if err != nil {
