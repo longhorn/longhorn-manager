@@ -976,13 +976,13 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 
 		// The cleanup strategy:
 		//  1. If there are enough ready files for a backing image, it's fine to do cleanup.
-		//  2. If there are no enough ready files, try to retain handling(state pending/starting/in-progress/unknown) files to guarantee the HA requirement.
+		//  2. If there are no enough ready files, try to retain handling(state empty/pending/starting/in-progress/unknown) files to guarantee the HA requirement.
 		//  3. If there are no enough ready & handling files, try to retain failed files to guarantee the HA requirement.
 		//  4. If there are no enough files including failed ones, skip cleanup.
 		fileStatus, exists := bi.Status.DiskFileStatusMap[diskUUID]
 		if !exists {
 			fileStatus = &longhorn.BackingImageDiskFileStatus{
-				State: longhorn.BackingImageStatePending,
+				State: "",
 			}
 		}
 		switch fileStatus.State {

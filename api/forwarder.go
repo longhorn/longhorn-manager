@@ -179,7 +179,7 @@ func UploadServerAddressFromBackingImage(m *manager.VolumeManager) func(req *htt
 		if err != nil {
 			return "", errors.Wrapf(err, "error getting backing image %s", name)
 		}
-		if bids.Status.CurrentState != longhorn.BackingImageStateStarting {
+		if bids.Status.CurrentState != longhorn.BackingImageStatePending {
 			return "", fmt.Errorf("upload server for backing image %s has not been initiated", name)
 		}
 		return fmt.Sprintf("%s:%d", pod.Status.PodIP, engineapi.BackingImageDataSourceDefaultPort), nil

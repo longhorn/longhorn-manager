@@ -466,7 +466,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 	}
 	if pod == nil {
 		// To avoid restarting backing image data source pod (for file preparation) too quickly or too frequently,
-		// Longhorn will leave failed backing image data source alone if the it is still in the backoff period.
+		// Longhorn will leave failed backing image data source alone if it is still in the backoff period.
 		// If the backoff period pass, Longhorn will recreate the pod and increase the Backoff period for the next possible failure.
 		isValidTypeForRetry := bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeDownload || bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeExportFromVolume
 		isInBackoffWindow := true
@@ -483,7 +483,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 			(isValidTypeForRetry && !isInBackoffWindow) {
 			// For recovering the backing image exported from volumes, the controller needs to update the state regardless of the pod being created immediately.
 			// Otherwise, the backing image data source will stay in state failed/unknown then the volume controller won't do auto attachment.
-			bids.Status.CurrentState = longhorn.BackingImageStatePending
+			bids.Status.CurrentState = ""
 			bids.Status.Message = ""
 			bids.Status.Progress = 0
 			bids.Status.Checksum = ""
