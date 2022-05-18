@@ -7,10 +7,6 @@ import (
 	bimclient "github.com/longhorn/backing-image-manager/pkg/client"
 )
 
-const (
-	BackingImageDataSourceDefaultPort = 8001
-)
-
 type BackingImageDataSourceInfo struct {
 	DiskUUID   string            `json:"diskUUID"`
 	SourceType string            `json:"sourceType"`
@@ -68,6 +64,6 @@ func (c *BackingImageDataSourceClient) Get() (*BackingImageDataSourceInfo, error
 	return c.parseDataSourceInfo(dsInfo), nil
 }
 
-func GetBackingImageDataSourceFileName(bidsName, biUUID string) string {
-	return fmt.Sprintf("%s-%s", bidsName, biUUID)
+func (c *BackingImageDataSourceClient) Transfer() error {
+	return c.client.Transfer()
 }

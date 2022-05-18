@@ -339,9 +339,9 @@ func (c *BackingImageManagerController) cleanupBackingImageManager(bim *longhorn
 			log.WithError(err).Warnf("Failed to launch a gRPC client during cleanup, will skip deleting all files")
 		} else {
 			log.Infof("Start to delete all backing image files during cleanup")
-			for biName := range bim.Status.BackingImageFileMap {
-				if err := cli.Delete(biName); err != nil {
-					log.WithError(err).Warnf("Failed to launch a gRPC client during cleanup, will skip deleting the file for backing image %v", biName)
+			for biName, biFileInfo := range bim.Status.BackingImageFileMap {
+				if err := cli.Delete(biName, biFileInfo.UUID); err != nil {
+					log.WithError(err).Warnf("Failed to launch a gRPC client during cleanup, will skip deleting the file for backing image %v(%v)", biName, biFileInfo.UUID)
 					continue
 				}
 			}
@@ -581,16 +581,18 @@ func (c *BackingImageManagerController) deleteInvalidBackingImages(bim *longhorn
 
 	for biName := range bim.Status.BackingImageFileMap {
 		bi, err := c.ds.GetBackingImage(biName)
-		if err != nil && !apierrors.IsNotFound(err) {
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				log.Warnf("Cannot find backing image %v during invalid backing image cleanup, will skip it", biName)
+				continue
+			}
 			return err
 		}
-		biUUID, exists := bim.Spec.BackingImages[biName]
-		isInvalid := bi == nil || !exists || bi.Status.UUID != biUUID
-		if !isInvalid {
+		if bi.Status.UUID == bim.Spec.BackingImages[biName] {
 			continue
 		}
-		log.Debugf("Start to delete the file for invalid backing image %v", biName)
-		if err := cli.Delete(biName); err != nil && !types.ErrorIsNotFound(err) {
+		log.Debugf("Start to delete the file for invalid backing image %v, in backing image manager spec UUID %v, backing image correct UUID %v", biName, bim.Spec.BackingImages[biName], bi.Status.UUID)
+		if err := cli.Delete(biName, bi.Status.UUID); err != nil && !types.ErrorIsNotFound(err) {
 			return err
 		}
 		delete(bim.Status.BackingImageFileMap, biName)
@@ -646,9 +648,12 @@ func (c *BackingImageManagerController) prepareBackingImageFiles(currentBIM *lon
 			if bids.Spec.DiskUUID != currentBIM.Spec.DiskUUID {
 				continue
 			}
-			sourceFileName := engineapi.GetBackingImageDataSourceFileName(biName, bi.Status.UUID)
-			log.Debugf("Start to fetch the first file %v from the backing image data source work directory %v", sourceFileName, bimtypes.DataSourceDirectoryName)
-			if _, err := cli.Fetch(bi.Name, bi.Status.UUID, sourceFileName, bids.Status.Checksum, bids.Status.Size); err != nil {
+			if bids.Status.StorageIP == "" {
+				log.Debugf("Backing image data source %v does not contain the storage IP, cannot start transfer the file to the backing image manager", bids.Name)
+				continue
+			}
+			log.Debugf("Start to fetch the data source file from the backing image data source work directory %v", bimtypes.DataSourceDirectoryName)
+			if _, err := cli.Fetch(bi.Name, bi.Status.UUID, bids.Status.Checksum, fmt.Sprintf("%s:%d", bids.Status.StorageIP, engineapi.BackingImageDataSourceDefaultPort), bids.Status.Size); err != nil {
 				if types.ErrorAlreadyExists(err) {
 					log.Debugf("Backing image already exists, no need to fetch it again")
 					continue
@@ -694,8 +699,8 @@ func (c *BackingImageManagerController) prepareBackingImageFiles(currentBIM *lon
 			if size == 0 {
 				size = bids.Status.Size
 			}
-			// Empty source file name means trying to find and resue the file in the work directory.
-			if _, err := cli.Fetch(bi.Name, bi.Status.UUID, "", bi.Status.Checksum, size); err != nil {
+			// Empty source file name means trying to find and reuse the file in the work directory.
+			if _, err := cli.Fetch(bi.Name, bi.Status.UUID, bi.Status.Checksum, "", size); err != nil {
 				if types.ErrorAlreadyExists(err) {
 					log.Debugf("Backing image already exists, no need to check and reuse file")
 					continue
@@ -710,17 +715,17 @@ func (c *BackingImageManagerController) prepareBackingImageFiles(currentBIM *lon
 		}
 
 		if senderCandidate != nil {
-			log.WithFields(logrus.Fields{"fromHost": senderCandidate.Status.StorageIP, "toHost": currentBIM.Status.StorageIP, "size": bi.Status.Size}).Debugf("Start to sync backing image")
-			if _, err := cli.Sync(biName, bi.Status.UUID, bi.Status.Checksum, senderCandidate.Status.StorageIP, currentBIM.Status.StorageIP, bi.Status.Size); err != nil {
+			log.WithFields(logrus.Fields{"fromHost": senderCandidate.Status.StorageIP, "size": bi.Status.Size}).Debugf("Start to sync backing image")
+			if _, err := cli.Sync(biName, bi.Status.UUID, bi.Status.Checksum, senderCandidate.Status.StorageIP, bi.Status.Size); err != nil {
 				if types.ErrorAlreadyExists(err) {
-					log.WithFields(logrus.Fields{"fromHost": senderCandidate.Status.StorageIP, "toHost": currentBIM.Status.StorageIP, "size": bi.Status.Size}).Debugf("Backing image already exists, no need to sync from others")
+					log.WithFields(logrus.Fields{"fromHost": senderCandidate.Status.StorageIP, "size": bi.Status.Size}).Debugf("Backing image already exists, no need to sync from others")
 					continue
 				}
 				backoff.Next(bi.Name, time.Now())
 				return err
 			}
 			backoff.Next(bi.Name, time.Now())
-			log.WithFields(logrus.Fields{"fromHost": senderCandidate.Status.StorageIP, "toHost": currentBIM.Status.StorageIP, "size": bi.Status.Size}).Debugf("Syncing backing image")
+			log.WithFields(logrus.Fields{"fromHost": senderCandidate.Status.StorageIP, "size": bi.Status.Size}).Debugf("Syncing backing image")
 			c.eventRecorder.Eventf(currentBIM, v1.EventTypeNormal, EventReasonSyncing, "Syncing backing image %v in disk %v on node %v from %v(%v)", bi.Name, currentBIM.Spec.DiskUUID, currentBIM.Spec.NodeID, senderCandidate.Name, senderCandidate.Status.StorageIP)
 			continue
 		}
@@ -803,6 +808,7 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 						"backing-image-manager", "--debug",
 						"daemon",
 						"--listen", fmt.Sprintf("%s:%d", "0.0.0.0", engineapi.BackingImageManagerDefaultPort),
+						"--sync-listen", fmt.Sprintf("%s:%d", "0.0.0.0", engineapi.BackingImageSyncServerDefaultPort),
 					},
 					ReadinessProbe: &v1.Probe{
 						ProbeHandler: v1.ProbeHandler{
@@ -818,6 +824,16 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 						{
 							Name:      "disk-path",
 							MountPath: bimtypes.DiskPathInContainer,
+						},
+					},
+					Env: []v1.EnvVar{
+						{
+							Name: types.EnvPodIP,
+							ValueFrom: &v1.EnvVarSource{
+								FieldRef: &v1.ObjectFieldSelector{
+									FieldPath: "status.podIP",
+								},
+							},
 						},
 					},
 				},
