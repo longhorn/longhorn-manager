@@ -5,7 +5,6 @@ import (
 
 	"github.com/golang/protobuf/ptypes"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/backupstore"
 
@@ -16,12 +15,16 @@ func (c *ProxyClient) SnapshotBackup(serviceAddress,
 	backupName, snapshotName, backupTarget,
 	backingImageName, backingImageChecksum string,
 	labels map[string]string, envs []string) (backupID, replicaAddress string, err error) {
-	if serviceAddress == "" {
-		return "", "", errors.Wrapf(ErrParameter, "failed to backup snapshot")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return "", "", errors.Wrap(err, "failed to backup snapshot")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debugf("Backing up snapshot %v to %v via proxy", snapshotName, backupName)
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to backup snapshot %v to %v", c.getProxyErrorPrefix(serviceAddress), snapshotName, backupName)
+	}()
 
 	req := &rpc.EngineSnapshotBackupRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
@@ -37,19 +40,24 @@ func (c *ProxyClient) SnapshotBackup(serviceAddress,
 	}
 	recv, err := c.service.SnapshotBackup(c.ctx, req)
 	if err != nil {
-		return "", "", errors.Wrapf(err, "failed to backup snapshot %v to %v via proxy %v to %v", snapshotName, backupName, c.ServiceURL, serviceAddress)
+		return "", "", err
 	}
 
 	return recv.BackupId, recv.Replica, nil
 }
 
 func (c *ProxyClient) SnapshotBackupStatus(serviceAddress, backupName, replicaAddress string) (status *SnapshotBackupStatus, err error) {
-	if serviceAddress == "" || backupName == "" {
-		return nil, errors.Wrapf(ErrParameter, "failed to get backup status")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+		"backupName":     backupName,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return nil, errors.Wrap(err, "failed to get backup status")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debugf("Getting %v backup status via proxy", backupName)
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to get %v backup status", c.getProxyErrorPrefix(serviceAddress), backupName)
+	}()
 
 	req := &rpc.EngineSnapshotBackupStatusRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
@@ -60,7 +68,7 @@ func (c *ProxyClient) SnapshotBackupStatus(serviceAddress, backupName, replicaAd
 	}
 	recv, err := c.service.SnapshotBackupStatus(c.ctx, req)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get %v backup status via proxy %v to %v", backupName, c.ServiceURL, serviceAddress)
+		return nil, err
 	}
 
 	status = &SnapshotBackupStatus{
@@ -74,13 +82,20 @@ func (c *ProxyClient) SnapshotBackupStatus(serviceAddress, backupName, replicaAd
 	return status, nil
 }
 
-func (c *ProxyClient) BackupRestore(serviceAddress, url, target, volumeName string, envs []string) error {
-	if serviceAddress == "" || url == "" || target == "" || volumeName == "" {
-		return errors.Wrapf(ErrParameter, "failed to restore backup to volume")
+func (c *ProxyClient) BackupRestore(serviceAddress, url, target, volumeName string, envs []string) (err error) {
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+		"url":            url,
+		"target":         target,
+		"volumeName":     volumeName,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return errors.Wrap(err, "failed to restore backup to volume")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debugf("Restoring %v backup to %v via proxy", url, volumeName)
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to restore backup %v to volume %v", c.getProxyErrorPrefix(serviceAddress), url, volumeName)
+	}()
 
 	req := &rpc.EngineBackupRestoreRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
@@ -93,35 +108,41 @@ func (c *ProxyClient) BackupRestore(serviceAddress, url, target, volumeName stri
 	}
 	recv, err := c.service.BackupRestore(c.ctx, req)
 	if err != nil {
-		return errors.Wrapf(err, "failed to restore backup %v to %v via proxy %v to %v", url, volumeName, c.ServiceURL, serviceAddress)
+		return err
 	}
 
 	if recv.TaskError != nil {
 		var taskErr TaskError
 		if jsonErr := json.Unmarshal(recv.TaskError, &taskErr); jsonErr != nil {
-			return errors.Wrapf(jsonErr, "Cannot unmarshal the restore error, maybe it's not caused by the replica restore failure")
+			err = errors.Wrap(jsonErr, "Cannot unmarshal the restore error, maybe it's not caused by the replica restore failure")
+			return err
 		}
 
-		return taskErr
+		err = taskErr
+		return err
 	}
 
 	return nil
 }
 
 func (c *ProxyClient) BackupRestoreStatus(serviceAddress string) (status map[string]*BackupRestoreStatus, err error) {
-	if serviceAddress == "" {
-		return nil, errors.Wrapf(ErrParameter, "failed to get backup restore status")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return nil, errors.Wrap(err, "failed to get backup restore status")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debug("Getting backup restore status via proxy")
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to get backup restore status", c.getProxyErrorPrefix(serviceAddress))
+	}()
 
 	req := &rpc.ProxyEngineRequest{
 		Address: serviceAddress,
 	}
 	recv, err := c.service.BackupRestoreStatus(c.ctx, req)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get backup restore status via proxy %v to %v", c.ServiceURL, serviceAddress)
+		return nil, err
 	}
 
 	status = map[string]*BackupRestoreStatus{}
@@ -141,12 +162,16 @@ func (c *ProxyClient) BackupRestoreStatus(serviceAddress string) (status map[str
 }
 
 func (c *ProxyClient) BackupGet(destURL string, envs []string) (info *EngineBackupInfo, err error) {
-	if destURL == "" {
-		return nil, errors.Wrapf(ErrParameter, "failed to get backup")
+	input := map[string]string{
+		"destURL": destURL,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return nil, errors.Wrap(err, "failed to get backup")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debugf("Getting %v backup via proxy", destURL)
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to get backup", c.getProxyErrorPrefix(destURL))
+	}()
 
 	req := &rpc.EngineBackupGetRequest{
 		Envs:    envs,
@@ -154,19 +179,23 @@ func (c *ProxyClient) BackupGet(destURL string, envs []string) (info *EngineBack
 	}
 	recv, err := c.service.BackupGet(c.ctx, req)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get %v backup via proxy %v", destURL, c.ServiceURL)
+		return nil, err
 	}
 
 	return parseBackup(recv.Backup), nil
 }
 
 func (c *ProxyClient) BackupVolumeGet(destURL string, envs []string) (info *EngineBackupVolumeInfo, err error) {
-	if destURL == "" {
-		return nil, errors.Wrapf(ErrParameter, "failed to get backup volume")
+	input := map[string]string{
+		"destURL": destURL,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return nil, errors.Wrap(err, "failed to get backup volume")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debugf("Getting %v backup volume via proxy", destURL)
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to get backup volume", c.getProxyErrorPrefix(destURL))
+	}()
 
 	req := &rpc.EngineBackupVolumeGetRequest{
 		Envs:    envs,
@@ -174,7 +203,7 @@ func (c *ProxyClient) BackupVolumeGet(destURL string, envs []string) (info *Engi
 	}
 	recv, err := c.service.BackupVolumeGet(c.ctx, req)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get %v backup volume via proxy %v", destURL, c.ServiceURL)
+		return nil, err
 	}
 
 	info = &EngineBackupVolumeInfo{
@@ -194,15 +223,20 @@ func (c *ProxyClient) BackupVolumeGet(destURL string, envs []string) (info *Engi
 }
 
 func (c *ProxyClient) BackupVolumeList(destURL, volumeName string, volumeOnly bool, envs []string) (info map[string]*EngineBackupVolumeInfo, err error) {
-	if destURL == "" {
-		return nil, errors.Wrapf(ErrParameter, "failed to list backup volumes")
+	input := map[string]string{
+		"destURL": destURL,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return nil, errors.Wrap(err, "failed to list backup for volumes")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	if volumeName != "" {
-		log = log.WithField("volume", volumeName)
-	}
-	log.Debugf("Listing %v backup volumes via proxy", destURL)
+	defer func() {
+		if volumeName == "" {
+			err = errors.Wrapf(err, "%v failed to list backup for volumes", c.getProxyErrorPrefix(destURL))
+		} else {
+			err = errors.Wrapf(err, "%v failed to list backup for volume %v", c.getProxyErrorPrefix(destURL), volumeName)
+		}
+	}()
 
 	req := &rpc.EngineBackupVolumeListRequest{
 		Envs:       envs,
@@ -212,7 +246,7 @@ func (c *ProxyClient) BackupVolumeList(destURL, volumeName string, volumeOnly bo
 	}
 	recv, err := c.service.BackupVolumeList(c.ctx, req)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list %v backup volumes via proxy %v", destURL, c.ServiceURL)
+		return nil, err
 	}
 
 	info = map[string]*EngineBackupVolumeInfo{}
@@ -261,12 +295,16 @@ func parseBackup(in *rpc.EngineBackupInfo) (out *EngineBackupInfo) {
 }
 
 func (c *ProxyClient) BackupConfigMetaGet(destURL string, envs []string) (meta *backupstore.ConfigMetadata, err error) {
-	if destURL == "" {
-		return nil, errors.Wrapf(ErrParameter, "failed to get backup config metadata")
+	input := map[string]string{
+		"destURL": destURL,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return nil, errors.Wrap(err, "failed to get backup config metadata")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debugf("Getting %v backup config metadata via proxy", destURL)
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to get backup config metadata", c.getProxyErrorPrefix(destURL))
+	}()
 
 	req := &rpc.EngineBackupConfigMetaGetRequest{
 		Envs:    envs,
@@ -274,12 +312,12 @@ func (c *ProxyClient) BackupConfigMetaGet(destURL string, envs []string) (meta *
 	}
 	recv, err := c.service.BackupConfigMetaGet(c.ctx, req)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get %v backup config metadata via proxy %v", destURL, c.ServiceURL)
+		return nil, err
 	}
 
 	ts, err := ptypes.Timestamp(recv.ModificationTime)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed convert protobuf timestamp %v", recv.ModificationTime)
+		return nil, err
 	}
 
 	return &backupstore.ConfigMetadata{
@@ -288,15 +326,20 @@ func (c *ProxyClient) BackupConfigMetaGet(destURL string, envs []string) (meta *
 }
 
 func (c *ProxyClient) BackupRemove(destURL, volumeName string, envs []string) (err error) {
-	if destURL == "" {
-		return errors.Wrapf(ErrParameter, "failed to remove backup")
+	input := map[string]string{
+		"destURL": destURL,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return errors.Wrap(err, "failed to remove backup")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	if volumeName != "" {
-		log = log.WithField("volume", volumeName)
-	}
-	log.Debugf("Removing %v backup via proxy", destURL)
+	defer func() {
+		if volumeName == "" {
+			err = errors.Wrapf(err, "%v failed to remove backup", c.getProxyErrorPrefix(destURL))
+		} else {
+			err = errors.Wrapf(err, "%v failed to remove backup for volume %v", c.getProxyErrorPrefix(destURL), volumeName)
+		}
+	}()
 
 	req := &rpc.EngineBackupRemoveRequest{
 		Envs:       envs,
@@ -305,7 +348,7 @@ func (c *ProxyClient) BackupRemove(destURL, volumeName string, envs []string) (e
 	}
 	_, err = c.service.BackupRemove(c.ctx, req)
 	if err != nil {
-		return errors.Wrapf(err, "failed to remove %v backup via proxy %v", destURL, c.ServiceURL)
+		return err
 	}
 
 	return nil

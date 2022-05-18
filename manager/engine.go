@@ -35,10 +35,11 @@ func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*longhorn.S
 		return nil, err
 	}
 
-	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(engine, engineCliClient)
+	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, m.ds, nil)
 	if err != nil {
 		return nil, err
 	}
+	defer engineClientProxy.Close()
 
 	return engineClientProxy.SnapshotList(engine)
 }
@@ -58,10 +59,11 @@ func (m *VolumeManager) GetSnapshot(snapshotName, volumeName string) (*longhorn.
 		return nil, err
 	}
 
-	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(engine, engineCliClient)
+	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, m.ds, nil)
 	if err != nil {
 		return nil, err
 	}
+	defer engineClientProxy.Close()
 
 	snapshot, err := engineClientProxy.SnapshotGet(engine, snapshotName)
 	if err != nil {
@@ -100,10 +102,11 @@ func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]st
 		return nil, err
 	}
 
-	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(e, engineCliClient)
+	engineClientProxy, err := engineapi.GetCompatibleClient(e, engineCliClient, m.ds, nil)
 	if err != nil {
 		return nil, err
 	}
+	defer engineClientProxy.Close()
 
 	snapshotName, err = engineClientProxy.SnapshotCreate(e, snapshotName, labels)
 	if err != nil {
@@ -142,10 +145,11 @@ func (m *VolumeManager) DeleteSnapshot(snapshotName, volumeName string) error {
 		return err
 	}
 
-	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(engine, engineCliClient)
+	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, m.ds, nil)
 	if err != nil {
 		return err
 	}
+	defer engineClientProxy.Close()
 
 	if err := engineClientProxy.SnapshotDelete(engine, snapshotName); err != nil {
 		return err
@@ -174,10 +178,11 @@ func (m *VolumeManager) RevertSnapshot(snapshotName, volumeName string) error {
 		return err
 	}
 
-	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(engine, engineCliClient)
+	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, m.ds, nil)
 	if err != nil {
 		return err
 	}
+	defer engineClientProxy.Close()
 
 	snapshot, err := engineClientProxy.SnapshotGet(engine, snapshotName)
 	if err != nil {
@@ -219,10 +224,11 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 		return err
 	}
 
-	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(engine, engineCliClient)
+	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, m.ds, nil)
 	if err != nil {
 		return err
 	}
+	defer engineClientProxy.Close()
 
 	if err := engineClientProxy.SnapshotPurge(engine); err != nil {
 		return err

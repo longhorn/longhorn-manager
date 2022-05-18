@@ -19,7 +19,6 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -29,18 +28,14 @@ type VolumeManager struct {
 
 	currentNodeID string
 	sb            *SupportBundle
-
-	proxyHandler *engineapi.EngineClientProxyHandler
 }
 
-func NewVolumeManager(currentNodeID string, ds *datastore.DataStore, proxyHandler *engineapi.EngineClientProxyHandler) *VolumeManager {
+func NewVolumeManager(currentNodeID string, ds *datastore.DataStore) *VolumeManager {
 	return &VolumeManager{
 		ds:        ds,
 		scheduler: scheduler.NewReplicaScheduler(ds),
 
 		currentNodeID: currentNodeID,
-
-		proxyHandler: proxyHandler,
 	}
 }
 

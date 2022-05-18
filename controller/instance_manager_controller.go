@@ -56,8 +56,6 @@ type InstanceManagerController struct {
 
 	// for unit test
 	versionUpdater func(*longhorn.InstanceManager) error
-
-	proxyHandler *engineapi.EngineClientProxyHandler
 }
 
 type InstanceManagerMonitor struct {
@@ -102,7 +100,7 @@ func NewInstanceManagerController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	namespace, controllerID, serviceAccount string,
-	proxyHandler *engineapi.EngineClientProxyHandler) *InstanceManagerController {
+) *InstanceManagerController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -124,8 +122,6 @@ func NewInstanceManagerController(
 		instanceManagerMonitorMap:   map[string]chan struct{}{},
 
 		versionUpdater: updateInstanceManagerVersion,
-
-		proxyHandler: proxyHandler,
 	}
 
 	ds.InstanceManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{

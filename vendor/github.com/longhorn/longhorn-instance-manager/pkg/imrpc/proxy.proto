@@ -8,8 +8,6 @@ import "github.com/longhorn/longhorn-engine/proto/ptypes/controller.proto";
 import "github.com/longhorn/longhorn-engine/proto/ptypes/syncagent.proto";
 
 service ProxyEngineService {
-	rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty);
-
 	rpc ServerVersionGet(ProxyEngineRequest) returns (EngineVersionProxyResponse);
 
 	rpc VolumeGet(ProxyEngineRequest) returns (EngineVolumeGetProxyResponse);

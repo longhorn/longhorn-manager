@@ -1,13 +1,15 @@
 package client
 
 import (
+	"fmt"
 	"time"
 
-	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/keepalive"
 
 	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
 	"github.com/longhorn/longhorn-instance-manager/pkg/meta"
@@ -17,8 +19,17 @@ import (
 )
 
 var (
-	ErrParameter = errors.Errorf("missing required parameter")
+	ErrParameterFmt = "missing required %v parameter"
 )
+
+func validateProxyMethodParameters(input map[string]string) error {
+	for k, v := range input {
+		if v == "" {
+			return errors.Errorf(ErrParameterFmt, k)
+		}
+	}
+	return nil
+}
 
 type ServiceContext struct {
 	cc *grpc.ClientConn
@@ -29,10 +40,14 @@ type ServiceContext struct {
 	service rpc.ProxyEngineServiceClient
 }
 
+func (s ServiceContext) GetConnectionState() connectivity.State {
+	return s.cc.GetState()
+}
+
 func (c *ProxyClient) Close() error {
 	c.quit()
 	if err := c.cc.Close(); err != nil {
-		return errors.Wrapf(err, "error closing proxy gRPC connection")
+		return errors.Wrap(err, "failed to close proxy gRPC connection")
 	}
 	return nil
 }
@@ -46,7 +61,14 @@ type ProxyClient struct {
 
 func NewProxyClient(ctx context.Context, ctxCancel context.CancelFunc, address string, port int) (*ProxyClient, error) {
 	getServiceCtx := func(serviceUrl string) (ServiceContext, error) {
-		connection, err := grpc.Dial(serviceUrl, grpc.WithInsecure())
+		dialOptions := []grpc.DialOption{
+			grpc.WithInsecure(),
+			grpc.WithKeepaliveParams(keepalive.ClientParameters{
+				Time:                time.Second * 10,
+				PermitWithoutStream: true,
+			}),
+		}
+		connection, err := grpc.Dial(serviceUrl, dialOptions...)
 		if err != nil {
 			return ServiceContext{}, errors.Wrapf(err, "cannot connect to ProxyService %v", serviceUrl)
 		}
@@ -76,27 +98,28 @@ const (
 	GRPCServiceTimeout = 3 * time.Minute
 )
 
-func (c *ProxyClient) Ping() (err error) {
-	_, err = c.service.Ping(c.ctx, &empty.Empty{})
-	if err != nil {
-		return errors.Wrapf(err, "failed to ping %v proxy server", c.ServiceURL)
-	}
-	return nil
+func (c *ProxyClient) getProxyErrorPrefix(destination string) string {
+	return fmt.Sprintf("proxyServer=%v destination=%v:", c.ServiceURL, destination)
 }
 
 func (c *ProxyClient) ServerVersionGet(serviceAddress string) (version *emeta.VersionOutput, err error) {
-	if serviceAddress == "" {
-		return version, errors.Wrapf(ErrParameter, "failed to get server version")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
 	}
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debug("Getting server version via proxy")
+	if err := validateProxyMethodParameters(input); err != nil {
+		return nil, errors.Wrap(err, "failed to get server version")
+	}
+
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to get server version", c.getProxyErrorPrefix(serviceAddress))
+	}()
 
 	req := &rpc.ProxyEngineRequest{
 		Address: serviceAddress,
 	}
 	resp, err := c.service.ServerVersionGet(c.ctx, req)
 	if err != nil {
-		return version, errors.Wrapf(err, "failed to get server version via proxy %v to %v", c.ServiceURL, serviceAddress)
+		return nil, err
 	}
 
 	serverVersion := resp.Version
@@ -115,6 +138,6 @@ func (c *ProxyClient) ServerVersionGet(serviceAddress string) (version *emeta.Ve
 }
 
 func (c *ProxyClient) ClientVersionGet() (version emeta.VersionOutput) {
-	logrus.Debug("Getting client version on proxy")
+	logrus.Debug("Getting client version")
 	return emeta.GetVersion()
 }
