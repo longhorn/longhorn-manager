@@ -2,7 +2,6 @@ package client
 
 import (
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 
 	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
 
@@ -11,15 +10,21 @@ import (
 )
 
 func (c *ProxyClient) ReplicaAdd(serviceAddress, replicaAddress string, restore bool) (err error) {
-	if serviceAddress == "" || replicaAddress == "" {
-		return errors.Wrapf(ErrParameter, "failed to add replica")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+		"replicaAddress": replicaAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return errors.Wrap(err, "failed to add replica for volume")
 	}
 
-	log := logrus.WithFields(logrus.Fields{
-		"serviceURL": c.ServiceURL,
-		"restore":    restore,
-	})
-	log.Debugf("Adding replica %v via proxy", replicaAddress)
+	defer func() {
+		if restore {
+			err = errors.Wrapf(err, "%v failed to add restore replica %v for volume", c.getProxyErrorPrefix(serviceAddress), replicaAddress)
+		} else {
+			err = errors.Wrapf(err, "%v failed to add replica %v for volume", c.getProxyErrorPrefix(serviceAddress), replicaAddress)
+		}
+	}()
 
 	req := &rpc.EngineReplicaAddRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
@@ -30,26 +35,30 @@ func (c *ProxyClient) ReplicaAdd(serviceAddress, replicaAddress string, restore 
 	}
 	_, err = c.service.ReplicaAdd(c.ctx, req)
 	if err != nil {
-		return errors.Wrapf(err, "failed to add replica %v for volume via proxy %v to %v", replicaAddress, c.ServiceURL, serviceAddress)
+		return err
 	}
 
 	return nil
 }
 
 func (c *ProxyClient) ReplicaList(serviceAddress string) (rInfoList []*etypes.ControllerReplicaInfo, err error) {
-	if serviceAddress == "" {
-		return nil, errors.Wrapf(ErrParameter, "failed to list replicas")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return nil, errors.Wrap(err, "failed to list replicas for volume")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debugf("Listing replicas via proxy")
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to list replicas for volume", c.getProxyErrorPrefix(serviceAddress))
+	}()
 
 	req := &rpc.ProxyEngineRequest{
 		Address: serviceAddress,
 	}
 	resp, err := c.service.ReplicaList(c.ctx, req)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list replicas %v for volume via proxy %v to %v", serviceAddress, c.ServiceURL, serviceAddress)
+		return nil, err
 	}
 
 	for _, cr := range resp.ReplicaList.Replicas {
@@ -63,19 +72,23 @@ func (c *ProxyClient) ReplicaList(serviceAddress string) (rInfoList []*etypes.Co
 }
 
 func (c *ProxyClient) ReplicaRebuildingStatus(serviceAddress string) (status map[string]*ReplicaRebuildStatus, err error) {
-	if serviceAddress == "" {
-		return status, errors.Wrapf(ErrParameter, "failed to get replica rebuilding status")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return nil, errors.Wrap(err, "failed to get replicas rebuilding status")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debug("Getting replica rebuilding status via proxy")
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to get replicas rebuilding status", c.getProxyErrorPrefix(serviceAddress))
+	}()
 
 	req := &rpc.ProxyEngineRequest{
 		Address: serviceAddress,
 	}
 	recv, err := c.service.ReplicaRebuildingStatus(c.ctx, req)
 	if err != nil {
-		return status, errors.Wrapf(err, "failed to get replicas rebuilding status via proxy %v to %v", c.ServiceURL, serviceAddress)
+		return status, err
 	}
 
 	status = make(map[string]*ReplicaRebuildStatus)
@@ -92,12 +105,17 @@ func (c *ProxyClient) ReplicaRebuildingStatus(serviceAddress string) (status map
 }
 
 func (c *ProxyClient) ReplicaVerifyRebuild(serviceAddress, replicaAddress string) (err error) {
-	if serviceAddress == "" {
-		return errors.Wrapf(ErrParameter, "failed to verify replica rebuild")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+		"replicaAddress": replicaAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return errors.Wrap(err, "failed to verify replica rebuild")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debug("Verifying replica rebuild via proxy")
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to verify replica %v rebuild", c.getProxyErrorPrefix(serviceAddress), replicaAddress)
+	}()
 
 	req := &rpc.EngineReplicaVerifyRebuildRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
@@ -107,19 +125,24 @@ func (c *ProxyClient) ReplicaVerifyRebuild(serviceAddress, replicaAddress string
 	}
 	_, err = c.service.ReplicaVerifyRebuild(c.ctx, req)
 	if err != nil {
-		return errors.Wrapf(err, "failed to verify replica %v rebuild via proxy %v to %v", replicaAddress, c.ServiceURL, serviceAddress)
+		return err
 	}
 
 	return nil
 }
 
 func (c *ProxyClient) ReplicaRemove(serviceAddress, replicaAddress string) (err error) {
-	if serviceAddress == "" || replicaAddress == "" {
-		return errors.Wrapf(ErrParameter, "failed to remove replica")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+		"replicaAddress": replicaAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return errors.Wrap(err, "failed to remove replica for volume")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debugf("Removing replica %v via proxy", replicaAddress)
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to remove replica %v for volume", c.getProxyErrorPrefix(serviceAddress), replicaAddress)
+	}()
 
 	req := &rpc.EngineReplicaRemoveRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
@@ -129,7 +152,7 @@ func (c *ProxyClient) ReplicaRemove(serviceAddress, replicaAddress string) (err 
 	}
 	_, err = c.service.ReplicaRemove(c.ctx, req)
 	if err != nil {
-		return errors.Wrapf(err, "failed to remove replicas %v for volume via proxy %v to %v", replicaAddress, c.ServiceURL, serviceAddress)
+		return err
 	}
 
 	return nil

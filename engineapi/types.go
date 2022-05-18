@@ -50,7 +50,6 @@ type Controller struct {
 }
 
 type EngineClient interface {
-	Name() string
 	VersionGet(engine *longhorn.Engine, clientOnly bool) (*EngineVersion, error)
 
 	VolumeGet(*longhorn.Engine) (*Volume, error)

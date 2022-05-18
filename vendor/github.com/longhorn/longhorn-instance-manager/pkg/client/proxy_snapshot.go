@@ -2,7 +2,6 @@ package client
 
 import (
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 
 	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
 
@@ -16,22 +15,28 @@ const (
 )
 
 func (c *ProxyClient) VolumeSnapshot(serviceAddress, volumeName string, labels map[string]string) (snapshotName string, err error) {
-	if serviceAddress == "" {
-		return "", errors.Wrapf(ErrParameter, "failed to snapshot volume")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return "", errors.Wrap(err, "failed to snapshot volume")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debug("Snapshotting volume via proxy")
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to snapshot volume", c.getProxyErrorPrefix(serviceAddress))
+	}()
 
 	for key, value := range labels {
 		if errList := eutil.IsQualifiedName(key); len(errList) > 0 {
-			return "", errors.Errorf("invalid key %v for label: %v", key, errList[0])
+			err = errors.Errorf("invalid key %v for label: %v", key, errList[0])
+			return "", err
 		}
 
 		// We don't need to validate the Label value since we're allowing for any form of data to be stored, similar
 		// to Kubernetes Annotations. Of course, we should make sure it isn't empty.
 		if value == "" {
-			return "", errors.Errorf("invalid empty value for label with key %v", key)
+			err = errors.Errorf("invalid empty value for label with key %v", key)
+			return "", err
 		}
 	}
 
@@ -46,26 +51,30 @@ func (c *ProxyClient) VolumeSnapshot(serviceAddress, volumeName string, labels m
 	}
 	recv, err := c.service.VolumeSnapshot(c.ctx, req)
 	if err != nil {
-		return "", errors.Wrapf(err, "failed to snapshot volume via proxy %v to %v", c.ServiceURL, serviceAddress)
+		return "", err
 	}
 
 	return recv.Snapshot.Name, nil
 }
 
 func (c *ProxyClient) SnapshotList(serviceAddress string) (snapshotDiskInfo map[string]*etypes.DiskInfo, err error) {
-	if serviceAddress == "" {
-		return nil, errors.Wrapf(ErrParameter, "failed to list snapshots")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return nil, errors.Wrap(err, "failed to list snapshots")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debugf("Listing snapshots via proxy")
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to list snapshots", c.getProxyErrorPrefix(serviceAddress))
+	}()
 
 	req := &rpc.ProxyEngineRequest{
 		Address: serviceAddress,
 	}
 	resp, err := c.service.SnapshotList(c.ctx, req)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list replicas for volume via proxy %v to %v", c.ServiceURL, serviceAddress)
+		return nil, err
 	}
 
 	snapshotDiskInfo = map[string]*etypes.DiskInfo{}
@@ -91,12 +100,18 @@ func (c *ProxyClient) SnapshotList(serviceAddress string) (snapshotDiskInfo map[
 }
 
 func (c *ProxyClient) SnapshotClone(serviceAddress, name, fromController string) (err error) {
-	if serviceAddress == "" || name == "" || fromController == "" {
-		return errors.Wrapf(ErrParameter, "failed to clone snapshot")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+		"name":           name,
+		"fromController": fromController,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return errors.Wrap(err, "failed to clone snapshot")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debugf("Cloning snapshot %v from %v via proxy", name, fromController)
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to clone snapshot %v from %v", c.getProxyErrorPrefix(serviceAddress), name, fromController)
+	}()
 
 	req := &rpc.EngineSnapshotCloneRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
@@ -108,26 +123,30 @@ func (c *ProxyClient) SnapshotClone(serviceAddress, name, fromController string)
 	}
 	_, err = c.service.SnapshotClone(c.ctx, req)
 	if err != nil {
-		return errors.Wrapf(err, "failed to clone snapshot %v from %v via proxy %v to %v", name, fromController, c.ServiceURL, serviceAddress)
+		return err
 	}
 
 	return nil
 }
 
 func (c *ProxyClient) SnapshotCloneStatus(serviceAddress string) (status map[string]*SnapshotCloneStatus, err error) {
-	if serviceAddress == "" {
-		return nil, errors.Wrapf(ErrParameter, "failed get snapshot clone status")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return nil, errors.Wrap(err, "failed to get snapshot clone status")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debug("Getting snapshot clone status via proxy")
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to get snapshot clone status", c.getProxyErrorPrefix(serviceAddress))
+	}()
 
 	req := &rpc.ProxyEngineRequest{
 		Address: serviceAddress,
 	}
 	recv, err := c.service.SnapshotCloneStatus(c.ctx, req)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get snapshot clone status via proxy %v to %v", c.ServiceURL, serviceAddress)
+		return nil, err
 	}
 
 	status = map[string]*SnapshotCloneStatus{}
@@ -145,16 +164,22 @@ func (c *ProxyClient) SnapshotCloneStatus(serviceAddress string) (status map[str
 }
 
 func (c *ProxyClient) SnapshotRevert(serviceAddress string, name string) (err error) {
-	if serviceAddress == "" || name == "" {
-		return errors.Wrapf(ErrParameter, "failed to revert volume to snapshot %v", name)
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+		"name":           name,
 	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return errors.Wrap(err, "failed to revert volume to snapshot")
+	}
+
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to revert volume to snapshot %v", c.getProxyErrorPrefix(serviceAddress), name)
+	}()
 
 	if name == VolumeHeadName {
-		return errors.Errorf("invalid operation: cannot revert to %v", VolumeHeadName)
+		err = errors.Errorf("invalid operation: cannot revert to %v", VolumeHeadName)
+		return err
 	}
-
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debugf("Reverting snapshot %v via proxy", name)
 
 	req := &rpc.EngineSnapshotRevertRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
@@ -164,19 +189,23 @@ func (c *ProxyClient) SnapshotRevert(serviceAddress string, name string) (err er
 	}
 	_, err = c.service.SnapshotRevert(c.ctx, req)
 	if err != nil {
-		return errors.Wrapf(err, "failed to revert volume to snapshot %v via proxy %v to %v", name, c.ServiceURL, serviceAddress)
+		return err
 	}
 
 	return nil
 }
 
 func (c *ProxyClient) SnapshotPurge(serviceAddress string, skipIfInProgress bool) (err error) {
-	if serviceAddress == "" {
-		return errors.Wrapf(ErrParameter, "failed to purge snapshots")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return errors.Wrap(err, "failed to purge snapshots")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debug("Purging snapshots via proxy")
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to purge snapshots", c.getProxyErrorPrefix(serviceAddress))
+	}()
 
 	req := &rpc.EngineSnapshotPurgeRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
@@ -186,19 +215,23 @@ func (c *ProxyClient) SnapshotPurge(serviceAddress string, skipIfInProgress bool
 	}
 	_, err = c.service.SnapshotPurge(c.ctx, req)
 	if err != nil {
-		return errors.Wrapf(err, "failed to purge snapshots via proxy %v to %v", c.ServiceURL, serviceAddress)
+		return err
 	}
 
 	return nil
 }
 
 func (c *ProxyClient) SnapshotPurgeStatus(serviceAddress string) (status map[string]*SnapshotPurgeStatus, err error) {
-	if serviceAddress == "" {
-		return nil, errors.Wrapf(ErrParameter, "failed to get snapshot purge status")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return nil, errors.Wrap(err, "failed to get snapshot purge status")
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debug("Getting snapshot purge status via proxy")
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to get snapshot purge status", c.getProxyErrorPrefix(serviceAddress))
+	}()
 
 	req := &rpc.ProxyEngineRequest{
 		Address: serviceAddress,
@@ -206,7 +239,7 @@ func (c *ProxyClient) SnapshotPurgeStatus(serviceAddress string) (status map[str
 
 	recv, err := c.service.SnapshotPurgeStatus(c.ctx, req)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get snapshot purge status via proxy %v to %v", c.ServiceURL, serviceAddress)
+		return nil, err
 	}
 
 	status = make(map[string]*SnapshotPurgeStatus)
@@ -222,12 +255,16 @@ func (c *ProxyClient) SnapshotPurgeStatus(serviceAddress string) (status map[str
 }
 
 func (c *ProxyClient) SnapshotRemove(serviceAddress string, names []string) (err error) {
-	if serviceAddress == "" {
-		return errors.Wrapf(ErrParameter, "failed to remove snapshots")
+	input := map[string]string{
+		"serviceAddress": serviceAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return errors.Wrapf(err, "failed to remove snapshot %v", names)
 	}
 
-	log := logrus.WithFields(logrus.Fields{"serviceURL": c.ServiceURL})
-	log.Debugf("Removing snapshot %v via proxy", names)
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to remove snapshot %v", c.getProxyErrorPrefix(serviceAddress), names)
+	}()
 
 	req := &rpc.EngineSnapshotRemoveRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
@@ -237,7 +274,7 @@ func (c *ProxyClient) SnapshotRemove(serviceAddress string, names []string) (err
 	}
 	_, err = c.service.SnapshotRemove(c.ctx, req)
 	if err != nil {
-		return errors.Wrapf(err, "failed to remove snapshot %v via proxy %v to %v", names, c.ServiceURL, serviceAddress)
+		return err
 	}
 
 	return nil

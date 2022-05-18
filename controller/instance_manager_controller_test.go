@@ -62,9 +62,7 @@ func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.Shared
 
 	logger := logrus.StandardLogger()
 
-	proxyHandler := engineapi.NewEngineClientProxyHandler(logger, ds)
-
-	imc := NewInstanceManagerController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestServiceAccount, proxyHandler)
+	imc := NewInstanceManagerController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestServiceAccount)
 	fakeRecorder := record.NewFakeRecorder(100)
 	imc.eventRecorder = fakeRecorder
 	for index := range imc.cacheSyncs {

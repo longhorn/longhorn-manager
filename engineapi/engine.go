@@ -9,11 +9,9 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
-	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -93,22 +91,6 @@ func parseReplica(s string) (*Replica, error) {
 		URL:  url,
 		Mode: mode,
 	}, nil
-}
-
-func (e *EngineBinary) IsGRPC() bool {
-	return false
-}
-
-func (e *EngineBinary) Start(*longhorn.InstanceManager, logrus.FieldLogger, *datastore.DataStore) error {
-	return errors.Errorf(ErrNotImplement)
-}
-
-func (e *EngineBinary) Stop(string) error {
-	return nil
-}
-
-func (e *EngineBinary) Ping() error {
-	return errors.Errorf(ErrNotImplement)
 }
 
 // ReplicaList calls engine binary
@@ -268,30 +250,35 @@ func (e *EngineBinary) ReplicaRebuildVerify(engine *longhorn.Engine, url string)
 	return nil
 }
 
+// Close engine proxy client connection.
+// Do not panic this method because this is could be called by the fallback client.
+func (e *EngineBinary) Close() {
+}
+
 func (e *EngineBinary) BackupGet(destURL string, credential map[string]string) (*Backup, error) {
-	return nil, errors.Errorf(ErrNotImplement)
+	panic(ErrNotImplement)
 }
 
 func (e *EngineBinary) BackupVolumeGet(destURL string, credential map[string]string) (volume *BackupVolume, err error) {
-	return nil, errors.Errorf(ErrNotImplement)
+	panic(ErrNotImplement)
 }
 
 func (e *EngineBinary) BackupNameList(destURL, volumeName string, credential map[string]string) (names []string, err error) {
-	return nil, errors.Errorf(ErrNotImplement)
+	panic(ErrNotImplement)
 }
 
 func (e *EngineBinary) BackupVolumeNameList(destURL string, credential map[string]string) (names []string, err error) {
-	return nil, errors.Errorf(ErrNotImplement)
+	panic(ErrNotImplement)
 }
 
 func (e *EngineBinary) BackupDelete(destURL string, credential map[string]string) (err error) {
-	return errors.Errorf(ErrNotImplement)
+	panic(ErrNotImplement)
 }
 
 func (e *EngineBinary) BackupVolumeDelete(destURL, volumeName string, credential map[string]string) (err error) {
-	return errors.Errorf(ErrNotImplement)
+	panic(ErrNotImplement)
 }
 
 func (e *EngineBinary) BackupConfigMetaGet(destURL string, credential map[string]string) (*ConfigMetadata, error) {
-	return nil, errors.Errorf(ErrNotImplement)
+	panic(ErrNotImplement)
 }

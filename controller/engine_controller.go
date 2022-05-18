@@ -73,8 +73,6 @@ type EngineController struct {
 	engines            engineapi.EngineClientCollection
 	engineMonitorMutex *sync.RWMutex
 	engineMonitorMap   map[string]chan struct{}
-
-	proxyHandler *engineapi.EngineClientProxyHandler
 }
 
 type EngineMonitor struct {
@@ -92,8 +90,6 @@ type EngineMonitor struct {
 	controllerID string
 	// used to notify the controller that monitoring has stopped
 	monitorVoluntaryStopCh chan struct{}
-
-	proxyHandler *engineapi.EngineClientProxyHandler
 }
 
 func NewEngineController(
@@ -102,8 +98,7 @@ func NewEngineController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	engines engineapi.EngineClientCollection,
-	namespace string, controllerID string,
-	proxyHandler *engineapi.EngineClientProxyHandler) *EngineController {
+	namespace string, controllerID string) *EngineController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -125,8 +120,6 @@ func NewEngineController(
 		engines:            engines,
 		engineMonitorMutex: &sync.RWMutex{},
 		engineMonitorMap:   map[string]chan struct{}{},
-
-		proxyHandler: proxyHandler,
 	}
 	ec.instanceHandler = NewInstanceHandler(ds, ec, ec.eventRecorder)
 
@@ -212,7 +205,7 @@ func (ec *EngineController) getEngineClientProxy(e *longhorn.Engine, image strin
 		return nil, err
 	}
 
-	return ec.proxyHandler.GetCompatibleClient(e, engineCliClient)
+	return engineapi.GetCompatibleClient(e, engineCliClient, ec.ds, ec.logger)
 }
 
 func (ec *EngineController) syncEngine(key string) (err error) {
@@ -622,7 +615,6 @@ func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
 		monitorVoluntaryStopCh: monitorVoluntaryStopCh,
 		expansionBackoff:       flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
 		controllerID:           ec.controllerID,
-		proxyHandler:           ec.proxyHandler,
 	}
 
 	ec.engineMonitorMutex.Lock()
@@ -749,10 +741,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
-	engineClientProxy, err := m.proxyHandler.GetCompatibleClient(engine, engineCliClient)
+	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, m.ds, m.logger)
 	if err != nil {
 		return err
 	}
+	defer engineClientProxy.Close()
 
 	replicaURLModeMap, err := engineClientProxy.ReplicaList(engine)
 	if err != nil {
@@ -1336,13 +1329,15 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 		return nil
 	}
 
-	engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
-	if err != nil {
-		return err
-	}
-
 	for _, url := range unknownReplicaURLs {
+		engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
+		if err != nil {
+			return errors.Wrapf(err, "failed to remove unknown replica %v from engine", url)
+		}
+
 		go func(url string) {
+			defer engineClientProxy.Close()
+
 			if err := engineClientProxy.ReplicaRemove(e, url); err != nil {
 				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting, "Failed to remove unknown replica %v from engine: %v", url, err)
 			} else {
@@ -1417,7 +1412,10 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 
 	replicaURL := engineapi.GetBackendReplicaURL(addr)
 	go func() {
+		defer engineClientProxy.Close()
+
 		log := ec.logger.WithField("volume", e.Spec.VolumeName)
+
 		// start rebuild
 		if e.Spec.RequestedBackupRestore != "" {
 			if e.Spec.NodeID != "" {
@@ -1508,6 +1506,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	if err != nil {
 		return err
 	}
+	defer engineClientProxy.Close()
 
 	version, err := engineClientProxy.VersionGet(e, false)
 	if err != nil {

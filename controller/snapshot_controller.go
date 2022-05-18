@@ -39,8 +39,6 @@ type SnapshotController struct {
 	ds                     *datastore.DataStore
 	cacheSyncs             []cache.InformerSynced
 	engineClientCollection engineapi.EngineClientCollection
-
-	proxyHandler *engineapi.EngineClientProxyHandler
 }
 
 func NewSnapshotController(
@@ -51,7 +49,7 @@ func NewSnapshotController(
 	namespace string,
 	controllerID string,
 	engineClientCollection engineapi.EngineClientCollection,
-	proxyHandler *engineapi.EngineClientProxyHandler) *SnapshotController {
+) *SnapshotController {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -68,7 +66,6 @@ func NewSnapshotController(
 		eventRecorder:          eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-snapshot-controller"}),
 		ds:                     ds,
 		engineClientCollection: engineClientCollection,
-		proxyHandler:           proxyHandler,
 	}
 
 	ds.SnapshotInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
@@ -436,10 +433,12 @@ func (sc *SnapshotController) handleSnapshotCreate(snapshot *longhorn.Snapshot, 
 	if err != nil {
 		return err
 	}
-	engineClientProxy, err := sc.proxyHandler.GetCompatibleClient(engine, engineCliClient)
+
+	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, sc.ds, sc.logger)
 	if err != nil {
 		return err
 	}
+	defer engineClientProxy.Close()
 
 	snapshotInfo, err := engineClientProxy.SnapshotGet(engine, snapshot.Name)
 	if err != nil {
@@ -461,10 +460,11 @@ func (sc *SnapshotController) handleSnapshotDeletion(snapshot *longhorn.Snapshot
 	if err != nil {
 		return err
 	}
-	engineClientProxy, err := sc.proxyHandler.GetCompatibleClient(engine, engineCliClient)
+	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, sc.ds, sc.logger)
 	if err != nil {
 		return err
 	}
+	defer engineClientProxy.Close()
 
 	snapshotInfo, err := engineClientProxy.SnapshotGet(engine, snapshot.Name)
 	if err != nil {

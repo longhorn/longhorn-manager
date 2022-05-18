@@ -43,7 +43,8 @@ require (
 	github.com/longhorn/backing-image-manager v0.0.0-20220414053138-691e27b07b7e
 	github.com/longhorn/backupstore v0.0.0-20211109055147-56ddc538b859
 	github.com/longhorn/go-iscsi-helper v0.0.0-20210330030558-49a327fb024e
-	github.com/longhorn/longhorn-instance-manager v0.0.0-20220516140138-ca4a9ddfa51c
+	github.com/longhorn/longhorn-instance-manager v0.0.0-20220526023241-db66114501eb
+	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.1
 	github.com/rancher/dynamiclistener v0.3.1
@@ -98,7 +99,6 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/longhorn/longhorn-engine v1.3.0-preview1 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
-	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
