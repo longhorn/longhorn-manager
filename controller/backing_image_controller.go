@@ -494,29 +494,11 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 	}
 
 	// Check if the data source already finished the 1st file preparing.
-	if !bids.Spec.FileTransferred && bids.Status.CurrentState == longhorn.BackingImageStateReadyForTransfer {
-		// Cannot rely on backingImage.Status.DiskFileStatusMap[bids.Spec.DiskUUID]
-		// Need to make sure the backing image manager take over the file before marking the data source as file transferred
-		defaultImage, err := bic.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
-		if err != nil {
-			return err
-		}
-		bims, err := bic.ds.ListBackingImageManagersByDiskUUID(bids.Spec.DiskUUID)
-		if err != nil {
-			return err
-		}
-		var defaultBIM *longhorn.BackingImageManager
-		for _, bim := range bims {
-			if bim.Spec.Image == defaultImage {
-				defaultBIM = bim
-				break
-			}
-		}
-		if defaultBIM != nil {
-			if fileInfo, exists := defaultBIM.Status.BackingImageFileMap[bi.Name]; exists && fileInfo.State == longhorn.BackingImageStateReady && fileInfo.UUID == bi.Status.UUID {
-				bids.Spec.FileTransferred = true
-				log.Infof("Backing image manager %v already took over the file prepared by the backing image data source, will mark the data source as file transferred", defaultBIM.Name)
-			}
+	if !bids.Spec.FileTransferred && bids.Status.CurrentState == longhorn.BackingImageStateReady {
+		fileStatus, exists := bi.Status.DiskFileStatusMap[bids.Spec.DiskUUID]
+		if exists && fileStatus.State == longhorn.BackingImageStateReady {
+			bids.Spec.FileTransferred = true
+			log.Infof("Default backing image manager successfully took over the file prepared by the backing image data source, will mark the data source as file transferred")
 		}
 	} else if bids.Spec.FileTransferred && allFilesUnavailable {
 		switch bids.Spec.SourceType {
@@ -649,7 +631,7 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 		}
 		log.Warn("Cannot find backing image data source, but controller will continue syncing backing image")
 	}
-	if bids != nil && !bids.Spec.FileTransferred {
+	if bids != nil && bids.Status.CurrentState != longhorn.BackingImageStateReady {
 		currentDiskFiles[bids.Spec.DiskUUID] = struct{}{}
 		// Due to the possible file type conversion (from raw to qcow2), the size of a backing image data source may changed when the file becomes `ready-for-transfer`.
 		// To avoid mismatching, the controller will blindly update bi.Status.Size based on bids.Status.Size here.
@@ -661,6 +643,9 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 			return err
 		}
 	}
+
+	// The file info may temporarily become empty when the data source just transfers the file
+	// but the backing image manager has not updated the map.
 
 	bimMap, err := bic.ds.ListBackingImageManagers()
 	if err != nil {
@@ -679,7 +664,7 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 		}
 		// If the backing image data source is up and preparing the 1st file,
 		// backing image should ignore the file info of the related backing image manager.
-		if bids != nil && !bids.Spec.FileTransferred && bids.Spec.DiskUUID == bim.Spec.DiskUUID {
+		if bids != nil && bids.Spec.DiskUUID == bim.Spec.DiskUUID && bids.Status.CurrentState != longhorn.BackingImageStateReady {
 			continue
 		}
 		currentDiskFiles[bim.Spec.DiskUUID] = struct{}{}
