@@ -336,6 +336,9 @@ func (c *BackingImageDataSourceController) cleanup(bids *longhorn.BackingImageDa
 		}
 	}
 
+	bids.Status.StorageIP = ""
+	bids.Status.IP = ""
+
 	return nil
 }
 
@@ -409,10 +412,19 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 	}
 
 	if podReady {
+		storageIP := c.ds.GetStorageIPFromPod(pod)
+		if bids.Status.StorageIP != storageIP {
+			bids.Status.StorageIP = storageIP
+		}
+		if bids.Status.IP != pod.Status.PodIP {
+			bids.Status.IP = pod.Status.PodIP
+		}
 		if !c.isMonitoring(bids.Name) {
 			c.startMonitoring(bids)
 		}
 	} else {
+		bids.Status.StorageIP = ""
+		bids.Status.IP = ""
 		if bids.Status.CurrentState != longhorn.BackingImageStateFailed {
 			if podFailed {
 				podLog := ""
@@ -918,20 +930,15 @@ func (c *BackingImageDataSourceController) startMonitoring(bids *longhorn.Backin
 		return
 	}
 
-	pod, err := c.ds.GetPod(types.GetBackingImageDataSourcePodName(bids.Name))
-	if err != nil {
-		log.Errorf("Failed to get pod before launching the monitor: %v", err)
-		return
-	}
-	if pod == nil {
-		log.Errorf("Can not find pod before launching the monitor")
+	if bids.Status.IP == "" {
+		log.Errorf("No backing image data source pod IP before launching the monitor")
 		return
 	}
 
 	stopCh := make(chan struct{}, 1)
 	m := &BackingImageDataSourceMonitor{
 		Name:         bids.Name,
-		client:       engineapi.NewBackingImageDataSourceClient(pod.Status.PodIP),
+		client:       engineapi.NewBackingImageDataSourceClient(bids.Status.IP),
 		stopCh:       stopCh,
 		controllerID: c.controllerID,
 		log:          log,
@@ -980,6 +987,10 @@ func (m *BackingImageDataSourceMonitor) sync() {
 	if bids.Status.OwnerID != m.controllerID {
 		close(m.stopCh)
 		m.log.Warnf("Stop monitoring since backing image data source %v owner %v is not the same as monitor current controller %v", m.Name, bids.Status.OwnerID, m.controllerID)
+		return
+	}
+	if bids.Status.IP == "" {
+		m.log.Warnf("Stop monitoring since backing image data source %v current IP is empty", m.Name)
 		return
 	}
 
