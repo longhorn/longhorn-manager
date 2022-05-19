@@ -43,6 +43,10 @@ type BackingImageDataSourceStatus struct {
 	// +optional
 	CurrentState BackingImageState `json:"currentState"`
 	// +optional
+	IP string `json:"ip"`
+	// +optional
+	StorageIP string `json:"storageIP"`
+	// +optional
 	Size int64 `json:"size"`
 	// +optional
 	Progress int `json:"progress"`
