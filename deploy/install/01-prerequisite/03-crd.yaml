@@ -1634,6 +1634,10 @@ spec:
                 type: integer
               apiVersion:
                 type: integer
+              proxyApiMinVersion:
+                type: integer
+              proxyApiVersion:
+                type: integer
               currentState:
                 type: string
               instances:
@@ -1673,10 +1677,6 @@ spec:
                 type: string
               ownerID:
                 type: string
-              proxyApiMinVersion:
-                type: integer
-              proxyApiVersion:
-                type: integer
             type: object
         type: object
     served: true
