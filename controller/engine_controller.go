@@ -206,8 +206,8 @@ func getLoggerForEngine(logger logrus.FieldLogger, e *longhorn.Engine) *logrus.E
 	return logger.WithField("engine", e.Name)
 }
 
-func (ec *EngineController) getEngineClientProxy(e *longhorn.Engine) (engineapi.EngineClientProxy, error) {
-	engineCliClient, err := GetBinaryClientForEngine(e, ec.engines, e.Status.CurrentImage)
+func (ec *EngineController) getEngineClientProxy(e *longhorn.Engine, image string) (engineapi.EngineClientProxy, error) {
+	engineCliClient, err := GetBinaryClientForEngine(e, ec.engines, image)
 	if err != nil {
 		return nil, err
 	}
@@ -1336,7 +1336,7 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 		return nil
 	}
 
-	engineClientProxy, err := ec.getEngineClientProxy(e)
+	engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
 	if err != nil {
 		return err
 	}
@@ -1398,7 +1398,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 		err = errors.Wrapf(err, "fail to start rebuild for %v of %v", replica, e.Name)
 	}()
 
-	engineClientProxy, err := ec.getEngineClientProxy(e)
+	engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
 	if err != nil {
 		return err
 	}
@@ -1504,7 +1504,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 
 	log := ec.logger.WithField("volume", e.Spec.VolumeName)
 
-	engineClientProxy, err := ec.getEngineClientProxy(e)
+	engineClientProxy, err := ec.getEngineClientProxy(e, e.Spec.EngineImage)
 	if err != nil {
 		return err
 	}
