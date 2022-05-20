@@ -140,56 +140,63 @@ func (kc *KubernetesConfigMapController) syncHandler(key string) (err error) {
 		return err
 	}
 
-	if err := kc.reconcileDefaultStorageClass(namespace, cfmName); err != nil {
+	if err := kc.reconcile(namespace, cfmName); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (kc *KubernetesConfigMapController) reconcileDefaultStorageClass(namespace, cfmName string) error {
-	if namespace != kc.namespace || cfmName != types.DefaultStorageClassConfigMapName {
+func (kc *KubernetesConfigMapController) reconcile(namespace, cfmName string) error {
+	if namespace != kc.namespace {
 		return nil
 	}
 
-	storageCFM, err := kc.ds.GetConfigMap(kc.namespace, types.DefaultStorageClassConfigMapName)
-	if err != nil {
-		return err
-	}
+	switch cfmName {
+	case types.DefaultStorageClassConfigMapName:
+		storageCFM, err := kc.ds.GetConfigMap(kc.namespace, types.DefaultStorageClassConfigMapName)
+		if err != nil {
+			return err
+		}
 
-	storageclassYAML, ok := storageCFM.Data["storageclass.yaml"]
-	if !ok {
-		return fmt.Errorf("cannot find storageclass.yaml inside the default StorageClass ConfigMap")
-	}
+		storageclassYAML, ok := storageCFM.Data["storageclass.yaml"]
+		if !ok {
+			return fmt.Errorf("cannot find storageclass.yaml inside the default StorageClass ConfigMap")
+		}
 
-	existingSC, err := kc.ds.GetStorageClassRO(types.DefaultStorageClassName)
-	if err != nil && !datastore.ErrorIsNotFound(err) {
-		return err
-	}
+		existingSC, err := kc.ds.GetStorageClassRO(types.DefaultStorageClassName)
+		if err != nil && !datastore.ErrorIsNotFound(err) {
+			return err
+		}
 
-	if !needToUpdateStorageClass(storageclassYAML, existingSC) {
-		return nil
-	}
-
-	storageclass, err := buildStorageClassManifestFromYAMLString(storageclassYAML)
-	if err != nil {
-		return err
-	}
-
-	err = kc.ds.DeleteStorageClass(types.DefaultStorageClassName)
-	if err != nil && !datastore.ErrorIsNotFound(err) {
-		return err
-	}
-
-	storageclass, err = kc.ds.CreateStorageClass(storageclass)
-	if err != nil {
-		if apierrors.IsAlreadyExists(err) {
+		if !needToUpdateStorageClass(storageclassYAML, existingSC) {
 			return nil
 		}
-		return err
-	}
 
-	kc.logger.Infof("Updated the default Longhorn StorageClass: %v", storageclass)
+		storageclass, err := buildStorageClassManifestFromYAMLString(storageclassYAML)
+		if err != nil {
+			return err
+		}
+
+		err = kc.ds.DeleteStorageClass(types.DefaultStorageClassName)
+		if err != nil && !datastore.ErrorIsNotFound(err) {
+			return err
+		}
+
+		storageclass, err = kc.ds.CreateStorageClass(storageclass)
+		if err != nil {
+			if apierrors.IsAlreadyExists(err) {
+				return nil
+			}
+			return err
+		}
+
+		kc.logger.Infof("Updated the default Longhorn StorageClass: %v", storageclass)
+	case types.DefaultDefaultSettingConfigMapName:
+		if err := kc.ds.UpdateCustomizedSettings(nil); err != nil {
+			return errors.Wrap(err, "failed to update built-in settings with customized values")
+		}
+	}
 
 	return nil
 }

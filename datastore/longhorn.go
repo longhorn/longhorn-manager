@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,29 +44,121 @@ var (
 	VerificationRetryCounts = 20
 )
 
-// InitSettings creates all Settings in SettingNameList if not already exist
-func (s *DataStore) InitSettings() error {
+func (s *DataStore) UpdateCustomizedSettings(overrideDefaultSettings map[types.SettingName]string) error {
+	defaultSettingCM, err := s.GetConfigMap(s.namespace, types.DefaultDefaultSettingConfigMapName)
+	if err != nil {
+		return err
+	}
+
+	customizedDefaultSettings, err := types.GetCustomizedDefaultSettings(defaultSettingCM)
+	if err != nil {
+		return err
+	}
+
+	if err := s.updateSettingDefinitions(customizedDefaultSettings, defaultSettingCM); err != nil {
+		return err
+	}
+
+	if err := types.OverrideSettingDefinitions(overrideDefaultSettings); err != nil {
+		return err
+	}
+
+	return s.updateDefaultSettings()
+}
+
+func (s *DataStore) updateDefaultSettings() error {
 	for _, sName := range types.SettingNameList {
 		definition, ok := types.SettingDefinitions[sName]
 		if !ok {
 			return fmt.Errorf("BUG: setting %v is not defined", sName)
 		}
-		if _, err := s.sLister.Settings(s.namespace).Get(string(sName)); err != nil {
-			if ErrorIsNotFound(err) {
-				setting := &longhorn.Setting{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: string(sName),
-					},
-					Value: definition.Default,
-				}
-				if _, err := s.CreateSetting(setting); err != nil && !apierrors.IsAlreadyExists(err) {
-					return err
-				}
-			} else {
-				return err
-			}
+
+		if err := s.createOrUpdateSetting(sName, definition); err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+func (s *DataStore) updateSettingDefinitions(customizedDefaultSettings map[string]string, defaultSettingCM *v1.ConfigMap) error {
+	for _, sName := range types.SettingNameList {
+		definition, ok := types.SettingDefinitions[sName]
+		if !ok {
+			return fmt.Errorf("BUG: setting %v is not defined", sName)
+		}
+
+		configMapResourceVersion := ""
+		if s, err := s.GetSettingExact(sName); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return err
+			}
+		} else {
+			definition.Default = s.Value
+			if s.Annotations != nil {
+				configMapResourceVersion = s.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)]
+			}
+		}
+
+		// Won't allow users tamper the read-only default settings
+		// TODO: Ideally, we should separate system settings and user settings.
+		if !definition.ReadOnly {
+			// If the longhorn-default-setting configmap is updated,
+			// then update the definition value and resource version.
+			if configMapResourceVersion != defaultSettingCM.ResourceVersion {
+				if value, exist := customizedDefaultSettings[string(sName)]; exist {
+					definition.Default = value
+					definition.ConfigMapResourceVersion = defaultSettingCM.ResourceVersion
+				}
+			}
+		}
+
+		types.SettingDefinitions[sName] = definition
+	}
+
+	return nil
+}
+
+func (s *DataStore) createOrUpdateSetting(name types.SettingName, definition types.SettingDefinition) error {
+	setting, err := s.GetSettingExact(name)
+	if err != nil {
+		if !ErrorIsNotFound(err) {
+			return err
+		}
+		setting = &longhorn.Setting{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        string(name),
+				Annotations: map[string]string{types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey): definition.ConfigMapResourceVersion},
+			},
+			Value: definition.Default,
+		}
+
+		if err := s.ValidateSetting(string(setting.Name), setting.Value); err != nil {
+			return err
+		}
+
+		_, err := s.CreateSetting(setting)
+		if err != nil && !apierrors.IsAlreadyExists(err) {
+			return err
+		}
+
+		return nil
+	}
+
+	if setting.Value != definition.Default {
+		setting.Value = definition.Default
+		if setting.Annotations == nil {
+			setting.Annotations = map[string]string{}
+		}
+		setting.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)] = definition.ConfigMapResourceVersion
+
+		if err := s.ValidateSetting(string(setting.Name), setting.Value); err != nil {
+			return err
+		}
+
+		_, err = s.UpdateSetting(setting)
+		return err
+	}
+
 	return nil
 }
 
@@ -201,6 +294,16 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 
 func (s *DataStore) getSettingRO(name string) (*longhorn.Setting, error) {
 	return s.sLister.Settings(s.namespace).Get(name)
+}
+
+// GetSettingExact returns the Setting for the given name and namespace
+func (s *DataStore) GetSettingExact(sName types.SettingName) (*longhorn.Setting, error) {
+	resultRO, err := s.getSettingRO(string(sName))
+	if err != nil {
+		return nil, err
+	}
+
+	return resultRO.DeepCopy(), nil
 }
 
 // GetSetting will automatically fill the non-existing setting if it's a valid
