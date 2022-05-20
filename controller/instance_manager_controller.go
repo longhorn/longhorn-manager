@@ -1047,7 +1047,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 					Image:           im.Spec.Image,
 					ImagePullPolicy: imagePullPolicy,
 					LivenessProbe: &v1.Probe{
-						Handler: v1.Handler{
+						ProbeHandler: v1.ProbeHandler{
 							TCPSocket: &v1.TCPSocketAction{
 								Port: intstr.FromInt(engineapi.InstanceManagerDefaultPort),
 							},
