@@ -805,7 +805,7 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 						"--listen", fmt.Sprintf("%s:%d", "0.0.0.0", engineapi.BackingImageManagerDefaultPort),
 					},
 					ReadinessProbe: &v1.Probe{
-						Handler: v1.Handler{
+						ProbeHandler: v1.ProbeHandler{
 							TCPSocket: &v1.TCPSocketAction{
 								Port: intstr.FromInt(engineapi.BackingImageManagerDefaultPort),
 							},

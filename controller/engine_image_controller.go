@@ -754,7 +754,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 								},
 							},
 							ReadinessProbe: &v1.Probe{
-								Handler: v1.Handler{
+								ProbeHandler: v1.ProbeHandler{
 									Exec: &v1.ExecAction{
 										Command: []string{
 											"sh", "-c",

@@ -891,6 +891,10 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	}, nil
 }
 
+func (cs *ControllerServer) ControllerGetVolume(context.Context, *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
 // isVolumeAvailableOn checks that the volume is attached and that an engine is running on the requested node
 func isVolumeAvailableOn(vol *longhornclient.Volume, node string) bool {
 	return vol.State == string(longhorn.VolumeStateAttached) && isEngineOnNodeAvailable(vol, node)

@@ -588,7 +588,7 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 					ImagePullPolicy: imagePullPolicy,
 					Command:         cmd,
 					ReadinessProbe: &v1.Probe{
-						Handler: v1.Handler{
+						ProbeHandler: v1.ProbeHandler{
 							TCPSocket: &v1.TCPSocketAction{
 								Port: intstr.FromInt(engineapi.BackingImageDataSourceDefaultPort),
 							},
