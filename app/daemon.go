@@ -107,21 +107,10 @@ func startManager(c *cli.Context) error {
 	}
 	kubeconfigPath := c.String(FlagKubeConfig)
 
-	defaultSettingPath := os.Getenv(types.EnvDefaultSettingPath)
-
 	if err := environmentCheck(); err != nil {
 		logrus.Errorf("Failed environment check, please make sure you " +
 			"have iscsiadm/open-iscsi installed on the host")
 		return fmt.Errorf("environment check failed: %v", err)
-	}
-
-	if defaultSettingPath != "" {
-		if _, err := os.Stat(defaultSettingPath); err != nil {
-			return fmt.Errorf("cannot find customized default setting file on %v: %v", defaultSettingPath, err)
-		}
-	}
-	if err := types.OverwriteBuiltInSettingsWithCustomizedValues(); err != nil {
-		return fmt.Errorf("failed to overwrite built-in settings with customized values: %v", err)
 	}
 
 	currentNodeID, err := util.GetRequiredEnv(types.EnvNodeName)
@@ -151,25 +140,13 @@ func startManager(c *cli.Context) error {
 
 	metricsCollector.InitMetricsCollectorSystem(logger, currentNodeID, ds, kubeconfigPath)
 
-	// Initialize the required settings first
-	if err := createOrUpdateDefaultImageSetting(m, types.SettingNameDefaultEngineImage, engineImage); err != nil {
-		return err
+	defaultImageSettings := map[types.SettingName]string{
+		types.SettingNameDefaultEngineImage:              engineImage,
+		types.SettingNameDefaultInstanceManagerImage:     instanceManagerImage,
+		types.SettingNameDefaultShareManagerImage:        shareManagerImage,
+		types.SettingNameDefaultBackingImageManagerImage: backingImageManagerImage,
 	}
-
-	if err := createOrUpdateDefaultImageSetting(m, types.SettingNameDefaultInstanceManagerImage, instanceManagerImage); err != nil {
-		return err
-	}
-
-	if err := createOrUpdateDefaultImageSetting(m, types.SettingNameDefaultShareManagerImage, shareManagerImage); err != nil {
-		return err
-	}
-
-	if err := createOrUpdateDefaultImageSetting(m, types.SettingNameDefaultBackingImageManagerImage, backingImageManagerImage); err != nil {
-		return err
-	}
-
-	// Initialize the rest settings
-	if err := ds.InitSettings(); err != nil {
+	if err := ds.UpdateCustomizedSettings(defaultImageSettings); err != nil {
 		return err
 	}
 
@@ -225,20 +202,6 @@ func environmentCheck() error {
 	}
 	if err := iscsi.CheckForInitiatorExistence(namespace); err != nil {
 		return err
-	}
-	return nil
-}
-
-func createOrUpdateDefaultImageSetting(m *manager.VolumeManager, settingName types.SettingName, image string) error {
-	settingDefaultImage, err := m.GetSetting(settingName)
-	if err != nil {
-		return err
-	}
-	if settingDefaultImage.Value != image {
-		settingDefaultImage.Value = image
-		if _, err := m.CreateOrUpdateSetting(settingDefaultImage); err != nil {
-			return err
-		}
 	}
 	return nil
 }

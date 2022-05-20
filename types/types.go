@@ -71,6 +71,8 @@ const (
 
 	LastAppliedTolerationAnnotationKeySuffix = "last-applied-tolerations"
 
+	ConfigMapResourceVersionKey = "configmap-resource-version"
+
 	KubernetesStatusLabel = "KubernetesStatus"
 	KubernetesReplicaSet  = "ReplicaSet"
 	KubernetesStatefulSet = "StatefulSet"
@@ -117,11 +119,12 @@ const (
 
 	DefaultDiskPrefix = "default-disk-"
 
-	DeprecatedProvisionerName        = "rancher.io/longhorn"
-	DepracatedDriverName             = "io.rancher.longhorn"
-	DefaultStorageClassConfigMapName = "longhorn-storageclass"
-	DefaultStorageClassName          = "longhorn"
-	ControlPlaneName                 = "longhorn-manager"
+	DeprecatedProvisionerName          = "rancher.io/longhorn"
+	DepracatedDriverName               = "io.rancher.longhorn"
+	DefaultStorageClassConfigMapName   = "longhorn-storageclass"
+	DefaultDefaultSettingConfigMapName = "longhorn-default-setting"
+	DefaultStorageClassName            = "longhorn"
+	ControlPlaneName                   = "longhorn-manager"
 
 	DefaultRecurringJobConcurrency = 10
 
