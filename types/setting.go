@@ -2,8 +2,6 @@ package types
 
 import (
 	"fmt"
-	"io/ioutil"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -20,7 +18,7 @@ import (
 )
 
 const (
-	EnvDefaultSettingPath = "DEFAULT_SETTING_PATH"
+	DefaultSettingYAMLFileName = "default-setting.yaml"
 )
 
 type SettingType string
@@ -146,14 +144,15 @@ const (
 )
 
 type SettingDefinition struct {
-	DisplayName string          `json:"displayName"`
-	Description string          `json:"description"`
-	Category    SettingCategory `json:"category"`
-	Type        SettingType     `json:"type"`
-	Required    bool            `json:"required"`
-	ReadOnly    bool            `json:"readOnly"`
-	Default     string          `json:"default"`
-	Choices     []string        `json:"options,omitempty"` // +optional
+	DisplayName              string          `json:"displayName"`
+	Description              string          `json:"description"`
+	Category                 SettingCategory `json:"category"`
+	Type                     SettingType     `json:"type"`
+	Required                 bool            `json:"required"`
+	ReadOnly                 bool            `json:"readOnly"`
+	Default                  string          `json:"default"`
+	Choices                  []string        `json:"options,omitempty"`                  // +optional
+	ConfigMapResourceVersion string          `json:"configMapResourceVersion,omitempty"` // +optional
 }
 
 var (
@@ -941,20 +940,12 @@ func isValidChoice(choices []string, value string) bool {
 	return len(choices) == 0
 }
 
-func GetCustomizedDefaultSettings() (map[string]string, error) {
-	settingPath := os.Getenv(EnvDefaultSettingPath)
-	defaultSettings := map[string]string{}
-	if settingPath != "" {
-		data, err := ioutil.ReadFile(settingPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read default setting file %v: %v", settingPath, err)
-		}
+func GetCustomizedDefaultSettings(defaultSettingCM *v1.ConfigMap) (defaultSettings map[string]string, err error) {
+	defaultSettingYAMLData := []byte(defaultSettingCM.Data[DefaultSettingYAMLFileName])
 
-		// `yaml.Unmarshal()` can return a partial result. We shouldn't allow it
-		if err := yaml.Unmarshal(data, &defaultSettings); err != nil {
-			logrus.Errorf("Failed to unmarshal customized default settings from yaml data %v, will give up using them: %v", string(data), err)
-			defaultSettings = map[string]string{}
-		}
+	defaultSettings, err = getDefaultSettingFromYAML(defaultSettingYAMLData)
+	if err != nil {
+		return nil, err
 	}
 
 	// won't accept partially valid result
@@ -1004,27 +995,16 @@ func GetCustomizedDefaultSettings() (map[string]string, error) {
 	return defaultSettings, nil
 }
 
-func OverwriteBuiltInSettingsWithCustomizedValues() error {
-	logrus.Infof("Start overwriting built-in settings with customized values")
-	customizedDefaultSettings, err := GetCustomizedDefaultSettings()
-	if err != nil {
-		return err
+func getDefaultSettingFromYAML(defaultSettingYAMLData []byte) (map[string]string, error) {
+	defaultSettings := map[string]string{}
+
+	if err := yaml.Unmarshal(defaultSettingYAMLData, &defaultSettings); err != nil {
+		logrus.Errorf("Failed to unmarshal customized default settings from yaml data %v, will give up using them: %v",
+			string(defaultSettingYAMLData), err)
+		defaultSettings = map[string]string{}
 	}
 
-	for _, sName := range SettingNameList {
-		definition, ok := SettingDefinitions[sName]
-		if !ok {
-			return fmt.Errorf("BUG: setting %v is not defined", sName)
-		}
-
-		value, exists := customizedDefaultSettings[string(sName)]
-		if exists && value != "" {
-			definition.Default = value
-			SettingDefinitions[sName] = definition
-		}
-	}
-
-	return nil
+	return defaultSettings, nil
 }
 
 func ValidateAndUnmarshalToleration(s string) (*v1.Toleration, error) {
@@ -1101,4 +1081,16 @@ func UnmarshalNodeSelector(nodeSelectorSetting string) (map[string]string, error
 		}
 	}
 	return nodeSelector, nil
+}
+
+func OverrideSettingDefinitions(defaultSettings map[SettingName]string) error {
+	for sName, value := range defaultSettings {
+		definition, ok := SettingDefinitions[sName]
+		if !ok {
+			return fmt.Errorf("BUG: setting %v is not defined", sName)
+		}
+		definition.Default = value
+		SettingDefinitions[sName] = definition
+	}
+	return nil
 }
