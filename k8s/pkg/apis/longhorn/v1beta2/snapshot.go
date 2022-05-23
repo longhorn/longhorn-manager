@@ -15,6 +15,7 @@ type SnapshotSpec struct {
 	CreateSnapshot bool `json:"createSnapshot"`
 	// The labels of snapshot
 	// +optional
+	// +nullable
 	Labels map[string]string `json:"labels"`
 }
 
