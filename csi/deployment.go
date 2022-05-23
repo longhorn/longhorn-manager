@@ -18,11 +18,11 @@ import (
 )
 
 const (
-	DefaultCSIAttacherImage            = "longhornio/csi-attacher:v3.2.1"
+	DefaultCSIAttacherImage            = "longhornio/csi-attacher:v3.4.0"
 	DefaultCSIProvisionerImage         = "longhornio/csi-provisioner:v2.1.2"
 	DefaultCSIResizerImage             = "longhornio/csi-resizer:v1.2.0"
 	DefaultCSISnapshotterImage         = "longhornio/csi-snapshotter:v3.0.3"
-	DefaultCSINodeDriverRegistrarImage = "longhornio/csi-node-driver-registrar:v2.3.0"
+	DefaultCSINodeDriverRegistrarImage = "longhornio/csi-node-driver-registrar:v2.5.0"
 
 	DefaultCSIAttacherReplicaCount    = 3
 	DefaultCSIProvisionerReplicaCount = 3
@@ -352,7 +352,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 							Name:  "node-driver-registrar",
 							Image: nodeDriverRegistrarImage,
 							Lifecycle: &v1.Lifecycle{
-								PreStop: &v1.Handler{
+								PreStop: &v1.LifecycleHandler{
 									Exec: &v1.ExecAction{
 										Command: []string{
 											"/bin/sh", "-c",
@@ -401,7 +401,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 							Image:           managerImage,
 							ImagePullPolicy: imagePullPolicy,
 							Lifecycle: &v1.Lifecycle{
-								PreStop: &v1.Handler{
+								PreStop: &v1.LifecycleHandler{
 									Exec: &v1.ExecAction{
 										Command: []string{
 											"/bin/sh", "-c",

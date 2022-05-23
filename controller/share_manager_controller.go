@@ -801,7 +801,7 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 					// Command: []string{"longhorn-share-manager"},
 					Args: args,
 					ReadinessProbe: &v1.Probe{
-						Handler: v1.Handler{
+						ProbeHandler: v1.ProbeHandler{
 							Exec: &v1.ExecAction{
 								Command: []string{"cat", "/var/run/ganesha.pid"},
 							},
