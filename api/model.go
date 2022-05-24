@@ -883,6 +883,8 @@ func snapshotListOutputSchema(snapshotList *client.Schema) {
 }
 
 func toSettingResource(setting *longhorn.Setting) *Setting {
+	definition, _ := types.GetSettingDefinition(types.SettingName(setting.Name))
+
 	return &Setting{
 		Resource: client.Resource{
 			Id:    setting.Name,
@@ -892,7 +894,7 @@ func toSettingResource(setting *longhorn.Setting) *Setting {
 		Name:  setting.Name,
 		Value: setting.Value,
 
-		Definition: types.SettingDefinitions[types.SettingName(setting.Name)],
+		Definition: definition,
 	}
 }
 
