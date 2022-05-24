@@ -66,7 +66,7 @@ func (s *DataStore) UpdateCustomizedSettings(overrideDefaultSettings map[types.S
 
 func (s *DataStore) updateDefaultSettings() error {
 	for _, sName := range types.SettingNameList {
-		definition, ok := types.SettingDefinitions[sName]
+		definition, ok := types.GetSettingDefinition(sName)
 		if !ok {
 			return fmt.Errorf("BUG: setting %v is not defined", sName)
 		}
@@ -80,7 +80,7 @@ func (s *DataStore) updateDefaultSettings() error {
 
 func (s *DataStore) updateSettingDefinitions(customizedDefaultSettings map[string]string, defaultSettingCM *v1.ConfigMap) error {
 	for _, sName := range types.SettingNameList {
-		definition, ok := types.SettingDefinitions[sName]
+		definition, ok := types.GetSettingDefinition(sName)
 		if !ok {
 			return fmt.Errorf("BUG: setting %v is not defined", sName)
 		}
@@ -110,7 +110,7 @@ func (s *DataStore) updateSettingDefinitions(customizedDefaultSettings map[strin
 			}
 		}
 
-		types.SettingDefinitions[sName] = definition
+		types.SetSettingDefinition(sName, definition)
 	}
 
 	return nil
@@ -347,7 +347,7 @@ func (s *DataStore) GetSettingExact(sName types.SettingName) (*longhorn.Setting,
 // setting name.
 // The function will not return nil for *longhorn.Setting when error is nil
 func (s *DataStore) GetSetting(sName types.SettingName) (*longhorn.Setting, error) {
-	definition, ok := types.SettingDefinitions[sName]
+	definition, ok := types.GetSettingDefinition(sName)
 	if !ok {
 		return nil, fmt.Errorf("setting %v is not supported", sName)
 	}
@@ -393,21 +393,25 @@ func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, err
 		// Cannot use cached object from lister
 		settingField := types.SettingName(itemRO.Name)
 		// Ignore the items that we don't recongize
-		if _, ok := types.SettingDefinitions[settingField]; ok {
+		if _, ok := types.GetSettingDefinition(settingField); ok {
 			itemMap[settingField] = itemRO.DeepCopy()
 		}
 	}
 	// fill up the missing entries
-	for sName, definition := range types.SettingDefinitions {
+	for _, sName := range types.SettingNameList {
 		if _, ok := itemMap[sName]; !ok {
-			itemMap[sName] = &longhorn.Setting{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: string(sName),
-				},
-				Value: definition.Default,
+			definition, exist := types.GetSettingDefinition(sName)
+			if exist {
+				itemMap[sName] = &longhorn.Setting{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: string(sName),
+					},
+					Value: definition.Default,
+				}
 			}
 		}
 	}
+
 	return itemMap, nil
 }
 
@@ -2449,7 +2453,7 @@ func GetOwnerReferencesForNode(node *longhorn.Node) []metav1.OwnerReference {
 // GetSettingAsInt gets the setting for the given name, returns as integer
 // Returns error if the definition type is not integer
 func (s *DataStore) GetSettingAsInt(settingName types.SettingName) (int64, error) {
-	definition, ok := types.SettingDefinitions[settingName]
+	definition, ok := types.GetSettingDefinition(settingName)
 	if !ok {
 		return -1, fmt.Errorf("setting %v is not supported", settingName)
 	}
@@ -2473,7 +2477,7 @@ func (s *DataStore) GetSettingAsInt(settingName types.SettingName) (int64, error
 // GetSettingAsBool gets the setting for the given name, returns as boolean
 // Returns error if the definition type is not boolean
 func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error) {
-	definition, ok := types.SettingDefinitions[settingName]
+	definition, ok := types.GetSettingDefinition(settingName)
 	if !ok {
 		return false, fmt.Errorf("setting %v is not supported", settingName)
 	}

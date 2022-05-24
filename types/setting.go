@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -160,8 +161,10 @@ type SettingDefinition struct {
 	ConfigMapResourceVersion string          `json:"configMapResourceVersion,omitempty"` // +optional
 }
 
+var settingDefinitionsLock sync.RWMutex
+
 var (
-	SettingDefinitions = map[SettingName]SettingDefinition{
+	settingDefinitions = map[SettingName]SettingDefinition{
 		SettingNameBackupTarget:                                 SettingDefinitionBackupTarget,
 		SettingNameBackupTargetCredentialSecret:                 SettingDefinitionBackupTargetCredentialSecret,
 		SettingNameAllowRecurringJobWhileVolumeDetached:         SettingDefinitionAllowRecurringJobWhileVolumeDetached,
@@ -829,7 +832,7 @@ func ValidateSetting(name, value string) (err error) {
 	}()
 	sName := SettingName(name)
 
-	definition, ok := SettingDefinitions[sName]
+	definition, ok := GetSettingDefinition(sName)
 	if !ok {
 		return fmt.Errorf("setting %v is not supported", sName)
 	}
@@ -946,7 +949,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameDefaultDataLocality:
 		fallthrough
 	case SettingNameSystemManagedPodsImagePullPolicy:
-		choices := SettingDefinitions[sName].Choices
+		definition, _ := GetSettingDefinition(sName)
+		choices := definition.Choices
 		if !isValidChoice(choices, value) {
 			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, choices)
 		}
@@ -986,7 +990,7 @@ func GetCustomizedDefaultSettings(defaultSettingCM *v1.ConfigMap) (defaultSettin
 	// won't accept partially valid result
 	for name, value := range defaultSettings {
 		value = strings.Trim(value, " ")
-		definition, exist := SettingDefinitions[SettingName(name)]
+		definition, exist := GetSettingDefinition(SettingName(name))
 		if !exist {
 			logrus.Errorf("Customized settings are invalid, will give up using them: undefined setting %v", name)
 			defaultSettings = map[string]string{}
@@ -1120,12 +1124,25 @@ func UnmarshalNodeSelector(nodeSelectorSetting string) (map[string]string, error
 
 func OverrideSettingDefinitions(defaultSettings map[SettingName]string) error {
 	for sName, value := range defaultSettings {
-		definition, ok := SettingDefinitions[sName]
+		definition, ok := GetSettingDefinition(sName)
 		if !ok {
 			return fmt.Errorf("BUG: setting %v is not defined", sName)
 		}
 		definition.Default = value
-		SettingDefinitions[sName] = definition
+		SetSettingDefinition(sName, definition)
 	}
 	return nil
+}
+
+func GetSettingDefinition(name SettingName) (SettingDefinition, bool) {
+	settingDefinitionsLock.RLock()
+	defer settingDefinitionsLock.RUnlock()
+	setting, ok := settingDefinitions[name]
+	return setting, ok
+}
+
+func SetSettingDefinition(name SettingName, definition SettingDefinition) {
+	settingDefinitionsLock.Lock()
+	defer settingDefinitionsLock.Unlock()
+	settingDefinitions[name] = definition
 }
