@@ -409,6 +409,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 			},
 			Spec: longhorn.BackingImageDataSourceSpec{
 				NodeID:     readyNodeID,
+				UUID:       bi.Status.UUID,
 				DiskUUID:   readyDiskUUID,
 				DiskPath:   readyDiskPath,
 				Checksum:   bi.Spec.Checksum,

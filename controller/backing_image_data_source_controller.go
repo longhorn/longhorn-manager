@@ -563,6 +563,7 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 		"data-source",
 		"--listen", fmt.Sprintf("%s:%d", "0.0.0.0", engineapi.BackingImageDataSourceDefaultPort),
 		"--file-name", engineapi.GetBackingImageDataSourceFileName(bids.Name, bi.Status.UUID),
+		"--uuid", string(bids.Spec.UUID),
 		"--source-type", string(bids.Spec.SourceType),
 	}
 
