@@ -138,12 +138,13 @@ func NewRouter(s *Server) *mux.Router {
 
 	r.Methods("GET").Path("/v1/backingimages").Handler(f(schemas, s.BackingImageList))
 	r.Methods("GET").Path("/v1/backingimages/{name}").Handler(f(schemas, s.BackingImageGet))
+	r.Methods("GET").Path("/v1/backingimages/{name}/download").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestForBackingImageDownload, DownloadParametersFromBackingImage(s.m), s.BackingImageProxyFallback)))
 	r.Methods("POST").Path("/v1/backingimages").Handler(f(schemas, s.BackingImageCreate))
 	r.Methods("DELETE").Path("/v1/backingimages/{name}").Handler(f(schemas, s.BackingImageDelete))
 	backingImageActions := map[string]func(http.ResponseWriter, *http.Request) error{
 		"backingImageCleanup": s.BackingImageCleanup,
 
-		BackingImageUpload: s.fwd.Handler(s.fwd.HandleProxyRequestForBackingImageUpload, s.fwd.GetHTTPAddressForBackingImageUpload(UploadServerAddressFromBackingImage(s.m)), s.BackingImageGet),
+		BackingImageUpload: s.fwd.Handler(s.fwd.HandleProxyRequestForBackingImageUpload, UploadParametersForBackingImage(s.m), s.BackingImageGet),
 	}
 	for name, action := range backingImageActions {
 		r.Methods("POST").Path("/v1/backingimages/{name}").Queries("action", name).Handler(f(schemas, action))
