@@ -20,6 +20,8 @@ type BackingImageDataSourceSpec struct {
 	// +optional
 	NodeID string `json:"nodeID"`
 	// +optional
+	UUID string `json:"uuid"`
+	// +optional
 	DiskUUID string `json:"diskUUID"`
 	// +optional
 	DiskPath string `json:"diskPath"`
@@ -61,6 +63,7 @@ type BackingImageDataSourceStatus struct {
 // +kubebuilder:resource:shortName=lhbids
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
+// +kubebuilder:printcolumn:name="UUID",type=string,JSONPath=`.spec.uuid`,description="The system generated UUID of the provisioned backing image file"
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.currentState`,description="The current state of the pod used to provision the backing image file from source"
 // +kubebuilder:printcolumn:name="SourceType",type=string,JSONPath=`.spec.sourceType`,description="The data source type"
 // +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.spec.nodeID`,description="The node the backing image file will be prepared on"
