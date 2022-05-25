@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -82,4 +83,15 @@ func (s *Server) BackingImageCleanup(rw http.ResponseWriter, req *http.Request) 
 	}
 	apiContext.Write(toBackingImageResource(bi, apiContext))
 	return nil
+}
+
+func (s *Server) BackingImageProxyFallback(rw http.ResponseWriter, req *http.Request) error {
+	id := mux.Vars(req)["name"]
+
+	bi, err := s.m.GetBackingImage(id)
+	if err != nil {
+		return errors.Wrapf(err, "error get backing image '%s'", id)
+	}
+
+	return fmt.Errorf("cannot proxy the request to other servers for backing image %v(%v)", bi.Name, bi.Status.UUID)
 }

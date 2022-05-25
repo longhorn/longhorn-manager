@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
@@ -17,10 +18,14 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 )
 
+const (
+	ParameterKeyAddress  = "address"
+	ParameterKeyFilePath = "filePath"
+)
+
 type OwnerIDFunc func(req *http.Request) (string, error)
-type BackingImageUploadServerAddressFunc func(req *http.Request) (string, error)
-type GetTargetAddressFunc func(req *http.Request) (string, error)
-type ProxyRequestHandler func(address string, req *http.Request) (proxyRequired bool, err error)
+type ParametersGetFunc func(req *http.Request) (map[string]string, error)
+type ProxyRequestHandler func(parameters map[string]string, req *http.Request) (proxyRequired bool, err error)
 
 func OwnerIDFromVolume(m *manager.VolumeManager) func(req *http.Request) (string, error) {
 	return func(req *http.Request) (string, error) {
@@ -83,18 +88,21 @@ func NewFwd(locator NodeLocator) *Fwd {
 	}
 }
 
-func (f *Fwd) Handler(proxyHandler ProxyRequestHandler, getTargetAddressFunc GetTargetAddressFunc, h HandleFuncWithError) HandleFuncWithError {
+func (f *Fwd) Handler(proxyHandler ProxyRequestHandler, parametersGetFunc ParametersGetFunc, h HandleFuncWithError) HandleFuncWithError {
 	return func(w http.ResponseWriter, req *http.Request) error {
 		var requireProxy bool
 		if proxyHandler != nil {
-			if getTargetAddressFunc == nil {
-				return fmt.Errorf("nil HTTP target address get function")
+			if parametersGetFunc == nil {
+				return fmt.Errorf("nil HTTP parameters get function")
 			}
-			targetAddress, err := getTargetAddressFunc(req)
+			parameters, err := parametersGetFunc(req)
 			if err != nil {
-				return errors.Wrap(err, "fail to get the target address")
+				return errors.Wrap(err, "fail to get the parameters")
 			}
-			requireProxy, err = proxyHandler(targetAddress, req)
+			if parameters == nil {
+				return errors.Wrap(err, "nil parameter")
+			}
+			requireProxy, err = proxyHandler(parameters, req)
 			if err != nil {
 				return errors.Wrap(err, "fail to verify if the proxy is required")
 			}
@@ -107,7 +115,8 @@ func (f *Fwd) Handler(proxyHandler ProxyRequestHandler, getTargetAddressFunc Get
 	}
 }
 
-func (f *Fwd) HandleProxyRequestByNodeID(targetAddress string, req *http.Request) (proxyRequired bool, err error) {
+func (f *Fwd) HandleProxyRequestByNodeID(parameters map[string]string, req *http.Request) (proxyRequired bool, err error) {
+	targetAddress := parameters[ParameterKeyAddress]
 	if targetAddress == req.Host {
 		return false, nil
 	}
@@ -128,13 +137,17 @@ func (f *Fwd) HandleProxyRequestByNodeID(targetAddress string, req *http.Request
 	return true, nil
 }
 
-func (f *Fwd) GetHTTPAddressByNodeID(getNodeID OwnerIDFunc) GetTargetAddressFunc {
-	return func(req *http.Request) (string, error) {
+func (f *Fwd) GetHTTPAddressByNodeID(getNodeID OwnerIDFunc) ParametersGetFunc {
+	return func(req *http.Request) (map[string]string, error) {
 		nodeID, err := getNodeID(req)
 		if err != nil {
-			return "", errors.Wrap(err, "fail to get target node ID")
+			return nil, errors.Wrap(err, "fail to get target node ID")
 		}
-		return f.locator.Node2APIAddress(nodeID)
+		address, err := f.locator.Node2APIAddress(nodeID)
+		if err != nil {
+			return nil, errors.Wrap(err, "fail to get the address from node ID")
+		}
+		return map[string]string{ParameterKeyAddress: address}, nil
 	}
 }
 
@@ -142,7 +155,8 @@ const (
 	BackingImageUpload = "upload"
 )
 
-func (f *Fwd) HandleProxyRequestForBackingImageUpload(targetAddress string, req *http.Request) (proxyRequired bool, err error) {
+func (f *Fwd) HandleProxyRequestForBackingImageUpload(parameters map[string]string, req *http.Request) (proxyRequired bool, err error) {
+	targetAddress := parameters[ParameterKeyAddress]
 	if targetAddress == req.Host {
 		return false, fmt.Errorf("backing image upload request should not be handled by current longhorn manager service")
 	}
@@ -159,29 +173,90 @@ func (f *Fwd) HandleProxyRequestForBackingImageUpload(targetAddress string, req 
 	return true, nil
 }
 
-func (f *Fwd) GetHTTPAddressForBackingImageUpload(getBackingImageUploadServerAddress BackingImageUploadServerAddressFunc) GetTargetAddressFunc {
-	return func(req *http.Request) (string, error) {
-		return getBackingImageUploadServerAddress(req)
-	}
-}
-
-func UploadServerAddressFromBackingImage(m *manager.VolumeManager) func(req *http.Request) (string, error) {
-	return func(req *http.Request) (string, error) {
+func UploadParametersForBackingImage(m *manager.VolumeManager) func(req *http.Request) (map[string]string, error) {
+	return func(req *http.Request) (map[string]string, error) {
 		name := mux.Vars(req)["name"]
 		pod, err := m.GetBackingImageDataSourcePod(name)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		if pod.Status.Phase != v1.PodRunning || pod.Status.PodIP == "" {
-			return "", fmt.Errorf("backing image data source pod is not ready for uploading")
+			return nil, fmt.Errorf("backing image data source pod is not ready for uploading")
 		}
 		bids, err := m.GetBackingImageDataSource(name)
 		if err != nil {
-			return "", errors.Wrapf(err, "error getting backing image %s", name)
+			return nil, errors.Wrapf(err, "error getting backing image %s", name)
 		}
 		if bids.Status.CurrentState != longhorn.BackingImageStatePending {
-			return "", fmt.Errorf("upload server for backing image %s has not been initiated", name)
+			return nil, fmt.Errorf("upload server for backing image %s has not been initiated", name)
 		}
-		return fmt.Sprintf("%s:%d", pod.Status.PodIP, engineapi.BackingImageDataSourceDefaultPort), nil
+		return map[string]string{ParameterKeyAddress: fmt.Sprintf("%s:%d", pod.Status.PodIP, engineapi.BackingImageDataSourceDefaultPort)}, nil
+	}
+}
+
+func (f *Fwd) HandleProxyRequestForBackingImageDownload(parameters map[string]string, req *http.Request) (proxyRequired bool, err error) {
+	targetAddress := parameters[ParameterKeyAddress]
+	filePath := parameters[ParameterKeyFilePath]
+
+	if targetAddress == req.Host {
+		return false, fmt.Errorf("backing image download request should not be handled by current longhorn manager service")
+	}
+
+	h := req.Header
+	if h.Get("X-Forwarded-Proto") == "https" {
+		h.Set("X-Forwarded-Proto", "http")
+	}
+	if h.Get("X-Forwarded-Host") != "" {
+		h.Del("X-Forwarded-Host")
+	}
+	req.Header = h
+
+	req.URL.Path = fmt.Sprintf("/v1/files/%s/download", filePath)
+	req.URL.RawPath = fmt.Sprintf("/v1/files/%s/download", url.PathEscape(filePath))
+	req.URL.Host = targetAddress
+	req.URL.Scheme = "http"
+	req.Host = targetAddress
+
+	logrus.Infof("Forwarding backing image download request to URL %v", req.URL.String())
+
+	return true, nil
+}
+
+func DownloadParametersFromBackingImage(m *manager.VolumeManager) func(req *http.Request) (map[string]string, error) {
+	return func(req *http.Request) (map[string]string, error) {
+		name := mux.Vars(req)["name"]
+		bi, err := m.GetBackingImage(name)
+		if err != nil {
+			return nil, err
+		}
+
+		var targetBIM *longhorn.BackingImageManager
+		for diskUUID, fStatus := range bi.Status.DiskFileStatusMap {
+			if fStatus.State != longhorn.BackingImageStateReady {
+				continue
+			}
+			bim, err := m.GetDefaultBackingImageManagersByDiskUUID(diskUUID)
+			if err != nil {
+				return nil, err
+			}
+			targetBIM = bim
+			break
+		}
+		if targetBIM == nil {
+			return nil, fmt.Errorf("cannot find a default backing image manager for backing image %v download", name)
+		}
+
+		cli, err := engineapi.NewBackingImageManagerClient(targetBIM)
+		if err != nil {
+			return nil, err
+		}
+		filePath, address, err := cli.PrepareDownload(name, bi.Status.UUID)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{
+			ParameterKeyFilePath: filePath,
+			ParameterKeyAddress:  address,
+		}, nil
 	}
 }

@@ -66,6 +66,24 @@ func (m *VolumeManager) GetBackingImageDataSourcePod(name string) (*v1.Pod, erro
 	return pod, nil
 }
 
+func (m *VolumeManager) GetDefaultBackingImageManagersByDiskUUID(diskUUID string) (*longhorn.BackingImageManager, error) {
+	defaultImage, err := m.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
+	if err != nil {
+		return nil, err
+	}
+
+	bims, err := m.ds.ListBackingImageManagersByDiskUUID(diskUUID)
+	if err != nil {
+		return nil, err
+	}
+	for _, bim := range bims {
+		if bim.Spec.Image == defaultImage {
+			return bim, nil
+		}
+	}
+	return nil, fmt.Errorf("default backing image manager for disk %v is not found", diskUUID)
+}
+
 func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, parameters map[string]string) (bi *longhorn.BackingImage, err error) {
 	bi = &longhorn.BackingImage{
 		ObjectMeta: metav1.ObjectMeta{
