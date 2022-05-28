@@ -73,6 +73,10 @@ spec:
       jsonPath: .spec.sourceType
       name: SourceType
       type: string
+    - description: The backing image file size
+      jsonPath: .status.size
+      name: Size
+      type: string
     - description: The node the backing image file will be prepared on
       jsonPath: .spec.nodeID
       name: Node
