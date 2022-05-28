@@ -404,9 +404,17 @@ spec:
     subresources:
       status: {}
   - additionalPrinterColumns:
-    - description: The backing image name
-      jsonPath: .spec.image
-      name: Image
+    - description: The system generated UUID
+      jsonPath: .status.uuid
+      name: UUID
+      type: string
+    - description: The source of the backing image file data
+      jsonPath: .spec.sourceType
+      name: SourceType
+      type: string
+    - description: The backing image file size in each disk
+      jsonPath: .status.size
+      name: Size
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
