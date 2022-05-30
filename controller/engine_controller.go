@@ -1412,9 +1412,15 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 
 	replicaURL := engineapi.GetBackendReplicaURL(addr)
 	go func() {
-		defer engineClientProxy.Close()
-
 		log := ec.logger.WithField("volume", e.Spec.VolumeName)
+
+		engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
+		if err != nil {
+			log.WithError(err).Errorf("Failed rebuilding of replica %v", addr)
+			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedRebuilding, "Failed rebuilding replica with Address %v: %v", addr, err)
+			return
+		}
+		defer engineClientProxy.Close()
 
 		// start rebuild
 		if e.Spec.RequestedBackupRestore != "" {
