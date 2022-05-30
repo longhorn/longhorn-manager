@@ -145,15 +145,14 @@ const (
 )
 
 type SettingDefinition struct {
-	DisplayName              string          `json:"displayName"`
-	Description              string          `json:"description"`
-	Category                 SettingCategory `json:"category"`
-	Type                     SettingType     `json:"type"`
-	Required                 bool            `json:"required"`
-	ReadOnly                 bool            `json:"readOnly"`
-	Default                  string          `json:"default"`
-	Choices                  []string        `json:"options,omitempty"`                  // +optional
-	ConfigMapResourceVersion string          `json:"configMapResourceVersion,omitempty"` // +optional
+	DisplayName string          `json:"displayName"`
+	Description string          `json:"description"`
+	Category    SettingCategory `json:"category"`
+	Type        SettingType     `json:"type"`
+	Required    bool            `json:"required"`
+	ReadOnly    bool            `json:"readOnly"`
+	Default     string          `json:"default"`
+	Choices     []string        `json:"options,omitempty"` // +optional
 }
 
 var settingDefinitionsLock sync.RWMutex
@@ -1085,18 +1084,6 @@ func UnmarshalNodeSelector(nodeSelectorSetting string) (map[string]string, error
 		}
 	}
 	return nodeSelector, nil
-}
-
-func OverrideSettingDefinitions(defaultSettings map[SettingName]string) error {
-	for sName, value := range defaultSettings {
-		definition, ok := GetSettingDefinition(sName)
-		if !ok {
-			return fmt.Errorf("BUG: setting %v is not defined", sName)
-		}
-		definition.Default = value
-		SetSettingDefinition(sName, definition)
-	}
-	return nil
 }
 
 func GetSettingDefinition(name SettingName) (SettingDefinition, bool) {
