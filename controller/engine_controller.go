@@ -1397,6 +1397,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 	if err != nil {
 		return err
 	}
+	defer engineClientProxy.Close()
 
 	// we need to know the current status, since ReplicaAddressMap may
 	// haven't been updated since last rebuild
