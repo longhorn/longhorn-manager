@@ -792,7 +792,7 @@ var (
 			"WARNING: \n\n" +
 			"  - The cluster must have pre-existing Multus installed, and NetworkAttachmentDefinition IPs are reachable between nodes. \n\n" +
 			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will try to block this setting update when there are attached volumes. \n\n" +
-			"  - When applying the setting, Longhorn will restart all manager, instance-manager, and backing-image-manager pods. \n\n",
+			"  - When applying the setting, Longhorn will restart all instance-manager, and backing-image-manager pods. \n\n",
 		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeString,
 		Required: false,
