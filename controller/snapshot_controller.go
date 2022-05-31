@@ -110,6 +110,7 @@ func (sc *SnapshotController) enqueueEngineChange(oldObj, curObj interface{}) {
 	vol, err := sc.ds.GetVolumeRO(curEngine.Spec.VolumeName)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("snapshot controller failed to get volume %v when enqueuing engine %v: %v", curEngine.Spec.VolumeName, curEngine.Name, err))
+		return
 	}
 
 	if vol.Status.OwnerID != sc.controllerID {
