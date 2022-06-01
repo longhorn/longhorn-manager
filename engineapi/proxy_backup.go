@@ -23,6 +23,10 @@ func (p *Proxy) SnapshotBackup(e *longhorn.Engine,
 		return "", "", fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)
 	}
 
+	if e == nil {
+		return "", "", errors.Wrapf(errors.Errorf("missing engine"), "failed to backup %v", snapshotName)
+	}
+
 	snap, err := p.SnapshotGet(e, snapshotName)
 	if err != nil {
 		return "", "", errors.Wrapf(err, "error getting snapshot '%s', engine '%s'", snapshotName, e.Name)
