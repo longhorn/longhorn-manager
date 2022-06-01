@@ -38,7 +38,7 @@ func (c *ProxyClient) SnapshotBackup(serviceAddress,
 		BackingImageChecksum: backingImageChecksum,
 		Labels:               labels,
 	}
-	recv, err := c.service.SnapshotBackup(c.ctx, req)
+	recv, err := c.service.SnapshotBackup(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {
 		return "", "", err
 	}
@@ -66,7 +66,7 @@ func (c *ProxyClient) SnapshotBackupStatus(serviceAddress, backupName, replicaAd
 		BackupName:     backupName,
 		ReplicaAddress: replicaAddress,
 	}
-	recv, err := c.service.SnapshotBackupStatus(c.ctx, req)
+	recv, err := c.service.SnapshotBackupStatus(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func (c *ProxyClient) BackupRestore(serviceAddress, url, target, volumeName stri
 		Target:     target,
 		VolumeName: volumeName,
 	}
-	recv, err := c.service.BackupRestore(c.ctx, req)
+	recv, err := c.service.BackupRestore(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {
 		return err
 	}
@@ -140,7 +140,7 @@ func (c *ProxyClient) BackupRestoreStatus(serviceAddress string) (status map[str
 	req := &rpc.ProxyEngineRequest{
 		Address: serviceAddress,
 	}
-	recv, err := c.service.BackupRestoreStatus(c.ctx, req)
+	recv, err := c.service.BackupRestoreStatus(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +177,7 @@ func (c *ProxyClient) BackupGet(destURL string, envs []string) (info *EngineBack
 		Envs:    envs,
 		DestUrl: destURL,
 	}
-	recv, err := c.service.BackupGet(c.ctx, req)
+	recv, err := c.service.BackupGet(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +201,7 @@ func (c *ProxyClient) BackupVolumeGet(destURL string, envs []string) (info *Engi
 		Envs:    envs,
 		DestUrl: destURL,
 	}
-	recv, err := c.service.BackupVolumeGet(c.ctx, req)
+	recv, err := c.service.BackupVolumeGet(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +244,7 @@ func (c *ProxyClient) BackupVolumeList(destURL, volumeName string, volumeOnly bo
 		VolumeName: volumeName,
 		VolumeOnly: volumeOnly,
 	}
-	recv, err := c.service.BackupVolumeList(c.ctx, req)
+	recv, err := c.service.BackupVolumeList(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +310,7 @@ func (c *ProxyClient) BackupConfigMetaGet(destURL string, envs []string) (meta *
 		Envs:    envs,
 		DestUrl: destURL,
 	}
-	recv, err := c.service.BackupConfigMetaGet(c.ctx, req)
+	recv, err := c.service.BackupConfigMetaGet(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +346,7 @@ func (c *ProxyClient) BackupRemove(destURL, volumeName string, envs []string) (e
 		DestUrl:    destURL,
 		VolumeName: volumeName,
 	}
-	_, err = c.service.BackupRemove(c.ctx, req)
+	_, err = c.service.BackupRemove(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {
 		return err
 	}

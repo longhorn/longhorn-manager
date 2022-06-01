@@ -15,6 +15,7 @@ import (
 	"github.com/longhorn/longhorn-instance-manager/pkg/meta"
 	"github.com/longhorn/longhorn-instance-manager/pkg/util"
 
+	eclient "github.com/longhorn/longhorn-engine/pkg/controller/client"
 	emeta "github.com/longhorn/longhorn-engine/pkg/meta"
 )
 
@@ -95,8 +96,13 @@ func NewProxyClient(ctx context.Context, ctxCancel context.CancelFunc, address s
 }
 
 const (
-	GRPCServiceTimeout = 3 * time.Minute
+	GRPCServiceTimeout = eclient.GRPCServiceTimeout * 2
 )
+
+func getContextWithGRPCTimeout(parent context.Context) context.Context {
+	ctx, _ := context.WithTimeout(parent, GRPCServiceTimeout)
+	return ctx
+}
 
 func (c *ProxyClient) getProxyErrorPrefix(destination string) string {
 	return fmt.Sprintf("proxyServer=%v destination=%v:", c.ServiceURL, destination)
@@ -117,7 +123,7 @@ func (c *ProxyClient) ServerVersionGet(serviceAddress string) (version *emeta.Ve
 	req := &rpc.ProxyEngineRequest{
 		Address: serviceAddress,
 	}
-	resp, err := c.service.ServerVersionGet(c.ctx, req)
+	resp, err := c.service.ServerVersionGet(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {
 		return nil, err
 	}
