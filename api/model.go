@@ -168,6 +168,7 @@ type BackingImage struct {
 	client.Resource
 
 	Name             string            `json:"name"`
+	UUID             string            `json:"uuid"`
 	SourceType       string            `json:"sourceType"`
 	Parameters       map[string]string `json:"parameters"`
 	ExpectedChecksum string            `json:"expectedChecksum"`
@@ -1402,6 +1403,7 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 		},
 
 		Name:             bi.Name,
+		UUID:             bi.Status.UUID,
 		ExpectedChecksum: bi.Spec.Checksum,
 		SourceType:       string(bi.Spec.SourceType),
 		Parameters:       bi.Spec.SourceParameters,
