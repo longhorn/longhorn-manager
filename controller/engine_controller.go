@@ -26,6 +26,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
+	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -1204,7 +1205,7 @@ func restoreBackup(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[st
 }
 
 func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, err error) error {
-	taskErr, ok := err.(engineapi.TaskError)
+	taskErr, ok := err.(imclient.TaskError)
 	if !ok {
 		return errors.Wrapf(err, "failed to restore backup %v in engine monitor, will retry the restore later",
 			engine.Spec.RequestedBackupRestore)
@@ -1224,7 +1225,7 @@ func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap m
 }
 
 func handleRestoreErrorForCompatibleEngine(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, err error) error {
-	taskErr, ok := err.(engineapi.TaskError)
+	taskErr, ok := err.(imclient.TaskError)
 	if !ok {
 		return errors.Wrapf(err, "failed to restore backup %v with last restored backup %v in engine monitor",
 			engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
