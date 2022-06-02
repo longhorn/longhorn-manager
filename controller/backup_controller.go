@@ -99,6 +99,11 @@ func NewBackupController(
 	})
 	bc.cacheSyncs = append(bc.cacheSyncs, ds.BackupInformer.HasSynced)
 
+	ds.InstanceManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old, cur interface{}) { bc.enqueueInstanceManagerChange(cur) },
+	})
+	bc.cacheSyncs = append(bc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
+
 	return bc
 }
 
@@ -114,6 +119,50 @@ func (bc *BackupController) enqueueBackup(obj interface{}) {
 
 func (bc *BackupController) enqueueBackupForMonitor(key string) {
 	bc.queue.Add(key)
+}
+
+func (bc *BackupController) enqueueInstanceManagerChange(obj interface{}) {
+	im, isInstanceManager := obj.(*longhorn.InstanceManager)
+	if !isInstanceManager {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		im, ok = deletedState.Obj.(*longhorn.InstanceManager)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	imType, err := datastore.CheckInstanceManagerType(im)
+	if err != nil || imType != longhorn.InstanceManagerTypeEngine {
+		return
+	}
+
+	if im.Status.OwnerID != bc.controllerID {
+		return
+	}
+
+	if im.Status.CurrentState == longhorn.InstanceManagerStateStarting || im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+		return
+	}
+
+	backups, err := bc.ds.ListBackupsRO()
+	if err != nil {
+		bc.logger.WithError(err).Warnf("Failed to list backups")
+		return
+	}
+	for _, backup := range backups {
+		if backup.Status.OwnerID != bc.controllerID {
+			continue
+		}
+
+		bc.enqueueBackup(backup)
+	}
 }
 
 func (bc *BackupController) Run(workers int, stopCh <-chan struct{}) {
@@ -221,6 +270,18 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return nil
 	}
 	if !isResponsible {
+		if errIM := bc.ds.CheckDefaultEngineInstanceManagerAvailability(backup.Status.OwnerID); errIM != nil {
+			bc.logger.WithError(errIM).Infof("Transfering backup %v ownership", backup.Name)
+			backup.Status.OwnerID = ""
+			_, err = bc.ds.UpdateBackupStatus(backup)
+			if err != nil {
+				// we don't mind others coming first
+				if apierrors.IsConflict(errors.Cause(err)) {
+					return nil
+				}
+				return err
+			}
+		}
 		return nil
 	}
 	if backup.Status.OwnerID != bc.controllerID {
@@ -420,9 +481,12 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 		return false, err
 	}
 
-	isPreferredOwner := currentNodeEngineAvailable && isResponsible
-	continueToBeOwner := currentNodeEngineAvailable && bc.controllerID == b.Status.OwnerID
-	requiresNewOwner := currentNodeEngineAvailable && !currentOwnerEngineAvailable
+	currentOwnerInstanceManagerAvailable := bc.ds.IsDefaultEngineInstanceManagerAvailability(b.Status.OwnerID)
+	currentNodeInstanceManagerAvailable := bc.ds.IsDefaultEngineInstanceManagerAvailability(bc.controllerID)
+
+	isPreferredOwner := currentNodeEngineAvailable && currentNodeInstanceManagerAvailable && isResponsible
+	continueToBeOwner := currentNodeEngineAvailable && currentNodeInstanceManagerAvailable && bc.controllerID == b.Status.OwnerID
+	requiresNewOwner := currentNodeEngineAvailable && currentNodeInstanceManagerAvailable && (!currentOwnerEngineAvailable || !currentOwnerInstanceManagerAvailable)
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
 }

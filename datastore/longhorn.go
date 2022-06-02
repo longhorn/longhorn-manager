@@ -1403,6 +1403,24 @@ func (s *DataStore) CheckEngineImageReadyOnAllVolumeReplicas(image, volumeName, 
 	return s.CheckEngineImageReadiness(image, nodes...)
 }
 
+func (s *DataStore) IsDefaultEngineInstanceManagerAvailability(nodeID string) bool {
+	return s.CheckDefaultEngineInstanceManagerAvailability(nodeID) == nil
+}
+
+func (s *DataStore) CheckDefaultEngineInstanceManagerAvailability(nodeID string) error {
+	im, err := s.GetDefaultEngineInstanceManagerByNode(nodeID)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get default engine instance manager")
+	}
+
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning &&
+		im.Status.CurrentState != longhorn.InstanceManagerStateStarting {
+		return errors.Errorf("default instance manager(%v) is not available in %v state", im.Name, im.Status.CurrentState)
+	}
+
+	return nil
+}
+
 // CreateBackingImage creates a Longhorn BackingImage resource and verifies
 // creation
 func (s *DataStore) CreateBackingImage(backingImage *longhorn.BackingImage) (*longhorn.BackingImage, error) {
