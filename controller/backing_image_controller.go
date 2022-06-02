@@ -448,7 +448,8 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		for diskUUID := range bi.Spec.Disks {
 			fileStatus, ok := bi.Status.DiskFileStatusMap[diskUUID]
 			if !ok {
-				continue
+				allFilesUnavailable = false
+				break
 			}
 			if fileStatus.State != longhorn.BackingImageStateFailed {
 				allFilesUnavailable = false
