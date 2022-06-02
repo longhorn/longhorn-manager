@@ -94,6 +94,10 @@ func (c *ProxyClient) BackupRestore(serviceAddress, url, target, volumeName stri
 	}
 
 	defer func() {
+		if _, ok := err.(TaskError); ok {
+			return
+		}
+
 		err = errors.Wrapf(err, "%v failed to restore backup %v to volume %v", c.getProxyErrorPrefix(serviceAddress), url, volumeName)
 	}()
 
