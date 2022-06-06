@@ -1177,7 +1177,7 @@ func restoreBackup(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[st
 		return fmt.Errorf("cannot found the %s backup target", types.DefaultBackupTargetName)
 	}
 
-	backupTargetConfig, err := getBackupTargetConfig(ds, backupTarget)
+	backupTargetClient, err := getBackupTargetClient(ds, backupTarget)
 	if err != nil {
 		return errors.Wrapf(err, "cannot get backup target config for backup restoration of engine %v", engine.Name)
 	}
@@ -1185,16 +1185,16 @@ func restoreBackup(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[st
 	if cliAPIVersion < engineapi.CLIVersionFour {
 		// For compatible engines, `LastRestoredBackup` is required to indicate if the restore is incremental restore
 		log.Infof("Prepare to restore backup, backup target: %v, backup volume: %v, requested restored backup name: %v, last restored backup name: %v",
-			backupTargetConfig.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
-		if err = engineClientProxy.BackupRestore(engine, backupTargetConfig.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup, backupTargetConfig.Credential); err != nil {
+			backupTargetClient.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
+		if err = engineClientProxy.BackupRestore(engine, backupTargetClient.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup, backupTargetClient.Credential); err != nil {
 			if extraErr := handleRestoreErrorForCompatibleEngine(log, engine, rsMap, err); extraErr != nil {
 				return extraErr
 			}
 		}
 	} else {
-		if err = engineClientProxy.BackupRestore(engine, backupTargetConfig.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, "", backupTargetConfig.Credential); err != nil {
+		if err = engineClientProxy.BackupRestore(engine, backupTargetClient.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, "", backupTargetClient.Credential); err != nil {
 			log.Infof("Prepare to restore backup, backup target: %v, backup volume: %v, requested restored backup name: %v",
-				backupTargetConfig.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
+				backupTargetClient.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
 			if extraErr := handleRestoreError(log, engine, rsMap, err); extraErr != nil {
 				return extraErr
 			}
