@@ -97,7 +97,6 @@ type Proxy struct {
 
 type EngineClientProxy interface {
 	EngineClient
-	BackupTargetBinaryClient
 
 	Close()
 }

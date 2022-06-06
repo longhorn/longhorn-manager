@@ -266,15 +266,14 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 		if backupTarget.Spec.BackupTargetURL != "" &&
 			backupVolume != nil && backupVolume.DeletionTimestamp == nil {
-			engineClientProxy, backupTargetConfig, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, log)
+			backupTargetClient, err := getBackupTargetClient(bc.ds, backupTarget)
 			if err != nil {
 				log.WithError(err).Error("Error init backup target clients")
 				return nil // Ignore error to prevent enqueue
 			}
-			defer engineClientProxy.Close()
 
-			backupURL := backupstore.EncodeBackupURL(backup.Name, backupVolumeName, backupTargetConfig.URL)
-			if err := engineClientProxy.BackupDelete(backupURL, backupTargetConfig.Credential); err != nil {
+			backupURL := backupstore.EncodeBackupURL(backup.Name, backupVolumeName, backupTargetClient.URL)
+			if err := backupTargetClient.BackupDelete(backupURL, backupTargetClient.Credential); err != nil {
 				log.WithError(err).Error("Error deleting remote backup")
 				return err
 			}
@@ -357,15 +356,14 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	}
 
 	// The backup creation is complete, then the source of truth becomes the remote backup target
-	engineClientProxy, backupTargetConfig, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, log)
+	backupTargetClient, err := getBackupTargetClient(bc.ds, backupTarget)
 	if err != nil {
 		log.WithError(err).Error("Error init backup target clients")
 		return nil // Ignore error to prevent enqueue
 	}
-	defer engineClientProxy.Close()
 
-	backupURL := backupstore.EncodeBackupURL(backup.Name, backupVolumeName, backupTargetConfig.URL)
-	backupInfo, err := engineClientProxy.BackupGet(backupURL, backupTargetConfig.Credential)
+	backupURL := backupstore.EncodeBackupURL(backup.Name, backupVolumeName, backupTargetClient.URL)
+	backupInfo, err := backupTargetClient.BackupGet(backupURL, backupTargetClient.Credential)
 	if err != nil {
 		if !strings.Contains(err.Error(), "in progress") {
 			log.WithError(err).Error("Error inspecting backup config")
@@ -489,13 +487,13 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		return nil, err
 	}
 
-	engineClientProxy, backupTargetConfig, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger)
+	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger)
 	if err != nil {
 		return nil, err
 	}
 
 	// Enable the backup monitor
-	monitor, err := bc.enableBackupMonitor(backup, volume, backupTargetConfig, biChecksum, engineClientProxy)
+	monitor, err := bc.enableBackupMonitor(backup, volume, backupTargetClient, biChecksum, engineClientProxy)
 	if err != nil {
 		backup.Status.Error = err.Error()
 		backup.Status.State = longhorn.BackupStateError
@@ -571,7 +569,7 @@ func (bc *BackupController) hasMonitor(backupName string) *engineapi.BackupMonit
 	return bc.monitors[backupName]
 }
 
-func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume *longhorn.Volume, backupTargetConfig *engineapi.BackupTargetConfig, biChecksum string, engineClientProxy engineapi.EngineClientProxy) (*engineapi.BackupMonitor, error) {
+func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume *longhorn.Volume, backupTargetClient *engineapi.BackupTargetClient, biChecksum string, engineClientProxy engineapi.EngineClientProxy) (*engineapi.BackupMonitor, error) {
 	monitor := bc.hasMonitor(backup.Name)
 	if monitor != nil {
 		return monitor, nil
@@ -585,7 +583,7 @@ func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume 
 		return nil, err
 	}
 
-	monitor, err = engineapi.NewBackupMonitor(bc.logger, backup, volume, backupTargetConfig, biChecksum, engine, engineClientProxy, bc.enqueueBackupForMonitor)
+	monitor, err = engineapi.NewBackupMonitor(bc.logger, backup, volume, backupTargetClient, biChecksum, engine, engineClientProxy, bc.enqueueBackupForMonitor)
 	if err != nil {
 		return nil, err
 	}

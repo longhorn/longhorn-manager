@@ -220,14 +220,14 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 		// Delete the backup volume from the remote backup target
 		if backupTarget.Spec.BackupTargetURL != "" {
-			engineClientProxy, backupTargetConfig, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log)
+			engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log)
 			if err != nil || engineClientProxy == nil {
 				log.WithError(err).Error("Error init backup target clients")
 				return nil // Ignore error to prevent enqueue
 			}
 			defer engineClientProxy.Close()
 
-			if err := engineClientProxy.BackupVolumeDelete(backupTargetConfig.URL, backupVolumeName, backupTargetConfig.Credential); err != nil {
+			if err := backupTargetClient.BackupVolumeDelete(backupTargetClient.URL, backupVolumeName, backupTargetClient.Credential); err != nil {
 				log.WithError(err).Error("Error clean up remote backup volume")
 				return err
 			}
@@ -256,7 +256,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return nil
 	}
 
-	engineClientProxy, backupTargetConfig, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log)
+	engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log)
 	if err != nil {
 		log.WithError(err).Error("Error init backup target clients")
 		return nil // Ignore error to prevent enqueue
@@ -264,7 +264,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	defer engineClientProxy.Close()
 
 	// Get a list of all the backups that are stored in the backup target
-	res, err := engineClientProxy.BackupNameList(backupTargetConfig.URL, backupVolumeName, backupTargetConfig.Credential)
+	res, err := backupTargetClient.BackupNameList(backupTargetClient.URL, backupVolumeName, backupTargetClient.Credential)
 	if err != nil {
 		log.WithError(err).Error("Error listing backups from backup target")
 		return nil // Ignore error to prevent enqueue
@@ -319,8 +319,8 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		}
 	}
 
-	backupVolumeMetadataURL := backupstore.EncodeBackupURL("", backupVolumeName, backupTargetConfig.URL)
-	configMetadata, err := engineClientProxy.BackupConfigMetaGet(backupVolumeMetadataURL, backupTargetConfig.Credential)
+	backupVolumeMetadataURL := backupstore.EncodeBackupURL("", backupVolumeName, backupTargetClient.URL)
+	configMetadata, err := backupTargetClient.BackupConfigMetaGet(backupVolumeMetadataURL, backupTargetClient.Credential)
 	if err != nil {
 		log.WithError(err).Error("Error getting backup volume config metadata from backup target")
 		return nil // Ignore error to prevent enqueue
@@ -337,7 +337,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return nil
 	}
 
-	backupVolumeInfo, err := engineClientProxy.BackupVolumeGet(backupVolumeMetadataURL, backupTargetConfig.Credential)
+	backupVolumeInfo, err := backupTargetClient.BackupVolumeGet(backupVolumeMetadataURL, backupTargetClient.Credential)
 	if err != nil {
 		log.WithError(err).Error("Error getting backup volume config from backup target")
 		return nil // Ignore error to prevent enqueue
