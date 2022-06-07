@@ -704,7 +704,7 @@ func (s *DataStore) GetStorageIPFromPod(pod *corev1.Pod) string {
 	}
 
 	if storageNetwork.Value == types.CniNetworkNone {
-		logrus.Debugf("Found %v setting is empty, use %v pod IP %v", types.SettingNameStorageNetwork, pod.Name, pod.Status.PodIP)
+		logrus.Tracef("Found %v setting is empty, use %v pod IP %v", types.SettingNameStorageNetwork, pod.Name, pod.Status.PodIP)
 		return pod.Status.PodIP
 	}
 
