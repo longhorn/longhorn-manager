@@ -588,9 +588,34 @@ func (c *BackingImageManagerController) deleteInvalidBackingImages(bim *longhorn
 			}
 			return err
 		}
-		if bi.Status.UUID == bim.Spec.BackingImages[biName] {
+
+		// Delete the file from a backing image manager when:
+		//   1. The spec record is removed or does not match.
+		//   2. The file state is failed and there are available files in
+		//      other backing image managers.
+		deleteRequired := bi.Status.UUID != bim.Spec.BackingImages[biName]
+		if !deleteRequired {
+			// Prefer to use the file info in BackingImage.Status,
+			// which is synced from BackingImageManager.Status with some
+			// adjustments.
+			fileState := bim.Status.BackingImageFileMap[biName].State
+			if bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID] != nil {
+				fileState = bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State
+			}
+			if fileState == longhorn.BackingImageStateFailed {
+				for _, biFileInfo := range bi.Status.DiskFileStatusMap {
+					if biFileInfo.State == longhorn.BackingImageStateFailed {
+						continue
+					}
+					deleteRequired = true
+					break
+				}
+			}
+		}
+		if !deleteRequired {
 			continue
 		}
+
 		log.Debugf("Start to delete the file for invalid backing image %v, in backing image manager spec UUID %v, backing image correct UUID %v", biName, bim.Spec.BackingImages[biName], bi.Status.UUID)
 		if err := cli.Delete(biName, bi.Status.UUID); err != nil && !types.ErrorIsNotFound(err) {
 			return err
