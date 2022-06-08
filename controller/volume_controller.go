@@ -829,7 +829,7 @@ func (vc *VolumeController) cleanupFailedToScheduledReplicas(v *longhorn.Volume,
 	if healthyCount >= v.Spec.NumberOfReplicas {
 		for _, r := range rs {
 			if !hasEvictionRequestedReplicas {
-				if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" && r.Spec.NodeID == "" &&
+				if r.Spec.HealthyAt == "" && r.Spec.NodeID == "" &&
 					(isDataLocalityDisabled(v) || r.Spec.HardNodeAffinity != v.Status.CurrentNodeID) {
 					logrus.Infof("Cleaning up failed to scheduled replica %v", r.Name)
 					if err := vc.deleteReplica(r, rs); err != nil {
