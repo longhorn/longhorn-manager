@@ -15,8 +15,8 @@ import (
 	"github.com/longhorn/longhorn-instance-manager/pkg/meta"
 	"github.com/longhorn/longhorn-instance-manager/pkg/util"
 
-	eclient "github.com/longhorn/longhorn-engine/pkg/controller/client"
 	emeta "github.com/longhorn/longhorn-engine/pkg/meta"
+	eclient "github.com/longhorn/longhorn-engine/pkg/replica/client"
 )
 
 var (
@@ -96,11 +96,17 @@ func NewProxyClient(ctx context.Context, ctxCancel context.CancelFunc, address s
 }
 
 const (
-	GRPCServiceTimeout = eclient.GRPCServiceTimeout * 2
+	GRPCServiceTimeout     = eclient.GRPCServiceCommonTimeout * 2
+	GRPCServiceLongTimeout = eclient.GRPCServiceLongTimeout + GRPCServiceTimeout
 )
 
 func getContextWithGRPCTimeout(parent context.Context) context.Context {
 	ctx, _ := context.WithTimeout(parent, GRPCServiceTimeout)
+	return ctx
+}
+
+func getContextWithGRPCLongTimeout(parent context.Context) context.Context {
+	ctx, _ := context.WithTimeout(parent, GRPCServiceLongTimeout)
 	return ctx
 }
 

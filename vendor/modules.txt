@@ -132,12 +132,12 @@ github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
 # github.com/longhorn/longhorn-engine v1.3.0-preview1
 ## explicit; go 1.13
-github.com/longhorn/longhorn-engine/pkg/controller/client
 github.com/longhorn/longhorn-engine/pkg/meta
+github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
-# github.com/longhorn/longhorn-instance-manager v0.0.0-20220607013925-a304db671f4f
+# github.com/longhorn/longhorn-instance-manager v0.0.0-20220609091415-718a305e06e8
 ## explicit; go 1.13
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -356,7 +356,6 @@ google.golang.org/grpc/credentials
 google.golang.org/grpc/encoding
 google.golang.org/grpc/encoding/proto
 google.golang.org/grpc/grpclog
-google.golang.org/grpc/health/grpc_health_v1
 google.golang.org/grpc/internal
 google.golang.org/grpc/internal/backoff
 google.golang.org/grpc/internal/balancerload

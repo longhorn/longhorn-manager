@@ -121,7 +121,7 @@ func (c *ProxyClient) SnapshotClone(serviceAddress, name, fromController string)
 		SnapshotName:              name,
 		ExportBackingImageIfExist: false,
 	}
-	_, err = c.service.SnapshotClone(getContextWithGRPCTimeout(c.ctx), req)
+	_, err = c.service.SnapshotClone(getContextWithGRPCLongTimeout(c.ctx), req)
 	if err != nil {
 		return err
 	}
