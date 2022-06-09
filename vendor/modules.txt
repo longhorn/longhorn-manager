@@ -112,7 +112,7 @@ github.com/kr/text
 # github.com/kubernetes-csi/csi-lib-utils v0.6.1
 ## explicit
 github.com/kubernetes-csi/csi-lib-utils/protosanitizer
-# github.com/longhorn/backing-image-manager v0.0.0-20220531040914-2fada376e4b9
+# github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f
 ## explicit; go 1.13
 github.com/longhorn/backing-image-manager/api
 github.com/longhorn/backing-image-manager/pkg/client
