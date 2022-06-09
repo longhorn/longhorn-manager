@@ -33,7 +33,7 @@ func (c *ProxyClient) ReplicaAdd(serviceAddress, replicaAddress string, restore 
 		ReplicaAddress: replicaAddress,
 		Restore:        restore,
 	}
-	_, err = c.service.ReplicaAdd(getContextWithGRPCTimeout(c.ctx), req)
+	_, err = c.service.ReplicaAdd(getContextWithGRPCLongTimeout(c.ctx), req)
 	if err != nil {
 		return err
 	}
