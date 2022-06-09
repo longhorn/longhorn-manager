@@ -41,7 +41,7 @@ func GetCompatibleClient(e *longhorn.Engine, fallBack interface{}, ds *datastore
 
 	if im != nil {
 		if err := CheckInstanceManagerProxySupport(im); err != nil {
-			log.WithError(err).Warn("Use fallback client")
+			log.WithError(err).Trace("Use fallback client")
 			shouldFallBack = true
 		}
 	}
