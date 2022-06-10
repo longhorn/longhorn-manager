@@ -582,17 +582,20 @@ func (sc *SettingController) updateKubernetesClusterAutoscalerEnabled() error {
 
 	evictKey := types.KubernetesClusterAutoscalerSafeToEvictKey
 
-	longhornUI, err := sc.ds.GetDeployment(types.LonghornUIDeploymentName)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return errors.Wrapf(err, "failed to get %v deployment", types.LonghornUIDeploymentName)
-	}
-
 	deploymentList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
 	if err != nil {
 		return errors.Wrapf(err, "failed to list Longhorn deployments for %v annotation update", types.KubernetesClusterAutoscalerSafeToEvictKey)
 	}
 
-	deploymentList = append(deploymentList, longhornUI)
+	longhornUI, err := sc.ds.GetDeployment(types.LonghornUIDeploymentName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return errors.Wrapf(err, "failed to get %v deployment", types.LonghornUIDeploymentName)
+	}
+
+	if longhornUI != nil {
+		deploymentList = append(deploymentList, longhornUI)
+	}
+
 	for _, dp := range deploymentList {
 		if !util.HasLocalStorageInDeployment(dp) {
 			continue
