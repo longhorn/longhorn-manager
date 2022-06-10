@@ -548,12 +548,12 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 			return nil
 		}
 
-		isPDBRequired, err := imc.canDeleteInstanceManagerPDB(im)
+		canDeletePDB, err := imc.canDeleteInstanceManagerPDB(im)
 		if err != nil {
 			return err
 		}
 
-		if !isPDBRequired {
+		if !canDeletePDB {
 			return nil
 		}
 
@@ -576,12 +576,12 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 	}
 
 	if clusterAutoscalerEnabled {
-		isPDBRequired, err := imc.canDeleteInstanceManagerPDB(im)
+		canDeletePDB, err := imc.canDeleteInstanceManagerPDB(im)
 		if err != nil {
 			return err
 		}
 
-		if !isPDBRequired {
+		if !canDeletePDB {
 			if imPDB == nil {
 				return imc.createInstanceManagerPDB(im)
 			}
