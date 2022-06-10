@@ -86,7 +86,7 @@ func NewProxyClient(ctx context.Context, ctxCancel context.CancelFunc, address s
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Connected to proxy service on %v", serviceURL)
+	logrus.Tracef("Connected to proxy service on %v", serviceURL)
 
 	return &ProxyClient{
 		ServiceURL:     serviceURL,
