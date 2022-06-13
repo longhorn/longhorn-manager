@@ -28,14 +28,18 @@ type VolumeManager struct {
 
 	currentNodeID string
 	sb            *SupportBundle
+
+	proxyConnCounter util.Counter
 }
 
-func NewVolumeManager(currentNodeID string, ds *datastore.DataStore) *VolumeManager {
+func NewVolumeManager(currentNodeID string, ds *datastore.DataStore, proxyConnCounter util.Counter) *VolumeManager {
 	return &VolumeManager{
 		ds:        ds,
 		scheduler: scheduler.NewReplicaScheduler(ds),
 
 		currentNodeID: currentNodeID,
+
+		proxyConnCounter: proxyConnCounter,
 	}
 }
 

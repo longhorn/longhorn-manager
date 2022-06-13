@@ -29,6 +29,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -60,6 +61,8 @@ type BackupController struct {
 	ds *datastore.DataStore
 
 	cacheSyncs []cache.InformerSynced
+
+	proxyConnCounter util.Counter
 }
 
 func NewBackupController(
@@ -69,6 +72,7 @@ func NewBackupController(
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string,
+	proxyConnCounter util.Counter,
 ) *BackupController {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -90,6 +94,8 @@ func NewBackupController(
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-backup-controller"}),
+
+		proxyConnCounter: proxyConnCounter,
 	}
 
 	ds.BackupInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -487,7 +493,7 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		return nil, err
 	}
 
-	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger)
+	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter)
 	if err != nil {
 		return nil, err
 	}
@@ -617,7 +623,7 @@ func (bc *BackupController) syncBackupStatusWithSnapshotCreationTimeAndVolumeSiz
 		return
 	}
 
-	engineClientProxy, err := engineapi.GetCompatibleClient(e, engineCliClient, bc.ds, bc.logger)
+	engineClientProxy, err := engineapi.GetCompatibleClient(e, engineCliClient, bc.ds, bc.logger, bc.proxyConnCounter)
 	if err != nil {
 		bc.logger.Warnf("syncBackupStatusWithSnapshotCreationTimeAndVolumeSize: failed to get proxy: %v", err)
 		return

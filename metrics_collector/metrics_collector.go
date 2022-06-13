@@ -15,9 +15,10 @@ import (
 	"github.com/longhorn/longhorn-manager/metrics_collector/registry"
 	_ "github.com/longhorn/longhorn-manager/metrics_collector/workqueue" // load the workqueue metrics
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
-func InitMetricsCollectorSystem(logger logrus.FieldLogger, currentNodeID string, ds *datastore.DataStore, kubeconfigPath string) {
+func InitMetricsCollectorSystem(logger logrus.FieldLogger, currentNodeID string, ds *datastore.DataStore, kubeconfigPath string, proxyConnCounter util.Counter) {
 	vc := NewVolumeCollector(logger, currentNodeID, ds)
 	dc := NewDiskCollector(logger, currentNodeID, ds)
 	bc := NewBackupCollector(logger, currentNodeID, ds)
@@ -44,7 +45,7 @@ func InitMetricsCollectorSystem(logger logrus.FieldLogger, currentNodeID string,
 	if kubeMetricsClient, err := buildMetricClientFromConfigPath(kubeconfigPath); err != nil {
 		logger.WithError(err).Warn("skip instantiating InstanceManagerCollector, ManagerCollector, and NodeCollector")
 	} else {
-		imc := NewInstanceManagerCollector(logger, currentNodeID, ds, kubeMetricsClient, namespace)
+		imc := NewInstanceManagerCollector(logger, currentNodeID, ds, proxyConnCounter, kubeMetricsClient, namespace)
 		nc := NewNodeCollector(logger, currentNodeID, ds, kubeMetricsClient)
 		mc := NewManagerCollector(logger, currentNodeID, ds, kubeMetricsClient, namespace)
 

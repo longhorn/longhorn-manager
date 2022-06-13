@@ -23,6 +23,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 type SnapshotController struct {
@@ -39,6 +40,8 @@ type SnapshotController struct {
 	ds                     *datastore.DataStore
 	cacheSyncs             []cache.InformerSynced
 	engineClientCollection engineapi.EngineClientCollection
+
+	proxyConnCounter util.Counter
 }
 
 func NewSnapshotController(
@@ -49,6 +52,7 @@ func NewSnapshotController(
 	namespace string,
 	controllerID string,
 	engineClientCollection engineapi.EngineClientCollection,
+	proxyConnCounter util.Counter,
 ) *SnapshotController {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -66,6 +70,7 @@ func NewSnapshotController(
 		eventRecorder:          eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-snapshot-controller"}),
 		ds:                     ds,
 		engineClientCollection: engineClientCollection,
+		proxyConnCounter:       proxyConnCounter,
 	}
 
 	ds.SnapshotInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
@@ -435,7 +440,7 @@ func (sc *SnapshotController) handleSnapshotCreate(snapshot *longhorn.Snapshot, 
 		return err
 	}
 
-	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, sc.ds, sc.logger)
+	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, sc.ds, sc.logger, sc.proxyConnCounter)
 	if err != nil {
 		return err
 	}
@@ -461,7 +466,7 @@ func (sc *SnapshotController) handleSnapshotDeletion(snapshot *longhorn.Snapshot
 	if err != nil {
 		return err
 	}
-	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, sc.ds, sc.logger)
+	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, sc.ds, sc.logger, sc.proxyConnCounter)
 	if err != nil {
 		return err
 	}

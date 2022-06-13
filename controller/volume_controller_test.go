@@ -54,9 +54,11 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 	controllerID string) *VolumeController {
 	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, TestNamespace)
 
+	proxyConnCounter := util.NewAtomicCounter()
+
 	logger := logrus.StandardLogger()
 
-	vc := NewVolumeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID)
+	vc := NewVolumeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, proxyConnCounter)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	vc.eventRecorder = fakeRecorder

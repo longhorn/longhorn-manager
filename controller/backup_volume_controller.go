@@ -25,6 +25,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -43,6 +44,8 @@ type BackupVolumeController struct {
 	ds *datastore.DataStore
 
 	cacheSyncs []cache.InformerSynced
+
+	proxyConnCounter util.Counter
 }
 
 func NewBackupVolumeController(
@@ -52,6 +55,7 @@ func NewBackupVolumeController(
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string,
+	proxyConnCounter util.Counter,
 ) *BackupVolumeController {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -70,6 +74,8 @@ func NewBackupVolumeController(
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-backup-volume-controller"}),
+
+		proxyConnCounter: proxyConnCounter,
 	}
 
 	ds.BackupVolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -220,7 +226,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 		// Delete the backup volume from the remote backup target
 		if backupTarget.Spec.BackupTargetURL != "" {
-			engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log)
+			engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log, bvc.proxyConnCounter)
 			if err != nil || engineClientProxy == nil {
 				log.WithError(err).Error("Error init backup target clients")
 				return nil // Ignore error to prevent enqueue
@@ -256,7 +262,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return nil
 	}
 
-	engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log)
+	engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log, bvc.proxyConnCounter)
 	if err != nil {
 		log.WithError(err).Error("Error init backup target clients")
 		return nil // Ignore error to prevent enqueue
