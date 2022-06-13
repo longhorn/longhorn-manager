@@ -377,6 +377,11 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 	}()
 	log := getLoggerForBackingImageDataSource(c.logger, bids)
 
+	defaultImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
+	if err != nil {
+		return err
+	}
+
 	newBackingImageDataSource := bids.Status.CurrentState == ""
 
 	podName := types.GetBackingImageDataSourcePodName(bids.Name)
@@ -393,6 +398,8 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 		podNotReadyMessage = fmt.Sprintf("pod spec node ID %v doesn't match the desired node ID %v", pod.Spec.NodeName, bids.Spec.NodeID)
 	} else if pod.DeletionTimestamp != nil {
 		podNotReadyMessage = "the pod dedicated to prepare the first backing image file is being deleted"
+	} else if pod.Spec.Containers[0].Image != defaultImage {
+		podNotReadyMessage = "the pod image is not the default one"
 	} else {
 		switch pod.Status.Phase {
 		case v1.PodRunning:
