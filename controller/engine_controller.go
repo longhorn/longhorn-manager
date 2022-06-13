@@ -74,6 +74,8 @@ type EngineController struct {
 	engines            engineapi.EngineClientCollection
 	engineMonitorMutex *sync.RWMutex
 	engineMonitorMap   map[string]chan struct{}
+
+	proxyConnCounter util.Counter
 }
 
 type EngineMonitor struct {
@@ -91,6 +93,8 @@ type EngineMonitor struct {
 	controllerID string
 	// used to notify the controller that monitoring has stopped
 	monitorVoluntaryStopCh chan struct{}
+
+	proxyConnCounter util.Counter
 }
 
 func NewEngineController(
@@ -99,7 +103,8 @@ func NewEngineController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	engines engineapi.EngineClientCollection,
-	namespace string, controllerID string) *EngineController {
+	namespace string, controllerID string,
+	proxyConnCounter util.Counter) *EngineController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -121,6 +126,8 @@ func NewEngineController(
 		engines:            engines,
 		engineMonitorMutex: &sync.RWMutex{},
 		engineMonitorMap:   map[string]chan struct{}{},
+
+		proxyConnCounter: proxyConnCounter,
 	}
 	ec.instanceHandler = NewInstanceHandler(ds, ec, ec.eventRecorder)
 
@@ -206,7 +213,7 @@ func (ec *EngineController) getEngineClientProxy(e *longhorn.Engine, image strin
 		return nil, err
 	}
 
-	return engineapi.GetCompatibleClient(e, engineCliClient, ec.ds, ec.logger)
+	return engineapi.GetCompatibleClient(e, engineCliClient, ec.ds, ec.logger, ec.proxyConnCounter)
 }
 
 func (ec *EngineController) syncEngine(key string) (err error) {
@@ -616,6 +623,7 @@ func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
 		monitorVoluntaryStopCh: monitorVoluntaryStopCh,
 		expansionBackoff:       flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
 		controllerID:           ec.controllerID,
+		proxyConnCounter:       ec.proxyConnCounter,
 	}
 
 	ec.engineMonitorMutex.Lock()
@@ -742,7 +750,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
-	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, m.ds, m.logger)
+	engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, m.ds, m.logger, m.proxyConnCounter)
 	if err != nil {
 		return err
 	}

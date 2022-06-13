@@ -131,14 +131,16 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	ds, wsc, err := controller.StartControllers(logger, done, currentNodeID, serviceAccount, managerImage, kubeconfigPath, meta.Version)
+	proxyConnCounter := util.NewAtomicCounter()
+
+	ds, wsc, err := controller.StartControllers(logger, done, currentNodeID, serviceAccount, managerImage, kubeconfigPath, meta.Version, proxyConnCounter)
 	if err != nil {
 		return err
 	}
 
-	m := manager.NewVolumeManager(currentNodeID, ds)
+	m := manager.NewVolumeManager(currentNodeID, ds, proxyConnCounter)
 
-	metricsCollector.InitMetricsCollectorSystem(logger, currentNodeID, ds, kubeconfigPath)
+	metricsCollector.InitMetricsCollectorSystem(logger, currentNodeID, ds, kubeconfigPath, proxyConnCounter)
 
 	defaultImageSettings := map[types.SettingName]string{
 		types.SettingNameDefaultEngineImage:              engineImage,
