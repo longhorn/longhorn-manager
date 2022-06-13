@@ -214,6 +214,11 @@ func getBackupTarget(controllerID string, backupTarget *longhorn.BackupTarget, d
 	if err != nil {
 		return nil, nil, err
 	}
+	defer func() {
+		if err != nil {
+			engineClientProxy.Close()
+		}
+	}()
 
 	backupTargetClient, err = getBackupTargetClient(ds, backupTarget)
 	if err != nil {
