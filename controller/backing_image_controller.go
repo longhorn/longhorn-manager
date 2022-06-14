@@ -324,7 +324,7 @@ func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.Back
 		if bim, err = bic.ds.UpdateBackingImageManager(bim); err != nil {
 			return err
 		}
-		if len(bim.Spec.BackingImages) == 0 {
+		if len(bim.Spec.BackingImages) == 0 && len(bim.Status.BackingImageFileMap) == 0 {
 			bimLog.Info("Deleting unused backing image manager")
 			if err := bic.ds.DeleteBackingImageManager(bim.Name); err != nil && !apierrors.IsNotFound(err) {
 				return err
