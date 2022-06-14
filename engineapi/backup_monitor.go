@@ -78,6 +78,7 @@ func NewBackupMonitor(logger logrus.FieldLogger,
 		if err != nil {
 			if !strings.Contains(err.Error(), "DeadlineExceeded") {
 				m.logger.WithError(err).Warn("Cannot take snapshot backup")
+				m.Close()
 				return nil, err
 			}
 
