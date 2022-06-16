@@ -768,7 +768,14 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		if !exists {
 			// we have a entry doesn't exist in our spec
 			replica = unknownReplicaPrefix + url
+
+			// The unknown replica will remove and record the event during
+			// ReconcileEngineState.
+			// https://github.com/longhorn/longhorn/issues/4120
+			currentReplicaModeMap[replica] = r.Mode
+			continue
 		}
+
 		currentReplicaModeMap[replica] = r.Mode
 
 		if engine.Status.ReplicaModeMap != nil {
