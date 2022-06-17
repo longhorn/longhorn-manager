@@ -295,6 +295,10 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 				// to update it's BackupVolume CR status
 			}
 		}
+
+		// Disable monitor regardless of backup state
+		bc.disableBackupMonitor(backup.Name)
+
 		return bc.ds.RemoveFinalizerForBackup(backup)
 	}
 
