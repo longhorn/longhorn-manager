@@ -1463,7 +1463,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				continue
 			}
 			if r.Status.StorageIP == "" {
-				log.WithField("replica", r.Name).Error("BUG: replica is running but storage IP is empty")
+				log.WithField("replica", r.Name).Debug("Replica is running but storage IP is empty, need to wait for update")
 				continue
 			}
 			if r.Status.Port == 0 {
@@ -2335,7 +2335,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[st
 				continue
 			}
 			if r.Status.StorageIP == "" {
-				log.WithField("replica", r.Name).Error("BUG: replica is running but storage IP is empty")
+				log.WithField("replica", r.Name).Debug("Replica is running but storage IP is empty, need to wait for update")
 				continue
 			}
 			if r.Status.Port == 0 {
