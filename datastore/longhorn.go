@@ -41,7 +41,7 @@ var (
 	VerificationRetryCounts = 20
 )
 
-func (s *DataStore) UpdateCustomizedSettings(defaultImage map[types.SettingName]string) error {
+func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName]string) error {
 	defaultSettingCM, err := s.GetConfigMap(s.namespace, types.DefaultDefaultSettingConfigMapName)
 	if err != nil {
 		return err
@@ -52,11 +52,13 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImage map[types.SettingName]
 		return err
 	}
 
-	if err := s.applyCustomizedDefaultSettingsToDefinitions(customizedDefaultSettings); err != nil {
+	availableCustomizedDefaultSettings := s.filterCustomizedDefaultSettings(customizedDefaultSettings)
+
+	if err := s.applyCustomizedDefaultSettingsToDefinitions(availableCustomizedDefaultSettings); err != nil {
 		return err
 	}
 
-	if err := s.syncSettingsWithDefaultImages(defaultImage); err != nil {
+	if err := s.syncSettingsWithDefaultImages(defaultImages); err != nil {
 		return err
 	}
 
@@ -64,7 +66,7 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImage map[types.SettingName]
 		return err
 	}
 
-	return s.syncSettingCRsWithCustomizedDefaultSettings(customizedDefaultSettings, defaultSettingCM.ResourceVersion)
+	return s.syncSettingCRsWithCustomizedDefaultSettings(availableCustomizedDefaultSettings, defaultSettingCM.ResourceVersion)
 }
 
 func (s *DataStore) createNonExistingSettingCRsWithDefaultSetting(configMapResourceVersion string) error {
@@ -93,8 +95,21 @@ func (s *DataStore) createNonExistingSettingCRsWithDefaultSetting(configMapResou
 	return nil
 }
 
-func (s *DataStore) syncSettingsWithDefaultImages(defaultImage map[types.SettingName]string) error {
-	for name, value := range defaultImage {
+func (s *DataStore) filterCustomizedDefaultSettings(customizedDefaultSettings map[string]string) map[string]string {
+	availableCustomizedDefaultSettings := make(map[string]string)
+
+	for name, value := range customizedDefaultSettings {
+		if err := s.ValidateSetting(string(name), value); err == nil {
+			availableCustomizedDefaultSettings[name] = value
+		} else {
+			logrus.WithError(err).Errorf("invalid customized default setting %v with value %v, will continue applying other customized settings", name, value)
+		}
+	}
+	return availableCustomizedDefaultSettings
+}
+
+func (s *DataStore) syncSettingsWithDefaultImages(defaultImages map[types.SettingName]string) error {
+	for name, value := range defaultImages {
 		if err := s.createOrUpdateSetting(name, value, ""); err != nil {
 			return err
 		}
@@ -103,11 +118,6 @@ func (s *DataStore) syncSettingsWithDefaultImages(defaultImage map[types.Setting
 }
 
 func (s *DataStore) createOrUpdateSetting(name types.SettingName, value, defaultSettingCMResourceVersion string) error {
-	err := s.ValidateSetting(string(name), value)
-	if err != nil {
-		return err
-	}
-
 	setting, err := s.GetSettingExact(name)
 	if err != nil {
 		if !ErrorIsNotFound(err) {
