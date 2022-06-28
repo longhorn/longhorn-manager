@@ -76,6 +76,8 @@ type DataStore struct {
 	pvStoreSynced      cache.InformerSynced
 	pvcLister          corelisters.PersistentVolumeClaimLister
 	pvcStoreSynced     cache.InformerSynced
+	vaLister           storagelisters_v1.VolumeAttachmentLister
+	vaStoreSynced      cache.InformerSynced
 	cfmLister          corelisters.ConfigMapLister
 	cfmStoreSynced     cache.InformerSynced
 	secretLister       corelisters.SecretLister
@@ -119,6 +121,7 @@ func NewDataStore(
 	deploymentInformer appsinformers.DeploymentInformer,
 	persistentVolumeInformer coreinformers.PersistentVolumeInformer,
 	persistentVolumeClaimInformer coreinformers.PersistentVolumeClaimInformer,
+	volumeAttachmentInformer storageinformers_v1.VolumeAttachmentInformer,
 	configMapInformer coreinformers.ConfigMapInformer,
 	secretInformer coreinformers.SecretInformer,
 	kubeNodeInformer coreinformers.NodeInformer,
@@ -130,7 +133,6 @@ func NewDataStore(
 
 	kubeClient clientset.Interface,
 	namespace string) *DataStore {
-
 	return &DataStore{
 		namespace: namespace,
 
@@ -179,6 +181,8 @@ func NewDataStore(
 		pvStoreSynced:      persistentVolumeInformer.Informer().HasSynced,
 		pvcLister:          persistentVolumeClaimInformer.Lister(),
 		pvcStoreSynced:     persistentVolumeClaimInformer.Informer().HasSynced,
+		vaLister:           volumeAttachmentInformer.Lister(),
+		vaStoreSynced:      volumeAttachmentInformer.Informer().HasSynced,
 		cfmLister:          configMapInformer.Lister(),
 		cfmStoreSynced:     configMapInformer.Informer().HasSynced,
 		secretLister:       secretInformer.Lister(),
@@ -210,6 +214,7 @@ func (s *DataStore) Sync(stopCh <-chan struct{}) bool {
 		s.pdbStoreSynced, s.smStoreSynced, s.svStoreSynced,
 		s.biStoreSynced, s.bimStoreSynced, s.bidsStoreSynced,
 		s.btStoreSynced, s.bvStoreSynced, s.bStoreSynced,
+		s.vaStoreSynced,
 	)
 }
 

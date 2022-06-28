@@ -79,6 +79,7 @@ func newReplicaScheduler(lhInformerFactory lhinformerfactory.SharedInformerFacto
 	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
 	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
 	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
+	volumeAttachmentInformer := kubeInformerFactory.Storage().V1().VolumeAttachments()
 	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
 	secretInformer := kubeInformerFactory.Core().V1().Secrets()
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
@@ -97,7 +98,7 @@ func newReplicaScheduler(lhInformerFactory lhinformerfactory.SharedInformerFacto
 		recurringJobInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
-		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
+		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer, volumeAttachmentInformer,
 		configMapInformer, secretInformer, kubeNodeInformer, priorityClassInformer,
 		csiDriverInformer, storageclassInformer,
 		pdbInformer,
