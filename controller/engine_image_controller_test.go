@@ -69,6 +69,7 @@ func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInfo
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
 	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
+	volumeAttachmentInformer := kubeInformerFactory.Storage().V1().VolumeAttachments()
 	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
 	secretInformer := kubeInformerFactory.Core().V1().Secrets()
 	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
@@ -93,7 +94,7 @@ func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInfo
 		recurringJobInformer,
 		lhClient,
 		podInformer, cronJobInformer, daemonSetInformer,
-		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer,
+		deploymentInformer, persistentVolumeInformer, persistentVolumeClaimInformer, volumeAttachmentInformer,
 		configMapInformer, secretInformer, kubeNodeInformer, priorityClassInformer,
 		csiDriverInformer, storageclassInformer,
 		pdbInformer,
