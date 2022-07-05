@@ -727,7 +727,9 @@ func (s *DataStore) GetStorageIPFromPod(pod *corev1.Pod) string {
 		}
 
 		sort.Strings(net.IPs)
-		return net.IPs[0]
+		if net.IPs != nil {
+			return net.IPs[0]
+		}
 	}
 
 	logrus.Warnf("Failed to get storage IP from %v pod, use IP %v", pod.Name, pod.Status.PodIP)
