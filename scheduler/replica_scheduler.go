@@ -385,16 +385,38 @@ func (rcs *ReplicaScheduler) getNodeInfo() (map[string]*longhorn.Node, error) {
 }
 
 func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, diskCandidates map[string]*Disk) {
-	// get a random disk from diskCandidates
-	for _, disk := range diskCandidates {
-		replica.Spec.NodeID = disk.NodeID
-		replica.Spec.DiskID = disk.DiskUUID
-		replica.Spec.DiskPath = disk.Path
+	disk := rcs.getDiskWithMostUsableStorage(diskCandidates)
+	replica.Spec.NodeID = disk.NodeID
+	replica.Spec.DiskID = disk.DiskUUID
+	replica.Spec.DiskPath = disk.Path
+	replica.Spec.DataDirectoryName = replica.Spec.VolumeName + "-" + util.RandomID()
+
+	logrus.WithFields(logrus.Fields{
+		"replica":           replica.Name,
+		"disk":              replica.Spec.DiskID,
+		"diskPath":          replica.Spec.DiskPath,
+		"dataDirectoryName": replica.Spec.DataDirectoryName,
+	}).Debugf("Schedule replica to node %v", replica.Spec.NodeID)
+}
+
+func (rcs *ReplicaScheduler) getDiskWithMostUsableStorage(disks map[string]*Disk) *Disk {
+	diskWithMostUsableStorage := &Disk{}
+	for _, disk := range disks {
+		diskWithMostUsableStorage = disk
 		break
 	}
-	replica.Spec.DataDirectoryName = replica.Spec.VolumeName + "-" + util.RandomID()
-	logrus.Debugf("Schedule replica %v to node %v, disk %v, diskPath %v, dataDirectoryName %v",
-		replica.Name, replica.Spec.NodeID, replica.Spec.DiskID, replica.Spec.DiskPath, replica.Spec.DataDirectoryName)
+
+	for _, disk := range disks {
+		diskWithMostStorageSize := diskWithMostUsableStorage.StorageAvailable - diskWithMostUsableStorage.StorageReserved
+		diskSize := disk.StorageAvailable - disk.StorageReserved
+		if diskWithMostStorageSize > diskSize {
+			continue
+		}
+
+		diskWithMostUsableStorage = disk
+	}
+
+	return diskWithMostUsableStorage
 }
 
 func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*longhorn.Replica, volume *longhorn.Volume, hardNodeAffinity string) (*longhorn.Replica, error) {
