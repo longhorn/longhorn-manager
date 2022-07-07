@@ -46,6 +46,8 @@ var (
 	EnginePollTimeout  = 30 * time.Second
 
 	EngineMonitorConflictRetryCount = 5
+
+	purgeWaitIntervalInSecond = 24 * 60 * 60
 )
 
 const (
@@ -1317,6 +1319,8 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 		err = errors.Wrapf(err, "fail to start rebuild for %v of %v", replica, e.Name)
 	}()
 
+	log := ec.logger.WithFields(logrus.Fields{"volume": e.Spec.VolumeName, "engine": e.Name})
+
 	client, err := GetClientForEngine(e, ec.engines, e.Status.CurrentImage)
 	if err != nil {
 		return err
@@ -1336,15 +1340,66 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 
 	replicaURL := engineapi.GetBackendReplicaURL(addr)
 	go func() {
-		log := ec.logger.WithField("volume", e.Spec.VolumeName)
+		autoCleanupSystemGeneratedSnapshot, err := ec.ds.GetSettingAsBool(types.SettingNameAutoCleanupSystemGeneratedSnapshot)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get %v setting", types.SettingDefinitionAutoCleanupSystemGeneratedSnapshot)
+			return
+		}
+
+		// If enabled, call and wait for SnapshotPurge to clean up system generated snapshot before rebuilding.
+		if autoCleanupSystemGeneratedSnapshot {
+			if err := client.SnapshotPurge(); err != nil {
+				log.WithError(err).Error("Failed to start snapshot purge before rebuilding")
+				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedStartingSnapshotPurge, "Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", e.Name, e.Spec.VolumeName, err)
+				return
+			}
+			logrus.Debug("Started snapshot purge before rebuilding, will wait for the purge complete")
+
+			purgeDone := false
+			endTime := time.Now().Add(time.Duration(purgeWaitIntervalInSecond) * time.Second)
+			ticker := time.NewTicker(2 * EnginePollInterval)
+			defer ticker.Stop()
+			for !purgeDone && time.Now().Before(endTime) {
+				<-ticker.C
+
+				e, err := ec.ds.GetEngineRO(e.Name)
+				if err != nil {
+					if apierrors.IsNotFound(err) {
+						log.Warn("Cannot continue waiting for the purge before rebuilding since engine is not found")
+						return
+					}
+					log.WithError(err).Error("Failed to get engine and wait for the purge before rebuilding")
+					continue
+				}
+				if e.Status.CurrentState != longhorn.InstanceStateRunning {
+					log.Warnf("Cannot continue waiting for the purge before rebuilding since engine is state %v", e.Status.CurrentState)
+					return
+				}
+				// Wait for purge complete
+				purgeDone = true
+				for _, purgeStatus := range e.Status.PurgeStatus {
+					if purgeStatus.IsPurging {
+						purgeDone = false
+						break
+					}
+				}
+			}
+			if !purgeDone {
+				log.Errorf("Timeout waiting for snapshot purge done before rebuilding, wait interval %v second", purgeWaitIntervalInSecond)
+				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonTimeoutSnapshotPurge, "Timeout waiting for snapshot purge done before rebuilding volume %v, wait interval %v second", e.Spec.VolumeName, purgeWaitIntervalInSecond)
+				return
+			}
+			log.Debug("Finished snapshot purge, will start rebuilding then")
+		}
+
 		// start rebuild
 		if e.Spec.RequestedBackupRestore != "" {
 			if e.Spec.NodeID != "" {
-				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v with Address %v for restore engine %v", replica, addr, e.Spec.VolumeName)
+				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v with Address %v for restore engine %v and volume %v", replica, addr, e.Name, e.Spec.VolumeName)
 				err = client.ReplicaAdd(replicaURL, true)
 			}
 		} else {
-			ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v with Address %v for normal engine %v", replica, addr, e.Spec.VolumeName)
+			ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v with Address %v for normal engine %v and volume %v", replica, addr, e.Name, e.Spec.VolumeName)
 			err = client.ReplicaAdd(replicaURL, false)
 		}
 		if err != nil {
@@ -1358,7 +1413,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 			if err := client.ReplicaRemove(replicaURL); err != nil {
 				log.WithError(err).Errorf("Failed to remove rebuilding replica %v", addr)
 				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting,
-					"Failed to remove rebuilding replica %v with address %v for %v due to rebuilding failure: %v", replica, addr, e.Spec.VolumeName, err)
+					"Failed to remove rebuilding replica %v with address %v for engine %v and volume %v due to rebuilding failure: %v", replica, addr, e.Name, e.Spec.VolumeName, err)
 			} else {
 				log.Infof("Removed failed rebuilding replica %v", addr)
 			}
@@ -1392,22 +1447,18 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 		ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilt,
 			"Replica %v with Address %v has been rebuilt for volume %v", replica, addr, e.Spec.VolumeName)
 
-		autoCleanupSystemGeneratedSnapshot, err := ec.ds.GetSettingAsBool(types.SettingNameAutoCleanupSystemGeneratedSnapshot)
-		if err != nil {
-			log.WithError(err).Errorf("Failed to get %v setting", types.SettingDefinitionAutoCleanupSystemGeneratedSnapshot)
-			return
-		}
-		// If enabled, call SnapshotPurge to clean up system generated snapshot.
+		// If enabled, call SnapshotPurge to clean up system generated snapshot after rebuilding.
 		if autoCleanupSystemGeneratedSnapshot {
 			if err := client.SnapshotPurge(); err != nil {
-				log.WithError(err).Errorf("Failed to start snapshot purge for volume %v", e.Spec.VolumeName)
-				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedStartingSnapshotPurge, "Failed to start snapshot purge for volume %v: %v", e.Spec.VolumeName, err)
+				log.WithError(err).Error("Failed to start snapshot purge after rebuilding")
+				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedStartingSnapshotPurge, "Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", e.Name, e.Spec.VolumeName, err)
 				return
 			}
-			logrus.Debugf("Started snapshot purge for volume %v after rebuild is done", e.Spec.VolumeName)
+			logrus.Debug("Started snapshot purge after rebuilding")
 		}
 	}()
-	//wait until engine confirmed that rebuild started
+
+	// Wait until engine confirmed that rebuild started
 	if err := wait.PollImmediate(EnginePollInterval, EnginePollTimeout, func() (bool, error) {
 		return doesAddressExistInEngine(addr, client)
 	}); err != nil {
