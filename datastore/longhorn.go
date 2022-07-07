@@ -883,7 +883,7 @@ func (s *DataStore) CreateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	}
 
 	obj, err := verifyCreation(e.Name, "engine", func(name string) (runtime.Object, error) {
-		return s.getEngineRO(name)
+		return s.GetEngineRO(name)
 	})
 	if err != nil {
 		return nil, err
@@ -913,7 +913,7 @@ func (s *DataStore) UpdateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 		return nil, err
 	}
 	verifyUpdate(e.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getEngineRO(name)
+		return s.GetEngineRO(name)
 	})
 	return obj, nil
 }
@@ -925,7 +925,7 @@ func (s *DataStore) UpdateEngineStatus(e *longhorn.Engine) (*longhorn.Engine, er
 		return nil, err
 	}
 	verifyUpdate(e.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getEngineRO(name)
+		return s.GetEngineRO(name)
 	})
 	return obj, nil
 }
@@ -956,13 +956,13 @@ func (s *DataStore) RemoveFinalizerForEngine(obj *longhorn.Engine) error {
 	return nil
 }
 
-func (s *DataStore) getEngineRO(name string) (*longhorn.Engine, error) {
+func (s *DataStore) GetEngineRO(name string) (*longhorn.Engine, error) {
 	return s.eLister.Engines(s.namespace).Get(name)
 }
 
 // GetEngine returns the Engine for the given name and namespace
 func (s *DataStore) GetEngine(name string) (*longhorn.Engine, error) {
-	resultRO, err := s.getEngineRO(name)
+	resultRO, err := s.GetEngineRO(name)
 	if err != nil {
 		return nil, err
 	}
