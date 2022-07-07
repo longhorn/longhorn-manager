@@ -13,6 +13,7 @@ import (
 	"github.com/longhorn/backupstore"
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -37,6 +38,32 @@ func NewBackupTargetClient(engineImage, url string, credential map[string]string
 		URL:        url,
 		Credential: credential,
 	}
+}
+
+func NewBackupTargetClientFromBackupTarget(backupTarget *longhorn.BackupTarget, ds *datastore.DataStore) (*BackupTargetClient, error) {
+	defaultEngineImage, err := ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+	if err != nil {
+		return nil, err
+	}
+
+	backupType, err := util.CheckBackupType(backupTarget.Spec.BackupTargetURL)
+	if err != nil {
+		return nil, err
+	}
+
+	var credential map[string]string
+	if backupType == types.BackupStoreTypeS3 {
+		if backupTarget.Spec.CredentialSecret == "" {
+			return nil, errors.Errorf("cannot access %s without credential secret", types.BackupStoreTypeS3)
+		}
+
+		credential, err = ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential), nil
 }
 
 func (btc *BackupTargetClient) LonghornEngineBinary() string {
