@@ -83,8 +83,8 @@ type Version struct {
 }
 
 type CheckUpgradeRequest struct {
-	LonghornVersion   string `json:"longhornVersion"`
-	KubernetesVersion string `json:"kubernetesVersion"`
+	AppVersion string            `json:"appVersion"`
+	ExtraInfo  map[string]string `json:"extraInfo"`
 }
 
 type CheckUpgradeResponse struct {
@@ -887,8 +887,8 @@ func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, str
 	}
 
 	req := &CheckUpgradeRequest{
-		LonghornVersion:   sc.version,
-		KubernetesVersion: kubeVersion.GitVersion,
+		AppVersion: sc.version,
+		ExtraInfo:  map[string]string{"kubernetesVersion": kubeVersion.GitVersion},
 	}
 	if err := json.NewEncoder(&content).Encode(req); err != nil {
 		return "", "", err
