@@ -1034,9 +1034,17 @@ func checkReplica(r *longhorn.Replica) error {
 	if r.Name == "" || r.Spec.VolumeName == "" {
 		return fmt.Errorf("BUG: missing required field %+v", r)
 	}
+
 	if (r.Status.CurrentState == longhorn.InstanceStateRunning) != (r.Status.IP != "") {
 		return fmt.Errorf("BUG: instance state and IP wasn't in sync %+v", r)
 	}
+
+	// We don't need to check the storageIP when the replica is marked for deletion.
+	// https://github.com/longhorn/longhorn/issues/4213#issuecomment-1184955056
+	if r.DeletionTimestamp != nil {
+		return nil
+	}
+
 	if (r.Status.CurrentState == longhorn.InstanceStateRunning) != (r.Status.StorageIP != "") {
 		return fmt.Errorf("BUG: instance state and storage IP wasn't in sync %+v", r)
 	}
