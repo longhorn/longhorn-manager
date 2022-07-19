@@ -14,7 +14,7 @@ const (
 	VolumeHeadName = "volume-head"
 )
 
-func (c *ProxyClient) VolumeSnapshot(serviceAddress, volumeName string, labels map[string]string) (snapshotName string, err error) {
+func (c *ProxyClient) VolumeSnapshot(serviceAddress, volumeSnapshotName string, labels map[string]string) (snapshotName string, err error) {
 	input := map[string]string{
 		"serviceAddress": serviceAddress,
 	}
@@ -45,7 +45,7 @@ func (c *ProxyClient) VolumeSnapshot(serviceAddress, volumeName string, labels m
 			Address: serviceAddress,
 		},
 		SnapshotVolume: &eptypes.VolumeSnapshotRequest{
-			Name:   volumeName,
+			Name:   volumeSnapshotName,
 			Labels: labels,
 		},
 	}
