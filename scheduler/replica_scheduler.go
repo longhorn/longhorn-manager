@@ -292,8 +292,10 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 		var diskStatus *longhorn.DiskStatus
 		diskFound := false
 		for fsid, diskStatus = range node.Status.DiskStatus {
-			if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status == longhorn.ConditionStatusTrue &&
-				diskStatus.DiskUUID == diskUUID {
+			if diskStatus.DiskUUID != diskUUID {
+				continue
+			}
+			if !requireSchedulingCheck || types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status == longhorn.ConditionStatusTrue {
 				diskFound = true
 				diskSpec = node.Spec.Disks[fsid]
 				break
@@ -465,7 +467,7 @@ func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*lon
 		}
 	}
 	if reusedReplica == nil {
-		logrus.Errorf("Cannot pick up a reusable failed replicas")
+		logrus.Infof("Cannot find a reusable failed replicas")
 		return nil, nil
 	}
 
@@ -548,11 +550,26 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 	}
 	diskFound := false
 	for diskName, diskStatus := range node.Status.DiskStatus {
+		diskSpec, ok := node.Spec.Disks[diskName]
+		if !ok {
+			continue
+		}
+
 		if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status != longhorn.ConditionStatusTrue {
 			continue
 		}
 		if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
-			continue
+			// We want to reuse replica on the disk that is unschedulable due to allocated space being bigger than max allocable space but the disk is not full yet
+			if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Reason != longhorn.DiskConditionReasonDiskPressure {
+				continue
+			}
+			schedulingInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
+			if err != nil {
+				logrus.Warnf("failed to GetDiskSchedulingInfo of disk %v on node %v when checking replica %v is reusable: %v", diskName, node.Name, r.Name, err)
+			}
+			if !rcs.isDiskNotFull(schedulingInfo) {
+				continue
+			}
 		}
 		if diskStatus.DiskUUID == r.Spec.DiskID {
 			diskFound = true
@@ -632,6 +649,12 @@ func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, requiredStorage int
 	return info.StorageMaximum > 0 && info.StorageAvailable > 0 &&
 		info.StorageAvailable-requiredStorage > int64(float64(info.StorageMaximum)*float64(info.MinimalAvailablePercentage)/100) &&
 		(size+info.StorageScheduled) <= int64(float64(info.StorageMaximum-info.StorageReserved)*float64(info.OverProvisioningPercentage)/100)
+}
+
+func (rcs *ReplicaScheduler) isDiskNotFull(info *DiskSchedulingInfo) bool {
+	// StorageAvailable = the space can be used by 3rd party or Longhorn system.
+	return info.StorageMaximum > 0 && info.StorageAvailable > 0 &&
+		info.StorageAvailable > int64(float64(info.StorageMaximum)*float64(info.MinimalAvailablePercentage)/100)
 }
 
 func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk longhorn.DiskSpec, diskStatus *longhorn.DiskStatus) (*DiskSchedulingInfo, error) {
