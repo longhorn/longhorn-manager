@@ -584,13 +584,13 @@ func (c *BackingImageManagerController) deleteInvalidBackingImages(bim *longhorn
 
 		bi, err := c.ds.GetBackingImage(biName)
 		if err != nil {
-			if apierrors.IsNotFound(err) {
-				log.Warnf("Cannot find backing image %v during invalid backing image cleanup, will skip it", biName)
-				continue
+			if !apierrors.IsNotFound(err) {
+				return err
 			}
-			return err
+			deleteRequired = true
+			log.Warnf("Cannot find backing image %v during invalid backing image cleanup, will skip it", biName)
 		}
-		if bi.Status.UUID == "" {
+		if bi != nil && bi.Status.UUID == "" {
 			continue
 		}
 
@@ -600,9 +600,9 @@ func (c *BackingImageManagerController) deleteInvalidBackingImages(bim *longhorn
 		//   2. The status record does not match the current backing image.
 		//   3. The file state recorded in the current backing image is failed
 		//      and there are available files in other backing image managers.
-		deleteRequired = deleteRequired || bim.Spec.BackingImages[biName] != bi.Status.UUID
-		deleteRequired = deleteRequired || (biFileInfo.UUID != "" && biFileInfo.UUID != bi.Status.UUID)
-		if !deleteRequired {
+		deleteRequired = deleteRequired || (bi != nil && bim.Spec.BackingImages[biName] != bi.Status.UUID)
+		deleteRequired = deleteRequired || (bi != nil && biFileInfo.UUID != "" && biFileInfo.UUID != bi.Status.UUID)
+		if !deleteRequired && bi != nil {
 			// Prefer to check the file state in BackingImage.Status,
 			// which is synced from BackingImageManager.Status with some
 			// adjustments.
