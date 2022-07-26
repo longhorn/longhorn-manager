@@ -308,7 +308,6 @@ func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.Back
 		}
 
 		// This sync loop cares about the backing image managers related to the current backing image only.
-		// The backing image manager doesn't contain the current backing image.
 		if _, isRelatedToCurrentBI := bim.Spec.BackingImages[bi.Name]; !isRelatedToCurrentBI {
 			continue
 		}
@@ -324,13 +323,11 @@ func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.Back
 		if bim, err = bic.ds.UpdateBackingImageManager(bim); err != nil {
 			return err
 		}
-		if len(bim.Spec.BackingImages) == 0 && len(bim.Status.BackingImageFileMap) == 0 {
-			bimLog.Info("Deleting unused backing image manager")
+		if len(bim.Spec.BackingImages) == 0 {
 			if err := bic.ds.DeleteBackingImageManager(bim.Name); err != nil && !apierrors.IsNotFound(err) {
 				return err
 			}
-			bimLog.Info("Deleted unused backing image manager")
-			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonDelete, "deleted unused backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
+			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonDelete, "deleting unused backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
 			continue
 		}
 	}
