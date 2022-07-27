@@ -330,7 +330,11 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			if !apierrors.IsNotFound(err) {
 				return err
 			}
-			log.WithError(err).Error("Cannot found the corresponding volume")
+			err = fmt.Errorf("Cannot find the corresponding volume: %v", err)
+			log.WithError(err).Error()
+			backup.Status.Error = err.Error()
+			backup.Status.State = longhorn.BackupStateError
+			backup.Status.LastSyncedAt = syncTime
 			return nil // Ignore error to prevent enqueue
 		}
 
