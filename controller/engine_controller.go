@@ -1447,8 +1447,15 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 		}
 		defer engineClientProxy.Close()
 
+		rep, err := ec.ds.GetReplica(replica)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get rebuilding replica %v", replica)
+			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedRebuilding, "Failed to get rebuilding replica %v: %v", addr, err)
+			return
+		}
+
 		// If enabled, call and wait for SnapshotPurge to clean up system generated snapshot before rebuilding.
-		if autoCleanupSystemGeneratedSnapshot {
+		if autoCleanupSystemGeneratedSnapshot && rep.Spec.HealthyAt != "" {
 			if err := engineClientProxy.SnapshotPurge(e); err != nil {
 				log.WithError(err).Error("Failed to start snapshot purge before rebuilding")
 				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedStartingSnapshotPurge, "Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", e.Name, e.Spec.VolumeName, err)
