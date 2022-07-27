@@ -310,6 +310,12 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 	if pod.Status.StartTime == nil {
 		return nil
 	}
+
+	// Avoid repeat deletion
+	if pod.DeletionTimestamp != nil {
+		return nil
+	}
+
 	podStartTime := pod.Status.StartTime.Time
 	for _, vol := range volumeList {
 		if vol.Status.RemountRequestedAt == "" {
