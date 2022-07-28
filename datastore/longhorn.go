@@ -1185,6 +1185,20 @@ func ReplicaAddressToReplicaName(address string, rs []*longhorn.Replica) string 
 	return address
 }
 
+// IsAvailableHealthyReplica returns if the specified replica is a healthy one
+func IsAvailableHealthyReplica(r *longhorn.Replica) bool {
+	if r == nil {
+		return false
+	}
+	if r.DeletionTimestamp != nil {
+		return false
+	}
+	if r.Spec.FailedAt != "" || r.Spec.HealthyAt == "" {
+		return false
+	}
+	return true
+}
+
 // GetOwnerReferencesForEngineImage returns OwnerReference for the given
 // Longhorn EngineImage name and UID
 func GetOwnerReferencesForEngineImage(ei *longhorn.EngineImage) []metav1.OwnerReference {
