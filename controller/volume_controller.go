@@ -361,11 +361,6 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 
 		// now snapshots, replicas, and engines have been marked for deletion
-		if snapshots, err := vc.ds.ListVolumeSnapshotsRO(volume.Name); err != nil {
-			return err
-		} else if len(snapshots) > 0 {
-			return nil
-		}
 		if engines, err := vc.ds.ListVolumeEngines(volume.Name); err != nil {
 			return err
 		} else if len(engines) > 0 {
