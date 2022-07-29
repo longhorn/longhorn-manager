@@ -1635,8 +1635,7 @@ func (s *DataStore) UpdateBackingImageManagerStatus(backingImageManager *longhor
 // DeleteBackingImageManager won't result in immediately deletion since finalizer was
 // set by default
 func (s *DataStore) DeleteBackingImageManager(name string) error {
-	propagation := metav1.DeletePropagationForeground
-	return s.lhClient.LonghornV1beta2().BackingImageManagers(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
+	return s.lhClient.LonghornV1beta2().BackingImageManagers(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
 // RemoveFinalizerForBackingImageManager will result in deletion if DeletionTimestamp was set
