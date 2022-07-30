@@ -3478,8 +3478,8 @@ func (s *DataStore) ListSnapshotsRO(selector labels.Selector) (map[string]*longh
 	return snapshots, nil
 }
 
-func (s *DataStore) ListSnapshots(selector labels.Selector) (map[string]*longhorn.Snapshot, error) {
-	list, err := s.snapLister.Snapshots(s.namespace).List(selector)
+func (s *DataStore) ListSnapshots() (map[string]*longhorn.Snapshot, error) {
+	list, err := s.snapLister.Snapshots(s.namespace).List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
