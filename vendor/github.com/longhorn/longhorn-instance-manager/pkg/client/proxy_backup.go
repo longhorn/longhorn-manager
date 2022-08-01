@@ -115,7 +115,7 @@ func (c *ProxyClient) BackupRestore(serviceAddress, url, target, volumeName stri
 	if recv.TaskError != nil {
 		var taskErr TaskError
 		if jsonErr := json.Unmarshal(recv.TaskError, &taskErr); jsonErr != nil {
-			err = errors.Wrap(jsonErr, "Cannot unmarshal the restore error, maybe it's not caused by the replica restore failure")
+			err = errors.Wrapf(jsonErr, "cannot unmarshal the restore error, maybe it's not caused by the replica restore failure: %s", recv.TaskError)
 			return err
 		}
 
