@@ -361,11 +361,6 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		}
 
 		// now snapshots, replicas, and engines have been marked for deletion
-		if snapshots, err := vc.ds.ListVolumeSnapshotsRO(volume.Name); err != nil {
-			return err
-		} else if len(snapshots) > 0 {
-			return nil
-		}
 		if engines, err := vc.ds.ListVolumeEngines(volume.Name); err != nil {
 			return err
 		} else if len(engines) > 0 {
@@ -848,18 +843,40 @@ func (vc *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *l
 }
 
 func (vc *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
+	log := getLoggerForVolume(vc.logger, v)
+
+	// If there is no non-evicting healthy replica,
+	// Longhorn should retain one evicting healthy replica.
+	hasNonEvictingHealthyReplica := false
+	evictingHealthyReplica := ""
 	for _, r := range rs {
-		if r.Status.EvictionRequested {
-			if err := vc.deleteReplica(r, rs); err != nil {
-				vc.eventRecorder.Eventf(v, v1.EventTypeWarning,
-					EventReasonFailedEviction,
-					"volume %v failed to evict replica %v",
-					v.Name, r.Name)
-				return false, err
-			}
-			logrus.Debugf("Evicted replica %v", r.Name)
-			return true, nil
+		if !datastore.IsAvailableHealthyReplica(r) {
+			continue
 		}
+		if !r.Status.EvictionRequested {
+			hasNonEvictingHealthyReplica = true
+			break
+		}
+		evictingHealthyReplica = r.Name
+	}
+
+	for _, r := range rs {
+		if !r.Status.EvictionRequested {
+			continue
+		}
+		if !hasNonEvictingHealthyReplica && r.Name == evictingHealthyReplica {
+			log.Warnf("Cannot evicting replica %v for now since there is no other healthy replica", r.Name)
+			continue
+		}
+		if err := vc.deleteReplica(r, rs); err != nil {
+			vc.eventRecorder.Eventf(v, v1.EventTypeWarning,
+				EventReasonFailedEviction,
+				"volume %v failed to evict replica %v",
+				v.Name, r.Name)
+			return false, err
+		}
+		log.Debugf("Evicted replica %v in disk %v of node %v ", r.Name, r.Spec.DiskID, r.Spec.NodeID)
+		return true, nil
 	}
 	return false, nil
 }
