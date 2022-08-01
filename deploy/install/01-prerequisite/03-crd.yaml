@@ -1083,7 +1083,7 @@ spec:
       jsonPath: .spec.image
       name: Image
       type: string
-    - description: Number of volumes are using the engine image
+    - description: Number of resources using the engine image
       jsonPath: .status.refCount
       name: RefCount
       type: integer
@@ -1125,7 +1125,7 @@ spec:
       jsonPath: .spec.image
       name: Image
       type: string
-    - description: Number of volumes are using the engine image
+    - description: Number of resources using the engine image
       jsonPath: .status.refCount
       name: RefCount
       type: integer
@@ -1656,10 +1656,6 @@ spec:
                 type: integer
               apiVersion:
                 type: integer
-              proxyApiMinVersion:
-                type: integer
-              proxyApiVersion:
-                type: integer
               currentState:
                 type: string
               instances:
@@ -1699,6 +1695,10 @@ spec:
                 type: string
               ownerID:
                 type: string
+              proxyApiMinVersion:
+                type: integer
+              proxyApiVersion:
+                type: integer
             type: object
         type: object
     served: true
