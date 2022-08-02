@@ -838,11 +838,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	// Make sure the engine object is updated before engineapi calls.
 	if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
-		engine, err = m.ds.UpdateEngineStatus(engine)
-		existingEngine = engine.DeepCopy()
-		if err != nil {
+		EngineOpStatusFilter(engine)
+
+		if engine, err = m.ds.UpdateEngineStatus(engine); err != nil {
 			return err
 		}
+		existingEngine = engine.DeepCopy()
 	}
 
 	if cliAPIVersion >= engineapi.MinCLIVersion {
@@ -884,7 +885,15 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	defer func() {
+		if err != nil {
+			m.logger.Warn(err)
+			return
+		}
+
 		engine.Status.RestoreStatus = rsMap
+
+		EngineOpStatusFilter(engine)
+
 		if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
 			if _, updateErr := m.ds.UpdateEngineStatus(engine); updateErr != nil {
 				err = errors.Wrapf(err, "engine monitor: Failed to update the status for engine %v: %v", engine.Name, updateErr)
@@ -1573,4 +1582,31 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 	requiresNewOwner := currentNodeEngineAvailable && !preferredOwnerEngineAvailable && !currentOwnerEngineAvailable
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
+}
+
+func EngineOpStatusFilter(e *longhorn.Engine) {
+	tcpReplicaAddrMap := map[string]bool{}
+	for _, addr := range e.Status.CurrentReplicaAddressMap {
+		tcpReplicaAddrMap[engineapi.GetBackendReplicaURL(addr)] = true
+	}
+	for tcpAddr := range e.Status.PurgeStatus {
+		if _, exists := tcpReplicaAddrMap[tcpAddr]; !exists {
+			delete(e.Status.PurgeStatus, tcpAddr)
+		}
+	}
+	for tcpAddr := range e.Status.RestoreStatus {
+		if _, exists := tcpReplicaAddrMap[tcpAddr]; !exists {
+			delete(e.Status.RestoreStatus, tcpAddr)
+		}
+	}
+	for tcpAddr := range e.Status.RebuildStatus {
+		if _, exists := tcpReplicaAddrMap[tcpAddr]; !exists {
+			delete(e.Status.RebuildStatus, tcpAddr)
+		}
+	}
+	for tcpAddr := range e.Status.CloneStatus {
+		if _, exists := tcpReplicaAddrMap[tcpAddr]; !exists {
+			delete(e.Status.CloneStatus, tcpAddr)
+		}
+	}
 }
