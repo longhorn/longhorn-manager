@@ -1219,6 +1219,20 @@ func ReplicaAddressToReplicaName(address string, rs []*longhorn.Replica) string 
 	return address
 }
 
+// IsAvailableHealthyReplica returns if the specified replica is a healthy one
+func IsAvailableHealthyReplica(r *longhorn.Replica) bool {
+	if r == nil {
+		return false
+	}
+	if r.DeletionTimestamp != nil {
+		return false
+	}
+	if r.Spec.FailedAt != "" || r.Spec.HealthyAt == "" {
+		return false
+	}
+	return true
+}
+
 // GetOwnerReferencesForEngineImage returns OwnerReference for the given
 // Longhorn EngineImage name and UID
 func GetOwnerReferencesForEngineImage(ei *longhorn.EngineImage) []metav1.OwnerReference {
@@ -3464,8 +3478,8 @@ func (s *DataStore) ListSnapshotsRO(selector labels.Selector) (map[string]*longh
 	return snapshots, nil
 }
 
-func (s *DataStore) ListSnapshots(selector labels.Selector) (map[string]*longhorn.Snapshot, error) {
-	list, err := s.snapLister.Snapshots(s.namespace).List(selector)
+func (s *DataStore) ListSnapshots() (map[string]*longhorn.Snapshot, error) {
+	list, err := s.snapLister.Snapshots(s.namespace).List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}

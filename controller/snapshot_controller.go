@@ -82,6 +82,12 @@ func NewSnapshotController(
 	ds.EngineInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: sc.enqueueEngineChange,
 	}, 0)
+	sc.cacheSyncs = append(sc.cacheSyncs, ds.EngineInformer.HasSynced)
+
+	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		DeleteFunc: sc.enqueueVolumeChange,
+	}, 0)
+	sc.cacheSyncs = append(sc.cacheSyncs, ds.VolumeInformer.HasSynced)
 
 	return sc
 }
@@ -181,6 +187,35 @@ func filterSnapshotsForEngineEnqueuing(oldEngine, curEngine *longhorn.Engine, sn
 	}
 
 	return targetSnapshots
+}
+
+func (sc *SnapshotController) enqueueVolumeChange(obj interface{}) {
+	vol, ok := obj.(*longhorn.Volume)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+		// use the last known state, to enqueue, dependent objects
+		vol, ok = deletedState.Obj.(*longhorn.Volume)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+	if vol.DeletionTimestamp.IsZero() {
+		return
+	}
+
+	snapshots, err := sc.ds.ListVolumeSnapshotsRO(vol.Name)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("snapshot controller failed to list snapshots when enqueuing volume %v: %v", vol.Name, err))
+		return
+	}
+	for _, snap := range snapshots {
+		sc.enqueueSnapshot(snap)
+	}
 }
 
 func (sc *SnapshotController) Run(workers int, stopCh <-chan struct{}) {
