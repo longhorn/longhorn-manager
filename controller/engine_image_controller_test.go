@@ -138,7 +138,7 @@ func getEngineImageControllerTestTemplate() *EngineImageControllerTestCase {
 	tc.volume.Status.CurrentNodeID = TestNode1
 	tc.volume.Status.State = longhorn.VolumeStateAttached
 	tc.volume.Status.CurrentImage = TestEngineImage
-	tc.currentEngineImage.Status.RefCount = 1
+	tc.currentEngineImage.Status.RefCount = 2
 
 	return tc
 }
@@ -203,13 +203,13 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.expectedEngineImage.Status.NodeDeploymentMap = map[string]bool{TestNode1: false}
 	testCases["Engine Image DaemonSet pods are suddenly removed"] = tc
 
-	// `ei.Status.refCount` should become 1 and `Status.NoRefSince` should be unset
+	// `ei.Status.refCount` should become 2 (1 volume and 1 engine are using it) and `Status.NoRefSince` should be unset
 	tc = getEngineImageControllerTestTemplate()
 	tc.currentEngineImage.Status.RefCount = 0
 	tc.currentEngineImage.Status.NoRefSince = getTestNow()
 	tc.currentDaemonSetPod = createEngineImageDaemonSetPod(getTestEngineImageDaemonSetName()+TestPod1, true, TestNode1)
 	tc.copyCurrentToExpected()
-	tc.expectedEngineImage.Status.RefCount = 1
+	tc.expectedEngineImage.Status.RefCount = 2
 	tc.expectedEngineImage.Status.NoRefSince = ""
 	tc.expectedEngineImage.Status.NodeDeploymentMap = map[string]bool{TestNode1: true}
 	testCases["One volume starts to use the engine image"] = tc
