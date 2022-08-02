@@ -865,11 +865,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	// Make sure the engine object is updated before engineapi calls.
 	if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
-		engine, err = m.ds.UpdateEngineStatus(engine)
-		existingEngine = engine.DeepCopy()
-		if err != nil {
+		EngineOpStatusFilter(engine)
+
+		if engine, err = m.ds.UpdateEngineStatus(engine); err != nil {
 			return err
 		}
+		existingEngine = engine.DeepCopy()
 	}
 
 	if cliAPIVersion >= engineapi.MinCLIVersion {
@@ -915,7 +916,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			m.logger.Warn(err)
 			return
 		}
+
 		engine.Status.RestoreStatus = rsMap
+
+		EngineOpStatusFilter(engine)
+
 		if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
 			e, updateErr := m.ds.UpdateEngineStatus(engine)
 			if updateErr != nil {
@@ -1678,4 +1683,31 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 	requiresNewOwner := currentNodeEngineAvailable && !preferredOwnerEngineAvailable && !currentOwnerEngineAvailable
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
+}
+
+func EngineOpStatusFilter(e *longhorn.Engine) {
+	tcpReplicaAddrMap := map[string]bool{}
+	for _, addr := range e.Status.CurrentReplicaAddressMap {
+		tcpReplicaAddrMap[engineapi.GetBackendReplicaURL(addr)] = true
+	}
+	for tcpAddr := range e.Status.PurgeStatus {
+		if _, exists := tcpReplicaAddrMap[tcpAddr]; !exists {
+			delete(e.Status.PurgeStatus, tcpAddr)
+		}
+	}
+	for tcpAddr := range e.Status.RestoreStatus {
+		if _, exists := tcpReplicaAddrMap[tcpAddr]; !exists {
+			delete(e.Status.RestoreStatus, tcpAddr)
+		}
+	}
+	for tcpAddr := range e.Status.RebuildStatus {
+		if _, exists := tcpReplicaAddrMap[tcpAddr]; !exists {
+			delete(e.Status.RebuildStatus, tcpAddr)
+		}
+	}
+	for tcpAddr := range e.Status.CloneStatus {
+		if _, exists := tcpReplicaAddrMap[tcpAddr]; !exists {
+			delete(e.Status.CloneStatus, tcpAddr)
+		}
+	}
 }
