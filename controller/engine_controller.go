@@ -293,6 +293,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		syncReplicaAddressMap = true
 	}
 	if syncReplicaAddressMap && !reflect.DeepEqual(engine.Status.CurrentReplicaAddressMap, engine.Spec.ReplicaAddressMap) {
+		log.Debug("Updating engine current replica address map")
 		engine.Status.CurrentReplicaAddressMap = engine.Spec.ReplicaAddressMap
 		// Make sure the CurrentReplicaAddressMap persist in the etcd before continue
 		return nil
@@ -747,6 +748,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			// ReconcileEngineState.
 			// https://github.com/longhorn/longhorn/issues/4120
 			currentReplicaModeMap[replica] = r.Mode
+			m.logger.Warnf("Found unknown replica %v in the Replica URL Mode Map", addr)
 			continue
 		}
 
@@ -1249,14 +1251,14 @@ func GetClientForEngine(e *longhorn.Engine, engines engineapi.EngineClientCollec
 }
 
 func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
-	unknownReplicaURLs := []string{}
-	for replica := range e.Status.ReplicaModeMap {
+	unknownReplicaMap := map[string]longhorn.ReplicaMode{}
+	for replica, mode := range e.Status.ReplicaModeMap {
 		// unknown replicas have been named as `unknownReplicaPrefix-<replica URL>`
 		if strings.HasPrefix(replica, unknownReplicaPrefix) {
-			unknownReplicaURLs = append(unknownReplicaURLs, strings.TrimPrefix(replica, unknownReplicaPrefix))
+			unknownReplicaMap[strings.TrimPrefix(replica, unknownReplicaPrefix)] = mode
 		}
 	}
-	if len(unknownReplicaURLs) == 0 {
+	if len(unknownReplicaMap) == 0 {
 		return nil
 	}
 
@@ -1264,12 +1266,13 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 	if err != nil {
 		return err
 	}
-	for _, url := range unknownReplicaURLs {
+	for url := range unknownReplicaMap {
 		go func(url string) {
+			ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonDelete, "Removing unknown replica %v in mode %v from engine", url, unknownReplicaMap[url])
 			if err := client.ReplicaRemove(url); err != nil {
-				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting, "Failed to remove unknown replica %v from engine: %v", url, err)
+				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedDeleting, "Failed to remove unknown replica %v in mode %v from engine: %v", url, unknownReplicaMap[url], err)
 			} else {
-				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonDelete, "Removed unknown replica %v from engine", url)
+				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonDelete, "Removed unknown replica %v in mode %v from engine", url, unknownReplicaMap[url])
 			}
 		}(url)
 	}
