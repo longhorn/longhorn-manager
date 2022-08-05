@@ -479,19 +479,28 @@ func (vc *VolumeController) EvictReplicas(v *longhorn.Volume,
 	e *longhorn.Engine, rs map[string]*longhorn.Replica, healthyCount int) (err error) {
 	log := getLoggerForVolume(vc.logger, v)
 
+	hasNewReplica := false
+	healthyNonEvictingCount := healthyCount
 	for _, replica := range rs {
 		if replica.Status.EvictionRequested &&
-			healthyCount == v.Spec.NumberOfReplicas {
-			if err := vc.replenishReplicas(v, e, rs, ""); err != nil {
-				log.WithError(err).Error("Failed to create new replica for replica eviction")
-				vc.eventRecorder.Eventf(v, v1.EventTypeWarning,
-					EventReasonFailedEviction,
-					"volume %v failed to create one more replica", v.Name)
-				return err
-			}
-			log.Debug("Creating one more replica for eviction")
+			e.Status.ReplicaModeMap[replica.Name] == longhorn.ReplicaModeRW {
+			healthyNonEvictingCount--
+		}
+		if replica.Spec.HealthyAt == "" && replica.Spec.FailedAt == "" {
+			hasNewReplica = true
 			break
 		}
+	}
+
+	if healthyNonEvictingCount < v.Spec.NumberOfReplicas && !hasNewReplica {
+		if err := vc.replenishReplicas(v, e, rs, ""); err != nil {
+			log.WithError(err).Error("Failed to create new replica for replica eviction")
+			vc.eventRecorder.Eventf(v, v1.EventTypeWarning,
+				EventReasonFailedEviction,
+				"volume %v failed to create one more replica", v.Name)
+			return err
+		}
+		log.Debug("Creating one more replica for eviction")
 	}
 
 	return nil
