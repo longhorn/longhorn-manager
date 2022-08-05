@@ -42,7 +42,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f
 	github.com/longhorn/backupstore v0.0.0-20211109055147-56ddc538b859
-	github.com/longhorn/go-iscsi-helper v0.0.0-20210330030558-49a327fb024e
+	github.com/longhorn/go-iscsi-helper v0.0.0-20220805034259-7b59e22574bb
 	github.com/longhorn/longhorn-instance-manager v0.0.0-20220801100457-421c284a3b85
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1
