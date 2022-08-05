@@ -486,8 +486,9 @@ github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f/go.
 github.com/longhorn/backupstore v0.0.0-20210817080617-8ea3843e6b0d/go.mod h1:FUjQNWqcEXSFIrQpfWLxFFHXywk14mM5w9TNRuBrKzY=
 github.com/longhorn/backupstore v0.0.0-20211109055147-56ddc538b859 h1:Xff8617ecmLI8tYnWvgpY8aI2sZz4v3lTa353IVyijs=
 github.com/longhorn/backupstore v0.0.0-20211109055147-56ddc538b859/go.mod h1:hvIVsrpjPey7KupirAh0WoPMg0ArWnE6fA5bI30X7AI=
-github.com/longhorn/go-iscsi-helper v0.0.0-20210330030558-49a327fb024e h1:hz4quJkaJWDo+xW+G6wTF6d6/95QvJ+o2D0+bB/tJ1U=
 github.com/longhorn/go-iscsi-helper v0.0.0-20210330030558-49a327fb024e/go.mod h1:9z/y9glKmWEdV50tjlUPxFwi1goQfIrrsoZbnMyIZbY=
+github.com/longhorn/go-iscsi-helper v0.0.0-20220805034259-7b59e22574bb h1:zwAHsMzVfHNEMwAO3Mu2il0dcPGyJsZZuYED7ASbvfc=
+github.com/longhorn/go-iscsi-helper v0.0.0-20220805034259-7b59e22574bb/go.mod h1:9z/y9glKmWEdV50tjlUPxFwi1goQfIrrsoZbnMyIZbY=
 github.com/longhorn/longhorn-engine v1.2.0-preview1.0.20210818142058-32cb7dfd0630/go.mod h1:mtvBHZBmXJIHBcLL828FY5mGq4hoh7bV2EFK6LFLmhE=
 github.com/longhorn/longhorn-engine v1.3.0-preview1 h1:aleV7rxaIE4/ZvtKNJxFjx2bDHMByqfxuOreDjxOtkU=
 github.com/longhorn/longhorn-engine v1.3.0-preview1/go.mod h1:SPYBeRnysbA3sYd3Ln5mFHADmqG6kXGlwi2Ba6JqcQU=
