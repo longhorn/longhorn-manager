@@ -92,7 +92,7 @@ github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-iscsi-helper v0.0.0-20201111045018-ee87992ec536
+# github.com/longhorn/go-iscsi-helper v0.0.0-20220805034259-7b59e22574bb
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
