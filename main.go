@@ -55,6 +55,7 @@ func main() {
 		app.CSICommand(),
 		app.ConversionWebhookServerCommand(),
 		app.AdmissionWebhookServerCommand(),
+		app.RecoveryBackendServiceCommand(),
 		app.PostUpgradeCmd(),
 		app.UninstallCmd(),
 		// TODO: Remove MigrateForPre070VolumesCmd() after v0.8.1

@@ -516,6 +516,16 @@ func (s *DataStore) ListVolumeAttachmentsRO() ([]*storagev1.VolumeAttachment, er
 	return s.vaLister.List(labels.Everything())
 }
 
+// CreateConfigMap creates a ConfigMap resource
+func (s *DataStore) CreateConfigMap(configMap *corev1.ConfigMap) (*corev1.ConfigMap, error) {
+	return s.kubeClient.CoreV1().ConfigMaps(s.namespace).Create(context.TODO(), configMap, metav1.CreateOptions{})
+}
+
+// UpdateConfigMap updates ConfigMap resource
+func (s *DataStore) UpdateConfigMap(configMap *corev1.ConfigMap) (*corev1.ConfigMap, error) {
+	return s.kubeClient.CoreV1().ConfigMaps(s.namespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
+}
+
 // GetConfigMapRO gets ConfigMap with the given name in s.namespace
 // This function returns direct reference to the internal cache object and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
