@@ -208,11 +208,12 @@ func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath 
 		mountOptions = []string{
 			"vers=4.1",
 			"noresvport",
-			"soft", // for this release we use soft mode, so we can always cleanup mount points
 			// "sync", // sync mode is prohibitively expensive on the client, so we allow for host defaults
 			"intr",
-			"timeo=30",  // This is tenths of a second, so a 3 second timeout, each retrans the timeout will be linearly increased, 3s, 6s, 9s
-			"retrans=3", // We try the io operation for a total of 3 times, before failing, max runtime of 18s
+			"hard",
+			//"soft", // for this release we use soft mode, so we can always cleanup mount points
+			//"timeo=30",  // This is tenths of a second, so a 3 second timeout, each retrans the timeout will be linearly increased, 3s, 6s, 9s
+			//"retrans=3", // We try the io operation for a total of 3 times, before failing, max runtime of 18s
 		}
 	}
 
