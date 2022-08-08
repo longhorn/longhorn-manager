@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: longhorn-recovery-backend
+  name: longhorn-recovery-backend
+  namespace: longhorn-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: longhorn-recovery-backend
+  template:
+    metadata:
+      labels:
+        app: longhorn-recovery-backend
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - longhorn-recovery-backend
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: longhorn-recovery-backend
+        image: longhornio/longhorn-manager:master-head
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          runAsUser: 2000
+        command:
+        - longhorn-manager
+        - recovery-backend
+        - --service-account
+        - longhorn-service-account
+        ports:
+        - containerPort: 9600
+          name: recov-backend
+        readinessProbe:
+          tcpSocket:
+            port: 9600
+          initialDelaySeconds: 3
+          periodSeconds: 5
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+#      imagePullSecrets:
+#      - name: ""
+#      priorityClassName:
+#      tolerations:
+#      - key: "key"
+#        operator: "Equal"
+#        value: "value"
+#        effect: "NoSchedule"
+#      nodeSelector:
+#        label-key1: "label-value1"
+#        label-key2: "label-value2"
+      serviceAccountName: longhorn-service-account
+

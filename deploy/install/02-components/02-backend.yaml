@@ -52,6 +52,23 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  labels:
+    app: longhorn-recovery-backend
+  name: longhorn-recovery-backend
+  namespace: longhorn-system
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  selector:
+    app: longhorn-recovery-backend
+  ports:
+  - name: recovery-backend
+    port: 9600
+    targetPort: recov-backend
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: longhorn-engine-manager
   namespace: longhorn-system
 spec:
