@@ -44,6 +44,8 @@ const (
 	ValidatingWebhookName = "longhorn-webhook-validator"
 	MutatingWebhookName   = "longhorn-webhook-mutator"
 
+	DefaultRecoveryBackendServerPort = 9600
+
 	EngineBinaryDirectoryInContainer = "/engine-binaries/"
 	EngineBinaryDirectoryOnHost      = "/var/lib/longhorn/engine-binaries/"
 	ReplicaHostPrefix                = "/host"
@@ -101,6 +103,7 @@ const (
 	LonghornLabelRecurringJobGroup        = "job-group"
 	LonghornLabelOrphan                   = "orphan"
 	LonghornLabelOrphanType               = "orphan-type"
+	LonghornLabelRecoveryBackend          = "recovery-backend"
 	LonghornLabelCRDAPIVersion            = "crd-api-version"
 
 	LonghornLabelValueEnabled = "enabled"
@@ -422,6 +425,12 @@ func GetOrphanLabelsForOrphanedDirectory(nodeID, diskUUID string) map[string]str
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelOrphan
 	labels[LonghornNodeKey] = nodeID
 	labels[GetLonghornLabelKey(LonghornLabelOrphanType)] = string(longhorn.OrphanTypeReplica)
+	return labels
+}
+
+func GetRecoveryBackendConfigMapLabels() map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelRecoveryBackend
 	return labels
 }
 

@@ -296,12 +296,15 @@ func (c *UninstallController) uninstall() error {
 		return err
 	}
 
-	if waitForUpdate, err := c.deleteWebhookDeployment(types.LonghornAdmissionWebhookDeploymentName); err != nil || waitForUpdate {
-		return err
+	deployments := []string{
+		types.LonghornRecoveryBackendDeploymentName,
+		types.LonghornAdmissionWebhookDeploymentName,
+		types.LonghornConversionWebhookDeploymentName,
 	}
-
-	if waitForUpdate, err := c.deleteWebhookDeployment(types.LonghornConversionWebhookDeploymentName); err != nil || waitForUpdate {
-		return err
+	for _, deployment := range deployments {
+		if waitForUpdate, err := c.deleteDeployment(deployment); err != nil || waitForUpdate {
+			return err
+		}
 	}
 
 	if err := c.deleteWebhookConfiguration(); err != nil {
@@ -857,7 +860,7 @@ func (c *UninstallController) deleteManager() (bool, error) {
 	return true, nil
 }
 
-func (c *UninstallController) deleteWebhookDeployment(deployment string) (bool, error) {
+func (c *UninstallController) deleteDeployment(deployment string) (bool, error) {
 	log := getLoggerForUninstallDeployment(c.logger, deployment)
 
 	if ds, err := c.ds.GetDeployment(deployment); err != nil {
