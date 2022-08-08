@@ -7,4 +7,4 @@ on:
 
 jobs:
   call-workflow:
-    uses: longhorn/longhorn/.github/workflows/stale.yml@master
+    uses: longhorn/longhorn/.github/workflows/stale.yaml@master
