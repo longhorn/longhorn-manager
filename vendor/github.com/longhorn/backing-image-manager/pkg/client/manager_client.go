@@ -197,6 +197,33 @@ func (cli *BackingImageManagerClient) PrepareDownload(name, uuid string) (string
 	return resp.SrcFilePath, resp.Address, nil
 }
 
+func (cli *BackingImageManagerClient) Backup(name, uuid, backupTarget string, credentials map[string]string) error {
+	if name == "" || uuid == "" {
+		return fmt.Errorf("failed to get backing image: missing required parameter")
+	}
+
+	conn, err := grpc.Dial(cli.Address, grpc.WithInsecure())
+	if err != nil {
+		return fmt.Errorf("cannot connect backing image manager service to %v: %v", cli.Address, err)
+	}
+	defer conn.Close()
+
+	client := rpc.NewBackingImageManagerServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	_, err = client.Backup(ctx, &rpc.BackupRequest{
+		Name:         name,
+		Uuid:         uuid,
+		BackupTarget: backupTarget,
+		Credential:   credentials,
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (cli *BackingImageManagerClient) VersionGet() (*meta.VersionOutput, error) {
 	conn, err := grpc.Dial(cli.Address, grpc.WithInsecure())
 	if err != nil {

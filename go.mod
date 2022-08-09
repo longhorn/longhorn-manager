@@ -3,6 +3,7 @@ module github.com/longhorn/longhorn-manager
 go 1.17
 
 replace (
+	github.com/longhorn/backing-image-manager => github.com/FrankYang0529/backing-image-manager v0.0.0-20220809093916-611a825c5efb
 	k8s.io/api => k8s.io/api v0.23.6
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.23.6
 	k8s.io/apimachinery => k8s.io/apimachinery v0.23.6
@@ -40,7 +41,7 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f
+	// github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f
 	github.com/longhorn/backupstore v0.0.0-20211109055147-56ddc538b859
 	github.com/longhorn/go-iscsi-helper v0.0.0-20220805034259-7b59e22574bb
 	github.com/longhorn/longhorn-instance-manager v0.0.0-20220801100457-421c284a3b85
@@ -58,7 +59,7 @@ require (
 	golang.org/x/net v0.0.0-20211209124913-491a49abca63
 	golang.org/x/sys v0.0.0-20210831042530-f4d43177bf5e
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
-	google.golang.org/grpc v1.40.0
+	google.golang.org/grpc v1.48.0
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.23.6
@@ -73,9 +74,12 @@ require (
 	sigs.k8s.io/yaml v1.2.0
 )
 
+require github.com/longhorn/backing-image-manager v0.0.0-00010101000000-000000000000
+
 require (
 	github.com/Microsoft/go-winio v0.4.17 // indirect
 	github.com/RoaringBitmap/roaring v0.4.18 // indirect
+	github.com/aws/aws-sdk-go v1.38.49 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/c9s/goprocinfo v0.0.0-20190309065803-0b2ad9ac246b // indirect
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
@@ -89,15 +93,16 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/snappy v0.0.1 // indirect
-	github.com/google/go-cmp v0.5.5 // indirect
+	github.com/google/go-cmp v0.5.6 // indirect
 	github.com/google/gofuzz v1.1.0 // indirect
 	github.com/googleapis/gnostic v0.5.5 // indirect
 	github.com/gorilla/context v1.1.1 // indirect
 	github.com/honestbee/jobq v1.0.2 // indirect
 	github.com/imdario/mergo v0.3.8 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/longhorn/longhorn-engine v1.3.0-preview1 // indirect
+	github.com/longhorn/longhorn-engine v1.3.0 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect

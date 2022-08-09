@@ -46,14 +46,18 @@ const (
 type DataSourceType string
 
 const (
-	DataSourceTypeDownload         = DataSourceType("download")
-	DataSourceTypeUpload           = DataSourceType("upload")
-	DataSourceTypeExportFromVolume = DataSourceType("export-from-volume")
+	DataSourceTypeDownload                 = DataSourceType("download")
+	DataSourceTypeDownloadFromBackupTarget = DataSourceType("download-from-backup-target")
+	DataSourceTypeUpload                   = DataSourceType("upload")
+	DataSourceTypeExportFromVolume         = DataSourceType("export-from-volume")
 )
 
 const (
 	DataSourceTypeDownloadParameterURL = "url"
 	DataSourceTypeFileType             = "file-type"
+
+	DataSourceTypeDownloadFromBackupTargetParameterBackupTarget     = "backup-target"
+	DataSourceTypeDownloadFromBackupTargetParameterBackupTargetPath = "backup-target-path"
 
 	DataSourceTypeExportFromVolumeParameterVolumeSize    = "volume-size"
 	DataSourceTypeExportFromVolumeParameterSnapshotName  = "snapshot-name"
@@ -65,6 +69,17 @@ const (
 	SyncingFileTypeEmpty = ""
 	SyncingFileTypeRaw   = "raw"
 	SyncingFileTypeQcow2 = "qcow2"
+
+	AWSAccessKey = "AWS_ACCESS_KEY_ID"
+	AWSSecretKey = "AWS_SECRET_ACCESS_KEY"
+	AWSEndPoint  = "AWS_ENDPOINTS"
+	AWSCert      = "AWS_CERT"
+
+	HTTPSProxy = "HTTPS_PROXY"
+	HTTPProxy  = "HTTP_PROXY"
+	NOProxy    = "NO_PROXY"
+
+	VirtualHostedStyle = "VIRTUAL_HOSTED_STYLE"
 )
 
 func GetDataSourceFileName(biName, biUUID string) string {

@@ -382,3 +382,38 @@ func (client *SyncClient) DownloadToDst(srcFilePath, dstFilePath string) error {
 	}
 	return nil
 }
+
+func (client *SyncClient) DownloadFromBackupTarget(backupTarget, backupTargetPath, filePath, uuid, diskUUID, expectedChecksum string) error {
+	httpClient := &http.Client{Timeout: 0}
+
+	requestURL := fmt.Sprintf("http://%s/v1/files", client.Remote)
+	req, err := http.NewRequest("POST", requestURL, nil)
+	if err != nil {
+		return err
+	}
+	q := req.URL.Query()
+	q.Add("action", "downloadFromBackupTarget")
+	q.Add("backup-target", backupTarget)
+	q.Add("backup-target-path", backupTargetPath)
+	q.Add("file-path", filePath)
+	q.Add("uuid", uuid)
+	q.Add("disk-uuid", diskUUID)
+	q.Add("expected-checksum", expectedChecksum)
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("download from backup target failed, err: %s", err)
+	}
+	defer resp.Body.Close()
+
+	bodyContent, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("%s, failed to read the response body: %v", util.GetHTTPClientErrorPrefix(resp.StatusCode), err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("%s, response body content: %v", util.GetHTTPClientErrorPrefix(resp.StatusCode), string(bodyContent))
+	}
+
+	return nil
+}
