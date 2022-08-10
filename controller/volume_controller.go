@@ -688,6 +688,33 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es m
 	return nil
 }
 
+func isAutoSalvageNeeded(rs map[string]*longhorn.Replica) bool {
+	if isFirstAttachment(rs) {
+		return areAllReplicasFailed(rs)
+	}
+	return getHealthyAndActiveReplicaCount(rs) == 0 && getFailedReplicaCount(rs) > 0
+}
+
+func areAllReplicasFailed(rs map[string]*longhorn.Replica) bool {
+	for _, r := range rs {
+		if r.Spec.FailedAt == "" {
+			return false
+		}
+	}
+	return true
+}
+
+// isFirstAttachment returns true if this is the first time the volume is attached.
+// I.e., all replicas have empty Spec.HealthyAt
+func isFirstAttachment(rs map[string]*longhorn.Replica) bool {
+	for _, r := range rs {
+		if r.Spec.HealthyAt != "" {
+			return false
+		}
+	}
+	return true
+}
+
 func getHealthyAndActiveReplicaCount(rs map[string]*longhorn.Replica) int {
 	count := 0
 	for _, r := range rs {
@@ -1181,8 +1208,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		e.Spec.SalvageRequested = false
 	}
 
-	isAutoSalvageNeeded := getHealthyAndActiveReplicaCount(rs) == 0 && getFailedReplicaCount(rs) > 0
-	if isAutoSalvageNeeded {
+	if isAutoSalvageNeeded(rs) {
 		v.Status.Robustness = longhorn.VolumeRobustnessFaulted
 		v.Status.CurrentNodeID = ""
 
