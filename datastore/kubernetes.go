@@ -543,6 +543,11 @@ func (s *DataStore) GetConfigMap(namespace, name string) (*corev1.ConfigMap, err
 	return resultRO.DeepCopy(), nil
 }
 
+// DeleteConfigMap deletes the ConfigMap for the given name and namespace
+func (s *DataStore) DeleteConfigMap(namespace, name string) error {
+	return s.kubeClient.CoreV1().ConfigMaps(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
 // GetSecretRO gets Secret with the given namespace and name
 // This function returns direct reference to the internal cache object and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
