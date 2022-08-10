@@ -466,6 +466,10 @@ func GetShareManagerPodNameFromShareManagerName(smName string) string {
 	return shareManagerPrefix + smName
 }
 
+func GetConfigMapNameFromShareManagerName(smName string) string {
+	return shareManagerPrefix + smName
+}
+
 func GetShareManagerNameFromShareManagerPodName(podName string) string {
 	return strings.TrimPrefix(podName, shareManagerPrefix)
 }
