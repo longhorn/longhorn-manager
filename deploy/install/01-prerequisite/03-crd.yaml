@@ -123,6 +123,7 @@ spec:
                 - download
                 - upload
                 - export-from-volume
+                - download-from-backup-target
                 type: string
               uuid:
                 type: string
@@ -351,22 +352,11 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.7.0
+  creationTimestamp: null
   labels:
     longhorn-manager: ""
   name: backingimages.longhorn.io
 spec:
-  conversion:
-    strategy: Webhook
-    webhook:
-      clientConfig:
-        service:
-          name: longhorn-conversion-webhook
-          namespace: longhorn-system
-          path: /v1/webhook/conversion
-          port: 9443
-      conversionReviewVersions:
-      - v1beta2
-      - v1beta1
   group: longhorn.io
   names:
     kind: BackingImage
@@ -457,6 +447,7 @@ spec:
                 - download
                 - upload
                 - export-from-volume
+                - download-from-backup-target
                 type: string
             type: object
           status:
@@ -710,22 +701,11 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.7.0
+  creationTimestamp: null
   labels:
     longhorn-manager: ""
   name: backuptargets.longhorn.io
 spec:
-  conversion:
-    strategy: Webhook
-    webhook:
-      clientConfig:
-        service:
-          name: longhorn-conversion-webhook
-          namespace: longhorn-system
-          path: /v1/webhook/conversion
-          port: 9443
-      conversionReviewVersions:
-      - v1beta2
-      - v1beta1
   group: longhorn.io
   names:
     kind: BackupTarget
@@ -1048,22 +1028,11 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.7.0
+  creationTimestamp: null
   labels:
     longhorn-manager: ""
   name: engineimages.longhorn.io
 spec:
-  conversion:
-    strategy: Webhook
-    webhook:
-      clientConfig:
-        service:
-          name: longhorn-conversion-webhook
-          namespace: longhorn-system
-          path: /v1/webhook/conversion
-          port: 9443
-      conversionReviewVersions:
-      - v1beta2
-      - v1beta1
   group: longhorn.io
   names:
     kind: EngineImage
@@ -1717,22 +1686,11 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.7.0
+  creationTimestamp: null
   labels:
     longhorn-manager: ""
   name: nodes.longhorn.io
 spec:
-  conversion:
-    strategy: Webhook
-    webhook:
-      clientConfig:
-        service:
-          name: longhorn-conversion-webhook
-          namespace: longhorn-system
-          path: /v1/webhook/conversion
-          port: 9443
-      conversionReviewVersions:
-      - v1beta2
-      - v1beta1
   group: longhorn.io
   names:
     kind: Node
@@ -2706,22 +2664,11 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.7.0
+  creationTimestamp: null
   labels:
     longhorn-manager: ""
   name: volumes.longhorn.io
 spec:
-  conversion:
-    strategy: Webhook
-    webhook:
-      clientConfig:
-        service:
-          name: longhorn-conversion-webhook
-          namespace: longhorn-system
-          path: /v1/webhook/conversion
-          port: 9443
-      conversionReviewVersions:
-      - v1beta2
-      - v1beta1
   group: longhorn.io
   names:
     kind: Volume
