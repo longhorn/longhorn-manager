@@ -23,6 +23,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
+	"k8s.io/utils/pointer"
 
 	bimapi "github.com/longhorn/backing-image-manager/api"
 	bimtypes "github.com/longhorn/backing-image-manager/pkg/types"
@@ -843,6 +844,7 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 						"--listen", fmt.Sprintf("%s:%d", "0.0.0.0", engineapi.BackingImageManagerDefaultPort),
 						"--sync-listen", fmt.Sprintf("%s:%d", "0.0.0.0", engineapi.BackingImageSyncServerDefaultPort),
 					},
+					SecurityContext: &v1.SecurityContext{Privileged: pointer.Bool(true)},
 					ReadinessProbe: &v1.Probe{
 						ProbeHandler: v1.ProbeHandler{
 							TCPSocket: &v1.TCPSocketAction{

@@ -234,21 +234,25 @@ func getBackupTargetClient(ds *datastore.DataStore, backupTarget *longhorn.Backu
 	if err != nil {
 		return nil, err
 	}
+	credential, err := getBackupTargetCredential(ds, backupTarget)
+	if err != nil {
+		return nil, err
+	}
+	return engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential), nil
+}
+
+func getBackupTargetCredential(ds *datastore.DataStore, backupTarget *longhorn.BackupTarget) (map[string]string, error) {
 	backupType, err := util.CheckBackupType(backupTarget.Spec.BackupTargetURL)
 	if err != nil {
 		return nil, err
 	}
-	var credential map[string]string
 	if backupType == types.BackupStoreTypeS3 {
 		if backupTarget.Spec.CredentialSecret == "" {
 			return nil, fmt.Errorf("could not access %s without credential secret", types.BackupStoreTypeS3)
 		}
-		credential, err = ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
-		if err != nil {
-			return nil, err
-		}
+		return ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
 	}
-	return engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential), nil
+	return map[string]string{}, nil
 }
 
 func (btc *BackupTargetController) reconcile(name string) (err error) {

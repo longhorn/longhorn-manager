@@ -338,6 +338,34 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			return nil // Ignore error to prevent enqueue
 		}
 
+		if volume.Spec.BackingImage != "" {
+			bi, err := bc.ds.GetBackingImage(volume.Spec.BackingImage)
+			if err != nil {
+				log.WithError(err).Error("Cannot found the corresponding backing image")
+				return err
+			}
+
+			bim, err := bc.getDefaultBackingImageManager(bi)
+			if err != nil {
+				log.WithError(err).Error("Cannot get default backing image manager")
+				return err
+			}
+			cli, err := engineapi.NewBackingImageManagerClient(bim)
+			if err != nil {
+				log.WithError(err).Error("Cannot get backing image manager client")
+				return err
+			}
+			credential, err := getBackupTargetCredential(bc.ds, backupTarget)
+			if err != nil {
+				log.WithError(err).Error("Cannot get backup target credential")
+				return err
+			}
+			if err = cli.Backup(bi.Name, bi.Status.UUID, backupTarget.Spec.BackupTargetURL, credential); err != nil {
+				log.WithError(err).Error("Cannot backup backing image")
+				return err
+			}
+		}
+
 		if backup.Status.SnapshotCreatedAt == "" || backup.Status.VolumeSize == "" {
 			bc.syncBackupStatusWithSnapshotCreationTimeAndVolumeSize(volume, backup)
 		}
@@ -650,4 +678,36 @@ func (bc *BackupController) syncBackupStatusWithSnapshotCreationTimeAndVolumeSiz
 	}
 
 	backup.Status.SnapshotCreatedAt = snap.Created
+}
+
+func (bc *BackupController) getDefaultBackingImageManager(bi *longhorn.BackingImage) (*longhorn.BackingImageManager, error) {
+	var targetBIM *longhorn.BackingImageManager
+
+	defaultImage, err := bc.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
+	if err != nil {
+		return nil, err
+	}
+
+	for diskUUID, fStatus := range bi.Status.DiskFileStatusMap {
+		if fStatus.State != longhorn.BackingImageStateReady {
+			continue
+		}
+		bims, err := bc.ds.ListBackingImageManagersByDiskUUID(diskUUID)
+		if err != nil {
+			return nil, err
+		}
+		for _, bim := range bims {
+			if bim.Spec.Image == defaultImage {
+				targetBIM = bim
+			}
+		}
+		if targetBIM == nil {
+			return nil, fmt.Errorf("default backing image manager for disk %v is not found", diskUUID)
+		}
+		break
+	}
+	if targetBIM == nil {
+		return nil, fmt.Errorf("cannot find a default backing image manager for backing image %v download", bi.Name)
+	}
+	return targetBIM, nil
 }

@@ -352,6 +352,33 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return nil
 	}
 
+	// restore backing image
+	if backupVolumeInfo.BackingImageName != "" {
+		_, err = bvc.ds.GetBackingImage(backupVolumeInfo.BackingImageName)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				log.WithError(err).Errorf("Error getting backing image %s", backupVolumeInfo.BackingImageName)
+				return err
+			}
+			bi := &longhorn.BackingImage{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: backupVolumeInfo.BackingImageName,
+				},
+				Spec: longhorn.BackingImageSpec{
+					SourceType: longhorn.BackingImageDataSourceTypeDownloadFromBackupTarget,
+					SourceParameters: map[string]string{
+						longhorn.DataSourceTypeDownloadFromBackupTargetParameterBackupTarget:     backupTargetClient.URL,
+						longhorn.DataSourceTypeDownloadFromBackupTargetParameterBackupTargetPath: fmt.Sprintf("backupstore/backingimages/%s/backingimage", backupVolumeInfo.BackingImageName),
+					},
+				},
+			}
+			if _, err = bvc.ds.CreateBackingImage(bi); err != nil {
+				log.WithError(err).Errorf("Error creating backing image %s into cluster", backupVolumeInfo.BackingImageName)
+				return err
+			}
+		}
+	}
+
 	// Update the Backup CR spec.syncRequestAt to request the
 	// backup_controller to reconcile the Backup CR if the last backup changed
 	if backupVolume.Status.LastBackupName != backupVolumeInfo.LastBackupName {

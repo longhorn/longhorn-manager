@@ -143,3 +143,10 @@ func (c *BackingImageManagerClient) VersionGet() (int, int, error) {
 	}
 	return output.BackingImageManagerAPIMinVersion, output.BackingImageManagerAPIVersion, nil
 }
+
+func (c *BackingImageManagerClient) Backup(name, uuid, backupTarget string, credentials map[string]string) error {
+	if err := CheckBackingImageManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
+		return err
+	}
+	return c.grpcClient.Backup(name, uuid, backupTarget, credentials)
+}

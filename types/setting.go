@@ -83,6 +83,7 @@ const (
 	SettingNameKubernetesClusterAutoscalerEnabled           = SettingName("kubernetes-cluster-autoscaler-enabled")
 	SettingNameOrphanAutoDeletion                           = SettingName("orphan-auto-deletion")
 	SettingNameStorageNetwork                               = SettingName("storage-network")
+	SettingNameConcurrentBackingImageRestoreLimit           = SettingName("concurrent-backing-image-restore-limit")
 )
 
 var (
@@ -136,6 +137,7 @@ var (
 		SettingNameKubernetesClusterAutoscalerEnabled,
 		SettingNameOrphanAutoDeletion,
 		SettingNameStorageNetwork,
+		SettingNameConcurrentBackingImageRestoreLimit,
 	}
 )
 
@@ -213,6 +215,7 @@ var (
 		SettingNameKubernetesClusterAutoscalerEnabled:           SettingDefinitionKubernetesClusterAutoscalerEnabled,
 		SettingNameOrphanAutoDeletion:                           SettingDefinitionOrphanAutoDeletion,
 		SettingNameStorageNetwork:                               SettingDefinitionStorageNetwork,
+		SettingNameConcurrentBackingImageRestoreLimit:           SettingDefinitionConcurrentBackingImageRestoreLimit,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -798,6 +801,16 @@ var (
 		Required: false,
 		ReadOnly: false,
 		Default:  CniNetworkNone,
+	}
+
+	SettingDefinitionConcurrentBackingImageRestoreLimit = SettingDefinition{
+		DisplayName: "Concurrent Backing Image Restore Limit",
+		Description: "This setting controls how many backing image can be restored simultaneously.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "5",
 	}
 )
 

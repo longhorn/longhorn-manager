@@ -25,6 +25,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
+	"k8s.io/utils/pointer"
 
 	bimtypes "github.com/longhorn/backing-image-manager/pkg/types"
 
@@ -480,7 +481,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 		// To avoid restarting backing image data source pod (for file preparation) too quickly or too frequently,
 		// Longhorn will leave failed backing image data source alone if it is still in the backoff period.
 		// If the backoff period pass, Longhorn will recreate the pod and increase the Backoff period for the next possible failure.
-		isValidTypeForRetry := bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeDownload || bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeExportFromVolume
+		isValidTypeForRetry := bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeDownload || bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeDownloadFromBackupTarget || bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeExportFromVolume
 		isInBackoffWindow := true
 		if !newBackingImageDataSource && isValidTypeForRetry {
 			if !c.backoff.IsInBackOffSinceUpdate(bids.Name, time.Now()) {
@@ -499,6 +500,14 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 			bids.Status.Message = ""
 			bids.Status.Progress = 0
 			bids.Status.Checksum = ""
+
+			if moreThanLimit, err := c.isMoreThanConcurrentBackingImageRestoreLimit(); err != nil {
+				return err
+			} else if moreThanLimit {
+				log.Infof("Too many backing image restoring, enqueue %s after 60 seconds", bids.Name)
+				c.enqueueBackingImageDataSourceAfter(bids, 60*time.Second)
+			}
+
 			if err := c.createBackingImageDataSourcePod(bids); err != nil {
 				return err
 			}
@@ -609,6 +618,7 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 					Image:           bimImage,
 					ImagePullPolicy: imagePullPolicy,
 					Command:         cmd,
+					SecurityContext: &v1.SecurityContext{Privileged: pointer.Bool(true)},
 					ReadinessProbe: &v1.Probe{
 						ProbeHandler: v1.ProbeHandler{
 							TCPSocket: &v1.TCPSocketAction{
@@ -650,6 +660,26 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 			NodeName:      bids.Spec.NodeID,
 			RestartPolicy: v1.RestartPolicyNever,
 		},
+	}
+
+	bsCredentialSetting, err := c.ds.GetSetting(types.SettingNameBackupTargetCredentialSecret)
+	if err != nil {
+		return nil, err
+	}
+	if bsCredentialSetting.Value != "" {
+		podSpec.Spec.Volumes = append(podSpec.Spec.Volumes, v1.Volume{
+			Name: "backup-target-credential",
+			VolumeSource: v1.VolumeSource{
+				Secret: &v1.SecretVolumeSource{
+					SecretName: bsCredentialSetting.Value,
+				},
+			},
+		})
+		podSpec.Spec.Containers[0].VolumeMounts = append(podSpec.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
+			Name:      "backup-target-credential",
+			MountPath: "/backup-target-credential",
+			ReadOnly:  true,
+		})
 	}
 
 	registrySecretSetting, err := c.ds.GetSetting(types.SettingNameRegistrySecret)
@@ -757,6 +787,16 @@ func (c *BackingImageDataSourceController) enqueueBackingImageDataSource(backing
 	}
 
 	c.queue.Add(key)
+}
+
+func (c *BackingImageDataSourceController) enqueueBackingImageDataSourceAfter(backingImageDataSource interface{}, duration time.Duration) {
+	key, err := controller.KeyFunc(backingImageDataSource)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", backingImageDataSource, err))
+		return
+	}
+
+	c.queue.AddAfter(key, duration)
 }
 
 func isBackingImageDataSourcePod(obj interface{}) bool {
@@ -1040,4 +1080,28 @@ func (m *BackingImageDataSourceMonitor) sync() {
 
 func (c *BackingImageDataSourceController) isResponsibleFor(bids *longhorn.BackingImageDataSource) bool {
 	return isControllerResponsibleFor(c.controllerID, c.ds, bids.Name, bids.Spec.NodeID, bids.Status.OwnerID)
+}
+
+func (c *BackingImageDataSourceController) isMoreThanConcurrentBackingImageRestoreLimit() (bool, error) {
+	concurrentBackingImageRestoreLimit, err := c.ds.GetSettingAsInt(types.SettingNameConcurrentBackingImageRestoreLimit)
+	if err != nil {
+		return false, err
+	}
+
+	bidss, err := c.ds.ListBackingImageDataSources()
+	if err != nil {
+		return false, err
+	}
+
+	var inProgressBackingImage int64
+	for _, bids := range bidss {
+		if bids.Status.CurrentState == longhorn.BackingImageStateInProgress {
+			inProgressBackingImage++
+			if inProgressBackingImage >= concurrentBackingImageRestoreLimit {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
 }
