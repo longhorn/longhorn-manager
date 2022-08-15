@@ -263,6 +263,9 @@ func (kc *KubernetesPodController) getVolumeAttachmentsOfPod(pod *v1.Pod) ([]*st
 	}
 
 	for _, va := range vas {
+		if va.Spec.NodeName != pod.Spec.NodeName {
+			continue
+		}
 		if va.Spec.Attacher != types.LonghornDriverName {
 			continue
 		}
