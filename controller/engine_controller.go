@@ -38,7 +38,8 @@ import (
 )
 
 const (
-	unknownReplicaPrefix = "UNKNOWN-"
+	unknownReplicaPrefix    = "UNKNOWN-"
+	restoreGetLockFailedMsg = "error initiating full backup restore: failed lock"
 )
 
 var (
@@ -48,6 +49,9 @@ var (
 	EngineMonitorConflictRetryCount = 5
 
 	purgeWaitIntervalInSecond = 24 * 60 * 60
+
+	// restoreMaxInterval: deleting the backup of big size volume takes a long time for retain policy and restoring backups would be in backoff period.
+	restoreMaxInterval = 1 * time.Hour
 )
 
 const (
@@ -90,6 +94,7 @@ type EngineMonitor struct {
 	engines          engineapi.EngineClientCollection
 	stopCh           chan struct{}
 	expansionBackoff *flowcontrol.Backoff
+	restoreBackoff   *flowcontrol.Backoff
 
 	controllerID string
 	// used to notify the controller that monitoring has stopped
@@ -602,6 +607,7 @@ func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
 		stopCh:                 stopCh,
 		monitorVoluntaryStopCh: monitorVoluntaryStopCh,
 		expansionBackoff:       flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
+		restoreBackoff:         flowcontrol.NewBackOff(time.Second*10, restoreMaxInterval),
 		controllerID:           ec.controllerID,
 	}
 
@@ -908,7 +914,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	// Incremental restoration will implicitly expand the DR volume once the backup volume is expanded
 	if needRestore {
-		if err = restoreBackup(m.logger, engine, rsMap, client, cliAPIVersion, m.ds); err != nil {
+		if m.restoreBackoff.IsInBackOffSinceUpdate(engine.Name, time.Now()) {
+			m.logger.Debugf("Cannot restore the backup for engine %v since it is still in the backoff window", engine.Name)
+			return nil
+		}
+		if err = m.restoreBackup(engine, rsMap, client, cliAPIVersion); err != nil {
+			m.restoreBackoff.DeleteEntry(engine.Name)
 			return err
 		}
 	}
@@ -1107,9 +1118,9 @@ func checkSizeBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine,
 	return true, nil
 }
 
-func restoreBackup(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, client engineapi.EngineClient, cliAPIVersion int, ds *datastore.DataStore) error {
+func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, client engineapi.EngineClient, cliAPIVersion int) error {
 	// Get default backup target
-	backupTarget, err := ds.GetBackupTargetRO(types.DefaultBackupTargetName)
+	backupTarget, err := m.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
@@ -1118,34 +1129,40 @@ func restoreBackup(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[st
 	}
 
 	// Initialize a backup target client
-	backupTargetClient, err := getBackupTargetClient(ds, backupTarget)
+	backupTargetClient, err := getBackupTargetClient(m.ds, backupTarget)
 	if err != nil {
 		return errors.Wrapf(err, "cannot init backup target client for backup restoration of engine %v", engine.Name)
 	}
 
+	mlog := m.logger.WithFields(logrus.Fields{
+		"backupTarget":                backupTargetClient.URL,
+		"backupVolume":                engine.Spec.BackupVolume,
+		"requestedRestoredBackupName": engine.Spec.RequestedBackupRestore,
+		"lastRestoredBackupName":      engine.Status.LastRestoredBackup,
+	})
+	mlog.Infof("Prepare to restore backup")
 	if cliAPIVersion < engineapi.CLIVersionFour {
 		// For compatible engines, `LastRestoredBackup` is required to indicate if the restore is incremental restore
-		log.Infof("Prepare to restore backup, backup target: %v, backup volume: %v, requested restored backup name: %v, last restored backup name: %v",
-			backupTargetClient.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
 		if err = client.BackupRestore(backupTargetClient.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup, backupTargetClient.Credential); err != nil {
-			if extraErr := handleRestoreErrorForCompatibleEngine(log, engine, rsMap, err); extraErr != nil {
+			if extraErr := handleRestoreErrorForCompatibleEngine(mlog, engine, rsMap, m.restoreBackoff, err); extraErr != nil {
 				return extraErr
 			}
 		}
 	} else {
 		if err = client.BackupRestore(backupTargetClient.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, "", backupTargetClient.Credential); err != nil {
-			log.Infof("Prepare to restore backup, backup target: %v, backup volume: %v, requested restored backup name: %v",
-				backupTargetClient.URL, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
-			if extraErr := handleRestoreError(log, engine, rsMap, err); extraErr != nil {
+			if extraErr := handleRestoreError(mlog, engine, rsMap, m.restoreBackoff, err); extraErr != nil {
 				return extraErr
 			}
 		}
+	}
+	if err == nil {
+		m.restoreBackoff.DeleteEntry(engine.Name)
 	}
 
 	return nil
 }
 
-func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, err error) error {
+func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, backoff *flowcontrol.Backoff, err error) error {
 	taskErr, ok := err.(engineapi.TaskError)
 	if !ok {
 		return errors.Wrapf(err, "failed to restore backup %v in engine monitor, will retry the restore later",
@@ -1154,6 +1171,14 @@ func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap m
 
 	for _, re := range taskErr.ReplicaErrors {
 		if status, exists := rsMap[re.Address]; exists {
+			if strings.Contains(re.Error(), restoreGetLockFailedMsg) {
+				// Register the name with a restore backoff entry
+				log.WithError(re).Debugf("Ignore failed locked restore error from replica %v", re.Address)
+				backoff.Next(engine.Name, time.Now())
+				continue
+			} else {
+				backoff.DeleteEntry(engine.Name)
+			}
 			if strings.Contains(re.Error(), "already in progress") || strings.Contains(re.Error(), "already restored backup") {
 				log.WithError(re).Debugf("Ignore restore error from replica %v", re.Address)
 				continue
@@ -1165,7 +1190,7 @@ func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap m
 	return nil
 }
 
-func handleRestoreErrorForCompatibleEngine(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, err error) error {
+func handleRestoreErrorForCompatibleEngine(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, backoff *flowcontrol.Backoff, err error) error {
 	taskErr, ok := err.(engineapi.TaskError)
 	if !ok {
 		return errors.Wrapf(err, "failed to restore backup %v with last restored backup %v in engine monitor",
@@ -1174,6 +1199,13 @@ func handleRestoreErrorForCompatibleEngine(log logrus.FieldLogger, engine *longh
 
 	for _, re := range taskErr.ReplicaErrors {
 		if status, exists := rsMap[re.Address]; exists {
+			if strings.Contains(re.Error(), restoreGetLockFailedMsg) {
+				log.WithError(re).Debugf("Ignore failed lock restore error from replica %v", re.Address)
+				// Register the name with a restore backoff entry
+				backoff.Next(engine.Name, time.Now())
+				continue
+			}
+			backoff.DeleteEntry(engine.Name)
 			status.Error = re.Error()
 		}
 	}
