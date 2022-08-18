@@ -20,7 +20,7 @@ RUN wget -O - https://storage.googleapis.com/golang/go1.17.10.linux-${!GOLANG_AR
     go get -u golang.org/x/lint/golint
 
 ENV DAPPER_SOURCE /go/src/github.com/longhorn/longhorn-manager
-ENV DAPPER_OUTPUT ./bin
+ENV DAPPER_OUTPUT ./bin coverage.out
 ENV DAPPER_DOCKER_SOCKET true
 ENV DAPPER_ENV IMAGE REPO VERSION TAG
 ENV DAPPER_RUN_ARGS --privileged --tmpfs /go/src/github.com/longhorn/longhorn/integration/.venv:exec --tmpfs /go/src/github.com/longhorn/longhorn/integration/.tox:exec -v /dev:/host/dev
