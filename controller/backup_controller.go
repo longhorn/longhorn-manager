@@ -268,6 +268,11 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 				// to update it's BackupVolume CR status
 			}
 		}
+
+		if backup.Status.State == longhorn.BackupStateError || backup.Status.State == longhorn.BackupStateUnknown {
+			bc.eventRecorder.Eventf(backup, corev1.EventTypeWarning, string(backup.Status.State), "Failed backup %s has been deleted: %s", backup.Name, backup.Status.Error)
+		}
+
 		return bc.ds.RemoveFinalizerForBackup(backup)
 	}
 
