@@ -280,11 +280,25 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return err
 	}
 
+	// Get `Time to live` after failed backup was marked as `Error` or `Unknown`,
+	failedBackupTTL, err := bvc.ds.GetSettingAsInt(types.SettingNameFailedBackupTTL)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to get %v setting, and it will skip the auto-deletion for the failed backups", types.SettingNameFailedBackupTTL)
+	}
+
 	clustersSet := sets.NewString()
 	for _, b := range clusterBackups {
 		// Skip the Backup CR which is created from the local cluster and
 		// the snapshot backup hasn't be completed or pulled from the remote backup target yet
 		if b.Spec.SnapshotName != "" && b.Status.State != longhorn.BackupStateCompleted {
+			if b.Status.State == longhorn.BackupStateError || b.Status.State == longhorn.BackupStateUnknown {
+				// Failed backup `LastSyncedAt` should not be updated after it was marked as `Error` or `Unknown`
+				if failedBackupTTL > 0 && time.Now().After(b.Status.LastSyncedAt.Add(time.Duration(failedBackupTTL)*time.Minute)) {
+					if err = bvc.ds.DeleteBackup(b.Name); err != nil {
+						log.WithError(err).Errorf("failed to delete failed backup %s", b.Name)
+					}
+				}
+			}
 			continue
 		}
 		clustersSet.Insert(b.Name)

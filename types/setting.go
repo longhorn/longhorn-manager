@@ -81,6 +81,7 @@ const (
 	SettingNameBackingImageRecoveryWaitInterval             = SettingName("backing-image-recovery-wait-interval")
 	SettingNameGuaranteedEngineManagerCPU                   = SettingName("guaranteed-engine-manager-cpu")
 	SettingNameGuaranteedReplicaManagerCPU                  = SettingName("guaranteed-replica-manager-cpu")
+	SettingNameFailedBackupTTL                              = SettingName("failed-backup-ttl")
 )
 
 var (
@@ -132,6 +133,7 @@ var (
 		SettingNameBackingImageRecoveryWaitInterval,
 		SettingNameGuaranteedEngineManagerCPU,
 		SettingNameGuaranteedReplicaManagerCPU,
+		SettingNameFailedBackupTTL,
 	}
 )
 
@@ -206,6 +208,7 @@ var (
 		SettingNameBackingImageRecoveryWaitInterval:             SettingDefinitionBackingImageRecoveryWaitInterval,
 		SettingNameGuaranteedEngineManagerCPU:                   SettingDefinitionGuaranteedEngineManagerCPU,
 		SettingNameGuaranteedReplicaManagerCPU:                  SettingDefinitionGuaranteedReplicaManagerCPU,
+		SettingNameFailedBackupTTL:                              SettingDefinitionFailedBackupTTL,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -246,6 +249,19 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "300",
+	}
+
+	SettingDefinitionFailedBackupTTL = SettingDefinition{
+		DisplayName: "Failed Backup Time to Live",
+		Description: "In minutes. This setting determines how long Longhorn will keep the backup resource that was failed. Set to 0 to disable the auto-deletion.\n" +
+			"Failed backups will be checked and cleaned up during backupstore polling which is controlled by **Backupstore Poll Interval** setting.\n" +
+			"Hence this value determines the minimal wait interval of the cleanup. And the actual cleanup interval is multiple of **Backupstore Poll Interval**.\n" +
+			"Disabling **Backupstore Poll Interval** also means to disable failed backup auto-deletion.\n\n",
+		Category: SettingCategoryBackup,
+		Type:     SettingTypeInt,
+		Required: true,
+		ReadOnly: false,
+		Default:  "1440",
 	}
 
 	SettingDefinitionCreateDefaultDiskLabeledNodes = SettingDefinition{
@@ -888,6 +904,14 @@ func ValidateInitSetting(name, value string) (err error) {
 	case SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit:
 		fallthrough
 	case SettingNameBackupstorePollInterval:
+		interval, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("value is not int: %v", err)
+		}
+		if interval < 0 {
+			return fmt.Errorf("the value %v shouldn't be less than 0", value)
+		}
+	case SettingNameFailedBackupTTL:
 		interval, err := strconv.Atoi(value)
 		if err != nil {
 			return fmt.Errorf("value is not int: %v", err)
