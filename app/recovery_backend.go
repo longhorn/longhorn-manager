@@ -13,9 +13,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/longhorn/longhorn-manager/recovery_backend/client"
 	"github.com/longhorn/longhorn-manager/recovery_backend/server"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util/client"
 )
 
 func RecoveryBackendServiceCommand() cli.Command {
@@ -63,7 +63,7 @@ func runRecoveryBackendServer(c *cli.Context) error {
 		return errors.Wrap(err, "unable to get client config")
 	}
 
-	client, err := client.New(ctx, cfg, namespace)
+	client, err := client.NewClient(ctx, cfg, namespace, true)
 	if err != nil {
 		return err
 	}

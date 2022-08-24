@@ -18,8 +18,8 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util/client"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
-	"github.com/longhorn/longhorn-manager/webhook/client"
 )
 
 const (
@@ -61,7 +61,7 @@ func New(ctx context.Context, cfg *rest.Config, namespace, webhookType string) *
 }
 
 func (s *WebhookServer) admissionWebhookListenAndServe() error {
-	client, err := client.New(s.context, s.cfg, s.namespace, s.webhookType)
+	client, err := client.NewClient(s.context, s.cfg, s.namespace, true)
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (s *WebhookServer) admissionWebhookListenAndServe() error {
 }
 
 func (s *WebhookServer) conversionWebhookListenAndServe() error {
-	client, err := client.New(s.context, s.cfg, s.namespace, s.webhookType)
+	client, err := client.NewClient(s.context, s.cfg, s.namespace, false)
 	if err != nil {
 		return err
 	}
