@@ -24,7 +24,7 @@ type Client struct {
 	Datastore *datastore.DataStore
 }
 
-func New(ctx context.Context, config *rest.Config, namespace string) (*Client, error) {
+func NewClient(ctx context.Context, config *rest.Config, namespace string, needDataStore bool) (*Client, error) {
 	if err := schemes.Register(v1.AddToScheme); err != nil {
 		return nil, err
 	}
@@ -36,26 +36,28 @@ func New(ctx context.Context, config *rest.Config, namespace string) (*Client, e
 
 	var ds *datastore.DataStore
 
-	kubeClient, err := clientset.NewForConfig(config)
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to get k8s client")
-	}
+	if needDataStore {
+		kubeClient, err := clientset.NewForConfig(config)
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to get k8s client")
+		}
 
-	lhClient, err := lhclientset.NewForConfig(config)
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to get lh client")
-	}
+		lhClient, err := lhclientset.NewForConfig(config)
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to get lh client")
+		}
 
-	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
-	lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, time.Second*30)
+		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
+		lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, time.Second*30)
 
-	ds = datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, namespace)
+		ds = datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, namespace)
 
-	go kubeInformerFactory.Start(ctx.Done())
-	go lhInformerFactory.Start(ctx.Done())
+		go kubeInformerFactory.Start(ctx.Done())
+		go lhInformerFactory.Start(ctx.Done())
 
-	if !ds.Sync(ctx.Done()) {
-		return nil, fmt.Errorf("datastore cache sync up failed")
+		if !ds.Sync(ctx.Done()) {
+			return nil, fmt.Errorf("datastore cache sync up failed")
+		}
 	}
 
 	return &Client{

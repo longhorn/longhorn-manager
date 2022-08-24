@@ -5,8 +5,8 @@ import (
 
 	"github.com/rancher/wrangler/pkg/webhook"
 
+	"github.com/longhorn/longhorn-manager/util/client"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
-	"github.com/longhorn/longhorn-manager/webhook/client"
 	"github.com/longhorn/longhorn-manager/webhook/resources/backingimage"
 	"github.com/longhorn/longhorn-manager/webhook/resources/backingimagedatasource"
 	"github.com/longhorn/longhorn-manager/webhook/resources/backingimagemanager"

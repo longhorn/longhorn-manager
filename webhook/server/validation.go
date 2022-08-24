@@ -7,8 +7,8 @@ import (
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+	"github.com/longhorn/longhorn-manager/util/client"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
-	"github.com/longhorn/longhorn-manager/webhook/client"
 	"github.com/longhorn/longhorn-manager/webhook/resources/backingimage"
 	"github.com/longhorn/longhorn-manager/webhook/resources/node"
 	"github.com/longhorn/longhorn-manager/webhook/resources/orphan"
