@@ -57,6 +57,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&SnapshotList{},
 		&SupportBundle{},
 		&SupportBundleList{},
+		&SystemBackup{},
+		&SystemBackupList{},
 		&SystemRestore{},
 		&SystemRestoreList{},
 	)
