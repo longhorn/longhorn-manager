@@ -52,4 +52,6 @@ type SnapshotExpansion interface{}
 
 type SupportBundleExpansion interface{}
 
+type SystemRestoreExpansion interface{}
+
 type VolumeExpansion interface{}
