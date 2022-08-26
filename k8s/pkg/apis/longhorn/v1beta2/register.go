@@ -57,6 +57,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&SnapshotList{},
 		&SupportBundle{},
 		&SupportBundleList{},
+		&SystemRestore{},
+		&SystemRestoreList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

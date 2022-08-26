@@ -58,6 +58,8 @@ type Interface interface {
 	Snapshots() SnapshotInformer
 	// SupportBundles returns a SupportBundleInformer.
 	SupportBundles() SupportBundleInformer
+	// SystemRestores returns a SystemRestoreInformer.
+	SystemRestores() SystemRestoreInformer
 	// Volumes returns a VolumeInformer.
 	Volumes() VolumeInformer
 }
@@ -156,6 +158,11 @@ func (v *version) Snapshots() SnapshotInformer {
 // SupportBundles returns a SupportBundleInformer.
 func (v *version) SupportBundles() SupportBundleInformer {
 	return &supportBundleInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// SystemRestores returns a SystemRestoreInformer.
+func (v *version) SystemRestores() SystemRestoreInformer {
+	return &systemRestoreInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Volumes returns a VolumeInformer.

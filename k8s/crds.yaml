@@ -2893,6 +2893,105 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.7.0
+  creationTimestamp: null
+  labels:
+    longhorn-manager: ""
+  name: systemrestores.longhorn.io
+spec:
+  group: longhorn.io
+  names:
+    kind: SystemRestore
+    listKind: SystemRestoreList
+    plural: systemrestores
+    shortNames:
+    - lhsr
+    singular: systemrestore
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: The system restore state
+      jsonPath: .status.state
+      name: State
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1beta2
+    schema:
+      openAPIV3Schema:
+        description: SystemRestore is where Longhorn stores system restore object
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: SystemRestoreSpec defines the desired state of the Longhorn SystemRestore
+            properties:
+              systemBackup:
+                description: The system backup name in the object store.
+                type: string
+            required:
+            - systemBackup
+            type: object
+          status:
+            description: SystemRestoreStatus defines the observed state of the Longhorn SystemRestore
+            properties:
+              conditions:
+                items:
+                  properties:
+                    lastProbeTime:
+                      description: Last time we probed the condition.
+                      type: string
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status to another.
+                      type: string
+                    message:
+                      description: Human-readable message indicating details about last transition.
+                      type: string
+                    reason:
+                      description: Unique, one-word, CamelCase reason for the condition's last transition.
+                      type: string
+                    status:
+                      description: Status is the status of the condition. Can be True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type is the type of the condition.
+                      type: string
+                  type: object
+                nullable: true
+                type: array
+              ownerID:
+                description: The node ID of the responsible controller to reconcile this SystemRestore.
+                type: string
+              sourceURL:
+                description: The source system backup URL.
+                type: string
+              state:
+                description: The system restore state.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.7.0
   labels:
     longhorn-manager: ""
   name: volumes.longhorn.io

@@ -154,6 +154,14 @@ type SupportBundleListerExpansion interface{}
 // SupportBundleNamespaceLister.
 type SupportBundleNamespaceListerExpansion interface{}
 
+// SystemRestoreListerExpansion allows custom methods to be added to
+// SystemRestoreLister.
+type SystemRestoreListerExpansion interface{}
+
+// SystemRestoreNamespaceListerExpansion allows custom methods to be added to
+// SystemRestoreNamespaceLister.
+type SystemRestoreNamespaceListerExpansion interface{}
+
 // VolumeListerExpansion allows custom methods to be added to
 // VolumeLister.
 type VolumeListerExpansion interface{}
