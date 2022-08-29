@@ -335,6 +335,20 @@ type SystemBackupInput struct {
 	Name string `json:"name"`
 }
 
+type SystemRestore struct {
+	client.Resource
+	Name         string                      `json:"name"`
+	SystemBackup string                      `json:"systemBackup"`
+	State        longhorn.SystemRestoreState `json:"state,omitempty"`
+	CreatedAt    string                      `json:"createdAt,omitempty"`
+	Error        string                      `json:"error,omitempty"`
+}
+
+type SystemRestoreInput struct {
+	Name         string `json:"name"`
+	SystemBackup string `json:"systemBackup"`
+}
+
 type Tag struct {
 	client.Resource
 	Name    string `json:"name"`
@@ -496,6 +510,7 @@ func NewSchema() *client.Schemas {
 	backupListOutputSchema(schemas.AddType("backupListOutput", BackupListOutput{}))
 	snapshotListOutputSchema(schemas.AddType("snapshotListOutput", SnapshotListOutput{}))
 	systemBackupSchema(schemas.AddType("systemBackup", SystemBackup{}))
+	systemRestoreSchema(schemas.AddType("systemRestore", SystemRestore{}))
 
 	return schemas
 }
@@ -959,6 +974,22 @@ func systemBackupSchema(systemBackup *client.Schema) {
 	name.Unique = true
 	name.Create = true
 	systemBackup.ResourceFields["name"] = name
+}
+
+func systemRestoreSchema(systemRestore *client.Schema) {
+	systemRestore.CollectionMethods = []string{"GET", "POST"}
+	systemRestore.ResourceMethods = []string{"GET", "DELETE"}
+
+	name := systemRestore.ResourceFields["name"]
+	name.Required = true
+	name.Unique = true
+	name.Create = true
+	systemRestore.ResourceFields["name"] = name
+
+	systemBackup := systemRestore.ResourceFields["systemBackup"]
+	systemBackup.Required = true
+	systemBackup.Unique = true
+	systemRestore.ResourceFields["systemBackup"] = systemBackup
 }
 
 func toSettingResource(setting *longhorn.Setting) *Setting {
@@ -1648,6 +1679,35 @@ func toSystemBackupResource(systemBackup *longhorn.SystemBackup) *SystemBackup {
 		ManagerImage: systemBackup.Status.ManagerImage,
 		State:        systemBackup.Status.State,
 		CreatedAt:    systemBackup.Status.CreatedAt.String(),
+		Error:        err,
+	}
+}
+
+func toSystemRestoreCollection(systemRestores []*longhorn.SystemRestore) *client.GenericCollection {
+	data := []interface{}{}
+	for _, systemRestore := range systemRestores {
+		data = append(data, toSystemRestoreResource(systemRestore))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "systemRestore"}}
+}
+
+func toSystemRestoreResource(systemRestore *longhorn.SystemRestore) *SystemRestore {
+	err := ""
+	if systemRestore.Status.State == longhorn.SystemRestoreStateError {
+		errCondition := types.GetCondition(systemRestore.Status.Conditions, longhorn.SystemRestoreConditionTypeError)
+		if errCondition.Status == longhorn.ConditionStatusTrue {
+			err = fmt.Sprintf("%v: %v", errCondition.Reason, errCondition.Message)
+		}
+	}
+	return &SystemRestore{
+		Resource: client.Resource{
+			Id:   systemRestore.Name,
+			Type: "systemRestore",
+		},
+		Name:         systemRestore.Name,
+		SystemBackup: systemRestore.Spec.SystemBackup,
+		State:        systemRestore.Status.State,
+		CreatedAt:    systemRestore.CreationTimestamp.String(),
 		Error:        err,
 	}
 }

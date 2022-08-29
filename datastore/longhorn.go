@@ -4030,3 +4030,68 @@ func (s *DataStore) ListSystemBackups() (map[string]*longhorn.SystemBackup, erro
 func (s *DataStore) ListSystemBackupsRO() ([]*longhorn.SystemBackup, error) {
 	return s.sbLister.SystemBackups(s.namespace).List(labels.Everything())
 }
+
+// CreateSystemRestore creates a Longhorn SystemRestore resource and verifies creation
+func (s *DataStore) CreateSystemRestore(systemRestore *longhorn.SystemRestore) (*longhorn.SystemRestore, error) {
+	ret, err := s.lhClient.LonghornV1beta2().SystemRestores(s.namespace).Create(context.TODO(), systemRestore, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "system restore", func(name string) (runtime.Object, error) {
+		return s.GetSystemRestoreRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	ret, ok := obj.(*longhorn.SystemRestore)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for SystemRestore")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// DeleteSystemRestore won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteSystemRestore(name string) error {
+	return s.lhClient.LonghornV1beta2().SystemRestores(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// GetSystemRestore returns a copy of SystemRestore with the given obj name
+func (s *DataStore) GetSystemRestore(name string) (*longhorn.SystemRestore, error) {
+	resultRO, err := s.GetSystemRestoreRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// GetSystemRestoreRO returns the SystemRestore with the given CR name
+func (s *DataStore) GetSystemRestoreRO(name string) (*longhorn.SystemRestore, error) {
+	return s.srLister.SystemRestores(s.namespace).Get(name)
+}
+
+func (s *DataStore) listSystemRestores(selector labels.Selector) (map[string]*longhorn.SystemRestore, error) {
+	list, err := s.srLister.SystemRestores(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.SystemRestore{}
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListSystemRestores returns an object contains all SystemRestores
+func (s *DataStore) ListSystemRestores() (map[string]*longhorn.SystemRestore, error) {
+	return s.listSystemRestores(labels.Everything())
+}
