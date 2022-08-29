@@ -3972,3 +3972,61 @@ func (s *DataStore) CreateSupportBundle(supportBundle *longhorn.SupportBundle) (
 func (s *DataStore) DeleteSupportBundle(name string) error {
 	return s.lhClient.LonghornV1beta2().SupportBundles(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
+
+// CreateSystemBackup creates a Longhorn SystemBackup and verifies creation
+func (s *DataStore) CreateSystemBackup(systemBackup *longhorn.SystemBackup) (*longhorn.SystemBackup, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, systemBackup); err != nil {
+		return nil, err
+	}
+
+	ret, err := s.lhClient.LonghornV1beta2().SystemBackups(s.namespace).Create(context.TODO(), systemBackup, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "system backup", func(name string) (runtime.Object, error) {
+		return s.GetSystemBackupRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	ret, ok := obj.(*longhorn.SystemBackup)
+	if !ok {
+		return nil, errors.Errorf("BUG: datastore: verifyCreation returned wrong type for SystemBackup")
+	}
+	return ret.DeepCopy(), nil
+}
+
+// DeleteSystemBackup won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteSystemBackup(name string) error {
+	return s.lhClient.LonghornV1beta2().SystemBackups(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// GetSystemBackupRO returns the SystemBackup with the given name
+func (s *DataStore) GetSystemBackupRO(name string) (*longhorn.SystemBackup, error) {
+	return s.sbLister.SystemBackups(s.namespace).Get(name)
+}
+
+// ListSystemBackups returns a copy of the object contains all SystemBackups
+func (s *DataStore) ListSystemBackups() (map[string]*longhorn.SystemBackup, error) {
+	list, err := s.ListSystemBackupsRO()
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.SystemBackup{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListSystemBackupsRO returns an object contains all SystemBackups
+func (s *DataStore) ListSystemBackupsRO() ([]*longhorn.SystemBackup, error) {
+	return s.sbLister.SystemBackups(s.namespace).List(labels.Everything())
+}

@@ -173,6 +173,11 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("DELETE").Path("/v1/supportbundles/{name}/{bundleName}").Handler(f(schemas,
 		s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(OwnerIDFromNode(s.m)), s.SupportBundleDelete)))
 
+	r.Methods("POST").Path("/v1/systembackups").Handler(f(schemas, s.SystemBackupCreate))
+	r.Methods("GET").Path("/v1/systembackups").Handler(f(schemas, s.SystemBackupList))
+	r.Methods("GET").Path("/v1/systembackups/{name}").Handler(f(schemas, s.SystemBackupGet))
+	r.Methods("DELETE").Path("/v1/systembackups/{name}").Handler(f(schemas, s.SystemBackupDelete))
+
 	settingListStream := NewStreamHandlerFunc("settings", s.wsc.NewWatcher("setting"), s.settingList)
 	r.Path("/v1/ws/settings").Handler(f(schemas, settingListStream))
 	r.Path("/v1/ws/{period}/settings").Handler(f(schemas, settingListStream))
@@ -216,6 +221,10 @@ func NewRouter(s *Server) *mux.Router {
 	backupStream := NewStreamHandlerFunc("backups", s.wsc.NewWatcher("backup"), s.backupListAll)
 	r.Path("/v1/ws/backups").Handler(f(schemas, backupStream))
 	r.Path("/v1/ws/{period}/backups").Handler(f(schemas, backupStream))
+
+	systemBackupStream := NewStreamHandlerFunc("systembackups", s.wsc.NewWatcher("systemBackup"), s.systemBackupList)
+	r.Path("/v1/ws/systembackups").Handler(f(schemas, systemBackupStream))
+	r.Path("/v1/ws/{period}/systembackups").Handler(f(schemas, systemBackupStream))
 
 	eventListStream := NewStreamHandlerFunc("events", s.wsc.NewWatcher("event"), s.eventList)
 	r.Path("/v1/ws/events").Handler(f(schemas, eventListStream))
