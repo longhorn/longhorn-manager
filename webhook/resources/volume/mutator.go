@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -15,8 +18,6 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
-	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 )
 
 type volumeMutator struct {
@@ -97,7 +98,23 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 
 	if string(volume.Spec.AccessMode) == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/accessMode", "value": "%s"}`, string(longhorn.AccessModeReadWriteOnce)))
+		accessModeFromBackup := longhorn.AccessModeReadWriteOnce
+		if volume.Spec.FromBackup != "" {
+			bName, _, _, err := backupstore.DecodeBackupURL(volume.Spec.FromBackup)
+			if err != nil {
+				err := errors.Wrapf(err, "failed to decode backup url %v", volume.Spec.FromBackup)
+				return nil, werror.NewInvalidError(err.Error(), "")
+			}
+			backup, err := v.ds.GetBackupRO(bName)
+			if err != nil {
+				err = errors.Wrapf(err, "failed to get backup %v", bName)
+				return nil, werror.NewInvalidError(err.Error(), "")
+			}
+			if labelAccessMode, isExist := backup.Status.Labels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)]; isExist {
+				accessModeFromBackup = longhorn.AccessMode(labelAccessMode)
+			}
+		}
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/accessMode", "value": "%s"}`, string(accessModeFromBackup)))
 	}
 
 	size := volume.Spec.Size
