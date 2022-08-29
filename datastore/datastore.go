@@ -65,6 +65,8 @@ type DataStore struct {
 	SnapshotInformer               cache.SharedInformer
 	supportBundleLister            lhlisters.SupportBundleLister
 	SupportBundleInformer          cache.SharedInformer
+	sbLister                       lhlisters.SystemBackupLister
+	SystemBackupInformer           cache.SharedInformer
 
 	kubeClient                    clientset.Interface
 	pLister                       corelisters.PodLister
@@ -145,6 +147,8 @@ func NewDataStore(
 	cacheSyncs = append(cacheSyncs, snapInformer.Informer().HasSynced)
 	supportBundleInformer := lhInformerFactory.Longhorn().V1beta2().SupportBundles()
 	cacheSyncs = append(cacheSyncs, supportBundleInformer.Informer().HasSynced)
+	systemBackupInformer := lhInformerFactory.Longhorn().V1beta2().SystemBackups()
+	cacheSyncs = append(cacheSyncs, systemBackupInformer.Informer().HasSynced)
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	cacheSyncs = append(cacheSyncs, podInformer.Informer().HasSynced)
@@ -219,6 +223,8 @@ func NewDataStore(
 		SnapshotInformer:               snapInformer.Informer(),
 		supportBundleLister:            supportBundleInformer.Lister(),
 		SupportBundleInformer:          supportBundleInformer.Informer(),
+		sbLister:                       systemBackupInformer.Lister(),
+		SystemBackupInformer:           systemBackupInformer.Informer(),
 
 		kubeClient:                    kubeClient,
 		pLister:                       podInformer.Lister(),
