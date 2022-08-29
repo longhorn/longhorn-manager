@@ -102,6 +102,7 @@ const (
 	LonghornLabelOrphan                   = "orphan"
 	LonghornLabelOrphanType               = "orphan-type"
 	LonghornLabelCRDAPIVersion            = "crd-api-version"
+	LonghornLabelVolumeAccessMode         = "volume-access-mode"
 
 	LonghornLabelValueEnabled = "enabled"
 
