@@ -126,10 +126,11 @@ github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/rpc
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20221114044558-19f4902cd4fd
+# github.com/longhorn/backupstore v0.0.0-20221206091653-a8c2a47673e2
 ## explicit; go 1.13
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
+github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/util
 # github.com/longhorn/go-iscsi-helper v0.0.0-20221109111031-ebff48f3632a
 ## explicit; go 1.13
