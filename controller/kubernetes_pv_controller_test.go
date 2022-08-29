@@ -22,6 +22,7 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 
 	. "gopkg.in/check.v1"
 )
@@ -161,8 +162,8 @@ func newPodWithPVC(podName string) *apiv1.Pod {
 }
 
 func newTestKubernetesPVController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
-	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *KubernetesPVController {
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, TestNamespace)
+	lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset) *KubernetesPVController {
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
 
 	logger := logrus.StandardLogger()
 	kc := NewKubernetesPVController(logger, ds, scheme.Scheme, kubeClient, TestNode1)
@@ -462,7 +463,9 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		pvcIndexer := kubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
-		kc := newTestKubernetesPVController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
+		extensionsClient := apiextensionsfake.NewSimpleClientset()
+
+		kc := newTestKubernetesPVController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, extensionsClient)
 
 		// Need to create pv, pvc, pod and longhorn volume
 		var v *longhorn.Volume

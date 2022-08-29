@@ -19,6 +19,7 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 
 	. "gopkg.in/check.v1"
 )
@@ -54,10 +55,10 @@ const (
 var longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 
 func newReplicaScheduler(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
-	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *ReplicaScheduler {
+	lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset) *ReplicaScheduler {
 	fmt.Printf("testing NewReplicaScheduler\n")
 
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, TestNamespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
 	return NewReplicaScheduler(ds)
 }
 
@@ -726,6 +727,8 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 
+		extensionsClient := apiextensionsfake.NewSimpleClientset()
+
 		vIndexer := lhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
 		rIndexer := lhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
 		nIndexer := lhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
@@ -733,7 +736,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		sIndexer := lhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
-		s := newReplicaScheduler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
+		s := newReplicaScheduler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, extensionsClient)
 		// create daemon pod
 		for _, daemon := range tc.daemons {
 			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), daemon, metav1.CreateOptions{})

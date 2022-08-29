@@ -255,6 +255,20 @@ func getBackupTargetClient(ds *datastore.DataStore, backupTarget *longhorn.Backu
 	return engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential), nil
 }
 
+func getBackupTargetClientDefault(ds *datastore.DataStore) (*engineapi.BackupTargetClient, error) {
+	backupTarget, err := ds.GetDefaultBackupTargetRO()
+	if err != nil {
+		return nil, err
+	}
+
+	backupTargetClient, err := getBackupTargetClient(ds, backupTarget)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get default backup target client")
+	}
+
+	return backupTargetClient, nil
+}
+
 func (btc *BackupTargetController) reconcile(name string) (err error) {
 	backupTarget, err := btc.ds.GetBackupTarget(name)
 	if err != nil {

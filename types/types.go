@@ -30,6 +30,8 @@ const (
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
+	KubernetesKindServiceAccount = "ServiceAccount"
+
 	CRDAPIVersionV1alpha1 = "longhorn.rancher.io/v1alpha1"
 	CRDAPIVersionV1beta1  = "longhorn.io/v1beta1"
 	CRDAPIVersionV1beta2  = "longhorn.io/v1beta2"

@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/wrangler/pkg/schemes"
 
 	v1 "k8s.io/api/apps/v1"
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -42,6 +43,11 @@ func NewClient(ctx context.Context, config *rest.Config, namespace string, needD
 			return nil, errors.Wrap(err, "unable to get k8s client")
 		}
 
+		extensionsClient, err := apiextensionsclientset.NewForConfig(config)
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to get k8s extension client")
+		}
+
 		lhClient, err := lhclientset.NewForConfig(config)
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to get lh client")
@@ -50,7 +56,7 @@ func NewClient(ctx context.Context, config *rest.Config, namespace string, needD
 		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
 		lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, time.Second*30)
 
-		ds = datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, namespace)
+		ds = datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, namespace)
 
 		go kubeInformerFactory.Start(ctx.Done())
 		go lhInformerFactory.Start(ctx.Done())

@@ -27,6 +27,7 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 
 	. "gopkg.in/check.v1"
 )
@@ -50,9 +51,9 @@ func initSettingsNameValue(name, value string) *longhorn.Setting {
 }
 
 func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
-	lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
+	lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
 	controllerID string) *VolumeController {
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, TestNamespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
 
 	proxyConnCounter := util.NewAtomicCounter()
 
@@ -1314,7 +1315,9 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		knIndexer := kubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
 		sIndexer := lhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 
-		vc := newTestVolumeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, TestOwnerID1)
+		extensionsClient := apiextensionsfake.NewSimpleClientset()
+
+		vc := newTestVolumeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, extensionsClient, TestOwnerID1)
 
 		// Need to create daemon pod for node
 		daemon1 := newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)

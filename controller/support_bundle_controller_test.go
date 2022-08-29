@@ -21,6 +21,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -147,13 +148,15 @@ func (s *TestSuite) TestReconcileSupportBundle(c *C) {
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 
+		extensionsClient := apiextensionsfake.NewSimpleClientset()
+
 		fakeSupportBundleNamespace(c, kubeInformerFactory, kubeClient)
 		fakeSupportBundleManagerImageSetting(c, lhInformerFactory, lhClient)
 		fakeSupportBundleFailedHistoryLimitSetting(tc.supportBundleFailedHistoryLimit, c, lhInformerFactory, lhClient)
 
 		supportBundleController := newFakeSupportBundleController(
 			lhInformerFactory, kubeInformerFactory,
-			lhClient, kubeClient,
+			lhClient, kubeClient, extensionsClient,
 			tc.controllerID,
 		)
 
@@ -196,9 +199,10 @@ func newFakeSupportBundleController(
 	kubeInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset,
 	kubeClient *fake.Clientset,
+	extensionsClient *apiextensionsfake.Clientset,
 	controllerID string) *SupportBundleController {
 
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, TestNamespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
 
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)

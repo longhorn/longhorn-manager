@@ -3,6 +3,7 @@ package constant
 const (
 	EventReasonCreate         = "Create"
 	EventReasonFailedCreating = "FailedCreating"
+	EventReasonCreated        = "Created"
 	EventReasonDelete         = "Delete"
 	EventReasonDeleting       = "Deleting"
 	EventReasonFailedDeleting = "FailedDeleting"
@@ -45,9 +46,11 @@ const (
 
 	EventReasonFetching = "Fetching"
 	EventReasonSyncing  = "Syncing"
+	EventReasonSynced   = "Synced"
 
 	EventReasonFailedSnapshotDataIntegrityCheck = "FailedSnapshotDataIntegrityCheck"
 
-	EventReasonFailed = "Failed"
-	EventReasonReady  = "Ready"
+	EventReasonFailed   = "Failed"
+	EventReasonReady    = "Ready"
+	EventReasonUploaded = "Uploaded"
 )

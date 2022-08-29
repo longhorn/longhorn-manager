@@ -832,3 +832,14 @@ func (s *DataStore) UpdatePVAnnotation(volume *longhorn.Volume, annotationKey, a
 
 	return err
 }
+
+// DeleteJob delete a Job resource for the given job name in Longhorn namespace
+func (s *DataStore) DeleteJob(name string) error {
+	propagation := metav1.DeletePropagationForeground
+	return s.kubeClient.BatchV1().Jobs(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
+}
+
+// GetJob get a Job resource for the given job name in Longhorn namespace
+func (s *DataStore) GetJob(name string) (*batchv1.Job, error) {
+	return s.kubeClient.BatchV1().Jobs(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
