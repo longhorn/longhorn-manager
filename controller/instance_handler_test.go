@@ -18,10 +18,12 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/types"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
-	"github.com/longhorn/longhorn-manager/types"
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 
 	. "gopkg.in/check.v1"
 )
@@ -398,7 +400,9 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 		sIndexer := lhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
-		h := newTestInstanceHandler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
+		extensionsClient := apiextensionsfake.NewSimpleClientset()
+
+		h := newTestInstanceHandler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, extensionsClient)
 
 		ei, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
@@ -455,8 +459,8 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 }
 
 func newTestInstanceHandler(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
-	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *InstanceHandler {
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, TestNamespace)
+	lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset) *InstanceHandler {
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
 	fakeRecorder := record.NewFakeRecorder(100)
 	return NewInstanceHandler(ds, &MockInstanceManagerHandler{}, fakeRecorder)
 }

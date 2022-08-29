@@ -46,7 +46,7 @@ func (btc *BackupTargetClient) DownloadSystemBackup(name, version, downloadPath 
 	}
 
 	_, err = btc.ExecuteEngineBinaryWithTimeout(
-		time.Duration(datastore.SystemRestoreTimeout)*time.Second,
+		time.Duration(datastore.SystemBackupTimeout)*time.Second,
 		"system-backup", "download", systemBackupURL, downloadPath,
 	)
 	if err != nil {

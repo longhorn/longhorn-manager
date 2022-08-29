@@ -21,6 +21,7 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 
 	. "gopkg.in/check.v1"
 )
@@ -48,12 +49,12 @@ type EngineImageControllerTestCase struct {
 }
 
 func newTestEngineImageController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
-	lhClient *lhfake.Clientset, kubeClient *fake.Clientset) *EngineImageController {
+	lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset) *EngineImageController {
 
 	// Skip the Lister check that occurs on creation of an Instance Manager.
 	datastore.SkipListerCheck = true
 
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, TestNamespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
 
 	logger := logrus.StandardLogger()
 	ic := NewEngineImageController(
@@ -203,6 +204,8 @@ func (s *TestSuite) TestEngineImage(c *C) {
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 
+		extentionClient := apiextensionsfake.NewSimpleClientset()
+
 		dsIndexer := kubeInformerFactory.Apps().V1().DaemonSets().Informer().GetIndexer()
 		podIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
@@ -212,7 +215,7 @@ func (s *TestSuite) TestEngineImage(c *C) {
 		vIndexer := lhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
 		eIndexer := lhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
 
-		ic := newTestEngineImageController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient)
+		ic := newTestEngineImageController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, extentionClient)
 
 		setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), newSetting(string(types.SettingNameDefaultEngineImage), tc.defaultEngineImage), metav1.CreateOptions{})
 		c.Assert(err, IsNil)

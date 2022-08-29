@@ -30,6 +30,7 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v2"
 
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -951,4 +952,32 @@ func SortKeys(mapObj interface{}) ([]string, error) {
 	}
 	sort.Strings(keys)
 	return keys, nil
+}
+
+func EncodeToYAMLFile(obj interface{}, path string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to generate %v", path)
+	}()
+
+	err = os.MkdirAll(filepath.Dir(path), os.FileMode(0755))
+	if err != nil {
+		return
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	encoder := yaml.NewEncoder(f)
+	if err = encoder.Encode(obj); err != nil {
+		return
+	}
+
+	if err = encoder.Close(); err != nil {
+		return
+	}
+
+	return nil
 }

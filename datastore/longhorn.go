@@ -3176,6 +3176,11 @@ func (s *DataStore) ListBackupTargets() (map[string]*longhorn.BackupTarget, erro
 	return itemMap, nil
 }
 
+// GetDefaultBackupTargetRO returns the BackupTarget for the default backup target
+func (s *DataStore) GetDefaultBackupTargetRO() (*longhorn.BackupTarget, error) {
+	return s.GetBackupTargetRO(types.DefaultBackupTargetName)
+}
+
 // GetBackupTargetRO returns the BackupTarget with the given backup target name in the cluster
 func (s *DataStore) GetBackupTargetRO(backupTargetName string) (*longhorn.BackupTarget, error) {
 	return s.btLister.BackupTargets(s.namespace).Get(backupTargetName)
@@ -3975,10 +3980,6 @@ func (s *DataStore) DeleteSupportBundle(name string) error {
 
 // CreateSystemBackup creates a Longhorn SystemBackup and verifies creation
 func (s *DataStore) CreateSystemBackup(systemBackup *longhorn.SystemBackup) (*longhorn.SystemBackup, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, systemBackup); err != nil {
-		return nil, err
-	}
-
 	ret, err := s.lhClient.LonghornV1beta2().SystemBackups(s.namespace).Create(context.TODO(), systemBackup, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
@@ -4005,6 +4006,51 @@ func (s *DataStore) CreateSystemBackup(systemBackup *longhorn.SystemBackup) (*lo
 // DeleteSystemBackup won't result in immediately deletion since finalizer was set by default
 func (s *DataStore) DeleteSystemBackup(name string) error {
 	return s.lhClient.LonghornV1beta2().SystemBackups(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForSystemBackup results in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForSystemBackup(obj *longhorn.SystemBackup) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+
+	_, err := s.lhClient.LonghornV1beta2().SystemBackups(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for SystemBackup %v", obj.Name)
+	}
+	return nil
+}
+
+// UpdateSystemBackupStatus updates Longhorn SystemBackup status and verifies update
+func (s *DataStore) UpdateSystemBackupStatus(systemBackup *longhorn.SystemBackup) (*longhorn.SystemBackup, error) {
+	obj, err := s.lhClient.LonghornV1beta2().SystemBackups(s.namespace).UpdateStatus(context.TODO(), systemBackup, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	verifyUpdate(systemBackup.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetSystemBackupRO(name)
+	})
+	return obj, nil
+}
+
+// GetSystemBackup returns a copy of SystemBackup with the given name
+func (s *DataStore) GetSystemBackup(name string) (*longhorn.SystemBackup, error) {
+	resultRO, err := s.GetSystemBackupRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
 }
 
 // GetSystemBackupRO returns the SystemBackup with the given name
