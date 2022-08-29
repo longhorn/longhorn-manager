@@ -489,8 +489,9 @@ github.com/lithammer/dedent v1.1.0/go.mod h1:jrXYCQtgg0nJiN+StA2KgR7w6CiQNv9Fd/Z
 github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f h1:nvvJ/RZrUIgl2FrEcxRYtKh2V9mJjoHll/dK6bMBp7Q=
 github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f/go.mod h1:J6PTXyXw5Dvzx+0Aeixl+7TPBWPWQzdIQHh+GeSCjsg=
 github.com/longhorn/backupstore v0.0.0-20210817080617-8ea3843e6b0d/go.mod h1:FUjQNWqcEXSFIrQpfWLxFFHXywk14mM5w9TNRuBrKzY=
-github.com/longhorn/backupstore v0.0.0-20221114044558-19f4902cd4fd h1:dRGV5NNnYWoxtYHhm48YVwvhioU2U0Dote+vbgcR8WQ=
 github.com/longhorn/backupstore v0.0.0-20221114044558-19f4902cd4fd/go.mod h1:hvIVsrpjPey7KupirAh0WoPMg0ArWnE6fA5bI30X7AI=
+github.com/longhorn/backupstore v0.0.0-20221206091653-a8c2a47673e2 h1:bkHTz6p9ZMMo1zkx7cv3GopFFmtZl8awp4jRDs4ddfE=
+github.com/longhorn/backupstore v0.0.0-20221206091653-a8c2a47673e2/go.mod h1:hvIVsrpjPey7KupirAh0WoPMg0ArWnE6fA5bI30X7AI=
 github.com/longhorn/go-iscsi-helper v0.0.0-20210330030558-49a327fb024e/go.mod h1:9z/y9glKmWEdV50tjlUPxFwi1goQfIrrsoZbnMyIZbY=
 github.com/longhorn/go-iscsi-helper v0.0.0-20221109111031-ebff48f3632a h1:qinBI/kkZa7Lyy7jgSpox80YA/2lGtcogBClOMLmzVM=
 github.com/longhorn/go-iscsi-helper v0.0.0-20221109111031-ebff48f3632a/go.mod h1:9z/y9glKmWEdV50tjlUPxFwi1goQfIrrsoZbnMyIZbY=

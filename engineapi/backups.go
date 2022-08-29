@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -84,6 +85,14 @@ func (btc *BackupTargetClient) ExecuteEngineBinary(args ...string) (string, erro
 		return "", err
 	}
 	return util.Execute(envs, btc.LonghornEngineBinary(), args...)
+}
+
+func (btc *BackupTargetClient) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...string) (string, error) {
+	envs, err := getBackupCredentialEnv(btc.URL, btc.Credential)
+	if err != nil {
+		return "", err
+	}
+	return util.ExecuteWithTimeout(timeout, envs, btc.LonghornEngineBinary(), args...)
 }
 
 func (btc *BackupTargetClient) ExecuteEngineBinaryWithoutTimeout(args ...string) (string, error) {
