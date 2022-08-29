@@ -1,12 +1,17 @@
 package backup
 
 import (
+	"encoding/json"
+	"fmt"
+
 	"github.com/pkg/errors"
+
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	common "github.com/longhorn/longhorn-manager/webhook/common"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
@@ -49,6 +54,32 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 		return nil, werror.NewInvalidError(err.Error(), "")
 	}
 	patchOps = append(patchOps, patchOp)
+
+	backupLabels := backup.Spec.Labels
+	if backupLabels == nil {
+		backupLabels = make(map[string]string)
+	}
+	volumeName, isExist := backup.Labels[types.LonghornLabelBackupVolume]
+	if !isExist {
+		err := errors.Wrapf(err, "cannot find the backup volume label for backup %v", backup.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	volume, err := b.ds.GetVolumeRO(volumeName)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get volume %v", volumeName)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	volumeAccessMode := volume.Spec.AccessMode
+	if volume.Spec.AccessMode == "" {
+		volumeAccessMode = longhorn.AccessModeReadWriteOnce
+	}
+	backupLabels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)] = string(volumeAccessMode)
+
+	valueBackupLabels, err := json.Marshal(backupLabels)
+	if err != nil {
+		return nil, werror.NewInvalidError(errors.Wrapf(err, "failed to convert backup labels into JSON string").Error(), "")
+	}
+	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/labels", "value": %s}`, string(valueBackupLabels)))
 
 	return patchOps, nil
 }
