@@ -102,6 +102,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	snapc := NewSnapshotController(logger, ds, scheme, kubeClient, namespace, controllerID, &engineapi.EngineCollection{}, proxyConnCounter)
 	bundlec := NewSupportBundleController(logger, ds, scheme, kubeClient, controllerID, namespace, serviceAccount)
 	sbc := NewSystemBackupController(logger, ds, scheme, kubeClient, namespace, controllerID, managerImage)
+	src := NewSystemRestoreController(logger, ds, scheme, kubeClient, namespace, controllerID)
 	kpvc := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID)
 	knc := NewKubernetesNodeController(logger, ds, scheme, kubeClient, controllerID)
 	kpc := NewKubernetesPodController(logger, ds, scheme, kubeClient, controllerID)
@@ -133,6 +134,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	go snapc.Run(Workers, stopCh)
 	go bundlec.Run(Workers, stopCh)
 	go sbc.Run(Workers, stopCh)
+	go src.Run(Workers, stopCh)
 
 	go kpvc.Run(Workers, stopCh)
 	go knc.Run(Workers, stopCh)
