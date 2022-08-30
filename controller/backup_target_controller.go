@@ -222,7 +222,7 @@ func getBackupTarget(controllerID string, backupTarget *longhorn.BackupTarget, d
 		return nil, nil, err
 	}
 
-	backupTargetClient, err = getBackupTargetClient(ds, backupTarget)
+	backupTargetClient, err = newBackupTargetClientFromDefaultEngineImage(ds, backupTarget)
 	if err != nil {
 		engineClientProxy.Close()
 		return nil, nil, err
@@ -231,11 +231,10 @@ func getBackupTarget(controllerID string, backupTarget *longhorn.BackupTarget, d
 	return engineClientProxy, backupTargetClient, nil
 }
 
-func getBackupTargetClient(ds *datastore.DataStore, backupTarget *longhorn.BackupTarget) (*engineapi.BackupTargetClient, error) {
-	defaultEngineImage, err := ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
-	if err != nil {
-		return nil, err
-	}
+func newBackupTargetClient(ds *datastore.DataStore, backupTarget *longhorn.BackupTarget, engineImage string) (backupTargetClient *engineapi.BackupTargetClient, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to get %v backup target client on %v", backupTarget.Name, engineImage)
+	}()
 
 	backupType, err := util.CheckBackupType(backupTarget.Spec.BackupTargetURL)
 	if err != nil {
@@ -252,21 +251,16 @@ func getBackupTargetClient(ds *datastore.DataStore, backupTarget *longhorn.Backu
 			return nil, err
 		}
 	}
-	return engineapi.NewBackupTargetClient(defaultEngineImage, backupTarget.Spec.BackupTargetURL, credential), nil
+	return engineapi.NewBackupTargetClient(engineImage, backupTarget.Spec.BackupTargetURL, credential), nil
 }
 
-func getBackupTargetClientDefault(ds *datastore.DataStore) (*engineapi.BackupTargetClient, error) {
-	backupTarget, err := ds.GetDefaultBackupTargetRO()
+func newBackupTargetClientFromDefaultEngineImage(ds *datastore.DataStore, backupTarget *longhorn.BackupTarget) (*engineapi.BackupTargetClient, error) {
+	defaultEngineImage, err := ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if err != nil {
 		return nil, err
 	}
 
-	backupTargetClient, err := getBackupTargetClient(ds, backupTarget)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get default backup target client")
-	}
-
-	return backupTargetClient, nil
+	return newBackupTargetClient(ds, backupTarget, defaultEngineImage)
 }
 
 func (btc *BackupTargetController) reconcile(name string) (err error) {

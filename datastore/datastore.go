@@ -24,6 +24,9 @@ var (
 
 	// SystemBackupTimeout is the timeout for system backup
 	SystemBackupTimeout = 60 * 60 // 1 hours
+
+	// SystemRestoreTimeout is the timeout for system restore
+	SystemRestoreTimeout = 24 * 60 * 60 // 24 hours
 )
 
 // DataStore object

@@ -289,6 +289,13 @@ func (s *DataStore) GetAllLonghornEngineImages() (runtime.Object, error) {
 	return s.lhClient.LonghornV1beta2().EngineImages(s.namespace).List(context.TODO(), metav1.ListOptions{})
 }
 
+// GetLonghornEngineImage returns the uncached EngineImage in Longhorn
+// namespace directly from the API server.
+// Direct retrieval from the API server should only be used for one-shot tasks.
+func (s *DataStore) GetLonghornEngineImage(name string) (runtime.Object, error) {
+	return s.lhClient.LonghornV1beta2().EngineImages(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
 // GetAllLonghornVolumes returns an uncached list of Volumes in Longhorn
 // namespace directly from the API server.
 // Using cached informers should be preferred but current lister doesn't have a

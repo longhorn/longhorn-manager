@@ -26,11 +26,45 @@ const (
 	LonghornKindBackingImage        = "BackingImage"
 	LonghornKindBackingImageManager = "BackingImageManager"
 	LonghornKindRecurringJob        = "RecurringJob"
+	LonghornKindSetting             = "Setting"
 	LonghornKindSupportBundle       = "SupportBundle"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
-	KubernetesKindServiceAccount = "ServiceAccount"
+	LonghornKindEngineImageList  = "EngineImageList"
+	LonghornKindRecurringJobList = "RecurringJobList"
+	LonghornKindSettingList      = "SettingList"
+	LonghornKindVolumeList       = "VolumeList"
+
+	KubernetesKindClusterRole           = "ClusterRole"
+	KubernetesKindClusterRoleBinding    = "ClusterRoleBinding"
+	KubernetesKindConfigMap             = "ConfigMap"
+	KubernetesKindDaemonSet             = "DaemonSet"
+	KubernetesKindDeployment            = "Deployment"
+	KubernetesKindPersistentVolume      = "PersistentVolume"
+	KubernetesKindPersistentVolumeClaim = "PersistentVolumeClaim"
+	KubernetesKindPodSecurityPolicy     = "PodSecurityPolicy"
+	KubernetesKindRole                  = "Role"
+	KubernetesKindRoleBinding           = "RoleBinding"
+	KubernetesKindServiceAccount        = "ServiceAccount"
+	KubernetesKindStorageClass          = "StorageClass"
+
+	KubernetesKindClusterRoleList           = "ClusterRoleList"
+	KubernetesKindClusterRoleBindingList    = "ClusterRoleBindingList"
+	KubernetesKindConfigMapList             = "ConfigMapList"
+	KubernetesKindDaemonSetList             = "DaemonSetList"
+	KubernetesKindDeploymentList            = "DeploymentList"
+	KubernetesKindPersistentVolumeList      = "PersistentVolumeList"
+	KubernetesKindPersistentVolumeClaimList = "PersistentVolumeClaimList"
+	KubernetesKindPodSecurityPolicyList     = "PodSecurityPolicyList"
+	KubernetesKindRoleList                  = "RoleList"
+	KubernetesKindRoleBindingList           = "RoleBindingList"
+	KubernetesKindServiceAccountList        = "ServiceAccountList"
+	KubernetesKindStorageClassList          = "StorageClassList"
+
+	APIExtensionsKindCustomResourceDefinition = "CustomResourceDefinition"
+
+	APIExtensionsKindCustomResourceDefinitionList = "CustomResourceDefinitionList"
 
 	CRDAPIVersionV1alpha1 = "longhorn.rancher.io/v1alpha1"
 	CRDAPIVersionV1beta1  = "longhorn.io/v1beta1"
@@ -120,6 +154,9 @@ const (
 	LonghornLabelVolumeAccessMode         = "volume-access-mode"
 	LonghornLabelFollowGlobalSetting      = "follow-global-setting"
 	LonghornLabelSystemRestore            = "system-restore"
+	LonghornLabelLastSystemRestore        = "last-system-restored"
+	LonghornLabelLastSystemRestoreAt      = "last-system-restored-at"
+	LonghornLabelLastSystemRestoreBackup  = "last-system-restored-backup"
 	LonghornLabelVersion                  = "version"
 
 	LonghornLabelValueEnabled = "enabled"
@@ -480,8 +517,26 @@ func GetRecoveryBackendConfigMapLabels() map[string]string {
 	return labels
 }
 
+func GetSystemRestoreInProgressLabel() map[string]string {
+	return map[string]string{
+		GetSystemRestoreLabelKey(): string(longhorn.SystemRestoreStateInProgress),
+	}
+}
+
 func GetSystemRestoreLabelKey() string {
 	return GetLonghornLabelKey(LonghornLabelSystemRestore)
+}
+
+func GetLastSystemRestoreLabelKey() string {
+	return GetLonghornLabelKey(LonghornLabelLastSystemRestore)
+}
+
+func GetLastSystemRestoreAtLabelKey() string {
+	return GetLonghornLabelKey(LonghornLabelLastSystemRestoreAt)
+}
+
+func GetLastSystemRestoreBackupLabelKey() string {
+	return GetLonghornLabelKey(LonghornLabelLastSystemRestoreBackup)
 }
 
 func GetVersionLabelKey() string {
