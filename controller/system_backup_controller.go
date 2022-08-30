@@ -263,7 +263,12 @@ func (c *SystemBackupController) syncSystemBackup(key string) (err error) {
 		return nil
 	}
 
-	backupTargetClient, err := getBackupTargetClientDefault(c.ds)
+	backupTarget, err := c.ds.GetDefaultBackupTargetRO()
+	if err != nil {
+		return err
+	}
+
+	backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(c.ds, backupTarget)
 	if err != nil {
 		return err
 	}

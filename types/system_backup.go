@@ -1,5 +1,11 @@
 package types
 
 const (
-	SystemBackupExtension = ".zip"
+	SystemRolloutDirTemp = "/tmp"
+
+	SystemBackupExtension           = ".zip"
+	SystemBackupSubDirLonghorn      = "longhorn"
+	SystemBackupSubDirKubernetes    = "kubernetes"
+	SystemBackupSubDirAPIExtensions = "apiextensions"
+	SystemBackupSubDirYaml          = "yamls"
 )

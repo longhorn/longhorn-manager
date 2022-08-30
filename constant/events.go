@@ -25,6 +25,7 @@ const (
 	EventReasonTimeoutSnapshotPurge        = "TimeoutSnapshotPurge"
 	EventReasonFailedSnapshotPurge         = "FailedSnapshotPurge"
 
+	EventReasonRestored      = "Restored"
 	EventReasonFailedRestore = "FailedRestore"
 
 	EventReasonFailedExpansion    = "FailedExpansion"
@@ -45,8 +46,10 @@ const (
 	EventReasonAutoSalvaged       = "AutoSalvaged"
 
 	EventReasonFetching = "Fetching"
-	EventReasonSyncing  = "Syncing"
-	EventReasonSynced   = "Synced"
+	EventReasonFetched  = "Fetched"
+
+	EventReasonSyncing = "Syncing"
+	EventReasonSynced  = "Synced"
 
 	EventReasonFailedSnapshotDataIntegrityCheck = "FailedSnapshotDataIntegrityCheck"
 

@@ -1238,7 +1238,7 @@ func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]
 		return fmt.Errorf("cannot found the %s backup target", types.DefaultBackupTargetName)
 	}
 
-	backupTargetClient, err := getBackupTargetClient(m.ds, backupTarget)
+	backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(m.ds, backupTarget)
 	if err != nil {
 		return errors.Wrapf(err, "cannot get backup target config for backup restoration of engine %v", engine.Name)
 	}

@@ -272,7 +272,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 		if backupTarget.Spec.BackupTargetURL != "" &&
 			backupVolume != nil && backupVolume.DeletionTimestamp == nil {
-			backupTargetClient, err := getBackupTargetClient(bc.ds, backupTarget)
+			backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(bc.ds, backupTarget)
 			if err != nil {
 				log.WithError(err).Error("Error init backup target clients")
 				return nil // Ignore error to prevent enqueue
@@ -374,7 +374,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	}
 
 	// The backup creation is complete, then the source of truth becomes the remote backup target
-	backupTargetClient, err := getBackupTargetClient(bc.ds, backupTarget)
+	backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(bc.ds, backupTarget)
 	if err != nil {
 		log.WithError(err).Error("Error init backup target clients")
 		return nil // Ignore error to prevent enqueue

@@ -4167,6 +4167,40 @@ func (s *DataStore) RemoveSystemRestoreLabel(systemRestore *longhorn.SystemResto
 	return systemRestore, nil
 }
 
+// UpdateSystemRestore updates Longhorn SystemRestore and verifies update
+func (s *DataStore) UpdateSystemRestore(systemRestore *longhorn.SystemRestore) (*longhorn.SystemRestore, error) {
+	err := tagLonghornSystemRestoreLabelInProgress(systemRestore)
+	if err != nil {
+		return nil, err
+	}
+
+	obj, err := s.lhClient.LonghornV1beta2().SystemRestores(s.namespace).Update(context.TODO(), systemRestore, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	verifyUpdate(systemRestore.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetSystemRestore(name)
+	})
+
+	return obj, nil
+}
+
+func tagLonghornSystemRestoreLabelInProgress(obj runtime.Object) error {
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[types.GetSystemRestoreLabelKey()] = string(longhorn.SystemRestoreStateInProgress)
+	metadata.SetLabels(labels)
+	return nil
+}
+
 // UpdateSystemRestoreStatus updates Longhorn SystemRestore resource status and verifies update
 func (s *DataStore) UpdateSystemRestoreStatus(systemRestore *longhorn.SystemRestore) (*longhorn.SystemRestore, error) {
 	obj, err := s.lhClient.LonghornV1beta2().SystemRestores(s.namespace).UpdateStatus(context.TODO(), systemRestore, metav1.UpdateOptions{})
@@ -4194,6 +4228,50 @@ func (s *DataStore) GetSystemRestore(name string) (*longhorn.SystemRestore, erro
 // GetSystemRestoreRO returns the SystemRestore with the given CR name
 func (s *DataStore) GetSystemRestoreRO(name string) (*longhorn.SystemRestore, error) {
 	return s.srLister.SystemRestores(s.namespace).Get(name)
+}
+
+// GetSystemRestoreInProgress validate the given name and returns the only
+// SystemRestore in progress. Returns error if found less or more SystemRestore.
+// If given an empty name, return the SystemRestore without validating the name.
+func (s *DataStore) GetSystemRestoreInProgress(name string) (systemRestore *longhorn.SystemRestore, err error) {
+	systemRestores, err := s.ListSystemRestoresInProgress()
+	if err != nil {
+		return nil, err
+	}
+
+	systemRestoreCount := len(systemRestores)
+	if systemRestoreCount == 0 {
+		return nil, errors.Errorf("cannot find in-progress system restore")
+	} else if systemRestoreCount > 1 {
+		return nil, errors.Errorf("found %v system restore already in progress", systemRestoreCount-1)
+	}
+
+	for _, systemRestore = range systemRestores {
+		if name == "" {
+			break
+		}
+
+		if systemRestore.Name != name {
+			return nil, errors.Errorf("found the in-progress system restore with a mismatching name %v, expecting %v", systemRestore.Name, name)
+		}
+	}
+
+	return systemRestore, nil
+}
+
+// ListSystemRestoresInProgress returns an object contains all SystemRestores in progress
+func (s *DataStore) ListSystemRestoresInProgress() (map[string]*longhorn.SystemRestore, error) {
+	selector, err := s.getSystemRestoreInProgressSelector()
+	if err != nil {
+		return nil, err
+	}
+	return s.listSystemRestores(selector)
+}
+
+func (s *DataStore) getSystemRestoreInProgressSelector() (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetSystemRestoreInProgressLabel(),
+	})
 }
 
 func (s *DataStore) listSystemRestores(selector labels.Selector) (map[string]*longhorn.SystemRestore, error) {

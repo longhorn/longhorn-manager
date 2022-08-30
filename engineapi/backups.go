@@ -31,9 +31,9 @@ type BackupTargetClient struct {
 }
 
 // NewBackupTargetClient returns the backup target client
-func NewBackupTargetClient(defaultEngineImage, url string, credential map[string]string) *BackupTargetClient {
+func NewBackupTargetClient(engineImage, url string, credential map[string]string) *BackupTargetClient {
 	return &BackupTargetClient{
-		Image:      defaultEngineImage,
+		Image:      engineImage,
 		URL:        url,
 		Credential: credential,
 	}
