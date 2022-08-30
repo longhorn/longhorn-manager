@@ -117,6 +117,7 @@ const (
 	LonghornLabelCRDAPIVersion            = "crd-api-version"
 	LonghornLabelVolumeAccessMode         = "volume-access-mode"
 	LonghornLabelFollowGlobalSetting      = "follow-global-setting"
+	LonghornLabelVersion                  = "version"
 
 	LonghornLabelValueEnabled = "enabled"
 	LonghornLabelValueIgnored = "ignored"
@@ -474,6 +475,10 @@ func GetRecoveryBackendConfigMapLabels() map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelRecoveryBackend
 	return labels
+}
+
+func GetVersionLabelKey() string {
+	return GetLonghornLabelKey(LonghornLabelVersion)
 }
 
 func GetRegionAndZone(labels map[string]string) (string, string) {
