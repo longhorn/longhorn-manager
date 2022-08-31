@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 type ClientID string
@@ -34,7 +35,8 @@ func newConfigMap(namespace, name, version string) *v1.ConfigMap {
 	}
 }
 
-func (rb *RecoveryBackend) CreateConfigMap(configMapName, version string) error {
+func (rb *RecoveryBackend) CreateConfigMap(hostname, version string) error {
+	configMapName := types.GetConfigMapNameFromHostname(hostname)
 	cm := newConfigMap(rb.Namespace, configMapName, version)
 
 	if _, err := rb.Datastore.CreateConfigMap(cm); err != nil {
@@ -56,7 +58,8 @@ func (rb *RecoveryBackend) CreateConfigMap(configMapName, version string) error 
 	return nil
 }
 
-func (rb *RecoveryBackend) EndGrace(configMapName, version string) error {
+func (rb *RecoveryBackend) EndGrace(hostname, version string) error {
+	configMapName := types.GetConfigMapNameFromHostname(hostname)
 	cm, err := rb.Datastore.GetConfigMap(rb.Namespace, configMapName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get the configmap %v", configMapName)
@@ -77,7 +80,9 @@ func (rb *RecoveryBackend) EndGrace(configMapName, version string) error {
 	return err
 }
 
-func (rb *RecoveryBackend) AddClientID(configMapName, version string, clientID ClientID) error {
+func (rb *RecoveryBackend) AddClientID(hostname, version string, clientID ClientID) error {
+	configMapName := types.GetConfigMapNameFromHostname(hostname)
+
 	logrus.Infof("Add client '%v' in recovery backend %v (version %v)", clientID, configMapName, version)
 
 	cm, err := rb.Datastore.GetConfigMap(rb.Namespace, configMapName)
@@ -112,7 +117,8 @@ func (rb *RecoveryBackend) AddClientID(configMapName, version string, clientID C
 	return err
 }
 
-func (rb *RecoveryBackend) RemoveClientID(configMapName string, clientID ClientID) error {
+func (rb *RecoveryBackend) RemoveClientID(hostname string, clientID ClientID) error {
+	configMapName := types.GetConfigMapNameFromHostname(hostname)
 	logrus.Infof("Remove client '%v' in recovery backend %v", clientID, configMapName)
 
 	cm, err := rb.Datastore.GetConfigMap(rb.Namespace, configMapName)
@@ -148,7 +154,8 @@ func (rb *RecoveryBackend) RemoveClientID(configMapName string, clientID ClientI
 	return err
 }
 
-func (rb *RecoveryBackend) ReadClientIDs(configMapName string) ([]string, error) {
+func (rb *RecoveryBackend) ReadClientIDs(hostname string) ([]string, error) {
+	configMapName := types.GetConfigMapNameFromHostname(hostname)
 	logrus.Infof("Read clients from recovery backend %v", configMapName)
 
 	cm, err := rb.Datastore.GetConfigMap(rb.Namespace, configMapName)
@@ -180,7 +187,8 @@ func (rb *RecoveryBackend) ReadClientIDs(configMapName string) ([]string, error)
 	return clients, nil
 }
 
-func (rb *RecoveryBackend) AddRevokeFilehandle(configMapName, version string, clientID ClientID, revokeFilehandle RevokeFileHandle) error {
+func (rb *RecoveryBackend) AddRevokeFilehandle(hostname, version string, clientID ClientID, revokeFilehandle RevokeFileHandle) error {
+	configMapName := types.GetConfigMapNameFromHostname(hostname)
 	logrus.Infof("Add client %v revoke filehandle %v into recovery backend %v (version %v)",
 		clientID, revokeFilehandle, configMapName, version)
 

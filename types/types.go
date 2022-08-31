@@ -197,6 +197,7 @@ const (
 	BackingImageDataSourcePodNamePrefix = "backing-image-ds-"
 
 	shareManagerPrefix    = "share-manager-"
+	recoveryBackendPrefix = "recovery-backend-"
 	instanceManagerPrefix = "instance-manager-"
 	engineManagerPrefix   = instanceManagerPrefix + "e-"
 	replicaManagerPrefix  = instanceManagerPrefix + "r-"
@@ -467,7 +468,11 @@ func GetShareManagerPodNameFromShareManagerName(smName string) string {
 }
 
 func GetConfigMapNameFromShareManagerName(smName string) string {
-	return shareManagerPrefix + smName
+	return recoveryBackendPrefix + shareManagerPrefix + smName
+}
+
+func GetConfigMapNameFromHostname(hostname string) string {
+	return recoveryBackendPrefix + hostname
 }
 
 func GetShareManagerNameFromShareManagerPodName(podName string) string {
