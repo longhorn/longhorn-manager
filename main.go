@@ -58,6 +58,7 @@ func main() {
 		app.RecoveryBackendServiceCommand(),
 		app.PostUpgradeCmd(),
 		app.UninstallCmd(),
+		app.SystemRolloutCmd(),
 		// TODO: Remove MigrateForPre070VolumesCmd() after v0.8.1
 		app.MigrateForPre070VolumesCmd(),
 	}
