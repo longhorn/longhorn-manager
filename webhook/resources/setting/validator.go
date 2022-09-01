@@ -1,12 +1,15 @@
 package setting
 
 import (
-	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	admissionregv1 "k8s.io/api/admissionregistration/v1"
+
 	"github.com/longhorn/longhorn-manager/datastore"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
 
@@ -44,8 +47,20 @@ func (v *settingValidator) Update(request *admission.Request, oldObj runtime.Obj
 func (v *settingValidator) validateSetting(newObj runtime.Object) error {
 	setting := newObj.(*longhorn.Setting)
 
-	if err := v.ds.ValidateSetting(setting.Name, setting.Value); err != nil {
-		return werror.NewInvalidError(err.Error(), "value")
+	err := v.ds.ValidateSetting(setting.Name, setting.Value)
+	if err == nil {
+		return nil
 	}
-	return nil
+
+	// TODO: https://github.com/longhorn/longhorn/issues/5018
+	//       This is a work around for the setting restoration blocking.
+	if types.ErrorIsNotSupport(err) {
+		if systemRestore, err := v.ds.GetSystemRestoreInProgress(""); err != nil && !datastore.ErrorIsNotFound(err) {
+			return werror.NewInvalidError(err.Error(), "")
+		} else if systemRestore != nil {
+			return nil
+		}
+	}
+
+	return werror.NewInvalidError(err.Error(), "value")
 }
