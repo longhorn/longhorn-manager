@@ -631,6 +631,10 @@ func ErrorIsNotFound(err error) bool {
 	return strings.Contains(err.Error(), "cannot find")
 }
 
+func ErrorIsNotSupport(err error) bool {
+	return strings.Contains(err.Error(), "not support")
+}
+
 func ErrorAlreadyExists(err error) bool {
 	return strings.Contains(err.Error(), "already exists")
 }
