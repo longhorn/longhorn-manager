@@ -105,6 +105,7 @@ const (
 	LonghornLabelOrphanType               = "orphan-type"
 	LonghornLabelRecoveryBackend          = "recovery-backend"
 	LonghornLabelCRDAPIVersion            = "crd-api-version"
+	LonghornLabelVolumeAccessMode         = "volume-access-mode"
 
 	LonghornLabelValueEnabled = "enabled"
 
