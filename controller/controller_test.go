@@ -11,6 +11,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -55,6 +56,8 @@ const (
 
 	TestPVName  = "test-pv"
 	TestPVCName = "test-pvc"
+
+	TestStorageClassName = "test-storage-class"
 
 	TestVAName = "test-volume-attachment"
 
@@ -251,6 +254,32 @@ func newSystemRestore(name, currentOwnerID string, state longhorn.SystemRestoreS
 			State:     state,
 			SourceURL: "",
 		},
+	}
+}
+
+func newSystemBackup(name, currentOwnerID, longhornVersion string, state longhorn.SystemBackupState) *longhorn.SystemBackup {
+	return &longhorn.SystemBackup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+			Labels: map[string]string{
+				types.GetVersionLabelKey(): longhornVersion,
+			},
+		},
+		Status: longhorn.SystemBackupStatus{
+			OwnerID: currentOwnerID,
+			State:   state,
+			Version: TestSystemBackupLonghornVersion,
+		},
+	}
+}
+
+func newStorageClass(name string) *storagev1.StorageClass {
+	return &storagev1.StorageClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Provisioner: types.LonghornDriverName,
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -34,11 +35,6 @@ import (
 )
 
 const (
-	TestSystemBackupGitCommit       = "12345abcd"
-	TestSystemBackupLonghornVersion = "v1.4.0"
-	TestSystemBackupName            = "system-backup-0"
-	TestSystemBackupURIFmt          = "backupstore/system-backups/%v/%v"
-
 	TestSystemRestoreName                    = "system-retore-0"
 	TestSystemRestoreNameGetConfigFailed     = "system-retore-get-config-failed"
 	TestSystemRestoreNameUploadFailed        = "system-retore-upload-failed"
@@ -324,6 +320,55 @@ func fakeSystemRolloutSettingDefaultEngineImage(c *C, informerFactory lhinformer
 		SystemRolloutCRName(types.SettingNameDefaultEngineImage): {Value: TestEngineImage},
 	}
 	fakeSystemRolloutSettings(setting, c, informerFactory, client)
+}
+
+func fakeSystemRolloutStorageClasses(fakeObjs map[SystemRolloutCRName]*storagev1.StorageClass, c *C, informerFactory informers.SharedInformerFactory, client *fake.Clientset) {
+	indexer := informerFactory.Storage().V1().StorageClasses().Informer().GetIndexer()
+
+	clientInterface := client.StorageV1().StorageClasses()
+
+	exists, err := clientInterface.List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+
+	for _, exist := range exists.Items {
+		exist, err := clientInterface.Get(context.TODO(), exist.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+
+		err = clientInterface.Delete(context.TODO(), exist.Name, metav1.DeleteOptions{})
+		c.Assert(err, IsNil)
+
+		err = indexer.Delete(exist)
+		c.Assert(err, IsNil)
+	}
+
+	for k := range fakeObjs {
+		name := string(k)
+		if strings.HasSuffix(name, TestIgnoreSuffix) {
+			continue
+		}
+
+		_, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil && apierrors.IsNotFound(err) {
+			exist, err := clientInterface.Create(context.TODO(), newStorageClass(name), metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+
+			err = indexer.Add(exist)
+			c.Assert(err, IsNil)
+			continue
+		}
+		c.Assert(err, IsNil)
+	}
+}
+
+func fakeSystemRolloutStorageClassesDefault(c *C, informerFactory informers.SharedInformerFactory, client *fake.Clientset) {
+	storageClasses := map[SystemRolloutCRName]*storagev1.StorageClass{
+		SystemRolloutCRName(TestStorageClassName): {
+			ObjectMeta: metav1.ObjectMeta{
+				Name: TestStorageClassName,
+			},
+		},
+	}
+	fakeSystemRolloutStorageClasses(storageClasses, c, informerFactory, client)
 }
 
 type FakeSystemBackupTargetClient struct {
