@@ -58,6 +58,8 @@ const (
 
 	TestVAName = "test-volume-attachment"
 
+	TestEngineImageName = "test-engine-image"
+
 	TestTimeNow = "2015-01-02T00:00:00Z"
 
 	TestDefaultDataPath   = "/var/lib/longhorn"
@@ -233,6 +235,23 @@ func newInstanceManager(
 		im.DeletionTimestamp = &now
 	}
 	return im
+}
+
+func newSystemRestore(name, currentOwnerID string, state longhorn.SystemRestoreState) *longhorn.SystemRestore {
+	return &longhorn.SystemRestore{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
+		Spec: longhorn.SystemRestoreSpec{
+			SystemBackup: TestSystemBackupName,
+		},
+		Status: longhorn.SystemRestoreStatus{
+			OwnerID:   currentOwnerID,
+			State:     state,
+			SourceURL: "",
+		},
+	}
 }
 
 func getKey(obj interface{}, c *C) string {
