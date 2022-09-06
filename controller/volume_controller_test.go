@@ -1159,6 +1159,7 @@ func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string, moun
 					},
 				},
 			},
+			ServiceAccountName: TestServiceAccount,
 		},
 		Status: v1.PodStatus{
 			Conditions: []v1.PodCondition{
