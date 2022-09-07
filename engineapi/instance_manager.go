@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	CurrentInstanceManagerAPIVersion = 1
+	CurrentInstanceManagerAPIVersion = 2
 	UnknownInstanceManagerAPIVersion = 0
 
-	CurrentInstanceManagerProxyAPIVersion = 1
+	CurrentInstanceManagerProxyAPIVersion = 2
 	UnknownInstanceManagerProxyAPIVersion = 0
 	// UnsupportInstanceManagerProxyAPIVersion means the instance manager without the proxy client (Longhorn release before v1.3.0)
 	UnsupportInstanceManagerProxyAPIVersion = 0
