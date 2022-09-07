@@ -159,7 +159,7 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *longhorn.Instanc
 
 }
 
-func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName, engineImage string, volumeFrontend longhorn.VolumeFrontend, replicaAddressMap map[string]string, revCounterDisabled bool, salvageRequested bool) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName string, volumeSize, volumeCurrentSize int64, engineImage string, volumeFrontend longhorn.VolumeFrontend, replicaAddressMap map[string]string, revCounterDisabled bool, salvageRequested bool) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -167,7 +167,10 @@ func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName, engi
 	if err != nil {
 		return nil, err
 	}
-	args := []string{"controller", volumeName, "--frontend", frontend}
+	args := []string{"controller", volumeName,
+		"--size", strconv.FormatInt(volumeSize, 10),
+		"--current-size", strconv.FormatInt(volumeCurrentSize, 10),
+		"--frontend", frontend}
 
 	if revCounterDisabled {
 		args = append(args, "--disableRevCounter")
