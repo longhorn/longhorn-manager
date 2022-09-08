@@ -2939,6 +2939,20 @@ func (s *DataStore) IsEngineImageCLIAPIVersionOne(imageName string) (bool, error
 	return false, nil
 }
 
+// IsEngineImageCLIAPIVersionEqualToOrLargerThan get engine image CLIAPIVersion for the given name.
+// Returns true if CLIAPIVersion is equal to or larger than minVersion
+func (s *DataStore) IsEngineImageCLIAPIVersionEqualToOrLargerThan(imageName string, minVersion int) (bool, error) {
+	version, err := s.GetEngineImageCLIAPIVersion(imageName)
+	if err != nil {
+		return false, err
+	}
+
+	if version >= minVersion {
+		return true, nil
+	}
+	return false, nil
+}
+
 // GetEngineImageCLIAPIVersion get engine image for the given name and returns the
 // CLIAPIVersion
 func (s *DataStore) GetEngineImageCLIAPIVersion(imageName string) (int, error) {
