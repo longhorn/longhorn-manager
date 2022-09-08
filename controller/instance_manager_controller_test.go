@@ -49,7 +49,7 @@ func newTolerationSetting() *longhorn.Setting {
 }
 
 func fakeInstanceManagerVersionUpdater(im *longhorn.InstanceManager) error {
-	im.Status.APIMinVersion = engineapi.CurrentInstanceManagerAPIVersion
+	im.Status.APIMinVersion = engineapi.MinInstanceManagerAPIVersion
 	im.Status.APIVersion = engineapi.CurrentInstanceManagerAPIVersion
 	return nil
 }
@@ -86,7 +86,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				CurrentState:  longhorn.InstanceManagerStateRunning,
 				IP:            TestIP1,
 				APIMinVersion: 1,
-				APIVersion:    1,
+				APIVersion:    2,
 			},
 			longhorn.InstanceManagerTypeEngine,
 		},
@@ -112,7 +112,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				CurrentState:  longhorn.InstanceManagerStateUnknown,
 				IP:            TestIP1,
 				APIMinVersion: 1,
-				APIVersion:    1,
+				APIVersion:    2,
 			},
 			longhorn.InstanceManagerTypeEngine,
 		},
@@ -137,7 +137,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				CurrentState:  longhorn.InstanceManagerStateRunning,
 				IP:            TestIP1,
 				APIMinVersion: 1,
-				APIVersion:    1,
+				APIVersion:    2,
 			},
 			longhorn.InstanceManagerTypeEngine,
 		},
@@ -174,7 +174,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				CurrentState:  longhorn.InstanceManagerStateRunning,
 				IP:            TestIP2,
 				APIMinVersion: 1,
-				APIVersion:    1,
+				APIVersion:    2,
 			},
 			longhorn.InstanceManagerTypeReplica,
 		},
