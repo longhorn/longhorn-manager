@@ -224,7 +224,7 @@ func newInstanceManager(
 	}
 
 	if currentState == longhorn.InstanceManagerStateRunning {
-		im.Status.APIMinVersion = engineapi.CurrentInstanceManagerAPIVersion
+		im.Status.APIMinVersion = engineapi.MinInstanceManagerAPIVersion
 		im.Status.APIVersion = engineapi.CurrentInstanceManagerAPIVersion
 	}
 
