@@ -87,6 +87,7 @@ func newPV() *apiv1.PersistentVolume {
 				Name:      TestPVCName,
 				Namespace: TestNamespace,
 			},
+			StorageClassName: TestStorageClassName,
 		},
 		Status: apiv1.PersistentVolumeStatus{
 			Phase: apiv1.VolumeBound,
@@ -95,6 +96,7 @@ func newPV() *apiv1.PersistentVolume {
 }
 
 func newPVC() *apiv1.PersistentVolumeClaim {
+	storageClassName := TestStorageClassName
 	return &apiv1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: TestPVCName,
@@ -108,7 +110,8 @@ func newPVC() *apiv1.PersistentVolumeClaim {
 					apiv1.ResourceStorage: *resource.NewQuantity(1, resource.BinarySI),
 				},
 			},
-			VolumeName: TestPVName,
+			VolumeName:       TestPVName,
+			StorageClassName: &storageClassName,
 		},
 	}
 }
