@@ -493,6 +493,23 @@ func (s *Server) VolumeCancelExpansion(rw http.ResponseWriter, req *http.Request
 	return s.responseWithVolume(rw, req, "", v)
 }
 
+func (s *Server) VolumeFilesystemTrim(rw http.ResponseWriter, req *http.Request) error {
+	id := mux.Vars(req)["name"]
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.TrimFilesystem(id)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	}
+
+	return s.responseWithVolume(rw, req, "", v)
+}
+
 func (s *Server) PVCreate(rw http.ResponseWriter, req *http.Request) error {
 	var input PVCreateInput
 	id := mux.Vars(req)["name"]
