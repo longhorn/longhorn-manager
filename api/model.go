@@ -692,6 +692,9 @@ func volumeSchema(volume *client.Schema) {
 		"cancelExpansion": {
 			Output: "volume",
 		},
+		"trimFilesystem": {
+			Output: "volume",
+		},
 
 		"snapshotPurge": {
 			Output: "volume",
@@ -1175,6 +1178,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
+			actions["trimFilesystem"] = struct{}{}
 			actions["recurringJobAdd"] = struct{}{}
 			actions["recurringJobDelete"] = struct{}{}
 			actions["recurringJobList"] = struct{}{}

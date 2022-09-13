@@ -906,3 +906,28 @@ func GetPodIP(pod *v1.Pod) (string, error) {
 	}
 	return pod.Status.PodIP, nil
 }
+
+func TrimFilesystem(volumeName string) error {
+	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
+	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
+	if err != nil {
+		return err
+	}
+
+	mountOutput, err := nsExec.Execute("bash", []string{"-c", fmt.Sprintf("mount | grep /dev/longhorn/%s | awk '{print $3}'", volumeName)})
+	if err != nil {
+		return fmt.Errorf("cannot find volume %v mount info on host: %v", volumeName, err)
+	}
+
+	mountList := strings.Split(strings.TrimSpace(mountOutput), "\n")
+	if len(mountList) != 1 {
+		return fmt.Errorf("zero or multiple mount points for volume %s: %+v", volumeName, mountList)
+	}
+
+	_, err = nsExec.Execute("fstrim", mountList)
+	if err != nil {
+		return fmt.Errorf("cannot find volume %v mount info on host: %v", volumeName, err)
+	}
+
+	return nil
+}
