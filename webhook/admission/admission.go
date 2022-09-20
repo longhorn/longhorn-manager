@@ -72,7 +72,7 @@ func (v *Handler) admit(response *webhook.Response, req *Request) {
 
 	oldObj, newObj, err := req.DecodeObjects()
 	if err != nil {
-		logrus.Errorf("%s fail to decode objects: %s", req, err)
+		logrus.Errorf("%s failed to decode objects: %s", req, err)
 		response.Result = werror.NewInternalError(err.Error()).AsResult()
 		response.Allowed = false
 		return

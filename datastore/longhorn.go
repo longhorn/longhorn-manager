@@ -225,7 +225,7 @@ func (s *DataStore) UpdateSetting(setting *longhorn.Setting) (*longhorn.Setting,
 // ValidateSetting checks the given setting value types and condition
 func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to set the setting %v with invalid value %v", name, value)
+		err = errors.Wrapf(err, "failed to set the setting %v with invalid value %v", name, value)
 	}()
 	sName := types.SettingName(name)
 

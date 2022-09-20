@@ -139,7 +139,7 @@ func (kc *KubernetesConfigMapController) handleErr(err error, key interface{}) {
 
 func (kc *KubernetesConfigMapController) syncHandler(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "%v: fail to sync %v", kc.name, key)
+		err = errors.Wrapf(err, "%v: failed to sync %v", kc.name, key)
 	}()
 
 	namespace, cfmName, err := cache.SplitMetaNamespaceKey(key)

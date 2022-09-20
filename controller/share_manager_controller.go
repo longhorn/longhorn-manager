@@ -252,7 +252,7 @@ func (c *ShareManagerController) handleErr(err error, key interface{}) {
 
 func (c *ShareManagerController) syncShareManager(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to sync %v", key)
+		err = errors.Wrapf(err, "failed to sync %v", key)
 	}()
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {

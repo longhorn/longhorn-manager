@@ -97,14 +97,14 @@ func (f *Fwd) Handler(proxyHandler ProxyRequestHandler, parametersGetFunc Parame
 			}
 			parameters, err := parametersGetFunc(req)
 			if err != nil {
-				return errors.Wrap(err, "fail to get the parameters")
+				return errors.Wrap(err, "failed to get the parameters")
 			}
 			if parameters == nil {
 				return errors.Wrap(err, "nil parameter")
 			}
 			requireProxy, err = proxyHandler(parameters, req)
 			if err != nil {
-				return errors.Wrap(err, "fail to verify if the proxy is required")
+				return errors.Wrap(err, "failed to verify if the proxy is required")
 			}
 		}
 		if requireProxy {
@@ -141,11 +141,11 @@ func (f *Fwd) GetHTTPAddressByNodeID(getNodeID OwnerIDFunc) ParametersGetFunc {
 	return func(req *http.Request) (map[string]string, error) {
 		nodeID, err := getNodeID(req)
 		if err != nil {
-			return nil, errors.Wrap(err, "fail to get target node ID")
+			return nil, errors.Wrap(err, "failed to get target node ID")
 		}
 		address, err := f.locator.Node2APIAddress(nodeID)
 		if err != nil {
-			return nil, errors.Wrap(err, "fail to get the address from node ID")
+			return nil, errors.Wrap(err, "failed to get the address from node ID")
 		}
 		return map[string]string{ParameterKeyAddress: address}, nil
 	}
