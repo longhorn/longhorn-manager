@@ -54,10 +54,10 @@ type volumeFilesystemStatistics struct {
 
 func (e *forcedParamsOsExec) Command(cmd string, args ...string) utilexec.Cmd {
 	var params []string
-	if param := e.cmdParamMapping[cmd]; param != "" {
+	if value := e.cmdParamMapping[cmd]; value != "" {
 		// we prepend the user params, since options are conventionally before the final args
 		// command [-option(s)] [argument(s)]
-		params = append(params, param)
+		params = append(params, strings.Split(value, " ")...)
 	}
 	params = append(params, args...)
 	return e.exec.Command(cmd, params...)
