@@ -132,7 +132,7 @@ func (bvc *BackupVolumeController) processNextWorkItem() bool {
 
 func (bvc *BackupVolumeController) syncHandler(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "%v: fail to sync backup volume %v", bvc.name, key)
+		err = errors.Wrapf(err, "%v: failed to sync backup volume %v", bvc.name, key)
 	}()
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)

@@ -225,7 +225,7 @@ func (ec *EngineController) getEngineClientProxy(e *longhorn.Engine, image strin
 
 func (ec *EngineController) syncEngine(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to sync engine for %v", key)
+		err = errors.Wrapf(err, "failed to sync engine for %v", key)
 	}()
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -720,7 +720,7 @@ func (m *EngineMonitor) sync() bool {
 				m.logger.Info("stop monitoring because the engine no longer exists")
 				return true
 			}
-			utilruntime.HandleError(errors.Wrapf(err, "fail to get engine %v for monitoring", m.Name))
+			utilruntime.HandleError(errors.Wrapf(err, "failed to get engine %v for monitoring", m.Name))
 			return false
 		}
 
@@ -1455,7 +1455,7 @@ func doesAddressExistInEngine(e *longhorn.Engine, addr string, engineClientProxy
 
 func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to start rebuild for %v of %v", replica, e.Name)
+		err = errors.Wrapf(err, "failed to start rebuild for %v of %v", replica, e.Name)
 	}()
 
 	log := ec.logger.WithFields(logrus.Fields{"volume": e.Spec.VolumeName, "engine": e.Name})

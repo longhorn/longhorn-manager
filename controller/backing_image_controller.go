@@ -164,7 +164,7 @@ func getLoggerForBackingImage(logger logrus.FieldLogger, bi *longhorn.BackingIma
 
 func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to sync backing image for %v", key)
+		err = errors.Wrapf(err, "failed to sync backing image for %v", key)
 	}()
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
