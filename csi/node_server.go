@@ -32,7 +32,22 @@ const (
 	// We currently only support passphrase retrieval via direct secret values
 	CryptoKeyProvider = "CRYPTO_KEY_PROVIDER"
 	CryptoKeyValue    = "CRYPTO_KEY_VALUE"
+
+	defaultFsType = "ext4"
 )
+
+type fsParameters struct {
+	formatParameters string
+}
+
+var supportedFs = map[string]fsParameters{
+	"ext4": {
+		formatParameters: "-b4096",
+	},
+	"xfs": {
+		formatParameters: "-ssize=4096 -bsize=4096",
+	},
+}
 
 type NodeServer struct {
 	apiClient *longhornclient.RancherClient
@@ -362,11 +377,10 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
-	// mounter uses ext4 by default
 	options := volumeCapability.GetMount().GetMountFlags()
 	fsType := volumeCapability.GetMount().GetFsType()
 	if fsType == "" {
-		fsType = "ext4"
+		fsType = defaultFsType
 	}
 
 	formatMounter, ok := mounter.(*mount.SafeFormatAndMount)
@@ -614,25 +628,36 @@ func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability
 
 	// mounter that can format and use hard coded filesystem params
 	if volumeCapability.GetMount() != nil {
-		userExt4Params, _ := ns.apiClient.Setting.ById(string(types.SettingNameMkfsExt4Parameters))
-
-		// mounter assumes ext4 by default
 		fsType := volumeCapability.GetMount().GetFsType()
 		if fsType == "" {
-			fsType = "ext4"
+			fsType = defaultFsType
+		}
+
+		// To allow users to override the default block size,
+		// put the default block size in front of other user-defined parameters.
+		params := ""
+		if fsParams, ok := supportedFs[fsType]; ok {
+			params += fsParams.formatParameters
+		}
+
+		// We allow the user to provide additional params for ext4 filesystem creation.
+		// This allows an ext4 fs to be mounted on older kernels, see https://github.com/longhorn/longhorn/issues/1208
+		if fsType == defaultFsType {
+			if userParams, _ := ns.apiClient.Setting.ById(string(types.SettingNameMkfsExt4Parameters)); userParams != nil && userParams.Value != "" {
+				params += " " + userParams.Value
+			}
 		}
 
 		mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: utilexec.New()}
-		// we allow the user to provide additional params for ext4 filesystem creation.
-		// this allows an ext4 fs to be mounted on older kernels, see https://github.com/longhorn/longhorn/issues/1208
-		if fsType == "ext4" && userExt4Params != nil && userExt4Params.Value != "" {
-			ext4Params := userExt4Params.Value
-			logrus.Infof("volume %v using user provided ext4 fs creation params: %s", volume.Name, ext4Params)
-			cmdParamMapping := map[string]string{"mkfs." + fsType: ext4Params}
+		if _, ok := supportedFs[fsType]; ok {
+			logrus.Infof("volume %v using user and longhorn provided %v fs creation params: %s", volume.Name, fsType, params)
+			cmdParamMapping := map[string]string{"mkfs." + fsType: params}
 			mounter = &mount.SafeFormatAndMount{
 				Interface: mount.New(""),
 				Exec:      NewForcedParamsExec(cmdParamMapping),
 			}
+		} else {
+			logrus.Warnf("volume %v with unsupported filesystem %v, use default fs creation params", volume.Name, fsType)
 		}
 		return mounter, nil
 	}
