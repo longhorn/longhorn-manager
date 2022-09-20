@@ -265,7 +265,7 @@ func getLoggerForInstanceManager(logger logrus.FieldLogger, im *longhorn.Instanc
 
 func (imc *InstanceManagerController) syncInstanceManager(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to sync instance manager for %v", key)
+		err = errors.Wrapf(err, "failed to sync instance manager for %v", key)
 	}()
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -1367,7 +1367,7 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 			m.logger.Info("stop monitoring because the instance manager no longer exists")
 			return true
 		}
-		utilruntime.HandleError(errors.Wrapf(err, "fail to get instance manager %v for monitoring", m.Name))
+		utilruntime.HandleError(errors.Wrapf(err, "failed to get instance manager %v for monitoring", m.Name))
 		return false
 	}
 
