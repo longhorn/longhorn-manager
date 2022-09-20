@@ -243,7 +243,7 @@ func getLoggerForVolume(logger logrus.FieldLogger, v *longhorn.Volume) *logrus.E
 
 func (vc *VolumeController) syncVolume(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to sync %v", key)
+		err = errors.Wrapf(err, "failed to sync %v", key)
 	}()
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -510,7 +510,7 @@ func (vc *VolumeController) EvictReplicas(v *longhorn.Volume,
 // e.Status.purgeStatus, and e.Status.SnapshotCloneStatus then update v and rs accordingly.
 func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to reconcile engine/replica state for %v", v.Name)
+		err = errors.Wrapf(err, "failed to reconcile engine/replica state for %v", v.Name)
 		if v.Status.Robustness != longhorn.VolumeRobustnessDegraded {
 			v.Status.LastDegradedAt = ""
 		}
@@ -1013,7 +1013,7 @@ func (vc *VolumeController) getAutoBalancedReplicasSetting(v *longhorn.Volume) (
 // ReconcileVolumeState handles the attaching and detaching of volume
 func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to reconcile volume state for %v", v.Name)
+		err = errors.Wrapf(err, "failed to reconcile volume state for %v", v.Name)
 	}()
 
 	log := getLoggerForVolume(vc.logger, v)
@@ -2996,7 +2996,7 @@ func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 
 func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to update recurring jobs for %v", v.Name)
+		err = errors.Wrapf(err, "failed to update recurring jobs for %v", v.Name)
 	}()
 
 	existingVolume := v.DeepCopy()
@@ -3029,7 +3029,7 @@ func (vc *VolumeController) getEngineImage(image string) (*longhorn.EngineImage,
 
 func (vc *VolumeController) getCurrentEngineAndCleanupOthers(v *longhorn.Volume, es map[string]*longhorn.Engine) (current *longhorn.Engine, err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to clean up the extra engines for %v", v.Name)
+		err = errors.Wrapf(err, "failed to clean up the extra engines for %v", v.Name)
 	}()
 	current, extras, err := datastore.GetCurrentEngineAndExtras(v, es)
 	if err != nil {
@@ -3102,7 +3102,7 @@ func (vc *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica
 
 func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to process migration for %v", v.Name)
+		err = errors.Wrapf(err, "failed to process migration for %v", v.Name)
 	}()
 
 	if !v.Spec.Migratable || v.Spec.AccessMode != longhorn.AccessModeReadWriteMany {
