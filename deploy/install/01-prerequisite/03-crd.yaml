@@ -1332,6 +1332,9 @@ spec:
                 type: boolean
               backupVolume:
                 type: string
+              blockSize:
+                format: int64
+                type: integer
               desireState:
                 type: string
               disableFrontend:

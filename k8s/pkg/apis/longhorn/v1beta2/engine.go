@@ -125,6 +125,8 @@ type EngineSpec struct {
 	RevisionCounterDisabled bool `json:"revisionCounterDisabled"`
 	// +optional
 	Active bool `json:"active"`
+	// +optional
+	BlockSize int64 `json:"blockSize"`
 }
 
 // EngineStatus defines the observed state of the Longhorn engine

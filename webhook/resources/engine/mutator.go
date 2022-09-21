@@ -1,12 +1,20 @@
 package engine
 
 import (
+	"fmt"
+	"strconv"
+
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
+	werror "github.com/longhorn/longhorn-manager/webhook/error"
+)
+
+const (
+	defaultBlockSize = 4096
 )
 
 type engineMutator struct {
@@ -33,11 +41,36 @@ func (e *engineMutator) Resource() admission.Resource {
 }
 
 func (e *engineMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	return mutateEngine(newObj)
+	var patchOps admission.PatchOps
+
+	ops, err := mutateEngine(newObj)
+	if err != nil {
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+
+	patchOps = append(patchOps, ops...)
+
+	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/blockSize", "value": %s}`, strconv.FormatInt(defaultBlockSize, 10)))
+
+	return patchOps, nil
 }
 
 func (e *engineMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
-	return mutateEngine(newObj)
+	oldEngine := oldObj.(*longhorn.Engine)
+
+	var patchOps admission.PatchOps
+
+	ops, err := mutateEngine(newObj)
+	if err != nil {
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+
+	patchOps = append(patchOps, ops...)
+	if oldEngine.Spec.BlockSize == 0 {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/blockSize", "value": %s}`, strconv.FormatInt(util.LegacyBlockSize, 10)))
+	}
+
+	return patchOps, nil
 }
 
 func mutateEngine(newObj runtime.Object) (admission.PatchOps, error) {
