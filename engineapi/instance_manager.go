@@ -161,7 +161,7 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *longhorn.Instanc
 
 }
 
-func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName string, volumeSize, volumeCurrentSize int64,
+func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName string, volumeSize, volumeCurrentSize, blockSize int64,
 	engineImage string, volumeFrontend longhorn.VolumeFrontend, replicaAddressMap map[string]string,
 	revCounterDisabled bool, salvageRequested bool, sizeRequested bool) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
@@ -188,6 +188,13 @@ func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName strin
 			"--size", strconv.FormatInt(volumeSize, 10),
 			"--current-size", strconv.FormatInt(volumeCurrentSize, 10))
 	}
+
+	if blockSize == 0 {
+		// If blockSize is not defined, the existing volume uses 512 as its iSCSI LUN block size
+		blockSize = 512
+	}
+
+	args = append(args, "--blocksize", strconv.FormatInt(blockSize, 10))
 
 	for _, addr := range replicaAddressMap {
 		args = append(args, "--replica", GetBackendReplicaURL(addr))

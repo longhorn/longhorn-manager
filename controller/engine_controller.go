@@ -432,7 +432,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
-	return c.EngineProcessCreate(e.Name, e.Spec.VolumeName, e.Spec.VolumeSize, e.Status.CurrentSize, e.Spec.EngineImage,
+	return c.EngineProcessCreate(e.Name, e.Spec.VolumeName, e.Spec.VolumeSize, e.Status.CurrentSize, e.Spec.BlockSize, e.Spec.EngineImage,
 		frontend, e.Status.CurrentReplicaAddressMap, e.Spec.RevisionCounterDisabled, e.Spec.SalvageRequested, sizeRequested)
 }
 
