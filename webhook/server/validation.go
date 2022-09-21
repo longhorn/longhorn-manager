@@ -10,6 +10,7 @@ import (
 	"github.com/longhorn/longhorn-manager/util/client"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	"github.com/longhorn/longhorn-manager/webhook/resources/backingimage"
+	"github.com/longhorn/longhorn-manager/webhook/resources/engine"
 	"github.com/longhorn/longhorn-manager/webhook/resources/node"
 	"github.com/longhorn/longhorn-manager/webhook/resources/orphan"
 	"github.com/longhorn/longhorn-manager/webhook/resources/recurringjob"
@@ -33,6 +34,7 @@ func Validation(client *client.Client) (http.Handler, []admission.Resource, erro
 		volume.NewValidator(client.Datastore, currentNodeID),
 		orphan.NewValidator(client.Datastore),
 		snapshot.NewValidator(client.Datastore),
+		engine.NewValidator(client.Datastore),
 	}
 
 	router := webhook.NewRouter()
