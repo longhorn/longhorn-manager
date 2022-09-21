@@ -427,13 +427,13 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 	}
 	defer c.Close()
 
-	sizeRequested, err := ec.ds.IsEngineImageCLIAPIVersionEqualToOrLargerThan(e.Spec.EngineImage, 6)
+	sizeAndBlockSizeRequested, err := ec.ds.IsEngineImageCLIAPIVersionEqualToOrLargerThan(e.Spec.EngineImage, 6)
 	if err != nil {
 		return nil, err
 	}
 
 	return c.EngineProcessCreate(e.Name, e.Spec.VolumeName, e.Spec.VolumeSize, e.Status.CurrentSize, e.Spec.BlockSize, e.Spec.EngineImage,
-		frontend, e.Status.CurrentReplicaAddressMap, e.Spec.RevisionCounterDisabled, e.Spec.SalvageRequested, sizeRequested)
+		frontend, e.Status.CurrentReplicaAddressMap, e.Spec.RevisionCounterDisabled, e.Spec.SalvageRequested, sizeAndBlockSizeRequested)
 }
 
 func (ec *EngineController) DeleteInstance(obj interface{}) error {
@@ -1668,13 +1668,13 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine) error {
 	}
 	defer c.Close()
 
-	sizeRequested, err := ec.ds.IsEngineImageCLIAPIVersionEqualToOrLargerThan(e.Spec.EngineImage, 6)
+	sizeAndBlockSizeRequested, err := ec.ds.IsEngineImageCLIAPIVersionEqualToOrLargerThan(e.Spec.EngineImage, 6)
 	if err != nil {
 		return err
 	}
 
-	engineProcess, err := c.EngineProcessUpgrade(e.Name, e.Spec.VolumeName, e.Spec.VolumeSize, e.Status.CurrentSize,
-		e.Spec.EngineImage, frontend, e.Spec.UpgradedReplicaAddressMap, sizeRequested)
+	engineProcess, err := c.EngineProcessUpgrade(e.Name, e.Spec.VolumeName, e.Spec.VolumeSize, e.Status.CurrentSize, e.Spec.BlockSize,
+		e.Spec.EngineImage, frontend, e.Spec.UpgradedReplicaAddressMap, sizeAndBlockSizeRequested)
 	if err != nil {
 		return err
 	}

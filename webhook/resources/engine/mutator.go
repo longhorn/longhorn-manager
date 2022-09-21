@@ -9,12 +9,9 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
-)
-
-const (
-	defaultBlockSize = 4096
 )
 
 type engineMutator struct {
@@ -50,7 +47,7 @@ func (e *engineMutator) Create(request *admission.Request, newObj runtime.Object
 
 	patchOps = append(patchOps, ops...)
 
-	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/blockSize", "value": %s}`, strconv.FormatInt(defaultBlockSize, 10)))
+	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/blockSize", "value": %s}`, strconv.FormatInt(util.DefaultBlockSize, 10)))
 
 	return patchOps, nil
 }

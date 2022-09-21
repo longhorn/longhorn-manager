@@ -62,6 +62,9 @@ const (
 	MinimalVolumeSize = 10 * 1024 * 1024
 
 	RandomIDLenth = 8
+
+	DefaultBlockSize = 4096
+	LegacyBlockSize  = 512
 )
 
 var (
@@ -894,4 +897,13 @@ func GetVolumeMeta(path string) (*VolumeMeta, error) {
 		return nil, fmt.Errorf("failed to unmarshal %v content %v on host: %v", path, output, err)
 	}
 	return meta, nil
+}
+
+func GetVolumeBlockSize(blockSize int64) int64 {
+	// If blockSize is zero, the existing volume uses LegacyBlockSize as its iSCSI LUN block size
+	if blockSize == 0 {
+		return LegacyBlockSize
+	}
+
+	return blockSize
 }

@@ -11,6 +11,7 @@ import (
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -163,7 +164,7 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *longhorn.Instanc
 
 func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName string, volumeSize, volumeCurrentSize, blockSize int64,
 	engineImage string, volumeFrontend longhorn.VolumeFrontend, replicaAddressMap map[string]string,
-	revCounterDisabled bool, salvageRequested bool, sizeRequested bool) (*longhorn.InstanceProcess, error) {
+	revCounterDisabled bool, salvageRequested bool, sizeAndBlockSizeRequested bool) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -183,18 +184,14 @@ func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName strin
 		args = append(args, "--salvageRequested")
 	}
 
-	if sizeRequested {
+	if sizeAndBlockSizeRequested {
 		args = append(args,
 			"--size", strconv.FormatInt(volumeSize, 10),
 			"--current-size", strconv.FormatInt(volumeCurrentSize, 10))
-	}
 
-	if blockSize == 0 {
-		// If blockSize is not defined, the existing volume uses 512 as its iSCSI LUN block size
-		blockSize = 512
+		blockSize = util.GetVolumeBlockSize(blockSize)
+		args = append(args, "--sector-size", strconv.FormatInt(blockSize, 10))
 	}
-
-	args = append(args, "--blocksize", strconv.FormatInt(blockSize, 10))
 
 	for _, addr := range replicaAddressMap {
 		args = append(args, "--replica", GetBackendReplicaURL(addr))
@@ -283,7 +280,8 @@ func (c *InstanceManagerClient) ProcessList() (map[string]longhorn.InstanceProce
 	return result, nil
 }
 
-func (c *InstanceManagerClient) EngineProcessUpgrade(engineName, volumeName string, volumeSize, volumeCurrentSize int64, engineImage string, volumeFrontend longhorn.VolumeFrontend, replicaAddressMap map[string]string, sizeRequested bool) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) EngineProcessUpgrade(engineName, volumeName string, volumeSize, volumeCurrentSize, blockSize int64,
+	engineImage string, volumeFrontend longhorn.VolumeFrontend, replicaAddressMap map[string]string, sizeAndBlockSizeRequested bool) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -296,10 +294,13 @@ func (c *InstanceManagerClient) EngineProcessUpgrade(engineName, volumeName stri
 		args = append(args, "--replica", GetBackendReplicaURL(addr))
 	}
 
-	if sizeRequested {
+	if sizeAndBlockSizeRequested {
 		args = append(args,
 			"--size", strconv.FormatInt(volumeSize, 10),
 			"--current-size", strconv.FormatInt(volumeCurrentSize, 10))
+
+		blockSize = util.GetVolumeBlockSize(blockSize)
+		args = append(args, "--sector-size", strconv.FormatInt(blockSize, 10))
 	}
 
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(engineImage), types.EngineBinaryName)
