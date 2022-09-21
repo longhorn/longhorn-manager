@@ -42,7 +42,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f
 	github.com/longhorn/backupstore v0.0.0-20220913112826-5f5c95274f2a
-	github.com/longhorn/go-iscsi-helper v0.0.0-20220805034259-7b59e22574bb
+	github.com/longhorn/go-iscsi-helper v0.0.0-20220922061628-c91c1b26eaf0
 	github.com/longhorn/longhorn-instance-manager v0.0.0-20220920015701-7d168c75873c
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1
@@ -137,3 +137,7 @@ require (
 	sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
 )
+
+replace github.com/longhorn/longhorn-engine v1.3.1-0.20220919072331-330a008f54ff => github.com/derekbit/longhorn-engine v1.2.1-0.20220927005653-384320ab497b
+
+replace github.com/longhorn/longhorn-instance-manager v0.0.0-20220920015701-7d168c75873c => github.com/derekbit/longhorn-instance-manager v0.0.0-20220927011129-4d295df59ddf
