@@ -27,6 +27,7 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
 
 type RecurringJobController struct {
@@ -380,7 +381,16 @@ func (control *RecurringJobController) checkAndUpdateCronJob(cronJob, appliedCro
 
 func (control *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob) (*batchv1beta1.CronJob, error) {
 	backoffLimit := int32(CronJobBackoffLimit)
-	successfulJobsHistoryLimit := int32(CronJobSuccessfulJobsHistoryLimit)
+	settingSuccessfulJobsHistoryLimit, err := control.ds.GetSettingAsInt(types.SettingNameRecurringSuccessfulJobsHistoryLimit)
+	if err != nil {
+		return nil, werror.NewInvalidError(fmt.Sprintf("failed to get setting of RecurringSuccessfulJobsHistoryLimit: %v", err), "")
+	}
+	successfulJobsHistoryLimit := int32(settingSuccessfulJobsHistoryLimit)
+	settingFailedJobsHistoryLimit, err := control.ds.GetSettingAsInt(types.SettingNameRecurringFailedJobsHistoryLimit)
+	if err != nil {
+		return nil, werror.NewInvalidError(fmt.Sprintf("failed to get setting of RecurringFailedJobsHistoryLimit: %v", err), "")
+	}
+	failedJobsHistoryLimit := int32(settingFailedJobsHistoryLimit)
 
 	cmd := []string{
 		"longhorn-manager", "-d",
@@ -421,6 +431,7 @@ func (control *RecurringJobController) newCronJob(recurringJob *longhorn.Recurri
 			Schedule:                   recurringJob.Spec.Cron,
 			ConcurrencyPolicy:          batchv1beta1.ForbidConcurrent,
 			SuccessfulJobsHistoryLimit: &successfulJobsHistoryLimit,
+			FailedJobsHistoryLimit:     &failedJobsHistoryLimit,
 			JobTemplate: batchv1beta1.JobTemplateSpec{
 				Spec: batchv1.JobSpec{
 					BackoffLimit: &backoffLimit,

@@ -47,9 +47,8 @@ var (
 )
 
 const (
-	CronJobBackoffLimit               = 3
-	CronJobSuccessfulJobsHistoryLimit = 1
-	VolumeSnapshotsWarningThreshold   = 100
+	CronJobBackoffLimit             = 3
+	VolumeSnapshotsWarningThreshold = 100
 
 	LastAppliedCronJobSpecAnnotationKeySuffix = "last-applied-cronjob-spec"
 )

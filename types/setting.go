@@ -84,6 +84,8 @@ const (
 	SettingNameOrphanAutoDeletion                           = SettingName("orphan-auto-deletion")
 	SettingNameStorageNetwork                               = SettingName("storage-network")
 	SettingNameFailedBackupTTL                              = SettingName("failed-backup-ttl")
+	SettingNameRecurringSuccessfulJobsHistoryLimit          = SettingName("recurring-successful-jobs-history-limit")
+	SettingNameRecurringFailedJobsHistoryLimit              = SettingName("recurring-failed-jobs-history-limit")
 )
 
 var (
@@ -138,6 +140,8 @@ var (
 		SettingNameOrphanAutoDeletion,
 		SettingNameStorageNetwork,
 		SettingNameFailedBackupTTL,
+		SettingNameRecurringSuccessfulJobsHistoryLimit,
+		SettingNameRecurringFailedJobsHistoryLimit,
 	}
 )
 
@@ -216,6 +220,8 @@ var (
 		SettingNameOrphanAutoDeletion:                           SettingDefinitionOrphanAutoDeletion,
 		SettingNameStorageNetwork:                               SettingDefinitionStorageNetwork,
 		SettingNameFailedBackupTTL:                              SettingDefinitionFailedBackupTTL,
+		SettingNameRecurringSuccessfulJobsHistoryLimit:          SettingDefinitionRecurringSuccessfulJobsHistoryLimit,
+		SettingNameRecurringFailedJobsHistoryLimit:              SettingDefinitionRecurringFailedJobsHistoryLimit,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -815,6 +821,26 @@ var (
 		ReadOnly: false,
 		Default:  CniNetworkNone,
 	}
+
+	SettingDefinitionRecurringSuccessfulJobsHistoryLimit = SettingDefinition{
+		DisplayName: "Cronjob Successful Jobs History Limit",
+		Description: "This setting specifies how much successful backup or snapshot job history should be kept.",
+		Category:    SettingCategoryBackup,
+		Type:        SettingTypeInt,
+		Required:    false,
+		ReadOnly:    false,
+		Default:     "1",
+	}
+
+	SettingDefinitionRecurringFailedJobsHistoryLimit = SettingDefinition{
+		DisplayName: "Cronjob Failed Jobs History Limit",
+		Description: "\nThis setting specifies how much failed backup or snapshot job history should be kept.",
+		Category:    SettingCategoryBackup,
+		Type:        SettingTypeInt,
+		Required:    false,
+		ReadOnly:    false,
+		Default:     "1",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -964,6 +990,15 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameStorageNetwork:
 		if err = ValidateStorageNetwork(value); err != nil {
 			return fmt.Errorf("the value of %v is invalid: %v", sName, err)
+		}
+
+	case SettingNameRecurringSuccessfulJobsHistoryLimit:
+		if _, err := strconv.Atoi(value); err != nil {
+			return fmt.Errorf("value %v is not a number", value)
+		}
+	case SettingNameRecurringFailedJobsHistoryLimit:
+		if _, err := strconv.Atoi(value); err != nil {
+			return fmt.Errorf("value %v is not a number", value)
 		}
 
 	// multi-choices
