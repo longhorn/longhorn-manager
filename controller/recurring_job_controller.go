@@ -27,7 +27,6 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
-	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
 
 type RecurringJobController struct {
@@ -383,12 +382,12 @@ func (control *RecurringJobController) newCronJob(recurringJob *longhorn.Recurri
 	backoffLimit := int32(CronJobBackoffLimit)
 	settingSuccessfulJobsHistoryLimit, err := control.ds.GetSettingAsInt(types.SettingNameRecurringSuccessfulJobsHistoryLimit)
 	if err != nil {
-		return nil, werror.NewInvalidError(fmt.Sprintf("failed to get setting of RecurringSuccessfulJobsHistoryLimit: %v", err), "")
+		return nil, errors.Wrapf(err, "failed to get setting of RecurringSuccessfulJobsHistoryLimit")
 	}
 	successfulJobsHistoryLimit := int32(settingSuccessfulJobsHistoryLimit)
 	settingFailedJobsHistoryLimit, err := control.ds.GetSettingAsInt(types.SettingNameRecurringFailedJobsHistoryLimit)
 	if err != nil {
-		return nil, werror.NewInvalidError(fmt.Sprintf("failed to get setting of RecurringFailedJobsHistoryLimit: %v", err), "")
+		return nil, errors.Wrapf(err, "failed to get setting of RecurringFailedJobsHistoryLimit")
 	}
 	failedJobsHistoryLimit := int32(settingFailedJobsHistoryLimit)
 

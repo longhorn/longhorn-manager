@@ -45,3 +45,5 @@ data:
     #orphan-auto-deletion:
     #storage-network:
     #failed-backup-ttl:
+    #recurring-successful-jobs-history-limit:
+    #recurring-failed-jobs-history-limit:
