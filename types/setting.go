@@ -824,22 +824,24 @@ var (
 
 	SettingDefinitionRecurringSuccessfulJobsHistoryLimit = SettingDefinition{
 		DisplayName: "Cronjob Successful Jobs History Limit",
-		Description: "This setting specifies how much successful backup or snapshot job history should be kept.",
-		Category:    SettingCategoryBackup,
-		Type:        SettingTypeInt,
-		Required:    false,
-		ReadOnly:    false,
-		Default:     "1",
+		Description: "This setting specifies how many successful backup or snapshot job histories should be retained. \n\n" +
+			"History will not be retained if the value is 0.",
+		Category: SettingCategoryBackup,
+		Type:     SettingTypeInt,
+		Required: false,
+		ReadOnly: false,
+		Default:  "1",
 	}
 
 	SettingDefinitionRecurringFailedJobsHistoryLimit = SettingDefinition{
 		DisplayName: "Cronjob Failed Jobs History Limit",
-		Description: "\nThis setting specifies how much failed backup or snapshot job history should be kept.",
-		Category:    SettingCategoryBackup,
-		Type:        SettingTypeInt,
-		Required:    false,
-		ReadOnly:    false,
-		Default:     "1",
+		Description: "This setting specifies how many failed backup or snapshot job histories should be retained.\n\n" +
+			"History will not be retained if the value is 0.",
+		Category: SettingCategoryBackup,
+		Type:     SettingTypeInt,
+		Required: false,
+		ReadOnly: false,
+		Default:  "1",
 	}
 )
 
@@ -921,33 +923,39 @@ func ValidateSetting(name, value string) (err error) {
 
 	case SettingNameStorageOverProvisioningPercentage:
 		if _, err := strconv.Atoi(value); err != nil {
-			return fmt.Errorf("value %v is not a number", value)
+			return errors.Wrapf(err, "value %v is not a number", value)
 		}
 		// additional check whether over provisioning percentage is positive
 		value, err := util.ConvertSize(value)
-		if err != nil || value < 0 {
+		if err != nil {
+			return errors.Wrapf(err, "failed to parse %v as size", value)
+		}
+		if value < 0 {
 			return fmt.Errorf("value %v should be positive", value)
 		}
 	case SettingNameStorageMinimalAvailablePercentage:
 		if _, err := strconv.Atoi(value); err != nil {
-			return fmt.Errorf("value %v is not a number", value)
+			return errors.Wrapf(err, "value %v is not a number", value)
 		}
 		// additional check whether minimal available percentage is between 0 to 100
 		value, err := util.ConvertSize(value)
-		if err != nil || value < 0 || value > 100 {
+		if err != nil {
+			return errors.Wrapf(err, "failed to parse %v as size", value)
+		}
+		if value < 0 || value > 100 {
 			return fmt.Errorf("value %v should between 0 to 100", value)
 		}
 	case SettingNameDefaultReplicaCount:
 		c, err := strconv.Atoi(value)
 		if err != nil {
-			return fmt.Errorf("value %v is not int: %v", SettingNameDefaultReplicaCount, err)
+			return errors.Wrapf(err, "value %v is not number", value)
 		}
 		if err := ValidateReplicaCount(c); err != nil {
-			return fmt.Errorf("value %v: %v", c, err)
+			return errors.Wrapf(err, "failed to validate replica count %v", c)
 		}
 	case SettingNameReplicaAutoBalance:
 		if err := ValidateReplicaAutoBalance(longhorn.ReplicaAutoBalance(value)); err != nil {
-			return fmt.Errorf("value %v: %v", value, err)
+			return errors.Wrapf(err, "failed to validate replica auto balance: %v", value)
 		}
 	case SettingNameGuaranteedEngineCPU:
 		if value != "" {
@@ -966,7 +974,7 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameBackupstorePollInterval:
 		interval, err := strconv.Atoi(value)
 		if err != nil {
-			return fmt.Errorf("value is not int: %v", err)
+			errors.Wrapf(err, "value %v is not a number", value)
 		}
 		if interval < 0 {
 			return fmt.Errorf("the value %v shouldn't be less than 0", value)
@@ -974,31 +982,39 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameFailedBackupTTL:
 		interval, err := strconv.Atoi(value)
 		if err != nil {
-			return fmt.Errorf("value is not int: %v", err)
+			errors.Wrapf(err, "value %v is not a number", value)
 		}
 		if interval < 0 {
 			return fmt.Errorf("the value %v shouldn't be less than 0", value)
 		}
 	case SettingNameTaintToleration:
 		if _, err = UnmarshalTolerations(value); err != nil {
-			return fmt.Errorf("the value of %v is invalid: %v", sName, err)
+			return errors.Wrapf(err, "the value of %v is invalid", sName)
 		}
 	case SettingNameSystemManagedComponentsNodeSelector:
 		if _, err = UnmarshalNodeSelector(value); err != nil {
-			return fmt.Errorf("the value of %v is invalid: %v", sName, err)
+			return errors.Wrapf(err, "the value of %v is invalid", sName)
 		}
 	case SettingNameStorageNetwork:
 		if err = ValidateStorageNetwork(value); err != nil {
-			return fmt.Errorf("the value of %v is invalid: %v", sName, err)
+			return errors.Wrapf(err, "the value of %v is invalid", sName)
 		}
 
 	case SettingNameRecurringSuccessfulJobsHistoryLimit:
-		if _, err := strconv.Atoi(value); err != nil {
-			return fmt.Errorf("value %v is not a number", value)
+		successJobsHistLimit, err := strconv.Atoi(value)
+		if err != nil {
+			return errors.Wrapf(err, "value %v is not a number", value)
+		}
+		if successJobsHistLimit < 0 {
+			return fmt.Errorf("the value %v shouldn't be less than 0", value)
 		}
 	case SettingNameRecurringFailedJobsHistoryLimit:
-		if _, err := strconv.Atoi(value); err != nil {
-			return fmt.Errorf("value %v is not a number", value)
+		failedJobsHistLimit, err := strconv.Atoi(value)
+		if err != nil {
+			return errors.Wrapf(err, "value %v is not a number", value)
+		}
+		if failedJobsHistLimit < 0 {
+			return fmt.Errorf("the value %v shouldn't be less than 0", value)
 		}
 
 	// multi-choices
@@ -1017,7 +1033,7 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameGuaranteedReplicaManagerCPU:
 		i, err := strconv.Atoi(value)
 		if err != nil {
-			return fmt.Errorf("guaranteed engine/replica cpu value %v is not a valid integer: %v", value, err)
+			return errors.Wrapf(err, "guaranteed engine/replica cpu value %v is not a valid integer", value)
 		}
 		if i < 0 || i > 40 {
 			return fmt.Errorf("guaranteed engine/replica cpu value %v should be between 0 to 40", value)
