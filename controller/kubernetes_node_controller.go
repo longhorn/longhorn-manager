@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -171,7 +171,7 @@ func (knc *KubernetesNodeController) handleErr(err error, key interface{}) {
 
 func (knc *KubernetesNodeController) syncKubernetesNode(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to sync node for %v", key)
+		err = errors.Wrapf(err, "failed to sync node for %v", key)
 	}()
 	_, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {

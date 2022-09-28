@@ -698,7 +698,7 @@ func (job *Job) listBackupsForCleanup(backups []longhornclient.Backup) []string 
 		if found && jobLabel == backupLabel {
 			t, err := time.Parse(time.RFC3339, backup.Created)
 			if err != nil {
-				job.logger.Errorf("Fail to parse datetime %v for backup %v",
+				job.logger.Errorf("Failed to parse datetime %v for backup %v",
 					backup.Created, backup)
 				continue
 			}
@@ -830,7 +830,7 @@ func snapshotsToNameWithTimestamps(snapshots []longhornclient.Snapshot) []NameWi
 	for _, snapshot := range snapshots {
 		t, err := time.Parse(time.RFC3339, snapshot.Created)
 		if err != nil {
-			logrus.Errorf("Fail to parse datetime %v for snapshot %v",
+			logrus.Errorf("Failed to parse datetime %v for snapshot %v",
 				snapshot.Created, snapshot.Name)
 			continue
 		}

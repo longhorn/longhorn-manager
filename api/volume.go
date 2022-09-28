@@ -129,7 +129,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 
 	size, err := util.ConvertSize(volume.Size)
 	if err != nil {
-		return fmt.Errorf("fail to parse size %v", err)
+		return fmt.Errorf("failed to parse size %v", err)
 	}
 
 	// Check DiskSelector.
@@ -287,7 +287,7 @@ func (s *Server) VolumeRecurringAdd(rw http.ResponseWriter, req *http.Request) e
 
 func (s *Server) VolumeRecurringList(w http.ResponseWriter, req *http.Request) (err error) {
 	defer func() {
-		err = errors.Wrap(err, "fail to list volume recurring jobs")
+		err = errors.Wrap(err, "failed to list volume recurring jobs")
 	}()
 
 	volName := mux.Vars(req)["name"]
@@ -447,7 +447,7 @@ func (s *Server) VolumeExpand(rw http.ResponseWriter, req *http.Request) error {
 
 	size, err := util.ConvertSize(input.Size)
 	if err != nil {
-		return fmt.Errorf("fail to parse size %v", err)
+		return fmt.Errorf("failed to parse size %v", err)
 	}
 
 	id := mux.Vars(req)["name"]

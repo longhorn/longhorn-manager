@@ -148,7 +148,7 @@ func (kc *KubernetesPodController) handleErr(err error, key interface{}) {
 
 func (kc *KubernetesPodController) syncHandler(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "%v: fail to sync %v", controllerAgentName, key)
+		err = errors.Wrapf(err, "%v: failed to sync %v", controllerAgentName, key)
 	}()
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {

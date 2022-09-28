@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -132,7 +132,7 @@ func (kc *KubernetesConfigMapController) handleErr(err error, key interface{}) {
 
 func (kc *KubernetesConfigMapController) syncHandler(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "%v: fail to sync %v", kc.name, key)
+		err = errors.Wrapf(err, "%v: failed to sync %v", kc.name, key)
 	}()
 
 	namespace, cfmName, err := cache.SplitMetaNamespaceKey(key)

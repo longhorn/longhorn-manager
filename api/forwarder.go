@@ -92,11 +92,11 @@ func (f *Fwd) Handler(proxyHandler ProxyRequestHandler, getTargetAddressFunc Get
 			}
 			targetAddress, err := getTargetAddressFunc(req)
 			if err != nil {
-				return errors.Wrap(err, "fail to get the target address")
+				return errors.Wrap(err, "failed to get the target address")
 			}
 			requireProxy, err = proxyHandler(targetAddress, req)
 			if err != nil {
-				return errors.Wrap(err, "fail to verify if the proxy is required")
+				return errors.Wrap(err, "failed to verify if the proxy is required")
 			}
 		}
 		if requireProxy {
@@ -132,7 +132,7 @@ func (f *Fwd) GetHTTPAddressByNodeID(getNodeID OwnerIDFunc) GetTargetAddressFunc
 	return func(req *http.Request) (string, error) {
 		nodeID, err := getNodeID(req)
 		if err != nil {
-			return "", errors.Wrap(err, "fail to get target node ID")
+			return "", errors.Wrap(err, "failed to get target node ID")
 		}
 		return f.locator.Node2APIAddress(nodeID)
 	}

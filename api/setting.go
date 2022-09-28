@@ -26,7 +26,7 @@ func (s *Server) SettingList(w http.ResponseWriter, req *http.Request) error {
 func (s *Server) settingList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
 	sList, err := s.m.ListSettingsSorted()
 	if err != nil || sList == nil {
-		return nil, errors.Wrap(err, "fail to list settings")
+		return nil, errors.Wrap(err, "failed to list settings")
 	}
 	return toSettingCollection(sList), nil
 }

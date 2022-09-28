@@ -11,7 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -188,7 +188,7 @@ func getLoggerForEngineImage(logger logrus.FieldLogger, ei *longhorn.EngineImage
 
 func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to sync engine image for %v", key)
+		err = errors.Wrapf(err, "failed to sync engine image for %v", key)
 	}()
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -288,11 +288,11 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 
 		dsSpec, err := ic.createEngineImageDaemonSetSpec(engineImage, tolerations, priorityClass, registrySecret, imagePullPolicy, nodeSelector)
 		if err != nil {
-			return errors.Wrapf(err, "fail to create daemonset spec for engine image %v", engineImage.Name)
+			return errors.Wrapf(err, "failed to create daemonset spec for engine image %v", engineImage.Name)
 		}
 
 		if err = ic.ds.CreateEngineImageDaemonSet(dsSpec); err != nil {
-			return errors.Wrapf(err, "fail to create daemonset for engine image %v", engineImage.Name)
+			return errors.Wrapf(err, "failed to create daemonset for engine image %v", engineImage.Name)
 		}
 		log.Infof("Created daemon set %v for engine image %v (%v)", dsSpec.Name, engineImage.Name, engineImage.Spec.Image)
 		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions,
