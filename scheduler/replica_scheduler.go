@@ -51,6 +51,12 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 		return nil, nil, fmt.Errorf("BUG: Replica %v has been scheduled to node %v", replica.Name, replica.Spec.NodeID)
 	}
 
+	// not to schedule a replica failed and unused before.
+	if replica.Spec.HealthyAt == "" && replica.Spec.FailedAt != "" {
+		logrus.WithField("replica", replica.Name).Warn("Failed replica is not scheduled")
+		return nil, nil, nil
+	}
+
 	// get all hosts
 	nodesInfo, err := rcs.getNodeInfo()
 	if err != nil {
