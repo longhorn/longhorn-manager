@@ -1849,7 +1849,7 @@ func (vc *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.
 func (vc *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (int, map[string][]string, error) {
 	log := getLoggerForVolume(vc.logger, v).WithField("replicaAutoBalanceType", "zone")
 
-	readyNodes, err := vc.ds.ListReadyAndSchedulableNodes()
+	readyNodes, err := vc.listReadySchedulableAndScheduledNodes(rs, log)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -1953,10 +1953,52 @@ func (vc *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume
 	return adjustCount, zoneExtraRs, err
 }
 
+func (vc *VolumeController) listReadySchedulableAndScheduledNodes(rs map[string]*longhorn.Replica, log logrus.FieldLogger) (map[string]*longhorn.Node, error) {
+	readyNodes, err := vc.ds.ListReadyAndSchedulableNodes()
+	if err != nil {
+		return nil, err
+	}
+
+	// Including unschedulable node because the replica is already scheduled and running
+	// Ref: https://github.com/longhorn/longhorn/issues/4502
+	for _, r := range rs {
+		if r.Status.CurrentState != longhorn.InstanceStateRunning {
+			continue
+		}
+
+		_, exist := readyNodes[r.Spec.NodeID]
+		if exist {
+			continue
+		}
+
+		node, err := vc.ds.GetNodeRO(r.Spec.NodeID)
+		if err != nil && !datastore.ErrorIsNotFound(err) {
+			return nil, err
+		}
+
+		if node == nil {
+			continue
+		}
+
+		nodeReadyCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+		if nodeReadyCondition.Status != longhorn.ConditionStatusTrue {
+			continue
+		}
+
+		readyNodes[r.Spec.NodeID] = node
+		log.WithFields(logrus.Fields{
+			"replica": r.Name,
+			"node":    node.Name,
+		}).Debugf("Including unschedulable node because the replica is scheduled and running")
+	}
+
+	return readyNodes, nil
+}
+
 func (vc *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (int, map[string][]string, error) {
 	log := getLoggerForVolume(vc.logger, v).WithField("replicaAutoBalanceType", "node")
 
-	readyNodes, err := vc.ds.ListReadyAndSchedulableNodes()
+	readyNodes, err := vc.listReadySchedulableAndScheduledNodes(rs, log)
 	if err != nil {
 		return 0, nil, err
 	}
