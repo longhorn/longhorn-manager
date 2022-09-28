@@ -19,7 +19,7 @@ import (
 
 func (s *Server) SnapshotCreate(w http.ResponseWriter, req *http.Request) (err error) {
 	defer func() {
-		err = errors.Wrap(err, "fail to create snapshot")
+		err = errors.Wrap(err, "failed to create snapshot")
 	}()
 	var input SnapshotInput
 
@@ -49,7 +49,7 @@ func (s *Server) SnapshotCreate(w http.ResponseWriter, req *http.Request) (err e
 
 func (s *Server) SnapshotList(w http.ResponseWriter, req *http.Request) (err error) {
 	defer func() {
-		err = errors.Wrap(err, "fail to list snapshot")
+		err = errors.Wrap(err, "failed to list snapshot")
 	}()
 
 	volName := mux.Vars(req)["name"]
@@ -64,7 +64,7 @@ func (s *Server) SnapshotList(w http.ResponseWriter, req *http.Request) (err err
 
 func (s *Server) SnapshotGet(w http.ResponseWriter, req *http.Request) (err error) {
 	defer func() {
-		err = errors.Wrap(err, "fail to get snapshot")
+		err = errors.Wrap(err, "failed to get snapshot")
 	}()
 
 	var input SnapshotInput
@@ -85,7 +85,7 @@ func (s *Server) SnapshotGet(w http.ResponseWriter, req *http.Request) (err erro
 
 func (s *Server) SnapshotDelete(w http.ResponseWriter, req *http.Request) (err error) {
 	defer func() {
-		err = errors.Wrap(err, "fail to delete snapshot")
+		err = errors.Wrap(err, "failed to delete snapshot")
 	}()
 
 	var input SnapshotInput
@@ -114,7 +114,7 @@ func (s *Server) SnapshotDelete(w http.ResponseWriter, req *http.Request) (err e
 
 func (s *Server) SnapshotRevert(w http.ResponseWriter, req *http.Request) (err error) {
 	defer func() {
-		err = errors.Wrap(err, "fail to revert snapshot")
+		err = errors.Wrap(err, "failed to revert snapshot")
 	}()
 
 	var input SnapshotInput
@@ -147,7 +147,7 @@ func (s *Server) SnapshotRevert(w http.ResponseWriter, req *http.Request) (err e
 
 func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err error) {
 	defer func() {
-		err = errors.Wrap(err, "fail to backup snapshot")
+		err = errors.Wrap(err, "failed to backup snapshot")
 	}()
 
 	var input SnapshotInput
@@ -191,7 +191,7 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 
 func (s *Server) SnapshotPurge(w http.ResponseWriter, req *http.Request) (err error) {
 	defer func() {
-		err = errors.Wrap(err, "fail to purge snapshot")
+		err = errors.Wrap(err, "failed to purge snapshot")
 	}()
 
 	volName := mux.Vars(req)["name"]

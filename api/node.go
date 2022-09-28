@@ -28,11 +28,11 @@ func (s *Server) NodeList(rw http.ResponseWriter, req *http.Request) error {
 func (s *Server) nodeList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
 	nodeList, err := s.m.ListNodesSorted()
 	if err != nil {
-		return nil, errors.Wrap(err, "fail to list nodes")
+		return nil, errors.Wrap(err, "failed to list nodes")
 	}
 	nodeIPMap, err := s.m.GetManagerNodeIPMap()
 	if err != nil {
-		return nil, errors.Wrap(err, "fail to get node ip")
+		return nil, errors.Wrap(err, "failed to get node ip")
 	}
 	return toNodeCollection(nodeList, nodeIPMap, apiContext), nil
 }
@@ -43,11 +43,11 @@ func (s *Server) NodeGet(rw http.ResponseWriter, req *http.Request) error {
 
 	node, err := s.m.GetNode(id)
 	if err != nil {
-		return errors.Wrapf(err, "fail to get node %v", id)
+		return errors.Wrapf(err, "failed to get node %v", id)
 	}
 	nodeIPMap, err := s.m.GetManagerNodeIPMap()
 	if err != nil {
-		return errors.Wrap(err, "fail to get node ip")
+		return errors.Wrap(err, "failed to get node ip")
 	}
 	apiContext.Write(toNodeResource(node, nodeIPMap[node.Name], apiContext))
 	return nil
@@ -64,7 +64,7 @@ func (s *Server) NodeUpdate(rw http.ResponseWriter, req *http.Request) error {
 
 	nodeIPMap, err := s.m.GetManagerNodeIPMap()
 	if err != nil {
-		return errors.Wrap(err, "fail to get node ip")
+		return errors.Wrap(err, "failed to get node ip")
 	}
 
 	// Only scheduling disabled node can be evicted
@@ -109,7 +109,7 @@ func (s *Server) DiskUpdate(rw http.ResponseWriter, req *http.Request) error {
 
 	nodeIPMap, err := s.m.GetManagerNodeIPMap()
 	if err != nil {
-		return errors.Wrap(err, "fail to get node ip")
+		return errors.Wrap(err, "failed to get node ip")
 	}
 
 	// Only scheduling disabled disk can be evicted

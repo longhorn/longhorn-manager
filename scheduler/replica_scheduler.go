@@ -309,7 +309,7 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 		if requireSchedulingCheck {
 			info, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
 			if err != nil {
-				logrus.Errorf("Fail to get settings when scheduling replica: %v", err)
+				logrus.Errorf("Failed to get settings when scheduling replica: %v", err)
 				multiError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleSchedulingSettingsRetrieveFailed))
 				return preferredDisks, multiError
 			}

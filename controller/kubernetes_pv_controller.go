@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -178,7 +178,7 @@ func (kc *KubernetesPVController) handleErr(err error, key interface{}) {
 
 func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "kubernetes-controller: fail to sync %v", key)
+		err = errors.Wrapf(err, "kubernetes-controller: failed to sync %v", key)
 	}()
 	_, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
