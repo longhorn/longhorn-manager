@@ -186,7 +186,7 @@ func (bc *BackupController) handleErr(err error, key interface{}) {
 
 func (bc *BackupController) syncHandler(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "%v: fail to sync backup %v", bc.name, key)
+		err = errors.Wrapf(err, "%v: failed to sync backup %v", bc.name, key)
 	}()
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)

@@ -115,12 +115,12 @@ func startManager(c *cli.Context) error {
 
 	currentNodeID, err := util.GetRequiredEnv(types.EnvNodeName)
 	if err != nil {
-		return fmt.Errorf("BUG: fail to detect the node name")
+		return fmt.Errorf("BUG: failed to detect the node name")
 	}
 
 	currentIP, err := util.GetRequiredEnv(types.EnvPodIP)
 	if err != nil {
-		return fmt.Errorf("BUG: fail to detect the node IP")
+		return fmt.Errorf("BUG: failed to detect the node IP")
 	}
 
 	done := make(chan struct{})
