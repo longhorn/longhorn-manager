@@ -1,4 +1,4 @@
-FROM registry.suse.com/bci/bci-base:15.3
+FROM registry.suse.com/bci/bci-base:15.4
 
 RUN zypper -n install curl nfs-client iproute2 bind-utils iputils telnet \
               zip e2fsprogs e2fsprogs-devel xfsprogs xfsprogs-devel && \
