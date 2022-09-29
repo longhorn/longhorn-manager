@@ -96,6 +96,7 @@ const (
 	SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation = SettingName("snapshot-data-integrity-immediate-check-after-snapshot-creation")
 	SettingNameSnapshotDataIntegrityCronJob                             = SettingName("snapshot-data-integrity-cronjob")
 	SettingNameRestoreVolumeRecurringJobs                               = SettingName("restore-volume-recurring-jobs")
+	SettingNameRemoveSnapshotsDuringFilesystemTrim                      = SettingName("remove-snapshots-during-filesystem-trim")
 )
 
 var (
@@ -160,6 +161,7 @@ var (
 		SettingNameSnapshotDataIntegrityCronJob,
 		SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation,
 		SettingNameRestoreVolumeRecurringJobs,
+		SettingNameRemoveSnapshotsDuringFilesystemTrim,
 	}
 )
 
@@ -249,6 +251,7 @@ var (
 		SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation: SettingDefinitionSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation,
 		SettingNameSnapshotDataIntegrityCronJob:                             SettingDefinitionSnapshotDataIntegrityCronJob,
 		SettingNameRestoreVolumeRecurringJobs:                               SettingDefinitionRestoreVolumeRecurringJobs,
+		SettingNameRemoveSnapshotsDuringFilesystemTrim:                      SettingDefinitionRemoveSnapshotsDuringFilesystemTrim,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -970,6 +973,19 @@ var (
 		ReadOnly: false,
 		Default:  "0 0 */7 * *",
 	}
+
+	SettingDefinitionRemoveSnapshotsDuringFilesystemTrim = SettingDefinition{
+		DisplayName: "Remove Snapshots During Filesystem Trim",
+		Description: "This setting allows Longhorn filesystem trim feature to automatically mark the latest snapshot and its ancestors as removed and stops at the snapshot containing multiple children.\n\n" +
+			"Since Longhorn filesystem trim feature can be applied to the volume head and the followed continuous removed or system snapshots only.\n\n" +
+			"Notice that trying to trim a removed files from a valid snapshot will do nothing but the filesystem will discard this kind of in-memory trimmable file info. " +
+			"Later on if you mark the snapshot as removed and want to retry the trim, you may need to unmount and remount the filesystem so that the filesystem can recollect the trimmable file info.",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -1046,6 +1062,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameDeletingConfirmationFlag:
 		fallthrough
 	case SettingNameRestoreVolumeRecurringJobs:
+		fallthrough
+	case SettingNameRemoveSnapshotsDuringFilesystemTrim:
 		fallthrough
 	case SettingNameUpgradeChecker:
 		if value != "true" && value != "false" {
