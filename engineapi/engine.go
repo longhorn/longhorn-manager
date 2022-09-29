@@ -249,6 +249,22 @@ func (e *EngineBinary) VolumeFrontendShutdown(*longhorn.Engine) error {
 	return nil
 }
 
+// VolumeUnmapMarkSnapChainRemovedSet calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) VolumeUnmapMarkSnapChainRemovedSet(engine *longhorn.Engine) error {
+	cmdline := []string{"unmap-mark-snap-chain-removed"}
+	if engine.Spec.UnmapMarkSnapChainRemovedEnabled {
+		cmdline = append(cmdline, "--enable")
+	} else {
+		cmdline = append(cmdline, "--disable")
+	}
+	if _, err := e.ExecuteEngineBinary(cmdline...); err != nil {
+		return errors.Wrapf(err, "error setting volume flag UnmapMarkSnapChainRemoved to %v", engine.Spec.UnmapMarkSnapChainRemovedEnabled)
+	}
+
+	return nil
+}
+
 // ReplicaRebuildVerify calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
 func (e *EngineBinary) ReplicaRebuildVerify(engine *longhorn.Engine, url string) error {
