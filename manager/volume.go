@@ -194,6 +194,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			NodeSelector:              spec.NodeSelector,
 			RevisionCounterDisabled:   spec.RevisionCounterDisabled,
 			SnapshotDataIntegrity:     spec.SnapshotDataIntegrity,
+			UnmapMarkSnapChainRemoved: spec.UnmapMarkSnapChainRemoved,
 		},
 	}
 
@@ -985,6 +986,32 @@ func (m *VolumeManager) UpdateAccessMode(name string, accessMode longhorn.Access
 	}
 
 	logrus.Infof("Updated volume %v access mode from %v to %v", v.Name, oldAccessMode, accessMode)
+	return v, nil
+}
+
+func (m *VolumeManager) UpdateUnmapMarkSnapChainRemoved(name string, unmapMarkSnapChainRemoved longhorn.UnmapMarkSnapChainRemoved) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update field UnmapMarkSnapChainRemoved for volume %v", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.UnmapMarkSnapChainRemoved == unmapMarkSnapChainRemoved {
+		logrus.Debugf("Volume %v already set field UnmapMarkSnapChainRemoved to %v", v.Name, unmapMarkSnapChainRemoved)
+		return v, nil
+	}
+
+	oldUnmapMarkSnapChainRemoved := v.Spec.UnmapMarkSnapChainRemoved
+	v.Spec.UnmapMarkSnapChainRemoved = unmapMarkSnapChainRemoved
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Updated volume %v field UnmapMarkSnapChainRemoved from %v to %v", v.Name, oldUnmapMarkSnapChainRemoved, unmapMarkSnapChainRemoved)
 	return v, nil
 }
 

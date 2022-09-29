@@ -175,6 +175,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		DiskSelector:              volume.DiskSelector,
 		NodeSelector:              volume.NodeSelector,
 		SnapshotDataIntegrity:     volume.SnapshotDataIntegrity,
+		UnmapMarkSnapChainRemoved: volume.UnmapMarkSnapChainRemoved,
 	}, volume.RecurringJobSelector)
 	if err != nil {
 		return errors.Wrap(err, "unable to create volume")
@@ -404,6 +405,28 @@ func (s *Server) VolumeUpdateAccessMode(rw http.ResponseWriter, req *http.Reques
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.UpdateAccessMode(id, longhorn.AccessMode(input.AccessMode))
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateUnmapMarkSnapChainRemoved(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateUnmapMarkSnapChainRemovedInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrap(err, "error reading UnmapMarkSnapChainRemoved input")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateUnmapMarkSnapChainRemoved(id, longhorn.UnmapMarkSnapChainRemoved(input.UnmapMarkSnapChainRemoved))
 	})
 	if err != nil {
 		return err

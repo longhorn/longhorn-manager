@@ -45,6 +45,7 @@ type Volume struct {
 	RestoreRequired           bool                                   `json:"restoreRequired"`
 	RevisionCounterDisabled   bool                                   `json:"revisionCounterDisabled"`
 	SnapshotDataIntegrity     longhorn.SnapshotDataIntegrity         `json:"snapshotDataIntegrity"`
+	UnmapMarkSnapChainRemoved longhorn.UnmapMarkSnapChainRemoved     `json:"unmapMarkSnapChainRemoved"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`
@@ -139,14 +140,15 @@ type Instance struct {
 
 type Controller struct {
 	Instance
-	Size                   string `json:"size"`
-	ActualSize             string `json:"actualSize"`
-	Endpoint               string `json:"endpoint"`
-	LastRestoredBackup     string `json:"lastRestoredBackup"`
-	RequestedBackupRestore string `json:"requestedBackupRestore"`
-	IsExpanding            bool   `json:"isExpanding"`
-	LastExpansionError     string `json:"lastExpansionError"`
-	LastExpansionFailedAt  string `json:"lastExpansionFailedAt"`
+	Size                             string `json:"size"`
+	ActualSize                       string `json:"actualSize"`
+	Endpoint                         string `json:"endpoint"`
+	LastRestoredBackup               string `json:"lastRestoredBackup"`
+	RequestedBackupRestore           string `json:"requestedBackupRestore"`
+	IsExpanding                      bool   `json:"isExpanding"`
+	LastExpansionError               string `json:"lastExpansionError"`
+	LastExpansionFailedAt            string `json:"lastExpansionFailedAt"`
+	UnmapMarkSnapChainRemovedEnabled bool   `json:"unmapMarkSnapChainRemovedEnabled"`
 }
 
 type Replica struct {
@@ -233,6 +235,10 @@ type UpdateDataLocalityInput struct {
 
 type UpdateAccessModeInput struct {
 	AccessMode string `json:"accessMode"`
+}
+
+type UpdateUnmapMarkSnapChainRemovedInput struct {
+	UnmapMarkSnapChainRemoved string `json:"unmapMarkSnapChainRemoved"`
 }
 
 type PVCreateInput struct {
@@ -429,6 +435,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateReplicaAutoBalanceInput", UpdateReplicaAutoBalanceInput{})
 	schemas.AddType("UpdateDataLocalityInput", UpdateDataLocalityInput{})
 	schemas.AddType("UpdateAccessModeInput", UpdateAccessModeInput{})
+	schemas.AddType("UpdateUnmapMarkSnapChainRemovedInput", UpdateUnmapMarkSnapChainRemovedInput{})
 	schemas.AddType("workloadStatus", longhorn.WorkloadStatus{})
 	schemas.AddType("cloneStatus", longhorn.VolumeCloneStatus{})
 
@@ -753,6 +760,10 @@ func volumeSchema(volume *client.Schema) {
 			Input: "UpdateAccessModeInput",
 		},
 
+		"updateUnmapMarkSnapChainRemoved": {
+			Input: "UpdateUnmapMarkSnapChainRemovedInput",
+		},
+
 		"pvCreate": {
 			Input:  "PVCreateInput",
 			Output: "volume",
@@ -853,6 +864,12 @@ func volumeSchema(volume *client.Schema) {
 	revisionCounterDisabled.Create = true
 	revisionCounterDisabled.Default = false
 	volume.ResourceFields["revisionCounterDisabled"] = revisionCounterDisabled
+
+	unmapMarkSnapChainRemoved := volume.ResourceFields["unmapMarkSnapChainRemoved"]
+	unmapMarkSnapChainRemoved.Required = true
+	unmapMarkSnapChainRemoved.Create = true
+	unmapMarkSnapChainRemoved.Default = false
+	volume.ResourceFields["unmapMarkSnapChainRemoved"] = unmapMarkSnapChainRemoved
 
 	conditions := volume.ResourceFields["conditions"]
 	conditions.Type = "map[volumeCondition]"
@@ -961,14 +978,15 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 				CurrentImage:        e.Status.CurrentImage,
 				InstanceManagerName: e.Status.InstanceManagerName,
 			},
-			Size:                   strconv.FormatInt(e.Status.CurrentSize, 10),
-			ActualSize:             strconv.FormatInt(actualSize, 10),
-			Endpoint:               e.Status.Endpoint,
-			LastRestoredBackup:     e.Status.LastRestoredBackup,
-			RequestedBackupRestore: e.Spec.RequestedBackupRestore,
-			IsExpanding:            e.Status.IsExpanding,
-			LastExpansionError:     e.Status.LastExpansionError,
-			LastExpansionFailedAt:  e.Status.LastExpansionFailedAt,
+			Size:                             strconv.FormatInt(e.Status.CurrentSize, 10),
+			ActualSize:                       strconv.FormatInt(actualSize, 10),
+			Endpoint:                         e.Status.Endpoint,
+			LastRestoredBackup:               e.Status.LastRestoredBackup,
+			RequestedBackupRestore:           e.Spec.RequestedBackupRestore,
+			IsExpanding:                      e.Status.IsExpanding,
+			LastExpansionError:               e.Status.LastExpansionError,
+			LastExpansionFailedAt:            e.Status.LastExpansionFailedAt,
+			UnmapMarkSnapChainRemovedEnabled: e.Status.UnmapMarkSnapChainRemovedEnabled,
 		})
 		if e.Spec.NodeID == v.Status.CurrentNodeID {
 			ve = e
@@ -1102,14 +1120,15 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		DiskSelector:        v.Spec.DiskSelector,
 		NodeSelector:        v.Spec.NodeSelector,
 
-		State:                   v.Status.State,
-		Robustness:              v.Status.Robustness,
-		CurrentImage:            v.Status.CurrentImage,
-		LastBackup:              v.Status.LastBackup,
-		LastBackupAt:            v.Status.LastBackupAt,
-		RestoreRequired:         v.Status.RestoreRequired,
-		RevisionCounterDisabled: v.Spec.RevisionCounterDisabled,
-		Ready:                   ready,
+		State:                     v.Status.State,
+		Robustness:                v.Status.Robustness,
+		CurrentImage:              v.Status.CurrentImage,
+		LastBackup:                v.Status.LastBackup,
+		LastBackupAt:              v.Status.LastBackupAt,
+		RestoreRequired:           v.Status.RestoreRequired,
+		RevisionCounterDisabled:   v.Spec.RevisionCounterDisabled,
+		UnmapMarkSnapChainRemoved: v.Spec.UnmapMarkSnapChainRemoved,
+		Ready:                     ready,
 
 		AccessMode:    v.Spec.AccessMode,
 		ShareEndpoint: v.Status.ShareEndpoint,
@@ -1153,6 +1172,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateDataLocality"] = struct{}{}
 			actions["updateAccessMode"] = struct{}{}
 			actions["updateReplicaAutoBalance"] = struct{}{}
+			actions["updateUnmapMarkSnapChainRemoved"] = struct{}{}
 			actions["recurringJobAdd"] = struct{}{}
 			actions["recurringJobDelete"] = struct{}{}
 			actions["recurringJobList"] = struct{}{}
@@ -1175,6 +1195,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateReplicaCount"] = struct{}{}
 			actions["updateDataLocality"] = struct{}{}
 			actions["updateReplicaAutoBalance"] = struct{}{}
+			actions["updateUnmapMarkSnapChainRemoved"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
