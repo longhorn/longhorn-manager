@@ -314,9 +314,26 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		log.Infof("Found %d backups in the backup target that do not exist in the cluster and need to be pulled", count)
 	}
 	for backupName := range backupsToPull {
+		backupLabelMap := map[string]string{}
+
+		backupURL := backupstore.EncodeBackupURL(backupName, backupVolumeName, backupTargetClient.URL)
+		if backupInfo, err := backupTargetClient.BackupGet(backupURL, backupTargetClient.Credential); err != nil {
+			log.WithError(err).WithFields(logrus.Fields{
+				"backup":       backupName,
+				"backupvolume": backupVolumeName,
+				"backuptarget": backupURL}).Warnf("Failed to get backupInfo from remote backup target")
+		} else {
+			if accessMode, exist := backupInfo.Labels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)]; exist {
+				backupLabelMap[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)] = accessMode
+			}
+		}
+
 		backup := &longhorn.Backup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: backupName,
+			},
+			Spec: longhorn.BackupSpec{
+				Labels: backupLabelMap,
 			},
 		}
 		if _, err = bvc.ds.CreateBackup(backup, backupVolumeName); err != nil && !apierrors.IsAlreadyExists(err) {
