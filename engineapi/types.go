@@ -61,6 +61,7 @@ type EngineClient interface {
 
 	VolumeFrontendStart(*longhorn.Engine) error
 	VolumeFrontendShutdown(*longhorn.Engine) error
+	VolumeUnmapMarkSnapChainRemovedSet(engine *longhorn.Engine) error
 
 	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)
 	ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume bool) error
@@ -99,15 +100,16 @@ type EngineClientCollection interface {
 }
 
 type Volume struct {
-	Name                  string `json:"name"`
-	Size                  int64  `json:"size"`
-	ReplicaCount          int    `json:"replicaCount"`
-	Endpoint              string `json:"endpoint"`
-	Frontend              string `json:"frontend"`
-	FrontendState         string `json:"frontendState"`
-	IsExpanding           bool   `json:"isExpanding"`
-	LastExpansionError    string `json:"lastExpansionError"`
-	LastExpansionFailedAt string `json:"lastExpansionFailedAt"`
+	Name                      string `json:"name"`
+	Size                      int64  `json:"size"`
+	ReplicaCount              int    `json:"replicaCount"`
+	Endpoint                  string `json:"endpoint"`
+	Frontend                  string `json:"frontend"`
+	FrontendState             string `json:"frontendState"`
+	IsExpanding               bool   `json:"isExpanding"`
+	LastExpansionError        string `json:"lastExpansionError"`
+	LastExpansionFailedAt     string `json:"lastExpansionFailedAt"`
+	UnmapMarkSnapChainRemoved bool   `json:"unmapMarkSnapChainRemoved"`
 }
 
 type BackupTarget struct {
