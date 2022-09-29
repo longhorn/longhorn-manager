@@ -106,6 +106,10 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/restoreVolumeRecurringJob", "value": "%s"}`, longhorn.RestoreVolumeRecurringJobDefault))
 	}
 
+	if volume.Spec.UnmapMarkSnapChainRemoved == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/unmapMarkSnapChainRemoved", "value": "%s"}`, longhorn.UnmapMarkSnapChainRemovedIgnored))
+	}
+
 	if string(volume.Spec.AccessMode) == "" {
 		accessModeFromBackup := longhorn.AccessModeReadWriteOnce
 		if volume.Spec.FromBackup != "" {
@@ -233,6 +237,9 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 		if job.Labels == nil {
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/recurringJobs/%d/labels", "value": {}}`, id))
 		}
+	}
+	if volume.Spec.UnmapMarkSnapChainRemoved == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/unmapMarkSnapChainRemoved", "value": "%s"}`, longhorn.UnmapMarkSnapChainRemovedIgnored))
 	}
 
 	size := util.RoundUpSize(volume.Spec.Size)

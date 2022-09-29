@@ -26,6 +26,8 @@ type ReplicaSpec struct {
 	// +optional
 	RevisionCounterDisabled bool `json:"revisionCounterDisabled"`
 	// +optional
+	UnmapMarkDiskChainRemovedEnabled bool `json:"unmapMarkDiskChainRemovedEnabled"`
+	// +optional
 	RebuildRetryCount int `json:"rebuildRetryCount"`
 	// Deprecated
 	// +optional

@@ -618,6 +618,13 @@ func ValidateSnapshotDataIntegrity(mode string) error {
 	return nil
 }
 
+func ValidateUnmapMarkSnapChainRemoved(unmapValue longhorn.UnmapMarkSnapChainRemoved) error {
+	if unmapValue != longhorn.UnmapMarkSnapChainRemovedIgnored && unmapValue != longhorn.UnmapMarkSnapChainRemovedEnabled && unmapValue != longhorn.UnmapMarkSnapChainRemovedDisabled {
+		return fmt.Errorf("invalid UnmapMarkSnapChainRemoved setting: %v", unmapValue)
+	}
+	return nil
+}
+
 func GetDaemonSetNameFromEngineImageName(engineImageName string) string {
 	return "engine-image-" + engineImageName
 }
