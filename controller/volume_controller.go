@@ -1165,18 +1165,18 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				scheduled = true
 			}
 		}
+	}
 
-		if !scheduled {
-			if len(aggregatedReplicaScheduledError) == 0 {
-				aggregatedReplicaScheduledError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleSchedulingFailed))
-			}
-			failureMessage = aggregatedReplicaScheduledError.Join()
-			scheduledCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled)
-			if scheduledCondition.Status == longhorn.ConditionStatusFalse {
-				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
-					scheduledCondition.Reason, failureMessage)
-			}
+	if !scheduled {
+		if len(aggregatedReplicaScheduledError) == 0 {
+			aggregatedReplicaScheduledError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleSchedulingFailed))
+		}
+		failureMessage = aggregatedReplicaScheduledError.Join()
+		scheduledCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled)
+		if scheduledCondition.Status == longhorn.ConditionStatusFalse {
+			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+				longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
+				scheduledCondition.Reason, failureMessage)
 		}
 	}
 
