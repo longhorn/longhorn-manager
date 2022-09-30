@@ -429,6 +429,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
+	if err := vc.syncVolumeUnmapMarkSnapChainRemovedSetting(volume, engines, replicas); err != nil {
+		return err
+	}
+
 	if err := vc.updateRecurringJobs(volume); err != nil {
 		return err
 	}
@@ -1035,6 +1039,34 @@ func (vc *VolumeController) updateReplicaLogRequested(e *longhorn.Engine, rs map
 	if e.Spec.LogRequested && e.Status.LogFetched && !needReplicaLogs {
 		e.Spec.LogRequested = false
 	}
+}
+
+func (vc *VolumeController) isUnmapMarkSnapChainRemovedEnabled(v *longhorn.Volume) (bool, error) {
+	if v.Spec.UnmapMarkSnapChainRemoved != longhorn.UnmapMarkSnapChainRemovedIgnored {
+		return v.Spec.UnmapMarkSnapChainRemoved == longhorn.UnmapMarkSnapChainRemovedEnabled, nil
+	}
+
+	return vc.ds.GetSettingAsBool(types.SettingNameRemoveSnapshotsDuringFilesystemTrim)
+}
+
+func (vc *VolumeController) syncVolumeUnmapMarkSnapChainRemovedSetting(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) error {
+	if es == nil && rs == nil {
+		return nil
+	}
+
+	unmapMarkEnabled, err := vc.isUnmapMarkSnapChainRemovedEnabled(v)
+	if err != nil {
+		return err
+	}
+
+	for _, e := range es {
+		e.Spec.UnmapMarkSnapChainRemovedEnabled = unmapMarkEnabled
+	}
+	for _, r := range rs {
+		r.Spec.UnmapMarkDiskChainRemovedEnabled = unmapMarkEnabled
+	}
+
+	return nil
 }
 
 // ReconcileVolumeState handles the attaching and detaching of volume
@@ -2931,6 +2963,12 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume, isNewEngine bool) (
 			engine.Name, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
 	}
 
+	unmapMarkEnabled, err := vc.isUnmapMarkSnapChainRemovedEnabled(v)
+	if err != nil {
+		return nil, err
+	}
+	engine.Spec.UnmapMarkSnapChainRemovedEnabled = unmapMarkEnabled
+
 	if isNewEngine {
 		engine.Spec.Active = true
 	}
@@ -2954,11 +2992,12 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 				EngineImage: v.Status.CurrentImage,
 				DesireState: longhorn.InstanceStateStopped,
 			},
-			EngineName:              e.Name,
-			Active:                  true,
-			BackingImage:            v.Spec.BackingImage,
-			HardNodeAffinity:        hardNodeAffinity,
-			RevisionCounterDisabled: v.Spec.RevisionCounterDisabled,
+			EngineName:                       e.Name,
+			Active:                           true,
+			BackingImage:                     v.Spec.BackingImage,
+			HardNodeAffinity:                 hardNodeAffinity,
+			RevisionCounterDisabled:          v.Spec.RevisionCounterDisabled,
+			UnmapMarkDiskChainRemovedEnabled: e.Spec.UnmapMarkSnapChainRemovedEnabled,
 		},
 	}
 	if isRebuildingReplica {
