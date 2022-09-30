@@ -152,6 +152,13 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.RevisionCounterDisabled = revCounterDisabled
 	}
 
+	if unmapMarkSnapChainRemoved, ok := volOptions["unmapMarkSnapChainRemoved"]; ok {
+		if err := types.ValidateUnmapMarkSnapChainRemoved(longhorn.UnmapMarkSnapChainRemoved(unmapMarkSnapChainRemoved)); err != nil {
+			return nil, errors.Wrap(err, "Invalid parameter unmapMarkSnapChainRemoved")
+		}
+		vol.UnmapMarkSnapChainRemoved = unmapMarkSnapChainRemoved
+	}
+
 	if fromBackup, ok := volOptions["fromBackup"]; ok {
 		vol.FromBackup = fromBackup
 	}
