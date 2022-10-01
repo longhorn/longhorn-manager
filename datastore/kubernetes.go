@@ -761,3 +761,28 @@ func (s *DataStore) GetStorageIPFromPod(pod *corev1.Pod) string {
 	logrus.Warnf("Failed to get storage IP from %v pod, use IP %v", pod.Name, pod.Status.PodIP)
 	return pod.Status.PodIP
 }
+
+func (s *DataStore) UpdatePVAnnotation(volume *longhorn.Volume, annotationKey, annotationVal string) error {
+	pv, err := s.GetPersistentVolume(volume.Status.KubernetesStatus.PVName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	if pv.Annotations == nil {
+		pv.Annotations = map[string]string{}
+	}
+
+	val, ok := pv.Annotations[annotationKey]
+	if ok && val == annotationVal {
+		return nil
+	}
+
+	pv.Annotations[annotationKey] = annotationVal
+
+	_, err = s.UpdatePersistentVolume(pv)
+
+	return err
+}
