@@ -93,6 +93,7 @@ const (
 	LonghornLabelVolume                   = "longhornvolume"
 	LonghornLabelShareManager             = "share-manager"
 	LonghornLabelShareManagerImage        = "share-manager-image"
+	LonghornLabelShareManagerConfigMap    = "share-manager-configmap"
 	LonghornLabelBackingImage             = "backing-image"
 	LonghornLabelBackingImageManager      = "backing-image-manager"
 	LonghornLabelManagedBy                = "managed-by"
@@ -357,6 +358,13 @@ func GetShareManagerLabels(name, image string) map[string]string {
 		labels[GetLonghornLabelKey(LonghornLabelShareManagerImage)] = GetShareManagerImageChecksumName(GetImageCanonicalName(image))
 	}
 
+	return labels
+}
+
+func GetShareManagerConfigMapLabels(name string) map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelKey(LonghornLabelShareManager)] = name
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelShareManagerConfigMap
 	return labels
 }
 
