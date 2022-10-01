@@ -545,7 +545,11 @@ func (s *DataStore) GetConfigMap(namespace, name string) (*corev1.ConfigMap, err
 
 // DeleteConfigMap deletes the ConfigMap for the given name and namespace
 func (s *DataStore) DeleteConfigMap(namespace, name string) error {
-	return s.kubeClient.CoreV1().ConfigMaps(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := s.kubeClient.CoreV1().ConfigMaps(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	return nil
 }
 
 // GetSecretRO gets Secret with the given namespace and name
