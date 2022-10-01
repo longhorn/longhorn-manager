@@ -15,11 +15,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
-
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 type VolumeManager struct {
@@ -562,7 +561,7 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 		return v, nil
 	}
 
-	if err := m.scheduler.CheckReplicasSizeExpansion(v, v.Spec.Size, size); err != nil {
+	if _, err := m.scheduler.CheckReplicasSizeExpansion(v, v.Spec.Size, size); err != nil {
 		return nil, err
 	}
 
