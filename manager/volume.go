@@ -709,7 +709,7 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 		return v, nil
 	}
 
-	if err := m.scheduler.CheckReplicasSizeExpansion(v, v.Spec.Size, size); err != nil {
+	if _, err := m.scheduler.CheckReplicasSizeExpansion(v, v.Spec.Size, size); err != nil {
 		return nil, err
 	}
 
