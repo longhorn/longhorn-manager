@@ -1180,7 +1180,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 	}
 
-	if err := vc.updatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessage); err != nil {
+	if err := vc.ds.UpdatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessage); err != nil {
 		log.Warnf("Cannot update PV annotation for volume %v", v.Name)
 	}
 
@@ -2645,8 +2645,14 @@ func (vc *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.
 		vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonCanceledExpansion,
 			"Canceled expanding the volume %v, will automatically detach it", v.Name)
 	} else {
-		if err := vc.scheduler.CheckReplicasSizeExpansion(v, e.Spec.VolumeSize, v.Spec.Size); err != nil {
+		if diskScheduleMultiError, err := vc.scheduler.CheckReplicasSizeExpansion(v, e.Spec.VolumeSize, v.Spec.Size); err != nil {
 			log.Debugf("cannot start volume expansion: %v", err)
+			if diskScheduleMultiError != nil {
+				failureMessage := diskScheduleMultiError.Join()
+				if err := vc.ds.UpdatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessage); err != nil {
+					log.Warnf("Cannot update PV annotation for volume %v", v.Name)
+				}
+			}
 			return nil
 		}
 		log.Infof("Start volume expand from size %v to size %v", e.Spec.VolumeSize, v.Spec.Size)
@@ -3716,29 +3722,4 @@ func (vc *VolumeController) checkVolumeNotInMigration(volume *longhorn.Volume) e
 		return fmt.Errorf("cannot operate during migration")
 	}
 	return nil
-}
-
-func (vc *VolumeController) updatePVAnnotation(volume *longhorn.Volume, annotationKey, annotationVal string) error {
-	pv, err := vc.ds.GetPersistentVolume(volume.Status.KubernetesStatus.PVName)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	if pv.Annotations == nil {
-		pv.Annotations = map[string]string{}
-	}
-
-	val, ok := pv.Annotations[annotationKey]
-	if ok && val == annotationVal {
-		return nil
-	}
-
-	pv.Annotations[annotationKey] = annotationVal
-
-	_, err = vc.ds.UpdatePersistentVolume(pv)
-
-	return err
 }
