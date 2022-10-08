@@ -12,9 +12,9 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appsv1 "k8s.io/api/apps/v1"
-	batchv1beta1 "k8s.io/api/batch/v1beta1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	policyv1 "k8s.io/api/policy/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -89,7 +89,7 @@ func (s *DataStore) GetManagerNodeIPMap() (map[string]string, error) {
 }
 
 // GetCronJobROByRecurringJob returns read-only CronJob for the recurring job
-func (s *DataStore) GetCronJobROByRecurringJob(recurringJob *longhorn.RecurringJob) (*batchv1beta1.CronJob, error) {
+func (s *DataStore) GetCronJobROByRecurringJob(recurringJob *longhorn.RecurringJob) (*batchv1.CronJob, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: types.GetCronJobLabels(
 			&longhorn.RecurringJobSpec{
@@ -101,7 +101,7 @@ func (s *DataStore) GetCronJobROByRecurringJob(recurringJob *longhorn.RecurringJ
 	if err != nil {
 		return nil, err
 	}
-	itemMap := map[string]*batchv1beta1.CronJob{
+	itemMap := map[string]*batchv1.CronJob{
 		recurringJob.Name: nil,
 	}
 	list, err := s.cjLister.CronJobs(s.namespace).List(selector)
@@ -118,20 +118,20 @@ func (s *DataStore) GetCronJobROByRecurringJob(recurringJob *longhorn.RecurringJ
 }
 
 // CreateCronJob creates a CronJob resource
-func (s *DataStore) CreateCronJob(cronJob *batchv1beta1.CronJob) (*batchv1beta1.CronJob, error) {
-	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Create(context.TODO(), cronJob, metav1.CreateOptions{})
+func (s *DataStore) CreateCronJob(cronJob *batchv1.CronJob) (*batchv1.CronJob, error) {
+	return s.kubeClient.BatchV1().CronJobs(s.namespace).Create(context.TODO(), cronJob, metav1.CreateOptions{})
 }
 
 // UpdateCronJob updates CronJob resource
-func (s *DataStore) UpdateCronJob(cronJob *batchv1beta1.CronJob) (*batchv1beta1.CronJob, error) {
-	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Update(context.TODO(), cronJob, metav1.UpdateOptions{})
+func (s *DataStore) UpdateCronJob(cronJob *batchv1.CronJob) (*batchv1.CronJob, error) {
+	return s.kubeClient.BatchV1().CronJobs(s.namespace).Update(context.TODO(), cronJob, metav1.UpdateOptions{})
 }
 
 // DeleteCronJob delete CronJob for the given name and namespace.
 // The dependents will be deleted in the background
 func (s *DataStore) DeleteCronJob(cronJobName string) error {
 	propagation := metav1.DeletePropagationBackground
-	err := s.kubeClient.BatchV1beta1().CronJobs(s.namespace).Delete(context.TODO(), cronJobName,
+	err := s.kubeClient.BatchV1().CronJobs(s.namespace).Delete(context.TODO(), cronJobName,
 		metav1.DeleteOptions{
 			PropagationPolicy: &propagation,
 		})
@@ -181,25 +181,25 @@ func (s *DataStore) ListEngineImageDaemonSetPodsFromEngineImageName(EIName strin
 }
 
 // CreatePDB creates a PodDisruptionBudget resource for the given PDB object and namespace
-func (s *DataStore) CreatePDB(pdp *policyv1beta1.PodDisruptionBudget) (*policyv1beta1.PodDisruptionBudget, error) {
-	return s.kubeClient.PolicyV1beta1().PodDisruptionBudgets(s.namespace).Create(context.TODO(), pdp, metav1.CreateOptions{})
+func (s *DataStore) CreatePDB(pdp *policyv1.PodDisruptionBudget) (*policyv1.PodDisruptionBudget, error) {
+	return s.kubeClient.PolicyV1().PodDisruptionBudgets(s.namespace).Create(context.TODO(), pdp, metav1.CreateOptions{})
 }
 
 // DeletePDB deletes PodDisruptionBudget for the given name and namespace
 func (s *DataStore) DeletePDB(name string) error {
-	return s.kubeClient.PolicyV1beta1().PodDisruptionBudgets(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	return s.kubeClient.PolicyV1().PodDisruptionBudgets(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
 // GetPDBRO gets PDB for the given name and namespace.
 // This function returns direct reference to the internal cache object and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
-func (s *DataStore) GetPDBRO(name string) (*policyv1beta1.PodDisruptionBudget, error) {
+func (s *DataStore) GetPDBRO(name string) (*policyv1.PodDisruptionBudget, error) {
 	return s.pdbLister.PodDisruptionBudgets(s.namespace).Get(name)
 }
 
 // ListPDBs gets a map of PDB in s.namespace
-func (s *DataStore) ListPDBs() (map[string]*policyv1beta1.PodDisruptionBudget, error) {
-	itemMap := map[string]*policyv1beta1.PodDisruptionBudget{}
+func (s *DataStore) ListPDBs() (map[string]*policyv1.PodDisruptionBudget, error) {
+	itemMap := map[string]*policyv1.PodDisruptionBudget{}
 
 	list, err := s.pdbLister.PodDisruptionBudgets(s.namespace).List(labels.Everything())
 	if err != nil {

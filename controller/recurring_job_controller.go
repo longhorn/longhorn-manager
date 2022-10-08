@@ -10,7 +10,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	batchv1 "k8s.io/api/batch/v1"
-	batchv1beta1 "k8s.io/api/batch/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -336,7 +335,7 @@ func (control *RecurringJobController) reconcileRecurringJob(recurringJob *longh
 	return nil
 }
 
-func (control *RecurringJobController) createCronJob(cronJob *batchv1beta1.CronJob, recurringJob *longhorn.RecurringJob) error {
+func (control *RecurringJobController) createCronJob(cronJob *batchv1.CronJob, recurringJob *longhorn.RecurringJob) error {
 	var err error
 
 	cronJobSpecB, err := json.Marshal(cronJob.Spec)
@@ -354,7 +353,7 @@ func (control *RecurringJobController) createCronJob(cronJob *batchv1beta1.CronJ
 	return nil
 }
 
-func (control *RecurringJobController) checkAndUpdateCronJob(cronJob, appliedCronJob *batchv1beta1.CronJob) (err error) {
+func (control *RecurringJobController) checkAndUpdateCronJob(cronJob, appliedCronJob *batchv1.CronJob) (err error) {
 	cronJobSpecB, err := json.Marshal(cronJob.Spec)
 	if err != nil {
 		return err
@@ -378,7 +377,7 @@ func (control *RecurringJobController) checkAndUpdateCronJob(cronJob, appliedCro
 	return nil
 }
 
-func (control *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob) (*batchv1beta1.CronJob, error) {
+func (control *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob) (*batchv1.CronJob, error) {
 	backoffLimit := int32(CronJobBackoffLimit)
 	settingSuccessfulJobsHistoryLimit, err := control.ds.GetSettingAsInt(types.SettingNameRecurringSuccessfulJobsHistoryLimit)
 	if err != nil {
@@ -416,7 +415,7 @@ func (control *RecurringJobController) newCronJob(recurringJob *longhorn.Recurri
 	registrySecret := registrySecretSetting.Value
 
 	// for mounting inside container
-	cronJob := &batchv1beta1.CronJob{
+	cronJob := &batchv1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      recurringJob.Name,
 			Namespace: recurringJob.Namespace,
@@ -426,12 +425,12 @@ func (control *RecurringJobController) newCronJob(recurringJob *longhorn.Recurri
 			}),
 			OwnerReferences: datastore.GetOwnerReferencesForRecurringJob(recurringJob),
 		},
-		Spec: batchv1beta1.CronJobSpec{
+		Spec: batchv1.CronJobSpec{
 			Schedule:                   recurringJob.Spec.Cron,
-			ConcurrencyPolicy:          batchv1beta1.ForbidConcurrent,
+			ConcurrencyPolicy:          batchv1.ForbidConcurrent,
 			SuccessfulJobsHistoryLimit: &successfulJobsHistoryLimit,
 			FailedJobsHistoryLimit:     &failedJobsHistoryLimit,
-			JobTemplate: batchv1beta1.JobTemplateSpec{
+			JobTemplate: batchv1.JobTemplateSpec{
 				Spec: batchv1.JobSpec{
 					BackoffLimit: &backoffLimit,
 					Template: corev1.PodTemplateSpec{
