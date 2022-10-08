@@ -5,9 +5,9 @@ import (
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	appslisters "k8s.io/client-go/listers/apps/v1"
-	batchlisters_v1beta1 "k8s.io/client-go/listers/batch/v1beta1"
+	batchlisters_v1 "k8s.io/client-go/listers/batch/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
-	policylisters "k8s.io/client-go/listers/policy/v1beta1"
+	policylisters "k8s.io/client-go/listers/policy/v1"
 	schedulinglisters "k8s.io/client-go/listers/scheduling/v1"
 	storagelisters_v1 "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/client-go/tools/cache"
@@ -67,7 +67,7 @@ type DataStore struct {
 	kubeClient                    clientset.Interface
 	pLister                       corelisters.PodLister
 	PodInformer                   cache.SharedInformer
-	cjLister                      batchlisters_v1beta1.CronJobLister
+	cjLister                      batchlisters_v1.CronJobLister
 	CronJobInformer               cache.SharedInformer
 	dsLister                      appslisters.DaemonSetLister
 	DaemonSetInformer             cache.SharedInformer
@@ -156,7 +156,7 @@ func NewDataStore(
 	cacheSyncs = append(cacheSyncs, configMapInformer.Informer().HasSynced)
 	secretInformer := kubeInformerFactory.Core().V1().Secrets()
 	cacheSyncs = append(cacheSyncs, secretInformer.Informer().HasSynced)
-	cronJobInformer := kubeInformerFactory.Batch().V1beta1().CronJobs()
+	cronJobInformer := kubeInformerFactory.Batch().V1().CronJobs()
 	cacheSyncs = append(cacheSyncs, cronJobInformer.Informer().HasSynced)
 	daemonSetInformer := kubeInformerFactory.Apps().V1().DaemonSets()
 	cacheSyncs = append(cacheSyncs, daemonSetInformer.Informer().HasSynced)
@@ -168,7 +168,7 @@ func NewDataStore(
 	cacheSyncs = append(cacheSyncs, csiDriverInformer.Informer().HasSynced)
 	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
 	cacheSyncs = append(cacheSyncs, storageclassInformer.Informer().HasSynced)
-	pdbInformer := kubeInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
+	pdbInformer := kubeInformerFactory.Policy().V1().PodDisruptionBudgets()
 	cacheSyncs = append(cacheSyncs, pdbInformer.Informer().HasSynced)
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
 	cacheSyncs = append(cacheSyncs, serviceInformer.Informer().HasSynced)

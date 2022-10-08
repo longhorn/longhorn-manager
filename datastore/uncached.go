@@ -85,7 +85,7 @@ func (s *DataStore) GetAllJobsList() (runtime.Object, error) {
 // Direct retrieval from the API server should only be used for one-shot tasks.
 // For example, support bundle creation
 func (s *DataStore) GetAllCronJobsList() (runtime.Object, error) {
-	return s.kubeClient.BatchV1beta1().CronJobs(s.namespace).List(context.TODO(), metav1.ListOptions{})
+	return s.kubeClient.BatchV1().CronJobs(s.namespace).List(context.TODO(), metav1.ListOptions{})
 }
 
 // GetAllNodesList returns an uncached list of nodes for the given namespace
