@@ -36,6 +36,8 @@ type Controller struct {
 	Running bool `json:"running,omitempty" yaml:"running,omitempty"`
 
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
+
+	UnmapMarkSnapChainRemovedEnabled bool `json:"unmapMarkSnapChainRemovedEnabled,omitempty" yaml:"unmap_mark_snap_chain_removed_enabled,omitempty"`
 }
 
 type ControllerCollection struct {

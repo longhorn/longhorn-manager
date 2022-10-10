@@ -7,6 +7,8 @@ const (
 type BackingImageDiskFileStatus struct {
 	Resource `yaml:"-"`
 
+	LastStateTransitionTime string `json:"lastStateTransitionTime,omitempty" yaml:"last_state_transition_time,omitempty"`
+
 	Message string `json:"message,omitempty" yaml:"message,omitempty"`
 
 	Progress int64 `json:"progress,omitempty" yaml:"progress,omitempty"`
