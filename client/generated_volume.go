@@ -88,6 +88,8 @@ type Volume struct {
 	Standby bool `json:"standby,omitempty" yaml:"standby,omitempty"`
 
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
+
+	UnmapMarkSnapChainRemoved string `json:"unmapMarkSnapChainRemoved,omitempty" yaml:"unmap_mark_snap_chain_removed,omitempty"`
 }
 
 type VolumeCollection struct {
@@ -146,6 +148,8 @@ type VolumeOperations interface {
 	ActionSnapshotRevert(*Volume, *SnapshotInput) (*Snapshot, error)
 
 	ActionUpdateAccessMode(*Volume, *UpdateAccessModeInput) (*Volume, error)
+
+	ActionTrimFilesystem(*Volume) (*Volume, error)
 }
 
 func newVolumeClient(rancherClient *RancherClient) *VolumeClient {
@@ -374,6 +378,15 @@ func (c *VolumeClient) ActionUpdateAccessMode(resource *Volume, input *UpdateAcc
 	resp := &Volume{}
 
 	err := c.rancherClient.doAction(VOLUME_TYPE, "updateAccessMode", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionTrimFilesystem(resource *Volume) (*Volume, error) {
+
+	resp := &Volume{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "trimFilesystem", &resource.Resource, nil, resp)
 
 	return resp, err
 }
