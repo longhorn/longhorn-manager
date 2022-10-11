@@ -64,16 +64,16 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 		err := errors.Wrapf(err, "cannot find the backup volume label for backup %v", backup.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")
 	}
-	volume, err := b.ds.GetVolumeRO(volumeName)
-	if err != nil {
-		err := errors.Wrapf(err, "failed to get volume %v", volumeName)
-		return nil, werror.NewInvalidError(err.Error(), "")
+
+	if _, isExist := backupLabels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)]; !isExist {
+		volumeAccessMode := longhorn.AccessModeReadWriteOnce
+		if volume, err := b.ds.GetVolumeRO(volumeName); err == nil {
+			if volume.Spec.AccessMode != "" {
+				volumeAccessMode = volume.Spec.AccessMode
+			}
+		}
+		backupLabels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)] = string(volumeAccessMode)
 	}
-	volumeAccessMode := volume.Spec.AccessMode
-	if volume.Spec.AccessMode == "" {
-		volumeAccessMode = longhorn.AccessModeReadWriteOnce
-	}
-	backupLabels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)] = string(volumeAccessMode)
 
 	valueBackupLabels, err := json.Marshal(backupLabels)
 	if err != nil {

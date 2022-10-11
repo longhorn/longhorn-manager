@@ -545,7 +545,11 @@ func (s *DataStore) GetConfigMap(namespace, name string) (*corev1.ConfigMap, err
 
 // DeleteConfigMap deletes the ConfigMap for the given name and namespace
 func (s *DataStore) DeleteConfigMap(namespace, name string) error {
-	return s.kubeClient.CoreV1().ConfigMaps(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := s.kubeClient.CoreV1().ConfigMaps(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	return nil
 }
 
 // GetSecretRO gets Secret with the given namespace and name
@@ -756,4 +760,29 @@ func (s *DataStore) GetStorageIPFromPod(pod *corev1.Pod) string {
 
 	logrus.Warnf("Failed to get storage IP from %v pod, use IP %v", pod.Name, pod.Status.PodIP)
 	return pod.Status.PodIP
+}
+
+func (s *DataStore) UpdatePVAnnotation(volume *longhorn.Volume, annotationKey, annotationVal string) error {
+	pv, err := s.GetPersistentVolume(volume.Status.KubernetesStatus.PVName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	if pv.Annotations == nil {
+		pv.Annotations = map[string]string{}
+	}
+
+	val, ok := pv.Annotations[annotationKey]
+	if ok && val == annotationVal {
+		return nil
+	}
+
+	pv.Annotations[annotationKey] = annotationVal
+
+	_, err = s.UpdatePersistentVolume(pv)
+
+	return err
 }

@@ -23,21 +23,35 @@ type RecoveryBackend struct {
 	Datastore *datastore.DataStore
 }
 
-func newConfigMap(namespace, name, version string) *v1.ConfigMap {
+func (rb *RecoveryBackend) newConfigMap(namespace, name, version, smPodName string) (*v1.ConfigMap, error) {
+	smPod, err := rb.Datastore.GetPod(smPodName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get share manager pod %v", name)
+	}
+
+	smName, ok := smPod.Labels[types.GetLonghornLabelKey(types.LonghornLabelShareManager)]
+	if !ok {
+		return nil, errors.Wrapf(err, "failed to get label %v from share manager pod %v",
+			types.GetLonghornLabelKey(types.LonghornLabelShareManager), smName)
+	}
 	return &v1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
 			Name:      name,
+			Labels:    types.GetShareManagerConfigMapLabels(smName),
 		},
 		Data: map[string]string{
 			version: "{}",
 		},
-	}
+	}, nil
 }
 
 func (rb *RecoveryBackend) CreateConfigMap(hostname, version string) error {
 	configMapName := types.GetConfigMapNameFromHostname(hostname)
-	cm := newConfigMap(rb.Namespace, configMapName, version)
+	cm, err := rb.newConfigMap(rb.Namespace, configMapName, version, hostname)
+	if err != nil {
+		return err
+	}
 
 	if _, err := rb.Datastore.CreateConfigMap(cm); err != nil {
 		if !apierrors.IsAlreadyExists(err) {
