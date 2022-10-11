@@ -32,7 +32,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: longhorn-uninstall-service-account
-  namespace: default
+  namespace: longhorn-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -90,13 +90,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: longhorn-uninstall-service-account
-    namespace: default
+    namespace: longhorn-system
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: longhorn-uninstall
-  namespace: default
+  namespace: longhorn-system
 spec:
   activeDeadlineSeconds: 900
   backoffLimit: 1
