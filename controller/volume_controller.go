@@ -161,6 +161,15 @@ func NewVolumeController(
 	}, 0)
 	vc.cacheSyncs = append(vc.cacheSyncs, ds.NodeInformer.HasSynced)
 
+	ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: isSettingRelatedToVolume,
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    vc.enqueueSettingChange,
+			UpdateFunc: func(old, cur interface{}) { vc.enqueueSettingChange(cur) },
+		},
+	}, 0)
+	vc.cacheSyncs = append(vc.cacheSyncs, ds.SettingInformer.HasSynced)
+
 	return vc
 }
 
@@ -3931,6 +3940,51 @@ func (vc *VolumeController) enqueueNodeChange(obj interface{}) {
 		if r.Spec.NodeID == "" || r.Spec.FailedAt != "" || replicaAutoBalance != longhorn.ReplicaAutoBalanceDisabled {
 			vc.enqueueVolume(vol)
 		}
+	}
+}
+
+func isSettingRelatedToVolume(obj interface{}) bool {
+	setting, ok := obj.(*longhorn.Setting)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			return false
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		setting, ok = deletedState.Obj.(*longhorn.Setting)
+		if !ok {
+			return false
+		}
+	}
+
+	return types.SettingsRelatedToVolume[setting.Name] == types.LonghornLabelValueIgnored
+}
+
+func (vc *VolumeController) enqueueSettingChange(obj interface{}) {
+	setting, ok := obj.(*longhorn.Setting)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to requeue the claimed volumes
+		setting, ok = deletedState.Obj.(*longhorn.Setting)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non Setting object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	vs, err := vc.ds.ListVolumesFollowsGlobalSettingsRO(map[string]bool{setting.Name: true})
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list volumes when enqueuing setting %v: %v", types.SettingNameRemoveSnapshotsDuringFilesystemTrim, err))
+		return
+	}
+	for _, v := range vs {
+		vc.enqueueVolume(v)
 	}
 }
 

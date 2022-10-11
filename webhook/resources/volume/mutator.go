@@ -184,7 +184,12 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		labels[types.LonghornLabelBackupVolume] = bvName
 	}
 
-	patchOp, err := common.GetLonghornLabelsPatchOp(volume, labels, nil)
+	labelsForVolumesFollowsGlobalSettings := datastore.GetLabelsForVolumesFollowsGlobalSettings(volume)
+	for k, v := range labelsForVolumesFollowsGlobalSettings {
+		labels[k] = v
+	}
+
+	patchOp, err := common.GetLonghornLabelsPatchOp(volume, labels, types.SettingsRelatedToVolume)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get label patch for volume %v", volume.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")
@@ -252,7 +257,12 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 		labels = map[string]string{}
 	}
 
-	patchOp, err := common.GetLonghornLabelsPatchOp(volume, labels, nil)
+	labelsForVolumesFollowsGlobalSettings := datastore.GetLabelsForVolumesFollowsGlobalSettings(volume)
+	for k, v := range labelsForVolumesFollowsGlobalSettings {
+		labels[k] = v
+	}
+
+	patchOp, err := common.GetLonghornLabelsPatchOp(volume, labels, types.SettingsRelatedToVolume)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get label patch for volume %v", volume.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")
