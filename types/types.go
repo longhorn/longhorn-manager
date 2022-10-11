@@ -91,6 +91,7 @@ const (
 	LonghornLabelKeyPrefix = "longhorn.io"
 
 	LonghornLabelRecurringJobKeyPrefixFmt = "recurring-%s.longhorn.io"
+	LonghornLabelVolumeSettingKeyPrefix   = "setting.longhorn.io"
 
 	LonghornLabelEngineImage              = "engine-image"
 	LonghornLabelInstanceManager          = "instance-manager"
@@ -115,8 +116,10 @@ const (
 	LonghornLabelRecoveryBackend          = "recovery-backend"
 	LonghornLabelCRDAPIVersion            = "crd-api-version"
 	LonghornLabelVolumeAccessMode         = "volume-access-mode"
+	LonghornLabelFollowGlobalSetting      = "follow-global-setting"
 
 	LonghornLabelValueEnabled = "enabled"
+	LonghornLabelValueIgnored = "ignored"
 
 	LonghornLabelExportFromVolume                 = "export-from-volume"
 	LonghornLabelSnapshotForExportingBackingImage = "for-exporting-backing-image"
@@ -198,6 +201,14 @@ const (
 
 	ImageChecksumNameLength = 8
 )
+
+// SettingsRelatedToVolume should match the items in datastore.GetLabelsForVolumesFollowsGlobalSettings
+//   TODO: May need to add the data locality check
+var SettingsRelatedToVolume = map[string]string{
+	string(SettingNameReplicaAutoBalance):                  LonghornLabelValueIgnored,
+	string(SettingNameSnapshotDataIntegrity):               LonghornLabelValueIgnored,
+	string(SettingNameRemoveSnapshotsDuringFilesystemTrim): LonghornLabelValueIgnored,
+}
 
 type NotFoundError struct {
 	Name string
@@ -631,6 +642,10 @@ func GetDaemonSetNameFromEngineImageName(engineImageName string) string {
 
 func GetEngineImageNameFromDaemonSetName(dsName string) string {
 	return strings.TrimPrefix(dsName, "engine-image-")
+}
+
+func GetVolumeSettingLabelKey(settingName string) string {
+	return fmt.Sprintf("%s/%s", LonghornLabelVolumeSettingKeyPrefix, settingName)
 }
 
 func LabelsToString(labels map[string]string) string {
