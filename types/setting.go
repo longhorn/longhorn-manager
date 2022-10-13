@@ -86,6 +86,7 @@ const (
 	SettingNameFailedBackupTTL                              = SettingName("failed-backup-ttl")
 	SettingNameRecurringSuccessfulJobsHistoryLimit          = SettingName("recurring-successful-jobs-history-limit")
 	SettingNameRecurringFailedJobsHistoryLimit              = SettingName("recurring-failed-jobs-history-limit")
+	SettingNameDeletingConfirmationFlag                     = SettingName("deleting-confirmation-flag")
 )
 
 var (
@@ -142,6 +143,7 @@ var (
 		SettingNameFailedBackupTTL,
 		SettingNameRecurringSuccessfulJobsHistoryLimit,
 		SettingNameRecurringFailedJobsHistoryLimit,
+		SettingNameDeletingConfirmationFlag,
 	}
 )
 
@@ -222,6 +224,7 @@ var (
 		SettingNameFailedBackupTTL:                              SettingDefinitionFailedBackupTTL,
 		SettingNameRecurringSuccessfulJobsHistoryLimit:          SettingDefinitionRecurringSuccessfulJobsHistoryLimit,
 		SettingNameRecurringFailedJobsHistoryLimit:              SettingDefinitionRecurringFailedJobsHistoryLimit,
+		SettingNameDeletingConfirmationFlag:                     SettingDefinitionDeletingConfirmationFlag,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -843,6 +846,18 @@ var (
 		ReadOnly: false,
 		Default:  "1",
 	}
+
+	SettingDefinitionDeletingConfirmationFlag = SettingDefinition{
+		DisplayName: "Deleting Confirmation Flag",
+		Description: "This flag is designed to prevent Longhorn from being accidentally uninstalled which will lead to data lost. \n\n" +
+			"Set this flag to **true** to allow Longhorn uninstallation. " +
+			"If this flag **false**, Longhorn uninstallation job will fail.",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -915,6 +930,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameKubernetesClusterAutoscalerEnabled:
 		fallthrough
 	case SettingNameOrphanAutoDeletion:
+		fallthrough
+	case SettingNameDeletingConfirmationFlag:
 		fallthrough
 	case SettingNameUpgradeChecker:
 		if value != "true" && value != "false" {
