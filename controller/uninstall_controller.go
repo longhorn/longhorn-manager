@@ -325,6 +325,16 @@ func (c *UninstallController) uninstall() error {
 }
 
 func (c *UninstallController) checkPreconditions() error {
+	confirmationFlag, err := c.ds.GetSettingAsBool(types.SettingNameDeletingConfirmationFlag)
+	if err != nil {
+		return errors.Wrapf(err, "failed to check deleting-confirmation-flag setting")
+	}
+	if !confirmationFlag {
+		return fmt.Errorf("cannot uninstall Longhorn because deleting-confirmation-flag is set to `false`. " +
+			"Please set it to `true` using Longhorn UI or " +
+			"kubectl -n longhorn-system edit settings.longhorn.io deleting-confirmation-flag ")
+	}
+
 	if ready, err := c.managerReady(); err != nil {
 		return err
 	} else if !ready {
