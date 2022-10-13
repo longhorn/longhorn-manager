@@ -12,7 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	v1 "k8s.io/api/core/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -617,7 +617,7 @@ func (imc *InstanceManagerController) cleanUpPDBForNonExistingIM() error {
 		if !datastore.ErrorIsNotFound(err) {
 			return err
 		}
-		imPDBs = make(map[string]*policyv1beta1.PodDisruptionBudget)
+		imPDBs = make(map[string]*policyv1.PodDisruptionBudget)
 	}
 
 	for pdbName, pdb := range imPDBs {
@@ -818,13 +818,13 @@ func (imc *InstanceManagerController) createInstanceManagerPDB(im *longhorn.Inst
 	return nil
 }
 
-func (imc *InstanceManagerController) generateInstanceManagerPDBManifest(im *longhorn.InstanceManager) *policyv1beta1.PodDisruptionBudget {
-	return &policyv1beta1.PodDisruptionBudget{
+func (imc *InstanceManagerController) generateInstanceManagerPDBManifest(im *longhorn.InstanceManager) *policyv1.PodDisruptionBudget {
+	return &policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      imc.getPDBName(im),
 			Namespace: imc.namespace,
 		},
-		Spec: policyv1beta1.PodDisruptionBudgetSpec{
+		Spec: policyv1.PodDisruptionBudgetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, im.Spec.Type),
 			},
