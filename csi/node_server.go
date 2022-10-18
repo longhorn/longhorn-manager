@@ -32,6 +32,10 @@ const (
 	// We currently only support passphrase retrieval via direct secret values
 	CryptoKeyProvider = "CRYPTO_KEY_PROVIDER"
 	CryptoKeyValue    = "CRYPTO_KEY_VALUE"
+	CryptoKeyCipher   = "CRYPTO_KEY_CIPHER"
+	CryptoKeyHash     = "CRYPTO_KEY_HASH"
+	CryptoKeySize     = "CRYPTO_KEY_SIZE"
+	CryptoPBKDF       = "CRYPTO_PBKDF"
 
 	defaultFsType = "ext4"
 )
@@ -412,9 +416,11 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			return nil, status.Errorf(codes.InvalidArgument, "unsupported disk encryption format %v", diskFormat)
 		}
 
+		cryptoParams := crypto.NewEncryptParams(keyProvider, secrets[CryptoKeyCipher], secrets[CryptoKeyHash], secrets[CryptoKeySize], secrets[CryptoPBKDF])
+
 		// initial setup of longhorn device for crypto
 		if diskFormat == "" {
-			if err := crypto.EncryptVolume(devicePath, passphrase); err != nil {
+			if err := crypto.EncryptVolume(devicePath, passphrase, cryptoParams); err != nil {
 				return nil, status.Error(codes.Internal, err.Error())
 			}
 		}
