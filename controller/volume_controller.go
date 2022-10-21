@@ -854,11 +854,17 @@ func (vc *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *l
 		return err
 	}
 
-	if cleaned, err = vc.cleanupAutoBalancedReplicas(v, e, rs); err != nil || cleaned {
+	if cleaned, err = vc.cleanupDataLocalityReplicas(v, e, rs); err != nil || cleaned {
 		return err
 	}
 
-	if cleaned, err = vc.cleanupDataLocalityReplicas(v, e, rs); err != nil || cleaned {
+	// Auto-balanced replicas get cleaned based on the sorted order. Hence,
+	// cleaning up for data locality replica needs to go first. Or else, a
+	// new replica could have a name alphabetically smaller than all the
+	// existing replicas. And this causes a rebuilding loop if this new
+	// replica is for data locality.
+	// Ref: https://github.com/longhorn/longhorn/issues/4761
+	if cleaned, err = vc.cleanupAutoBalancedReplicas(v, e, rs); err != nil || cleaned {
 		return err
 	}
 
