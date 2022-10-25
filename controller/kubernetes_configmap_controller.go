@@ -68,11 +68,12 @@ func NewKubernetesConfigMapController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-kubernetes-configmap-controller"}),
 	}
 
-	ds.ConfigMapInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    kc.enqueueConfigMapChange,
-		UpdateFunc: func(old, cur interface{}) { kc.enqueueConfigMapChange(cur) },
-		DeleteFunc: kc.enqueueConfigMapChange,
-	})
+	ds.ConfigMapInformer.AddEventHandlerWithResyncPeriod(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    kc.enqueueConfigMapChange,
+			UpdateFunc: func(old, cur interface{}) { kc.enqueueConfigMapChange(cur) },
+			DeleteFunc: kc.enqueueConfigMapChange,
+		}, 0)
 
 	ds.StorageClassInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
