@@ -500,34 +500,6 @@ func CheckVolume(v *longhorn.Volume) error {
 	return nil
 }
 
-func tagVolumeLabel(volumeName string, obj runtime.Object) error {
-	metadata, err := meta.Accessor(obj)
-	if err != nil {
-		return err
-	}
-
-	labels := metadata.GetLabels()
-	if labels == nil {
-		labels = map[string]string{}
-	}
-
-	for k, v := range types.GetVolumeLabels(volumeName) {
-		labels[k] = v
-	}
-	metadata.SetLabels(labels)
-	return nil
-}
-
-func fixupMetadata(volumeName string, obj runtime.Object) error {
-	if err := tagVolumeLabel(volumeName, obj); err != nil {
-		return err
-	}
-	if err := util.AddFinalizer(longhornFinalizerKey, obj); err != nil {
-		return err
-	}
-	return nil
-}
-
 func getVolumeSelector(volumeName string) (labels.Selector, error) {
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: types.GetVolumeLabels(volumeName),
@@ -571,9 +543,6 @@ func GetOwnerReferencesForRecurringJob(recurringJob *longhorn.RecurringJob) []me
 
 // CreateVolume creates a Longhorn Volume resource and verifies creation
 func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
-	if err := fixupMetadata(v.Name, v); err != nil {
-		return nil, err
-	}
 	if err := FixupRecurringJob(v); err != nil {
 		return nil, err
 	}
@@ -602,9 +571,6 @@ func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 
 // UpdateVolume updates Longhorn Volume and verifies update
 func (s *DataStore) UpdateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
-	if err := fixupMetadata(v.Name, v); err != nil {
-		return nil, err
-	}
 	if err := FixupRecurringJob(v); err != nil {
 		return nil, err
 	}
@@ -893,9 +859,6 @@ func (s *DataStore) CreateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	if err := checkEngine(e); err != nil {
 		return nil, err
 	}
-	if err := fixupMetadata(e.Spec.VolumeName, e); err != nil {
-		return nil, err
-	}
 	if err := tagNodeLabel(e.Spec.NodeID, e); err != nil {
 		return nil, err
 	}
@@ -925,9 +888,6 @@ func (s *DataStore) CreateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 // UpdateEngine updates Longhorn Engine and verifies update
 func (s *DataStore) UpdateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	if err := checkEngine(e); err != nil {
-		return nil, err
-	}
-	if err := fixupMetadata(e.Spec.VolumeName, e); err != nil {
 		return nil, err
 	}
 	if err := tagNodeLabel(e.Spec.NodeID, e); err != nil {
@@ -1048,9 +1008,6 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err := checkReplica(r); err != nil {
 		return nil, err
 	}
-	if err := fixupMetadata(r.Spec.VolumeName, r); err != nil {
-		return nil, err
-	}
 	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {
 		return nil, err
 	}
@@ -1086,9 +1043,6 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 // UpdateReplica updates Replica and verifies update
 func (s *DataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error) {
 	if err := checkReplica(r); err != nil {
-		return nil, err
-	}
-	if err := fixupMetadata(r.Spec.VolumeName, r); err != nil {
 		return nil, err
 	}
 	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {

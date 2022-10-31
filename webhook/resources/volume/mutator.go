@@ -1,7 +1,6 @@
 package volume
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -12,11 +11,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/backupstore"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
+	"github.com/longhorn/longhorn-manager/webhook/common"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
 
@@ -117,6 +118,11 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/accessMode", "value": "%s"}`, string(accessModeFromBackup)))
 	}
 
+	labels := volume.Labels
+	if labels == nil {
+		labels = map[string]string{}
+	}
+
 	size := volume.Spec.Size
 	if volume.Spec.FromBackup != "" {
 		bName, bvName, _, err := backupstore.DecodeBackupURL(volume.Spec.FromBackup)
@@ -163,20 +169,22 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 			return nil, werror.NewInvalidError(fmt.Sprintf("get invalid size for volume %v: %v", backup.Status.VolumeSize, err), "")
 		}
 
-		// Add backup volume name label to the restore/DR volume
-		labels := volume.Labels
-		if labels == nil {
-			labels = map[string]string{}
-		}
 		labels[types.LonghornLabelBackupVolume] = bvName
-
-		bytes, err := json.Marshal(labels)
-		if err != nil {
-			err = errors.Wrapf(err, "failed to get JSON encoding for volume %v labels", volume.Name)
-			return nil, werror.NewInvalidError(err.Error(), "")
-		}
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/metadata/labels", "value": %v}`, string(bytes)))
 	}
+
+	patchOp, err := common.GetLonghornLabelsPatchOp(volume, labels)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get label patch for volume %v", volume.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	patchOps = append(patchOps, patchOp)
+
+	patchOp, err = common.GetLonghornFinalizerPatchOp(volume)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get finalizer patch for volume %v", volume.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	patchOps = append(patchOps, patchOp)
 
 	size = util.RoundUpSize(size)
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/size", "value": "%v"}`, strconv.FormatInt(size, 10)))
@@ -223,6 +231,18 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	if size != volume.Spec.Size {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/size", "value": "%s"}`, strconv.FormatInt(size, 10)))
 	}
+
+	labels := volume.Labels
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	patchOp, err := common.GetLonghornLabelsPatchOp(volume, labels)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get label patch for volume %v", volume.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	patchOps = append(patchOps, patchOp)
+
 	return patchOps, nil
 }
 
