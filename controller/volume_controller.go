@@ -750,7 +750,8 @@ func (vc *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*l
 	// 	since the getHealthyReplicaCount function doesn't differentiate between replicas of different engines
 	// 	then during cleanupExtraHealthyReplicas the condition `healthyCount > v.Spec.NumberOfReplicas` will be true
 	//  which can lead to incorrect deletion of replicas.
-	if vc.isVolumeMigrating(v) || vc.isVolumeUpgrading(v) {
+	//  Allow to delete replicas in `cleanupCorruptedOrStaleReplicas` marked as failed before IM-r started during engine image update.
+	if vc.isVolumeMigrating(v) {
 		return nil
 	}
 
@@ -761,6 +762,11 @@ func (vc *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*l
 
 	if err := vc.cleanupCorruptedOrStaleReplicas(v, rs); err != nil {
 		return err
+	}
+
+	// give a chance to delete new replicas failed when upgrading volume and waiting for IM-r starting
+	if vc.isVolumeUpgrading(v) {
+		return nil
 	}
 
 	if err := vc.cleanupFailedToScheduledReplicas(v, rs); err != nil {
@@ -811,7 +817,8 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 
 		// 1. failed for multiple times or failed at rebuilding (`Spec.RebuildRetryCount` of a newly created rebuilding replica is `FailedReplicaMaxRetryCount`) before ever became healthy/ mode RW,
 		// 2. failed too long ago, became stale and unnecessary to keep around, unless we don't have any healthy replicas
-		if (r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount) || (healthyCount != 0 && staled) {
+		// 3. failed for race condition at upgrading when waiting IM-r to start and it would never became healty
+		if (r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount) || (healthyCount != 0 && staled) || (r.Spec.EngineImage != v.Status.CurrentImage) {
 			log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
 			if err := vc.deleteReplica(r, rs); err != nil {
 				return errors.Wrapf(err, "cannot cleanup staled replica %v", r.Name)
@@ -1484,6 +1491,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				return err
 			}
 			if !canIMLaunchReplica {
+				// wait for IM is starting when volume is upgrading
+				if vc.isVolumeUpgrading(v) {
+					continue
+				}
 				if r.Spec.FailedAt == "" {
 					r.Spec.FailedAt = vc.nowHandler()
 				}
