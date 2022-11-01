@@ -4,6 +4,7 @@ const (
 	EventReasonCreate         = "Create"
 	EventReasonFailedCreating = "FailedCreating"
 	EventReasonDelete         = "Delete"
+	EventReasonDeleting       = "Deleting"
 	EventReasonFailedDeleting = "FailedDeleting"
 	EventReasonStart          = "Start"
 	EventReasonFailedStarting = "FailedStarting"
@@ -46,4 +47,7 @@ const (
 	EventReasonSyncing  = "Syncing"
 
 	EventReasonFailedSnapshotDataIntegrityCheck = "FailedSnapshotDataIntegrityCheck"
+
+	EventReasonFailed = "Failed"
+	EventReasonReady  = "Ready"
 )

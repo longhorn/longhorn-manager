@@ -94,6 +94,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	rjc := NewRecurringJobController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, managerImage)
 	oc := NewOrphanController(logger, ds, scheme, kubeClient, controllerID, namespace)
 	snapc := NewSnapshotController(logger, ds, scheme, kubeClient, namespace, controllerID, &engineapi.EngineCollection{}, proxyConnCounter)
+	bundlec := NewSupportBundleController(logger, ds, scheme, kubeClient, controllerID, namespace, serviceAccount)
 	kpvc := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID)
 	knc := NewKubernetesNodeController(logger, ds, scheme, kubeClient, controllerID)
 	kpc := NewKubernetesPodController(logger, ds, scheme, kubeClient, controllerID)
@@ -123,6 +124,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controlle
 	go rjc.Run(Workers, stopCh)
 	go oc.Run(Workers, stopCh)
 	go snapc.Run(Workers, stopCh)
+	go bundlec.Run(Workers, stopCh)
 
 	go kpvc.Run(Workers, stopCh)
 	go knc.Run(Workers, stopCh)

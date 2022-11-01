@@ -61,6 +61,23 @@ func (s *DataStore) getManagerSelector() (labels.Selector, error) {
 	})
 }
 
+func (s *DataStore) GetSupportBundleManagerLabel(supportBundle *longhorn.SupportBundle) map[string]string {
+	return s.getSupportBundleManagerLabel(supportBundle)
+}
+
+func (s *DataStore) getSupportBundleManagerLabel(supportBundle *longhorn.SupportBundle) map[string]string {
+	return map[string]string{
+		"app":                              types.SupportBundleManagerApp,
+		types.SupportBundleManagerLabelKey: supportBundle.Name,
+	}
+}
+
+func (s *DataStore) getSupportBundleManagerSelector(supportBundle *longhorn.SupportBundle) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: s.getSupportBundleManagerLabel(supportBundle),
+	})
+}
+
 // GetManagerNodeIPMap returns an object contains podIPs from list
 // of running pods with app=longhorn-manager
 func (s *DataStore) GetManagerNodeIPMap() (map[string]string, error) {
@@ -308,6 +325,11 @@ func (s *DataStore) DeleteDaemonSet(name string) error {
 	return s.kubeClient.AppsV1().DaemonSets(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
 }
 
+// CreateDeployment creates Deployment with the given object
+func (s *DataStore) CreateDeployment(obj *appsv1.Deployment) (*appsv1.Deployment, error) {
+	return s.kubeClient.AppsV1().Deployments(s.namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
+}
+
 // GetDeployment gets the Deployment for the given name and namespace
 func (s *DataStore) GetDeployment(name string) (*appsv1.Deployment, error) {
 	return s.dpLister.Deployments(s.namespace).Get(name)
@@ -400,6 +422,30 @@ func (s *DataStore) ListBackingImageManagerPods() ([]*corev1.Pod, error) {
 		return nil, err
 	}
 	return s.ListPodsBySelector(selector)
+}
+
+// ListSupportBundleManagerPods returns a list of support bundle manager Pods
+func (s *DataStore) ListSupportBundleManagerPods(supportBundle *longhorn.SupportBundle) ([]*corev1.Pod, error) {
+	selector, err := s.getSupportBundleManagerSelector(supportBundle)
+	if err != nil {
+		return nil, err
+	}
+	return s.ListPodsBySelector(selector)
+}
+
+func (s *DataStore) GetSupportBundleManagerPod(supportBundle *longhorn.SupportBundle) (*corev1.Pod, error) {
+	supportBundleManagerPods, err := s.ListSupportBundleManagerPods(supportBundle)
+	if err != nil {
+		return nil, err
+	}
+
+	if count := len(supportBundleManagerPods); count == 0 {
+		return nil, fmt.Errorf("cannot find support bundle manager pod")
+	} else if count > 1 {
+		return nil, fmt.Errorf("found unexpect number of %v support bundle manager pod", count)
+	}
+
+	return supportBundleManagerPods[0], nil
 }
 
 func (s *DataStore) ListPodsBySelector(selector labels.Selector) ([]*corev1.Pod, error) {
