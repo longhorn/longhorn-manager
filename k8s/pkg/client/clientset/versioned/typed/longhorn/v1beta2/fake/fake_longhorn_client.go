@@ -92,6 +92,10 @@ func (c *FakeLonghornV1beta2) Snapshots(namespace string) v1beta2.SnapshotInterf
 	return &FakeSnapshots{c, namespace}
 }
 
+func (c *FakeLonghornV1beta2) SupportBundles(namespace string) v1beta2.SupportBundleInterface {
+	return &FakeSupportBundles{c, namespace}
+}
+
 func (c *FakeLonghornV1beta2) Volumes(namespace string) v1beta2.VolumeInterface {
 	return &FakeVolumes{c, namespace}
 }

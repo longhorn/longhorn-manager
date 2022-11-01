@@ -50,4 +50,6 @@ type ShareManagerExpansion interface{}
 
 type SnapshotExpansion interface{}
 
+type SupportBundleExpansion interface{}
+
 type VolumeExpansion interface{}
