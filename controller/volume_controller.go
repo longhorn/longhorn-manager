@@ -1386,6 +1386,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" {
 					r.Spec.FailedAt = vc.nowHandler()
 					r.Spec.DesireState = longhorn.InstanceStateStopped
+					// unscheduled replicas marked failed here when volume detached
+					// check if NodeId or DiskID is empty to avoid deleting reusableFailedReplica when replenished.
+					if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
+						r.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
+					}
 					rs[r.Name] = r
 				}
 			}
