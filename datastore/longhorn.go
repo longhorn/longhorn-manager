@@ -3789,3 +3789,93 @@ func (s *DataStore) ListOrphansByNodeRO(name string) ([]*longhorn.Orphan, error)
 func (s *DataStore) DeleteOrphan(orphanName string) error {
 	return s.lhClient.LonghornV1beta2().Orphans(s.namespace).Delete(context.TODO(), orphanName, metav1.DeleteOptions{})
 }
+
+// GetOwnerReferencesForSupportBundle returns a list contains single OwnerReference for the
+// given SupportBundle object
+func GetOwnerReferencesForSupportBundle(supportBundle *longhorn.SupportBundle) []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		{
+			APIVersion: longhorn.SchemeGroupVersion.String(),
+			Kind:       types.LonghornKindSupportBundle,
+			Name:       supportBundle.Name,
+			UID:        supportBundle.UID,
+		},
+	}
+}
+
+// GetSupportBundleRO returns the SupportBundle with the given name
+func (s *DataStore) GetSupportBundleRO(name string) (*longhorn.SupportBundle, error) {
+	return s.supportBundleLister.SupportBundles(s.namespace).Get(name)
+}
+
+// GetSupportBundle returns a copy of SupportBundle with the given name
+func (s *DataStore) GetSupportBundle(name string) (*longhorn.SupportBundle, error) {
+	resultRO, err := s.GetSupportBundleRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// ListSupportBundles returns an object contains all SupportBundles
+func (s *DataStore) ListSupportBundles() (map[string]*longhorn.SupportBundle, error) {
+	itemMap := make(map[string]*longhorn.SupportBundle)
+
+	list, err := s.ListSupportBundlesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListSupportBundlesRO returns a list of all SupportBundles for the given namespace.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) ListSupportBundlesRO() ([]*longhorn.SupportBundle, error) {
+	return s.supportBundleLister.SupportBundles(s.namespace).List(labels.Everything())
+}
+
+// RemoveFinalizerForSupportBundle will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForSupportBundle(supportBundle *longhorn.SupportBundle) (err error) {
+	if !util.FinalizerExists(longhornFinalizerKey, supportBundle) {
+		// finalizer already removed
+		return nil
+	}
+
+	if err = util.RemoveFinalizer(longhornFinalizerKey, supportBundle); err != nil {
+		return err
+	}
+
+	supportBundle, err = s.lhClient.LonghornV1beta2().SupportBundles(s.namespace).Update(context.TODO(), supportBundle, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if supportBundle.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for SupportBundle %s", supportBundle.Name)
+	}
+	return nil
+}
+
+// UpdateSupportBundleStatus updates the given Longhorn SupportBundle status and verifies update
+func (s *DataStore) UpdateSupportBundleStatus(supportBundle *longhorn.SupportBundle) (*longhorn.SupportBundle, error) {
+	obj, err := s.lhClient.LonghornV1beta2().SupportBundles(s.namespace).UpdateStatus(context.TODO(), supportBundle, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(supportBundle.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetSupportBundleRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteSupportBundle won't result in immediately deletion since finalizer was
+// set by default
+func (s *DataStore) DeleteSupportBundle(name string) error {
+	return s.lhClient.LonghornV1beta2().SupportBundles(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}

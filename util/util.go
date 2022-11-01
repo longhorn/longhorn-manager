@@ -895,3 +895,14 @@ func GetVolumeMeta(path string) (*VolumeMeta, error) {
 	}
 	return meta, nil
 }
+
+func CapitalizeFirstLetter(input string) string {
+	return strings.ToUpper(input[:1]) + input[1:]
+}
+
+func GetPodIP(pod *v1.Pod) (string, error) {
+	if pod.Status.PodIP == "" {
+		return "", fmt.Errorf("%v pod IP is empty", pod.Name)
+	}
+	return pod.Status.PodIP, nil
+}
