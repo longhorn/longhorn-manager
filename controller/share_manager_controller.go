@@ -396,7 +396,7 @@ func (c *ShareManagerController) isShareManagerRequiredForVolume(volume *longhor
 	return true
 }
 
-func (c ShareManagerController) detachShareManagerVolume(sm *longhorn.ShareManager) error {
+func (c *ShareManagerController) detachShareManagerVolume(sm *longhorn.ShareManager) error {
 	log := getLoggerForShareManager(c.logger, sm)
 	volume, err := c.ds.GetVolume(sm.Name)
 	if err != nil && !apierrors.IsNotFound(err) {
