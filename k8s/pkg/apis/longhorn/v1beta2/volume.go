@@ -231,6 +231,7 @@ type VolumeSpec struct {
 	DisableFrontend bool `json:"disableFrontend"`
 	// +optional
 	RevisionCounterDisabled bool `json:"revisionCounterDisabled"`
+	// Deprecated
 	// +optional
 	UnmapMarkSnapChainRemoved UnmapMarkSnapChainRemoved `json:"unmapMarkSnapChainRemoved"`
 	// Replica soft anti affinity of the volume. Set enabled to allow replicas to be scheduled on the same node
