@@ -797,7 +797,6 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 			Tolerations:        util.GetDistinctTolerations(tolerations),
 			NodeSelector:       nodeSelector,
 			PriorityClassName:  priorityClass,
-			NodeName:           sm.Status.OwnerID,
 			Containers: []v1.Container{
 				{
 					Name:            types.LonghornLabelShareManager,
