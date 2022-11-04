@@ -43,7 +43,7 @@ func (s *Server) SnapshotCreate(w http.ResponseWriter, req *http.Request) (err e
 	if err != nil {
 		return err
 	}
-	apiContext.Write(toSnapshotResource(snapshot))
+	apiContext.Write(toSnapshotResource(snapshot, ""))
 	return nil
 }
 
@@ -58,7 +58,10 @@ func (s *Server) SnapshotList(w http.ResponseWriter, req *http.Request) (err err
 	if err != nil {
 		return err
 	}
-	api.GetApiContext(req).Write(toSnapshotCollection(snapList))
+
+	snapListRO, _ := s.m.ListSnapshotCRsRO(volName)
+
+	api.GetApiContext(req).Write(toSnapshotCollection(snapList, snapListRO))
 	return nil
 }
 
@@ -79,7 +82,13 @@ func (s *Server) SnapshotGet(w http.ResponseWriter, req *http.Request) (err erro
 	if err != nil {
 		return err
 	}
-	api.GetApiContext(req).Write(toSnapshotResource(snap))
+
+	checksum := ""
+	if snapRO, err := s.m.GetSnapshotCRRO(snap.Name); err == nil {
+		checksum = snapRO.Status.Checksum
+	}
+
+	api.GetApiContext(req).Write(toSnapshotResource(snap, checksum))
 	return nil
 }
 
