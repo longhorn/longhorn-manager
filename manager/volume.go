@@ -193,6 +193,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			DiskSelector:            spec.DiskSelector,
 			NodeSelector:            spec.NodeSelector,
 			RevisionCounterDisabled: spec.RevisionCounterDisabled,
+			SnapshotDataIntegrity:   spec.SnapshotDataIntegrity,
 		},
 	}
 
@@ -988,7 +989,7 @@ func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.Vo
 		}
 
 		if snapName := types.GetSnapshotName(dataSource); snapName != "" {
-			if _, err := m.GetSnapshot(snapName, srcVolName); err != nil {
+			if _, err := m.GetSnapshotInfo(snapName, srcVolName); err != nil {
 				return err
 			}
 		}

@@ -44,4 +44,6 @@ const (
 
 	EventReasonFetching = "Fetching"
 	EventReasonSyncing  = "Syncing"
+
+	EventReasonFailedSnapshotDataIntegrityCheck = "FailedSnapshotDataIntegrityCheck"
 )

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -19,6 +20,7 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/constant"
@@ -34,6 +36,8 @@ var (
 	nodeControllerResyncPeriod = 30 * time.Second
 
 	unknownFsid = "UNKNOWN_FSID"
+
+	snapshotChangeEventQueueMax = 1048576
 )
 
 type NodeController struct {
@@ -48,6 +52,10 @@ type NodeController struct {
 
 	diskMonitor       monitor.Monitor
 	collectedDiskInfo map[string]*monitor.CollectedDiskInfo
+
+	snapshotMonitor              monitor.Monitor
+	snapshotChangeEventQueue     workqueue.Interface
+	snapshotChangeEventQueueLock sync.Mutex
 
 	ds *datastore.DataStore
 
@@ -86,6 +94,8 @@ func NewNodeController(
 		collectedDiskInfo: make(map[string]*monitor.CollectedDiskInfo, 0),
 
 		topologyLabelsChecker: util.IsKubernetesVersionAtLeast,
+
+		snapshotChangeEventQueue: workqueue.New(),
 	}
 
 	nc.scheduler = scheduler.NewReplicaScheduler(ds)
@@ -120,6 +130,15 @@ func NewNodeController(
 			},
 		}, 0)
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.ReplicaInformer.HasSynced)
+
+	ds.SnapshotInformer.AddEventHandlerWithResyncPeriod(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: nc.isResponsibleForSnapshot,
+			Handler: cache.ResourceEventHandlerFuncs{
+				UpdateFunc: func(old, cur interface{}) { nc.enqueueSnapshot(old, cur) },
+			},
+		}, 0)
+	nc.cacheSyncs = append(nc.cacheSyncs, ds.SnapshotInformer.HasSynced)
 
 	ds.PodInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
@@ -177,6 +196,57 @@ func (nc *NodeController) isResponsibleForReplica(obj interface{}) bool {
 	}
 
 	return replica.Spec.NodeID == nc.controllerID
+}
+
+func (nc *NodeController) isResponsibleForSnapshot(obj interface{}) bool {
+	snapshot, ok := obj.(*longhorn.Snapshot)
+	if !ok {
+		return false
+	}
+	volumeName, ok := snapshot.Labels[types.LonghornLabelVolume]
+	if !ok {
+		logrus.Warnf("cannot get volume name from snapshot %v", snapshot.Name)
+		return false
+	}
+	volume, err := nc.ds.GetVolumeRO(volumeName)
+	if err != nil {
+		logrus.Warnf("failed to get volume %v since %v", snapshot.Name, err)
+		return false
+	}
+	if volume.Status.OwnerID != nc.controllerID {
+		return false
+	}
+
+	return nc.snapshotHashRequired(volume)
+}
+
+func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
+	dataIntegrityImmediateChecking, err := nc.ds.GetSettingAsBool(types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation)
+	if err != nil {
+		logrus.Warnf("failed to get %v setting since %v", types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation, err)
+		return false
+	}
+	if !dataIntegrityImmediateChecking {
+		return false
+	}
+
+	if volume.Spec.SnapshotDataIntegrity == longhorn.SnapshotDataIntegrityDisabled {
+		return false
+	}
+
+	if volume.Spec.SnapshotDataIntegrity == longhorn.SnapshotDataIntegrityIgnored {
+		dataIntegrity, err := nc.ds.GetSettingValueExisted(types.SettingNameSnapshotDataIntegrity)
+		if err != nil {
+			logrus.Warnf("failed to get %v setting since %v", types.SettingNameSnapshotDataIntegrity, err)
+			return false
+		}
+
+		if longhorn.SnapshotDataIntegrity(dataIntegrity) == longhorn.SnapshotDataIntegrityDisabled {
+			return false
+		}
+	}
+
+	return true
 }
 
 func isManagerPod(obj interface{}) bool {
@@ -436,7 +506,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 
 	// Create a monitor for collecting disk information
-	if _, err := nc.createDiskMonitor(nc.controllerID); err != nil {
+	if _, err := nc.createDiskMonitor(); err != nil {
 		return err
 	}
 
@@ -453,6 +523,21 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	// sync disks status on current node
 	if err := nc.syncDiskStatus(node, collectedDiskInfo); err != nil {
 		return err
+	}
+
+	_, err = nc.createSnapshotMonitor()
+	if err != nil {
+		return errors.Wrap(err, "failed to create a snapshot monitor")
+	}
+
+	if nc.snapshotMonitor != nil {
+		data, _ := nc.snapshotMonitor.GetCollectedData()
+		status, ok := data.(monitor.SnapshotMonitorStatus)
+		if !ok {
+			logrus.Errorf("failed to assert value from snapshot monitor: %v", data)
+		} else {
+			node.Status.SnapshotCheckStatus.LastPeriodicCheckedAt = status.LastSnapshotPeriodicCheckedAt
+		}
 	}
 
 	// sync mount propagation status on current node
@@ -527,6 +612,50 @@ func (nc *NodeController) enqueueReplica(obj interface{}) {
 		return
 	}
 	nc.enqueueNode(node)
+}
+
+func (nc *NodeController) enqueueSnapshot(old, cur interface{}) {
+	currentSnapshot, ok := cur.(*longhorn.Snapshot)
+	if !ok {
+		return
+	}
+
+	// Skip volume-head because it is not a real snapshot.
+	// A system-generated snapshot is also ignored, because the prune operations the snapshots are out of
+	// sync during replica rebuilding. More investigation is in https://github.com/longhorn/longhorn/issues/4513
+	if !currentSnapshot.Status.UserCreated {
+		return
+	}
+
+	volumeName, ok := currentSnapshot.Labels[types.LonghornLabelVolume]
+	if !ok {
+		logrus.Warnf("cannot get volume name from snapshot %v", currentSnapshot.Name)
+		return
+	}
+
+	volume, err := nc.ds.GetVolumeRO(volumeName)
+	if err != nil {
+		logrus.Warnf("failed to get volume %v since %v", currentSnapshot.Name, err)
+		return
+	}
+
+	if volume.Status.OwnerID != nc.controllerID {
+		return
+	}
+
+	nc.snapshotChangeEventQueueLock.Lock()
+	defer nc.snapshotChangeEventQueueLock.Unlock()
+	// To avoid the snapshot events run out of the system memory, just ignore
+	// the events. The events will be processed in following periodic rounds.
+	if nc.snapshotChangeEventQueue.Len() < snapshotChangeEventQueueMax {
+		nc.snapshotChangeEventQueue.Add(monitor.SnapshotChangeEvent{
+			VolumeName:   volume.Name,
+			SnapshotName: currentSnapshot.Name,
+		})
+	} else {
+		logrus.Warnf("Dropped the snapshot change event with volume %v snapshot %v since snapshotChangeEventQueue is full",
+			volume.Name, currentSnapshot.Name)
+	}
 }
 
 func (nc *NodeController) enqueueManagerPod(obj interface{}) {
@@ -1017,16 +1146,12 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 	}
 }
 
-func (nc *NodeController) createDiskMonitor(nodeName string) (monitor.Monitor, error) {
-	if nodeName == "" {
-		return nil, nil
-	}
-
+func (nc *NodeController) createDiskMonitor() (monitor.Monitor, error) {
 	if nc.diskMonitor != nil {
 		return nc.diskMonitor, nil
 	}
 
-	monitor, err := monitor.NewDiskMonitor(nc.logger, nc.ds, nodeName, nc.enqueueNodeForMonitor)
+	monitor, err := monitor.NewDiskMonitor(nc.logger, nc.ds, nc.controllerID, nc.enqueueNodeForMonitor)
 	if err != nil {
 		return nil, err
 	}
@@ -1167,7 +1292,7 @@ func (nc *NodeController) createOrphan(node *longhorn.Node, diskName, replicaDir
 }
 
 func (nc *NodeController) syncWithDiskMonitor(node *longhorn.Node) (map[string]*monitor.CollectedDiskInfo, error) {
-	v, err := nc.diskMonitor.GetData()
+	v, err := nc.diskMonitor.GetCollectedData()
 	if err != nil {
 		return map[string]*monitor.CollectedDiskInfo{}, err
 	}
@@ -1252,4 +1377,25 @@ func isDiskMatched(node *longhorn.Node, collectedDiskInfo map[string]*monitor.Co
 	}
 
 	return true
+}
+
+func (nc *NodeController) createSnapshotMonitor() (mon monitor.Monitor, err error) {
+	defer func() {
+		if err == nil {
+			nc.snapshotMonitor.UpdateConfiguration(map[string]interface{}{})
+		}
+	}()
+
+	if nc.snapshotMonitor != nil {
+		return nc.snapshotMonitor, nil
+	}
+
+	mon, err = monitor.NewSnapshotMonitor(nc.logger, nc.ds, nc.controllerID, nc.eventRecorder, nc.snapshotChangeEventQueue, nc.enqueueNodeForMonitor)
+	if err != nil {
+		return nil, err
+	}
+
+	nc.snapshotMonitor = mon
+
+	return mon, nil
 }
