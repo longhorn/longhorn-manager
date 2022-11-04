@@ -581,6 +581,15 @@ func ValidateStorageNetwork(value string) (err error) {
 	return nil
 }
 
+func ValidateSnapshotDataIntegrity(mode string) error {
+	if mode != string(longhorn.SnapshotDataIntegrityDisabled) &&
+		mode != string(longhorn.SnapshotDataIntegrityEnabled) &&
+		mode != string(longhorn.SnapshotDataIntegrityFastCheck) {
+		return fmt.Errorf("invalid snapshot data integrity mode: %v", mode)
+	}
+	return nil
+}
+
 func GetDaemonSetNameFromEngineImageName(engineImageName string) string {
 	return "engine-image-" + engineImageName
 }
