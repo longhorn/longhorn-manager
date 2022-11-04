@@ -20,7 +20,7 @@ const (
 	BackupStatusQueryInterval = 2 * time.Second
 )
 
-func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*longhorn.SnapshotInfo, error) {
+func (m *VolumeManager) ListSnapshotInfos(volumeName string) (map[string]*longhorn.SnapshotInfo, error) {
 	if volumeName == "" {
 		return nil, fmt.Errorf("volume name required")
 	}
@@ -44,7 +44,7 @@ func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*longhorn.S
 	return engineClientProxy.SnapshotList(engine)
 }
 
-func (m *VolumeManager) GetSnapshot(snapshotName, volumeName string) (*longhorn.SnapshotInfo, error) {
+func (m *VolumeManager) GetSnapshotInfo(snapshotName, volumeName string) (*longhorn.SnapshotInfo, error) {
 	if volumeName == "" || snapshotName == "" {
 		return nil, fmt.Errorf("volume and snapshot name required")
 	}

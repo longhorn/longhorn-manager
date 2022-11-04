@@ -272,7 +272,7 @@ func (e *EngineBinary) Close() {
 func (e *EngineBinary) ReplicaModeUpdate(engine *longhorn.Engine, url, mode string) error {
 	_, err := e.ExecuteEngineBinary("update", "--mode", mode, url)
 	if err != nil {
-		return errors.Wrapf(err, "failed to list replicas from controller '%s'", e.name)
+		return errors.Wrapf(err, "failed to update replica %v mode to %v", url, mode)
 	}
 	return nil
 }

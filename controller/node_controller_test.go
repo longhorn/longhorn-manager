@@ -753,7 +753,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		// sync node status
 		for nodeName, node := range tc.nodes {
 			if nc.controllerID == node.Name {
-				err = nc.diskMonitor.RunTask(struct{}{})
+				err = nc.diskMonitor.RunOnce()
 				c.Assert(err, IsNil)
 			}
 
