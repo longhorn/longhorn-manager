@@ -45,7 +45,7 @@ type NodeController struct {
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
-	monitor           monitor.Monitor
+	diskMonitor       monitor.Monitor
 	collectedDiskInfo map[string]*monitor.CollectedDiskInfo
 
 	ds *datastore.DataStore
@@ -388,14 +388,12 @@ func (nc *NodeController) syncNode(key string) (err error) {
 						string(longhorn.NodeConditionReasonKubernetesNodePressure),
 						fmt.Sprintf("Kubernetes node %v has pressure: %v, %v", node.Name, con.Reason, con.Message),
 						nc.eventRecorder, node, v1.EventTypeWarning)
-
 					break
 				}
 			default:
 				if con.Status == v1.ConditionTrue {
 					nc.eventRecorder.Eventf(node, v1.EventTypeWarning, longhorn.NodeConditionReasonUnknownNodeConditionTrue, "Unknown condition true of kubernetes node %v: condition type is %v, reason is %v, message is %v", node.Name, con.Type, con.Reason, con.Message)
 				}
-
 			}
 		}
 
@@ -432,19 +430,18 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		}
 
 		node.Status.Region, node.Status.Zone = types.GetRegionAndZone(kubeNode.Labels)
-
 	}
 
 	if nc.controllerID != node.Name {
 		return nil
 	}
 
-	mon, err := nc.checkMonitor(nc.controllerID)
-	if err != nil {
+	// Create a monitor for collecting disk information
+	if _, err := nc.createDiskMonitor(nc.controllerID); err != nil {
 		return err
 	}
 
-	collectedDiskInfo, err := nc.syncWithMonitor(mon, node)
+	collectedDiskInfo, err := nc.syncWithDiskMonitor(node)
 	if err != nil {
 		if strings.Contains(err.Error(), "mismatching disks") {
 			logrus.Info(err.Error())
@@ -1021,21 +1018,21 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 	}
 }
 
-func (nc *NodeController) checkMonitor(nodeName string) (monitor.Monitor, error) {
+func (nc *NodeController) createDiskMonitor(nodeName string) (monitor.Monitor, error) {
 	if nodeName == "" {
 		return nil, nil
 	}
 
-	if nc.monitor != nil {
-		return nc.monitor, nil
+	if nc.diskMonitor != nil {
+		return nc.diskMonitor, nil
 	}
 
-	monitor, err := monitor.NewNodeMonitor(nc.logger, nc.ds, nodeName, nc.enqueueNodeForMonitor)
+	monitor, err := monitor.NewDiskMonitor(nc.logger, nc.ds, nodeName, nc.enqueueNodeForMonitor)
 	if err != nil {
 		return nil, err
 	}
 
-	nc.monitor = monitor
+	nc.diskMonitor = monitor
 
 	return monitor, nil
 }
@@ -1170,8 +1167,8 @@ func (nc *NodeController) createOrphan(node *longhorn.Node, diskName, replicaDir
 	return err
 }
 
-func (nc *NodeController) syncWithMonitor(mon monitor.Monitor, node *longhorn.Node) (map[string]*monitor.CollectedDiskInfo, error) {
-	v, err := mon.GetCollectedData()
+func (nc *NodeController) syncWithDiskMonitor(node *longhorn.Node) (map[string]*monitor.CollectedDiskInfo, error) {
+	v, err := nc.diskMonitor.GetData()
 	if err != nil {
 		return map[string]*monitor.CollectedDiskInfo{}, err
 	}
