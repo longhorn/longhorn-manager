@@ -45,6 +45,8 @@ type SnapshotStatus struct {
 	RestoreSize int64 `json:"restoreSize"`
 	// +optional
 	ReadyToUse bool `json:"readyToUse"`
+	// +optional
+	Checksum string `json:"checksum"`
 }
 
 // +genclient
