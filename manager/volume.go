@@ -26,7 +26,6 @@ type VolumeManager struct {
 	scheduler *scheduler.ReplicaScheduler
 
 	currentNodeID string
-	sb            *SupportBundle
 
 	proxyConnCounter util.Counter
 }

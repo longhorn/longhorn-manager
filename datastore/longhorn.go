@@ -3874,6 +3874,30 @@ func (s *DataStore) UpdateSupportBundleStatus(supportBundle *longhorn.SupportBun
 	return obj, nil
 }
 
+// CreateSupportBundle creates a Longhorn SupportBundle resource and verifies creation
+func (s *DataStore) CreateSupportBundle(supportBundle *longhorn.SupportBundle) (*longhorn.SupportBundle, error) {
+	ret, err := s.lhClient.LonghornV1beta2().SupportBundles(s.namespace).Create(context.TODO(), supportBundle, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "support bundle", func(name string) (runtime.Object, error) {
+		return s.GetSupportBundleRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.SupportBundle)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for support bundle")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
 // DeleteSupportBundle won't result in immediately deletion since finalizer was
 // set by default
 func (s *DataStore) DeleteSupportBundle(name string) error {

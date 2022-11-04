@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/rancher/go-rancher/api"
@@ -297,11 +298,11 @@ type Event struct {
 
 type SupportBundle struct {
 	client.Resource
-	NodeID             string              `json:"nodeID"`
-	State              manager.BundleState `json:"state"`
-	Name               string              `json:"name"`
-	ErrorMessage       manager.BundleError `json:"errorMessage"`
-	ProgressPercentage int                 `json:"progressPercentage"`
+	NodeID             string                      `json:"nodeID"`
+	State              longhorn.SupportBundleState `json:"state"`
+	Name               string                      `json:"name"`
+	ErrorMessage       string                      `json:"errorMessage"`
+	ProgressPercentage int                         `json:"progressPercentage"`
 }
 
 type SupportBundleInitateInput struct {
@@ -1529,18 +1530,33 @@ func toEventCollection(eventList *v1.EventList) *client.GenericCollection {
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "event"}}
 }
 
-//Support Bundle Resource
-func toSupportBundleResource(nodeID string, sb *manager.SupportBundle) *SupportBundle {
+func toSupportBundleCollection(supportBundles []*longhorn.SupportBundle, apiContext *api.ApiContext) *client.GenericCollection {
+	data := []interface{}{}
+	for _, supportBundle := range supportBundles {
+		supportBundleError := types.GetCondition(supportBundle.Status.Conditions, longhorn.SupportBundleConditionTypeError)
+		data = append(data, toSupportBundleResource(supportBundle.Status.OwnerID, &manager.SupportBundle{
+			Name:               supportBundle.Name,
+			State:              supportBundle.Status.State,
+			Filename:           supportBundle.Status.Filename,
+			Size:               supportBundle.Status.Filesize,
+			ProgressPercentage: supportBundle.Status.Progress,
+			Error:              fmt.Sprintf("%v: %v", supportBundleError.Reason, supportBundleError.Message),
+		}))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "supportBundle"}}
+}
+
+func toSupportBundleResource(nodeID string, supportBundle *manager.SupportBundle) *SupportBundle {
 	return &SupportBundle{
 		Resource: client.Resource{
 			Id:   nodeID,
-			Type: "supportbundle",
+			Type: "supportBundle",
 		},
 		NodeID:             nodeID,
-		State:              sb.State,
-		Name:               sb.Name,
-		ErrorMessage:       sb.Error,
-		ProgressPercentage: sb.ProgressPercentage,
+		State:              supportBundle.State,
+		Name:               supportBundle.Name,
+		ErrorMessage:       supportBundle.Error,
+		ProgressPercentage: supportBundle.ProgressPercentage,
 	}
 }
 
