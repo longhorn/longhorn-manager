@@ -26,6 +26,7 @@ import (
 
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -618,10 +619,10 @@ func (rc *ReplicaController) deleteOldReplicaPod(pod *v1.Pod, r *longhorn.Replic
 	}
 
 	if err := rc.kubeClient.CoreV1().Pods(rc.namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{}); err != nil {
-		rc.eventRecorder.Eventf(r, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping pod for old replica %v: %v", pod.Name, err)
+		rc.eventRecorder.Eventf(r, v1.EventTypeWarning, constant.EventReasonFailedStopping, "Error stopping pod for old replica %v: %v", pod.Name, err)
 		return nil
 	}
-	rc.eventRecorder.Eventf(r, v1.EventTypeNormal, EventReasonStop, "Stops pod for old replica %v", pod.Name)
+	rc.eventRecorder.Eventf(r, v1.EventTypeNormal, constant.EventReasonStop, "Stops pod for old replica %v", pod.Name)
 	return nil
 }
 

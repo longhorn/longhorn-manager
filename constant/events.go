@@ -1,4 +1,4 @@
-package controller
+package constant
 
 const (
 	EventReasonCreate         = "Create"
