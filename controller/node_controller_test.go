@@ -68,7 +68,7 @@ func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFac
 	if err != nil {
 		return nil
 	}
-	nc.monitor = mon
+	nc.diskMonitor = mon
 
 	for index := range nc.cacheSyncs {
 		nc.cacheSyncs[index] = alwaysReady
@@ -753,7 +753,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		// sync node status
 		for nodeName, node := range tc.nodes {
 			if nc.controllerID == node.Name {
-				err = nc.monitor.SyncCollectedData()
+				err = nc.diskMonitor.RunTask(struct{}{})
 				c.Assert(err, IsNil)
 			}
 
