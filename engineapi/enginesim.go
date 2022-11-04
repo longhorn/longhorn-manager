@@ -240,3 +240,15 @@ func (e *EngineSimulator) VolumeFrontendShutdown(*longhorn.Engine) error {
 func (e *EngineSimulator) ReplicaRebuildVerify(engine *longhorn.Engine, url string) error {
 	return fmt.Errorf(ErrNotImplement)
 }
+
+func (e *EngineSimulator) SnapshotHash(engine *longhorn.Engine, snapshotName string, rehash bool) error {
+	return fmt.Errorf(ErrNotImplement)
+}
+
+func (e *EngineSimulator) SnapshotHashStatus(engine *longhorn.Engine, snapshotName string) (map[string]*longhorn.HashStatus, error) {
+	return nil, fmt.Errorf(ErrNotImplement)
+}
+
+func (e *EngineSimulator) ReplicaModeUpdate(engine *longhorn.Engine, url, mode string) error {
+	return fmt.Errorf(ErrNotImplement)
+}
