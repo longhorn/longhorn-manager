@@ -128,3 +128,38 @@ func (e *EngineBinary) SnapshotCloneStatus(*longhorn.Engine) (map[string]*longho
 	}
 	return snapshotCloneStatusMap, nil
 }
+
+// SnapshotHash calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) SnapshotHash(engine *longhorn.Engine, snapshotName string, rehash bool) error {
+	args := []string{"snapshot", "hash"}
+
+	if rehash {
+		args = append(args, "--rehash")
+	}
+
+	args = append(args, snapshotName)
+
+	if _, err := e.ExecuteEngineBinaryWithoutTimeout([]string{}, args...); err != nil {
+		return errors.Wrapf(err, "error starting hashing snapshot")
+	}
+
+	logrus.Debugf("Volume %v snapshot hashing started", e.Name())
+	return nil
+}
+
+// SnapshotHashStatus calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) SnapshotHashStatus(engine *longhorn.Engine, snapshotName string) (map[string]*longhorn.HashStatus, error) {
+	output, err := e.ExecuteEngineBinary("snapshot", "hash-status", "--snapshot-name", snapshotName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error getting snapshot hashing status")
+	}
+
+	data := map[string]*longhorn.HashStatus{}
+	if err := json.Unmarshal([]byte(output), &data); err != nil {
+		return nil, errors.Wrapf(err, "error parsing snapshot hashing status")
+	}
+
+	return data, nil
+}

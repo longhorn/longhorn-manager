@@ -71,3 +71,20 @@ func (p *Proxy) SnapshotPurgeStatus(e *longhorn.Engine) (status map[string]*long
 func (p *Proxy) SnapshotDelete(e *longhorn.Engine, name string) (err error) {
 	return p.grpcClient.SnapshotRemove(p.DirectToURL(e), []string{name})
 }
+
+func (p *Proxy) SnapshotHash(e *longhorn.Engine, snapshotName string, rehash bool) error {
+	return p.grpcClient.SnapshotHash(p.DirectToURL(e), snapshotName, rehash)
+}
+
+func (p *Proxy) SnapshotHashStatus(e *longhorn.Engine, snapshotName string) (status map[string]*longhorn.HashStatus, err error) {
+	recv, err := p.grpcClient.SnapshotHashStatus(p.DirectToURL(e), snapshotName)
+	if err != nil {
+		return nil, err
+	}
+
+	status = map[string]*longhorn.HashStatus{}
+	for k, v := range recv {
+		status[k] = (*longhorn.HashStatus)(v)
+	}
+	return status, nil
+}

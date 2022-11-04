@@ -266,3 +266,13 @@ func (e *EngineBinary) ReplicaRebuildVerify(engine *longhorn.Engine, url string)
 // Do not panic this method because this is could be called by the fallback client.
 func (e *EngineBinary) Close() {
 }
+
+// ReplicaModeUpdate calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) ReplicaModeUpdate(engine *longhorn.Engine, url, mode string) error {
+	_, err := e.ExecuteEngineBinary("update", "--mode", mode, url)
+	if err != nil {
+		return errors.Wrapf(err, "failed to list replicas from controller '%s'", e.name)
+	}
+	return nil
+}
