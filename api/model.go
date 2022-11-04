@@ -74,6 +74,7 @@ type Volume struct {
 type Snapshot struct {
 	client.Resource
 	longhorn.SnapshotInfo
+	Checksum string `json:"checksum"`
 }
 
 type BackupTarget struct {
@@ -1184,7 +1185,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	return r
 }
 
-func toSnapshotResource(s *longhorn.SnapshotInfo) *Snapshot {
+func toSnapshotResource(s *longhorn.SnapshotInfo, checksum string) *Snapshot {
 	if s == nil {
 		logrus.Warn("weird: nil snapshot")
 		return nil
@@ -1195,13 +1196,21 @@ func toSnapshotResource(s *longhorn.SnapshotInfo) *Snapshot {
 			Type: "snapshot",
 		},
 		SnapshotInfo: *s,
+		Checksum:     checksum,
 	}
 }
 
-func toSnapshotCollection(ss map[string]*longhorn.SnapshotInfo) *client.GenericCollection {
+func toSnapshotCollection(ssList map[string]*longhorn.SnapshotInfo, ssListRO map[string]*longhorn.Snapshot) *client.GenericCollection {
 	data := []interface{}{}
-	for _, v := range ss {
-		data = append(data, toSnapshotResource(v))
+
+	for name, v := range ssList {
+		checksum := ""
+		if ssListRO != nil {
+			if ssRO, ok := ssListRO[name]; ok {
+				checksum = ssRO.Status.Checksum
+			}
+		}
+		data = append(data, toSnapshotResource(v, checksum))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshot"}}
 }
