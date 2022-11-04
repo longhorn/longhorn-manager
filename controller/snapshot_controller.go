@@ -161,8 +161,6 @@ func (sc *SnapshotController) enqueueEngineChange(oldObj, curObj interface{}) {
 	for _, snap := range snapshots {
 		sc.enqueueSnapshot(snap)
 	}
-
-	return
 }
 
 func filterSnapshotsForEngineEnqueuing(oldEngine, curEngine *longhorn.Engine, snapshots map[string]*longhorn.Snapshot) map[string]*longhorn.Snapshot {
@@ -310,7 +308,6 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return
 		}
 		sc.generatingEventsForSnapshot(existingSnapshot, snapshot)
-		return
 	}()
 
 	// deleting snapshotCR

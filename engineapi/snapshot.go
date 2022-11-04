@@ -8,11 +8,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-)
+	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 
-const (
-	VolumeHeadName = "volume-head"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 // SnapshotCreate calls engine binary
@@ -58,8 +56,8 @@ func (e *EngineBinary) SnapshotGet(engine *longhorn.Engine, name string) (*longh
 // SnapshotDelete calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
 func (e *EngineBinary) SnapshotDelete(engine *longhorn.Engine, name string) error {
-	if name == VolumeHeadName {
-		return fmt.Errorf("invalid operation: cannot remove %v", VolumeHeadName)
+	if name == etypes.VolumeHeadName {
+		return fmt.Errorf("invalid operation: cannot remove %v", etypes.VolumeHeadName)
 	}
 	if _, err := e.ExecuteEngineBinary("snapshot", "rm", name); err != nil {
 		return errors.Wrapf(err, "error deleting snapshot '%s'", name)
@@ -70,8 +68,8 @@ func (e *EngineBinary) SnapshotDelete(engine *longhorn.Engine, name string) erro
 // SnapshotRevert calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
 func (e *EngineBinary) SnapshotRevert(engine *longhorn.Engine, name string) error {
-	if name == VolumeHeadName {
-		return fmt.Errorf("invalid operation: cannot revert to %v", VolumeHeadName)
+	if name == etypes.VolumeHeadName {
+		return fmt.Errorf("invalid operation: cannot revert to %v", etypes.VolumeHeadName)
 	}
 	if _, err := e.ExecuteEngineBinary("snapshot", "revert", name); err != nil {
 		return errors.Wrapf(err, "error reverting to snapshot '%s'", name)

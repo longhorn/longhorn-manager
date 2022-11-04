@@ -19,8 +19,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 
+	etypes "github.com/longhorn/longhorn-engine/pkg/types"
+
 	longhornclient "github.com/longhorn/longhorn-manager/client"
-	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	"github.com/longhorn/longhorn-manager/types"
@@ -468,7 +469,7 @@ type NameWithTimestamp struct {
 // return nil, nil if volume doesn't have any snapshot other than the volume-head
 func (job *Job) getLastSnapshot(volume *longhornclient.Volume) (*longhornclient.Snapshot, error) {
 	volumeHead, err := job.api.Volume.ActionSnapshotGet(volume, &longhornclient.SnapshotInput{
-		Name: engineapi.VolumeHeadName,
+		Name: etypes.VolumeHeadName,
 	})
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not get volume-head for volume %v", job.volumeName)
@@ -491,7 +492,7 @@ func (job *Job) getLastSnapshot(volume *longhornclient.Volume) (*longhornclient.
 // getVolumeHeadSize return the size of volume-head snapshot
 func (job *Job) getVolumeHeadSize(volume *longhornclient.Volume) (int64, error) {
 	volumeHead, err := job.api.Volume.ActionSnapshotGet(volume, &longhornclient.SnapshotInput{
-		Name: engineapi.VolumeHeadName,
+		Name: etypes.VolumeHeadName,
 	})
 	if err != nil {
 		return 0, errors.Wrapf(err, "could not get volume-head for volume %v", job.volumeName)

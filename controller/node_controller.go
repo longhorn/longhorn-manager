@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	monitor "github.com/longhorn/longhorn-manager/controller/monitor"
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -282,7 +283,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 
 	if node.DeletionTimestamp != nil {
-		nc.eventRecorder.Eventf(node, v1.EventTypeWarning, EventReasonDelete, "Deleting node %v", node.Name)
+		nc.eventRecorder.Eventf(node, v1.EventTypeWarning, constant.EventReasonDelete, "Deleting node %v", node.Name)
 		return nc.ds.RemoveFinalizerForNode(node)
 	}
 
@@ -376,7 +377,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 						string(longhorn.NodeConditionReasonKubernetesNodeNotReady),
 						fmt.Sprintf("Kubernetes node %v not ready: %v", node.Name, con.Reason),
 						nc.eventRecorder, node, v1.EventTypeWarning)
-					break
 				}
 			case v1.NodeDiskPressure,
 				v1.NodePIDPressure,
@@ -388,7 +388,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 						string(longhorn.NodeConditionReasonKubernetesNodePressure),
 						fmt.Sprintf("Kubernetes node %v has pressure: %v, %v", node.Name, con.Reason, con.Message),
 						nc.eventRecorder, node, v1.EventTypeWarning)
-					break
 				}
 			default:
 				if con.Status == v1.ConditionTrue {

@@ -15,6 +15,7 @@ import (
 
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -401,13 +402,13 @@ func (h *InstanceHandler) createInstance(instanceName string, obj runtime.Object
 	logrus.Debugf("Prepare to create instance %v", instanceName)
 	if _, err := h.instanceManagerHandler.CreateInstance(obj); err != nil {
 		if !types.ErrorAlreadyExists(err) {
-			h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
+			h.eventRecorder.Eventf(obj, v1.EventTypeWarning, constant.EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
 			return err
 		}
 		// Already exists, lost track may due to previous datastore conflict
 		return nil
 	}
-	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStart, "Starts %v", instanceName)
+	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, constant.EventReasonStart, "Starts %v", instanceName)
 
 	return nil
 }
@@ -416,10 +417,10 @@ func (h *InstanceHandler) deleteInstance(instanceName string, obj runtime.Object
 	// May try to force deleting instances on lost node. Don't need to check the instance
 	logrus.Debugf("Prepare to delete instance %v", instanceName)
 	if err := h.instanceManagerHandler.DeleteInstance(obj); err != nil {
-		h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping %v: %v", instanceName, err)
+		h.eventRecorder.Eventf(obj, v1.EventTypeWarning, constant.EventReasonFailedStopping, "Error stopping %v: %v", instanceName, err)
 		return err
 	}
-	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, EventReasonStop, "Stops %v", instanceName)
+	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, constant.EventReasonStop, "Stops %v", instanceName)
 
 	return nil
 }
