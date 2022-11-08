@@ -350,6 +350,21 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	}
 	defer engineClientProxy.Close()
 
+	if err = btc.syncBackupVolume(backupTarget, backupTargetClient, syncTime, log); err != nil {
+		return err
+	}
+
+	if !backupTarget.Status.Available {
+		return nil
+	}
+
+	if err = btc.syncSystemBackup(backupTargetClient, log); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.BackupTarget, backupTargetClient *engineapi.BackupTargetClient, syncTime metav1.Time, log logrus.FieldLogger) error {
 	// Get a list of all the backup volumes that are stored in the backup target
 	res, err := backupTargetClient.BackupVolumeNameList(backupTargetClient.URL, backupTargetClient.Credential)
 	if err != nil {
@@ -415,10 +430,6 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		if _, err = btc.ds.UpdateBackupVolume(backupVolume); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 			log.WithError(err).Errorf("Error updating backup volume %s spec", backupVolumeName)
 		}
-	}
-
-	if err = btc.syncSystemBackup(backupTargetClient, log); err != nil {
-		return err
 	}
 
 	// Update the backup target status
