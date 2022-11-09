@@ -161,9 +161,7 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *longhorn.Instanc
 
 }
 
-func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName string, volumeSize, volumeCurrentSize int64,
-	engineImage string, volumeFrontend longhorn.VolumeFrontend, replicaAddressMap map[string]string,
-	revCounterDisabled bool, salvageRequested bool, sizeRequested bool) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) EngineProcessCreate(e *longhorn.Engine, volumeFrontend longhorn.VolumeFrontend, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -171,31 +169,31 @@ func (c *InstanceManagerClient) EngineProcessCreate(engineName, volumeName strin
 	if err != nil {
 		return nil, err
 	}
-	args := []string{"controller", volumeName,
+	args := []string{"controller", e.Spec.VolumeName,
 		"--frontend", frontend,
 	}
 
-	if revCounterDisabled {
+	if e.Spec.RevisionCounterDisabled {
 		args = append(args, "--disableRevCounter")
 	}
 
-	if salvageRequested {
+	if e.Spec.SalvageRequested {
 		args = append(args, "--salvageRequested")
 	}
 
-	if sizeRequested {
+	if engineCLIAPIVersion >= 6 {
 		args = append(args,
-			"--size", strconv.FormatInt(volumeSize, 10),
-			"--current-size", strconv.FormatInt(volumeCurrentSize, 10))
+			"--size", strconv.FormatInt(e.Spec.VolumeSize, 10),
+			"--current-size", strconv.FormatInt(e.Status.CurrentSize, 10))
 	}
 
-	for _, addr := range replicaAddressMap {
+	for _, addr := range e.Status.CurrentReplicaAddressMap {
 		args = append(args, "--replica", GetBackendReplicaURL(addr))
 	}
-	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(engineImage), types.EngineBinaryName)
+	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(e.Spec.EngineImage), types.EngineBinaryName)
 
 	engineProcess, err := c.grpcClient.ProcessCreate(
-		engineName, binary, DefaultEnginePortCount, args, []string{DefaultPortArg})
+		e.Name, binary, DefaultEnginePortCount, args, []string{DefaultPortArg})
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +274,7 @@ func (c *InstanceManagerClient) ProcessList() (map[string]longhorn.InstanceProce
 	return result, nil
 }
 
-func (c *InstanceManagerClient) EngineProcessUpgrade(engineName, volumeName string, volumeSize, volumeCurrentSize int64, engineImage string, volumeFrontend longhorn.VolumeFrontend, replicaAddressMap map[string]string, sizeRequested bool) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) EngineProcessUpgrade(e *longhorn.Engine, volumeFrontend longhorn.VolumeFrontend, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -284,21 +282,21 @@ func (c *InstanceManagerClient) EngineProcessUpgrade(engineName, volumeName stri
 	if err != nil {
 		return nil, err
 	}
-	args := []string{"controller", volumeName, "--frontend", frontend, "--upgrade"}
-	for _, addr := range replicaAddressMap {
+	args := []string{"controller", e.Spec.VolumeName, "--frontend", frontend, "--upgrade"}
+	for _, addr := range e.Spec.UpgradedReplicaAddressMap {
 		args = append(args, "--replica", GetBackendReplicaURL(addr))
 	}
 
-	if sizeRequested {
+	if engineCLIAPIVersion >= 6 {
 		args = append(args,
-			"--size", strconv.FormatInt(volumeSize, 10),
-			"--current-size", strconv.FormatInt(volumeCurrentSize, 10))
+			"--size", strconv.FormatInt(e.Spec.VolumeSize, 10),
+			"--current-size", strconv.FormatInt(e.Status.CurrentSize, 10))
 	}
 
-	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(engineImage), types.EngineBinaryName)
+	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(e.Spec.EngineImage), types.EngineBinaryName)
 
 	engineProcess, err := c.grpcClient.ProcessReplace(
-		engineName, binary, DefaultEnginePortCount, args, []string{DefaultPortArg}, DefaultTerminateSignal)
+		e.Name, binary, DefaultEnginePortCount, args, []string{DefaultPortArg}, DefaultTerminateSignal)
 	if err != nil {
 		return nil, err
 	}
