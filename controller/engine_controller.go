@@ -427,12 +427,17 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 	}
 	defer c.Close()
 
+	engineReplicaTimeout, err := ec.ds.GetSettingAsInt(types.SettingNameEngineReplicaTimeout)
+	if err != nil {
+		return nil, err
+	}
+
 	engineCLIAPIVersion, err := ec.ds.GetEngineImageCLIAPIVersion(e.Spec.EngineImage)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.EngineProcessCreate(e, frontend, engineCLIAPIVersion)
+	return c.EngineProcessCreate(e, frontend, engineReplicaTimeout, engineCLIAPIVersion)
 }
 
 func (ec *EngineController) DeleteInstance(obj interface{}) error {
@@ -1667,12 +1672,17 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine) error {
 	}
 	defer c.Close()
 
+	engineReplicaTimeout, err := ec.ds.GetSettingAsInt(types.SettingNameEngineReplicaTimeout)
+	if err != nil {
+		return err
+	}
+
 	engineCLIAPIVersion, err := ec.ds.GetEngineImageCLIAPIVersion(e.Spec.EngineImage)
 	if err != nil {
 		return err
 	}
 
-	engineProcess, err := c.EngineProcessUpgrade(e, frontend, engineCLIAPIVersion)
+	engineProcess, err := c.EngineProcessUpgrade(e, frontend, engineReplicaTimeout, engineCLIAPIVersion)
 	if err != nil {
 		return err
 	}
