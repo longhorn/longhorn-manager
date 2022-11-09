@@ -87,6 +87,7 @@ const (
 	SettingNameRecurringSuccessfulJobsHistoryLimit          = SettingName("recurring-successful-jobs-history-limit")
 	SettingNameRecurringFailedJobsHistoryLimit              = SettingName("recurring-failed-jobs-history-limit")
 	SettingNameDeletingConfirmationFlag                     = SettingName("deleting-confirmation-flag")
+	SettingNameEngineReplicaTimeout                         = SettingName("engine-replica-timeout")
 )
 
 var (
@@ -144,6 +145,7 @@ var (
 		SettingNameRecurringSuccessfulJobsHistoryLimit,
 		SettingNameRecurringFailedJobsHistoryLimit,
 		SettingNameDeletingConfirmationFlag,
+		SettingNameEngineReplicaTimeout,
 	}
 )
 
@@ -225,6 +227,7 @@ var (
 		SettingNameRecurringSuccessfulJobsHistoryLimit:          SettingDefinitionRecurringSuccessfulJobsHistoryLimit,
 		SettingNameRecurringFailedJobsHistoryLimit:              SettingDefinitionRecurringFailedJobsHistoryLimit,
 		SettingNameDeletingConfirmationFlag:                     SettingDefinitionDeletingConfirmationFlag,
+		SettingNameEngineReplicaTimeout:                         SettingDefinitionEngineReplicaTimeout,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -858,6 +861,16 @@ var (
 		ReadOnly: false,
 		Default:  "false",
 	}
+
+	SettingDefinitionEngineReplicaTimeout = SettingDefinition{
+		DisplayName: "Timeout between Engine and Replica",
+		Description: "In seconds. The setting specifies the timeout between the engine and replica(s), and the value should be between 8 to 30 seconds. The default value is 8 seconds.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "8",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -1032,6 +1045,15 @@ func ValidateSetting(name, value string) (err error) {
 		}
 		if failedJobsHistLimit < 0 {
 			return fmt.Errorf("the value %v shouldn't be less than 0", value)
+		}
+	case SettingNameEngineReplicaTimeout:
+		timeout, err := strconv.Atoi(value)
+		if err != nil {
+			return errors.Wrapf(err, "value %v is not a number", value)
+		}
+
+		if timeout < 8 || timeout > 30 {
+			return fmt.Errorf("the value %v should be between 8 and 30", value)
 		}
 
 	// multi-choices

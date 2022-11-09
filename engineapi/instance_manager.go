@@ -161,7 +161,7 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *longhorn.Instanc
 
 }
 
-func (c *InstanceManagerClient) EngineProcessCreate(e *longhorn.Engine, volumeFrontend longhorn.VolumeFrontend, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) EngineProcessCreate(e *longhorn.Engine, volumeFrontend longhorn.VolumeFrontend, engineReplicaTimeout int64, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -185,6 +185,11 @@ func (c *InstanceManagerClient) EngineProcessCreate(e *longhorn.Engine, volumeFr
 		args = append(args,
 			"--size", strconv.FormatInt(e.Spec.VolumeSize, 10),
 			"--current-size", strconv.FormatInt(e.Status.CurrentSize, 10))
+	}
+
+	if engineCLIAPIVersion >= 7 {
+		args = append(args,
+			"--engine-replica-timeout", strconv.FormatInt(engineReplicaTimeout, 10))
 	}
 
 	for _, addr := range e.Status.CurrentReplicaAddressMap {
@@ -274,7 +279,7 @@ func (c *InstanceManagerClient) ProcessList() (map[string]longhorn.InstanceProce
 	return result, nil
 }
 
-func (c *InstanceManagerClient) EngineProcessUpgrade(e *longhorn.Engine, volumeFrontend longhorn.VolumeFrontend, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) EngineProcessUpgrade(e *longhorn.Engine, volumeFrontend longhorn.VolumeFrontend, engineReplicaTimeout int64, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -291,6 +296,11 @@ func (c *InstanceManagerClient) EngineProcessUpgrade(e *longhorn.Engine, volumeF
 		args = append(args,
 			"--size", strconv.FormatInt(e.Spec.VolumeSize, 10),
 			"--current-size", strconv.FormatInt(e.Status.CurrentSize, 10))
+	}
+
+	if engineCLIAPIVersion >= 7 {
+		args = append(args,
+			"--engine-replica-timeout", strconv.FormatInt(engineReplicaTimeout, 10))
 	}
 
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(e.Spec.EngineImage), types.EngineBinaryName)
