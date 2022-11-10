@@ -334,7 +334,7 @@ func (m *SnapshotMonitor) run(arg interface{}) error {
 		return errors.Wrapf(err, etypes.CannotRequestHashingSnapshotPrefix)
 	}
 
-	engineCliClient, err := m.getEngineBinaryClient(engine.Spec.VolumeName)
+	engineCliClient, err := engineapi.GetEngineBinaryClient(m.ds, engine.Spec.VolumeName, m.nodeName)
 	if err != nil {
 		return err
 	}
@@ -446,44 +446,6 @@ func (m *SnapshotMonitor) checkVolumeIsNotRestoring(engine *longhorn.Engine) err
 		}
 	}
 	return nil
-}
-
-func (m *SnapshotMonitor) getEngineBinaryClient(volumeName string) (client *engineapi.EngineBinary, err error) {
-	var e *longhorn.Engine
-
-	defer func() {
-		err = errors.Wrapf(err, "cannot get client for volume %v", volumeName)
-	}()
-	es, err := m.ds.ListVolumeEngines(volumeName)
-	if err != nil {
-		return nil, err
-	}
-	if len(es) == 0 {
-		return nil, fmt.Errorf("cannot find engine for volume %v", volumeName)
-	}
-	if len(es) != 1 {
-		return nil, fmt.Errorf("more than one engine for volume %v exist", volumeName)
-	}
-	for _, e = range es {
-		break
-	}
-	if e.Status.CurrentState != longhorn.InstanceStateRunning {
-		return nil, fmt.Errorf("engine %v is not running", e.Name)
-	}
-	if isReady, err := m.ds.CheckEngineImageReadiness(e.Status.CurrentImage, m.nodeName); !isReady {
-		if err != nil {
-			return nil, fmt.Errorf("cannot get engine client with image %v: %v", e.Status.CurrentImage, err)
-		}
-		return nil, fmt.Errorf("cannot get engine client with image %v because it isn't deployed on this node", e.Status.CurrentImage)
-	}
-
-	engineCollection := &engineapi.EngineCollection{}
-	return engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:  e.Spec.VolumeName,
-		EngineImage: e.Status.CurrentImage,
-		IP:          e.Status.IP,
-		Port:        e.Status.Port,
-	})
 }
 
 func (m *SnapshotMonitor) syncHashStatusFromEngineReplicas(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy,
