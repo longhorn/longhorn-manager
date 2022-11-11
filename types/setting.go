@@ -89,6 +89,7 @@ const (
 	SettingNameFailedBackupTTL                                          = SettingName("failed-backup-ttl")
 	SettingNameRecurringSuccessfulJobsHistoryLimit                      = SettingName("recurring-successful-jobs-history-limit")
 	SettingNameRecurringFailedJobsHistoryLimit                          = SettingName("recurring-failed-jobs-history-limit")
+	SettingNameSupportBundleFailedHistoryLimit                          = SettingName("support-bundle-failed-history-limit")
 	SettingNameDeletingConfirmationFlag                                 = SettingName("deleting-confirmation-flag")
 	SettingNameEngineReplicaTimeout                                     = SettingName("engine-replica-timeout")
 	SettingNameSnapshotDataIntegrity                                    = SettingName("snapshot-data-integrity")
@@ -151,6 +152,7 @@ var (
 		SettingNameFailedBackupTTL,
 		SettingNameRecurringSuccessfulJobsHistoryLimit,
 		SettingNameRecurringFailedJobsHistoryLimit,
+		SettingNameSupportBundleFailedHistoryLimit,
 		SettingNameDeletingConfirmationFlag,
 		SettingNameEngineReplicaTimeout,
 		SettingNameSnapshotDataIntegrity,
@@ -238,6 +240,7 @@ var (
 		SettingNameFailedBackupTTL:                                          SettingDefinitionFailedBackupTTL,
 		SettingNameRecurringSuccessfulJobsHistoryLimit:                      SettingDefinitionRecurringSuccessfulJobsHistoryLimit,
 		SettingNameRecurringFailedJobsHistoryLimit:                          SettingDefinitionRecurringFailedJobsHistoryLimit,
+		SettingNameSupportBundleFailedHistoryLimit:                          SettingDefinitionSupportBundleFailedHistoryLimit,
 		SettingNameDeletingConfirmationFlag:                                 SettingDefinitionDeletingConfirmationFlag,
 		SettingNameEngineReplicaTimeout:                                     SettingDefinitionEngineReplicaTimeout,
 		SettingNameSnapshotDataIntegrity:                                    SettingDefinitionSnapshotDataIntegrity,
@@ -874,6 +877,18 @@ var (
 		Default:  "1",
 	}
 
+	SettingDefinitionSupportBundleFailedHistoryLimit = SettingDefinition{
+		DisplayName: "SupportBundle Failed History Limit",
+		Description: "This setting specifies how many failed support bundles can exist in the cluster.\n\n" +
+			"The retained failed support bundle is for analysis purposes and needs to clean up manually.\n\n" +
+			"Set this value to **0** to have Longhorn automatically purge all failed support bundles.\n\n",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeInt,
+		Required: false,
+		ReadOnly: false,
+		Default:  "1",
+	}
+
 	SettingDefinitionDeletingConfirmationFlag = SettingDefinition{
 		DisplayName: "Deleting Confirmation Flag",
 		Description: "This flag is designed to prevent Longhorn from being accidentally uninstalled which will lead to data lost. \n\n" +
@@ -1065,12 +1080,14 @@ func ValidateSetting(name, value string) (err error) {
 		fallthrough
 	case SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit:
 		fallthrough
+	case SettingNameSupportBundleFailedHistoryLimit:
+		fallthrough
 	case SettingNameBackupstorePollInterval:
-		interval, err := strconv.Atoi(value)
+		value, err := strconv.Atoi(value)
 		if err != nil {
 			errors.Wrapf(err, "value %v is not a number", value)
 		}
-		if interval < 0 {
+		if value < 0 {
 			return fmt.Errorf("the value %v shouldn't be less than 0", value)
 		}
 	case SettingNameFailedBackupTTL:
