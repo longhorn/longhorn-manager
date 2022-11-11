@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 )
@@ -86,13 +87,13 @@ func NewNamespaceExecutor(ns string) (*NamespaceExecutor, error) {
 	mntNS := filepath.Join(ns, "mnt")
 	netNS := filepath.Join(ns, "net")
 	if _, err := Execute(NSBinary, []string{"-V"}); err != nil {
-		return nil, fmt.Errorf("cannot find nsenter for namespace switching")
+		return nil, errors.Wrap(err, "cannot find nsenter for namespace switching")
 	}
 	if _, err := Execute(NSBinary, []string{"--mount=" + mntNS, "mount"}); err != nil {
-		return nil, fmt.Errorf("invalid mount namespace %v, error %v", mntNS, err)
+		return nil, errors.Wrapf(err, "invalid mount namespace %v", mntNS)
 	}
 	if _, err := Execute(NSBinary, []string{"--net=" + netNS, "ip", "addr"}); err != nil {
-		return nil, fmt.Errorf("invalid net namespace %v, error %v", netNS, err)
+		return nil, errors.Wrapf(err, "invalid net namespace %v", netNS)
 	}
 	return ne, nil
 }
@@ -154,13 +155,13 @@ func ExecuteWithTimeout(timeout time.Duration, binary string, args []string) (st
 			}
 
 		}
-		return "", fmt.Errorf("timeout executing: %v %v, output %s, stderr, %s, error %w",
-			binary, args, output.String(), stderr.String(), err)
+		return "", errors.Wrapf(err, "timeout executing: %v %v, output %s, stderr %s",
+			binary, args, output.String(), stderr.String())
 	}
 
 	if err != nil {
-		return "", fmt.Errorf("failed to execute: %v %v, output %s, stderr, %s, error %w",
-			binary, args, output.String(), stderr.String(), err)
+		return "", errors.Wrapf(err, "failed to execute: %v %v, output %s, stderr %s",
+			binary, args, output.String(), stderr.String())
 	}
 	return output.String(), nil
 }
@@ -176,8 +177,8 @@ func ExecuteWithoutTimeout(binary string, args []string) (string, error) {
 	cmd.Stderr = &stderr
 
 	if err = cmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to execute: %v %v, output %s, stderr, %s, error %w",
-			binary, args, output.String(), stderr.String(), err)
+		return "", errors.Wrapf(err, "failed to execute: %v %v, output %s, stderr %s",
+			binary, args, output.String(), stderr.String())
 	}
 	return output.String(), nil
 }
@@ -228,13 +229,13 @@ func ExecuteWithStdin(binary string, args []string, stdinString string) (string,
 			}
 
 		}
-		return "", fmt.Errorf("timeout executing: %v %v, output %s, stderr, %s, error %w",
-			binary, args, output.String(), stderr.String(), err)
+		return "", errors.Wrapf(err, "timeout executing: %v %v, output %s, stderr %s",
+			binary, args, output.String(), stderr.String())
 	}
 
 	if err != nil {
-		return "", fmt.Errorf("failed to execute: %v %v, output %s, stderr, %s, error %w",
-			binary, args, output.String(), stderr.String(), err)
+		return "", errors.Wrapf(err, "failed to execute: %v %v, output %s, stderr %s",
+			binary, args, output.String(), stderr.String())
 	}
 	return output.String(), nil
 }
@@ -246,7 +247,7 @@ func RemoveFile(file string) error {
 	}
 
 	if err := remove(file); err != nil {
-		return fmt.Errorf("failed to remove file %v: %w", file, err)
+		return errors.Wrapf(err, "failed to remove file %v", file)
 	}
 
 	return nil
@@ -255,7 +256,7 @@ func RemoveFile(file string) error {
 func RemoveDevice(dev string) error {
 	if _, err := os.Stat(dev); err == nil {
 		if err := remove(dev); err != nil {
-			return fmt.Errorf("failed to removing device %s, %w", dev, err)
+			return errors.Wrapf(err, "failed to removing device %s", dev)
 		}
 	}
 	return nil
@@ -304,10 +305,10 @@ func GetKnownDevices(ne *NamespaceExecutor) (map[string]*KernelDevice, error) {
 
 func DuplicateDevice(dev *KernelDevice, dest string) error {
 	if err := mknod(dest, dev.Major, dev.Minor); err != nil {
-		return fmt.Errorf("cannot create device node %s for device %s", dest, dev.Name)
+		return errors.Wrapf(err, "cannot create device node %s for device %s", dest, dev.Name)
 	}
 	if err := os.Chmod(dest, 0660); err != nil {
-		return fmt.Errorf("couldn't change permission of the device %s: %w", dest, err)
+		return errors.Wrapf(err, "cannot change permission of the device %s", dest)
 	}
 	return nil
 }
