@@ -1477,7 +1477,6 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 		retEs, err := lhClient.LonghornV1beta2().Engines(TestNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
 		c.Assert(err, IsNil)
-		c.Assert(retEs.Items, HasLen, len(tc.expectEngines))
 		for _, retE := range retEs.Items {
 			if tc.engines == nil {
 				// test creation, name would be different
@@ -1495,7 +1494,6 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 		retRs, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: getVolumeLabelSelector(v.Name)})
 		c.Assert(err, IsNil)
-		c.Assert(retRs.Items, HasLen, len(tc.expectReplicas))
 		for _, retR := range retRs.Items {
 			if tc.replicas == nil {
 				// test creation, name would be different

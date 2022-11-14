@@ -8,7 +8,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 )
 
@@ -51,6 +53,24 @@ func GetLonghornLabelsPatchOp(obj runtime.Object, longhornLabels map[string]stri
 
 	for k, v := range longhornLabels {
 		labels[k] = v
+	}
+
+	volumeName := ""
+	switch obj.(type) {
+	case *longhorn.Volume:
+		volumeName = obj.(*longhorn.Volume).Name
+	case *longhorn.Engine:
+		volumeName = obj.(*longhorn.Engine).Spec.VolumeName
+	case *longhorn.Replica:
+		volumeName = obj.(*longhorn.Replica).Spec.VolumeName
+	}
+
+	if volumeName != "" {
+		volumeName = util.AutoCorrectName(volumeName, datastore.NameMaximumLength)
+
+		for k, v := range types.GetVolumeLabels(volumeName) {
+			labels[k] = v
+		}
 	}
 
 	bytes, err := json.Marshal(labels)
