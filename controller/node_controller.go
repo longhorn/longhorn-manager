@@ -286,17 +286,26 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return nc.ds.RemoveFinalizerForNode(node)
 	}
 
+	nodeIsReadyEventMsg := ""
+	nodeIsReadyEventType := ""
 	existingNode := node.DeepCopy()
 	defer func() {
 		// we're going to update volume assume things changes
 		if err == nil && !reflect.DeepEqual(existingNode.Status, node.Status) {
 			_, err = nc.ds.UpdateNodeStatus(node)
 		}
-		// requeue if it's conflict
-		if apierrors.IsConflict(errors.Cause(err)) {
-			logrus.Debugf("Requeue %v due to conflict: %v", key, err)
-			nc.enqueueNode(node)
-			err = nil
+		if err != nil {
+			// requeue if it's conflict
+			if apierrors.IsConflict(errors.Cause(err)) {
+				logrus.Debugf("Requeue %v due to conflict: %v", key, err)
+				nc.enqueueNode(node)
+				err = nil
+			} else {
+				logrus.WithError(err).Errorf("failed to update node %v status", node.Name)
+			}
+		} else if nodeIsReadyEventMsg != "" && nodeIsReadyEventType != "" {
+			// create the event when the status type `Ready` of node is changed
+			nc.eventRecorder.Event(node, nodeIsReadyEventType, longhorn.NodeConditionTypeReady, nodeIsReadyEventMsg)
 		}
 	}()
 
@@ -307,25 +316,29 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 	nodeManagerFound := false
 	for _, pod := range managerPods {
-		if pod.Spec.NodeName == node.Name {
-			nodeManagerFound = true
-			podConditions := pod.Status.Conditions
-			for _, podCondition := range podConditions {
-				if podCondition.Type == v1.PodReady {
-					if podCondition.Status == v1.ConditionTrue && pod.Status.Phase == v1.PodRunning {
-						node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
-							longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue,
-							"", fmt.Sprintf("Node %v is ready", node.Name),
-							nc.eventRecorder, node, v1.EventTypeNormal)
-					} else {
-						node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
-							longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
-							string(longhorn.NodeConditionReasonManagerPodDown),
-							fmt.Sprintf("Node %v is down: the manager pod %v is not running", node.Name, pod.Name),
-							nc.eventRecorder, node, v1.EventTypeWarning)
-					}
-					break
+		if pod.Spec.NodeName != node.Name {
+			continue
+		}
+		nodeManagerFound = true
+		podConditions := pod.Status.Conditions
+		for _, podCondition := range podConditions {
+			if podCondition.Type != v1.PodReady {
+				continue
+			}
+			if podCondition.Status == v1.ConditionTrue && pod.Status.Phase == v1.PodRunning {
+				// create the event after `UpdateNodeStatus` without the error `IsConflict`
+				if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
+					nodeIsReadyEventMsg = fmt.Sprintf("Node %v is ready", node.Name)
+					nodeIsReadyEventType = v1.EventTypeNormal
 				}
+				node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, "", nodeIsReadyEventMsg)
+			} else {
+				// create the event after `UpdateNodeStatus` without the error `IsConflict`
+				if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusFalse {
+					nodeIsReadyEventMsg = fmt.Sprintf("Node %v is down: the manager pod %v is not running", node.Name, pod.Name)
+					nodeIsReadyEventType = v1.EventTypeWarning
+				}
+				node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, string(longhorn.NodeConditionReasonManagerPodDown), nodeIsReadyEventMsg)
 			}
 			break
 		}
