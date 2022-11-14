@@ -99,13 +99,34 @@ func (s *DataStore) filterCustomizedDefaultSettings(customizedDefaultSettings ma
 	availableCustomizedDefaultSettings := make(map[string]string)
 
 	for name, value := range customizedDefaultSettings {
-		if err := s.ValidateSetting(string(name), value); err == nil {
-			availableCustomizedDefaultSettings[name] = value
-		} else {
-			logrus.WithError(err).Errorf("invalid customized default setting %v with value %v, will continue applying other customized settings", name, value)
+		if !s.isSettingValueChanged(types.SettingName(name), value) {
+			continue
 		}
+
+		if err := s.ValidateSetting(string(name), value); err != nil {
+			logrus.WithError(err).Warnf("Invalid customized default setting %v with value %v, will continue applying other customized settings", name, value)
+			continue
+		}
+
+		availableCustomizedDefaultSettings[name] = value
 	}
 	return availableCustomizedDefaultSettings
+}
+
+// isSettingValueChanged check if the customized default setting and value was changed
+func (s *DataStore) isSettingValueChanged(name types.SettingName, value string) bool {
+	setting, err := s.GetSettingExact(name)
+	if err != nil {
+		if !ErrorIsNotFound(err) {
+			logrus.WithError(err).Errorf("failed to get customized default setting %v value", name)
+			return false
+		}
+		return true
+	}
+	if setting.Value == value {
+		return false
+	}
+	return true
 }
 
 func (s *DataStore) syncSettingsWithDefaultImages(defaultImages map[types.SettingName]string) error {
