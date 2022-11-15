@@ -28,6 +28,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -233,6 +234,10 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		}
 	case string(types.SettingNameStorageNetwork):
 		if err := sc.updateCNI(); err != nil {
+			return err
+		}
+	case string(types.SettingNameSupportBundleFailedHistoryLimit):
+		if err := sc.cleanupFailedSupportBundles(); err != nil {
 			return err
 		}
 	default:
@@ -992,6 +997,50 @@ func (sc *SettingController) updateInstanceManagerCPURequest() error {
 		if err := sc.ds.DeletePod(imPod.Name); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (sc *SettingController) cleanupFailedSupportBundles() error {
+	failedLimit, err := sc.ds.GetSettingAsInt(types.SettingNameSupportBundleFailedHistoryLimit)
+	if err != nil {
+		return err
+	}
+
+	if failedLimit > 0 {
+		return nil
+	}
+
+	supportBundleList, err := sc.ds.ListSupportBundles()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list SupportBundles for auto-deletion")
+	}
+
+	for _, supportBundle := range supportBundleList {
+		if supportBundle.Status.OwnerID != sc.controllerID {
+			continue
+		}
+
+		if supportBundle.Status.State == longhorn.SupportBundleStatePurging {
+			continue
+		}
+		if supportBundle.Status.State == longhorn.SupportBundleStateDeleting {
+			continue
+		}
+		if supportBundle.Status.State != longhorn.SupportBundleStateError {
+			continue
+		}
+
+		supportBundle.Status.State = longhorn.SupportBundleStatePurging
+		_, err = sc.ds.UpdateSupportBundleStatus(supportBundle)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return errors.Wrapf(err, "failed to purge SupportBundle %v", supportBundle.Name)
+		}
+
+		message := fmt.Sprintf("Purging failed SupportBundle %v", supportBundle.Name)
+		sc.logger.Info(message)
+		sc.eventRecorder.Eventf(supportBundle, v1.EventTypeNormal, constant.EventReasonDeleting, message)
 	}
 
 	return nil
