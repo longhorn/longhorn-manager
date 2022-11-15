@@ -309,50 +309,8 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		}
 	}()
 
-	// sync node state by manager pod
-	managerPods, err := nc.ds.ListManagerPods()
-	if err != nil {
-		return err
-	}
-	nodeManagerFound := false
-	for _, pod := range managerPods {
-		if pod.Spec.NodeName != node.Name {
-			continue
-		}
-		nodeManagerFound = true
-		podConditions := pod.Status.Conditions
-		for _, podCondition := range podConditions {
-			if podCondition.Type != v1.PodReady {
-				continue
-			}
-			if podCondition.Status == v1.ConditionTrue && pod.Status.Phase == v1.PodRunning {
-				// create the event after `UpdateNodeStatus` without the error `IsConflict`
-				if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
-					nodeIsReadyEventMsg = fmt.Sprintf("Node %v is ready", node.Name)
-					nodeIsReadyEventType = v1.EventTypeNormal
-				}
-				node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, "", nodeIsReadyEventMsg)
-			} else {
-				// create the event after `UpdateNodeStatus` without the error `IsConflict`
-				if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusFalse {
-					nodeIsReadyEventMsg = fmt.Sprintf("Node %v is down: the manager pod %v is not running", node.Name, pod.Name)
-					nodeIsReadyEventType = v1.EventTypeWarning
-				}
-				node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, string(longhorn.NodeConditionReasonManagerPodDown), nodeIsReadyEventMsg)
-			}
-			break
-		}
-	}
-
-	if !nodeManagerFound {
-		node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
-			longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
-			string(longhorn.NodeConditionReasonManagerPodMissing),
-			fmt.Sprintf("manager pod missing: node %v has no manager pod running on it", node.Name),
-			nc.eventRecorder, node, v1.EventTypeWarning)
-	}
-
 	// sync node state with kuberentes node status
+	kubeNodeIsReady := true
 	kubeNode, err := nc.ds.GetKubernetesNode(name)
 	if err != nil {
 		// if kubernetes node has been removed from cluster
@@ -362,6 +320,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 				string(longhorn.NodeConditionReasonKubernetesNodeGone),
 				fmt.Sprintf("Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name),
 				nc.eventRecorder, node, v1.EventTypeWarning)
+			kubeNodeIsReady = false
 		} else {
 			return err
 		}
@@ -371,11 +330,16 @@ func (nc *NodeController) syncNode(key string) (err error) {
 			switch con.Type {
 			case v1.NodeReady:
 				if con.Status != v1.ConditionTrue {
-					node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
-						longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
+					if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusFalse {
+						nodeIsReadyEventMsg = fmt.Sprintf("Kubernetes node %v is not ready: %v", node.Name, con.Reason)
+						nodeIsReadyEventType = v1.EventTypeWarning
+					}
+					node.Status.Conditions = types.SetCondition(node.Status.Conditions,
+						longhorn.NodeConditionTypeReady,
+						longhorn.ConditionStatusFalse,
 						string(longhorn.NodeConditionReasonKubernetesNodeNotReady),
-						fmt.Sprintf("Kubernetes node %v not ready: %v", node.Name, con.Reason),
-						nc.eventRecorder, node, v1.EventTypeWarning)
+						nodeIsReadyEventMsg)
+					kubeNodeIsReady = false
 					break
 				}
 			case v1.NodeDiskPressure,
@@ -388,7 +352,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 						string(longhorn.NodeConditionReasonKubernetesNodePressure),
 						fmt.Sprintf("Kubernetes node %v has pressure: %v, %v", node.Name, con.Reason, con.Message),
 						nc.eventRecorder, node, v1.EventTypeWarning)
-
+					kubeNodeIsReady = false
 					break
 				}
 			default:
@@ -433,6 +397,55 @@ func (nc *NodeController) syncNode(key string) (err error) {
 
 		node.Status.Region, node.Status.Zone = types.GetRegionAndZone(kubeNode.Labels)
 
+	}
+
+	// sync node state by manager pod
+	managerPods, err := nc.ds.ListManagerPods()
+	if err != nil {
+		return err
+	}
+
+	nodeManagerFound := false
+	for _, pod := range managerPods {
+		if pod.Spec.NodeName != node.Name {
+			continue
+		}
+
+		nodeManagerFound = true
+		if !kubeNodeIsReady {
+			break
+		}
+
+		podConditions := pod.Status.Conditions
+		for _, podCondition := range podConditions {
+			if podCondition.Type != v1.PodReady {
+				continue
+			}
+			if podCondition.Status == v1.ConditionTrue && pod.Status.Phase == v1.PodRunning {
+				// create the event after `UpdateNodeStatus` without the error `IsConflict`
+				if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
+					nodeIsReadyEventMsg = fmt.Sprintf("Node %v is ready", node.Name)
+					nodeIsReadyEventType = v1.EventTypeNormal
+					node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, "", nodeIsReadyEventMsg)
+				}
+			} else {
+				// create the event after `UpdateNodeStatus` without the error `IsConflict`
+				if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusFalse {
+					nodeIsReadyEventMsg = fmt.Sprintf("Node %v is down: the manager pod %v is not running", node.Name, pod.Name)
+					nodeIsReadyEventType = v1.EventTypeWarning
+					node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, string(longhorn.NodeConditionReasonManagerPodDown), nodeIsReadyEventMsg)
+				}
+			}
+			break
+		}
+	}
+
+	if kubeNodeIsReady && !nodeManagerFound {
+		node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+			longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonManagerPodMissing),
+			fmt.Sprintf("manager pod missing: node %v has no manager pod running on it", node.Name),
+			nc.eventRecorder, node, v1.EventTypeWarning)
 	}
 
 	if nc.controllerID != node.Name {
