@@ -120,7 +120,7 @@ github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/rpc
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20220913112826-5f5c95274f2a
+# github.com/longhorn/backupstore v0.0.0-20221114044558-19f4902cd4fd
 ## explicit; go 1.13
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
@@ -130,14 +130,14 @@ github.com/longhorn/backupstore/util
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/longhorn-engine v1.3.2-0.20220929032851-7aac8ae9c8b4 => github.com/derekbit/longhorn-engine v1.2.1-0.20221111082945-15ac8876cf68
+# github.com/longhorn/longhorn-engine v1.3.1-0.20221115074305-1cad7ddcc7d5
 ## explicit; go 1.13
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
-# github.com/longhorn/longhorn-instance-manager v0.0.0-20220929053134-65135bc070cd => github.com/derekbit/longhorn-instance-manager v0.0.0-20221111083145-fe621ce018a2
+# github.com/longhorn/longhorn-instance-manager v0.0.0-20221115081550-54c33871e892
 ## explicit; go 1.13
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
