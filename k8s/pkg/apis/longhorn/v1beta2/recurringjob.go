@@ -17,6 +17,13 @@ type VolumeRecurringJob struct {
 	IsGroup bool   `json:"isGroup"`
 }
 
+// VolumeRecurringJobInfo defines the Longhorn recurring job information stored in the backup volume configuration
+type VolumeRecurringJobInfo struct {
+	JobSpec   RecurringJobSpec `json:"jobSpec"`
+	FromGroup []string         `json:"fromGroup,omitempty"`
+	FromJob   bool             `json:"fromJob"`
+}
+
 // RecurringJobSpec defines the desired state of the Longhorn recurring job
 type RecurringJobSpec struct {
 	// The recurring job name.

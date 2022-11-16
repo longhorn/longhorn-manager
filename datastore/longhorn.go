@@ -3561,6 +3561,22 @@ func (s *DataStore) ListRecurringJobs() (map[string]*longhorn.RecurringJob, erro
 	return itemMap, nil
 }
 
+// ListRecurringJobsRO returns a map of RecurringJobPolicies indexed by name
+func (s *DataStore) ListRecurringJobsRO() (map[string]*longhorn.RecurringJob, error) {
+	itemMap := map[string]*longhorn.RecurringJob{}
+
+	list, err := s.rjLister.RecurringJobs(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO
+	}
+	return itemMap, nil
+}
+
 func (s *DataStore) getRecurringJobRO(name string) (*longhorn.RecurringJob, error) {
 	return s.rjLister.RecurringJobs(s.namespace).Get(name)
 }

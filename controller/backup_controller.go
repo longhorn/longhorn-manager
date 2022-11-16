@@ -393,6 +393,10 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return nil
 	}
 
+	// Remove the Backup Volume recurring jobs/groups information.
+	// Only record the lastest recurring jobs/groups information in backup volume CR and volume.cfg on remote backup target.
+	delete(backupInfo.Labels, types.VolumeRecurringJobInfoLabel)
+
 	// Update Backup CR status
 	backup.Status.State = longhorn.BackupStateCompleted
 	backup.Status.URL = backupInfo.URL
@@ -601,7 +605,7 @@ func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume 
 		return nil, err
 	}
 
-	monitor, err = engineapi.NewBackupMonitor(bc.logger, backup, volume, backupTargetClient, biChecksum, engine, engineClientProxy, bc.enqueueBackupForMonitor)
+	monitor, err = engineapi.NewBackupMonitor(bc.logger, bc.ds, backup, volume, backupTargetClient, biChecksum, engine, engineClientProxy, bc.enqueueBackupForMonitor)
 	if err != nil {
 		return nil, err
 	}
