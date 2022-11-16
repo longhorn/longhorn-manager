@@ -22,6 +22,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/snapshot"
 	"github.com/longhorn/longhorn-manager/webhook/resources/supportbundle"
 	"github.com/longhorn/longhorn-manager/webhook/resources/systembackup"
+	"github.com/longhorn/longhorn-manager/webhook/resources/systemrestore"
 	"github.com/longhorn/longhorn-manager/webhook/resources/volume"
 )
 
@@ -44,6 +45,7 @@ func Mutation(client *client.Client) (http.Handler, []admission.Resource, error)
 		replica.NewMutator(client.Datastore),
 		supportbundle.NewMutator(client.Datastore),
 		systembackup.NewMutator(client.Datastore),
+		systemrestore.NewMutator(client.Datastore),
 	}
 
 	router := webhook.NewRouter()
