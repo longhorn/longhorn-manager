@@ -130,14 +130,14 @@ github.com/longhorn/backupstore/util
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/longhorn-engine v1.3.1-0.20221115074305-1cad7ddcc7d5
+# github.com/longhorn/longhorn-engine v1.3.1-0.20221116122543-acdfe5be79f7
 ## explicit; go 1.13
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
-# github.com/longhorn/longhorn-instance-manager v0.0.0-20221115081550-54c33871e892
+# github.com/longhorn/longhorn-instance-manager v0.0.0-20221116155029-36e8461b4cac
 ## explicit; go 1.13
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client

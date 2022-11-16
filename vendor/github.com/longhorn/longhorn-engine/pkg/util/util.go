@@ -34,10 +34,6 @@ var (
 )
 
 const (
-	VolumeSectorSize       = 4096
-	ReplicaSectorSize      = 512
-	BackingImageSectorSize = 512
-
 	BlockSizeLinux = 512
 )
 
@@ -330,4 +326,8 @@ func GetInitiatorNS() string {
 
 func GetFunctionName(i interface{}) string {
 	return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
+}
+
+func RandomID(randomIDLenth int) string {
+	return UUID()[:randomIDLenth]
 }
