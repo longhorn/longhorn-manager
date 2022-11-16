@@ -23,27 +23,28 @@ import (
 type Volume struct {
 	client.Resource
 
-	Name                    string                         `json:"name"`
-	Size                    string                         `json:"size"`
-	Frontend                longhorn.VolumeFrontend        `json:"frontend"`
-	DisableFrontend         bool                           `json:"disableFrontend"`
-	FromBackup              string                         `json:"fromBackup"`
-	DataSource              longhorn.VolumeDataSource      `json:"dataSource"`
-	DataLocality            longhorn.DataLocality          `json:"dataLocality"`
-	StaleReplicaTimeout     int                            `json:"staleReplicaTimeout"`
-	State                   longhorn.VolumeState           `json:"state"`
-	Robustness              longhorn.VolumeRobustness      `json:"robustness"`
-	EngineImage             string                         `json:"engineImage"`
-	CurrentImage            string                         `json:"currentImage"`
-	BackingImage            string                         `json:"backingImage"`
-	Created                 string                         `json:"created"`
-	LastBackup              string                         `json:"lastBackup"`
-	LastBackupAt            string                         `json:"lastBackupAt"`
-	LastAttachedBy          string                         `json:"lastAttachedBy"`
-	Standby                 bool                           `json:"standby"`
-	RestoreRequired         bool                           `json:"restoreRequired"`
-	RevisionCounterDisabled bool                           `json:"revisionCounterDisabled"`
-	SnapshotDataIntegrity   longhorn.SnapshotDataIntegrity `json:"snapshotDataIntegrity"`
+	Name                      string                                 `json:"name"`
+	Size                      string                                 `json:"size"`
+	Frontend                  longhorn.VolumeFrontend                `json:"frontend"`
+	DisableFrontend           bool                                   `json:"disableFrontend"`
+	FromBackup                string                                 `json:"fromBackup"`
+	RestoreVolumeRecurringJob longhorn.RestoreVolumeRecurringJobType `json:"restoreVolumeRecurringJob"`
+	DataSource                longhorn.VolumeDataSource              `json:"dataSource"`
+	DataLocality              longhorn.DataLocality                  `json:"dataLocality"`
+	StaleReplicaTimeout       int                                    `json:"staleReplicaTimeout"`
+	State                     longhorn.VolumeState                   `json:"state"`
+	Robustness                longhorn.VolumeRobustness              `json:"robustness"`
+	EngineImage               string                                 `json:"engineImage"`
+	CurrentImage              string                                 `json:"currentImage"`
+	BackingImage              string                                 `json:"backingImage"`
+	Created                   string                                 `json:"created"`
+	LastBackup                string                                 `json:"lastBackup"`
+	LastBackupAt              string                                 `json:"lastBackupAt"`
+	LastAttachedBy            string                                 `json:"lastAttachedBy"`
+	Standby                   bool                                   `json:"standby"`
+	RestoreRequired           bool                                   `json:"restoreRequired"`
+	RevisionCounterDisabled   bool                                   `json:"revisionCounterDisabled"`
+	SnapshotDataIntegrity     longhorn.SnapshotDataIntegrity         `json:"snapshotDataIntegrity"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`

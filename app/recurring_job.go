@@ -876,6 +876,10 @@ func filterVolumesForJob(allowDetached bool, volumes []longhorn.Volume, filterNa
 		if util.Contains(*filterNames, volume.Name) {
 			continue
 		}
+		if volume.Status.RestoreRequired {
+			logger.Debugf("Bypassed to create job for %v volume during restoring from the backup", volume.Name)
+			continue
+		}
 		if volume.Status.Robustness != longhorn.VolumeRobustnessFaulted &&
 			(volume.Status.State == longhorn.VolumeStateAttached || allowDetached) {
 			*filterNames = append(*filterNames, volume.Name)

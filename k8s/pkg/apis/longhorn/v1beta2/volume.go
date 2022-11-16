@@ -111,6 +111,15 @@ const (
 	SnapshotDataIntegrityFastCheck = SnapshotDataIntegrity("fast-check")
 )
 
+// +kubebuilder:validation:Enum=ignored;enabled;disabled
+type RestoreVolumeRecurringJobType string
+
+const (
+	RestoreVolumeRecurringJobDefault  = RestoreVolumeRecurringJobType("ignored")
+	RestoreVolumeRecurringJobEnabled  = RestoreVolumeRecurringJobType("enabled")
+	RestoreVolumeRecurringJobDisabled = RestoreVolumeRecurringJobType("disabled")
+)
+
 // VolumeRecurringJobSpec is a deprecated struct.
 // TODO: Should be removed when recurringJobs gets removed from the volume
 //       spec.
@@ -171,6 +180,8 @@ type VolumeSpec struct {
 	Frontend VolumeFrontend `json:"frontend"`
 	// +optional
 	FromBackup string `json:"fromBackup"`
+	// +optional
+	RestoreVolumeRecurringJob RestoreVolumeRecurringJobType `json:"restoreVolumeRecurringJob"`
 	// +optional
 	DataSource VolumeDataSource `json:"dataSource"`
 	// +optional
