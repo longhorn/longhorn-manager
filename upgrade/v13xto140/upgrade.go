@@ -42,6 +42,10 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err erro
 			v.Spec.SnapshotDataIntegrity = longhorn.SnapshotDataIntegrityIgnored
 		}
 
+		if v.Spec.RestoreVolumeRecurringJob == "" {
+			v.Spec.RestoreVolumeRecurringJob = longhorn.RestoreVolumeRecurringJobDefault
+		}
+
 		_, err = lhClient.LonghornV1beta2().Volumes(namespace).Update(context.TODO(), &v, metav1.UpdateOptions{})
 		if err != nil {
 			return errors.Wrapf(err, "failed to update volume %v", v.Name)
