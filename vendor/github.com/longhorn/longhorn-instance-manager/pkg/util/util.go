@@ -79,7 +79,7 @@ func RemoveFile(file string) error {
 	}
 
 	if _, err := Execute("rm", file); err != nil {
-		return fmt.Errorf("fail to remove file %v: %v", file, err)
+		return fmt.Errorf("failed to remove file %v: %v", file, err)
 	}
 
 	return nil
