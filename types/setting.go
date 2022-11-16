@@ -95,6 +95,7 @@ const (
 	SettingNameSnapshotDataIntegrity                                    = SettingName("snapshot-data-integrity")
 	SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation = SettingName("snapshot-data-integrity-immediate-check-after-snapshot-creation")
 	SettingNameSnapshotDataIntegrityCronJob                             = SettingName("snapshot-data-integrity-cronjob")
+	SettingNameRestoreVolumeRecurringJobs                               = SettingName("restore-volume-recurring-jobs")
 )
 
 var (
@@ -158,6 +159,7 @@ var (
 		SettingNameSnapshotDataIntegrity,
 		SettingNameSnapshotDataIntegrityCronJob,
 		SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation,
+		SettingNameRestoreVolumeRecurringJobs,
 	}
 )
 
@@ -246,6 +248,7 @@ var (
 		SettingNameSnapshotDataIntegrity:                                    SettingDefinitionSnapshotDataIntegrity,
 		SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation: SettingDefinitionSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation,
 		SettingNameSnapshotDataIntegrityCronJob:                             SettingDefinitionSnapshotDataIntegrityCronJob,
+		SettingNameRestoreVolumeRecurringJobs:                               SettingDefinitionRestoreVolumeRecurringJobs,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -299,6 +302,21 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "1440",
+	}
+
+	SettingDefinitionRestoreVolumeRecurringJobs = SettingDefinition{
+		DisplayName: "Restore Volume Recurring Jobs",
+		Description: "Restore recurring jobs from the backup volume on the backup target and create recurring jobs if not exist during a backup restoration.\n\n" +
+			"Longhorn also supports individual volume setting. The setting can be specified on Backup page when making a backup restoration, this overrules the global setting.\n\n" +
+			"The available volume setting options are: \n\n" +
+			"- **ignored**. This is the default option that instructs Longhorn to inherit from the global setting.\n" +
+			"- **enabled**. This option instructs Longhorn to restore recurring jobs/groups from the backup target forcibly.\n" +
+			"- **disabled**. This option instructs Longhorn no restoring recurring jobs/groups should be done.\n",
+		Category: SettingCategoryBackup,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
 	}
 
 	SettingDefinitionCreateDefaultDiskLabeledNodes = SettingDefinition{
@@ -1026,6 +1044,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameOrphanAutoDeletion:
 		fallthrough
 	case SettingNameDeletingConfirmationFlag:
+		fallthrough
+	case SettingNameRestoreVolumeRecurringJobs:
 		fallthrough
 	case SettingNameUpgradeChecker:
 		if value != "true" && value != "false" {

@@ -2879,7 +2879,7 @@ func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longho
 	}
 	if (cliAPIVersion >= engineapi.CLIVersionFour && !isPurging && (v.Status.Robustness == longhorn.VolumeRobustnessHealthy || v.Status.Robustness == longhorn.VolumeRobustnessDegraded) && allScheduledReplicasIncluded) ||
 		(cliAPIVersion < engineapi.CLIVersionFour && (v.Status.Robustness == longhorn.VolumeRobustnessHealthy || v.Status.Robustness == longhorn.VolumeRobustnessDegraded)) {
-		log.Info("Prepare to do auto detachment for restore/DR volume")
+		log.Info("Preparing to do auto detachment for restore/DR volume")
 		v.Status.CurrentNodeID = ""
 		v.Status.IsStandby = false
 		v.Status.RestoreRequired = false
@@ -3044,6 +3044,159 @@ func (vc *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.O
 	vc.enqueueVolume(volume)
 }
 
+// generateRecurringJobName uses a new name to create a new recurring job that original name exists but configuration is different
+// or find a recreated recurring job name that had been restored and configuration is the same
+func generateRecurringJobName(log *logrus.Entry, ds *datastore.DataStore, job *longhorn.VolumeRecurringJobInfo) (string, string, error) {
+	// reuse restored recurring job that RecurringJobSpec is the same.
+	allRecurringJobs, err := ds.ListRecurringJobsRO()
+	if err != nil {
+		log.WithError(err).Warn("Failed to list all recurring jobs")
+		return "", "", err
+	}
+	for existJobName, existJob := range allRecurringJobs {
+		if !strings.HasPrefix(existJobName, types.VolumeRecurringJobRestorePrefix) {
+			continue
+		}
+		job.JobSpec.Name = existJob.Spec.Name
+		if reflect.DeepEqual(existJob.Spec, job.JobSpec) {
+			return "", existJobName, nil
+		}
+	}
+
+	// generateJobName returns a name that contains prefix and 16 random characters
+	generateJobName := func(prefix string) string {
+		return prefix + util.RandomID() + util.RandomID()
+	}
+
+	newJobName := generateJobName(types.VolumeRecurringJobRestorePrefix)
+	job.JobSpec.Name = newJobName
+
+	return newJobName, "", nil
+}
+
+// restoreVolumeRecurringJobLabel label restored recurring jobs/groups from the backup target when doing a backup restoration
+func restoreVolumeRecurringJobLabel(v *longhorn.Volume, jobName string, job *longhorn.VolumeRecurringJobInfo) error {
+	// set Volume recurring jobs/groups
+	if job.FromJob {
+		labelKey := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJob, jobName)
+		// enable recurring jobs
+		v.Labels[labelKey] = types.LonghornLabelValueEnabled
+	}
+	for _, groupName := range job.FromGroup {
+		groupLabelKey := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, groupName)
+		// enable recurring groups
+		v.Labels[groupLabelKey] = types.LonghornLabelValueEnabled
+	}
+
+	return nil
+}
+
+// createRecurringJobNotExist add recurring jobs and group back to a restoring volume and create recurring jobs if not exist
+func createRecurringJobNotExist(log *logrus.Entry, ds *datastore.DataStore, v *longhorn.Volume, jobName string, job *longhorn.VolumeRecurringJobInfo) (string, error) {
+	if existJob, err := ds.GetRecurringJob(jobName); err != nil {
+		if !apierrors.IsNotFound(err) {
+			log.WithError(err).Warnf("Failed to get the recurring job %v", jobName)
+			return "", err
+		}
+	} else if !reflect.DeepEqual(existJob.Spec, job.JobSpec) {
+		// create a new recurring job if job name is used and configuration is different.
+		newJobName, existJobName, err := generateRecurringJobName(log, ds, job)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to create a new recurring job %v", jobName)
+			return "", err
+		}
+		if existJobName != "" {
+			return existJobName, nil
+		}
+		jobName = newJobName
+	} else {
+		return jobName, nil
+	}
+
+	// create the recurring job if not exist
+	log.Debugf("Creating the recurring job %v when restoring recurring jobs", jobName)
+	if _, err := ds.CreateRecurringJob(&longhorn.RecurringJob{ObjectMeta: metav1.ObjectMeta{Name: jobName}, Spec: job.JobSpec}); err != nil {
+		log.WithError(err).Warnf("Failed to create a recurring job %v", jobName)
+		return "", err
+	}
+
+	return jobName, nil
+}
+
+// restoreVolumeRecurringJobs create recurring jobs/groups from the backup volume when restoring from a backup, except for the DR volume
+func (vc *VolumeController) restoreVolumeRecurringJobs(v *longhorn.Volume) error {
+	log := getLoggerForVolume(vc.logger, v)
+
+	backupVolumeRecurringJobsInfo := make(map[string]longhorn.VolumeRecurringJobInfo)
+	bvName, exist := v.Labels[types.LonghornLabelBackupVolume]
+	if !exist {
+		log.Warn("Cannot find the backup volume label")
+		return nil
+	}
+
+	bv, err := vc.ds.GetBackupVolumeRO(bvName)
+	if err != nil {
+		log.WithError(err).WithField("backupvolume", bvName).Error("failed to get the backup volume info")
+		return err
+	}
+
+	volumeRecurringJobInfoStr, exist := bv.Status.Labels[types.VolumeRecurringJobInfoLabel]
+	if !exist {
+		return nil
+	}
+
+	if err := json.Unmarshal([]byte(volumeRecurringJobInfoStr), &backupVolumeRecurringJobsInfo); err != nil {
+		log.WithError(err).WithField("backupvolume", bvName).Error("failed to unmarshal information of volume recurring jobs")
+		return err
+	}
+
+	for jobName, job := range backupVolumeRecurringJobsInfo {
+		if job.JobSpec.Groups == nil {
+			job.JobSpec.Groups = []string{}
+		}
+		if job.JobSpec.Labels == nil {
+			job.JobSpec.Labels = map[string]string{}
+		}
+		if jobName, err = createRecurringJobNotExist(log, vc.ds, v, jobName, &job); err != nil {
+			return err
+		}
+		restoreVolumeRecurringJobLabel(v, jobName, &job)
+	}
+
+	return nil
+}
+
+// shouldRestoreRecurringJobs check if it needs to restore recurring jobs/groups before a backup restoration
+func (vc *VolumeController) shouldRestoreRecurringJobs(v *longhorn.Volume) bool {
+	if v.Spec.FromBackup == "" || v.Spec.Standby || v.Status.RestoreInitiated {
+		return false
+	}
+
+	if v.Spec.RestoreVolumeRecurringJob == longhorn.RestoreVolumeRecurringJobEnabled {
+		return true
+	}
+
+	if v.Spec.RestoreVolumeRecurringJob == longhorn.RestoreVolumeRecurringJobDisabled {
+		return false
+	}
+
+	// Avoid recurring job restoration overrides the new recurring jobs added by users.
+	existingJobs := datastore.MarshalLabelToVolumeRecurringJob(v.Labels)
+	for jobName, job := range existingJobs {
+		if !job.IsGroup || jobName != longhorn.RecurringJobGroupDefault {
+			vc.logger.Debug("User already specified recurring jobs for this volume, cannot continue restoring recurring jobs from the backup volume labels")
+			return false
+		}
+	}
+
+	restoringRecurringJobs, err := vc.ds.GetSettingAsBool(types.SettingNameRestoreVolumeRecurringJobs)
+	if err != nil {
+		vc.logger.WithError(err).Warnf("Failed to get %v setting", types.SettingNameRestoreVolumeRecurringJobs)
+	}
+
+	return restoringRecurringJobs
+}
+
 func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to update recurring jobs for %v", v.Name)
@@ -3052,6 +3205,12 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 	existingVolume := v.DeepCopy()
 	if err = datastore.FixupRecurringJob(v); err != nil {
 		return err
+	}
+	// DR volume will not restore volume recurring jobs/groups configuration.
+	if vc.shouldRestoreRecurringJobs(v) {
+		if err := vc.restoreVolumeRecurringJobs(v); err != nil {
+			vc.logger.WithError(err).Warn("Failed to restore the volume recurring jobs/groups")
+		}
 	}
 	if err == nil && !reflect.DeepEqual(existingVolume.Labels, v.Labels) {
 		_, err = vc.ds.UpdateVolume(v)
