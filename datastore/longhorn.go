@@ -3,6 +3,7 @@ package datastore
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -2195,6 +2196,43 @@ func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
 	}
 
 	return nil, fmt.Errorf("unable to get a ready node")
+}
+
+// GetRandomReadyNodeDisk a list of all Node the in the given namespace and
+// returns the first Node && the first Disk of the Node marked with condition ready and allow scheduling
+func (s *DataStore) GetRandomReadyNodeDisk() (*longhorn.Node, string, error) {
+	logrus.Debugf("Prepare to find a random ready node disk")
+	nodesRO, err := s.ListNodesRO()
+	if err != nil {
+		return nil, "", errors.Wrapf(err, "failed to get random ready node disk")
+	}
+
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(nodesRO), func(i, j int) { nodesRO[i], nodesRO[j] = nodesRO[j], nodesRO[i] })
+	for _, node := range nodesRO {
+		if !node.Spec.AllowScheduling {
+			continue
+		}
+		if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
+			continue
+		}
+		for diskName, diskStatus := range node.Status.DiskStatus {
+			diskSpec, exists := node.Spec.Disks[diskName]
+			if !exists {
+				continue
+			}
+			if !diskSpec.AllowScheduling {
+				continue
+			}
+			if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
+				continue
+			}
+
+			return node.DeepCopy(), diskName, nil
+		}
+	}
+
+	return nil, "", fmt.Errorf("unable to get a ready node disk")
 }
 
 // RemoveFinalizerForNode will result in deletion if DeletionTimestamp was set
