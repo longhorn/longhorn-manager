@@ -85,6 +85,8 @@ const (
 	KubernetesStatefulSet = "StatefulSet"
 	RecurringJobLabel     = "RecurringJob"
 
+	VolumeRecurringJobInfoLabel = "VolumeRecurringJobInfo"
+
 	LonghornLabelKeyPrefix = "longhorn.io"
 
 	LonghornLabelRecurringJobKeyPrefixFmt = "recurring-%s.longhorn.io"
