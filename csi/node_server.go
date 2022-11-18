@@ -101,7 +101,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Errorf(codes.NotFound, "volume %s not found", volumeID)
 	}
 
-	mounter, err := ns.getMounter(volume, volumeCapability)
+	mounter, err := ns.getMounter(volume, volumeCapability, req.VolumeContext)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -324,7 +324,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Errorf(codes.NotFound, "volume %s not found", volumeID)
 	}
 
-	mounter, err := ns.getMounter(volume, volumeCapability)
+	mounter, err := ns.getMounter(volume, volumeCapability, req.VolumeContext)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -623,7 +623,7 @@ func getNodeServiceCapabilities(cs []csi.NodeServiceCapability_RPC_Type) []*csi.
 	return nscs
 }
 
-func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability *csi.VolumeCapability) (mount.Interface, error) {
+func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability *csi.VolumeCapability, volumeContext map[string]string) (mount.Interface, error) {
 	if volumeCapability.GetBlock() != nil {
 		return mount.New(""), nil
 	}
@@ -645,6 +645,11 @@ func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability
 		params := ""
 		if fsParams, ok := supportedFs[fsType]; ok {
 			params += fsParams.formatParameters
+		}
+
+		//If the user specifies parameters in the storage class, the parameters are appended after the default value.
+		if mkfsParams, ok := volumeContext["mkfsParams"]; ok && mkfsParams != "" {
+			params += " " + mkfsParams
 		}
 
 		// We allow the user to provide additional params for ext4 filesystem creation.
