@@ -1092,6 +1092,144 @@ func (vc *VolumeController) syncVolumeUnmapMarkSnapChainRemovedSetting(v *longho
 	return nil
 }
 
+func (vc *VolumeController) nextState(v *longhorn.Volume) *longhorn.Volume {
+	retV := v.DeepCopy()
+	if v.Spec.NodeID == "" { // TODO: we want to detach
+		if v.Status.CurrentNodeID == "" { // we are already detached, make sure our state is detached
+			if v.Status.State == longhorn.VolumeStateAttached ||
+				v.Status.State == longhorn.VolumeStateAttaching {
+				// TODO: we want to detach, i.e. close all resources
+				retV.Status.State = longhorn.VolumeStateDetaching
+				return retV
+			}
+			if v.Status.State == longhorn.VolumeStateDetaching {
+				// TODO: we want to detach, i.e. close all resources
+				// TODO: we want to verify that all resources are closed
+				retV.Status.State = longhorn.VolumeStateDetached
+				return retV
+			}
+			if v.Status.State == longhorn.VolumeStateDetached {
+				// Do nothing
+				// This is a stable state
+				return retV
+			}
+		}
+
+		if v.Status.CurrentNodeID != "" { // we want to detach and need to go through tear down
+			if v.Status.State == longhorn.VolumeStateAttaching ||
+				v.Status.State == longhorn.VolumeStateAttached ||
+				v.Status.State == longhorn.VolumeStateDetached {
+				// TODO: we want to detach, i.e. close all resources
+				retV.Status.State = longhorn.VolumeStateDetaching
+				return retV
+			}
+			if v.Status.State == longhorn.VolumeStateDetaching {
+				// TODO: we want to detach, i.e. close all resources
+				// TODO: we want to verify that all resources are closed
+				retV.Status.State = longhorn.VolumeStateDetached
+				retV.Status.CurrentNodeID = ""
+				return retV
+			}
+			if v.Status.State == longhorn.VolumeStateDetached {
+				// Do nothing
+				// This is a stable state
+				return retV
+			}
+		}
+	}
+
+	if v.Spec.NodeID != "" { // TODO: we want to attach
+		if v.Status.CurrentNodeID == "" { // we are already detached, make sure our state is detached
+			if v.Status.State == longhorn.VolumeStateAttached {
+				// TODO: we want to detach, i.e. close all resources
+				retV.Status.State = longhorn.VolumeStateDetaching
+				return retV
+			}
+			if v.Status.State == longhorn.VolumeStateDetaching {
+				// TODO: we want to detach, i.e. close all resources
+				// TODO: we want to verify that all resources are closed
+				retV.Status.State = longhorn.VolumeStateDetached
+				return retV
+			}
+			if v.Status.State == longhorn.VolumeStateDetached {
+				// TODO: we want to attach, i.e. create all resources
+				retV.Status.State = longhorn.VolumeStateAttaching
+				return retV
+			}
+			if v.Status.State == longhorn.VolumeStateAttaching {
+				// TODO: we want to attach, i.e. create all resources
+				// TODO: we want to verify that all resources are ready
+				retV.Status.State = longhorn.VolumeStateAttached
+				return retV
+			}
+		}
+
+		if v.Status.CurrentNodeID != "" {
+			if v.Spec.NodeID == v.Status.CurrentNodeID {
+				if v.Status.State == longhorn.VolumeStateAttaching ||
+					v.Status.State == longhorn.VolumeStateDetached {
+					// TODO: we want to detach, i.e. close all resources
+					retV.Status.State = longhorn.VolumeStateDetaching
+					return retV
+				}
+				if v.Status.State == longhorn.VolumeStateDetaching {
+					// TODO: we want to detach, i.e. close all resources
+					// TODO: we want to verify that all resources are closed
+					retV.Status.CurrentNodeID = ""
+					retV.Status.State = longhorn.VolumeStateDetached
+					return retV
+				}
+			}
+
+			if v.Spec.NodeID != v.Status.CurrentNodeID {
+				if v.Status.State == longhorn.VolumeStateDetached ||
+					v.Status.State == longhorn.VolumeStateAttached ||
+					v.Status.State == longhorn.VolumeStateAttaching {
+					// TODO: we want to detach, i.e. close all resources
+					retV.Status.State = longhorn.VolumeStateDetaching
+					return retV
+				}
+			}
+		}
+	}
+
+	return retV
+}
+
+func (vc *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
+
+	// TODO: move volume creation stuff into here
+	// first time engine creation etc
+
+	return nil
+}
+
+func (vc *VolumeController) reconcileVolumeAttachment(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
+
+	// TODO: we want to attach, i.e. create all resources
+
+	if v.Status.State == longhorn.VolumeStateAttaching || v.Status.State == longhorn.VolumeStateAttached {
+		// TODO: we want to verify that all resources are ready
+		v.Status.State = longhorn.VolumeStateAttached
+		v.Status.CurrentNodeID = v.Spec.NodeID
+	}
+
+	return nil
+}
+
+func (vc *VolumeController) reconcileVolumeDetachment(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
+
+	// TODO: we want to detach, i.e. close all resources
+
+	if v.Status.State == longhorn.VolumeStateDetaching || v.Status.State == longhorn.VolumeStateDetached {
+		// TODO: we want to verify that all resources are closed
+		v.Status.CurrentNodeID = ""
+		v.Status.State = longhorn.VolumeStateDetached
+	}
+
+	return nil
+}
+
 // ReconcileVolumeState handles the attaching and detaching of volume
 func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
@@ -1125,6 +1263,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		return err
 	}
 
+	// TODO: JM - all of the above is independent from attachment
+
 	if v.Status.CurrentNodeID == "" {
 		// `PendingNodeID != ""` means the engine dead unexpectedly.
 		// The volume will be detached by cleaning up `CurrentNodeID` then be reattached by `v.Status.CurrentNodeID = v.Status.PendingNodeID`.
@@ -1153,6 +1293,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		return fmt.Errorf("volume %v has already attached to node %v, but asked to attach to node %v", v.Name, v.Status.CurrentNodeID, v.Spec.NodeID)
 	}
 
+	// TODO: this goes into reconcileVolumeCreation
 	if e == nil {
 		// first time creation
 		e, err = vc.createEngine(v, true)
@@ -1163,6 +1304,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		es[e.Name] = e
 	}
 
+	// TODO: this goes before/after the AD logic reconcileVolumeSize()
 	if len(e.Status.Snapshots) != 0 {
 		actualSize := int64(0)
 		for _, snapshot := range e.Status.Snapshots {
@@ -1176,6 +1318,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		v.Status.ActualSize = actualSize
 	}
 
+	// TODO: independent reconcileVolumeCondition
 	if len(e.Status.Snapshots) > VolumeSnapshotsWarningThreshold {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusTrue,
@@ -1187,6 +1330,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			"", "")
 	}
 
+	// TODO: this goes into reconcileVolumeCreation
 	if len(rs) == 0 {
 		// first time creation
 		if err := vc.replenishReplicas(v, e, rs, ""); err != nil {
@@ -1196,6 +1340,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 	vc.updateReplicaLogRequested(e, rs)
 
+	// TODO: this one is independent of the AD logic
 	scheduled := true
 	aggregatedReplicaScheduledError := util.NewMultiError()
 	for _, r := range rs {
@@ -1242,6 +1387,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusTrue, "", "")
 	} else if v.Status.CurrentNodeID == "" {
+		// TODO: this goes into reconcileVolumeCreation
 		allowCreateDegraded, err := vc.ds.GetSettingAsBool(types.SettingNameAllowVolumeCreationWithDegradedAvailability)
 		if err != nil {
 			return err
@@ -1263,6 +1409,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 	}
 
+	// TODO: independent reconcileVolumeCondition
 	if !scheduled {
 		if len(aggregatedReplicaScheduledError) == 0 {
 			aggregatedReplicaScheduledError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleSchedulingFailed))
@@ -1284,6 +1431,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		return err
 	}
 
+	// TODO: This one should be replace by reconcileVolumeAttachment and reconcileVolumeDetachment
 	if err := vc.checkForAutoAttachment(v, e, rs, scheduled); err != nil {
 		return err
 	}
@@ -1293,6 +1441,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 	// The frontend should be disabled for auto attached volumes except for the expansion.
 	if v.Spec.NodeID == "" && v.Status.CurrentNodeID != "" && !v.Status.ExpansionRequired {
+		// TODO: this one is supposed to handle by the Salvage controller
+		// The frontend should be disabled for auto attached volumes.
+		// The exception is that the frontend should be enabled for the block device expansion during the offline expansion.
 		v.Status.FrontendDisabled = true
 	} else {
 		v.Status.FrontendDisabled = v.Spec.DisableFrontend
@@ -1304,6 +1455,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	}
 
 	if isAutoSalvageNeeded(rs) {
+		// TODO: this one is supposed to handle by the Salvage controller
 		v.Status.Robustness = longhorn.VolumeRobustnessFaulted
 		v.Status.CurrentNodeID = ""
 
@@ -1446,9 +1598,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		if newVolume {
 			v.Status.State = longhorn.VolumeStateCreating
 		} else if v.Status.State != longhorn.VolumeStateDetached {
+			// TODO: this goes into reconcileVolumeAttachment/reconcileVolumeDetachment
 			v.Status.State = longhorn.VolumeStateDetaching
 		}
 
+		// TODO: this goes into reconcileVolumeCondition
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, "", "")
 
@@ -1462,6 +1616,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			}
 		}
 
+		// TODO: this goes into reconcileVolumeAttachment/reconcileVolumeDetachment
 		// check if any replica has been RW yet
 		dataExists := false
 		for _, r := range rs {
@@ -1485,6 +1640,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				}
 			}
 		}
+		// TODO: this goes into reconcileVolumeAttachment/reconcileVolumeDetachment
 		if e.Spec.DesireState != longhorn.InstanceStateStopped || e.Spec.NodeID != "" {
 			if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 				e.Spec.LogRequested = true
@@ -1524,6 +1680,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		if oldState != v.Status.State {
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 		}
+		// TODO: this goes into AD controller
 		// Automatic reattach the volume if PendingNodeID was set
 		// TODO: need to revisit for CurrentNodeID and PendingNodeID update
 		// The reason is usually when CurrentNodeID is set, the volume
@@ -1543,6 +1700,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 
 	} else {
+		//TODO: This one is independent of the AD logic
 		// wait for offline engine upgrade to finish
 		if v.Status.State == longhorn.VolumeStateDetached && v.Status.CurrentImage != v.Spec.EngineImage {
 			log.Debug("Wait for offline volume upgrade to finish")
@@ -1606,6 +1764,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			}
 			rs[r.Name] = r
 		}
+		// TODO: this goes into reconcileVolumeAttachment/reconcileVolumeDetachment
 		replicaAddressMap := map[string]string{}
 		for _, r := range rs {
 			// Ignore unscheduled replicas
@@ -1669,6 +1828,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonRestoreInProgress, "")
 		}
 
+		// TODO: reconcileVolumeSize
 		// The engine expansion is complete
 		if v.Status.ExpansionRequired && v.Spec.Size == e.Status.CurrentSize {
 			v.Status.ExpansionRequired = false
@@ -1680,7 +1840,21 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
 		}
 	}
-	return nil
+
+	// if the v.Spec.NodeID has changed from the previous attachment, we need to go through a detach cycle
+	// before processing the new node attachment, this is so we can cleanup engine & replica states
+	processAttachment := v.Spec.NodeID != "" &&
+		(v.Status.CurrentNodeID == "" || v.Status.CurrentNodeID == v.Spec.NodeID)
+
+	if newVolume {
+		v.Status.State = longhorn.VolumeStateCreating
+		// TODO: JM - do volume creation operations
+		return vc.reconcileVolumeCreation(v, e, rs)
+	} else if processAttachment {
+		return vc.reconcileVolumeAttachment(v, e, rs)
+	} else {
+		return vc.reconcileVolumeDetachment(v, e, rs)
+	}
 }
 
 func (vc *VolumeController) canInstanceManagerLaunchReplica(r *longhorn.Replica) (bool, error) {

@@ -288,7 +288,7 @@ type VolumeStatus struct {
 	// +optional
 	LastBackupAt string `json:"lastBackupAt"`
 	// +optional
-	PendingNodeID string `json:"pendingNodeID"`
+	// PendingNodeID string `json:"pendingNodeID"`
 	// +optional
 	FrontendDisabled bool `json:"frontendDisabled"`
 	// +optional
