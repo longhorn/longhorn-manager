@@ -45,6 +45,7 @@ const (
 	SettingNameDefaultInstanceManagerImage                              = SettingName("default-instance-manager-image")
 	SettingNameDefaultShareManagerImage                                 = SettingName("default-share-manager-image")
 	SettingNameDefaultBackingImageManagerImage                          = SettingName("default-backing-image-manager-image")
+	SettingNameSupportBundleManagerImage                                = SettingName("support-bundle-manager-image")
 	SettingNameReplicaSoftAntiAffinity                                  = SettingName("replica-soft-anti-affinity")
 	SettingNameReplicaAutoBalance                                       = SettingName("replica-auto-balance")
 	SettingNameStorageOverProvisioningPercentage                        = SettingName("storage-over-provisioning-percentage")
@@ -106,6 +107,7 @@ var (
 		SettingNameDefaultInstanceManagerImage,
 		SettingNameDefaultShareManagerImage,
 		SettingNameDefaultBackingImageManagerImage,
+		SettingNameSupportBundleManagerImage,
 		SettingNameReplicaSoftAntiAffinity,
 		SettingNameReplicaAutoBalance,
 		SettingNameStorageOverProvisioningPercentage,
@@ -192,6 +194,7 @@ var (
 		SettingNameDefaultInstanceManagerImage:                              SettingDefinitionDefaultInstanceManagerImage,
 		SettingNameDefaultShareManagerImage:                                 SettingDefinitionDefaultShareManagerImage,
 		SettingNameDefaultBackingImageManagerImage:                          SettingDefinitionDefaultBackingImageManagerImage,
+		SettingNameSupportBundleManagerImage:                                SettingDefinitionSupportBundleManagerImage,
 		SettingNameReplicaSoftAntiAffinity:                                  SettingDefinitionReplicaSoftAntiAffinity,
 		SettingNameReplicaAutoBalance:                                       SettingDefinitionReplicaAutoBalance,
 		SettingNameStorageOverProvisioningPercentage:                        SettingDefinitionStorageOverProvisioningPercentage,
@@ -351,6 +354,15 @@ var (
 		Type:        SettingTypeString,
 		Required:    true,
 		ReadOnly:    true,
+	}
+
+	SettingDefinitionSupportBundleManagerImage = SettingDefinition{
+		DisplayName: "Support Bundle Manager Image",
+		Description: "The support bundle manager image for the support bundle generation.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
 	}
 
 	SettingDefinitionReplicaSoftAntiAffinity = SettingDefinition{
