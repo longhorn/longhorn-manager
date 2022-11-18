@@ -26,13 +26,14 @@ import (
 )
 
 const (
-	FlagEngineImage              = "engine-image"
-	FlagInstanceManagerImage     = "instance-manager-image"
-	FlagShareManagerImage        = "share-manager-image"
-	FlagBackingImageManagerImage = "backing-image-manager-image"
-	FlagManagerImage             = "manager-image"
-	FlagServiceAccount           = "service-account"
-	FlagKubeConfig               = "kube-config"
+	FlagEngineImage               = "engine-image"
+	FlagInstanceManagerImage      = "instance-manager-image"
+	FlagShareManagerImage         = "share-manager-image"
+	FlagBackingImageManagerImage  = "backing-image-manager-image"
+	FlagManagerImage              = "manager-image"
+	FlagSupportBundleManagerImage = "support-bundle-manager-image"
+	FlagServiceAccount            = "service-account"
+	FlagKubeConfig                = "kube-config"
 )
 
 func DaemonCmd() cli.Command {
@@ -54,6 +55,10 @@ func DaemonCmd() cli.Command {
 			cli.StringFlag{
 				Name:  FlagBackingImageManagerImage,
 				Usage: "Specify Longhorn backing image manager image",
+			},
+			cli.StringFlag{
+				Name:  FlagSupportBundleManagerImage,
+				Usage: "Specify Longhorn support bundle manager image",
 			},
 			cli.StringFlag{
 				Name:  FlagManagerImage,
@@ -96,6 +101,10 @@ func startManager(c *cli.Context) error {
 	backingImageManagerImage := c.String(FlagBackingImageManagerImage)
 	if backingImageManagerImage == "" {
 		return fmt.Errorf("require %v", FlagBackingImageManagerImage)
+	}
+	supportBundleManagerImage := c.String(FlagSupportBundleManagerImage)
+	if supportBundleManagerImage == "" {
+		return fmt.Errorf("require %v", FlagSupportBundleManagerImage)
 	}
 	managerImage := c.String(FlagManagerImage)
 	if managerImage == "" {
@@ -147,6 +156,7 @@ func startManager(c *cli.Context) error {
 		types.SettingNameDefaultInstanceManagerImage:     instanceManagerImage,
 		types.SettingNameDefaultShareManagerImage:        shareManagerImage,
 		types.SettingNameDefaultBackingImageManagerImage: backingImageManagerImage,
+		types.SettingNameSupportBundleManagerImage:       supportBundleManagerImage,
 	}
 	if err := ds.UpdateCustomizedSettings(defaultImageSettings); err != nil {
 		return err
