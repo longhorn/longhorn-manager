@@ -193,25 +193,25 @@ func (c *InstanceManagerClient) EngineProcessCreate(e *longhorn.Engine, volumeFr
 	return c.parseProcess(engineProcess), nil
 }
 
-func (c *InstanceManagerClient) ReplicaProcessCreate(replicaName, engineImage, dataPath, backingImagePath string, size int64, revCounterDisabled bool) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) ReplicaProcessCreate(replica *longhorn.Replica, dataPath, backingImagePath string) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
 	args := []string{
 		"replica", types.GetReplicaMountedDataPath(dataPath),
-		"--size", strconv.FormatInt(size, 10),
+		"--size", strconv.FormatInt(replica.Spec.VolumeSize, 10),
 	}
 	if backingImagePath != "" {
 		args = append(args, "--backing-file", backingImagePath)
 	}
-	if revCounterDisabled {
+	if replica.Spec.RevisionCounterDisabled {
 		args = append(args, "--disableRevCounter")
 	}
 
-	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(engineImage), types.EngineBinaryName)
+	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(replica.Spec.EngineImage), types.EngineBinaryName)
 
 	replicaProcess, err := c.grpcClient.ProcessCreate(
-		replicaName, binary, DefaultReplicaPortCount, args, []string{DefaultPortArg})
+		replica.Name, binary, DefaultReplicaPortCount, args, []string{DefaultPortArg})
 	if err != nil {
 		return nil, err
 	}
