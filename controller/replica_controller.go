@@ -397,7 +397,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 	}
 	defer c.Close()
 
-	return c.ReplicaProcessCreate(r.Name, r.Spec.EngineImage, dataPath, backingImagePath, r.Spec.VolumeSize, r.Spec.RevisionCounterDisabled)
+	return c.ReplicaProcessCreate(r, dataPath, backingImagePath)
 }
 
 func (rc *ReplicaController) GetBackingImagePathForReplicaStarting(r *longhorn.Replica) (string, error) {
