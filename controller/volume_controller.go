@@ -1092,118 +1092,6 @@ func (vc *VolumeController) syncVolumeUnmapMarkSnapChainRemovedSetting(v *longho
 	return nil
 }
 
-func (vc *VolumeController) nextState(v *longhorn.Volume) *longhorn.Volume {
-	retV := v.DeepCopy()
-	if v.Spec.NodeID == "" { // TODO: we want to detach
-		if v.Status.CurrentNodeID == "" { // we are already detached, make sure our state is detached
-			if v.Status.State == longhorn.VolumeStateAttached ||
-				v.Status.State == longhorn.VolumeStateAttaching {
-				// TODO: we want to detach, i.e. close all resources
-				retV.Status.State = longhorn.VolumeStateDetaching
-				return retV
-			}
-			if v.Status.State == longhorn.VolumeStateDetaching {
-				// TODO: we want to detach, i.e. close all resources
-				// TODO: we want to verify that all resources are closed
-				retV.Status.State = longhorn.VolumeStateDetached
-				return retV
-			}
-			if v.Status.State == longhorn.VolumeStateDetached {
-				// Do nothing
-				// This is a stable state
-				return retV
-			}
-		}
-
-		if v.Status.CurrentNodeID != "" { // we want to detach and need to go through tear down
-			if v.Status.State == longhorn.VolumeStateAttaching ||
-				v.Status.State == longhorn.VolumeStateAttached ||
-				v.Status.State == longhorn.VolumeStateDetached {
-				// TODO: we want to detach, i.e. close all resources
-				retV.Status.State = longhorn.VolumeStateDetaching
-				return retV
-			}
-			if v.Status.State == longhorn.VolumeStateDetaching {
-				// TODO: we want to detach, i.e. close all resources
-				// TODO: we want to verify that all resources are closed
-				retV.Status.State = longhorn.VolumeStateDetached
-				retV.Status.CurrentNodeID = ""
-				return retV
-			}
-			if v.Status.State == longhorn.VolumeStateDetached {
-				// Do nothing
-				// This is a stable state
-				return retV
-			}
-		}
-	}
-
-	if v.Spec.NodeID != "" { // TODO: we want to attach
-		if v.Status.CurrentNodeID == "" { // we are already detached, make sure our state is detached
-			if v.Status.State == longhorn.VolumeStateAttached {
-				// TODO: we want to detach, i.e. close all resources
-				retV.Status.State = longhorn.VolumeStateDetaching
-				return retV
-			}
-			if v.Status.State == longhorn.VolumeStateDetaching {
-				// TODO: we want to detach, i.e. close all resources
-				// TODO: we want to verify that all resources are closed
-				retV.Status.State = longhorn.VolumeStateDetached
-				return retV
-			}
-			if v.Status.State == longhorn.VolumeStateDetached {
-				// TODO: we want to attach, i.e. create all resources
-				retV.Status.State = longhorn.VolumeStateAttaching
-				return retV
-			}
-			if v.Status.State == longhorn.VolumeStateAttaching {
-				// TODO: we want to attach, i.e. create all resources
-				// TODO: we want to verify that all resources are ready
-				retV.Status.State = longhorn.VolumeStateAttached
-				return retV
-			}
-		}
-
-		if v.Status.CurrentNodeID != "" {
-			if v.Spec.NodeID == v.Status.CurrentNodeID {
-				if v.Status.State == longhorn.VolumeStateAttaching ||
-					v.Status.State == longhorn.VolumeStateDetached {
-					// TODO: we want to detach, i.e. close all resources
-					retV.Status.State = longhorn.VolumeStateDetaching
-					return retV
-				}
-				if v.Status.State == longhorn.VolumeStateDetaching {
-					// TODO: we want to detach, i.e. close all resources
-					// TODO: we want to verify that all resources are closed
-					retV.Status.CurrentNodeID = ""
-					retV.Status.State = longhorn.VolumeStateDetached
-					return retV
-				}
-			}
-
-			if v.Spec.NodeID != v.Status.CurrentNodeID {
-				if v.Status.State == longhorn.VolumeStateDetached ||
-					v.Status.State == longhorn.VolumeStateAttached ||
-					v.Status.State == longhorn.VolumeStateAttaching {
-					// TODO: we want to detach, i.e. close all resources
-					retV.Status.State = longhorn.VolumeStateDetaching
-					return retV
-				}
-			}
-		}
-	}
-
-	return retV
-}
-
-func (vc *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
-
-	// TODO: move volume creation stuff into here
-	// first time engine creation etc
-
-	return nil
-}
-
 func (vc *VolumeController) reconcileVolumeAttachment(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
 
 	// TODO: we want to attach, i.e. create all resources
@@ -1243,7 +1131,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		return err
 	}
 
-	newVolume := false
 	if v.Status.CurrentImage == "" {
 		v.Status.CurrentImage = v.Spec.EngineImage
 	}
@@ -1263,181 +1150,61 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		return err
 	}
 
-	// TODO: JM - all of the above is independent from attachment
+	// TODO: This is the migration rollback logic and auto reattachment logic
+	//if v.Status.CurrentNodeID == "" {
+	//	// `PendingNodeID != ""` means the engine dead unexpectedly.
+	//	// The volume will be detached by cleaning up `CurrentNodeID` then be reattached by `v.Status.CurrentNodeID = v.Status.PendingNodeID`.
+	//	// Hence this auto attachment logic shouldn't set `CurrentNodeID` in this case.
+	//	if v.Status.PendingNodeID == "" && v.Status.Robustness != longhorn.VolumeRobustnessFaulted {
+	//		v.Status.CurrentNodeID = v.Spec.NodeID
+	//	}
+	//} else if v.Spec.NodeID != "" && v.Spec.NodeID != v.Status.CurrentNodeID {
+	//	// in the case where the currentNode id upgrade from the migration failed
+	//	// we can check if we have a current active engine and if it's on v.Spec
+	//	// then it's safe to switch the current node id to v.Spec
+	//	// TODO: we still need to rework all of this, so that the user can just specify a nodeID
+	//	// 	instead of having to go through the detach/attach cycle, like in the case of the share-manager
+	//	if e != nil && e.Spec.NodeID == v.Spec.NodeID && e.DeletionTimestamp == nil {
+	//		vc.logger.Infof("switching current node id from %v to %v since we have an engine on that node already", v.Status.CurrentNodeID, v.Spec.NodeID)
+	//		v.Status.CurrentNodeID = v.Spec.NodeID
+	//
+	//		// ensure that the replicas are marked as active
+	//		if err := vc.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
+	//			return r.Spec.EngineName == engineName
+	//		}, e.Name); err != nil {
+	//			return err
+	//		}
+	//	}
+	//
+	//	return fmt.Errorf("volume %v has already attached to node %v, but asked to attach to node %v", v.Name, v.Status.CurrentNodeID, v.Spec.NodeID)
+	//}
 
-	if v.Status.CurrentNodeID == "" {
-		// `PendingNodeID != ""` means the engine dead unexpectedly.
-		// The volume will be detached by cleaning up `CurrentNodeID` then be reattached by `v.Status.CurrentNodeID = v.Status.PendingNodeID`.
-		// Hence this auto attachment logic shouldn't set `CurrentNodeID` in this case.
-		if v.Status.PendingNodeID == "" && v.Status.Robustness != longhorn.VolumeRobustnessFaulted {
-			v.Status.CurrentNodeID = v.Spec.NodeID
-		}
-	} else if v.Spec.NodeID != "" && v.Spec.NodeID != v.Status.CurrentNodeID {
-		// in the case where the currentNode id upgrade from the migration failed
-		// we can check if we have a current active engine and if it's on v.Spec
-		// then it's safe to switch the current node id to v.Spec
-		// TODO: we still need to rework all of this, so that the user can just specify a nodeID
-		// 	instead of having to go through the detach/attach cycle, like in the case of the share-manager
-		if e != nil && e.Spec.NodeID == v.Spec.NodeID && e.DeletionTimestamp == nil {
-			vc.logger.Infof("switching current node id from %v to %v since we have an engine on that node already", v.Status.CurrentNodeID, v.Spec.NodeID)
-			v.Status.CurrentNodeID = v.Spec.NodeID
-
-			// ensure that the replicas are marked as active
-			if err := vc.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
-				return r.Spec.EngineName == engineName
-			}, e.Name); err != nil {
-				return err
-			}
-		}
-
-		return fmt.Errorf("volume %v has already attached to node %v, but asked to attach to node %v", v.Name, v.Status.CurrentNodeID, v.Spec.NodeID)
+	isNewVolume, e, err := vc.reconcileVolumeCreation(v, e, es, rs)
+	if err != nil {
+		return err
 	}
-
-	// TODO: this goes into reconcileVolumeCreation
 	if e == nil {
-		// first time creation
-		e, err = vc.createEngine(v, true)
-		if err != nil {
-			return err
-		}
-		newVolume = true
-		es[e.Name] = e
+		log.Warnf("BUG: engine must be not nil at this step")
+		return nil
 	}
 
-	// TODO: this goes before/after the AD logic reconcileVolumeSize()
-	if len(e.Status.Snapshots) != 0 {
-		actualSize := int64(0)
-		for _, snapshot := range e.Status.Snapshots {
-			size, err := util.ConvertSize(snapshot.Size)
-			if err != nil {
-				log.WithField("snapshot", snapshot.Name).WithError(err).Errorf("BUG: unable to parse snapshot size %v", snapshot.Size)
-				// continue checking for other snapshots
-			}
-			actualSize += size
-		}
-		v.Status.ActualSize = actualSize
-	}
+	vc.reconcileLogRequest(e, rs)
 
-	// TODO: independent reconcileVolumeCondition
-	if len(e.Status.Snapshots) > VolumeSnapshotsWarningThreshold {
-		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusTrue,
-			longhorn.VolumeConditionReasonTooManySnapshots, fmt.Sprintf("Snapshots count is %v over the warning threshold %v",
-				len(e.Status.Snapshots), VolumeSnapshotsWarningThreshold))
-	} else {
-		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusFalse,
-			"", "")
-	}
-
-	// TODO: this goes into reconcileVolumeCreation
-	if len(rs) == 0 {
-		// first time creation
-		if err := vc.replenishReplicas(v, e, rs, ""); err != nil {
-			return err
-		}
-	}
-
-	vc.updateReplicaLogRequested(e, rs)
-
-	// TODO: this one is independent of the AD logic
-	scheduled := true
-	aggregatedReplicaScheduledError := util.NewMultiError()
-	for _, r := range rs {
-		// check whether the replica need to be scheduled
-		if r.Spec.NodeID != "" {
-			continue
-		}
-		if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
-			if v.Spec.NodeID == "" {
-				continue
-			}
-
-			r.Spec.HardNodeAffinity = v.Spec.NodeID
-		}
-
-		scheduledReplica, multiError, err := vc.scheduler.ScheduleReplica(r, rs, v)
-		if err != nil {
-			return err
-		}
-		aggregatedReplicaScheduledError.Append(multiError)
-
-		if scheduledReplica == nil {
-			if r.Spec.HardNodeAffinity == "" {
-				log.WithField("replica", r.Name).Error("unable to schedule replica")
-				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
-					longhorn.VolumeConditionReasonReplicaSchedulingFailure, "")
-			} else {
-				log.WithField("replica", r.Name).Errorf("unable to schedule replica of volume with HardNodeAffinity = %v", r.Spec.HardNodeAffinity)
-				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
-					longhorn.VolumeConditionReasonLocalReplicaSchedulingFailure, "")
-			}
-			scheduled = false
-			// requeue the volume to retry to schedule the replica after 30s
-			vc.enqueueVolumeAfter(v, 30*time.Second)
-		} else {
-			rs[r.Name] = scheduledReplica
-		}
-	}
-
-	failureMessage := ""
-	if scheduled {
-		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusTrue, "", "")
-	} else if v.Status.CurrentNodeID == "" {
-		// TODO: this goes into reconcileVolumeCreation
-		allowCreateDegraded, err := vc.ds.GetSettingAsBool(types.SettingNameAllowVolumeCreationWithDegradedAvailability)
-		if err != nil {
-			return err
-		}
-		if allowCreateDegraded {
-			atLeastOneReplicaAvailable := false
-			for _, r := range rs {
-				if r.Spec.NodeID != "" && r.Spec.FailedAt == "" {
-					atLeastOneReplicaAvailable = true
-					break
-				}
-			}
-			if atLeastOneReplicaAvailable {
-				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusTrue, "",
-					"Reset schedulable due to allow volume creation with degraded availability")
-				scheduled = true
-			}
-		}
-	}
-
-	// TODO: independent reconcileVolumeCondition
-	if !scheduled {
-		if len(aggregatedReplicaScheduledError) == 0 {
-			aggregatedReplicaScheduledError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleSchedulingFailed))
-		}
-		failureMessage = aggregatedReplicaScheduledError.Join()
-		scheduledCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled)
-		if scheduledCondition.Status == longhorn.ConditionStatusFalse {
-			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-				longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
-				scheduledCondition.Reason, failureMessage)
-		}
-	}
-
-	if err := vc.ds.UpdatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessage); err != nil {
-		log.WithError(err).Warnf("Cannot update PV annotation for volume %v", v.Name)
+	if err := vc.reconcileVolumeCondition(v, e, rs, log); err != nil {
+		return err
 	}
 
 	if err := vc.reconcileVolumeSize(v, e, rs); err != nil {
 		return err
 	}
 
-	// TODO: This one should be replace by reconcileVolumeAttachment and reconcileVolumeDetachment
-	if err := vc.checkForAutoAttachment(v, e, rs, scheduled); err != nil {
-		return err
-	}
-	if err := vc.checkForAutoDetachment(v, e, rs); err != nil {
-		return err
-	}
+	//TODO: This one should be replace by reconcileVolumeAttachment and reconcileVolumeDetachment
+	//if err := vc.checkForAutoAttachment(v, e, rs, scheduled); err != nil {
+	//	return err
+	//}
+	//if err := vc.checkForAutoDetachment(v, e, rs); err != nil {
+	//	return err
+	//}
 
 	// The frontend should be disabled for auto attached volumes except for the expansion.
 	if v.Spec.NodeID == "" && v.Status.CurrentNodeID != "" && !v.Status.ExpansionRequired {
@@ -1592,237 +1359,13 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 	}
 
-	oldState := v.Status.State
-	if v.Status.CurrentNodeID == "" {
-		// the final state will be determined at the end of the clause
-		if newVolume {
-			v.Status.State = longhorn.VolumeStateCreating
-		} else if v.Status.State != longhorn.VolumeStateDetached {
-			// TODO: this goes into reconcileVolumeAttachment/reconcileVolumeDetachment
-			v.Status.State = longhorn.VolumeStateDetaching
-		}
+	if err := vc.reconcileAttachDetachStateMachine(v, e, rs, isNewVolume, log); err != nil {
+		return err
+	}
 
-		// TODO: this goes into reconcileVolumeCondition
-		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, "", "")
-
-		if v.Status.Robustness != longhorn.VolumeRobustnessFaulted {
-			v.Status.Robustness = longhorn.VolumeRobustnessUnknown
-		} else {
-			if v.Status.RestoreRequired || v.Status.IsStandby {
-				v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeRestore,
-					longhorn.ConditionStatusFalse, longhorn.VolumeConditionReasonRestoreFailure,
-					"All replica restore failed and the volume became Faulted")
-			}
-		}
-
-		// TODO: this goes into reconcileVolumeAttachment/reconcileVolumeDetachment
-		// check if any replica has been RW yet
-		dataExists := false
-		for _, r := range rs {
-			if r.Spec.HealthyAt != "" {
-				dataExists = true
-				break
-			}
-		}
-		// stop rebuilding
-		if dataExists {
-			for _, r := range rs {
-				if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" {
-					r.Spec.FailedAt = vc.nowHandler()
-					r.Spec.DesireState = longhorn.InstanceStateStopped
-					// unscheduled replicas marked failed here when volume detached
-					// check if NodeId or DiskID is empty to avoid deleting reusableFailedReplica when replenished.
-					if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
-						r.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
-					}
-					rs[r.Name] = r
-				}
-			}
-		}
-		// TODO: this goes into reconcileVolumeAttachment/reconcileVolumeDetachment
-		if e.Spec.DesireState != longhorn.InstanceStateStopped || e.Spec.NodeID != "" {
-			if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
-				e.Spec.LogRequested = true
-			}
-			// Prevent this field from being unset when restore/DR volumes crash unexpectedly.
-			if !v.Status.RestoreRequired && !v.Status.IsStandby {
-				e.Spec.BackupVolume = ""
-			}
-			e.Spec.RequestedBackupRestore = ""
-			e.Spec.NodeID = ""
-			e.Spec.DesireState = longhorn.InstanceStateStopped
-		}
-		// must make sure engine stopped first before stopping replicas
-		// otherwise we may corrupt the data
-		if e.Status.CurrentState != longhorn.InstanceStateStopped {
-			return nil
-		}
-
-		allReplicasStopped := true
-		for _, r := range rs {
-			if r.Spec.DesireState != longhorn.InstanceStateStopped {
-				if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
-					r.Spec.LogRequested = true
-				}
-				r.Spec.DesireState = longhorn.InstanceStateStopped
-				rs[r.Name] = r
-			}
-			if r.Status.CurrentState != longhorn.InstanceStateStopped {
-				allReplicasStopped = false
-			}
-		}
-		if !allReplicasStopped {
-			return nil
-		}
-
-		v.Status.State = longhorn.VolumeStateDetached
-		if oldState != v.Status.State {
-			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
-		}
-		// TODO: this goes into AD controller
-		// Automatic reattach the volume if PendingNodeID was set
-		// TODO: need to revisit for CurrentNodeID and PendingNodeID update
-		// The reason is usually when CurrentNodeID is set, the volume
-		// should be in attaching or attached state, currently
-		// CurrentNodeID is set when volume is in detached state.
-		// Implicitly assume v.status.CurrentNodeID has been the final
-		// state of this sync loop if this code block is reached.
-		// Hence updating v.status.CurrentNodeID here is weird.
-		if v.Status.PendingNodeID != "" {
-			if isReady, err := vc.ds.CheckEngineImageReadiness(v.Status.CurrentImage, v.Status.PendingNodeID); !isReady {
-				log.WithError(err).Warnf("skip auto attach because current image %v is not ready", v.Status.CurrentImage)
-			} else {
-				log.Infof("Prepare to reattach the volume to %v after the detachment success", v.Status.PendingNodeID)
-				v.Status.CurrentNodeID = v.Status.PendingNodeID
-				v.Status.PendingNodeID = ""
-			}
-		}
-
-	} else {
-		//TODO: This one is independent of the AD logic
-		// wait for offline engine upgrade to finish
-		if v.Status.State == longhorn.VolumeStateDetached && v.Status.CurrentImage != v.Spec.EngineImage {
-			log.Debug("Wait for offline volume upgrade to finish")
-			return nil
-		}
-		// if engine was running, then we are attached already
-		// (but we may still need to start rebuilding replicas)
-		if e.Status.CurrentState != longhorn.InstanceStateRunning && e.Status.CurrentState != longhorn.InstanceStateUnknown {
-			// the final state will be determined at the end of the clause
-			v.Status.State = longhorn.VolumeStateAttaching
-			e.Spec.UpgradedReplicaAddressMap = map[string]string{}
-		}
-
-		isCLIAPIVersionOne := false
-		if v.Status.CurrentImage != "" {
-			isCLIAPIVersionOne, err = vc.ds.IsEngineImageCLIAPIVersionOne(v.Status.CurrentImage)
-			if err != nil {
-				return err
-			}
-		}
-
-		for _, r := range rs {
-			// Don't attempt to start the replica or do anything else if it hasn't been scheduled.
-			if r.Spec.NodeID == "" {
-				continue
-			}
-			canIMLaunchReplica, err := vc.canInstanceManagerLaunchReplica(r)
-			if err != nil {
-				return err
-			}
-			if canIMLaunchReplica {
-				if r.Spec.FailedAt == "" && r.Spec.EngineImage == v.Status.CurrentImage {
-					if r.Status.CurrentState == longhorn.InstanceStateStopped {
-						r.Spec.DesireState = longhorn.InstanceStateRunning
-					}
-				}
-			} else {
-				// wait for IM is starting when volume is upgrading
-				if vc.isVolumeUpgrading(v) {
-					continue
-				}
-
-				// If the engine isn't attached or the node goes down, the replica can be marked as failed.
-				// In the attached mode, we can determine whether the replica can fail by relying on the data plane's connectivity status.
-				nodeDeleted, err := vc.ds.IsNodeDeleted(r.Spec.NodeID)
-				if err != nil {
-					return err
-				}
-
-				if v.Status.State != longhorn.VolumeStateAttached || nodeDeleted {
-					msg := fmt.Sprintf("Replica %v is marked as failed since the volume %v is not attached because the instance manager is unable to launch the replica", r.Name, v.Name)
-					if nodeDeleted {
-						msg = fmt.Sprintf("Replica %v is marked as failed since the node %v is deleted.", r.Name, r.Spec.NodeID)
-					}
-					log.WithField("replica", r.Name).Warn(msg)
-					if r.Spec.FailedAt == "" {
-						r.Spec.FailedAt = vc.nowHandler()
-					}
-					r.Spec.DesireState = longhorn.InstanceStateStopped
-				}
-			}
-			rs[r.Name] = r
-		}
-		// TODO: this goes into reconcileVolumeAttachment/reconcileVolumeDetachment
-		replicaAddressMap := map[string]string{}
-		for _, r := range rs {
-			// Ignore unscheduled replicas
-			if r.Spec.NodeID == "" {
-				continue
-			}
-			if r.Spec.EngineImage != v.Status.CurrentImage {
-				continue
-			}
-			if r.Spec.EngineName != e.Name {
-				continue
-			}
-			if r.Spec.FailedAt != "" {
-				continue
-			}
-			if r.Status.CurrentState == longhorn.InstanceStateError {
-				continue
-			}
-			// wait for all potentially healthy replicas become running
-			if r.Status.CurrentState != longhorn.InstanceStateRunning {
-				return nil
-			}
-			if r.Status.IP == "" {
-				log.WithField("replica", r.Name).Error("BUG: replica is running but IP is empty")
-				continue
-			}
-			if r.Status.StorageIP == "" {
-				log.WithField("replica", r.Name).Debug("Replica is running but storage IP is empty, need to wait for update")
-				continue
-			}
-			if r.Status.Port == 0 {
-				// Do not skip this replica if its engine image is CLIAPIVersion 1.
-				if !isCLIAPIVersionOne {
-					log.WithField("replica", r.Name).Error("BUG: replica is running but Port is empty")
-					continue
-				}
-			}
-			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.StorageIP, r.Status.Port)
-		}
-		if len(replicaAddressMap) == 0 {
-			return fmt.Errorf("no healthy or scheduled replica for starting")
-		}
-
-		if e.Spec.NodeID != "" && e.Spec.NodeID != v.Status.CurrentNodeID {
-			return fmt.Errorf("engine is on node %v vs volume on %v, must detach first",
-				e.Spec.NodeID, v.Status.CurrentNodeID)
-		}
-		e.Spec.NodeID = v.Status.CurrentNodeID
-		e.Spec.ReplicaAddressMap = replicaAddressMap
-		e.Spec.DesireState = longhorn.InstanceStateRunning
-		// The volume may be activated
-		e.Spec.DisableFrontend = v.Status.FrontendDisabled
-		e.Spec.Frontend = v.Spec.Frontend
-		// wait for engine to be up
-		if e.Status.CurrentState != longhorn.InstanceStateRunning {
-			return nil
-		}
-
+	if v.Status.CurrentNodeID != "" &&
+		v.Status.State == longhorn.VolumeStateAttached &&
+		e.Status.CurrentState == longhorn.InstanceStateRunning {
 		if e.Spec.RequestedBackupRestore != "" {
 			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 				longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonRestoreInProgress, "")
@@ -1834,27 +1377,511 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			v.Status.ExpansionRequired = false
 			v.Status.FrontendDisabled = false
 		}
+	}
 
-		v.Status.State = longhorn.VolumeStateAttached
-		if oldState != v.Status.State {
-			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
+	return nil
+}
+
+func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, isNewVolume bool, log *logrus.Entry) error {
+	//TODO: link the state machine graph here
+
+	if isNewVolume {
+		v.Status.State = longhorn.VolumeStateCreating
+		return nil
+	}
+
+	if v.Spec.NodeID == "" {
+		if v.Status.CurrentNodeID == "" {
+			switch v.Status.State {
+			case longhorn.VolumeStateAttached, longhorn.VolumeStateAttaching, longhorn.VolumeStateCreating:
+				vc.closeVolumeDependentResources(v, e, rs)
+				v.Status.State = longhorn.VolumeStateDetaching
+			case longhorn.VolumeStateDetaching:
+				vc.closeVolumeDependentResources(v, e, rs)
+				if vc.verifyVolumeDependentResourcesClosed(e, rs) {
+					v.Status.State = longhorn.VolumeStateDetached
+					vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+				}
+			case longhorn.VolumeStateDetached:
+				// This is a stable state.
+				// We attempt to close the resources anyway to make sure that they are closed
+				vc.closeVolumeDependentResources(v, e, rs)
+			}
+		}
+
+		if v.Status.CurrentNodeID != "" {
+			switch v.Status.State {
+			case longhorn.VolumeStateAttaching, longhorn.VolumeStateAttached, longhorn.VolumeStateDetached:
+				vc.closeVolumeDependentResources(v, e, rs)
+				v.Status.State = longhorn.VolumeStateDetaching
+			case longhorn.VolumeStateDetaching:
+				vc.closeVolumeDependentResources(v, e, rs)
+				if vc.verifyVolumeDependentResourcesClosed(e, rs) {
+					v.Status.CurrentNodeID = ""
+					v.Status.State = longhorn.VolumeStateDetached
+					vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+				}
+			}
 		}
 	}
 
-	// if the v.Spec.NodeID has changed from the previous attachment, we need to go through a detach cycle
-	// before processing the new node attachment, this is so we can cleanup engine & replica states
-	processAttachment := v.Spec.NodeID != "" &&
-		(v.Status.CurrentNodeID == "" || v.Status.CurrentNodeID == v.Spec.NodeID)
+	if v.Spec.NodeID != "" {
+		if v.Status.CurrentNodeID == "" {
+			switch v.Status.State {
+			case longhorn.VolumeStateAttached:
+				vc.closeVolumeDependentResources(v, e, rs)
+				v.Status.State = longhorn.VolumeStateDetaching
+			case longhorn.VolumeStateDetaching:
+				vc.closeVolumeDependentResources(v, e, rs)
+				if vc.verifyVolumeDependentResourcesClosed(e, rs) {
+					v.Status.State = longhorn.VolumeStateDetached
+					vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+				}
+			case longhorn.VolumeStateDetached:
+				if err := vc.openVolumeDependentResources(v, e, rs, log); err != nil {
+					return err
+				}
+				v.Status.State = longhorn.VolumeStateAttaching
+			case longhorn.VolumeStateAttaching:
+				if err := vc.openVolumeDependentResources(v, e, rs, log); err != nil {
+					return err
+				}
+				if vc.verifyVolumeDependentResourcesOpened(e, rs) {
+					v.Status.CurrentNodeID = v.Spec.NodeID
+					v.Status.State = longhorn.VolumeStateAttached
+					vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
+				}
+			}
+		}
 
-	if newVolume {
-		v.Status.State = longhorn.VolumeStateCreating
-		// TODO: JM - do volume creation operations
-		return vc.reconcileVolumeCreation(v, e, rs)
-	} else if processAttachment {
-		return vc.reconcileVolumeAttachment(v, e, rs)
-	} else {
-		return vc.reconcileVolumeDetachment(v, e, rs)
+		if v.Status.CurrentNodeID != "" {
+			if v.Spec.NodeID == v.Status.CurrentNodeID {
+				switch v.Status.State {
+				case longhorn.VolumeStateAttaching, longhorn.VolumeStateDetached:
+					vc.closeVolumeDependentResources(v, e, rs)
+					v.Status.State = longhorn.VolumeStateDetaching
+				case longhorn.VolumeStateDetaching:
+					vc.closeVolumeDependentResources(v, e, rs)
+					if vc.verifyVolumeDependentResourcesClosed(e, rs) {
+						v.Status.CurrentNodeID = ""
+						v.Status.State = longhorn.VolumeStateDetached
+						vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+					}
+				case longhorn.VolumeStateAttached:
+					// This is a stable state
+					if !vc.verifyVolumeDependentResourcesOpened(e, rs) {
+						log.Warnf("volume is attached but dependent resources are not opened")
+					}
+				}
+			}
+
+			if v.Spec.NodeID != v.Status.CurrentNodeID {
+				switch v.Status.State {
+				case longhorn.VolumeStateDetached, longhorn.VolumeStateAttached, longhorn.VolumeStateAttaching:
+					vc.closeVolumeDependentResources(v, e, rs)
+					v.Status.State = longhorn.VolumeStateDetaching
+				case longhorn.VolumeStateDetaching:
+					vc.closeVolumeDependentResources(v, e, rs)
+					if vc.verifyVolumeDependentResourcesClosed(e, rs) {
+						v.Status.CurrentNodeID = ""
+						v.Status.State = longhorn.VolumeStateDetached
+						vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+					}
+				}
+			}
+		}
 	}
+
+	return nil
+}
+
+func (vc *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longhorn.Engine, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (bool, *longhorn.Engine, error) {
+
+	// TODO: move volume creation stuff into here
+	// first time engine creation etc
+
+	var isNewVolume bool
+	var err error
+
+	if len(es) == 0 {
+		// first time creation
+		e, err = vc.createEngine(v, true)
+		if err != nil {
+			return false, e, err
+		}
+		isNewVolume = true
+		es[e.Name] = e
+	}
+
+	if len(rs) == 0 {
+		// first time creation
+		if err = vc.replenishReplicas(v, e, rs, ""); err != nil {
+			return false, e, err
+		}
+	}
+
+	return isNewVolume, e, nil
+}
+
+func (vc *VolumeController) reconcileLogRequest(e *longhorn.Engine, rs map[string]*longhorn.Replica) {
+	needReplicaLogs := false
+	for _, r := range rs {
+		if r.Spec.LogRequested && r.Status.LogFetched {
+			r.Spec.LogRequested = false
+		}
+		needReplicaLogs = needReplicaLogs || r.Spec.LogRequested
+		rs[r.Name] = r
+	}
+	if e.Spec.LogRequested && e.Status.LogFetched && !needReplicaLogs {
+		e.Spec.LogRequested = false
+	}
+}
+
+func (vc *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, log *logrus.Entry) error {
+	if len(e.Status.Snapshots) > VolumeSnapshotsWarningThreshold {
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusTrue,
+			longhorn.VolumeConditionReasonTooManySnapshots, fmt.Sprintf("Snapshots count is %v over the warning threshold %v", len(e.Status.Snapshots), VolumeSnapshotsWarningThreshold))
+	} else {
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusFalse,
+			"", "")
+	}
+
+	scheduled := true
+	aggregatedReplicaScheduledError := util.NewMultiError()
+	for _, r := range rs {
+		// check whether the replica need to be scheduled
+		if r.Spec.NodeID != "" {
+			continue
+		}
+		if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+			if v.Spec.NodeID == "" {
+				continue
+			}
+
+			r.Spec.HardNodeAffinity = v.Spec.NodeID
+		}
+		scheduledReplica, multiError, err := vc.scheduler.ScheduleReplica(r, rs, v)
+		if err != nil {
+			return err
+		}
+		aggregatedReplicaScheduledError.Append(multiError)
+
+		if scheduledReplica == nil {
+			if r.Spec.HardNodeAffinity == "" {
+				log.WithField("replica", r.Name).Error("unable to schedule replica")
+				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
+					longhorn.VolumeConditionReasonReplicaSchedulingFailure, "")
+			} else {
+				log.WithField("replica", r.Name).Errorf("unable to schedule replica of volume with HardNodeAffinity = %v", r.Spec.HardNodeAffinity)
+				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
+					longhorn.VolumeConditionReasonLocalReplicaSchedulingFailure, "")
+			}
+			scheduled = false
+			// requeue the volume to retry to schedule the replica after 30s
+			vc.enqueueVolumeAfter(v, 30*time.Second)
+		} else {
+			rs[r.Name] = scheduledReplica
+		}
+	}
+
+	failureMessage := ""
+	if scheduled {
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+			longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusTrue, "", "")
+	} else if v.Status.CurrentNodeID == "" {
+		// TODO: this goes into reconcileVolumeCreation
+		allowCreateDegraded, err := vc.ds.GetSettingAsBool(types.SettingNameAllowVolumeCreationWithDegradedAvailability)
+		if err != nil {
+			return err
+		}
+		if allowCreateDegraded {
+			atLeastOneReplicaAvailable := false
+			for _, r := range rs {
+				if r.Spec.NodeID != "" && r.Spec.FailedAt == "" {
+					atLeastOneReplicaAvailable = true
+					break
+				}
+			}
+			if atLeastOneReplicaAvailable {
+				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusTrue, "",
+					"Reset schedulable due to allow volume creation with degraded availability")
+				scheduled = true
+			}
+		}
+	}
+	if !scheduled {
+		if len(aggregatedReplicaScheduledError) == 0 {
+			aggregatedReplicaScheduledError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleSchedulingFailed))
+		}
+		failureMessage = aggregatedReplicaScheduledError.Join()
+		scheduledCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled)
+		if scheduledCondition.Status == longhorn.ConditionStatusFalse {
+			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+				longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
+				scheduledCondition.Reason, failureMessage)
+		}
+	}
+
+	if err := vc.ds.UpdatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessage); err != nil {
+		log.Warnf("Cannot update PV annotation for volume %v", v.Name)
+	}
+
+	return nil
+}
+
+func isVolumeOfflineUpgrade(v *longhorn.Volume) bool {
+	return v.Status.State == longhorn.VolumeStateDetached && v.Status.CurrentImage != v.Spec.EngineImage
+}
+
+func (vc *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, log *logrus.Entry) error {
+	if isVolumeOfflineUpgrade(v) {
+		log.Debug("Wait for offline volume upgrade to finish")
+		return nil
+	}
+
+	for _, r := range rs {
+		// Don't attempt to start the replica or do anything else if it hasn't been scheduled.
+		if r.Spec.NodeID == "" {
+			continue
+		}
+		canIMLaunchReplica, err := vc.canInstanceManagerLaunchReplica(r)
+		if err != nil {
+			return err
+		}
+		if canIMLaunchReplica {
+			if r.Spec.FailedAt == "" && r.Spec.EngineImage == v.Status.CurrentImage {
+				if r.Status.CurrentState == longhorn.InstanceStateStopped {
+					r.Spec.DesireState = longhorn.InstanceStateRunning
+				}
+			}
+		} else {
+			// wait for IM is starting when volume is upgrading
+			if vc.isVolumeUpgrading(v) {
+				continue
+			}
+
+			// If the engine isn't attached or the node goes down, the replica can be marked as failed.
+			// In the attached mode, we can determine whether the replica can fail by relying on the data plane's connectivity status.
+			nodeDeleted, err := vc.ds.IsNodeDeleted(r.Spec.NodeID)
+			if err != nil {
+				return err
+			}
+
+			if v.Status.State != longhorn.VolumeStateAttached || nodeDeleted {
+				msg := fmt.Sprintf("Replica %v is marked as failed since the volume %v is not attached because the instance manager is unable to launch the replica", r.Name, v.Name)
+				if nodeDeleted {
+					msg = fmt.Sprintf("Replica %v is marked as failed since the node %v is deleted.", r.Name, r.Spec.NodeID)
+				}
+				log.WithField("replica", r.Name).Warn(msg)
+				if r.Spec.FailedAt == "" {
+					r.Spec.FailedAt = vc.nowHandler()
+				}
+				r.Spec.DesireState = longhorn.InstanceStateStopped
+			}
+		}
+		rs[r.Name] = r
+	}
+	// TODO: this goes into reconcileVolumeAttachment/reconcileVolumeDetachment
+	replicaAddressMap := map[string]string{}
+	for _, r := range rs {
+		// Ignore unscheduled replicas
+		if r.Spec.NodeID == "" {
+			continue
+		}
+		if r.Spec.EngineImage != v.Status.CurrentImage {
+			continue
+		}
+		if r.Spec.EngineName != e.Name {
+			continue
+		}
+		if r.Spec.FailedAt != "" {
+			continue
+		}
+		if r.Status.CurrentState == longhorn.InstanceStateError {
+			continue
+		}
+		// wait for all potentially healthy replicas become running
+		if r.Status.CurrentState != longhorn.InstanceStateRunning {
+			return nil
+		}
+		if r.Status.IP == "" {
+			log.WithField("replica", r.Name).Error("BUG: replica is running but IP is empty")
+			continue
+		}
+		if r.Status.StorageIP == "" {
+			log.WithField("replica", r.Name).Debug("Replica is running but storage IP is empty, need to wait for update")
+			continue
+		}
+		if r.Status.Port == 0 {
+			log.WithField("replica", r.Name).Error("BUG: replica is running but Port is empty")
+			continue
+		}
+		replicaAddressMap[r.Name] = imutil.GetURL(r.Status.StorageIP, r.Status.Port)
+	}
+	if len(replicaAddressMap) == 0 {
+		return fmt.Errorf("no healthy or scheduled replica for starting")
+	}
+
+	if e.Spec.NodeID != "" && e.Spec.NodeID != v.Status.CurrentNodeID {
+		return fmt.Errorf("engine is on node %v vs volume on %v, must detach first",
+			e.Spec.NodeID, v.Status.CurrentNodeID)
+	}
+	e.Spec.NodeID = v.Status.CurrentNodeID
+	e.Spec.ReplicaAddressMap = replicaAddressMap
+	e.Spec.DesireState = longhorn.InstanceStateRunning
+	// The volume may be activated
+	e.Spec.DisableFrontend = v.Status.FrontendDisabled
+	e.Spec.Frontend = v.Spec.Frontend
+
+	return nil
+}
+
+func (vc *VolumeController) verifyVolumeDependentResourcesOpened(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
+	// At least 1 replica should be running
+	hasRunningReplica := false
+	for _, r := range rs {
+		if r.Status.CurrentState == longhorn.InstanceStateRunning {
+			hasRunningReplica = true
+			break
+		}
+	}
+	return hasRunningReplica && e.Status.CurrentState == longhorn.InstanceStateRunning
+}
+
+func (vc *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) {
+	v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+		longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, "", "")
+
+	if v.Status.Robustness != longhorn.VolumeRobustnessFaulted {
+		v.Status.Robustness = longhorn.VolumeRobustnessUnknown
+	} else {
+		if v.Status.RestoreRequired || v.Status.IsStandby {
+			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+				longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, longhorn.VolumeConditionReasonRestoreFailure, "All replica restore failed and the volume became Faulted")
+		}
+	}
+
+	// check if any replica has been RW yet
+	dataExists := false
+	for _, r := range rs {
+		if r.Spec.HealthyAt != "" {
+			dataExists = true
+			break
+		}
+	}
+	// stop rebuilding
+	if dataExists {
+		for _, r := range rs {
+			if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" {
+				r.Spec.FailedAt = vc.nowHandler()
+				r.Spec.DesireState = longhorn.InstanceStateStopped
+				// unscheduled replicas marked failed here when volume detached
+				// check if NodeId or DiskID is empty to avoid deleting reusableFailedReplica when replenished.
+				if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
+					r.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
+				}
+				rs[r.Name] = r
+			}
+		}
+	}
+
+	if e.Spec.DesireState != longhorn.InstanceStateStopped || e.Spec.NodeID != "" {
+		if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
+			e.Spec.LogRequested = true
+		}
+		// Prevent this field from being unset when restore/DR volumes crash unexpectedly.
+		if !v.Status.RestoreRequired && !v.Status.IsStandby {
+			e.Spec.BackupVolume = ""
+		}
+		e.Spec.RequestedBackupRestore = ""
+		e.Spec.NodeID = ""
+		e.Spec.DesireState = longhorn.InstanceStateStopped
+	}
+	// must make sure engine stopped first before stopping replicas
+	// otherwise we may corrupt the data
+	if e.Status.CurrentState != longhorn.InstanceStateStopped {
+		return
+	}
+
+	for _, r := range rs {
+		if r.Spec.DesireState != longhorn.InstanceStateStopped {
+			if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
+				r.Spec.LogRequested = true
+			}
+			r.Spec.DesireState = longhorn.InstanceStateStopped
+			rs[r.Name] = r
+		}
+	}
+
+	return
+}
+
+func (vc *VolumeController) verifyVolumeDependentResourcesClosed(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
+	allReplicasStopped := func() bool {
+		for _, r := range rs {
+			if r.Status.CurrentState != longhorn.InstanceStateStopped {
+				return false
+			}
+		}
+		return true
+	}
+	return e.Status.CurrentState == longhorn.InstanceStateStopped && allReplicasStopped()
+}
+
+func (vc *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
+	log := getLoggerForVolume(vc.logger, v)
+
+	if len(e.Status.Snapshots) != 0 {
+		actualSize := int64(0)
+		for _, snapshot := range e.Status.Snapshots {
+			size, err := util.ConvertSize(snapshot.Size)
+			if err != nil {
+				log.WithField("snapshot", snapshot.Name).WithError(err).Errorf("BUG: unable to parse snapshot size %v", snapshot.Size)
+				// continue checking for other snapshots
+			}
+			actualSize += size
+		}
+		v.Status.ActualSize = actualSize
+	}
+
+	if e == nil || rs == nil {
+		return nil
+	}
+	if e.Spec.VolumeSize == v.Spec.Size {
+		return nil
+	}
+
+	// The expansion is canceled or hasn't been started
+	if e.Status.CurrentSize == v.Spec.Size {
+		v.Status.ExpansionRequired = false
+		vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonCanceledExpansion,
+			"Canceled expanding the volume %v, will automatically detach it", v.Name)
+	} else {
+		if diskScheduleMultiError, err := vc.scheduler.CheckReplicasSizeExpansion(v, e.Spec.VolumeSize, v.Spec.Size); err != nil {
+			log.Debugf("cannot start volume expansion: %v", err)
+			if diskScheduleMultiError != nil {
+				failureMessage := diskScheduleMultiError.Join()
+				if err := vc.ds.UpdatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessage); err != nil {
+					log.Warnf("Cannot update PV annotation for volume %v", v.Name)
+				}
+			}
+			return nil
+		}
+		log.Infof("Start volume expand from size %v to size %v", e.Spec.VolumeSize, v.Spec.Size)
+		v.Status.ExpansionRequired = true
+	}
+
+	e.Spec.VolumeSize = v.Spec.Size
+	for _, r := range rs {
+		r.Spec.VolumeSize = v.Spec.Size
+	}
+
+	return nil
 }
 
 func (vc *VolumeController) canInstanceManagerLaunchReplica(r *longhorn.Replica) (bool, error) {
@@ -2955,44 +2982,6 @@ func (vc *VolumeController) isSourceVolumeOfCloning(v *longhorn.Volume) (bool, e
 		}
 	}
 	return false, nil
-}
-
-func (vc *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
-	log := getLoggerForVolume(vc.logger, v)
-
-	if e == nil || rs == nil {
-		return nil
-	}
-	if e.Spec.VolumeSize == v.Spec.Size {
-		return nil
-	}
-
-	// The expansion is canceled or hasn't been started
-	if e.Status.CurrentSize == v.Spec.Size {
-		v.Status.ExpansionRequired = false
-		vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonCanceledExpansion,
-			"Canceled expanding the volume %v, will automatically detach it", v.Name)
-	} else {
-		if diskScheduleMultiError, err := vc.scheduler.CheckReplicasSizeExpansion(v, e.Spec.VolumeSize, v.Spec.Size); err != nil {
-			log.Debugf("cannot start volume expansion: %v", err)
-			if diskScheduleMultiError != nil {
-				failureMessage := diskScheduleMultiError.Join()
-				if err := vc.ds.UpdatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessage); err != nil {
-					log.Warnf("Cannot update PV annotation for volume %v", v.Name)
-				}
-			}
-			return nil
-		}
-		log.Infof("Start volume expand from size %v to size %v", e.Spec.VolumeSize, v.Spec.Size)
-		v.Status.ExpansionRequired = true
-	}
-
-	e.Spec.VolumeSize = v.Spec.Size
-	for _, r := range rs {
-		r.Spec.VolumeSize = v.Spec.Size
-	}
-
-	return nil
 }
 
 func (vc *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, scheduled bool) error {
