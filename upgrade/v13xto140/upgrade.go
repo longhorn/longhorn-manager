@@ -37,17 +37,26 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err erro
 		return errors.Wrapf(err, "failed to list all existing Longhorn volumes during the volume upgrade")
 	}
 
+	requireUpdate := false
 	for _, v := range volumes.Items {
+		requireUpdate = false
 		if v.Spec.SnapshotDataIntegrity == "" {
 			v.Spec.SnapshotDataIntegrity = longhorn.SnapshotDataIntegrityIgnored
+			requireUpdate = true
 		}
-
 		if v.Spec.RestoreVolumeRecurringJob == "" {
 			v.Spec.RestoreVolumeRecurringJob = longhorn.RestoreVolumeRecurringJobDefault
+			requireUpdate = true
+		}
+		if v.Spec.UnmapMarkSnapChainRemoved == "" {
+			v.Spec.UnmapMarkSnapChainRemoved = longhorn.UnmapMarkSnapChainRemovedIgnored
+			requireUpdate = true
 		}
 
-		_, err = lhClient.LonghornV1beta2().Volumes(namespace).Update(context.TODO(), &v, metav1.UpdateOptions{})
-		if err != nil {
+		if !requireUpdate {
+			continue
+		}
+		if _, err = lhClient.LonghornV1beta2().Volumes(namespace).Update(context.TODO(), &v, metav1.UpdateOptions{}); err != nil {
 			return errors.Wrapf(err, "failed to update volume %v", v.Name)
 		}
 	}
