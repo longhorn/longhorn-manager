@@ -369,32 +369,14 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 			}
 		}
 		if !foundReadyDisk {
-			nodes, err := bic.ds.ListNodes()
+			readyNode, readyDiskName, err := bic.ds.GetRandomReadyNodeDisk()
 			if err != nil {
 				return err
 			}
-			for _, node := range nodes {
-				if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
-					continue
-				}
-				for diskName, diskStatus := range node.Status.DiskStatus {
-					if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
-						continue
-					}
-					diskSpec, exists := node.Spec.Disks[diskName]
-					if !exists {
-						continue
-					}
-					foundReadyDisk = true
-					readyNodeID = node.Name
-					readyDiskUUID = diskStatus.DiskUUID
-					readyDiskPath = diskSpec.Path
-					break
-				}
-				if foundReadyDisk {
-					break
-				}
-			}
+			foundReadyDisk = true
+			readyNodeID = readyNode.Name
+			readyDiskUUID = readyNode.Status.DiskStatus[readyDiskName].DiskUUID
+			readyDiskPath = readyNode.Spec.Disks[readyDiskName].Path
 		}
 		if !foundReadyDisk {
 			return fmt.Errorf("cannot find a ready disk for backing image data source creation")
@@ -504,36 +486,27 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		case longhorn.BackingImageDataSourceTypeDownload:
 			log.Info("Prepare to re-download backing image via backing image data source since all existing files become unavailable")
 			bids.Spec.FileTransferred = false
+			bids.Spec.NodeID = ""
+			bids.Spec.DiskUUID = ""
+			bids.Spec.DiskPath = ""
 		default:
 			log.Warnf("Cannot recover backing image after all existing files becoming unavailable, since the backing image data source with type %v doesn't support restarting", bids.Spec.SourceType)
 		}
 	}
 
 	if !bids.Spec.FileTransferred {
-		if _, _, err := bic.ds.GetReadyDiskNode(bids.Spec.DiskUUID); err != nil && types.ErrorIsNotFound(err) {
-			nodes, err := bic.ds.ListReadyNodes()
+		node, diskName, err := bic.ds.GetReadyDiskNode(bids.Spec.DiskUUID)
+		// If the disk is still ready, no matter file fetching is in progress or failed, we don't need to re-schedule the BackingImageDataSource.
+		changeNodeDisk := err != nil || node.Name != bids.Spec.NodeID || node.Spec.Disks[diskName].Path != bids.Spec.DiskPath || node.Status.DiskStatus[diskName].DiskUUID != bids.Spec.DiskUUID
+		if changeNodeDisk {
+			log.Warnf("Backing image data source current node and disk is not ready, need to switch to another ready node and disk")
+			readyNode, readyDiskName, err := bic.ds.GetRandomReadyNodeDisk()
 			if err != nil {
 				return err
 			}
-			for _, node := range nodes {
-				updated := false
-				for diskName, diskSpec := range node.Spec.Disks {
-					diskStatus, exists := node.Status.DiskStatus[diskName]
-					if !exists {
-						continue
-					}
-					if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
-						continue
-					}
-					bids.Spec.DiskUUID = diskStatus.DiskUUID
-					bids.Spec.DiskPath = diskSpec.Path
-					bids.Spec.NodeID = node.Name
-					updated = true
-				}
-				if updated {
-					break
-				}
-			}
+			bids.Spec.NodeID = readyNode.Name
+			bids.Spec.DiskUUID = readyNode.Status.DiskStatus[readyDiskName].DiskUUID
+			bids.Spec.DiskPath = readyNode.Spec.Disks[readyDiskName].Path
 		}
 	}
 
