@@ -98,6 +98,10 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataLocality", "value": "%s"}`, defaultDataLocality))
 	}
 
+	if string(volume.Spec.SnapshotDataIntegrity) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotDataIntegrity", "value": "%s"}`, longhorn.SnapshotDataIntegrityIgnored))
+	}
+
 	if string(volume.Spec.AccessMode) == "" {
 		accessModeFromBackup := longhorn.AccessModeReadWriteOnce
 		if volume.Spec.FromBackup != "" {

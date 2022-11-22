@@ -22,6 +22,8 @@ service ProxyEngineService {
 	rpc SnapshotClone(EngineSnapshotCloneRequest) returns (google.protobuf.Empty);
 	rpc SnapshotCloneStatus(ProxyEngineRequest) returns (EngineSnapshotCloneStatusProxyResponse);
 	rpc SnapshotRemove(EngineSnapshotRemoveRequest) returns (google.protobuf.Empty);
+	rpc SnapshotHash(EngineSnapshotHashRequest) returns (google.protobuf.Empty);
+	rpc SnapshotHashStatus(EngineSnapshotHashStatusRequest) returns (EngineSnapshotHashStatusProxyResponse);
 
 	rpc SnapshotBackup(EngineSnapshotBackupRequest) returns (EngineSnapshotBackupProxyResponse);
 	rpc SnapshotBackupStatus(EngineSnapshotBackupStatusRequest) returns (EngineSnapshotBackupStatusProxyResponse);
@@ -33,6 +35,7 @@ service ProxyEngineService {
 	rpc ReplicaRebuildingStatus(ProxyEngineRequest) returns (EngineReplicaRebuildStatusProxyResponse);
 	rpc ReplicaVerifyRebuild(EngineReplicaVerifyRebuildRequest) returns (google.protobuf.Empty);
 	rpc ReplicaRemove(EngineReplicaRemoveRequest) returns (google.protobuf.Empty);
+	rpc ReplicaModeUpdate(EngineReplicaModeUpdateRequest) returns (google.protobuf.Empty);
 }
 
 message ProxyEngineRequest{
@@ -210,4 +213,28 @@ message EngineReplicaRemoveRequest {
 	ProxyEngineRequest proxy_engine_request = 1;
 
 	string replica_address = 2;
+}
+
+message EngineReplicaModeUpdateRequest {
+	ProxyEngineRequest proxy_engine_request = 1;
+
+	string replica_address = 2;
+	ptypes.ReplicaMode mode = 3;
+}
+
+message EngineSnapshotHashRequest {
+	ProxyEngineRequest proxy_engine_request = 1;
+
+	string snapshot_name = 2;
+	bool rehash = 3;
+}
+
+message EngineSnapshotHashStatusRequest {
+	ProxyEngineRequest proxy_engine_request = 1;
+
+	string snapshot_name = 2;
+}
+
+message EngineSnapshotHashStatusProxyResponse {
+	map<string, ptypes.SnapshotHashStatusResponse> status = 1;
 }

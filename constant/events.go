@@ -1,4 +1,4 @@
-package controller
+package constant
 
 const (
 	EventReasonCreate         = "Create"
@@ -44,4 +44,6 @@ const (
 
 	EventReasonFetching = "Fetching"
 	EventReasonSyncing  = "Syncing"
+
+	EventReasonFailedSnapshotDataIntegrityCheck = "FailedSnapshotDataIntegrityCheck"
 )

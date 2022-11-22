@@ -57,7 +57,7 @@ type GetDiskConfig func(string) (*util.DiskConfig, error)
 type GenerateDiskConfig func(string) (*util.DiskConfig, error)
 type GetPossibleReplicaDirectoryNames func(*longhorn.Node, string, string, string) map[string]string
 
-func NewNodeMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (*NodeMonitor, error) {
+func NewDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (*NodeMonitor, error) {
 	ctx, quit := context.WithCancel(context.Background())
 
 	m := &NodeMonitor{
@@ -84,7 +84,7 @@ func NewNodeMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName
 
 func (m *NodeMonitor) Start() {
 	wait.PollImmediateUntil(m.syncPeriod, func() (done bool, err error) {
-		if err := m.SyncCollectedData(); err != nil {
+		if err := m.run(struct{}{}); err != nil {
 			m.logger.Errorf("Stop monitoring because of %v", err)
 		}
 		return false, nil
@@ -93,6 +93,14 @@ func (m *NodeMonitor) Start() {
 
 func (m *NodeMonitor) Close() {
 	m.quit()
+}
+
+func (m *NodeMonitor) RunOnce() error {
+	return m.run(struct{}{})
+}
+
+func (m *NodeMonitor) UpdateConfiguration(map[string]interface{}) error {
+	return nil
 }
 
 func (m *NodeMonitor) GetCollectedData() (interface{}, error) {
@@ -107,7 +115,7 @@ func (m *NodeMonitor) GetCollectedData() (interface{}, error) {
 	return data, nil
 }
 
-func (m *NodeMonitor) SyncCollectedData() error {
+func (m *NodeMonitor) run(value interface{}) error {
 	node, err := m.ds.GetNode(m.nodeName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get longhorn node %v", m.nodeName)

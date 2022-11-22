@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/backupstore"
+	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
@@ -253,8 +254,8 @@ func (e *EngineBinary) SnapshotBackup(engine *longhorn.Engine,
 	snapName, backupName, backupTarget,
 	backingImageName, backingImageChecksum string,
 	labels, credential map[string]string) (string, string, error) {
-	if snapName == VolumeHeadName {
-		return "", "", fmt.Errorf("invalid operation: cannot backup %v", VolumeHeadName)
+	if snapName == etypes.VolumeHeadName {
+		return "", "", fmt.Errorf("invalid operation: cannot backup %v", etypes.VolumeHeadName)
 	}
 	// TODO: update when replacing this function
 	snap, err := e.SnapshotGet(nil, snapName)

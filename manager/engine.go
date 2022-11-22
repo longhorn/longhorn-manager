@@ -20,12 +20,12 @@ const (
 	BackupStatusQueryInterval = 2 * time.Second
 )
 
-func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*longhorn.SnapshotInfo, error) {
+func (m *VolumeManager) ListSnapshotInfos(volumeName string) (map[string]*longhorn.SnapshotInfo, error) {
 	if volumeName == "" {
 		return nil, fmt.Errorf("volume name required")
 	}
 
-	engineCliClient, err := m.GetEngineBinaryClient(volumeName)
+	engineCliClient, err := engineapi.GetEngineBinaryClient(m.ds, volumeName, m.currentNodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -44,12 +44,12 @@ func (m *VolumeManager) ListSnapshots(volumeName string) (map[string]*longhorn.S
 	return engineClientProxy.SnapshotList(engine)
 }
 
-func (m *VolumeManager) GetSnapshot(snapshotName, volumeName string) (*longhorn.SnapshotInfo, error) {
+func (m *VolumeManager) GetSnapshotInfo(snapshotName, volumeName string) (*longhorn.SnapshotInfo, error) {
 	if volumeName == "" || snapshotName == "" {
 		return nil, fmt.Errorf("volume and snapshot name required")
 	}
 
-	engineCliClient, err := m.GetEngineBinaryClient(volumeName)
+	engineCliClient, err := engineapi.GetEngineBinaryClient(m.ds, volumeName, m.currentNodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]st
 		return nil, err
 	}
 
-	engineCliClient, err := m.GetEngineBinaryClient(volumeName)
+	engineCliClient, err := engineapi.GetEngineBinaryClient(m.ds, volumeName, m.currentNodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (m *VolumeManager) DeleteSnapshot(snapshotName, volumeName string) error {
 		return err
 	}
 
-	engineCliClient, err := m.GetEngineBinaryClient(volumeName)
+	engineCliClient, err := engineapi.GetEngineBinaryClient(m.ds, volumeName, m.currentNodeID)
 	if err != nil {
 		return err
 	}
@@ -168,7 +168,7 @@ func (m *VolumeManager) RevertSnapshot(snapshotName, volumeName string) error {
 		return err
 	}
 
-	engineCliClient, err := m.GetEngineBinaryClient(volumeName)
+	engineCliClient, err := engineapi.GetEngineBinaryClient(m.ds, volumeName, m.currentNodeID)
 	if err != nil {
 		return err
 	}
@@ -214,7 +214,7 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 		return err
 	}
 
-	engineCliClient, err := m.GetEngineBinaryClient(volumeName)
+	engineCliClient, err := engineapi.GetEngineBinaryClient(m.ds, volumeName, m.currentNodeID)
 	if err != nil {
 		return err
 	}
@@ -269,44 +269,6 @@ func (m *VolumeManager) checkVolumeNotInMigration(volumeName string) error {
 		return fmt.Errorf("cannot operate during migration")
 	}
 	return nil
-}
-
-func (m *VolumeManager) GetEngineBinaryClient(volumeName string) (client *engineapi.EngineBinary, err error) {
-	var e *longhorn.Engine
-
-	defer func() {
-		err = errors.Wrapf(err, "cannot get client for volume %v", volumeName)
-	}()
-	es, err := m.ds.ListVolumeEngines(volumeName)
-	if err != nil {
-		return nil, err
-	}
-	if len(es) == 0 {
-		return nil, fmt.Errorf("cannot find engine")
-	}
-	if len(es) != 1 {
-		return nil, fmt.Errorf("more than one engine exists")
-	}
-	for _, e = range es {
-		break
-	}
-	if e.Status.CurrentState != longhorn.InstanceStateRunning {
-		return nil, fmt.Errorf("engine is not running")
-	}
-	if isReady, err := m.ds.CheckEngineImageReadiness(e.Status.CurrentImage, m.currentNodeID); !isReady {
-		if err != nil {
-			return nil, fmt.Errorf("cannot get engine client with image %v: %v", e.Status.CurrentImage, err)
-		}
-		return nil, fmt.Errorf("cannot get engine client with image %v because it isn't deployed on this node", e.Status.CurrentImage)
-	}
-
-	engineCollection := &engineapi.EngineCollection{}
-	return engineCollection.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:  e.Spec.VolumeName,
-		EngineImage: e.Status.CurrentImage,
-		IP:          e.Status.IP,
-		Port:        e.Status.Port,
-	})
 }
 
 func (m *VolumeManager) GetRunningEngineByVolume(name string) (e *longhorn.Engine, err error) {

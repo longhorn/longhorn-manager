@@ -49,3 +49,6 @@ data:
     #recurring-failed-jobs-history-limit:
     #deleting-confirmation-flag:
     #engine-replica-timeout:
+    #snapshot-data-integrity:
+    #snapshot-data-integrity-immediate-check-after-snapshot-creation:
+    #snapshot-data-integrity-cronjob:

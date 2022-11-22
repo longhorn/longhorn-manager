@@ -22,26 +22,27 @@ import (
 type Volume struct {
 	client.Resource
 
-	Name                    string                    `json:"name"`
-	Size                    string                    `json:"size"`
-	Frontend                longhorn.VolumeFrontend   `json:"frontend"`
-	DisableFrontend         bool                      `json:"disableFrontend"`
-	FromBackup              string                    `json:"fromBackup"`
-	DataSource              longhorn.VolumeDataSource `json:"dataSource"`
-	DataLocality            longhorn.DataLocality     `json:"dataLocality"`
-	StaleReplicaTimeout     int                       `json:"staleReplicaTimeout"`
-	State                   longhorn.VolumeState      `json:"state"`
-	Robustness              longhorn.VolumeRobustness `json:"robustness"`
-	EngineImage             string                    `json:"engineImage"`
-	CurrentImage            string                    `json:"currentImage"`
-	BackingImage            string                    `json:"backingImage"`
-	Created                 string                    `json:"created"`
-	LastBackup              string                    `json:"lastBackup"`
-	LastBackupAt            string                    `json:"lastBackupAt"`
-	LastAttachedBy          string                    `json:"lastAttachedBy"`
-	Standby                 bool                      `json:"standby"`
-	RestoreRequired         bool                      `json:"restoreRequired"`
-	RevisionCounterDisabled bool                      `json:"revisionCounterDisabled"`
+	Name                    string                         `json:"name"`
+	Size                    string                         `json:"size"`
+	Frontend                longhorn.VolumeFrontend        `json:"frontend"`
+	DisableFrontend         bool                           `json:"disableFrontend"`
+	FromBackup              string                         `json:"fromBackup"`
+	DataSource              longhorn.VolumeDataSource      `json:"dataSource"`
+	DataLocality            longhorn.DataLocality          `json:"dataLocality"`
+	StaleReplicaTimeout     int                            `json:"staleReplicaTimeout"`
+	State                   longhorn.VolumeState           `json:"state"`
+	Robustness              longhorn.VolumeRobustness      `json:"robustness"`
+	EngineImage             string                         `json:"engineImage"`
+	CurrentImage            string                         `json:"currentImage"`
+	BackingImage            string                         `json:"backingImage"`
+	Created                 string                         `json:"created"`
+	LastBackup              string                         `json:"lastBackup"`
+	LastBackupAt            string                         `json:"lastBackupAt"`
+	LastAttachedBy          string                         `json:"lastAttachedBy"`
+	Standby                 bool                           `json:"standby"`
+	RestoreRequired         bool                           `json:"restoreRequired"`
+	RevisionCounterDisabled bool                           `json:"revisionCounterDisabled"`
+	SnapshotDataIntegrity   longhorn.SnapshotDataIntegrity `json:"snapshotDataIntegrity"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`
@@ -74,6 +75,7 @@ type Volume struct {
 type Snapshot struct {
 	client.Resource
 	longhorn.SnapshotInfo
+	Checksum string `json:"checksum"`
 }
 
 type BackupTarget struct {
@@ -1184,7 +1186,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	return r
 }
 
-func toSnapshotResource(s *longhorn.SnapshotInfo) *Snapshot {
+func toSnapshotResource(s *longhorn.SnapshotInfo, checksum string) *Snapshot {
 	if s == nil {
 		logrus.Warn("weird: nil snapshot")
 		return nil
@@ -1195,13 +1197,21 @@ func toSnapshotResource(s *longhorn.SnapshotInfo) *Snapshot {
 			Type: "snapshot",
 		},
 		SnapshotInfo: *s,
+		Checksum:     checksum,
 	}
 }
 
-func toSnapshotCollection(ss map[string]*longhorn.SnapshotInfo) *client.GenericCollection {
+func toSnapshotCollection(ssList map[string]*longhorn.SnapshotInfo, ssListRO map[string]*longhorn.Snapshot) *client.GenericCollection {
 	data := []interface{}{}
-	for _, v := range ss {
-		data = append(data, toSnapshotResource(v))
+
+	for name, v := range ssList {
+		checksum := ""
+		if ssListRO != nil {
+			if ssRO, ok := ssListRO[name]; ok {
+				checksum = ssRO.Status.Checksum
+			}
+		}
+		data = append(data, toSnapshotResource(v, checksum))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshot"}}
 }

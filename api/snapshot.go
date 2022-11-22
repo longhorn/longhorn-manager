@@ -43,7 +43,7 @@ func (s *Server) SnapshotCreate(w http.ResponseWriter, req *http.Request) (err e
 	if err != nil {
 		return err
 	}
-	apiContext.Write(toSnapshotResource(snapshot))
+	apiContext.Write(toSnapshotResource(snapshot, ""))
 	return nil
 }
 
@@ -54,11 +54,14 @@ func (s *Server) SnapshotList(w http.ResponseWriter, req *http.Request) (err err
 
 	volName := mux.Vars(req)["name"]
 
-	snapList, err := s.m.ListSnapshots(volName)
+	snapList, err := s.m.ListSnapshotInfos(volName)
 	if err != nil {
 		return err
 	}
-	api.GetApiContext(req).Write(toSnapshotCollection(snapList))
+
+	snapListRO, _ := s.m.ListSnapshots(volName)
+	api.GetApiContext(req).Write(toSnapshotCollection(snapList, snapListRO))
+
 	return nil
 }
 
@@ -75,11 +78,17 @@ func (s *Server) SnapshotGet(w http.ResponseWriter, req *http.Request) (err erro
 	}
 	volName := mux.Vars(req)["name"]
 
-	snap, err := s.m.GetSnapshot(input.Name, volName)
+	snap, err := s.m.GetSnapshotInfo(input.Name, volName)
 	if err != nil {
 		return err
 	}
-	api.GetApiContext(req).Write(toSnapshotResource(snap))
+
+	checksum := ""
+	if snapRO, err := s.m.GetSnapshot(snap.Name); err == nil {
+		checksum = snapRO.Status.Checksum
+	}
+
+	api.GetApiContext(req).Write(toSnapshotResource(snap, checksum))
 	return nil
 }
 

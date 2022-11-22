@@ -52,3 +52,11 @@ func (p *Proxy) ReplicaRebuildVerify(e *longhorn.Engine, url string) (err error)
 
 	return p.grpcClient.ReplicaVerifyRebuild(p.DirectToURL(e), url)
 }
+
+func (p *Proxy) ReplicaModeUpdate(e *longhorn.Engine, url, mode string) (err error) {
+	if err := ValidateReplicaURL(url); err != nil {
+		return err
+	}
+
+	return p.grpcClient.ReplicaModeUpdate(p.DirectToURL(e), url, mode)
+}

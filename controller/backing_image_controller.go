@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -230,7 +231,7 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 			bic.enqueueBackingImage(backingImage)
 			return nil
 		}
-		bic.eventRecorder.Eventf(backingImage, corev1.EventTypeNormal, EventReasonUpdate, "Initialized UUID to %v", backingImage.Status.UUID)
+		bic.eventRecorder.Eventf(backingImage, corev1.EventTypeNormal, constant.EventReasonUpdate, "Initialized UUID to %v", backingImage.Status.UUID)
 	}
 
 	existingBackingImage := backingImage.DeepCopy()
@@ -303,7 +304,7 @@ func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.Back
 				return err
 			}
 			bimLog.Info("Deleted old/non-default backing image manager")
-			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonDelete, "deleted old/non-default backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
+			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonDelete, "deleted old/non-default backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
 			continue
 		}
 
@@ -327,7 +328,7 @@ func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.Back
 			if err := bic.ds.DeleteBackingImageManager(bim.Name); err != nil && !apierrors.IsNotFound(err) {
 				return err
 			}
-			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonDelete, "deleting unused backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
+			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonDelete, "deleting unused backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
 			continue
 		}
 	}
@@ -578,7 +579,7 @@ func (bic *BackingImageController) handleBackingImageManagers(bi *longhorn.Backi
 			}
 
 			log.WithFields(logrus.Fields{"backingImageManager": bim.Name, "diskUUID": diskUUID}).Infof("Created default backing image manager")
-			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonCreate, "created default backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
+			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonCreate, "created default backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
 		}
 	}
 
@@ -646,7 +647,7 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 		if info.Size > 0 {
 			if bi.Status.Size == 0 {
 				bi.Status.Size = info.Size
-				bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, EventReasonUpdate, "Set size to %v", bi.Status.Size)
+				bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonUpdate, "Set size to %v", bi.Status.Size)
 			}
 			if bi.Status.Size != info.Size {
 				return fmt.Errorf("BUG: found mismatching size %v reported by backing image manager %v in disk %v, the size recorded in status is %v", info.Size, bim.Name, bim.Spec.DiskUUID, bi.Status.Size)

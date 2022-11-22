@@ -67,6 +67,7 @@ type EngineClient interface {
 	ReplicaRemove(engine *longhorn.Engine, url string) error
 	ReplicaRebuildStatus(*longhorn.Engine) (map[string]*longhorn.RebuildStatus, error)
 	ReplicaRebuildVerify(engine *longhorn.Engine, url string) error
+	ReplicaModeUpdate(engine *longhorn.Engine, url string, mode string) error
 
 	SnapshotCreate(engine *longhorn.Engine, name string, labels map[string]string) (string, error)
 	SnapshotList(engine *longhorn.Engine) (map[string]*longhorn.SnapshotInfo, error)
@@ -79,6 +80,8 @@ type EngineClient interface {
 	SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error)
 	SnapshotCloneStatus(engine *longhorn.Engine) (map[string]*longhorn.SnapshotCloneStatus, error)
 	SnapshotClone(engine *longhorn.Engine, snapshotName, fromControllerAddress string) error
+	SnapshotHash(engine *longhorn.Engine, snapshotName string, rehash bool) error
+	SnapshotHashStatus(engine *longhorn.Engine, snapshotName string) (map[string]*longhorn.HashStatus, error)
 
 	BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error
 	BackupRestoreStatus(engine *longhorn.Engine) (map[string]*longhorn.RestoreStatus, error)

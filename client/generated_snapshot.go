@@ -22,6 +22,8 @@ type Snapshot struct {
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
 
 	Usercreated bool `json:"usercreated,omitempty" yaml:"usercreated,omitempty"`
+
+	Checksum string `json:"checksum,omitempty" yaml:"checksum,omitempty"`
 }
 
 type SnapshotCollection struct {

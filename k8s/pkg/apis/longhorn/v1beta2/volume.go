@@ -1,6 +1,8 @@
 package v1beta2
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 type VolumeState string
 
@@ -99,6 +101,15 @@ const (
 	VolumeConditionReasonTooManySnapshots              = "TooManySnapshots"
 )
 
+type SnapshotDataIntegrity string
+
+const (
+	SnapshotDataIntegrityIgnored   = SnapshotDataIntegrity("ignored")
+	SnapshotDataIntegrityDisabled  = SnapshotDataIntegrity("disabled")
+	SnapshotDataIntegrityEnabled   = SnapshotDataIntegrity("enabled")
+	SnapshotDataIntegrityFastCheck = SnapshotDataIntegrity("fast-check")
+)
+
 // VolumeRecurringJobSpec is a deprecated struct.
 // TODO: Should be removed when recurringJobs gets removed from the volume
 //       spec.
@@ -195,6 +206,9 @@ type VolumeSpec struct {
 	NumberOfReplicas int `json:"numberOfReplicas"`
 	// +optional
 	ReplicaAutoBalance ReplicaAutoBalance `json:"replicaAutoBalance"`
+	// +kubebuilder:validation:Enum=ignored;disabled;enabled;fast-check
+	// +optional
+	SnapshotDataIntegrity SnapshotDataIntegrity `json:"snapshotDataIntegrity"`
 	// Deprecated. Rename to BackingImage
 	// +optional
 	BaseImage string `json:"baseImage"`
