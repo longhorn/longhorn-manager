@@ -53,6 +53,9 @@ const (
 	ReplicaHostPrefix                = "/host"
 	EngineBinaryName                 = "longhorn"
 
+	UnixDomainSocketDirectoryInContainer = "/host/var/lib/longhorn/unix-domain-socket/"
+	UnixDomainSocketDirectoryOnHost      = "/var/lib/longhorn/unix-domain-socket/"
+
 	BackingImageManagerDirectory = "/backing-images/"
 	BackingImageFileName         = "backing"
 
