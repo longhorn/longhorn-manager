@@ -55,7 +55,11 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if err := types.ValidateReplicaCount(volume.Spec.NumberOfReplicas); err != nil {
+	if err := validateReplicaCount(volume.Spec.DataLocality, volume.Spec.NumberOfReplicas); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	if err := types.ValidateDataLocalityAndReplicaCount(volume.Spec.DataLocality, volume.Spec.NumberOfReplicas); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
@@ -99,17 +103,18 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 }
 
 func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
+	oldVolume := oldObj.(*longhorn.Volume)
 	newVolume := newObj.(*longhorn.Volume)
 
-	if err := types.ValidateDataLocality(newVolume.Spec.DataLocality); err != nil {
+	if err := validateDataLocalityUpdate(oldVolume, newVolume); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	if err := validateReplicaCount(newVolume.Spec.DataLocality, newVolume.Spec.NumberOfReplicas); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
 	if err := types.ValidateAccessMode(newVolume.Spec.AccessMode); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
-	}
-
-	if err := types.ValidateReplicaCount(newVolume.Spec.NumberOfReplicas); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
@@ -121,6 +126,35 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return err
 	}
 
+	return nil
+}
+
+func validateDataLocalityUpdate(oldVolume *longhorn.Volume, newVolume *longhorn.Volume) error {
+	if err := types.ValidateDataLocality(newVolume.Spec.DataLocality); err != nil {
+		return err
+	}
+
+	if oldVolume.Status.State == longhorn.VolumeStateDetached {
+		return nil
+	}
+
+	if oldVolume.Spec.DataLocality != newVolume.Spec.DataLocality &&
+		(oldVolume.Spec.DataLocality == longhorn.DataLocalityStrictLocal || newVolume.Spec.DataLocality == longhorn.DataLocalityStrictLocal) {
+		return werror.NewInvalidError(fmt.Sprintf("data locality cannot be converted between %v and other modes when volume is not detached",
+			longhorn.DataLocalityStrictLocal), "")
+	}
+	return nil
+}
+
+func validateReplicaCount(dataLocality longhorn.DataLocality, replicaCount int) error {
+	if err := types.ValidateReplicaCount(replicaCount); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+	if dataLocality == longhorn.DataLocalityStrictLocal {
+		if replicaCount != 1 {
+			return werror.NewInvalidError(fmt.Sprintf("number of replica count should be 1 whe data locality is %v", longhorn.DataLocalityStrictLocal), "")
+		}
+	}
 	return nil
 }
 
