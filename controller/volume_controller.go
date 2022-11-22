@@ -1023,6 +1023,20 @@ func (vc *VolumeController) getAutoBalancedReplicasSetting(v *longhorn.Volume) (
 	return setting, errors.Wrapf(err, "replica auto-balance is disabled")
 }
 
+func (vc *VolumeController) updateReplicaLogRequested(e *longhorn.Engine, rs map[string]*longhorn.Replica) {
+	needReplicaLogs := false
+	for _, r := range rs {
+		if r.Spec.LogRequested && r.Status.LogFetched {
+			r.Spec.LogRequested = false
+		}
+		needReplicaLogs = needReplicaLogs || r.Spec.LogRequested
+		rs[r.Name] = r
+	}
+	if e.Spec.LogRequested && e.Status.LogFetched && !needReplicaLogs {
+		e.Spec.LogRequested = false
+	}
+}
+
 // ReconcileVolumeState handles the attaching and detaching of volume
 func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
@@ -1124,17 +1138,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 	}
 
-	needReplicaLogs := false
-	for _, r := range rs {
-		if r.Spec.LogRequested && r.Status.LogFetched {
-			r.Spec.LogRequested = false
-		}
-		needReplicaLogs = needReplicaLogs || r.Spec.LogRequested
-		rs[r.Name] = r
-	}
-	if e.Spec.LogRequested && e.Status.LogFetched && !needReplicaLogs {
-		e.Spec.LogRequested = false
-	}
+	vc.updateReplicaLogRequested(e, rs)
 
 	scheduled := true
 	aggregatedReplicaScheduledError := util.NewMultiError()
