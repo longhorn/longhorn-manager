@@ -2201,7 +2201,7 @@ func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
 // GetRandomReadyNodeDisk a list of all Node the in the given namespace and
 // returns the first Node && the first Disk of the Node marked with condition ready and allow scheduling
 func (s *DataStore) GetRandomReadyNodeDisk() (*longhorn.Node, string, error) {
-	logrus.Debugf("Prepare to find a random ready node disk")
+	logrus.Debugf("Preparing to find a random ready node disk")
 	nodesRO, err := s.ListNodesRO()
 	if err != nil {
 		return nil, "", errors.Wrapf(err, "failed to get random ready node disk")
