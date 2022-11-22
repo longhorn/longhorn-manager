@@ -1150,7 +1150,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		return err
 	}
 
-	// TODO: This is the migration rollback logic and auto reattachment logic
+	//TODO: This is the migration rollback logic and auto reattachment logic
 	//if v.Status.CurrentNodeID == "" {
 	//	// `PendingNodeID != ""` means the engine dead unexpectedly.
 	//	// The volume will be detached by cleaning up `CurrentNodeID` then be reattached by `v.Status.CurrentNodeID = v.Status.PendingNodeID`.
@@ -1222,9 +1222,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	}
 
 	if isAutoSalvageNeeded(rs) {
-		// TODO: this one is supposed to handle by the Salvage controller
 		v.Status.Robustness = longhorn.VolumeRobustnessFaulted
-		v.Status.CurrentNodeID = ""
 
 		autoSalvage, err := vc.ds.GetSettingAsBool(types.SettingNameAutoSalvage)
 		if err != nil {
@@ -1245,89 +1243,77 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 		// make sure the volume is detached before automatically salvage replicas
 		if autoSalvage && v.Status.State == longhorn.VolumeStateDetached && !v.Status.IsStandby && !v.Status.RestoreRequired {
-			// There is no need to auto salvage (and reattach) a volume on an unavailable node
-			// If we return error we will loop forever, instead we can do auto salvage even if the volume should be detached
-			// since all auto salvage does is unset the failure state for the replicas
-			// on a single replica volume, if the replica is on a failed node, it will be skipped below
-			// and the volume will remain in the faulted state but as soon as the node of the replica comes back
-			// we can do the auto salvage operation and set the Robustness to Unknown.
-			shouldBeAttached := v.Spec.NodeID != ""
-			isNodeDownOrDeleted, err := vc.ds.IsNodeDownOrDeleted(v.Spec.NodeID)
-			if err != nil && shouldBeAttached {
-				return err
-			}
-			if !isNodeDownOrDeleted || !shouldBeAttached {
-				lastFailedAt := time.Time{}
-				failedUsableReplicas := map[string]*longhorn.Replica{}
-				dataExists := false
+			lastFailedAt := time.Time{}
+			failedUsableReplicas := map[string]*longhorn.Replica{}
+			dataExists := false
 
-				for _, r := range rs {
-					if r.Spec.HealthyAt == "" {
-						continue
-					}
-					dataExists = true
-					if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
-						continue
-					}
-					if isDownOrDeleted, err := vc.ds.IsNodeDownOrDeleted(r.Spec.NodeID); err != nil {
-						log.WithField("replica", r.Name).WithError(err).Errorf("Unable to check if node %v is still running for failed replica", r.Spec.NodeID)
-						continue
-					} else if isDownOrDeleted {
-						continue
-					}
-					node, err := vc.ds.GetNode(r.Spec.NodeID)
-					if err != nil {
-						log.WithField("replica", r.Name).WithError(err).Errorf("Unable to get node %v for failed replica", r.Spec.NodeID)
-					}
-					diskSchedulable := false
-					for _, diskStatus := range node.Status.DiskStatus {
-						if diskStatus.DiskUUID == r.Spec.DiskID {
-							if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status == longhorn.ConditionStatusTrue {
-								diskSchedulable = true
-								break
-							}
-						}
-					}
-					if !diskSchedulable {
-						continue
-					}
-					failedAt, err := util.ParseTime(r.Spec.FailedAt)
-					if err != nil {
-						log.WithField("replica", r.Name).WithError(err).Error("Unable to parse FailedAt timestamp for replica")
-						continue
-					}
-					if failedAt.After(lastFailedAt) {
-						lastFailedAt = failedAt
-					}
-					// all failedUsableReplica contains data
-					failedUsableReplicas[r.Name] = r
+			for _, r := range rs {
+				if r.Spec.HealthyAt == "" {
+					continue
 				}
-				if !dataExists {
-					log.Warn("Cannot auto salvage volume: no data exists")
-				} else {
-					// This salvage is for revision counter enabled case
-					salvaged := false
-					// Bring up the replicas for auto-salvage
-					for _, r := range failedUsableReplicas {
-						if util.TimestampWithinLimit(lastFailedAt, r.Spec.FailedAt, AutoSalvageTimeLimit) {
-							r.Spec.FailedAt = ""
-							log.WithField("replica", r.Name).Warn("Automatically salvaging volume replica")
-							msg := fmt.Sprintf("Replica %v of volume %v will be automatically salvaged", r.Name, v.Name)
-							vc.eventRecorder.Event(v, v1.EventTypeWarning, constant.EventReasonAutoSalvaged, msg)
-							salvaged = true
+				dataExists = true
+				if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
+					continue
+				}
+				if isDownOrDeleted, err := vc.ds.IsNodeDownOrDeleted(r.Spec.NodeID); err != nil {
+					log.WithField("replica", r.Name).WithError(err).Errorf("Unable to check if node %v is still running for failed replica", r.Spec.NodeID)
+					continue
+				} else if isDownOrDeleted {
+					continue
+				}
+				node, err := vc.ds.GetNode(r.Spec.NodeID)
+				if err != nil {
+					log.WithField("replica", r.Name).WithError(err).Errorf("Unable to get node %v for failed replica", r.Spec.NodeID)
+				}
+				diskSchedulable := false
+				for _, diskStatus := range node.Status.DiskStatus {
+					if diskStatus.DiskUUID == r.Spec.DiskID {
+						if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status == longhorn.ConditionStatusTrue {
+							diskSchedulable = true
+							break
 						}
 					}
-					if salvaged {
-						// remount the reattached volume later if possible
-						// For the auto-salvaged volume, `v.Status.CurrentNodeID` is empty but `v.Spec.NodeID` shouldn't be empty.
-						// There shouldn't be any problems if v.Spec.NodeID is empty, since the volume is desired to be detached
-						// so we just unset PendingNodeID.
-						v.Status.PendingNodeID = v.Spec.NodeID
-						v.Status.RemountRequestedAt = vc.nowHandler()
-						msg := fmt.Sprintf("Volume %v requested remount at %v after automatically salvaging replicas", v.Name, v.Status.RemountRequestedAt)
-						vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonRemount, msg)
-						v.Status.Robustness = longhorn.VolumeRobustnessUnknown
+				}
+				if !diskSchedulable {
+					continue
+				}
+				failedAt, err := util.ParseTime(r.Spec.FailedAt)
+				if err != nil {
+					log.WithField("replica", r.Name).WithError(err).Error("Unable to parse FailedAt timestamp for replica")
+					continue
+				}
+				if failedAt.After(lastFailedAt) {
+					lastFailedAt = failedAt
+				}
+				// all failedUsableReplica contains data
+				failedUsableReplicas[r.Name] = r
+			}
+			if !dataExists {
+				log.Warn("Cannot auto salvage volume: no data exists")
+			} else {
+				// This salvage is for revision counter enabled case
+				salvaged := false
+				// Bring up the replicas for auto-salvage
+				for _, r := range failedUsableReplicas {
+					if util.TimestampWithinLimit(lastFailedAt, r.Spec.FailedAt, AutoSalvageTimeLimit) {
+						r.Spec.FailedAt = ""
+						log.WithField("replica", r.Name).Warn("Automatically salvaging volume replica")
+						msg := fmt.Sprintf("Replica %v of volume %v will be automatically salvaged", r.Name, v.Name)
+						vc.eventRecorder.Event(v, v1.EventTypeWarning, constant.EventReasonAutoSalvaged, msg)
+						salvaged = true
 					}
+				}
+				if salvaged {
+					// remount the reattached volume later if possible
+					// For the auto-salvaged volume, `v.Status.CurrentNodeID` is empty but `v.Spec.NodeID` shouldn't be empty.
+					// There shouldn't be any problems if v.Spec.NodeID is empty, since the volume is desired to be detached
+					// so we just unset PendingNodeID.
+					//v.Status.PendingNodeID = v.Spec.NodeID
+					v.Status.RemountRequestedAt = vc.nowHandler()
+					msg := fmt.Sprintf("Volume %v requested remount at %v after automatically salvaging replicas", v.Name, v.Status.RemountRequestedAt)
+					vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonRemount, msg)
+					v.Status.Robustness = longhorn.VolumeRobustnessUnknown
+					return nil
 				}
 			}
 		}
@@ -1339,11 +1325,11 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			v.Status.RemountRequestedAt = vc.nowHandler()
 			msg := fmt.Sprintf("Volume %v requested remount at %v", v.Name, v.Status.RemountRequestedAt)
 			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonRemount, msg)
+			return nil
 		}
 
 		// reattach volume if detached unexpected and there are still healthy replicas
 		if e.Status.CurrentState == longhorn.InstanceStateError && v.Status.CurrentNodeID != "" {
-			v.Status.PendingNodeID = v.Status.CurrentNodeID
 			log.Warn("Engine of volume dead unexpectedly, reattach the volume")
 			msg := fmt.Sprintf("Engine of volume %v dead unexpectedly, reattach the volume", v.Name)
 			vc.eventRecorder.Event(v, v1.EventTypeWarning, constant.EventReasonDetachedUnexpectly, msg)
@@ -1355,7 +1341,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				}
 			}
 			v.Status.Robustness = longhorn.VolumeRobustnessFaulted
-			v.Status.CurrentNodeID = ""
 		}
 	}
 
@@ -1385,7 +1370,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, isNewVolume bool, log *logrus.Entry) error {
 	//TODO: link the state machine graph here
 
-	if isNewVolume {
+	if isNewVolume || v.Status.State == "" {
 		v.Status.State = longhorn.VolumeStateCreating
 		return nil
 	}
@@ -1407,8 +1392,8 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 				// We attempt to close the resources anyway to make sure that they are closed
 				vc.closeVolumeDependentResources(v, e, rs)
 			}
+			return nil
 		}
-
 		if v.Status.CurrentNodeID != "" {
 			switch v.Status.State {
 			case longhorn.VolumeStateAttaching, longhorn.VolumeStateAttached, longhorn.VolumeStateDetached:
@@ -1422,6 +1407,7 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 					vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 				}
 			}
+			return nil
 		}
 	}
 
@@ -1452,6 +1438,7 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 					vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
 				}
 			}
+			return nil
 		}
 
 		if v.Status.CurrentNodeID != "" {
@@ -1473,8 +1460,8 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 						log.Warnf("volume is attached but dependent resources are not opened")
 					}
 				}
+				return nil
 			}
-
 			if v.Spec.NodeID != v.Status.CurrentNodeID {
 				switch v.Status.State {
 				case longhorn.VolumeStateDetached, longhorn.VolumeStateAttached, longhorn.VolumeStateAttaching:
@@ -1488,6 +1475,7 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 						vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 					}
 				}
+				return nil
 			}
 		}
 	}
@@ -1727,11 +1715,11 @@ func (vc *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *
 		return fmt.Errorf("no healthy or scheduled replica for starting")
 	}
 
-	if e.Spec.NodeID != "" && e.Spec.NodeID != v.Status.CurrentNodeID {
+	if e.Spec.NodeID != "" && e.Spec.NodeID != v.Spec.NodeID {
 		return fmt.Errorf("engine is on node %v vs volume on %v, must detach first",
 			e.Spec.NodeID, v.Status.CurrentNodeID)
 	}
-	e.Spec.NodeID = v.Status.CurrentNodeID
+	e.Spec.NodeID = v.Spec.NodeID
 	e.Spec.ReplicaAddressMap = replicaAddressMap
 	e.Spec.DesireState = longhorn.InstanceStateRunning
 	// The volume may be activated

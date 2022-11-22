@@ -209,41 +209,40 @@ func (vac *VolumeAttachmentController) reconcile(vaName string) (err error) {
 	// handle VA deletion flow
 
 	existingVA := va.DeepCopy()
+	existingVol := vol.DeepCopy()
 	defer func() {
 		if err != nil {
 			return
 		}
-		if reflect.DeepEqual(existingVA.Status, va.Status) {
-			return
+		if !reflect.DeepEqual(existingVol.Spec, vol.Spec) {
+			if _, err = vac.ds.UpdateVolume(vol); err != nil {
+				return
+			}
+
 		}
-		_, err = vac.ds.UpdateLHVolumeAttachmetStatus(va)
+		if !reflect.DeepEqual(existingVA.Status, va.Status) {
+			if _, err = vac.ds.UpdateLHVolumeAttachmetStatus(va); err != nil {
+				return
+			}
+		}
 		return
 	}()
 
-	vol, err = vac.handleVolumeDetachment(va, vol)
-	if err != nil {
-		return err
-	}
+	vac.handleVolumeDetachment(va, vol)
 
-	vol, err = vac.handleVolumeAttachment(va, vol)
-	if err != nil {
-		return err
-	}
+	vac.handleVolumeAttachment(va, vol)
 
 	return vac.handleVAStatusUpdate(va, vol)
 }
 
-func (vac *VolumeAttachmentController) handleVolumeDetachment(va *longhorn.VolumeAttachment, vol *longhorn.Volume) (*longhorn.Volume, error) {
+func (vac *VolumeAttachmentController) handleVolumeDetachment(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
 	// Volume is already trying to detach
 	if vol.Spec.NodeID == "" {
-		return vol, nil
+		return
 	}
 
-	for _, attachment := range va.Spec.Attachments {
-		// Found one attachment that is still requesting volume to attach to the current node
-		if attachment.NodeID == vol.Spec.NodeID && verifyAttachmentParameters(attachment, vol) {
-			return vol, nil
-		}
+	if !shouldDoDetach(va, vol) {
+		return
 	}
 
 	// There is no attachment that request the current vol.Spec.NodeID.
@@ -251,26 +250,47 @@ func (vac *VolumeAttachmentController) handleVolumeDetachment(va *longhorn.Volum
 	vol.Spec.NodeID = ""
 	// reset the attachment parameter
 	setAttachmentParameter(&longhorn.Attachment{}, vol)
-	return vac.ds.UpdateVolume(vol)
+	return
 }
 
-func (vac *VolumeAttachmentController) handleVolumeAttachment(va *longhorn.VolumeAttachment, vol *longhorn.Volume) (*longhorn.Volume, error) {
+func shouldDoDetach(va *longhorn.VolumeAttachment, vol *longhorn.Volume) bool {
+	// For auto salvage logic
+	// TODO: create Auto Salvage controller to hanlde this logic instead of AD controller
+	if vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
+		return true
+	}
+	for _, attachment := range va.Spec.Attachments {
+		// Found one attachment that is still requesting volume to attach to the current node
+		if attachment.NodeID == vol.Spec.NodeID && verifyAttachmentParameters(attachment, vol) {
+			return false
+		}
+	}
+	return true
+}
+
+func (vac *VolumeAttachmentController) handleVolumeAttachment(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
 	// Wait for volume to be ready to be fully detached
 	if vol.Spec.NodeID != "" ||
 		vol.Spec.MigrationNodeID != "" ||
 		vol.Status.PendingNodeID != "" ||
 		vol.Status.State != longhorn.VolumeStateDetached {
-		return vol, nil
+		return
+	}
+
+	// For auto salvage logic
+	// TODO: create Auto Salvage controller to hanlde this logic instead of AD controller
+	if vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
+		return
 	}
 
 	attachment := selectAttachmentToAttach(va)
 	if attachment == nil {
-		return vol, nil
+		return
 	}
 
 	vol.Spec.NodeID = attachment.NodeID
 	setAttachmentParameter(attachment, vol)
-	return vac.ds.UpdateVolume(vol)
+	return
 }
 
 func selectAttachmentToAttach(va *longhorn.VolumeAttachment) *longhorn.Attachment {
