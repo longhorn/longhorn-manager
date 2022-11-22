@@ -334,7 +334,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}
 
 	if engine.Status.CurrentState == longhorn.InstanceStateRunning {
-		// we allow across monitoring temporaily due to migration case
+		// we allow across monitoring temporarily due to migration case
 		if !ec.isMonitoring(engine) {
 			ec.startMonitoring(engine)
 		} else if engine.Status.ReplicaModeMap != nil {
@@ -434,12 +434,17 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
+	v, err := ec.ds.GetVolume(e.Spec.VolumeName)
+	if err != nil {
+		return nil, err
+	}
+
 	engineCLIAPIVersion, err := ec.ds.GetEngineImageCLIAPIVersion(e.Spec.EngineImage)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.EngineProcessCreate(e, frontend, engineReplicaTimeout, engineCLIAPIVersion)
+	return c.EngineProcessCreate(e, frontend, engineReplicaTimeout, v.Spec.DataLocality, engineCLIAPIVersion)
 }
 
 func (ec *EngineController) DeleteInstance(obj interface{}) error {
@@ -1694,12 +1699,17 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine) error {
 		return err
 	}
 
+	v, err := ec.ds.GetVolume(e.Spec.VolumeName)
+	if err != nil {
+		return err
+	}
+
 	engineCLIAPIVersion, err := ec.ds.GetEngineImageCLIAPIVersion(e.Spec.EngineImage)
 	if err != nil {
 		return err
 	}
 
-	engineProcess, err := c.EngineProcessUpgrade(e, frontend, engineReplicaTimeout, engineCLIAPIVersion)
+	engineProcess, err := c.EngineProcessUpgrade(e, frontend, engineReplicaTimeout, v.Spec.DataLocality, engineCLIAPIVersion)
 	if err != nil {
 		return err
 	}

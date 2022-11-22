@@ -444,7 +444,7 @@ func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*lon
 		if exists {
 			disks[r.Spec.DiskID] = struct{}{}
 		} else {
-			disks = map[string]struct{}{r.Spec.DiskID: struct{}{}}
+			disks = map[string]struct{}{r.Spec.DiskID: {}}
 		}
 		availableNodesInfo[r.Spec.NodeID] = allNodesInfo[r.Spec.NodeID]
 		availableNodeDisksMap[r.Spec.NodeID] = disks
@@ -472,7 +472,7 @@ func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*lon
 		}
 	}
 	if reusedReplica == nil {
-		logrus.Infof("Cannot find a reusable failed replicas")
+		logrus.Infof("Cannot find a reusable failed replicas for volume %v", volume.Name)
 		return nil, nil
 	}
 

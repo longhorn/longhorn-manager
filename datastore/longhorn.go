@@ -1366,16 +1366,21 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 }
 
 // CheckEngineImageReadyOnAtLeastOneVolumeReplica checks if the IMAGE is deployed on the NODEID and on at least one of the the volume's replicas
-func (s *DataStore) CheckEngineImageReadyOnAtLeastOneVolumeReplica(image, volumeName, nodeID string) (bool, error) {
-	replicas, err := s.ListVolumeReplicas(volumeName)
+func (s *DataStore) CheckEngineImageReadyOnAtLeastOneVolumeReplica(image, volumeName, nodeID string, dataLocality longhorn.DataLocality) (bool, error) {
+	isReady, err := s.CheckEngineImageReadiness(image, nodeID)
 	if err != nil {
-		return false, fmt.Errorf("cannot get replicas for volume %v: %w", volumeName, err)
+		return false, errors.Wrapf(err, "failed to check engine image readiness of node %v", nodeID)
 	}
 
-	isReady, err := s.CheckEngineImageReadiness(image, nodeID)
-	if nodeID != "" && !isReady {
-		return isReady, err
+	if !isReady || dataLocality == longhorn.DataLocalityStrictLocal {
+		return isReady, nil
 	}
+
+	replicas, err := s.ListVolumeReplicas(volumeName)
+	if err != nil {
+		return false, errors.Wrapf(err, "cannot get replicas for volume %v", volumeName)
+	}
+
 	for _, r := range replicas {
 		isReady, err := s.CheckEngineImageReadiness(image, r.Spec.NodeID)
 		if err != nil || isReady {
