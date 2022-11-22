@@ -149,7 +149,7 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *longhorn.Instanc
 
 }
 
-func (c *InstanceManagerClient) EngineProcessCreate(e *longhorn.Engine, volumeFrontend longhorn.VolumeFrontend, engineReplicaTimeout int64, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) EngineProcessCreate(e *longhorn.Engine, volumeFrontend longhorn.VolumeFrontend, engineReplicaTimeout int64, dataLocality longhorn.DataLocality, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -178,6 +178,10 @@ func (c *InstanceManagerClient) EngineProcessCreate(e *longhorn.Engine, volumeFr
 	if engineCLIAPIVersion >= 7 {
 		args = append(args,
 			"--engine-replica-timeout", strconv.FormatInt(engineReplicaTimeout, 10))
+
+		if dataLocality == longhorn.DataLocalityStrictLocal {
+			args = append(args, "--data-server-protocol", "unix")
+		}
 	}
 
 	for _, addr := range e.Status.CurrentReplicaAddressMap {
@@ -193,7 +197,7 @@ func (c *InstanceManagerClient) EngineProcessCreate(e *longhorn.Engine, volumeFr
 	return c.parseProcess(engineProcess), nil
 }
 
-func (c *InstanceManagerClient) ReplicaProcessCreate(replica *longhorn.Replica, dataPath, backingImagePath string) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) ReplicaProcessCreate(replica *longhorn.Replica, dataPath, backingImagePath string, dataLocality longhorn.DataLocality) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -206,6 +210,12 @@ func (c *InstanceManagerClient) ReplicaProcessCreate(replica *longhorn.Replica, 
 	}
 	if replica.Spec.RevisionCounterDisabled {
 		args = append(args, "--disableRevCounter")
+	}
+
+	args = append(args, "--volume-name", replica.Spec.VolumeName)
+
+	if dataLocality == longhorn.DataLocalityStrictLocal {
+		args = append(args, "--data-server-protocol", "unix")
 	}
 
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(replica.Spec.EngineImage), types.EngineBinaryName)
@@ -267,7 +277,7 @@ func (c *InstanceManagerClient) ProcessList() (map[string]longhorn.InstanceProce
 	return result, nil
 }
 
-func (c *InstanceManagerClient) EngineProcessUpgrade(e *longhorn.Engine, volumeFrontend longhorn.VolumeFrontend, engineReplicaTimeout int64, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) EngineProcessUpgrade(e *longhorn.Engine, volumeFrontend longhorn.VolumeFrontend, engineReplicaTimeout int64, dataLocality longhorn.DataLocality, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -289,6 +299,11 @@ func (c *InstanceManagerClient) EngineProcessUpgrade(e *longhorn.Engine, volumeF
 	if engineCLIAPIVersion >= 7 {
 		args = append(args,
 			"--engine-replica-timeout", strconv.FormatInt(engineReplicaTimeout, 10))
+
+		if dataLocality == longhorn.DataLocalityStrictLocal {
+			args = append(args,
+				"--data-server-protocol", "unix")
+		}
 	}
 
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(e.Spec.EngineImage), types.EngineBinaryName)
