@@ -477,7 +477,8 @@ var (
 			"This setting specifies the default data locality when a volume is created from the Longhorn UI. For Kubernetes configuration, update the `dataLocality` in the StorageClass\n\n" +
 			"The available modes are: \n\n" +
 			"- **disabled**. This is the default option. There may or may not be a replica on the same node as the attached volume (workload)\n" +
-			"- **best-effort**. This option instructs Longhorn to try to keep a replica on the same node as the attached volume (workload). Longhorn will not stop the volume, even if it cannot keep a replica local to the attached volume (workload) due to environment limitation, e.g. not enough disk space, incompatible disk tags, etc.\n",
+			"- **best-effort**. This option instructs Longhorn to try to keep a replica on the same node as the attached volume (workload). Longhorn will not stop the volume, even if it cannot keep a replica local to the attached volume (workload) due to environment limitation, e.g. not enough disk space, incompatible disk tags, etc.\n" +
+			"- **strict-local**. This option enforces Longhorn keep the only one replica on the same node as the attached volume.\n",
 		Category: SettingCategoryGeneral,
 		Type:     SettingTypeString,
 		Required: true,
@@ -486,6 +487,7 @@ var (
 		Choices: []string{
 			string(longhorn.DataLocalityDisabled),
 			string(longhorn.DataLocalityBestEffort),
+			string(longhorn.DataLocalityStrictLocal),
 		},
 	}
 
