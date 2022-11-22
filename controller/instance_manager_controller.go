@@ -1117,6 +1117,10 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 			MountPropagation: &hostToContainer,
 		},
 		{
+			MountPath: types.UnixDomainSocketDirectoryInContainer,
+			Name:      "unix-domain-socket",
+		},
+		{
 			MountPath: types.TLSDirectoryInContainer,
 			Name:      "longhorn-grpc-tls",
 		},
@@ -1143,6 +1147,14 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
 					Path: types.EngineBinaryDirectoryOnHost,
+				},
+			},
+		},
+		{
+			Name: "unix-domain-socket",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: types.UnixDomainSocketDirectoryOnHost,
 				},
 			},
 		},
