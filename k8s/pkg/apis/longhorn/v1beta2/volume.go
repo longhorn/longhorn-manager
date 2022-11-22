@@ -43,12 +43,13 @@ const (
 	VolumeDataSourceTypeVolume   = VolumeDataSourceType("volume")
 )
 
-// +kubebuilder:validation:Enum=disabled;best-effort
+// +kubebuilder:validation:Enum=disabled;best-effort;strict-local
 type DataLocality string
 
 const (
-	DataLocalityDisabled   = DataLocality("disabled")
-	DataLocalityBestEffort = DataLocality("best-effort")
+	DataLocalityDisabled    = DataLocality("disabled")
+	DataLocalityBestEffort  = DataLocality("best-effort")
+	DataLocalityStrictLocal = DataLocality("strict-local")
 )
 
 // +kubebuilder:validation:Enum=rwo;rwx
