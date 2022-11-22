@@ -25,6 +25,7 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
 
+	"github.com/longhorn/backupstore"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
@@ -1230,6 +1231,22 @@ func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]
 		"requestedRestoredBackupName": engine.Spec.RequestedBackupRestore,
 		"lastRestoredBackupName":      engine.Status.LastRestoredBackup,
 	})
+
+	// check if backup exists
+	backupURL := backupstore.EncodeBackupURL(engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, backupTargetClient.URL)
+	backupInfo, err := backupTargetClient.BackupGet(backupURL, backupTargetClient.Credential)
+	if err != nil {
+		mlog.WithError(err).Error("failed to inspect backup config")
+		return errors.Wrapf(err, "cannot inspect backup %v config for backup restoration of engine %v", engine.Spec.RequestedBackupRestore, engine.Name)
+	}
+	if backupInfo == nil {
+		mlog.Error("failed to do backup restoration due to the remote backup not found, so the restoration will be ignored accordingly")
+		for _, status := range rsMap {
+			status.Error = "remote backup not found"
+		}
+		return nil
+	}
+
 	mlog.Infof("Prepare to restore backup")
 	if cliAPIVersion < engineapi.CLIVersionFour {
 		// For compatible engines, `LastRestoredBackup` is required to indicate if the restore is incremental restore
