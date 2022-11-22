@@ -558,6 +558,13 @@ func ValidateReplicaCount(count int) error {
 	return nil
 }
 
+func ValidateDataLocalityAndReplicaCount(mode longhorn.DataLocality, count int) error {
+	if mode == longhorn.DataLocalityStrictLocal && count != 1 {
+		return fmt.Errorf("replica count should be 1 in data locality %v mode", longhorn.DataLocalityStrictLocal)
+	}
+	return nil
+}
+
 func ValidateReplicaAutoBalance(option longhorn.ReplicaAutoBalance) error {
 	switch option {
 	case longhorn.ReplicaAutoBalanceIgnored,
@@ -571,7 +578,7 @@ func ValidateReplicaAutoBalance(option longhorn.ReplicaAutoBalance) error {
 }
 
 func ValidateDataLocality(mode longhorn.DataLocality) error {
-	if mode != longhorn.DataLocalityDisabled && mode != longhorn.DataLocalityBestEffort {
+	if mode != longhorn.DataLocalityDisabled && mode != longhorn.DataLocalityBestEffort && mode != longhorn.DataLocalityStrictLocal {
 		return fmt.Errorf("invalid data locality mode: %v", mode)
 	}
 	return nil
