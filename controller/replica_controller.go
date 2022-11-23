@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -556,8 +557,13 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		return err
 	}
 	defer c.Close()
+
 	if err := c.ProcessDelete(r.Name); err != nil && !types.ErrorIsNotFound(err) {
 		return err
+	}
+
+	if err := deleteUnixSocketFile(r.Spec.VolumeName); err != nil && !types.ErrorIsNotFound(err) {
+		log.Warnf("Failed to delete unix-domain-socket file for volume %v since %v", r.Spec.VolumeName, err)
 	}
 
 	// Directly remove the instance from the map. Best effort.
@@ -569,6 +575,10 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 
 	return nil
+}
+
+func deleteUnixSocketFile(volumeName string) error {
+	return os.RemoveAll(filepath.Join(types.UnixDomainSocketDirectoryOnHost, volumeName+filepath.Ext(".sock")))
 }
 
 func (rc *ReplicaController) deleteInstanceWithCLIAPIVersionOne(r *longhorn.Replica) (err error) {
