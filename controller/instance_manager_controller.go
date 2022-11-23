@@ -506,7 +506,7 @@ func (imc *InstanceManagerController) syncMonitor(im *longhorn.InstanceManager) 
 	}
 
 	isMonitorRequired := im.Status.CurrentState == longhorn.InstanceManagerStateRunning &&
-		engineapi.CheckInstanceManagerCompatibilty(im.Status.APIMinVersion, im.Status.APIVersion) == nil
+		engineapi.CheckInstanceManagerCompatibility(im.Status.APIMinVersion, im.Status.APIVersion) == nil
 
 	if isMonitorRequired {
 		imc.startMonitoring(im)

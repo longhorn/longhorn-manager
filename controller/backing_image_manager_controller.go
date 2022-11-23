@@ -546,7 +546,7 @@ func (c *BackingImageManagerController) handleBackingImageFiles(bim *longhorn.Ba
 		return nil
 	}
 
-	if err := engineapi.CheckBackingImageManagerCompatibilty(bim.Status.APIMinVersion, bim.Status.APIVersion); err != nil {
+	if err := engineapi.CheckBackingImageManagerCompatibility(bim.Status.APIMinVersion, bim.Status.APIVersion); err != nil {
 		log.Debug("BackingImageManagerController will skip handling files for incompatible backing image manager")
 		return nil
 	}

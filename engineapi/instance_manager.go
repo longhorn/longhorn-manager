@@ -59,7 +59,7 @@ func GetDeprecatedInstanceManagerBinary(image string) string {
 	return filepath.Join(types.EngineBinaryDirectoryOnHost, cname, DeprecatedInstanceManagerBinaryName)
 }
 
-func CheckInstanceManagerCompatibilty(imMinVersion, imVersion int) error {
+func CheckInstanceManagerCompatibility(imMinVersion, imVersion int) error {
 	if MinInstanceManagerAPIVersion > imVersion || CurrentInstanceManagerAPIVersion < imMinVersion {
 		return fmt.Errorf("current InstanceManager version %v-%v is not compatible with InstanceManagerAPIVersion %v and InstanceManagerAPIMinVersion %v",
 			CurrentInstanceManagerAPIVersion, MinInstanceManagerAPIVersion, imVersion, imMinVersion)
@@ -127,7 +127,7 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 	}
 
 	// TODO: consider evaluating im client version since we do the call anyway to validate the connection, i.e. fallback to non tls
-	//  This way we don't need the per call compatibility check, ref: `CheckInstanceManagerCompatibilty`
+	//  This way we don't need the per call compatibility check, ref: `CheckInstanceManagerCompatibility`
 
 	return &InstanceManagerClient{
 		ip:            im.Status.IP,
@@ -162,7 +162,7 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *longhorn.Instanc
 }
 
 func (c *InstanceManagerClient) EngineProcessCreate(e *longhorn.Engine, volumeFrontend longhorn.VolumeFrontend, engineReplicaTimeout int64, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
-	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
 	frontend, err := GetEngineProcessFrontend(volumeFrontend)
@@ -206,7 +206,7 @@ func (c *InstanceManagerClient) EngineProcessCreate(e *longhorn.Engine, volumeFr
 }
 
 func (c *InstanceManagerClient) ReplicaProcessCreate(replicaName, engineImage, dataPath, backingImagePath string, size int64, revCounterDisabled bool) (*longhorn.InstanceProcess, error) {
-	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
 	args := []string{
@@ -238,7 +238,7 @@ func (c *InstanceManagerClient) ProcessDelete(name string) error {
 }
 
 func (c *InstanceManagerClient) ProcessGet(name string) (*longhorn.InstanceProcess, error) {
-	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
 	process, err := c.grpcClient.ProcessGet(name)
@@ -250,7 +250,7 @@ func (c *InstanceManagerClient) ProcessGet(name string) (*longhorn.InstanceProce
 
 // ProcessLog returns a grpc stream that will be closed when the passed context is cancelled or the underlying grpc client is closed
 func (c *InstanceManagerClient) ProcessLog(ctx context.Context, name string) (*imapi.LogStream, error) {
-	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
 	return c.grpcClient.ProcessLog(ctx, name)
@@ -258,14 +258,14 @@ func (c *InstanceManagerClient) ProcessLog(ctx context.Context, name string) (*i
 
 // ProcessWatch returns a grpc stream that will be closed when the passed context is cancelled or the underlying grpc client is closed
 func (c *InstanceManagerClient) ProcessWatch(ctx context.Context) (*imapi.ProcessStream, error) {
-	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
 	return c.grpcClient.ProcessWatch(ctx)
 }
 
 func (c *InstanceManagerClient) ProcessList() (map[string]longhorn.InstanceProcess, error) {
-	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
 	processes, err := c.grpcClient.ProcessList()
@@ -280,7 +280,7 @@ func (c *InstanceManagerClient) ProcessList() (map[string]longhorn.InstanceProce
 }
 
 func (c *InstanceManagerClient) EngineProcessUpgrade(e *longhorn.Engine, volumeFrontend longhorn.VolumeFrontend, engineReplicaTimeout int64, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
-	if err := CheckInstanceManagerCompatibilty(c.apiMinVersion, c.apiVersion); err != nil {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
 	frontend, err := GetEngineProcessFrontend(volumeFrontend)
