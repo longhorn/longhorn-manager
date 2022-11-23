@@ -325,7 +325,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return err
 	}
 
-	if err := engineapi.CheckCLICompatibilty(engineImage.Status.CLIAPIVersion, engineImage.Status.CLIAPIMinVersion); err != nil {
+	if err := engineapi.CheckCLICompatibility(engineImage.Status.CLIAPIVersion, engineImage.Status.CLIAPIMinVersion); err != nil {
 		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, longhorn.EngineImageConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.EngineImageConditionTypeReadyReasonBinary, "incompatible")
 		engineImage.Status.State = longhorn.EngineImageStateIncompatible
 		return nil
