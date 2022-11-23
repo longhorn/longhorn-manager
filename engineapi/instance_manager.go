@@ -10,9 +10,8 @@ import (
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
-	"github.com/longhorn/longhorn-manager/types"
-
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
@@ -20,11 +19,9 @@ const (
 	MinInstanceManagerAPIVersion     = 1
 	UnknownInstanceManagerAPIVersion = 0
 
-	CurrentInstanceManagerProxyAPIVersion = 2
-	MinInstanceManagerProxyAPIVersion     = 1
 	UnknownInstanceManagerProxyAPIVersion = 0
-	// UnsupportInstanceManagerProxyAPIVersion means the instance manager without the proxy client (Longhorn release before v1.3.0)
-	UnsupportInstanceManagerProxyAPIVersion = 0
+	// UnsupportedInstanceManagerProxyAPIVersion means the instance manager without the proxy client (Longhorn release before v1.3.0)
+	UnsupportedInstanceManagerProxyAPIVersion = 0
 
 	DefaultEnginePortCount  = 1
 	DefaultReplicaPortCount = 15
@@ -67,17 +64,8 @@ func CheckInstanceManagerCompatibility(imMinVersion, imVersion int) error {
 	return nil
 }
 
-func CheckInstanceManagerProxyCompatibility(im *longhorn.InstanceManager) error {
-	if MinInstanceManagerProxyAPIVersion > im.Status.ProxyAPIVersion ||
-		CurrentInstanceManagerProxyAPIVersion < im.Status.ProxyAPIMinVersion {
-		return fmt.Errorf("current InstanceManager proxy version %v-%v is not compatible with InstanceManagerProxyAPIVersion %v and InstanceManagerProxyAPIMinVersion %v",
-			CurrentInstanceManagerProxyAPIVersion, MinInstanceManagerProxyAPIVersion, im.Status.ProxyAPIVersion, im.Status.ProxyAPIMinVersion)
-	}
-	return nil
-}
-
 func CheckInstanceManagerProxySupport(im *longhorn.InstanceManager) error {
-	if UnsupportInstanceManagerProxyAPIVersion == im.Status.ProxyAPIVersion {
+	if UnsupportedInstanceManagerProxyAPIVersion == im.Status.ProxyAPIVersion {
 		return fmt.Errorf("%v does not support proxy", im.Name)
 	}
 	return nil
