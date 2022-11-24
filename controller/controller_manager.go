@@ -104,6 +104,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh <-chan struct{}, control
 	sbc := NewSystemBackupController(logger, ds, scheme, kubeClient, namespace, controllerID, managerImage)
 	src := NewSystemRestoreController(logger, ds, scheme, kubeClient, namespace, controllerID)
 	lhvac := NewLonghornVolumeAttachmentController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	vrsc := NewVolumeRestoreController(logger, ds, scheme, kubeClient, controllerID, namespace)
 	kpvc := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID)
 	knc := NewKubernetesNodeController(logger, ds, scheme, kubeClient, controllerID)
 	kpc := NewKubernetesPodController(logger, ds, scheme, kubeClient, controllerID)
@@ -138,6 +139,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh <-chan struct{}, control
 	go sbc.Run(Workers, stopCh)
 	go src.Run(Workers, stopCh)
 	go lhvac.Run(Workers, stopCh)
+	go vrsc.Run(Workers, stopCh)
 
 	go kpvc.Run(Workers, stopCh)
 	go knc.Run(Workers, stopCh)

@@ -48,10 +48,12 @@ const (
 	AttacherTypeSalvageController       = AttacherType("salvage-controller")
 	AttacherTypeShareManagerController  = AttacherType("share-manager-controller")
 	AttacherTypeLiveMigrationController = AttacherType("live-migration-controller")
+	AttacherTypeVolumeRestoreController = AttacherType("volume-restore-controller")
 	AttacherTypeLonghornUpgrader        = AttacherType("longhorn-upgrader")
 )
 
 const (
+	AttacherPriorityLevelVolumeRestoreController = 2000
 	AttacherPriorityLevelLonghornAPI             = 1000
 	AttacherPriorityLevelCSIAttacher             = 900
 	AttacherPriorityLevelSalvageController       = 900
@@ -86,6 +88,14 @@ func GetAttacherPriorityLevel(t AttacherType) int {
 	default:
 		return 0
 	}
+}
+
+func GetAttachmentID(attacherType AttacherType, id string) string {
+	retID := string(attacherType) + id
+	if len(retID) > 253 {
+		return retID[:253]
+	}
+	return retID
 }
 
 // VolumeAttachmentSpec defines the desired state of Longhorn VolumeAttachment

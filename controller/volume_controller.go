@@ -1206,11 +1206,12 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	//	return err
 	//}
 
+	// TODO: this one is supposed to handle by the Salvage controller
+	// TODO: this logic is no longer valid because now the volume will only be attached of the v.Spec.NodeID != ""
+	// The frontend should be disabled for auto attached volumes.
+	// The exception is that the frontend should be enabled for the block device expansion during the offline expansion.
 	// The frontend should be disabled for auto attached volumes except for the expansion.
 	if v.Spec.NodeID == "" && v.Status.CurrentNodeID != "" && !v.Status.ExpansionRequired {
-		// TODO: this one is supposed to handle by the Salvage controller
-		// The frontend should be disabled for auto attached volumes.
-		// The exception is that the frontend should be enabled for the block device expansion during the offline expansion.
 		v.Status.FrontendDisabled = true
 	} else {
 		v.Status.FrontendDisabled = v.Spec.DisableFrontend
@@ -1318,7 +1319,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			}
 		}
 	} else { // !isAutoSalvageNeeded
-		if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
+		if v.Status.Robustness == longhorn.VolumeRobustnessFaulted && v.Status.State == longhorn.VolumeStateDetached {
 			v.Status.Robustness = longhorn.VolumeRobustnessUnknown
 			// The volume was faulty and there are usable replicas.
 			// Therefore, we set RemountRequestedAt so that KubernetesPodController restarts the workload pod
@@ -1362,6 +1363,10 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			v.Status.ExpansionRequired = false
 			v.Status.FrontendDisabled = false
 		}
+	}
+
+	if err := vc.checkAndFinishVolumeRestore(v, e, rs); err != nil {
+		return err
 	}
 
 	return nil
@@ -2873,6 +2878,54 @@ func (vc *VolumeController) checkAndInitVolumeRestore(v *longhorn.Volume) error 
 
 	v.Status.RestoreRequired = true
 	v.Status.RestoreInitiated = true
+
+	return nil
+}
+
+func (vc *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
+	log := getLoggerForVolume(vc.logger, v)
+
+	if e == nil {
+		return nil
+	}
+	// a restore/DR volume is considered as finished if the following conditions are satisfied:
+	// 1) The restored backup is up-to-date;
+	// 2) The volume is no longer a DR volume;
+	// 3) The restore/DR volume is
+	//   3.1) it's state `Healthy`;
+	//   3.2) or it's state `Degraded` with all the scheduled replica included in the engine
+	isPurging := false
+	for _, status := range e.Status.PurgeStatus {
+		if status.IsPurging {
+			isPurging = true
+			break
+		}
+	}
+	if !(e.Spec.RequestedBackupRestore != "" && e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup &&
+		!v.Spec.Standby) {
+		return nil
+	}
+	allScheduledReplicasIncluded := true
+	for _, r := range rs {
+		// skip unscheduled replicas
+		if r.Spec.NodeID == "" {
+			continue
+		}
+		if isDownOrDeleted, err := vc.ds.IsNodeDownOrDeleted(r.Spec.NodeID); err != nil {
+			return err
+		} else if isDownOrDeleted {
+			continue
+		}
+		if mode := e.Status.ReplicaModeMap[r.Name]; mode != longhorn.ReplicaModeRW {
+			allScheduledReplicasIncluded = false
+			break
+		}
+	}
+	if !isPurging && (v.Status.Robustness == longhorn.VolumeRobustnessHealthy || v.Status.Robustness == longhorn.VolumeRobustnessDegraded) && allScheduledReplicasIncluded {
+		log.Info("Restore/DR volume finished")
+		v.Status.IsStandby = false
+		v.Status.RestoreRequired = false
+	}
 
 	return nil
 }
