@@ -587,23 +587,23 @@ func (c *SupportBundleController) createSupportBundleManagerDeployment(supportBu
 
 	tolerations, err := c.ds.GetSettingTaintToleration()
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get taint toleration setting before creating engine image daemonset")
+		return nil, errors.Wrapf(err, "failed to get taint toleration setting before creating support bundle manager deployment")
 	}
 
 	imagePullPolicy, err := c.ds.GetSettingImagePullPolicy()
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get system pods image pull policy before creating engine image daemonset")
+		return nil, errors.Wrapf(err, "failed to get system pods image pull policy before creating support bundle manager deployment")
 	}
 
 	priorityClassSetting, err := c.ds.GetSetting(types.SettingNamePriorityClass)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get priority class setting before creating engine image daemonset")
+		return nil, errors.Wrapf(err, "failed to get priority class setting before creating support bundle manager deployment")
 	}
 	priorityClass := priorityClassSetting.Value
 
 	registrySecretSetting, err := c.ds.GetSetting(types.SettingNameRegistrySecret)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get registry secret setting before creating engine image daemonset")
+		return nil, errors.Wrapf(err, "failed to get registry secret setting before creating support bundle manager deployment")
 	}
 	registrySecret := registrySecretSetting.Value
 
