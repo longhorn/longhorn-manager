@@ -122,8 +122,15 @@ func (s *Server) BackupDelete(w http.ResponseWriter, req *http.Request) error {
 
 	volName := mux.Vars(req)["volName"]
 
-	if err := s.m.DeleteBackup(input.Name, volName); err != nil {
-		return errors.Wrapf(err, "error deleting backup %v of volume %v", input.Name, volName)
+	backup, err := s.m.GetBackup(input.Name, volName)
+	if err != nil {
+		logrus.WithError(err).Warnf("failed to get backup %v of volume %v", input.Name, volName)
+	}
+
+	if backup != nil {
+		if err := s.m.DeleteBackup(input.Name, volName); err != nil {
+			return errors.Wrapf(err, "error deleting backup %v of volume %v", input.Name, volName)
+		}
 	}
 
 	bv, err := s.m.GetBackupVolume(volName)
