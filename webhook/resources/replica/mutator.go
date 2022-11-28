@@ -52,7 +52,7 @@ func mutateReplica(newObj runtime.Object, needFinalizer bool) (admission.PatchOp
 	if labels == nil {
 		labels = map[string]string{}
 	}
-	patchOp, err := common.GetLonghornLabelsPatchOp(replica, labels)
+	patchOp, err := common.GetLonghornLabelsPatchOp(replica, labels, nil)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get label patch for replica %v", replica.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")

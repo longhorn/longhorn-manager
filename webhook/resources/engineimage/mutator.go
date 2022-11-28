@@ -53,7 +53,7 @@ func (e *engineImageMutator) Create(request *admission.Request, newObj runtime.O
 	}
 
 	longhornLabels := types.GetEngineImageLabels(name)
-	patchOp, err := common.GetLonghornLabelsPatchOp(engineImage, longhornLabels)
+	patchOp, err := common.GetLonghornLabelsPatchOp(engineImage, longhornLabels, nil)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get label patch for engineImage %v", engineImage.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")
