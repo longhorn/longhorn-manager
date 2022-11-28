@@ -36,11 +36,13 @@ const (
 	FlagCSIResizerImage             = "csi-resizer-image"
 	FlagCSISnapshotterImage         = "csi-snapshotter-image"
 	FlagCSINodeDriverRegistrarImage = "csi-node-driver-registrar-image"
+	FlagCSILivenessProbeImage       = "csi-liveness-probe-image"
 	EnvCSIAttacherImage             = "CSI_ATTACHER_IMAGE"
 	EnvCSIProvisionerImage          = "CSI_PROVISIONER_IMAGE"
 	EnvCSIResizerImage              = "CSI_RESIZER_IMAGE"
 	EnvCSISnapshotterImage          = "CSI_SNAPSHOTTER_IMAGE"
 	EnvCSINodeDriverRegistrarImage  = "CSI_NODE_DRIVER_REGISTRAR_IMAGE"
+	EnvCSILivenessProbeImage        = "CSI_LIVENESS_PROBE_IMAGE"
 
 	FlagCSIAttacherReplicaCount    = "csi-attacher-replica-count"
 	FlagCSIProvisionerReplicaCount = "csi-provisioner-replica-count"
@@ -124,6 +126,12 @@ func DeployDriverCmd() cli.Command {
 				Value:  csi.DefaultCSINodeDriverRegistrarImage,
 			},
 			cli.StringFlag{
+				Name:   FlagCSILivenessProbeImage,
+				Usage:  "Specify CSI liveness probe image",
+				EnvVar: EnvCSILivenessProbeImage,
+				Value:  csi.DefaultCSILivenessProbeImage,
+			},
+			cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",
 			},
@@ -196,6 +204,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 	csiResizerImage := c.String(FlagCSIResizerImage)
 	csiSnapshotterImage := c.String(FlagCSISnapshotterImage)
 	csiNodeDriverRegistrarImage := c.String(FlagCSINodeDriverRegistrarImage)
+	csiLivenessProbeImage := c.String(FlagCSILivenessProbeImage)
 	csiAttacherReplicaCount := c.Int(FlagCSIAttacherReplicaCount)
 	csiProvisionerReplicaCount := c.Int(FlagCSIProvisionerReplicaCount)
 	csiSnapshotterReplicaCount := c.Int(FlagCSISnapshotterReplicaCount)
@@ -296,7 +305,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, managerImage, managerURL, rootDir, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, csiLivenessProbeImage, managerImage, managerURL, rootDir, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
