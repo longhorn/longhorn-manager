@@ -60,7 +60,7 @@ func mutateEngine(newObj runtime.Object, needFinalizer bool) (admission.PatchOps
 	if labels == nil {
 		labels = map[string]string{}
 	}
-	patchOp, err := common.GetLonghornLabelsPatchOp(engine, labels)
+	patchOp, err := common.GetLonghornLabelsPatchOp(engine, labels, nil)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get label patch for engine %v", engine.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")
