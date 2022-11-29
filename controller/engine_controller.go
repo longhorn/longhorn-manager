@@ -1521,10 +1521,17 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 			return
 		}
 
+		fastReplicaRebuild, err := ec.ds.GetSettingAsBool(types.SettingNameFastReplicaRebuildEnabled)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get %v setting", types.SettingNameFastReplicaRebuildEnabled)
+			return
+		}
+
 		engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
 		if err != nil {
 			log.WithError(err).Errorf("Failed rebuilding of replica %v", addr)
-			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, constant.EventReasonFailedRebuilding, "Failed rebuilding replica with Address %v: %v", addr, err)
+			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, constant.EventReasonFailedRebuilding,
+				"Failed rebuilding replica with Address %v: %v", addr, err)
 			return
 		}
 		defer engineClientProxy.Close()
@@ -1533,7 +1540,8 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 		if autoCleanupSystemGeneratedSnapshot {
 			if err := engineClientProxy.SnapshotPurge(e); err != nil {
 				log.WithError(err).Error("Failed to start snapshot purge before rebuilding")
-				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge, "Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", e.Name, e.Spec.VolumeName, err)
+				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
+					"Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", e.Name, e.Spec.VolumeName, err)
 				return
 			}
 			logrus.Debug("Started snapshot purge before rebuilding, will wait for the purge complete")
@@ -1569,7 +1577,9 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 			}
 			if !purgeDone {
 				log.Errorf("Timeout waiting for snapshot purge done before rebuilding, wait interval %v second", purgeWaitIntervalInSecond)
-				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, constant.EventReasonTimeoutSnapshotPurge, "Timeout waiting for snapshot purge done before rebuilding volume %v, wait interval %v second", e.Spec.VolumeName, purgeWaitIntervalInSecond)
+				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, constant.EventReasonTimeoutSnapshotPurge,
+					"Timeout waiting for snapshot purge done before rebuilding volume %v, wait interval %v second",
+					e.Spec.VolumeName, purgeWaitIntervalInSecond)
 				return
 			}
 			log.Debug("Finished snapshot purge, will start rebuilding then")
@@ -1578,12 +1588,14 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 		// start rebuild
 		if e.Spec.RequestedBackupRestore != "" {
 			if e.Spec.NodeID != "" {
-				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, constant.EventReasonRebuilding, "Start rebuilding replica %v with Address %v for restore engine %v and volume %v", replica, addr, e.Name, e.Spec.VolumeName)
-				err = engineClientProxy.ReplicaAdd(e, replicaURL, true)
+				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, constant.EventReasonRebuilding,
+					"Start rebuilding replica %v with Address %v for restore engine %v and volume %v", replica, addr, e.Name, e.Spec.VolumeName)
+				err = engineClientProxy.ReplicaAdd(e, replicaURL, true, fastReplicaRebuild)
 			}
 		} else {
-			ec.eventRecorder.Eventf(e, v1.EventTypeNormal, constant.EventReasonRebuilding, "Start rebuilding replica %v with Address %v for normal engine %v and volume %v", replica, addr, e.Name, e.Spec.VolumeName)
-			err = engineClientProxy.ReplicaAdd(e, replicaURL, false)
+			ec.eventRecorder.Eventf(e, v1.EventTypeNormal, constant.EventReasonRebuilding,
+				"Start rebuilding replica %v with Address %v for normal engine %v and volume %v", replica, addr, e.Name, e.Spec.VolumeName)
+			err = engineClientProxy.ReplicaAdd(e, replicaURL, false, fastReplicaRebuild)
 		}
 		if err != nil {
 			log.WithError(err).Errorf("Failed rebuilding of replica %v", addr)
@@ -1596,7 +1608,8 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 			if err := engineClientProxy.ReplicaRemove(e, replicaURL); err != nil {
 				log.WithError(err).Errorf("Failed to remove rebuilding replica %v", addr)
 				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, constant.EventReasonFailedDeleting,
-					"Failed to remove rebuilding replica %v with address %v for engine %v and volume %v due to rebuilding failure: %v", replica, addr, e.Name, e.Spec.VolumeName, err)
+					"Failed to remove rebuilding replica %v with address %v for engine %v and volume %v due to rebuilding failure: %v",
+					replica, addr, e.Name, e.Spec.VolumeName, err)
 			} else {
 				log.Infof("Removed failed rebuilding replica %v", addr)
 			}
@@ -1634,7 +1647,8 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 		if autoCleanupSystemGeneratedSnapshot {
 			if err := engineClientProxy.SnapshotPurge(e); err != nil {
 				log.WithError(err).Error("Failed to start snapshot purge after rebuilding")
-				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge, "Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", e.Name, e.Spec.VolumeName, err)
+				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
+					"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", e.Name, e.Spec.VolumeName, err)
 				return
 			}
 			logrus.Debug("Started snapshot purge after rebuilding")

@@ -120,7 +120,7 @@ func (e *EngineBinary) ReplicaList(*longhorn.Engine) (map[string]*Replica, error
 
 // ReplicaAdd calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume bool) error {
+func (e *EngineBinary) ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume, fastSync bool) error {
 	if err := ValidateReplicaURL(url); err != nil {
 		return err
 	}
@@ -138,6 +138,12 @@ func (e *EngineBinary) ReplicaAdd(engine *longhorn.Engine, url string, isRestore
 		cmd = append(cmd,
 			"--size", strconv.FormatInt(engine.Spec.VolumeSize, 10),
 			"--current-size", strconv.FormatInt(engine.Status.CurrentSize, 10))
+	}
+
+	if version.ClientVersion.CLIAPIVersion >= 7 {
+		if fastSync {
+			cmd = append(cmd, "--fast-sync")
+		}
 	}
 
 	if _, err := e.ExecuteEngineBinaryWithoutTimeout([]string{}, cmd...); err != nil {

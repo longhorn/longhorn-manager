@@ -64,7 +64,7 @@ type EngineClient interface {
 	VolumeUnmapMarkSnapChainRemovedSet(engine *longhorn.Engine) error
 
 	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)
-	ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume bool) error
+	ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume, fastSync bool) error
 	ReplicaRemove(engine *longhorn.Engine, url string) error
 	ReplicaRebuildStatus(*longhorn.Engine) (map[string]*longhorn.RebuildStatus, error)
 	ReplicaRebuildVerify(engine *longhorn.Engine, url string) error

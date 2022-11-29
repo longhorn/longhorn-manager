@@ -45,7 +45,7 @@ func (c *EngineSimulatorCollection) CreateEngineSimulator(request *EngineSimulat
 		mutex:          &sync.RWMutex{},
 	}
 	for _, addr := range request.ReplicaAddrs {
-		if err := s.ReplicaAdd(&longhorn.Engine{}, addr, false); err != nil {
+		if err := s.ReplicaAdd(&longhorn.Engine{}, addr, false, false); err != nil {
 			return err
 		}
 	}
@@ -121,7 +121,7 @@ func (e *EngineSimulator) ReplicaList(*longhorn.Engine) (map[string]*Replica, er
 	return ret, nil
 }
 
-func (e *EngineSimulator) ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume bool) error {
+func (e *EngineSimulator) ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume, fastSync bool) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
