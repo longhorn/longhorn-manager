@@ -97,6 +97,7 @@ const (
 	SettingNameSnapshotDataIntegrityCronJob                             = SettingName("snapshot-data-integrity-cronjob")
 	SettingNameRestoreVolumeRecurringJobs                               = SettingName("restore-volume-recurring-jobs")
 	SettingNameRemoveSnapshotsDuringFilesystemTrim                      = SettingName("remove-snapshots-during-filesystem-trim")
+	SettingNameFastReplicaRebuildEnabled                                = SettingName("fast-replica-rebuild-enabled")
 )
 
 var (
@@ -162,6 +163,7 @@ var (
 		SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation,
 		SettingNameRestoreVolumeRecurringJobs,
 		SettingNameRemoveSnapshotsDuringFilesystemTrim,
+		SettingNameFastReplicaRebuildEnabled,
 	}
 )
 
@@ -252,6 +254,7 @@ var (
 		SettingNameSnapshotDataIntegrityCronJob:                             SettingDefinitionSnapshotDataIntegrityCronJob,
 		SettingNameRestoreVolumeRecurringJobs:                               SettingDefinitionRestoreVolumeRecurringJobs,
 		SettingNameRemoveSnapshotsDuringFilesystemTrim:                      SettingDefinitionRemoveSnapshotsDuringFilesystemTrim,
+		SettingNameFastReplicaRebuildEnabled:                                SettingDefinitionFastReplicaRebuildEnabled,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -986,6 +989,16 @@ var (
 		ReadOnly: false,
 		Default:  "false",
 	}
+
+	SettingDefinitionFastReplicaRebuildEnabled = SettingDefinition{
+		DisplayName: "Fast Replica Rebuild Enabled",
+		Description: "Enabling this setting will support the fast replica rebuild. The feature relies on the checksum of snapshot disk files, so the feature is setting the snapshot-data-integrity to **enable** or **fast-check** is a prerequisite.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "false",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -1064,6 +1077,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameRestoreVolumeRecurringJobs:
 		fallthrough
 	case SettingNameRemoveSnapshotsDuringFilesystemTrim:
+		fallthrough
+	case SettingNameFastReplicaRebuildEnabled:
 		fallthrough
 	case SettingNameUpgradeChecker:
 		if value != "true" && value != "false" {
