@@ -123,7 +123,7 @@ func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, h
 	cut := strings.LastIndex(info.FullMethod, "/") + 1
 	method := info.FullMethod[cut:]
 	switch method {
-	case "NodeGetCapabilities", "NodeGetVolumeStats":
+	case "NodeGetCapabilities", "NodeGetVolumeStats", "Probe":
 		logLevel = logrus.TraceLevel
 	default:
 		logLevel = logrus.InfoLevel
