@@ -197,7 +197,7 @@ func (c *InstanceManagerClient) EngineProcessCreate(e *longhorn.Engine, volumeFr
 	return c.parseProcess(engineProcess), nil
 }
 
-func (c *InstanceManagerClient) ReplicaProcessCreate(replica *longhorn.Replica, dataPath, backingImagePath string, dataLocality longhorn.DataLocality) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) ReplicaProcessCreate(replica *longhorn.Replica, dataPath, backingImagePath string, dataLocality longhorn.DataLocality, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -212,10 +212,12 @@ func (c *InstanceManagerClient) ReplicaProcessCreate(replica *longhorn.Replica, 
 		args = append(args, "--disableRevCounter")
 	}
 
-	args = append(args, "--volume-name", replica.Spec.VolumeName)
+	if engineCLIAPIVersion >= 7 {
+		args = append(args, "--volume-name", replica.Spec.VolumeName)
 
-	if dataLocality == longhorn.DataLocalityStrictLocal {
-		args = append(args, "--data-server-protocol", "unix")
+		if dataLocality == longhorn.DataLocalityStrictLocal {
+			args = append(args, "--data-server-protocol", "unix")
+		}
 	}
 
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(replica.Spec.EngineImage), types.EngineBinaryName)

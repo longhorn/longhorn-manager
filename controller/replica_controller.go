@@ -403,7 +403,12 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
-	return c.ReplicaProcessCreate(r, dataPath, backingImagePath, v.Spec.DataLocality)
+	engineCLIAPIVersion, err := rc.ds.GetEngineImageCLIAPIVersion(r.Spec.EngineImage)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.ReplicaProcessCreate(r, dataPath, backingImagePath, v.Spec.DataLocality, engineCLIAPIVersion)
 }
 
 func (rc *ReplicaController) GetBackingImagePathForReplicaStarting(r *longhorn.Replica) (string, error) {
