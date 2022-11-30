@@ -618,6 +618,7 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 						InitialDelaySeconds: datastore.PodProbeInitialDelay,
 						PeriodSeconds:       datastore.PodProbePeriodSeconds,
 						TimeoutSeconds:      datastore.PodProbeTimeoutSeconds,
+						FailureThreshold:    datastore.PodLivenessProbeFailureThreshold,
 					},
 					VolumeMounts: []v1.VolumeMount{
 						{
