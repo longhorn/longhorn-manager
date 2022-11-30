@@ -825,9 +825,10 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 										},
 									},
 								},
-								InitialDelaySeconds: 5,
+								InitialDelaySeconds: datastore.PodProbeInitialDelay,
 								TimeoutSeconds:      datastore.PodProbeTimeoutSeconds,
 								PeriodSeconds:       datastore.PodProbePeriodSeconds,
+								FailureThreshold:    datastore.PodLivenessProbeFailureThreshold,
 							},
 							LivenessProbe: &v1.Probe{
 								ProbeHandler: v1.ProbeHandler{
