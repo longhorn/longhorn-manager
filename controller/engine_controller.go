@@ -84,6 +84,7 @@ type EngineController struct {
 	engineMonitorMap   map[string]chan struct{}
 
 	proxyConnCounter util.Counter
+	restoringCounter util.Counter
 }
 
 type EngineMonitor struct {
@@ -104,6 +105,7 @@ type EngineMonitor struct {
 	monitorVoluntaryStopCh chan struct{}
 
 	proxyConnCounter util.Counter
+	restoringCounter util.Counter
 }
 
 func NewEngineController(
@@ -137,6 +139,7 @@ func NewEngineController(
 		engineMonitorMap:   map[string]chan struct{}{},
 
 		proxyConnCounter: proxyConnCounter,
+		restoringCounter: util.NewAtomicCounter(),
 	}
 	ec.instanceHandler = NewInstanceHandler(ds, ec, ec.eventRecorder)
 
@@ -650,6 +653,7 @@ func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
 		restoreBackoff:         flowcontrol.NewBackOff(time.Second*10, restoreMaxInterval),
 		controllerID:           ec.controllerID,
 		proxyConnCounter:       ec.proxyConnCounter,
+		restoringCounter:       ec.restoringCounter,
 	}
 
 	ec.engineMonitorMutex.Lock()
@@ -973,11 +977,21 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			m.logger.Debug("Cannot restore the backup for engine since it is still in the backoff window")
 			return nil
 		}
+
+		volume, err := m.ds.GetVolumeRO(engine.Spec.VolumeName)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get volume %v for restoring counter", engine.Spec.VolumeName)
+		}
+		isDRVolume := volume.Status.IsStandby
+		if !isDRVolume {
+			m.aquireRestoringCounter(true)
+			defer m.aquireRestoringCounter(false)
+		}
+
 		if err = m.restoreBackup(engine, rsMap, cliAPIVersion, engineClientProxy); err != nil {
 			m.restoreBackoff.DeleteEntry(engine.Name)
 			return err
 		}
-
 	}
 
 	var snapshotCloneStatusMap map[string]*longhorn.SnapshotCloneStatus
@@ -1000,6 +1014,15 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	return nil
+}
+
+func (m *EngineMonitor) aquireRestoringCounter(aquire bool) {
+	if !aquire {
+		m.restoringCounter.DecreaseCount()
+		return
+	}
+
+	m.restoringCounter.IncreaseCount()
 }
 
 func (ec *EngineController) syncSnapshotCRs(engine *longhorn.Engine) error {
