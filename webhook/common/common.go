@@ -40,7 +40,7 @@ func GetLonghornFinalizerPatchOp(obj runtime.Object) (string, error) {
 	return fmt.Sprintf(`{"op": "replace", "path": "/metadata/finalizers", "value": %v}`, string(bytes)), nil
 }
 
-func GetLonghornLabelsPatchOp(obj runtime.Object, longhornLabels map[string]string) (string, error) {
+func GetLonghornLabelsPatchOp(obj runtime.Object, requiredLabels, removingLabels map[string]string) (string, error) {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return "", err
@@ -51,8 +51,15 @@ func GetLonghornLabelsPatchOp(obj runtime.Object, longhornLabels map[string]stri
 		labels = map[string]string{}
 	}
 
-	for k, v := range longhornLabels {
-		labels[k] = v
+	if removingLabels != nil {
+		for k := range removingLabels {
+			delete(labels, k)
+		}
+	}
+	if requiredLabels != nil {
+		for k, v := range requiredLabels {
+			labels[k] = v
+		}
 	}
 
 	volumeName := ""

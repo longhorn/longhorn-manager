@@ -182,6 +182,10 @@ func (c *InstanceManagerClient) EngineProcessCreate(e *longhorn.Engine, volumeFr
 		if dataLocality == longhorn.DataLocalityStrictLocal {
 			args = append(args, "--data-server-protocol", "unix")
 		}
+
+		if e.Spec.UnmapMarkSnapChainRemovedEnabled {
+			args = append(args, "--unmap-mark-snap-chain-removed")
+		}
 	}
 
 	for _, addr := range e.Status.CurrentReplicaAddressMap {
@@ -217,6 +221,10 @@ func (c *InstanceManagerClient) ReplicaProcessCreate(replica *longhorn.Replica, 
 
 		if dataLocality == longhorn.DataLocalityStrictLocal {
 			args = append(args, "--data-server-protocol", "unix")
+		}
+
+		if replica.Spec.UnmapMarkDiskChainRemovedEnabled {
+			args = append(args, "--unmap-mark-disk-chain-removed")
 		}
 	}
 
@@ -305,6 +313,10 @@ func (c *InstanceManagerClient) EngineProcessUpgrade(e *longhorn.Engine, volumeF
 		if dataLocality == longhorn.DataLocalityStrictLocal {
 			args = append(args,
 				"--data-server-protocol", "unix")
+		}
+
+		if e.Spec.UnmapMarkSnapChainRemovedEnabled {
+			args = append(args, "--unmap-mark-snap-chain-removed")
 		}
 	}
 

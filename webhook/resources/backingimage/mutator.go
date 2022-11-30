@@ -81,7 +81,7 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 	}
 
 	longhornLabels := types.GetBackingImageLabels()
-	patchOp, err := common.GetLonghornLabelsPatchOp(backingImage, longhornLabels)
+	patchOp, err := common.GetLonghornLabelsPatchOp(backingImage, longhornLabels, nil)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get label patch for backingImage %v", backingImage.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")

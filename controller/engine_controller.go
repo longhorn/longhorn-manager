@@ -871,6 +871,15 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			return err
 		}
 		engine.Status.RebuildStatus = rebuildStatus
+
+		// Check and correct flag UnmapMarkSnapChainRemoved for the engine and replicas
+		engine.Status.UnmapMarkSnapChainRemovedEnabled = volumeInfo.UnmapMarkSnapChainRemoved
+		if engine.Spec.UnmapMarkSnapChainRemovedEnabled != volumeInfo.UnmapMarkSnapChainRemoved {
+			if err := engineClientProxy.VolumeUnmapMarkSnapChainRemovedSet(engine); err != nil {
+				return errors.Wrapf(err, "failed to correct flag UnmapMarkSnapChainRemoved from %v to %v",
+					volumeInfo.UnmapMarkSnapChainRemoved, engine.Spec.UnmapMarkSnapChainRemovedEnabled)
+			}
+		}
 	} else {
 		// For incompatible running engine, the current size is always `engine.Spec.VolumeSize`.
 		engine.Status.CurrentSize = engine.Spec.VolumeSize

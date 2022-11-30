@@ -12,6 +12,7 @@ type RancherClient struct {
 	Backup                        BackupOperations
 	BackupInput                   BackupInputOperations
 	BackupStatus                  BackupStatusOperations
+	Orphan                        OrphanOperations
 	RestoreStatus                 RestoreStatusOperations
 	PurgeStatus                   PurgeStatusOperations
 	RebuildStatus                 RebuildStatusOperations
@@ -72,6 +73,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.Backup = newBackupClient(client)
 	client.BackupInput = newBackupInputClient(client)
 	client.BackupStatus = newBackupStatusClient(client)
+	client.Orphan = newOrphanClient(client)
 	client.RestoreStatus = newRestoreStatusClient(client)
 	client.PurgeStatus = newPurgeStatusClient(client)
 	client.RebuildStatus = newRebuildStatusClient(client)

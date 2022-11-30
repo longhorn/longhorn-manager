@@ -49,7 +49,7 @@ func (o *orphanMutator) Create(request *admission.Request, newObj runtime.Object
 		return nil, werror.NewInvalidError("invalid orphan labels", "")
 	}
 
-	patchOp, err := common.GetLonghornLabelsPatchOp(orphan, longhornLabels)
+	patchOp, err := common.GetLonghornLabelsPatchOp(orphan, longhornLabels, nil)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get label patch for orphan %v", orphan.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")

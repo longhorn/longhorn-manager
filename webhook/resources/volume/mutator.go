@@ -106,6 +106,10 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/restoreVolumeRecurringJob", "value": "%s"}`, longhorn.RestoreVolumeRecurringJobDefault))
 	}
 
+	if volume.Spec.UnmapMarkSnapChainRemoved == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/unmapMarkSnapChainRemoved", "value": "%s"}`, longhorn.UnmapMarkSnapChainRemovedIgnored))
+	}
+
 	if string(volume.Spec.AccessMode) == "" {
 		accessModeFromBackup := longhorn.AccessModeReadWriteOnce
 		if volume.Spec.FromBackup != "" {
@@ -180,7 +184,12 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		labels[types.LonghornLabelBackupVolume] = bvName
 	}
 
-	patchOp, err := common.GetLonghornLabelsPatchOp(volume, labels)
+	labelsForVolumesFollowsGlobalSettings := datastore.GetLabelsForVolumesFollowsGlobalSettings(volume)
+	for k, v := range labelsForVolumesFollowsGlobalSettings {
+		labels[k] = v
+	}
+
+	patchOp, err := common.GetLonghornLabelsPatchOp(volume, labels, types.SettingsRelatedToVolume)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get label patch for volume %v", volume.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")
@@ -234,6 +243,9 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/recurringJobs/%d/labels", "value": {}}`, id))
 		}
 	}
+	if volume.Spec.UnmapMarkSnapChainRemoved == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/unmapMarkSnapChainRemoved", "value": "%s"}`, longhorn.UnmapMarkSnapChainRemovedIgnored))
+	}
 
 	size := util.RoundUpSize(volume.Spec.Size)
 	if size != volume.Spec.Size {
@@ -244,7 +256,13 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	if labels == nil {
 		labels = map[string]string{}
 	}
-	patchOp, err := common.GetLonghornLabelsPatchOp(volume, labels)
+
+	labelsForVolumesFollowsGlobalSettings := datastore.GetLabelsForVolumesFollowsGlobalSettings(volume)
+	for k, v := range labelsForVolumesFollowsGlobalSettings {
+		labels[k] = v
+	}
+
+	patchOp, err := common.GetLonghornLabelsPatchOp(volume, labels, types.SettingsRelatedToVolume)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get label patch for volume %v", volume.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")

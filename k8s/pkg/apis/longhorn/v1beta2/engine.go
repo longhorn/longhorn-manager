@@ -135,6 +135,8 @@ type EngineSpec struct {
 	// +optional
 	RevisionCounterDisabled bool `json:"revisionCounterDisabled"`
 	// +optional
+	UnmapMarkSnapChainRemovedEnabled bool `json:"unmapMarkSnapChainRemovedEnabled"`
+	// +optional
 	Active bool `json:"active"`
 }
 
@@ -180,6 +182,8 @@ type EngineStatus struct {
 	LastExpansionError string `json:"lastExpansionError"`
 	// +optional
 	LastExpansionFailedAt string `json:"lastExpansionFailedAt"`
+	// +optional
+	UnmapMarkSnapChainRemovedEnabled bool `json:"unmapMarkSnapChainRemovedEnabled"`
 }
 
 // +genclient

@@ -54,7 +54,7 @@ func (s *snapShotMutator) Create(request *admission.Request, newObj runtime.Obje
 		return nil, werror.NewInvalidError(err.Error(), "spec.Volume")
 	}
 
-	patchOp, err := common.GetLonghornLabelsPatchOp(snapshot, types.GetVolumeLabels(volume.Name))
+	patchOp, err := common.GetLonghornLabelsPatchOp(snapshot, types.GetVolumeLabels(volume.Name), nil)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get labels patch for snapshot %v", snapshot.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")

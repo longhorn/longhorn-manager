@@ -70,6 +70,15 @@ const (
 	ReplicaAutoBalanceBestEffort  = ReplicaAutoBalance("best-effort")
 )
 
+// +kubebuilder:validation:Enum=ignored;disabled;enabled
+type UnmapMarkSnapChainRemoved string
+
+const (
+	UnmapMarkSnapChainRemovedIgnored  = UnmapMarkSnapChainRemoved("ignored")
+	UnmapMarkSnapChainRemovedDisabled = UnmapMarkSnapChainRemoved("disabled")
+	UnmapMarkSnapChainRemovedEnabled  = UnmapMarkSnapChainRemoved("enabled")
+)
+
 type VolumeCloneState string
 
 const (
@@ -206,6 +215,8 @@ type VolumeSpec struct {
 	DisableFrontend bool `json:"disableFrontend"`
 	// +optional
 	RevisionCounterDisabled bool `json:"revisionCounterDisabled"`
+	// +optional
+	UnmapMarkSnapChainRemoved UnmapMarkSnapChainRemoved `json:"unmapMarkSnapChainRemoved"`
 	// +optional
 	LastAttachedBy string `json:"lastAttachedBy"`
 	// +optional

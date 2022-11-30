@@ -7,7 +7,7 @@ const (
 type CloneStatus struct {
 	Resource `yaml:"-"`
 
-	SourceSnapshot string `json:"sourceSnapshot,omitempty" yaml:"source_snapshot,omitempty"`
+	Snapshot string `json:"snapshot,omitempty" yaml:"snapshot,omitempty"`
 
 	SourceVolume string `json:"sourceVolume,omitempty" yaml:"source_volume,omitempty"`
 

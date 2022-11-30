@@ -13,7 +13,7 @@ type EngineImage struct {
 
 	CliAPIVersion int64 `json:"cliAPIVersion,omitempty" yaml:"cli_apiversion,omitempty"`
 
-	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+	Conditions []string `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
 	ControllerAPIMinVersion int64 `json:"controllerAPIMinVersion,omitempty" yaml:"controller_apimin_version,omitempty"`
 
