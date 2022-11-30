@@ -17,7 +17,7 @@ type Attachment struct {
 	// +optional
 	Parameters map[string]string `json:"parameters"`
 	// +optional
-	Attached bool `json:"attached"`
+	Attached *bool `json:"attached,omitempty"`
 	// +optional
 	AttachError *VolumeError `json:"attachError,omitempty"`
 	// +optional
@@ -40,29 +40,37 @@ type VolumeError struct {
 type AttacherType string
 
 const (
-	AttacherTypeCSIAttacher             = AttacherType("csi-attacher")
-	AttacherTypeLonghornAPI             = AttacherType("longhorn-api")
-	AttacherTypeSnapshotController      = AttacherType("snapshot-controller")
-	AttacherTypeBackupController        = AttacherType("backup-controller")
-	AttacherTypeCloningController       = AttacherType("cloning-controller")
-	AttacherTypeSalvageController       = AttacherType("salvage-controller")
-	AttacherTypeShareManagerController  = AttacherType("share-manager-controller")
-	AttacherTypeLiveMigrationController = AttacherType("live-migration-controller")
-	AttacherTypeVolumeRestoreController = AttacherType("volume-restore-controller")
-	AttacherTypeLonghornUpgrader        = AttacherType("longhorn-upgrader")
+	AttacherTypeCSIAttacher              = AttacherType("csi-attacher")
+	AttacherTypeLonghornAPI              = AttacherType("longhorn-api")
+	AttacherTypeSnapshotController       = AttacherType("snapshot-controller")
+	AttacherTypeBackupController         = AttacherType("backup-controller")
+	AttacherTypeCloningController        = AttacherType("cloning-controller")
+	AttacherTypeSalvageController        = AttacherType("salvage-controller")
+	AttacherTypeShareManagerController   = AttacherType("share-manager-controller")
+	AttacherTypeLiveMigrationController  = AttacherType("live-migration-controller")
+	AttacherTypeVolumeRestoreController  = AttacherType("volume-restore-controller")
+	AttacherTypeVolumeEvictionController = AttacherType("volume-eviction-controller")
+	AttacherTypeLonghornUpgrader         = AttacherType("longhorn-upgrader")
 )
 
 const (
-	AttacherPriorityLevelVolumeRestoreController = 2000
-	AttacherPriorityLevelLonghornAPI             = 1000
-	AttacherPriorityLevelCSIAttacher             = 900
-	AttacherPriorityLevelSalvageController       = 900
-	AttacherPriorityLevelShareManagerController  = 900
-	AttacherPriorityLevelLonghornUpgrader        = 900
-	AttacherPriorityLevelLiveMigrationController = 800
-	AttacherPriorityLevelSnapshotController      = 800
-	AttacherPriorityLevelBackupController        = 800
-	AttacherPriorityLevelCloningController       = 800
+	AttacherPriorityLevelVolumeRestoreController  = 2000
+	AttacherPriorityLevelLonghornAPI              = 1000
+	AttacherPriorityLevelCSIAttacher              = 900
+	AttacherPriorityLevelSalvageController        = 900
+	AttacherPriorityLevelShareManagerController   = 900
+	AttacherPriorityLevelLonghornUpgrader         = 900
+	AttacherPriorityLevelLiveMigrationController  = 800
+	AttacherPriorityLevelSnapshotController       = 800
+	AttacherPriorityLevelBackupController         = 800
+	AttacherPriorityLevelCloningController        = 800
+	AttacherPriorityLevelVolumeEvictionController = 800
+)
+
+const (
+	TrueValue  = "true"
+	FalseValue = "false"
+	AnyValue   = "any"
 )
 
 func GetAttacherPriorityLevel(t AttacherType) int {
@@ -91,7 +99,7 @@ func GetAttacherPriorityLevel(t AttacherType) int {
 }
 
 func GetAttachmentID(attacherType AttacherType, id string) string {
-	retID := string(attacherType) + id
+	retID := string(attacherType) + "-" + id
 	if len(retID) > 253 {
 		return retID[:253]
 	}

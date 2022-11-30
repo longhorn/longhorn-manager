@@ -774,7 +774,7 @@ func getFailedReplicaCount(rs map[string]*longhorn.Replica) int {
 	return count
 }
 
-func (vc *VolumeController) hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
+func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 	for _, r := range rs {
 		if r.Status.EvictionRequested {
 			return true
@@ -871,7 +871,7 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 
 func (vc *VolumeController) cleanupFailedToScheduledReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (err error) {
 	healthyCount := getHealthyAndActiveReplicaCount(rs)
-	hasEvictionRequestedReplicas := vc.hasReplicaEvictionRequested(rs)
+	hasEvictionRequestedReplicas := hasReplicaEvictionRequested(rs)
 
 	if healthyCount >= v.Spec.NumberOfReplicas {
 		for _, r := range rs {
@@ -1461,6 +1461,10 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 					}
 				case longhorn.VolumeStateAttached:
 					// This is a stable state
+					// Try to openVolumeDependentResources so that we start the newly added replicas if they exist
+					if err := vc.openVolumeDependentResources(v, e, rs, log); err != nil {
+						return err
+					}
 					if !vc.verifyVolumeDependentResourcesOpened(e, rs) {
 						log.Warnf("volume is attached but dependent resources are not opened")
 					}
@@ -3055,7 +3059,7 @@ func (vc *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longho
 	//   6, Export data as a backing image
 	isRestoringDRVol := v.Status.RestoreRequired || v.Status.IsStandby
 	isExpansionVol := v.Status.ExpansionRequired
-	isEvictionRequestedOnVol := vc.hasReplicaEvictionRequested(rs)
+	isEvictionRequestedOnVol := hasReplicaEvictionRequested(rs)
 	isTargetVolOfCloning := isTargetVolumeOfCloning(v)
 	sourceVolumeOfCloning, err := vc.isSourceVolumeOfCloning(v)
 	isExportingBackingImage := len(exportingBackingImageDataSources) != 0
@@ -3091,7 +3095,7 @@ func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longho
 	}
 
 	// Don't do auto-detachment if the eviction is going on.
-	if vc.hasReplicaEvictionRequested(rs) {
+	if hasReplicaEvictionRequested(rs) {
 		return nil
 	}
 

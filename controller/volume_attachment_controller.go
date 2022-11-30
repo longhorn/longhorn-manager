@@ -16,8 +16,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
+	utilpointer "k8s.io/utils/pointer"
 	"reflect"
-	"strconv"
 	"time"
 )
 
@@ -352,51 +352,75 @@ func updateStatusForDesiredDetachingAttachment(attachment *longhorn.Attachment, 
 	delete(va.Status.Attachments, attachment.ID)
 }
 
-func updateStatusForDesiredAttachingAttachment(attachment *longhorn.Attachment, va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
-	if _, ok := va.Status.Attachments[attachment.ID]; !ok {
-		copiedAttachment := longhorn.Attachment{
-			ID:         attachment.ID,
-			Type:       attachment.Type,
-			NodeID:     attachment.NodeID,
-			Parameters: copyStringMap(attachment.Parameters),
+func updateStatusForDesiredAttachingAttachment(specAttachment *longhorn.Attachment, va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
+	if _, ok := va.Status.Attachments[specAttachment.ID]; !ok {
+		va.Status.Attachments[specAttachment.ID] = &longhorn.Attachment{
+			ID:         specAttachment.ID,
+			Type:       specAttachment.Type,
+			NodeID:     specAttachment.NodeID,
+			Parameters: copyStringMap(specAttachment.Parameters),
+			Attached:   utilpointer.Bool(false),
 		}
-		va.Status.Attachments[attachment.ID] = &copiedAttachment
+	}
+	statusAttachment := va.Status.Attachments[specAttachment.ID]
+
+	// Sync info from the corresponding attachment in va.Spec.Attachments if there are changes
+	if statusAttachment.Type != specAttachment.Type ||
+		statusAttachment.NodeID != specAttachment.NodeID ||
+		!reflect.DeepEqual(statusAttachment.Parameters, specAttachment.Parameters) {
+		// sync info from spec
+		statusAttachment.Type = specAttachment.Type
+		statusAttachment.NodeID = specAttachment.NodeID
+		statusAttachment.Parameters = copyStringMap(specAttachment.Parameters)
+		// reset status info
+		statusAttachment.Attached = utilpointer.Bool(false)
+		statusAttachment.AttachError = nil
+		statusAttachment.DetachError = nil
 	}
 
-	attachment = va.Status.Attachments[attachment.ID]
 	if vol.Spec.NodeID == "" {
 		return
 	}
 
-	if vol.Spec.NodeID != attachment.NodeID {
-		attachment.AttachError = &longhorn.VolumeError{
+	if vol.Spec.NodeID != statusAttachment.NodeID {
+		statusAttachment.AttachError = &longhorn.VolumeError{
 			// TODO: Do we need to generate TimeStamp here?
-			Message: fmt.Sprintf("cannot attach the volume to node %v because volume has already desired to be attached to node %v", attachment.NodeID, vol.Spec.NodeID),
+			Message: fmt.Sprintf("cannot attach the volume to node %v because volume has already desired to be attached to node %v", statusAttachment.NodeID, vol.Spec.NodeID),
 		}
 		return
 	}
 
-	if vol.Status.CurrentNodeID == attachment.NodeID && vol.Status.State == longhorn.VolumeStateAttached {
-		if !verifyAttachmentParameters(attachment, vol) {
-			attachment.AttachError = &longhorn.VolumeError{
+	if vol.Status.CurrentNodeID == statusAttachment.NodeID && vol.Status.State == longhorn.VolumeStateAttached {
+		if !verifyAttachmentParameters(statusAttachment, vol) {
+			statusAttachment.AttachError = &longhorn.VolumeError{
 				// TODO: Do we need to generate TimeStamp here?
 				Message: fmt.Sprintf("volume %v has already attached to node %v with incompatible parameters", vol.Name, vol.Status.CurrentNodeID),
 			}
 			return
 		}
-		attachment.Attached = true
-		attachment.AttachError = nil
+		statusAttachment.Attached = utilpointer.Bool(true)
+		statusAttachment.AttachError = nil
 	}
 	return
 }
 
 func verifyAttachmentParameters(attachment *longhorn.Attachment, vol *longhorn.Volume) bool {
-	disableFrontend, _ := strconv.ParseBool(attachment.Parameters["disableFrontend"])
-	return vol.Spec.DisableFrontend == disableFrontend
+	disableFrontendString, ok := attachment.Parameters["disableFrontend"]
+	if !ok || disableFrontendString == longhorn.FalseValue {
+		return vol.Spec.DisableFrontend == false
+	} else if disableFrontendString == longhorn.TrueValue {
+		return vol.Spec.DisableFrontend == true
+	}
+	return true
 }
 
 func setAttachmentParameter(attachment *longhorn.Attachment, vol *longhorn.Volume) {
-	vol.Spec.DisableFrontend, _ = strconv.ParseBool(attachment.Parameters["disableFrontend"])
+	disableFrontendString, ok := attachment.Parameters["disableFrontend"]
+	if !ok || disableFrontendString == longhorn.FalseValue {
+		vol.Spec.DisableFrontend = false
+	} else if disableFrontendString == longhorn.TrueValue {
+		vol.Spec.DisableFrontend = true
+	}
 	vol.Spec.LastAttachedBy = attachment.Parameters["lastAttachedBy"]
 }
 

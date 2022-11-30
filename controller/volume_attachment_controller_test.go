@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
+	utilpointer "k8s.io/utils/pointer"
 )
 
 type volumeAttachmentTestCase struct {
@@ -52,6 +53,7 @@ func (s *TestSuite) TestVolumeAttachmentLifeCycle(c *C) {
 			Type:       longhorn.AttacherTypeCSIAttacher,
 			NodeID:     TestNode1,
 			Parameters: map[string]string{},
+			Attached:   utilpointer.Bool(false),
 		},
 	}
 	tc.expectedVol.Spec.NodeID = TestNode1
@@ -83,12 +85,14 @@ func (s *TestSuite) TestVolumeAttachmentLifeCycle(c *C) {
 			Type:       longhorn.AttacherTypeCSIAttacher,
 			NodeID:     TestNode1,
 			Parameters: map[string]string{},
+			Attached:   utilpointer.Bool(false),
 		},
 		"attachment-02": &longhorn.Attachment{
 			ID:         "attachment-02",
 			Type:       longhorn.AttacherTypeSnapshotController,
 			NodeID:     TestNode2,
 			Parameters: map[string]string{},
+			Attached:   utilpointer.Bool(false),
 			AttachError: &longhorn.VolumeError{
 				Message: fmt.Sprintf("cannot attach the volume to node %v because volume has already desired to be attached to node %v", TestNode2, TestNode1),
 			},
@@ -123,12 +127,14 @@ func (s *TestSuite) TestVolumeAttachmentLifeCycle(c *C) {
 			Type:       longhorn.AttacherTypeCSIAttacher,
 			NodeID:     TestNode1,
 			Parameters: map[string]string{},
+			Attached:   utilpointer.Bool(false),
 		},
 		"attachment-02": &longhorn.Attachment{
 			ID:         "attachment-02",
 			Type:       longhorn.AttacherTypeCSIAttacher,
 			NodeID:     TestNode2,
 			Parameters: map[string]string{},
+			Attached:   utilpointer.Bool(false),
 			AttachError: &longhorn.VolumeError{
 				Message: fmt.Sprintf("cannot attach the volume to node %v because volume has already desired to be attached to node %v", TestNode2, TestNode1),
 			},
@@ -159,7 +165,7 @@ func (s *TestSuite) TestVolumeAttachmentLifeCycle(c *C) {
 			Type:       longhorn.AttacherTypeCSIAttacher,
 			NodeID:     TestNode1,
 			Parameters: map[string]string{},
-			Attached:   true,
+			Attached:   utilpointer.Bool(true),
 		},
 	}
 	testCases["test case 4: attach: successfully attached case"] = tc
@@ -196,6 +202,7 @@ func (s *TestSuite) TestVolumeAttachmentLifeCycle(c *C) {
 			Parameters: map[string]string{
 				"disableFrontend": "true",
 			},
+			Attached: utilpointer.Bool(false),
 			AttachError: &longhorn.VolumeError{
 				Message: fmt.Sprintf("volume %v has already attached to node %v with incompatible parameters", tc.vol.Name, tc.vol.Status.CurrentNodeID),
 			},
@@ -205,7 +212,7 @@ func (s *TestSuite) TestVolumeAttachmentLifeCycle(c *C) {
 			Type:       longhorn.AttacherTypeSnapshotController,
 			NodeID:     TestNode1,
 			Parameters: map[string]string{},
-			Attached:   true,
+			Attached:   utilpointer.Bool(true),
 		},
 	}
 	testCases["test case 5: attach: fail to attach because the volume is already attached with incompatible parameters"] = tc
@@ -220,7 +227,7 @@ func (s *TestSuite) TestVolumeAttachmentLifeCycle(c *C) {
 			Type:       longhorn.AttacherTypeCSIAttacher,
 			NodeID:     TestNode1,
 			Parameters: map[string]string{},
-			Attached:   true,
+			Attached:   utilpointer.Bool(true),
 		},
 	}
 	tc.vol.Status.OwnerID = TestNode1
@@ -249,14 +256,14 @@ func (s *TestSuite) TestVolumeAttachmentLifeCycle(c *C) {
 			Type:       longhorn.AttacherTypeCSIAttacher,
 			NodeID:     TestNode1,
 			Parameters: map[string]string{},
-			Attached:   true,
+			Attached:   utilpointer.Bool(true),
 		},
 		"attachment-02": &longhorn.Attachment{
 			ID:         "attachment-02",
 			Type:       longhorn.AttacherTypeSnapshotController,
 			NodeID:     TestNode1,
 			Parameters: map[string]string{},
-			Attached:   true,
+			Attached:   utilpointer.Bool(true),
 		},
 	}
 	tc.vol.Status.OwnerID = TestNode1
@@ -270,7 +277,7 @@ func (s *TestSuite) TestVolumeAttachmentLifeCycle(c *C) {
 			Type:       longhorn.AttacherTypeCSIAttacher,
 			NodeID:     TestNode1,
 			Parameters: map[string]string{},
-			Attached:   true,
+			Attached:   utilpointer.Bool(true),
 		},
 	}
 	testCases["test case 7: detach: detach while there are still other attachments requesting the same node"] = tc
@@ -298,6 +305,7 @@ func (s *TestSuite) TestVolumeAttachmentLifeCycle(c *C) {
 			Type:       longhorn.AttacherTypeCSIAttacher,
 			NodeID:     TestNode1,
 			Parameters: map[string]string{},
+			Attached:   utilpointer.Bool(false),
 		},
 	}
 	tc.expectedVol.Spec.NodeID = ""
