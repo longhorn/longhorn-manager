@@ -10,9 +10,11 @@ import (
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 )
@@ -23,6 +25,7 @@ const (
 	DefaultCSIResizerImage             = "longhornio/csi-resizer:v1.2.0"
 	DefaultCSISnapshotterImage         = "longhornio/csi-snapshotter:v3.0.3"
 	DefaultCSINodeDriverRegistrarImage = "longhornio/csi-node-driver-registrar:v2.5.0"
+	DefaultCSILivenessProbeImage       = "longhornio/livenessprobe:v2.8.0"
 
 	DefaultCSIAttacherReplicaCount    = 3
 	DefaultCSIProvisionerReplicaCount = 3
@@ -35,6 +38,7 @@ const (
 	DefaultKubernetesCSIDirSuffix        = "/kubernetes.io/csi/"
 	DefaultInContainerCSISocketDir       = "/csi/"
 	DefaultInContainerCSIRegistrationDir = "/registration"
+	DefaultCSILivenessProbePort          = 9808
 
 	AnnotationCSIGitCommit      = types.LonghornDriverName + "/git-commit"
 	AnnotationCSIVersion        = types.LonghornDriverName + "/version"
@@ -318,7 +322,7 @@ type PluginDeployment struct {
 	daemonSet *appsv1.DaemonSet
 }
 
-func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, managerImage, managerURL, rootDir string,
+func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, livenessProbeImage, managerImage, managerURL, rootDir string,
 	tolerations []v1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy, nodeSelector map[string]string) *PluginDeployment {
 
 	daemonSet := &appsv1.DaemonSet{
@@ -388,6 +392,21 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 							},
 						},
 						{
+							Name:            "longhorn-liveness-probe",
+							ImagePullPolicy: imagePullPolicy,
+							Image:           livenessProbeImage,
+							Args: []string{
+								"--v=4",
+								fmt.Sprintf("--csi-address=%s", GetInContainerCSISocketFilePath()),
+							},
+							VolumeMounts: []v1.VolumeMount{
+								{
+									Name:      "socket-dir",
+									MountPath: GetInContainerCSISocketDir(),
+								},
+							},
+						},
+						{
 							Name: "longhorn-csi-plugin",
 							SecurityContext: &v1.SecurityContext{
 								Privileged: pointer.BoolPtr(true),
@@ -400,6 +419,24 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, ma
 							},
 							Image:           managerImage,
 							ImagePullPolicy: imagePullPolicy,
+							Ports: []v1.ContainerPort{
+								{
+									ContainerPort: DefaultCSILivenessProbePort,
+									Protocol:      v1.ProtocolTCP,
+								},
+							},
+							LivenessProbe: &v1.Probe{
+								ProbeHandler: v1.ProbeHandler{
+									HTTPGet: &v1.HTTPGetAction{
+										Path: "/healthz",
+										Port: intstr.FromInt(DefaultCSILivenessProbePort),
+									},
+								},
+								InitialDelaySeconds: datastore.PodProbeInitialDelay,
+								TimeoutSeconds:      datastore.PodProbeTimeoutSeconds,
+								PeriodSeconds:       datastore.PodProbePeriodSeconds,
+								FailureThreshold:    datastore.PodLivenessProbeFailureThreshold,
+							},
 							Lifecycle: &v1.Lifecycle{
 								PreStop: &v1.LifecycleHandler{
 									Exec: &v1.ExecAction{
