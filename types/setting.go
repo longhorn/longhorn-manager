@@ -75,6 +75,7 @@ const (
 	SettingNameDisableReplicaRebuild                                    = SettingName("disable-replica-rebuild")
 	SettingNameReplicaReplenishmentWaitInterval                         = SettingName("replica-replenishment-wait-interval")
 	SettingNameConcurrentReplicaRebuildPerNodeLimit                     = SettingName("concurrent-replica-rebuild-per-node-limit")
+	SettingNameConcurrentBackupRestorePerNodeLimit                      = SettingName("concurrent-volume-backup-restore-per-node-limit")
 	SettingNameSystemManagedPodsImagePullPolicy                         = SettingName("system-managed-pods-image-pull-policy")
 	SettingNameAllowVolumeCreationWithDegradedAvailability              = SettingName("allow-volume-creation-with-degraded-availability")
 	SettingNameAutoCleanupSystemGeneratedSnapshot                       = SettingName("auto-cleanup-system-generated-snapshot")
@@ -141,6 +142,7 @@ var (
 		SettingNameDisableReplicaRebuild,
 		SettingNameReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit,
+		SettingNameConcurrentBackupRestorePerNodeLimit,
 		SettingNameSystemManagedPodsImagePullPolicy,
 		SettingNameAllowVolumeCreationWithDegradedAvailability,
 		SettingNameAutoCleanupSystemGeneratedSnapshot,
@@ -232,6 +234,7 @@ var (
 		SettingNameDisableReplicaRebuild:                                    SettingDefinitionDisableReplicaRebuild,
 		SettingNameReplicaReplenishmentWaitInterval:                         SettingDefinitionReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit:                     SettingDefinitionConcurrentReplicaRebuildPerNodeLimit,
+		SettingNameConcurrentBackupRestorePerNodeLimit:                      SettingDefinitionConcurrentVolumeBackupRestorePerNodeLimit,
 		SettingNameSystemManagedPodsImagePullPolicy:                         SettingDefinitionSystemManagedPodsImagePullPolicy,
 		SettingNameAllowVolumeCreationWithDegradedAvailability:              SettingDefinitionAllowVolumeCreationWithDegradedAvailability,
 		SettingNameAutoCleanupSystemGeneratedSnapshot:                       SettingDefinitionAutoCleanupSystemGeneratedSnapshot,
@@ -729,6 +732,18 @@ var (
 		Default:  "5",
 	}
 
+	SettingDefinitionConcurrentVolumeBackupRestorePerNodeLimit = SettingDefinition{
+		DisplayName: "Concurrent Volume Backup Restore Per Node Limit",
+		Description: "This setting controls how many volumes on a node can restore the backup concurrently.\n\n" +
+			"Longhorn blocks the backup restore once the restoring volume count exceeds the limit.\n\n" +
+			"Set the value to **0** to disable backup restore.\n\n",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeInt,
+		Required: true,
+		ReadOnly: false,
+		Default:  "5",
+	}
+
 	SettingDefinitionSystemManagedPodsImagePullPolicy = SettingDefinition{
 		DisplayName: "System Managed Pod Image Pull Policy",
 		Description: "This setting defines the Image Pull Policy of Longhorn system managed pods, e.g. instance manager, engine image, CSI driver, etc. " +
@@ -1132,6 +1147,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameReplicaReplenishmentWaitInterval:
 		fallthrough
 	case SettingNameConcurrentReplicaRebuildPerNodeLimit:
+		fallthrough
+	case SettingNameConcurrentBackupRestorePerNodeLimit:
 		fallthrough
 	case SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit:
 		fallthrough

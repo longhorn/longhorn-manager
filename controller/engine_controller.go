@@ -984,6 +984,16 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 		isDRVolume := volume.Status.IsStandby
 		if !isDRVolume {
+			if isReachedLimit, err := m.isReachedConcurrentVolumeBackupRestoreLimit(); err != nil {
+				m.logger.WithError(err).Warn("Failed to check concurrent volume backup restore limit")
+				return nil
+
+			} else if isReachedLimit {
+				m.logger.Debugf("Reached the concurrent volume backup restore limit of %v, retry later", types.SettingNameConcurrentBackupRestorePerNodeLimit)
+				m.restoreBackoff.Next(engine.Name, time.Now())
+				return nil
+			}
+
 			m.aquireRestoringCounter(true)
 			defer m.aquireRestoringCounter(false)
 		}
@@ -1308,6 +1318,15 @@ func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]
 	}
 
 	return nil
+}
+
+func (m *EngineMonitor) isReachedConcurrentVolumeBackupRestoreLimit() (isUnderLimit bool, err error) {
+	limit, err := m.ds.GetSettingAsInt(types.SettingNameConcurrentBackupRestorePerNodeLimit)
+	if err != nil {
+		return false, err
+	}
+
+	return int(m.restoringCounter.GetCount()) >= int(limit), nil
 }
 
 func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, backoff *flowcontrol.Backoff, err error) error {
