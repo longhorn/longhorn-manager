@@ -183,7 +183,6 @@ func (vrsc *VolumeRestoreController) reconcile(volName string) (err error) {
 				ID:     restoringAttachmentID,
 				Type:   longhorn.AttacherTypeVolumeRestoreController,
 				NodeID: vol.Status.OwnerID,
-				// TODO: convert Attached to pointer to avoid the field being created by default???
 				Parameters: map[string]string{
 					"disableFrontend": "true",
 				},

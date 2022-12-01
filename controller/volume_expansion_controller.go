@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-type VolumeEvictionController struct {
+type VolumeExpansionController struct {
 	*baseController
 
 	// which namespace controller is running with
@@ -35,19 +35,19 @@ type VolumeEvictionController struct {
 	cacheSyncs []cache.InformerSynced
 }
 
-func NewVolumeEvictionController(
+func NewVolumeExpansionController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string,
-) *VolumeEvictionController {
+) *VolumeExpansionController {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 
-	vec := &VolumeEvictionController{
-		baseController: newBaseController("longhorn-volume-eviction", logger),
+	vec := &VolumeExpansionController{
+		baseController: newBaseController("longhorn-volume-expansion", logger),
 
 		namespace:    namespace,
 		controllerID: controllerID,
@@ -55,22 +55,20 @@ func NewVolumeEvictionController(
 		ds: ds,
 
 		kubeClient:    kubeClient,
-		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-volume-eviction-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-volume-expansion-controller"}),
 	}
 
-	ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vec.enqueueVolume,
 		UpdateFunc: func(old, cur interface{}) { vec.enqueueVolume(cur) },
 		DeleteFunc: vec.enqueueVolume,
-	})
+	}, 0)
 	vec.cacheSyncs = append(vec.cacheSyncs, ds.VolumeInformer.HasSynced)
-
-	// TODO: do we need to watch replica CR?
 
 	return vec
 }
 
-func (vec *VolumeEvictionController) enqueueVolume(obj interface{}) {
+func (vec *VolumeExpansionController) enqueueVolume(obj interface{}) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
@@ -80,12 +78,12 @@ func (vec *VolumeEvictionController) enqueueVolume(obj interface{}) {
 	vec.queue.Add(key)
 }
 
-func (vec *VolumeEvictionController) Run(workers int, stopCh <-chan struct{}) {
+func (vec *VolumeExpansionController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer vec.queue.ShutDown()
 
-	vec.logger.Infof("Start Longhorn eviction controller")
-	defer vec.logger.Infof("Shutting down Longhorn eviction controller")
+	vec.logger.Infof("Start Longhorn expansion controller")
+	defer vec.logger.Infof("Shutting down Longhorn expansion controller")
 
 	if !cache.WaitForNamedCacheSync(vec.name, stopCh, vec.cacheSyncs...) {
 		return
@@ -98,12 +96,12 @@ func (vec *VolumeEvictionController) Run(workers int, stopCh <-chan struct{}) {
 	<-stopCh
 }
 
-func (vec *VolumeEvictionController) worker() {
+func (vec *VolumeExpansionController) worker() {
 	for vec.processNextWorkItem() {
 	}
 }
 
-func (vec *VolumeEvictionController) processNextWorkItem() bool {
+func (vec *VolumeExpansionController) processNextWorkItem() bool {
 	key, quit := vec.queue.Get()
 	if quit {
 		return false
@@ -114,7 +112,7 @@ func (vec *VolumeEvictionController) processNextWorkItem() bool {
 	return true
 }
 
-func (vec *VolumeEvictionController) handleErr(err error, key interface{}) {
+func (vec *VolumeExpansionController) handleErr(err error, key interface{}) {
 	if err == nil {
 		vec.queue.Forget(key)
 		return
@@ -125,7 +123,7 @@ func (vec *VolumeEvictionController) handleErr(err error, key interface{}) {
 	return
 }
 
-func (vec *VolumeEvictionController) syncHandler(key string) (err error) {
+func (vec *VolumeExpansionController) syncHandler(key string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "%v: failed to sync volume %v", vec.name, key)
 	}()
@@ -140,7 +138,7 @@ func (vec *VolumeEvictionController) syncHandler(key string) (err error) {
 	return vec.reconcile(name)
 }
 
-func (vec *VolumeEvictionController) reconcile(volName string) (err error) {
+func (vec *VolumeExpansionController) reconcile(volName string) (err error) {
 	vol, err := vec.ds.GetVolume(volName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -151,11 +149,6 @@ func (vec *VolumeEvictionController) reconcile(volName string) (err error) {
 
 	if !vec.isResponsibleFor(vol) {
 		return nil
-	}
-
-	replicas, err := vec.ds.ListVolumeReplicas(vol.Name)
-	if err != nil {
-		return err
 	}
 
 	vaName := types.GetLHVolumeAttachmentNameFromVolumeName(volName)
@@ -177,35 +170,35 @@ func (vec *VolumeEvictionController) reconcile(volName string) (err error) {
 		}
 	}()
 
-	evictingAttachmentID := longhorn.GetAttachmentID(longhorn.AttacherTypeVolumeEvictionController, volName)
+	expandingAttachmentID := longhorn.GetAttachmentID(longhorn.AttacherTypeVolumeExpansionController, volName)
 
-	if hasReplicaEvictionRequested(replicas) {
+	if vol.Status.ExpansionRequired {
 		if va.Spec.Attachments == nil {
 			va.Spec.Attachments = make(map[string]*longhorn.Attachment)
 		}
-		evictingAttachment, ok := va.Spec.Attachments[evictingAttachmentID]
+		expandingAttachment, ok := va.Spec.Attachments[expandingAttachmentID]
 		if !ok {
 			//create new one
-			evictingAttachment = &longhorn.Attachment{
-				ID:     evictingAttachmentID,
-				Type:   longhorn.AttacherTypeVolumeEvictionController,
+			expandingAttachment = &longhorn.Attachment{
+				ID:     expandingAttachmentID,
+				Type:   longhorn.AttacherTypeVolumeExpansionController,
 				NodeID: vol.Status.OwnerID,
 				Parameters: map[string]string{
-					"disableFrontend": longhorn.AnyValue,
+					"disableFrontend": "true",
 				},
 			}
 		}
-		if evictingAttachment.NodeID != vol.Status.OwnerID {
-			evictingAttachment.NodeID = vol.Status.OwnerID
+		if expandingAttachment.NodeID != vol.Status.OwnerID {
+			expandingAttachment.NodeID = vol.Status.OwnerID
 		}
-		va.Spec.Attachments[evictingAttachment.ID] = evictingAttachment
+		va.Spec.Attachments[expandingAttachment.ID] = expandingAttachment
 	} else {
-		delete(va.Spec.Attachments, evictingAttachmentID)
+		delete(va.Spec.Attachments, expandingAttachmentID)
 	}
 
 	return nil
 }
 
-func (vec *VolumeEvictionController) isResponsibleFor(vol *longhorn.Volume) bool {
+func (vec *VolumeExpansionController) isResponsibleFor(vol *longhorn.Volume) bool {
 	return vec.controllerID == vol.Status.OwnerID
 }
