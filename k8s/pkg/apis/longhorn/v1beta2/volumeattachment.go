@@ -40,33 +40,35 @@ type VolumeError struct {
 type AttacherType string
 
 const (
-	AttacherTypeCSIAttacher               = AttacherType("csi-attacher")
-	AttacherTypeLonghornAPI               = AttacherType("longhorn-api")
-	AttacherTypeSnapshotController        = AttacherType("snapshot-controller")
-	AttacherTypeBackupController          = AttacherType("backup-controller")
-	AttacherTypeVolumeCloneController     = AttacherType("volume-clone-controller")
-	AttacherTypeSalvageController         = AttacherType("salvage-controller")
-	AttacherTypeShareManagerController    = AttacherType("share-manager-controller")
-	AttacherTypeLiveMigrationController   = AttacherType("live-migration-controller")
-	AttacherTypeVolumeRestoreController   = AttacherType("volume-restore-controller")
-	AttacherTypeVolumeEvictionController  = AttacherType("volume-eviction-controller")
-	AttacherTypeVolumeExpansionController = AttacherType("volume-expansion-controller")
-	AttacherTypeLonghornUpgrader          = AttacherType("longhorn-upgrader")
+	AttacherTypeCSIAttacher                      = AttacherType("csi-attacher")
+	AttacherTypeLonghornAPI                      = AttacherType("longhorn-api")
+	AttacherTypeSnapshotController               = AttacherType("snapshot-controller")
+	AttacherTypeBackupController                 = AttacherType("backup-controller")
+	AttacherTypeVolumeCloneController            = AttacherType("volume-clone-controller")
+	AttacherTypeSalvageController                = AttacherType("salvage-controller")
+	AttacherTypeShareManagerController           = AttacherType("share-manager-controller")
+	AttacherTypeLiveMigrationController          = AttacherType("live-migration-controller")
+	AttacherTypeVolumeRestoreController          = AttacherType("volume-restore-controller")
+	AttacherTypeVolumeEvictionController         = AttacherType("volume-eviction-controller")
+	AttacherTypeVolumeExpansionController        = AttacherType("volume-expansion-controller")
+	AttacherTypeBackingImageDataSourceController = AttacherType("bim-ds-controller")
+	AttacherTypeLonghornUpgrader                 = AttacherType("longhorn-upgrader")
 )
 
 const (
-	AttacherPriorityLevelVolumeRestoreController   = 2000
-	AttacherPriorityLevelVolumeExpansionController = 2000
-	AttacherPriorityLevelLonghornAPI               = 1000
-	AttacherPriorityLevelCSIAttacher               = 900
-	AttacherPriorityLevelSalvageController         = 900
-	AttacherPriorityLevelShareManagerController    = 900
-	AttacherPriorityLevelLonghornUpgrader          = 900
-	AttacherPriorityLevelLiveMigrationController   = 800
-	AttacherPriorityLevelSnapshotController        = 800
-	AttacherPriorityLevelBackupController          = 800
-	AttacherPriorityLevelVolumeCloneController     = 800
-	AttacherPriorityLevelVolumeEvictionController  = 800
+	AttacherPriorityLevelVolumeRestoreController          = 2000
+	AttacherPriorityLevelVolumeExpansionController        = 2000
+	AttacherPriorityLevelLonghornAPI                      = 1000
+	AttacherPriorityLevelCSIAttacher                      = 900
+	AttacherPriorityLevelSalvageController                = 900
+	AttacherPriorityLevelShareManagerController           = 900
+	AttacherPriorityLevelLonghornUpgrader                 = 900
+	AttacherPriorityLevelLiveMigrationController          = 800
+	AttacherPriorityLevelSnapshotController               = 800
+	AttacherPriorityLevelBackupController                 = 800
+	AttacherPriorityLevelVolumeCloneController            = 800
+	AttacherPriorityLevelVolumeEvictionController         = 800
+	AttacherPriorityLevelBackingImageDataSourceController = 800
 )
 
 const (
@@ -101,6 +103,8 @@ func GetAttacherPriorityLevel(t AttacherType) int {
 		return AttacherPriorityLevelVolumeEvictionController
 	case AttacherTypeVolumeExpansionController:
 		return AttacherPriorityLevelVolumeExpansionController
+	case AttacherTypeBackingImageDataSourceController:
+		return AttacherPriorityLevelBackingImageDataSourceController
 	default:
 		return 0
 	}
