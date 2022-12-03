@@ -556,6 +556,9 @@ func (c *BackingImageDataSourceController) handleAttachmentDeletion(bids *longho
 
 	va, err := c.ds.GetLHVolumeAttachment(types.GetLHVolumeAttachmentNameFromVolumeName(vol.Name))
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
 		return err
 	}
 
