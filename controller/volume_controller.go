@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/pkg/errors"
@@ -619,7 +620,8 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es m
 	// there is no record in e.Status.ReplicaModeMap
 	for _, r := range rs {
 		if r.Spec.FailedAt == "" && r.Status.CurrentState == longhorn.InstanceStateError {
-			log.Warnf("Replica %v that not in the engine mode map is marked as failed, current state %v, engine name %v, active %v", r.Name, r.Status.CurrentState, r.Spec.EngineName, r.Spec.Active)
+			log.Warnf("Replica %v that not in the engine mode map is marked as failed, current state %v, engine name %v, active %v",
+				r.Name, r.Status.CurrentState, r.Spec.EngineName, r.Spec.Active)
 			e.Spec.LogRequested = true
 			r.Spec.LogRequested = true
 			r.Spec.FailedAt = vc.nowHandler()
@@ -692,12 +694,20 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es m
 	}
 
 	for _, status := range e.Status.CloneStatus {
-		if status != nil && status.State == engineapi.ProcessStateComplete && v.Status.CloneStatus.State != longhorn.VolumeCloneStateCompleted {
+		if status == nil {
+			continue
+		}
+
+		if status.State == engineapi.ProcessStateComplete && v.Status.CloneStatus.State != longhorn.VolumeCloneStateCompleted {
 			v.Status.CloneStatus.State = longhorn.VolumeCloneStateCompleted
-			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonVolumeCloneCompleted, "finished cloning snapshot %v from source volume %v", v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
-		} else if status != nil && status.State == engineapi.ProcessStateError && v.Status.CloneStatus.State != longhorn.VolumeCloneStateFailed {
+			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, EventReasonVolumeCloneCompleted,
+				"finished cloning snapshot %v from source volume %v",
+				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
+		} else if status.State == engineapi.ProcessStateError && v.Status.CloneStatus.State != longhorn.VolumeCloneStateFailed {
 			v.Status.CloneStatus.State = longhorn.VolumeCloneStateFailed
-			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonVolumeCloneFailed, "failed to clone snapshot %v from source volume %v: %v", v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume, status.Error)
+			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, EventReasonVolumeCloneFailed,
+				"failed to clone snapshot %v from source volume %v: %v",
+				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume, status.Error)
 		}
 	}
 
@@ -831,7 +841,8 @@ func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, 
 			staled = true
 		}
 
-		// 1. failed for multiple times or failed at rebuilding (`Spec.RebuildRetryCount` of a newly created rebuilding replica is `FailedReplicaMaxRetryCount`) before ever became healthy/ mode RW,
+		// 1. failed for multiple times or failed at rebuilding (`Spec.RebuildRetryCount` of a newly created rebuilding replica
+		//    is `FailedReplicaMaxRetryCount`) before ever became healthy/ mode RW,
 		// 2. failed too long ago, became stale and unnecessary to keep around, unless we don't have any healthy replicas
 		// 3. failed for race condition at upgrading when waiting IM-r to start and it would never became healty
 		if (r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount) || (healthyCount != 0 && staled) || (r.Spec.EngineImage != v.Status.CurrentImage) {
@@ -1392,8 +1403,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			v.Status.Robustness = longhorn.VolumeRobustnessUnknown
 		} else {
 			if v.Status.RestoreRequired || v.Status.IsStandby {
-				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-					longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, longhorn.VolumeConditionReasonRestoreFailure, "All replica restore failed and the volume became Faulted")
+				v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeRestore,
+					longhorn.ConditionStatusFalse, longhorn.VolumeConditionReasonRestoreFailure,
+					"All replica restore failed and the volume became Faulted")
 			}
 		}
 

@@ -68,7 +68,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		return
 	}
 
-	if im.Status.CurrentState == longhorn.InstanceManagerStateStopped || im.Status.CurrentState == longhorn.InstanceManagerStateError || im.DeletionTimestamp != nil {
+	if im.Status.CurrentState == longhorn.InstanceManagerStateStopped ||
+		im.Status.CurrentState == longhorn.InstanceManagerStateError ||
+		im.DeletionTimestamp != nil {
 		if status.Started {
 			if status.CurrentState != longhorn.InstanceStateError {
 				logrus.Warnf("Cannot find the instance manager for the running instance %v, will mark the instance as state ERROR", instanceName)
@@ -138,12 +140,12 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 
 		imPod, err := h.ds.GetPod(im.Name)
 		if err != nil {
-			logrus.WithError(err).Errorf("failed to get instance manager pod from %v", im.Name)
+			logrus.WithError(err).Errorf("Failed to get instance manager pod from %v", im.Name)
 			return
 		}
 
 		if imPod == nil {
-			logrus.Debugf("instance manager pod from %v not exist in datastore", im.Name)
+			logrus.Debugf("Instance manager pod from %v not exist in datastore", im.Name)
 			return
 		}
 
@@ -231,11 +233,10 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		if status.InstanceManagerName != "" {
 			im, err = h.ds.GetInstanceManager(status.InstanceManagerName)
 			if err != nil {
-				if datastore.ErrorIsNotFound(err) {
-					logrus.Debugf("cannot find instance manager %v", status.InstanceManagerName)
-				} else {
+				if !datastore.ErrorIsNotFound(err) {
 					return err
 				}
+				logrus.Debugf("Cannot find instance manager %v", status.InstanceManagerName)
 			}
 		}
 		// There should be an available instance manager for a scheduled instance when its related engine image is compatible
@@ -397,7 +398,7 @@ func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Obj
 			break
 		}
 		if err != nil {
-			logrus.Errorf("failed to receive log for instance %v: %v", instanceName, err)
+			logrus.WithError(err).Errorf("Failed to receive log for instance %v", instanceName)
 			return err
 		}
 		logrus.Warnf("%s: %s", instanceName, line)
@@ -412,10 +413,11 @@ func (h *InstanceHandler) createInstance(instanceName string, obj runtime.Object
 		return nil
 	}
 	if !types.ErrorIsNotFound(err) {
+		logrus.WithError(err).Errorf("Failed to get instance process %v", instanceName)
 		return err
 	}
 
-	logrus.Debugf("Prepare to create instance %v", instanceName)
+	logrus.Infof("Creating instance %v", instanceName)
 	if _, err := h.instanceManagerHandler.CreateInstance(obj); err != nil {
 		if !types.ErrorAlreadyExists(err) {
 			h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
@@ -431,7 +433,7 @@ func (h *InstanceHandler) createInstance(instanceName string, obj runtime.Object
 
 func (h *InstanceHandler) deleteInstance(instanceName string, obj runtime.Object) error {
 	// May try to force deleting instances on lost node. Don't need to check the instance
-	logrus.Debugf("Prepare to delete instance %v", instanceName)
+	logrus.Infof("Deleting instance %v", instanceName)
 	if err := h.instanceManagerHandler.DeleteInstance(obj); err != nil {
 		h.eventRecorder.Eventf(obj, v1.EventTypeWarning, EventReasonFailedStopping, "Error stopping %v: %v", instanceName, err)
 		return err

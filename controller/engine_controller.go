@@ -275,7 +275,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 
 	if engine.DeletionTimestamp != nil {
 		if err := ec.DeleteInstance(engine); err != nil {
-			return errors.Wrapf(err, "failed to cleanup the related engine process before deleting engine %v", engine.Name)
+			return errors.Wrapf(err, "failed to clean up the related engine process before deleting engine %v", engine.Name)
 		}
 		return ec.ds.RemoveFinalizerForEngine(engine)
 	}
@@ -306,7 +306,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	if len(engine.Spec.UpgradedReplicaAddressMap) != 0 && engine.Status.CurrentImage != engine.Spec.EngineImage {
 		if err := ec.Upgrade(engine); err != nil {
 			// Engine live upgrade failure shouldn't block the following engine state update.
-			log.Error(err)
+			log.WithError(err).Error("failed to run engine live upgrade")
 			// Sync replica address map as usual when the upgrade fails.
 			syncReplicaAddressMap = true
 		}
