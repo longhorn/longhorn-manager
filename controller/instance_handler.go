@@ -273,6 +273,10 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		status.SalvageExecuted = false
 	}
 
+	status.Conditions = types.SetCondition(status.Conditions,
+		longhorn.InstanceConditionTypeInstanceCreation, longhorn.ConditionStatusTrue,
+		"", "")
+
 	// do nothing for incompatible instance except for deleting
 	switch spec.DesireState {
 	case longhorn.InstanceStateRunning:
@@ -342,25 +346,38 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		logrus.Debugf("Instance handler updated instance %v state, old state %v, new state %v", instanceName, oldState, status.CurrentState)
 	}
 
-	if status.CurrentState == longhorn.InstanceStateRunning {
+	switch status.CurrentState {
+	case longhorn.InstanceStateRunning:
 		// If `spec.DesireState` is `longhorn.InstanceStateStopped`, `spec.NodeID` has been unset by volume controller.
 		if spec.DesireState != longhorn.InstanceStateStopped {
 			if spec.NodeID != im.Spec.NodeID {
 				status.CurrentState = longhorn.InstanceStateError
 				status.IP = ""
 				status.StorageIP = ""
-				err := fmt.Errorf("BUG: instance %v NodeID %v is not the same as the instance manager %v NodeID %v", instanceName, spec.NodeID, im.Name, im.Spec.NodeID)
+				err := fmt.Errorf("BUG: instance %v NodeID %v is not the same as the instance manager %v NodeID %v",
+					instanceName, spec.NodeID, im.Name, im.Spec.NodeID)
 				logrus.Errorf("%v", err)
 				return err
 			}
 		}
-	} else if status.CurrentState == longhorn.InstanceStateError {
-		if im != nil {
-			if _, exists := im.Status.Instances[instanceName]; exists {
-				logrus.Warnf("Instance %v crashed on Instance Manager %v at %v, try to get log", instanceName, im.Name, im.Spec.NodeID)
-				if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
-					logrus.Warnf("cannot get crash log for instance %v on Instance Manager %v at %v, error %v", instanceName, im.Name, im.Spec.NodeID, err)
-				}
+	case longhorn.InstanceStateError:
+		if im == nil {
+			break
+		}
+		if instance, exists := im.Status.Instances[instanceName]; exists {
+			// If instance is in error state and the ErrorMsg contains 61 (ENODATA) error code, then it indicates
+			// the creation of engine process failed because there is no available backend (replica).
+			if spec.DesireState == longhorn.InstanceStateRunning {
+				status.Conditions = types.SetCondition(status.Conditions,
+					longhorn.InstanceConditionTypeInstanceCreation, longhorn.ConditionStatusFalse,
+					longhorn.InstanceConditionReasonInstanceCreationFailure, instance.Status.ErrorMsg)
+			}
+
+			logrus.Warnf("Instance %v crashed on Instance Manager %v at %v, try to get log",
+				instanceName, im.Name, im.Spec.NodeID)
+			if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
+				logrus.WithError(err).Warnf("cannot get crash log for instance %v on Instance Manager %v at %v",
+					instanceName, im.Name, im.Spec.NodeID)
 			}
 		}
 	}

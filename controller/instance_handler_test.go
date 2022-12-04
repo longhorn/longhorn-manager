@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/longhorn/longhorn-manager/engineapi"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -18,11 +17,11 @@ import (
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/types"
-
+	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
+	"github.com/longhorn/longhorn-manager/types"
 
 	. "gopkg.in/check.v1"
 )
@@ -75,6 +74,11 @@ func (imh *MockInstanceManagerHandler) LogInstance(ctx context.Context, obj inte
 }
 
 func newEngine(name, currentImage, imName, nodeName, ip string, port int, started bool, currentState, desireState longhorn.InstanceState) *longhorn.Engine {
+	var conditions []longhorn.Condition
+	conditions = types.SetCondition(conditions,
+		longhorn.InstanceConditionTypeInstanceCreation, longhorn.ConditionStatusTrue,
+		"", "")
+
 	return &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -100,6 +104,7 @@ func newEngine(name, currentImage, imName, nodeName, ip string, port int, starte
 				StorageIP:           ip,
 				Port:                port,
 				Started:             started,
+				Conditions:          conditions,
 			},
 		},
 	}
