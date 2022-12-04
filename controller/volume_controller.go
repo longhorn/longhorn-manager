@@ -549,9 +549,12 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es m
 	if e.Status.CurrentState != longhorn.InstanceStateRunning {
 		// If a replica failed at attaching stage before engine become running,
 		// there is no record in e.Status.ReplicaModeMap
+		engineInstanceCreationCondition := types.GetCondition(e.Status.Conditions, longhorn.InstanceConditionTypeInstanceCreation)
+		isNoAvailableBackend := strings.Contains(engineInstanceCreationCondition.Message, fmt.Sprintf("exit status %v", int(syscall.ENODATA)))
 		for _, r := range rs {
-			if r.Spec.FailedAt == "" && r.Status.CurrentState == longhorn.InstanceStateError {
-				log.Warnf("Replica %v that not in the engine mode map is marked as failed, current state %v, engine name %v, active %v", r.Name, r.Status.CurrentState, r.Spec.EngineName, r.Spec.Active)
+			if isNoAvailableBackend || (r.Spec.FailedAt == "" && r.Status.CurrentState == longhorn.InstanceStateError) {
+				log.Warnf("Replica %v that not in the engine mode map is marked as failed, current state %v, engine name %v, active %v",
+					r.Name, r.Status.CurrentState, r.Spec.EngineName, r.Spec.Active)
 				e.Spec.LogRequested = true
 				r.Spec.LogRequested = true
 				r.Spec.FailedAt = vc.nowHandler()
