@@ -1256,6 +1256,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["recurringJobList"] = struct{}{}
 		case longhorn.VolumeStateAttached:
 			actions["activate"] = struct{}{}
+			actions["expand"] = struct{}{}
 			actions["snapshotPurge"] = struct{}{}
 			actions["snapshotCreate"] = struct{}{}
 			actions["snapshotList"] = struct{}{}
