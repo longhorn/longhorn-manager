@@ -1833,7 +1833,7 @@ func (vc *VolumeController) verifyVolumeDependentResourcesClosed(e *longhorn.Eng
 func (vc *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
 	log := getLoggerForVolume(vc.logger, v)
 
-	if len(e.Status.Snapshots) != 0 {
+	if e.Status.SnapshotsError == "" {
 		actualSize := int64(0)
 		for _, snapshot := range e.Status.Snapshots {
 			size, err := util.ConvertSize(snapshot.Size)

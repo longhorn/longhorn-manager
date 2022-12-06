@@ -893,7 +893,6 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	snapshots, err := engineClientProxy.SnapshotList(engine)
 	if err != nil {
-		engine.Status.Snapshots = map[string]*longhorn.SnapshotInfo{}
 		engine.Status.SnapshotsError = err.Error()
 	} else {
 		engine.Status.Snapshots = snapshots
