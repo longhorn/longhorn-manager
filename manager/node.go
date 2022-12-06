@@ -8,6 +8,7 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 func (m *VolumeManager) GetInstanceManager(name string) (*longhorn.InstanceManager, error) {
@@ -90,7 +91,7 @@ func (m *VolumeManager) ListNodesSorted() ([]*longhorn.Node, error) {
 	}
 
 	nodes := make([]*longhorn.Node, len(nodeMap))
-	nodeNames, err := sortKeys(nodeMap)
+	nodeNames, err := util.SortKeys(nodeMap)
 	if err != nil {
 		return []*longhorn.Node{}, err
 	}

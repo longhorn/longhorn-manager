@@ -931,3 +931,24 @@ func TrimFilesystem(volumeName string) error {
 
 	return nil
 }
+
+// SortKeys accepts a map with string keys and returns a sorted slice of keys
+func SortKeys(mapObj interface{}) ([]string, error) {
+	if mapObj == nil {
+		return []string{}, fmt.Errorf("BUG: mapObj was nil")
+	}
+	m := reflect.ValueOf(mapObj)
+	if m.Kind() != reflect.Map {
+		return []string{}, fmt.Errorf("BUG: expected map, got %v", m.Kind())
+	}
+
+	keys := make([]string, m.Len())
+	for i, key := range m.MapKeys() {
+		if key.Kind() != reflect.String {
+			return []string{}, fmt.Errorf("BUG: expect map[string]interface{}, got map[%v]interface{}", key.Kind())
+		}
+		keys[i] = key.String()
+	}
+	sort.Strings(keys)
+	return keys, nil
+}

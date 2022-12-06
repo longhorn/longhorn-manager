@@ -86,7 +86,7 @@ func (m *VolumeManager) ListSupportBundlesSorted() ([]*longhorn.SupportBundle, e
 	}
 
 	supportBundleList := make([]*longhorn.SupportBundle, len(supportBundles))
-	supportBundleNames, err := sortKeys(supportBundles)
+	supportBundleNames, err := util.SortKeys(supportBundles)
 	if err != nil {
 		return []*longhorn.SupportBundle{}, err
 	}

@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -311,7 +312,7 @@ func (m *VolumeManager) ListBackupTargetsSorted() ([]*longhorn.BackupTarget, err
 	if err != nil {
 		return []*longhorn.BackupTarget{}, err
 	}
-	backupTargetNames, err := sortKeys(backupTargetMap)
+	backupTargetNames, err := util.SortKeys(backupTargetMap)
 	if err != nil {
 		return []*longhorn.BackupTarget{}, err
 	}
@@ -331,7 +332,7 @@ func (m *VolumeManager) ListBackupVolumesSorted() ([]*longhorn.BackupVolume, err
 	if err != nil {
 		return []*longhorn.BackupVolume{}, err
 	}
-	backupVolumeNames, err := sortKeys(backupVolumeMap)
+	backupVolumeNames, err := util.SortKeys(backupVolumeMap)
 	if err != nil {
 		return []*longhorn.BackupVolume{}, err
 	}
@@ -366,7 +367,7 @@ func (m *VolumeManager) ListAllBackupsSorted() ([]*longhorn.Backup, error) {
 	if err != nil {
 		return []*longhorn.Backup{}, err
 	}
-	backupNames, err := sortKeys(backupMap)
+	backupNames, err := util.SortKeys(backupMap)
 	if err != nil {
 		return []*longhorn.Backup{}, err
 	}
@@ -386,7 +387,7 @@ func (m *VolumeManager) ListBackupsForVolumeSorted(volumeName string) ([]*longho
 	if err != nil {
 		return []*longhorn.Backup{}, err
 	}
-	backupNames, err := sortKeys(backupMap)
+	backupNames, err := util.SortKeys(backupMap)
 	if err != nil {
 		return []*longhorn.Backup{}, err
 	}

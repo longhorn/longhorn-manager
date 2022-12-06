@@ -2,8 +2,6 @@ package manager
 
 import (
 	"fmt"
-	"reflect"
-	"sort"
 	"strconv"
 
 	"github.com/pkg/errors"
@@ -61,27 +59,6 @@ func (m *VolumeManager) List() (map[string]*longhorn.Volume, error) {
 	return m.ds.ListVolumes()
 }
 
-// sortKeys accepts a map with string keys and returns a sorted slice of keys
-func sortKeys(mapObj interface{}) ([]string, error) {
-	if mapObj == nil {
-		return []string{}, fmt.Errorf("BUG: mapObj was nil")
-	}
-	m := reflect.ValueOf(mapObj)
-	if m.Kind() != reflect.Map {
-		return []string{}, fmt.Errorf("BUG: expected map, got %v", m.Kind())
-	}
-
-	keys := make([]string, m.Len())
-	for i, key := range m.MapKeys() {
-		if key.Kind() != reflect.String {
-			return []string{}, fmt.Errorf("BUG: expect map[string]interface{}, got map[%v]interface{}", key.Kind())
-		}
-		keys[i] = key.String()
-	}
-	sort.Strings(keys)
-	return keys, nil
-}
-
 func (m *VolumeManager) ListSorted() ([]*longhorn.Volume, error) {
 	volumeMap, err := m.List()
 	if err != nil {
@@ -89,7 +66,7 @@ func (m *VolumeManager) ListSorted() ([]*longhorn.Volume, error) {
 	}
 
 	volumes := make([]*longhorn.Volume, len(volumeMap))
-	volumeNames, err := sortKeys(volumeMap)
+	volumeNames, err := util.SortKeys(volumeMap)
 	if err != nil {
 		return []*longhorn.Volume{}, err
 	}
@@ -114,7 +91,7 @@ func (m *VolumeManager) GetEnginesSorted(vName string) ([]*longhorn.Engine, erro
 	}
 
 	engines := make([]*longhorn.Engine, len(engineMap))
-	engineNames, err := sortKeys(engineMap)
+	engineNames, err := util.SortKeys(engineMap)
 	if err != nil {
 		return []*longhorn.Engine{}, err
 	}
@@ -135,7 +112,7 @@ func (m *VolumeManager) GetReplicasSorted(vName string) ([]*longhorn.Replica, er
 	}
 
 	replicas := make([]*longhorn.Replica, len(replicaMap))
-	replicaNames, err := sortKeys(replicaMap)
+	replicaNames, err := util.SortKeys(replicaMap)
 	if err != nil {
 		return []*longhorn.Replica{}, err
 	}
