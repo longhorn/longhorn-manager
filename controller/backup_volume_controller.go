@@ -102,8 +102,8 @@ func (bvc *BackupVolumeController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer bvc.queue.ShutDown()
 
-	bvc.logger.Infof("Start Longhorn Backup Volume controller")
-	defer bvc.logger.Infof("Shutting down Longhorn Backup Volume controller")
+	bvc.logger.Infof("Starting Longhorn Backup Volume controller")
+	defer bvc.logger.Infof("Shut down Longhorn Backup Volume controller")
 
 	if !cache.WaitForNamedCacheSync(bvc.name, stopCh, bvc.cacheSyncs...) {
 		return

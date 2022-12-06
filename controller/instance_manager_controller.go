@@ -205,7 +205,7 @@ func (imc *InstanceManagerController) Run(workers int, stopCh <-chan struct{}) {
 	defer imc.queue.ShutDown()
 
 	logrus.Infof("Starting Longhorn instance manager controller")
-	defer logrus.Infof("Shutting down Longhorn instance manager controller")
+	defer logrus.Infof("Shut down Longhorn instance manager controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn instance manager", stopCh, imc.cacheSyncs...) {
 		return

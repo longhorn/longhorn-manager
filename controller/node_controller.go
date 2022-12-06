@@ -276,8 +276,8 @@ func (nc *NodeController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer nc.queue.ShutDown()
 
-	logrus.Infof("Start Longhorn node controller")
-	defer logrus.Infof("Shutting down Longhorn node controller")
+	logrus.Infof("Starting Longhorn node controller")
+	defer logrus.Infof("Shut down Longhorn node controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn node", stopCh, nc.cacheSyncs...) {
 		return
