@@ -205,8 +205,8 @@ func (c *ShareManagerController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
-	c.logger.Infof("Start Longhorn share manager controller")
-	defer c.logger.Infof("Shutting down Longhorn share manager controller")
+	c.logger.Infof("Starting Longhorn share manager controller")
+	defer c.logger.Infof("Shut down Longhorn share manager controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn-share-manager-controller", stopCh, c.cacheSyncs...) {
 		return

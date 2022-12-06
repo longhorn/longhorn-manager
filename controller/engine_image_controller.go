@@ -118,8 +118,8 @@ func (ic *EngineImageController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer ic.queue.ShutDown()
 
-	ic.logger.Info("Start Longhorn Engine Image controller")
-	defer ic.logger.Info("Shutting down Longhorn Engine Image controller")
+	ic.logger.Info("Starting Longhorn Engine Image controller")
+	defer ic.logger.Info("Shut down Longhorn Engine Image controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn engine images", stopCh, ic.cacheSyncs...) {
 		return

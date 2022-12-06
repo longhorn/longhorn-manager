@@ -133,8 +133,8 @@ func (rc *ReplicaController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer rc.queue.ShutDown()
 
-	rc.logger.Info("Start Longhorn replica controller")
-	defer rc.logger.Info("Shutting down Longhorn replica controller")
+	rc.logger.Info("Starting Longhorn replica controller")
+	defer rc.logger.Info("Shut down Longhorn replica controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn replicas", stopCh, rc.cacheSyncs...) {
 		return
