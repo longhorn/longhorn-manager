@@ -838,8 +838,7 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	if len(existVol.Controllers) != 1 {
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s invalid controller count %v", volumeID, len(existVol.Controllers))
 	}
-	// Support offline expansion only
-	if existVol.State != string(longhorn.VolumeStateDetached) {
+	if existVol.State != string(longhorn.VolumeStateDetached) && existVol.State != string(longhorn.VolumeStateAttached) {
 		return nil, status.Errorf(codes.FailedPrecondition, "volume %s invalid state %v for expansion", volumeID, existVol.State)
 	}
 	existingSize, err := strconv.ParseInt(existVol.Size, 10, 64)

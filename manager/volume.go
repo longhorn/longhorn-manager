@@ -510,7 +510,7 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 		return nil, err
 	}
 
-	if v.Status.State != longhorn.VolumeStateDetached {
+	if v.Status.State != longhorn.VolumeStateDetached && v.Status.State != longhorn.VolumeStateAttached {
 		return nil, fmt.Errorf("invalid volume state to expand: %v", v.Status.State)
 	}
 
@@ -546,9 +546,6 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 
 	logrus.Infof("Volume %v expansion from %v to %v requested", v.Name, v.Spec.Size, size)
 	v.Spec.Size = size
-
-	// Support off-line expansion only.
-	v.Spec.DisableFrontend = true
 
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {

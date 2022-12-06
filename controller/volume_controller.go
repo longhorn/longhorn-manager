@@ -1291,9 +1291,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		return err
 	}
 
-	// The frontend should be disabled for auto attached volumes.
-	// The exception is that the frontend should be enabled for the block device expansion during the offline expansion.
-	if v.Spec.NodeID == "" && v.Status.CurrentNodeID != "" {
+	// The frontend should be disabled for auto attached volumes except for the expansion.
+	if v.Spec.NodeID == "" && v.Status.CurrentNodeID != "" && !v.Status.ExpansionRequired {
 		v.Status.FrontendDisabled = true
 	} else {
 		v.Status.FrontendDisabled = v.Spec.DisableFrontend
@@ -1657,7 +1656,6 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		if v.Status.ExpansionRequired && v.Spec.Size == e.Status.CurrentSize {
 			v.Status.ExpansionRequired = false
 			v.Status.FrontendDisabled = false
-			e.Spec.DisableFrontend = false
 		}
 
 		v.Status.State = longhorn.VolumeStateAttached
@@ -2823,13 +2821,13 @@ func (vc *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longho
 
 	// Do auto attachment for:
 	//   1. restoring/DR volumes.
-	//   2. offline expansion.
+	//   2. expansion.
 	//   3. Eviction requested on this volume.
 	//   4. The target volume of a cloning
 	//   5. The source volume of a cloning
 	//   6, Export data as a backing image
 	isRestoringDRVol := v.Status.RestoreRequired || v.Status.IsStandby
-	isOfflineExpansionVol := v.Status.ExpansionRequired
+	isExpansionVol := v.Status.ExpansionRequired
 	isEvictionRequestedOnVol := vc.hasReplicaEvictionRequested(rs)
 	isTargetVolOfCloning := isTargetVolumeOfCloning(v)
 	sourceVolumeOfCloning, err := vc.isSourceVolumeOfCloning(v)
@@ -2837,7 +2835,7 @@ func (vc *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longho
 	if err != nil {
 		return err
 	}
-	if isRestoringDRVol || isOfflineExpansionVol || isEvictionRequestedOnVol ||
+	if isRestoringDRVol || isExpansionVol || isEvictionRequestedOnVol ||
 		isTargetVolOfCloning || sourceVolumeOfCloning || isExportingBackingImage {
 		// Should use vc.controllerID or v.Status.OwnerID as CurrentNodeID,
 		// otherwise they may be not equal

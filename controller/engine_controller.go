@@ -911,18 +911,6 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	if cliAPIVersion >= engineapi.MinCLIVersion {
 		// Cannot continue to start restoration if expansion is not complete
 		if engine.Spec.VolumeSize > engine.Status.CurrentSize {
-			// Cannot tolerate the rebuilding replicas during the expansion
-			hasRebuildingReplicas := false
-			for name, mode := range engine.Status.ReplicaModeMap {
-				if mode == longhorn.ReplicaModeWO {
-					engine.Status.ReplicaModeMap[name] = longhorn.ReplicaModeERR
-					hasRebuildingReplicas = true
-				}
-			}
-			if hasRebuildingReplicas {
-				m.logger.Warn("Cannot contain any rebuilding replicas during engine expansion, will mark all rebuilding replicas as ERROR")
-				return nil
-			}
 			if !engine.Status.IsExpanding && !m.expansionBackoff.IsInBackOffSince(engine.Name, time.Now()) {
 				m.logger.Infof("Starting engine expansion from %v to %v", engine.Status.CurrentSize, engine.Spec.VolumeSize)
 				// The error info and the backoff interval will be updated later.
