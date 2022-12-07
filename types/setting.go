@@ -595,8 +595,8 @@ var (
 	}
 
 	SettingDefinitionAutoDeletePodWhenVolumeDetachedUnexpectedly = SettingDefinition{
-		DisplayName: "Automatically Delete Workload Pod when The Volume Is Detached Unexpectedly",
-		Description: "If enabled, Longhorn will automatically delete the workload pod that is managed by a controller (e.g. deployment, statefulset, daemonset, etc...) when Longhorn volume is detached unexpectedly (e.g. during Kubernetes upgrade, Docker reboot, or network disconnect). " +
+		DisplayName: "Automatically Delete Workload Pod when The ReadWriteOnce (RWO) Volume Is Detached Unexpectedly",
+		Description: "If enabled, Longhorn will automatically delete the workload pod that is managed by a controller (e.g. deployment, statefulset, daemonset, etc...) when Longhorn ReadWriteOnce(RWO) volume is detached unexpectedly (e.g. during Kubernetes upgrade, Docker reboot, or network disconnect). " +
 			"By deleting the pod, its controller restarts the pod and Kubernetes handles volume reattachment and remount. \n\n" +
 			"If disabled, Longhorn will not delete the workload pod that is managed by a controller. You will have to manually restart the pod to reattach and remount the volume. \n\n" +
 			"**Note:** This setting doesn't apply to the workload pods that don't have a controller. Longhorn never deletes them.",
