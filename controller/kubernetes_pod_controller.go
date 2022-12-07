@@ -324,6 +324,9 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 		if vol.Status.RemountRequestedAt == "" {
 			continue
 		}
+		if vol.Spec.AccessMode == longhorn.AccessModeReadWriteMany {
+			continue
+		}
 		remountRequestedAt, err := time.Parse(time.RFC3339, vol.Status.RemountRequestedAt)
 		if err != nil {
 			return err
