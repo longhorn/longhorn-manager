@@ -105,8 +105,8 @@ func (bic *BackingImageController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer bic.queue.ShutDown()
 
-	logrus.Infof("Start Longhorn Backing Image controller")
-	defer logrus.Infof("Shutting down Longhorn Backing Image controller")
+	logrus.Infof("Starting Longhorn Backing Image controller")
+	defer logrus.Infof("Shut down Longhorn Backing Image controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn backing images", stopCh, bic.cacheSyncs...) {
 		return

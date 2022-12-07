@@ -127,8 +127,8 @@ func (oc *OrphanController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer oc.queue.ShutDown()
 
-	oc.logger.Infof("Start Longhorn Orphan controller")
-	defer oc.logger.Infof("Shutting down Longhorn Orphan controller")
+	oc.logger.Infof("Starting Longhorn Orphan controller")
+	defer oc.logger.Infof("Shut down Longhorn Orphan controller")
 
 	if !cache.WaitForNamedCacheSync(oc.name, stopCh, oc.cacheSyncs...) {
 		return

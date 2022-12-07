@@ -178,8 +178,8 @@ func (vc *VolumeController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer vc.queue.ShutDown()
 
-	vc.logger.Infof("Start Longhorn volume controller")
-	defer vc.logger.Infof("Shutting down Longhorn volume controller")
+	vc.logger.Infof("Starting Longhorn volume controller")
+	defer vc.logger.Infof("Shut down Longhorn volume controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn engines", stopCh, vc.cacheSyncs...) {
 		return

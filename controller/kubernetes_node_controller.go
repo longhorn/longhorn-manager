@@ -110,8 +110,8 @@ func (knc *KubernetesNodeController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer knc.queue.ShutDown()
 
-	logrus.Infof("Start Longhorn Kubernetes node controller")
-	defer logrus.Infof("Shutting down Longhorn Kubernetes node controller")
+	logrus.Infof("Starting Longhorn Kubernetes node controller")
+	defer logrus.Infof("Shut down Longhorn Kubernetes node controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn kubernetes node", stopCh, knc.cacheSyncs...) {
 		return

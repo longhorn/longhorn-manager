@@ -132,8 +132,8 @@ func (btc *BackupTargetController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer btc.queue.ShutDown()
 
-	btc.logger.Infof("Start Longhorn Backup Target controller")
-	defer btc.logger.Infof("Shutting down Longhorn Backup Target controller")
+	btc.logger.Infof("Starting Longhorn Backup Target controller")
+	defer btc.logger.Infof("Shut down Longhorn Backup Target controller")
 
 	if !cache.WaitForNamedCacheSync(btc.name, stopCh, btc.cacheSyncs...) {
 		return
