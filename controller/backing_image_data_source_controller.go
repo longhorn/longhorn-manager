@@ -927,10 +927,10 @@ func (c *BackingImageDataSourceController) stopMonitoring(bidsName string) {
 		log.Warn("No monitor goroutine for stopping")
 		return
 	}
-	log.Infof("Stopping monitoring")
+	log.Info("Stopping monitoring")
 	close(stopCh)
 	delete(c.monitorMap, bidsName)
-	log.Infof("Stopped monitoring")
+	log.Info("Stopped monitoring")
 
 }
 
@@ -978,7 +978,7 @@ func (m *BackingImageDataSourceMonitor) sync() {
 		if syncErr != nil {
 			m.retryCount++
 			if m.retryCount == engineapi.MaxMonitorRetryCount {
-				close(m.stopCh)
+				m.stopCh <- struct{}{}
 				m.log.Warnf("Stop monitoring since monitor %v sync reaches the max retry count %v", m.Name, engineapi.MaxMonitorRetryCount)
 				return
 			}
@@ -991,7 +991,7 @@ func (m *BackingImageDataSourceMonitor) sync() {
 	bids, err := m.ds.GetBackingImageDataSource(m.Name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			close(m.stopCh)
+			m.stopCh <- struct{}{}
 			m.log.Warnf("Stop monitoring since backing image data source %v is not found", m.Name)
 			return
 		}
@@ -1000,7 +1000,7 @@ func (m *BackingImageDataSourceMonitor) sync() {
 		return
 	}
 	if bids.Status.OwnerID != m.controllerID {
-		close(m.stopCh)
+		m.stopCh <- struct{}{}
 		m.log.Warnf("Stop monitoring since backing image data source %v owner %v is not the same as monitor current controller %v", m.Name, bids.Status.OwnerID, m.controllerID)
 		return
 	}
