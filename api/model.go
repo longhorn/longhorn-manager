@@ -237,6 +237,10 @@ type UpdateAccessModeInput struct {
 	AccessMode string `json:"accessMode"`
 }
 
+type UpdateSnapshotDataIntegrityInput struct {
+	SnapshotDataIntegrity string `json:"snapshotDataIntegrity"`
+}
+
 type UpdateUnmapMarkSnapChainRemovedInput struct {
 	UnmapMarkSnapChainRemoved string `json:"unmapMarkSnapChainRemoved"`
 }
@@ -435,6 +439,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateReplicaAutoBalanceInput", UpdateReplicaAutoBalanceInput{})
 	schemas.AddType("UpdateDataLocalityInput", UpdateDataLocalityInput{})
 	schemas.AddType("UpdateAccessModeInput", UpdateAccessModeInput{})
+	schemas.AddType("UpdateSnapshotDataIntegrityInput", UpdateSnapshotDataIntegrityInput{})
 	schemas.AddType("UpdateUnmapMarkSnapChainRemovedInput", UpdateUnmapMarkSnapChainRemovedInput{})
 	schemas.AddType("workloadStatus", longhorn.WorkloadStatus{})
 	schemas.AddType("cloneStatus", longhorn.VolumeCloneStatus{})
@@ -758,6 +763,10 @@ func volumeSchema(volume *client.Schema) {
 
 		"updateAccessMode": {
 			Input: "UpdateAccessModeInput",
+		},
+
+		"updateSnapshotDataIntegrity": {
+			Input: "UpdateSnapshotDataIntegrityInput",
 		},
 
 		"updateUnmapMarkSnapChainRemoved": {
@@ -1196,6 +1205,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateDataLocality"] = struct{}{}
 			actions["updateReplicaAutoBalance"] = struct{}{}
 			actions["updateUnmapMarkSnapChainRemoved"] = struct{}{}
+			actions["updateSnapshotDataIntegrity"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
