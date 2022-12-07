@@ -67,6 +67,7 @@ func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) *Node
 			[]csi.NodeServiceCapability_RPC_Type{
 				csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 				csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
+				csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 			}),
 	}
 }
@@ -578,11 +579,15 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 }
 
 // NodeExpandVolume is designed to expand the file system for ONLINE expansion,
-// But Longhorn supports OFFLINE expansion only.
 func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
-	volumePath := req.GetVolumePath()
-	if volumePath == "" {
-		return nil, status.Error(codes.InvalidArgument, "volume path missing in request")
+	if req.CapacityRange == nil {
+		return nil, status.Error(codes.InvalidArgument, "capacity range missing in request")
+	}
+	requestedSize := req.CapacityRange.GetRequiredBytes()
+
+	volumeCapability := req.GetVolumeCapability()
+	if volumeCapability == nil {
+		return nil, status.Error(codes.InvalidArgument, "volume capability missing in request")
 	}
 
 	volumeID := req.GetVolumeId()
@@ -590,7 +595,85 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
 
-	return nil, status.Errorf(codes.Unimplemented, "volume %s cannot be expanded driver only supports offline expansion", volumeID)
+	if req.VolumeCapability.GetBlock() != nil {
+		logrus.Debugf("Volume %v on node %v does not require filesystem resize/node expansion since it is access mode Block", volumeID, ns.nodeID)
+		return &csi.NodeExpandVolumeResponse{}, nil
+	}
+
+	volume, err := ns.apiClient.Volume.ById(volumeID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+	if volume == nil {
+		return nil, status.Errorf(codes.NotFound, "volume %s missing", volumeID)
+	}
+	if len(volume.Controllers) != 1 {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid controller count %v for volume %v node expansion", len(volume.Controllers), volumeID)
+	}
+	if volume.State != string(longhorn.VolumeStateAttached) {
+		return nil, status.Errorf(codes.FailedPrecondition, "invalid state %v for volume %v node expansion", volume.State, volumeID)
+	}
+	devicePath := volume.Controllers[0].Endpoint
+
+	mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: utilexec.New()}
+	diskFormat, err := mounter.GetDiskFormat(devicePath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to evaluate device filesystem format for volume %v node expansion", volumeID)
+	}
+	if diskFormat == "" {
+		return nil, fmt.Errorf("unknown filesystem type for volume %v node expansion", volumeID)
+	}
+
+	devicePath, err = func() (string, error) {
+		if !volume.Encrypted {
+			return devicePath, nil
+		}
+		if diskFormat != "crypto_LUKS" {
+			return "", status.Errorf(codes.InvalidArgument, "unsupported disk encryption format %v", diskFormat)
+		}
+		devicePath = crypto.VolumeMapper(volumeID)
+
+		// Need to enable feature gate in v1.25:
+		// https://github.com/kubernetes/enhancements/issues/3107
+		// https://kubernetes.io/blog/2022/09/21/kubernetes-1-25-use-secrets-while-expanding-csi-volumes-on-node-alpha/
+		secrets := req.GetSecrets()
+		if len(secrets) == 0 {
+			logrus.Infof("Skip encrypto device resizing for volume %v node expansion since the secret empty, maybe the related feature gate is not enabled", volumeID)
+			return devicePath, nil
+		}
+		keyProvider := secrets[CryptoKeyProvider]
+		passphrase := secrets[CryptoKeyValue]
+		if keyProvider != "" && keyProvider != "secret" {
+			return "", status.Errorf(codes.InvalidArgument, "unsupported key provider %v for encrypted volume %v", keyProvider, volumeID)
+		}
+		if len(passphrase) == 0 {
+			return "", status.Errorf(codes.InvalidArgument, "missing passphrase for encrypted volume %v", volumeID)
+		}
+
+		// blindly resize the encrypto device
+		if err := crypto.ResizeEncryptoDevice(volumeID, passphrase); err != nil {
+			return "", status.Errorf(codes.InvalidArgument, "failed to resize crypto device %v for volume %v node expansion", devicePath, volumeID)
+		}
+
+		return devicePath, nil
+	}()
+
+	resizer := mount.NewResizeFs(utilexec.New())
+	if needsResize, err := resizer.NeedResize(devicePath, req.StagingTargetPath); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	} else if needsResize {
+		if resized, err := resizer.Resize(devicePath, req.StagingTargetPath); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		} else if resized {
+			logrus.Infof("Volume %v on node %v successfully resized filesystem after mount", volumeID, ns.nodeID)
+		} else {
+			logrus.Debugf("Volume %v on node %v already has correct filesystem size", volumeID, ns.nodeID)
+		}
+	} else {
+		logrus.Debugf("Volume %v on node %v does not require filesystem resize", volumeID, ns.nodeID)
+	}
+
+	return &csi.NodeExpandVolumeResponse{CapacityBytes: requestedSize}, nil
 }
 
 func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {

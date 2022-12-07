@@ -30,6 +30,11 @@ func luksFormat(devicePath, passphrase string, cryptoParams *EncryptParams) (std
 		devicePath, "-d", "/dev/stdin")
 }
 
+func luksResize(volume, passphrase string) (stdout string, err error) {
+	return cryptSetupWithPassphrase(passphrase,
+		"resize", volume)
+}
+
 func luksStatus(volume string) (stdout string, err error) {
 	return cryptSetup("status", volume)
 }

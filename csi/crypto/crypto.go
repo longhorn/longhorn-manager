@@ -94,6 +94,17 @@ func CloseVolume(volume string) error {
 	return err
 }
 
+func ResizeEncryptoDevice(volume, passphrase string) error {
+	if isOpen, err := IsDeviceOpen(VolumeMapper(volume)); err != nil {
+		return err
+	} else if !isOpen {
+		return fmt.Errorf("volume %v encrypto device is closed for resizing", volume)
+	}
+
+	_, err := luksResize(volume, passphrase)
+	return err
+}
+
 // IsDeviceOpen determines if encrypted device is already open.
 func IsDeviceOpen(device string) (bool, error) {
 	_, mappedFile, err := DeviceEncryptionStatus(device)

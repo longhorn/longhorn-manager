@@ -828,6 +828,11 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	}
 	requestedSize := req.CapacityRange.GetRequiredBytes()
 
+	if req.VolumeCapability == nil {
+		return nil, status.Error(codes.InvalidArgument, "volume capacity missing in request")
+	}
+	isAccessModeMount := req.VolumeCapability.GetMount() != nil
+
 	existVol, err := cs.apiClient.Volume.ById(volumeID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
@@ -839,12 +844,14 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s invalid controller count %v", volumeID, len(existVol.Controllers))
 	}
 	if existVol.State != string(longhorn.VolumeStateDetached) && existVol.State != string(longhorn.VolumeStateAttached) {
-		return nil, status.Errorf(codes.FailedPrecondition, "volume %s invalid state %v for expansion", volumeID, existVol.State)
+		return nil, status.Errorf(codes.FailedPrecondition, "volume %s invalid state %v for controller volume expansion", volumeID, existVol.State)
 	}
 	existingSize, err := strconv.ParseInt(existVol.Size, 10, 64)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
+
+	isOnlineExpansion := existVol.State == string(longhorn.VolumeStateAttached)
 
 	if existVol, err = cs.apiClient.Volume.ActionExpand(existVol, &longhornclient.ExpandInput{
 		Size: strconv.FormatInt(requestedSize, 10),
@@ -884,9 +891,16 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
+	if !isOnlineExpansion {
+		logrus.Info("Skip NodeExpandVolume since this is offline expansion, the filesystem resize will be handled by NodeStageVolume when there is a workload using the volume.")
+	}
+	if !isAccessModeMount {
+		logrus.Info("Skip NodeExpandVolume since the current volume is access mode block")
+	}
+
 	return &csi.ControllerExpandVolumeResponse{
 		CapacityBytes:         volumeSize,
-		NodeExpansionRequired: false,
+		NodeExpansionRequired: isAccessModeMount && isOnlineExpansion,
 	}, nil
 }
 
