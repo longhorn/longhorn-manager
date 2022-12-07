@@ -349,6 +349,29 @@ func (s *Server) VolumeUpdateReplicaCount(rw http.ResponseWriter, req *http.Requ
 	return s.responseWithVolume(rw, req, "", v)
 }
 
+func (s *Server) VolumeUpdateSnapshotDataIntegrity(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateSnapshotDataIntegrityInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrapf(err, "error reading snapshotDataIntegrity")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateSnapshotDataIntegrity(id, input.SnapshotDataIntegrity)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	}
+
+	return s.responseWithVolume(rw, req, "", v)
+}
+
 func (s *Server) VolumeUpdateReplicaAutoBalance(rw http.ResponseWriter, req *http.Request) error {
 	var input UpdateReplicaAutoBalanceInput
 	id := mux.Vars(req)["name"]
