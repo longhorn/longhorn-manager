@@ -2,6 +2,22 @@ package v1beta2
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+const (
+	ReplicaRebuildFailedDisconnectionError = "all SubConns are in TransientFailure"
+	// ReplicaRebuildFailedGRPCDialingError   = "transport: Error while dialing dial tcp"
+
+	// ReplicaRebuildFailedGRPCNoRouteSubError    = "connect: no route to host"
+	// ReplicaRebuildFailedGRPCConRefusedSubError = "connect: connection refused"
+	// ReplicaRebuildFailedGRPCIOTimeoutSubError  = "i/o timeout"
+)
+
+const (
+	ReplicaRebuildFailedReasonDisconnection = "all SubConns are in TransientFailure"
+	ReplicaRebuildFailedReasonUnknown       = "Unknown"
+
+	ReplicaRebuildDisconnectCountMax = 3
+)
+
 // ReplicaSpec defines the desired state of the Longhorn replica
 type ReplicaSpec struct {
 	InstanceSpec `json:""`
@@ -42,6 +58,19 @@ type ReplicaStatus struct {
 	InstanceStatus `json:""`
 	// +optional
 	EvictionRequested bool `json:"evictionRequested"`
+	// +optional
+	// +nullable
+	RebuildStatus *ReplicaRebuildStatus `json:"rebuildStatus"`
+}
+
+// ReplicaRebuildStatus transiently record the status of replica rebuilding failed
+type ReplicaRebuildStatus struct {
+	// +optional
+	FailedAt string `json:"failedAt"`
+	// +optional
+	FailedReason string `json:"failedReason"`
+	// +optional
+	RebuildDisconnectCount int `json:"rebuildDisconnectCount"`
 }
 
 // +genclient

@@ -340,6 +340,11 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}()
 
+	// check replica rebuild status
+	if replica.Spec.FailedAt == "" && replica.Spec.HealthyAt != "" {
+		replica.Status.RebuildStatus = nil
+	}
+
 	// Update `Replica.Status.EvictionRequested` field
 	rc.UpdateReplicaEvictionStatus(replica)
 

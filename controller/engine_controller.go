@@ -1690,6 +1690,8 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 			err = engineClientProxy.ReplicaAdd(e, replicaURL, false, fastReplicaRebuild, fileSyncHTTPClientTimeout)
 		}
 		if err != nil {
+			replicaRebuildErrMsg := err.Error()
+
 			log.WithError(err).Errorf("Failed rebuilding of replica %v", addr)
 			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, constant.EventReasonFailedRebuilding, "Failed rebuilding replica with Address %v: %v", addr, err)
 			// we've sent out event to notify user. we don't want to
@@ -1710,6 +1712,11 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 			// it is past the Backoff period, we'll try to mark the Replica as Failed and increase the Backoff period
 			// for the next failure.
 			if !ec.backoff.IsInBackOffSinceUpdate(e.Name, time.Now()) {
+				if err := updateReplicaRebuildFailedRebuildStatus(log, ec.ds, replica, replicaRebuildErrMsg); err != nil {
+					log.WithError(err).Errorf("Unable to update failed replica rebuild status on replica %v", replica)
+					return
+				}
+
 				rep, err := ec.ds.GetReplica(replica)
 				if err != nil {
 					log.WithError(err).Errorf("Failed to get replica %v unable to mark failed rebuild", replica)
@@ -1753,6 +1760,47 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 	}); err != nil {
 		return err
 	}
+	return nil
+}
+
+// updateReplicaRebuildFailedRebuildStatus updates the rebuild status if replica rebuilding failed
+func updateReplicaRebuildFailedRebuildStatus(log *logrus.Entry, ds *datastore.DataStore, replica, errMsg string) error {
+	r, err := ds.GetReplica(replica)
+	if err != nil {
+		return err
+	}
+	if r.Status.RebuildStatus == nil {
+		r.Status.RebuildStatus = &longhorn.ReplicaRebuildStatus{}
+	}
+	r.Status.RebuildStatus.FailedAt = util.Now()
+	switch {
+	// rebuilding failed caused by the disconnection
+	case strings.Contains(errMsg, longhorn.ReplicaRebuildFailedDisconnectionError):
+		r.Status.RebuildStatus.FailedReason = longhorn.ReplicaRebuildFailedReasonDisconnection
+		r.Status.RebuildStatus.RebuildDisconnectCount++
+		replicaKubeNode, err := ds.GetKubernetesNode(r.Spec.NodeID)
+		if err != nil {
+			return err
+		}
+		// check if disconnection is caused by node is down
+		for _, con := range replicaKubeNode.Status.Conditions {
+			if con.Type != v1.NodeReady {
+				continue
+			}
+			if con.Status != v1.ConditionTrue {
+				r.Status.RebuildStatus.RebuildDisconnectCount = longhorn.ReplicaRebuildDisconnectCountMax
+			}
+			break
+		}
+	default:
+		r.Status.RebuildStatus.FailedReason = longhorn.ReplicaRebuildFailedReasonUnknown
+		r.Status.RebuildStatus.RebuildDisconnectCount = 0
+	}
+
+	if _, err := ds.UpdateReplicaStatus(r); err != nil {
+		return err
+	}
+
 	return nil
 }
 

@@ -1831,8 +1831,13 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 				log.Debugf("Failed replica %v will be reused during rebuilding", reusableFailedReplica.Name)
 				reusableFailedReplica.Spec.FailedAt = ""
 				reusableFailedReplica.Spec.HealthyAt = ""
-				reusableFailedReplica.Spec.RebuildRetryCount++
-				vc.backoff.Next(reusableFailedReplica.Name, time.Now())
+
+				replicaRebuildStatus := reusableFailedReplica.Status.RebuildStatus
+				if replicaRebuildStatus == nil || replicaRebuildStatus.FailedReason != longhorn.ReplicaRebuildFailedReasonDisconnection || replicaRebuildStatus.RebuildDisconnectCount >= longhorn.ReplicaRebuildDisconnectCountMax {
+					reusableFailedReplica.Spec.RebuildRetryCount++
+					vc.backoff.Next(reusableFailedReplica.Name, time.Now())
+				}
+
 				rs[reusableFailedReplica.Name] = reusableFailedReplica
 				continue
 			}
