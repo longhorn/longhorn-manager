@@ -907,6 +907,27 @@ func (m *VolumeManager) UpdateReplicaCount(name string, count int) (v *longhorn.
 	return v, nil
 }
 
+func (m *VolumeManager) UpdateSnapshotDataIntegrity(name string, value string) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update snapshot data integrity for volume %v", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	oldValue := v.Spec.SnapshotDataIntegrity
+	v.Spec.SnapshotDataIntegrity = longhorn.SnapshotDataIntegrity(value)
+
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+	logrus.Debugf("Updated volume %v snapshot data integrity from %v to %v", v.Name, oldValue, v.Spec.SnapshotDataIntegrity)
+	return v, nil
+}
+
 func (m *VolumeManager) UpdateReplicaAutoBalance(name string, inputSpec longhorn.ReplicaAutoBalance) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to update replica auto-balance for volume %v", name)

@@ -75,9 +75,10 @@ func NewRouter(s *Server) *mux.Router {
 		"expand":                          s.VolumeExpand,
 		"cancelExpansion":                 s.VolumeCancelExpansion,
 
-		"updateReplicaCount":       s.VolumeUpdateReplicaCount,
-		"updateReplicaAutoBalance": s.VolumeUpdateReplicaAutoBalance,
-		"replicaRemove":            s.ReplicaRemove,
+		"updateReplicaCount":          s.VolumeUpdateReplicaCount,
+		"updateReplicaAutoBalance":    s.VolumeUpdateReplicaAutoBalance,
+		"updateSnapshotDataIntegrity": s.VolumeUpdateSnapshotDataIntegrity,
+		"replicaRemove":               s.ReplicaRemove,
 
 		"engineUpgrade": s.EngineUpgrade,
 
