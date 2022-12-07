@@ -126,8 +126,8 @@ func (bc *BackupController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer bc.queue.ShutDown()
 
-	bc.logger.Infof("Start Longhorn Backup controller")
-	defer bc.logger.Infof("Shutting down Longhorn Backup controller")
+	bc.logger.Infof("Starting Longhorn Backup controller")
+	defer bc.logger.Infof("Shut down Longhorn Backup controller")
 
 	if !cache.WaitForNamedCacheSync(bc.name, stopCh, bc.cacheSyncs...) {
 		return

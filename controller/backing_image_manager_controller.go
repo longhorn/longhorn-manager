@@ -164,7 +164,7 @@ func (c *BackingImageManagerController) Run(workers int, stopCh <-chan struct{})
 	defer c.queue.ShutDown()
 
 	logrus.Infof("Starting Longhorn backing image manager controller")
-	defer logrus.Infof("Shutting down Longhorn backing image manager controller")
+	defer logrus.Infof("Shut down Longhorn backing image manager controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn backing image manager", stopCh, c.cacheSyncs...) {
 		return

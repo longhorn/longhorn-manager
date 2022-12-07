@@ -97,7 +97,7 @@ func (control *RecurringJobController) Run(workers int, stopCh <-chan struct{}) 
 	defer control.queue.ShutDown()
 
 	logrus.Infof("Starting Longhorn Recurring Job controller")
-	defer logrus.Infof("Shutting down Longhorn Recurring Job controller")
+	defer logrus.Infof("Shut down Longhorn Recurring Job controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn recurring jobs", stopCh, control.cacheSyncs...) {
 		return

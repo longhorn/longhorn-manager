@@ -221,7 +221,7 @@ func (sc *SnapshotController) Run(workers int, stopCh <-chan struct{}) {
 	defer sc.queue.ShutDown()
 
 	sc.logger.Info("Starting Longhorn Snapshot Controller")
-	defer sc.logger.Info("Shutting down Longhorn Snapshot Controller")
+	defer sc.logger.Info("Shut down Longhorn Snapshot Controller")
 
 	if !cache.WaitForNamedCacheSync(sc.name, stopCh, sc.cacheSyncs...) {
 		return
