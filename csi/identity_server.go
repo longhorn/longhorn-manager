@@ -43,7 +43,7 @@ func (ids *IdentityServer) GetPluginCapabilities(ctx context.Context, req *csi.G
 			{
 				Type: &csi.PluginCapability_VolumeExpansion_{
 					VolumeExpansion: &csi.PluginCapability_VolumeExpansion{
-						Type: csi.PluginCapability_VolumeExpansion_OFFLINE,
+						Type: csi.PluginCapability_VolumeExpansion_ONLINE,
 					},
 				},
 			},
