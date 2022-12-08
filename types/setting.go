@@ -758,7 +758,7 @@ var (
 	SettingDefinitionAutoCleanupSystemGeneratedSnapshot = SettingDefinition{
 		DisplayName: "Automatically Cleanup System Generated Snapshot",
 		Description: "This setting enables Longhorn to automatically cleanup the system generated snapshot before and after replica rebuilding.",
-		Category:    SettingCategoryGeneral,
+		Category:    SettingCategorySnapshot,
 		Type:        SettingTypeBool,
 		Required:    true,
 		ReadOnly:    false,
