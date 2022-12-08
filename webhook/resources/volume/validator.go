@@ -130,11 +130,51 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
+	if newVolume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+		// Check if the strict-local volume can attach to newVolume.Spec.NodeID
+		if oldVolume.Spec.NodeID == "" && newVolume.Spec.NodeID != "" {
+			ok, err := v.hasLocalReplicaOnSameNodeAsStrictLocalVolume(newVolume)
+			if !ok {
+				err = errors.Wrapf(err, "failed to check if %v volume %v and its replica are on the same node",
+					longhorn.DataLocalityStrictLocal, newVolume.Name)
+				return werror.NewInvalidError(err.Error(), "")
+			}
+		}
+	}
+
 	if err := datastore.CheckVolume(newVolume); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (v *volumeValidator) hasLocalReplicaOnSameNodeAsStrictLocalVolume(volume *longhorn.Volume) (bool, error) {
+	replicas, err := v.ds.ListVolumeReplicas(volume.Name)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get replicas for volume %v", volume.Name)
+	}
+
+	if len(replicas) != 1 {
+		return false, fmt.Errorf("BUG: replica should be 1 for %v volume %v", longhorn.DataLocalityStrictLocal, volume.Name)
+	}
+
+	var replica *longhorn.Replica
+	for _, r := range replicas {
+		replica = r
+	}
+
+	// For a newly created volume, the replica.Status.OwnerID should be ""
+	// The attach should be successful.
+	if replica.Spec.NodeID == "" {
+		return true, nil
+	}
+
+	if replica.Spec.NodeID == volume.Spec.NodeID {
+		return true, nil
+	}
+
+	return false, fmt.Errorf("moving a %v volume %v to another node is not supported", longhorn.DataLocalityStrictLocal, volume.Name)
 }
 
 func validateDataLocalityUpdate(oldVolume *longhorn.Volume, newVolume *longhorn.Volume) error {
