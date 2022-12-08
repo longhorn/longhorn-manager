@@ -16,7 +16,6 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/setting"
 	"github.com/longhorn/longhorn-manager/webhook/resources/snapshot"
 	"github.com/longhorn/longhorn-manager/webhook/resources/supportbundle"
-	"github.com/longhorn/longhorn-manager/webhook/resources/systembackup"
 	"github.com/longhorn/longhorn-manager/webhook/resources/systemrestore"
 	"github.com/longhorn/longhorn-manager/webhook/resources/volume"
 )
@@ -37,7 +36,6 @@ func Validation(client *client.Client) (http.Handler, []admission.Resource, erro
 		orphan.NewValidator(client.Datastore),
 		snapshot.NewValidator(client.Datastore),
 		supportbundle.NewValidator(client.Datastore),
-		systembackup.NewValidator(client.Datastore),
 		systemrestore.NewValidator(client.Datastore),
 	}
 

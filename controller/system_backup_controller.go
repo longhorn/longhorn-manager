@@ -380,17 +380,37 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 				systemBackupRecordTypeNormal, longhorn.SystemBackupStateSyncing,
 				constant.EventReasonSyncing, SystemBackupMsgSyncingBackupTarget,
 			)
-		} else {
-			err = c.InitSystemBackup(systemBackup, log)
-			if err != nil {
+
+			return
+		}
+
+		var longhornVersion string
+		longhornVersion, err = getSystemBackupVersionExistInRemoteBackupTarget(systemBackup, backupTargetClient)
+		if err != nil {
+			return err
+		}
+
+		if longhornVersion != "" {
+			if err := datastore.TagSystemBackupVersionLabel(longhornVersion, systemBackup); err != nil {
 				return err
 			}
 
-			c.updateSystemBackupRecord(record,
-				systemBackupRecordTypeNormal, longhorn.SystemBackupStateGenerating,
-				constant.EventReasonStart, SystemBackupMsgStarting,
-			)
+			_, err = c.ds.UpdateSystemBackup(systemBackup)
+			if err != nil {
+				return err
+			}
+			return
 		}
+
+		err = c.InitSystemBackup(systemBackup, log)
+		if err != nil {
+			return err
+		}
+
+		c.updateSystemBackupRecord(record,
+			systemBackupRecordTypeNormal, longhorn.SystemBackupStateGenerating,
+			constant.EventReasonStart, SystemBackupMsgStarting,
+		)
 
 	case longhorn.SystemBackupStateGenerating:
 		go c.GenerateSystemBackup(systemBackup, tempBackupArchivePath, tempBackupDir)
@@ -416,6 +436,27 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 	}
 
 	return nil
+}
+
+func getSystemBackupVersionExistInRemoteBackupTarget(systemBackup *longhorn.SystemBackup, backupTargetClient engineapi.SystemBackupOperationInterface) (string, error) {
+	systemBackupsInBackupstore, err := backupTargetClient.ListSystemBackup()
+	if err != nil {
+		return "", errors.Wrap(err, "failed to list system backups in backup target")
+	}
+
+	for name, uri := range systemBackupsInBackupstore {
+		if string(name) != systemBackup.Name {
+			continue
+		}
+
+		longhornVersion, _, err := parseSystemBackupURI(string(uri))
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to parse system backup URI: %v", uri)
+		}
+
+		return longhornVersion, nil
+	}
+	return "", nil
 }
 
 func isSystemBackupFromRemoteBackupTarget(systemBackup *longhorn.SystemBackup) bool {
@@ -531,6 +572,11 @@ func (c *SystemBackupController) cleanupRemoteSystemBackupFiles(systemBackup *lo
 		return nil
 	}
 
+	if systemBackup.Status.Version == "" {
+		// The backup store sync might not have finished
+		return nil
+	}
+
 	systemBackupsFromBackupTarget, err := backupTargetClient.ListSystemBackup()
 	if err != nil {
 		return errors.Wrapf(err, "failed to list system backups in bakup target %v", backupTargetSetting.Value)
@@ -553,10 +599,10 @@ func (c *SystemBackupController) cleanupRemoteSystemBackupFiles(systemBackup *lo
 	}
 
 	if systemBackupCfg != nil {
-		return errors.New("Deleting system backup in backup target")
+		return errors.New("failed to check the system backup deletion, because it's being deleted")
 	}
 
-	log.Infof("Deleted system backup in backup target")
+	log.Info("Deleted system backup in backup target")
 	return nil
 }
 
