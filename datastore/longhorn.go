@@ -4045,6 +4045,18 @@ func (s *DataStore) RemoveFinalizerForSystemBackup(obj *longhorn.SystemBackup) e
 	return nil
 }
 
+// UpdateSystemBackup updates Longhorn SystemBackup and verifies update
+func (s *DataStore) UpdateSystemBackup(systemBackup *longhorn.SystemBackup) (*longhorn.SystemBackup, error) {
+	obj, err := s.lhClient.LonghornV1beta2().SystemBackups(s.namespace).Update(context.TODO(), systemBackup, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(systemBackup.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetSystemBackupRO(name)
+	})
+	return obj, nil
+}
+
 // UpdateSystemBackupStatus updates Longhorn SystemBackup status and verifies update
 func (s *DataStore) UpdateSystemBackupStatus(systemBackup *longhorn.SystemBackup) (*longhorn.SystemBackup, error) {
 	obj, err := s.lhClient.LonghornV1beta2().SystemBackups(s.namespace).UpdateStatus(context.TODO(), systemBackup, metav1.UpdateOptions{})
@@ -4090,6 +4102,21 @@ func (s *DataStore) ListSystemBackups() (map[string]*longhorn.SystemBackup, erro
 // ListSystemBackupsRO returns an object contains all SystemBackups
 func (s *DataStore) ListSystemBackupsRO() ([]*longhorn.SystemBackup, error) {
 	return s.sbLister.SystemBackups(s.namespace).List(labels.Everything())
+}
+
+func TagSystemBackupVersionLabel(version string, obj runtime.Object) error {
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[types.GetVersionLabelKey()] = version
+	metadata.SetLabels(labels)
+	return nil
 }
 
 // CreateSystemRestore creates a Longhorn SystemRestore resource and verifies creation
