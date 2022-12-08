@@ -49,6 +49,7 @@ type SystemBackupTestCase struct {
 
 	notExist            bool
 	isDeleting          bool
+	isExistInRemote     bool
 	systemBackupName    string
 	systemBackupVersion string
 
@@ -62,7 +63,6 @@ func (s *TestSuite) TestReconcileRolloutSave(c *C) {
 	datastore.SystemBackupTimeout = 10 // 10 seconds
 
 	rolloutOwnerID := TestNode1
-	backupTargetClient := &FakeSystemBackupTargetClient{}
 
 	tempDirs := []string{}
 	defer func() {
@@ -128,6 +128,11 @@ func (s *TestSuite) TestReconcileRolloutSave(c *C) {
 			expectState:         longhorn.SystemBackupStateReady,
 			systemBackupVersion: TestSystemBackupLonghornVersion,
 		},
+		"system backup exist in remote": {
+			state:           longhorn.SystemBackupStateNone,
+			expectState:     longhorn.SystemBackupStateNone,
+			isExistInRemote: true,
+		},
 	}
 
 	for name, tc := range testCases {
@@ -141,6 +146,14 @@ func (s *TestSuite) TestReconcileRolloutSave(c *C) {
 
 		if tc.controllerID == "" {
 			tc.controllerID = rolloutOwnerID
+		}
+
+		backupTargetClient := &FakeSystemBackupTargetClient{}
+		if tc.isExistInRemote {
+			backupTargetClient = &FakeSystemBackupTargetClient{
+				name:    tc.systemBackupName,
+				version: TestSystemBackupLonghornVersion,
+			}
 		}
 
 		fmt.Printf("testing %v\n", name)
@@ -207,6 +220,10 @@ func (s *TestSuite) TestReconcileRolloutSave(c *C) {
 			errCondition := types.GetCondition(systemBackup.Status.Conditions, longhorn.SystemBackupConditionTypeError)
 			c.Assert(errCondition.Status, Equals, longhorn.ConditionStatusTrue)
 			c.Assert(strings.HasPrefix(errCondition.Message, tc.expectErrorConditionMessage), Equals, true)
+		}
+
+		if tc.isExistInRemote {
+			c.Assert(systemBackup.Labels[types.GetVersionLabelKey()], NotNil)
 		}
 	}
 }
