@@ -863,6 +863,11 @@ func volumeSchema(volume *client.Schema) {
 	volumeDataLocality.Default = longhorn.DataLocalityDisabled
 	volume.ResourceFields["dataLocality"] = volumeDataLocality
 
+	volumeSnapshotDataIntegrity := volume.ResourceFields["snapshotDataIntegrity"]
+	volumeSnapshotDataIntegrity.Create = true
+	volumeSnapshotDataIntegrity.Default = longhorn.SnapshotDataIntegrityIgnored
+	volume.ResourceFields["snapshotDataIntegrity"] = volumeSnapshotDataIntegrity
+
 	volumeAccessMode := volume.ResourceFields["accessMode"]
 	volumeAccessMode.Create = true
 	volumeAccessMode.Default = longhorn.AccessModeReadWriteOnce
@@ -1168,23 +1173,24 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			Actions: map[string]string{},
 			Links:   map[string]string{},
 		},
-		Name:                v.Name,
-		Size:                strconv.FormatInt(v.Spec.Size, 10),
-		Frontend:            v.Spec.Frontend,
-		DisableFrontend:     v.Spec.DisableFrontend,
-		LastAttachedBy:      v.Spec.LastAttachedBy,
-		FromBackup:          v.Spec.FromBackup,
-		DataSource:          v.Spec.DataSource,
-		NumberOfReplicas:    v.Spec.NumberOfReplicas,
-		ReplicaAutoBalance:  v.Spec.ReplicaAutoBalance,
-		DataLocality:        v.Spec.DataLocality,
-		StaleReplicaTimeout: v.Spec.StaleReplicaTimeout,
-		Created:             v.CreationTimestamp.String(),
-		EngineImage:         v.Spec.EngineImage,
-		BackingImage:        v.Spec.BackingImage,
-		Standby:             v.Spec.Standby,
-		DiskSelector:        v.Spec.DiskSelector,
-		NodeSelector:        v.Spec.NodeSelector,
+		Name:                  v.Name,
+		Size:                  strconv.FormatInt(v.Spec.Size, 10),
+		Frontend:              v.Spec.Frontend,
+		DisableFrontend:       v.Spec.DisableFrontend,
+		LastAttachedBy:        v.Spec.LastAttachedBy,
+		FromBackup:            v.Spec.FromBackup,
+		DataSource:            v.Spec.DataSource,
+		NumberOfReplicas:      v.Spec.NumberOfReplicas,
+		ReplicaAutoBalance:    v.Spec.ReplicaAutoBalance,
+		DataLocality:          v.Spec.DataLocality,
+		SnapshotDataIntegrity: v.Spec.SnapshotDataIntegrity,
+		StaleReplicaTimeout:   v.Spec.StaleReplicaTimeout,
+		Created:               v.CreationTimestamp.String(),
+		EngineImage:           v.Spec.EngineImage,
+		BackingImage:          v.Spec.BackingImage,
+		Standby:               v.Spec.Standby,
+		DiskSelector:          v.Spec.DiskSelector,
+		NodeSelector:          v.Spec.NodeSelector,
 
 		State:                     v.Status.State,
 		Robustness:                v.Status.Robustness,
@@ -1239,6 +1245,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateAccessMode"] = struct{}{}
 			actions["updateReplicaAutoBalance"] = struct{}{}
 			actions["updateUnmapMarkSnapChainRemoved"] = struct{}{}
+			actions["updateSnapshotDataIntegrity"] = struct{}{}
 			actions["recurringJobAdd"] = struct{}{}
 			actions["recurringJobDelete"] = struct{}{}
 			actions["recurringJobList"] = struct{}{}
