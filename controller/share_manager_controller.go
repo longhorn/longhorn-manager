@@ -300,7 +300,8 @@ func (c *ShareManagerController) syncShareManager(key string) (err error) {
 			return err
 		}
 
-		if err := c.ds.DeleteConfigMap(c.namespace, types.GetConfigMapNameFromShareManagerName(sm.Name)); err != nil {
+		err = c.ds.DeleteConfigMap(c.namespace, types.GetConfigMapNameFromShareManagerName(sm.Name))
+		if err != nil && !datastore.ErrorIsNotFound(err) {
 			return errors.Wrapf(err, "failed to delete the configmap (recovery backend) for share manager %v", sm.Name)
 		}
 

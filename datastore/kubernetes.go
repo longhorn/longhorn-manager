@@ -15,6 +15,8 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -252,6 +254,16 @@ func (s *DataStore) GetStorageClassRO(scName string) (*storagev1.StorageClass, e
 	return s.storageclassLister.Get(scName)
 }
 
+// GetStorageClass returns a new StorageClass object for the given name
+func (s *DataStore) GetStorageClass(name string) (*storagev1.StorageClass, error) {
+	resultRO, err := s.GetStorageClassRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
 // DeleteStorageClass deletes StorageClass with the given name
 func (s *DataStore) DeleteStorageClass(scName string) error {
 	return s.kubeClient.StorageV1().StorageClasses().Delete(context.TODO(), scName, metav1.DeleteOptions{})
@@ -260,6 +272,11 @@ func (s *DataStore) DeleteStorageClass(scName string) error {
 // CreateStorageClass creates StorageClass with the given object
 func (s *DataStore) CreateStorageClass(sc *storagev1.StorageClass) (*storagev1.StorageClass, error) {
 	return s.kubeClient.StorageV1().StorageClasses().Create(context.TODO(), sc, metav1.CreateOptions{})
+}
+
+// UpdateStorageClass updates the StorageClass for the given StorageClass object
+func (s *DataStore) UpdateStorageClass(obj *storagev1.StorageClass) (*storagev1.StorageClass, error) {
+	return s.kubeClient.StorageV1().StorageClasses().Update(context.TODO(), obj, metav1.UpdateOptions{})
 }
 
 // ListPodsRO returns a list of all Pods for the given namespace,
@@ -293,6 +310,11 @@ func (s *DataStore) GetPodContainerLog(podName, containerName string) ([]byte, e
 		podLogOpts.Container = containerName
 	}
 	return s.kubeClient.CoreV1().Pods(s.namespace).GetLogs(podName, podLogOpts).DoRaw(context.TODO())
+}
+
+// CreateDaemonSet creates a DaemonSet resource with the given DaemonSet object in the Longhorn namespace
+func (s *DataStore) CreateDaemonSet(daemonSet *appsv1.DaemonSet) (*appsv1.DaemonSet, error) {
+	return s.kubeClient.AppsV1().DaemonSets(s.namespace).Create(context.TODO(), daemonSet, metav1.CreateOptions{})
 }
 
 // GetDaemonSet gets the DaemonSet for the given name and namespace
@@ -831,4 +853,112 @@ func (s *DataStore) UpdatePVAnnotation(volume *longhorn.Volume, annotationKey, a
 	_, err = s.UpdatePersistentVolume(pv)
 
 	return err
+}
+
+// CreateJob creates a Job resource for the given job object in the Longhorn namespace
+func (s *DataStore) CreateJob(job *batchv1.Job) (*batchv1.Job, error) {
+	return s.kubeClient.BatchV1().Jobs(s.namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+}
+
+// DeleteJob delete a Job resource for the given job name in the Longhorn namespace
+func (s *DataStore) DeleteJob(name string) error {
+	propagation := metav1.DeletePropagationForeground
+	return s.kubeClient.BatchV1().Jobs(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
+}
+
+// GetJob get a Job resource for the given job name in the Longhorn namespace
+func (s *DataStore) GetJob(name string) (*batchv1.Job, error) {
+	return s.kubeClient.BatchV1().Jobs(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// CreateServiceAccount create a ServiceAccount resource with the given ServiceAccount object in the Longhorn
+// namespace
+func (s *DataStore) CreateServiceAccount(serviceAccount *corev1.ServiceAccount) (*corev1.ServiceAccount, error) {
+	return s.kubeClient.CoreV1().ServiceAccounts(s.namespace).Create(context.TODO(), serviceAccount, metav1.CreateOptions{})
+}
+
+// GetServiceAccount get the ServiceAccount resource of the given name in the Longhorn namespace
+func (s *DataStore) GetServiceAccount(name string) (*corev1.ServiceAccount, error) {
+	return s.kubeClient.CoreV1().ServiceAccounts(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// UpdateServiceAccount updates the ServiceAccount resource with the given ServiceAccount object in the Longhorn
+// namespace
+func (s *DataStore) UpdateServiceAccount(serviceAccount *corev1.ServiceAccount) (*corev1.ServiceAccount, error) {
+	return s.kubeClient.CoreV1().ServiceAccounts(s.namespace).Update(context.TODO(), serviceAccount, metav1.UpdateOptions{})
+}
+
+// CreateClusterRole create a ClusterRole resource with the given ClusterRole object
+func (s *DataStore) CreateClusterRole(clusterRole *rbacv1.ClusterRole) (*rbacv1.ClusterRole, error) {
+	return s.kubeClient.RbacV1().ClusterRoles().Create(context.TODO(), clusterRole, metav1.CreateOptions{})
+}
+
+// GetClusterRole get the ClusterRole resource of the given name
+func (s *DataStore) GetClusterRole(name string) (*rbacv1.ClusterRole, error) {
+	return s.kubeClient.RbacV1().ClusterRoles().Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// UpdateClusterRole create a ClusterRole resource with the given ClusterRole objecct
+func (s *DataStore) UpdateClusterRole(clusterRole *rbacv1.ClusterRole) (*rbacv1.ClusterRole, error) {
+	return s.kubeClient.RbacV1().ClusterRoles().Update(context.TODO(), clusterRole, metav1.UpdateOptions{})
+}
+
+// CreateClusterRoleBinding create a ClusterRoleBinding resource with the given ClusterRoleBinding object
+func (s *DataStore) CreateClusterRoleBinding(clusterRoleBinding *rbacv1.ClusterRoleBinding) (*rbacv1.ClusterRoleBinding, error) {
+	return s.kubeClient.RbacV1().ClusterRoleBindings().Create(context.TODO(), clusterRoleBinding, metav1.CreateOptions{})
+}
+
+// GetClusterRoleBinding get the ClusterRoleBinding resource of the given name
+func (s *DataStore) GetClusterRoleBinding(name string) (*rbacv1.ClusterRoleBinding, error) {
+	return s.kubeClient.RbacV1().ClusterRoleBindings().Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// UpdateClusterRoleBinding updates the ClusterRoleBinding resource with the given ClusterRoleBinding object
+func (s *DataStore) UpdateClusterRoleBinding(clusterRoleBinding *rbacv1.ClusterRoleBinding) (*rbacv1.ClusterRoleBinding, error) {
+	return s.kubeClient.RbacV1().ClusterRoleBindings().Update(context.TODO(), clusterRoleBinding, metav1.UpdateOptions{})
+}
+
+// CreatePodSecurityPolicy create a PodSecurityPolicy resource with the given PodSecurityPolicy object
+func (s *DataStore) CreatePodSecurityPolicy(podSecurityPolicy *policyv1beta1.PodSecurityPolicy) (*policyv1beta1.PodSecurityPolicy, error) {
+	return s.kubeClient.PolicyV1beta1().PodSecurityPolicies().Create(context.TODO(), podSecurityPolicy, metav1.CreateOptions{})
+}
+
+// GetPodSecurityPolicy get the PodSecurityPolicy resource of the given name
+func (s *DataStore) GetPodSecurityPolicy(name string) (*policyv1beta1.PodSecurityPolicy, error) {
+	return s.kubeClient.PolicyV1beta1().PodSecurityPolicies().Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// UpdatePodSecurityPolicy updates the PodSecurityPolicy resource with the given PodSecurityPolicy object
+func (s *DataStore) UpdatePodSecurityPolicy(podSecurityPolicy *policyv1beta1.PodSecurityPolicy) (*policyv1beta1.PodSecurityPolicy, error) {
+	return s.kubeClient.PolicyV1beta1().PodSecurityPolicies().Update(context.TODO(), podSecurityPolicy, metav1.UpdateOptions{})
+}
+
+// CreateRole create a Role resource with the given Role object in the Longhorn namespace
+func (s *DataStore) CreateRole(role *rbacv1.Role) (*rbacv1.Role, error) {
+	return s.kubeClient.RbacV1().Roles(s.namespace).Create(context.TODO(), role, metav1.CreateOptions{})
+}
+
+// GetRole get the Role resource of the given name in the Longhorn namespace
+func (s *DataStore) GetRole(name string) (*rbacv1.Role, error) {
+	return s.kubeClient.RbacV1().Roles(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// UpdateRole updates the Role resource with the given Role object in the Longhorn namespace
+func (s *DataStore) UpdateRole(role *rbacv1.Role) (*rbacv1.Role, error) {
+	return s.kubeClient.RbacV1().Roles(s.namespace).Update(context.TODO(), role, metav1.UpdateOptions{})
+}
+
+// CreateRoleBinding create a RoleBinding resource with the given RoleBinding object in the Longhorn namespace
+func (s *DataStore) CreateRoleBinding(role *rbacv1.RoleBinding) (*rbacv1.RoleBinding, error) {
+	return s.kubeClient.RbacV1().RoleBindings(s.namespace).Create(context.TODO(), role, metav1.CreateOptions{})
+}
+
+// GetRoleBinding get the RoleBinding resource of the given name in the Longhorn namespace
+func (s *DataStore) GetRoleBinding(name string) (*rbacv1.RoleBinding, error) {
+	return s.kubeClient.RbacV1().RoleBindings(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+// UpdateRoleBinding updates the RoleBinding resource with the given RoleBinding object in the Longhorn namespace
+func (s *DataStore) UpdateRoleBinding(roleBinding *rbacv1.RoleBinding) (*rbacv1.RoleBinding, error) {
+	return s.kubeClient.RbacV1().RoleBindings(s.namespace).Update(context.TODO(), roleBinding, metav1.UpdateOptions{})
 }

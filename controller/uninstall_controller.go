@@ -10,7 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
 
-	apiextension "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -71,7 +71,7 @@ func NewUninstallController(
 	ds *datastore.DataStore,
 	stopCh chan struct{},
 	kubeClient clientset.Interface,
-	extensionsClient apiextension.Interface,
+	extensionsClient apiextensionsclientset.Interface,
 ) *UninstallController {
 	c := &UninstallController{
 		baseController: newBaseControllerWithQueue("longhorn-uninstall", logger,

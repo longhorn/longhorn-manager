@@ -1368,6 +1368,21 @@ func (s *DataStore) GetEngineImage(name string) (*longhorn.EngineImage, error) {
 	return resultRO.DeepCopy(), nil
 }
 
+func (s *DataStore) GetEngineImageByImage(image string) (*longhorn.EngineImage, error) {
+	engineImages, err := s.ListEngineImages()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ei := range engineImages {
+		if ei.Spec.Image == image {
+			return ei, nil
+		}
+	}
+
+	return nil, errors.Errorf("cannot find engine image by %v", image)
+}
+
 // ListEngineImages returns object includes all EngineImage in namespace
 func (s *DataStore) ListEngineImages() (map[string]*longhorn.EngineImage, error) {
 	itemMap := map[string]*longhorn.EngineImage{}
@@ -3176,6 +3191,11 @@ func (s *DataStore) ListBackupTargets() (map[string]*longhorn.BackupTarget, erro
 	return itemMap, nil
 }
 
+// GetDefaultBackupTargetRO returns the BackupTarget for the default backup target
+func (s *DataStore) GetDefaultBackupTargetRO() (*longhorn.BackupTarget, error) {
+	return s.GetBackupTargetRO(types.DefaultBackupTargetName)
+}
+
 // GetBackupTargetRO returns the BackupTarget with the given backup target name in the cluster
 func (s *DataStore) GetBackupTargetRO(backupTargetName string) (*longhorn.BackupTarget, error) {
 	return s.btLister.BackupTargets(s.namespace).Get(backupTargetName)
@@ -3971,4 +3991,304 @@ func (s *DataStore) CreateSupportBundle(supportBundle *longhorn.SupportBundle) (
 // set by default
 func (s *DataStore) DeleteSupportBundle(name string) error {
 	return s.lhClient.LonghornV1beta2().SupportBundles(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// CreateSystemBackup creates a Longhorn SystemBackup and verifies creation
+func (s *DataStore) CreateSystemBackup(systemBackup *longhorn.SystemBackup) (*longhorn.SystemBackup, error) {
+	ret, err := s.lhClient.LonghornV1beta2().SystemBackups(s.namespace).Create(context.TODO(), systemBackup, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "system backup", func(name string) (runtime.Object, error) {
+		return s.GetSystemBackupRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	ret, ok := obj.(*longhorn.SystemBackup)
+	if !ok {
+		return nil, errors.Errorf("BUG: datastore: verifyCreation returned wrong type for SystemBackup")
+	}
+	return ret.DeepCopy(), nil
+}
+
+// DeleteSystemBackup won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteSystemBackup(name string) error {
+	return s.lhClient.LonghornV1beta2().SystemBackups(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForSystemBackup results in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForSystemBackup(obj *longhorn.SystemBackup) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+
+	_, err := s.lhClient.LonghornV1beta2().SystemBackups(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for SystemBackup %v", obj.Name)
+	}
+	return nil
+}
+
+// UpdateSystemBackupStatus updates Longhorn SystemBackup status and verifies update
+func (s *DataStore) UpdateSystemBackupStatus(systemBackup *longhorn.SystemBackup) (*longhorn.SystemBackup, error) {
+	obj, err := s.lhClient.LonghornV1beta2().SystemBackups(s.namespace).UpdateStatus(context.TODO(), systemBackup, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	verifyUpdate(systemBackup.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetSystemBackupRO(name)
+	})
+	return obj, nil
+}
+
+// GetSystemBackup returns a copy of SystemBackup with the given name
+func (s *DataStore) GetSystemBackup(name string) (*longhorn.SystemBackup, error) {
+	resultRO, err := s.GetSystemBackupRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// GetSystemBackupRO returns the SystemBackup with the given name
+func (s *DataStore) GetSystemBackupRO(name string) (*longhorn.SystemBackup, error) {
+	return s.sbLister.SystemBackups(s.namespace).Get(name)
+}
+
+// ListSystemBackups returns a copy of the object contains all SystemBackups
+func (s *DataStore) ListSystemBackups() (map[string]*longhorn.SystemBackup, error) {
+	list, err := s.ListSystemBackupsRO()
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.SystemBackup{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListSystemBackupsRO returns an object contains all SystemBackups
+func (s *DataStore) ListSystemBackupsRO() ([]*longhorn.SystemBackup, error) {
+	return s.sbLister.SystemBackups(s.namespace).List(labels.Everything())
+}
+
+// CreateSystemRestore creates a Longhorn SystemRestore resource and verifies creation
+func (s *DataStore) CreateSystemRestore(systemRestore *longhorn.SystemRestore) (*longhorn.SystemRestore, error) {
+	ret, err := s.lhClient.LonghornV1beta2().SystemRestores(s.namespace).Create(context.TODO(), systemRestore, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "system restore", func(name string) (runtime.Object, error) {
+		return s.GetSystemRestoreRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	ret, ok := obj.(*longhorn.SystemRestore)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for SystemRestore")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// DeleteSystemRestore won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteSystemRestore(name string) error {
+	return s.lhClient.LonghornV1beta2().SystemRestores(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForSystemRestore will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForSystemRestore(obj *longhorn.SystemRestore) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+
+	_, err := s.lhClient.LonghornV1beta2().SystemRestores(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for SystemRestore %v", obj.Name)
+	}
+	return nil
+}
+
+// RemoveSystemRestoreLabel removed the system-restore label and updates the SystemRestore. Longhorn labels
+// SystemRestore with "longhorn.io/system-restore: InProgress" during restoring to ensure only one restore is rolling out.
+func (s *DataStore) RemoveSystemRestoreLabel(systemRestore *longhorn.SystemRestore) (*longhorn.SystemRestore, error) {
+	key := types.GetSystemRestoreLabelKey()
+	if _, exist := systemRestore.Labels[key]; !exist {
+		return systemRestore, nil
+	}
+
+	delete(systemRestore.Labels, key)
+	_, err := s.lhClient.LonghornV1beta2().SystemRestores(s.namespace).Update(context.TODO(), systemRestore, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to remove SystemRestore %v label %v", systemRestore.Name, key)
+	}
+
+	log := logrus.WithFields(logrus.Fields{
+		"systemRestore": systemRestore.Name,
+		"label":         key,
+	})
+	log.Debug("Removed SystemRestore label")
+	return systemRestore, nil
+}
+
+// UpdateSystemRestore updates Longhorn SystemRestore and verifies update
+func (s *DataStore) UpdateSystemRestore(systemRestore *longhorn.SystemRestore) (*longhorn.SystemRestore, error) {
+	err := tagLonghornSystemRestoreLabelInProgress(systemRestore)
+	if err != nil {
+		return nil, err
+	}
+
+	obj, err := s.lhClient.LonghornV1beta2().SystemRestores(s.namespace).Update(context.TODO(), systemRestore, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	verifyUpdate(systemRestore.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetSystemRestore(name)
+	})
+
+	return obj, nil
+}
+
+func tagLonghornSystemRestoreLabelInProgress(obj runtime.Object) error {
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[types.GetSystemRestoreLabelKey()] = string(longhorn.SystemRestoreStateInProgress)
+	metadata.SetLabels(labels)
+	return nil
+}
+
+// UpdateSystemRestoreStatus updates Longhorn SystemRestore resource status and verifies update
+func (s *DataStore) UpdateSystemRestoreStatus(systemRestore *longhorn.SystemRestore) (*longhorn.SystemRestore, error) {
+	obj, err := s.lhClient.LonghornV1beta2().SystemRestores(s.namespace).UpdateStatus(context.TODO(), systemRestore, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	verifyUpdate(systemRestore.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetSystemRestoreRO(name)
+	})
+
+	return obj, nil
+}
+
+// GetSystemRestore returns a copy of SystemRestore with the given obj name
+func (s *DataStore) GetSystemRestore(name string) (*longhorn.SystemRestore, error) {
+	resultRO, err := s.GetSystemRestoreRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// GetSystemRestoreRO returns the SystemRestore with the given CR name
+func (s *DataStore) GetSystemRestoreRO(name string) (*longhorn.SystemRestore, error) {
+	return s.srLister.SystemRestores(s.namespace).Get(name)
+}
+
+// GetSystemRestoreInProgress validate the given name and returns the only
+// SystemRestore in progress. Returns error if found less or more SystemRestore.
+// If given an empty name, return the SystemRestore without validating the name.
+func (s *DataStore) GetSystemRestoreInProgress(name string) (systemRestore *longhorn.SystemRestore, err error) {
+	systemRestores, err := s.ListSystemRestoresInProgress()
+	if err != nil {
+		return nil, err
+	}
+
+	systemRestoreCount := len(systemRestores)
+	if systemRestoreCount == 0 {
+		return nil, errors.Errorf("cannot find in-progress system restore")
+	} else if systemRestoreCount > 1 {
+		return nil, errors.Errorf("found %v system restore already in progress", systemRestoreCount-1)
+	}
+
+	for _, systemRestore = range systemRestores {
+		if name == "" {
+			break
+		}
+
+		if systemRestore.Name != name {
+			return nil, errors.Errorf("found the in-progress system restore with a mismatching name %v, expecting %v", systemRestore.Name, name)
+		}
+	}
+
+	return systemRestore, nil
+}
+
+// ListSystemRestoresInProgress returns an object contains all SystemRestores in progress
+func (s *DataStore) ListSystemRestoresInProgress() (map[string]*longhorn.SystemRestore, error) {
+	selector, err := s.getSystemRestoreInProgressSelector()
+	if err != nil {
+		return nil, err
+	}
+	return s.listSystemRestores(selector)
+}
+
+func (s *DataStore) getSystemRestoreInProgressSelector() (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetSystemRestoreInProgressLabel(),
+	})
+}
+
+func (s *DataStore) listSystemRestores(selector labels.Selector) (map[string]*longhorn.SystemRestore, error) {
+	list, err := s.srLister.SystemRestores(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.SystemRestore{}
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListSystemRestores returns an object contains all SystemRestores
+func (s *DataStore) ListSystemRestores() (map[string]*longhorn.SystemRestore, error) {
+	return s.listSystemRestores(labels.Everything())
 }

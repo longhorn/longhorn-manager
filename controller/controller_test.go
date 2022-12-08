@@ -9,16 +9,22 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/kubernetes/pkg/controller"
 
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/longhorn/longhorn-manager/engineapi"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 
 	. "gopkg.in/check.v1"
 )
@@ -56,7 +62,16 @@ const (
 	TestPVName  = "test-pv"
 	TestPVCName = "test-pvc"
 
+	TestStorageClassName = "test-storage-class"
+
 	TestVAName = "test-volume-attachment"
+
+	TestClusterRoleName        = "test-cluster-role"
+	TestClusterRoleBindingName = "test-cluster-role-binding"
+	TestEngineImageName        = "test-engine-image"
+	TestPodSecurityPolicyName  = "test-pod-security-policy"
+	TestRoleName               = "test-role"
+	TestRoleBindingName        = "test-role-binding"
 
 	TestTimeNow = "2015-01-02T00:00:00Z"
 
@@ -69,9 +84,16 @@ const (
 	TestDiskSize          = 5000000000
 	TestDiskAvailableSize = 3000000000
 
+	TestDeploymentName = "test-deployment"
+
 	TestBackupTarget     = "s3://backupbucket@us-east-1/backupstore"
 	TestBackupVolumeName = "test-backup-volume-for-restoration"
 	TestBackupName       = "test-backup-for-restoration"
+
+	TestRecurringJobName      = "test-recurring-job"
+	TestRecurringJobGroupName = "test-recurring-job-group"
+
+	TestCustomResourceDefinitionName = "test-crd"
 )
 
 var (
@@ -233,6 +255,160 @@ func newInstanceManager(
 		im.DeletionTimestamp = &now
 	}
 	return im
+}
+
+func newClusterRole(name string, rules []rbacv1.PolicyRule) *rbacv1.ClusterRole {
+	return &rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Rules: rules,
+	}
+}
+
+func newClusterRoleBinding(name string, subjects []rbacv1.Subject, roleRef rbacv1.RoleRef) *rbacv1.ClusterRoleBinding {
+	return &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Subjects: subjects,
+		RoleRef:  roleRef,
+	}
+}
+
+func newConfigMap(name string, data map[string]string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
+		Data: data,
+	}
+}
+
+func newCustomResourceDefinition(name string, spec apiextensionsv1.CustomResourceDefinitionSpec) *apiextensionsv1.CustomResourceDefinition {
+	return &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: spec,
+	}
+}
+
+func newDaemonSet(name string, spec appsv1.DaemonSetSpec, labels map[string]string) *appsv1.DaemonSet {
+	if labels == nil {
+		types.GetBaseLabelsForSystemManagedComponent()
+	}
+	return &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+			Labels:    labels,
+		},
+		Spec: spec,
+	}
+}
+
+func newDeployment(name string, spec appsv1.DeploymentSpec) *appsv1.Deployment {
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+			Labels:    types.GetBaseLabelsForSystemManagedComponent(),
+		},
+		Spec: spec,
+	}
+}
+
+func newPodSecurityPolicy(spec policyv1beta1.PodSecurityPolicySpec) *policyv1beta1.PodSecurityPolicy {
+	return &policyv1beta1.PodSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: TestPodSecurityPolicyName,
+		},
+		Spec: spec,
+	}
+}
+
+func newRecurringJob(name string, spec longhorn.RecurringJobSpec) *longhorn.RecurringJob {
+	return &longhorn.RecurringJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
+		Spec: spec,
+	}
+}
+
+func newRole(name string, rules []rbacv1.PolicyRule) *rbacv1.Role {
+	return &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
+		Rules: rules,
+	}
+}
+
+func newRoleBinding(name string, subjects []rbacv1.Subject) *rbacv1.RoleBinding {
+	return &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
+		Subjects: subjects,
+	}
+}
+
+func newSystemRestore(name, currentOwnerID string, state longhorn.SystemRestoreState) *longhorn.SystemRestore {
+	return &longhorn.SystemRestore{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
+		Spec: longhorn.SystemRestoreSpec{
+			SystemBackup: TestSystemBackupName,
+		},
+		Status: longhorn.SystemRestoreStatus{
+			OwnerID:   currentOwnerID,
+			State:     state,
+			SourceURL: "",
+		},
+	}
+}
+
+func newSystemBackup(name, currentOwnerID, longhornVersion string, state longhorn.SystemBackupState) *longhorn.SystemBackup {
+	return &longhorn.SystemBackup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+			Labels: map[string]string{
+				types.GetVersionLabelKey(): longhornVersion,
+			},
+		},
+		Status: longhorn.SystemBackupStatus{
+			OwnerID: currentOwnerID,
+			State:   state,
+			Version: TestSystemBackupLonghornVersion,
+		},
+	}
+}
+
+func newServiceAccount(name string) *corev1.ServiceAccount {
+	return &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
+	}
+}
+
+func newStorageClass(name string) *storagev1.StorageClass {
+	return &storagev1.StorageClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Provisioner: types.LonghornDriverName,
+	}
 }
 
 func getKey(obj interface{}, c *C) string {

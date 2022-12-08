@@ -21,6 +21,7 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 
 	. "gopkg.in/check.v1"
 )
@@ -56,9 +57,9 @@ func fakeInstanceManagerVersionUpdater(im *longhorn.InstanceManager) error {
 
 func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.SharedInformerFactory,
 	kubeInformerFactory informers.SharedInformerFactory, lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
-	controllerID string) *InstanceManagerController {
+	extensionsClient *apiextensionsfake.Clientset, controllerID string) *InstanceManagerController {
 
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, TestNamespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
 
 	logger := logrus.StandardLogger()
 
@@ -194,8 +195,10 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		sIndexer := lhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 		lhNodeIndexer := lhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
 
+		extensionsClient := apiextensionsfake.NewSimpleClientset()
+
 		imc := newTestInstanceManagerController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient,
-			tc.controllerID)
+			extensionsClient, tc.controllerID)
 
 		// Controller logic depends on the existence of DefaultInstanceManagerImage Setting and Toleration Setting.
 		tolerationSetting := newTolerationSetting()

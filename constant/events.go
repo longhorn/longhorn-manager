@@ -3,6 +3,7 @@ package constant
 const (
 	EventReasonCreate         = "Create"
 	EventReasonFailedCreating = "FailedCreating"
+	EventReasonCreated        = "Created"
 	EventReasonDelete         = "Delete"
 	EventReasonDeleting       = "Deleting"
 	EventReasonFailedDeleting = "FailedDeleting"
@@ -24,6 +25,7 @@ const (
 	EventReasonTimeoutSnapshotPurge        = "TimeoutSnapshotPurge"
 	EventReasonFailedSnapshotPurge         = "FailedSnapshotPurge"
 
+	EventReasonRestored      = "Restored"
 	EventReasonFailedRestore = "FailedRestore"
 
 	EventReasonFailedExpansion    = "FailedExpansion"
@@ -44,10 +46,14 @@ const (
 	EventReasonAutoSalvaged       = "AutoSalvaged"
 
 	EventReasonFetching = "Fetching"
-	EventReasonSyncing  = "Syncing"
+	EventReasonFetched  = "Fetched"
+
+	EventReasonSyncing = "Syncing"
+	EventReasonSynced  = "Synced"
 
 	EventReasonFailedSnapshotDataIntegrityCheck = "FailedSnapshotDataIntegrityCheck"
 
-	EventReasonFailed = "Failed"
-	EventReasonReady  = "Ready"
+	EventReasonFailed   = "Failed"
+	EventReasonReady    = "Ready"
+	EventReasonUploaded = "Uploaded"
 )

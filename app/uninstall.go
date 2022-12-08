@@ -6,7 +6,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
-	apiextension "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -65,7 +65,7 @@ func uninstall(c *cli.Context) error {
 		return errors.Wrap(err, "unable to get k8s client")
 	}
 
-	extensionsClient, err := apiextension.NewForConfig(config)
+	extensionsClient, err := apiextensionsclientset.NewForConfig(config)
 	if err != nil {
 		return errors.Wrap(err, "unable to get k8s extension client")
 	}
@@ -78,7 +78,7 @@ func uninstall(c *cli.Context) error {
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
 	lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, time.Second*30)
 
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, namespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, namespace)
 
 	logger := logrus.StandardLogger()
 

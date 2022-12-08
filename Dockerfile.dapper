@@ -5,7 +5,7 @@ ARG http_proxy
 ARG https_proxy
 ENV HOST_ARCH=${DAPPER_HOST_ARCH} ARCH=${DAPPER_HOST_ARCH}
 
-RUN zypper -n install gcc ca-certificates git wget curl vim less file python3-tox python3-devel iptables libdevmapper1_03 libltdl7 awk docker && \
+RUN zypper -n install gcc ca-certificates git wget curl vim less file python3-tox python3-devel iptables libdevmapper1_03 libltdl7 awk docker zip unzip && \
     rm -f /bin/sh && ln -s /bin/bash /bin/sh && \
     rm -rf /var/cache/zypp/*
 
