@@ -117,7 +117,7 @@ func DeviceEncryptionStatus(devicePath string) (mappedDevice, mapper string, err
 	if len(lines) < 1 {
 		return "", "", fmt.Errorf("device encryption status returned no stdout for %s", devicePath)
 	}
-	if !strings.HasSuffix(lines[0], " is active.") {
+	if !strings.Contains(lines[0], " is active") {
 		// Implies this is not a LUKS device
 		return devicePath, "", nil
 	}
