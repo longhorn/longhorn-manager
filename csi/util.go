@@ -292,6 +292,11 @@ func isBlockDevice(volumePath string) (bool, error) {
 	return false, nil
 }
 
+func getDiskFormat(devicePath string) (string, error) {
+	m := mount.SafeFormatAndMount{Interface: mount.New(""), Exec: utilexec.New()}
+	return m.GetDiskFormat(devicePath)
+}
+
 func getFilesystemStatistics(volumePath string) (*volumeFilesystemStatistics, error) {
 	var statfs unix.Statfs_t
 	// See http://man7.org/linux/man-pages/man2/statfs.2.html for details.
@@ -329,7 +334,7 @@ func makeFile(pathname string) error {
 	return nil
 }
 
-//requiresSharedAccess checks if the volume is requested to be multi node capable
+// requiresSharedAccess checks if the volume is requested to be multi node capable
 // a volume that is already in shared access mode, must be used via shared access
 // even if single node access is requested.
 func requiresSharedAccess(vol *longhornclient.Volume, cap *csi.VolumeCapability) bool {

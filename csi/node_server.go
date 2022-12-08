@@ -130,7 +130,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	if volumeCapability.GetBlock() != nil {
-		devicePath := volume.Controllers[0].Endpoint
+		devicePath := filepath.Join(stagingPath, volumeID)
 		if err := ns.nodePublishBlockVolume(volumeID, devicePath, targetPath, mounter); err != nil {
 			return nil, err
 		}
@@ -261,6 +261,13 @@ func (ns *NodeServer) nodeStageMountVolume(volumeID, devicePath, targetPath, fsT
 	return nil
 }
 
+// nodeStageBlockVolume utilizes the stagingPath to create a volumeID file to bind mount the devicePath
+// this is valid since the csi plugin is in control of the staging path
+func (ns *NodeServer) nodeStageBlockVolume(volumeID, devicePath, stagingPath string, mounter mount.Interface) error {
+	stagingPath = filepath.Join(stagingPath, volumeID)
+	return ns.nodePublishBlockVolume(volumeID, devicePath, stagingPath, mounter)
+}
+
 func (ns *NodeServer) nodePublishBlockVolume(volumeID, devicePath, targetPath string, mounter mount.Interface) error {
 	// we ensure the parent directory exists and is valid
 	if _, err := ensureMountPoint(filepath.Dir(targetPath), mounter); err != nil {
@@ -352,13 +359,6 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads", volumeID)
 	}
 
-	devicePath := volume.Controllers[0].Endpoint
-
-	// do nothing for block devices, since they are handled by publish
-	if volumeCapability.GetBlock() != nil {
-		return &csi.NodeStageVolumeResponse{}, nil
-	}
-
 	if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable {
 		if volume.AccessMode != string(longhorn.AccessModeReadWriteMany) {
 			return nil, status.Errorf(codes.FailedPrecondition, "volume %s requires shared access but is not marked for shared use", volumeID)
@@ -383,18 +383,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
-	options := volumeCapability.GetMount().GetMountFlags()
-	fsType := volumeCapability.GetMount().GetFsType()
-	if fsType == "" {
-		fsType = defaultFsType
-	}
-
-	formatMounter, ok := mounter.(*mount.SafeFormatAndMount)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "volume %v cannot get format mounter that support filesystem %v creation", volumeID, fsType)
-	}
-
-	diskFormat, err := formatMounter.GetDiskFormat(devicePath)
+	devicePath := volume.Controllers[0].Endpoint
+	diskFormat, err := getDiskFormat(devicePath)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to evaluate device filesystem format")
 	}
@@ -435,6 +425,26 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 		// update the device path to point to the new crypto device
 		devicePath = cryptoDevice
+	}
+
+	if volumeCapability.GetBlock() != nil {
+		if err := ns.nodeStageBlockVolume(volumeID, devicePath, targetPath, mounter); err != nil {
+			return nil, err
+		}
+
+		logrus.Infof("volume %v device %v available for usage as block device", volumeID, devicePath)
+		return &csi.NodeStageVolumeResponse{}, nil
+	}
+
+	options := volumeCapability.GetMount().GetMountFlags()
+	fsType := volumeCapability.GetMount().GetFsType()
+	if fsType == "" {
+		fsType = defaultFsType
+	}
+
+	formatMounter, ok := mounter.(*mount.SafeFormatAndMount)
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "volume %v cannot get format mounter that support filesystem %v creation", volumeID, fsType)
 	}
 
 	if err := ns.nodeStageMountVolume(volumeID, devicePath, targetPath, fsType, options, formatMounter); err != nil {
@@ -479,15 +489,25 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
 
+	mounter := mount.New("")
+
 	// CO owns the staging_path so we only unmount but not remove the path
-	if err := unmount(targetPath, mount.New("")); err != nil {
+	if err := unmount(targetPath, mounter); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to unmount volume %s mount point %v error %v", volumeID, targetPath, err))
+	}
+
+	// for block mode we use the staging path as parent, so we have to do additional cleanup of the subfolder/files
+	// we should transition the regular fs mounts to also use the same sub folder, this allows us to store additional
+	// metadata as well as do more forcefull removals since we no longer share the control of the staging_path with kubernetes
+	deviceFilePath := filepath.Join(targetPath, volumeID)
+	if err := cleanupMountPoint(deviceFilePath, mounter); err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to clean up volume %s device mount point %v error %v", volumeID, deviceFilePath, err))
 	}
 
 	// optionally try to retrieve the volume and check if it's an RWX volume
 	// if it is we let the share-manager clean up the crypto device
 	volume, _ := ns.apiClient.Volume.ById(volumeID)
-	cleanupCryptoDevice := !requiresSharedAccess(volume, nil)
+	cleanupCryptoDevice := !requiresSharedAccess(volume, nil) || (volume != nil && volume.Migratable)
 
 	if cleanupCryptoDevice {
 		cryptoDevice := crypto.VolumeMapper(volumeID)
