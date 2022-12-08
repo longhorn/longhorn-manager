@@ -948,7 +948,7 @@ var (
 		Type:     SettingTypeString,
 		Required: true,
 		ReadOnly: false,
-		Default:  string(longhorn.SnapshotDataIntegrityDisabled),
+		Default:  string(longhorn.SnapshotDataIntegrityFastCheck),
 		Choices: []string{
 			string(longhorn.SnapshotDataIntegrityDisabled),
 			string(longhorn.SnapshotDataIntegrityEnabled),
@@ -992,12 +992,12 @@ var (
 
 	SettingDefinitionFastReplicaRebuildEnabled = SettingDefinition{
 		DisplayName: "Fast Replica Rebuild Enabled",
-		Description: "Enabling this setting will support the fast replica rebuild. The feature relies on the checksum of snapshot disk files, so the feature is setting the snapshot-data-integrity to **enable** or **fast-check** is a prerequisite.",
+		Description: "This setting enables the fast replica rebuilding feature. It relies on the checksums of snapshot disk files, so setting the snapshot-data-integrity to **enable** or **fast-check** is a prerequisite.",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeBool,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "false",
+		Default:     "true",
 	}
 )
 
