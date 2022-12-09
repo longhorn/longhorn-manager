@@ -929,7 +929,7 @@ func (s *DataStore) CreateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	if err := checkEngine(e); err != nil {
 		return nil, err
 	}
-	if err := tagNodeLabel(e.Spec.NodeID, e); err != nil {
+	if err := labelNode(e.Spec.NodeID, e); err != nil {
 		return nil, err
 	}
 
@@ -960,7 +960,7 @@ func (s *DataStore) UpdateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	if err := checkEngine(e); err != nil {
 		return nil, err
 	}
-	if err := tagNodeLabel(e.Spec.NodeID, e); err != nil {
+	if err := labelNode(e.Spec.NodeID, e); err != nil {
 		return nil, err
 	}
 
@@ -1078,13 +1078,13 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err := checkReplica(r); err != nil {
 		return nil, err
 	}
-	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {
+	if err := labelNode(r.Spec.NodeID, r); err != nil {
 		return nil, err
 	}
-	if err := tagDiskUUIDLabel(r.Spec.DiskID, r); err != nil {
+	if err := labelDiskUUID(r.Spec.DiskID, r); err != nil {
 		return nil, err
 	}
-	if err := tagBackingImageLabel(r.Spec.BackingImage, r); err != nil {
+	if err := labelBackingImage(r.Spec.BackingImage, r); err != nil {
 		return nil, err
 	}
 
@@ -1115,13 +1115,13 @@ func (s *DataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err := checkReplica(r); err != nil {
 		return nil, err
 	}
-	if err := tagNodeLabel(r.Spec.NodeID, r); err != nil {
+	if err := labelNode(r.Spec.NodeID, r); err != nil {
 		return nil, err
 	}
-	if err := tagDiskUUIDLabel(r.Spec.DiskID, r); err != nil {
+	if err := labelDiskUUID(r.Spec.DiskID, r); err != nil {
 		return nil, err
 	}
-	if err := tagBackingImageLabel(r.Spec.BackingImage, r); err != nil {
+	if err := labelBackingImage(r.Spec.BackingImage, r); err != nil {
 		return nil, err
 	}
 
@@ -1605,10 +1605,10 @@ func (s *DataStore) CreateBackingImageManager(backingImageManager *longhorn.Back
 	if err := initBackingImageManager(backingImageManager); err != nil {
 		return nil, err
 	}
-	if err := tagLonghornNodeLabel(backingImageManager.Spec.NodeID, backingImageManager); err != nil {
+	if err := labelLonghornNode(backingImageManager.Spec.NodeID, backingImageManager); err != nil {
 		return nil, err
 	}
-	if err := tagLonghornDiskUUIDLabel(backingImageManager.Spec.DiskUUID, backingImageManager); err != nil {
+	if err := labelLonghornDiskUUID(backingImageManager.Spec.DiskUUID, backingImageManager); err != nil {
 		return nil, err
 	}
 
@@ -1646,10 +1646,10 @@ func (s *DataStore) UpdateBackingImageManager(backingImageManager *longhorn.Back
 	if err := util.AddFinalizer(longhornFinalizerKey, backingImageManager); err != nil {
 		return nil, err
 	}
-	if err := tagLonghornNodeLabel(backingImageManager.Spec.NodeID, backingImageManager); err != nil {
+	if err := labelLonghornNode(backingImageManager.Spec.NodeID, backingImageManager); err != nil {
 		return nil, err
 	}
-	if err := tagLonghornDiskUUIDLabel(backingImageManager.Spec.DiskUUID, backingImageManager); err != nil {
+	if err := labelLonghornDiskUUID(backingImageManager.Spec.DiskUUID, backingImageManager); err != nil {
 		return nil, err
 	}
 
@@ -2433,7 +2433,7 @@ func (s *DataStore) ListReplicasByNodeRO(name string) ([]*longhorn.Replica, erro
 	return s.rLister.Replicas(s.namespace).List(nodeSelector)
 }
 
-func tagNodeLabel(nodeID string, obj runtime.Object) error {
+func labelNode(nodeID string, obj runtime.Object) error {
 	// fix longhornnode label for object
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
@@ -2449,7 +2449,7 @@ func tagNodeLabel(nodeID string, obj runtime.Object) error {
 	return nil
 }
 
-func tagDiskUUIDLabel(diskUUID string, obj runtime.Object) error {
+func labelDiskUUID(diskUUID string, obj runtime.Object) error {
 	// fix longhorndiskuuid label for object
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
@@ -2465,10 +2465,10 @@ func tagDiskUUIDLabel(diskUUID string, obj runtime.Object) error {
 	return nil
 }
 
-// tagLonghornNodeLabel fixes the new label `longhorn.io/node` for object.
-// It can replace func `tagNodeLabel` if the old label `longhornnode` is
+// labelLonghornNode fixes the new label `longhorn.io/node` for object.
+// It can replace func `labelNode` if the old label `longhornnode` is
 // deprecated.
-func tagLonghornNodeLabel(nodeID string, obj runtime.Object) error {
+func labelLonghornNode(nodeID string, obj runtime.Object) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return err
@@ -2483,10 +2483,10 @@ func tagLonghornNodeLabel(nodeID string, obj runtime.Object) error {
 	return nil
 }
 
-// tagLonghornDiskUUIDLabel fixes the new label `longhorn.io/disk-uuid` for
-// object. It can replace func `tagDiskUUIDLabel` if the old label
+// labelLonghornDiskUUID fixes the new label `longhorn.io/disk-uuid` for
+// object. It can replace func `labelDiskUUID` if the old label
 // `longhorndiskuuid` is deprecated.
-func tagLonghornDiskUUIDLabel(diskUUID string, obj runtime.Object) error {
+func labelLonghornDiskUUID(diskUUID string, obj runtime.Object) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return err
@@ -2501,7 +2501,7 @@ func tagLonghornDiskUUIDLabel(diskUUID string, obj runtime.Object) error {
 	return nil
 }
 
-func tagBackingImageLabel(backingImageName string, obj runtime.Object) error {
+func labelBackingImage(backingImageName string, obj runtime.Object) error {
 	// fix longhorn.io/backing-image label for object
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
@@ -2517,7 +2517,7 @@ func tagBackingImageLabel(backingImageName string, obj runtime.Object) error {
 	return nil
 }
 
-func tagBackupVolumeLabel(backupVolumeName string, obj runtime.Object) error {
+func labelBackupVolume(backupVolumeName string, obj runtime.Object) error {
 	// fix longhorn.io/backup-volume label for object
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
@@ -2534,13 +2534,13 @@ func tagBackupVolumeLabel(backupVolumeName string, obj runtime.Object) error {
 }
 
 func FixupRecurringJob(v *longhorn.Volume) error {
-	if err := tagRecurringJobDefaultLabel(v); err != nil {
+	if err := labelRecurringJobDefault(v); err != nil {
 		return err
 	}
 	return nil
 }
 
-func tagRecurringJobDefaultLabel(obj runtime.Object) error {
+func labelRecurringJobDefault(obj runtime.Object) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return err
@@ -3349,7 +3349,7 @@ func (s *DataStore) RemoveFinalizerForBackupVolume(backupVolume *longhorn.Backup
 
 // CreateBackup creates a Longhorn Backup CR and verifies creation
 func (s *DataStore) CreateBackup(backup *longhorn.Backup, backupVolumeName string) (*longhorn.Backup, error) {
-	if err := tagBackupVolumeLabel(backupVolumeName, backup); err != nil {
+	if err := labelBackupVolume(backupVolumeName, backup); err != nil {
 		return nil, err
 	}
 	ret, err := s.lhClient.LonghornV1beta2().Backups(s.namespace).Create(context.TODO(), backup, metav1.CreateOptions{})
@@ -4104,7 +4104,7 @@ func (s *DataStore) ListSystemBackupsRO() ([]*longhorn.SystemBackup, error) {
 	return s.sbLister.SystemBackups(s.namespace).List(labels.Everything())
 }
 
-func TagSystemBackupVersionLabel(version string, obj runtime.Object) error {
+func LabelSystemBackupVersion(version string, obj runtime.Object) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return err
@@ -4196,7 +4196,7 @@ func (s *DataStore) RemoveSystemRestoreLabel(systemRestore *longhorn.SystemResto
 
 // UpdateSystemRestore updates Longhorn SystemRestore and verifies update
 func (s *DataStore) UpdateSystemRestore(systemRestore *longhorn.SystemRestore) (*longhorn.SystemRestore, error) {
-	err := tagLonghornSystemRestoreLabelInProgress(systemRestore)
+	err := labelLonghornSystemRestoreInProgress(systemRestore)
 	if err != nil {
 		return nil, err
 	}
@@ -4213,7 +4213,7 @@ func (s *DataStore) UpdateSystemRestore(systemRestore *longhorn.SystemRestore) (
 	return obj, nil
 }
 
-func tagLonghornSystemRestoreLabelInProgress(obj runtime.Object) error {
+func labelLonghornSystemRestoreInProgress(obj runtime.Object) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return err
