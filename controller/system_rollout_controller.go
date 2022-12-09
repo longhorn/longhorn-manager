@@ -62,6 +62,7 @@ const (
 	SystemRolloutMsgUnpackedFmt         = "Unpacked %v"
 	SystemRolloutMsgCompleted           = "System rollout completed"
 	SystemRolloutMsgCreating            = "System rollout creating"
+	SystemRolloutMsgIgnoreItem          = "System rollout ignoring item: %v"
 	SystemRolloutMsgUpdating            = "System rollout updating"
 )
 
@@ -1570,6 +1571,20 @@ func (c *SystemRolloutController) restoreServiceAccounts() (err error) {
 	return nil
 }
 
+var systemRolloutIgnoredSettings = [...]string{
+	string(types.SettingNameConcurrentBackupRestorePerNodeLimit),
+	string(types.SettingNameConcurrentReplicaRebuildPerNodeLimit),
+}
+
+func isSystemRolloutIgnoredSetting(name string) bool {
+	for _, ignoredSetting := range systemRolloutIgnoredSettings {
+		if name == ignoredSetting {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *SystemRolloutController) restoreSettings() (err error) {
 	if c.settingList == nil {
 		return nil
@@ -1577,6 +1592,11 @@ func (c *SystemRolloutController) restoreSettings() (err error) {
 
 	for _, restore := range c.settingList.Items {
 		log := c.logger.WithField(types.LonghornKindSetting, restore.Name)
+
+		if isSystemRolloutIgnoredSetting(restore.Name) {
+			log.Infof(SystemRolloutMsgIgnoreItem, "this configurable setting persists through the restore")
+			continue
+		}
 
 		exist, err := c.ds.GetSettingExact(types.SettingName(restore.Name))
 		if err != nil {
