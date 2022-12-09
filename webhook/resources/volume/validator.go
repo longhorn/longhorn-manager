@@ -132,7 +132,7 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 
 	if newVolume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
 		// Check if the strict-local volume can attach to newVolume.Spec.NodeID
-		if oldVolume.Spec.NodeID == "" && newVolume.Spec.NodeID != "" {
+		if oldVolume.Spec.NodeID != newVolume.Spec.NodeID && newVolume.Spec.NodeID != "" {
 			ok, err := v.hasLocalReplicaOnSameNodeAsStrictLocalVolume(newVolume)
 			if !ok {
 				err = errors.Wrapf(err, "failed to check if %v volume %v and its replica are on the same node",
