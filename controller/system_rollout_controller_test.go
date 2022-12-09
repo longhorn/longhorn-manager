@@ -795,6 +795,20 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 				SystemRolloutCRName(types.SettingNameDefaultReplicaCount): {Value: "3"},
 			},
 		},
+		"system rollout Settings ignored:": {
+			state:        longhorn.SystemRestoreStateRestoring,
+			isInProgress: true,
+			expectState:  longhorn.SystemRestoreStateCompleted,
+
+			existSettings: map[SystemRolloutCRName]*longhorn.Setting{
+				SystemRolloutCRName(types.SettingNameConcurrentReplicaRebuildPerNodeLimit): {Value: "4"},
+				SystemRolloutCRName(types.SettingNameConcurrentBackupRestorePerNodeLimit):  {Value: "5"},
+			},
+			expectSettings: map[SystemRolloutCRName]*longhorn.Setting{
+				SystemRolloutCRName(types.SettingNameConcurrentReplicaRebuildPerNodeLimit): {Value: "6"},
+				SystemRolloutCRName(types.SettingNameConcurrentBackupRestorePerNodeLimit):  {Value: "7"},
+			},
+		},
 		"system rollout Volume exist in cluster": {
 			state:        longhorn.SystemRestoreStateRestoring,
 			isInProgress: true,
@@ -951,8 +965,8 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			assertRolloutRoles(tc.expectRoles, c, kubeClient)
 			assertRolloutRoleBindings(tc.expectRoleBindings, c, kubeClient)
 			assertRolloutServiceAccounts(tc.expectServiceAccounts, c, kubeClient)
-			assertRolloutSettings(tc.expectSettings, c, lhClient)
 			assertRolloutVolumes(tc.expectVolumes, c, lhClient)
+			assertRolloutSettings(tc.expectSettings, tc.existSettings, c, lhClient)
 		}
 
 		if tc.expectState == longhorn.SystemRestoreStateError {
@@ -1480,7 +1494,7 @@ func assertRolloutServiceAccounts(expects map[SystemRolloutCRName]*corev1.Servic
 	}
 }
 
-func assertRolloutSettings(expects map[SystemRolloutCRName]*longhorn.Setting, c *C, client *lhfake.Clientset) {
+func assertRolloutSettings(expects map[SystemRolloutCRName]*longhorn.Setting, tcExists map[SystemRolloutCRName]*longhorn.Setting, c *C, client *lhfake.Clientset) {
 	objList, err := client.LonghornV1beta2().Settings(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
 	c.Assert(len(objList.Items), Equals, len(expects))
@@ -1493,7 +1507,13 @@ func assertRolloutSettings(expects map[SystemRolloutCRName]*longhorn.Setting, c 
 	for key, expect := range expects {
 		exist, found := exists[key]
 		c.Assert(found, Equals, true)
-		c.Assert(exist.Value, Equals, expect.Value)
+
+		expectValue := expect.Value
+		if isSystemRolloutIgnoredSetting(string(key)) {
+			expectValue = tcExists[key].Value
+		}
+
+		c.Assert(exist.Value, Equals, expectValue)
 	}
 }
 
