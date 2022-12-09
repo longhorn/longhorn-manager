@@ -46,6 +46,24 @@ type SystemRolloutTestCase struct {
 	systemRestoreName string
 	restoreErrors     []string
 
+	backupClusterRoles           map[SystemRolloutCRName]*rbacv1.ClusterRole
+	backupClusterRoleBindings    map[SystemRolloutCRName]*rbacv1.ClusterRoleBinding
+	backupConfigMaps             map[SystemRolloutCRName]*corev1.ConfigMap
+	backupCRDVersions            map[SystemRolloutCRName]*apiextensionsv1.CustomResourceDefinition
+	backupDaemonSets             map[SystemRolloutCRName]*appsv1.DaemonSet
+	backupDeployments            map[SystemRolloutCRName]*appsv1.Deployment
+	backupEngineImages           map[SystemRolloutCRName]*longhorn.EngineImage
+	backupPersistentVolumes      map[SystemRolloutCRName]*corev1.PersistentVolume
+	backupPersistentVolumeClaims map[SystemRolloutCRName]*corev1.PersistentVolumeClaim
+	backupPodSecurityPolicies    map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy
+	backupRecurringJobs          map[SystemRolloutCRName]*longhorn.RecurringJob
+	backupRoles                  map[SystemRolloutCRName]*rbacv1.Role
+	backupRoleBindings           map[SystemRolloutCRName]*rbacv1.RoleBinding
+	backupServiceAccounts        map[SystemRolloutCRName]*corev1.ServiceAccount
+	backupSettings               map[SystemRolloutCRName]*longhorn.Setting
+	backupStorageClasses         map[SystemRolloutCRName]*storagev1.StorageClass
+	backupVolumes                map[SystemRolloutCRName]*longhorn.Volume
+
 	existClusterRoles           map[SystemRolloutCRName]*rbacv1.ClusterRole
 	existClusterRoleBindings    map[SystemRolloutCRName]*rbacv1.ClusterRoleBinding
 	existConfigMaps             map[SystemRolloutCRName]*corev1.ConfigMap
@@ -64,27 +82,27 @@ type SystemRolloutTestCase struct {
 	existStorageClasses         map[SystemRolloutCRName]*storagev1.StorageClass
 	existVolumes                map[SystemRolloutCRName]*longhorn.Volume
 
+	expectRestoredClusterRoles           map[SystemRolloutCRName]*rbacv1.ClusterRole
+	expectRestoredClusterRoleBindings    map[SystemRolloutCRName]*rbacv1.ClusterRoleBinding
+	expectRestoredConfigMaps             map[SystemRolloutCRName]*corev1.ConfigMap
+	expectRestoredCRDVersions            map[SystemRolloutCRName]*apiextensionsv1.CustomResourceDefinition
+	expectRestoredDaemonSets             map[SystemRolloutCRName]*appsv1.DaemonSet
+	expectRestoredDeployments            map[SystemRolloutCRName]*appsv1.Deployment
+	expectRestoredEngineImages           map[SystemRolloutCRName]*longhorn.EngineImage
+	expectRestoredPersistentVolumes      map[SystemRolloutCRName]*corev1.PersistentVolume
+	expectRestoredPersistentVolumeClaims map[SystemRolloutCRName]*corev1.PersistentVolumeClaim
+	expectRestoredPodSecurityPolicies    map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy
+	expectRestoredRecurringJobs          map[SystemRolloutCRName]*longhorn.RecurringJob
+	expectRestoredRoles                  map[SystemRolloutCRName]*rbacv1.Role
+	expectRestoredRoleBindings           map[SystemRolloutCRName]*rbacv1.RoleBinding
+	expectRestoredServiceAccounts        map[SystemRolloutCRName]*corev1.ServiceAccount
+	expectRestoredSettings               map[SystemRolloutCRName]*longhorn.Setting
+	expectRestoredStorageClasses         map[SystemRolloutCRName]*storagev1.StorageClass
+	expectRestoredVolumes                map[SystemRolloutCRName]*longhorn.Volume
+
 	expectError                 string
 	expectErrorConditionMessage string
 	expectState                 longhorn.SystemRestoreState
-
-	expectClusterRoles           map[SystemRolloutCRName]*rbacv1.ClusterRole
-	expectClusterRoleBindings    map[SystemRolloutCRName]*rbacv1.ClusterRoleBinding
-	expectConfigMaps             map[SystemRolloutCRName]*corev1.ConfigMap
-	expectCRDVersions            map[SystemRolloutCRName]*apiextensionsv1.CustomResourceDefinition
-	expectDaemonSets             map[SystemRolloutCRName]*appsv1.DaemonSet
-	expectDeployments            map[SystemRolloutCRName]*appsv1.Deployment
-	expectEngineImages           map[SystemRolloutCRName]*longhorn.EngineImage
-	expectPersistentVolumes      map[SystemRolloutCRName]*corev1.PersistentVolume
-	expectPersistentVolumeClaims map[SystemRolloutCRName]*corev1.PersistentVolumeClaim
-	expectPodSecurityPolicies    map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy
-	expectRecurringJobs          map[SystemRolloutCRName]*longhorn.RecurringJob
-	expectRoles                  map[SystemRolloutCRName]*rbacv1.Role
-	expectRoleBindings           map[SystemRolloutCRName]*rbacv1.RoleBinding
-	expectServiceAccounts        map[SystemRolloutCRName]*corev1.ServiceAccount
-	expectSettings               map[SystemRolloutCRName]*longhorn.Setting
-	expectStorageClasses         map[SystemRolloutCRName]*storagev1.StorageClass
-	expectVolumes                map[SystemRolloutCRName]*longhorn.Volume
 }
 
 func (s *TestSuite) TestSystemRollout(c *C) {
@@ -162,7 +180,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					},
 				},
 			},
-			expectClusterRoles: map[SystemRolloutCRName]*rbacv1.ClusterRole{
+			expectRestoredClusterRoles: map[SystemRolloutCRName]*rbacv1.ClusterRole{
 				SystemRolloutCRName(TestClusterRoleName): {
 					Rules: []rbacv1.PolicyRule{
 						{
@@ -180,7 +198,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			expectState:  longhorn.SystemRestoreStateCompleted,
 
 			existClusterRoles: map[SystemRolloutCRName]*rbacv1.ClusterRole{},
-			expectClusterRoles: map[SystemRolloutCRName]*rbacv1.ClusterRole{
+			expectRestoredClusterRoles: map[SystemRolloutCRName]*rbacv1.ClusterRole{
 				SystemRolloutCRName(TestClusterRoleName): {
 					Rules: []rbacv1.PolicyRule{
 						{
@@ -208,7 +226,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					RoleRef: rbacv1.RoleRef{Name: TestClusterRoleName},
 				},
 			},
-			expectClusterRoleBindings: map[SystemRolloutCRName]*rbacv1.ClusterRoleBinding{
+			expectRestoredClusterRoleBindings: map[SystemRolloutCRName]*rbacv1.ClusterRoleBinding{
 				SystemRolloutCRName(TestClusterRoleBindingName): {
 					Subjects: []rbacv1.Subject{
 						{
@@ -220,7 +238,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					RoleRef: rbacv1.RoleRef{Name: TestClusterRoleName},
 				},
 			},
-			expectServiceAccounts: map[SystemRolloutCRName]*corev1.ServiceAccount{
+			expectRestoredServiceAccounts: map[SystemRolloutCRName]*corev1.ServiceAccount{
 				SystemRolloutCRName(TestServiceAccount + TestDiffSuffix): {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      TestServiceAccount + TestDiffSuffix,
@@ -238,7 +256,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			isInProgress:             true,
 			expectState:              longhorn.SystemRestoreStateCompleted,
 			existClusterRoleBindings: map[SystemRolloutCRName]*rbacv1.ClusterRoleBinding{},
-			expectClusterRoleBindings: map[SystemRolloutCRName]*rbacv1.ClusterRoleBinding{
+			expectRestoredClusterRoleBindings: map[SystemRolloutCRName]*rbacv1.ClusterRoleBinding{
 				SystemRolloutCRName(TestClusterRoleBindingName + TestDiffSuffix): {
 					Subjects: []rbacv1.Subject{
 						{
@@ -250,7 +268,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					RoleRef: rbacv1.RoleRef{Name: TestClusterRoleName},
 				},
 			},
-			expectServiceAccounts: map[SystemRolloutCRName]*corev1.ServiceAccount{
+			expectRestoredServiceAccounts: map[SystemRolloutCRName]*corev1.ServiceAccount{
 				SystemRolloutCRName(TestServiceAccount + TestDiffSuffix): {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      TestServiceAccount + TestDiffSuffix,
@@ -271,7 +289,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			existStorageClasses: map[SystemRolloutCRName]*storagev1.StorageClass{
 				SystemRolloutCRName(TestStorageClassName + TestIgnoreSuffix): {},
 			},
-			expectStorageClasses: map[SystemRolloutCRName]*storagev1.StorageClass{
+			expectRestoredStorageClasses: map[SystemRolloutCRName]*storagev1.StorageClass{
 				SystemRolloutCRName(TestStorageClassName + TestDiffSuffix): {},
 			},
 		},
@@ -287,7 +305,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					},
 				},
 			},
-			expectConfigMaps: map[SystemRolloutCRName]*corev1.ConfigMap{
+			expectRestoredConfigMaps: map[SystemRolloutCRName]*corev1.ConfigMap{
 				SystemRolloutCRName(types.DefaultStorageClassConfigMapName): {
 					Data: map[string]string{
 						"test": "data" + TestDiffSuffix,
@@ -303,7 +321,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			existConfigMaps: map[SystemRolloutCRName]*corev1.ConfigMap{
 				SystemRolloutCRName(types.DefaultStorageClassConfigMapName + TestIgnoreSuffix): {},
 			},
-			expectConfigMaps: map[SystemRolloutCRName]*corev1.ConfigMap{
+			expectRestoredConfigMaps: map[SystemRolloutCRName]*corev1.ConfigMap{
 				SystemRolloutCRName(types.DefaultStorageClassConfigMapName): {
 					Data: map[string]string{
 						"test": "data",
@@ -326,7 +344,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					},
 				},
 			},
-			expectCRDVersions: map[SystemRolloutCRName]*apiextensionsv1.CustomResourceDefinition{
+			expectRestoredCRDVersions: map[SystemRolloutCRName]*apiextensionsv1.CustomResourceDefinition{
 				SystemRolloutCRName(types.DefaultStorageClassConfigMapName): {
 					Spec: apiextensionsv1.CustomResourceDefinitionSpec{
 						Group: longhornapis.GroupName,
@@ -344,7 +362,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			expectState:  longhorn.SystemRestoreStateCompleted,
 
 			existCRDVersions: nil,
-			expectCRDVersions: map[SystemRolloutCRName]*apiextensionsv1.CustomResourceDefinition{
+			expectRestoredCRDVersions: map[SystemRolloutCRName]*apiextensionsv1.CustomResourceDefinition{
 				SystemRolloutCRName(types.DefaultStorageClassConfigMapName): {
 					Spec: apiextensionsv1.CustomResourceDefinitionSpec{
 						Group: longhornapis.GroupName,
@@ -378,7 +396,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					}},
 				},
 			},
-			expectDaemonSets: map[SystemRolloutCRName]*appsv1.DaemonSet{
+			expectRestoredDaemonSets: map[SystemRolloutCRName]*appsv1.DaemonSet{
 				SystemRolloutCRName(TestDaemon1): {
 					Spec: appsv1.DaemonSetSpec{Template: corev1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
@@ -402,7 +420,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			expectState:  longhorn.SystemRestoreStateCompleted,
 
 			existDaemonSets: nil,
-			expectDaemonSets: map[SystemRolloutCRName]*appsv1.DaemonSet{
+			expectRestoredDaemonSets: map[SystemRolloutCRName]*appsv1.DaemonSet{
 				SystemRolloutCRName(TestDaemon1): {Spec: appsv1.DaemonSetSpec{
 					Template: corev1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
@@ -439,7 +457,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					},
 				}},
 			},
-			expectDeployments: map[SystemRolloutCRName]*appsv1.Deployment{
+			expectRestoredDeployments: map[SystemRolloutCRName]*appsv1.Deployment{
 				SystemRolloutCRName(TestDaemon1): {Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
@@ -460,7 +478,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			expectState:  longhorn.SystemRestoreStateCompleted,
 
 			existDeployments: nil,
-			expectDeployments: map[SystemRolloutCRName]*appsv1.Deployment{
+			expectRestoredDeployments: map[SystemRolloutCRName]*appsv1.Deployment{
 				SystemRolloutCRName(TestDaemon1): {Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
@@ -490,7 +508,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					},
 				},
 			},
-			expectEngineImages: map[SystemRolloutCRName]*longhorn.EngineImage{
+			expectRestoredEngineImages: map[SystemRolloutCRName]*longhorn.EngineImage{
 				SystemRolloutCRName(TestEngineImageName + TestDiffSuffix): {
 					Spec: longhorn.EngineImageSpec{
 						Image: TestEngineImage + TestDiffSuffix,
@@ -507,7 +525,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			expectState:  longhorn.SystemRestoreStateCompleted,
 
 			existEngineImages: nil,
-			expectEngineImages: map[SystemRolloutCRName]*longhorn.EngineImage{
+			expectRestoredEngineImages: map[SystemRolloutCRName]*longhorn.EngineImage{
 				SystemRolloutCRName(TestEngineImageName + TestDiffSuffix): {
 					Spec: longhorn.EngineImageSpec{
 						Image: TestEngineImage + TestDiffSuffix,
@@ -534,7 +552,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					},
 				},
 			},
-			expectPersistentVolumes: map[SystemRolloutCRName]*corev1.PersistentVolume{
+			expectRestoredPersistentVolumes: map[SystemRolloutCRName]*corev1.PersistentVolume{
 				SystemRolloutCRName(TestPVName): {
 					Spec: corev1.PersistentVolumeSpec{
 						ClaimRef: &corev1.ObjectReference{
@@ -552,7 +570,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			expectState:  longhorn.SystemRestoreStateCompleted,
 
 			existPersistentVolumes: nil,
-			expectPersistentVolumes: map[SystemRolloutCRName]*corev1.PersistentVolume{
+			expectRestoredPersistentVolumes: map[SystemRolloutCRName]*corev1.PersistentVolume{
 				SystemRolloutCRName(TestPVName): {
 					Spec: corev1.PersistentVolumeSpec{
 						ClaimRef: &corev1.ObjectReference{
@@ -582,7 +600,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					},
 				},
 			},
-			expectPersistentVolumeClaims: map[SystemRolloutCRName]*corev1.PersistentVolumeClaim{
+			expectRestoredPersistentVolumeClaims: map[SystemRolloutCRName]*corev1.PersistentVolumeClaim{
 				SystemRolloutCRName(TestPVCName): {
 					Spec: corev1.PersistentVolumeClaimSpec{
 						StorageClassName: &testStorageClassName,
@@ -602,7 +620,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			expectState:  longhorn.SystemRestoreStateCompleted,
 
 			existPersistentVolumeClaims: nil,
-			expectPersistentVolumeClaims: map[SystemRolloutCRName]*corev1.PersistentVolumeClaim{
+			expectRestoredPersistentVolumeClaims: map[SystemRolloutCRName]*corev1.PersistentVolumeClaim{
 				SystemRolloutCRName(TestPVCName): {
 					Spec: corev1.PersistentVolumeClaimSpec{
 						StorageClassName: &testStorageClassName,
@@ -628,7 +646,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					},
 				},
 			},
-			expectPodSecurityPolicies: map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy{
+			expectRestoredPodSecurityPolicies: map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy{
 				SystemRolloutCRName(TestPodSecurityPolicyName): {
 					Spec: policyv1beta1.PodSecurityPolicySpec{
 						Privileged: true,
@@ -642,7 +660,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			expectState:  longhorn.SystemRestoreStateCompleted,
 
 			existPodSecurityPolicies: nil,
-			expectPodSecurityPolicies: map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy{
+			expectRestoredPodSecurityPolicies: map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy{
 				SystemRolloutCRName(TestPodSecurityPolicyName): {
 					Spec: policyv1beta1.PodSecurityPolicySpec{
 						Privileged: true,
@@ -663,7 +681,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					},
 				},
 			},
-			expectRecurringJobs: map[SystemRolloutCRName]*longhorn.RecurringJob{
+			expectRestoredRecurringJobs: map[SystemRolloutCRName]*longhorn.RecurringJob{
 				SystemRolloutCRName(TestRecurringJobName): {
 					Spec: longhorn.RecurringJobSpec{
 						Name:   TestRecurringJobName,
@@ -678,7 +696,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			expectState:  longhorn.SystemRestoreStateCompleted,
 
 			existRecurringJobs: nil,
-			expectRecurringJobs: map[SystemRolloutCRName]*longhorn.RecurringJob{
+			expectRestoredRecurringJobs: map[SystemRolloutCRName]*longhorn.RecurringJob{
 				SystemRolloutCRName(TestRecurringJobName): {
 					Spec: longhorn.RecurringJobSpec{
 						Name: TestRecurringJobName,
@@ -698,7 +716,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					},
 				},
 			},
-			expectRoles: map[SystemRolloutCRName]*rbacv1.Role{
+			expectRestoredRoles: map[SystemRolloutCRName]*rbacv1.Role{
 				SystemRolloutCRName(TestRoleName): {
 					Rules: []rbacv1.PolicyRule{
 						{ResourceNames: []string{TestPodSecurityPolicyName + TestDiffSuffix}},
@@ -712,7 +730,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			expectState:  longhorn.SystemRestoreStateCompleted,
 
 			existRoles: nil,
-			expectRoles: map[SystemRolloutCRName]*rbacv1.Role{
+			expectRestoredRoles: map[SystemRolloutCRName]*rbacv1.Role{
 				SystemRolloutCRName(TestRoleName): {
 					Rules: []rbacv1.PolicyRule{
 						{ResourceNames: []string{TestPodSecurityPolicyName}},
@@ -734,7 +752,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					}},
 				},
 			},
-			expectRoleBindings: map[SystemRolloutCRName]*rbacv1.RoleBinding{
+			expectRestoredRoleBindings: map[SystemRolloutCRName]*rbacv1.RoleBinding{
 				SystemRolloutCRName(TestRoleBindingName): {
 					Subjects: []rbacv1.Subject{{
 						Kind:      types.KubernetesKindServiceAccount,
@@ -750,7 +768,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			expectState:  longhorn.SystemRestoreStateCompleted,
 
 			existRoleBindings: nil,
-			expectRoleBindings: map[SystemRolloutCRName]*rbacv1.RoleBinding{
+			expectRestoredRoleBindings: map[SystemRolloutCRName]*rbacv1.RoleBinding{
 				SystemRolloutCRName(TestRoleBindingName): {
 					Subjects: []rbacv1.Subject{
 						{
@@ -767,7 +785,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			expectState:  longhorn.SystemRestoreStateCompleted,
 
 			existServiceAccounts: map[SystemRolloutCRName]*corev1.ServiceAccount{},
-			expectServiceAccounts: map[SystemRolloutCRName]*corev1.ServiceAccount{
+			expectRestoredServiceAccounts: map[SystemRolloutCRName]*corev1.ServiceAccount{
 				SystemRolloutCRName(types.SettingNameDefaultReplicaCount): {ObjectMeta: metav1.ObjectMeta{
 					Name: TestServiceAccount,
 				}},
@@ -781,7 +799,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			existSettings: map[SystemRolloutCRName]*longhorn.Setting{
 				SystemRolloutCRName(types.SettingNameDefaultReplicaCount): {Value: "2"},
 			},
-			expectSettings: map[SystemRolloutCRName]*longhorn.Setting{
+			expectRestoredSettings: map[SystemRolloutCRName]*longhorn.Setting{
 				SystemRolloutCRName(types.SettingNameDefaultReplicaCount): {Value: "3"},
 			},
 		},
@@ -791,7 +809,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			expectState:  longhorn.SystemRestoreStateCompleted,
 
 			existSettings: map[SystemRolloutCRName]*longhorn.Setting{},
-			expectSettings: map[SystemRolloutCRName]*longhorn.Setting{
+			expectRestoredSettings: map[SystemRolloutCRName]*longhorn.Setting{
 				SystemRolloutCRName(types.SettingNameDefaultReplicaCount): {Value: "3"},
 			},
 		},
@@ -804,9 +822,13 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 				SystemRolloutCRName(types.SettingNameConcurrentReplicaRebuildPerNodeLimit): {Value: "4"},
 				SystemRolloutCRName(types.SettingNameConcurrentBackupRestorePerNodeLimit):  {Value: "5"},
 			},
-			expectSettings: map[SystemRolloutCRName]*longhorn.Setting{
+			backupSettings: map[SystemRolloutCRName]*longhorn.Setting{
 				SystemRolloutCRName(types.SettingNameConcurrentReplicaRebuildPerNodeLimit): {Value: "6"},
 				SystemRolloutCRName(types.SettingNameConcurrentBackupRestorePerNodeLimit):  {Value: "7"},
+			},
+			expectRestoredSettings: map[SystemRolloutCRName]*longhorn.Setting{
+				SystemRolloutCRName(types.SettingNameConcurrentReplicaRebuildPerNodeLimit): {Value: "4"},
+				SystemRolloutCRName(types.SettingNameConcurrentBackupRestorePerNodeLimit):  {Value: "5"},
 			},
 		},
 		"system rollout Volume exist in cluster": {
@@ -821,7 +843,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					},
 				},
 			},
-			expectVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+			expectRestoredVolumes: map[SystemRolloutCRName]*longhorn.Volume{
 				SystemRolloutCRName(TestVolumeName): {
 					Spec: longhorn.VolumeSpec{
 						NumberOfReplicas: 5,
@@ -835,7 +857,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			expectState:  longhorn.SystemRestoreStateCompleted,
 
 			existVolumes: nil,
-			expectVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+			expectRestoredVolumes: map[SystemRolloutCRName]*longhorn.Volume{
 				SystemRolloutCRName(TestVolumeName): {
 					Spec: longhorn.VolumeSpec{
 						NumberOfReplicas: 3,
@@ -861,23 +883,23 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 
 		fakeSystemRolloutBackupTargetDefault(c, lhInformerFactory, lhClient)
 
-		fakeSystemRolloutSettings(tc.expectSettings, c, lhInformerFactory, lhClient)
-		fakeSystemRolloutCustomResourceDefinitions(tc.expectCRDVersions, c, extensionsInformerFactory, extensionsClient)
-		fakeSystemRolloutClusterRoles(tc.expectClusterRoles, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutClusterRoleBindings(tc.expectClusterRoleBindings, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutConfigMaps(tc.expectConfigMaps, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutDaemonSets(tc.expectDaemonSets, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutDeployments(tc.expectDeployments, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutEngineImages(tc.expectEngineImages, c, lhInformerFactory, lhClient)
-		fakeSystemRolloutPersistentVolumes(tc.expectPersistentVolumes, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutPersistentVolumeClaims(tc.expectPersistentVolumeClaims, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutPodSecurityPolicies(tc.expectPodSecurityPolicies, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutRecurringJobs(tc.expectRecurringJobs, c, lhInformerFactory, lhClient)
-		fakeSystemRolloutRoles(tc.expectRoles, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutRoleBindings(tc.expectRoleBindings, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutServiceAccounts(tc.expectServiceAccounts, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutStorageClasses(tc.expectStorageClasses, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutVolumes(tc.expectVolumes, c, lhInformerFactory, lhClient)
+		fakeSystemRolloutSettings(tc.backupSettings, c, lhInformerFactory, lhClient)
+		fakeSystemRolloutCustomResourceDefinitions(tc.backupCRDVersions, c, extensionsInformerFactory, extensionsClient)
+		fakeSystemRolloutClusterRoles(tc.backupClusterRoles, c, kubeInformerFactory, kubeClient)
+		fakeSystemRolloutClusterRoleBindings(tc.backupClusterRoleBindings, c, kubeInformerFactory, kubeClient)
+		fakeSystemRolloutConfigMaps(tc.backupConfigMaps, c, kubeInformerFactory, kubeClient)
+		fakeSystemRolloutDaemonSets(tc.backupDaemonSets, c, kubeInformerFactory, kubeClient)
+		fakeSystemRolloutDeployments(tc.backupDeployments, c, kubeInformerFactory, kubeClient)
+		fakeSystemRolloutEngineImages(tc.backupEngineImages, c, lhInformerFactory, lhClient)
+		fakeSystemRolloutPersistentVolumes(tc.backupPersistentVolumes, c, kubeInformerFactory, kubeClient)
+		fakeSystemRolloutPersistentVolumeClaims(tc.backupPersistentVolumeClaims, c, kubeInformerFactory, kubeClient)
+		fakeSystemRolloutPodSecurityPolicies(tc.backupPodSecurityPolicies, c, kubeInformerFactory, kubeClient)
+		fakeSystemRolloutRecurringJobs(tc.backupRecurringJobs, c, lhInformerFactory, lhClient)
+		fakeSystemRolloutRoles(tc.backupRoles, c, kubeInformerFactory, kubeClient)
+		fakeSystemRolloutRoleBindings(tc.backupRoleBindings, c, kubeInformerFactory, kubeClient)
+		fakeSystemRolloutServiceAccounts(tc.backupServiceAccounts, c, kubeInformerFactory, kubeClient)
+		fakeSystemRolloutStorageClasses(tc.backupStorageClasses, c, kubeInformerFactory, kubeClient)
+		fakeSystemRolloutVolumes(tc.backupVolumes, c, lhInformerFactory, lhClient)
 
 		ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
 		doneCh := make(chan struct{})
@@ -951,22 +973,22 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 		c.Assert(systemRestore.Status.State, Equals, tc.expectState)
 
 		if tc.expectState == longhorn.SystemRestoreStateCompleted {
-			assertRolloutClusterRoles(tc.expectClusterRoles, c, kubeClient)
-			assertRolloutClusterRoleBindings(tc.expectClusterRoleBindings, c, kubeClient)
-			assertRolloutCustomResourceDefinition(tc.expectCRDVersions, c, extensionsClient)
-			assertRolloutConfigMaps(tc.expectConfigMaps, c, kubeClient)
-			assertRolloutDaemonSets(tc.expectDaemonSets, c, kubeClient)
-			assertRolloutDeployments(tc.expectDeployments, c, kubeClient)
-			assertRolloutEngineImages(tc.expectEngineImages, c, lhClient)
-			assertRolloutPersistentVolumes(tc.expectPersistentVolumes, tc.existPersistentVolumes, c, kubeClient)
-			assertRolloutPersistentVolumeClaims(tc.expectPersistentVolumeClaims, tc.existPersistentVolumeClaims, c, kubeClient)
-			assertRolloutPodSecurityPolicies(tc.expectPodSecurityPolicies, c, kubeClient)
-			assertRolloutRecurringJobs(tc.expectRecurringJobs, c, lhClient)
-			assertRolloutRoles(tc.expectRoles, c, kubeClient)
-			assertRolloutRoleBindings(tc.expectRoleBindings, c, kubeClient)
-			assertRolloutServiceAccounts(tc.expectServiceAccounts, c, kubeClient)
-			assertRolloutVolumes(tc.expectVolumes, c, lhClient)
-			assertRolloutSettings(tc.expectSettings, tc.existSettings, c, lhClient)
+			assertRolloutClusterRoles(tc.expectRestoredClusterRoles, c, kubeClient)
+			assertRolloutClusterRoleBindings(tc.expectRestoredClusterRoleBindings, c, kubeClient)
+			assertRolloutCustomResourceDefinition(tc.expectRestoredCRDVersions, c, extensionsClient)
+			assertRolloutConfigMaps(tc.expectRestoredConfigMaps, c, kubeClient)
+			assertRolloutDaemonSets(tc.expectRestoredDaemonSets, c, kubeClient)
+			assertRolloutDeployments(tc.expectRestoredDeployments, c, kubeClient)
+			assertRolloutEngineImages(tc.expectRestoredEngineImages, c, lhClient)
+			assertRolloutPersistentVolumes(tc.expectRestoredPersistentVolumes, tc.existPersistentVolumes, c, kubeClient)
+			assertRolloutPersistentVolumeClaims(tc.expectRestoredPersistentVolumeClaims, tc.existPersistentVolumeClaims, c, kubeClient)
+			assertRolloutPodSecurityPolicies(tc.expectRestoredPodSecurityPolicies, c, kubeClient)
+			assertRolloutRecurringJobs(tc.expectRestoredRecurringJobs, c, lhClient)
+			assertRolloutRoles(tc.expectRestoredRoles, c, kubeClient)
+			assertRolloutRoleBindings(tc.expectRestoredRoleBindings, c, kubeClient)
+			assertRolloutServiceAccounts(tc.expectRestoredServiceAccounts, c, kubeClient)
+			assertRolloutVolumes(tc.expectRestoredVolumes, c, lhClient)
+			assertRolloutSettings(tc.expectRestoredSettings, tc.existSettings, c, lhClient)
 		}
 
 		if tc.expectState == longhorn.SystemRestoreStateError {
@@ -1021,8 +1043,11 @@ func (tc *SystemRolloutTestCase) initTestCase() {
 			},
 		}
 	}
-	if tc.expectClusterRoles == nil {
-		tc.expectClusterRoles = tc.existClusterRoles
+	if tc.expectRestoredClusterRoles == nil {
+		tc.expectRestoredClusterRoles = tc.existClusterRoles
+	}
+	if tc.backupClusterRoles == nil {
+		tc.backupClusterRoles = tc.expectRestoredClusterRoles
 	}
 
 	// init ClusterRoleBindings
@@ -1040,8 +1065,11 @@ func (tc *SystemRolloutTestCase) initTestCase() {
 			},
 		}
 	}
-	if tc.expectClusterRoleBindings == nil {
-		tc.expectClusterRoleBindings = tc.existClusterRoleBindings
+	if tc.expectRestoredClusterRoleBindings == nil {
+		tc.expectRestoredClusterRoleBindings = tc.existClusterRoleBindings
+	}
+	if tc.backupClusterRoleBindings == nil {
+		tc.backupClusterRoleBindings = tc.expectRestoredClusterRoleBindings
 	}
 
 	// init ConfigMaps
@@ -1054,54 +1082,72 @@ func (tc *SystemRolloutTestCase) initTestCase() {
 			},
 		}
 	}
-	if tc.expectConfigMaps == nil {
-		tc.expectConfigMaps = tc.existConfigMaps
+	if tc.expectRestoredConfigMaps == nil {
+		tc.expectRestoredConfigMaps = tc.existConfigMaps
+	}
+	if tc.backupConfigMaps == nil {
+		tc.backupConfigMaps = tc.expectRestoredConfigMaps
 	}
 
 	// init CustomResourceDefinitions
-	if len(tc.expectCRDVersions) == 0 && len(tc.existCRDVersions) != 0 {
-		tc.expectCRDVersions = tc.existCRDVersions
+	if len(tc.expectRestoredCRDVersions) == 0 && len(tc.existCRDVersions) != 0 {
+		tc.expectRestoredCRDVersions = tc.backupCRDVersions
+	}
+	if len(tc.backupCRDVersions) == 0 {
+		tc.backupCRDVersions = tc.expectRestoredCRDVersions
 	}
 
 	// init DaemonSets
 	if tc.existDaemonSets == nil {
 		tc.existDaemonSets = map[SystemRolloutCRName]*appsv1.DaemonSet{}
 	}
-	if tc.expectDaemonSets == nil {
-		tc.expectDaemonSets = tc.existDaemonSets
+	if tc.expectRestoredDaemonSets == nil {
+		tc.expectRestoredDaemonSets = tc.existDaemonSets
+	}
+	if tc.backupDaemonSets == nil {
+		tc.backupDaemonSets = tc.expectRestoredDaemonSets
 	}
 
 	// init Deployments
 	if tc.existDeployments == nil {
 		tc.existDeployments = map[SystemRolloutCRName]*appsv1.Deployment{}
 	}
-	if tc.expectDeployments == nil {
-		tc.expectDeployments = tc.existDeployments
+	if tc.expectRestoredDeployments == nil {
+		tc.expectRestoredDeployments = tc.existDeployments
+	}
+	if tc.backupDeployments == nil {
+		tc.backupDeployments = tc.expectRestoredDeployments
 	}
 
 	// init EngineImages
 	if tc.existEngineImages == nil {
 		tc.existEngineImages = map[SystemRolloutCRName]*longhorn.EngineImage{}
 	}
-	if tc.expectEngineImages == nil {
-		tc.expectEngineImages = tc.existEngineImages
+	if tc.expectRestoredEngineImages == nil {
+		tc.expectRestoredEngineImages = tc.existEngineImages
+	}
+	if tc.backupEngineImages == nil {
+		tc.backupEngineImages = tc.expectRestoredEngineImages
 	}
 
 	// init PersistentVolumes
 	if tc.existPersistentVolumes == nil {
 		tc.existPersistentVolumes = map[SystemRolloutCRName]*corev1.PersistentVolume{}
 	}
-	if tc.expectPersistentVolumes == nil {
-		tc.expectPersistentVolumes = tc.existPersistentVolumes
+	if tc.expectRestoredPersistentVolumes == nil {
+		tc.expectRestoredPersistentVolumes = tc.existPersistentVolumes
 	}
-	for _, pvc := range tc.expectPersistentVolumeClaims {
+	if tc.backupPersistentVolumes == nil {
+		tc.backupPersistentVolumes = tc.expectRestoredPersistentVolumes
+	}
+	for _, pvc := range tc.expectRestoredPersistentVolumeClaims {
 		volumeName := SystemRolloutCRName(pvc.Spec.VolumeName)
-		_, found := tc.expectPersistentVolumes[volumeName]
+		_, found := tc.backupPersistentVolumes[volumeName]
 		if found {
 			continue
 		}
 
-		tc.expectPersistentVolumes[volumeName] = &corev1.PersistentVolume{
+		tc.expectRestoredPersistentVolumes[volumeName] = &corev1.PersistentVolume{
 			Spec: corev1.PersistentVolumeSpec{
 				ClaimRef: &corev1.ObjectReference{
 					Name:      string(volumeName),
@@ -1110,44 +1156,57 @@ func (tc *SystemRolloutTestCase) initTestCase() {
 				StorageClassName: *pvc.Spec.StorageClassName,
 			},
 		}
+		tc.backupPersistentVolumes[volumeName] = tc.expectRestoredPersistentVolumes[volumeName]
 	}
 
 	// init PersistentVolumeClaims
 	if tc.existPersistentVolumeClaims == nil {
 		tc.existPersistentVolumeClaims = map[SystemRolloutCRName]*corev1.PersistentVolumeClaim{}
 	}
-	if tc.expectPersistentVolumeClaims == nil {
-		tc.expectPersistentVolumeClaims = tc.existPersistentVolumeClaims
+	if tc.expectRestoredPersistentVolumeClaims == nil {
+		tc.expectRestoredPersistentVolumeClaims = tc.existPersistentVolumeClaims
+	}
+	if tc.backupPersistentVolumeClaims == nil {
+		tc.backupPersistentVolumeClaims = tc.expectRestoredPersistentVolumeClaims
 	}
 
 	// init PodSecurityPolicies
 	if tc.existPodSecurityPolicies == nil {
 		tc.existPodSecurityPolicies = map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy{}
 	}
-	if tc.expectPodSecurityPolicies == nil {
-		tc.expectPodSecurityPolicies = tc.existPodSecurityPolicies
+	if tc.expectRestoredPodSecurityPolicies == nil {
+		tc.expectRestoredPodSecurityPolicies = tc.existPodSecurityPolicies
+	}
+	if tc.backupPodSecurityPolicies == nil {
+		tc.backupPodSecurityPolicies = tc.expectRestoredPodSecurityPolicies
 	}
 
 	// init RecurringJobs
 	if tc.existRecurringJobs == nil {
 		tc.existRecurringJobs = map[SystemRolloutCRName]*longhorn.RecurringJob{}
 	}
-	if tc.expectRecurringJobs == nil {
-		tc.expectRecurringJobs = tc.existRecurringJobs
+	if tc.expectRestoredRecurringJobs == nil {
+		tc.expectRestoredRecurringJobs = tc.existRecurringJobs
+	}
+	if tc.backupRecurringJobs == nil {
+		tc.backupRecurringJobs = tc.expectRestoredRecurringJobs
 	}
 
 	// init Roles
 	if tc.existRoles == nil {
 		tc.existRoles = map[SystemRolloutCRName]*rbacv1.Role{}
 	}
-	if tc.expectRoles == nil {
-		tc.expectRoles = tc.existRoles
+	if tc.expectRestoredRoles == nil {
+		tc.expectRestoredRoles = tc.existRoles
+	}
+	if tc.backupRoles == nil {
+		tc.backupRoles = tc.expectRestoredRoles
 	}
 	addRoleRuleResources := map[string]struct{}{}
-	for pspName := range tc.expectPodSecurityPolicies {
+	for pspName := range tc.expectRestoredPodSecurityPolicies {
 		addRoleRuleResources[string(pspName)] = struct{}{}
 	}
-	for _, role := range tc.expectRoles {
+	for _, role := range tc.expectRestoredRoles {
 		for _, rule := range role.Rules {
 			for _, resourceName := range rule.ResourceNames {
 				delete(addRoleRuleResources, resourceName)
@@ -1164,7 +1223,19 @@ func (tc *SystemRolloutTestCase) initTestCase() {
 		policyRule := rbacv1.PolicyRule{
 			ResourceNames: addPolicyRules,
 		}
-		tc.expectRoles[name] = newRole(string(name), []rbacv1.PolicyRule{policyRule})
+		tc.backupRoles[name] = newRole(string(name), []rbacv1.PolicyRule{policyRule})
+		tc.expectRestoredRoles[name] = newRole(string(name), []rbacv1.PolicyRule{policyRule})
+	}
+
+	// init RoleBindings
+	if tc.existRoleBindings == nil {
+		tc.existRoleBindings = map[SystemRolloutCRName]*rbacv1.RoleBinding{}
+	}
+	if tc.expectRestoredRoleBindings == nil {
+		tc.expectRestoredRoleBindings = tc.existRoleBindings
+	}
+	if tc.backupRoleBindings == nil {
+		tc.backupRoleBindings = tc.expectRestoredRoleBindings
 	}
 
 	// init ServiceAccounts
@@ -1178,57 +1249,67 @@ func (tc *SystemRolloutTestCase) initTestCase() {
 			},
 		}
 	}
-
-	if tc.expectServiceAccounts == nil {
-		tc.expectServiceAccounts = tc.existServiceAccounts
+	if tc.expectRestoredServiceAccounts == nil {
+		tc.expectRestoredServiceAccounts = tc.existServiceAccounts
+	}
+	if tc.backupServiceAccounts == nil {
+		tc.backupServiceAccounts = tc.expectRestoredServiceAccounts
 	}
 
 	// init Settings
 	if tc.existSettings == nil {
 		tc.existSettings = map[SystemRolloutCRName]*longhorn.Setting{}
 	}
-	if tc.expectSettings == nil {
-		tc.expectSettings = tc.existSettings
+	if tc.expectRestoredSettings == nil {
+		tc.expectRestoredSettings = tc.existSettings
 	}
-	tc.expectSettings[SystemRolloutCRName(types.SettingNameDefaultEngineImage)] = &longhorn.Setting{Value: TestEngineImage}
+	if tc.backupSettings == nil {
+		tc.backupSettings = tc.expectRestoredSettings
+	}
 	tc.existSettings[SystemRolloutCRName(types.SettingNameDefaultEngineImage)] = &longhorn.Setting{Value: TestEngineImage}
+	tc.expectRestoredSettings[SystemRolloutCRName(types.SettingNameDefaultEngineImage)] = &longhorn.Setting{Value: TestEngineImage}
+	tc.backupSettings[SystemRolloutCRName(types.SettingNameDefaultEngineImage)] = &longhorn.Setting{Value: TestEngineImage}
 
 	// init StorageClasses
 	if tc.existStorageClasses == nil {
 		tc.existStorageClasses = map[SystemRolloutCRName]*storagev1.StorageClass{}
 	}
-	if tc.expectStorageClasses == nil {
-		tc.expectStorageClasses = tc.existStorageClasses
+	if tc.expectRestoredStorageClasses == nil {
+		tc.expectRestoredStorageClasses = tc.existStorageClasses
 	}
-	tc.expectStorageClasses[SystemRolloutCRName(TestStorageClassName)] = &storagev1.StorageClass{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: TestStorageClassName,
-		},
+	if tc.backupStorageClasses == nil {
+		tc.backupStorageClasses = tc.expectRestoredStorageClasses
 	}
 	tc.existStorageClasses[SystemRolloutCRName(TestStorageClassName)] = &storagev1.StorageClass{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: TestStorageClassName,
 		},
 	}
+	tc.expectRestoredStorageClasses[SystemRolloutCRName(TestStorageClassName)] = tc.existStorageClasses[SystemRolloutCRName(TestStorageClassName)]
+	tc.backupStorageClasses[SystemRolloutCRName(TestStorageClassName)] = tc.expectRestoredStorageClasses[SystemRolloutCRName(TestStorageClassName)]
 
 	// init Volumes
 	if tc.existVolumes == nil {
 		tc.existVolumes = map[SystemRolloutCRName]*longhorn.Volume{}
 	}
-	if tc.expectVolumes == nil {
-		tc.expectVolumes = tc.existVolumes
+	if tc.expectRestoredVolumes == nil {
+		tc.expectRestoredVolumes = tc.existVolumes
 	}
-	for pvName := range tc.expectPersistentVolumes {
-		_, found := tc.expectVolumes[pvName]
+	if tc.backupVolumes == nil {
+		tc.backupVolumes = tc.expectRestoredVolumes
+	}
+	for pvName := range tc.expectRestoredPersistentVolumes {
+		_, found := tc.backupVolumes[pvName]
 		if found {
 			continue
 		}
 
-		tc.expectVolumes[pvName] = &longhorn.Volume{
+		tc.expectRestoredVolumes[pvName] = &longhorn.Volume{
 			Spec: longhorn.VolumeSpec{
 				NumberOfReplicas: 3,
 			},
 		}
+		tc.backupVolumes[pvName] = tc.expectRestoredVolumes[pvName]
 	}
 }
 
@@ -1247,289 +1328,289 @@ func fakeSystemBackupArchieve(c *C, systemBackupName, systemRolloutOwnerID, roll
 	c.Assert(systemBackup.Status.State, Equals, longhorn.SystemBackupStateUploading)
 }
 
-func assertRolloutCustomResourceDefinition(expects map[SystemRolloutCRName]*apiextensionsv1.CustomResourceDefinition, c *C, client *apiextensionsfake.Clientset) {
+func assertRolloutCustomResourceDefinition(expectRestored map[SystemRolloutCRName]*apiextensionsv1.CustomResourceDefinition, c *C, client *apiextensionsfake.Clientset) {
 	objList, err := client.ApiextensionsV1().CustomResourceDefinitions().List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]apiextensionsv1.CustomResourceDefinition{}
 	for _, obj := range objList.Items {
 		exists[SystemRolloutCRName(obj.Name)] = obj
 	}
 
-	for key, expect := range expects {
-		exist, found := exists[key]
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
 		c.Assert(found, Equals, true)
-		c.Assert(reflect.DeepEqual(exist.Spec, expect.Spec), Equals, true)
+		c.Assert(reflect.DeepEqual(exist.Spec, restored.Spec), Equals, true)
 	}
 }
 
-func assertRolloutClusterRoles(expects map[SystemRolloutCRName]*rbacv1.ClusterRole, c *C, client *fake.Clientset) {
+func assertRolloutClusterRoles(expectRestored map[SystemRolloutCRName]*rbacv1.ClusterRole, c *C, client *fake.Clientset) {
 	objList, err := client.RbacV1().ClusterRoles().List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]rbacv1.ClusterRole{}
 	for _, obj := range objList.Items {
 		exists[SystemRolloutCRName(obj.Name)] = obj
 	}
 
-	for key, expect := range expects {
-		exist, found := exists[key]
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
 		c.Assert(found, Equals, true)
-		c.Assert(reflect.DeepEqual(exist.Rules, expect.Rules), Equals, true)
+		c.Assert(reflect.DeepEqual(exist.Rules, restored.Rules), Equals, true)
 	}
 }
 
-func assertRolloutClusterRoleBindings(expects map[SystemRolloutCRName]*rbacv1.ClusterRoleBinding, c *C, client *fake.Clientset) {
+func assertRolloutClusterRoleBindings(expectRestored map[SystemRolloutCRName]*rbacv1.ClusterRoleBinding, c *C, client *fake.Clientset) {
 	objList, err := client.RbacV1().ClusterRoleBindings().List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]rbacv1.ClusterRoleBinding{}
 	for _, obj := range objList.Items {
 		exists[SystemRolloutCRName(obj.Name)] = obj
 	}
 
-	for key, expect := range expects {
-		exist, found := exists[key]
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
 		c.Assert(found, Equals, true)
-		c.Assert(reflect.DeepEqual(exist.Subjects, expect.Subjects), Equals, true)
-		c.Assert(reflect.DeepEqual(exist.RoleRef, expect.RoleRef), Equals, true)
+		c.Assert(reflect.DeepEqual(exist.Subjects, restored.Subjects), Equals, true)
+		c.Assert(reflect.DeepEqual(exist.RoleRef, restored.RoleRef), Equals, true)
 	}
 }
 
-func assertRolloutConfigMaps(expects map[SystemRolloutCRName]*corev1.ConfigMap, c *C, client *fake.Clientset) {
+func assertRolloutConfigMaps(expectRestored map[SystemRolloutCRName]*corev1.ConfigMap, c *C, client *fake.Clientset) {
 	objList, err := client.CoreV1().ConfigMaps(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]corev1.ConfigMap{}
 	for _, obj := range objList.Items {
 		exists[SystemRolloutCRName(obj.Name)] = obj
 	}
 
-	for key, expect := range expects {
-		exist, found := exists[key]
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
 		c.Assert(found, Equals, true)
-		c.Assert(reflect.DeepEqual(exist.Data, expect.Data), Equals, true)
+		c.Assert(reflect.DeepEqual(exist.Data, restored.Data), Equals, true)
 	}
 }
 
-func assertRolloutDaemonSets(expects map[SystemRolloutCRName]*appsv1.DaemonSet, c *C, client *fake.Clientset) {
+func assertRolloutDaemonSets(expectRestored map[SystemRolloutCRName]*appsv1.DaemonSet, c *C, client *fake.Clientset) {
 	objList, err := client.AppsV1().DaemonSets(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]appsv1.DaemonSet{}
 	for _, obj := range objList.Items {
 		exists[SystemRolloutCRName(obj.Name)] = obj
 	}
 
-	for key, expect := range expects {
-		exist, found := exists[key]
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
 		c.Assert(found, Equals, true)
-		c.Assert(reflect.DeepEqual(exist.Spec.Template.Spec.Containers, expect.Spec.Template.Spec.Containers), Equals, true)
+		c.Assert(reflect.DeepEqual(exist.Spec.Template.Spec.Containers, restored.Spec.Template.Spec.Containers), Equals, true)
 	}
 }
 
-func assertRolloutDeployments(expects map[SystemRolloutCRName]*appsv1.Deployment, c *C, client *fake.Clientset) {
+func assertRolloutDeployments(expectRestored map[SystemRolloutCRName]*appsv1.Deployment, c *C, client *fake.Clientset) {
 	objList, err := client.AppsV1().Deployments(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]appsv1.Deployment{}
 	for _, obj := range objList.Items {
 		exists[SystemRolloutCRName(obj.Name)] = obj
 	}
 
-	for key, expect := range expects {
-		exist, found := exists[key]
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
 		c.Assert(found, Equals, true)
-		c.Assert(reflect.DeepEqual(exist.Spec.Template.Spec.Containers, expect.Spec.Template.Spec.Containers), Equals, true)
+		c.Assert(reflect.DeepEqual(exist.Spec.Template.Spec.Containers, restored.Spec.Template.Spec.Containers), Equals, true)
 	}
 }
 
-func assertRolloutEngineImages(expects map[SystemRolloutCRName]*longhorn.EngineImage, c *C, client *lhfake.Clientset) {
+func assertRolloutEngineImages(expectRestored map[SystemRolloutCRName]*longhorn.EngineImage, c *C, client *lhfake.Clientset) {
 	objList, err := client.LonghornV1beta2().EngineImages(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]longhorn.EngineImage{}
 	for _, obj := range objList.Items {
 		exists[SystemRolloutCRName(obj.Name)] = obj
 	}
 
-	for key, expect := range expects {
-		exist, found := exists[key]
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
 		c.Assert(found, Equals, true)
-		c.Assert(reflect.DeepEqual(exist.Spec.Image, expect.Spec.Image), Equals, true)
+		c.Assert(reflect.DeepEqual(exist.Spec.Image, restored.Spec.Image), Equals, true)
 	}
 }
 
-func assertRolloutPersistentVolumes(expects map[SystemRolloutCRName]*corev1.PersistentVolume, tcExists map[SystemRolloutCRName]*corev1.PersistentVolume, c *C, client *fake.Clientset) {
+func assertRolloutPersistentVolumes(expectRestored map[SystemRolloutCRName]*corev1.PersistentVolume, tcExists map[SystemRolloutCRName]*corev1.PersistentVolume, c *C, client *fake.Clientset) {
 	objList, err := client.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]corev1.PersistentVolume{}
 	for _, obj := range objList.Items {
 		exists[SystemRolloutCRName(obj.Name)] = obj
 	}
 
-	for key, expect := range expects {
-		exist, found := exists[key]
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
 		c.Assert(found, Equals, true)
-		c.Assert(exist.Spec.StorageClassName, Equals, expect.Spec.StorageClassName)
+		c.Assert(exist.Spec.StorageClassName, Equals, restored.Spec.StorageClassName)
 
-		if _, prepared := tcExists[key]; !prepared {
+		if _, prepared := tcExists[name]; !prepared {
 			c.Assert(exist.Spec.ClaimRef, Equals, (*corev1.ObjectReference)(nil))
 		}
 	}
 }
 
-func assertRolloutPersistentVolumeClaims(expects map[SystemRolloutCRName]*corev1.PersistentVolumeClaim, tcExists map[SystemRolloutCRName]*corev1.PersistentVolumeClaim, c *C, client *fake.Clientset) {
+func assertRolloutPersistentVolumeClaims(expectRestored map[SystemRolloutCRName]*corev1.PersistentVolumeClaim, tcExists map[SystemRolloutCRName]*corev1.PersistentVolumeClaim, c *C, client *fake.Clientset) {
 	objList, err := client.CoreV1().PersistentVolumeClaims(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
 
 	// Longhorn does not restore the requested storage size of existing PVC to avoid data lose.
 	if len(tcExists) != 0 {
-		expects = tcExists
+		expectRestored = tcExists
 	}
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]corev1.PersistentVolumeClaim{}
 	for _, obj := range objList.Items {
 		exists[SystemRolloutCRName(obj.Name)] = obj
 	}
 
-	for key, expect := range expects {
-		exist, found := exists[key]
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
 		c.Assert(found, Equals, true)
-		c.Assert(reflect.DeepEqual(exist.Spec.Resources.Requests, expect.Spec.Resources.Requests), Equals, true)
+		c.Assert(reflect.DeepEqual(exist.Spec.Resources.Requests, restored.Spec.Resources.Requests), Equals, true)
 	}
 }
 
-func assertRolloutPodSecurityPolicies(expects map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy, c *C, client *fake.Clientset) {
+func assertRolloutPodSecurityPolicies(expectRestored map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy, c *C, client *fake.Clientset) {
 	objList, err := client.PolicyV1beta1().PodSecurityPolicies().List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]policyv1beta1.PodSecurityPolicy{}
 	for _, obj := range objList.Items {
 		exists[SystemRolloutCRName(obj.Name)] = obj
 	}
 
-	for key, expect := range expects {
-		exist, found := exists[key]
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
 		c.Assert(found, Equals, true)
-		c.Assert(reflect.DeepEqual(exist.Spec, expect.Spec), Equals, true)
+		c.Assert(reflect.DeepEqual(exist.Spec, restored.Spec), Equals, true)
 	}
 }
 
-func assertRolloutRecurringJobs(expects map[SystemRolloutCRName]*longhorn.RecurringJob, c *C, client *lhfake.Clientset) {
+func assertRolloutRecurringJobs(expectRestored map[SystemRolloutCRName]*longhorn.RecurringJob, c *C, client *lhfake.Clientset) {
 	objList, err := client.LonghornV1beta2().RecurringJobs(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]longhorn.RecurringJob{}
 	for _, obj := range objList.Items {
 		exists[SystemRolloutCRName(obj.Name)] = obj
 	}
 
-	for key, expect := range expects {
-		exist, found := exists[key]
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
 		c.Assert(found, Equals, true)
-		c.Assert(reflect.DeepEqual(exist.Spec, expect.Spec), Equals, true)
+		c.Assert(reflect.DeepEqual(exist.Spec, restored.Spec), Equals, true)
 	}
 }
 
-func assertRolloutRoles(expects map[SystemRolloutCRName]*rbacv1.Role, c *C, client *fake.Clientset) {
+func assertRolloutRoles(expectRestored map[SystemRolloutCRName]*rbacv1.Role, c *C, client *fake.Clientset) {
 	objList, err := client.RbacV1().Roles(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]rbacv1.Role{}
 	for _, obj := range objList.Items {
 		exists[SystemRolloutCRName(obj.Name)] = obj
 	}
 
-	for key, expect := range expects {
-		exist, found := exists[key]
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
 		c.Assert(found, Equals, true)
-		c.Assert(reflect.DeepEqual(exist.Rules, expect.Rules), Equals, true)
+		c.Assert(reflect.DeepEqual(exist.Rules, restored.Rules), Equals, true)
 	}
 }
 
-func assertRolloutRoleBindings(expects map[SystemRolloutCRName]*rbacv1.RoleBinding, c *C, client *fake.Clientset) {
+func assertRolloutRoleBindings(expectRestored map[SystemRolloutCRName]*rbacv1.RoleBinding, c *C, client *fake.Clientset) {
 	objList, err := client.RbacV1().RoleBindings(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]rbacv1.RoleBinding{}
 	for _, obj := range objList.Items {
 		exists[SystemRolloutCRName(obj.Name)] = obj
 	}
 
-	for key, expect := range expects {
-		exist, found := exists[key]
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
 		c.Assert(found, Equals, true)
-		c.Assert(reflect.DeepEqual(exist.Subjects, expect.Subjects), Equals, true)
+		c.Assert(reflect.DeepEqual(exist.Subjects, restored.Subjects), Equals, true)
 	}
 }
 
-func assertRolloutServiceAccounts(expects map[SystemRolloutCRName]*corev1.ServiceAccount, c *C, client *fake.Clientset) {
+func assertRolloutServiceAccounts(expectRestored map[SystemRolloutCRName]*corev1.ServiceAccount, c *C, client *fake.Clientset) {
 	objList, err := client.CoreV1().ServiceAccounts(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]corev1.ServiceAccount{}
 	for _, obj := range objList.Items {
 		exists[SystemRolloutCRName(obj.Name)] = obj
 	}
 
-	for key := range expects {
-		_, found := exists[key]
+	for name := range expectRestored {
+		_, found := exists[name]
 		c.Assert(found, Equals, true)
 	}
 }
 
-func assertRolloutSettings(expects map[SystemRolloutCRName]*longhorn.Setting, tcExists map[SystemRolloutCRName]*longhorn.Setting, c *C, client *lhfake.Clientset) {
+func assertRolloutSettings(expectRestored map[SystemRolloutCRName]*longhorn.Setting, tcExists map[SystemRolloutCRName]*longhorn.Setting, c *C, client *lhfake.Clientset) {
 	objList, err := client.LonghornV1beta2().Settings(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]longhorn.Setting{}
 	for _, setting := range objList.Items {
 		exists[SystemRolloutCRName(setting.Name)] = setting
 	}
 
-	for key, expect := range expects {
-		exist, found := exists[key]
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
 		c.Assert(found, Equals, true)
 
-		expectValue := expect.Value
-		if isSystemRolloutIgnoredSetting(string(key)) {
-			expectValue = tcExists[key].Value
+		expectValue := restored.Value
+		if isSystemRolloutIgnoredSetting(string(name)) {
+			expectValue = tcExists[name].Value
 		}
 
 		c.Assert(exist.Value, Equals, expectValue)
 	}
 }
 
-func assertRolloutVolumes(expects map[SystemRolloutCRName]*longhorn.Volume, c *C, client *lhfake.Clientset) {
+func assertRolloutVolumes(expectRestored map[SystemRolloutCRName]*longhorn.Volume, c *C, client *lhfake.Clientset) {
 	objList, err := client.LonghornV1beta2().Volumes(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expects))
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]longhorn.Volume{}
 	for _, obj := range objList.Items {
 		exists[SystemRolloutCRName(obj.Name)] = obj
 	}
 
-	for key, expect := range expects {
-		exist, found := exists[key]
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
 		c.Assert(found, Equals, true)
-		c.Assert(exist.Spec.NumberOfReplicas, Equals, expect.Spec.NumberOfReplicas)
+		c.Assert(exist.Spec.NumberOfReplicas, Equals, restored.Spec.NumberOfReplicas)
 	}
 }
