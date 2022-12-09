@@ -40,10 +40,10 @@ import (
 )
 
 const (
-	TestSystemRestoreName                        = "system-retore-0"
-	TestSystemRestoreNameGetConfigFailed         = "system-retore-get-config-failed"
-	TestSystemRestoreNameUploadFailed            = "system-retore-upload-failed"
-	TestSystemRestoreNameUploadExceedTimeout     = "system-retore-upload-exceed-timeout"
+	TestSystemRestoreName                        = "system-restore-0"
+	TestSystemRestoreNameGetConfigFailed         = "system-restore-get-config-failed"
+	TestSystemRestoreNameUploadFailed            = "system-restore-upload-failed"
+	TestSystemRestoreNameUploadExceedTimeout     = "system-restore-upload-exceed-timeout"
 	TestSystemRestoreNameRestoreMultipleFailures = "system-restore-multi-failures"
 
 	TestDiffSuffix   = "-diff"
