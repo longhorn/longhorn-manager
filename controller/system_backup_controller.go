@@ -391,7 +391,7 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 		}
 
 		if longhornVersion != "" {
-			if err := datastore.TagSystemBackupVersionLabel(longhornVersion, systemBackup); err != nil {
+			if err := datastore.LabelSystemBackupVersion(longhornVersion, systemBackup); err != nil {
 				return err
 			}
 
