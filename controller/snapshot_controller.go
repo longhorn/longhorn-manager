@@ -322,6 +322,10 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return sc.ds.RemoveFinalizerForSnapshot(snapshot)
 		}
 
+		if err := sc.handleAttachmentCreation(snapshot); err != nil {
+			return err
+		}
+
 		engine, err := sc.getTheOnlyEngineCRforSnapshot(snapshot)
 		if err != nil {
 			return err
@@ -329,8 +333,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
 			// TODO: how to prevent duplicated event here
 			sc.eventRecorder.Eventf(snapshot, v1.EventTypeWarning, "SnapshotDeleteError", "cannot delete snapshot because the volume engine %v is not running", engine.Name)
-			sc.logger.Errorf("cannot delete snapshot because the volume engine %v is not running", engine.Name)
-			return nil
+			return fmt.Errorf("cannot delete snapshot because the volume engine %v is not running", engine.Name)
 		}
 		// Delete the snapshot from engine process
 		if err := sc.handleSnapshotDeletion(snapshot, engine); err != nil {

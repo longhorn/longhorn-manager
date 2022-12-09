@@ -87,6 +87,8 @@ type Volume struct {
 
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
 
+	SnapshotDataIntegrity string `json:"snapshotDataIntegrity,omitempty" yaml:"snapshot_data_integrity,omitempty"`
+
 	StaleReplicaTimeout int64 `json:"staleReplicaTimeout,omitempty" yaml:"stale_replica_timeout,omitempty"`
 
 	Standby bool `json:"standby,omitempty" yaml:"standby,omitempty"`
@@ -138,6 +140,14 @@ type VolumeOperations interface {
 	ActionSalvage(*Volume, *SalvageInput) (*Volume, error)
 
 	ActionSnapshotBackup(*Volume, *SnapshotInput) (*Volume, error)
+
+	ActionSnapshotCRCreate(*Volume, *SnapshotCRInput) (*SnapshotCR, error)
+
+	ActionSnapshotCRDelete(*Volume, *SnapshotCRInput) (*Empty, error)
+
+	ActionSnapshotCRGet(*Volume, *SnapshotCRInput) (*SnapshotCR, error)
+
+	ActionSnapshotCRList(*Volume) (*SnapshotCRListOutput, error)
 
 	ActionSnapshotCreate(*Volume, *SnapshotInput) (*Snapshot, error)
 
@@ -319,6 +329,42 @@ func (c *VolumeClient) ActionSnapshotBackup(resource *Volume, input *SnapshotInp
 	resp := &Volume{}
 
 	err := c.rancherClient.doAction(VOLUME_TYPE, "snapshotBackup", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionSnapshotCRCreate(resource *Volume, input *SnapshotCRInput) (*SnapshotCR, error) {
+
+	resp := &SnapshotCR{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "snapshotCRCreate", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionSnapshotCRDelete(resource *Volume, input *SnapshotCRInput) (*Empty, error) {
+
+	resp := &Empty{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "snapshotCRDelete", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionSnapshotCRGet(resource *Volume, input *SnapshotCRInput) (*SnapshotCR, error) {
+
+	resp := &SnapshotCR{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "snapshotCRGet", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionSnapshotCRList(resource *Volume) (*SnapshotCRListOutput, error) {
+
+	resp := &SnapshotCRListOutput{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "snapshotCRList", &resource.Resource, nil, resp)
 
 	return resp, err
 }

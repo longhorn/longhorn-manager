@@ -8,6 +8,7 @@ type RancherClient struct {
 	AttachInput                        AttachInputOperations
 	DetachInput                        DetachInputOperations
 	SnapshotInput                      SnapshotInputOperations
+	SnapshotCRInput                    SnapshotCRInputOperations
 	BackupTarget                       BackupTargetOperations
 	Backup                             BackupOperations
 	BackupInput                        BackupInputOperations
@@ -32,6 +33,7 @@ type RancherClient struct {
 	UpdateBackupCompressionMethodInput UpdateBackupCompressionMethodInputOperations
 	WorkloadStatus                     WorkloadStatusOperations
 	CloneStatus                        CloneStatusOperations
+	Empty                              EmptyOperations
 	VolumeRecurringJob                 VolumeRecurringJobOperations
 	VolumeRecurringJobInput            VolumeRecurringJobInputOperations
 	PVCreateInput                      PVCreateInputOperations
@@ -48,6 +50,7 @@ type RancherClient struct {
 	BackingImageCleanupInput           BackingImageCleanupInputOperations
 	Volume                             VolumeOperations
 	Snapshot                           SnapshotOperations
+	SnapshotCR                         SnapshotCROperations
 	BackupVolume                       BackupVolumeOperations
 	Setting                            SettingOperations
 	RecurringJob                       RecurringJobOperations
@@ -59,6 +62,7 @@ type RancherClient struct {
 	KubernetesStatus                   KubernetesStatusOperations
 	BackupListOutput                   BackupListOutputOperations
 	SnapshotListOutput                 SnapshotListOutputOperations
+	SnapshotCRListOutput               SnapshotCRListOutputOperations
 }
 
 func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
@@ -71,6 +75,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.AttachInput = newAttachInputClient(client)
 	client.DetachInput = newDetachInputClient(client)
 	client.SnapshotInput = newSnapshotInputClient(client)
+	client.SnapshotCRInput = newSnapshotCRInputClient(client)
 	client.BackupTarget = newBackupTargetClient(client)
 	client.Backup = newBackupClient(client)
 	client.BackupInput = newBackupInputClient(client)
@@ -95,6 +100,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.UpdateBackupCompressionMethodInput = newUpdateBackupCompressionMethodInputClient(client)
 	client.WorkloadStatus = newWorkloadStatusClient(client)
 	client.CloneStatus = newCloneStatusClient(client)
+	client.Empty = newEmptyClient(client)
 	client.VolumeRecurringJob = newVolumeRecurringJobClient(client)
 	client.VolumeRecurringJobInput = newVolumeRecurringJobInputClient(client)
 	client.PVCreateInput = newPVCreateInputClient(client)
@@ -111,6 +117,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.BackingImageCleanupInput = newBackingImageCleanupInputClient(client)
 	client.Volume = newVolumeClient(client)
 	client.Snapshot = newSnapshotClient(client)
+	client.SnapshotCR = newSnapshotCRClient(client)
 	client.BackupVolume = newBackupVolumeClient(client)
 	client.Setting = newSettingClient(client)
 	client.RecurringJob = newRecurringJobClient(client)
@@ -122,6 +129,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.KubernetesStatus = newKubernetesStatusClient(client)
 	client.BackupListOutput = newBackupListOutputClient(client)
 	client.SnapshotListOutput = newSnapshotListOutputClient(client)
+	client.SnapshotCRListOutput = newSnapshotCRListOutputClient(client)
 
 	return client
 }

@@ -20,6 +20,10 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+type Empty struct {
+	client.Resource
+}
+
 type Volume struct {
 	client.Resource
 
@@ -82,6 +86,25 @@ type Snapshot struct {
 	client.Resource
 	longhorn.SnapshotInfo
 	Checksum string `json:"checksum"`
+}
+
+type SnapshotCR struct {
+	client.Resource
+	Name           string            `json:"name"`
+	Volume         string            `json:"volume"`
+	CreateSnapshot bool              `json:"createSnapshot"`
+	Parent         string            `json:"parent"`
+	Children       map[string]bool   `json:"children"`
+	MarkRemoved    bool              `json:"markRemoved"`
+	UserCreated    bool              `json:"userCreated"`
+	CreationTime   string            `json:"creationTime"`
+	Size           int64             `json:"size"`
+	Labels         map[string]string `json:"labels"`
+	OwnerID        string            `json:"ownerID"`
+	Error          string            `json:"error,omitempty"`
+	RestoreSize    int64             `json:"restoreSize"`
+	ReadyToUse     bool              `json:"readyToUse"`
+	Checksum       string            `json:"checksum"`
 }
 
 type BackupTarget struct {
@@ -198,6 +221,7 @@ type AttachInput struct {
 	HostID          string `json:"hostId"`
 	DisableFrontend bool   `json:"disableFrontend"`
 	AttachedBy      string `json:"attachedBy"`
+	AttacherType    string `json:"attacherType"`
 }
 
 type DetachInput struct {
@@ -205,6 +229,11 @@ type DetachInput struct {
 }
 
 type SnapshotInput struct {
+	Name   string            `json:"name"`
+	Labels map[string]string `json:"labels"`
+}
+
+type SnapshotCRInput struct {
 	Name   string            `json:"name"`
 	Labels map[string]string `json:"labels"`
 }
@@ -463,6 +492,11 @@ type SnapshotListOutput struct {
 	Type string     `json:"type"`
 }
 
+type SnapshotCRListOutput struct {
+	Data []SnapshotCR `json:"data"`
+	Type string       `json:"type"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -472,6 +506,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("attachInput", AttachInput{})
 	schemas.AddType("detachInput", DetachInput{})
 	schemas.AddType("snapshotInput", SnapshotInput{})
+	schemas.AddType("snapshotCRInput", SnapshotCRInput{})
 	schemas.AddType("backupTarget", BackupTarget{})
 	schemas.AddType("backup", Backup{})
 	schemas.AddType("backupInput", BackupInput{})
@@ -499,6 +534,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateReplicaZoneSoftAntiAffinityInput", UpdateReplicaZoneSoftAntiAffinityInput{})
 	schemas.AddType("workloadStatus", longhorn.WorkloadStatus{})
 	schemas.AddType("cloneStatus", longhorn.VolumeCloneStatus{})
+	schemas.AddType("empty", Empty{})
 
 	schemas.AddType("volumeRecurringJob", VolumeRecurringJob{})
 	schemas.AddType("volumeRecurringJobInput", VolumeRecurringJobInput{})
@@ -526,6 +562,7 @@ func NewSchema() *client.Schemas {
 
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	snapshotSchema(schemas.AddType("snapshot", Snapshot{}))
+	snapshotCRSchema(schemas.AddType("snapshotCR", SnapshotCR{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
 	recurringJobSchema(schemas.AddType("recurringJob", RecurringJob{}))
@@ -539,6 +576,7 @@ func NewSchema() *client.Schemas {
 	snapshotListOutputSchema(schemas.AddType("snapshotListOutput", SnapshotListOutput{}))
 	systemBackupSchema(schemas.AddType("systemBackup", SystemBackup{}))
 	systemRestoreSchema(schemas.AddType("systemRestore", SystemRestore{}))
+	snapshotCRListOutputSchema(schemas.AddType("snapshotCRListOutput", SnapshotCRListOutput{}))
 
 	return schemas
 }
@@ -793,6 +831,22 @@ func volumeSchema(volume *client.Schema) {
 			Output: "volume",
 		},
 
+		"snapshotCRCreate": {
+			Input:  "snapshotCRInput",
+			Output: "snapshotCR",
+		},
+		"snapshotCRGet": {
+			Input:  "snapshotCRInput",
+			Output: "snapshotCR",
+		},
+		"snapshotCRList": {
+			Output: "snapshotCRListOutput",
+		},
+		"snapshotCRDelete": {
+			Input:  "snapshotCRInput",
+			Output: "empty",
+		},
+
 		"recurringJobAdd": {
 			Input:  "volumeRecurringJobInput",
 			Output: "volumeRecurringJob",
@@ -820,7 +874,8 @@ func volumeSchema(volume *client.Schema) {
 		},
 
 		"updateAccessMode": {
-			Input: "UpdateAccessModeInput",
+			Input:  "UpdateAccessModeInput",
+			Output: "volume",
 		},
 
 		"updateSnapshotDataIntegrity": {
@@ -1015,6 +1070,12 @@ func snapshotSchema(snapshot *client.Schema) {
 	snapshot.ResourceFields["children"] = children
 }
 
+func snapshotCRSchema(snapshotCR *client.Schema) {
+	children := snapshotCR.ResourceFields["children"]
+	children.Type = "map[bool]"
+	snapshotCR.ResourceFields["children"] = children
+}
+
 func backupListOutputSchema(backupList *client.Schema) {
 	data := backupList.ResourceFields["data"]
 	data.Type = "array[backup]"
@@ -1052,6 +1113,20 @@ func systemRestoreSchema(systemRestore *client.Schema) {
 	systemBackup.Required = true
 	systemBackup.Unique = true
 	systemRestore.ResourceFields["systemBackup"] = systemBackup
+}
+
+func snapshotCRListOutputSchema(snapshotList *client.Schema) {
+	data := snapshotList.ResourceFields["data"]
+	data.Type = "array[snapshotCR]"
+	snapshotList.ResourceFields["data"] = data
+}
+
+func toEmptyResource() *Empty {
+	return &Empty{
+		Resource: client.Resource{
+			Type: "empty",
+		},
+	}
 }
 
 func toSettingResource(setting *longhorn.Setting) *Setting {
@@ -1313,6 +1388,10 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["recurringJobAdd"] = struct{}{}
 			actions["recurringJobDelete"] = struct{}{}
 			actions["recurringJobList"] = struct{}{}
+			actions["snapshotCRCreate"] = struct{}{}
+			actions["snapshotCRGet"] = struct{}{}
+			actions["snapshotCRList"] = struct{}{}
+			actions["snapshotCRDelete"] = struct{}{}
 		case longhorn.VolumeStateAttaching:
 			actions["cancelExpansion"] = struct{}{}
 			actions["recurringJobAdd"] = struct{}{}
@@ -1345,6 +1424,10 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["recurringJobAdd"] = struct{}{}
 			actions["recurringJobDelete"] = struct{}{}
 			actions["recurringJobList"] = struct{}{}
+			actions["snapshotCRCreate"] = struct{}{}
+			actions["snapshotCRGet"] = struct{}{}
+			actions["snapshotCRList"] = struct{}{}
+			actions["snapshotCRDelete"] = struct{}{}
 		}
 	}
 
@@ -1353,6 +1436,51 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	}
 
 	return r
+}
+
+func toSnapshotCRResource(s *longhorn.Snapshot) *SnapshotCR {
+	if s == nil {
+		logrus.Warn("weird: nil snapshot")
+		return nil
+	}
+
+	getLabels := func() map[string]string {
+		if len(s.Spec.Labels) > 0 {
+			return s.Spec.Labels
+		}
+		return s.Status.Labels
+	}
+
+	return &SnapshotCR{
+		Resource: client.Resource{
+			Id:   s.Name,
+			Type: "snapshotCR",
+		},
+		Name:           s.Name,
+		Volume:         s.Spec.Volume,
+		CreateSnapshot: s.Spec.CreateSnapshot,
+		Parent:         s.Status.Parent,
+		Children:       s.Status.Children,
+		MarkRemoved:    s.Status.MarkRemoved,
+		UserCreated:    s.Status.UserCreated,
+		CreationTime:   s.Status.CreationTime,
+		Size:           s.Status.Size,
+		Labels:         getLabels(),
+		OwnerID:        s.Status.OwnerID,
+		Error:          s.Status.Error,
+		RestoreSize:    s.Status.RestoreSize,
+		ReadyToUse:     s.Status.ReadyToUse,
+		Checksum:       s.Status.Checksum,
+	}
+}
+
+func toSnapshotCRCollection(snapCRs map[string]*longhorn.Snapshot) *client.GenericCollection {
+	data := []interface{}{}
+
+	for _, v := range snapCRs {
+		data = append(data, toSnapshotCRResource(v))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshotCR"}}
 }
 
 func toSnapshotResource(s *longhorn.SnapshotInfo, checksum string) *Snapshot {

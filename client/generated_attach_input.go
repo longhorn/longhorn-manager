@@ -9,6 +9,8 @@ type AttachInput struct {
 
 	AttachedBy string `json:"attachedBy,omitempty" yaml:"attached_by,omitempty"`
 
+	AttacherType string `json:"attacherType,omitempty" yaml:"attacher_type,omitempty"`
+
 	DisableFrontend bool `json:"disableFrontend,omitempty" yaml:"disable_frontend,omitempty"`
 
 	HostId string `json:"hostId,omitempty" yaml:"host_id,omitempty"`
