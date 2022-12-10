@@ -879,7 +879,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 			}
 		}
 		if !defaultInstanceManagerCreated {
-			imName, err := types.GetInstanceManagerName(imType)
+			imName, err := types.GetInstanceManagerName(imType, node.Name, defaultInstanceManagerImage)
 			if err != nil {
 				return err
 			}
