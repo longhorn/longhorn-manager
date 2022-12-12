@@ -499,8 +499,8 @@ github.com/longhorn/go-iscsi-helper v0.0.0-20221109111031-ebff48f3632a/go.mod h1
 github.com/longhorn/longhorn-engine v1.2.0-preview1.0.20210818142058-32cb7dfd0630/go.mod h1:mtvBHZBmXJIHBcLL828FY5mGq4hoh7bV2EFK6LFLmhE=
 github.com/longhorn/longhorn-engine v1.3.1-0.20221130092917-14415fe1a108 h1:j9jJmpBmgdvwg/RwwOdE82mq1CGyswTxYzNh2TKRrT0=
 github.com/longhorn/longhorn-engine v1.3.1-0.20221130092917-14415fe1a108/go.mod h1:OMeItWCiLnNTx11q4OlFxi2BSFh5PfG8BgPIlR/nFac=
-github.com/longhorn/longhorn-instance-manager v0.0.0-20221130130856-3f0f1f8f092f h1:MG10Cb0M6WYz6X7FZ3z8uRoNO9RaOD6ZJ5Eo1FFSbcc=
-github.com/longhorn/longhorn-instance-manager v0.0.0-20221130130856-3f0f1f8f092f/go.mod h1:sQ86Uw8aytuV1ITzdnKfM5hsln3Br0/sX532gzxZACw=
+github.com/longhorn/longhorn-instance-manager v0.0.0-20221212032439-5b141bdfb924 h1:M9hraLFM99wYdT0HoS1/ek+iQxV0uMk2uLcMX+JQgoc=
+github.com/longhorn/longhorn-instance-manager v0.0.0-20221212032439-5b141bdfb924/go.mod h1:sQ86Uw8aytuV1ITzdnKfM5hsln3Br0/sX532gzxZACw=
 github.com/longhorn/nsfilelock v0.0.0-20200723175406-fa7c83ad0003/go.mod h1:0CLeXlf59Lg6C0kjLSDf47ft73Dh37CwymYRKWwAn04=
 github.com/longhorn/sparse-tools v0.0.0-20210729195155-a0fb4226a960/go.mod h1:BWM7yTPb1DulG18EE/Jy20LVIySzIYoZpiOYFtAGwZo=
 github.com/longhorn/sparse-tools v0.0.0-20211229004436-663d2f697e2a/go.mod h1:BWM7yTPb1DulG18EE/Jy20LVIySzIYoZpiOYFtAGwZo=

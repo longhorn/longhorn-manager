@@ -5,7 +5,6 @@ import (
 
 	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
 
-	"github.com/longhorn/longhorn-engine/pkg/types"
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	eptypes "github.com/longhorn/longhorn-engine/proto/ptypes"
 )
@@ -180,7 +179,7 @@ func (c *ProxyClient) ReplicaModeUpdate(serviceAddress, replicaAddress string, m
 			Address: serviceAddress,
 		},
 		ReplicaAddress: replicaAddress,
-		Mode:           eptypes.ReplicaModeToGRPCReplicaMode(types.Mode(mode)),
+		Mode:           eptypes.ReplicaModeToGRPCReplicaMode(etypes.Mode(mode)),
 	}
 	_, err = c.service.ReplicaModeUpdate(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {
