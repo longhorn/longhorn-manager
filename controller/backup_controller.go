@@ -394,7 +394,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	}
 
 	// Remove the Backup Volume recurring jobs/groups information.
-	// Only record the lastest recurring jobs/groups information in backup volume CR and volume.cfg on remote backup target.
+	// Only record the latest recurring jobs/groups information in backup volume CR and volume.cfg on remote backup target.
 	delete(backupInfo.Labels, types.VolumeRecurringJobInfoLabel)
 
 	// Update Backup CR status

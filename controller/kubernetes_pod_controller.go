@@ -202,11 +202,11 @@ func (kc *KubernetesPodController) handlePodDeletionIfNodeDown(pod *v1.Pod, node
 
 	// make sure the volumeattachments of the pods are gone first
 	// ref: https://github.com/longhorn/longhorn/issues/2947
-	vas, err := kc.getVolumeAttachmentsOfPod(pod)
+	volumeAttachments, err := kc.getVolumeAttachmentsOfPod(pod)
 	if err != nil {
 		return err
 	}
-	for _, va := range vas {
+	for _, va := range volumeAttachments {
 		if va.DeletionTimestamp == nil {
 			err := kc.kubeClient.StorageV1().VolumeAttachments().Delete(context.TODO(), va.Name, metav1.DeleteOptions{})
 			if err != nil {
@@ -239,8 +239,8 @@ func (kc *KubernetesPodController) handlePodDeletionIfNodeDown(pod *v1.Pod, node
 }
 
 func (kc *KubernetesPodController) getVolumeAttachmentsOfPod(pod *v1.Pod) ([]*storagev1.VolumeAttachment, error) {
-	res := []*storagev1.VolumeAttachment{}
-	vas, err := kc.ds.ListVolumeAttachmentsRO()
+	var res []*storagev1.VolumeAttachment
+	volumeAttachments, err := kc.ds.ListVolumeAttachmentsRO()
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +262,7 @@ func (kc *KubernetesPodController) getVolumeAttachmentsOfPod(pod *v1.Pod) ([]*st
 		pvs[pvc.Spec.VolumeName] = true
 	}
 
-	for _, va := range vas {
+	for _, va := range volumeAttachments {
 		if va.Spec.NodeName != pod.Spec.NodeName {
 			continue
 		}

@@ -401,7 +401,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Error(codes.InvalidArgument, "volume capability missing in request")
 	}
 
-	// TODO: #1875 API returns error instead of not found, so we cannot differenciate between a retrieval failure and non existing resource
+	// TODO: #1875 API returns error instead of not found, so we cannot differentiate between a retrieval failure and non existing resource
 	if _, err := cs.apiClient.Node.ById(nodeID); err != nil {
 		return nil, status.Errorf(codes.NotFound, "node %s not found", nodeID)
 	}

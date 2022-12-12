@@ -528,8 +528,8 @@ func determineChecksumFromHashStatus(log logrus.FieldLogger, snapshotName, exist
 		return "", fmt.Errorf(prefixChecksumDetermineFailure+"since snapshot disk files are silently corrupted", snapshotName)
 	}
 
-	// The checksums from replicas might be different than previous values because of purge, trim, corruption and etc.
-	// So, the vote mechanism is alway executed to get the latest checksum and then update the status.checksum.
+	// The checksums from replicas might be different from previous values because of purge, trim, corruption and etc.
+	// So, the vote mechanism is always executed to get the latest checksum and then update the status.checksum.
 	// If the checksum cannot be determined by the ones from replicas, the existingChecksum (snapshot.status.checksum) will
 	// help to determine the final checksum.
 	found, checksum, maxVotes := determineChecksum(checksums)
