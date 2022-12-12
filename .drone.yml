@@ -6,6 +6,12 @@ platform:
   os: linux
   arch: amd64
 
+trigger:
+  branch:
+  - master
+  - main
+  - v*
+
 steps:
 - name: fetch
   image: ubuntu:18.04
@@ -115,6 +121,12 @@ platform:
   os: linux
   arch: arm64
 
+trigger:
+  branch:
+  - master
+  - main
+  - v*
+
 steps:
 - name: fetch
   image: ubuntu:18.04
@@ -204,6 +216,10 @@ trigger:
   event:
     exclude:
     - pull_request
+  branch:
+  - master
+  - main
+  - v*
    
 steps:
 - name: fetch
@@ -292,6 +308,15 @@ name: manifest
 platform:
   os: linux
   arch: amd64
+
+trigger:
+  event:
+    exclude:
+    - pull_request
+  branch:
+  - master
+  - main
+  - v*
 
 steps:
 - name: manifest
