@@ -199,6 +199,11 @@ platform:
 
 node:
    arch: s390x
+
+trigger:
+  event:
+    exclude:
+    - pull_request
    
 steps:
 - name: fetch
