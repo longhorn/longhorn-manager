@@ -994,8 +994,8 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 				return nil
 			}
 
-			m.aquireRestoringCounter(true)
-			defer m.aquireRestoringCounter(false)
+			m.acquireRestoringCounter(true)
+			defer m.acquireRestoringCounter(false)
 		}
 
 		if err = m.restoreBackup(engine, rsMap, cliAPIVersion, engineClientProxy); err != nil {
@@ -1026,8 +1026,8 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	return nil
 }
 
-func (m *EngineMonitor) aquireRestoringCounter(aquire bool) {
-	if !aquire {
+func (m *EngineMonitor) acquireRestoringCounter(acquire bool) {
+	if !acquire {
 		m.restoringCounter.DecreaseCount()
 		return
 	}

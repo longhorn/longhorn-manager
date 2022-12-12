@@ -498,7 +498,7 @@ func (c *SystemBackupController) UploadSystemBackup(systemBackup *longhorn.Syste
 
 	var recordErr error
 	existingSystemBackup := systemBackup.DeepCopy()
-	// Handle the CR status update here because this method is called by a seperate goroutine.
+	// Handle the CR status update here because this method is called by a separate goroutine.
 	defer func() {
 		record := &systemBackupRecord{}
 		if recordErr != nil {
@@ -579,7 +579,7 @@ func (c *SystemBackupController) cleanupRemoteSystemBackupFiles(systemBackup *lo
 
 	systemBackupsFromBackupTarget, err := backupTargetClient.ListSystemBackup()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list system backups in bakup target %v", backupTargetSetting.Value)
+		return errors.Wrapf(err, "failed to list system backups in backup target %v", backupTargetSetting.Value)
 	}
 
 	if _, exist := systemBackupsFromBackupTarget[systembackupstore.Name(systemBackup.Name)]; !exist {

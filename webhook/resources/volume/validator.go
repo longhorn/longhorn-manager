@@ -200,7 +200,7 @@ func validateReplicaCount(dataLocality longhorn.DataLocality, replicaCount int) 
 	}
 	if dataLocality == longhorn.DataLocalityStrictLocal {
 		if replicaCount != 1 {
-			return werror.NewInvalidError(fmt.Sprintf("number of replica count should be 1 whe data locality is %v", longhorn.DataLocalityStrictLocal), "")
+			return werror.NewInvalidError(fmt.Sprintf("number of replica count should be 1 when data locality is %v", longhorn.DataLocalityStrictLocal), "")
 		}
 	}
 	return nil

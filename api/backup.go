@@ -56,7 +56,7 @@ func (s *Server) BackupVolumeGet(w http.ResponseWriter, req *http.Request) error
 func (s *Server) BackupVolumeDelete(w http.ResponseWriter, req *http.Request) error {
 	volName := mux.Vars(req)["volName"]
 	if err := s.m.DeleteBackupVolume(volName); err != nil {
-		return errors.Wrapf(err, "failed to delet backup volume '%s'", volName)
+		return errors.Wrapf(err, "failed to delete backup volume '%s'", volName)
 	}
 	return nil
 }

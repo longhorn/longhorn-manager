@@ -454,7 +454,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			logrus.WithError(err).Errorf("mounted volume %v on node %v failed required filesystem resize", volumeID, ns.nodeID)
 			return nil, status.Error(codes.Internal, err.Error())
 		} else if resized {
-			logrus.Infof("mounted volume %v on node %v succesfully resized filesystem after mount", volumeID, ns.nodeID)
+			logrus.Infof("mounted volume %v on node %v successfully resized filesystem after mount", volumeID, ns.nodeID)
 		} else {
 			logrus.Debugf("mounted volume %v on node %v already has correct filesystem size", volumeID, ns.nodeID)
 		}

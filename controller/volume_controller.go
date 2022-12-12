@@ -3518,11 +3518,11 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 
 	log = log.WithField("migrationEngine", migrationEngine.Name)
 
-	allReady := false
-	if allReady, revertRequired, err = vc.prepareReplicasAndEngineForMigration(v, currentEngine, migrationEngine, rs); err != nil {
+	ready := false
+	if ready, revertRequired, err = vc.prepareReplicasAndEngineForMigration(v, currentEngine, migrationEngine, rs); err != nil {
 		return err
 	}
-	if !allReady || revertRequired {
+	if !ready || revertRequired {
 		return nil
 	}
 
@@ -3530,7 +3530,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 	return nil
 }
 
-func (vc *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volume, currentEngine, migrationEngine *longhorn.Engine, rs map[string]*longhorn.Replica) (allReady, revertRequired bool, err error) {
+func (vc *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volume, currentEngine, migrationEngine *longhorn.Engine, rs map[string]*longhorn.Replica) (ready, revertRequired bool, err error) {
 	log := getLoggerForVolume(vc.logger, v).WithFields(logrus.Fields{"migrationNodeID": v.Spec.MigrationNodeID, "migrationEngine": migrationEngine.Name})
 
 	// Check the migration engine current status

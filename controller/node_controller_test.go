@@ -700,7 +700,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		err = sIndexer.Add(imImageSetting)
 		c.Assert(err, IsNil)
 
-		// create kuberentes node
+		// create kubernetes node
 		for _, kubeNode := range tc.kubeNodes {
 			n, err := kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
 			c.Assert(err, IsNil)

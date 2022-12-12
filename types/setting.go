@@ -1379,7 +1379,7 @@ func validateAndUnmarshalLabel(label string) (key, value string, err error) {
 	label = strings.Trim(label, " ")
 	parts := strings.Split(label, ":")
 	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid label %v: should contain the seprator ':'", label)
+		return "", "", fmt.Errorf("invalid label %v: should contain the separator ':'", label)
 	}
 	return strings.Trim(parts[0], " "), strings.Trim(parts[1], " "), nil
 }

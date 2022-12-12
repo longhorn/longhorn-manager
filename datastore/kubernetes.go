@@ -411,7 +411,7 @@ func (s *DataStore) ListInstanceManagerPods() ([]*corev1.Pod, error) {
 	return s.ListPodsBySelector(selector)
 }
 
-// ListInstanceManagerPodsBy returns a list of instance manager pods that fullfill the below conditions
+// ListInstanceManagerPodsBy returns a list of instance manager pods that fulfill the below conditions
 func (s *DataStore) ListInstanceManagerPodsBy(node string, image string, imType longhorn.InstanceManagerType) ([]*corev1.Pod, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: types.GetInstanceManagerLabels(node, image, imType),
@@ -464,7 +464,7 @@ func (s *DataStore) GetSupportBundleManagerPod(supportBundle *longhorn.SupportBu
 	if count := len(supportBundleManagerPods); count == 0 {
 		return nil, fmt.Errorf("cannot find support bundle manager pod")
 	} else if count > 1 {
-		return nil, fmt.Errorf("found unexpect number of %v support bundle manager pod", count)
+		return nil, fmt.Errorf("found unexpected number of %v support bundle manager pod", count)
 	}
 
 	return supportBundleManagerPods[0], nil
@@ -770,26 +770,27 @@ func NewPVCManifest(size int64, pvName, ns, pvcName, storageClassName string, ac
 // apiVersion: v1
 // kind: Pod
 // metadata:
-//   annotations:
-//     k8s.v1.cni.cncf.io/network-status: |-
-//       [{
-//     	  "name": "cbr0",
-//     	  "interface": "eth0",
-//     	  "ips": [
-//     		  "10.42.0.175"
-//     	  ],
-//     	  "mac": "be:67:b2:19:17:84",
-//     	  "default": true,
-//     	  "dns": {}
-//       },{
-//     	  "name": "kube-system/demo-192-168-0-0",
-//     	  "interface": "lhnet1",
-//     	  "ips": [
-//     		  "192.168.1.175"
-//     	  ],
-//     	  "mac": "02:59:e5:d4:ae:ea",
-//     	  "dns": {}
-//       }]
+//
+//	annotations:
+//	  k8s.v1.cni.cncf.io/network-status: |-
+//	    [{
+//	  	  "name": "cbr0",
+//	  	  "interface": "eth0",
+//	  	  "ips": [
+//	  		  "10.42.0.175"
+//	  	  ],
+//	  	  "mac": "be:67:b2:19:17:84",
+//	  	  "default": true,
+//	  	  "dns": {}
+//	    },{
+//	  	  "name": "kube-system/demo-192-168-0-0",
+//	  	  "interface": "lhnet1",
+//	  	  "ips": [
+//	  		  "192.168.1.175"
+//	  	  ],
+//	  	  "mac": "02:59:e5:d4:ae:ea",
+//	  	  "dns": {}
+//	    }]
 func (s *DataStore) GetStorageIPFromPod(pod *corev1.Pod) string {
 	storageNetwork, err := s.GetSetting(types.SettingNameStorageNetwork)
 	if err != nil {

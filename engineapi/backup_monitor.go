@@ -244,7 +244,7 @@ func (m *BackupMonitor) exponentialBackOffTimer() bool {
 			// Keep in exponential backoff timer
 		case <-ctx.Done():
 			// Give it the last try to prevent if the snapshot backup succeed between
-			// the last trigged backoff time and the max retry period
+			// the last triggered backoff time and the max retry period
 			currentBackupStatus, err := m.syncBackupStatusFromEngineReplica()
 			if err == nil {
 				m.logger.Info("Change to liner timer to monitor it")
