@@ -45,7 +45,7 @@ func (s *snapShotMutator) Create(request *admission.Request, newObj runtime.Obje
 
 	snapshot, ok := newObj.(*longhorn.Snapshot)
 	if !ok {
-		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Snaphot", newObj), "")
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Snapshot", newObj), "")
 	}
 
 	volume, err := s.ds.GetVolumeRO(snapshot.Spec.Volume)

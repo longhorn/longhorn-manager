@@ -679,7 +679,7 @@ func (c *SystemRolloutController) Unpack(log logrus.FieldLogger) error {
 	}
 
 	if err := c.cacheAPIExtensionsResources(); err != nil {
-		return errors.Wrap(err, "failed to extract API Extentions resources")
+		return errors.Wrap(err, "failed to extract API Extensions resources")
 	}
 
 	if err := c.cacheLonghornResources(); err != nil {

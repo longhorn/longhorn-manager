@@ -24,7 +24,7 @@ func (s *Server) OrphanList(rw http.ResponseWriter, req *http.Request) (err erro
 func (s *Server) orphanList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
 	list, err := s.m.ListOrphans()
 	if err != nil {
-		return nil, errors.Wrap(err, "error listing orhpan")
+		return nil, errors.Wrap(err, "error listing orphan")
 	}
 	return toOrphanCollection(list), nil
 }

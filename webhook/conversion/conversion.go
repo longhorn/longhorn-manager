@@ -118,7 +118,7 @@ func (h *Handler) convertObject(src, dst runtime.Object) error {
 		return fmt.Errorf("%T is not convertible", src)
 	}
 
-	// neigher src nor dst are Hub, means both of them are spoke, so lets get the hub
+	// neither src nor dst are Hub, means both of them are spoke, so lets get the hub
 	// version type.
 	hub, err := getHub(h.scheme, src)
 	if err != nil {
@@ -146,7 +146,7 @@ func (h *Handler) convertObject(src, dst runtime.Object) error {
 func getHub(scheme *runtime.Scheme, obj runtime.Object) (conversion.Hub, error) {
 	gvks, _, err := scheme.ObjectKinds(obj)
 	if err != nil {
-		return nil, fmt.Errorf("error retriving object kinds for given object : %v", err)
+		return nil, fmt.Errorf("failed to retrieve object kinds for given object : %v", err)
 	}
 
 	var hub conversion.Hub
@@ -203,7 +203,7 @@ func statusErrorWithMessage(msg string, params ...interface{}) metav1.Status {
 	}
 }
 
-// statusSucceed is a helper function to createa an metav1 success status
+// statusSucceed is a helper function to create a metav1 success status
 func statusSucceed() metav1.Status {
 	return metav1.Status{Status: metav1.StatusSuccess}
 }

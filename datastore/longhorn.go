@@ -457,7 +457,7 @@ func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, err
 	for _, itemRO := range list {
 		// Cannot use cached object from lister
 		settingField := types.SettingName(itemRO.Name)
-		// Ignore the items that we don't recongize
+		// Ignore the items that we don't recognize
 		if _, ok := types.GetSettingDefinition(settingField); ok {
 			itemMap[settingField] = itemRO.DeepCopy()
 		}

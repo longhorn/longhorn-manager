@@ -103,7 +103,8 @@ const (
 
 // VolumeRecurringJobSpec is a deprecated struct.
 // TODO: Should be removed when recurringJobs gets removed from the volume
-//       spec.
+//
+//	spec.
 type VolumeRecurringJobSpec struct {
 	Name        string            `json:"name"`
 	Groups      []string          `json:"groups,omitempty"`
@@ -226,7 +227,7 @@ type VolumeList struct {
 	Items           []Volume `json:"items"`
 }
 
-// ConvertTo converts from spoke verion (v1beta1) to hub version (v1beta2)
+// ConvertTo converts from spoke version (v1beta1) to hub version (v1beta2)
 func (v *Volume) ConvertTo(dst conversion.Hub) error {
 	switch t := dst.(type) {
 	case *v1beta2.Volume:

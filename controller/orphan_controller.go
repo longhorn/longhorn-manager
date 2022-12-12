@@ -278,7 +278,7 @@ func (oc *OrphanController) cleanupOrphanedData(orphan *longhorn.Orphan) (err er
 	// Make sure if the orphan nodeID and controller ID are same.
 	// If NO, just delete the orphan resource object and don't touch the data.
 	if orphan.Spec.NodeID != oc.controllerID {
-		log.Infof("Orphan nodeID %v is different from controllerID %v, so just delete the orphan resouce object",
+		log.Infof("Orphan nodeID %v is different from controllerID %v, so just delete the orphan resource object",
 			orphan.Name, oc.controllerID)
 		return nil
 	}

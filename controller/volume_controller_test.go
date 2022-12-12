@@ -831,12 +831,12 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.State = longhorn.VolumeStateAttaching
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectVolume.Status.CurrentNodeID = tc.volume.Spec.NodeID
-	expectEs := map[string]*longhorn.Engine{}
+	expectEngines := map[string]*longhorn.Engine{}
 	for _, e := range tc.expectEngines {
 		e.Spec.RevisionCounterDisabled = true
-		expectEs[e.Name] = e
+		expectEngines[e.Name] = e
 	}
-	tc.expectEngines = expectEs
+	tc.expectEngines = expectEngines
 	expectRs := map[string]*longhorn.Replica{}
 	for _, r := range tc.expectReplicas {
 		r.Spec.DesireState = longhorn.InstanceStateRunning
@@ -871,12 +871,12 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 
 	tc.copyCurrentToExpect()
 
-	expectEs = map[string]*longhorn.Engine{}
+	expectEngines = map[string]*longhorn.Engine{}
 	for _, e := range tc.expectEngines {
 		e.Spec.SalvageRequested = true
-		expectEs[e.Name] = e
+		expectEngines[e.Name] = e
 	}
-	tc.expectEngines = expectEs
+	tc.expectEngines = expectEngines
 
 	expectRs = map[string]*longhorn.Replica{}
 	for _, r := range tc.expectReplicas {
@@ -1484,12 +1484,12 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		for _, retE := range retEs.Items {
 			if tc.engines == nil {
 				// test creation, name would be different
-				var expectE *longhorn.Engine
-				for _, expectE = range tc.expectEngines {
+				var expectEngine *longhorn.Engine
+				for _, expectEngine = range tc.expectEngines {
 					break
 				}
-				c.Assert(retE.Spec, DeepEquals, expectE.Spec)
-				c.Assert(retE.Status, DeepEquals, expectE.Status)
+				c.Assert(retE.Spec, DeepEquals, expectEngine.Spec)
+				c.Assert(retE.Status, DeepEquals, expectEngine.Status)
 			} else {
 				c.Assert(retE.Spec, DeepEquals, tc.expectEngines[retE.Name].Spec)
 				c.Assert(retE.Status, DeepEquals, tc.expectEngines[retE.Name].Status)
