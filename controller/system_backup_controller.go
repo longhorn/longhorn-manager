@@ -387,7 +387,11 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 		var longhornVersion string
 		longhornVersion, err = getSystemBackupVersionExistInRemoteBackupTarget(systemBackup, backupTargetClient)
 		if err != nil {
-			return err
+			c.updateSystemBackupRecord(record,
+				systemBackupRecordTypeError, longhorn.SystemBackupStateError,
+				constant.EventReasonStart, err.Error(),
+			)
+			return nil
 		}
 
 		if longhornVersion != "" {
@@ -422,10 +426,7 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 		cleanupLocalSystemBackupFiles(tempBackupArchivePath, tempBackupDir, log)
 
 	case longhorn.SystemBackupStateDeleting:
-		err = c.cleanupRemoteSystemBackupFiles(systemBackup, backupTargetClient)
-		if err != nil {
-			return err
-		}
+		cleanupRemoteSystemBackupFiles(systemBackup, backupTargetClient, log)
 
 		cleanupLocalSystemBackupFiles(tempBackupArchivePath, tempBackupDir, log)
 
@@ -562,48 +563,40 @@ func (c *SystemBackupController) UploadSystemBackup(systemBackup *longhorn.Syste
 	}
 }
 
-func (c *SystemBackupController) cleanupRemoteSystemBackupFiles(systemBackup *longhorn.SystemBackup, backupTargetClient engineapi.SystemBackupOperationInterface) (err error) {
-	backupTargetSetting, err := c.ds.GetSetting(types.SettingNameBackupTarget)
-	if err != nil {
-		return err
-	}
-
-	if backupTargetSetting.Value == "" {
-		return nil
-	}
-
+func cleanupRemoteSystemBackupFiles(systemBackup *longhorn.SystemBackup, backupTargetClient engineapi.SystemBackupOperationInterface, log logrus.FieldLogger) {
 	if systemBackup.Status.Version == "" {
 		// The backup store sync might not have finished
-		return nil
+		return
 	}
 
 	systemBackupsFromBackupTarget, err := backupTargetClient.ListSystemBackup()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list system backups in backup target %v", backupTargetSetting.Value)
+		log.WithError(err).Warn("Failed to list system backups in backup target")
+		return
 	}
 
 	if _, exist := systemBackupsFromBackupTarget[systembackupstore.Name(systemBackup.Name)]; !exist {
-		return nil
+		return
 	}
 
 	_, err = backupTargetClient.DeleteSystemBackup(systemBackup)
 	if err != nil && !types.ErrorIsNotFound(err) {
-		return errors.Wrapf(err, "failed to delete %v system backup in backup target %v", systemBackup.Name, backupTargetSetting.Value)
+		log.WithError(err).Warnf("Failed to delete %v system backup in backup target", systemBackup.Name)
+		return
 	}
-
-	log := getLoggerForSystemBackup(c.logger, systemBackup.Name)
 
 	systemBackupCfg, err := backupTargetClient.GetSystemBackupConfig(systemBackup.Name, systemBackup.Status.Version)
 	if err != nil && !types.ErrorIsNotFound(err) {
-		return errors.Wrap(err, SystemBackupErrGetConfig)
+		log.WithError(err).Warn(SystemBackupErrGetConfig)
+		return
 	}
 
 	if systemBackupCfg != nil {
-		return errors.New("failed to check the system backup deletion, because it's being deleted")
+		log.Warn("Failed to check the system backup deletion, because it's being deleted")
+		return
 	}
 
 	log.Info("Deleted system backup in backup target")
-	return nil
 }
 
 type systemBackupMeta struct {
