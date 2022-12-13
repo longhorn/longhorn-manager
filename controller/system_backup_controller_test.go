@@ -34,6 +34,7 @@ import (
 const (
 	TestSystemBackupName                    = "system-backup-0"
 	TestSystemBackupNameGetConfigFailed     = "system-backup-get-config-failed"
+	TestSystemBackupNameListFailed          = "system-backup-list-failed"
 	TestSystemBackupNameUploadFailed        = "system-backup-upload-failed"
 	TestSystemBackupNameUploadExceedTimeout = "system-backup-upload-exceed-timeout"
 
@@ -76,6 +77,11 @@ func (s *TestSuite) TestReconcileRolloutSave(c *C) {
 		"system backup create": {
 			state:       longhorn.SystemBackupStateNone,
 			expectState: longhorn.SystemBackupStateGenerating,
+		},
+		"system backup create list backup failed": {
+			systemBackupName: TestSystemBackupNameListFailed,
+			state:            longhorn.SystemBackupStateNone,
+			expectState:      longhorn.SystemBackupStateError,
 		},
 		"system backup generate": {
 			state:       longhorn.SystemBackupStateGenerating,
@@ -148,12 +154,11 @@ func (s *TestSuite) TestReconcileRolloutSave(c *C) {
 			tc.controllerID = rolloutOwnerID
 		}
 
-		backupTargetClient := &FakeSystemBackupTargetClient{}
+		backupTargetClient := &FakeSystemBackupTargetClient{
+			name: tc.systemBackupName,
+		}
 		if tc.isExistInRemote {
-			backupTargetClient = &FakeSystemBackupTargetClient{
-				name:    tc.systemBackupName,
-				version: TestSystemBackupLonghornVersion,
-			}
+			backupTargetClient.version = TestSystemBackupLonghornVersion
 		}
 
 		fmt.Printf("testing %v\n", name)
