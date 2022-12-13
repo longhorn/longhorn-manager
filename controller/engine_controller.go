@@ -84,7 +84,9 @@ type EngineController struct {
 	engineMonitorMap   map[string]chan struct{}
 
 	proxyConnCounter util.Counter
-	restoringCounter util.Counter
+
+	restoringCounter      util.Counter
+	restoringCounterMutex *sync.Mutex
 }
 
 type EngineMonitor struct {
@@ -105,7 +107,10 @@ type EngineMonitor struct {
 	monitorVoluntaryStopCh chan struct{}
 
 	proxyConnCounter util.Counter
-	restoringCounter util.Counter
+
+	restoringCounter         util.Counter
+	restoringCounterAcquired bool
+	restoringCounterMutex    *sync.Mutex
 }
 
 func NewEngineController(
@@ -138,8 +143,9 @@ func NewEngineController(
 		engineMonitorMutex: &sync.RWMutex{},
 		engineMonitorMap:   map[string]chan struct{}{},
 
-		proxyConnCounter: proxyConnCounter,
-		restoringCounter: util.NewAtomicCounter(),
+		proxyConnCounter:      proxyConnCounter,
+		restoringCounter:      util.NewAtomicCounter(),
+		restoringCounterMutex: &sync.Mutex{},
 	}
 	ec.instanceHandler = NewInstanceHandler(ds, ec, ec.eventRecorder)
 
@@ -654,6 +660,7 @@ func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
 		controllerID:           ec.controllerID,
 		proxyConnCounter:       ec.proxyConnCounter,
 		restoringCounter:       ec.restoringCounter,
+		restoringCounterMutex:  ec.restoringCounterMutex,
 	}
 
 	ec.engineMonitorMutex.Lock()
@@ -708,6 +715,9 @@ func (ec *EngineController) stopMonitoring(engineName string) {
 func (m *EngineMonitor) Run() {
 	m.logger.Debug("Starting monitoring engine")
 	defer func() {
+		if err := m.acquireRestoringCounter(false); err != nil {
+			m.logger.WithError(err).Error("Failed to unacquire restoring counter")
+		}
 		m.logger.Debug("Stopping monitoring engine")
 		close(m.monitorVoluntaryStopCh)
 	}()
@@ -944,6 +954,13 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 		removeInvalidEngineOpStatus(engine)
 
+		isBackupRestoreCompleted := existingEngine.Status.LastRestoredBackup != engine.Status.LastRestoredBackup
+		if isBackupRestoreCompleted || isBackupRestoreFailed(engine.Status.RestoreStatus) {
+			if err := m.acquireRestoringCounter(false); err != nil {
+				m.logger.WithError(err).Error("Failed to unacquire restoring counter")
+			}
+		}
+
 		if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
 			e, err := m.ds.UpdateEngineStatus(engine)
 			if err != nil {
@@ -972,22 +989,19 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 		isDRVolume := volume.Status.IsStandby
 		if !isDRVolume {
-			if isReachedLimit, err := m.isReachedConcurrentVolumeBackupRestoreLimit(); err != nil {
-				m.logger.WithError(err).Warn("Failed to check concurrent volume backup restore limit")
-				return nil
-
-			} else if isReachedLimit {
-				m.logger.Debugf("Reached the concurrent volume backup restore limit of %v, retry later", types.SettingNameConcurrentBackupRestorePerNodeLimit)
+			err := m.acquireRestoringCounter(true)
+			if err != nil {
+				m.logger.WithError(err).Debug("Failed to acquire restore counter, retry later")
 				m.restoreBackoff.Next(engine.Name, time.Now())
 				return nil
 			}
-
-			m.acquireRestoringCounter(true)
-			defer m.acquireRestoringCounter(false)
 		}
 
 		if err = m.restoreBackup(engine, rsMap, cliAPIVersion, engineClientProxy); err != nil {
 			m.restoreBackoff.DeleteEntry(engine.Name)
+			if err := m.acquireRestoringCounter(false); err != nil {
+				m.logger.WithError(err).Error("Failed to unacquire restoring counter")
+			}
 			return err
 		}
 	}
@@ -1014,13 +1028,44 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	return nil
 }
 
-func (m *EngineMonitor) acquireRestoringCounter(acquire bool) {
+func isBackupRestoreFailed(rsMap map[string]*longhorn.RestoreStatus) bool {
+	for _, status := range rsMap {
+		if status.IsRestoring {
+			break
+		}
+
+		if status.Error != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *EngineMonitor) acquireRestoringCounter(acquire bool) error {
+	m.restoringCounterMutex.Lock()
+	defer m.restoringCounterMutex.Unlock()
+
 	if !acquire {
-		m.restoringCounter.DecreaseCount()
-		return
+		if m.restoringCounterAcquired {
+			m.restoringCounter.DecreaseCount()
+			m.restoringCounterAcquired = false
+		}
+		return nil
 	}
 
+	if isReachedLimit, err := m.isReachedConcurrentVolumeBackupRestoreLimit(); err != nil {
+		return errors.Wrap(err, "failed to check concurrent volume backup restore limit")
+
+	} else if isReachedLimit {
+		return fmt.Errorf("reached the concurrent volume backup restore limit of %v", types.SettingNameConcurrentBackupRestorePerNodeLimit)
+	}
+
+	if m.restoringCounterAcquired {
+		return nil
+	}
+	m.restoringCounterAcquired = true
 	m.restoringCounter.IncreaseCount()
+	return nil
 }
 
 func (ec *EngineController) syncSnapshotCRs(engine *longhorn.Engine) error {
