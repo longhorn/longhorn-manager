@@ -356,8 +356,12 @@ func (c *ShareManagerController) syncShareManagerEndpoint(sm *longhorn.ShareMana
 		sm.Status.Endpoint = ""
 		return nil
 	}
+	endpoint := service.Spec.ClusterIP
+	if service.Spec.IPFamilies[0] == v1.IPv6Protocol {
+		endpoint = fmt.Sprintf("[%v]", endpoint)
+	}
 
-	sm.Status.Endpoint = fmt.Sprintf("nfs://%v/%v", service.Spec.ClusterIP, sm.Name)
+	sm.Status.Endpoint = fmt.Sprintf("nfs://%v/%v", endpoint, sm.Name)
 	return nil
 }
 
