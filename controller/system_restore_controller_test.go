@@ -1037,6 +1037,9 @@ func (c *FakeSystemBackupTargetClient) DownloadSystemBackup(name, version, downl
 }
 
 func (c *FakeSystemBackupTargetClient) ListSystemBackup() (systembackupstore.SystemBackups, error) {
+	if c.name == TestSystemBackupNameListFailed {
+		return nil, fmt.Errorf("failed to list")
+	}
 	return systembackupstore.SystemBackups{
 		systembackupstore.Name(c.name): systembackupstore.URI(fmt.Sprintf(TestSystemBackupURIFmt, c.version, c.name)),
 	}, nil
