@@ -1125,8 +1125,12 @@ func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.Vo
 		}
 
 		if snapName := types.GetSnapshotName(dataSource); snapName != "" {
-			if _, err := m.GetSnapshotInfo(snapName, srcVolName); err != nil {
+			snapshotCR, err := m.GetSnapshotCR(snapName)
+			if err != nil {
 				return err
+			}
+			if !snapshotCR.Status.ReadyToUse {
+				return fmt.Errorf("snapshot %v is not ready to use", snapshotCR.Name)
 			}
 		}
 	}

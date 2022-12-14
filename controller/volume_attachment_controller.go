@@ -200,13 +200,13 @@ func (vac *VolumeAttachmentController) reconcile(vaName string) (err error) {
 	vol, err := vac.ds.GetVolume(va.Spec.Volume)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			// remove finalizer
-			return
+			if !va.DeletionTimestamp.IsZero() {
+				return vac.ds.RemoveFinalizerForLHVolumeAttachment(va)
+			}
+			return nil
 		}
 		return err
 	}
-
-	// handle VA deletion flow
 
 	existingVA := va.DeepCopy()
 	existingVol := vol.DeepCopy()

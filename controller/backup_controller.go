@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	utilpointer "k8s.io/utils/pointer"
 	"reflect"
 	"strconv"
 	"strings"
@@ -529,6 +530,34 @@ func (bc *BackupController) handleAttachmentCreation(backup *longhorn.Backup, vo
 	return nil
 }
 
+// VerifyAttachment check and create attachment so that the source volume is attached if needed
+func (bc *BackupController) VerifyAttachment(backup *longhorn.Backup, volumeName string) (bool, error) {
+	var err error
+	defer func() {
+		err = errors.Wrapf(err, "VerifyAttachment: failed to verify attachment")
+	}()
+
+	vol, err := bc.ds.GetVolume(volumeName)
+	if err != nil {
+		return false, err
+	}
+
+	va, err := bc.ds.GetLHVolumeAttachment(types.GetLHVolumeAttachmentNameFromVolumeName(vol.Name))
+	if err != nil {
+		return false, err
+	}
+
+	attachmentID := longhorn.GetAttachmentID(longhorn.AttacherTypeBackupController, backup.Name)
+
+	attachment, ok := va.Status.Attachments[attachmentID]
+
+	if !ok {
+		return false, nil
+	}
+
+	return utilpointer.BoolDeref(attachment.Attached, false), nil
+}
+
 func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineImage string) (bool, error) {
 	var err error
 	defer func() {
@@ -618,6 +647,14 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	concurrentLimit, err := bc.ds.GetSettingAsInt(types.SettingNameBackupConcurrentLimit)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to assert %v value", types.SettingNameBackupConcurrentLimit)
+	}
+	// check if my ticket is satisfied
+	ok, err := bc.VerifyAttachment(backup, volume.Name)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("waiting for attachment %v to be attached before enabling backup monitor", longhorn.GetAttachmentID(longhorn.AttacherTypeBackupController, backup.Name))
 	}
 
 	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter)

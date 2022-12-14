@@ -19,6 +19,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/systembackup"
 	"github.com/longhorn/longhorn-manager/webhook/resources/systemrestore"
 	"github.com/longhorn/longhorn-manager/webhook/resources/volume"
+	"github.com/longhorn/longhorn-manager/webhook/resources/volumeattachment"
 )
 
 func Validation(client *client.Client) (http.Handler, []admission.Resource, error) {
@@ -39,6 +40,7 @@ func Validation(client *client.Client) (http.Handler, []admission.Resource, erro
 		supportbundle.NewValidator(client.Datastore),
 		systembackup.NewValidator(client.Datastore),
 		systemrestore.NewValidator(client.Datastore),
+		volumeattachment.NewValidator(client.Datastore),
 	}
 
 	router := webhook.NewRouter()

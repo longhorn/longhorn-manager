@@ -369,8 +369,12 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 				}
 			}
 		}
+		vaName := types.GetLHVolumeAttachmentNameFromVolumeName(volume.Name)
+		if err := vc.ds.DeleteLHVolumeAttachment(vaName); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
 
-		// now snapshots, replicas, and engines have been marked for deletion
+		// now volumeattachment, snapshots, replicas, and engines have been marked for deletion
 		if engines, err := vc.ds.ListVolumeEngines(volume.Name); err != nil {
 			return err
 		} else if len(engines) > 0 {
@@ -434,6 +438,10 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			err = nil
 		}
 	}()
+
+	if err := vc.handleVolumeAttachmentCreation(volume); err != nil {
+		return err
+	}
 
 	if err := vc.ReconcileEngineReplicaState(volume, engines, replicas); err != nil {
 		return err
@@ -517,6 +525,30 @@ func (vc *VolumeController) EvictReplicas(v *longhorn.Volume,
 		log.Debug("Creating one more replica for eviction")
 	}
 
+	return nil
+}
+
+func (vc *VolumeController) handleVolumeAttachmentCreation(v *longhorn.Volume) error {
+	vaName := types.GetLHVolumeAttachmentNameFromVolumeName(v.Name)
+	_, err := vc.ds.GetLHVolumeAttachment(vaName)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+		va := longhorn.VolumeAttachment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   vaName,
+				Labels: types.GetVolumeLabels(v.Name),
+			},
+			Spec: longhorn.VolumeAttachmentSpec{
+				Attachments: make(map[string]*longhorn.Attachment),
+				Volume:      v.Name,
+			},
+		}
+		if _, err := vc.ds.CreateLHVolumeAttachment(&va); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

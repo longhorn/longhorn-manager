@@ -3987,6 +3987,30 @@ func (s *DataStore) GetSupportBundle(name string) (*longhorn.SupportBundle, erro
 	return resultRO.DeepCopy(), nil
 }
 
+// CreateOrphan creates a Longhorn Orphan resource and verifies creation
+func (s *DataStore) CreateLHVolumeAttachment(va *longhorn.VolumeAttachment) (*longhorn.VolumeAttachment, error) {
+	ret, err := s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Create(context.TODO(), va, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "Longhorn VolumeAttachment", func(name string) (runtime.Object, error) {
+		return s.GetLHVolumeAttachmentRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.VolumeAttachment)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for Longhorn VolumeAttachment")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
 // GetLHVolumeAttachmentRO returns the VolumeAttachment with the given name in the cluster
 func (s *DataStore) GetLHVolumeAttachmentRO(name string) (*longhorn.VolumeAttachment, error) {
 	return s.lhVALister.VolumeAttachments(s.namespace).Get(name)
@@ -4449,4 +4473,29 @@ func (s *DataStore) ListLonghornVolumeAttachmentByVolumeRO(name string) ([]*long
 		return nil, err
 	}
 	return s.lhVALister.VolumeAttachments(s.namespace).List(volumeSelector)
+}
+
+// RemoveFinalizerForLHVolumeAttachment will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForLHVolumeAttachment(va *longhorn.VolumeAttachment) error {
+	if !util.FinalizerExists(longhornFinalizerKey, va) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, va); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Update(context.TODO(), va, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if va.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for VolumeAttachment %s", va.Name)
+	}
+	return nil
+}
+
+// DeleteLHVolumeAttachment won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteLHVolumeAttachment(vaName string) error {
+	return s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Delete(context.TODO(), vaName, metav1.DeleteOptions{})
 }

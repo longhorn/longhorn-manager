@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
@@ -76,6 +77,16 @@ func (vec *VolumeExpansionController) enqueueVolume(obj interface{}) {
 	}
 
 	vec.queue.Add(key)
+}
+
+func (vec *VolumeExpansionController) enqueueVolumeAfter(obj interface{}, duration time.Duration) {
+	key, err := controller.KeyFunc(obj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("enqueueVolumeAfter: couldn't get key for object %#v: %v", obj, err))
+		return
+	}
+
+	vec.queue.AddAfter(key, duration)
 }
 
 func (vec *VolumeExpansionController) Run(workers int, stopCh <-chan struct{}) {
@@ -154,7 +165,11 @@ func (vec *VolumeExpansionController) reconcile(volName string) (err error) {
 	vaName := types.GetLHVolumeAttachmentNameFromVolumeName(volName)
 	va, err := vec.ds.GetLHVolumeAttachment(vaName)
 	if err != nil {
-		return err
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+		vec.enqueueVolumeAfter(vol, constant.LonghornVolumeAttachmentNotFoundRetryPeriod)
+		return nil
 	}
 	existingVA := va.DeepCopy()
 	defer func() {
