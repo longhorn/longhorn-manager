@@ -52,6 +52,7 @@ import (
 
 const (
 	SystemRolloutControllerName = "longhorn-system-rollout"
+	SystemRolloutNamePrefix     = "longhorn-system-rollout-"
 
 	SystemRolloutMsgDownloadedFmt       = "Downloaded from %v"
 	SystemRolloutMsgInitializedFmt      = "Initialized system rollout for %v"
@@ -1812,4 +1813,8 @@ func tagLonghornLastSystemRestoreBackupAnnotation(lastRolloutBackup string, obj 
 	annos[types.GetLastSystemRestoreBackupLabelKey()] = lastRolloutBackup
 	metadata.SetAnnotations(annos)
 	return nil
+}
+
+func getSystemRolloutName(systemRestoreName string) string {
+	return SystemRolloutNamePrefix + systemRestoreName
 }
