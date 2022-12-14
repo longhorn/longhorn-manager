@@ -139,10 +139,13 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 			c.Assert(err, IsNil)
 		}
 
-		job, err := kubeClient.BatchV1().Jobs(TestNamespace).Get(context.TODO(), systemRestoreName, metav1.GetOptions{})
+		systemRolloutName := getSystemRolloutName(systemRestoreName)
+		job, err := kubeClient.BatchV1().Jobs(TestNamespace).Get(context.TODO(), systemRolloutName, metav1.GetOptions{})
 		if tc.expectJobExist {
 			c.Assert(err, IsNil)
 			c.Assert(job.Spec.Template.Spec.Containers[0].Image, Equals, TestManagerImage)
+			c.Assert(strings.HasPrefix(job.Name, SystemRolloutNamePrefix), Equals, true)
+			c.Assert(strings.HasPrefix(job.Spec.Template.Spec.Containers[0].Name, SystemRolloutNamePrefix), Equals, true)
 		} else {
 			c.Assert(err, NotNil)
 		}

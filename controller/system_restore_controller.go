@@ -148,7 +148,7 @@ func (c *SystemRestoreController) handleErr(err error, key interface{}) {
 	}
 
 	utilruntime.HandleError(err)
-	log.WithError(err).Warn("Dropping Longhorn SystemRestore out of the queue", key)
+	log.WithError(err).Warnf("Dropping Longhorn SystemRestore %v out of the queue", key)
 	c.queue.Forget(key)
 }
 
@@ -318,7 +318,7 @@ func (c *SystemRestoreController) newSystemRestoreJob(systemRestoreName, namespa
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      systemRestoreName,
+			Name:      getSystemRolloutName(systemRestoreName),
 			Namespace: namespace,
 		},
 		Spec: batchv1.JobSpec{
@@ -331,7 +331,7 @@ func (c *SystemRestoreController) newSystemRestoreJob(systemRestoreName, namespa
 					ServiceAccountName: serviceAccount,
 					Containers: []corev1.Container{
 						{
-							Name:    systemRestoreName,
+							Name:    getSystemRolloutName(systemRestoreName),
 							Image:   managerImage,
 							Command: cmd,
 							Env: []corev1.EnvVar{
@@ -410,7 +410,8 @@ func (c *SystemRestoreController) cleanupSystemRestore(systemRestore *longhorn.S
 			longhorn.SystemRestoreConditionTypeError, longhorn.ConditionStatusTrue, "", err.Error())
 	}()
 
-	_, err = c.ds.GetJob(systemRestore.Name)
+	systemRolloutName := getSystemRolloutName(systemRestore.Name)
+	_, err = c.ds.GetJob(systemRolloutName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -418,6 +419,6 @@ func (c *SystemRestoreController) cleanupSystemRestore(systemRestore *longhorn.S
 		return
 	}
 
-	log.WithField("job", systemRestore.Name).Debug("Deleting job")
-	return c.ds.DeleteJob(systemRestore.Name)
+	log.WithField("job", systemRolloutName).Debug("Deleting job")
+	return c.ds.DeleteJob(systemRolloutName)
 }
